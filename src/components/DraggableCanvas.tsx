@@ -32,42 +32,30 @@ interface LayoutsMap {
   [breakpoint: string]: LayoutItem[];
 }
 
+// Default layout map: type -> { x, y, w, h }
+const DEFAULT_LAYOUT_MAP: Record<string, { x: number; y: number; w: number; h: number }> = {
+  'asset-BTC':                { x: 0,  y: 0,  w: 24, h: 8 },   // Row 1: full width
+  'pnl':                      { x: 0,  y: 8,  w: 8,  h: 4 },   // Row 2 col 1 top
+  'trades-positions-orders':  { x: 0,  y: 12, w: 8,  h: 6 },   // Row 2 col 1 bottom
+  'updown-overview':          { x: 8,  y: 8,  w: 8,  h: 4 },   // Row 2 col 2 top
+  'signals':                  { x: 8,  y: 12, w: 8,  h: 6 },   // Row 2 col 2 bottom
+  'chat':                     { x: 16, y: 8,  w: 8,  h: 10 },  // Row 2 col 3 full height
+};
+
 function getDefaultLayout(panels: PanelConfig[]): LayoutItem[] {
   const layout: LayoutItem[] = [];
-  const assetPanels = panels.filter((p) => p.type.startsWith('asset-'));
-  const otherPanels = panels.filter((p) => !p.type.startsWith('asset-'));
+  let fallbackY = 20;
 
-  assetPanels.forEach((p, i) => {
-    layout.push({
-      i: p.id,
-      x: (i % 2) * 12,
-      y: Math.floor(i / 2) * 5,
-      w: 12,
-      h: 5,
-      minW: 6,
-      minH: 3,
-    });
-  });
-
-  const bottomY = assetPanels.length > 0 ? Math.ceil(assetPanels.length / 2) * 5 : 0;
-  const bottomWidths = [6, 6, 6, 6, 6];
-  let bottomX = 0;
-  otherPanels.forEach((p, i) => {
-    const w = i < bottomWidths.length ? bottomWidths[i] : 6;
-    if (bottomX + w > 24) {
-      bottomX = 0;
+  for (const p of panels) {
+    const preset = DEFAULT_LAYOUT_MAP[p.type];
+    if (preset) {
+      layout.push({ i: p.id, ...preset, minW: 4, minH: 3 });
+    } else {
+      // Unknown panel: stack at bottom
+      layout.push({ i: p.id, x: 0, y: fallbackY, w: 12, h: 5, minW: 4, minH: 3 });
+      fallbackY += 5;
     }
-    layout.push({
-      i: p.id,
-      x: bottomX,
-      y: bottomY + Math.floor(i / 4) * 5,
-      w: w,
-      h: 5,
-      minW: 4,
-      minH: 3,
-    });
-    bottomX += w;
-  });
+  }
 
   return layout;
 }

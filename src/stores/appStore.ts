@@ -143,18 +143,15 @@ const loadPanels = (): PanelConfig[] => {
   // Use DEFAULT_PANELS from types but import at runtime to avoid circular
   return [
     { id: 'asset-BTC', type: 'asset-BTC', title: 'BTC' },
-    { id: 'asset-ETH', type: 'asset-ETH', title: 'ETH' },
-    { id: 'asset-SOL', type: 'asset-SOL', title: 'SOL' },
-    { id: 'asset-XRP', type: 'asset-XRP', title: 'XRP' },
-    { id: 'arbs', type: 'arbs', title: 'Hedges' },
-    { id: 'arb-positions', type: 'arb-positions', title: 'Arb Positions' },
-    { id: 'summary', type: 'summary', title: 'Summary' },
-    { id: 'signals', type: 'signals', title: 'Signals' },
+    { id: 'pnl', type: 'pnl', title: 'P&L' },
     { id: 'trades-positions-orders', type: 'trades-positions-orders', title: 'Trades/Positions/Orders' },
+    { id: 'updown-overview', type: 'updown-overview', title: 'Up/Down Markets' },
+    { id: 'signals', type: 'signals', title: 'Signals' },
+    { id: 'chat', type: 'chat', title: 'Chat' },
   ] as PanelConfig[];
 };
 
-const LAYOUT_VERSION = 2; // v2 = 24-column grid
+const LAYOUT_VERSION = 3; // v3 = new default layout
 
 const loadLayouts = (): ReactGridLayout.Layouts | null => {
   try {
@@ -162,20 +159,12 @@ const loadLayouts = (): ReactGridLayout.Layouts | null => {
     if (!saved) return null;
     const layouts = JSON.parse(saved);
     const ver = parseInt(localStorage.getItem('polybot-react-layout-version') || '1');
-    if (ver < 2) {
-      // Migrate from 12-col to 24-col: double x and w values
-      for (const bp of Object.keys(layouts)) {
-        if (Array.isArray(layouts[bp])) {
-          layouts[bp] = layouts[bp].map((item: { i: string; x: number; w: number; [k: string]: unknown }) => ({
-            ...item,
-            x: item.x * 2,
-            w: item.w * 2,
-            minW: item.minW ? (item.minW as number) * 2 : undefined,
-          }));
-        }
-      }
-      localStorage.setItem('polybot-react-layouts', JSON.stringify(layouts));
+    if (ver < LAYOUT_VERSION) {
+      // Reset layout on version bump to apply new defaults
+      localStorage.removeItem('polybot-react-layouts');
+      localStorage.removeItem('polybot-react-panels');
       localStorage.setItem('polybot-react-layout-version', String(LAYOUT_VERSION));
+      return null;
     }
     return layouts;
   } catch { /* ignore */ }

@@ -223,12 +223,9 @@ export interface PanelConfig {
 
 export const DEFAULT_PANELS: PanelConfig[] = [
   { id: 'asset-BTC', type: 'asset-BTC', title: 'BTC' },
-  { id: 'asset-ETH', type: 'asset-ETH', title: 'ETH' },
-  { id: 'asset-SOL', type: 'asset-SOL', title: 'SOL' },
-  { id: 'asset-XRP', type: 'asset-XRP', title: 'XRP' },
-  { id: 'arbs', type: 'arbs', title: 'Hedges' },
-  { id: 'arb-positions', type: 'arb-positions', title: 'Arb Positions' },
-  { id: 'summary', type: 'summary', title: 'Summary' },
-  { id: 'signals', type: 'signals', title: 'Signals' },
+  { id: 'pnl', type: 'pnl', title: 'P&L' },
   { id: 'trades-positions-orders', type: 'trades-positions-orders', title: 'Trades/Positions/Orders' },
+  { id: 'updown-overview', type: 'updown-overview', title: 'Up/Down Markets' },
+  { id: 'signals', type: 'signals', title: 'Signals' },
+  { id: 'chat', type: 'chat', title: 'Chat' },
 ];

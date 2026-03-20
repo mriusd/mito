@@ -499,6 +499,78 @@ export async function placeOrderDirect(params: {
   }
 }
 
+// Sign an order (triggers wallet popup) but do NOT submit it yet.
+// Returns the signed payload ready for submitSignedOrderDirect().
+export async function signOrderOnly(params: {
+  tokenId: string;
+  side: string;
+  price: number;
+  size: number;
+  expiration?: number;
+  proxyWallet: string;
+}): Promise<{ success: boolean; signedPayload?: { body: string; signer: ethers.providers.JsonRpcSigner; creds: ApiKeyCreds }; error?: string }> {
+  try {
+    const signer = await getEthersSigner();
+    const creds = await ensureCreds(signer, params.proxyWallet);
+
+    const [tickSizeData, negRiskData] = await Promise.all([
+      fetch(`${CLOB_URL}/tick-size?token_id=${params.tokenId}`).then(r => r.json()),
+      fetch(`${CLOB_URL}/neg-risk?token_id=${params.tokenId}`).then(r => r.json()),
+    ]);
+    const tickSize = tickSizeData.minimum_tick_size || '0.01';
+    const negRisk = negRiskData.neg_risk === true;
+
+    let feeRateBps = 0;
+    try {
+      const feeData = await fetch(`${CLOB_URL}/fee-rate?token_id=${params.tokenId}`).then(r => r.json());
+      const rawFee = feeData.base_fee ?? feeData.fee_rate_bps ?? feeData.feeRateBps ?? 0;
+      feeRateBps = typeof rawFee === 'number' ? rawFee : (parseInt(rawFee) || 0);
+    } catch { /* use 0 */ }
+
+    const signed = await buildSignedOrder(
+      signer, params.proxyWallet, params.tokenId,
+      params.side as 'BUY' | 'SELL', params.price, params.size,
+      feeRateBps, tickSize, negRisk, params.expiration,
+    );
+
+    const useGTD = params.expiration && params.expiration > 0;
+    const orderType = useGTD ? 'GTD' : 'GTC';
+    const body = JSON.stringify(orderToJson(signed, creds.key, orderType));
+
+    return { success: true, signedPayload: { body, signer, creds } };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// Submit a previously signed order to the CLOB.
+export async function submitSignedOrderDirect(signedPayload: {
+  body: string;
+  signer: ethers.providers.JsonRpcSigner;
+  creds: ApiKeyCreds;
+}): Promise<{ success: boolean; orderID?: string; error?: string }> {
+  try {
+    const { body, signer, creds } = signedPayload;
+    const headers = await buildL2Headers(signer, creds, 'POST', '/order', body);
+    const builderHeaders = await fetchBuilderHeaders('POST', '/order', body);
+    const resp = await fetch(`${CLOB_URL}/order`, {
+      method: 'POST',
+      headers: { ...headers, ...builderHeaders, 'Content-Type': 'application/json' },
+      body,
+    });
+    const rawText = await resp.text();
+    let data: any;
+    try { data = JSON.parse(rawText); } catch { data = { raw: rawText }; }
+
+    if (data.error || data.errorMsg) {
+      return { success: false, error: data.error || data.errorMsg };
+    }
+    return { success: true, orderID: data.orderID || data.id };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 export async function cancelOrderDirect(orderId: string, proxyWallet: string): Promise<{ success: boolean; error?: string }> {
   try {
     const signer = await getEthersSigner();

@@ -1,6 +1,6 @@
 import type { MarketsResponse, Market, Position } from '../types';
 import { isWebMode, API_BASE } from '../lib/env';
-import { placeOrderDirect, cancelOrderDirect } from '../lib/clobClient';
+import { placeOrderDirect, cancelOrderDirect, signOrderOnly, submitSignedOrderDirect } from '../lib/clobClient';
 import { useAppStore } from '../stores/appStore';
 
 const BASE = API_BASE;
@@ -68,6 +68,27 @@ export async function cancelOrder(orderId: string): Promise<{ success: boolean; 
     body: JSON.stringify({ orderId }),
   });
   return resp.json();
+}
+
+// Sign an order (wallet popup) without submitting — for replace flow
+export async function signOrder(params: {
+  tokenId: string;
+  side: string;
+  price: number;
+  size: number;
+  expiration?: number;
+}): Promise<{ success: boolean; signedPayload?: any; error?: string }> {
+  if (isWebMode) {
+    const proxyWallet = useAppStore.getState().makerAddress;
+    if (!proxyWallet) return { success: false, error: 'Wallet not connected' };
+    return signOrderOnly({ ...params, proxyWallet });
+  }
+  return { success: false, error: 'signOrder not supported in app mode' };
+}
+
+// Submit a previously signed order to the CLOB
+export async function submitSignedOrder(signedPayload: any): Promise<{ success: boolean; orderID?: string; error?: string }> {
+  return submitSignedOrderDirect(signedPayload);
 }
 
 export async function fetchArbProgs(status = 'active,filled,closed'): Promise<unknown> {

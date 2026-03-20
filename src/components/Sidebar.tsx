@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAccount } from 'wagmi';
 import { useAppStore } from '../stores/appStore';
 import { appKit } from '../lib/wallet';
-import { placeOrder, cancelOrder } from '../api';
+import { placeOrder, cancelOrder, signOrder, submitSignedOrder } from '../api';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
@@ -291,18 +291,7 @@ export function Sidebar() {
     const orderInfo = `${side} ${size} ${outcome} for ${marketName} @ ${newPriceCents}¢`;
     signingDialog.open(false, { title: 'Replacing Order', signLabel: 'Sign new order in wallet', submitLabel: 'Cancel old & submit new', orderInfo });
     try {
-      // Cancel old order first to free up balance
-      signingDialog.setStep('submit', 'active');
-      const cancelResult = await cancelOrder(orderId);
-      if (!cancelResult.success) {
-        signingDialog.setStep('submit', 'error', cancelResult.error || 'Cancel old order failed');
-        showToast(cancelResult.error || 'Cancel old order failed', 'error');
-        setEditingOrderId(null);
-        return;
-      }
-      signingDialog.setStep('submit', 'done');
-
-      // Now place new order with freed balance
+      // Step 1: Sign new order (wallet popup) — user can reject here without affecting old order
       signingDialog.setStep('sign', 'active');
       const expMinutes = parseInt(orderExpiry) || 180;
       const marketEndDate = selectedMarket?.endDate;
@@ -320,14 +309,35 @@ export function Sidebar() {
       }
       const minExpiration = Math.floor(Date.now() / 1000) + 120;
       if (expiration < minExpiration) expiration = minExpiration;
-      const placeResult = await placeOrder({ tokenId, side, price: newPrice, size, expiration, skipDialog: true });
-      if (!placeResult.success) {
-        signingDialog.setStep('sign', 'error', placeResult.error || 'Place failed');
-        showToast(placeResult.error || 'Place failed (old order was cancelled)', 'error');
+
+      const signResult = await signOrder({ tokenId, side, price: newPrice, size, expiration });
+      if (!signResult.success || !signResult.signedPayload) {
+        signingDialog.setStep('sign', 'error', signResult.error || 'Signing failed');
+        showToast(signResult.error || 'Signing failed', 'error');
         setEditingOrderId(null);
         return;
       }
       signingDialog.setStep('sign', 'done');
+
+      // Step 2: Cancel old order to free up balance
+      signingDialog.setStep('submit', 'active');
+      const cancelResult = await cancelOrder(orderId);
+      if (!cancelResult.success) {
+        signingDialog.setStep('submit', 'error', cancelResult.error || 'Cancel old order failed');
+        showToast(cancelResult.error || 'Cancel old order failed', 'error');
+        setEditingOrderId(null);
+        return;
+      }
+
+      // Step 3: Submit the pre-signed new order
+      const submitResult = await submitSignedOrder(signResult.signedPayload);
+      if (!submitResult.success) {
+        signingDialog.setStep('submit', 'error', submitResult.error || 'Submit failed');
+        showToast(submitResult.error || 'Submit failed (old order was cancelled)', 'error');
+        setEditingOrderId(null);
+        return;
+      }
+      signingDialog.setStep('submit', 'done');
       setTimeout(() => signingDialog.close(), 1200);
       showToast('Order replaced', 'success');
       triggerWalletRefresh();
@@ -861,7 +871,7 @@ export function Sidebar() {
                   const totalSize = Math.floor(parseFloat(order.original_size || order.size || '0') * 100) / 100;
                   const filled = Math.floor(parseFloat(order.size_matched || '0') * 100) / 100;
                   const size = parseFloat(order.original_size || order.size);
-                  const sizeDisplay = filled > 0 ? `${(totalSize - filled).toFixed(2)}/${totalSize.toFixed(2)}` : totalSize.toFixed(2);
+                  const sizeDisplay = filled > 0 ? `${(totalSize - filled).toFixed(2)}\\${totalSize.toFixed(2)}` : totalSize.toFixed(2);
 
                   const isEditing = editingOrderId === order.id;
                   return (
@@ -869,7 +879,7 @@ export function Sidebar() {
                       <div className="flex justify-between items-center">
                         <span>
                           <span className={order.side === 'BUY' ? 'text-green-400' : 'text-red-400'}>{order.side}</span>
-                          {' '}<span className={outcomeColor}>{outcomeLabel}</span> {sizeDisplay} @{isEditing ? (
+                          {' '}<span className={outcomeColor}>{outcomeLabel}</span> {filled > 0 ? <>{(totalSize - filled).toFixed(2)}<span className="text-gray-500">\{totalSize.toFixed(2)}</span></> : totalSize.toFixed(2)} @{isEditing ? (
                             <>
                               <input
                                 type="number"

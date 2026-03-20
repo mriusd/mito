@@ -471,13 +471,13 @@ export function Sidebar() {
                 <div className="flex items-start justify-between">
                   <div className="text-left">
                     <div className="text-[10px] text-gray-500">Target</div>
-                    <div className="text-xs font-mono font-bold text-white">{upDownTargetPrice ? `$${upDownTargetPrice.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}` : '...'}</div>
-                    {upDownCountdown && <div className={`text-[10px] font-mono ${upDownCountdown === 'Expired' ? 'text-red-400' : upDownRemaining < 60000 ? 'text-red-400' : upDownRemaining > 300000 ? 'text-green-400' : 'text-yellow-400'}`}>{upDownCountdown}</div>}
+                    <div className="text-xs font-bold text-white">{upDownTargetPrice ? `$${upDownTargetPrice.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}` : '...'}</div>
+                    {upDownCountdown && <div className={`text-[10px] ${upDownCountdown === 'Expired' ? 'text-red-400' : upDownRemaining < 60000 ? 'text-red-400' : upDownRemaining > 300000 ? 'text-green-400' : 'text-yellow-400'}`}>{upDownCountdown}</div>}
                   </div>
                   {bsTimeMachinePastExpiry ? (
                     <div className="text-center" title="Time machine ahead of expiration">
                       <div className="text-[10px] text-gray-500">B-S</div>
-                      <div className="text-xs font-mono font-bold text-gray-500">&gt;⏱</div>
+                      <div className="text-xs font-bold text-gray-500">&gt;⏱</div>
                     </div>
                   ) : bsUpDown !== null ? (
                     <div className="text-center">
@@ -489,15 +489,15 @@ export function Sidebar() {
                           if (bestAsk < bsUpDown * 0.95) bsColor = 'text-green-400';
                           else if (bestAsk > bsUpDown * 1.05) bsColor = 'text-red-400';
                         }
-                        return <div className={`text-xs font-mono font-bold ${bsColor} cursor-pointer hover:underline`} onClick={() => setOrderPrice(bsUpDown!.toFixed(1))}>{bsUpDown!.toFixed(1)}¢</div>;
+                        return <div className={`text-xs font-bold ${bsColor} cursor-pointer hover:underline`} onClick={() => setOrderPrice(bsUpDown!.toFixed(1))}>{bsUpDown!.toFixed(1)}¢</div>;
                       })()}
                     </div>
                   ) : null}
                   <div className="text-right">
                     <div className="text-[10px] text-gray-500">Current</div>
-                    <div ref={upDownPriceRef} className="text-xs font-mono font-bold text-white">{currentPrice ? `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}` : '...'}</div>
+                    <div ref={upDownPriceRef} className="text-xs font-bold text-white">{currentPrice ? `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}` : '...'}</div>
                     {diff !== null && diffPct !== null && (
-                      <div className={`text-[10px] font-mono font-bold ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+                      <div className={`text-[10px] font-bold ${isUp ? 'text-green-400' : 'text-red-400'}`}>
                         {isUp ? '↑' : '↓'}{Math.abs(diff).toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })} ({diffPct >= 0 ? '+' : ''}{diffPct.toFixed(2)}%)
                       </div>
                     )}

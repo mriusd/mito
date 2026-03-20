@@ -316,3 +316,31 @@ export function buildMarketLookup(aboveMarkets: Record<string, Market[]>, priceO
   }
   return lookup;
 }
+
+// --- Chat API ---
+
+export interface ChatMessage {
+  id: number;
+  address: string;
+  nickname: string;
+  message: string;
+  createdAt: number;
+}
+
+export async function fetchChatMessages(limit = 100, before?: number): Promise<ChatMessage[]> {
+  let url = `${BASE}/api/chat?limit=${limit}`;
+  if (before) url += `&before=${before}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('Failed to fetch chat');
+  return resp.json();
+}
+
+export async function postChatMessage(address: string, nickname: string, message: string): Promise<ChatMessage> {
+  const resp = await fetch(`${BASE}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ address, nickname, message }),
+  });
+  if (!resp.ok) throw new Error('Failed to send message');
+  return resp.json();
+}

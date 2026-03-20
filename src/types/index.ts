@@ -212,7 +212,8 @@ export type PanelType =
   | 'signals'
   | 'trades-positions-orders'
   | 'pnl'
-  | 'updown-overview';
+  | 'updown-overview'
+  | 'chat';
 
 export interface PanelConfig {
   id: string;

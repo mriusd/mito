@@ -12,6 +12,7 @@ import { SignalsTable } from './panels/SignalsTable';
 import { TradesPositionsOrders } from './panels/TradesPositionsOrders';
 import { PnLPanel } from './panels/PnLPanel';
 import { UpDownMarketsPanel } from './panels/UpDownMarketsPanel';
+import { ChatPanel } from './panels/ChatPanel';
 import type { PanelConfig } from '../types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,6 +96,8 @@ function renderPanel(panel: PanelConfig): React.ReactNode {
       return <PnLPanel />;
     case 'updown-overview':
       return <UpDownMarketsPanel />;
+    case 'chat':
+      return <ChatPanel />;
     default:
       return <div className="text-gray-500 p-4">Unknown panel: {panel.type}</div>;
   }

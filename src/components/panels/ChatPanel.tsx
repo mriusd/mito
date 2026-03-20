@@ -134,7 +134,7 @@ export function ChatPanel() {
           const isMine = msg.address.toLowerCase() === myAddr;
           const displayName = msg.nickname || shortAddr(msg.address);
           return (
-            <div key={msg.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+            <div key={msg.id} className="flex flex-col items-start">
               <div className="flex items-baseline gap-1 max-w-[90%]">
                 <span
                   className={`font-medium text-[10px] cursor-pointer hover:underline ${isMine ? 'text-blue-400' : 'text-yellow-400'}`}

@@ -106,19 +106,22 @@ export function ChatPanel() {
   const myAddr = address?.toLowerCase() || '';
 
   return (
-    <div className="h-full flex flex-col bg-gray-900 text-xs">
-      {/* Header */}
-      <div className="panel-header flex items-center gap-1.5 px-2 py-1 bg-gray-800 border-b border-gray-700 cursor-move select-none">
-        <MessageCircle className="w-3 h-3 text-blue-400" />
-        <span className="text-gray-300 font-medium text-[11px]">Chat</span>
-        <span className="text-gray-600 text-[9px] ml-auto">{messages.length} msgs</span>
+    <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 h-full flex flex-col">
+      <div className="panel-header">
+        <h3 className="text-sm font-bold text-yellow-400 mb-2 flex items-center justify-between">
+          <span>
+            <MessageCircle className="inline w-3.5 h-3.5 mr-1" />
+            Chat
+          </span>
+          <span className="text-gray-500 text-[9px] font-normal">{messages.length} msgs</span>
+        </h3>
       </div>
 
       {/* Messages */}
-      <div ref={containerRef} className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5 min-h-0">
-        {loading && <div className="text-gray-600 text-center py-4">Loading...</div>}
+      <div ref={containerRef} className="panel-body flex-1 overflow-y-auto space-y-0.5 min-h-0 text-xs">
+        {loading && <div className="text-gray-500 text-center py-4">Loading...</div>}
         {!loading && messages.length === 0 && (
-          <div className="text-gray-600 text-center py-4">No messages yet. Start the conversation!</div>
+          <div className="text-gray-500 text-center py-4">No messages yet. Start the conversation!</div>
         )}
         {messages.map((msg) => {
           const isMine = msg.address.toLowerCase() === myAddr;
@@ -136,7 +139,7 @@ export function ChatPanel() {
               </div>
               <div
                 className={`rounded px-1.5 py-0.5 max-w-[90%] break-words ${
-                  isMine ? 'bg-blue-900/40 text-blue-100' : 'bg-gray-800 text-gray-200'
+                  isMine ? 'bg-blue-900/40 text-blue-100' : 'bg-gray-700/60 text-gray-200'
                 }`}
               >
                 {msg.message}
@@ -148,9 +151,9 @@ export function ChatPanel() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-gray-700 px-2 py-1 bg-gray-800/50">
+      <div className="mt-2 pt-2 border-t border-gray-700/50">
         {!isConnected ? (
-          <div className="text-gray-500 text-center text-[10px] py-0.5">Connect wallet to chat</div>
+          <div className="text-gray-500 text-center text-[10px]">Connect wallet to chat</div>
         ) : (
           <div className="flex items-center gap-1">
             <input
@@ -160,12 +163,12 @@ export function ChatPanel() {
               onKeyDown={handleKeyDown}
               placeholder="Type a message..."
               maxLength={1000}
-              className="flex-1 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 text-[11px] outline-none focus:border-blue-500 no-drag"
+              className="flex-1 bg-gray-700 border border-gray-600 rounded px-1.5 py-0.5 text-gray-200 text-[11px] outline-none focus:border-blue-500 no-drag"
             />
             <button
               onClick={handleSend}
               disabled={!input.trim() || sending}
-              className="p-0.5 rounded bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white transition no-drag"
+              className="px-1.5 py-0.5 rounded bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-[11px] transition no-drag"
             >
               <Send className="w-3 h-3" />
             </button>

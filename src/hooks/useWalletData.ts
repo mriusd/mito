@@ -40,6 +40,31 @@ export function useWalletData() {
         fetchOpenOrdersDirect(proxyWallet),
         fetchWalletBalance(proxyWallet),
       ]);
+
+      // Fix missing avgPrice: compute from trades when API returns 0
+      for (const pos of positions) {
+        if (pos.avgPrice && pos.avgPrice > 0) continue;
+        const tokenId = pos.asset || '';
+        if (!tokenId) continue;
+        // Find BUY trades for this token and compute VWAP
+        let totalCost = 0;
+        let totalSize = 0;
+        for (const t of trades) {
+          const tAsset = t.asset || t.asset_id || t.token_id || '';
+          if (tAsset !== tokenId) continue;
+          if (t.side !== 'BUY') continue;
+          const p = parseFloat(t.price) || 0;
+          const s = parseFloat(t.size) || 0;
+          if (p > 0 && s > 0) {
+            totalCost += p * s;
+            totalSize += s;
+          }
+        }
+        if (totalSize > 0) {
+          pos.avgPrice = totalCost / totalSize;
+        }
+      }
+
       store.setMarketData({
         positions,
         orders,

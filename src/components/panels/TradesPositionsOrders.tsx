@@ -60,7 +60,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
   const [ordersFilter, setOrdersFilter] = useState(
     localStorage.getItem('polymarket-orders-filter') || 'ALL'
   );
-  const [ordersTypeFilter, setOrdersTypeFilter] = useState(
+  const [_ordersTypeFilter, _setOrdersTypeFilter] = useState(
     localStorage.getItem('polymarket-orders-type-filter') || 'ALL'
   );
   const [assetFilter, setAssetFilter] = useState(

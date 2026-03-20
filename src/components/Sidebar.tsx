@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import { useAppStore } from '../stores/appStore';
 import { appKit } from '../lib/wallet';
@@ -92,7 +92,7 @@ export function Sidebar() {
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
 
-  const bsProbCents = useMemo(() => {
+  const _bsProbCents = useMemo(() => {
     if (!selectedMarket) return 0;
     const asset = extractAssetFromMarket(selectedMarket);
     const strike = selectedMarket.groupItemTitle || '';

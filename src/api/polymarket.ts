@@ -10,7 +10,7 @@ function dataUrl(path: string): string {
   return `https://data-api.polymarket.com/${path}`;
 }
 
-function clobUrl(path: string): string {
+function _clobUrl(path: string): string {
   if (isDev) return `/api/polyproxy/clob/${path}`;
   return `https://clob.polymarket.com/${path}`;
 }

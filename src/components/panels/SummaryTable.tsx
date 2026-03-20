@@ -14,7 +14,7 @@ export function SummaryTable() {
   const priceOnMarkets = useAppStore((s) => s.priceOnMarkets);
   const showPast = useAppStore((s) => s.showPast);
 
-  const [tab, setTab] = useState<'cost' | 'pnl'>('cost');
+  const [tab, _setTab] = useState<'cost' | 'pnl'>('cost');
   const [pnlData, setPnlData] = useState<PnlMap | null>(null);
   const openPnlDrilldown = useAppStore((s) => s.openPnlDrilldown);
 

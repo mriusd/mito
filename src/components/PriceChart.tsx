@@ -285,7 +285,7 @@ export function PriceChart({ market, isNo }: PriceChartProps) {
 
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const _my = e.clientY - rect.top;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;

@@ -260,7 +260,7 @@ export function ArbPositionsTable() {
 
                   // PnL for closed
                   const pnl = (p.revenue || 0) - (p.cost || 0);
-                  const pnlColor = pnl >= 0 ? 'text-green-400' : 'text-red-400';
+                  const _pnlColor = pnl >= 0 ? 'text-green-400' : 'text-red-400';
 
                   return (
                     <React.Fragment key={p.id}>

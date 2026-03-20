@@ -637,7 +637,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const noAsk = _uBid ? ((1 - _uBid) * 100).toFixed(1) : '-';
                   const yesProb = _uBid || 0;
                   const isPast = showPast && colIdx === 0;
-                  const bgColor = isPast ? 'bg-gray-700/30' : (yesProb > 0.5 ? 'bg-green-900/30' : 'bg-red-900/30');
+                  const _bgColor = isPast ? 'bg-gray-700/30' : (yesProb > 0.5 ? 'bg-green-900/30' : 'bg-red-900/30');
                   const isSelected = selectedMarket?.id === market.id;
 
                   // Calculate time-elapsed progress for this contract

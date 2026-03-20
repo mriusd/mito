@@ -135,7 +135,7 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, even
     };
   }, [tokenId, isNo, startTime, endTime, interval]);
 
-  // Fetch Chainlink candles from Go backend + subscribe to WS for live updates
+  // Fetch Binance klines + subscribe to Binance WS for live price overlay
   useEffect(() => {
     chainlinkCandleMapRef.current = new Map();
     setChainlinkReady(false);
@@ -147,12 +147,11 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, even
 
     if (!chainlinkAsset) return;
 
-    const clSymbol = `chainlink_${chainlinkAsset.toLowerCase()}usd`;
-    const st = startTime || (Date.now() - 24 * 60 * 60 * 1000);
-    const et = endTime || (Date.now() + 60 * 60 * 1000);
+    const binanceSymbol = `${chainlinkAsset.toUpperCase()}USDT`;
+    const binanceStream = `${chainlinkAsset.toLowerCase()}usdt`;
 
-    // Fetch initial candles from polycandles backend
-    fetch(`${API_BASE}/api/v3/klines?symbol=${clSymbol}&interval=${interval}&startTime=${st}&endTime=${et}&limit=1500`)
+    // Fetch initial candles from Binance futures REST
+    fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${binanceSymbol}&interval=${interval}&limit=500`)
       .then(r => r.json())
       .then((klines: any[][]) => {
         if (!Array.isArray(klines)) { setChainlinkReady(true); return; }
@@ -169,43 +168,27 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, even
       })
       .catch(() => setChainlinkReady(true));
 
-    // Subscribe to WS for live chainlink kline updates
-    const ws = new WebSocket(`${WS_BASE}/ws/chart`);
+    // Subscribe to Binance futures kline WS for live updates
+    const ws = new WebSocket(`wss://fstream.binance.com/ws/${binanceStream}@kline_${interval}`);
     chainlinkWsRef.current = ws;
-    let pingIv: ReturnType<typeof setInterval>;
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({
-        type: 'subscribeKlineStream',
-        data: { symbol: clSymbol, interval },
-      }));
-      pingIv = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping' }));
-        }
-      }, 30000);
-    };
 
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'klineStreamUpdate') {
-          const k = msg.data?.data?.k;
-          if (!k) return;
+        if (msg.e === 'kline' && msg.k) {
+          const k = msg.k;
           const map = chainlinkCandleMapRef.current;
           const openTime = k.t as number;
-          const o = parseFloat(k.o);
-          const h = parseFloat(k.h);
-          const l = parseFloat(k.l);
-          const c = parseFloat(k.c);
-          map.set(openTime, { time: openTime, o, h, l, c });
+          map.set(openTime, { time: openTime, o: parseFloat(k.o), h: parseFloat(k.h), l: parseFloat(k.l), c: parseFloat(k.c) });
           setChainlinkTick(n => n + 1);
         }
       } catch {}
     };
 
+    ws.onclose = () => {};
+    ws.onerror = () => {};
+
     return () => {
-      clearInterval(pingIv);
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         ws.close();
       }

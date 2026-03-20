@@ -1,9 +1,9 @@
 import type { MarketsResponse, Market, Position } from '../types';
-import { isWebMode } from '../lib/env';
+import { isWebMode, API_BASE } from '../lib/env';
 import { placeOrderDirect, cancelOrderDirect } from '../lib/clobClient';
 import { useAppStore } from '../stores/appStore';
 
-const BASE = '';
+const BASE = API_BASE;
 
 export async function fetchMarkets(): Promise<MarketsResponse> {
   const resp = await fetch(`${BASE}/api/markets`);

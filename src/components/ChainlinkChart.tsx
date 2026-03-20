@@ -24,8 +24,8 @@ function getIntervalFromSlug(slug?: string): string {
   return '1h';
 }
 
-const GO_BASE = window.location.protocol === 'https:' ? '' : `http://${window.location.hostname}:3099`;
-const WS_BASE = window.location.protocol === 'https:' ? `wss://${window.location.host}` : `ws://${window.location.hostname}:3099`;
+import { API_BASE, WS_BASE } from '../lib/env';
+const GO_BASE = API_BASE;
 
 const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000 };
 

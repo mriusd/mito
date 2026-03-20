@@ -13,8 +13,7 @@ function toPrice(raw: number, isNo: boolean): number {
   return isNo ? 100 - raw : raw;
 }
 
-// Determine WS URL based on environment
-const WS_BASE = window.location.protocol === 'https:' ? `wss://${window.location.host}` : `ws://${window.location.hostname}:3099`;
+import { API_BASE, WS_BASE } from '../lib/env';
 
 const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000 };
 
@@ -153,8 +152,7 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, even
     const et = endTime || (Date.now() + 60 * 60 * 1000);
 
     // Fetch initial candles from polycandles backend
-    const goBase = window.location.protocol === 'https:' ? '' : `http://${window.location.hostname}:3099`;
-    fetch(`${goBase}/api/v3/klines?symbol=${clSymbol}&interval=${interval}&startTime=${st}&endTime=${et}&limit=1500`)
+    fetch(`${API_BASE}/api/v3/klines?symbol=${clSymbol}&interval=${interval}&startTime=${st}&endTime=${et}&limit=1500`)
       .then(r => r.json())
       .then((klines: any[][]) => {
         if (!Array.isArray(klines)) { setChainlinkReady(true); return; }
@@ -172,8 +170,7 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, even
       .catch(() => setChainlinkReady(true));
 
     // Subscribe to WS for live chainlink kline updates
-    const wsBase = window.location.protocol === 'https:' ? `wss://${window.location.host}` : `ws://${window.location.hostname}:3099`;
-    const ws = new WebSocket(`${wsBase}/ws/chart`);
+    const ws = new WebSocket(`${WS_BASE}/ws/chart`);
     chainlinkWsRef.current = ws;
     let pingIv: ReturnType<typeof setInterval>;
 

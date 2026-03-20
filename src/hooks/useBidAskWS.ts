@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
-
-const WS_BASE = window.location.protocol === 'https:' ? `wss://${window.location.host}` : `ws://${window.location.hostname}:3099`;
+import { WS_BASE } from '../lib/env';
 
 export function useBidAskWS() {
   const updateBidAsk = useAppStore((s) => s.updateBidAsk);

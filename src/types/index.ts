@@ -223,7 +223,6 @@ export interface PanelConfig {
 
 export const DEFAULT_PANELS: PanelConfig[] = [
   { id: 'asset-BTC', type: 'asset-BTC', title: 'BTC' },
-  { id: 'pnl', type: 'pnl', title: 'P&L' },
   { id: 'trades-positions-orders', type: 'trades-positions-orders', title: 'Trades/Positions/Orders' },
   { id: 'updown-overview', type: 'updown-overview', title: 'Up/Down Markets' },
   { id: 'signals', type: 'signals', title: 'Signals' },

@@ -143,7 +143,6 @@ const loadPanels = (): PanelConfig[] => {
   // Use DEFAULT_PANELS from types but import at runtime to avoid circular
   return [
     { id: 'asset-BTC', type: 'asset-BTC', title: 'BTC' },
-    { id: 'pnl', type: 'pnl', title: 'P&L' },
     { id: 'trades-positions-orders', type: 'trades-positions-orders', title: 'Trades/Positions/Orders' },
     { id: 'updown-overview', type: 'updown-overview', title: 'Up/Down Markets' },
     { id: 'signals', type: 'signals', title: 'Signals' },
@@ -151,7 +150,7 @@ const loadPanels = (): PanelConfig[] => {
   ] as PanelConfig[];
 };
 
-const LAYOUT_VERSION = 4; // v4 = adjusted panel sizes + scroll fix
+const LAYOUT_VERSION = 5; // v5 = remove PnL, smaller UpDown
 
 const loadLayouts = (): ReactGridLayout.Layouts | null => {
   try {

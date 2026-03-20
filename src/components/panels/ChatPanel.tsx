@@ -125,7 +125,7 @@ export function ChatPanel() {
       </div>
 
       {/* Messages */}
-      <div ref={containerRef} className="panel-body flex-1 overflow-y-auto space-y-0.5 min-h-0 text-xs">
+      <div ref={containerRef} className="panel-body flex-1 overflow-y-auto space-y-0.5 min-h-0 text-xs flex flex-col justify-end">
         {loading && <div className="text-gray-500 text-center py-4">Loading...</div>}
         {!loading && messages.length === 0 && (
           <div className="text-gray-500 text-center py-4">No messages yet. Start the conversation!</div>

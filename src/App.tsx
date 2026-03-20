@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import './lib/wallet';
 import { useAppStore } from './stores/appStore';
 import { useBinanceWS } from './hooks/useBinanceWS';
@@ -31,13 +32,17 @@ function App() {
   useSignalsAndArbs();
   useBidAskWS();
   const { refreshData } = useMarketData();
-  useWalletData();
+  const { refreshWalletData } = useWalletData();
+
+  const handleRefresh = useCallback(async () => {
+    await Promise.all([refreshData(), refreshWalletData()]);
+  }, [refreshData, refreshWalletData]);
 
   return (
     <div className="gradient-bg h-full flex flex-col text-white" style={{ marginLeft: 288 }}>
       {/* Header - static at top */}
       <div className="flex-shrink-0 px-3 pt-2 pb-1">
-        <Header onRefresh={refreshData} />
+        <Header onRefresh={handleRefresh} />
       </div>
 
       {/* Main content area */}

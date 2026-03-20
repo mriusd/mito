@@ -19,7 +19,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean }[] = [
 ];
 
 interface HeaderProps {
-  onRefresh: () => void;
+  onRefresh: () => Promise<void>;
 }
 
 export function Header({ onRefresh }: HeaderProps) {
@@ -36,6 +36,7 @@ export function Header({ onRefresh }: HeaderProps) {
   const setLayouts = useAppStore((s) => s.setLayouts);
   const addPanel = useAppStore((s) => s.addPanel);
 
+  const [refreshing, setRefreshing] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -209,10 +210,15 @@ export function Header({ onRefresh }: HeaderProps) {
         </div>
 
         <button
-          onClick={onRefresh}
-          className="bg-blue-600 hover:bg-blue-700 px-3 rounded text-xs font-medium transition flex items-center gap-1 h-[28px]"
+          onClick={async () => {
+            if (refreshing) return;
+            setRefreshing(true);
+            try { await onRefresh(); } finally { setRefreshing(false); }
+          }}
+          disabled={refreshing}
+          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 px-3 rounded text-xs font-medium transition flex items-center gap-1 h-[28px]"
         >
-          <RefreshCw className="w-3 h-3" />
+          <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
           Refresh
         </button>
 

@@ -34,12 +34,12 @@ interface LayoutsMap {
 
 // Default layout map: type -> { x, y, w, h }
 const DEFAULT_LAYOUT_MAP: Record<string, { x: number; y: number; w: number; h: number }> = {
-  'asset-BTC':                { x: 0,  y: 0,  w: 24, h: 8 },   // Row 1: full width
-  'pnl':                      { x: 0,  y: 8,  w: 8,  h: 4 },   // Row 2 col 1 top
-  'trades-positions-orders':  { x: 0,  y: 12, w: 8,  h: 6 },   // Row 2 col 1 bottom
-  'updown-overview':          { x: 8,  y: 8,  w: 8,  h: 4 },   // Row 2 col 2 top
-  'signals':                  { x: 8,  y: 12, w: 8,  h: 6 },   // Row 2 col 2 bottom
-  'chat':                     { x: 16, y: 8,  w: 8,  h: 10 },  // Row 2 col 3 full height
+  'asset-BTC':                { x: 0,  y: 0,  w: 24, h: 6 },   // Row 1: full width
+  'pnl':                      { x: 0,  y: 6,  w: 8,  h: 3 },   // Row 2 col 1 top
+  'trades-positions-orders':  { x: 0,  y: 9,  w: 8,  h: 5 },   // Row 2 col 1 bottom
+  'updown-overview':          { x: 8,  y: 6,  w: 8,  h: 4 },   // Row 2 col 2 top
+  'signals':                  { x: 8,  y: 10, w: 8,  h: 4 },   // Row 2 col 2 bottom
+  'chat':                     { x: 16, y: 6,  w: 8,  h: 8 },   // Row 2 col 3 full height
 };
 
 function getDefaultLayout(panels: PanelConfig[]): LayoutItem[] {

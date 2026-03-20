@@ -151,7 +151,7 @@ const loadPanels = (): PanelConfig[] => {
   ] as PanelConfig[];
 };
 
-const LAYOUT_VERSION = 3; // v3 = new default layout
+const LAYOUT_VERSION = 4; // v4 = adjusted panel sizes + scroll fix
 
 const loadLayouts = (): ReactGridLayout.Layouts | null => {
   try {

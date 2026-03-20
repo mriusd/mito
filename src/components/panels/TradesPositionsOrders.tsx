@@ -1,0 +1,483 @@
+import { useState, useCallback } from 'react';
+import { useAppStore } from '../../stores/appStore';
+import { cancelOrder } from '../../api';
+import { showToast } from '../../utils/toast';
+import { getMarketPriceCondition, getTokenOutcome, extractAssetFromMarket, formatPriceShort, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
+import type { Market } from '../../types';
+
+const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
+
+function formatElapsed(ms: number): string {
+  const diff = Date.now() - ms;
+  if (diff < 0) return '';
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  return `${Math.floor(hr / 24)}d`;
+}
+
+function getDateDisplay(endDate: string | null): { label: string; color: string } {
+  if (!endDate) return { label: '-', color: 'text-gray-400' };
+  const dt = new Date(endDate);
+  const hoursLeft = (dt.getTime() - Date.now()) / (1000 * 60 * 60);
+  const isToday = hoursLeft > 0 && hoursLeft < 24;
+  const isTmr = !isToday && hoursLeft > 0 && hoursLeft < 48;
+  const dayAbbr = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][dt.getDay()];
+  if (isToday) return { label: 'TODAY', color: 'text-red-400 font-bold' };
+  if (isTmr) return { label: 'TMR', color: 'text-yellow-400 font-bold' };
+  const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+  return { label: `${dayAbbr} ${dt.getDate()}`, color: isWeekend ? 'text-purple-400' : 'text-gray-400' };
+}
+
+export function TradesPositionsOrders({ panelId }: { panelId: string }) {
+  const positions = useAppStore((s) => s.positions);
+  const orders = useAppStore((s) => s.orders);
+  const trades = useAppStore((s) => s.trades);
+  const marketLookup = useAppStore((s) => s.marketLookup);
+  const selectedMarket = useAppStore((s) => s.selectedMarket);
+  const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
+  const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
+  const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
+
+  const handleMarketClick = useCallback((tokenId: string) => {
+    const market = marketLookup[tokenId];
+    if (!market) return;
+    const outcome = getTokenOutcome(tokenId, marketLookup);
+    setSelectedMarket(market as Market);
+    setSidebarOutcome((outcome === 'NO' ? 'NO' : 'YES') as 'YES' | 'NO');
+    setSidebarOpen(true);
+  }, [marketLookup, setSelectedMarket, setSidebarOutcome, setSidebarOpen]);
+
+  const [tab, setTab] = useState<'trades' | 'positions' | 'orders'>(
+    (localStorage.getItem(`polymarket-pos-orders-tab-${panelId}`) as 'trades' | 'positions' | 'orders') || 'trades'
+  );
+  const [tradesSideFilter, setTradesSideFilter] = useState(
+    localStorage.getItem('polymarket-trades-side-filter') || 'ALL'
+  );
+  const [ordersFilter, setOrdersFilter] = useState(
+    localStorage.getItem('polymarket-orders-filter') || 'ALL'
+  );
+  const [ordersTypeFilter, setOrdersTypeFilter] = useState(
+    localStorage.getItem('polymarket-orders-type-filter') || 'ALL'
+  );
+  const [assetFilter, setAssetFilter] = useState(
+    localStorage.getItem('polymarket-table-asset-filter') || 'ALL'
+  );
+
+  const handleSetTab = (t: 'trades' | 'positions' | 'orders') => {
+    setTab(t);
+    localStorage.setItem(`polymarket-pos-orders-tab-${panelId}`, t);
+  };
+
+  const [cancellingOrderIds, setCancellingOrderIds] = useState<Set<string>>(new Set());
+
+  const handleCancelOrder = async (orderId: string) => {
+    setCancellingOrderIds(prev => new Set(prev).add(orderId));
+    try {
+      const result = await cancelOrder(orderId);
+      if (result.success) showToast('Order cancelled', 'success');
+      else showToast(result.error || 'Cancel failed', 'error');
+    } catch {
+      showToast('Cancel failed', 'error');
+    } finally {
+      setCancellingOrderIds(prev => { const s = new Set(prev); s.delete(orderId); return s; });
+    }
+  };
+
+  const filterByAsset = (tokenId: string) => {
+    if (assetFilter === 'ALL') return true;
+    const market = marketLookup[tokenId];
+    if (!market) return true;
+    return extractAssetFromMarket(market) === assetFilter;
+  };
+
+  const assets = ['ALL', 'BTC', 'ETH', 'SOL', 'XRP'];
+  const assetColors: Record<string, string> = { ALL: 'text-white', BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
+
+  const tabCls = (t: string) =>
+    tab === t
+      ? 'px-2 py-0.5 rounded text-xs font-bold bg-gray-600 text-white'
+      : 'px-2 py-0.5 rounded text-xs font-bold bg-gray-800 text-gray-500 hover:text-gray-300';
+
+  const filterBtnCls = (active: boolean, color: 'green' | 'red' | 'gray') => {
+    if (active) {
+      if (color === 'green') return 'px-1.5 py-0.5 rounded text-[9px] font-medium bg-green-600 text-white';
+      if (color === 'red') return 'px-1.5 py-0.5 rounded text-[9px] font-medium bg-red-600 text-white';
+      return 'px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-500 text-white';
+    }
+    return 'px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-700 text-gray-400';
+  };
+
+  // Process trades
+  const processedTrades = trades
+    .filter((t) => {
+      const tid = t.asset_id || t.asset || t.token_id || t.market || '';
+      if (assetFilter !== 'ALL') {
+        const market = marketLookup[tid];
+        if (market) {
+          if (extractAssetFromMarket(market) !== assetFilter) return false;
+        } else if (t.title) {
+          const m = t.title.match(/\b(BTC|ETH|SOL|XRP)\b/i);
+          if (!m || m[1].toUpperCase() !== assetFilter) return false;
+        }
+      }
+      if (tradesSideFilter !== 'ALL' && t.side !== tradesSideFilter) return false;
+      return true;
+    })
+    .map((trade) => {
+      const tid = trade.asset_id || trade.asset || trade.token_id || trade.market || '';
+      const market = marketLookup[tid];
+      let asset = market ? extractAssetFromMarket(market) || '' : '';
+      let endDate = market?.endDate || null;
+      if (!endDate && trade.timestamp) {
+        let tsNum = typeof trade.timestamp === 'string' ? parseInt(trade.timestamp, 10) : (trade.timestamp as number);
+        if (tsNum < 1e12) tsNum = tsNum * 1000;
+        endDate = new Date(tsNum).toISOString();
+      }
+      let marketName = getMarketPriceCondition(null, tid, marketLookup);
+      let mktLabel = asset ? `${asset} ${formatPriceShort(marketName)}` : marketName;
+      let outcome = getTokenOutcome(tid, marketLookup) || '';
+
+      // Fallback to activity API fields when market not in lookup (expired markets)
+      if (!market && trade.title) {
+        // Combine title + eventSlug for better pattern matching (slug has timeframe like "updown-5m")
+        const combined = trade.eventSlug ? `${trade.title} ${trade.eventSlug}` : trade.title;
+        const shortened = getMarketPriceCondition(combined);
+        // Extract asset from full name in title
+        const nameMap: Record<string, string> = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', ripple: 'XRP', xrp: 'XRP', btc: 'BTC', eth: 'ETH', sol: 'SOL' };
+        const nameMatch = trade.title.match(/\b(Bitcoin|Ethereum|Solana|Ripple|BTC|ETH|SOL|XRP)\b/i);
+        if (nameMatch) asset = nameMap[nameMatch[1].toLowerCase()] || nameMatch[1].toUpperCase();
+        mktLabel = asset ? `${formatPriceShort(shortened)}` : shortened;
+        if (trade.outcome) {
+          const upper = trade.outcome.toUpperCase();
+          outcome = upper === 'YES' ? 'YES' : upper === 'NO' ? 'NO' : upper;
+        } else if (trade.outcomeIndex !== undefined) {
+          outcome = trade.outcomeIndex === 0 ? 'YES' : 'NO';
+        }
+      }
+
+      const price = parseFloat(trade.price) * 100;
+      const size = parseFloat(trade.size_filled || trade.size);
+      const value = trade.usdcSize || parseFloat(trade.price) * size;
+      const ts = (trade as any).match_time || trade.timestamp || trade.created_at || trade.matchTime || '';
+      let timeMs = 0;
+      if (ts) {
+        let t = typeof ts === 'string' ? parseInt(ts, 10) : ts;
+        if (t < 1e12) t = t * 1000;
+        timeMs = t;
+      }
+      const clickable = !!market;
+      return { tid, asset, endDate, marketName: mktLabel, outcome, side: trade.side, price, size, value, timeMs, marketId: market?.id, clickable };
+    });
+
+  // Process positions
+  const processedPositions = positions
+    .filter((p) => {
+      if ((p.size || 0) <= 0) return false;
+      const tid = p.asset || '';
+      if (assetFilter === 'ALL') return true;
+      const market = marketLookup[tid];
+      if (market) return extractAssetFromMarket(market) === assetFilter;
+      if (p.title) {
+        const m = p.title.match(/\b(BTC|ETH|SOL|XRP)\b/i);
+        if (m) return m[1].toUpperCase() === assetFilter;
+        const nameMap: Record<string, string> = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', ripple: 'XRP' };
+        const nm = p.title.match(/\b(Bitcoin|Ethereum|Solana|Ripple)\b/i);
+        if (nm) return (nameMap[nm[1].toLowerCase()] || '') === assetFilter;
+      }
+      return true;
+    })
+    .map((pos) => {
+      const tid = pos.asset || '';
+      const market = marketLookup[tid];
+      let asset = market ? extractAssetFromMarket(market) || '' : '';
+      const endDate = market?.endDate || null;
+      let marketName = getMarketPriceCondition(null, tid, marketLookup);
+      let mktLabel = asset ? `${asset} ${formatPriceShort(marketName)}` : marketName;
+      let outcome = getTokenOutcome(tid, marketLookup) || '';
+
+      // Fallback to positions API fields when market not in lookup
+      if (!market && pos.title) {
+        const combined = pos.eventSlug ? `${pos.title} ${pos.eventSlug}` : pos.title;
+        const shortened = getMarketPriceCondition(combined);
+        const nameMap: Record<string, string> = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', ripple: 'XRP', xrp: 'XRP', btc: 'BTC', eth: 'ETH', sol: 'SOL' };
+        const nameMatch = pos.title.match(/\b(Bitcoin|Ethereum|Solana|Ripple|BTC|ETH|SOL|XRP)\b/i);
+        if (nameMatch) asset = nameMap[nameMatch[1].toLowerCase()] || nameMatch[1].toUpperCase();
+        mktLabel = asset ? `${formatPriceShort(shortened)}` : shortened;
+        if (pos.outcome) {
+          const upper = pos.outcome.toUpperCase();
+          outcome = upper === 'YES' ? 'YES' : upper === 'NO' ? 'NO' : upper;
+        } else if (pos.outcomeIndex !== undefined) {
+          outcome = pos.outcomeIndex === 0 ? 'YES' : 'NO';
+        }
+      }
+
+      const size = pos.size || 0;
+      const avg = pos.avgPrice || 0;
+      const cur = pos.curPrice || avg;
+      const entryPrice = avg * 100;
+      const cost = avg * size;
+      const currentValue = cur * size;
+      const currentPrice = cur * 100;
+      const pnl = currentValue - cost;
+      const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
+      const clickable = !!market;
+      return { tid, asset, endDate, marketName: mktLabel, outcome, size, entryPrice, cost, currentPrice, currentValue, pnl, pnlPercent, marketId: market?.id, clickable };
+    });
+
+  // Process orders
+  const processedOrders = orders
+    .filter((o) => {
+      const tid = o.asset_id || o.token_id || o.market || '';
+      if (!filterByAsset(tid)) return false;
+      if (ordersFilter !== 'ALL' && o.side !== ordersFilter) return false;
+      return true;
+    })
+    .map((order) => {
+      const tid = order.asset_id || order.token_id || order.market || '';
+      const market = marketLookup[tid];
+      const asset = market ? extractAssetFromMarket(market) || '' : '';
+      const endDate = market?.endDate || null;
+      const marketName = getMarketPriceCondition(null, tid, marketLookup);
+      const mktLabel = asset ? `${asset} ${formatPriceShort(marketName)}` : marketName;
+      const outcome = getTokenOutcome(tid, marketLookup) || '';
+      const price = parseFloat(order.price) * 100;
+      const size = parseFloat(order.original_size || order.size);
+      const filled = parseFloat(order.size_matched || '0');
+      const value = parseFloat(order.price) * size;
+      return { id: order.id, tid, asset, endDate, marketName: mktLabel, outcome, side: order.side, price, size, filled, value, marketId: market?.id };
+    });
+
+  // Position totals
+  const totalSize = processedPositions.reduce((s, p) => s + p.size, 0);
+  const totalCost = processedPositions.reduce((s, p) => s + p.cost, 0);
+  const totalValue = processedPositions.reduce((s, p) => s + p.currentValue, 0);
+  const totalPnl = totalValue - totalCost;
+  const avgEntry = totalSize > 0 ? (totalCost / totalSize) * 100 : 0;
+  const avgExit = totalSize > 0 ? (totalValue / totalSize) * 100 : 0;
+  const avgPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+  const tPnlColor = totalPnl >= 0 ? 'text-green-400' : 'text-red-400';
+  const tPnlSign = totalPnl >= 0 ? '+' : '';
+
+  const hCls = 'text-gray-500 py-1 px-1';
+
+  const trColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'25%'}}/><col style={{width:'8%'}}/><col style={{width:'6%'}}/><col style={{width:'12%'}}/><col style={{width:'10%'}}/><col style={{width:'12%'}}/><col style={{width:'12%'}}/></colgroup>;
+  const posColgroup = <colgroup><col style={{width:'5%'}}/><col style={{width:'8%'}}/><col style={{width:'16%'}}/><col style={{width:'5%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'10%'}}/><col style={{width:'8%'}}/><col style={{width:'10%'}}/><col style={{width:'11%'}}/><col style={{width:'11%'}}/></colgroup>;
+  const ordColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'22%'}}/><col style={{width:'8%'}}/><col style={{width:'6%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'12%'}}/><col style={{width:'7%'}}/></colgroup>;
+
+  return (
+    <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
+      <div className="panel-header flex items-center gap-1 mb-2 cursor-grab">
+        <div className="no-drag flex items-center gap-1 flex-wrap">
+          <button onClick={() => handleSetTab('positions')} className={tabCls('positions')}>
+            Positions <span className="text-xs text-gray-500">({processedPositions.length})</span>
+          </button>
+          <button onClick={() => handleSetTab('orders')} className={tabCls('orders')}>
+            Orders <span className="text-xs text-gray-500">({processedOrders.length})</span>
+          </button>
+          <button onClick={() => handleSetTab('trades')} className={tabCls('trades')}>
+            Trades <span className="text-xs text-gray-500">({processedTrades.length})</span>
+          </button>
+
+          {tab === 'trades' && (
+            <div className="flex gap-1 items-center">
+              <div className="flex gap-0.5 text-[9px]">
+                {(['ALL', 'BUY', 'SELL'] as const).map((s) => (
+                  <button key={s} onClick={() => { setTradesSideFilter(s); localStorage.setItem('polymarket-trades-side-filter', s); }}
+                    className={filterBtnCls(tradesSideFilter === s, s === 'BUY' ? 'green' : s === 'SELL' ? 'red' : 'gray')}>{s}</button>
+                ))}
+              </div>
+              <select value={assetFilter} onChange={(e) => { setAssetFilter(e.target.value); localStorage.setItem('polymarket-table-asset-filter', e.target.value); }}
+                className={`bg-gray-700 text-[9px] font-bold rounded px-1 py-0.5 border border-gray-600 ${assetColors[assetFilter]}`} style={{ outline: 'none' }}>
+                {assets.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+          )}
+
+          {tab === 'positions' && (
+            <select value={assetFilter} onChange={(e) => { setAssetFilter(e.target.value); localStorage.setItem('polymarket-table-asset-filter', e.target.value); }}
+              className={`bg-gray-700 text-[9px] font-bold rounded px-1 py-0.5 border border-gray-600 ${assetColors[assetFilter]}`} style={{ outline: 'none' }}>
+              {assets.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          )}
+
+          {tab === 'orders' && (
+            <div className="flex gap-0.5 items-center flex-wrap">
+              {(['ALL', 'BUY', 'SELL'] as const).map((s) => (
+                <button key={s} onClick={() => { setOrdersFilter(s); localStorage.setItem('polymarket-orders-filter', s); }}
+                  className={filterBtnCls(ordersFilter === s, s === 'BUY' ? 'green' : s === 'SELL' ? 'red' : 'gray')}>{s}</button>
+              ))}
+              <span className="mx-1 text-gray-600">|</span>
+              <select value={assetFilter} onChange={(e) => { setAssetFilter(e.target.value); localStorage.setItem('polymarket-table-asset-filter', e.target.value); }}
+                className={`bg-gray-700 text-[9px] font-bold rounded px-1 py-0.5 border border-gray-600 ${assetColors[assetFilter]}`} style={{ outline: 'none' }}>
+                {assets.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+        <span className="flex-1" />
+      </div>
+
+      <div className="panel-body text-[10px] flex-1 min-h-0 flex flex-col">
+        {/* Trades */}
+        {tab === 'trades' && (
+          processedTrades.length === 0 ? (
+            <div className="text-gray-500 text-center py-4">No trades</div>
+          ) : (<div className="flex flex-col flex-1 min-h-0">
+            {/* Fixed header */}
+            <table className="w-full text-[10px] table-fixed">{trColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
+              <th className={`${hCls} text-left`}>Asset</th>
+              <th className={`${hCls} text-left`}>Date</th>
+              <th className={`${hCls} text-left`}>Market</th>
+              <th className={`${hCls} text-left`}>Side</th>
+              <th className={`${hCls} text-left`}>Y/N</th>
+              <th className={`${hCls} text-right`}>Size</th>
+              <th className={`${hCls} text-right`}>Price</th>
+              <th className={`${hCls} text-right`}>Value</th>
+              <th className={`${hCls} text-right`}>Time</th>
+            </tr></thead></table>
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <table className="w-full text-[10px] table-fixed">{trColgroup}<tbody>
+                {processedTrades.slice(0, 100).map((t, i) => {
+                  const dd = getDateDisplay(t.endDate);
+                  const ageMs = t.timeMs > 0 ? Date.now() - t.timeMs : Infinity;
+                  const timeColor = ageMs < 15 * 60000 ? 'text-green-400' : ageMs < 60 * 60000 ? 'text-yellow-400' : 'text-gray-400';
+                  return (
+                    <tr key={i} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${t.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarket && selectedMarket.id === t.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => t.clickable && handleMarketClick(t.tid)}>
+                      <td className={`py-1 px-1 ${assetColorMap[t.asset] || 'text-gray-400'} font-bold`}>{t.asset}</td>
+                      <td className={`py-1 px-1 ${dd.color}`}>{dd.label}</td>
+                      <td className={`py-1 px-1 ${assetColorMap2[t.asset] || 'text-gray-300'} truncate`}>{t.marketName}</td>
+                      <td className={`py-1 px-1 font-bold ${t.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{t.side}</td>
+                      <td className={`py-1 px-1 font-bold ${t.outcome === 'YES' || t.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{t.outcome || '-'}</td>
+                      <td className="py-1 px-1 text-right text-gray-300">{Math.round(t.size).toLocaleString()}</td>
+                      <td className="py-1 px-1 text-right text-gray-300">{t.price.toFixed(1)}¢</td>
+                      <td className="py-1 px-1 text-right text-gray-300">${t.value.toFixed(2)}</td>
+                      <td className={`py-1 px-1 text-right ${timeColor}`}>{t.timeMs > 0 ? formatElapsed(t.timeMs) : ''}</td>
+                    </tr>
+                  );
+                })}
+              </tbody></table>
+            </div>
+          </div>)
+        )}
+
+        {/* Positions */}
+        {tab === 'positions' && (
+          processedPositions.length === 0 ? (
+            <div className="text-gray-500 text-center py-4">No positions</div>
+          ) : (<div className="flex flex-col flex-1 min-h-0">
+            {/* Fixed header */}
+            <table className="w-full text-[10px] table-fixed">{posColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
+              <th className={`${hCls} text-left`}>Asset</th>
+              <th className={`${hCls} text-left`}>Date</th>
+              <th className={`${hCls} text-left`}>Market</th>
+              <th className={`${hCls} text-left`}>Y/N</th>
+              <th className={`${hCls} text-right`}>Size</th>
+              <th className={`${hCls} text-right`}>Entry</th>
+              <th className={`${hCls} text-right`}>Cost</th>
+              <th className={`${hCls} text-right`}>Exit</th>
+              <th className={`${hCls} text-right`}>Val</th>
+              <th className={`${hCls} text-right`}>PnL$</th>
+              <th className={`${hCls} text-right`}>PnL%</th>
+            </tr></thead></table>
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <table className="w-full text-[10px] table-fixed">{posColgroup}<tbody>
+                {processedPositions.map((p, i) => {
+                  const dd = getDateDisplay(p.endDate);
+                  const pnlColor = p.pnl >= 0 ? 'text-green-400' : 'text-red-400';
+                  const pnlSign = p.pnl >= 0 ? '+' : '-';
+                  const exitChange = p.entryPrice > 0 ? ((p.currentPrice - p.entryPrice) / p.entryPrice) * 100 : 0;
+                  const exitColor = exitChange > 20 ? 'text-green-400' : exitChange < -20 ? 'text-red-400' : 'text-yellow-400';
+                  return (
+                    <tr key={i} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarket && selectedMarket.id === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
+                      <td className={`py-1 px-1 ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
+                      <td className={`py-1 px-1 ${dd.color}`}>{dd.label}</td>
+                      <td className={`py-1 px-1 ${assetColorMap2[p.asset] || 'text-gray-300'} truncate`}>{p.marketName}</td>
+                      <td className={`py-1 px-1 font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
+                      <td className="py-1 px-1 text-right text-gray-300">{Math.floor(p.size).toLocaleString()}</td>
+                      <td className="py-1 px-1 text-right text-gray-300">{p.entryPrice.toFixed(1)}¢</td>
+                      <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.cost).toLocaleString()}</td>
+                      <td className={`py-1 px-1 text-right ${exitColor}`}>{p.currentPrice.toFixed(1)}¢</td>
+                      <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.currentValue).toLocaleString()}</td>
+                      <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}${Math.round(Math.abs(p.pnl)).toLocaleString()}</td>
+                      <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody></table>
+            </div>
+            {/* Fixed footer */}
+            <table className="w-full text-[10px] table-fixed">{posColgroup}<tbody>
+              <tr className="border-t-2 border-gray-600 font-bold">
+                <td className="py-1 px-1 text-white">Total</td>
+                <td className="py-1 px-1"></td><td className="py-1 px-1"></td><td className="py-1 px-1"></td>
+                <td className="py-1 px-1 text-right text-white">{Math.floor(totalSize).toLocaleString()}</td>
+                <td className="py-1 px-1 text-right text-gray-400">{avgEntry.toFixed(1)}¢</td>
+                <td className="py-1 px-1 text-right text-white">${Math.round(totalCost).toLocaleString()}</td>
+                <td className="py-1 px-1 text-right text-gray-400">{avgExit.toFixed(1)}¢</td>
+                <td className="py-1 px-1 text-right text-white">${Math.round(totalValue).toLocaleString()}</td>
+                <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}${Math.round(Math.abs(totalPnl)).toLocaleString()}</td>
+                <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}{Math.round(Math.abs(avgPnlPct))}%</td>
+              </tr>
+            </tbody></table>
+          </div>)
+        )}
+
+        {/* Orders */}
+        {tab === 'orders' && (
+          processedOrders.length === 0 ? (
+            <div className="text-gray-500 text-center py-4">No open orders</div>
+          ) : (<div className="flex flex-col flex-1 min-h-0">
+            {/* Fixed header */}
+            <table className="w-full text-[10px] table-fixed">{ordColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
+              <th className={`${hCls} text-left`}>Asset</th>
+              <th className={`${hCls} text-left`}>Date</th>
+              <th className={`${hCls} text-left`}>Market</th>
+              <th className={`${hCls} text-left`}>Side</th>
+              <th className={`${hCls} text-left`}>Y/N</th>
+              <th className={`${hCls} text-right`}>Price</th>
+              <th className={`${hCls} text-right`}>Size</th>
+              <th className={`${hCls} text-right`}>Filled</th>
+              <th className={`${hCls} text-right`}>Value</th>
+              <th className={`${hCls} text-center`}></th>
+            </tr></thead></table>
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <table className="w-full text-[10px] table-fixed">{ordColgroup}<tbody>
+                {processedOrders.map((o) => {
+                  const dd = getDateDisplay(o.endDate);
+                  return (
+                    <tr key={o.id} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${selectedMarket && selectedMarket.id === o.marketId ? 'bg-blue-900/40' : ''}`}>
+                      <td className={`py-1 px-1 ${assetColorMap[o.asset] || 'text-gray-400'} font-bold`}>{o.asset}</td>
+                      <td className={`py-1 px-1 ${dd.color}`}>{dd.label}</td>
+                      <td className={`py-1 px-1 ${assetColorMap2[o.asset] || 'text-gray-300'} truncate cursor-pointer hover:underline`} onClick={() => handleMarketClick(o.tid)}>{o.marketName}</td>
+                      <td className={`py-1 px-1 font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
+                      <td className={`py-1 px-1 font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
+                      <td className="py-1 px-1 text-right text-white">{o.price.toFixed(1)}¢</td>
+                      <td className="py-1 px-1 text-right text-gray-300">{Math.round(o.size).toLocaleString()}</td>
+                      <td className="py-1 px-1 text-right text-gray-500">{Math.round(o.filled).toLocaleString()}</td>
+                      <td className="py-1 px-1 text-right text-gray-300">${Math.round(o.value).toLocaleString()}</td>
+                      <td className="py-1 px-1 text-center">
+                        <button
+                          onClick={() => !cancellingOrderIds.has(o.id) && handleCancelOrder(o.id)}
+                          disabled={cancellingOrderIds.has(o.id)}
+                          className="w-4 h-4 rounded-sm inline-flex items-center justify-center bg-red-600 hover:bg-red-500 disabled:bg-red-600/50"
+                          title="Cancel order"
+                        >{cancellingOrderIds.has(o.id) ? <span className="cancel-spinner"/> : <span className="text-black text-[10px] font-bold leading-none">✕</span>}</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody></table>
+            </div>
+          </div>)
+        )}
+      </div>
+    </div>
+  );
+}

@@ -291,6 +291,18 @@ export function Sidebar() {
     const orderInfo = `${side} ${size} ${outcome} for ${marketName} @ ${newPriceCents}¢`;
     signingDialog.open(false, { title: 'Replacing Order', signLabel: 'Sign new order in wallet', submitLabel: 'Cancel old & submit new', orderInfo });
     try {
+      // Cancel old order first to free up balance
+      signingDialog.setStep('submit', 'active');
+      const cancelResult = await cancelOrder(orderId);
+      if (!cancelResult.success) {
+        signingDialog.setStep('submit', 'error', cancelResult.error || 'Cancel old order failed');
+        showToast(cancelResult.error || 'Cancel old order failed', 'error');
+        setEditingOrderId(null);
+        return;
+      }
+      signingDialog.setStep('submit', 'done');
+
+      // Now place new order with freed balance
       signingDialog.setStep('sign', 'active');
       const expMinutes = parseInt(orderExpiry) || 180;
       const marketEndDate = selectedMarket?.endDate;
@@ -311,21 +323,13 @@ export function Sidebar() {
       const placeResult = await placeOrder({ tokenId, side, price: newPrice, size, expiration, skipDialog: true });
       if (!placeResult.success) {
         signingDialog.setStep('sign', 'error', placeResult.error || 'Place failed');
-        showToast(placeResult.error || 'Place failed', 'error');
+        showToast(placeResult.error || 'Place failed (old order was cancelled)', 'error');
         setEditingOrderId(null);
         return;
       }
       signingDialog.setStep('sign', 'done');
-      signingDialog.setStep('submit', 'active');
-      const cancelResult = await cancelOrder(orderId);
-      if (!cancelResult.success) {
-        signingDialog.setStep('submit', 'error', cancelResult.error || 'Cancel old order failed');
-        showToast(cancelResult.error || 'Cancel old order failed (new order was placed)', 'error');
-      } else {
-        signingDialog.setStep('submit', 'done');
-        setTimeout(() => signingDialog.close(), 1200);
-        showToast('Order replaced', 'success');
-      }
+      setTimeout(() => signingDialog.close(), 1200);
+      showToast('Order replaced', 'success');
       triggerWalletRefresh();
     } catch {
       signingDialog.setStep('submit', 'error', 'Replace failed');

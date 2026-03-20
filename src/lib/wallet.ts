@@ -2,7 +2,7 @@ import { createAppKit } from '@reown/appkit';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
 import { polygon } from 'viem/chains';
 
-const projectId = '4b47e275de3b8f889313d2b78b150be2';
+const projectId = 'a0cb8786d15c99c954a8f8ef28fdb79e';
 
 export const wagmiAdapter = new WagmiAdapter({
   projectId,

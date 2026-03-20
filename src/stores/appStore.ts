@@ -150,22 +150,11 @@ const loadPanels = (): PanelConfig[] => {
   ] as PanelConfig[];
 };
 
-const LAYOUT_VERSION = 5; // v5 = remove PnL, smaller UpDown
-
 const loadLayouts = (): ReactGridLayout.Layouts | null => {
   try {
     const saved = localStorage.getItem('polybot-react-layouts');
     if (!saved) return null;
-    const layouts = JSON.parse(saved);
-    const ver = parseInt(localStorage.getItem('polybot-react-layout-version') || '1');
-    if (ver < LAYOUT_VERSION) {
-      // Reset layout on version bump to apply new defaults
-      localStorage.removeItem('polybot-react-layouts');
-      localStorage.removeItem('polybot-react-panels');
-      localStorage.setItem('polybot-react-layout-version', String(LAYOUT_VERSION));
-      return null;
-    }
-    return layouts;
+    return JSON.parse(saved);
   } catch { /* ignore */ }
   return null;
 };
@@ -336,7 +325,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setLayouts: (layouts) => {
     localStorage.setItem('polybot-react-layouts', JSON.stringify(layouts));
-    localStorage.setItem('polybot-react-layout-version', String(LAYOUT_VERSION));
     set({ layouts });
   },
   addPanel: (panel) => set((s) => {

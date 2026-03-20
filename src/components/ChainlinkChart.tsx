@@ -24,9 +24,6 @@ function getIntervalFromSlug(slug?: string): string {
   return '1h';
 }
 
-import { API_BASE, WS_BASE } from '../lib/env';
-const GO_BASE = API_BASE;
-
 const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000 };
 
 export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChartProps) {
@@ -38,9 +35,10 @@ export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChart
 
   const interval = getIntervalFromSlug(eventSlug);
   const candleMs = INTERVAL_MS[interval] || 3600000;
-  const clSymbol = `chainlink_${asset.toLowerCase()}usd`;
+  const binanceSymbol = `${asset.toUpperCase()}USDT`;
+  const binanceStreamSymbol = `${asset.toLowerCase()}usdt`;
 
-  // Fetch initial candles + subscribe WS
+  // Fetch initial candles from Binance REST + subscribe Binance kline WS
   useEffect(() => {
     candleMapRef.current = new Map();
     setReady(false);
@@ -50,10 +48,8 @@ export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChart
       wsRef.current = null;
     }
 
-    // Fetch last 100 candles
-    const endTime = Date.now();
-    const startTime = endTime - 100 * candleMs;
-    fetch(`${GO_BASE}/api/v3/klines?symbol=${clSymbol}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=100`)
+    // Fetch last 100 candles from Binance futures
+    fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${binanceSymbol}&interval=${interval}&limit=100`)
       .then(r => r.json())
       .then((klines: any[][]) => {
         if (!Array.isArray(klines)) { setReady(true); return; }
@@ -72,41 +68,31 @@ export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChart
       })
       .catch(() => setReady(true));
 
-    // WS subscription
-    const ws = new WebSocket(`${WS_BASE}/ws/chart`);
+    // Binance futures kline WS
+    const ws = new WebSocket(`wss://fstream.binance.com/ws/${binanceStreamSymbol}@kline_${interval}`);
     wsRef.current = ws;
-    let pingIv: ReturnType<typeof setInterval>;
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'subscribeKlineStream', data: { symbol: clSymbol, interval } }));
-      pingIv = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
-      }, 30000);
-    };
 
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'klineStreamUpdate') {
-          const k = msg.data?.data?.k;
-          if (!k) return;
-          // Only process updates for our subscribed interval
-          if (k.i !== interval) return;
+        if (msg.e === 'kline' && msg.k) {
+          const k = msg.k;
           const map = candleMapRef.current;
           const t = k.t as number;
-          // Backend sends full candle OHLC from memory — replace directly
           map.set(t, { time: t, o: parseFloat(k.o), h: parseFloat(k.h), l: parseFloat(k.l), c: parseFloat(k.c) });
           setTick(n => n + 1);
         }
       } catch {}
     };
 
+    ws.onclose = () => {};
+    ws.onerror = () => {};
+
     return () => {
-      clearInterval(pingIv);
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
       wsRef.current = null;
     };
-  }, [clSymbol, interval, candleMs]);
+  }, [binanceSymbol, binanceStreamSymbol, interval, candleMs]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -134,7 +120,7 @@ export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChart
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Waiting for Chainlink data...', W / 2, H / 2);
+      ctx.fillText('Waiting for Binance data...', W / 2, H / 2);
       return;
     }
 
@@ -272,9 +258,9 @@ export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChart
   return (
     <div className="sidebar-section">
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-gray-400">
-          <span style={{ color: '#00d2d2' }}>◆</span> {asset} Chainlink
-          <span className="text-gray-500 ml-1">{interval}</span>
+        <span className="text-xs text-gray-400 flex items-center gap-1">
+          <span style={{ color: '#00d2d2' }}>◆</span> {asset} <span className="px-0.5 rounded-sm text-[8px] font-bold bg-yellow-400 text-black leading-tight">BINANCE</span>
+          <span className="text-gray-500">{interval}</span>
         </span>
       </div>
       <canvas

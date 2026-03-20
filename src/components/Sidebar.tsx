@@ -495,7 +495,7 @@ export function Sidebar() {
                     </div>
                   ) : null}
                   <div className="text-right">
-                    <div className="text-[10px] text-gray-500 flex items-center gap-1">Current <span className="px-1 rounded text-[8px] font-bold bg-yellow-400 text-black leading-tight">BINANCE</span></div>
+                    <div className="text-[10px] text-gray-500 flex items-center justify-end gap-1">Current <span className="px-0.5 rounded-sm text-[8px] font-bold bg-yellow-400 text-black leading-tight">BINANCE</span></div>
                     <div ref={upDownPriceRef} className="text-xs font-bold text-white">{currentPrice ? `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}` : '...'}</div>
                     {diff !== null && diffPct !== null && (
                       <div className={`text-[10px] font-bold ${isUp ? 'text-green-400' : 'text-red-400'}`}>

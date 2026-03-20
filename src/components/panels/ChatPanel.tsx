@@ -48,6 +48,7 @@ export function ChatPanel() {
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   // Fetch Polymarket nickname on connect
@@ -103,6 +104,12 @@ export function ChatPanel() {
     }
   };
 
+  const handleMention = (name: string) => {
+    const mention = `@${name} `;
+    setInput((prev) => prev ? prev + mention : mention);
+    inputRef.current?.focus();
+  };
+
   const myAddr = address?.toLowerCase() || '';
 
   return (
@@ -130,8 +137,9 @@ export function ChatPanel() {
             <div key={msg.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
               <div className="flex items-baseline gap-1 max-w-[90%]">
                 <span
-                  className={`font-medium text-[10px] ${isMine ? 'text-blue-400' : 'text-yellow-400'}`}
+                  className={`font-medium text-[10px] cursor-pointer hover:underline ${isMine ? 'text-blue-400' : 'text-yellow-400'}`}
                   title={msg.address}
+                  onClick={() => handleMention(displayName)}
                 >
                   {displayName}
                 </span>
@@ -157,6 +165,7 @@ export function ChatPanel() {
         ) : (
           <div className="flex items-center gap-1">
             <input
+              ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}

@@ -159,9 +159,13 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
         }
       }
 
-      const price = parseFloat(trade.price) * 100;
+      const rawPrice = parseFloat(trade.price);
+      const price = rawPrice * 100;
       const size = parseFloat(trade.size_filled || trade.size);
-      const value = trade.usdcSize || parseFloat(trade.price) * size;
+      // Detect claims: price=0 and no side (or empty side)
+      const isClaim = rawPrice === 0 && (!trade.side || trade.side === '');
+      const side = isClaim ? 'CLAIM' : trade.side;
+      const value = isClaim ? (trade.usdcSize || size) : (trade.usdcSize || rawPrice * size);
       const ts = (trade as any).match_time || trade.timestamp || trade.created_at || trade.matchTime || '';
       let timeMs = 0;
       if (ts) {
@@ -170,7 +174,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
         timeMs = t;
       }
       const clickable = !!market;
-      return { tid, asset, endDate, marketName: mktLabel, outcome, side: trade.side, price, size, value, timeMs, marketId: market?.id, clickable };
+      return { tid, asset, endDate, marketName: mktLabel, outcome, side, price, size, value, timeMs, marketId: market?.id, clickable };
     });
 
   // Process positions
@@ -351,7 +355,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
                       <td className={`py-1 px-1 ${assetColorMap[t.asset] || 'text-gray-400'} font-bold`}>{t.asset}</td>
                       <td className={`py-1 px-1 ${dd.color}`}>{dd.label}</td>
                       <td className={`py-1 px-1 ${assetColorMap2[t.asset] || 'text-gray-300'} truncate`}>{t.marketName}</td>
-                      <td className={`py-1 px-1 font-bold ${t.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{t.side}</td>
+                      <td className={`py-1 px-1 font-bold ${t.side === 'BUY' ? 'text-green-400' : t.side === 'CLAIM' ? 'text-blue-400' : 'text-red-400'}`}>{t.side}</td>
                       <td className={`py-1 px-1 font-bold ${t.outcome === 'YES' || t.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{t.outcome || '-'}</td>
                       <td className="py-1 px-1 text-right text-gray-300">{Math.round(t.size).toLocaleString()}</td>
                       <td className="py-1 px-1 text-right text-gray-300">{t.price.toFixed(1)}¢</td>

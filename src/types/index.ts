@@ -88,7 +88,7 @@ export interface Trade {
   token_id?: string;
   market?: string;
   conditionId?: string;
-  side: 'BUY' | 'SELL';
+  side: 'BUY' | 'SELL' | '';
   price: string;
   size: string;
   outcome?: string;

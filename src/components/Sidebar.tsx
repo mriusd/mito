@@ -1021,14 +1021,16 @@ export function Sidebar() {
               ) : (
                 myTrades.slice(0, 20).map((trade, i) => {
                   const outcome = getTokenOutcome(trade.asset_id || trade.token_id || '', marketLookup);
-                  const price = parseFloat(trade.price);
+                  const rawPrice = parseFloat(trade.price);
                   const size = parseFloat(trade.size);
+                  const isClaim = rawPrice === 0 && (!trade.side || trade.side === '');
+                  const side = isClaim ? 'CLAIM' : trade.side;
                   const ts = trade.timestamp || trade.created_at || trade.matchTime;
                   return (
                     <div key={i} className="flex justify-between">
                       <span>
-                        <span className={trade.side === 'BUY' ? 'text-green-400' : 'text-red-400'}>{trade.side}</span>
-                        {' '}{outcome} {size.toFixed(0)} @{(price * 100).toFixed(1)}¢
+                        <span className={side === 'BUY' ? 'text-green-400' : side === 'CLAIM' ? 'text-blue-400' : 'text-red-400'}>{side}</span>
+                        {' '}{outcome} {size.toFixed(0)} @{(rawPrice * 100).toFixed(1)}¢
                       </span>
                       <span className="text-gray-600 text-[9px]">
                         {ts ? new Date(ts).toLocaleTimeString() : ''}

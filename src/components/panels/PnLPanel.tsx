@@ -60,10 +60,12 @@ export function PnLPanel() {
 
       if (!dataByDate[dateKey]) continue; // outside our 7-day window
 
+      const rawPrice = parseFloat(trade.price) || 0;
       const size = parseFloat(trade.size_filled || trade.size) || 0;
-      const value = trade.usdcSize || (parseFloat(trade.price) * size);
+      const isClaim = rawPrice === 0 && (!trade.side || trade.side === '');
+      const value = isClaim ? (trade.usdcSize || size) : (trade.usdcSize || (rawPrice * size));
 
-      if (trade.side === 'BUY') {
+      if (trade.side === 'BUY' || isClaim) {
         dataByDate[dateKey].bought += value;
       } else {
         dataByDate[dateKey].sold += value;

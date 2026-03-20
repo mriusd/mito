@@ -427,7 +427,8 @@ export function Sidebar() {
 
           {/* Up or Down: Target & Current Price (below chart) */}
           {isUpDownMarket && (() => {
-            const currentPrice = polyPrice.price || 0;
+            const binanceSym = (upDownAsset?.toUpperCase() + 'USDT') as AssetSymbol;
+            const currentPrice = priceData[binanceSym]?.price || 0;
             // Use 4 decimals for low-priced assets (XRP), 2 for others
             const priceDec = upDownAsset?.toUpperCase() === 'XRP' ? 4 : 2;
             const diff = upDownTargetPrice && currentPrice ? currentPrice - upDownTargetPrice : null;
@@ -494,7 +495,7 @@ export function Sidebar() {
                     </div>
                   ) : null}
                   <div className="text-right">
-                    <div className="text-[10px] text-gray-500">Current</div>
+                    <div className="text-[10px] text-gray-500 flex items-center gap-1">Current <span className="px-1 rounded text-[8px] font-bold bg-yellow-400 text-black leading-tight">BINANCE</span></div>
                     <div ref={upDownPriceRef} className="text-xs font-bold text-white">{currentPrice ? `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}` : '...'}</div>
                     {diff !== null && diffPct !== null && (
                       <div className={`text-[10px] font-bold ${isUp ? 'text-green-400' : 'text-red-400'}`}>

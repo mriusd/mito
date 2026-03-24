@@ -20,11 +20,11 @@ function getIntervalFromSlug(slug?: string): string {
   const s = slug.toLowerCase();
   if (s.match(/updown-5m/) || s.match(/5[- ]?min/)) return '5m';
   if (s.match(/updown-15m/) || s.match(/15[- ]?min/)) return '15m';
-  if (s.match(/up-or-down-on-/) || s.match(/24[- ]?h/)) return '1h';
+  if (s.match(/up-or-down-on-/) || s.match(/24[- ]?h/)) return '1d';
   return '1h';
 }
 
-const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000 };
+const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000, '1d': 86400000 };
 
 export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);

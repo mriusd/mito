@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { API_BASE } from '../lib/env';
 
 interface OBLevel {
   price: string;
@@ -79,7 +80,7 @@ export function usePolymarketOB(tokenId: string | null) {
     setTrades([]);
 
     // Fetch recent trades from backend to seed the list
-    fetch(`/api/trades/${tid}?limit=100`)
+    fetch(`${API_BASE}/api/trades/${tid}?limit=100`)
       .then(r => r.json())
       .then((data: { price: number; size: number; side: string; timestamp: number }[] | null) => {
         if (!data || !Array.isArray(data)) return;

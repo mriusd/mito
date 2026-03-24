@@ -8,6 +8,7 @@ import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
 import { getTokenOutcome, extractAssetFromMarket, shortenMarketName } from '../utils/format';
 import { getMarketProbability } from '../utils/bsMath';
+import { API_BASE } from '../lib/env';
 import { usePolymarketOB } from '../hooks/usePolymarketOB';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
@@ -15,6 +16,8 @@ import { PriceChart } from './PriceChart';
 import { LiveTradeChart } from './LiveTradeChart';
 import { ChainlinkChart } from './ChainlinkChart';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
+import { ToxicFlowDialog } from './ToxicFlowDialog';
+import { Biohazard, Clock } from 'lucide-react';
 import type { AssetSymbol } from '../types';
 
 export function Sidebar() {
@@ -46,6 +49,7 @@ export function Sidebar() {
   const [editingOrderPrice, setEditingOrderPrice] = useState('');
   const [cancellingOrderIds, setCancellingOrderIds] = useState<Set<string>>(new Set());
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
+  const [toxicDialogOpen, setToxicDialogOpen] = useState(false);
   // Inline signing step display when dialog is hidden
   const [signingState, setSigningState] = useState(signingDialog.getState());
   useEffect(() => signingDialog.subscribe(setSigningState), []);
@@ -180,7 +184,7 @@ export function Sidebar() {
       const asset = extractAssetFromMarket(selectedMarket);
       const endISO = new Date(endMs).toISOString();
 
-      fetch(`/api/polyproxy/site/api/crypto/crypto-price?symbol=${asset}&eventStartTime=${startISO}&variant=${variant}&endDate=${endISO}`)
+      fetch(`${API_BASE}/api/polyproxy/site/api/crypto/crypto-price?symbol=${asset}&eventStartTime=${startISO}&variant=${variant}&endDate=${endISO}`)
         .then(r => r.json())
         .then(d => { if (!cancelled && d?.openPrice) setUpDownTargetPrice(d.openPrice); })
         .catch(() => {});
@@ -188,28 +192,30 @@ export function Sidebar() {
     return () => { cancelled = true; };
   }, [isUpDownMarket, selectedMarket?.endDate, selectedMarket?.eventSlug, selectedMarket, livePriceToBeat]);
 
-  // Countdown timer for Up or Down market expiry
+  // Countdown timer for market expiry (all markets)
   useEffect(() => {
-    if (!isUpDownMarket || !selectedMarket?.endDate) { setUpDownCountdown(''); return; }
+    if (!selectedMarket?.endDate) { setUpDownCountdown(''); return; }
     const endMs = new Date(selectedMarket.endDate).getTime();
     if (isNaN(endMs)) { setUpDownCountdown(''); return; }
     const tick = () => {
       const remaining = endMs - Date.now();
       if (remaining <= 0) { setUpDownCountdown('Expired'); setUpDownRemaining(0); return; }
       setUpDownRemaining(remaining);
-      const h = Math.floor(remaining / 3600000);
+      const d = Math.floor(remaining / 86400000);
+      const h = Math.floor((remaining % 86400000) / 3600000);
       const m = Math.floor((remaining % 3600000) / 60000);
       const s = Math.floor((remaining % 60000) / 1000);
       const parts = [];
+      if (d > 0) parts.push(`${d}d`);
       if (h > 0) parts.push(`${h}h`);
       parts.push(`${m}m`);
-      parts.push(`${s}s`);
+      if (d === 0) parts.push(`${s}s`);
       setUpDownCountdown(parts.join(' '));
     };
     tick();
     const iv = setInterval(tick, 1000);
     return () => clearInterval(iv);
-  }, [isUpDownMarket, selectedMarket?.endDate]);
+  }, [selectedMarket?.endDate]);
 
   const cost = (() => {
     const p = parseFloat(orderPrice) / 100;
@@ -372,6 +378,13 @@ export function Sidebar() {
   const polymarketUrl = selectedMarket?.eventSlug ? `https://polymarket.com/event/${selectedMarket.eventSlug}` : null;
 
   return (
+    <>
+    <ToxicFlowDialog
+      open={toxicDialogOpen}
+      marketId={selectedMarket?.id || ''}
+      marketName={marketName}
+      onClose={() => setToxicDialogOpen(false)}
+    />
     <div className={`right-sidebar ${sidebarOpen ? 'open' : ''}`}>
       {/* Portfolio Summary */}
       <div className="sidebar-section bg-gray-800/80 py-1">
@@ -385,16 +398,18 @@ export function Sidebar() {
               <span className={`${sidebarTitleColor} font-bold text-sm`}>{marketName}</span>
             )}
           </div>
-          <button onClick={() => setSelectedMarket(null)} className="text-gray-500 hover:text-white text-lg flex-shrink-0">
-            ×
-          </button>
+          {upDownCountdown && (
+            <span className={`text-xs font-bold flex-shrink-0 flex items-center gap-0.5 ${upDownCountdown === 'Expired' ? 'text-red-400' : upDownRemaining < 60000 ? 'text-red-400' : upDownRemaining < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>
+              <Clock size={12} /> {upDownCountdown}
+            </span>
+          )}
         </div>
       </div>
 
       {!selectedMarket && (
         <div className="sidebar-section px-3 py-4 text-xs text-gray-300 leading-relaxed space-y-3">
           <div>
-            <span className="text-white font-bold text-sm">Mito* Dashboard</span>
+            <span className="text-white font-bold text-sm">Mito Dashboard</span>
             <p className="text-gray-400 mt-1">Pro trading terminal for Polymarket crypto markets.</p>
           </div>
           <div>
@@ -429,16 +444,19 @@ export function Sidebar() {
 
       {selectedMarket && (
         <>
-          {/* Chainlink price chart (above market chart for up-or-down markets) */}
-          {isUpDownMarket && upDownAsset && (
-            <ChainlinkChart asset={upDownAsset} eventSlug={selectedMarket.eventSlug} targetPrice={upDownTargetPrice} />
-          )}
+          {/* Chainlink price chart (asset candles for all markets) */}
+          {(() => {
+            const chartAsset = isUpDownMarket ? upDownAsset : extractAssetFromMarket(selectedMarket);
+            if (!chartAsset) return null;
+            return <ChainlinkChart asset={chartAsset} eventSlug={isUpDownMarket ? selectedMarket.eventSlug : undefined} targetPrice={isUpDownMarket ? upDownTargetPrice : undefined} />;
+          })()}
 
           {/* Price History Chart (or Live Trade Chart for Up or Down) */}
           {isUpDownMarket
             ? <LiveTradeChart trades={liveTrades} isNo={orderOutcome === 'NO'} tokenId={selectedMarket.clobTokenIds?.[0] || ''} startTime={upDownStartTime} endTime={selectedMarket.endDate ? new Date(selectedMarket.endDate).getTime() : undefined} eventSlug={selectedMarket.eventSlug} chainlinkAsset={upDownAsset || undefined} targetPrice={upDownTargetPrice} />
             : <PriceChart market={selectedMarket} isNo={orderOutcome === 'NO'} />
           }
+
 
           {/* Up or Down: Target & Current Price (below chart) */}
           {isUpDownMarket && (() => {
@@ -563,7 +581,18 @@ export function Sidebar() {
 
           {/* Live Orderbook + Trades */}
           <div className="sidebar-section">
-            <div className="text-xs text-gray-400 mb-2">Live Orderbook</div>
+            <div className="text-xs text-gray-400 mb-2 flex items-center justify-between">
+              <span>Live Orderbook</span>
+              {/* HIDDEN: Toxic Flow button disabled while polygon RPC is off
+              <button
+                onClick={() => setToxicDialogOpen(true)}
+                className="p-0.5 rounded hover:bg-yellow-400/20 transition-colors"
+                title="Toxic Flow Analysis"
+              >
+                <Biohazard size={14} className="text-yellow-400" />
+              </button>
+              */}
+            </div>
             {obLoading && (
               <div className="w-full h-0.5 bg-gray-700 rounded overflow-hidden mb-2">
                 <div className="h-full bg-blue-500 rounded animate-pulse" style={{ width: '100%' }} />
@@ -1044,5 +1073,6 @@ export function Sidebar() {
         </>
       )}
     </div>
+    </>
   );
 }

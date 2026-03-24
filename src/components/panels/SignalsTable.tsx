@@ -29,9 +29,6 @@ export function SignalsTable() {
   const [marketTypeFilter, setMarketTypeFilter] = useState(
     localStorage.getItem('polymarket-signal-market-type') || 'ALL'
   );
-  const [filter, setFilter] = useState(
-    localStorage.getItem('polymarket-signal-filter') || 'ALL'
-  );
   const [pctChangeFilter, setPctChangeFilter] = useState(
     localStorage.getItem('polymarket-signal-pct-change') || ''
   );
@@ -63,10 +60,6 @@ export function SignalsTable() {
   };
 
   const filtered = signals.filter((s) => {
-    if (filter !== 'ALL') {
-      if (filter === 'BULL' && s.type !== 'BULL' && s.type !== 'BID') return false;
-      if (filter === 'BEAR' && s.type !== 'BEAR' && s.type !== 'ASK') return false;
-    }
     if (assetFilter !== 'ALL' && s.asset !== assetFilter) return false;
     // Date filters: if unchecked, hide those signals
     if (!showToday && isToday(s.endDate)) return false;
@@ -138,15 +131,6 @@ export function SignalsTable() {
               <input type="checkbox" checked={signalsOnGrid} onChange={(e) => setSignalsOnGrid(e.target.checked)} className="w-3 h-3" />Grid
             </label>
             <select
-              value={filter}
-              onChange={(e) => { setFilter(e.target.value); localStorage.setItem('polymarket-signal-filter', e.target.value); }}
-              className="bg-gray-700 text-white text-[9px] px-0.5 py-0 rounded border border-gray-600 h-[22px]"
-            >
-              <option value="ALL">ALL</option>
-              <option value="BULL">BULL</option>
-              <option value="BEAR">BEAR</option>
-            </select>
-            <select
               value={makerMode ? 'maker' : 'taker'}
               onChange={(e) => { setMakerModeGlobal(e.target.value === 'maker'); }}
               className="bg-gray-700 text-white text-[9px] px-0.5 py-0 rounded border border-gray-600 h-[22px]"
@@ -194,7 +178,6 @@ export function SignalsTable() {
                   <th className="text-left px-1 py-0.5">Asset</th>
                   <th className="text-left px-1 py-0.5 cursor-pointer select-none" onClick={() => toggleSort('date')}>Date{sortCol === 'date' ? (sortAsc ? ' ▲' : ' ▼') : ''}</th>
                   <th className="text-left px-1 py-0.5">Market</th>
-                  <th className="text-center px-1 py-0.5">Type</th>
                   <th className="text-center px-1 py-0.5">Side</th>
                   <th className="text-right px-1 py-0.5">BS</th>
                   <th className="text-right px-1 py-0.5">{makerMode ? 'Bid' : 'Ask'}</th>
@@ -203,7 +186,6 @@ export function SignalsTable() {
               </thead>
               <tbody>
                 {filtered.map((sig, i) => {
-                  const typeColor = sig.type === 'BULL' || sig.type === 'BID' ? 'text-green-400' : 'text-red-400';
                   const acol = ASSET_COLORS[sig.asset] || 'text-gray-400';
                   // Date formatting matching HTML
                   const endD = new Date(sig.endDate);
@@ -232,7 +214,6 @@ export function SignalsTable() {
                       <td className={`px-1 py-0.5 font-bold ${acol}`}>{sig.asset}</td>
                       <td className={`px-1 py-0.5 ${dateColor} whitespace-nowrap`}>{dateStr}</td>
                       <td className={`px-1 py-0.5 ${acol} whitespace-nowrap truncate max-w-[100px] hover:underline`}>{sig.asset} {strikeLabel}</td>
-                      <td className={`text-center px-1 py-0.5 font-bold ${typeColor}`}>{sig.type}</td>
                       <td className={`text-center px-1 py-0.5 font-bold ${sig.origSide === 'YES' ? 'text-green-400' : 'text-red-400'}`}>{sig.origSide}</td>
                       <td className="text-right px-1 py-0.5 text-gray-300">{(sig.bsPrice * 100).toFixed(1)}</td>
                       <td className="text-right px-1 py-0.5 text-gray-300">{displayPrice.toFixed(1)}¢</td>

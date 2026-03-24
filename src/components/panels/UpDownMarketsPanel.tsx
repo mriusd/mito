@@ -2,6 +2,20 @@ import { useCallback, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { HelpTooltip } from '../HelpTooltip';
 import type { Market } from '../../types';
+import type { AssetSymbol } from '../../types';
+import { getMarketProbability } from '../../utils/bsMath';
+
+function formatCountdown(ms: number): string {
+  const rem = ms - Date.now();
+  if (rem <= 0) return '0s';
+  const sec = Math.floor(rem / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  return `${Math.floor(hr / 24)}d`;
+}
 
 const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 const TIMEFRAMES = ['5m', '15m', '1h', '24h'] as const;
@@ -38,6 +52,12 @@ export function UpDownMarketsPanel() {
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const positions = useAppStore((s) => s.positions);
+  const orders = useAppStore((s) => s.orders);
+  const progOrderMap = useAppStore((s) => s.progOrderMap);
+  const volatilityData = useAppStore((s) => s.volatilityData);
+  const volMultiplier = useAppStore((s) => s.volMultiplier);
+  const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
+  const priceData = useAppStore((s) => s.priceData);
 
   // Build position lookup by tokenId
   const positionLookup: Record<string, { size: number }> = {};
@@ -45,6 +65,16 @@ export function UpDownMarketsPanel() {
     const tid = pos.asset || '';
     const sz = pos.size || 0;
     if (tid && sz > 0) positionLookup[tid] = { size: sz };
+  }
+
+  // Build order lookup by tokenId (exclude prog orders)
+  const orderLookup: Record<string, typeof orders> = {};
+  for (const o of orders) {
+    if (progOrderMap[o.id]) continue;
+    const tid = o.asset_id || o.token_id || '';
+    if (!tid) continue;
+    if (!orderLookup[tid]) orderLookup[tid] = [];
+    orderLookup[tid].push(o);
   }
 
   const fmtSz = (sz: number) => {
@@ -145,8 +175,11 @@ export function UpDownMarketsPanel() {
 
               return (
               <tr key={tf} className="hover:bg-gray-800/50">
-                <td className="px-2 py-1 font-bold text-gray-300 border-b border-gray-700/50 text-center bg-gray-900 whitespace-nowrap relative">
-                  {tf}
+                <td className="px-1 py-1 font-bold text-white border-b border-gray-700/50 bg-gray-900 whitespace-nowrap relative">
+                  <div className="flex items-center justify-between gap-1">
+                    <span>{tf}</span>
+                    <span className={`text-[8px] font-normal ${endMs > 0 && endMs - now < 60000 ? 'text-red-400' : endMs > 0 && endMs - now < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>{endMs > 0 ? formatCountdown(endMs) : ''}</span>
+                  </div>
                   <div className="absolute bottom-0 left-0 h-[2px]" style={{ width: `${tfProgressPct}%`, backgroundColor: 'rgba(6,182,212,0.6)' }} />
                 </td>
                 {ASSETS.map((asset) => {
@@ -161,6 +194,8 @@ export function UpDownMarketsPanel() {
                   const noTokenId = tokenIds[1] || '';
                   const yesAsk = bestAsk ? (bestAsk * 100).toFixed(1) : '-';
                   const noAsk = bestBid ? ((1 - bestBid) * 100).toFixed(1) : '-';
+                  const yesProb = bestBid || 0;
+                  const bgColor = yesProb > 0.5 ? 'bg-green-900/30' : 'bg-red-900/30';
                   const isSelected = selectedMarket?.id === market.id;
                   const avg = otherAsks(asset);
                   const isCheap = bestAsk !== undefined && avg > 0 && bestAsk <= avg * thresholdFactor;
@@ -168,13 +203,32 @@ export function UpDownMarketsPanel() {
                   const noAvg = otherNoAsks(asset);
                   const isNoCheap = noAskVal !== undefined && noAvg > 0 && noAskVal <= noAvg * thresholdFactor;
 
+                  // B-S fair value diff
+                  let yesDiff: number | null = null;
+                  let noDiff: number | null = null;
+                  const sym = (asset + 'USDT') as AssetSymbol;
+                  const livePrice = priceData[sym]?.price;
+                  const target = market.priceToBeat || _bidAskLookup[yesTokenId]?.priceToBeat;
+                  if (livePrice && target && market.endDate) {
+                    const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
+                    const bsYes = getMarketProbability('>' + target, livePrice, market.endDate, sigma, bsTimeOffsetHours);
+                    if (bsYes !== null) {
+                      const bsYesPct = bsYes * 100;
+                      const bsNoPct = (1 - bsYes) * 100;
+                      if (bestAsk) yesDiff = bestAsk * 100 - bsYesPct;
+                      if (bestBid) noDiff = (1 - bestBid) * 100 - bsNoPct;
+                    }
+                  }
+
                   return (
                     <td
                       key={asset}
-                      className={`market-cell px-0.5 py-1 text-center border-b border-gray-700/50 whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'ring-2 ring-blue-500 ring-inset z-10' : ''}`}
+                      className={`market-cell px-0.5 py-1 text-center border-b border-gray-700/50 whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'ring-2 ring-blue-500 ring-inset z-10' : ''} ${bgColor}`}
                       style={{ minWidth: 60 }}
                       onClick={() => handleCellClick(market)}
                     >
+                      {yesDiff !== null && yesDiff < 0 && <span className="absolute left-0 top-0 z-10 text-[7px] leading-none px-[2px] rounded-br-sm font-bold text-black bg-green-400">{yesDiff.toFixed(1)}</span>}
+                      {noDiff !== null && noDiff < 0 && <span className="absolute right-0 top-0 z-10 text-[7px] leading-none px-[2px] rounded-bl-sm font-bold text-black bg-green-400">{noDiff.toFixed(1)}</span>}
                       {positionLookup[yesTokenId] && <span className="absolute left-0 top-0 bottom-0 flex items-center px-[4px] text-green-300 text-[8px] bg-green-900/40">{fmtSz(positionLookup[yesTokenId].size)}</span>}
                       {positionLookup[noTokenId] && <span className="absolute right-0 top-0 bottom-0 flex items-center px-[4px] text-red-300 text-[8px] bg-red-900/40">{fmtSz(positionLookup[noTokenId].size)}</span>}
                       <div className="text-[10px] text-gray-400">
@@ -188,6 +242,22 @@ export function UpDownMarketsPanel() {
                           onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
                         >{noAsk}</span>
                       </div>
+
+                      {/* Order badges - YES bottom-left, NO bottom-right */}
+                      {(() => {
+                        const yesOrders = orderLookup[yesTokenId] || [];
+                        const noOrders = orderLookup[noTokenId] || [];
+                        const yesBuy = yesOrders.filter(o => o.side === 'BUY');
+                        const yesSell = yesOrders.filter(o => o.side === 'SELL');
+                        const noBuy = noOrders.filter(o => o.side === 'BUY');
+                        const noSell = noOrders.filter(o => o.side === 'SELL');
+                        return <>
+                          {yesBuy.length > 0 && <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">{(Math.max(...yesBuy.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
+                          {yesSell.length > 0 && <div className={`absolute ${yesBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`} style={{ color: '#78350f' }}>{(Math.min(...yesSell.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
+                          {noBuy.length > 0 && <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">{(Math.max(...noBuy.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
+                          {noSell.length > 0 && <div className={`absolute ${noBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>{(Math.min(...noSell.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
+                        </>;
+                      })()}
                     </td>
                   );
                 })}

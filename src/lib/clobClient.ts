@@ -364,8 +364,9 @@ async function fetchBuilderHeaders(method: string, path: string, body?: string):
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ method, path, body: body || '' }),
     });
-    if (!resp.ok) return {};
+    if (!resp.ok) { console.warn('[builder] sign request failed:', resp.status); return {}; }
     const data = await resp.json();
+    console.log('[builder] headers:', data.POLY_BUILDER_API_KEY ? 'OK' : 'MISSING', 'ts:', data.POLY_BUILDER_TIMESTAMP);
     if (data.POLY_BUILDER_API_KEY) return data;
     return {};
   } catch {
@@ -442,10 +443,10 @@ export async function placeOrderDirect(params: {
     console.log('[clobClient] order payload:', JSON.stringify(payload, null, 2));
     const body = JSON.stringify(payload);
     const headers = await buildL2Headers(signer, creds, 'POST', '/order', body);
-    const builderHeaders = await fetchBuilderHeaders('POST', '/order', body);
-    const resp = await fetch(`${CLOB_URL}/order`, {
+    // Route through builder-proxy so builder HMAC headers are injected server-side
+    const resp = await fetch(`${API_BASE}/api/builder-proxy/order`, {
       method: 'POST',
-      headers: { ...headers, ...builderHeaders, 'Content-Type': 'application/json' },
+      headers: { ...headers, 'Content-Type': 'application/json' },
       body,
     });
     const rawText = await resp.text();
@@ -466,10 +467,9 @@ export async function placeOrderDirect(params: {
         );
         const retryBody = JSON.stringify(orderToJson(retrySigned, creds.key, orderType));
         const retryHeaders = await buildL2Headers(signer, creds, 'POST', '/order', retryBody);
-        const retryBuilderHeaders = await fetchBuilderHeaders('POST', '/order', retryBody);
-        const retryResp = await fetch(`${CLOB_URL}/order`, {
+        const retryResp = await fetch(`${API_BASE}/api/builder-proxy/order`, {
           method: 'POST',
-          headers: { ...retryHeaders, ...retryBuilderHeaders, 'Content-Type': 'application/json' },
+          headers: { ...retryHeaders, 'Content-Type': 'application/json' },
           body: retryBody,
         });
         const retryData = await retryResp.json();
@@ -552,10 +552,9 @@ export async function submitSignedOrderDirect(signedPayload: {
   try {
     const { body, signer, creds } = signedPayload;
     const headers = await buildL2Headers(signer, creds, 'POST', '/order', body);
-    const builderHeaders = await fetchBuilderHeaders('POST', '/order', body);
-    const resp = await fetch(`${CLOB_URL}/order`, {
+    const resp = await fetch(`${API_BASE}/api/builder-proxy/order`, {
       method: 'POST',
-      headers: { ...headers, ...builderHeaders, 'Content-Type': 'application/json' },
+      headers: { ...headers, 'Content-Type': 'application/json' },
       body,
     });
     const rawText = await resp.text();
@@ -577,10 +576,9 @@ export async function cancelOrderDirect(orderId: string, proxyWallet: string): P
     const creds = await ensureCreds(signer, proxyWallet);
     const body = JSON.stringify({ orderID: orderId });
     const headers = await buildL2Headers(signer, creds, 'DELETE', '/order', body);
-    const builderHeaders = await fetchBuilderHeaders('DELETE', '/order', body);
-    const resp = await fetch(`${CLOB_URL}/order`, {
+    const resp = await fetch(`${API_BASE}/api/builder-proxy/order`, {
       method: 'DELETE',
-      headers: { ...headers, ...builderHeaders, 'Content-Type': 'application/json' },
+      headers: { ...headers, 'Content-Type': 'application/json' },
       body,
     });
     const data = await resp.json();

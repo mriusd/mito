@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { AssetSymbol, Market, Position, Order, Trade, PriceRange, PanelConfig, Signal, ArbOpportunity, ProgArb } from '../types';
+import type { AssetSymbol, Market, Position, Order, Trade, PriceRange, PanelConfig, PanelType, Signal, ArbOpportunity, ProgArb } from '../types';
+import BREAKPOINT_LAYOUTS from '../lib/defaultLayouts';
 
 interface PriceData {
   price: number;
@@ -135,19 +136,39 @@ declare namespace ReactGridLayout {
   }
 }
 
+// Panel type → display title for auto-migration
+const PANEL_TITLES: Record<string, string> = {
+  'asset-BTC': 'BTC', 'asset-ETH': 'ETH', 'asset-SOL': 'SOL', 'asset-XRP': 'XRP',
+  'trades-positions-orders': 'Trades/Positions/Orders', 'updown-overview': 'Up/Down Markets',
+  'signals': 'Signals', 'chat': 'Chat', 'pnl': 'P&L', 'arbs': 'Hedges', 'summary': 'Summary',
+};
+
+// Bump this version to force-reset all users' saved layouts to fresh defaults
+const LAYOUT_VERSION = 7;
+
+// Run version check once before any load functions
+(function checkLayoutVersion() {
+  const savedVersion = parseInt(localStorage.getItem('polybot-layout-version') || '0');
+  if (savedVersion < LAYOUT_VERSION) {
+    localStorage.removeItem('polybot-react-panels');
+    localStorage.removeItem('polybot-react-layouts');
+    localStorage.setItem('polybot-layout-version', String(LAYOUT_VERSION));
+  }
+})();
+
+const DEFAULT_PANELS: PanelConfig[] = [
+  { id: 'asset-BTC', type: 'asset-BTC', title: 'BTC' },
+  { id: 'trades-positions-orders', type: 'trades-positions-orders', title: 'Trades/Positions/Orders' },
+  { id: 'updown-overview', type: 'updown-overview', title: 'Up/Down Markets' },
+  { id: 'signals', type: 'signals', title: 'Signals' },
+  { id: 'chat', type: 'chat', title: 'Chat' },
+];
+
 const loadPanels = (): PanelConfig[] => {
   try {
     const saved = localStorage.getItem('polybot-react-panels');
-    if (saved) return JSON.parse(saved);
-  } catch { /* ignore */ }
-  // Use DEFAULT_PANELS from types but import at runtime to avoid circular
-  return [
-    { id: 'asset-BTC', type: 'asset-BTC', title: 'BTC' },
-    { id: 'trades-positions-orders', type: 'trades-positions-orders', title: 'Trades/Positions/Orders' },
-    { id: 'updown-overview', type: 'updown-overview', title: 'Up/Down Markets' },
-    { id: 'signals', type: 'signals', title: 'Signals' },
-    { id: 'chat', type: 'chat', title: 'Chat' },
-  ] as PanelConfig[];
+    return saved ? JSON.parse(saved) : DEFAULT_PANELS;
+  } catch { return DEFAULT_PANELS; }
 };
 
 const loadLayouts = (): ReactGridLayout.Layouts | null => {
@@ -324,7 +345,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ panels });
   },
   setLayouts: (layouts) => {
-    localStorage.setItem('polybot-react-layouts', JSON.stringify(layouts));
+    if (layouts) {
+      localStorage.setItem('polybot-react-layouts', JSON.stringify(layouts));
+    } else {
+      localStorage.removeItem('polybot-react-layouts');
+    }
     set({ layouts });
   },
   addPanel: (panel) => set((s) => {

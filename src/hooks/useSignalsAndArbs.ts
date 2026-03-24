@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { getMarketProbability } from '../utils/bsMath';
+import { API_BASE } from '../lib/env';
 import type { AssetSymbol, Market, Signal, ArbOpportunity } from '../types';
 
 const GRID_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
@@ -14,7 +15,7 @@ async function fetchArbOrderbook(tokenId: string): Promise<OBBook> {
   const cached = arbOBCache[tokenId];
   if (cached && Date.now() - cached.time < 30000) return cached.data;
   try {
-    const resp = await fetch(`/api/polyproxy/clob/book?token_id=${tokenId}`);
+    const resp = await fetch(`${API_BASE}/api/polyproxy/clob/book?token_id=${tokenId}`);
     const raw = await resp.json();
     const data: OBBook = {
       bids: (raw.bids || []).map((b: { price: string; size: string }) => ({ price: parseFloat(b.price), size: parseFloat(b.size) })),
@@ -427,56 +428,21 @@ export function useSignalsAndArbs() {
       return;
     }
 
-    // Collect unique YES token IDs to fetch (NO asks are derived from YES bids)
-    const tokenIdsToFetch = new Set<string>();
+    // Second pass: compute arbs using bestBid/bestAsk from store (no network calls)
     for (const c of candidates) {
-      const yesTokenId = (c.yesM.market.clobTokenIds || [])[0];
-      const noYesTokenId = (c.noM.market.clobTokenIds || [])[0]; // YES token of the NO market
-      if (yesTokenId) tokenIdsToFetch.add(yesTokenId);
-      if (noYesTokenId) tokenIdsToFetch.add(noYesTokenId);
-    }
+      // YES price = best ask of YES market
+      const yesAsk = c.yesM.market.bestAsk || 0;
+      // NO price = 1 - bestBid of NO market (NO ask = 1 - YES bid)
+      const noAsk = c.noM.market.bestBid ? (1 - c.noM.market.bestBid) : 0;
+      if (yesAsk <= 0 || noAsk <= 0) continue;
+      if (yesAsk + noAsk >= 1) continue;
 
-    // Fetch all orderbooks in parallel
-    const bookPromises: Record<string, Promise<OBBook>> = {};
-    for (const tid of tokenIdsToFetch) {
-      bookPromises[tid] = fetchArbOrderbook(tid);
-    }
-    const books: Record<string, OBBook> = {};
-    for (const tid of tokenIdsToFetch) {
-      books[tid] = await bookPromises[tid];
-    }
+      // Bid prices for selling: YES bid = bestBid, NO bid = 1 - bestAsk
+      const yesBidPrice = (c.yesM.market.bestBid || 0) * 100;
+      const noBidPrice = c.noM.market.bestAsk ? (1 - c.noM.market.bestAsk) * 100 : 0;
 
-    // Second pass: compute arbs using actual orderbook depth
-    const shareQty = parseInt(localStorage.getItem('polymarket-arb-share-qty') || '0') || 0;
-    for (const c of candidates) {
-      const yesTokenId = (c.yesM.market.clobTokenIds || [])[0] || '';
-      const noYesTokenId = (c.noM.market.clobTokenIds || [])[0] || '';
-
-      const yesBook = books[yesTokenId] || { bids: [], asks: [] };
-      const noYesBook = books[noYesTokenId] || { bids: [], asks: [] };
-
-      // YES asks: sorted ascending by price
-      const yesAsks = yesBook.asks
-        .filter(a => a.price > 0 && a.size > 0)
-        .sort((a, b) => a.price - b.price);
-
-      // NO asks = derived from YES bids of the NO market: NO ask price = 1 - YES bid price
-      const noAsks = noYesBook.bids
-        .map(b => ({ price: 1 - b.price, size: b.size }))
-        .filter(a => a.price > 0 && a.size > 0)
-        .sort((a, b) => a.price - b.price);
-
-      const result = computeArbFromBooks(yesAsks, noAsks, shareQty);
-      if (!result || result.maxSize <= 0) continue;
-
-      // Bid prices for selling: YES bid = best bid from YES book, NO bid = 1 - best ask from NO's YES book
-      const yesBids = yesBook.bids.filter(b => b.price > 0 && b.size > 0).sort((a, b) => b.price - a.price);
-      const noYesAsks = noYesBook.asks.filter(a => a.price > 0 && a.size > 0).sort((a, b) => a.price - b.price);
-      const yesBidPrice = yesBids.length > 0 ? yesBids[0].price * 100 : 0;
-      const noBidPrice = noYesAsks.length > 0 ? (1 - noYesAsks[0].price) * 100 : 0;
-
-      const yesPrice = result.yesPrice / 100; // convert cents back to decimal
-      const noPrice = result.noPrice / 100;
+      const yesPrice = yesAsk;
+      const noPrice = noAsk;
       const totalCost = yesPrice + noPrice;
       const edge = 1 - totalCost;
       const edgePct = totalCost > 0 ? (edge / totalCost) * 100 : 0;

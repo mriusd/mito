@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import { RefreshCw, Clock, Settings } from 'lucide-react';
+import logoSvg from '../assets/logo.svg';
 import { HelpTooltip } from './HelpTooltip';
 import { WalletButton } from './WalletButton';
 import { useAppStore } from '../stores/appStore';
@@ -80,51 +81,6 @@ export function Header({ onRefresh }: HeaderProps) {
   );
 
 
-  const [expiryCountdown, setExpiryCountdown] = useState('--');
-  const [expiryColor, setExpiryColor] = useState('text-green-400');
-  const [clockLocal, setClockLocal] = useState('--:--');
-  const [clockNY, setClockNY] = useState('--');
-
-  // Expiry countdown
-  useEffect(() => {
-    function update() {
-      const now = new Date();
-      const etStr = now.toLocaleString('en-US', { timeZone: 'America/New_York' });
-      const etNow = new Date(etStr);
-      const noonET = new Date(etNow);
-      noonET.setHours(12, 0, 0, 0);
-      if (etNow >= noonET) noonET.setDate(noonET.getDate() + 1);
-      const etOffset = etNow.getTime() - now.getTime();
-      const targetUTC = noonET.getTime() - etOffset;
-      const diff = targetUTC - now.getTime();
-      if (diff <= 0) {
-        setExpiryCountdown('NOW');
-        setExpiryColor('text-red-400');
-        return;
-      }
-      const h = Math.floor(diff / 3600000);
-      const m = Math.floor((diff % 3600000) / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setExpiryCountdown(`${h}h ${m}m ${s}s`);
-      setExpiryColor(h < 1 ? 'text-red-400' : h < 6 ? 'text-yellow-400' : 'text-green-400');
-    }
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Clock
-  useEffect(() => {
-    function update() {
-      const now = new Date();
-      setClockLocal(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }));
-      setClockNY(now.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }));
-    }
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   // Portfolio value
   const portfolioValue = positions.reduce((sum, p) => {
     const size = p.size || 0;
@@ -159,7 +115,8 @@ export function Header({ onRefresh }: HeaderProps) {
       <div className="flex items-center gap-2">
         {/* Brand */}
         <div className="flex items-center gap-1.5 h-[28px]">
-          <span className="text-sm font-bold text-white tracking-tight">Mito*</span>
+          <img src={logoSvg} alt="logo" className="h-5 w-5" />
+          <span className="text-sm font-bold text-white tracking-tight">Mito</span>
         </div>
 
         <div className="flex-1" />
@@ -272,14 +229,6 @@ export function Header({ onRefresh }: HeaderProps) {
           )}
         </div>
 
-        {/* Clock + Expiry Countdown */}
-        <div className="flex items-center gap-1.5 bg-gray-800/50 rounded px-2 h-[28px]">
-          <span className="text-xs font-bold text-gray-300">{clockLocal}</span>
-          <span className="text-xs text-pink-400">{clockNY}</span>
-          <span className="text-gray-600">|</span>
-          <span className="text-[9px] text-gray-500">NOON EXPIRY IN</span>
-          <span className={`text-xs font-bold ${expiryColor}`}>{expiryCountdown}</span>
-        </div>
 
         {/* Portfolio Value & Cash */}
         {walletConnected && (

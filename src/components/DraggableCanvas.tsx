@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useEffect, useState } from 'react';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-import { ResponsiveGridLayout as RGLResponsive } from 'react-grid-layout';
+import { ReactGridLayout as RGLGrid } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import { X } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
@@ -13,10 +13,11 @@ import { TradesPositionsOrders } from './panels/TradesPositionsOrders';
 import { PnLPanel } from './panels/PnLPanel';
 import { UpDownMarketsPanel } from './panels/UpDownMarketsPanel';
 import { ChatPanel } from './panels/ChatPanel';
-import type { PanelConfig } from '../types';
+import type { PanelConfig, PanelType } from '../types';
+import BREAKPOINT_LAYOUTS, { HEIGHT_VARIANTS } from '../lib/defaultLayouts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const ResponsiveGridLayout = RGLResponsive as any;
+const GridLayout = RGLGrid as any;
 
 interface LayoutItem {
   i: string;
@@ -32,32 +33,60 @@ interface LayoutsMap {
   [breakpoint: string]: LayoutItem[];
 }
 
-// Default layout map: type -> { x, y, w, h }
-const DEFAULT_LAYOUT_MAP: Record<string, { x: number; y: number; w: number; h: number }> = {
-  'asset-BTC':                { x: 0,  y: 0,  w: 24, h: 6 },   // Row 1: full width
-  'trades-positions-orders':  { x: 0,  y: 6,  w: 8,  h: 8 },   // Row 2 col 1
-  'updown-overview':          { x: 8,  y: 6,  w: 8,  h: 3 },   // Row 2 col 2 top
-  'signals':                  { x: 8,  y: 9,  w: 8,  h: 5 },   // Row 2 col 2 bottom
-  'chat':                     { x: 16, y: 6,  w: 8,  h: 8 },   // Row 2 col 3
-  'pnl':                      { x: 0,  y: 14, w: 8,  h: 3 },   // fallback if added manually
-};
+// Column counts per breakpoint (must match the cols prop on ResponsiveGridLayout)
+const COLS: Record<string, number> = { '2xl': 36, xl: 28, lg: 24, md: 20, sm: 12, xs: 8, xxs: 4 };
+// Thresholds based on container width (viewport minus sidebar ~350px)
+const BREAKPOINTS_SORTED = [
+  { name: '2xl', min: 2000 }, { name: 'xl', min: 1300 }, { name: 'lg', min: 1000 },
+  { name: 'md', min: 800 }, { name: 'sm', min: 600 }, { name: 'xs', min: 400 }, { name: 'xxs', min: 0 },
+];
+function getBreakpoint(width: number, viewportHeight?: number): string {
+  for (const bp of BREAKPOINTS_SORTED) {
+    if (width > bp.min) {
+      // Check for tall variant
+      const hv = HEIGHT_VARIANTS[bp.name];
+      if (hv && viewportHeight && viewportHeight >= hv.minHeight) {
+        return hv.tallKey;
+      }
+      return bp.name;
+    }
+  }
+  return 'xxs';
+}
+const TOTAL_ROWS = 100;
+const MARGIN = 4;
 
-function getDefaultLayout(panels: PanelConfig[]): LayoutItem[] {
+function getDefaultLayout(panels: PanelConfig[], breakpoint: string): LayoutItem[] {
+  const bpMap = BREAKPOINT_LAYOUTS[breakpoint] || BREAKPOINT_LAYOUTS.lg;
+  const base = breakpoint.replace(/-tall$/, '');
+  const cols = COLS[base] || 24;
   const layout: LayoutItem[] = [];
-  let fallbackY = 20;
+  let maxY = 0;
 
   for (const p of panels) {
-    const preset = DEFAULT_LAYOUT_MAP[p.type];
-    if (preset) {
-      layout.push({ i: p.id, ...preset, minW: 4, minH: 3 });
+    const pct = bpMap[p.type];
+    if (pct) {
+      const w = Math.max(1, Math.round(cols * pct.w / 100));
+      const x = Math.round(cols * pct.x / 100);
+      const h = Math.max(1, Math.round(pct.h));
+      const y = Math.round(pct.y);
+      layout.push({ i: p.id, x, y, w, h, minW: 2, minH: 1 });
+      maxY = Math.max(maxY, y + h);
     } else {
-      // Unknown panel: stack at bottom
-      layout.push({ i: p.id, x: 0, y: fallbackY, w: 12, h: 5, minW: 4, minH: 3 });
-      fallbackY += 5;
+      layout.push({ i: p.id, x: 0, y: maxY, w: cols, h: 5, minW: 2, minH: 1 });
+      maxY += 5;
     }
   }
 
   return layout;
+}
+
+function getDefaultLayouts(panels: PanelConfig[]): LayoutsMap {
+  const result: LayoutsMap = {};
+  for (const bp of Object.keys(BREAKPOINT_LAYOUTS)) {
+    result[bp] = getDefaultLayout(panels, bp);
+  }
+  return result;
 }
 
 function renderPanel(panel: PanelConfig): React.ReactNode {
@@ -95,54 +124,113 @@ export function DraggableCanvas() {
   const panels = useAppStore((s) => s.panels);
   const layouts = useAppStore((s) => s.layouts);
   const setLayouts = useAppStore((s) => s.setLayouts);
+  const setPanels = useAppStore((s) => s.setPanels);
   const removePanel = useAppStore((s) => s.removePanel);
   const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null);
+  const [removedPanelTypes, setRemovedPanelTypes] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('polybot-removed-panels');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { return new Set(); }
+  });
+  const [showLayoutMenu, setShowLayoutMenu] = useState(false);
+  const layoutMenuRef = useRef<HTMLDivElement>(null);
 
-  const [containerWidth, setContainerWidth] = useState(1200);
   const containerRef = useRef<HTMLDivElement>(null);
-  const mountedRef = useRef(false);
-
-  // Measure container width with ResizeObserver
+  const currentLayoutRef = useRef<LayoutsMap | null>(null);
+  // Measure actual container dimensions once on mount
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [rowHeight, setRowHeight] = useState(0);
+  const containerHeight = rowHeight * TOTAL_ROWS;
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setContainerWidth(entry.contentRect.width);
-      }
-    });
-    ro.observe(el);
-    setContainerWidth(el.clientWidth);
-    return () => ro.disconnect();
-  }, []);
-
-  // Mark mounted after first render to skip initial onLayoutChange
-  useEffect(() => {
-    const t = setTimeout(() => { mountedRef.current = true; }, 500);
-    return () => clearTimeout(t);
-  }, []);
-
-  const allLayouts = useMemo((): LayoutsMap => {
-    const def = getDefaultLayout(panels);
-    if (layouts) {
-      // Ensure lg exists
-      return { lg: def, ...layouts } as LayoutsMap;
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const availableH = window.innerHeight - rect.top;
+      setContainerWidth(rect.width);
+      setRowHeight(availableH / TOTAL_ROWS);
     }
-    return { lg: def };
-  }, [layouts, panels]);
+  }, []);
 
+  // Close layout menu on click outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (layoutMenuRef.current && !layoutMenuRef.current.contains(e.target as Node)) {
+        setShowLayoutMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const currentBreakpoint = useMemo(() => getBreakpoint(containerWidth, window.innerHeight), [containerWidth]);
+  // Tall variants (e.g. '2xl-tall') share cols with their base breakpoint ('2xl')
+  const baseBp = currentBreakpoint.replace(/-tall$/, '');
+  const currentCols = COLS[baseBp] || 24;
+
+  const PANEL_TITLES: Record<string, string> = {
+    'asset-BTC': 'BTC', 'asset-ETH': 'ETH', 'asset-SOL': 'SOL', 'asset-XRP': 'XRP',
+    'trades-positions-orders': 'Trades/Positions/Orders', 'updown-overview': 'Up/Down Markets',
+    'signals': 'Signals', 'chat': 'Chat', 'pnl': 'P&L',
+  };
+
+  // Auto-include panels defined in the current breakpoint layout but missing from panels list
+  // (skip panels the user explicitly removed)
+  const effectivePanels = useMemo((): PanelConfig[] => {
+    const bpMap = BREAKPOINT_LAYOUTS[currentBreakpoint] || BREAKPOINT_LAYOUTS.lg;
+    const existingTypes = new Set<string>(panels.map(p => p.type));
+    const extra: PanelConfig[] = [];
+    for (const type of Object.keys(bpMap)) {
+      if (!existingTypes.has(type) && !removedPanelTypes.has(type)) {
+        extra.push({ id: type, type: type as PanelType, title: PANEL_TITLES[type] || type });
+      }
+    }
+    return extra.length > 0 ? [...panels, ...extra] : panels;
+  }, [panels, currentBreakpoint, removedPanelTypes]);
+
+  const currentLayout = useMemo((): LayoutItem[] => {
+    const defaults = getDefaultLayout(effectivePanels, currentBreakpoint);
+    console.log('[layout-debug] bp:', currentBreakpoint, 'cols:', currentCols, 'width:', containerWidth, 'rowH:', rowHeight);
+    console.log('[layout-debug] layout:', defaults.map((l: LayoutItem) =>
+      `${l.i.replace('trades-positions-orders','tpo')} x=${l.x} y=${l.y} w=${l.w} h=${l.h}`));
+    // If saved layouts exist for this breakpoint, use them (with defaults for any missing panels)
+    if (layouts && layouts[currentBreakpoint]) {
+      const saved = layouts[currentBreakpoint] as LayoutItem[];
+      const savedIds = new Set(saved.map(l => l.i));
+      const missing = defaults.filter(d => !savedIds.has(d.i));
+      return missing.length > 0 ? [...saved, ...missing] : saved;
+    }
+    return defaults;
+  }, [layouts, effectivePanels, currentBreakpoint, currentCols, containerWidth, rowHeight]);
+
+  // Track the latest layout from react-grid-layout (fires on every render)
   const handleLayoutChange = useCallback(
-    (_layout: LayoutItem[], reportedLayouts: LayoutsMap) => {
-      if (!mountedRef.current) return; // skip initial auto-fire
-      // Merge reported layouts with existing saved layouts to avoid losing breakpoints
-      const merged: LayoutsMap = { ...(layouts || {}), ...reportedLayouts } as LayoutsMap;
-      setLayouts(merged as any);
+    (newLayout: LayoutItem[]) => {
+      console.log('[rgl-output]', newLayout.map((l: LayoutItem) =>
+        `${l.i.replace('trades-positions-orders','tpo')} x=${l.x} y=${l.y} w=${l.w} h=${l.h}`));
+      currentLayoutRef.current = { [currentBreakpoint]: newLayout } as unknown as LayoutsMap;
     },
-    [setLayouts, layouts]
+    [currentBreakpoint]
   );
+
+  // Persist layout on actual user drag/resize — use the layout RGL passes to the callback
+  const handleUserLayoutChange = useCallback((
+    _layout: LayoutItem[], _oldItem: LayoutItem, _newItem: LayoutItem,
+    _placeholder: LayoutItem, _e: MouseEvent, _element: HTMLElement
+  ) => {
+    const merged: LayoutsMap = { ...(layouts || {}), [currentBreakpoint]: _layout } as LayoutsMap;
+    setLayouts(merged as any);
+  }, [setLayouts, layouts, currentBreakpoint]);
 
   const handleRemovePanel = useCallback(
     (id: string) => {
+      // Find the panel type before removing
+      const panel = effectivePanels.find(p => p.id === id);
+      if (panel) {
+        const next = new Set(removedPanelTypes);
+        next.add(panel.type);
+        setRemovedPanelTypes(next);
+        localStorage.setItem('polybot-removed-panels', JSON.stringify([...next]));
+      }
       removePanel(id);
       // Also remove from layouts
       if (layouts) {
@@ -153,27 +241,95 @@ export function DraggableCanvas() {
         setLayouts(newLayouts as any);
       }
     },
-    [removePanel, layouts, setLayouts]
+    [removePanel, layouts, setLayouts, effectivePanels, removedPanelTypes]
   );
 
   return (
-    <div ref={containerRef} className="flex-1 min-h-0 overflow-auto relative">
-      <ResponsiveGridLayout
+    <div className="flex-1 min-h-0 flex flex-col">
+      {/* Dev Header */}
+      {import.meta.env.VITE_FE_ENV === 'dev' && (
+        <div className="flex-shrink-0 flex items-center gap-3 bg-gray-900 border-b border-gray-700 px-3 py-1">
+          <span className="text-[10px] font-mono text-gray-400">
+            Canvas H: {containerHeight} | Row: {rowHeight}px | Viewport: {window.innerWidth}×{window.innerHeight}
+          </span>
+          <span className="text-[10px] font-mono text-gray-500">
+            store={layouts ? 'saved' : 'defaults'}
+          </span>
+          <div className="relative ml-auto" ref={layoutMenuRef}>
+            <button
+              onClick={() => setShowLayoutMenu(!showLayoutMenu)}
+              className="bg-purple-700 hover:bg-purple-600 text-white rounded px-2 text-[10px] font-medium transition border border-purple-500 h-5"
+            >
+              Layout
+            </button>
+            {showLayoutMenu && (
+              <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[160px] z-50">
+                {Object.keys(BREAKPOINT_LAYOUTS).filter(bp => !bp.includes('-tall')).map((bp) => (
+                  <button
+                    key={bp}
+                    onClick={() => {
+                      const bpMap = BREAKPOINT_LAYOUTS[bp];
+                      const newPanels: PanelConfig[] = Object.keys(bpMap).map(type => ({
+                        id: type, type: type as PanelType, title: PANEL_TITLES[type] || type,
+                      }));
+                      localStorage.removeItem('polybot-removed-panels');
+                      setRemovedPanelTypes(new Set());
+                      setPanels(newPanels);
+                      setLayouts(null as any);
+                      setShowLayoutMenu(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:bg-gray-700 transition"
+                  >
+                    {bp}
+                  </button>
+                ))}
+                <div className="border-t border-gray-700 my-1" />
+                <button
+                  onClick={() => {
+                    const defaultPanels: PanelConfig[] = [
+                      { id: 'asset-BTC', type: 'asset-BTC', title: 'BTC' },
+                      { id: 'trades-positions-orders', type: 'trades-positions-orders', title: 'Trades/Positions/Orders' },
+                      { id: 'updown-overview', type: 'updown-overview', title: 'Up/Down Markets' },
+                      { id: 'signals', type: 'signals', title: 'Signals' },
+                      { id: 'chat', type: 'chat', title: 'Chat' },
+                    ];
+                    localStorage.removeItem('polybot-react-panels');
+                    localStorage.removeItem('polybot-react-layouts');
+                    localStorage.removeItem('polybot-removed-panels');
+                    setRemovedPanelTypes(new Set());
+                    setPanels(defaultPanels);
+                    setLayouts(null as any);
+                    setShowLayoutMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-gray-700 transition"
+                >
+                  Reset to Defaults
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      <div ref={containerRef} className="flex-1 min-h-0 overflow-auto relative">
+      {(containerWidth === 0 || rowHeight === 0) ? null : <GridLayout
         className="layout"
         width={containerWidth}
-        layouts={allLayouts}
-        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-        cols={{ lg: 24, md: 20, sm: 12, xs: 8, xxs: 4 }}
-        rowHeight={60}
+        layout={currentLayout}
+        cols={currentCols}
+        rowHeight={rowHeight}
         onLayoutChange={handleLayoutChange}
-        dragConfig={{ enabled: true, handle: '.panel-header', cancel: '.no-drag', threshold: 0 }}
+        onDragStop={handleUserLayoutChange}
+        onResizeStop={handleUserLayoutChange}
+        isDraggable={true}
+        draggableHandle=".panel-header"
+        draggableCancel=".no-drag"
         compactType="vertical"
-        margin={[4, 4]}
+        margin={[0, 0]}
         containerPadding={[0, 0]}
-        useCSSTransforms={false}
+        useCSSTransforms={true}
       >
-        {panels.map((panel) => (
-          <div key={panel.id} className="relative">
+        {effectivePanels.map((panel) => (
+          <div key={panel.id} className="relative overflow-hidden h-full p-[2px]">
             {/* Remove button */}
             <button
               onClick={(e) => {
@@ -204,7 +360,8 @@ export function DraggableCanvas() {
             {renderPanel(panel)}
           </div>
         ))}
-      </ResponsiveGridLayout>
+      </GridLayout>}
+      </div>
     </div>
   );
 }

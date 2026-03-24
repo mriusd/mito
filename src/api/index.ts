@@ -338,6 +338,94 @@ export function buildMarketLookup(aboveMarkets: Record<string, Market[]>, priceO
   return lookup;
 }
 
+// --- Toxic Flow / On-chain API ---
+
+export interface WalletPosition {
+  wallet: string;
+  marketId: string;
+  boughtYes: number;
+  soldYes: number;
+  boughtNo: number;
+  soldNo: number;
+  net: number;
+  netYes: number;
+  netNo: number;
+  usdcIn: number;
+  usdcOut: number;
+  pnl: number;
+  tradeCount: number;
+  firstTradeTime: number;
+  lastTradeTime: number;
+  marketAsset: string;
+  marketType: string;
+  marketTimeframe: string;
+  netSide: string;
+  inventoryBias: number;
+}
+
+export interface ToxicFlowData {
+  marketId: string;
+  topHolders: WalletPosition[];
+  topYes: WalletPosition[];
+  topNo: WalletPosition[];
+  topVolume: WalletPosition[];
+  topTraders: WalletPosition[];
+  totalYesVol: number;
+  totalNoVol: number;
+  totalUsdcIn: number;
+  totalUsdcOut: number;
+  totalWallets: number;
+  totalTrades: number;
+  netImbalance: number;
+  concentration: number;
+}
+
+export async function fetchToxicFlow(marketId: string): Promise<ToxicFlowData> {
+  const resp = await fetch(`${BASE}/api/toxic-flow?market_id=${encodeURIComponent(marketId)}`);
+  if (!resp.ok) throw new Error('Failed to fetch toxic flow');
+  return resp.json();
+}
+
+export async function fetchWalletPositions(params: { market_id?: string; wallet?: string; asset?: string; type?: string; min_trades?: number; sort_by?: string; limit?: number }): Promise<{ positions: WalletPosition[]; count: number; total: number }> {
+  const qs = new URLSearchParams();
+  if (params.market_id) qs.set('market_id', params.market_id);
+  if (params.wallet) qs.set('wallet', params.wallet);
+  if (params.asset) qs.set('asset', params.asset);
+  if (params.type) qs.set('type', params.type);
+  if (params.min_trades) qs.set('min_trades', String(params.min_trades));
+  if (params.sort_by) qs.set('sort_by', params.sort_by);
+  if (params.limit) qs.set('limit', String(params.limit));
+  const resp = await fetch(`${BASE}/api/wallet-positions?${qs.toString()}`);
+  if (!resp.ok) throw new Error('Failed to fetch wallet positions');
+  return resp.json();
+}
+
+// --- Wallet Summary API ---
+
+export interface WalletSummary {
+  found: boolean;
+  wallet: string;
+  totalMarkets: number;
+  resolvedMarkets: number;
+  totalTrades: number;
+  totalUsdcIn: number;
+  totalUsdcOut: number;
+  tradingPnl: number;
+  resolutionValue: number;
+  pnl: number;
+  wins: number;
+  losses: number;
+  flat: number;
+  winRate: number;
+}
+
+export async function fetchWalletSummary(wallet: string): Promise<WalletSummary | null> {
+  const resp = await fetch(`${BASE}/api/wallet-summary?wallet=${wallet.toLowerCase()}`);
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  return data.found ? data : null;
+}
+
 // --- Chat API ---
 
 export interface ChatMessage {

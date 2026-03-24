@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
+import { API_BASE, WS_BASE } from '../lib/env';
 
 interface Candle {
   time: number;
@@ -12,8 +13,6 @@ interface Candle {
 function toPrice(raw: number, isNo: boolean): number {
   return isNo ? 100 - raw : raw;
 }
-
-import { API_BASE, WS_BASE } from '../lib/env';
 
 const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000 };
 
@@ -70,7 +69,7 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, even
     // Fetch initial candles from Go backend
     const st = startTime || (Date.now() - 24 * 60 * 60 * 1000);
     const et = endTime || (Date.now() + 60 * 60 * 1000);
-    fetch(`/api/v3/klines?symbol=${tokenId}&interval=${interval}&startTime=${st}&endTime=${et}&limit=1500`)
+    fetch(`${API_BASE}/api/v3/klines?symbol=${tokenId}&interval=${interval}&startTime=${st}&endTime=${et}&limit=1500`)
       .then(r => r.json())
       .then((klines: any[][]) => {
         if (!Array.isArray(klines)) { setReady(true); return; }

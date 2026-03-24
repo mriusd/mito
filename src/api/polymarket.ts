@@ -1,17 +1,17 @@
 import type { Position, Order, Trade } from '../types';
-import { isDev } from '../lib/env';
+import { isFeDev, API_BASE } from '../lib/env';
 
 // Cache: EOA → proxy wallet address
 const proxyWalletCache: Record<string, string> = {};
 
 // In dev mode, proxy through backend to avoid CORS; in live mode, call Polymarket directly
 function dataUrl(path: string): string {
-  if (isDev) return `/api/polyproxy/data/${path}`;
+  if (isFeDev) return `${API_BASE}/api/polyproxy/data/${path}`;
   return `https://data-api.polymarket.com/${path}`;
 }
 
 function _clobUrl(path: string): string {
-  if (isDev) return `/api/polyproxy/clob/${path}`;
+  if (isFeDev) return `${API_BASE}/api/polyproxy/clob/${path}`;
   return `https://clob.polymarket.com/${path}`;
 }
 
@@ -54,8 +54,8 @@ export async function fetchProxyWallet(eoaAddress: string): Promise<string | nul
   const key = eoaAddress.toLowerCase();
   if (proxyWalletCache[key]) return proxyWalletCache[key];
   try {
-    const url = isDev
-      ? `/api/polyproxy/gamma/public-profile?address=${eoaAddress}`
+    const url = isFeDev
+      ? `${API_BASE}/api/polyproxy/gamma/public-profile?address=${eoaAddress}`
       : `https://gamma-api.polymarket.com/public-profile?address=${eoaAddress}`;
     const resp = await fetch(url);
     if (!resp.ok) return null;

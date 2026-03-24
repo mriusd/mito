@@ -87,10 +87,10 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     return initialAsset;
   });
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
-  const [showUpDown, setShowUpDown] = useState(() => localStorage.getItem('polybot-show-updown') !== 'false');
-  const [showHit, setShowHit] = useState(() => localStorage.getItem('polybot-show-hit') !== 'false');
-  const [showAbove, setShowAbove] = useState(() => localStorage.getItem('polybot-show-above') !== 'false');
-  const [showBetween, setShowBetween] = useState(() => localStorage.getItem('polybot-show-between') !== 'false');
+  const [showUpDown, setShowUpDown] = useState(() => localStorage.getItem(`polybot-show-updown-${panelId}`) !== 'false');
+  const [showHit, setShowHit] = useState(() => localStorage.getItem(`polybot-show-hit-${panelId}`) !== 'false');
+  const [showAbove, setShowAbove] = useState(() => localStorage.getItem(`polybot-show-above-${panelId}`) !== 'false');
+  const [showBetween, setShowBetween] = useState(() => localStorage.getItem(`polybot-show-between-${panelId}`) !== 'false');
   const symbol = assetToSymbol(asset);
   const aboveMarkets = useAppStore((s) => s.aboveMarkets);
   const priceOnMarkets = useAppStore((s) => s.priceOnMarkets);
@@ -504,10 +504,10 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       {signalsOnGrid && signalByMarket[market.id] && (
                         <>
                           {signalByMarket[market.id].yesDiff && (
-                            <div className="absolute top-0 left-0 text-[8px] text-green-400 font-bold leading-none px-0.5 bg-green-900/60 rounded-br">{signalByMarket[market.id].yesDiff}</div>
+                            <div className="absolute top-0 left-0 text-[7px] font-bold leading-none px-[2px] text-black bg-green-400 rounded-br-sm z-10">{signalByMarket[market.id].yesDiff}</div>
                           )}
                           {signalByMarket[market.id].noDiff && (
-                            <div className="absolute top-0 right-0 text-[8px] text-green-400 font-bold leading-none px-0.5 bg-green-900/60 rounded-bl">{signalByMarket[market.id].noDiff}</div>
+                            <div className="absolute top-0 right-0 text-[7px] font-bold leading-none px-[2px] text-black bg-green-400 rounded-bl-sm z-10">{signalByMarket[market.id].noDiff}</div>
                           )}
                         </>
                       )}
@@ -548,22 +548,22 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
                       {/* Order badges */}
                       {yesBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[9px] px-0.5 leading-tight font-bold rounded-tr">
+                        <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
                           {(Math.max(...yesBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
                       {yesSellOrders.length > 0 && (
-                        <div className={`absolute ${yesBuyOrders.length > 0 ? 'bottom-[13px]' : 'bottom-0'} left-0 bg-yellow-400 text-[9px] px-0.5 leading-tight font-bold rounded-tr`} style={{ color: '#78350f' }}>
+                        <div className={`absolute ${yesBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`} style={{ color: '#78350f' }}>
                           {(Math.min(...yesSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
                       {noBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[9px] px-0.5 leading-tight font-bold rounded-tl">
+                        <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
                           {(Math.max(...noBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
                       {noSellOrders.length > 0 && (
-                        <div className={`absolute ${noBuyOrders.length > 0 ? 'bottom-[13px]' : 'bottom-0'} right-0 bg-yellow-400 text-[9px] px-0.5 leading-tight font-bold rounded-tl`} style={{ color: '#78350f' }}>
+                        <div className={`absolute ${noBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>
                           {(Math.min(...noSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
@@ -581,7 +581,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   const renderUpOrDownTable = () => {
     const assetData = upOrDownMarkets[asset] || {};
     const timeframes = ['5m', '15m', '1h', '24h'] as const;
-    const colLabels = showPast ? ['Past', 'Current', 'Next'] : ['Current', 'Next'];
+    const colLabels = showPast ? ['Past', 'Current'] : ['Current'];
     const now = Date.now();
 
     // For each timeframe, sort markets by endDate and classify as past/current/next
@@ -601,8 +601,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
       const past = currentIdx > 0 ? markets[currentIdx - 1] : null;
       const current = currentIdx < markets.length ? markets[currentIdx] : null;
-      const next = currentIdx + 1 < markets.length ? markets[currentIdx + 1] : null;
-      rows[tf] = showPast ? [past, current, next] : [current, next];
+      rows[tf] = showPast ? [past, current] : [current];
     }
 
     // Check if we have any data at all
@@ -615,15 +614,43 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
           <thead className="sticky top-0 z-20 bg-gray-900">
             <tr>
               <th className={`px-1 py-1 text-center ${titleColor} font-bold border-b border-gray-700 text-[10px] bg-gray-900`}></th>
+              <th className="px-1 py-1 text-center border-b border-gray-700 text-[10px] bg-gray-900 font-bold text-gray-400">Target</th>
               {colLabels.map(label => (
                 <th key={label} className="px-1 py-1 text-center border-b border-gray-700 text-[10px] bg-gray-900 font-bold text-white">{label}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {timeframes.map(tf => (
+            {timeframes.map(tf => {
+              const tfDurations: Record<string, number> = { '5m': 5*60*1000, '15m': 15*60*1000, '1h': 60*60*1000, '24h': 24*60*60*1000 };
+              const duration = tfDurations[tf] || 0;
+              const currentMarket = showPast ? rows[tf][1] : rows[tf][0];
+              const tfEndMs = currentMarket?.endDate ? new Date(currentMarket.endDate).getTime() : 0;
+              const tfStartMs = tfEndMs - duration;
+              const tfProgress = tfEndMs > 0 && duration > 0 ? Math.max(0, Math.min(1, (now - tfStartMs) / duration)) : 0;
+              const tfProgressPct = (tfProgress * 100).toFixed(1);
+              const tfRemaining = tfEndMs - now;
+              const fmtCountdown = (ms: number) => { if (ms <= 0) return '0s'; const s = Math.floor(ms/1000); if (s < 60) return s+'s'; const m = Math.floor(s/60); if (m < 60) return m+'m'; const h = Math.floor(m/60); if (h < 24) return h+'h'; return Math.floor(h/24)+'d'; };
+
+              return (
               <tr key={tf} className="hover:bg-gray-800/50">
-                <td className={`px-1 py-1 font-bold ${titleColor} border-b border-gray-700/50 text-[10px] text-center bg-gray-900`}>{tf}</td>
+                <td className="px-1 py-1 font-bold text-white border-b border-gray-700/50 text-[10px] bg-gray-900 whitespace-nowrap relative">
+                  <div className="flex items-center justify-between gap-1">
+                    <span>{tf}</span>
+                    <span className={`text-[8px] font-normal ${tfRemaining > 0 && tfRemaining < 60000 ? 'text-red-400' : tfRemaining > 0 && tfRemaining < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>{tfEndMs > 0 ? fmtCountdown(tfRemaining) : ''}</span>
+                  </div>
+                  <div className="absolute bottom-0 left-0 h-[2px]" style={{ width: `${tfProgressPct}%`, backgroundColor: 'rgba(6,182,212,0.6)' }} />
+                </td>
+                <td className={`px-1 py-0.5 border-b border-gray-700/50 text-[9px] text-right ${titleColor} bg-gray-900 whitespace-nowrap`}>
+                  {(() => {
+                    for (const m of rows[tf]) {
+                      if (!m) continue;
+                      const p = m.priceToBeat ?? _bidAskLookup[m.clobTokenIds?.[0] || '']?.priceToBeat;
+                      if (p != null) return p.toLocaleString(undefined, { maximumFractionDigits: asset === 'BTC' ? 0 : 2 });
+                    }
+                    return '-';
+                  })()}
+                </td>
                 {rows[tf].map((market: Market | null, colIdx: number) => {
                   if (!market) {
                     return <td key={colIdx} className="text-center px-1 py-1 border-b border-gray-700/50 text-gray-600 text-[10px]">-</td>;
@@ -640,15 +667,6 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const _bgColor = isPast ? 'bg-gray-700/30' : (yesProb > 0.5 ? 'bg-green-900/30' : 'bg-red-900/30');
                   const isSelected = selectedMarket?.id === market.id;
 
-                  // Calculate time-elapsed progress for this contract
-                  const tfDurations: Record<string, number> = { '5m': 5*60*1000, '15m': 15*60*1000, '1h': 60*60*1000, '24h': 24*60*60*1000 };
-                  const duration = tfDurations[tf] || 0;
-                  const endMs = market.endDate ? new Date(market.endDate).getTime() : 0;
-                  const startMs = endMs - duration;
-                  const progress = endMs > 0 && duration > 0 ? Math.max(0, Math.min(1, (now - startMs) / duration)) : 0;
-                  const progressPct = (progress * 100).toFixed(1);
-                  const progressColor = isPast ? 'rgba(107,114,128,0.25)' : 'rgba(6,182,212,0.15)';
-
                   const yesPos = positionLookup[yesTokenId];
                   const noPos = positionLookup[noTokenId];
                   const yesOrders = orderLookup[yesTokenId] || [];
@@ -664,8 +682,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   return (
                     <td
                       key={colIdx}
-                      className={`market-cell px-0.5 py-1 text-center border-b border-gray-700/50 ${isPast ? 'opacity-50' : ''} whitespace-nowrap border border-gray-400 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''}`}
-                      style={{ minWidth: 60, background: `linear-gradient(to right, ${progressColor} ${progressPct}%, transparent ${progressPct}%)` }}
+                      className={`market-cell px-0.5 py-1 text-center border-b border-gray-700/50 ${isPast ? 'opacity-50' : ''} whitespace-nowrap border border-gray-400 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''} ${_bgColor}`}
+                      style={{ minWidth: 60 }}
                       onClick={() => handleCellClick(market)}
                     >
                       <div className="text-[10px] text-gray-400">
@@ -700,12 +718,12 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
                       {/* Order badges */}
                       {yesBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[9px] px-0.5 leading-tight font-bold rounded-tr">
+                        <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
                           {(Math.max(...yesBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
                       {noBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[9px] px-0.5 leading-tight font-bold rounded-tl">
+                        <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
                           {(Math.max(...noBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
@@ -713,7 +731,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   );
                 })}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -885,10 +904,10 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       {signalsOnGrid && signalByMarket[market.id] && (
                         <>
                           {signalByMarket[market.id].yesDiff && (
-                            <div className="absolute top-0 left-0 text-[8px] text-green-400 font-bold leading-none px-0.5 bg-green-900/60 rounded-br">{signalByMarket[market.id].yesDiff}</div>
+                            <div className="absolute top-0 left-0 text-[7px] font-bold leading-none px-[2px] text-black bg-green-400 rounded-br-sm z-10">{signalByMarket[market.id].yesDiff}</div>
                           )}
                           {signalByMarket[market.id].noDiff && (
-                            <div className="absolute top-0 right-0 text-[8px] text-green-400 font-bold leading-none px-0.5 bg-green-900/60 rounded-bl">{signalByMarket[market.id].noDiff}</div>
+                            <div className="absolute top-0 right-0 text-[7px] font-bold leading-none px-[2px] text-black bg-green-400 rounded-bl-sm z-10">{signalByMarket[market.id].noDiff}</div>
                           )}
                         </>
                       )}
@@ -933,22 +952,22 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
                       {/* Order badges - YES bottom-left, NO bottom-right */}
                       {yesBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[9px] px-0.5 leading-tight font-bold rounded-tr">
+                        <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
                           {(Math.max(...yesBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
                       {yesSellOrders.length > 0 && (
-                        <div className={`absolute ${yesBuyOrders.length > 0 ? 'bottom-[13px]' : 'bottom-0'} left-0 bg-yellow-400 text-[9px] px-0.5 leading-tight font-bold rounded-tr`} style={{ color: '#78350f' }}>
+                        <div className={`absolute ${yesBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`} style={{ color: '#78350f' }}>
                           {(Math.min(...yesSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
                       {noBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[9px] px-0.5 leading-tight font-bold rounded-tl">
+                        <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
                           {(Math.max(...noBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
                       {noSellOrders.length > 0 && (
-                        <div className={`absolute ${noBuyOrders.length > 0 ? 'bottom-[13px]' : 'bottom-0'} right-0 bg-yellow-400 text-[9px] px-0.5 leading-tight font-bold rounded-tl`} style={{ color: '#78350f' }}>
+                        <div className={`absolute ${noBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>
                           {(Math.min(...noSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
@@ -1055,10 +1074,10 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
             Past
           </label>
           <HelpTooltip text={"Show past/expired markets in the grid. When enabled, markets that have already expired will remain visible so you can review past data and outcomes."} />
-          {[['Up\\Down', showUpDown, setShowUpDown, 'polybot-show-updown'] as const,
-            ['Hit', showHit, setShowHit, 'polybot-show-hit'] as const,
-            ['Above', showAbove, setShowAbove, 'polybot-show-above'] as const,
-            ['Between', showBetween, setShowBetween, 'polybot-show-between'] as const,
+          {[['Up\\Down', showUpDown, setShowUpDown, `polybot-show-updown-${panelId}`] as const,
+            ['Hit', showHit, setShowHit, `polybot-show-hit-${panelId}`] as const,
+            ['Above', showAbove, setShowAbove, `polybot-show-above-${panelId}`] as const,
+            ['Between', showBetween, setShowBetween, `polybot-show-between-${panelId}`] as const,
           ].map(([label, val, setter, key]) => (
             <label key={key} className="no-drag inline-flex items-center gap-1 text-[10px] text-gray-400 cursor-pointer ml-1 font-normal">
               <input type="checkbox" checked={val} onChange={(e) => { setter(e.target.checked); localStorage.setItem(key, String(e.target.checked)); }} className="cursor-pointer w-3 h-3" />

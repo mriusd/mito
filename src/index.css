@@ -18,12 +18,12 @@ html, body, #root {
   padding: 0;
 }
 
-/* Prevent iOS Safari auto-zoom on input focus (triggers when font-size < 16px). */
+/* Prevent iOS Safari auto-zoom on input/textarea focus (font-size < 16px). Omit `select`
+   so dropdowns keep the same compact sizes as desktop (Tailwind text-* on each select). */
 @supports (-webkit-touch-callout: none) {
   @media (max-width: 1024px) {
     input,
-    textarea,
-    select {
+    textarea {
       font-size: 16px !important;
     }
   }
@@ -491,6 +491,8 @@ input[type="range"].vol-slider::-moz-range-thumb {
 .panel-header {
   cursor: move;
   flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 @media (max-width: 767px) {

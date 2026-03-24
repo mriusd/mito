@@ -342,9 +342,9 @@ export function DraggableCanvas() {
     layout: LayoutItem[], oldItem: LayoutItem, newItem: LayoutItem,
     placeholder: LayoutItem, e: MouseEvent, element: HTMLElement
   ) => {
-    disarmMobileAfterLayoutGesture();
+    // Resize stays available without double-tap; do not disarm mobile drag mode here.
     handleUserLayoutChange(layout, oldItem, newItem, placeholder, e, element);
-  }, [disarmMobileAfterLayoutGesture, handleUserLayoutChange]);
+  }, [handleUserLayoutChange]);
 
   const handleRemovePanel = useCallback(
     (id: string) => {
@@ -447,7 +447,7 @@ export function DraggableCanvas() {
         onDragStop={handleDragStopWrapped}
         onResizeStop={handleResizeStopWrapped}
         isDraggable={layoutInteractEnabled}
-        isResizable={layoutInteractEnabled}
+        isResizable={true}
         draggableHandle=".panel-header"
         draggableCancel=".no-drag,input,select,textarea,button,label,option,.cursor-help,[data-no-drag='true']"
         compactType="vertical"

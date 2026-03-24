@@ -77,14 +77,15 @@ function getDefaultLayout(
       const x = Math.round(cols * pct.x / 100);
       const baseH = Math.max(1, Math.round(pct.h));
       const y = Math.round(pct.y);
-      const minW = pct.minW ? Math.max(1, Math.ceil(pct.minW / colWidthPx)) : 2;
-      const minH = pct.minH ? Math.max(1, Math.ceil(pct.minH / rowPx)) : 1;
-      const w = Math.max(baseW, minW);
-      const h = Math.max(baseH, minH);
-      layout.push({ i: p.id, x, y, w, h, minW, minH });
+      // Pixel mins only influence the *initial* w/h from defaults, not RGL resize limits (those stay at 1).
+      const minWFromPct = pct.minW ? Math.max(1, Math.ceil(pct.minW / colWidthPx)) : 2;
+      const minHFromPct = pct.minH ? Math.max(1, Math.ceil(pct.minH / rowPx)) : 1;
+      const w = Math.max(baseW, minWFromPct);
+      const h = Math.max(baseH, minHFromPct);
+      layout.push({ i: p.id, x, y, w, h, minW: 1, minH: 1 });
       maxY = Math.max(maxY, y + h);
     } else {
-      layout.push({ i: p.id, x: 0, y: maxY, w: cols, h: 5, minW: 2, minH: 1 });
+      layout.push({ i: p.id, x: 0, y: maxY, w: cols, h: 5, minW: 1, minH: 1 });
       maxY += 5;
     }
   }
@@ -266,31 +267,19 @@ export function DraggableCanvas() {
     return extra.length > 0 ? [...panels, ...extra] : panels;
   }, [panels, currentBreakpoint, removedPanelTypes]);
 
-  /** Layout derived from persisted store + defaults (min constraints). Not updated during drag/resize. */
+  /** Layout from store or defaults. Default minW/minH only apply when building defaults; saved layouts are used as stored. */
   const computedLayout = useMemo((): LayoutItem[] => {
     const defaults = getDefaultLayout(effectivePanels, currentBreakpoint, containerWidth, rowHeight);
     console.log('[layout-debug] bp:', currentBreakpoint, 'cols:', currentCols, 'width:', containerWidth, 'rowH:', rowHeight);
     console.log('[layout-debug] layout:', defaults.map((l: LayoutItem) =>
       `${l.i.replace('trades-positions-orders','tpo')} x=${l.x} y=${l.y} w=${l.w} h=${l.h}`));
-    // If saved layouts exist for this breakpoint, use them (with defaults for any missing panels)
     if (layouts && layouts[currentBreakpoint]) {
       const saved = layouts[currentBreakpoint] as LayoutItem[];
-      const defaultById = new Map(defaults.map((d) => [d.i, d] as const));
-      const savedWithUpdatedMins = saved.map((item) => {
-        const def = defaultById.get(item.i);
-        if (!def) return item;
-        // Keep user position/size, but always refresh min constraints from current defaults.
-        return {
-          ...item,
-          minW: def.minW,
-          minH: def.minH,
-          w: Math.max(item.w, def.minW || 1),
-          h: Math.max(item.h, def.minH || 1),
-        };
-      });
-      const savedIds = new Set(saved.map(l => l.i));
-      const missing = defaults.filter(d => !savedIds.has(d.i));
-      return missing.length > 0 ? [...savedWithUpdatedMins, ...missing] : savedWithUpdatedMins;
+      // Drop stored minW/minH (often from old defaults); RGL uses them as hard floors — keep only user w/h.
+      const fromUser = saved.map((item) => ({ ...item, minW: 1, minH: 1 }));
+      const savedIds = new Set(saved.map((l) => l.i));
+      const missing = defaults.filter((d) => !savedIds.has(d.i));
+      return missing.length > 0 ? [...fromUser, ...missing] : fromUser;
     }
     return defaults;
   }, [layouts, effectivePanels, currentBreakpoint, currentCols, containerWidth, rowHeight]);
@@ -321,7 +310,8 @@ export function DraggableCanvas() {
     _layout: LayoutItem[], _oldItem: LayoutItem, _newItem: LayoutItem,
     _placeholder: LayoutItem, _e: MouseEvent, _element: HTMLElement
   ) => {
-    const merged: LayoutsMap = { ...(layouts || {}), [currentBreakpoint]: _layout } as LayoutsMap;
+    const normalized = _layout.map((l) => ({ ...l, minW: 1, minH: 1 }));
+    const merged: LayoutsMap = { ...(layouts || {}), [currentBreakpoint]: normalized } as LayoutsMap;
     setLayouts(merged as any);
   }, [setLayouts, layouts, currentBreakpoint]);
 

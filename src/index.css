@@ -332,6 +332,8 @@ input[type="range"].vol-slider::-moz-range-thumb {
 .sidebar-section {
   border-bottom: 1px solid #374151;
   padding: 12px;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .sidebar-section:last-child {
   border-bottom: none;
@@ -445,6 +447,8 @@ input[type="range"].vol-slider::-moz-range-thumb {
 .react-grid-item {
   transition: all 200ms ease;
   transition-property: left, top;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .react-grid-item.cssTransforms {
   transition-property: transform;
@@ -487,7 +491,27 @@ input[type="range"].vol-slider::-moz-range-thumb {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
 }
+
+/* Keep form fields copyable/editable inside non-selectable shells */
+.panel-wrapper input,
+.panel-wrapper textarea,
+.panel-wrapper select,
+.panel-wrapper [contenteditable='true'],
+.sidebar-section input,
+.sidebar-section textarea,
+.sidebar-section select,
+.sidebar-section [contenteditable='true'],
+.react-grid-item input,
+.react-grid-item textarea,
+.react-grid-item select,
+.react-grid-item [contenteditable='true'] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 .panel-header {
   cursor: move;
   flex-shrink: 0;

@@ -77,7 +77,7 @@ export function Header({ onRefresh }: HeaderProps) {
           const maxY = items.reduce((m, l) => Math.max(m, l.y + l.h), 0);
           newLayouts[bp] = [
             ...items,
-            { i: id, x: 0, y: maxY, w: isAsset ? 12 : 24, h: isAsset ? 8 : 6, minW: 4, minH: 3 },
+            { i: id, x: 0, y: maxY, w: isAsset ? 12 : 24, h: isAsset ? 8 : 6, minW: 1, minH: 1 },
           ];
         }
         setLayouts(newLayouts as any);

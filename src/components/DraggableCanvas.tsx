@@ -35,14 +35,14 @@ interface LayoutsMap {
 
 // Column counts per breakpoint (must match the cols prop on ResponsiveGridLayout)
 const COLS: Record<string, number> = { '2xl': 36, xl: 28, lg: 24, md: 20, sm: 12, xs: 8, xxs: 4 };
-// Thresholds based on container width (viewport minus sidebar ~350px)
+// Thresholds based on viewport width (synced with defaultLayouts.ts docs)
 const BREAKPOINTS_SORTED = [
-  { name: '2xl', min: 2000 }, { name: 'xl', min: 1300 }, { name: 'lg', min: 1000 },
-  { name: 'md', min: 800 }, { name: 'sm', min: 600 }, { name: 'xs', min: 400 }, { name: 'xxs', min: 0 },
+  { name: '2xl', min: 2400 }, { name: 'xl', min: 1600 }, { name: 'lg', min: 1280 },
+  { name: 'md', min: 1024 }, { name: 'sm', min: 768 }, { name: 'xs', min: 640 }, { name: 'xxs', min: 0 },
 ];
-function getBreakpoint(width: number, viewportHeight?: number): string {
+function getBreakpoint(viewportWidth: number, viewportHeight?: number): string {
   for (const bp of BREAKPOINTS_SORTED) {
-    if (width > bp.min) {
+    if (viewportWidth >= bp.min) {
       // Check for tall variant
       const hv = HEIGHT_VARIANTS[bp.name];
       if (hv && viewportHeight && viewportHeight >= hv.minHeight) {
@@ -162,7 +162,7 @@ export function DraggableCanvas() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const currentBreakpoint = useMemo(() => getBreakpoint(containerWidth, window.innerHeight), [containerWidth]);
+  const currentBreakpoint = useMemo(() => getBreakpoint(window.innerWidth, window.innerHeight), [containerWidth]);
   // Tall variants (e.g. '2xl-tall') share cols with their base breakpoint ('2xl')
   const baseBp = currentBreakpoint.replace(/-tall$/, '');
   const currentCols = COLS[baseBp] || 24;
@@ -250,7 +250,7 @@ export function DraggableCanvas() {
       {import.meta.env.VITE_FE_ENV === 'dev' && (
         <div className="flex-shrink-0 flex items-center gap-3 bg-gray-900 border-b border-gray-700 px-3 py-1">
           <span className="text-[10px] font-mono text-gray-400">
-            Canvas H: {containerHeight} | Row: {rowHeight}px | Viewport: {window.innerWidth}×{window.innerHeight}
+            Canvas W: {containerWidth} | Canvas H: {containerHeight} | Row: {rowHeight}px | Viewport: {window.innerWidth}×{window.innerHeight}
           </span>
           <span className="text-[10px] font-mono text-gray-500">
             store={layouts ? 'saved' : 'defaults'}
@@ -322,7 +322,7 @@ export function DraggableCanvas() {
         onResizeStop={handleUserLayoutChange}
         isDraggable={true}
         draggableHandle=".panel-header"
-        draggableCancel=".no-drag"
+        draggableCancel=".no-drag,input,select,textarea,button,label,option,.cursor-help,[data-no-drag='true']"
         compactType="vertical"
         margin={[0, 0]}
         containerPadding={[0, 0]}

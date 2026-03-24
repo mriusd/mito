@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { formatPriceShort, ASSET_COLORS } from '../../utils/format';
 import { Zap } from 'lucide-react';
@@ -11,7 +11,6 @@ export function SignalsTable() {
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
   const makerMode = useAppStore((s) => s.signalMakerMode);
   const setMakerModeGlobal = useAppStore((s) => s.setSignalMakerMode);
-  const signalsOnGrid = useAppStore((s) => s.signalsOnGrid);
   const setSignalsOnGrid = useAppStore((s) => s.setSignalsOnGrid);
 
   const handleMarketClick = useCallback((market: typeof signals[0]['market'], outcome: 'YES' | 'NO' = 'YES') => {
@@ -20,12 +19,11 @@ export function SignalsTable() {
     setSidebarOpen(true);
   }, [setSelectedMarket, setSidebarOutcome, setSidebarOpen]);
 
-  const [showToday, setShowToday] = useState(
-    localStorage.getItem('polymarket-signal-today') !== 'false'
-  );
-  const [showTomorrow, setShowTomorrow] = useState(
-    localStorage.getItem('polymarket-signal-tomorrow') !== 'false'
-  );
+  // Grid toggle was removed from UI; keep signals visible on market cells.
+  useEffect(() => {
+    setSignalsOnGrid(true);
+  }, [setSignalsOnGrid]);
+
   const [marketTypeFilter, setMarketTypeFilter] = useState(
     localStorage.getItem('polymarket-signal-market-type') || 'ALL'
   );
@@ -40,18 +38,8 @@ export function SignalsTable() {
   );
   const [sortCol, setSortCol] = useState<'date' | 'diff' | null>('diff');
   const [sortAsc, setSortAsc] = useState(true);
-
-  // Helper: check if a date is TODAY or TOMORROW
-  const isToday = (dateStr: string) => {
-    const d = new Date(dateStr);
-    const now = new Date();
-    return d.toDateString() === now.toDateString();
-  };
-  const isTomorrow = (dateStr: string) => {
-    const d = new Date(dateStr);
-    const tmr = new Date();
-    tmr.setDate(tmr.getDate() + 1);
-    return d.toDateString() === tmr.toDateString();
+  const stopPanelDrag = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
   };
 
   const toggleSort = (col: 'date' | 'diff') => {
@@ -61,9 +49,6 @@ export function SignalsTable() {
 
   const filtered = signals.filter((s) => {
     if (assetFilter !== 'ALL' && s.asset !== assetFilter) return false;
-    // Date filters: if unchecked, hide those signals
-    if (!showToday && isToday(s.endDate)) return false;
-    if (!showTomorrow && isTomorrow(s.endDate)) return false;
     if (marketTypeFilter === 'above' && s.tableType !== 'above') return false;
     if (marketTypeFilter === 'price' && s.tableType !== 'price') return false;
     if (marketTypeFilter === 'hit' && s.tableType !== 'hit') return false;
@@ -88,17 +73,6 @@ export function SignalsTable() {
     return sortAsc ? cmp : -cmp;
   });
 
-  const toggleShowToday = () => {
-    const v = !showToday;
-    setShowToday(v);
-    localStorage.setItem('polymarket-signal-today', v ? 'true' : 'false');
-  };
-  const toggleShowTomorrow = () => {
-    const v = !showTomorrow;
-    setShowTomorrow(v);
-    localStorage.setItem('polymarket-signal-tomorrow', v ? 'true' : 'false');
-  };
-
   const assets = ['ALL', 'BTC', 'ETH', 'SOL', 'XRP'];
   const assetColors: Record<string, string> = { ALL: 'text-white', BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
 
@@ -110,16 +84,18 @@ export function SignalsTable() {
             <Zap className="inline w-3.5 h-3.5 mr-1" />
             Signals
           </span>
-          <div className="flex gap-1 items-center">
-            <label className="flex items-center gap-0.5 text-[9px] text-red-400 cursor-pointer">
-              <input type="checkbox" checked={showToday} onChange={toggleShowToday} className="w-3 h-3" />TDY
-            </label>
-            <label className="flex items-center gap-0.5 text-[9px] text-yellow-400 cursor-pointer">
-              <input type="checkbox" checked={showTomorrow} onChange={toggleShowTomorrow} className="w-3 h-3" />TMR
-            </label>
+          <div
+            className="flex gap-1 items-center no-drag"
+            onPointerDownCapture={stopPanelDrag}
+            onMouseDown={stopPanelDrag}
+            onTouchStart={stopPanelDrag}
+          >
             <select
               value={marketTypeFilter}
               onChange={(e) => { setMarketTypeFilter(e.target.value); localStorage.setItem('polymarket-signal-market-type', e.target.value); }}
+              onPointerDownCapture={stopPanelDrag}
+              onMouseDown={stopPanelDrag}
+              onTouchStart={stopPanelDrag}
               className="bg-gray-700 text-white text-[9px] px-0.5 py-0 rounded border border-gray-600 h-[22px]"
             >
               <option value="ALL">All</option>
@@ -127,12 +103,12 @@ export function SignalsTable() {
               <option value="price">Between</option>
               <option value="hit">Hit</option>
             </select>
-            <label className="flex items-center gap-0.5 text-[9px] text-cyan-400 cursor-pointer" title="Show signals in the markets table grid">
-              <input type="checkbox" checked={signalsOnGrid} onChange={(e) => setSignalsOnGrid(e.target.checked)} className="w-3 h-3" />Grid
-            </label>
             <select
               value={makerMode ? 'maker' : 'taker'}
               onChange={(e) => { setMakerModeGlobal(e.target.value === 'maker'); }}
+              onPointerDownCapture={stopPanelDrag}
+              onMouseDown={stopPanelDrag}
+              onTouchStart={stopPanelDrag}
               className="bg-gray-700 text-white text-[9px] px-0.5 py-0 rounded border border-gray-600 h-[22px]"
             >
               <option value="taker">Taker</option>
@@ -143,6 +119,9 @@ export function SignalsTable() {
                 type="number"
                 value={pctChangeFilter}
                 onChange={(e) => { setPctChangeFilter(e.target.value); localStorage.setItem('polymarket-signal-pct-change', e.target.value); }}
+                onPointerDownCapture={stopPanelDrag}
+                onMouseDown={stopPanelDrag}
+                onTouchStart={stopPanelDrag}
                 placeholder="0"
                 className="w-8 bg-gray-700 text-white text-[9px] px-0.5 rounded border border-gray-600 text-center no-spin h-[22px]"
               />
@@ -152,6 +131,9 @@ export function SignalsTable() {
                 type="number"
                 value={maxPriceFilter}
                 onChange={(e) => { setMaxPriceFilter(e.target.value); localStorage.setItem('polymarket-signal-max-price', e.target.value); }}
+                onPointerDownCapture={stopPanelDrag}
+                onMouseDown={stopPanelDrag}
+                onTouchStart={stopPanelDrag}
                 placeholder="0"
                 className="w-8 bg-gray-700 text-white text-[9px] px-0.5 rounded border border-gray-600 text-center no-spin h-[22px]"
               />
@@ -159,6 +141,9 @@ export function SignalsTable() {
             <select
               value={assetFilter}
               onChange={(e) => { setAssetFilter(e.target.value); localStorage.setItem('polymarket-table-asset-filter', e.target.value); }}
+              onPointerDownCapture={stopPanelDrag}
+              onMouseDown={stopPanelDrag}
+              onTouchStart={stopPanelDrag}
               className={`bg-gray-700 text-[9px] font-bold rounded px-1 py-0 border border-gray-600 h-[22px] ${assetColors[assetFilter] || 'text-white'}`}
               style={{ outline: 'none' }}
             >

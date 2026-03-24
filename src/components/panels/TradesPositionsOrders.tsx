@@ -104,11 +104,11 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
 
   const filterBtnCls = (active: boolean, color: 'green' | 'red' | 'gray') => {
     if (active) {
-      if (color === 'green') return 'px-1.5 py-0.5 rounded text-[9px] font-medium bg-green-600 text-white';
-      if (color === 'red') return 'px-1.5 py-0.5 rounded text-[9px] font-medium bg-red-600 text-white';
-      return 'px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-500 text-white';
+      if (color === 'green') return 'px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-green-600 text-white shadow-[0_0_8px_rgba(22,163,74,0.35)]';
+      if (color === 'red') return 'px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-red-600 text-white shadow-[0_0_8px_rgba(220,38,38,0.35)]';
+      return 'px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-500 text-white';
     }
-    return 'px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-700 text-gray-400';
+    return 'px-2 py-0.5 rounded-sm text-[9px] font-semibold text-gray-400 hover:text-white hover:bg-gray-700';
   };
 
   // Process trades
@@ -288,7 +288,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
 
           {tab === 'trades' && (
             <div className="flex gap-1 items-center">
-              <div className="flex gap-0.5 text-[9px]">
+              <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]">
                 {(['ALL', 'BUY', 'SELL'] as const).map((s) => (
                   <button key={s} onClick={() => { setTradesSideFilter(s); localStorage.setItem('polymarket-trades-side-filter', s); }}
                     className={filterBtnCls(tradesSideFilter === s, s === 'BUY' ? 'green' : s === 'SELL' ? 'red' : 'gray')}>{s}</button>
@@ -310,10 +310,12 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
 
           {tab === 'orders' && (
             <div className="flex gap-0.5 items-center flex-wrap">
-              {(['ALL', 'BUY', 'SELL'] as const).map((s) => (
-                <button key={s} onClick={() => { setOrdersFilter(s); localStorage.setItem('polymarket-orders-filter', s); }}
-                  className={filterBtnCls(ordersFilter === s, s === 'BUY' ? 'green' : s === 'SELL' ? 'red' : 'gray')}>{s}</button>
-              ))}
+              <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5">
+                {(['ALL', 'BUY', 'SELL'] as const).map((s) => (
+                  <button key={s} onClick={() => { setOrdersFilter(s); localStorage.setItem('polymarket-orders-filter', s); }}
+                    className={filterBtnCls(ordersFilter === s, s === 'BUY' ? 'green' : s === 'SELL' ? 'red' : 'gray')}>{s}</button>
+                ))}
+              </div>
               <span className="mx-1 text-gray-600">|</span>
               <select value={assetFilter} onChange={(e) => { setAssetFilter(e.target.value); localStorage.setItem('polymarket-table-asset-filter', e.target.value); }}
                 className={`bg-gray-700 text-[9px] font-bold rounded px-1 py-0.5 border border-gray-600 ${assetColors[assetFilter]}`} style={{ outline: 'none' }}>

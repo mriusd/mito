@@ -261,6 +261,62 @@ input[type="range"].vol-slider::-moz-range-thumb {
 .right-sidebar.open {
   transform: translateX(0);
 }
+.right-sidebar.mobile-dragging {
+  transition: none;
+}
+.sidebar-mobile-overlay {
+  display: none;
+}
+.mobile-sidebar-drag-zone {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .sidebar-mobile-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(1px);
+    z-index: 95;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+  }
+  .right-sidebar {
+    top: auto;
+    left: 0;
+    bottom: 0;
+    width: 100vw;
+    height: min(82vh, calc(100vh - 16px));
+    border-right: none;
+    border-left: 1px solid #374151;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    transform: translateY(100%);
+  }
+  .right-sidebar.open {
+    transform: translateY(var(--mobile-sheet-offset, 0px));
+  }
+  .mobile-sidebar-drag-zone {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 18px;
+    background: rgba(31, 41, 55, 0.98);
+    touch-action: none;
+  }
+  .mobile-sidebar-drag-handle {
+    width: 42px;
+    height: 4px;
+    border-radius: 9999px;
+    background: #6b7280;
+  }
+}
 
 .sidebar-section {
   border-bottom: 1px solid #374151;
@@ -268,6 +324,33 @@ input[type="range"].vol-slider::-moz-range-thumb {
 }
 .sidebar-section:last-child {
   border-bottom: none;
+}
+
+.sidebar-chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  align-items: start;
+  border-bottom: 1px solid #374151;
+}
+.sidebar-chart-row > * {
+  min-width: 0;
+}
+.sidebar-chart-row .sidebar-section {
+  padding-left: 6px;
+  padding-right: 6px;
+  border-bottom: none;
+}
+
+@media (max-height: 999px) {
+  .sidebar-chart-row .sidebar-section canvas {
+    height: 110px !important;
+  }
+  .live-trades-section.expanded:not(.boosted) {
+    height: max(100px, calc((100vh - 44px) * 0.1)) !important;
+    min-height: max(100px, calc((100vh - 44px) * 0.1)) !important;
+    max-height: max(100px, calc((100vh - 44px) * 0.1)) !important;
+  }
 }
 
 .toggle-btn {

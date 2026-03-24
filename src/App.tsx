@@ -46,7 +46,7 @@ function App() {
       </div>
 
       {/* Main content area */}
-      <div className="flex-1 min-h-0 flex" style={{ marginLeft: 288 }}>
+      <div className="flex-1 min-h-0 flex ml-[288px] max-[767px]:ml-0">
         {/* Canvas area */}
         <div className="flex-1 min-h-0 overflow-auto px-2 pb-2">
           {loading ? (

@@ -62,6 +62,7 @@ function shortenTitle(title: string): string {
 export function OrderbookPopup() {
   const positions = useAppStore((s) => s.positions);
   const orders = useAppStore((s) => s.orders);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
   const [state, setState] = useState<PopupState>({
     visible: false, x: 0, y: 0, tokenId: '', title: '',
@@ -87,6 +88,20 @@ export function OrderbookPopup() {
   const isYes = state.title.includes('(YES)');
 
   useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    if (isMobile && state.visible) {
+      setState(s => ({ ...s, visible: false }));
+    }
+  }, [isMobile, state.visible]);
+
+  useEffect(() => {
+    if (isMobile) return;
+
     const handleMouseOver = (e: MouseEvent) => {
       const trigger = (e.target as HTMLElement).closest?.('.ob-trigger[data-token-id]') as HTMLElement | null;
       if (!trigger || hoverRef.current === trigger) return;
@@ -154,7 +169,7 @@ export function OrderbookPopup() {
       document.removeEventListener('mouseout', handleMouseOut);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, []);
+  }, [isMobile]);
 
   // Adjust if popup overflows bottom
   useEffect(() => {
@@ -170,7 +185,7 @@ export function OrderbookPopup() {
     }
   }, [state.visible, state.bids, state.asks, position, tokenOrders]);
 
-  if (!state.visible) return null;
+  if (!state.visible || isMobile) return null;
 
   const maxRows = Math.max(state.bids.length, state.asks.length, 1);
   const fmtSz = (n: number) => { const v = Math.floor(n); return v >= 1000 ? (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : v.toLocaleString(); };

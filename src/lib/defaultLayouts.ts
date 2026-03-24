@@ -78,29 +78,29 @@ const md: Record<string, LayoutRect> = {
 
 // ─── Small screens (≥768px, 12 cols) ─────────────────────────────
 const sm: Record<string, LayoutRect> = {
-  'asset-BTC':               { x: 0, y: 0,   w: 100, h: 30 },
-  'trades-positions-orders': { x: 0, y: 30,  w: 100, h: 30 },
-  'updown-overview':         { x: 0, y: 60,  w: 100, h: 15 },
-  'signals':                 { x: 0, y: 75,  w: 100, h: 15 },
-  'chat':                    { x: 0, y: 90,  w: 100, h: 10 },
+  'asset-BTC':               { x: 0, y: 0,   w: 100, h: 50 },
+  'updown-overview':         { x: 0, y: 50,  w: 100, h: 25 },
+  'trades-positions-orders': { x: 0, y: 75,  w: 100, h: 20 },
+  'signals':                 { x: 0, y: 75,  w: 100, h: 25 },
+  'chat':                    { x: 0, y: 100,  w: 100, h: 25 },
 };
 
 // ─── Extra-small screens (≥640px, 8 cols) ────────────────────────
 const xs: Record<string, LayoutRect> = {
-  'asset-BTC':               { x: 0, y: 0,   w: 100, h: 30 },
-  'trades-positions-orders': { x: 0, y: 30,  w: 100, h: 30 },
-  'updown-overview':         { x: 0, y: 60,  w: 100, h: 15 },
-  'signals':                 { x: 0, y: 75,  w: 100, h: 15 },
-  'chat':                    { x: 0, y: 90,  w: 100, h: 10 },
+  'asset-BTC':               { x: 0, y: 0,   w: 100, h: 50 },
+  'updown-overview':         { x: 0, y: 50,  w: 100, h: 25 },
+  'trades-positions-orders': { x: 0, y: 75,  w: 100, h: 25 },  
+  'signals':                 { x: 0, y: 100,  w: 100, h: 25 },
+  'chat':                    { x: 0, y: 125,  w: 100, h: 50 },
 };
 
 // ─── Tiny screens (<640px, 4 cols) ───────────────────────────────
 const xxs: Record<string, LayoutRect> = {
-  'asset-BTC':               { x: 0, y: 0,   w: 100, h: 30 },
-  'trades-positions-orders': { x: 0, y: 30,  w: 100, h: 30 },
-  'updown-overview':         { x: 0, y: 60,  w: 100, h: 15 },
-  'signals':                 { x: 0, y: 75,  w: 100, h: 15 },
-  'chat':                    { x: 0, y: 90,  w: 100, h: 10 },
+  'asset-BTC':               { x: 0, y: 0,   w: 100, h: 80 },
+  'updown-overview':         { x: 0, y: 80,  w: 100, h: 50 },
+  'trades-positions-orders': { x: 0, y: 130,  w: 100, h: 50 },  
+  'signals':                 { x: 0, y: 180,  w: 100, h: 50 },
+  'chat':                    { x: 0, y: 230,  w: 100, h: 50 },
 };
 
 // ─── All breakpoints ─────────────────────────────────────────────

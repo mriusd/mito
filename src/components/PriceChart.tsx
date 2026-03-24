@@ -375,10 +375,12 @@ export function PriceChart({ market, isNo }: PriceChartProps) {
 
   return (
     <div className="sidebar-section">
-      <div className="text-xs text-gray-400 mb-2">Price History</div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs text-gray-400">Price History</span>
+      </div>
       <canvas
         ref={canvasRef}
-        style={{ width: '100%', height: 150, borderRadius: 6, background: '#1a1a2e' }}
+        style={{ width: '100%', height: 110, borderRadius: 6, background: '#1a1a2e' }}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       />

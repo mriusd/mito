@@ -387,9 +387,9 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, even
   return (
     <div className="sidebar-section">
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-gray-400">Price Chart</span>
+        <span className="text-xs text-gray-400">Price</span>
         <div className="flex gap-0.5">
-          {(['1m', '5m', '15m', '1h'] as const).map((iv) => (
+          {(['1m', '5m', '15m'] as const).map((iv) => (
             <button
               key={iv}
               onClick={() => setInterval_(iv)}
@@ -400,7 +400,7 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, even
       </div>
       <canvas
         ref={canvasRef}
-        style={{ width: '100%', height: 120, borderRadius: 6, background: '#1a1a2e' }}
+        style={{ width: '100%', height: 110, borderRadius: 6, background: '#1a1a2e' }}
       />
     </div>
   );

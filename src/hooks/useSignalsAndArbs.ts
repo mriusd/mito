@@ -6,60 +6,6 @@ import type { AssetSymbol, Market, Signal, ArbOpportunity } from '../types';
 
 const GRID_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 
-// --- Orderbook cache (30s) ---
-interface OBEntry { price: number; size: number; }
-interface OBBook { bids: OBEntry[]; asks: OBEntry[]; }
-const arbOBCache: Record<string, { data: OBBook; time: number }> = {};
-
-async function fetchArbOrderbook(tokenId: string): Promise<OBBook> {
-  const cached = arbOBCache[tokenId];
-  if (cached && Date.now() - cached.time < 30000) return cached.data;
-  try {
-    const resp = await fetch(`${API_BASE}/api/polyproxy/clob/book?token_id=${tokenId}`);
-    const raw = await resp.json();
-    const data: OBBook = {
-      bids: (raw.bids || []).map((b: { price: string; size: string }) => ({ price: parseFloat(b.price), size: parseFloat(b.size) })),
-      asks: (raw.asks || []).map((a: { price: string; size: string }) => ({ price: parseFloat(a.price), size: parseFloat(a.size) })),
-    };
-    arbOBCache[tokenId] = { data, time: Date.now() };
-    return data;
-  } catch {
-    return { bids: [], asks: [] };
-  }
-}
-
-// Walk two sorted-ascending ask books to compute arb: max shares where Y ask + N ask < 100¢
-function computeArbFromBooks(
-  yesAsks: OBEntry[], noAsks: OBEntry[], maxQty: number,
-): { yesPrice: number; noPrice: number; maxSize: number; diff: number } | null {
-  if (!yesAsks.length || !noAsks.length) return null;
-  let yi = 0, ni = 0;
-  let yesRemaining = yesAsks[0].size;
-  let noRemaining = noAsks[0].size;
-  let totalSize = 0, totalYesCost = 0, totalNoCost = 0;
-  const sizeLimit = maxQty > 0 ? maxQty : Infinity;
-
-  while (yi < yesAsks.length && ni < noAsks.length) {
-    const yPrice = yesAsks[yi].price * 100;
-    const nPrice = noAsks[ni].price * 100;
-    if (yPrice + nPrice >= 100) break;
-    let fillSize = Math.min(yesRemaining, noRemaining);
-    if (totalSize + fillSize > sizeLimit) fillSize = sizeLimit - totalSize;
-    if (fillSize <= 0) break;
-    totalSize += fillSize;
-    totalYesCost += fillSize * yPrice;
-    totalNoCost += fillSize * nPrice;
-    yesRemaining -= fillSize;
-    noRemaining -= fillSize;
-    if (totalSize >= sizeLimit) break;
-    if (yesRemaining <= 0.001) { yi++; if (yi < yesAsks.length) yesRemaining = yesAsks[yi].size; }
-    if (noRemaining <= 0.001) { ni++; if (ni < noAsks.length) noRemaining = noAsks[ni].size; }
-  }
-  if (totalSize <= 0) return null;
-  const avgYes = totalYesCost / totalSize;
-  const avgNo = totalNoCost / totalSize;
-  return { yesPrice: avgYes, noPrice: avgNo, maxSize: totalSize, diff: avgYes + avgNo - 100 };
-}
 
 function assetToSymbol(a: string): AssetSymbol {
   return (a + 'USDT') as AssetSymbol;
@@ -467,7 +413,7 @@ export function useSignalsAndArbs() {
         endDate: c.yesM.endDate,
         yesPct: c.yesM.pctFromLive,
         noPct: c.noM.pctFromLive,
-        maxSize: Math.floor(result.maxSize),
+        maxSize: 0,
         yesBs: yBsLive,
         noBs: nBsLive !== null ? (100 - nBsLive) : null,
         yesBs1: yBs1,

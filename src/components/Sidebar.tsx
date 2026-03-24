@@ -1052,7 +1052,7 @@ export function Sidebar() {
                   const outcome = getTokenOutcome(trade.asset_id || trade.token_id || '', marketLookup);
                   const rawPrice = parseFloat(trade.price);
                   const size = parseFloat(trade.size);
-                  const isClaim = rawPrice === 0 && (!trade.side || trade.side === '');
+                  const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
                   const side = isClaim ? 'CLAIM' : trade.side;
                   const ts = trade.timestamp || trade.created_at || trade.matchTime;
                   return (

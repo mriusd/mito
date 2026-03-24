@@ -62,7 +62,7 @@ export function PnLPanel() {
 
       const rawPrice = parseFloat(trade.price) || 0;
       const size = parseFloat(trade.size_filled || trade.size) || 0;
-      const isClaim = rawPrice === 0 && (!trade.side || trade.side === '');
+      const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
       const value = isClaim ? (trade.usdcSize || size) : (trade.usdcSize || (rawPrice * size));
 
       if (trade.side === 'BUY' || isClaim) {

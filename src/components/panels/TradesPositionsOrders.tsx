@@ -163,7 +163,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
       const price = rawPrice * 100;
       const size = parseFloat(trade.size_filled || trade.size);
       // Detect claims: price=0 and no side (or empty side)
-      const isClaim = rawPrice === 0 && (!trade.side || trade.side === '');
+      const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
       const side = isClaim ? 'CLAIM' : trade.side;
       const value = isClaim ? (trade.usdcSize || size) : (trade.usdcSize || rawPrice * size);
       const ts = (trade as any).match_time || trade.timestamp || trade.created_at || trade.matchTime || '';

@@ -24,6 +24,8 @@ interface LayoutRect {
   y: number;   // % of canvas height for vertical offset (absolute position, 0-100)
   w: number;   // % of columns for width
   h: number;   // % of canvas height for height
+  minW?: number; // minimum width in pixels
+  minH?: number; // minimum height in pixels
 }
 
 // ─── 2XL screens (≥2400px, 36 cols) ──────────────────────────────
@@ -97,22 +99,42 @@ const xs: Record<string, LayoutRect> = {
 // ─── Tiny screens (<640px, 4 cols) ───────────────────────────────
 const xxs: Record<string, LayoutRect> = {
   'asset-BTC':               { x: 0, y: 0,   w: 100, h: 80 },
-  'updown-overview':         { x: 0, y: 80,  w: 100, h: 50 },
-  'trades-positions-orders': { x: 0, y: 130,  w: 100, h: 50 },  
-  'signals':                 { x: 0, y: 180,  w: 100, h: 50 },
-  'chat':                    { x: 0, y: 230,  w: 100, h: 50 },
+  'updown-overview':         { x: 0, y: 80,  w: 100, h: 30 },
+  'trades-positions-orders': { x: 0, y: 110,  w: 100, h: 50 },  
+  'signals':                 { x: 0, y: 160,  w: 100, h: 50 },
+  'chat':                    { x: 0, y: 210,  w: 100, h: 50 },
 };
+
+const PANEL_MIN_PIXELS: Record<string, { minW: number; minH: number }> = {
+  'asset-BTC': { minW: 320, minH: 220 },
+  'asset-ETH': { minW: 320, minH: 220 },
+  'asset-SOL': { minW: 320, minH: 220 },
+  'asset-XRP': { minW: 320, minH: 220 },
+  'trades-positions-orders': { minW: 300, minH: 250 },
+  'updown-overview': { minW: 300, minH: 200 },
+  'signals': { minW: 300, minH: 150 },
+  'chat': { minW: 280, minH: 180 },
+  'pnl': { minW: 300, minH: 160 },
+};
+
+function withPanelMinPixels(layout: Record<string, LayoutRect>): Record<string, LayoutRect> {
+  const next: Record<string, LayoutRect> = {};
+  for (const [panelType, rect] of Object.entries(layout)) {
+    next[panelType] = { ...rect, ...(PANEL_MIN_PIXELS[panelType] || {}) };
+  }
+  return next;
+}
 
 // ─── All breakpoints ─────────────────────────────────────────────
 const BREAKPOINT_LAYOUTS: Record<string, Record<string, LayoutRect>> = {
-  '2xl-tall': xxlTall,
-  '2xl': xxl,
-  xl,
-  lg,
-  md,
-  sm,
-  xs,
-  xxs,
+  '2xl-tall': withPanelMinPixels(xxlTall),
+  '2xl': withPanelMinPixels(xxl),
+  xl: withPanelMinPixels(xl),
+  lg: withPanelMinPixels(lg),
+  md: withPanelMinPixels(md),
+  sm: withPanelMinPixels(sm),
+  xs: withPanelMinPixels(xs),
+  xxs: withPanelMinPixels(xxs),
 };
 
 // Height thresholds for tall variants (viewport height in px)

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { fetchOrderbook } from '../api';
 import { useAppStore } from '../stores/appStore';
 import { BsFlower } from './BsFlower';
+import { shortenMarketName } from '../utils/format';
 
 interface OBEntry {
   price: string;
@@ -33,30 +34,12 @@ function pruneCache() {
   }
 }
 
-// Shorten market title: strip common prefixes, keep strike + outcome
 function shortenTitle(title: string): string {
-  // e.g. "Will the price of Bitcoin be above $80,000 on March 14? (YES)" -> ">$80k (YES)"
-  // or "BTC > $80,000 (YES)" -> ">80k (YES)"
-  let s = title;
-  // Extract outcome suffix
-  const outcomeMatch = s.match(/\((YES|NO)\)\s*$/);
+  const outcomeMatch = title.match(/\((YES|NO)\)\s*$/);
   const outcome = outcomeMatch ? outcomeMatch[1] : '';
-  if (outcomeMatch) s = s.substring(0, outcomeMatch.index).trim();
-  // Try to extract just the price/range part
-  const priceMatch = s.match(/[\$>< ]*([\d,]+(?:\.\d+)?(?:k)?(?:\s*-\s*[\d,]+(?:\.\d+)?(?:k)?)?)/i);
-  if (priceMatch) {
-    const raw = priceMatch[0].trim();
-    // Abbreviate large numbers
-    const abbreviated = raw.replace(/\$?([\d,]+)/g, (_, num) => {
-      const n = parseFloat(num.replace(/,/g, ''));
-      if (n >= 1000) return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + 'k';
-      return String(n);
-    });
-    return abbreviated + (outcome ? ` (${outcome})` : '');
-  }
-  // Fallback: truncate
-  if (s.length > 30) s = s.substring(0, 30) + '…';
-  return s + (outcome ? ` (${outcome})` : '');
+  const baseTitle = outcomeMatch ? title.substring(0, outcomeMatch.index).trim() : title;
+  const short = shortenMarketName(baseTitle);
+  return outcome ? `${short} (${outcome})` : short;
 }
 
 export function OrderbookPopup() {
@@ -116,7 +99,8 @@ export function OrderbookPopup() {
         if (hoverRef.current !== trigger) return;
 
         const rect = trigger.getBoundingClientRect();
-        const x = Math.min(rect.right + 10, window.innerWidth - 310);
+        const popupWidth = 250;
+        const x = Math.min(rect.right + 10, window.innerWidth - popupWidth - 10);
         const y = Math.max(10, rect.top - 100);
         const title = trigger.dataset.marketTitle || 'Orderbook';
         const bsAsset = trigger.dataset.asset || '';
@@ -203,11 +187,16 @@ export function OrderbookPopup() {
     <div
       ref={popupRef}
       className="fixed z-[10020] bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-3 pointer-events-none"
-      style={{ left: state.x, top: state.y, minWidth: 280, maxHeight: '80vh', overflowY: 'auto', fontSize: 11 }}
+      style={{ left: state.x, top: state.y, minWidth: 220, maxWidth: 250, maxHeight: '80vh', overflowY: 'auto', fontSize: 11 }}
     >
       {/* Title */}
-      <div className="text-xs text-gray-400 mb-2 pb-1 border-b border-gray-700 truncate">
-        {shortenTitle(state.title)}
+      <div className="mb-2 pb-1 border-b border-gray-700">
+        <div className="text-xs text-gray-300 leading-tight">
+          {shortenTitle(state.title)}
+        </div>
+        <div className="text-[10px] text-gray-500 leading-tight mt-0.5 break-words">
+          {state.title}
+        </div>
       </div>
 
       {/* Position */}

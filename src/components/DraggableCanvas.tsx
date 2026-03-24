@@ -56,21 +56,32 @@ function getBreakpoint(viewportWidth: number, viewportHeight?: number): string {
 const TOTAL_ROWS = 100;
 const MARGIN = 4;
 
-function getDefaultLayout(panels: PanelConfig[], breakpoint: string): LayoutItem[] {
+function getDefaultLayout(
+  panels: PanelConfig[],
+  breakpoint: string,
+  containerWidthPx?: number,
+  rowHeightPx?: number
+): LayoutItem[] {
   const bpMap = BREAKPOINT_LAYOUTS[breakpoint] || BREAKPOINT_LAYOUTS.lg;
   const base = breakpoint.replace(/-tall$/, '');
   const cols = COLS[base] || 24;
+  const colWidthPx = Math.max(1, (containerWidthPx || window.innerWidth) / cols);
+  const rowPx = Math.max(1, rowHeightPx || (window.innerHeight / TOTAL_ROWS));
   const layout: LayoutItem[] = [];
   let maxY = 0;
 
   for (const p of panels) {
     const pct = bpMap[p.type];
     if (pct) {
-      const w = Math.max(1, Math.round(cols * pct.w / 100));
+      const baseW = Math.max(1, Math.round(cols * pct.w / 100));
       const x = Math.round(cols * pct.x / 100);
-      const h = Math.max(1, Math.round(pct.h));
+      const baseH = Math.max(1, Math.round(pct.h));
       const y = Math.round(pct.y);
-      layout.push({ i: p.id, x, y, w, h, minW: 2, minH: 1 });
+      const minW = pct.minW ? Math.max(1, Math.ceil(pct.minW / colWidthPx)) : 2;
+      const minH = pct.minH ? Math.max(1, Math.ceil(pct.minH / rowPx)) : 1;
+      const w = Math.max(baseW, minW);
+      const h = Math.max(baseH, minH);
+      layout.push({ i: p.id, x, y, w, h, minW, minH });
       maxY = Math.max(maxY, y + h);
     } else {
       layout.push({ i: p.id, x: 0, y: maxY, w: cols, h: 5, minW: 2, minH: 1 });
@@ -142,6 +153,74 @@ export function DraggableCanvas() {
   const [containerWidth, setContainerWidth] = useState(0);
   const [rowHeight, setRowHeight] = useState(0);
   const containerHeight = rowHeight * TOTAL_ROWS;
+
+  /** Below `sm` (768px): drag/resize only after double-tap on panel header. */
+  const [viewportNarrow, setViewportNarrow] = useState(() => window.innerWidth < 768);
+  const [mobileLayoutArmed, setMobileLayoutArmed] = useState(false);
+  const mobileDoubleTapRef = useRef<{ t: number; panelId: string }>({ t: 0, panelId: '' });
+  const mobileArmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const onResize = () => {
+      const n = window.innerWidth < 768;
+      setViewportNarrow(n);
+      if (!n) {
+        setMobileLayoutArmed(false);
+        mobileDoubleTapRef.current = { t: 0, panelId: '' };
+        if (mobileArmTimeoutRef.current) {
+          clearTimeout(mobileArmTimeoutRef.current);
+          mobileArmTimeoutRef.current = null;
+        }
+      }
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !viewportNarrow || containerWidth === 0) return;
+
+    const cancelSel =
+      '.no-drag,input,select,textarea,button,label,option,.cursor-help,[data-no-drag="true"]';
+
+    const onTouchEnd = (e: TouchEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest(cancelSel)) return;
+      const header = target.closest('.panel-header');
+      if (!header || !el.contains(header)) return;
+
+      const wrap = (header as HTMLElement).closest('[data-panel-wrap-id]');
+      const panelId = wrap?.getAttribute('data-panel-wrap-id') || '';
+
+      const now = Date.now();
+      const prev = mobileDoubleTapRef.current;
+      if (panelId && prev.panelId === panelId && now - prev.t < 420) {
+        mobileDoubleTapRef.current = { t: 0, panelId: '' };
+        setMobileLayoutArmed(true);
+        if (mobileArmTimeoutRef.current) clearTimeout(mobileArmTimeoutRef.current);
+        mobileArmTimeoutRef.current = setTimeout(() => {
+          setMobileLayoutArmed(false);
+          mobileArmTimeoutRef.current = null;
+        }, 15000);
+        e.preventDefault();
+      } else {
+        mobileDoubleTapRef.current = { t: now, panelId };
+      }
+    };
+
+    el.addEventListener('touchend', onTouchEnd, { capture: true, passive: false });
+    return () => el.removeEventListener('touchend', onTouchEnd, true);
+  }, [viewportNarrow, containerWidth]);
+
+  const layoutInteractEnabled = !viewportNarrow || mobileLayoutArmed;
+
+  useEffect(() => {
+    return () => {
+      if (mobileArmTimeoutRef.current) clearTimeout(mobileArmTimeoutRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
@@ -188,16 +267,29 @@ export function DraggableCanvas() {
   }, [panels, currentBreakpoint, removedPanelTypes]);
 
   const currentLayout = useMemo((): LayoutItem[] => {
-    const defaults = getDefaultLayout(effectivePanels, currentBreakpoint);
+    const defaults = getDefaultLayout(effectivePanels, currentBreakpoint, containerWidth, rowHeight);
     console.log('[layout-debug] bp:', currentBreakpoint, 'cols:', currentCols, 'width:', containerWidth, 'rowH:', rowHeight);
     console.log('[layout-debug] layout:', defaults.map((l: LayoutItem) =>
       `${l.i.replace('trades-positions-orders','tpo')} x=${l.x} y=${l.y} w=${l.w} h=${l.h}`));
     // If saved layouts exist for this breakpoint, use them (with defaults for any missing panels)
     if (layouts && layouts[currentBreakpoint]) {
       const saved = layouts[currentBreakpoint] as LayoutItem[];
+      const defaultById = new Map(defaults.map((d) => [d.i, d] as const));
+      const savedWithUpdatedMins = saved.map((item) => {
+        const def = defaultById.get(item.i);
+        if (!def) return item;
+        // Keep user position/size, but always refresh min constraints from current defaults.
+        return {
+          ...item,
+          minW: def.minW,
+          minH: def.minH,
+          w: Math.max(item.w, def.minW || 1),
+          h: Math.max(item.h, def.minH || 1),
+        };
+      });
       const savedIds = new Set(saved.map(l => l.i));
       const missing = defaults.filter(d => !savedIds.has(d.i));
-      return missing.length > 0 ? [...saved, ...missing] : saved;
+      return missing.length > 0 ? [...savedWithUpdatedMins, ...missing] : savedWithUpdatedMins;
     }
     return defaults;
   }, [layouts, effectivePanels, currentBreakpoint, currentCols, containerWidth, rowHeight]);
@@ -220,6 +312,39 @@ export function DraggableCanvas() {
     const merged: LayoutsMap = { ...(layouts || {}), [currentBreakpoint]: _layout } as LayoutsMap;
     setLayouts(merged as any);
   }, [setLayouts, layouts, currentBreakpoint]);
+
+  const disarmMobileAfterLayoutGesture = useCallback(() => {
+    if (window.innerWidth >= 768) return;
+    setMobileLayoutArmed(false);
+    if (mobileArmTimeoutRef.current) {
+      clearTimeout(mobileArmTimeoutRef.current);
+      mobileArmTimeoutRef.current = null;
+    }
+  }, []);
+
+  const handleMobileDragStart = useCallback(() => {
+    if (window.innerWidth >= 768) return;
+    if (mobileArmTimeoutRef.current) {
+      clearTimeout(mobileArmTimeoutRef.current);
+      mobileArmTimeoutRef.current = null;
+    }
+  }, []);
+
+  const handleDragStopWrapped = useCallback((
+    layout: LayoutItem[], oldItem: LayoutItem, newItem: LayoutItem,
+    placeholder: LayoutItem, e: MouseEvent, element: HTMLElement
+  ) => {
+    disarmMobileAfterLayoutGesture();
+    handleUserLayoutChange(layout, oldItem, newItem, placeholder, e, element);
+  }, [disarmMobileAfterLayoutGesture, handleUserLayoutChange]);
+
+  const handleResizeStopWrapped = useCallback((
+    layout: LayoutItem[], oldItem: LayoutItem, newItem: LayoutItem,
+    placeholder: LayoutItem, e: MouseEvent, element: HTMLElement
+  ) => {
+    disarmMobileAfterLayoutGesture();
+    handleUserLayoutChange(layout, oldItem, newItem, placeholder, e, element);
+  }, [disarmMobileAfterLayoutGesture, handleUserLayoutChange]);
 
   const handleRemovePanel = useCallback(
     (id: string) => {
@@ -318,9 +443,11 @@ export function DraggableCanvas() {
         cols={currentCols}
         rowHeight={rowHeight}
         onLayoutChange={handleLayoutChange}
-        onDragStop={handleUserLayoutChange}
-        onResizeStop={handleUserLayoutChange}
-        isDraggable={true}
+        onDragStart={handleMobileDragStart}
+        onDragStop={handleDragStopWrapped}
+        onResizeStop={handleResizeStopWrapped}
+        isDraggable={layoutInteractEnabled}
+        isResizable={layoutInteractEnabled}
         draggableHandle=".panel-header"
         draggableCancel=".no-drag,input,select,textarea,button,label,option,.cursor-help,[data-no-drag='true']"
         compactType="vertical"
@@ -329,7 +456,7 @@ export function DraggableCanvas() {
         useCSSTransforms={true}
       >
         {effectivePanels.map((panel) => (
-          <div key={panel.id} className="relative overflow-hidden h-full p-[2px]">
+          <div key={panel.id} data-panel-wrap-id={panel.id} className="relative overflow-hidden h-full p-[2px]">
             {/* Remove button */}
             <button
               onClick={(e) => {

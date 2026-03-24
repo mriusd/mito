@@ -803,7 +803,18 @@ export function Sidebar() {
                       const bp = (parseFloat(bid.price) * 100).toFixed(1);
                       const hl = sidebarUserBidPrices.has(bp) ? 'bg-blue-900/50 font-bold' : '';
                       return (
-                        <div key={i} className={`grid grid-cols-2 gap-1 text-[11px] px-1 hover:bg-green-900/30 cursor-pointer ${hl}`}>
+                        <div
+                          key={i}
+                          className={`grid grid-cols-2 gap-1 text-[11px] px-1 hover:bg-green-900/30 cursor-pointer ${hl}`}
+                          onClick={() => {
+                            setOrderSide('SELL');
+                            setOrderPrice(bp.replace(/\.0$/, ''));
+                            const tokenId = selectedMarket?.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
+                            const pos = positions.find((p) => p.asset === tokenId && p.size > 0);
+                            if (pos) setOrderAmount(String(Math.floor(pos.size * 100) / 100));
+                            else setOrderAmount('');
+                          }}
+                        >
                           <span className="live-ob-bid">{bp}¢</span>
                           <span className="text-right text-gray-400">{parseFloat(bid.size).toFixed(0)}</span>
                         </div>
@@ -819,8 +830,19 @@ export function Sidebar() {
                     {displayAsks.map((ask, i) => {
                       const ap = (parseFloat(ask.price) * 100).toFixed(1);
                       const hl = sidebarUserAskPrices.has(ap) ? 'bg-orange-900/50 font-bold' : '';
+                      const cumulativeAskSize = displayAsks
+                        .slice(0, i + 1)
+                        .reduce((sum, level) => sum + (parseFloat(level.size) || 0), 0);
                       return (
-                        <div key={i} className={`grid grid-cols-2 gap-1 text-[11px] px-1 hover:bg-red-900/30 cursor-pointer ${hl}`}>
+                        <div
+                          key={i}
+                          className={`grid grid-cols-2 gap-1 text-[11px] px-1 hover:bg-red-900/30 cursor-pointer ${hl}`}
+                          onClick={() => {
+                            setOrderSide('BUY');
+                            setOrderPrice(ap.replace(/\.0$/, ''));
+                            setOrderAmount(cumulativeAskSize.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'));
+                          }}
+                        >
                           <span className="live-ob-ask">{ap}¢</span>
                           <span className="text-right text-gray-400">{parseFloat(ask.size).toFixed(0)}</span>
                         </div>

@@ -39,14 +39,14 @@ function App() {
   }, [refreshData, refreshWalletData]);
 
   return (
-    <div className="gradient-bg h-full flex flex-col text-white" style={{ marginLeft: 288 }}>
+    <div className="gradient-bg h-full flex flex-col text-white">
       {/* Header - static at top */}
       <div className="flex-shrink-0 px-3 pt-2 pb-1">
         <Header onRefresh={handleRefresh} />
       </div>
 
       {/* Main content area */}
-      <div className="flex-1 min-h-0 flex">
+      <div className="flex-1 min-h-0 flex" style={{ marginLeft: 288 }}>
         {/* Canvas area */}
         <div className="flex-1 min-h-0 overflow-auto px-2 pb-2">
           {loading ? (

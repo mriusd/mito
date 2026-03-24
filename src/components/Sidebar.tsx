@@ -370,7 +370,7 @@ export function Sidebar() {
 
   const marketName = selectedMarket
     ? shortenMarketName(selectedMarket.question || selectedMarket.groupItemTitle, undefined, undefined, selectedMarket.eventSlug)
-    : 'Mito Dashboard';
+    : '';
 
   const sidebarAsset = selectedMarket ? extractAssetFromMarket(selectedMarket) : '';
   const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
@@ -387,24 +387,26 @@ export function Sidebar() {
     />
     <div className={`right-sidebar ${sidebarOpen ? 'open' : ''}`}>
       {/* Portfolio Summary */}
-      <div className="sidebar-section bg-gray-800/80 py-1">
-        <div className="flex items-center gap-1">
-          <div className="flex-1 truncate">
-            {polymarketUrl ? (
-              <a href={polymarketUrl} target="_blank" rel="noreferrer" className={`${sidebarTitleColor} font-bold text-sm hover:underline`}>
-                {marketName}
-              </a>
-            ) : (
-              <span className={`${sidebarTitleColor} font-bold text-sm`}>{marketName}</span>
+      {selectedMarket && (
+        <div className="sidebar-section bg-gray-800/80 py-1">
+          <div className="flex items-center gap-1">
+            <div className="flex-1 truncate">
+              {polymarketUrl ? (
+                <a href={polymarketUrl} target="_blank" rel="noreferrer" className={`${sidebarTitleColor} font-bold text-sm hover:underline`}>
+                  {marketName}
+                </a>
+              ) : (
+                <span className={`${sidebarTitleColor} font-bold text-sm`}>{marketName}</span>
+              )}
+            </div>
+            {upDownCountdown && (
+              <span className={`text-xs font-bold flex-shrink-0 flex items-center gap-0.5 ${upDownCountdown === 'Expired' ? 'text-red-400' : upDownRemaining < 60000 ? 'text-red-400' : upDownRemaining < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>
+                <Clock size={12} /> {upDownCountdown}
+              </span>
             )}
           </div>
-          {upDownCountdown && (
-            <span className={`text-xs font-bold flex-shrink-0 flex items-center gap-0.5 ${upDownCountdown === 'Expired' ? 'text-red-400' : upDownRemaining < 60000 ? 'text-red-400' : upDownRemaining < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>
-              <Clock size={12} /> {upDownCountdown}
-            </span>
-          )}
         </div>
-      </div>
+      )}
 
       {!selectedMarket && (
         <div className="sidebar-section px-3 py-4 text-xs text-gray-300 leading-relaxed">

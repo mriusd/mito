@@ -245,12 +245,14 @@ input[type="range"].vol-slider::-moz-range-thumb {
 
 .right-sidebar {
   position: fixed;
-  top: 0;
+  top: 40px;
   left: 0;
   width: 288px;
-  height: 100vh;
+  height: calc(100vh - 40px);
   background: #1f2937;
   border-right: 1px solid #374151;
+  border-top: 1px solid #374151;
+  border-top-right-radius: 8px;
   overflow-y: auto;
   z-index: 100;
   transform: translateX(-100%);

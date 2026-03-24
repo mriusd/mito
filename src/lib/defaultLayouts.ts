@@ -42,9 +42,10 @@ const xxlTall: Record<string, LayoutRect> = {
   'asset-ETH':               { x: 50,  y: 0,  w: 50,  h: 25 },
   'asset-SOL':               { x: 0,   y: 25, w: 50,  h: 25 },
   'asset-XRP':               { x: 50,  y: 25, w: 50,  h: 25 },
-  'trades-positions-orders': { x: 0,   y: 50, w: 33,  h: 50 },
+  'pnl':                     { x: 0,   y: 50, w: 33,  h: 15 },
+  'trades-positions-orders': { x: 0,   y: 65, w: 33,  h: 35 },
   'updown-overview':         { x: 33,  y: 50, w: 33,  h: 15 },
-  'signals':                 { x: 33,  y: 75, w: 33,  h: 40},
+  'signals':                 { x: 33,  y: 65, w: 33,  h: 35},
   'chat':                    { x: 66,  y: 50, w: 34,  h: 50 },
 };
 

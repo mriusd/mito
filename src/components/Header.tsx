@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAccount } from 'wagmi';
-import { RefreshCw, Clock, Settings } from 'lucide-react';
+import { RefreshCw, Clock, Settings, Plus } from 'lucide-react';
 import logoSvg from '../assets/logo.svg';
 import { HelpTooltip } from './HelpTooltip';
 import { WalletButton } from './WalletButton';
@@ -122,21 +122,23 @@ export function Header({ onRefresh }: HeaderProps) {
         <div className="flex-1" />
 
         {/* B-S Time Offset Slider */}
-        <div className="flex items-center gap-1 bg-gray-800/50 rounded px-2 h-[28px]">
+        <div className="flex items-center gap-1 bg-gray-800/50 rounded px-2 h-[28px] min-w-0 w-[min(34vw,260px)]">
           <Clock className={`w-3.5 h-3.5 ${bsTimeOffsetHours > 0 ? 'text-yellow-400' : 'text-gray-500'}`} />
           <span className={`text-[9px] ${bsTimeOffsetHours > 0 ? 'text-yellow-400 font-bold' : 'text-gray-500'}`}>
             +{bsTimeOffsetHours}h
           </span>
           <HelpTooltip text={"Time Machine — slide to see how B-S probability values will change in the future.\n\nSince Black-Scholes probabilities depend on the time remaining until expiration, this slider lets you fast-forward by up to 72 hours. As time to expiry shrinks, probabilities shift — markets near the strike become more sensitive and move toward 0 or 100.\n\nUse this to preview how your positions and potential entries will look as expiry approaches, helping you plan trades ahead of time."} />
-          <input
-            type="range"
-            min="0"
-            max="72"
-            value={bsTimeOffsetHours}
-            step="1"
-            className="vol-slider w-48"
-            onChange={(e) => setBsTimeOffsetHours(parseInt(e.target.value))}
-          />
+          <div className="min-w-0 flex-1">
+            <input
+              type="range"
+              min="0"
+              max="72"
+              value={bsTimeOffsetHours}
+              step="1"
+              className="vol-slider w-full min-w-0"
+              onChange={(e) => setBsTimeOffsetHours(parseInt(e.target.value))}
+            />
+          </div>
         </div>
 
         {/* VWAP Candle Count + Correction */}
@@ -183,9 +185,10 @@ export function Header({ onRefresh }: HeaderProps) {
         <div className="relative" ref={addMenuRef}>
           <button
             onClick={() => setShowAddMenu(!showAddMenu)}
-            className="bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded px-2 text-xs font-medium transition border border-gray-600 h-[28px]"
+            className="bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded px-2 text-xs font-medium transition border border-gray-600 h-[28px] whitespace-nowrap flex items-center gap-1"
           >
-            Add Panel
+            <Plus className="w-3 h-3" />
+            Panel
           </button>
           {showAddMenu && (
             <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[180px] z-50">

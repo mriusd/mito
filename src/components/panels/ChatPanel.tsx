@@ -38,6 +38,16 @@ function timeAgo(ms: number): string {
   return `${Math.floor(diff / 86_400_000)}d`;
 }
 
+const FIFTEEN_MIN_MS = 15 * 60_000;
+const SIXTY_MIN_MS = 60 * 60_000;
+
+function timeElapsedClass(createdAtMs: number, nowMs: number): string {
+  const age = nowMs - createdAtMs;
+  if (age < FIFTEEN_MIN_MS) return 'text-green-400';
+  if (age < SIXTY_MIN_MS) return 'text-yellow-400';
+  return 'text-gray-600';
+}
+
 function stripTrailingUrlPunct(url: string): string {
   let u = url;
   while (u.length > 0 && /[.,;:!?)\]}>\u201d'"»]$/.test(u)) u = u.slice(0, -1);
@@ -87,6 +97,8 @@ export function ChatPanel() {
   const [sending, setSending] = useState(false);
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(true);
+  /** Bumps on an interval so time-ago labels and age colors stay fresh. */
+  const [timeNow, setTimeNow] = useState(() => Date.now());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -118,6 +130,11 @@ export function ChatPanel() {
     pollRef.current = setInterval(loadMessages, 5000);
     return () => clearInterval(pollRef.current);
   }, [loadMessages]);
+
+  useEffect(() => {
+    const id = setInterval(() => setTimeNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Auto-scroll to bottom on new messages (within container only)
   useEffect(() => {
@@ -193,7 +210,9 @@ export function ChatPanel() {
                     {msg.title.trim()}
                   </span>
                 )}
-                <span className="text-gray-600 text-[9px]">{timeAgo(msg.createdAt)}</span>
+                <span className={`text-[9px] ${timeElapsedClass(msg.createdAt, timeNow)}`}>
+                  {timeAgo(msg.createdAt)}
+                </span>
               </div>
               <div
                 className={`rounded px-1.5 py-0.5 max-w-[90%] break-words ${

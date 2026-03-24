@@ -434,6 +434,8 @@ export interface ChatMessage {
   nickname: string;
   message: string;
   createdAt: number;
+  /** Optional badge label (e.g. role); shown next to username when non-empty. */
+  title?: string;
 }
 
 export async function fetchChatMessages(limit = 100, before?: number): Promise<ChatMessage[]> {

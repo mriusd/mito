@@ -135,7 +135,7 @@ export function ChatPanel() {
           const displayName = msg.nickname || shortAddr(msg.address);
           return (
             <div key={msg.id} className="flex flex-col items-start">
-              <div className="flex items-baseline gap-1 max-w-[90%]">
+              <div className="flex items-baseline gap-1 max-w-[90%] flex-wrap">
                 <span
                   className={`font-medium text-[10px] cursor-pointer hover:underline ${isMine ? 'text-blue-400' : 'text-yellow-400'}`}
                   title={msg.address}
@@ -143,6 +143,14 @@ export function ChatPanel() {
                 >
                   {displayName}
                 </span>
+                {typeof msg.title === 'string' && msg.title.trim() !== '' && (
+                  <span
+                    className="inline-flex items-center rounded px-1 py-px text-[8px] font-semibold uppercase tracking-wide bg-purple-900/55 text-purple-200 border border-purple-500/40 shrink-0"
+                    title={msg.title}
+                  >
+                    {msg.title.trim()}
+                  </span>
+                )}
                 <span className="text-gray-600 text-[9px]">{timeAgo(msg.createdAt)}</span>
               </div>
               <div

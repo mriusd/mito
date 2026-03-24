@@ -257,6 +257,17 @@ export function Sidebar() {
     return a;
   })();
 
+  /** T-EXP: if the market expires sooner than the entered lead time (minutes), show 0 — setting does not apply. */
+  const orderExpiryInputDisplay = (() => {
+    const expMinutes = parseInt(orderExpiry, 10);
+    if (!selectedMarket?.endDate || Number.isNaN(expMinutes)) return orderExpiry;
+    const endMs = new Date(selectedMarket.endDate).getTime();
+    if (Number.isNaN(endMs)) return orderExpiry;
+    const minutesToEnd = (endMs - Date.now()) / 60000;
+    if (minutesToEnd < expMinutes) return '0';
+    return orderExpiry;
+  })();
+
   const handleSubmitOrder = async () => {
     if (!selectedMarket) return;
     const tokenId = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1];
@@ -1069,7 +1080,7 @@ export function Sidebar() {
                 </label>
                 <input
                   type="number"
-                  value={orderExpiry}
+                  value={orderExpiryInputDisplay}
                   onChange={(e) => {
                     setOrderExpiry(e.target.value);
                     localStorage.setItem('polymarket-order-expiry', e.target.value);

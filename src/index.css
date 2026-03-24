@@ -18,6 +18,28 @@ html, body, #root {
   padding: 0;
 }
 
+/* Touch browsers: stop double-tap zoom and “select whole page” / smart selection on iOS */
+@media (pointer: coarse) {
+  html,
+  body,
+  #root {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  input,
+  textarea,
+  select,
+  [contenteditable='true'] {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+}
+
 /* Prevent iOS Safari auto-zoom on input/textarea focus (font-size < 16px). Omit `select`
    so dropdowns keep the same compact sizes as desktop (Tailwind text-* on each select). */
 @supports (-webkit-touch-callout: none) {
@@ -317,15 +339,18 @@ input[type="range"].vol-slider::-moz-range-thumb {
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 18px;
+    /* ~44px touch target; was 18px and hard to grab */
+    height: 44px;
+    box-sizing: border-box;
     background: rgba(31, 41, 55, 0.98);
     touch-action: none;
   }
   .mobile-sidebar-drag-handle {
-    width: 42px;
-    height: 4px;
+    width: 48px;
+    height: 6px;
     border-radius: 9999px;
     background: #6b7280;
+    flex-shrink: 0;
   }
 }
 

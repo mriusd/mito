@@ -24,6 +24,52 @@ function parsePriceBounds(priceStr: string): { low: number; high: number } {
 }
 
 /**
+ * Weekly/monthly hit markets from Gamma often put only the strike in groupItemTitle (e.g. "$84,000")
+ * with no ↑/↓. Direction comes from the question ("reach $X" vs "dip to $X"). Without that we used to
+ * always treat strikes as ">" and mis-label sides, so BS and filters rarely produced hit signals.
+ */
+function hitStrikeMetaForBs(m: Market): { bsPriceStr: string; isReachHit: boolean; isDipHit: boolean } | null {
+  const q = (m.question || '').trim();
+  const reach =
+    q.match(/reach\s+\$?([\d,.]+[kK]?)/i)
+    || q.match(/\bhit\s+\$?([\d,.]+[kK]?)/i);
+  const dip = q.match(/dip\s+to\s+\$?([\d,.]+[kK]?)/i);
+  const norm = (cap: string) => cap.replace(/,/g, '').trim();
+  if (reach && !dip) {
+    return { bsPriceStr: '>' + norm(reach[1]), isReachHit: true, isDipHit: false };
+  }
+  if (dip && !reach) {
+    return { bsPriceStr: '<' + norm(dip[1]), isReachHit: false, isDipHit: true };
+  }
+
+  const priceStr = m.groupItemTitle || '';
+  if (!priceStr) return null;
+  const raw = priceStr.replace(/[\$,]/g, '').replace(/\s+/g, '');
+  const hasUp = raw.includes('↑');
+  const hasDown = raw.includes('↓');
+  if (hasUp && !hasDown) {
+    const num = raw.replace(/[↑↓]/g, '');
+    if (num) return { bsPriceStr: '>' + num, isReachHit: true, isDipHit: false };
+  }
+  if (hasDown && !hasUp) {
+    const num = raw.replace(/[↑↓]/g, '');
+    if (num) return { bsPriceStr: '<' + num, isReachHit: false, isDipHit: true };
+  }
+
+  const cleaned = priceStr.replace(/[\$,]/g, '').replace(/(.+)↑/, '>$1').replace(/(.+)↓/, '<$1').trim();
+  const bsPriceStr =
+    cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-') ? cleaned : '>' + cleaned;
+  const isDipHit = cleaned.startsWith('<');
+  return { bsPriceStr, isReachHit: !isDipHit, isDipHit };
+}
+
+function hitDisplayStrike(groupTitle: string, bsPriceStr: string, isReachHit: boolean): string {
+  if (groupTitle) return groupTitle;
+  const n = bsPriceStr.replace(/^[<>]/, '');
+  return isReachHit ? `${n}↑` : `${n}↓`;
+}
+
+/**
  * Computes signals and arbs from market data + BS probabilities
  * and pushes them into the store. Runs whenever market data or prices change.
  */
@@ -97,7 +143,7 @@ export function useSignalsAndArbs() {
 
       for (const { m, tableType } of allMarkets) {
         const priceStr = m.groupItemTitle || '';
-        if (!priceStr) continue;
+        if (!priceStr && tableType !== 'hit') continue;
         const endDate = m.endDate || '';
         if (!endDate) continue;
         if (m.closed || new Date(endDate).getTime() < now) continue;
@@ -106,10 +152,21 @@ export function useSignalsAndArbs() {
         const yesTokenId = tokenIds[0] || '';
         const noTokenId = tokenIds[1] || '';
 
-        // Normalize price string for BS calculation (↑ → >, ↓ → <)
-        const cleaned = priceStr.replace(/[\$,]/g, '').replace(/(.+)↑/, '>$1').replace(/(.+)↓/, '<$1').trim();
-        const bsPriceStr = (cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-'))
-          ? cleaned : '>' + cleaned;
+        let bsPriceStr: string;
+        let hitIsReach = false;
+        let hitIsDip = false;
+        if (tableType === 'hit') {
+          const hitMeta = hitStrikeMetaForBs(m);
+          if (!hitMeta) continue;
+          bsPriceStr = hitMeta.bsPriceStr;
+          hitIsReach = hitMeta.isReachHit;
+          hitIsDip = hitMeta.isDipHit;
+        } else {
+          if (!priceStr) continue;
+          const cleaned = priceStr.replace(/[\$,]/g, '').replace(/(.+)↑/, '>$1').replace(/(.+)↓/, '<$1').trim();
+          bsPriceStr = (cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-'))
+            ? cleaned : '>' + cleaned;
+        }
 
         // BS at VWAP/spot price (matches BsFlower center value)
         const bsYes = getMarketProbability(bsPriceStr, bsLivePrice || livePrice, endDate, sigma, bsTimeOffsetHours);
@@ -179,10 +236,10 @@ export function useSignalsAndArbs() {
           const yesBestAskIsMyOrder = yesMyBestSell < Infinity && m.bestAsk != null && Math.abs(yesMyBestSell - m.bestAsk) < 0.0001;
           const yesSkipSignal = signalMakerMode ? yesBestBidIsMyOrder : yesBestAskIsMyOrder;
           if (!yesSkipSignal) {
-            const bounds = parsePriceBounds(priceStr);
+            const bounds = parsePriceBounds(priceStr || m.groupItemTitle || '');
             let isBullish: boolean;
             if (tableType === 'hit') {
-              isBullish = priceStr.includes('↑');
+              isBullish = hitIsReach;
             } else if (tableType === 'above' || priceStr.includes('>')) {
               isBullish = true;
             } else if (tableType === 'price' && livePrice > 0) {
@@ -191,7 +248,8 @@ export function useSignalsAndArbs() {
             } else {
               isBullish = false;
             }
-            const displayPrice = tableType === 'hit' ? priceStr
+            const displayPrice = tableType === 'hit'
+              ? hitDisplayStrike(priceStr, bsPriceStr, hitIsReach)
               : (tableType === 'above' && !priceStr.includes('>') && !priceStr.includes('<'))
               ? '>' + priceStr : priceStr;
             // In maker mode: YES orig -> flip type, show NO side data
@@ -224,17 +282,18 @@ export function useSignalsAndArbs() {
           const noBestAskIsMyOrder = noMyBestSell < Infinity && noBestAskDecimal > 0 && Math.abs(noMyBestSell - noBestAskDecimal) < 0.0001;
           const noSkipSignal = signalMakerMode ? noBestBidIsMyOrder : noBestAskIsMyOrder;
           if (!noSkipSignal) {
-            const bounds = parsePriceBounds(priceStr);
+            const bounds = parsePriceBounds(priceStr || m.groupItemTitle || '');
             let isBullish: boolean;
             if (tableType === 'hit') {
-              isBullish = priceStr.includes('↓');
+              isBullish = hitIsDip;
             } else if (tableType === 'price' && livePrice > 0) {
               const mid = (bounds.low + bounds.high) / 2;
               isBullish = livePrice >= mid;
             } else {
               isBullish = priceStr.includes('<');
             }
-            const displayPrice = tableType === 'hit' ? priceStr
+            const displayPrice = tableType === 'hit'
+              ? hitDisplayStrike(priceStr, bsPriceStr, hitIsReach)
               : (tableType === 'above' && !priceStr.includes('>') && !priceStr.includes('<'))
               ? '>' + priceStr : priceStr;
             // In maker mode: NO orig -> show YES side data

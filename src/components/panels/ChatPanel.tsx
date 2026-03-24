@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { useAccount } from 'wagmi';
 import { MessageCircle, Send } from 'lucide-react';
 import { fetchChatMessages, postChatMessage } from '../../api';
@@ -36,6 +36,48 @@ function timeAgo(ms: number): string {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
   return `${Math.floor(diff / 86_400_000)}d`;
+}
+
+function stripTrailingUrlPunct(url: string): string {
+  let u = url;
+  while (u.length > 0 && /[.,;:!?)\]}>\u201d'"»]$/.test(u)) u = u.slice(0, -1);
+  return u;
+}
+
+/** Turn http(s) URLs in plain text into external links (safe protocol only). */
+function linkifyMessage(text: string, linkClassName: string): ReactNode {
+  if (!text) return null;
+  const parts = text.split(/(https?:\/\/[^\s<>'"]+)/gi);
+  return parts.map((part, i) => {
+    if (!part) return null;
+    if (!/^https?:\/\//i.test(part)) {
+      return <span key={i}>{part}</span>;
+    }
+    const href = stripTrailingUrlPunct(part);
+    const tail = part.slice(href.length);
+    try {
+      const u = new URL(href);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        return <span key={i}>{part}</span>;
+      }
+    } catch {
+      return <span key={i}>{part}</span>;
+    }
+    return (
+      <span key={i}>
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`underline break-all hover:opacity-90 ${linkClassName}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {href}
+        </a>
+        {tail}
+      </span>
+    );
+  });
 }
 
 export function ChatPanel() {
@@ -145,7 +187,7 @@ export function ChatPanel() {
                 </span>
                 {typeof msg.title === 'string' && msg.title.trim() !== '' && (
                   <span
-                    className="inline-flex items-center rounded px-1 py-px text-[8px] font-semibold uppercase tracking-wide bg-purple-900/55 text-purple-200 border border-purple-500/40 shrink-0"
+                    className="inline-flex items-center rounded-sm px-1 py-0 text-[7px] font-medium uppercase tracking-wide leading-none bg-purple-900/55 text-purple-200 border border-purple-500/40 shrink-0"
                     title={msg.title}
                   >
                     {msg.title.trim()}
@@ -158,7 +200,10 @@ export function ChatPanel() {
                   isMine ? 'bg-blue-900/40 text-blue-100' : 'bg-gray-700/60 text-gray-200'
                 }`}
               >
-                {msg.message}
+                {linkifyMessage(
+                  msg.message,
+                  isMine ? 'text-sky-300' : 'text-sky-400'
+                )}
               </div>
             </div>
           );

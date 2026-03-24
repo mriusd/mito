@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useEffect, useState } from 'react';
+import { useCallback, useMemo, useRef, useEffect, useLayoutEffect, useState } from 'react';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { ReactGridLayout as RGLGrid } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
@@ -266,7 +266,8 @@ export function DraggableCanvas() {
     return extra.length > 0 ? [...panels, ...extra] : panels;
   }, [panels, currentBreakpoint, removedPanelTypes]);
 
-  const currentLayout = useMemo((): LayoutItem[] => {
+  /** Layout derived from persisted store + defaults (min constraints). Not updated during drag/resize. */
+  const computedLayout = useMemo((): LayoutItem[] => {
     const defaults = getDefaultLayout(effectivePanels, currentBreakpoint, containerWidth, rowHeight);
     console.log('[layout-debug] bp:', currentBreakpoint, 'cols:', currentCols, 'width:', containerWidth, 'rowH:', rowHeight);
     console.log('[layout-debug] layout:', defaults.map((l: LayoutItem) =>
@@ -294,12 +295,23 @@ export function DraggableCanvas() {
     return defaults;
   }, [layouts, effectivePanels, currentBreakpoint, currentCols, containerWidth, rowHeight]);
 
-  // Track the latest layout from react-grid-layout (fires on every render)
+  /**
+   * RGL is controlled via `layout={gridLayout}`. The store is only written on drag/resize stop.
+   * We must mirror every onLayoutChange into React state; otherwise any re-render reapplies the
+   * stale store-driven layout and the panel snaps back to its previous size.
+   */
+  const [gridLayout, setGridLayout] = useState<LayoutItem[]>(computedLayout);
+  useLayoutEffect(() => {
+    setGridLayout(computedLayout);
+  }, [computedLayout]);
+
+  // Track the latest layout from react-grid-layout (fires during drag/resize)
   const handleLayoutChange = useCallback(
     (newLayout: LayoutItem[]) => {
       console.log('[rgl-output]', newLayout.map((l: LayoutItem) =>
         `${l.i.replace('trades-positions-orders','tpo')} x=${l.x} y=${l.y} w=${l.w} h=${l.h}`));
       currentLayoutRef.current = { [currentBreakpoint]: newLayout } as unknown as LayoutsMap;
+      setGridLayout(newLayout);
     },
     [currentBreakpoint]
   );
@@ -439,7 +451,7 @@ export function DraggableCanvas() {
       {(containerWidth === 0 || rowHeight === 0) ? null : <GridLayout
         className="layout"
         width={containerWidth}
-        layout={currentLayout}
+        layout={gridLayout}
         cols={currentCols}
         rowHeight={rowHeight}
         onLayoutChange={handleLayoutChange}

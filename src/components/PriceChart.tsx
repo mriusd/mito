@@ -74,13 +74,23 @@ function drawCandleChart(ctx: CanvasRenderingContext2D, s: ChartState) {
     ctx.fillText(p.toFixed(1) + '¢', s.chartLeft - 3, y);
   }
 
-  // Time labels
+  // Time labels — max 3 ticks (start / mid / end) so labels don’t overlap in narrow sidebar
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  for (let i = 0; i <= 3; i++) {
-    const t = s.minT + s.rangeT * (i / 3);
+  const timeTicks = 3;
+  const spanDays = s.rangeT / 86400000;
+  for (let i = 0; i < timeTicks; i++) {
+    const t = timeTicks <= 1 ? s.minT : s.minT + s.rangeT * (i / (timeTicks - 1));
     const d = new Date(t);
-    ctx.fillText(`${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`, s.toX(t), s.chartBot + 3);
+    let label: string;
+    if (spanDays < 1.5) {
+      label = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+    } else if (spanDays < 14) {
+      label = `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+    } else {
+      label = `${d.getMonth() + 1}/${d.getDate()}`;
+    }
+    ctx.fillText(label, s.toX(t), s.chartBot + 3);
   }
 
   // Draw candles

@@ -110,7 +110,7 @@ const PANEL_MIN_PIXELS: Record<string, { minW: number; minH: number }> = {
   'asset-ETH': { minW: 320, minH: 220 },
   'asset-SOL': { minW: 320, minH: 220 },
   'asset-XRP': { minW: 320, minH: 220 },
-  'trades-positions-orders': { minW: 300, minH: 250 },
+  'trades-positions-orders': { minW: 300, minH: 150 },
   'updown-overview': { minW: 300, minH: 200 },
   'signals': { minW: 300, minH: 150 },
   'chat': { minW: 280, minH: 180 },

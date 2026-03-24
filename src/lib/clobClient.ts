@@ -95,7 +95,8 @@ export async function sendCredsToBackend(): Promise<boolean> {
   const signer = await getEthersSigner();
   const address = (await signer.getAddress()).toLowerCase();
   // Resolve proxy wallet
-  const resp = await fetch(`https://gamma-api.polymarket.com/users?address=${address}`);
+  // Gamma API is CORS-restricted in browser contexts; always use backend proxy.
+  const resp = await fetch(`${API_BASE}/api/polyproxy/gamma/users?address=${address}`);
   const users = await resp.json();
   const proxyWallet = (users?.[0]?.proxyWallet || address).toLowerCase();
   // Derive creds (triggers wallet signature popup)

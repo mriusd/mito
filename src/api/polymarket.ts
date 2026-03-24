@@ -54,9 +54,8 @@ export async function fetchProxyWallet(eoaAddress: string): Promise<string | nul
   const key = eoaAddress.toLowerCase();
   if (proxyWalletCache[key]) return proxyWalletCache[key];
   try {
-    const url = isFeDev
-      ? `${API_BASE}/api/polyproxy/gamma/public-profile?address=${eoaAddress}`
-      : `https://gamma-api.polymarket.com/public-profile?address=${eoaAddress}`;
+    // Gamma API is CORS-restricted in browser contexts; always use backend proxy.
+    const url = `${API_BASE}/api/polyproxy/gamma/public-profile?address=${eoaAddress}`;
     const resp = await fetch(url);
     if (!resp.ok) return null;
     const data = await resp.json();

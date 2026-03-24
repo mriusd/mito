@@ -3,7 +3,7 @@ import { useAccount } from 'wagmi';
 import { MessageCircle, Send } from 'lucide-react';
 import { fetchChatMessages, postChatMessage } from '../../api';
 import type { ChatMessage } from '../../api';
-import { isFeDev, API_BASE } from '../../lib/env';
+import { API_BASE } from '../../lib/env';
 
 // Cache nickname from Polymarket profile
 const nicknameCache: Record<string, string> = {};
@@ -12,9 +12,8 @@ async function fetchPolymarketNickname(address: string): Promise<string> {
   const key = address.toLowerCase();
   if (nicknameCache[key]) return nicknameCache[key];
   try {
-    const url = isFeDev
-      ? `${API_BASE}/api/polyproxy/gamma/public-profile?address=${address}`
-      : `https://gamma-api.polymarket.com/public-profile?address=${address}`;
+    // Gamma API is CORS-restricted in browser contexts; always use backend proxy.
+    const url = `${API_BASE}/api/polyproxy/gamma/public-profile?address=${address}`;
     const resp = await fetch(url);
     if (!resp.ok) return '';
     const data = await resp.json();

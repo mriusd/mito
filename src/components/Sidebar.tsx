@@ -370,11 +370,11 @@ export function Sidebar() {
 
   const marketName = selectedMarket
     ? shortenMarketName(selectedMarket.question || selectedMarket.groupItemTitle, undefined, undefined, selectedMarket.eventSlug)
-    : 'Click a market cell';
+    : 'Mito Dashboard';
 
   const sidebarAsset = selectedMarket ? extractAssetFromMarket(selectedMarket) : '';
   const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
-  const sidebarTitleColor = sidebarAsset ? (assetColorMap[sidebarAsset] || 'text-gray-500') : 'text-gray-500';
+  const sidebarTitleColor = selectedMarket ? (assetColorMap[sidebarAsset] || 'text-gray-500') : 'text-white';
   const polymarketUrl = selectedMarket?.eventSlug ? `https://polymarket.com/event/${selectedMarket.eventSlug}` : null;
 
   return (
@@ -407,38 +407,116 @@ export function Sidebar() {
       </div>
 
       {!selectedMarket && (
-        <div className="sidebar-section px-3 py-4 text-xs text-gray-300 leading-relaxed space-y-3">
-          <div>
-            <span className="text-white font-bold text-sm">Mito Dashboard</span>
-            <p className="text-gray-400 mt-1">Pro trading terminal for Polymarket crypto markets.</p>
+        <div className="sidebar-section px-3 py-4 text-xs text-gray-300 leading-relaxed">
+          <p className="text-gray-400 mb-3">Professional dashboard for Polymarket crypto markets.</p>
+
+          <div className="space-y-2.5">
+            <div className="rounded-lg bg-gray-900/40 border border-gray-700/60 px-2.5 py-2">
+              <div className="flex items-center gap-2">
+                <svg width="40" height="40" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <rect x="8" y="10" width="28" height="24" rx="6" stroke="#60A5FA" strokeWidth="1.5"/>
+                  <path d="M12.5 28.5L18.5 22.5L23 26L30.5 18.5" stroke="#38BDF8" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                  <circle cx="18.5" cy="22.5" r="2.2" fill="#38BDF8"/>
+                  <circle cx="23" cy="26" r="2.2" fill="#22C55E"/>
+                  <circle cx="30.5" cy="18.5" r="2.2" fill="#F59E0B"/>
+                  <path d="M12 14L14.5 11.5L17 14" stroke="#93C5FD" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <div className="text-white font-bold">1. Birdseye crypto markets</div>
+              </div>
+              <div className="min-w-0 mt-1">
+                <div className="text-gray-400 mt-0.5">Scan the full grid of Polymarket crypto markets at a glance, with active orders and positions visible directly in the grid.</div>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-gray-900/40 border border-gray-700/60 px-2.5 py-2">
+              <div className="flex items-center gap-2">
+                <svg width="40" height="40" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <rect x="8" y="10" width="28" height="24" rx="6" stroke="#FBBF24" strokeWidth="1.5"/>
+                  <path d="M14 30C18 26 20 26 24 20C27 16 30 16 34 13" stroke="#F59E0B" strokeWidth="1.8" strokeLinecap="round"/>
+                  <path d="M14 20H18" stroke="#FDE68A" strokeWidth="1.6" strokeLinecap="round"/>
+                  <path d="M14 24H21" stroke="#FDE68A" strokeWidth="1.6" strokeLinecap="round"/>
+                  <path d="M14 28H22" stroke="#FDE68A" strokeWidth="1.6" strokeLinecap="round"/>
+                  <text x="16" y="16" fontSize="8" fill="#FBBF24" fontFamily="monospace">BS</text>
+                </svg>
+                <div className="text-white font-bold">2. Black-Scholes probability</div>
+              </div>
+              <div className="min-w-0 mt-1">
+                <div className="text-gray-400 mt-0.5">Theoretical fair probability for each market, computed from volatility and time.</div>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-gray-900/40 border border-gray-700/60 px-2.5 py-2">
+              <div className="flex items-center gap-2">
+                <svg width="40" height="40" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <rect x="10" y="12" width="24" height="20" rx="5" stroke="#34D399" strokeWidth="1.5"/>
+                  <path d="M15 18H29" stroke="#6EE7B7" strokeWidth="1.6" strokeLinecap="round"/>
+                  <path d="M15 22H26" stroke="#6EE7B7" strokeWidth="1.6" strokeLinecap="round"/>
+                  <path d="M15 26H22" stroke="#6EE7B7" strokeWidth="1.6" strokeLinecap="round"/>
+                  <circle cx="30.5" cy="26.5" r="6" stroke="#10B981" strokeWidth="1.5" opacity="0.9"/>
+                  <path d="M30.5 23.8V26.9L33.2 28.2" stroke="#10B981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <div className="text-white font-bold">3. Place/Edit orders</div>
+              </div>
+              <div className="min-w-0 mt-1">
+                <div className="text-gray-400 mt-0.5">Fast order UI with expiration and replace flows once you open a market.</div>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-gray-900/40 border border-gray-700/60 px-2.5 py-2">
+              <div className="flex items-center gap-2">
+                <svg width="40" height="40" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <rect x="8" y="10" width="28" height="24" rx="6" stroke="#60A5FA" strokeWidth="1.5" opacity="0.9"/>
+                  <circle cx="22" cy="23" r="8" stroke="#A78BFA" strokeWidth="1.6"/>
+                  <path d="M18 23L22 19L26 23L22 27L18 23Z" fill="#A78BFA" opacity="0.25"/>
+                  <path d="M30 30L35 35" stroke="#A78BFA" strokeWidth="1.8" strokeLinecap="round"/>
+                  <path d="M19 24L21.5 22L22.8 18.8" stroke="#FCA5A5" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <div className="text-white font-bold">4. Underpriced signals</div>
+              </div>
+              <div className="min-w-0 mt-1">
+                <div className="text-gray-400 mt-0.5">Highlights where B-S fair probability diverges from market price.</div>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-gray-900/40 border border-gray-700/60 px-2.5 py-2">
+              <div className="flex items-center gap-2">
+                <svg width="40" height="40" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <rect x="8" y="10" width="28" height="24" rx="6" stroke="#FB7185" strokeWidth="1.5" opacity="0.95"/>
+                  <path d="M14 20H22" stroke="#F472B6" strokeWidth="1.7" strokeLinecap="round"/>
+                  <path d="M22 20C24.5 18 24.5 26 22 28C19.5 30 19.5 22 22 20Z" fill="#F472B6" opacity="0.2"/>
+                  <path d="M24 17L30 13" stroke="#FB7185" strokeWidth="1.7" strokeLinecap="round"/>
+                  <path d="M24 32L30 28" stroke="#FB7185" strokeWidth="1.7" strokeLinecap="round"/>
+                  <path d="M28 18V26" stroke="#F472B6" strokeWidth="1.5" strokeLinecap="round" opacity="0.9"/>
+                  <text x="26" y="24" fontSize="7" fill="#FB7185" fontFamily="monospace">TM</text>
+                </svg>
+                <div className="text-white font-bold">5. Range & time-machine modeling</div>
+              </div>
+              <div className="min-w-0 mt-1">
+                <div className="text-gray-400 mt-0.5">Model probability across ranges and fast-forward expiry with the Time Machine.</div>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-gray-900/40 border border-gray-700/60 px-2.5 py-2">
+              <div className="flex items-center gap-2">
+                <svg width="40" height="40" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <rect x="12" y="12" width="20" height="16" rx="4" stroke="#22C55E" strokeWidth="1.5"/>
+                  <rect x="18" y="18" width="20" height="16" rx="4" stroke="#60A5FA" strokeWidth="1.5" opacity="0.95"/>
+                  <path d="M16 16L18 14" stroke="#22C55E" strokeWidth="1.6" strokeLinecap="round"/>
+                  <path d="M16 19H19" stroke="#22C55E" strokeWidth="1.6" strokeLinecap="round"/>
+                  <path d="M24 24H27" stroke="#60A5FA" strokeWidth="1.6" strokeLinecap="round"/>
+                  <path d="M28 22L30 20" stroke="#60A5FA" strokeWidth="1.6" strokeLinecap="round"/>
+                  <path d="M34 22L36 24" stroke="#93C5FD" strokeWidth="1.5" strokeLinecap="round"/>
+                  <circle cx="15" cy="28" r="1.4" fill="#22C55E"/>
+                </svg>
+                <div className="text-white font-bold">6. Resizable movable dashboard</div>
+              </div>
+              <div className="min-w-0 mt-1">
+                <div className="text-gray-400 mt-0.5">Panels are draggable in the main terminal. Configure the layout as you trade.</div>
+              </div>
+            </div>
           </div>
-          <div>
-            <span className="text-yellow-400 font-bold">Black-Scholes (B-S)</span>
-            <p className="text-gray-400 mt-0.5">Each market cell shows the theoretical fair probability calculated using the Black-Scholes model. The B-S value represents the likelihood that the asset price will satisfy the market condition (above a strike, within a range, or hitting a target) by expiry. When B-S diverges from the market price, it signals a potential trading opportunity.</p>
-          </div>
-          <div>
-            <span className="text-cyan-400 font-bold">Price Ranges (BS1 / BS2)</span>
-            <p className="text-gray-400 mt-0.5">Optionally set up to two price ranges per asset to see how underlying price moves translate into B-S probabilities. BS1 (cyan) uses a tighter range, BS2 (pink) uses a wider range. These help anticipate how markets will reprice before the orderbook reflects the move.</p>
-          </div>
-          <div>
-            <span className="text-orange-400 font-bold">Volatility (σ)</span>
-            <p className="text-gray-400 mt-0.5">Annualized volatility drives all B-S calculations. It is computed from Binance historical data using the formula:</p>
-            <p className="text-gray-300 mt-1 font-mono text-[10px] bg-gray-800 rounded px-2 py-1">σ = std(ln(Cᵢ/Cᵢ₋₁)) × √(365×24×60/T)</p>
-            <p className="text-gray-400 mt-1">where Cᵢ are 1-minute close prices and T is the candle interval in minutes. Higher σ means wider expected price swings — distant strikes become more probable.</p>
-          </div>
-          <div>
-            <span className="text-sky-400 font-bold">Time Machine</span>
-            <p className="text-gray-400 mt-0.5">The Time Machine slider in the header fast-forwards B-S calculations by up to 72 hours. As time to expiry shrinks, probabilities shift — markets near the strike become more sensitive. Use this to preview how positions will look as expiry approaches.</p>
-          </div>
-          <div style={{ display: 'none' }}>
-            <span className="text-gray-400 font-bold">Market Types</span>
-            <p className="text-gray-400 mt-0.5">
-              <span className="text-emerald-400 font-bold">Above</span> — resolves YES if price is above strike at expiry.{' '}
-              <span className="text-purple-400 font-bold">Between</span> — resolves YES if price is within a range at expiry.{' '}
-              <span className="text-orange-400 font-bold">Hit</span> — resolves YES if price touches the target at any point before expiry.
-            </p>
-          </div>
-          <p className="text-gray-500 text-[10px] italic">Click any market cell in the grid to open it here.</p>
+
+          <p className="text-gray-500 text-[10px] italic mt-3">Click any market cell in the grid to open it here.</p>
         </div>
       )}
 

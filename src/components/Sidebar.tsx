@@ -371,11 +371,12 @@ export function Sidebar() {
   const marketName = selectedMarket
     ? shortenMarketName(selectedMarket.question || selectedMarket.groupItemTitle, undefined, undefined, selectedMarket.eventSlug)
     : '';
+  const fullMarketName = selectedMarket ? (selectedMarket.question || selectedMarket.groupItemTitle || '') : '';
 
   const sidebarAsset = selectedMarket ? extractAssetFromMarket(selectedMarket) : '';
   const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
   const sidebarTitleColor = selectedMarket ? (assetColorMap[sidebarAsset] || 'text-gray-500') : 'text-white';
-  const polymarketUrl = selectedMarket?.eventSlug ? `https://polymarket.com/event/${selectedMarket.eventSlug}` : null;
+  const polymarketUrl = selectedMarket?.eventSlug ? `https://polymarket.com/event/${selectedMarket.eventSlug}?r=mito` : null;
 
   return (
     <>
@@ -390,7 +391,7 @@ export function Sidebar() {
       {selectedMarket && (
         <div className="sidebar-section bg-gray-800/80 py-1">
           <div className="flex items-center gap-1">
-            <div className="flex-1 truncate">
+            <div className="flex-1 min-w-0 truncate">
               {polymarketUrl ? (
                 <a href={polymarketUrl} target="_blank" rel="noreferrer" className={`${sidebarTitleColor} font-bold text-sm hover:underline`}>
                   {marketName}
@@ -404,6 +405,9 @@ export function Sidebar() {
                 <Clock size={12} /> {upDownCountdown}
               </span>
             )}
+          </div>
+          <div className="text-[10px] text-gray-500 leading-tight mt-0.5 break-words w-full">
+            {fullMarketName}
           </div>
         </div>
       )}

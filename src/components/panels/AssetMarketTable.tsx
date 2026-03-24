@@ -430,7 +430,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                 return (
                   <th key={ev.slug} className="px-0.5 py-1 border-b border-gray-700 text-[10px] bg-gray-900">
                     <a
-                      href={`https://polymarket.com/event/${ev.slug}`}
+                      href={`https://polymarket.com/event/${ev.slug}?r=mito`}
                       target="_blank"
                       rel="noreferrer"
                       className="block hover:bg-gray-800/50 rounded p-0.5 transition"
@@ -789,7 +789,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     className={`px-1 py-1 text-center border-b border-gray-700 min-w-[70px] bg-gray-900 ${isEnded ? 'opacity-50' : ''} ${isWeekend ? 'bg-purple-900/20' : ''} ${isDateHighlighted ? 'date-column-highlighted' : ''}`}
                   >
                     <a
-                      href={`https://polymarket.com/event/${d.slug}`}
+                      href={`https://polymarket.com/event/${d.slug}?r=mito`}
                       target="_blank"
                       rel="noreferrer"
                       className="block hover:bg-gray-800/50 rounded p-0.5 transition"

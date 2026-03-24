@@ -236,7 +236,7 @@ export function Header({ onRefresh }: HeaderProps) {
         {/* Portfolio Value & Cash */}
         {walletConnected && (
           <a
-            href="https://polymarket.com/portfolio"
+            href="https://polymarket.com/portfolio?r=mito"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 bg-gray-800/50 rounded px-2 h-[28px] hover:bg-gray-700/50 cursor-pointer transition"

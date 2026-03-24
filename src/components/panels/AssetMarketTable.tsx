@@ -87,8 +87,18 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     return initialAsset;
   });
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
-  const [showUpDown, setShowUpDown] = useState(() => localStorage.getItem(`polybot-show-updown-${panelId}`) !== 'false');
-  const [showHit, setShowHit] = useState(() => localStorage.getItem(`polybot-show-hit-${panelId}`) !== 'false');
+  const [showUpDown, setShowUpDown] = useState(() => {
+    const saved = localStorage.getItem(`polybot-show-updown-${panelId}`);
+    if (saved === 'true') return true;
+    if (saved === 'false') return false;
+    return window.innerWidth >= 640;
+  });
+  const [showHit, setShowHit] = useState(() => {
+    const saved = localStorage.getItem(`polybot-show-hit-${panelId}`);
+    if (saved === 'true') return true;
+    if (saved === 'false') return false;
+    return window.innerWidth >= 640;
+  });
   const [showAbove, setShowAbove] = useState(() => localStorage.getItem(`polybot-show-above-${panelId}`) !== 'false');
   const [showBetween, setShowBetween] = useState(() => localStorage.getItem(`polybot-show-between-${panelId}`) !== 'false');
   const symbol = assetToSymbol(asset);

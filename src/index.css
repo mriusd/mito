@@ -18,6 +18,17 @@ html, body, #root {
   padding: 0;
 }
 
+/* Prevent iOS Safari auto-zoom on input focus (triggers when font-size < 16px). */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 1024px) {
+    input,
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
+  }
+}
+
 .gradient-bg {
   background: #050505;
 }

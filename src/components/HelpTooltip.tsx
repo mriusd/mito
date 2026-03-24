@@ -135,7 +135,7 @@ export function HelpTooltip({ text }: HelpTooltipProps) {
             />
             <div
               ref={popupRef}
-              className="fixed bottom-0 left-0 right-0 z-[9999] bg-gray-800 border border-gray-600 rounded-t-xl shadow-xl max-h-[70vh] overflow-hidden"
+              className="fixed bottom-0 left-0 right-0 z-[9999] bg-gray-800 border border-gray-600 rounded-t-xl shadow-xl overflow-hidden flex flex-col h-[72vh] max-h-[520px] min-h-[260px]"
               style={{
                 transform: `translateY(${sheetOffset}px)`,
                 transition: sheetDragging ? 'none' : 'transform 220ms ease',
@@ -156,7 +156,7 @@ export function HelpTooltip({ text }: HelpTooltipProps) {
               >
                 <div className="w-10 h-1 rounded-full bg-gray-500" />
               </div>
-              <div className="px-3 pb-3 overflow-y-auto max-h-[calc(70vh-24px)]">
+              <div className="px-3 pb-3 flex-1 min-h-0 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
                 <div className="text-xs text-gray-200 leading-relaxed whitespace-pre-line">{text}</div>
               </div>
             </div>

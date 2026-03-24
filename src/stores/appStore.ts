@@ -221,7 +221,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   vwapCandles: 60,
   vwapCorrection: 0,
   bsTimeOffsetHours: parseInt(localStorage.getItem('polymarket-bs-time-offset') || '0'),
-  showPast: localStorage.getItem('polymarket-show-past') !== 'false',
+  // Default unchecked for new users; honor saved preference afterwards.
+  showPast: localStorage.getItem('polymarket-show-past') === 'true',
   dailyBudget: localStorage.getItem('polymarket-daily-budget') || '',
 
   aboveMarkets: {},

@@ -64,7 +64,13 @@ export function Sidebar() {
   const [displayAsks, setDisplayAsks] = useState(asks);
   const [displayLiveTrades, setDisplayLiveTrades] = useState(liveTrades);
   const [liveOrderbookExpanded, setLiveOrderbookExpanded] = useState(() => localStorage.getItem('sidebar-live-orderbook-expanded') !== 'false');
-  const [liveTradesExpanded, setLiveTradesExpanded] = useState(() => localStorage.getItem('sidebar-live-trades-expanded') !== 'false');
+  const [liveTradesExpanded, setLiveTradesExpanded] = useState(() => {
+    const saved = localStorage.getItem('sidebar-live-trades-expanded');
+    if (saved === 'true') return true;
+    if (saved === 'false') return false;
+    // Default to collapsed on shorter screens.
+    return window.innerHeight >= 1000;
+  });
   useEffect(() => {
     if (!obLoading) {
       setDisplayBids(bids);

@@ -34,6 +34,7 @@ export function Header({ onRefresh }: HeaderProps) {
   const cashBalance = useAppStore((s) => s.cashBalance);
   const positions = useAppStore((s) => s.positions);
   const layouts = useAppStore((s) => s.layouts);
+  const setPanels = useAppStore((s) => s.setPanels);
   const setLayouts = useAppStore((s) => s.setLayouts);
   const addPanel = useAppStore((s) => s.addPanel);
 
@@ -286,6 +287,29 @@ export function Header({ onRefresh }: HeaderProps) {
                 />
                 <span className="text-xs text-gray-300">Show place order dialog</span>
               </label>
+              <div className="mt-2 pt-2 border-t border-gray-700">
+                <button
+                  onClick={() => {
+                    const defaultPanels = [
+                      { id: 'asset-BTC', type: 'asset-BTC', title: 'BTC' },
+                      { id: 'trades-positions-orders', type: 'trades-positions-orders', title: 'Trades/Positions/Orders' },
+                      { id: 'updown-overview', type: 'updown-overview', title: 'Up/Down Markets' },
+                      { id: 'signals', type: 'signals', title: 'Signals' },
+                      { id: 'chat', type: 'chat', title: 'Chat' },
+                    ];
+                    localStorage.removeItem('polybot-react-panels');
+                    localStorage.removeItem('polybot-react-layouts');
+                    localStorage.removeItem('polybot-removed-panels');
+                    setPanels(defaultPanels as any);
+                    setLayouts(null as any);
+                    setShowSettings(false);
+                    window.location.reload();
+                  }}
+                  className="w-full text-left px-2 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-gray-700 rounded transition"
+                >
+                  Restore default layout
+                </button>
+              </div>
             </div>
           )}
         </div>

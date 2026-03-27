@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { useAccount } from 'wagmi';
-import { MessageCircle, Send } from 'lucide-react';
-import { deleteChatMessage, fetchChatMessages, postChatMessage } from '../../api';
+import { MessageCircle, Pencil, Send } from 'lucide-react';
+import { deleteChatMessage, editChatMessage, fetchChatMessages, postChatMessage } from '../../api';
 import type { ChatMessage } from '../../api';
 import { API_BASE } from '../../lib/env';
 
@@ -96,6 +96,9 @@ export function ChatPanel() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  const [editingMessageText, setEditingMessageText] = useState('');
+  const [editingBusy, setEditingBusy] = useState(false);
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(true);
   /** Bumps on an interval so time-ago labels and age colors stay fresh. */
@@ -197,6 +200,31 @@ export function ChatPanel() {
     }
   };
 
+  const handleStartEdit = (msg: ChatMessage) => {
+    setEditingMessageId(msg.id);
+    setEditingMessageText(msg.message);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageId(null);
+    setEditingMessageText('');
+    setEditingBusy(false);
+  };
+
+  const handleConfirmEdit = async () => {
+    if (!address || editingMessageId == null || editingBusy) return;
+    const text = editingMessageText.trim();
+    if (!text) return;
+    setEditingBusy(true);
+    try {
+      const updated = await editChatMessage(editingMessageId, address, text);
+      setMessages((prev) => prev.map((m) => (m.id === editingMessageId ? { ...m, message: updated.message } : m)));
+      handleCancelEdit();
+    } catch {
+      setEditingBusy(false);
+    }
+  };
+
   const myAddr = address?.toLowerCase() || '';
 
   return (
@@ -224,6 +252,7 @@ export function ChatPanel() {
           )}
           {messages.map((msg) => {
             const isMine = msg.address.toLowerCase() === myAddr;
+            const isEditing = editingMessageId === msg.id;
             const displayName = msg.nickname || shortAddr(msg.address);
             return (
               <div key={msg.id} className="flex flex-col items-start">
@@ -247,27 +276,70 @@ export function ChatPanel() {
                     {timeAgo(msg.createdAt, timeNow)}
                   </span>
                   {isMine && (
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(msg.id)}
-                      disabled={deletingIds.has(msg.id)}
-                      className="w-4 h-4 rounded-sm flex items-center justify-center flex-shrink-0 bg-red-600 hover:bg-red-500 disabled:bg-red-600/50"
-                      title="Delete message"
-                    >
-                      <span className="text-black text-[10px] font-bold leading-none">✕</span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(msg)}
+                        disabled={deletingIds.has(msg.id) || editingBusy}
+                        className="w-4 h-4 rounded-sm flex items-center justify-center flex-shrink-0 bg-gray-600 hover:bg-gray-500 disabled:bg-gray-600/50"
+                        title="Edit message"
+                      >
+                        <Pencil className="w-2.5 h-2.5 text-black" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(msg.id)}
+                        disabled={deletingIds.has(msg.id) || editingBusy}
+                        className="w-4 h-4 rounded-sm flex items-center justify-center flex-shrink-0 bg-red-600 hover:bg-red-500 disabled:bg-red-600/50"
+                        title="Delete message"
+                      >
+                        <span className="text-black text-[10px] font-bold leading-none">✕</span>
+                      </button>
+                    </>
                   )}
                 </div>
-                <div
-                  className={`rounded px-1.5 py-0.5 max-w-[90%] break-words ${
-                    isMine ? 'bg-blue-900/40 text-blue-100' : 'bg-gray-700/60 text-gray-200'
-                  }`}
-                >
-                  {linkifyMessage(
-                    msg.message,
-                    isMine ? 'text-sky-300' : 'text-sky-400'
-                  )}
-                </div>
+                {isEditing ? (
+                  <div className={`rounded px-1.5 py-1 max-w-[90%] w-[90%] ${isMine ? 'bg-blue-900/40' : 'bg-gray-700/60'}`}>
+                    <textarea
+                      value={editingMessageText}
+                      onChange={(e) => setEditingMessageText(e.target.value)}
+                      rows={3}
+                      maxLength={1000}
+                      className="w-full bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-gray-100 text-[11px] resize-y no-drag"
+                    />
+                    <div className="mt-1 flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={handleConfirmEdit}
+                        disabled={editingBusy || !editingMessageText.trim()}
+                        className="w-4 h-4 rounded-sm inline-flex items-center justify-center bg-green-600 hover:bg-green-500 disabled:bg-green-600/50"
+                        title="Confirm edit"
+                      >
+                        <span className="text-black text-[10px] font-bold leading-none">✓</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        disabled={editingBusy}
+                        className="w-4 h-4 rounded-sm inline-flex items-center justify-center bg-gray-600 hover:bg-gray-500 disabled:bg-gray-600/50"
+                        title="Cancel edit"
+                      >
+                        <span className="text-black text-[10px] font-bold leading-none">✕</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className={`rounded px-1.5 py-0.5 max-w-[90%] break-words ${
+                      isMine ? 'bg-blue-900/40 text-blue-100' : 'bg-gray-700/60 text-gray-200'
+                    }`}
+                  >
+                    {linkifyMessage(
+                      msg.message,
+                      isMine ? 'text-sky-300' : 'text-sky-400'
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

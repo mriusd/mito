@@ -473,3 +473,23 @@ export async function deleteChatMessage(id: number, address: string): Promise<vo
   }
   if (!resp.ok) throw new Error('Failed to delete message');
 }
+
+export async function editChatMessage(id: number, address: string, message: string): Promise<ChatMessage> {
+  const body = JSON.stringify({ id, address, message });
+  // Use POST compat endpoint first to avoid CORS preflight failures on PATCH.
+  let resp = await fetch(`${BASE}/api/chat/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  });
+  // Optional fallback for environments where only PATCH /api/chat is available.
+  if (resp.status === 404 || resp.status === 405) {
+    resp = await fetch(`${BASE}/api/chat`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+  }
+  if (!resp.ok) throw new Error('Failed to edit message');
+  return resp.json();
+}

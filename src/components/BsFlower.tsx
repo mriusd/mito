@@ -62,13 +62,13 @@ function FlowerGrid({ label, fmtFn, bsLive, s0HasRange, s1HasRange, v0L, v0R, v1
   if (!hasDual) {
     return (
       <span className={probColor}>
-        {label}: <span className={`text-white font-bold ${clickClass}`} onClick={clickable(bsLive)}>{fmtFn(bsLive)}</span>
+        {label ? `${label}: ` : ''}<span className={`text-white font-bold ${clickClass}`} onClick={clickable(bsLive)}>{fmtFn(bsLive)}</span>
       </span>
     );
   }
   return (
     <div className="flex items-center gap-3">
-      <span className={probColor}>{label}:</span>
+      {label ? <span className={probColor}>{label}:</span> : null}
       <span
         className="inline-grid items-center justify-items-center"
         style={{ gridTemplateColumns: 'auto auto auto', gridTemplateRows: 'auto auto', columnGap: 3, lineHeight: 1.2 }}
@@ -193,7 +193,7 @@ export function BsFlower({ asset, strike, endDate, isYes, onPriceClick }: BsFlow
   if (timeMachinePastExpiry) {
     return (
       <div className="text-[11px] text-gray-500" title="Time machine ahead of expiration">
-        <span className="text-gray-400">B-S:</span> <span className="font-bold">&gt;⏱</span>
+        <span className="font-bold">&gt;⏱</span>
       </div>
     );
   }
@@ -205,7 +205,7 @@ export function BsFlower({ asset, strike, endDate, isYes, onPriceClick }: BsFlow
       {/* Frontend BS */}
       <div className="flex items-center gap-3">
         <FlowerGrid
-          label="B-S"
+          label=""
           fmtFn={fmtFn}
           bsLive={feFlower.bsLive}
           s0HasRange={feFlower.s0HasRange}

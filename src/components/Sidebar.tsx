@@ -774,7 +774,7 @@ export function Sidebar() {
             return bsAsset && bsStrike ? (
               <div className="sidebar-section py-1">
                 <div className="flex items-center gap-1 mb-1">
-                  <span className="text-xs text-gray-400">B-S Probability</span>
+                  <span className="text-xs text-gray-400">Mathematical Probability</span>
                   <HelpTooltip text={"Black-Scholes (B-S) is a mathematical model for pricing options, adapted here to estimate the probability of an asset reaching a given strike price by expiry.\n\nInputs:\n• Underlying price (VWAP or live price)\n• Strike price (the market's target price)\n• Time to expiry\n• Implied volatility (σ multiplier in header)\n\nThe flower petals show the max and min B-S probability values calculated across the set price ranges. This gives a visual sense of the probability spread.\n\nA high B-S probability means the model considers it likely the asset will reach the strike. Comparing B-S probability to the market price reveals potential mispricings."} />
                 </div>
                 <BsFlower asset={bsAsset} strike={bsStrike} endDate={bsEndDate} isYes={orderOutcome === 'YES'} onPriceClick={(cents) => setOrderPrice(String(cents))} />
@@ -796,7 +796,7 @@ export function Sidebar() {
             return bsAsset ? (
               <div className="sidebar-section py-1">
                 <div className="flex items-center gap-1 mb-1">
-                  <span className="text-xs text-gray-400">B-S Probability</span>
+                  <span className="text-xs text-gray-400">Mathematical Probability</span>
                   <HelpTooltip text={"Black-Scholes probability for this 24h Up/Down market.\n\nUses the target price as the strike, current price as the underlying, time to expiry, and implied volatility (σ).\n\nThe flower petals show the probability spread across your configured price ranges."} />
                 </div>
                 <BsFlower asset={bsAsset} strike={bsStrike} endDate={bsEndDate} isYes={orderOutcome === 'YES'} onPriceClick={(cents) => setOrderPrice(String(cents))} />

@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import './lib/wallet';
 import { useAppStore } from './stores/appStore';
 import { useBinanceWS } from './hooks/useBinanceWS';
@@ -18,6 +18,14 @@ import { PnlDrilldownDialog } from './components/PnlDrilldownDialog';
 import { SigningDialog } from './components/SigningDialog';
 import { SignatureExplainerDialog } from './components/SignatureExplainerDialog';
 
+function parseMarketLinkFromUrl(): { marketId: string; side: 'YES' | 'NO' } | null {
+  const params = new URLSearchParams(window.location.search);
+  const marketId = params.get('market') || '';
+  if (!marketId) return null;
+  const rawSide = (params.get('side') || 'yes').toLowerCase();
+  return { marketId, side: rawSide === 'no' ? 'NO' : 'YES' };
+}
+
 function PnlDrilldownGlobal() {
   const { open, asset, endDates } = useAppStore((s) => s.pnlDrilldown);
   const close = useAppStore((s) => s.closePnlDrilldown);
@@ -26,6 +34,13 @@ function PnlDrilldownGlobal() {
 
 function App() {
   const loading = useAppStore((s) => s.loading);
+  const marketLookup = useAppStore((s) => s.marketLookup);
+  const selectedMarket = useAppStore((s) => s.selectedMarket);
+  const sidebarOutcome = useAppStore((s) => s.sidebarOutcome);
+  const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
+  const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
+  const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
+  const [pendingLink, setPendingLink] = useState<{ marketId: string; side: 'YES' | 'NO' } | null>(() => parseMarketLinkFromUrl());
 
   useBinanceWS();
   useVwapAndVolatility();
@@ -37,6 +52,52 @@ function App() {
   const handleRefresh = useCallback(async () => {
     await Promise.all([refreshData(), refreshWalletData()]);
   }, [refreshData, refreshWalletData]);
+
+  // Queue URL -> state sync when browser history changes.
+  useEffect(() => {
+    const onPopState = () => setPendingLink(parseMarketLinkFromUrl());
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Apply URL deep-link once it can be resolved from marketLookup.
+  useEffect(() => {
+    if (!pendingLink) return;
+
+    // marketLookup is tokenId -> market, so dedupe by market.id
+    const byId = new Map<string, (typeof selectedMarket)>();
+    for (const m of Object.values(marketLookup)) byId.set(m.id, m);
+    const m = byId.get(pendingLink.marketId);
+    if (!m) return;
+
+    if (!selectedMarket || selectedMarket.id !== m.id) setSelectedMarket(m);
+    if (sidebarOutcome !== pendingLink.side) setSidebarOutcome(pendingLink.side);
+    setSidebarOpen(true);
+    setPendingLink(null);
+  }, [pendingLink, marketLookup, selectedMarket, sidebarOutcome, setSelectedMarket, setSidebarOutcome, setSidebarOpen]);
+
+  // selected market -> URL sync
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const params = url.searchParams;
+    const desiredMarket = selectedMarket?.id || '';
+    const desiredSide = sidebarOutcome.toLowerCase();
+
+    if (!desiredMarket) {
+      if (!params.has('market') && !params.has('side')) return;
+      params.delete('market');
+      params.delete('side');
+    } else {
+      const curMarket = params.get('market') || '';
+      const curSide = (params.get('side') || '').toLowerCase();
+      if (curMarket === desiredMarket && curSide === desiredSide) return;
+      params.set('market', desiredMarket);
+      params.set('side', desiredSide);
+    }
+
+    const next = `${url.pathname}${params.toString() ? `?${params.toString()}` : ''}${url.hash}`;
+    window.history.replaceState(null, '', next);
+  }, [selectedMarket, sidebarOutcome]);
 
   return (
     <div className="gradient-bg h-full flex flex-col text-white">

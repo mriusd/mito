@@ -32,6 +32,33 @@ function getDateDisplay(endDate: string | null): { label: string; color: string 
   return { label: `${dayAbbr} ${dt.getDate()}`, color: isWeekend ? 'text-purple-400' : 'text-gray-400' };
 }
 
+function getTimeLeftDisplay(endDate: string | null): { label: string; color: string } {
+  if (!endDate) return { label: '-', color: 'text-gray-400' };
+  const dt = new Date(endDate);
+  const msLeft = dt.getTime() - Date.now();
+  if (!Number.isFinite(msLeft)) return { label: '-', color: 'text-gray-400' };
+
+  if (msLeft <= 0) return { label: 'Expired', color: 'text-red-400 font-bold' };
+
+  const minutesLeft = msLeft / 60000;
+  const hoursLeft = msLeft / 3600000;
+  const daysLeft = msLeft / 86400000;
+
+  // Match the requested style like "2.5h"
+  if (minutesLeft < 60) {
+    const m = Math.max(1, Math.round(minutesLeft));
+    return { label: `${m}m`, color: 'text-red-400 font-bold' };
+  }
+  if (hoursLeft < 48) {
+    const h = hoursLeft.toFixed(1);
+    return { label: `${h}h`, color: hoursLeft < 24 ? 'text-red-400 font-bold' : 'text-yellow-400 font-bold' };
+  }
+
+  const d = Math.max(1, Math.floor(daysLeft));
+  const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+  return { label: `${d}d`, color: isWeekend ? 'text-purple-400' : 'text-gray-400' };
+}
+
 export function TradesPositionsOrders({ panelId }: { panelId: string }) {
   const positions = useAppStore((s) => s.positions);
   const orders = useAppStore((s) => s.orders);
@@ -456,7 +483,8 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
             <div className="flex-1 overflow-y-auto min-h-0">
               <table className="w-full text-[10px] table-fixed">{ordColgroup}<tbody>
                 {processedOrders.map((o) => {
-                  const dd = getDateDisplay(o.endDate);
+                  // Show time-left in the Orders tab (e.g. "2.5h") instead of TODAY/TMR labels.
+                  const dd = getTimeLeftDisplay(o.endDate);
                   return (
                     <tr key={o.id} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${selectedMarket && selectedMarket.id === o.marketId ? 'bg-blue-900/40' : ''}`}>
                       <td className={`py-1 px-1 ${assetColorMap[o.asset] || 'text-gray-400'} font-bold`}>{o.asset}</td>

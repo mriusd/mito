@@ -65,9 +65,8 @@ export function SignalsTable() {
     if (sortCol === 'date') {
       cmp = new Date(a.endDate).getTime() - new Date(b.endDate).getTime();
     } else if (sortCol === 'diff') {
-      // Sort by the displayed diff value: cents in maker mode, bid/ask % otherwise
-      const diffA = makerMode ? (a.bidPrice * 100 - a.bsPrice * 100) : a.diffPct;
-      const diffB = makerMode ? (b.bidPrice * 100 - b.bsPrice * 100) : b.diffPct;
+      const diffA = makerMode ? a.bidDiffPct : a.diffPct;
+      const diffB = makerMode ? b.bidDiffPct : b.diffPct;
       cmp = diffA - diffB;
     }
     return sortAsc ? cmp : -cmp;
@@ -187,13 +186,8 @@ export function SignalsTable() {
                   const rowHighlight = isSelected ? 'bg-blue-900/40' : '';
                   // Display price: bid in maker/BID mode, ask otherwise
                   const displayPrice = makerMode ? sig.bidPrice * 100 : sig.price * 100;
-                  // Display diff: maker mode shows cents (bid - BS), taker shows %
-                  let displayDiff: string;
-                  if (makerMode) {
-                    displayDiff = (sig.bidPrice * 100 - sig.bsPrice * 100).toFixed(1) + '¢';
-                  } else {
-                    displayDiff = sig.diffPct.toFixed(1) + '%';
-                  }
+                  // Diff: % vs B-S for both modes (bid-side % in maker, ask-side % in taker)
+                  const displayDiff = (makerMode ? sig.bidDiffPct : sig.diffPct).toFixed(1) + '%';
                   return (
                     <tr key={i} className={`hover:bg-gray-700/30 cursor-pointer border-b border-gray-700/30 ${rowHighlight}`} onClick={() => handleMarketClick(sig.market, sig.origSide)}>
                       <td className={`px-1 py-0.5 font-bold ${acol}`}>{sig.asset}</td>

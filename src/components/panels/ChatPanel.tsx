@@ -30,8 +30,8 @@ function shortAddr(addr: string): string {
   return addr;
 }
 
-function timeAgo(ms: number): string {
-  const diff = Date.now() - ms;
+function timeAgo(ms: number, nowMs: number = Date.now()): string {
+  const diff = nowMs - ms;
   if (diff < 60_000) return 'now';
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
@@ -211,7 +211,7 @@ export function ChatPanel() {
                   </span>
                 )}
                 <span className={`text-[9px] ${timeElapsedClass(msg.createdAt, timeNow)}`}>
-                  {timeAgo(msg.createdAt)}
+                  {timeAgo(msg.createdAt, timeNow)}
                 </span>
               </div>
               <div

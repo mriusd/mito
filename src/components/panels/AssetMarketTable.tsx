@@ -140,15 +140,10 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     for (const sig of signals) {
       const mid = sig.market.id;
       if (!signalByMarket[mid]) signalByMarket[mid] = { yesDiff: null, noDiff: null };
-      let diff: number;
-      if (signalMakerMode) {
-        diff = (sig.bidPrice - sig.bsPrice) * 100;
-      } else {
-        diff = sig.diffPct;
-      }
+      const diff = signalMakerMode ? sig.bidDiffPct : sig.diffPct;
       if (diff >= 0) continue;
       const label = signalMakerMode
-        ? diff.toFixed(1) + '¢'
+        ? diff.toFixed(1) + '%'
         : diff.toFixed(0) + '%';
       if (sig.origSide === 'YES') signalByMarket[mid].yesDiff = label;
       else signalByMarket[mid].noDiff = label;

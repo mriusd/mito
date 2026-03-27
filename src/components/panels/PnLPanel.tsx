@@ -27,11 +27,11 @@ export function PnLPanel() {
 
   const { dates, dataByDate } = useMemo(() => {
     const now = new Date();
-    const today = getDateKey(now);
 
-    // Generate 3 past + today + 3 future = 7 date columns
+    // Past days only, oldest → newest; today is the last (rightmost) column
+    const NUM_DAYS = 7;
     const dates: string[] = [];
-    for (let i = -3; i <= 3; i++) {
+    for (let i = -(NUM_DAYS - 1); i <= 0; i++) {
       const d = new Date(now);
       d.setDate(d.getDate() + i);
       dates.push(getDateKey(d));
@@ -72,7 +72,7 @@ export function PnLPanel() {
       }
     }
 
-    return { dates, today, dataByDate };
+    return { dates, dataByDate };
   }, [trades]);
 
   const todayKey = getDateKey(new Date());

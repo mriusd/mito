@@ -110,7 +110,7 @@ const PANEL_MIN_PIXELS: Record<string, { minW: number; minH: number }> = {
   'asset-ETH': { minW: 320, minH: 220 },
   'asset-SOL': { minW: 320, minH: 220 },
   'asset-XRP': { minW: 320, minH: 220 },
-  'trades-positions-orders': { minW: 300, minH: 150 },
+  'trades-positions-orders': { minW: 300, minH: 300 },
   'updown-overview': { minW: 300, minH: 200 },
   'signals': { minW: 300, minH: 150 },
   'chat': { minW: 280, minH: 180 },
@@ -141,6 +141,43 @@ const BREAKPOINT_LAYOUTS: Record<string, Record<string, LayoutRect>> = {
 export const HEIGHT_VARIANTS: Record<string, { minHeight: number; tallKey: string }> = {
   '2xl': { minHeight: 1500, tallKey: '2xl-tall' },
 };
+
+/** Column counts per layout breakpoint base key (must match react-grid `cols`). */
+export const GRID_COLS: Record<string, number> = {
+  '2xl': 36, xl: 28, lg: 24, md: 20, sm: 12, xs: 8, xxs: 4,
+};
+
+const TOTAL_ROWS_ESTIMATE = 100;
+
+/**
+ * Grid w/h for a new panel = pixel minimums from defaultLayouts (minW/minH on the rect, or PANEL_MIN_PIXELS),
+ * converted to columns/rows — same basis as DraggableCanvas getDefaultLayout.
+ */
+export function gridSizeFromDefaultLayoutMins(
+  panelType: string,
+  layoutBreakpointKey: string,
+  viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1600,
+  viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 900,
+): { w: number; h: number } {
+  const base = layoutBreakpointKey.replace(/-tall$/, '');
+  const cols = GRID_COLS[base] || 24;
+  const colWidthPx = Math.max(1, viewportWidth / cols);
+  const rowPx = Math.max(1, viewportHeight / TOTAL_ROWS_ESTIMATE);
+
+  const bpMap = BREAKPOINT_LAYOUTS[layoutBreakpointKey] || BREAKPOINT_LAYOUTS.lg;
+  const pct = bpMap[panelType];
+  const minWpx = pct?.minW ?? PANEL_MIN_PIXELS[panelType as keyof typeof PANEL_MIN_PIXELS]?.minW;
+  const minHpx = pct?.minH ?? PANEL_MIN_PIXELS[panelType as keyof typeof PANEL_MIN_PIXELS]?.minH;
+
+  if (minWpx != null && minWpx > 0 && minHpx != null && minHpx > 0) {
+    return {
+      w: Math.min(cols, Math.max(1, Math.ceil(minWpx / colWidthPx))),
+      h: Math.max(1, Math.ceil(minHpx / rowPx)),
+    };
+  }
+
+  return { w: Math.min(cols, 12), h: 6 };
+}
 
 export default BREAKPOINT_LAYOUTS;
 

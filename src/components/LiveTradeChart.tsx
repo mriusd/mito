@@ -323,20 +323,31 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, even
     ctx.textBaseline = 'middle';
     ctx.fillText(lastPrice.toFixed(1) + '¢', chartRight, lastY - 6);
 
-    // --- Chainlink price overlay (mapped onto 0-100¢ Y-axis, target = 50¢) ---
-    const clCandles = Array.from(chainlinkCandleMapRef.current.values()).sort((a, b) => a.time - b.time);
+    // --- Chainlink / Binance price overlay (mapped onto 0-100¢ Y-axis, target = 50¢) ---
+    // X-axis is only [minT, maxT] (market window). Binance fetch keeps ~500 candles of history;
+    // plotting all of them maps pre-window times to x << chartLeft, so the segment from the last
+    // off-screen point to the first on-screen point draws a bogus diagonal across the chart.
+    const clAll = Array.from(chainlinkCandleMapRef.current.values()).sort((a, b) => a.time - b.time);
+    const clCandles = clAll.filter(
+      (c) => c.time < maxT + candleMs && c.time + candleMs > minT
+    );
     if (clCandles.length > 0 && targetPrice && targetPrice > 0) {
-      // Find the max deviation from target to determine scale
+      // Scale from deviation from target (include closes so spikes stay in range)
       let maxDev = 0;
       for (const c of clCandles) {
-        maxDev = Math.max(maxDev, Math.abs(c.h - targetPrice), Math.abs(c.l - targetPrice));
+        maxDev = Math.max(
+          maxDev,
+          Math.abs(c.h - targetPrice),
+          Math.abs(c.l - targetPrice),
+          Math.abs(c.c - targetPrice)
+        );
       }
-      // Ensure a minimum spread so the line isn't flat
       if (maxDev === 0) maxDev = targetPrice * 0.001;
 
-      // Map Chainlink USD price -> cents on the 0-100 scale
-      // targetPrice -> 50¢, deviation scaled so maxDev maps to 50¢
-      const clToCents = (p: number) => 50 + ((p - targetPrice) / maxDev) * 50;
+      const clToCents = (p: number) => {
+        const v = 50 + ((p - targetPrice) / maxDev) * 50;
+        return Math.max(0, Math.min(100, v));
+      };
 
       // Draw target price line (dashed, turquoise, at 50¢)
       const targetY = toY(50);
@@ -349,24 +360,32 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, even
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Draw Chainlink price as a turquoise line connecting close prices
-      ctx.beginPath();
       ctx.strokeStyle = '#00d2d2';
       ctx.lineWidth = 1.5;
-      let started = false;
-      for (const c of clCandles) {
+      if (clCandles.length === 1) {
+        const c = clCandles[0];
         const cx = toX(c.time + candleMs / 2);
         const cy = toY(clToCents(c.c));
-        if (!started) {
-          ctx.moveTo(cx, cy);
-          started = true;
-        } else {
-          ctx.lineTo(cx, cy);
+        ctx.beginPath();
+        ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#00d2d2';
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        let started = false;
+        for (const c of clCandles) {
+          const cx = toX(c.time + candleMs / 2);
+          const cy = toY(clToCents(c.c));
+          if (!started) {
+            ctx.moveTo(cx, cy);
+            started = true;
+          } else {
+            ctx.lineTo(cx, cy);
+          }
         }
+        ctx.stroke();
       }
-      ctx.stroke();
 
-      // Last Chainlink price label (turquoise)
       const clLast = clCandles[clCandles.length - 1].c;
       const clLastCents = clToCents(clLast);
       const clLastY = toY(clLastCents);

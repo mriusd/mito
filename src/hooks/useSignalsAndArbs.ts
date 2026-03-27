@@ -190,30 +190,17 @@ export function useSignalsAndArbs() {
         const yesBidDiffPct = yesProbNum > 0 ? ((yesBidNum - yesProbNum) / yesProbNum) * 100 : 0;
         const noBidDiffPct = noProbNum > 0 ? ((noBidNum - noProbNum) / noProbNum) * 100 : 0;
 
-        // Maker mode: invert bid diff so positive bid-above-BS becomes negative (= signal)
-        const yesMakerDiffPct = -yesBidDiffPct;
-        const noMakerDiffPct = -noBidDiffPct;
-
-        // Use bid or ask diff for signal detection based on mode
-        let yesSignalDiff: number, noSignalDiff: number;
-        if (signalMakerMode) {
-          yesSignalDiff = yesMakerDiffPct;
-          noSignalDiff = noMakerDiffPct;
-        } else {
-          yesSignalDiff = yesDiffPct;
-          noSignalDiff = noDiffPct;
-        }
-
         // Check data availability based on mode
-        // Taker needs ask data; BID mode also needs bid data; maker needs bid data
+        // Taker needs ask data; maker needs bid data on the leg we evaluate (see YES/NO blocks)
         const yesHasAskData = yesAskNum > 0;
         const noHasAskData = noAskNum > 0;
         const yesHasBidData = yesBidNum > 0;
         const noHasBidData = noBidNum > 0;
         let yesHasData: boolean, noHasData: boolean;
         if (signalMakerMode) {
-          yesHasData = yesHasBidData;
-          noHasData = noHasBidData;
+          // Maker YES branch shows NO bid/BS → require NO bid; NO branch shows YES bid → require YES bid
+          yesHasData = noHasBidData;
+          noHasData = yesHasBidData;
         } else {
           yesHasData = yesHasAskData;
           noHasData = noHasAskData;
@@ -227,14 +214,25 @@ export function useSignalsAndArbs() {
         const noBuyOrders = noOrds.filter(o => o.side === 'BUY');
         const noSellOrders = noOrds.filter(o => o.side === 'SELL');
 
-        // YES signal
-        if (yesHasData && yesProbNum > 0 && yesSignalDiff < -20) {
-          // Skip if best price is user's own order
-          const yesMyBestBuy = yesBuyOrders.length > 0 ? Math.max(...yesBuyOrders.map(o => parseFloat(o.price))) : 0;
-          const yesBestBidIsMyOrder = yesMyBestBuy > 0 && (m.bestBid ?? 0) > 0 && Math.abs(yesMyBestBuy - (m.bestBid ?? 0)) < 0.0001;
-          const yesMyBestSell = yesSellOrders.length > 0 ? Math.min(...yesSellOrders.map(o => parseFloat(o.price))) : Infinity;
-          const yesBestAskIsMyOrder = yesMyBestSell < Infinity && m.bestAsk != null && Math.abs(yesMyBestSell - m.bestAsk) < 0.0001;
-          const yesSkipSignal = signalMakerMode ? yesBestBidIsMyOrder : yesBestAskIsMyOrder;
+        const yesMyBestBuy = yesBuyOrders.length > 0 ? Math.max(...yesBuyOrders.map(o => parseFloat(o.price))) : 0;
+        const yesBestBidIsMyOrder = yesMyBestBuy > 0 && (m.bestBid ?? 0) > 0 && Math.abs(yesMyBestBuy - (m.bestBid ?? 0)) < 0.0001;
+        const yesMyBestSell = yesSellOrders.length > 0 ? Math.min(...yesSellOrders.map(o => parseFloat(o.price))) : Infinity;
+        const yesBestAskIsMyOrder = yesMyBestSell < Infinity && m.bestAsk != null && Math.abs(yesMyBestSell - m.bestAsk) < 0.0001;
+
+        const noMyBestBuy = noBuyOrders.length > 0 ? Math.max(...noBuyOrders.map(o => parseFloat(o.price))) : 0;
+        const noBestBidDecimal = m.bestAsk ? (1 - m.bestAsk) : 0;
+        const noBestBidIsMyOrder = noMyBestBuy > 0 && noBestBidDecimal > 0 && Math.abs(noMyBestBuy - noBestBidDecimal) < 0.0001;
+        const noMyBestSell = noSellOrders.length > 0 ? Math.min(...noSellOrders.map(o => parseFloat(o.price))) : Infinity;
+        const noBestAskDecimal = m.bestBid ? (1 - m.bestBid) : 0;
+        const noBestAskIsMyOrder = noMyBestSell < Infinity && noBestAskDecimal > 0 && Math.abs(noMyBestSell - noBestAskDecimal) < 0.0001;
+
+        // YES signal — taker: cheap YES ask vs BS. Maker: flip to NO leg; same formula (bid−BS)/BS×100, signal when < −20
+        const yesBranchSignal =
+          signalMakerMode
+            ? noHasBidData && noProbNum > 0 && noBidDiffPct < -20
+            : yesHasData && yesProbNum > 0 && yesDiffPct < -20;
+        if (yesBranchSignal) {
+          const yesSkipSignal = signalMakerMode ? noBestBidIsMyOrder : yesBestAskIsMyOrder;
           if (!yesSkipSignal) {
             const bounds = parsePriceBounds(priceStr || m.groupItemTitle || '');
             let isBullish: boolean;
@@ -252,16 +250,16 @@ export function useSignalsAndArbs() {
               ? hitDisplayStrike(priceStr, bsPriceStr, hitIsReach)
               : (tableType === 'above' && !priceStr.includes('>') && !priceStr.includes('<'))
               ? '>' + priceStr : priceStr;
-            // In maker mode: YES orig -> flip type, show NO side data
+            // In maker mode: YES orig -> flip type, show NO side data (bid/BS/diff all NO leg, same % formula as taker)
             signals.push({
               market: m,
               type: signalMakerMode ? (isBullish ? 'BEAR' : 'BULL') : (isBullish ? 'BULL' : 'BEAR'),
               price: signalMakerMode ? noAskNum / 100 : yesAskNum / 100,
               bsPrice: signalMakerMode ? noProbNum / 100 : yesProbNum / 100,
-              diff: signalMakerMode ? (noAskNum - noProbNum) / 100 : (yesAskNum - yesProbNum) / 100,
-              diffPct: signalMakerMode ? yesMakerDiffPct : yesDiffPct,
+              diff: signalMakerMode ? (noBidNum - noProbNum) / 100 : (yesAskNum - yesProbNum) / 100,
+              diffPct: signalMakerMode ? noBidDiffPct : yesDiffPct,
               bidPrice: signalMakerMode ? noBidNum / 100 : yesBidNum / 100,
-              bidDiffPct: yesBidDiffPct,
+              bidDiffPct: signalMakerMode ? noBidDiffPct : yesBidDiffPct,
               asset,
               endDate,
               priceStr: displayPrice,
@@ -271,16 +269,13 @@ export function useSignalsAndArbs() {
           }
         }
 
-        // NO signal
-        if (noHasData && noProbNum > 0 && noSignalDiff < -20) {
-          // Skip if best price is user's own order
-          const noMyBestBuy = noBuyOrders.length > 0 ? Math.max(...noBuyOrders.map(o => parseFloat(o.price))) : 0;
-          const noBestBidDecimal = m.bestAsk ? (1 - m.bestAsk) : 0;
-          const noBestBidIsMyOrder = noMyBestBuy > 0 && noBestBidDecimal > 0 && Math.abs(noMyBestBuy - noBestBidDecimal) < 0.0001;
-          const noMyBestSell = noSellOrders.length > 0 ? Math.min(...noSellOrders.map(o => parseFloat(o.price))) : Infinity;
-          const noBestAskDecimal = m.bestBid ? (1 - m.bestBid) : 0;
-          const noBestAskIsMyOrder = noMyBestSell < Infinity && noBestAskDecimal > 0 && Math.abs(noMyBestSell - noBestAskDecimal) < 0.0001;
-          const noSkipSignal = signalMakerMode ? noBestBidIsMyOrder : noBestAskIsMyOrder;
+        // NO signal — taker: cheap NO ask vs BS. Maker: show YES leg; same bid-vs-BS % as taker uses ask-vs-BS %
+        const noBranchSignal =
+          signalMakerMode
+            ? yesHasBidData && yesProbNum > 0 && yesBidDiffPct < -20
+            : noHasData && noProbNum > 0 && noDiffPct < -20;
+        if (noBranchSignal) {
+          const noSkipSignal = signalMakerMode ? yesBestBidIsMyOrder : noBestAskIsMyOrder;
           if (!noSkipSignal) {
             const bounds = parsePriceBounds(priceStr || m.groupItemTitle || '');
             let isBullish: boolean;
@@ -296,16 +291,16 @@ export function useSignalsAndArbs() {
               ? hitDisplayStrike(priceStr, bsPriceStr, hitIsReach)
               : (tableType === 'above' && !priceStr.includes('>') && !priceStr.includes('<'))
               ? '>' + priceStr : priceStr;
-            // In maker mode: NO orig -> show YES side data
+            // In maker mode: NO orig -> show YES side data (bid/BS/diff all YES leg)
             signals.push({
               market: m,
               type: isBullish ? 'BULL' : 'BEAR',
               price: signalMakerMode ? yesAskNum / 100 : noAskNum / 100,
               bsPrice: signalMakerMode ? yesProbNum / 100 : noProbNum / 100,
-              diff: signalMakerMode ? (yesAskNum - yesProbNum) / 100 : (noAskNum - noProbNum) / 100,
-              diffPct: signalMakerMode ? noMakerDiffPct : noDiffPct,
+              diff: signalMakerMode ? (yesBidNum - yesProbNum) / 100 : (noAskNum - noProbNum) / 100,
+              diffPct: signalMakerMode ? yesBidDiffPct : noDiffPct,
               bidPrice: signalMakerMode ? yesBidNum / 100 : noBidNum / 100,
-              bidDiffPct: noBidDiffPct,
+              bidDiffPct: signalMakerMode ? yesBidDiffPct : noBidDiffPct,
               asset,
               endDate,
               priceStr: displayPrice,

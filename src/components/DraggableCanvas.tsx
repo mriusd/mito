@@ -14,7 +14,7 @@ import { PnLPanel } from './panels/PnLPanel';
 import { UpDownMarketsPanel } from './panels/UpDownMarketsPanel';
 import { ChatPanel } from './panels/ChatPanel';
 import type { PanelConfig, PanelType } from '../types';
-import BREAKPOINT_LAYOUTS, { HEIGHT_VARIANTS } from '../lib/defaultLayouts';
+import BREAKPOINT_LAYOUTS, { HEIGHT_VARIANTS, GRID_COLS } from '../lib/defaultLayouts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const GridLayout = RGLGrid as any;
@@ -33,8 +33,7 @@ interface LayoutsMap {
   [breakpoint: string]: LayoutItem[];
 }
 
-// Column counts per breakpoint (must match the cols prop on ResponsiveGridLayout)
-const COLS: Record<string, number> = { '2xl': 36, xl: 28, lg: 24, md: 20, sm: 12, xs: 8, xxs: 4 };
+const COLS = GRID_COLS;
 // Thresholds based on viewport width (synced with defaultLayouts.ts docs)
 const BREAKPOINTS_SORTED = [
   { name: '2xl', min: 2400 }, { name: 'xl', min: 1600 }, { name: 'lg', min: 1280 },

@@ -6,6 +6,7 @@ import { HelpTooltip } from './HelpTooltip';
 import { WalletButton } from './WalletButton';
 import { useAppStore } from '../stores/appStore';
 import { saveSetting } from '../api';
+import { gridSizeFromDefaultLayoutMins } from '../lib/defaultLayouts';
 import type { PanelType } from '../types';
 
 const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean }[] = [
@@ -69,15 +70,15 @@ export function Header({ onRefresh }: HeaderProps) {
   const handleAddPanel = useCallback(
     (type: PanelType, title: string) => {
       const id = type + '-' + Date.now();
-      const isAsset = type.startsWith('asset-');
       if (layouts) {
         const newLayouts: Record<string, unknown[]> = {};
         for (const [bp, lay] of Object.entries(layouts)) {
           const items = lay as { i: string; x: number; y: number; w: number; h: number }[];
           const maxY = items.reduce((m, l) => Math.max(m, l.y + l.h), 0);
+          const { w, h } = gridSizeFromDefaultLayoutMins(type, bp);
           newLayouts[bp] = [
             ...items,
-            { i: id, x: 0, y: maxY, w: isAsset ? 12 : 24, h: isAsset ? 8 : 6, minW: 1, minH: 1 },
+            { i: id, x: 0, y: maxY, w, h, minW: 1, minH: 1 },
           ];
         }
         setLayouts(newLayouts as any);

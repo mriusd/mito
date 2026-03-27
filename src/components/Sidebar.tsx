@@ -268,6 +268,26 @@ export function Sidebar() {
     return orderExpiry;
   })();
 
+  const formatPreExpiryLead = (orderExpiration?: string): string | null => {
+    if (!orderExpiration || !selectedMarket?.endDate) return null;
+    const endMs = new Date(selectedMarket.endDate).getTime();
+    if (!Number.isFinite(endMs)) return null;
+
+    const raw = Number(orderExpiration);
+    if (!Number.isFinite(raw) || raw <= 0) return null;
+    const expMs = raw < 1e12 ? raw * 1000 : raw;
+
+    // Only show when this order expires before contract expiry.
+    const leadMs = endMs - expMs;
+    if (leadMs <= 0) return null;
+
+    const leadMin = leadMs / 60000;
+    const leadHr = leadMs / 3600000;
+    if (leadMin < 60) return `${Math.round(leadMin)}m`;
+    if (leadHr < 48) return `${leadHr.toFixed(1)}h`;
+    return `${(leadMs / 86400000).toFixed(1)}d`;
+  };
+
   const handleSubmitOrder = async () => {
     if (!selectedMarket) return;
     const tokenId = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1];
@@ -1195,6 +1215,7 @@ export function Sidebar() {
                   const filled = Math.floor(parseFloat(order.size_matched || '0') * 100) / 100;
                   const size = parseFloat(order.original_size || order.size);
                   const sizeDisplay = filled > 0 ? `${(totalSize - filled).toFixed(2)}\\${totalSize.toFixed(2)}` : totalSize.toFixed(2);
+                  const expiresBeforeContract = formatPreExpiryLead(order.expiration);
 
                   const isEditing = editingOrderId === order.id;
                   return (
@@ -1251,6 +1272,15 @@ export function Sidebar() {
                           >{cancellingOrderIds.has(order.id) ? <span className="cancel-spinner"/> : <span className="text-black text-[10px] font-bold leading-none">✕</span>}</button>
                         )}
                       </div>
+                      {expiresBeforeContract && (
+                        <div
+                          className="mt-0.5 flex items-center gap-1 text-[10px] text-cyan-300"
+                          title={`Expires ${expiresBeforeContract} before market expiry (order expiration lead time).`}
+                        >
+                          <Clock size={10} />
+                          <span>{expiresBeforeContract}</span>
+                        </div>
+                      )}
                       {!isEditing && (
                         <div className="mt-0.5 flex items-center gap-0.5 flex-wrap">
                           {[-10, -5, -2, -1, 1, 2, 5, 10].map((delta) => {
@@ -1313,6 +1343,7 @@ export function Sidebar() {
                   const filledDisplay = filled > 0 ? `${filled}/${sizeNum}` : String(sizeNum);
                   const value = (price * size).toFixed(2);
                   const pId = progOrderMap[order.id];
+                  const expiresBeforeContract = formatPreExpiryLead(order.expiration);
                   return (
                     <div key={order.id} className="bg-purple-900/40 border border-purple-700/40 rounded px-1.5 py-0.5 text-[12px]">
                       <div className="flex items-center gap-1">
@@ -1327,6 +1358,15 @@ export function Sidebar() {
                           {cancellingOrderIds.has(order.id) ? <span className="cancel-spinner"/> : <span className="text-black text-[10px] font-bold leading-none">✕</span>}
                         </button>
                       </div>
+                      {expiresBeforeContract && (
+                        <div
+                          className="mt-0.5 flex items-center gap-1 text-[10px] text-cyan-300"
+                          title={`Expires ${expiresBeforeContract} before market expiry (order expiration lead time).`}
+                        >
+                          <Clock size={10} />
+                          <span>{expiresBeforeContract}</span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

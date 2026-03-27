@@ -553,7 +553,7 @@ export function Sidebar() {
 
       {!selectedMarket && (
         <div className="sidebar-section px-3 py-4 text-xs text-gray-300 leading-relaxed">
-          <p className="text-gray-400 mb-3">Professional dashboard for Polymarket crypto markets.</p>
+          <p className="text-gray-400 mb-3">Dashboard for Polymarket crypto markets.</p>
 
           <div className="space-y-2.5">
             <div className="rounded-lg bg-gray-900/40 border border-gray-700/60 px-2.5 py-2">
@@ -637,7 +637,7 @@ export function Sidebar() {
                 <div className="text-white font-bold">5. Range & time-machine modeling</div>
               </div>
               <div className="min-w-0 mt-1">
-                <div className="text-gray-400 mt-0.5">Model probability across ranges and fast-forward expiry with the Time Machine.</div>
+                <div className="text-gray-400 mt-0.5">Model probability across asset price ranges and fast-forward expiry with the Time Machine.</div>
               </div>
             </div>
 

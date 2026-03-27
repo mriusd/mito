@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { useAccount } from 'wagmi';
 import { MessageCircle, Send } from 'lucide-react';
-import { fetchChatMessages, postChatMessage } from '../../api';
+import { deleteChatMessage, fetchChatMessages, postChatMessage } from '../../api';
 import type { ChatMessage } from '../../api';
 import { API_BASE } from '../../lib/env';
 
@@ -95,6 +95,7 @@ export function ChatPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(true);
   /** Bumps on an interval so time-ago labels and age colors stay fresh. */
@@ -103,6 +104,7 @@ export function ChatPanel() {
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const stickToBottomRef = useRef(true);
 
   // Fetch Polymarket nickname on connect
   useEffect(() => {
@@ -139,8 +141,17 @@ export function ChatPanel() {
   // Auto-scroll to bottom on new messages (within container only)
   useEffect(() => {
     const el = containerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages]);
+
+  const handleMessagesScroll = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 24;
+  };
 
   const handleSend = async () => {
     if (!input.trim() || !address || sending) return;
@@ -169,6 +180,23 @@ export function ChatPanel() {
     inputRef.current?.focus();
   };
 
+  const handleDelete = async (id: number) => {
+    if (!address) return;
+    setDeletingIds((prev) => new Set(prev).add(id));
+    try {
+      await deleteChatMessage(id, address);
+      setMessages((prev) => prev.filter((m) => m.id !== id));
+    } catch {
+      // ignore
+    } finally {
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
   const myAddr = address?.toLowerCase() || '';
 
   return (
@@ -184,50 +212,67 @@ export function ChatPanel() {
       </div>
 
       {/* Messages */}
-      <div ref={containerRef} className="panel-body flex-1 overflow-y-auto space-y-0.5 min-h-0 text-xs flex flex-col justify-end">
-        {loading && <div className="text-gray-500 text-center py-4">Loading...</div>}
-        {!loading && messages.length === 0 && (
-          <div className="text-gray-500 text-center py-4">No messages yet. Start the conversation!</div>
-        )}
-        {messages.map((msg) => {
-          const isMine = msg.address.toLowerCase() === myAddr;
-          const displayName = msg.nickname || shortAddr(msg.address);
-          return (
-            <div key={msg.id} className="flex flex-col items-start">
-              <div className="flex items-baseline gap-1 max-w-[90%] flex-wrap">
-                <span
-                  className={`font-medium text-[10px] cursor-pointer hover:underline ${isMine ? 'text-blue-400' : 'text-yellow-400'}`}
-                  title={msg.address}
-                  onClick={() => handleMention(displayName)}
-                >
-                  {displayName}
-                </span>
-                {typeof msg.title === 'string' && msg.title.trim() !== '' && (
+      <div
+        ref={containerRef}
+        onScroll={handleMessagesScroll}
+        className="panel-body flex-1 overflow-y-auto min-h-0 text-xs"
+      >
+        <div className="min-h-full flex flex-col justify-end space-y-0.5">
+          {loading && <div className="text-gray-500 text-center py-4">Loading...</div>}
+          {!loading && messages.length === 0 && (
+            <div className="text-gray-500 text-center py-4">No messages yet. Start the conversation!</div>
+          )}
+          {messages.map((msg) => {
+            const isMine = msg.address.toLowerCase() === myAddr;
+            const displayName = msg.nickname || shortAddr(msg.address);
+            return (
+              <div key={msg.id} className="flex flex-col items-start">
+                <div className="flex items-center gap-1 max-w-[90%] flex-wrap">
                   <span
-                    className="inline-flex items-center rounded-sm px-1 py-0 text-[7px] font-medium uppercase tracking-wide leading-none bg-purple-900/55 text-purple-200 border border-purple-500/40 shrink-0"
-                    title={msg.title}
+                    className={`font-medium text-[10px] cursor-pointer hover:underline ${isMine ? 'text-blue-400' : 'text-yellow-400'}`}
+                    title={msg.address}
+                    onClick={() => handleMention(displayName)}
                   >
-                    {msg.title.trim()}
+                    {displayName}
                   </span>
-                )}
-                <span className={`text-[9px] ${timeElapsedClass(msg.createdAt, timeNow)}`}>
-                  {timeAgo(msg.createdAt, timeNow)}
-                </span>
+                  {typeof msg.title === 'string' && msg.title.trim() !== '' && (
+                    <span
+                      className="inline-flex items-center rounded-sm px-1 py-0 text-[7px] font-medium uppercase tracking-wide leading-none bg-purple-900/55 text-purple-200 border border-purple-500/40 shrink-0"
+                      title={msg.title}
+                    >
+                      {msg.title.trim()}
+                    </span>
+                  )}
+                  <span className={`text-[9px] ${timeElapsedClass(msg.createdAt, timeNow)}`}>
+                    {timeAgo(msg.createdAt, timeNow)}
+                  </span>
+                  {isMine && (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(msg.id)}
+                      disabled={deletingIds.has(msg.id)}
+                      className="w-4 h-4 rounded-sm flex items-center justify-center flex-shrink-0 bg-red-600 hover:bg-red-500 disabled:bg-red-600/50"
+                      title="Delete message"
+                    >
+                      <span className="text-black text-[10px] font-bold leading-none">✕</span>
+                    </button>
+                  )}
+                </div>
+                <div
+                  className={`rounded px-1.5 py-0.5 max-w-[90%] break-words ${
+                    isMine ? 'bg-blue-900/40 text-blue-100' : 'bg-gray-700/60 text-gray-200'
+                  }`}
+                >
+                  {linkifyMessage(
+                    msg.message,
+                    isMine ? 'text-sky-300' : 'text-sky-400'
+                  )}
+                </div>
               </div>
-              <div
-                className={`rounded px-1.5 py-0.5 max-w-[90%] break-words ${
-                  isMine ? 'bg-blue-900/40 text-blue-100' : 'bg-gray-700/60 text-gray-200'
-                }`}
-              >
-                {linkifyMessage(
-                  msg.message,
-                  isMine ? 'text-sky-300' : 'text-sky-400'
-                )}
-              </div>
-            </div>
-          );
-        })}
-        <div ref={messagesEndRef} />
+            );
+          })}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* Input */}

@@ -455,3 +455,21 @@ export async function postChatMessage(address: string, nickname: string, message
   if (!resp.ok) throw new Error('Failed to send message');
   return resp.json();
 }
+
+export async function deleteChatMessage(id: number, address: string): Promise<void> {
+  const body = JSON.stringify({ id, address });
+  let resp = await fetch(`${BASE}/api/chat`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  });
+  // Some deployed backends/proxies block DELETE; fallback to POST endpoint.
+  if (resp.status === 405) {
+    resp = await fetch(`${BASE}/api/chat/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+  }
+  if (!resp.ok) throw new Error('Failed to delete message');
+}

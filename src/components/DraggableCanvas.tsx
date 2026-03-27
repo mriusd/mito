@@ -159,6 +159,7 @@ export function DraggableCanvas() {
   const [mobileLayoutArmed, setMobileLayoutArmed] = useState(false);
   const mobileDoubleTapRef = useRef<{ t: number; panelId: string }>({ t: 0, panelId: '' });
   const mobileArmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const layoutInteractingRef = useRef(false);
 
   useEffect(() => {
     const onResize = () => {
@@ -269,9 +270,6 @@ export function DraggableCanvas() {
   /** Layout from store or defaults. Default minW/minH only apply when building defaults; saved layouts are used as stored. */
   const computedLayout = useMemo((): LayoutItem[] => {
     const defaults = getDefaultLayout(effectivePanels, currentBreakpoint, containerWidth, rowHeight);
-    console.log('[layout-debug] bp:', currentBreakpoint, 'cols:', currentCols, 'width:', containerWidth, 'rowH:', rowHeight);
-    console.log('[layout-debug] layout:', defaults.map((l: LayoutItem) =>
-      `${l.i.replace('trades-positions-orders','tpo')} x=${l.x} y=${l.y} w=${l.w} h=${l.h}`));
     if (layouts && layouts[currentBreakpoint]) {
       const saved = layouts[currentBreakpoint] as LayoutItem[];
       // Drop stored minW/minH (often from old defaults); RGL uses them as hard floors — keep only user w/h.
@@ -296,8 +294,9 @@ export function DraggableCanvas() {
   // Track the latest layout from react-grid-layout (fires during drag/resize)
   const handleLayoutChange = useCallback(
     (newLayout: LayoutItem[]) => {
-      console.log('[rgl-output]', newLayout.map((l: LayoutItem) =>
-        `${l.i.replace('trades-positions-orders','tpo')} x=${l.x} y=${l.y} w=${l.w} h=${l.h}`));
+      // Avoid feedback-loop jitter: RGL can emit passive compaction updates while idle.
+      // We only mirror layout changes into controlled state during active drag/resize interactions.
+      if (!layoutInteractingRef.current) return;
       currentLayoutRef.current = { [currentBreakpoint]: newLayout } as unknown as LayoutsMap;
       setGridLayout(newLayout);
     },
@@ -324,6 +323,7 @@ export function DraggableCanvas() {
   }, []);
 
   const handleMobileDragStart = useCallback(() => {
+    layoutInteractingRef.current = true;
     if (window.innerWidth >= 768) return;
     if (mobileArmTimeoutRef.current) {
       clearTimeout(mobileArmTimeoutRef.current);
@@ -331,10 +331,15 @@ export function DraggableCanvas() {
     }
   }, []);
 
+  const handleResizeStart = useCallback(() => {
+    layoutInteractingRef.current = true;
+  }, []);
+
   const handleDragStopWrapped = useCallback((
     layout: LayoutItem[], oldItem: LayoutItem, newItem: LayoutItem,
     placeholder: LayoutItem, e: MouseEvent, element: HTMLElement
   ) => {
+    layoutInteractingRef.current = false;
     disarmMobileAfterLayoutGesture();
     handleUserLayoutChange(layout, oldItem, newItem, placeholder, e, element);
   }, [disarmMobileAfterLayoutGesture, handleUserLayoutChange]);
@@ -343,6 +348,7 @@ export function DraggableCanvas() {
     layout: LayoutItem[], oldItem: LayoutItem, newItem: LayoutItem,
     placeholder: LayoutItem, e: MouseEvent, element: HTMLElement
   ) => {
+    layoutInteractingRef.current = false;
     // Resize stays available without double-tap; do not disarm mobile drag mode here.
     handleUserLayoutChange(layout, oldItem, newItem, placeholder, e, element);
   }, [handleUserLayoutChange]);
@@ -445,6 +451,7 @@ export function DraggableCanvas() {
         rowHeight={rowHeight}
         onLayoutChange={handleLayoutChange}
         onDragStart={handleMobileDragStart}
+        onResizeStart={handleResizeStart}
         onDragStop={handleDragStopWrapped}
         onResizeStop={handleResizeStopWrapped}
         isDraggable={layoutInteractEnabled}

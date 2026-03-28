@@ -27,13 +27,15 @@ const ASSET_COLORS: Record<string, string> = {
   XRP: 'text-cyan-400',
 };
 
-/** Vertical envelope for each asset block (left / right) in the table. */
-const ASSET_ENVELOPE: Record<(typeof ASSETS)[number], { L: string; R: string }> = {
-  BTC: { L: 'border-l-2 border-orange-400/85', R: 'border-r-2 border-orange-400/85' },
-  ETH: { L: 'border-l-2 border-blue-400/85', R: 'border-r-2 border-blue-400/85' },
-  SOL: { L: 'border-l-2 border-purple-400/85', R: 'border-r-2 border-purple-400/85' },
-  XRP: { L: 'border-l-2 border-cyan-400/85', R: 'border-r-2 border-cyan-400/85' },
+/** Outer envelope: left/right always; bottom on last data row only (see `isLastTfRow`). */
+const ASSET_ENVELOPE: Record<(typeof ASSETS)[number], { L: string; R: string; B: string }> = {
+  BTC: { L: 'border-l border-orange-400/85', R: 'border-r border-orange-400/85', B: 'border-b border-orange-400/85' },
+  ETH: { L: 'border-l border-blue-400/85', R: 'border-r border-blue-400/85', B: 'border-b border-blue-400/85' },
+  SOL: { L: 'border-l border-purple-400/85', R: 'border-r border-purple-400/85', B: 'border-b border-purple-400/85' },
+  XRP: { L: 'border-l border-cyan-400/85', R: 'border-r border-cyan-400/85', B: 'border-b border-cyan-400/85' },
 };
+
+const LAST_TIMEFRAME = TIMEFRAMES[TIMEFRAMES.length - 1];
 
 const THRESHOLD_KEY = 'updown-cheap-threshold';
 const SHOW_TARGET_KEY = 'updown-show-target';
@@ -247,6 +249,7 @@ export function UpDownMarketsPanel() {
               const startMs = endMs - duration;
               const tfProgress = endMs > 0 && duration > 0 ? Math.max(0, Math.min(1, (now - startMs) / duration)) : 0;
               const tfProgressPct = (tfProgress * 100).toFixed(1);
+              const isLastTfRow = tf === LAST_TIMEFRAME;
 
               return (
               <tr key={tf} className="hover:bg-gray-800/50">
@@ -265,7 +268,7 @@ export function UpDownMarketsPanel() {
                       <td
                         key={asset}
                         colSpan={showTarget ? 2 : 1}
-                        className={`px-1 py-1 text-center border-b border-gray-700/50 text-gray-600 ${env.L} ${env.R}`}
+                        className={`px-1 py-1 text-center text-gray-600 ${env.L} ${env.R} ${isLastTfRow ? env.B : 'border-b border-gray-700/50'}`}
                       >
                         -
                       </td>
@@ -319,7 +322,7 @@ export function UpDownMarketsPanel() {
                   const targetCell = showTarget ? (
                     <td
                       key={`${asset}-target`}
-                      className={`px-1 py-1 align-middle border-b border-r border-gray-700 text-center text-[9px] whitespace-nowrap ${ASSET_COLORS[asset] || 'text-gray-300'} bg-gray-900/50 ${env.L}`}
+                      className={`px-1 py-1 align-middle border-r border-gray-700 text-center text-[9px] whitespace-nowrap ${ASSET_COLORS[asset] || 'text-gray-300'} bg-gray-900/50 ${env.L} ${isLastTfRow ? env.B : 'border-b border-gray-700/50'}`}
                     >
                       <div className="flex flex-row items-center justify-center gap-1 leading-none">
                         <span className="font-medium tabular-nums">
@@ -386,7 +389,7 @@ export function UpDownMarketsPanel() {
                     <td
                       key={asset}
                       data-market-id={market.id}
-                      className={`market-cell px-0.5 py-1 text-center border-b border-gray-700/50 whitespace-nowrap relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${bgColor} ${showTarget ? `border-l border-gray-700 ${env.R}` : `${env.L} ${env.R}`}`}
+                      className={`market-cell px-0.5 py-1 text-center whitespace-nowrap relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${bgColor} ${showTarget ? `border-l border-gray-700 ${env.R}` : `${env.L} ${env.R}`} ${isLastTfRow ? env.B : 'border-b border-gray-700/50'}`}
                       style={{ minWidth: 60 }}
                       onClick={() => handleCellClick(market)}
                     >

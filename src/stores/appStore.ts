@@ -237,6 +237,35 @@ function persistManualPriceSlots(slots: Record<AssetSymbol, [PriceRange | null, 
   }
 }
 
+const VWAP_CANDLES_KEY = 'polymarket-vwap-candles';
+const VWAP_CORRECTION_KEY = 'polymarket-vwap-correction';
+
+function loadVwapCandles(): number {
+  if (typeof localStorage === 'undefined') return 60;
+  try {
+    const raw = localStorage.getItem(VWAP_CANDLES_KEY);
+    if (raw == null) return 60;
+    const v = parseInt(raw, 10);
+    if (Number.isNaN(v)) return 60;
+    return Math.max(5, Math.min(1440, v));
+  } catch {
+    return 60;
+  }
+}
+
+function loadVwapCorrection(): number {
+  if (typeof localStorage === 'undefined') return 0;
+  try {
+    const raw = localStorage.getItem(VWAP_CORRECTION_KEY);
+    if (raw == null) return 0;
+    const v = parseFloat(String(raw).replace(',', '.'));
+    if (Number.isNaN(v)) return 0;
+    return Math.max(0, Math.min(10, v));
+  } catch {
+    return 0;
+  }
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   priceData: {
     BTCUSDT: { price: 0 },
@@ -270,8 +299,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     XRPUSDT: localStorage.getItem('polymarket-use-live-XRPUSDT') === 'true',
   },
   volMultiplier: parseFloat(localStorage.getItem('polymarket-vol-mult') || '1'),
-  vwapCandles: 60,
-  vwapCorrection: 0,
+  vwapCandles: loadVwapCandles(),
+  vwapCorrection: loadVwapCorrection(),
   bsTimeOffsetHours: parseInt(localStorage.getItem('polymarket-bs-time-offset') || '0'),
   // Default unchecked for new users; honor saved preference afterwards.
   showPast: localStorage.getItem('polymarket-show-past') === 'true',
@@ -348,8 +377,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     localStorage.setItem('polymarket-vol-mult', v.toString());
     set({ volMultiplier: v });
   },
-  setVwapCandles: (v) => set({ vwapCandles: v }),
-  setVwapCorrection: (v) => set({ vwapCorrection: v }),
+  setVwapCandles: (v) => {
+    const n = Math.max(5, Math.min(1440, Math.round(Number(v)) || 60));
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(VWAP_CANDLES_KEY, String(n));
+      } catch {
+        /* quota */
+      }
+    }
+    set({ vwapCandles: n });
+  },
+  setVwapCorrection: (v) => {
+    const n = Math.max(0, Math.min(10, parseFloat(String(v).replace(',', '.')) || 0));
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(VWAP_CORRECTION_KEY, String(n));
+      } catch {
+        /* quota */
+      }
+    }
+    set({ vwapCorrection: n });
+  },
   setBsTimeOffsetHours: (v) => {
     localStorage.setItem('polymarket-bs-time-offset', v.toString());
     set({ bsTimeOffsetHours: v });

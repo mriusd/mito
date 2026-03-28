@@ -726,7 +726,7 @@ export function Sidebar() {
               prevPriceRef.current = currentPrice;
             }
 
-            // B-S probability for up/down: "Up" = above target price at expiry
+            // Math (terminal BS) probability for up/down: "Up" = above target price at expiry
             let bsUpDown: number | null = null;
             let bsTimeMachinePastExpiry = false;
             if (upDownTargetPrice && currentPrice && selectedMarket?.endDate) {
@@ -756,12 +756,12 @@ export function Sidebar() {
                   </div>
                   {bsTimeMachinePastExpiry ? (
                     <div className="text-center" title="Time machine ahead of expiration">
-                      <div className="text-[10px] text-gray-500">B-S</div>
+                      <div className="text-[10px] text-gray-500">Math</div>
                       <div className="text-xs font-bold text-gray-500">&gt;⏱</div>
                     </div>
                   ) : bsUpDown !== null ? (
                     <div className="text-center">
-                      <div className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">B-S <HelpTooltip text={"Black-Scholes fair value for this Up/Down market.\n\nCalculated using the Polymarket Chainlink current price as the underlying, the target price as the strike, time to expiry, and implied volatility (σ).\n\nFor Up (YES): probability that price will be above the target at expiry.\nFor Down (NO): probability that price will be below the target at expiry.\n\nCompare this to the market price to find mispricings."} /></div>
+                      <div className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">Math <HelpTooltip text={"Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the Polymarket Chainlink current price as the underlying, the target price as the strike, time to expiry, and implied volatility (σ).\n\nFor Up (YES): probability that price will be above the target at expiry.\nFor Down (NO): probability that price will be below the target at expiry.\n\nCompare this to the market price to find mispricings."} /></div>
                       {(() => {
                         const bestAsk = asks.length > 0 ? parseFloat(asks[0].price) * 100 : null;
                         let bsColor = 'text-yellow-400';
@@ -798,6 +798,8 @@ export function Sidebar() {
                   <span className="text-xs text-gray-400">Mathematical Probability</span>
                   <HelpTooltip text={selectedMarketIsHit
                     ? "For Hit markets, this uses a one-touch (first-passage) barrier formula under geometric Brownian motion: risk-neutral probability that price touches the strike level at or before expiry. That matches path-dependent resolution better than terminal Black-Scholes.\n\nInputs: underlying (VWAP or live), strike, time to expiry, σ (same vol as other markets). r is taken as 0 for short crypto horizons.\n\nFlower petals: min/max across your configured price ranges."
+                    : isUpDownMarket
+                    ? "Mathematical probability for this Up/Down market (Black-Scholes–style terminal model).\n\nInputs: underlying price, target strike, time to expiry, and implied volatility (σ).\n\nThe flower petals show the max and min probability values across your configured price ranges."
                     : "Black-Scholes (B-S) is a mathematical model for pricing options, adapted here to estimate the probability of an asset reaching a given strike price by expiry.\n\nInputs:\n• Underlying price (VWAP or live price)\n• Strike price (the market's target price)\n• Time to expiry\n• Implied volatility (σ multiplier in header)\n\nThe flower petals show the max and min B-S probability values calculated across the set price ranges. This gives a visual sense of the probability spread.\n\nA high B-S probability means the model considers it likely the asset will reach the strike. Comparing B-S probability to the market price reveals potential mispricings."} />
                 </div>
                 <BsFlower asset={bsAsset} strike={bsStrike} endDate={bsEndDate} isYes={orderOutcome === 'YES'} hitBarrierModel={selectedMarketIsHit} onPriceClick={(cents) => setOrderPrice(String(cents))} />
@@ -820,7 +822,7 @@ export function Sidebar() {
               <div className="sidebar-section py-1">
                 <div className="flex items-center gap-1 mb-1">
                   <span className="text-xs text-gray-400">Mathematical Probability</span>
-                  <HelpTooltip text={"Black-Scholes probability for this 24h Up/Down market.\n\nUses the target price as the strike, current price as the underlying, time to expiry, and implied volatility (σ).\n\nThe flower petals show the probability spread across your configured price ranges."} />
+                  <HelpTooltip text={"Mathematical probability for this 24h Up/Down market (Black-Scholes–style terminal model).\n\nUses the target price as the strike, current price as the underlying, time to expiry, and implied volatility (σ).\n\nThe flower petals show the probability spread across your configured price ranges."} />
                 </div>
                 <BsFlower asset={bsAsset} strike={bsStrike} endDate={bsEndDate} isYes={orderOutcome === 'YES'} onPriceClick={(cents) => setOrderPrice(String(cents))} />
               </div>

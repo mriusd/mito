@@ -303,29 +303,34 @@ export function Sidebar() {
     const price = parseFloat(orderPrice) / 100;
     const size = parseFloat(orderAmount);
     if (!price || !size) return;
-    const expMinutes = parseInt(orderExpiry) || 180;
-    // Compute expiration as Unix timestamp: market end time minus expMinutes
-    const marketEndDate = selectedMarket.endDate;
-    let expiration: number;
-    if (marketEndDate) {
-      const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
-      const marketDurationMin = (endTimeSec - Math.floor(Date.now() / 1000)) / 60;
-      // For short markets (< expMinutes remaining), expire 30s before market end
-      if (marketDurationMin < expMinutes) {
-        expiration = endTimeSec - 30;
+    let expiration: number | undefined;
+    if (orderSide === 'BUY') {
+      const expMinutes = parseInt(orderExpiry) || 180;
+      const marketEndDate = selectedMarket.endDate;
+      if (marketEndDate) {
+        const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
+        const marketDurationMin = (endTimeSec - Math.floor(Date.now() / 1000)) / 60;
+        if (marketDurationMin < expMinutes) {
+          expiration = endTimeSec - 30;
+        } else {
+          expiration = endTimeSec - expMinutes * 60;
+        }
       } else {
-        expiration = endTimeSec - expMinutes * 60;
+        expiration = Math.floor(Date.now() / 1000) + 86400;
       }
-    } else {
-      // Fallback: now + 24h if no market end date
-      expiration = Math.floor(Date.now() / 1000) + 86400;
+      const minExpiration = Math.floor(Date.now() / 1000) + 120;
+      if (expiration < minExpiration) expiration = minExpiration;
     }
-    // Ensure expiration is in the future (at least now + 2 min)
-    const minExpiration = Math.floor(Date.now() / 1000) + 120;
-    if (expiration < minExpiration) expiration = minExpiration;
     const orderInfo = `${orderSide} ${size} ${orderOutcome} for ${marketName} @ ${orderPrice}¢`;
     try {
-      const result = await placeOrder({ tokenId, side: orderSide, price, size, expiration, orderInfo });
+      const result = await placeOrder({
+        tokenId,
+        side: orderSide,
+        price,
+        size,
+        ...(expiration !== undefined ? { expiration } : {}),
+        orderInfo,
+      });
       if (result.success) {
         showToast('Order placed', 'success');
         triggerWalletRefresh();
@@ -363,24 +368,32 @@ export function Sidebar() {
     try {
       // Step 1: Sign new order (wallet popup) — user can reject here without affecting old order
       signingDialog.setStep('sign', 'active');
-      const expMinutes = parseInt(orderExpiry) || 180;
-      const marketEndDate = selectedMarket?.endDate;
-      let expiration: number;
-      if (marketEndDate) {
-        const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
-        const marketDurationMin = (endTimeSec - Math.floor(Date.now() / 1000)) / 60;
-        if (marketDurationMin < expMinutes) {
-          expiration = endTimeSec - 30;
+      let expiration: number | undefined;
+      if (side === 'BUY') {
+        const expMinutes = parseInt(orderExpiry) || 180;
+        const marketEndDate = selectedMarket?.endDate;
+        if (marketEndDate) {
+          const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
+          const marketDurationMin = (endTimeSec - Math.floor(Date.now() / 1000)) / 60;
+          if (marketDurationMin < expMinutes) {
+            expiration = endTimeSec - 30;
+          } else {
+            expiration = endTimeSec - expMinutes * 60;
+          }
         } else {
-          expiration = endTimeSec - expMinutes * 60;
+          expiration = Math.floor(Date.now() / 1000) + 86400;
         }
-      } else {
-        expiration = Math.floor(Date.now() / 1000) + 86400;
+        const minExpiration = Math.floor(Date.now() / 1000) + 120;
+        if (expiration < minExpiration) expiration = minExpiration;
       }
-      const minExpiration = Math.floor(Date.now() / 1000) + 120;
-      if (expiration < minExpiration) expiration = minExpiration;
 
-      const signResult = await signOrder({ tokenId, side, price: newPrice, size, expiration });
+      const signResult = await signOrder({
+        tokenId,
+        side,
+        price: newPrice,
+        size,
+        ...(expiration !== undefined ? { expiration } : {}),
+      });
       if (!signResult.success || !signResult.signedPayload) {
         signingDialog.setStep('sign', 'error', signResult.error || 'Signing failed');
         showToast(signResult.error || 'Signing failed', 'error');

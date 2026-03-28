@@ -501,6 +501,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   return (
                     <td
                       key={ev.slug}
+                      data-market-id={market.id}
                       className={`market-cell px-0.5 py-1 text-center ${yellowBorder} ${bgColor} whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''}`}
                       style={{ minWidth: 68 }}
                       onClick={() => handleCellClick(market)}
@@ -687,6 +688,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   return (
                     <td
                       key={colIdx}
+                      data-market-id={market.id}
                       className={`market-cell px-0.5 py-1 text-center border-b border-gray-700/50 ${isPast ? 'opacity-50' : ''} whitespace-nowrap border border-gray-400 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''} ${_bgColor}`}
                       style={{ minWidth: 60 }}
                       onClick={() => handleCellClick(market)}
@@ -901,6 +903,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   return (
                     <td
                       key={d.slug}
+                      data-market-id={market.id}
                       className={`market-cell px-0.5 py-0.5 text-center border-b border-gray-700/50 ${bgColor} ${isClosed ? 'opacity-50' : ''} whitespace-nowrap ${borderClass} relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''} ${isColHighlighted && !isSelected ? 'date-column-highlighted' : ''}`}
                       style={isWeekend && !isSelected && !isColHighlighted ? { boxShadow: 'inset 0 0 0 100px rgba(147, 51, 234, 0.08)' } : undefined}
                       onClick={() => handleCellClick(market)}

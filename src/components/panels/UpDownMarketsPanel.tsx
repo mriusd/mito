@@ -223,7 +223,8 @@ export function UpDownMarketsPanel() {
                   return (
                     <td
                       key={asset}
-                      className={`market-cell px-0.5 py-1 text-center border-b border-gray-700/50 whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'ring-2 ring-blue-500 ring-inset z-10' : ''} ${bgColor}`}
+                      data-market-id={market.id}
+                      className={`market-cell px-0.5 py-1 text-center border-b border-gray-700/50 whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${bgColor}`}
                       style={{ minWidth: 60 }}
                       onClick={() => handleCellClick(market)}
                     >

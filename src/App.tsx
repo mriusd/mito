@@ -17,6 +17,13 @@ import { ArbDialog } from './components/ArbDialog';
 import { PnlDrilldownDialog } from './components/PnlDrilldownDialog';
 import { SigningDialog } from './components/SigningDialog';
 import { SignatureExplainerDialog } from './components/SignatureExplainerDialog';
+import {
+  adjacentMarketCell,
+  findMarketCellEl,
+  gridDirFromKey,
+  marketFromLookupById,
+  shouldIgnoreGridKeyEvent,
+} from './lib/marketGridKeyboard';
 
 function parseMarketLinkFromUrl(): { marketId: string; side: 'YES' | 'NO' } | null {
   const params = new URLSearchParams(window.location.search);
@@ -98,6 +105,37 @@ function App() {
     const next = `${url.pathname}${params.toString() ? `?${params.toString()}` : ''}${url.hash}`;
     window.history.replaceState(null, '', next);
   }, [selectedMarket, sidebarOutcome]);
+
+  // Arrow keys / WASD: move selection to adjacent grid cell (same YES/NO side).
+  useEffect(() => {
+    if (!selectedMarket) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (shouldIgnoreGridKeyEvent(e)) return;
+      const dir = gridDirFromKey(e.key);
+      if (!dir) return;
+
+      const cell = findMarketCellEl(selectedMarket.id);
+      if (!cell) return;
+
+      const nextCell = adjacentMarketCell(cell, dir);
+      if (!nextCell) return;
+
+      const nextId = nextCell.dataset.marketId;
+      if (!nextId) return;
+
+      const { marketLookup, setSelectedMarket } = useAppStore.getState();
+      const nextMarket = marketFromLookupById(marketLookup, nextId);
+      if (!nextMarket) return;
+
+      e.preventDefault();
+      setSelectedMarket(nextMarket);
+      nextCell.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedMarket]);
 
   return (
     <div className="gradient-bg h-full flex flex-col text-white">

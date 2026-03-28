@@ -164,7 +164,11 @@ export function SignalsTable() {
     }
 
     if (platform === 'telegram') {
-      const tg = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text.replace(`\n-> ${link}`, ''))}`;
+      const bodyWithoutLink = text.replace(`\n-> ${link}`, '');
+      // Telegram share works reliably when `url` is provided.
+      // Keep blank lines at the end of text, then let Telegram append the link.
+      const tgText = `${bodyWithoutLink}\n\n\n`;
+      const tg = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(tgText)}`;
       window.open(tg, '_blank', 'noopener,noreferrer');
     } else {
       const x = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}`;

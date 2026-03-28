@@ -101,7 +101,7 @@ function buildPctSeries(
     if (inter === null) {
       inter = new Set(s);
     } else {
-      const prev = inter;
+      const prev: Set<number> = inter;
       inter = new Set([...prev].filter((t) => s.has(t)));
     }
   }

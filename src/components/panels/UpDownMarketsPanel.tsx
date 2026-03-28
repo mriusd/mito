@@ -71,9 +71,9 @@ const MATH_VS_BID_NEUTRAL_PCT = 5;
 
 /**
  * Triangle flashes when YES bid is at least this far from math **relative to math**:
- * |bid − math| / math ≥ threshold (e.g. 0.15 ⇒ 15% away from math, not 15 percentage points).
+ * |bid − math| / math ≥ threshold (e.g. 0.30 ⇒ 30% away from math, not 30 percentage points).
  */
-const MATH_VS_BID_FLASH_REL = 0.15;
+const MATH_VS_BID_FLASH_REL = 0.30;
 
 function formatTargetStrikePrice(p: number | undefined | null, fractionDigits: number): string {
   if (p == null || !Number.isFinite(p)) return '-';

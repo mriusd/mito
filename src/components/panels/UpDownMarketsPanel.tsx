@@ -314,17 +314,11 @@ export function UpDownMarketsPanel() {
                   const strikeTarget = strikePriceFromMarket(market, yesTokenId, _bidAskLookup);
 
                   let mathYesProb: number | null = null;
-                  let yesDiff: number | null = null;
-                  let noDiff: number | null = null;
                   if (livePrice && strikeTarget !== undefined && market.endDate) {
                     const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
                     const bsYes = getMarketProbability('>' + strikeTarget, livePrice, market.endDate, sigma, bsTimeOffsetHours);
                     if (bsYes !== null) {
                       mathYesProb = bsYes;
-                      const bsYesPct = bsYes * 100;
-                      const bsNoPct = (1 - bsYes) * 100;
-                      if (bestAsk) yesDiff = bestAsk * 100 - bsYesPct;
-                      if (bestBid) noDiff = (1 - bestBid) * 100 - bsNoPct;
                     }
                   }
 
@@ -433,8 +427,6 @@ export function UpDownMarketsPanel() {
                       }}
                       onClick={() => handleCellClick(market)}
                     >
-                      {yesDiff !== null && yesDiff < 0 && <span className="absolute left-0 top-0 z-10 text-[7px] leading-none px-[2px] rounded-br-sm font-bold text-black bg-green-400">{yesDiff.toFixed(1)}</span>}
-                      {noDiff !== null && noDiff < 0 && <span className="absolute right-0 top-0 z-10 text-[7px] leading-none px-[2px] rounded-bl-sm font-bold text-black bg-green-400">{noDiff.toFixed(1)}</span>}
                       {positionLookup[yesTokenId] && <span className="absolute left-0 top-0 bottom-0 flex items-center px-[4px] text-green-300 text-[8px] bg-green-900/40">{fmtSz(positionLookup[yesTokenId].size)}</span>}
                       {positionLookup[noTokenId] && <span className="absolute right-0 top-0 bottom-0 flex items-center px-[4px] text-red-300 text-[8px] bg-red-900/40">{fmtSz(positionLookup[noTokenId].size)}</span>}
                       <div className="text-[10px] text-gray-400">

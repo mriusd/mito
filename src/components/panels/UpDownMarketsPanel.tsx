@@ -384,7 +384,7 @@ export function UpDownMarketsPanel() {
                                     : bidVsMath === 'bidBelow'
                                       ? 'bg-red-900/65 border-red-600/45 text-red-100'
                                       : 'bg-gray-800/40 border-gray-500/30 text-gray-300/90'
-                                } ${triangleBadgeFlash ? 'updown-triangle-badge-flash' : ''}`}
+                                } ${triangleBadgeFlash && bidVsMath !== 'tie' ? 'updown-triangle-badge-flash' : ''}`}
                                 title={
                                   bidVsMath === 'bidAbove'
                                     ? `YES best bid above math by ${(bestBid! * 100 - mathYesProb! * 100).toFixed(1)} pts — flashes if bid ≥ ${(MATH_VS_BID_FLASH_REL * 100).toFixed(0)}% away from math (relative to math)`

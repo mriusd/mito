@@ -17,6 +17,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean }[] = [
   { type: 'trades-positions-orders', title: 'Trades/Positions/Orders' },
   { type: 'pnl', title: 'P&L' },
   { type: 'updown-overview', title: 'Up/Down Markets' },
+  { type: 'relative-chart', title: 'Relative Chart' },
   { type: 'chat', title: 'Chat' },
 ];
 

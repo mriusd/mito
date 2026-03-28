@@ -213,6 +213,7 @@ export type PanelType =
   | 'trades-positions-orders'
   | 'pnl'
   | 'updown-overview'
+  | 'relative-chart'
   | 'chat';
 
 export interface PanelConfig {

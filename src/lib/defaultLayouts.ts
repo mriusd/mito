@@ -112,6 +112,7 @@ const PANEL_MIN_PIXELS: Record<string, { minW: number; minH: number }> = {
   'asset-XRP': { minW: 320, minH: 220 },
   'trades-positions-orders': { minW: 300, minH: 300 },
   'updown-overview': { minW: 300, minH: 200 },
+  'relative-chart': { minW: 380, minH: 260 },
   'signals': { minW: 300, minH: 150 },
   'chat': { minW: 280, minH: 180 },
   'pnl': { minW: 300, minH: 160 },

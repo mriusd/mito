@@ -20,6 +20,22 @@ import { ToxicFlowDialog } from './ToxicFlowDialog';
 import { Biohazard, CirclePercent, Clock } from 'lucide-react';
 import type { AssetSymbol } from '../types';
 
+const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
+/** FAK buy: pay up to this per share to lift asks. */
+const MARKET_AGGRESSIVE_BUY = 0.99;
+/** FAK sell: accept down to this per share to hit bids. */
+const MARKET_AGGRESSIVE_SELL = 0.01;
+
+function readSidebarOrderKind(): 'limit' | 'market' {
+  try {
+    const v = localStorage.getItem(SIDEBAR_ORDER_KIND_KEY);
+    if (v === 'market' || v === 'limit') return v;
+  } catch {
+    /* ignore */
+  }
+  return 'limit';
+}
+
 export function Sidebar() {
   const { isConnected: walletConnected } = useAccount();
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
@@ -44,6 +60,7 @@ export function Sidebar() {
   const orderOutcome = useAppStore((s) => s.sidebarOutcome);
   const setOrderOutcome = useAppStore((s) => s.setSidebarOutcome);
   const [orderPrice, setOrderPrice] = useState('');
+  const [orderKind, setOrderKind] = useState<'limit' | 'market'>(() => readSidebarOrderKind());
   const [orderAmount, setOrderAmount] = useState('');
   const [orderExpiry, setOrderExpiry] = useState(localStorage.getItem('polymarket-order-expiry') || '180');
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
@@ -84,6 +101,14 @@ export function Sidebar() {
   useEffect(() => {
     localStorage.setItem('sidebar-live-trades-expanded', liveTradesExpanded ? 'true' : 'false');
   }, [liveTradesExpanded]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_ORDER_KIND_KEY, orderKind);
+    } catch {
+      /* ignore */
+    }
+  }, [orderKind]);
 
   // Filter positions/orders/trades for selected market
   const marketTokenIds = selectedMarket?.clobTokenIds || [];
@@ -250,20 +275,31 @@ export function Sidebar() {
     return () => clearInterval(iv);
   }, [selectedMarket?.endDate]);
 
-  const cost = (() => {
-    const p = parseFloat(orderPrice) / 100;
-    const a = parseFloat(orderAmount);
-    if (!p || !a) return 0;
-    if (orderSide === 'BUY') return p * a;
-    return (1 - p) * a;
-  })();
+  const summaryPriceDecimal = useMemo(() => {
+    if (orderKind === 'market') {
+      if (orderSide === 'BUY') {
+        return displayAsks.length > 0 ? parseFloat(displayAsks[0].price) : MARKET_AGGRESSIVE_BUY;
+      }
+      const bestBid = displayBids.length > 0 ? displayBids[displayBids.length - 1] : null;
+      return bestBid ? parseFloat(bestBid.price) : MARKET_AGGRESSIVE_SELL;
+    }
+    return (parseFloat(orderPrice) || 0) / 100;
+  }, [orderKind, orderSide, orderPrice, displayBids, displayAsks]);
 
-  const payout = (() => {
+  const cost = useMemo(() => {
     const a = parseFloat(orderAmount);
     if (!a) return 0;
-    if (orderSide === 'BUY') return a;
+    const p = summaryPriceDecimal;
+    if (orderKind === 'limit' && (!orderPrice || !p)) return 0;
+    if (orderSide === 'BUY') return p * a;
+    return (1 - p) * a;
+  }, [orderAmount, summaryPriceDecimal, orderSide, orderKind, orderPrice]);
+
+  const payout = useMemo(() => {
+    const a = parseFloat(orderAmount);
+    if (!a) return 0;
     return a;
-  })();
+  }, [orderAmount]);
 
   /** T-EXP: if the market expires sooner than the entered lead time (minutes), show 0 — setting does not apply. */
   const orderExpiryInputDisplay = (() => {
@@ -300,11 +336,34 @@ export function Sidebar() {
     if (!selectedMarket) return;
     const tokenId = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1];
     if (!tokenId) return;
-    const price = parseFloat(orderPrice) / 100;
     const size = parseFloat(orderAmount);
-    if (!price || !size) return;
+    if (!size) return;
+
+    const isMarket = orderKind === 'market';
+    let price: number;
+    if (isMarket) {
+      if (orderSide === 'BUY') {
+        if (!displayAsks.length) {
+          showToast('No asks in book — cannot market buy', 'error');
+          return;
+        }
+        price = MARKET_AGGRESSIVE_BUY;
+      } else {
+        if (!displayBids.length) {
+          showToast('No bids in book — cannot market sell', 'error');
+          return;
+        }
+        price = MARKET_AGGRESSIVE_SELL;
+      }
+    } else {
+      price = parseFloat(orderPrice) / 100;
+      if (!price) return;
+    }
+
     let expiration: number | undefined;
-    if (orderSide === 'BUY') {
+    if (isMarket) {
+      expiration = 0;
+    } else if (orderSide === 'BUY') {
       const expMinutes = parseInt(orderExpiry) || 180;
       const marketEndDate = selectedMarket.endDate;
       if (marketEndDate) {
@@ -321,7 +380,9 @@ export function Sidebar() {
       const minExpiration = Math.floor(Date.now() / 1000) + 120;
       if (expiration < minExpiration) expiration = minExpiration;
     }
-    const orderInfo = `${orderSide} ${size} ${orderOutcome} for ${marketName} @ ${orderPrice}¢`;
+    const orderInfo = isMarket
+      ? `${orderSide} ${size} ${orderOutcome} for ${marketName} (market FAK)`
+      : `${orderSide} ${size} ${orderOutcome} for ${marketName} @ ${orderPrice}¢`;
     try {
       const result = await placeOrder({
         tokenId,
@@ -329,10 +390,11 @@ export function Sidebar() {
         price,
         size,
         ...(expiration !== undefined ? { expiration } : {}),
+        ...(isMarket ? { orderType: 'FAK' as const } : {}),
         orderInfo,
       });
       if (result.success) {
-        showToast('Order placed', 'success');
+        showToast(isMarket ? 'Market order submitted' : 'Order placed', 'success');
         triggerWalletRefresh();
       } else {
         showToast(result.error || 'Order failed', 'error');
@@ -990,11 +1052,12 @@ export function Sidebar() {
 
           {/* Order Form */}
           <div className="sidebar-section">
-            {/* BUY/SELL Toggle */}
-            <div className="mb-3">
-              <div className="inline-flex w-full border-b border-gray-700">
+            {/* BUY/SELL (wider) + narrow Limit/Market */}
+            <div className="mb-3 flex gap-2 items-end cursor-default" onPointerDown={(e) => e.stopPropagation()}>
+              <div className="min-w-0 flex-1 border-b border-gray-700 inline-flex">
                 <button
-                  className={`flex-1 h-8 text-[12px] font-bold transition border-b-[3px] ${
+                  type="button"
+                  className={`flex-1 h-7 text-[11px] font-bold transition border-b-[3px] ${
                     orderSide === 'BUY'
                       ? 'text-emerald-400 border-emerald-400'
                       : 'text-slate-400 border-transparent hover:text-slate-200'
@@ -1004,7 +1067,8 @@ export function Sidebar() {
                   BUY
                 </button>
                 <button
-                  className={`flex-1 h-8 text-[12px] font-bold transition border-b-[3px] ${
+                  type="button"
+                  className={`flex-1 h-7 text-[11px] font-bold transition border-b-[3px] ${
                     orderSide === 'SELL'
                       ? 'text-rose-400 border-rose-400'
                       : 'text-slate-400 border-transparent hover:text-slate-200'
@@ -1013,6 +1077,18 @@ export function Sidebar() {
                 >
                   SELL
                 </button>
+              </div>
+              <div className="w-1/4 max-w-[4.5rem] shrink-0 min-w-0">
+                <label className="text-[8px] text-gray-500 block mb-0.5">Type</label>
+                <select
+                  value={orderKind}
+                  onChange={(e) => setOrderKind(e.target.value as 'limit' | 'market')}
+                  className="w-full max-w-full h-7 rounded border border-gray-600 bg-gray-900/90 px-1 text-[10px] font-semibold text-gray-200 outline-none focus:border-cyan-600 focus:ring-1 focus:ring-cyan-600/30"
+                  aria-label="Order type"
+                >
+                  <option value="limit">Limit</option>
+                  <option value="market">Market</option>
+                </select>
               </div>
             </div>
 
@@ -1044,14 +1120,17 @@ export function Sidebar() {
 
             {/* Price + Amount Inputs */}
             <div className="grid grid-cols-2 gap-2 mb-3 items-start">
-              <div>
-                <label className="text-[10px] text-gray-400 block mb-1">Limit Price (¢)</label>
+              <div className={orderKind === 'market' ? 'opacity-55' : ''}>
+                <label className="text-[10px] text-gray-400 block mb-1">
+                  {orderKind === 'market' ? 'Price (market FAK)' : 'Limit Price (¢)'}
+                </label>
                 <div className="relative">
                   <input
                     type="number"
                     value={orderPrice}
                     onChange={(e) => setOrderPrice(e.target.value)}
-                    className="order-input w-full h-[38px] text-center text-lg font-bold leading-none px-10 no-spin"
+                    disabled={orderKind === 'market'}
+                    className="order-input w-full h-[38px] text-center text-lg font-bold leading-none px-10 no-spin disabled:cursor-not-allowed disabled:opacity-70"
                     placeholder="50"
                     min={0.1}
                     max={99.9}
@@ -1059,16 +1138,18 @@ export function Sidebar() {
                   />
                   <button
                     type="button"
+                    disabled={orderKind === 'market'}
                     onClick={() => adjustOrderPriceCents(-1)}
-                    className="absolute left-1 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md text-gray-300 hover:text-white hover:bg-gray-700/70 text-2xl leading-none flex items-center justify-center"
+                    className="absolute left-1 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md text-gray-300 hover:text-white hover:bg-gray-700/70 text-2xl leading-none flex items-center justify-center disabled:pointer-events-none disabled:opacity-40"
                     aria-label="Decrease price by 1 cent"
                   >
                     -
                   </button>
                   <button
                     type="button"
+                    disabled={orderKind === 'market'}
                     onClick={() => adjustOrderPriceCents(1)}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md text-gray-300 hover:text-white hover:bg-gray-700/70 text-2xl leading-none flex items-center justify-center"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md text-gray-300 hover:text-white hover:bg-gray-700/70 text-2xl leading-none flex items-center justify-center disabled:pointer-events-none disabled:opacity-40"
                     aria-label="Increase price by 1 cent"
                   >
                     +
@@ -1078,8 +1159,10 @@ export function Sidebar() {
                   {[1, 5, 10, 25].map((c) => (
                     <button
                       key={c}
+                      type="button"
+                      disabled={orderKind === 'market'}
                       onClick={() => setOrderPrice(String(c))}
-                      className="bg-gray-700 hover:bg-gray-600 rounded text-[9px] text-gray-300 h-6"
+                      className="bg-gray-700 hover:bg-gray-600 rounded text-[9px] text-gray-300 h-6 disabled:pointer-events-none disabled:opacity-40"
                     >
                       {c}c
                     </button>
@@ -1088,7 +1171,9 @@ export function Sidebar() {
               </div>
 
               <div>
-                <label className="text-[10px] text-gray-400 block mb-1">Amount (shares)</label>
+                <label className="text-[10px] text-gray-400 block mb-1">
+                  {orderKind === 'market' && orderSide === 'BUY' ? 'Amount ($)' : 'Amount (shares)'}
+                </label>
                 <div className="relative">
                   <input
                     type="number"
@@ -1154,11 +1239,13 @@ export function Sidebar() {
                 <input
                   type="number"
                   value={orderExpiryInputDisplay}
+                  disabled={orderKind === 'market'}
+                  title={orderKind === 'market' ? 'T-EXP applies to limit (GTD) buys only' : undefined}
                   onChange={(e) => {
                     setOrderExpiry(e.target.value);
                     localStorage.setItem('polymarket-order-expiry', e.target.value);
                   }}
-                  className="bg-transparent text-center text-white text-[11px] w-full outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="bg-transparent text-center text-white text-[11px] w-full outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:cursor-not-allowed disabled:opacity-40"
                   min={0}
                   step={10}
                 />
@@ -1198,7 +1285,11 @@ export function Sidebar() {
                       <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
                       Submitting...
                     </span>
-                  ) : orderSide}
+                  ) : orderKind === 'market' ? (
+                    orderSide === 'BUY' ? 'MARKET BUY' : 'MARKET SELL'
+                  ) : (
+                    orderSide
+                  )}
                 </button>
                 {/* Smart Order button hidden — use backend bot mode via API */}
               </div>

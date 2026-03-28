@@ -42,6 +42,8 @@ export async function placeOrder(params: {
   expiration?: number;
   skipDialog?: boolean;
   orderInfo?: string;
+  /** When set (e.g. FAK), sent to CLOB instead of deriving GTC/GTD from expiration. */
+  orderType?: 'GTC' | 'GTD' | 'FAK' | 'FOK';
 }): Promise<{ success: boolean; error?: string }> {
   if (isWebMode) {
     const proxyWallet = useAppStore.getState().makerAddress;

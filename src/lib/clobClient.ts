@@ -404,6 +404,7 @@ export async function placeOrderDirect(params: {
   proxyWallet: string;
   skipDialog?: boolean;
   orderInfo?: string;
+  orderType?: 'GTC' | 'GTD' | 'FAK' | 'FOK';
 }): Promise<{ success: boolean; orderID?: string; error?: string }> {
   const needsAuth = !cachedCreds || cachedProxyWallet !== params.proxyWallet.toLowerCase();
   const sd = params.skipDialog ? { open: () => {}, setStep: (() => {}) as typeof signingDialog.setStep, close: () => {} } : signingDialog;
@@ -439,8 +440,8 @@ export async function placeOrderDirect(params: {
 
     // Post order to CLOB
     sd.setStep('submit', 'active');
-    const orderType = useGTD ? 'GTD' : 'GTC';
-    const payload = orderToJson(signed, creds.key, orderType);
+    const resolvedOrderType = params.orderType ?? (useGTD ? 'GTD' : 'GTC');
+    const payload = orderToJson(signed, creds.key, resolvedOrderType);
     console.log('[clobClient] order payload:', JSON.stringify(payload, null, 2));
     const body = JSON.stringify(payload);
     const headers = await buildL2Headers(signer, creds, 'POST', '/order', body);
@@ -467,7 +468,7 @@ export async function placeOrderDirect(params: {
           params.side as 'BUY' | 'SELL', params.price, params.size,
           feeRateBps, retryTickSize, negRisk, params.expiration,
         );
-        const retryBody = JSON.stringify(orderToJson(retrySigned, creds.key, orderType));
+        const retryBody = JSON.stringify(orderToJson(retrySigned, creds.key, resolvedOrderType));
         const retryHeaders = await buildL2Headers(signer, creds, 'POST', '/order', retryBody);
         const retryBuilderHeaders = await fetchBuilderHeaders('POST', '/order', retryBody);
         const retryResp = await fetch(`${CLOB_URL}/order`, {

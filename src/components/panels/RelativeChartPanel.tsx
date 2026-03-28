@@ -98,7 +98,12 @@ function buildPctSeries(
   let inter: Set<number> | null = null;
   for (const s of keySets) {
     if (s.size === 0) return null;
-    inter = inter === null ? new Set(s) : new Set([...inter].filter((t) => s.has(t)));
+    if (inter === null) {
+      inter = new Set(s);
+    } else {
+      const prev = inter;
+      inter = new Set([...prev].filter((t) => s.has(t)));
+    }
   }
   if (!inter || inter.size < 2) return null;
   const times = [...inter].sort((a, b) => a - b);

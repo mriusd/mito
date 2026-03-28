@@ -27,6 +27,14 @@ const ASSET_COLORS: Record<string, string> = {
   XRP: 'text-cyan-400',
 };
 
+/** Vertical envelope for each asset block (left / right) in the table. */
+const ASSET_ENVELOPE: Record<(typeof ASSETS)[number], { L: string; R: string }> = {
+  BTC: { L: 'border-l-2 border-orange-400/85', R: 'border-r-2 border-orange-400/85' },
+  ETH: { L: 'border-l-2 border-blue-400/85', R: 'border-r-2 border-blue-400/85' },
+  SOL: { L: 'border-l-2 border-purple-400/85', R: 'border-r-2 border-purple-400/85' },
+  XRP: { L: 'border-l-2 border-cyan-400/85', R: 'border-r-2 border-cyan-400/85' },
+};
+
 const THRESHOLD_KEY = 'updown-cheap-threshold';
 const SHOW_TARGET_KEY = 'updown-show-target';
 
@@ -182,24 +190,30 @@ export function UpDownMarketsPanel() {
           <thead className="sticky top-0 z-10 bg-gray-900">
             <tr>
               <th className="px-2 py-1 text-center text-gray-400 font-bold border-b border-r border-gray-700 bg-gray-900" rowSpan={showTarget ? 2 : 1} />
-              {ASSETS.map((asset) => (
-                <th
-                  key={asset}
-                  colSpan={showTarget ? 2 : 1}
-                  className={`px-2 py-1 text-center border-b border-gray-700 bg-gray-900 font-bold ${ASSET_COLORS[asset] || 'text-white'}`}
-                >
-                  {asset}
-                </th>
-              ))}
+              {ASSETS.map((asset) => {
+                const env = ASSET_ENVELOPE[asset];
+                return (
+                  <th
+                    key={asset}
+                    colSpan={showTarget ? 2 : 1}
+                    className={`px-2 py-1 text-center border-b border-gray-700 bg-gray-900 font-bold ${env.L} ${env.R} ${ASSET_COLORS[asset] || 'text-white'}`}
+                  >
+                    {asset}
+                  </th>
+                );
+              })}
             </tr>
             {showTarget && (
               <tr>
-                {ASSETS.map((asset) => (
-                  <Fragment key={asset}>
-                    <th className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 bg-gray-900 text-[9px] text-gray-400 font-semibold">Target</th>
-                    <th className="px-1 py-0.5 text-center border-b border-gray-700 bg-gray-900/80 text-[9px] text-gray-400 font-semibold">Market</th>
-                  </Fragment>
-                ))}
+                {ASSETS.map((asset) => {
+                  const env = ASSET_ENVELOPE[asset];
+                  return (
+                    <Fragment key={asset}>
+                      <th className={`px-1 py-0.5 text-center border-b border-r border-gray-700 bg-gray-900 text-[9px] text-gray-400 font-semibold ${env.L}`}>Target</th>
+                      <th className={`px-1 py-0.5 text-center border-b border-l border-gray-700 bg-gray-900/80 text-[9px] text-gray-400 font-semibold ${env.R}`}>Market</th>
+                    </Fragment>
+                  );
+                })}
               </tr>
             )}
           </thead>
@@ -246,11 +260,12 @@ export function UpDownMarketsPanel() {
                 {ASSETS.map((asset) => {
                   const market = getCurrentMarket(asset, tf);
                   if (!market) {
+                    const env = ASSET_ENVELOPE[asset];
                     return (
                       <td
                         key={asset}
                         colSpan={showTarget ? 2 : 1}
-                        className="px-1 py-1 text-center border-b border-gray-700/50 text-gray-600"
+                        className={`px-1 py-1 text-center border-b border-gray-700/50 text-gray-600 ${env.L} ${env.R}`}
                       >
                         -
                       </td>
@@ -300,10 +315,11 @@ export function UpDownMarketsPanel() {
                           ? 'bg-red-900/55 text-red-200 border border-red-700/40'
                           : 'bg-yellow-900/50 text-yellow-200 border border-yellow-700/40';
 
+                  const env = ASSET_ENVELOPE[asset];
                   const targetCell = showTarget ? (
                     <td
                       key={`${asset}-target`}
-                      className={`px-1 py-1 align-middle border-b border-l border-r border-gray-700 text-center text-[9px] whitespace-nowrap ${ASSET_COLORS[asset] || 'text-gray-300'} bg-gray-900/50`}
+                      className={`px-1 py-1 align-middle border-b border-r border-gray-700 text-center text-[9px] whitespace-nowrap ${ASSET_COLORS[asset] || 'text-gray-300'} bg-gray-900/50 ${env.L}`}
                     >
                       <div className="flex flex-row items-center justify-center gap-1 leading-none">
                         <span className="font-medium tabular-nums">
@@ -370,7 +386,7 @@ export function UpDownMarketsPanel() {
                     <td
                       key={asset}
                       data-market-id={market.id}
-                      className={`market-cell px-0.5 py-1 text-center border-b border-gray-700/50 whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${bgColor}`}
+                      className={`market-cell px-0.5 py-1 text-center border-b border-gray-700/50 whitespace-nowrap relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${bgColor} ${showTarget ? `border-l border-gray-700 ${env.R}` : `${env.L} ${env.R}`}`}
                       style={{ minWidth: 60 }}
                       onClick={() => handleCellClick(market)}
                     >

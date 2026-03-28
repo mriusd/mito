@@ -1,4 +1,4 @@
-import { useCallback, useState, Fragment } from 'react';
+import { useCallback, useMemo, useState, Fragment } from 'react';
 import type { CSSProperties } from 'react';
 import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
@@ -126,13 +126,14 @@ export function UpDownMarketsPanel() {
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const priceData = useAppStore((s) => s.priceData);
 
-  // Build position lookup by tokenId
-  const positionLookup: Record<string, { size: number }> = {};
-  for (const pos of positions) {
-    const tid = pos.asset || '';
-    const sz = pos.size || 0;
-    if (tid && sz > 0) positionLookup[tid] = { size: sz };
-  }
+  const positionTokenIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const pos of positions) {
+      const tid = pos.asset || '';
+      if (tid && (pos.size || 0) > 0) s.add(tid);
+    }
+    return s;
+  }, [positions]);
 
   // Build order lookup by tokenId (exclude prog orders)
   const orderLookup: Record<string, typeof orders> = {};
@@ -143,11 +144,6 @@ export function UpDownMarketsPanel() {
     if (!orderLookup[tid]) orderLookup[tid] = [];
     orderLookup[tid].push(o);
   }
-
-  const fmtSz = (sz: number) => {
-    const v = Math.floor(sz);
-    return v >= 1000 ? (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : v.toLocaleString();
-  };
 
   const getLiveBidAsk = (m: Market) => {
     const tid = m.clobTokenIds?.[0];
@@ -427,8 +423,18 @@ export function UpDownMarketsPanel() {
                       }}
                       onClick={() => handleCellClick(market)}
                     >
-                      {positionLookup[yesTokenId] && <span className="absolute left-0 top-0 bottom-0 flex items-center px-[4px] text-green-300 text-[8px] bg-green-900/40">{fmtSz(positionLookup[yesTokenId].size)}</span>}
-                      {positionLookup[noTokenId] && <span className="absolute right-0 top-0 bottom-0 flex items-center px-[4px] text-red-300 text-[8px] bg-red-900/40">{fmtSz(positionLookup[noTokenId].size)}</span>}
+                      {positionTokenIds.has(yesTokenId) && (
+                        <span
+                          className="absolute left-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_3px_rgba(52,211,153,0.8)]"
+                          title="YES position"
+                        />
+                      )}
+                      {positionTokenIds.has(noTokenId) && (
+                        <span
+                          className="absolute right-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-rose-400 shadow-[0_0_3px_rgba(251,113,133,0.8)]"
+                          title="NO position"
+                        />
+                      )}
                       <div className="text-[10px] text-gray-400">
                         <span
                           className={`cursor-pointer hover:underline ${isCheap ? 'bg-green-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-green-400'}`}

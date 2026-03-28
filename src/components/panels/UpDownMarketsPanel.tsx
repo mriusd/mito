@@ -63,6 +63,9 @@ const TARGET_STRIKE_DECIMALS: Record<(typeof ASSETS)[number], number> = {
   XRP: 4,
 };
 
+/** Math % badge: gray when rounded P(Up) is within this many points of 50 (i.e. 50 ± 1 → 49–51). */
+const MATH_PROB_NEUTRAL_BAND = 1;
+
 /** Minus (neutral) triangle when |YES bid% − math%| ≤ this (percentage points). */
 const MATH_VS_BID_NEUTRAL_PCT = 5;
 
@@ -333,14 +336,18 @@ export function UpDownMarketsPanel() {
                     triangleBadgeFlash = gapPts >= MATH_VS_BID_FLASH_PCT;
                   }
                   const mathPctRounded = mathYesProb !== null ? Math.round(mathYesProb * 100) : null;
+                  const mathProbNeutral =
+                    mathPctRounded !== null &&
+                    mathPctRounded >= 50 - MATH_PROB_NEUTRAL_BAND &&
+                    mathPctRounded <= 50 + MATH_PROB_NEUTRAL_BAND;
                   const mathBadgeColorClass =
                     mathPctRounded === null
                       ? 'bg-gray-800/70 text-gray-300 border border-gray-600/50'
-                      : mathPctRounded > 50
-                        ? 'bg-green-900/55 text-green-200 border border-green-700/40'
-                        : mathPctRounded < 50
-                          ? 'bg-red-900/55 text-red-200 border border-red-700/40'
-                          : 'bg-yellow-900/50 text-yellow-200 border border-yellow-700/40';
+                      : mathProbNeutral
+                        ? 'bg-gray-800/40 text-gray-300/90 border border-gray-500/30'
+                        : mathPctRounded > 50
+                          ? 'bg-green-900/55 text-green-200 border border-green-700/40'
+                          : 'bg-red-900/55 text-red-200 border border-red-700/40';
 
                   const targetCell = showTarget ? (
                     <td
@@ -358,8 +365,8 @@ export function UpDownMarketsPanel() {
                               className={`inline-flex h-4 min-w-[2.75rem] shrink-0 items-center justify-center gap-0.5 rounded px-1 text-[8px] font-bold tabular-nums ${mathBadgeColorClass}`}
                               title={
                                 bestBid != null && Number.isFinite(bestBid)
-                                  ? `Math P(Up) — green >50%, red <50%, yellow =50% (YES bid ${(bestBid * 100).toFixed(1)}¢)`
-                                  : 'Math P(Up) — green >50%, red <50%, yellow =50%; terminal vs target (Binance spot, σ)'
+                                  ? `Math P(Up) — green >${50 + MATH_PROB_NEUTRAL_BAND}%, red <${50 - MATH_PROB_NEUTRAL_BAND}%, gray if ${50 - MATH_PROB_NEUTRAL_BAND}–${50 + MATH_PROB_NEUTRAL_BAND}% (YES bid ${(bestBid * 100).toFixed(1)}¢)`
+                                  : `Math P(Up) — green >${50 + MATH_PROB_NEUTRAL_BAND}%, red <${50 - MATH_PROB_NEUTRAL_BAND}%, gray if ${50 - MATH_PROB_NEUTRAL_BAND}–${50 + MATH_PROB_NEUTRAL_BAND}%; terminal vs target (Binance spot, σ)`
                               }
                             >
                               <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />

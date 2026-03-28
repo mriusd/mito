@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { AssetSymbol, Market, Position, Order, Trade, PriceRange, PanelConfig, PanelType, Signal, ArbOpportunity, ProgArb } from '../types';
+import { SYMBOLS } from '../types';
 import BREAKPOINT_LAYOUTS from '../lib/defaultLayouts';
 
 interface PriceData {
@@ -180,6 +181,62 @@ const loadLayouts = (): ReactGridLayout.Layouts | null => {
   return null;
 };
 
+const MANUAL_PRICE_SLOTS_KEY = 'polybot-manual-price-slots-v1';
+
+const emptyManualSlots = (): Record<AssetSymbol, [PriceRange | null, PriceRange | null]> => ({
+  BTCUSDT: [null, null],
+  ETHUSDT: [null, null],
+  SOLUSDT: [null, null],
+  XRPUSDT: [null, null],
+});
+
+function parseStoredRange(raw: unknown): PriceRange | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const readNum = (v: unknown): number | null => {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string' && v.trim() !== '') {
+      const n = parseFloat(v.replace(/,/g, ''));
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
+  };
+  const low = readNum(o.low);
+  const high = readNum(o.high);
+  if (low === null || high === null) return null;
+  return { low, high };
+}
+
+function loadManualPriceSlots(): Record<AssetSymbol, [PriceRange | null, PriceRange | null]> {
+  const defaults = emptyManualSlots();
+  if (typeof localStorage === 'undefined') return defaults;
+  try {
+    const json = localStorage.getItem(MANUAL_PRICE_SLOTS_KEY);
+    if (!json) return defaults;
+    const parsed = JSON.parse(json) as unknown;
+    if (typeof parsed !== 'object' || parsed === null) return defaults;
+    const rec = parsed as Record<string, unknown>;
+    for (const sym of SYMBOLS) {
+      const row = rec[sym];
+      if (!Array.isArray(row) || row.length < 2) continue;
+      defaults[sym] = [parseStoredRange(row[0]), parseStoredRange(row[1])];
+    }
+  } catch {
+    /* ignore corrupt storage */
+  }
+  return defaults;
+}
+
+function persistManualPriceSlots(slots: Record<AssetSymbol, [PriceRange | null, PriceRange | null]>) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(MANUAL_PRICE_SLOTS_KEY, JSON.stringify(slots));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   priceData: {
     BTCUSDT: { price: 0 },
@@ -199,12 +256,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     SOLUSDT: 0.90,
     XRPUSDT: 0.80,
   },
-  manualPriceSlots: {
-    BTCUSDT: [null, null],
-    ETHUSDT: [null, null],
-    SOLUSDT: [null, null],
-    XRPUSDT: [null, null],
-  },
+  manualPriceSlots: loadManualPriceSlots(),
   activeRangeSlot: {
     BTCUSDT: parseInt(localStorage.getItem('polymarket-active-range-BTCUSDT') || '0'),
     ETHUSDT: parseInt(localStorage.getItem('polymarket-active-range-ETHUSDT') || '0'),
@@ -277,6 +329,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const pair = [...slots[symbol]] as [PriceRange | null, PriceRange | null];
     pair[slot] = range;
     slots[symbol] = pair;
+    persistManualPriceSlots(slots);
     return { manualPriceSlots: slots };
   }),
   setActiveRangeSlot: (symbol, slot) => {

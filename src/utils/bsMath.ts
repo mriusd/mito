@@ -1,5 +1,7 @@
 // Black-Scholes math utilities — ported from public/index.html
 
+import type { Market } from '../types';
+
 // Standard normal CDF
 function normalCDF(x: number): number {
   const a1 =  0.254829592;
@@ -17,6 +19,121 @@ function normalCDF(x: number): number {
 
 // Risk-free rate
 const R = 0.045;
+
+/** Risk-free rate for one-touch / first-passage hit probabilities (crypto horizons: ~0). */
+const HIT_R = 0;
+
+function yearsToExpiryOrNull(
+  endDate: string,
+  bsTimeOffsetHours: number,
+): number | null {
+  const now = new Date(Date.now() + bsTimeOffsetHours * 3600000);
+  const expiry = new Date(endDate);
+  const timeToExpiryMs = expiry.getTime() - now.getTime();
+  if (timeToExpiryMs <= 0) return null;
+  const timeInYears = timeToExpiryMs / (365 * 24 * 60 * 60 * 1000);
+  if (timeInYears < 1e-7) return null;
+  return timeInYears;
+}
+
+/**
+ * Risk-neutral probability that GBM touches the lower barrier H or below by T (dip / one-touch down),
+ * with S0 > H. Uses the reflection closed form (same inputs as terminal BS: S0, H, σ, T; r≈0).
+ */
+function hitLowerBarrierTouchProb(S0: number, H: number, T: number, sigma: number, r: number): number {
+  if (S0 <= H) return 1;
+  if (sigma <= 0 || T <= 0) return 0;
+  const nu = r - (sigma * sigma) / 2;
+  const sqrtT = Math.sqrt(T);
+  const sigmaSqrtT = sigma * sqrtT;
+  const a = Math.log(S0 / H);
+  const term1 = normalCDF((-a - nu * T) / sigmaSqrtT);
+  const term2 =
+    Math.pow(H / S0, (2 * nu) / (sigma * sigma)) * normalCDF((-a + nu * T) / sigmaSqrtT);
+  return term1 + term2;
+}
+
+/**
+ * Risk-neutral probability that GBM touches the upper barrier H or above by T (reach / one-touch up),
+ * with S0 < H. Symmetric first-passage formula.
+ */
+function hitUpperBarrierTouchProb(S0: number, H: number, T: number, sigma: number, r: number): number {
+  if (S0 >= H) return 1;
+  if (sigma <= 0 || T <= 0) return 0;
+  const nu = r - (sigma * sigma) / 2;
+  const sqrtT = Math.sqrt(T);
+  const sigmaSqrtT = sigma * sqrtT;
+  const b = Math.log(H / S0);
+  const term1 = normalCDF((-b + nu * T) / sigmaSqrtT);
+  const term2 =
+    Math.pow(H / S0, (2 * nu) / (sigma * sigma)) * normalCDF((-b - nu * T) / sigmaSqrtT);
+  return term1 + term2;
+}
+
+/**
+ * YES probability for weekly/monthly Hit markets: one-touch barrier (path-dependent), not terminal N(d2).
+ * Expects the same `>` / `<` encoding as hitStrikeMetaForBs: `>` = reach (up touch), `<` = dip (down touch).
+ */
+export function getHitMarketProbability(
+  priceStr: string,
+  currentPrice: number,
+  endDate: string,
+  sigma: number,
+  bsTimeOffsetHours: number = 0,
+): number | null {
+  if (!currentPrice || currentPrice <= 0 || !endDate) return null;
+  const T = yearsToExpiryOrNull(endDate, bsTimeOffsetHours);
+  if (T === null) return null;
+
+  const cleaned = priceStr.replace(/\$/g, '').replace(/,/g, '');
+
+  if (cleaned.startsWith('<')) {
+    const target = parseNum(cleaned.substring(1));
+    if (isNaN(target) || target <= 0) return null;
+    const p = hitLowerBarrierTouchProb(currentPrice, target, T, sigma, HIT_R);
+    return Math.max(0, Math.min(0.999, p));
+  }
+  if (cleaned.startsWith('>')) {
+    const target = parseNum(cleaned.substring(1));
+    if (isNaN(target) || target <= 0) return null;
+    const p = hitUpperBarrierTouchProb(currentPrice, target, T, sigma, HIT_R);
+    return Math.max(0, Math.min(0.999, p));
+  }
+  return null;
+}
+
+/** Market family for signal fair-value: Hit uses one-touch barrier; Above / price-on use terminal Black-Scholes. */
+export type SignalTableType = 'above' | 'price' | 'hit';
+
+/**
+ * Fair YES probability used when building the Signals panel (and grid overlays).
+ * Hit → {@link getHitMarketProbability}; Above / Between (price-on) → {@link getMarketProbability}.
+ */
+export function getSignalYesProbability(
+  tableType: SignalTableType,
+  bsPriceStr: string,
+  currentPrice: number,
+  endDate: string,
+  sigma: number,
+  bsTimeOffsetHours: number = 0,
+): number | null {
+  if (tableType === 'hit') {
+    return getHitMarketProbability(bsPriceStr, currentPrice, endDate, sigma, bsTimeOffsetHours);
+  }
+  return getMarketProbability(bsPriceStr, currentPrice, endDate, sigma, bsTimeOffsetHours);
+}
+
+/** True if this market id appears in any asset's weekly/monthly Hit list from the API. */
+export function isMarketInWeeklyHitMarkets(
+  marketId: string | undefined,
+  weeklyHitMarkets: Record<string, Market[]>,
+): boolean {
+  if (!marketId) return false;
+  for (const arr of Object.values(weeklyHitMarkets)) {
+    if (arr?.some((m) => m.id === marketId)) return true;
+  }
+  return false;
+}
 
 export function calculateBlackScholesProbability(
   currentPrice: number,
@@ -192,14 +309,22 @@ export function getBsTriple(
   slots: [(PriceSlot | number | null), (PriceSlot | number | null)],
   vwapCorrection: number = 0,
   bsTimeOffsetHours: number = 0,
+  hitBarrierModel: boolean = false,
 ): BsTripleResult | null {
   if (!priceStr || !endDate || !livePrice) return null;
 
   const cleaned = priceStr.replace(/^Hit\s*/i, '').replace(/[\$,]/g, '').replace(/↑/g, '>').replace(/↓/g, '<').trim();
   const ps = (cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-')) ? cleaned : '>' + cleaned;
-  const bsLive = getMarketProbability(ps, livePrice, endDate, sigma, bsTimeOffsetHours);
-  const corrFrac = vwapCorrection / 100;
   const rangeBounds = parseRangeBounds(ps);
+  const probAtPrice = (spot: number) => {
+    if (hitBarrierModel && !rangeBounds) {
+      const h = getHitMarketProbability(ps, spot, endDate, sigma, bsTimeOffsetHours);
+      if (h !== null) return h;
+    }
+    return getMarketProbability(ps, spot, endDate, sigma, bsTimeOffsetHours);
+  };
+  const bsLive = probAtPrice(livePrice);
+  const corrFrac = vwapCorrection / 100;
 
   function slotBs(slotVal: PriceSlot | number | null): SlotBs {
     if (slotVal === null) return { low: null, high: null, min: null, max: null, hasRange: false };
@@ -209,8 +334,8 @@ export function getBsTriple(
       if (sLow) sLow = sLow * (1 + corrFrac);
       if (sHigh) sHigh = sHigh * (1 - corrFrac);
     }
-    const bL = sLow ? getMarketProbability(ps, sLow, endDate, sigma, bsTimeOffsetHours) : null;
-    const bH = sHigh ? getMarketProbability(ps, sHigh, endDate, sigma, bsTimeOffsetHours) : null;
+    const bL = sLow ? probAtPrice(sLow) : null;
+    const bH = sHigh ? probAtPrice(sHigh) : null;
     let bMin: number | null = null, bMax: number | null = null;
     if (rangeBounds && sLow && sHigh && sLow !== sHigh) {
       bMin = minimumRangeBsProb(sLow, sHigh, rangeBounds.low, rangeBounds.high, endDate, sigma, bsTimeOffsetHours).prob;

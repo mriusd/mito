@@ -7,7 +7,7 @@ import { triggerWalletRefresh } from '../lib/clobClient';
 import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
 import { getTokenOutcome, extractAssetFromMarket, shortenMarketName } from '../utils/format';
-import { getMarketProbability } from '../utils/bsMath';
+import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarkets } from '../utils/bsMath';
 import { API_BASE } from '../lib/env';
 import { usePolymarketOB } from '../hooks/usePolymarketOB';
 import { BsFlower } from './BsFlower';
@@ -121,6 +121,12 @@ export function Sidebar() {
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
+  const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
+
+  const selectedMarketIsHit = useMemo(
+    () => isMarketInWeeklyHitMarkets(selectedMarket?.id, weeklyHitMarkets),
+    [selectedMarket?.id, weeklyHitMarkets],
+  );
 
   const _bsProbCents = useMemo(() => {
     if (!selectedMarket) return 0;
@@ -134,11 +140,13 @@ export function Sidebar() {
     const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
     const cleaned = strike.replace(/^Hit\s*/i, '').replace(/[\$,]/g, '').replace(/↑/g, '>').replace(/↓/g, '<').trim();
     const ps = (cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-')) ? cleaned : '>' + cleaned;
-    const probYes = getMarketProbability(ps, livePrice, endDate, sigma, bsTimeOffsetHours);
+    const probYes = selectedMarketIsHit
+      ? getHitMarketProbability(ps, livePrice, endDate, sigma, bsTimeOffsetHours)
+      : getMarketProbability(ps, livePrice, endDate, sigma, bsTimeOffsetHours);
     if (probYes === null) return 0;
     const prob = orderOutcome === 'YES' ? probYes : 1 - probYes;
     return prob * 100;
-  }, [selectedMarket, orderOutcome, vwapData, priceData, volatilityData, volMultiplier, bsTimeOffsetHours]);
+  }, [selectedMarket, orderOutcome, vwapData, priceData, volatilityData, volMultiplier, bsTimeOffsetHours, selectedMarketIsHit]);
 
 
   // Up or Down market detection and state
@@ -775,9 +783,11 @@ export function Sidebar() {
               <div className="sidebar-section py-1">
                 <div className="flex items-center gap-1 mb-1">
                   <span className="text-xs text-gray-400">Mathematical Probability</span>
-                  <HelpTooltip text={"Black-Scholes (B-S) is a mathematical model for pricing options, adapted here to estimate the probability of an asset reaching a given strike price by expiry.\n\nInputs:\n• Underlying price (VWAP or live price)\n• Strike price (the market's target price)\n• Time to expiry\n• Implied volatility (σ multiplier in header)\n\nThe flower petals show the max and min B-S probability values calculated across the set price ranges. This gives a visual sense of the probability spread.\n\nA high B-S probability means the model considers it likely the asset will reach the strike. Comparing B-S probability to the market price reveals potential mispricings."} />
+                  <HelpTooltip text={selectedMarketIsHit
+                    ? "For Hit markets, this uses a one-touch (first-passage) barrier formula under geometric Brownian motion: risk-neutral probability that price touches the strike level at or before expiry. That matches path-dependent resolution better than terminal Black-Scholes.\n\nInputs: underlying (VWAP or live), strike, time to expiry, σ (same vol as other markets). r is taken as 0 for short crypto horizons.\n\nFlower petals: min/max across your configured price ranges."
+                    : "Black-Scholes (B-S) is a mathematical model for pricing options, adapted here to estimate the probability of an asset reaching a given strike price by expiry.\n\nInputs:\n• Underlying price (VWAP or live price)\n• Strike price (the market's target price)\n• Time to expiry\n• Implied volatility (σ multiplier in header)\n\nThe flower petals show the max and min B-S probability values calculated across the set price ranges. This gives a visual sense of the probability spread.\n\nA high B-S probability means the model considers it likely the asset will reach the strike. Comparing B-S probability to the market price reveals potential mispricings."} />
                 </div>
-                <BsFlower asset={bsAsset} strike={bsStrike} endDate={bsEndDate} isYes={orderOutcome === 'YES'} onPriceClick={(cents) => setOrderPrice(String(cents))} />
+                <BsFlower asset={bsAsset} strike={bsStrike} endDate={bsEndDate} isYes={orderOutcome === 'YES'} hitBarrierModel={selectedMarketIsHit} onPriceClick={(cents) => setOrderPrice(String(cents))} />
               </div>
             ) : null;
           })()}

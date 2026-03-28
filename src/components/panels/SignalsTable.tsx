@@ -3,6 +3,7 @@ import { useAppStore } from '../../stores/appStore';
 import { formatPriceShort, ASSET_COLORS, shortenMarketName } from '../../utils/format';
 import { Share2, Zap } from 'lucide-react';
 import { showToast } from '../../utils/toast';
+import { HelpTooltip } from '../HelpTooltip';
 
 export function SignalsTable() {
   const signals = useAppStore((s) => s.signals);
@@ -304,7 +305,12 @@ export function SignalsTable() {
                   <th className="text-left px-1 py-0.5 cursor-pointer select-none" onClick={() => toggleSort('date')}>Date{sortCol === 'date' ? (sortAsc ? ' ▲' : ' ▼') : ''}</th>
                   <th className="text-left px-1 py-0.5">Market</th>
                   <th className="text-center px-1 py-0.5">Side</th>
-                  <th className="text-right px-1 py-0.5">BS</th>
+                  <th className="text-right px-1 py-0.5">
+                    <span className="inline-flex items-center justify-end gap-0.5">
+                      Math
+                      <HelpTooltip text={"Fair YES probability used for the discount column.\n\n• Hit markets: one-touch (first-passage) barrier model (r≈0), same σ as elsewhere.\n• Above / Between: terminal Black-Scholes."} />
+                    </span>
+                  </th>
                   <th className="text-right px-1 py-0.5">{makerMode ? 'Bid' : 'Ask'}</th>
                   <th className="text-right px-1 py-0.5 cursor-pointer select-none" onClick={() => toggleSort('diff')}>Diff{sortCol === 'diff' ? (sortAsc ? ' ▲' : ' ▼') : ''}</th>
                   <th className="text-center px-1 py-0.5">Share</th>
@@ -329,7 +335,7 @@ export function SignalsTable() {
                   const rowHighlight = isSelected ? 'bg-blue-900/40' : '';
                   // Display price: bid in maker/BID mode, ask otherwise
                   const displayPrice = makerMode ? sig.bidPrice * 100 : sig.price * 100;
-                  // Diff: % vs B-S for both modes (bid-side % in maker, ask-side % in taker)
+                  // Diff: % vs fair value (barrier for Hit, BS for Above/Between)
                   const displayDiff = (makerMode ? sig.bidDiffPct : sig.diffPct).toFixed(1) + '%';
                   return (
                     <tr key={i} className={`hover:bg-gray-700/30 cursor-pointer border-b border-gray-700/30 ${rowHighlight}`} onClick={() => handleMarketClick(sig.market, sig.origSide)}>

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { fetchOrderbook } from '../api';
 import { useAppStore } from '../stores/appStore';
 import { BsFlower } from './BsFlower';
+import { isMarketInWeeklyHitMarkets } from '../utils/bsMath';
 import { shortenMarketName } from '../utils/format';
 
 interface OBEntry {
@@ -45,6 +46,8 @@ function shortenTitle(title: string): string {
 export function OrderbookPopup() {
   const positions = useAppStore((s) => s.positions);
   const orders = useAppStore((s) => s.orders);
+  const marketLookup = useAppStore((s) => s.marketLookup);
+  const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
   const [state, setState] = useState<PopupState>({
@@ -69,6 +72,11 @@ export function OrderbookPopup() {
   }, [orders, state.tokenId]);
 
   const isYes = state.title.includes('(YES)');
+
+  const obHitBarrierModel = useMemo(() => {
+    const m = marketLookup[state.tokenId];
+    return m ? isMarketInWeeklyHitMarkets(m.id, weeklyHitMarkets) : false;
+  }, [marketLookup, weeklyHitMarkets, state.tokenId]);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -240,7 +248,7 @@ export function OrderbookPopup() {
       {/* BS Flower */}
       {state.asset && state.strike && (
         <div className="mb-2 pb-2 border-b border-gray-600">
-          <BsFlower asset={state.asset} strike={state.strike} endDate={state.endDate} isYes={isYes} />
+          <BsFlower asset={state.asset} strike={state.strike} endDate={state.endDate} isYes={isYes} hitBarrierModel={obHitBarrierModel} />
         </div>
       )}
 

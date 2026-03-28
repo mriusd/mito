@@ -8,11 +8,11 @@ function getDateKey(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-function formatDateLabel(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  const days = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
+const DAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'] as const;
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+function parseLocalDate(dateStr: string): Date {
+  return new Date(dateStr + 'T00:00:00');
 }
 
 function fmtUsd(v: number): string {
@@ -28,10 +28,11 @@ export function PnLPanel() {
   const { dates, dataByDate } = useMemo(() => {
     const now = new Date();
 
-    // Past days only, oldest → newest; today is the last (rightmost) column
-    const NUM_DAYS = 7;
+    // 3 calendar days before today through 7 after (inclusive of today), oldest → newest
+    const DAYS_PAST = 3;
+    const DAYS_FUTURE = 7;
     const dates: string[] = [];
-    for (let i = -(NUM_DAYS - 1); i <= 0; i++) {
+    for (let i = -DAYS_PAST; i <= DAYS_FUTURE; i++) {
       const d = new Date(now);
       d.setDate(d.getDate() + i);
       dates.push(getDateKey(d));
@@ -58,7 +59,7 @@ export function PnLPanel() {
       if (timeMs === 0) continue;
       const dateKey = getDateKey(new Date(timeMs));
 
-      if (!dataByDate[dateKey]) continue; // outside our 7-day window
+      if (!dataByDate[dateKey]) continue; // outside the visible date window
 
       const rawPrice = parseFloat(trade.price) || 0;
       const size = parseFloat(trade.size_filled || trade.size) || 0;
@@ -88,13 +89,23 @@ export function PnLPanel() {
           <tr>
             <th className="px-2 py-1 text-left text-gray-400 font-bold border-b border-gray-700 bg-gray-900"></th>
             {dates.map((dk) => {
+              const dt = parseLocalDate(dk);
               const isToday = dk === todayKey;
+              const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+              const textCls = isToday
+                ? 'text-yellow-400'
+                : isWeekend
+                  ? 'text-purple-400'
+                  : 'text-gray-300';
               return (
                 <th
                   key={dk}
-                  className={`px-2 py-1 text-center border-b border-gray-700 bg-gray-900 font-bold whitespace-nowrap ${isToday ? 'text-yellow-400' : 'text-gray-300'}`}
+                  className={`px-1.5 py-1 text-center border-b border-l border-gray-700 bg-gray-900 font-bold ${isWeekend ? 'bg-purple-900/20' : ''}`}
                 >
-                  {formatDateLabel(dk)}
+                  <div className={`flex flex-col items-center justify-center leading-tight gap-0.5 text-[10px] ${textCls}`}>
+                    <span>{DAY_NAMES[dt.getDay()]}</span>
+                    <span>{dt.getDate()} {MONTH_NAMES[dt.getMonth()]}</span>
+                  </div>
                 </th>
               );
             })}
@@ -107,7 +118,7 @@ export function PnLPanel() {
             {dates.map((dk) => {
               const v = dataByDate[dk]?.bought || 0;
               return (
-                <td key={dk} className={`px-2 py-1 text-right border-b border-gray-700/50 ${v > 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                <td key={dk} className={`px-2 py-1 text-right border-b border-l border-gray-700 ${v > 0 ? 'text-red-400' : 'text-gray-600'}`}>
                   {v > 0 ? fmtUsd(-v) : '-'}
                 </td>
               );
@@ -119,7 +130,7 @@ export function PnLPanel() {
             {dates.map((dk) => {
               const v = dataByDate[dk]?.sold || 0;
               return (
-                <td key={dk} className={`px-2 py-1 text-right border-b border-gray-700/50 ${v > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                <td key={dk} className={`px-2 py-1 text-right border-b border-l border-gray-700 ${v > 0 ? 'text-green-400' : 'text-gray-600'}`}>
                   {v > 0 ? fmtUsd(v) : '-'}
                 </td>
               );
@@ -134,7 +145,7 @@ export function PnLPanel() {
               const net = s - b;
               const color = net === 0 ? 'text-gray-600' : net > 0 ? 'text-green-400' : 'text-red-400';
               return (
-                <td key={dk} className={`px-2 py-1 text-right border-b border-gray-700/50 font-bold ${color}`}>
+                <td key={dk} className={`px-2 py-1 text-right border-b border-l border-gray-700 font-bold ${color}`}>
                   {net === 0 ? '-' : fmtUsd(net)}
                 </td>
               );

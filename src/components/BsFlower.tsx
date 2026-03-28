@@ -8,6 +8,8 @@ interface BsFlowerProps {
   strike: string;
   endDate: string;
   isYes: boolean;
+  /** Weekly/monthly Hit markets: use first-passage barrier probability instead of terminal BS. */
+  hitBarrierModel?: boolean;
   onPriceClick?: (cents: number) => void;
 }
 
@@ -141,7 +143,7 @@ function extractSlotValues(
   return { v0L: s0L, v0R: s0R, v1L: s1L, v1R: s1R };
 }
 
-export function BsFlower({ asset, strike, endDate, isYes, onPriceClick }: BsFlowerProps) {
+export function BsFlower({ asset, strike, endDate, isYes, hitBarrierModel = false, onPriceClick }: BsFlowerProps) {
   // Store data for frontend BS
   const sym = (asset + 'USDT') as AssetSymbol;
   const vwapData = useAppStore((s) => s.vwapData);
@@ -159,8 +161,8 @@ export function BsFlower({ asset, strike, endDate, isYes, onPriceClick }: BsFlow
     if (!livePrice) return null;
     const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
     const slots = manualPriceSlots[sym] || [null, null];
-    return getBsTriple(strike, endDate, livePrice, sigma, slots, vwapCorrection, bsTimeOffsetHours);
-  }, [asset, strike, endDate, sym, vwapData, priceData, volatilityData, manualPriceSlots, volMultiplier, vwapCorrection, bsTimeOffsetHours]);
+    return getBsTriple(strike, endDate, livePrice, sigma, slots, vwapCorrection, bsTimeOffsetHours, hitBarrierModel);
+  }, [asset, strike, endDate, sym, vwapData, priceData, volatilityData, manualPriceSlots, volMultiplier, vwapCorrection, bsTimeOffsetHours, hitBarrierModel]);
 
   const fmtFn = isYes ? fmt : fmtNo;
   const probColor = isYes ? 'text-green-400' : 'text-red-400';

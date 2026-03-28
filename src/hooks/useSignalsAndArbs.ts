@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { getMarketProbability } from '../utils/bsMath';
+import { getMarketProbability, getSignalYesProbability } from '../utils/bsMath';
 import { API_BASE } from '../lib/env';
 import type { AssetSymbol, Market, Signal, ArbOpportunity } from '../types';
 
@@ -168,8 +168,14 @@ export function useSignalsAndArbs() {
             ? cleaned : '>' + cleaned;
         }
 
-        // BS at VWAP/spot price (matches BsFlower center value)
-        const bsYes = getMarketProbability(bsPriceStr, bsLivePrice || livePrice, endDate, sigma, bsTimeOffsetHours);
+        const bsYes = getSignalYesProbability(
+          tableType,
+          bsPriceStr,
+          bsLivePrice || livePrice,
+          endDate,
+          sigma,
+          bsTimeOffsetHours,
+        );
         if (bsYes === null) continue;
         const bsNo = 1 - bsYes;
 

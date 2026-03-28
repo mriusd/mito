@@ -63,6 +63,9 @@ const TARGET_STRIKE_DECIMALS: Record<(typeof ASSETS)[number], number> = {
   XRP: 4,
 };
 
+/** Minus (neutral) triangle when |YES bid% − math%| ≤ this (percentage points). */
+const MATH_VS_BID_NEUTRAL_PCT = 5;
+
 /** Bid-vs-math triangle badge flashes when |YES bid% − math%| ≥ this (percentage points). */
 const MATH_VS_BID_FLASH_PCT = 15;
 
@@ -322,12 +325,12 @@ export function UpDownMarketsPanel() {
                   let bidVsMath: 'bidAbove' | 'bidBelow' | 'tie' | null = null;
                   let triangleBadgeFlash = false;
                   if (mathYesProb !== null && bestBid != null && Number.isFinite(bestBid)) {
-                    const eps = 1e-9;
+                    const gapPts = Math.abs(bestBid * 100 - mathYesProb * 100);
                     const d = bestBid - mathYesProb;
-                    if (Math.abs(d) < eps) bidVsMath = 'tie';
+                    if (gapPts <= MATH_VS_BID_NEUTRAL_PCT) bidVsMath = 'tie';
                     else if (d > 0) bidVsMath = 'bidAbove';
                     else bidVsMath = 'bidBelow';
-                    triangleBadgeFlash = Math.abs(bestBid * 100 - mathYesProb * 100) >= MATH_VS_BID_FLASH_PCT;
+                    triangleBadgeFlash = gapPts >= MATH_VS_BID_FLASH_PCT;
                   }
                   const mathPctRounded = mathYesProb !== null ? Math.round(mathYesProb * 100) : null;
                   const mathBadgeColorClass =
@@ -369,14 +372,14 @@ export function UpDownMarketsPanel() {
                                     ? 'bg-green-900/65 border-green-600/45 text-green-100'
                                     : bidVsMath === 'bidBelow'
                                       ? 'bg-red-900/65 border-red-600/45 text-red-100'
-                                      : 'bg-yellow-900/55 border-yellow-600/45 text-yellow-100'
+                                      : 'bg-gray-800/40 border-gray-500/30 text-gray-300/90'
                                 } ${triangleBadgeFlash ? 'updown-triangle-badge-flash' : ''}`}
                                 title={
                                   bidVsMath === 'bidAbove'
                                     ? `YES best bid above math by ${(bestBid! * 100 - mathYesProb! * 100).toFixed(1)} pts — flashes if gap ≥ ${MATH_VS_BID_FLASH_PCT} pts`
                                     : bidVsMath === 'bidBelow'
                                       ? `YES best bid below math by ${(mathYesProb! * 100 - bestBid! * 100).toFixed(1)} pts — flashes if gap ≥ ${MATH_VS_BID_FLASH_PCT} pts`
-                                      : 'YES best bid matches math (≈equal)'
+                                      : `Within ±${MATH_VS_BID_NEUTRAL_PCT} pts of math (gap ${(bestBid! * 100 - mathYesProb! * 100).toFixed(1)} pts)`
                                 }
                               >
                                 {bidVsMath === 'bidAbove' && (

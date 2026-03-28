@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, Fragment } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { HelpTooltip } from '../HelpTooltip';
 import type { Market } from '../../types';
@@ -27,8 +27,31 @@ const ASSET_COLORS: Record<string, string> = {
 };
 
 const THRESHOLD_KEY = 'updown-cheap-threshold';
+const SHOW_TARGET_KEY = 'updown-show-target';
+
+const TARGET_STRIKE_DECIMALS: Record<(typeof ASSETS)[number], number> = {
+  BTC: 0,
+  ETH: 1,
+  SOL: 2,
+  XRP: 4,
+};
+
+function formatTargetStrikePrice(p: number | undefined | null, fractionDigits: number): string {
+  if (p == null || !Number.isFinite(p)) return '-';
+  return p.toLocaleString(undefined, {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  });
+}
+
+function strikePriceFromMarket(market: Market, tokenId: string, lookup: Record<string, Market>): number | undefined {
+  const p = market.priceToBeat ?? (tokenId ? lookup[tokenId]?.priceToBeat : undefined);
+  return p != null && Number.isFinite(p) ? p : undefined;
+}
 
 export function UpDownMarketsPanel() {
+  const [showTarget, setShowTarget] = useState(() => localStorage.getItem(SHOW_TARGET_KEY) !== 'false');
+
   const [thresholdStr, setThresholdStr] = useState<string>(() => {
     const saved = localStorage.getItem(THRESHOLD_KEY);
     return saved ?? '10';
@@ -42,6 +65,11 @@ export function UpDownMarketsPanel() {
     if (!isNaN(n) && n >= 0 && n <= 100) {
       localStorage.setItem(THRESHOLD_KEY, String(n));
     }
+  };
+
+  const setShowTargetColumn = (on: boolean) => {
+    setShowTarget(on);
+    localStorage.setItem(SHOW_TARGET_KEY, on ? 'true' : 'false');
   };
 
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
@@ -113,34 +141,63 @@ export function UpDownMarketsPanel() {
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
-      <div className="panel-header flex items-center gap-1 mb-2 cursor-grab">
+      <div className="panel-header flex items-center gap-2 mb-2 cursor-grab flex-wrap">
         <h3 className="text-sm font-bold text-yellow-400">Up or Down Markets</h3>
-        <div className="ml-auto flex items-center gap-1 cursor-default">
-          <input
-            type="number"
-            min={0}
-            max={100}
-            value={thresholdStr}
-            onChange={(e) => handleThresholdChange(e.target.value)}
-            className="w-10 bg-gray-700 text-white text-[10px] text-center rounded px-0.5 py-0.5 border border-gray-600 focus:outline-none focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            onClick={(e) => e.stopPropagation()}
+        <div className="ml-auto flex items-center gap-3 cursor-default flex-wrap">
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={thresholdStr}
+              onChange={(e) => handleThresholdChange(e.target.value)}
+              className="w-10 bg-gray-700 text-white text-[10px] text-center rounded px-0.5 py-0.5 border border-gray-600 focus:outline-none focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            />
+            <span className="text-[10px] text-gray-400">%</span>
+            <HelpTooltip text="Highlight bids and asks that are this % cheaper than the average of the other assets in the same timeframe." />
+          </div>
+          <label
+            className="flex items-center gap-1 cursor-default text-[10px] text-gray-300 select-none"
+            onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
-          />
-          <span className="text-[10px] text-gray-400">%</span>
-          <HelpTooltip text="Highlight bids and asks that are this % cheaper than the average of the other assets in the same timeframe." />
+          >
+            <span>Show Target:</span>
+            <input
+              type="checkbox"
+              checked={showTarget}
+              onChange={(e) => setShowTargetColumn(e.target.checked)}
+              className="accent-blue-500 rounded"
+            />
+          </label>
         </div>
       </div>
       <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
         <table className="w-full border-collapse text-xs">
           <thead className="sticky top-0 z-10 bg-gray-900">
             <tr>
-              <th className="px-2 py-1 text-center text-gray-400 font-bold border-b border-gray-700 bg-gray-900"></th>
+              <th className="px-2 py-1 text-center text-gray-400 font-bold border-b border-r border-gray-700 bg-gray-900" rowSpan={showTarget ? 2 : 1} />
               {ASSETS.map((asset) => (
-                <th key={asset} className={`px-2 py-1 text-center border-b border-gray-700 bg-gray-900 font-bold ${ASSET_COLORS[asset] || 'text-white'}`}>
+                <th
+                  key={asset}
+                  colSpan={showTarget ? 2 : 1}
+                  className={`px-2 py-1 text-center border-b border-gray-700 bg-gray-900 font-bold ${ASSET_COLORS[asset] || 'text-white'}`}
+                >
                   {asset}
                 </th>
               ))}
             </tr>
+            {showTarget && (
+              <tr>
+                {ASSETS.map((asset) => (
+                  <Fragment key={asset}>
+                    <th className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 bg-gray-900 text-[9px] text-gray-400 font-semibold">Target</th>
+                    <th className="px-1 py-0.5 text-center border-b border-gray-700 bg-gray-900/80 text-[9px] text-gray-400 font-semibold">Market</th>
+                  </Fragment>
+                ))}
+              </tr>
+            )}
           </thead>
           <tbody>
             {TIMEFRAMES.map((tf) => {
@@ -175,7 +232,7 @@ export function UpDownMarketsPanel() {
 
               return (
               <tr key={tf} className="hover:bg-gray-800/50">
-                <td className="px-1 py-1 font-bold text-white border-b border-gray-700/50 bg-gray-900 whitespace-nowrap relative">
+                <td className="px-1 py-1 font-bold text-white border-b border-r border-gray-700 bg-gray-900 whitespace-nowrap relative">
                   <div className="flex items-center justify-between gap-1">
                     <span>{tf}</span>
                     <span className={`text-[8px] font-normal ${endMs > 0 && endMs - now < 60000 ? 'text-red-400' : endMs > 0 && endMs - now < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>{endMs > 0 ? formatCountdown(endMs) : ''}</span>
@@ -185,13 +242,64 @@ export function UpDownMarketsPanel() {
                 {ASSETS.map((asset) => {
                   const market = getCurrentMarket(asset, tf);
                   if (!market) {
-                    return <td key={asset} className="px-1 py-1 text-center border-b border-gray-700/50 text-gray-600">-</td>;
+                    return (
+                      <td
+                        key={asset}
+                        colSpan={showTarget ? 2 : 1}
+                        className="px-1 py-1 text-center border-b border-gray-700/50 text-gray-600"
+                      >
+                        -
+                      </td>
+                    );
                   }
 
                   const { bestBid, bestAsk } = getLiveBidAsk(market);
                   const tokenIds = market.clobTokenIds || [];
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
+                  const sym = (asset + 'USDT') as AssetSymbol;
+                  const livePrice = priceData[sym]?.price;
+                  const strikeTarget = strikePriceFromMarket(market, yesTokenId, _bidAskLookup);
+
+                  let mathYesProb: number | null = null;
+                  let yesDiff: number | null = null;
+                  let noDiff: number | null = null;
+                  if (livePrice && strikeTarget !== undefined && market.endDate) {
+                    const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
+                    const bsYes = getMarketProbability('>' + strikeTarget, livePrice, market.endDate, sigma, bsTimeOffsetHours);
+                    if (bsYes !== null) {
+                      mathYesProb = bsYes;
+                      const bsYesPct = bsYes * 100;
+                      const bsNoPct = (1 - bsYes) * 100;
+                      if (bestAsk) yesDiff = bestAsk * 100 - bsYesPct;
+                      if (bestBid) noDiff = (1 - bestBid) * 100 - bsNoPct;
+                    }
+                  }
+
+                  const targetCell = showTarget ? (
+                    <td
+                      key={`${asset}-target`}
+                      className={`px-1 py-1 align-middle border-b border-l border-r border-gray-700 text-center text-[9px] whitespace-nowrap ${ASSET_COLORS[asset] || 'text-gray-300'} bg-gray-900/50`}
+                    >
+                      <div className="flex flex-row items-center justify-center gap-1 leading-none">
+                        <span className="font-medium tabular-nums">
+                          {formatTargetStrikePrice(strikeTarget, TARGET_STRIKE_DECIMALS[asset])}
+                        </span>
+                        {mathYesProb !== null && (
+                          <div
+                            className={`inline-flex h-4 w-9 shrink-0 items-center justify-center rounded px-0.5 text-[8px] font-bold tabular-nums ${
+                              mathYesProb > 0.5
+                                ? 'bg-green-900/55 text-green-200 border border-green-700/40'
+                                : 'bg-red-900/55 text-red-200 border border-red-700/40'
+                            }`}
+                            title="Math: terminal P(Up) vs target (Binance spot, σ)"
+                          >
+                            {(mathYesProb * 100).toFixed(0)}%
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  ) : null;
                   const yesAsk = bestAsk ? (bestAsk * 100).toFixed(1) : '-';
                   const noAsk = bestBid ? ((1 - bestBid) * 100).toFixed(1) : '-';
                   const yesProb = bestBid || 0;
@@ -203,24 +311,7 @@ export function UpDownMarketsPanel() {
                   const noAvg = otherNoAsks(asset);
                   const isNoCheap = noAskVal !== undefined && noAvg > 0 && noAskVal <= noAvg * thresholdFactor;
 
-                  // B-S fair value diff
-                  let yesDiff: number | null = null;
-                  let noDiff: number | null = null;
-                  const sym = (asset + 'USDT') as AssetSymbol;
-                  const livePrice = priceData[sym]?.price;
-                  const target = market.priceToBeat || _bidAskLookup[yesTokenId]?.priceToBeat;
-                  if (livePrice && target && market.endDate) {
-                    const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
-                    const bsYes = getMarketProbability('>' + target, livePrice, market.endDate, sigma, bsTimeOffsetHours);
-                    if (bsYes !== null) {
-                      const bsYesPct = bsYes * 100;
-                      const bsNoPct = (1 - bsYes) * 100;
-                      if (bestAsk) yesDiff = bestAsk * 100 - bsYesPct;
-                      if (bestBid) noDiff = (1 - bestBid) * 100 - bsNoPct;
-                    }
-                  }
-
-                  return (
+                  const quoteCell = (
                     <td
                       key={asset}
                       data-market-id={market.id}
@@ -260,6 +351,13 @@ export function UpDownMarketsPanel() {
                         </>;
                       })()}
                     </td>
+                  );
+
+                  return (
+                    <Fragment key={asset}>
+                      {targetCell}
+                      {quoteCell}
+                    </Fragment>
                   );
                 })}
               </tr>

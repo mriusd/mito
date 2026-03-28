@@ -1,5 +1,23 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useAppStore } from '../../stores/appStore';
+import type { Trade } from '../../types';
+
+const PNL_BUCKET_KEY = 'polybot-pnl-bucket-mode';
+
+function getTradeTimeMs(trade: Trade): number {
+  const ts = (trade as { match_time?: string }).match_time || trade.timestamp || trade.created_at || trade.matchTime || '';
+  if (!ts) return 0;
+  const num = typeof ts === 'number' ? ts : parseFloat(String(ts));
+  if (!isNaN(num) && num > 0) {
+    return num < 1e12 ? num * 1000 : num;
+  }
+  const parsed = new Date(ts);
+  return isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function tradeTokenId(trade: Trade): string {
+  return trade.asset_id || trade.asset || trade.token_id || trade.market || '';
+}
 
 function getDateKey(date: Date): string {
   const y = date.getFullYear();
@@ -22,8 +40,21 @@ function fmtUsd(v: number): string {
   return `${sign}$${abs.toFixed(2)}`;
 }
 
+type PnlBucketMode = 'trade' | 'market';
+
 export function PnLPanel() {
   const trades = useAppStore((s) => s.trades);
+  const marketLookup = useAppStore((s) => s.marketLookup);
+
+  const [bucketMode, setBucketMode] = useState<PnlBucketMode>(() => {
+    const saved = localStorage.getItem(PNL_BUCKET_KEY);
+    return saved === 'market' ? 'market' : 'trade';
+  });
+
+  const setBucket = useCallback((mode: PnlBucketMode) => {
+    setBucketMode(mode);
+    localStorage.setItem(PNL_BUCKET_KEY, mode);
+  }, []);
 
   const { dates, dataByDate } = useMemo(() => {
     const now = new Date();
@@ -38,28 +69,36 @@ export function PnLPanel() {
       dates.push(getDateKey(d));
     }
 
-    // Bucket trades by date
     const dataByDate: Record<string, { bought: number; sold: number }> = {};
     for (const dk of dates) {
       dataByDate[dk] = { bought: 0, sold: 0 };
     }
 
-    for (const trade of trades) {
-      const ts = (trade as any).match_time || trade.timestamp || trade.created_at || trade.matchTime || '';
-      if (!ts) continue;
-      // Handle numeric timestamps (unix seconds or ms) and ISO strings
-      let timeMs = 0;
-      const num = typeof ts === 'number' ? ts : parseFloat(ts);
-      if (!isNaN(num) && num > 0) {
-        timeMs = num < 1e12 ? num * 1000 : num;
-      } else {
-        const parsed = new Date(ts);
-        if (!isNaN(parsed.getTime())) timeMs = parsed.getTime();
-      }
-      if (timeMs === 0) continue;
-      const dateKey = getDateKey(new Date(timeMs));
+    const dateSet = new Set(dates);
 
-      if (!dataByDate[dateKey]) continue; // outside the visible date window
+    for (const trade of trades) {
+      const timeMs = getTradeTimeMs(trade);
+      if (timeMs === 0) continue;
+
+      let dateKey: string | null = null;
+      if (bucketMode === 'trade') {
+        dateKey = getDateKey(new Date(timeMs));
+      } else {
+        const tid = tradeTokenId(trade);
+        const market = tid ? marketLookup[tid] : undefined;
+        const end = market?.endDate;
+        if (end) {
+          const endMs = new Date(end).getTime();
+          if (!Number.isNaN(endMs)) {
+            dateKey = getDateKey(new Date(endMs));
+          }
+        }
+        if (!dateKey) {
+          dateKey = getDateKey(new Date(timeMs));
+        }
+      }
+
+      if (!dateKey || !dateSet.has(dateKey)) continue;
 
       const rawPrice = parseFloat(trade.price) || 0;
       const size = parseFloat(trade.size_filled || trade.size) || 0;
@@ -74,14 +113,36 @@ export function PnLPanel() {
     }
 
     return { dates, dataByDate };
-  }, [trades]);
+  }, [trades, marketLookup, bucketMode]);
 
   const todayKey = getDateKey(new Date());
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
-      <div className="panel-header flex items-center gap-1 mb-2 cursor-grab">
+      <div className="panel-header flex items-center justify-between gap-2 mb-2 cursor-grab flex-wrap">
         <h3 className="text-sm font-bold text-yellow-400">P&L</h3>
+        <div
+          className="flex items-center rounded border border-gray-600 overflow-hidden text-[9px] font-bold shrink-0 cursor-default"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            title="Bucket by trade execution date"
+            className={`px-1.5 py-0.5 transition ${bucketMode === 'trade' ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'}`}
+            onClick={() => setBucket('trade')}
+          >
+            Trade Time
+          </button>
+          <button
+            type="button"
+            title="Bucket by market expiry date (falls back to trade date if unknown)"
+            className={`px-1.5 py-0.5 transition ${bucketMode === 'market' ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'}`}
+            onClick={() => setBucket('market')}
+          >
+            Market Expiry
+          </button>
+        </div>
       </div>
       <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
       <table className="w-full border-collapse text-xs">

@@ -17,7 +17,7 @@ import { LiveTradeChart } from './LiveTradeChart';
 import { ChainlinkChart } from './ChainlinkChart';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { ToxicFlowDialog } from './ToxicFlowDialog';
-import { Biohazard, Clock } from 'lucide-react';
+import { Biohazard, CirclePercent, Clock } from 'lucide-react';
 import type { AssetSymbol } from '../types';
 
 export function Sidebar() {
@@ -756,12 +756,19 @@ export function Sidebar() {
                   </div>
                   {bsTimeMachinePastExpiry ? (
                     <div className="text-center" title="Time machine ahead of expiration">
-                      <div className="text-[10px] text-gray-500">Math</div>
+                      <div className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">
+                        <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
+                        Math
+                      </div>
                       <div className="text-xs font-bold text-gray-500">&gt;⏱</div>
                     </div>
                   ) : bsUpDown !== null ? (
                     <div className="text-center">
-                      <div className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">Math <HelpTooltip text={"Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the Polymarket Chainlink current price as the underlying, the target price as the strike, time to expiry, and implied volatility (σ).\n\nFor Up (YES): probability that price will be above the target at expiry.\nFor Down (NO): probability that price will be below the target at expiry.\n\nCompare this to the market price to find mispricings."} /></div>
+                      <div className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">
+                        <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
+                        Math
+                        <HelpTooltip text={"Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the Polymarket Chainlink current price as the underlying, the target price as the strike, time to expiry, and implied volatility (σ).\n\nFor Up (YES): probability that price will be above the target at expiry.\nFor Down (NO): probability that price will be below the target at expiry.\n\nCompare this to the market price to find mispricings."} />
+                      </div>
                       {(() => {
                         const bestAsk = asks.length > 0 ? parseFloat(asks[0].price) * 100 : null;
                         let bsColor = 'text-yellow-400';
@@ -769,7 +776,15 @@ export function Sidebar() {
                           if (bestAsk < bsUpDown * 0.95) bsColor = 'text-green-400';
                           else if (bestAsk > bsUpDown * 1.05) bsColor = 'text-red-400';
                         }
-                        return <div className={`text-xs font-bold ${bsColor} cursor-pointer hover:underline`} onClick={() => setOrderPrice(bsUpDown!.toFixed(1))}>{bsUpDown!.toFixed(1)}¢</div>;
+                        return (
+                          <div
+                            className={`inline-flex items-center justify-center gap-0.5 text-xs font-bold ${bsColor} cursor-pointer hover:underline`}
+                            onClick={() => setOrderPrice(bsUpDown!.toFixed(1))}
+                          >
+                            <CirclePercent className="h-3 w-3 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
+                            <span className="tabular-nums">{bsUpDown!.toFixed(1)}</span>
+                          </div>
+                        );
                       })()}
                     </div>
                   ) : null}
@@ -777,8 +792,17 @@ export function Sidebar() {
                     <div className="text-[10px] text-gray-500 flex items-center justify-end gap-1">Current <span className="px-0.5 rounded-sm text-[8px] font-bold bg-yellow-400 text-black leading-tight">BINANCE</span></div>
                     <div ref={upDownPriceRef} className="text-xs font-bold text-white">{currentPrice ? `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}` : '...'}</div>
                     {diff !== null && diffPct !== null && (
-                      <div className={`text-[10px] font-bold ${isUp ? 'text-green-400' : 'text-red-400'}`}>
-                        {isUp ? '↑' : '↓'}{Math.abs(diff).toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })} ({diffPct >= 0 ? '+' : ''}{diffPct.toFixed(2)}%)
+                      <div className={`text-[10px] font-bold flex flex-wrap items-center justify-end gap-0.5 ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+                        <span>
+                          {isUp ? '↑' : '↓'}{Math.abs(diff).toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}
+                        </span>
+                        <span className="inline-flex items-center gap-0.5 tabular-nums">
+                          (
+                          {diffPct >= 0 ? '+' : ''}
+                          <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
+                          {diffPct.toFixed(2)}
+                          {')'}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -795,6 +819,9 @@ export function Sidebar() {
             return bsAsset && bsStrike ? (
               <div className="sidebar-section py-1">
                 <div className="flex items-center gap-1 mb-1">
+                  {isUpDownMarket ? (
+                    <CirclePercent className="h-3.5 w-3.5 shrink-0 text-gray-400" strokeWidth={2} aria-hidden />
+                  ) : null}
                   <span className="text-xs text-gray-400">Mathematical Probability</span>
                   <HelpTooltip text={selectedMarketIsHit
                     ? "For Hit markets, this uses a one-touch (first-passage) barrier formula under geometric Brownian motion: risk-neutral probability that price touches the strike level at or before expiry. That matches path-dependent resolution better than terminal Black-Scholes.\n\nInputs: underlying (VWAP or live), strike, time to expiry, σ (same vol as other markets). r is taken as 0 for short crypto horizons.\n\nFlower petals: min/max across your configured price ranges."
@@ -821,6 +848,7 @@ export function Sidebar() {
             return bsAsset ? (
               <div className="sidebar-section py-1">
                 <div className="flex items-center gap-1 mb-1">
+                  <CirclePercent className="h-3.5 w-3.5 shrink-0 text-gray-400" strokeWidth={2} aria-hidden />
                   <span className="text-xs text-gray-400">Mathematical Probability</span>
                   <HelpTooltip text={"Mathematical probability for this 24h Up/Down market (Black-Scholes–style terminal model).\n\nUses the target price as the strike, current price as the underlying, time to expiry, and implied volatility (σ).\n\nThe flower petals show the probability spread across your configured price ranges."} />
                 </div>

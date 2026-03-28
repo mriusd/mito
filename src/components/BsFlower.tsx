@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { CirclePercent } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { getBsTriple, type BsTripleResult } from '../utils/bsMath';
 import type { AssetSymbol } from '../types';
@@ -16,14 +17,35 @@ interface BsFlowerProps {
 const fmt = (v: number | null) => {
   if (v === null) return '-';
   const pct = v * 100;
-  return pct < 0.1 ? '0.0%' : pct.toFixed(1) + '%';
+  return pct < 0.1 ? '0.0' : pct.toFixed(1);
 };
 
 const fmtNo = (v: number | null) => {
   if (v === null) return '-';
   const pct = (1 - v) * 100;
-  return pct < 0.1 ? '0.0%' : pct.toFixed(1) + '%';
+  return pct < 0.1 ? '0.0' : pct.toFixed(1);
 };
+
+function ProbWithIcon({ text, colorClass, clickClass, onClick }: {
+  text: string;
+  colorClass: string;
+  clickClass: string;
+  onClick?: () => void;
+}) {
+  if (text === '-') {
+    return (
+      <span className={`${colorClass} ${clickClass}`} onClick={onClick}>
+        -
+      </span>
+    );
+  }
+  return (
+    <span className={`inline-flex items-center gap-0.5 ${colorClass} ${clickClass}`} onClick={onClick}>
+      <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
+      <span>{text}</span>
+    </span>
+  );
+}
 
 const fmtPrice = (v: number | null) => {
   if (v === null || v === undefined) return '-';
@@ -64,7 +86,8 @@ function FlowerGrid({ label, fmtFn, bsLive, s0HasRange, s1HasRange, v0L, v0R, v1
   if (!hasDual) {
     return (
       <span className={probColor}>
-        {label ? `${label}: ` : ''}<span className={`text-white font-bold ${clickClass}`} onClick={clickable(bsLive)}>{fmtFn(bsLive)}</span>
+        {label ? `${label}: ` : ''}
+        <ProbWithIcon text={fmtFn(bsLive)} colorClass="text-white font-bold" clickClass={clickClass} onClick={clickable(bsLive)} />
       </span>
     );
   }
@@ -76,19 +99,19 @@ function FlowerGrid({ label, fmtFn, bsLive, s0HasRange, s1HasRange, v0L, v0R, v1
         style={{ gridTemplateColumns: 'auto auto auto', gridTemplateRows: 'auto auto', columnGap: 3, lineHeight: 1.2 }}
       >
         <span style={{ gridRow: 1, gridColumn: 1 }}>
-          {s0HasRange ? <span className={`text-cyan-300 ${clickClass}`} onClick={clickable(v0L)}>{fmtFn(v0L)}</span> : <span className="text-gray-700">-</span>}
+          {s0HasRange ? <ProbWithIcon text={fmtFn(v0L)} colorClass="text-cyan-300" clickClass={clickClass} onClick={clickable(v0L)} /> : <span className="text-gray-700">-</span>}
         </span>
         <span style={{ gridRow: '1/3', gridColumn: 2, fontSize: 14, lineHeight: 1 }}>
-          <span className={`text-white font-bold ${clickClass}`} onClick={clickable(bsLive)}>{fmtFn(bsLive)}</span>
+          <ProbWithIcon text={fmtFn(bsLive)} colorClass="text-white font-bold" clickClass={clickClass} onClick={clickable(bsLive)} />
         </span>
         <span style={{ gridRow: 1, gridColumn: 3 }}>
-          {s0HasRange ? <span className={`text-cyan-300 ${clickClass}`} onClick={clickable(v0R)}>{fmtFn(v0R)}</span> : <span className="text-gray-700">-</span>}
+          {s0HasRange ? <ProbWithIcon text={fmtFn(v0R)} colorClass="text-cyan-300" clickClass={clickClass} onClick={clickable(v0R)} /> : <span className="text-gray-700">-</span>}
         </span>
         <span style={{ gridRow: 2, gridColumn: 1 }}>
-          {s1HasRange ? <span className={`text-pink-400 ${clickClass}`} onClick={clickable(v1L)}>{fmtFn(v1L)}</span> : <span className="text-gray-700">-</span>}
+          {s1HasRange ? <ProbWithIcon text={fmtFn(v1L)} colorClass="text-pink-400" clickClass={clickClass} onClick={clickable(v1L)} /> : <span className="text-gray-700">-</span>}
         </span>
         <span style={{ gridRow: 2, gridColumn: 3 }}>
-          {s1HasRange ? <span className={`text-pink-400 ${clickClass}`} onClick={clickable(v1R)}>{fmtFn(v1R)}</span> : <span className="text-gray-700">-</span>}
+          {s1HasRange ? <ProbWithIcon text={fmtFn(v1R)} colorClass="text-pink-400" clickClass={clickClass} onClick={clickable(v1R)} /> : <span className="text-gray-700">-</span>}
         </span>
       </span>
     </div>

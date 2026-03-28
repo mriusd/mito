@@ -66,6 +66,15 @@ html, body, #root {
   50% { opacity: 0.5; }
 }
 
+/* Up/Down panel: bid-vs-math triangle badge pulse when spread ≥15 pts */
+@keyframes updown-math-flash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.updown-triangle-badge-flash {
+  animation: updown-math-flash 0.55s ease-in-out infinite;
+}
+
 input[type="number"].no-spin::-webkit-outer-spin-button,
 input[type="number"].no-spin::-webkit-inner-spin-button {
   -webkit-appearance: none;

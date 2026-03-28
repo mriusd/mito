@@ -1,4 +1,5 @@
 import { useCallback, useState, Fragment } from 'react';
+import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { HelpTooltip } from '../HelpTooltip';
 import type { Market } from '../../types';
@@ -35,6 +36,9 @@ const TARGET_STRIKE_DECIMALS: Record<(typeof ASSETS)[number], number> = {
   SOL: 2,
   XRP: 4,
 };
+
+/** Bid-vs-math triangle badge flashes when |YES bid% − math%| ≥ this (percentage points). */
+const MATH_VS_BID_FLASH_PCT = 15;
 
 function formatTargetStrikePrice(p: number | undefined | null, fractionDigits: number): string {
   if (p == null || !Number.isFinite(p)) return '-';
@@ -276,6 +280,26 @@ export function UpDownMarketsPanel() {
                     }
                   }
 
+                  let bidVsMath: 'bidAbove' | 'bidBelow' | 'tie' | null = null;
+                  let triangleBadgeFlash = false;
+                  if (mathYesProb !== null && bestBid != null && Number.isFinite(bestBid)) {
+                    const eps = 1e-9;
+                    const d = bestBid - mathYesProb;
+                    if (Math.abs(d) < eps) bidVsMath = 'tie';
+                    else if (d > 0) bidVsMath = 'bidAbove';
+                    else bidVsMath = 'bidBelow';
+                    triangleBadgeFlash = Math.abs(bestBid * 100 - mathYesProb * 100) >= MATH_VS_BID_FLASH_PCT;
+                  }
+                  const mathPctRounded = mathYesProb !== null ? Math.round(mathYesProb * 100) : null;
+                  const mathBadgeColorClass =
+                    mathPctRounded === null
+                      ? 'bg-gray-800/70 text-gray-300 border border-gray-600/50'
+                      : mathPctRounded > 50
+                        ? 'bg-green-900/55 text-green-200 border border-green-700/40'
+                        : mathPctRounded < 50
+                          ? 'bg-red-900/55 text-red-200 border border-red-700/40'
+                          : 'bg-yellow-900/50 text-yellow-200 border border-yellow-700/40';
+
                   const targetCell = showTarget ? (
                     <td
                       key={`${asset}-target`}
@@ -286,15 +310,46 @@ export function UpDownMarketsPanel() {
                           {formatTargetStrikePrice(strikeTarget, TARGET_STRIKE_DECIMALS[asset])}
                         </span>
                         {mathYesProb !== null && (
-                          <div
-                            className={`inline-flex h-4 w-9 shrink-0 items-center justify-center rounded px-0.5 text-[8px] font-bold tabular-nums ${
-                              mathYesProb > 0.5
-                                ? 'bg-green-900/55 text-green-200 border border-green-700/40'
-                                : 'bg-red-900/55 text-red-200 border border-red-700/40'
-                            }`}
-                            title="Math: terminal P(Up) vs target (Binance spot, σ)"
-                          >
-                            {(mathYesProb * 100).toFixed(0)}%
+                          <div className="inline-flex items-center gap-0.5 shrink-0">
+                            <div
+                              className={`inline-flex h-4 min-w-[2.75rem] shrink-0 items-center justify-center gap-0.5 rounded px-1 text-[8px] font-bold tabular-nums ${mathBadgeColorClass}`}
+                              title={
+                                bestBid != null && Number.isFinite(bestBid)
+                                  ? `Math P(Up) — green >50%, red <50%, yellow =50% (YES bid ${(bestBid * 100).toFixed(1)}¢)`
+                                  : 'Math P(Up) — green >50%, red <50%, yellow =50%; terminal vs target (Binance spot, σ)'
+                              }
+                            >
+                              <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
+                              <span>{(mathYesProb * 100).toFixed(0)}</span>
+                            </div>
+                            {bidVsMath !== null && (
+                              <div
+                                className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                                  bidVsMath === 'bidAbove'
+                                    ? 'bg-green-900/65 border-green-600/45 text-green-100'
+                                    : bidVsMath === 'bidBelow'
+                                      ? 'bg-red-900/65 border-red-600/45 text-red-100'
+                                      : 'bg-yellow-900/55 border-yellow-600/45 text-yellow-100'
+                                } ${triangleBadgeFlash ? 'updown-triangle-badge-flash' : ''}`}
+                                title={
+                                  bidVsMath === 'bidAbove'
+                                    ? `YES best bid above math by ${(bestBid! * 100 - mathYesProb! * 100).toFixed(1)} pts — flashes if gap ≥ ${MATH_VS_BID_FLASH_PCT} pts`
+                                    : bidVsMath === 'bidBelow'
+                                      ? `YES best bid below math by ${(mathYesProb! * 100 - bestBid! * 100).toFixed(1)} pts — flashes if gap ≥ ${MATH_VS_BID_FLASH_PCT} pts`
+                                      : 'YES best bid matches math (≈equal)'
+                                }
+                              >
+                                {bidVsMath === 'bidAbove' && (
+                                  <Triangle className="h-2.5 w-2.5 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
+                                )}
+                                {bidVsMath === 'bidBelow' && (
+                                  <Triangle className="h-2.5 w-2.5 rotate-180 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
+                                )}
+                                {bidVsMath === 'tie' && (
+                                  <Minus className="h-2.5 w-2.5" strokeWidth={2.5} aria-hidden />
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

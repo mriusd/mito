@@ -1,4 +1,5 @@
 import { useCallback, useState, Fragment } from 'react';
+import type { CSSProperties } from 'react';
 import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { HelpTooltip } from '../HelpTooltip';
@@ -27,13 +28,28 @@ const ASSET_COLORS: Record<string, string> = {
   XRP: 'text-cyan-400',
 };
 
-/** Outer envelope: left/right always; bottom on last data row only (see `isLastTfRow`). */
-const ASSET_ENVELOPE: Record<(typeof ASSETS)[number], { L: string; R: string; B: string }> = {
-  BTC: { L: 'border-l border-orange-400/85', R: 'border-r border-orange-400/85', B: 'border-b border-orange-400/85' },
-  ETH: { L: 'border-l border-blue-400/85', R: 'border-r border-blue-400/85', B: 'border-b border-blue-400/85' },
-  SOL: { L: 'border-l border-purple-400/85', R: 'border-r border-purple-400/85', B: 'border-b border-purple-400/85' },
-  XRP: { L: 'border-l border-cyan-400/85', R: 'border-r border-cyan-400/85', B: 'border-b border-cyan-400/85' },
+/**
+ * Asset envelope border colors as inline RGBA so production CSS always includes them.
+ * (Tailwind JIT sometimes omits `border-{color}-400/85` for some hues in minified builds.)
+ */
+const ASSET_BORDER_COLOR: Record<(typeof ASSETS)[number], string> = {
+  BTC: 'rgba(251, 146, 60, 0.9)',
+  ETH: 'rgba(96, 165, 250, 0.9)',
+  SOL: 'rgba(192, 132, 252, 0.9)',
+  XRP: 'rgba(34, 211, 238, 0.9)',
 };
+
+function assetBorderStyle(
+  asset: (typeof ASSETS)[number],
+  sides: { L?: boolean; R?: boolean; B?: boolean },
+): CSSProperties {
+  const c = ASSET_BORDER_COLOR[asset];
+  const s: CSSProperties = {};
+  if (sides.L) s.borderLeftColor = c;
+  if (sides.R) s.borderRightColor = c;
+  if (sides.B) s.borderBottomColor = c;
+  return s;
+}
 
 const LAST_TIMEFRAME = TIMEFRAMES[TIMEFRAMES.length - 1];
 
@@ -192,30 +208,35 @@ export function UpDownMarketsPanel() {
           <thead className="sticky top-0 z-10 bg-gray-900">
             <tr>
               <th className="px-2 py-1 text-center text-gray-400 font-bold border-b border-r border-gray-700 bg-gray-900" rowSpan={showTarget ? 2 : 1} />
-              {ASSETS.map((asset) => {
-                const env = ASSET_ENVELOPE[asset];
-                return (
-                  <th
-                    key={asset}
-                    colSpan={showTarget ? 2 : 1}
-                    className={`px-2 py-1 text-center border-b border-gray-700 bg-gray-900 font-bold ${env.L} ${env.R} ${ASSET_COLORS[asset] || 'text-white'}`}
-                  >
-                    {asset}
-                  </th>
-                );
-              })}
+              {ASSETS.map((asset) => (
+                <th
+                  key={asset}
+                  colSpan={showTarget ? 2 : 1}
+                  className={`px-2 py-1 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900 font-bold ${ASSET_COLORS[asset] || 'text-white'}`}
+                  style={assetBorderStyle(asset, { L: true, R: true })}
+                >
+                  {asset}
+                </th>
+              ))}
             </tr>
             {showTarget && (
               <tr>
-                {ASSETS.map((asset) => {
-                  const env = ASSET_ENVELOPE[asset];
-                  return (
-                    <Fragment key={asset}>
-                      <th className={`px-1 py-0.5 text-center border-b border-r border-gray-700 bg-gray-900 text-[9px] text-gray-400 font-semibold ${env.L}`}>Target</th>
-                      <th className={`px-1 py-0.5 text-center border-b border-l border-gray-700 bg-gray-900/80 text-[9px] text-gray-400 font-semibold ${env.R}`}>Market</th>
-                    </Fragment>
-                  );
-                })}
+                {ASSETS.map((asset) => (
+                  <Fragment key={asset}>
+                    <th
+                      className="px-1 py-0.5 text-center border-b border-r border-l border-gray-700 border-solid bg-gray-900 text-[9px] text-gray-400 font-semibold"
+                      style={assetBorderStyle(asset, { L: true })}
+                    >
+                      Target
+                    </th>
+                    <th
+                      className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-gray-400 font-semibold"
+                      style={assetBorderStyle(asset, { R: true })}
+                    >
+                      Market
+                    </th>
+                  </Fragment>
+                ))}
               </tr>
             )}
           </thead>
@@ -263,12 +284,12 @@ export function UpDownMarketsPanel() {
                 {ASSETS.map((asset) => {
                   const market = getCurrentMarket(asset, tf);
                   if (!market) {
-                    const env = ASSET_ENVELOPE[asset];
                     return (
                       <td
                         key={asset}
                         colSpan={showTarget ? 2 : 1}
-                        className={`px-1 py-1 text-center text-gray-600 ${env.L} ${env.R} ${isLastTfRow ? env.B : 'border-b border-gray-700/50'}`}
+                        className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 text-gray-600 ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+                        style={assetBorderStyle(asset, { L: true, R: true, B: isLastTfRow })}
                       >
                         -
                       </td>
@@ -318,11 +339,11 @@ export function UpDownMarketsPanel() {
                           ? 'bg-red-900/55 text-red-200 border border-red-700/40'
                           : 'bg-yellow-900/50 text-yellow-200 border border-yellow-700/40';
 
-                  const env = ASSET_ENVELOPE[asset];
                   const targetCell = showTarget ? (
                     <td
                       key={`${asset}-target`}
-                      className={`px-1 py-1 align-middle border-r border-gray-700 text-center text-[9px] whitespace-nowrap ${ASSET_COLORS[asset] || 'text-gray-300'} bg-gray-900/50 ${env.L} ${isLastTfRow ? env.B : 'border-b border-gray-700/50'}`}
+                      className={`px-1 py-1 align-middle border-l border-r border-solid border-gray-700 text-center text-[9px] whitespace-nowrap ${ASSET_COLORS[asset] || 'text-gray-300'} bg-gray-900/50 ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+                      style={assetBorderStyle(asset, { L: true, B: isLastTfRow })}
                     >
                       <div className="flex flex-row items-center justify-center gap-1 leading-none">
                         <span className="font-medium tabular-nums">
@@ -389,8 +410,13 @@ export function UpDownMarketsPanel() {
                     <td
                       key={asset}
                       data-market-id={market.id}
-                      className={`market-cell px-0.5 py-1 text-center whitespace-nowrap relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${bgColor} ${showTarget ? `border-l border-gray-700 ${env.R}` : `${env.L} ${env.R}`} ${isLastTfRow ? env.B : 'border-b border-gray-700/50'}`}
-                      style={{ minWidth: 60 }}
+                      className={`market-cell px-0.5 py-1 text-center whitespace-nowrap border-l border-r border-solid border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${bgColor} ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+                      style={{
+                        minWidth: 60,
+                        ...assetBorderStyle(asset, showTarget
+                          ? { R: true, B: isLastTfRow }
+                          : { L: true, R: true, B: isLastTfRow }),
+                      }}
                       onClick={() => handleCellClick(market)}
                     >
                       {yesDiff !== null && yesDiff < 0 && <span className="absolute left-0 top-0 z-10 text-[7px] leading-none px-[2px] rounded-br-sm font-bold text-black bg-green-400">{yesDiff.toFixed(1)}</span>}

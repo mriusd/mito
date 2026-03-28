@@ -69,8 +69,11 @@ const MATH_PROB_NEUTRAL_BAND = 1;
 /** Minus (neutral) triangle when |YES bid% − math%| ≤ this (percentage points). */
 const MATH_VS_BID_NEUTRAL_PCT = 5;
 
-/** Bid-vs-math triangle badge flashes when |YES bid% − math%| ≥ this (percentage points). */
-const MATH_VS_BID_FLASH_PCT = 15;
+/**
+ * Triangle flashes when YES bid is at least this far from math **relative to math**:
+ * |bid − math| / math ≥ threshold (e.g. 0.15 ⇒ 15% away from math, not 15 percentage points).
+ */
+const MATH_VS_BID_FLASH_REL = 0.15;
 
 function formatTargetStrikePrice(p: number | undefined | null, fractionDigits: number): string {
   if (p == null || !Number.isFinite(p)) return '-';
@@ -333,7 +336,8 @@ export function UpDownMarketsPanel() {
                     if (gapPts <= MATH_VS_BID_NEUTRAL_PCT) bidVsMath = 'tie';
                     else if (d > 0) bidVsMath = 'bidAbove';
                     else bidVsMath = 'bidBelow';
-                    triangleBadgeFlash = gapPts >= MATH_VS_BID_FLASH_PCT;
+                    const flashDenom = Math.max(mathYesProb, 1e-9);
+                    triangleBadgeFlash = Math.abs(bestBid - mathYesProb) / flashDenom >= MATH_VS_BID_FLASH_REL;
                   }
                   const mathPctRounded = mathYesProb !== null ? Math.round(mathYesProb * 100) : null;
                   const mathProbNeutral =
@@ -383,9 +387,9 @@ export function UpDownMarketsPanel() {
                                 } ${triangleBadgeFlash ? 'updown-triangle-badge-flash' : ''}`}
                                 title={
                                   bidVsMath === 'bidAbove'
-                                    ? `YES best bid above math by ${(bestBid! * 100 - mathYesProb! * 100).toFixed(1)} pts — flashes if gap ≥ ${MATH_VS_BID_FLASH_PCT} pts`
+                                    ? `YES best bid above math by ${(bestBid! * 100 - mathYesProb! * 100).toFixed(1)} pts — flashes if bid ≥ ${(MATH_VS_BID_FLASH_REL * 100).toFixed(0)}% away from math (relative to math)`
                                     : bidVsMath === 'bidBelow'
-                                      ? `YES best bid below math by ${(mathYesProb! * 100 - bestBid! * 100).toFixed(1)} pts — flashes if gap ≥ ${MATH_VS_BID_FLASH_PCT} pts`
+                                      ? `YES best bid below math by ${(mathYesProb! * 100 - bestBid! * 100).toFixed(1)} pts — flashes if bid ≥ ${(MATH_VS_BID_FLASH_REL * 100).toFixed(0)}% away from math (relative to math)`
                                       : `Within ±${MATH_VS_BID_NEUTRAL_PCT} pts of math (gap ${(bestBid! * 100 - mathYesProb! * 100).toFixed(1)} pts)`
                                 }
                               >

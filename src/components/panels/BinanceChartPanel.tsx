@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Settings } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import type { AssetName, Market } from '../../types';
 import { ASSET_COLORS } from '../../types';
@@ -92,6 +93,31 @@ function invNormCDF(p: number): number {
 
 function clampP(p: number) { return Math.min(0.98, Math.max(0.02, p)); }
 
+const SR_TIMEFRAMES = ['5m', '15m', '1h', '24h'] as const;
+
+type UpDownTfKey = (typeof SR_TIMEFRAMES)[number];
+
+const DEFAULT_RBS_TF_ENABLED: Record<UpDownTfKey, boolean> = {
+  '5m': true,
+  '15m': true,
+  '1h': true,
+  '24h': true,
+};
+
+function parseRbsTfEnabledFromStorage(raw: string | null): Record<UpDownTfKey, boolean> {
+  if (!raw) return { ...DEFAULT_RBS_TF_ENABLED };
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    const next = { ...DEFAULT_RBS_TF_ENABLED };
+    for (const tf of SR_TIMEFRAMES) {
+      if (typeof o[tf] === 'boolean') next[tf] = o[tf];
+    }
+    return next;
+  } catch {
+    return { ...DEFAULT_RBS_TF_ENABLED };
+  }
+}
+
 /**
  * Reverse Black-Scholes predicted price from up/down markets.
  *
@@ -107,11 +133,13 @@ function computeRBSPrice(
   assetMarkets: Record<string, Market[]>,
   marketLookup: Record<string, Market>,
   now: number,
+  rbsTfEnabled: Record<UpDownTfKey, boolean>,
 ): number | null {
   if (s0 <= 0 || sigma <= 0) return null;
 
   const implied: { price: number; weight: number }[] = [];
-  for (const tf of RBS_TIMEFRAMES) {
+  for (const tf of SR_TIMEFRAMES) {
+    if (!rbsTfEnabled[tf]) continue;
     const markets = (assetMarkets[tf] || [])
       .filter((m: Market) => !m.closed && m.endDate && new Date(m.endDate).getTime() > now)
       .sort((a: Market, b: Market) => {
@@ -158,10 +186,6 @@ interface SRLine {
   probUp: number;
   label: string;
 }
-
-const SR_TIMEFRAMES = ['5m', '15m', '1h', '24h'] as const;
-
-const RBS_TIMEFRAMES = ['15m', '1h', '24h'] as const;
 
 function srLineColor(probUp: number): string {
   if (probUp > 0.55) return '#22c55e';
@@ -438,6 +462,10 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     return '24h';
   });
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
+  const [rbsSettingsOpen, setRbsSettingsOpen] = useState(false);
+  const [rbsTfEnabled, setRbsTfEnabled] = useState<Record<UpDownTfKey, boolean>>(() =>
+    parseRbsTfEnabledFromStorage(localStorage.getItem(`polybot-binance-rbs-tf-${panelId}`)),
+  );
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -489,8 +517,8 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     if (livePrice <= 0) return null;
     const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
     const assetMarkets = upOrDownMarkets[asset] || {};
-    return computeRBSPrice(livePrice, sigma, assetMarkets, marketLookup, Date.now());
-  }, [asset, livePrice, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup]);
+    return computeRBSPrice(livePrice, sigma, assetMarkets, marketLookup, Date.now(), rbsTfEnabled);
+  }, [asset, livePrice, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup, rbsTfEnabled]);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);
@@ -635,13 +663,19 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
-      if (!assetDropdownOpen) return;
-      const el = wrapRef.current?.querySelector('.binance-asset-dropdown-root');
-      if (el && !el.contains(e.target as Node)) setAssetDropdownOpen(false);
+      const t = e.target as Node;
+      if (assetDropdownOpen) {
+        const el = wrapRef.current?.querySelector('.binance-asset-dropdown-root');
+        if (el && !el.contains(t)) setAssetDropdownOpen(false);
+      }
+      if (rbsSettingsOpen) {
+        const el = wrapRef.current?.querySelector('.binance-rbs-settings-root');
+        if (el && !el.contains(t)) setRbsSettingsOpen(false);
+      }
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
-  }, [assetDropdownOpen]);
+  }, [assetDropdownOpen, rbsSettingsOpen]);
 
   useEffect(() => {
     const container = chartRef.current;
@@ -740,6 +774,50 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
               </option>
             ))}
           </select>
+          <div className="relative binance-rbs-settings-root">
+            <button
+              type="button"
+              aria-label="RBS market settings"
+              aria-expanded={rbsSettingsOpen}
+              className="rounded p-0.5 text-gray-400 hover:bg-gray-700/80 hover:text-gray-200 focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
+              onClick={(e) => {
+                e.stopPropagation();
+                setRbsSettingsOpen((v) => !v);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <Settings className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+            </button>
+            {rbsSettingsOpen && (
+              <div className="absolute right-0 top-full z-50 mt-1 min-w-[9.5rem] rounded border border-gray-600 bg-gray-800 py-1.5 px-2 shadow-lg">
+                <div className="mb-1 border-b border-gray-700 pb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-500">
+                  RBS markets
+                </div>
+                {SR_TIMEFRAMES.map((tf) => (
+                  <label
+                    key={tf}
+                    className="flex cursor-pointer items-center gap-2 py-0.5 text-[10px] text-gray-200 hover:text-white"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={rbsTfEnabled[tf]}
+                      onChange={() => {
+                        setRbsTfEnabled((prev) => {
+                          const next = { ...prev, [tf]: !prev[tf] };
+                          localStorage.setItem(`polybot-binance-rbs-tf-${panelId}`, JSON.stringify(next));
+                          return next;
+                        });
+                      }}
+                      className="accent-purple-500 rounded"
+                    />
+                    <span>{tf} Market</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

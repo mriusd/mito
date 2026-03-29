@@ -492,10 +492,12 @@ function ForecastChart({
   asset,
   trajectory,
   s0,
+  nowMs,
 }: {
   asset: AssetSym;
   trajectory: TrajectoryPoint[];
   s0: number;
+  nowMs: number;
 }) {
   const color = ASSET_HEX[asset];
   const W = 480;
@@ -556,9 +558,10 @@ function ForecastChart({
       </div>
       <svg className="w-full block" style={{ height: 180 }} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={`${asset} 7-day price forecast`}>
         <defs>
-          <linearGradient id={`pf7-band-${asset}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.13" />
-            <stop offset="100%" stopColor={color} stopOpacity="0.03" />
+          <linearGradient id={`pf7-band-h-${asset}`} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={color} stopOpacity="0.32" />
+            <stop offset="40%" stopColor={color} stopOpacity="0.16" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.04" />
           </linearGradient>
         </defs>
 
@@ -575,7 +578,7 @@ function ForecastChart({
           <g key={d}>
             <line x1={sx(d)} x2={sx(d)} y1={padT} y2={H - padB} stroke="rgba(75,85,99,0.18)" strokeWidth={0.5} />
             <text x={sx(d)} y={H - 8} textAnchor="middle" className="fill-gray-500" style={{ fontSize: 8 }}>
-              {d === 0 ? 'now' : `d${d}`}
+              {d === 0 ? 'now' : (() => { const dt = new Date(nowMs + d * DAY_MS); const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()]; return `${mo} ${dt.getDate()}`; })()}
             </text>
           </g>
         ))}
@@ -584,7 +587,7 @@ function ForecastChart({
         <line x1={padL} x2={W - padR} y1={spotY} y2={spotY} stroke="rgba(250,204,21,0.25)" strokeDasharray="4 4" strokeWidth={0.7} />
 
         {/* confidence band (shaded area) */}
-        <path d={bandPath} fill={`url(#pf7-band-${asset})`} />
+        <path d={bandPath} fill={`url(#pf7-band-h-${asset})`} />
         {/* band borders */}
         <path d={trajectory.map((p, i) => `${i===0?'M':'L'} ${sx(p.tDays).toFixed(1)} ${sy(p.hi).toFixed(1)}`).join(' ')} fill="none" stroke={color} strokeOpacity={0.25} strokeWidth={0.8} strokeDasharray="3 2" />
         <path d={trajectory.map((p, i) => `${i===0?'M':'L'} ${sx(p.tDays).toFixed(1)} ${sy(p.lo).toFixed(1)}`).join(' ')} fill="none" stroke={color} strokeOpacity={0.25} strokeWidth={0.8} strokeDasharray="3 2" />
@@ -630,7 +633,7 @@ export function PriceForecastPanel() {
     return () => clearInterval(t);
   }, []);
 
-  const byAsset = useMemo(() => {
+  const { byAsset, nowMs } = useMemo(() => {
     const now = Date.now() + bsTimeOffsetHours * 3600_000;
     const out: Record<AssetSym, { s0: number; trajectory: TrajectoryPoint[] }> = {} as any;
     for (const asset of ASSETS) {
@@ -644,7 +647,7 @@ export function PriceForecastPanel() {
 
       out[asset] = { s0, trajectory };
     }
-    return out;
+    return { byAsset: out, nowMs: now };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upOrDownMarkets, aboveMarkets, priceOnMarkets, weeklyHitMarkets, marketLookup, priceData, volatilityData, volMultiplier, bsTimeOffsetHours, bidAskTick, tick]);
 
@@ -666,7 +669,7 @@ export function PriceForecastPanel() {
         onPointerDown={(e) => e.stopPropagation()}
       >
         {ASSETS.map((asset) => (
-          <ForecastChart key={asset} asset={asset} s0={byAsset[asset].s0} trajectory={byAsset[asset].trajectory} />
+          <ForecastChart key={asset} asset={asset} s0={byAsset[asset].s0} trajectory={byAsset[asset].trajectory} nowMs={nowMs} />
         ))}
       </div>
     </div>

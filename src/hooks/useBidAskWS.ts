@@ -32,7 +32,16 @@ export function useBidAskWS() {
               if (!item.assetId) continue;
               const entry = lookup[item.assetId];
               if (!entry) continue;
-              patch[item.assetId] = { ...entry, bestBid: item.bestBid || 0, bestAsk: item.bestAsk || 0 };
+              const next: typeof entry = {
+                ...entry,
+                bestBid: item.bestBid ?? 0,
+                bestAsk: item.bestAsk ?? 0,
+              };
+              const v = item.volume;
+              if (typeof v === 'number' && Number.isFinite(v)) {
+                next.volume = v;
+              }
+              patch[item.assetId] = next;
               changed = true;
             }
             if (changed) {

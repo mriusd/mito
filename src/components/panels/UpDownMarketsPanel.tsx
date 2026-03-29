@@ -294,7 +294,7 @@ export function UpDownMarketsPanel() {
                   >
                     <span className="inline-flex w-full items-center justify-end gap-0.5">
                       Vol
-                      <HelpTooltip text="Trading volume for this market from Polymarket (Gamma API), same field as the standard market endpoints. Refreshes with market data polling. Shown in thousands of USDC (e.g. 12.3k)." />
+                      <HelpTooltip text="Trading volume (USDC) from Polymarket Gamma, updated with live bid/ask batches over the chart WebSocket and refreshed from Gamma on a short interval between full market syncs. Shown in thousands (e.g. 12.3k)." />
                     </span>
                   </th>
                 </Fragment>

@@ -100,12 +100,10 @@ function polymarketVolumeNumber(market: Market, tokenId: string, lookup: Record<
   return null;
 }
 
+/** Polymarket volume in thousands of USDC, always one decimal (e.g. 12.3k). */
 function formatPolymarketVolume(usd: number | null): string {
   if (usd === null || !Number.isFinite(usd)) return '—';
-  if (usd === 0) return '$0';
-  if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(2)}M`;
-  if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}k`;
-  return `$${usd.toFixed(0)}`;
+  return `${(usd / 1000).toFixed(1)}k`;
 }
 
 export function UpDownMarketsPanel() {
@@ -291,12 +289,12 @@ export function UpDownMarketsPanel() {
                     Market
                   </th>
                   <th
-                    className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-sky-300 font-semibold"
+                    className="px-1 py-0.5 text-right border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-sky-300 font-semibold"
                     style={assetBorderStyle(asset, { R: true })}
                   >
-                    <span className="inline-flex items-center justify-center gap-0.5">
+                    <span className="inline-flex w-full items-center justify-end gap-0.5">
                       Vol
-                      <HelpTooltip text="Trading volume for this market from Polymarket (Gamma API), same field as the standard market endpoints. Refreshes with market data polling." />
+                      <HelpTooltip text="Trading volume for this market from Polymarket (Gamma API), same field as the standard market endpoints. Refreshes with market data polling. Shown in thousands of USDC (e.g. 12.3k)." />
                     </span>
                   </th>
                 </Fragment>
@@ -545,9 +543,9 @@ export function UpDownMarketsPanel() {
                   const volumeCell = (
                     <td
                       key={`${asset}-vol`}
-                      className={`px-0.5 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/40 text-sky-300/95 font-bold tabular-nums text-[9px] whitespace-nowrap ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+                      className={`px-1 py-1 text-right border-l border-r border-solid border-gray-700 bg-gray-900/40 text-sky-300/95 font-bold tabular-nums text-[9px] whitespace-nowrap ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
                       style={assetBorderStyle(asset, { R: true, B: isLastTfRow })}
-                      title="Polymarket / Gamma reported volume (USDC)"
+                      title="Polymarket / Gamma reported volume (USDC), shown in thousands"
                     >
                       {formatPolymarketVolume(polymarketVol)}
                     </td>

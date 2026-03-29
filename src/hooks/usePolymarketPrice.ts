@@ -90,7 +90,12 @@ export function useChainlinkPricesMap(): ChainlinkPricesMap {
           const msg = JSON.parse(event.data) as { asset?: string; price?: number };
           if (typeof msg.asset !== 'string' || typeof msg.price !== 'number' || msg.price <= 0) return;
           const k = msg.asset.toUpperCase();
-          setPrices((prev) => (prev[k] === msg.price ? prev : { ...prev, [k]: msg.price }));
+          const p = msg.price;
+          setPrices((prev) => {
+            if (prev[k] === p) return prev;
+            const next: ChainlinkPricesMap = { ...prev, [k]: p };
+            return next;
+          });
         } catch {
           /* ignore */
         }

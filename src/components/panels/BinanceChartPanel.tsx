@@ -250,6 +250,9 @@ function formatSrStrike(p: number, asset: AssetName): string {
   return p.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
+/** S/R and RBS lines only widen the Y scale if within this fraction of the candle range beyond the wicks (so distant strikes don’t squash candles). */
+const SR_RBS_NEAR_CANDLE_RANGE_FRAC = 0.15;
+
 function drawCandles(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -277,14 +280,33 @@ function drawCandles(
     lo = Math.min(lo, c.l, c.o, c.c);
     hi = Math.max(hi, c.h, c.o, c.c);
   }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo === hi) {
+    const mid = Number.isFinite(lo) ? lo : 0;
+    lo = mid * 0.999;
+    hi = mid * 1.001;
+  }
+
+  const candleLo = lo;
+  const candleHi = hi;
+  let span0 = candleHi - candleLo;
+  if (!Number.isFinite(span0) || span0 <= 0) {
+    span0 = Math.max(Math.abs(candleHi) * 1e-8, 1e-9);
+  }
+  const nearSlack = Math.max(span0 * SR_RBS_NEAR_CANDLE_RANGE_FRAC, Math.abs(candleHi) * 1e-10);
+
   for (const sr of srLines) {
+    if (!Number.isFinite(sr.price)) continue;
+    if (sr.price < candleLo - nearSlack || sr.price > candleHi + nearSlack) continue;
     lo = Math.min(lo, sr.price);
     hi = Math.max(hi, sr.price);
   }
-  if (rbsPrice != null) {
-    lo = Math.min(lo, rbsPrice);
-    hi = Math.max(hi, rbsPrice);
+  if (rbsPrice != null && Number.isFinite(rbsPrice)) {
+    if (rbsPrice >= candleLo - nearSlack && rbsPrice <= candleHi + nearSlack) {
+      lo = Math.min(lo, rbsPrice);
+      hi = Math.max(hi, rbsPrice);
+    }
   }
+
   if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo === hi) {
     const mid = Number.isFinite(lo) ? lo : 0;
     lo = mid * 0.999;

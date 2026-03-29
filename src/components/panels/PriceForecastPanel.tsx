@@ -486,16 +486,164 @@ function buildTrajectory(
   return result;
 }
 
+/* ───────── Reverse Black-Scholes forecast ───────── */
+
+interface RbsPoint {
+  tDays: number;
+  price: number;
+  label?: string;
+}
+
+/**
+ * Reverse Black-Scholes forecast.
+ *
+ * For each market probability p at strike K with time-to-expiry T:
+ *   implied_spot  S* = K × exp(Φ⁻¹(p) × σ√T − (r − σ²/2)T)
+ *   implied_fwd   F  = S* × e^(rT) = K × exp(Φ⁻¹(p) × σ√T + σ²T/2)
+ *
+ * Short-term Up/Down (K = S0): chained sequentially so each step builds on the
+ * previous one, producing a smooth short-term path that doesn't jump.
+ *
+ * Long-term Above: for each expiry, compute the implied spot S* from every strike,
+ * take the median, then express as a forward price at that expiry. The path is
+ * smoothly blended from the short-term endpoint to avoid a discontinuity.
+ */
+function buildReverseBSPath(
+  asset: AssetSym,
+  s0: number,
+  sigmaAnn: number,
+  upOrDownMarkets: Record<string, Record<string, Market[]>>,
+  aboveMarkets: Market[],
+  lookup: Record<string, Market>,
+  now: number,
+): RbsPoint[] {
+  if (s0 <= 0 || sigmaAnn <= 0) return [];
+
+  const R_BS = 0.045;
+  const points: RbsPoint[] = [{ tDays: 0, price: s0 }];
+
+  // --- Short-term: chain Up/Down implied drifts (each step relative to previous) ---
+  const assetData = upOrDownMarkets[asset] || {};
+  const tfEntries: { tMinutes: number; pUp: number }[] = [];
+  for (const tf of TIMEFRAMES) {
+    const markets = (assetData[tf] || [])
+      .filter(m => !m.closed)
+      .sort((a, b) => {
+        const ta = a.endDate ? new Date(a.endDate).getTime() : Infinity;
+        const tb = b.endDate ? new Date(b.endDate).getTime() : Infinity;
+        return ta - tb;
+      });
+    const idx = markets.findIndex(m => m.endDate && new Date(m.endDate).getTime() > now);
+    if (idx < 0) continue;
+    const m = markets[idx];
+    const endMs = new Date(m.endDate).getTime();
+    const tMinutes = (endMs - now) / 60_000;
+    if (tMinutes <= 0.1) continue;
+    const pUp = yesMid(m, lookup);
+    if (pUp == null) continue;
+    tfEntries.push({ tMinutes, pUp });
+  }
+  tfEntries.sort((a, b) => a.tMinutes - b.tMinutes);
+
+  let chainPrice = s0;
+  let chainT = 0;
+  for (const { tMinutes, pUp } of tfEntries) {
+    const dt = tMinutes - chainT;
+    if (dt <= 0) continue;
+    const dtY = (dt * 60_000) / YEAR_MS;
+    const z = invNormCDF(clampP(pUp));
+    chainPrice = chainPrice * Math.exp(z * sigmaAnn * Math.sqrt(dtY) + (sigmaAnn * sigmaAnn * dtY) / 2);
+    chainT = tMinutes;
+    points.push({ tDays: tMinutes / 1440, price: chainPrice });
+  }
+
+  const stEndPrice = chainPrice;
+
+  // --- Long-term: Above markets → implied spot per strike, median per expiry ---
+  const bySlug = new Map<string, { endMs: number; impliedSpots: number[] }>();
+  for (const m of aboveMarkets) {
+    if (m.closed || !m.endDate) continue;
+    const endMs = new Date(m.endDate).getTime();
+    if (endMs <= now) continue;
+    const dayOffset = (endMs - now) / DAY_MS;
+    if (dayOffset < 0.1 || dayOffset > 8) continue;
+
+    const parsed = parseGroupTitle(m.groupItemTitle || '');
+    if (!parsed || parsed.type !== 'above') continue;
+    const p = yesMid(m, lookup);
+    if (p == null) continue;
+
+    const K = parsed.strike;
+    const Ty = (endMs - now) / YEAR_MS;
+    const sqrtT = Math.sqrt(Ty);
+    const z = invNormCDF(clampP(p));
+    // S* = K × exp(z × σ√T − (r − σ²/2)T)
+    const impliedSpot = K * Math.exp(z * sigmaAnn * sqrtT - (R_BS - (sigmaAnn * sigmaAnn) / 2) * Ty);
+    if (!Number.isFinite(impliedSpot) || impliedSpot <= 0) continue;
+
+    const slug = m.eventSlug || m.endDate;
+    if (!bySlug.has(slug)) bySlug.set(slug, { endMs, impliedSpots: [] });
+    bySlug.get(slug)!.impliedSpots.push(impliedSpot);
+  }
+
+  const dailyForwards: { tDays: number; fwd: number }[] = [];
+  for (const [, data] of bySlug) {
+    if (data.impliedSpots.length === 0) continue;
+    const dayOffset = (data.endMs - now) / DAY_MS;
+    const Ty = dayOffset * DAY_MS / YEAR_MS;
+    const sorted = [...data.impliedSpots].sort((a, b) => a - b);
+    const medianSpot = sorted.length % 2 === 0
+      ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+      : sorted[Math.floor(sorted.length / 2)];
+    const fwd = medianSpot * Math.exp(R_BS * Ty);
+    dailyForwards.push({ tDays: dayOffset, fwd });
+  }
+  dailyForwards.sort((a, b) => a.tDays - b.tDays);
+
+  // Smooth blend: scale daily forwards so the first one connects to the short-term endpoint
+  if (dailyForwards.length > 0 && stEndPrice > 0) {
+    const first = dailyForwards[0];
+    const blendRatio = stEndPrice / first.fwd;
+    for (let i = 0; i < dailyForwards.length; i++) {
+      const weight = Math.max(0, 1 - i * 0.35);
+      dailyForwards[i].fwd *= 1 + (blendRatio - 1) * weight;
+    }
+  }
+
+  for (const df of dailyForwards) {
+    const stEndTDays = chainT / 1440;
+    if (df.tDays <= stEndTDays + 0.01) continue;
+    points.push({ tDays: df.tDays, price: df.fwd });
+  }
+
+  // Extrapolate to day 7
+  points.sort((a, b) => a.tDays - b.tDays);
+  const lastPt = points[points.length - 1];
+  if (lastPt && lastPt.tDays < 6.5 && points.length > 1) {
+    const driftPerDay = lastPt.tDays > 0.01
+      ? Math.log(lastPt.price / s0) / lastPt.tDays
+      : 0;
+    for (let d = Math.ceil(lastPt.tDays + 1); d <= 7; d++) {
+      points.push({ tDays: d, price: s0 * Math.exp(driftPerDay * d) });
+    }
+  }
+
+  points.sort((a, b) => a.tDays - b.tDays);
+  return points;
+}
+
 /* ───────── SVG chart ───────── */
 
 function ForecastChart({
   asset,
   trajectory,
+  rbsPath,
   s0,
   nowMs,
 }: {
   asset: AssetSym;
   trajectory: TrajectoryPoint[];
+  rbsPath: RbsPoint[];
   s0: number;
   nowMs: number;
 }) {
@@ -518,7 +666,10 @@ function ForecastChart({
   }
 
   const tMax = Math.max(trajectory[trajectory.length - 1].tDays, 1);
-  const allY = trajectory.flatMap(p => [p.expected, p.lo, p.hi]);
+  const allY = [
+    ...trajectory.flatMap(p => [p.expected, p.lo, p.hi]),
+    ...rbsPath.map(p => p.price),
+  ];
   let yMin = Math.min(...allY);
   let yMax = Math.max(...allY);
   if (yMax - yMin < 1e-6) { yMin *= 0.999; yMax *= 1.001; }
@@ -627,6 +778,14 @@ function ForecastChart({
         {/* expected price line */}
         <path d={expectedPath} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
 
+        {/* reverse Black-Scholes forecast (dotted, own x-axis mapping) */}
+        {rbsPath.length >= 2 && (() => {
+          const rbsD = rbsPath.map((p, i) =>
+            `${i === 0 ? 'M' : 'L'} ${sxAxisFromTDays(p.tDays).toFixed(1)} ${sy(p.price).toFixed(1)}`
+          ).join(' ');
+          return <path d={rbsD} fill="none" stroke="#facc15" strokeWidth={1.4} strokeDasharray="5 3" strokeLinejoin="round" strokeLinecap="round" strokeOpacity={0.7} />;
+        })()}
+
         {/* dots on expected line */}
         {trajectory.map((p, i) => (
           <g key={i}>
@@ -636,7 +795,8 @@ function ForecastChart({
         ))}
       </svg>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 px-0.5 mt-0.5 text-[8px] text-gray-500 shrink-0">
-        <span><span style={{ color }}>—</span> expected path</span>
+        <span><span style={{ color }}>—</span> crowd-implied</span>
+        <span><span className="text-yellow-400/70">┄</span> reverse BS</span>
         <span><span style={{ color, opacity: 0.4 }}>╌</span> 10–90% band</span>
         <span><span className="text-yellow-300/50">╌</span> spot</span>
       </div>
@@ -667,7 +827,7 @@ export function PriceForecastPanel() {
 
   const { byAsset, nowMs } = useMemo(() => {
     const now = Date.now() + bsTimeOffsetHours * 3600_000;
-    const out: Record<AssetSym, { s0: number; trajectory: TrajectoryPoint[] }> = {} as any;
+    const out: Record<AssetSym, { s0: number; trajectory: TrajectoryPoint[]; rbsPath: RbsPoint[] }> = {} as any;
     for (const asset of ASSETS) {
       const sym = `${asset}USDT` as AssetSymbol;
       const s0 = priceData[sym]?.price ?? 0;
@@ -676,8 +836,9 @@ export function PriceForecastPanel() {
       const shortTerm = buildShortTermPath(asset, upOrDownMarkets, s0, sigma, marketLookup, now);
       const dailyAnchors = buildDailyAnchors(aboveMarkets[asset] || [], priceOnMarkets[asset] || [], weeklyHitMarkets[asset] || [], s0, marketLookup, now);
       const trajectory = buildTrajectory(s0, shortTerm, dailyAnchors, sigma, now);
+      const rbsPath = buildReverseBSPath(asset, s0, sigma, upOrDownMarkets, aboveMarkets[asset] || [], marketLookup, now);
 
-      out[asset] = { s0, trajectory };
+      out[asset] = { s0, trajectory, rbsPath };
     }
     return { byAsset: out, nowMs: now };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -701,7 +862,7 @@ export function PriceForecastPanel() {
         onPointerDown={(e) => e.stopPropagation()}
       >
         {ASSETS.map((asset) => (
-          <ForecastChart key={asset} asset={asset} s0={byAsset[asset].s0} trajectory={byAsset[asset].trajectory} nowMs={nowMs} />
+          <ForecastChart key={asset} asset={asset} s0={byAsset[asset].s0} trajectory={byAsset[asset].trajectory} rbsPath={byAsset[asset].rbsPath} nowMs={nowMs} />
         ))}
       </div>
     </div>

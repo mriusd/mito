@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { API_BASE, WS_BASE } from '../lib/env';
 
 interface Candle {
   time: number;
@@ -12,6 +13,12 @@ interface ChainlinkChartProps {
   asset: string;        // e.g. 'BTC', 'ETH', 'SOL', 'XRP'
   eventSlug?: string;   // used to determine timeframe
   targetPrice?: number | null;
+  /** 5m/15m Up/Down: polycandles Chainlink klines + WS; otherwise Binance spot. */
+  chainlinkCandles?: boolean;
+}
+
+function chainlinkKlineSymbol(asset: string): string {
+  return `chainlink_${asset.toLowerCase()}usd`;
 }
 
 // Determine kline interval from market slug
@@ -26,20 +33,24 @@ function getIntervalFromSlug(slug?: string): string {
 
 const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000, '1d': 86400000 };
 
-export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChartProps) {
+export function ChainlinkChart({ asset, eventSlug, targetPrice, chainlinkCandles = false }: ChainlinkChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
   const wsRef = useRef<WebSocket | null>(null);
+  const intervalRef = useRef('');
   const [ready, setReady] = useState(false);
   const [tick, setTick] = useState(0);
 
   const interval = getIntervalFromSlug(eventSlug);
   const candleMs = INTERVAL_MS[interval] || 3600000;
+  intervalRef.current = interval;
   const binanceSymbol = `${asset.toUpperCase()}USDT`;
   const binanceStreamSymbol = `${asset.toLowerCase()}usdt`;
 
-  // Fetch initial candles from Binance REST + subscribe Binance kline WS
+  // Binance spot: REST + kline WS
   useEffect(() => {
+    if (chainlinkCandles) return;
+
     candleMapRef.current = new Map();
     setReady(false);
 
@@ -48,41 +59,45 @@ export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChart
       wsRef.current = null;
     }
 
-    // Fetch last 100 candles from Binance spot
     fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=100`)
       .then(r => r.json())
-      .then((klines: any[][]) => {
-        if (!Array.isArray(klines)) { setReady(true); return; }
+      .then((klines: unknown[][]) => {
+        if (!Array.isArray(klines)) {
+          setReady(true);
+          return;
+        }
         const map = candleMapRef.current;
         for (const k of klines) {
+          if (!Array.isArray(k) || k.length < 6) continue;
           const t = k[0] as number;
           map.set(t, {
             time: t,
-            o: parseFloat(k[1] as string),
-            h: parseFloat(k[2] as string),
-            l: parseFloat(k[3] as string),
-            c: parseFloat(k[4] as string),
+            o: parseFloat(String(k[1])),
+            h: parseFloat(String(k[2])),
+            l: parseFloat(String(k[3])),
+            c: parseFloat(String(k[4])),
           });
         }
         setReady(true);
       })
       .catch(() => setReady(true));
 
-    // Binance spot kline WS
     const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${binanceStreamSymbol}@kline_${interval}`);
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data);
+        const msg = JSON.parse(event.data as string) as { e?: string; k?: { t: number; o: string; h: string; l: string; c: string } };
         if (msg.e === 'kline' && msg.k) {
           const k = msg.k;
           const map = candleMapRef.current;
           const t = k.t as number;
           map.set(t, { time: t, o: parseFloat(k.o), h: parseFloat(k.h), l: parseFloat(k.l), c: parseFloat(k.c) });
-          setTick(n => n + 1);
+          setTick((n) => n + 1);
         }
-      } catch {}
+      } catch {
+        /* ignore */
+      }
     };
 
     ws.onclose = () => {};
@@ -92,7 +107,121 @@ export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChart
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
       wsRef.current = null;
     };
-  }, [binanceSymbol, binanceStreamSymbol, interval, candleMs]);
+  }, [chainlinkCandles, binanceSymbol, binanceStreamSymbol, interval, candleMs]);
+
+  // Polycandles Chainlink klines (5m/15m Up/Down): REST + chart WS
+  useEffect(() => {
+    if (!chainlinkCandles) return;
+
+    candleMapRef.current = new Map();
+    setReady(false);
+
+    const clSymbol = chainlinkKlineSymbol(asset);
+    let disposed = false;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let pingIv: ReturnType<typeof setInterval> | undefined;
+    let attempt = 0;
+
+    const params = new URLSearchParams({ symbol: clSymbol, interval, limit: '100' });
+    void fetch(`${API_BASE}/api/v3/klines?${params}`)
+      .then((r) => r.json())
+      .then((klines: unknown[][]) => {
+        if (disposed || !Array.isArray(klines)) {
+          setReady(true);
+          return;
+        }
+        const map = candleMapRef.current;
+        for (const k of klines) {
+          if (!Array.isArray(k) || k.length < 6) continue;
+          const t = Number(k[0]);
+          const o = parseFloat(String(k[1]));
+          const h = parseFloat(String(k[2]));
+          const l = parseFloat(String(k[3]));
+          const c = parseFloat(String(k[4]));
+          if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) continue;
+          map.set(t, { time: t, o, h, l, c });
+        }
+        setReady(true);
+      })
+      .catch(() => setReady(true));
+
+    const connect = () => {
+      if (disposed) return;
+      ws = new WebSocket(`${WS_BASE}/ws/chart`);
+
+      ws.onopen = () => {
+        attempt = 0;
+        const iv = intervalRef.current;
+        ws?.send(JSON.stringify({ type: 'subscribeKlineStream', data: { symbol: clSymbol, interval: iv } }));
+        pingIv = setInterval(() => {
+          if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
+        }, 30_000);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data as string) as {
+            type?: string;
+            data?: { data?: { k?: { t: number; o: string; h: string; l: string; c: string; s?: string; i?: string } } };
+          };
+          if (msg.type !== 'klineStreamUpdate') return;
+          const k = msg.data?.data?.k;
+          if (!k) return;
+          if (k.s !== clSymbol || k.i !== intervalRef.current) return;
+          const tOpen = Number(k.t);
+          const o = parseFloat(k.o);
+          const h = parseFloat(k.h);
+          const l = parseFloat(k.l);
+          const c = parseFloat(k.c);
+          if (!Number.isFinite(tOpen) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return;
+          if (disposed) return;
+          const map = candleMapRef.current;
+          map.set(tOpen, { time: tOpen, o, h, l, c });
+          setTick((n) => n + 1);
+        } catch {
+          /* ignore */
+        }
+      };
+
+      ws.onerror = () => {
+        try {
+          ws?.close();
+        } catch {
+          /* ignore */
+        }
+      };
+
+      ws.onclose = () => {
+        clearInterval(pingIv);
+        pingIv = undefined;
+        if (disposed) return;
+        const delay = Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5));
+        attempt += 1;
+        reconnectTimer = setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      clearInterval(pingIv);
+      if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
+      try {
+        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+          ws.send(JSON.stringify({ type: 'unsubscribeKlineStream', data: { symbol: clSymbol, interval } }));
+        }
+      } catch {
+        /* ignore */
+      }
+      try {
+        ws?.close();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [chainlinkCandles, asset, interval]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -120,7 +249,7 @@ export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChart
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Waiting for Binance data...', W / 2, H / 2);
+      ctx.fillText(chainlinkCandles ? 'Waiting for Chainlink data...' : 'Waiting for Binance data...', W / 2, H / 2);
       return;
     }
 
@@ -190,8 +319,8 @@ export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChart
 
     // Draw candles
     const candleW = Math.max(2, Math.min(8, ((chartRight - chartLeft) / candles.length) * 0.7));
-    const bullColor = '#00d2d2';  // turquoise for up candles
-    const bearColor = '#e91e90';  // pink for down candles
+    const bullColor = chainlinkCandles ? '#60a5fa' : '#00d2d2';
+    const bearColor = '#e91e90';
 
     for (let i = 0; i < candles.length; i++) {
       const c = candles[i];
@@ -236,20 +365,22 @@ export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChart
     // Last price label
     const lastC = candles[candles.length - 1].c;
     const lastY = toY(lastC);
+    const accentRgb = chainlinkCandles ? '96,165,250' : '0,210,210';
+    const accentHex = chainlinkCandles ? '#93c5fd' : '#00d2d2';
     ctx.beginPath();
-    ctx.strokeStyle = 'rgba(0,210,210,0.3)';
+    ctx.strokeStyle = `rgba(${accentRgb},0.35)`;
     ctx.lineWidth = 1;
     ctx.setLineDash([2, 2]);
     ctx.moveTo(chartLeft, lastY);
     ctx.lineTo(chartRight, lastY);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = '#00d2d2';
+    ctx.fillStyle = accentHex;
     ctx.font = 'bold 8px monospace';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     ctx.fillText('$' + lastC.toFixed(decimals), chartLeft - 2, lastY);
-  }, [ready, tick, targetPrice, interval, candleMs]);
+  }, [ready, tick, targetPrice, interval, candleMs, chainlinkCandles]);
 
   useEffect(() => {
     draw();
@@ -259,7 +390,17 @@ export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChart
     <div className="sidebar-section">
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs text-gray-400 flex items-center gap-1">
-          <span style={{ color: '#00d2d2' }}>◆</span> {asset} <span className="px-0.5 rounded-sm text-[8px] font-bold bg-yellow-400 text-black leading-tight">BINANCE</span>
+          <span style={{ color: chainlinkCandles ? '#93c5fd' : '#00d2d2' }}>◆</span> {asset}{' '}
+          {chainlinkCandles ? (
+            <span
+              className="px-0.5 rounded-sm text-[8px] font-bold bg-blue-600 text-white leading-tight"
+              title="Polycandles Chainlink OHLC (synthetic chainlink_*usd)"
+            >
+              CHAINLINK
+            </span>
+          ) : (
+            <span className="px-0.5 rounded-sm text-[8px] font-bold bg-yellow-400 text-black leading-tight">BINANCE</span>
+          )}
           <span className="text-gray-500">{interval}</span>
         </span>
       </div>

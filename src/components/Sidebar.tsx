@@ -761,7 +761,14 @@ export function Sidebar() {
             {(() => {
               const chartAsset = isUpDownMarket ? upDownAsset : extractAssetFromMarket(selectedMarket);
               if (!chartAsset) return null;
-              return <ChainlinkChart asset={chartAsset} eventSlug={isUpDownMarket ? selectedMarket.eventSlug : undefined} targetPrice={isUpDownMarket ? upDownTargetPrice : undefined} />;
+              return (
+                <ChainlinkChart
+                  asset={chartAsset}
+                  eventSlug={isUpDownMarket ? selectedMarket.eventSlug : undefined}
+                  targetPrice={isUpDownMarket ? upDownTargetPrice : undefined}
+                  chainlinkCandles={isUpDownMarket && upDownSpotUsesChainlink}
+                />
+              );
             })()}
 
             {/* Price History Chart (or Live Trade Chart for Up or Down) */}

@@ -265,7 +265,7 @@ export function DraggableCanvas() {
     'relative-chart': 'Relative Chart',
     'perp-bot': 'Perp Bot',
     'price-forecast': 'Price Forecast',
-    'binance-chart': 'Binance Chart',
+    'binance-chart': 'Asset Candle Chart',
     'signals': 'Signals', 'chat': 'Chat', 'pnl': 'P&L',
   };
 

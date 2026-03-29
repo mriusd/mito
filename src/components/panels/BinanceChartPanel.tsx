@@ -985,7 +985,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
               setTimeframe(iv);
               localStorage.setItem(`polybot-binance-interval-${panelId}`, iv);
             }}
-            className="w-[4.75rem] rounded border border-cyan-700/50 bg-gray-900/90 py-0.5 pl-1 pr-5 text-[10px] font-semibold text-cyan-100 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40"
+            className="w-max shrink-0 rounded border border-cyan-700/50 bg-gray-900/90 py-0.5 pl-1 pr-2 text-[10px] font-semibold text-cyan-100 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40 [field-sizing:content]"
             aria-label="Chart resolution"
           >
             {INTERVALS.map((iv) => (
@@ -1001,7 +1001,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
               setTimeWindow(v);
               localStorage.setItem(`polybot-binance-window-${panelId}`, v);
             }}
-            className="w-[4.25rem] rounded border border-violet-700/50 bg-gray-900/90 py-0.5 pl-1 pr-5 text-[10px] font-semibold text-violet-100 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+            className="w-max shrink-0 rounded border border-violet-700/50 bg-gray-900/90 py-0.5 pl-1 pr-2 text-[10px] font-semibold text-violet-100 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500/40 [field-sizing:content]"
             aria-label="Chart time window"
           >
             {TIME_WINDOWS.map((w) => (

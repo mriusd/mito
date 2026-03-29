@@ -458,7 +458,7 @@ export function UpDownMarketsPanel() {
                   ) : null;
                   const polymarketVol = getPolymarketVolumeUsd(market, yesTokenId, _bidAskLookup);
 
-                  const yesAsk = bestAsk ? (bestAsk * 100).toFixed(1) : '-';
+                  const yesBid = bestBid ? (bestBid * 100).toFixed(1) : '-';
                   const noAsk = bestBid ? ((1 - bestBid) * 100).toFixed(1) : '-';
                   const yesProb = bestBid || 0;
                   const bgColor = yesProb > 0.5 ? 'bg-green-900/30' : 'bg-red-900/30';
@@ -498,7 +498,7 @@ export function UpDownMarketsPanel() {
                         <span
                           className={`cursor-pointer hover:underline ${isCheap ? 'bg-green-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-green-400'}`}
                           onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                        >{yesAsk}</span>
+                        >{yesBid}</span>
                         {'\\'}
                         <span
                           className={`cursor-pointer hover:underline ${isNoCheap ? 'bg-red-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-red-400'}`}

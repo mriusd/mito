@@ -479,11 +479,11 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     return <td key={ev.slug} className={`text-center px-1 py-0.5 ${yellowBorder} text-gray-600 text-[10px]`} style={{ minWidth: 68 }}>-</td>;
                   }
 
-                  const { bestBid: _hBid, bestAsk: _hAsk } = getLiveBidAsk(market);
+                  const { bestBid: _hBid } = getLiveBidAsk(market);
                   const tokenIds = market.clobTokenIds || [];
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
-                  const yesAsk = _hAsk ? (_hAsk * 100).toFixed(1) : '-';
+                  const yesBid = _hBid ? (_hBid * 100).toFixed(1) : '-';
                   const noAsk = _hBid ? ((1 - _hBid) * 100).toFixed(1) : '-';
                   const yesProb = _hBid || 0;
                   const bgColor = yesProb > 0.5 ? 'bg-green-900/30' : 'bg-red-900/30';
@@ -517,7 +517,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           )}
                         </>
                       )}
-                      {/* YES ask \ NO ask */}
+                      {/* YES bid \ NO ask */}
                       <div className="text-[10px] text-gray-400">
                         <span
                           className="ob-trigger text-green-400 cursor-pointer hover:underline"
@@ -527,7 +527,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           data-strike={market.groupItemTitle || ''}
                           data-end-date={ev.endDate || ''}
                           onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                        >{yesAsk}</span>
+                        >{yesBid}</span>
                         {'\\'}
                         <span
                           className="ob-trigger text-red-400 cursor-pointer hover:underline"
@@ -662,11 +662,11 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     return <td key={colIdx} className="text-center px-1 py-1 border-b border-gray-700/50 text-gray-600 text-[10px]">-</td>;
                   }
 
-                  const { bestBid: _uBid, bestAsk: _uAsk } = getLiveBidAsk(market);
+                  const { bestBid: _uBid } = getLiveBidAsk(market);
                   const tokenIds = market.clobTokenIds || [];
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
-                  const yesAsk = _uAsk ? (_uAsk * 100).toFixed(1) : '-';
+                  const yesBid = _uBid ? (_uBid * 100).toFixed(1) : '-';
                   const noAsk = _uBid ? ((1 - _uBid) * 100).toFixed(1) : '-';
                   const yesProb = _uBid || 0;
                   const isPast = showPast && colIdx === 0;
@@ -702,7 +702,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           data-strike={market.groupItemTitle || ''}
                           data-end-date={market.endDate || ''}
                           onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                        >{yesAsk}</span>
+                        >{yesBid}</span>
                         {'\\'}
                         <span
                           className="ob-trigger text-red-400 cursor-pointer hover:underline"
@@ -858,10 +858,9 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
                   const isClosed = market.closed || dateEnded;
 
-                  // YES ask = bestAsk * 100 (price to BUY YES)
-                  // NO ask = (1 - bestBid) * 100 (price to BUY NO)
-                  const { bestBid: _aBid, bestAsk: _aAsk } = getLiveBidAsk(market);
-                  const yesAsk = _aAsk ? (_aAsk * 100).toFixed(1) : '-';
+                  // YES bid = bestBid * 100 (YES outcome); NO ask = (1 - bestBid) * 100 (implied buy NO)
+                  const { bestBid: _aBid } = getLiveBidAsk(market);
+                  const yesBid = _aBid ? (_aBid * 100).toFixed(1) : '-';
                   const noAsk = _aBid ? ((1 - _aBid) * 100).toFixed(1) : '-';
 
                   // Background: green if YES > 50%, red otherwise, gray if closed
@@ -919,7 +918,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           )}
                         </>
                       )}
-                      {/* YES ask \ NO ask */}
+                      {/* YES bid \ NO ask */}
                       <div className="text-[10px] text-gray-400">
                         <span
                           className="ob-trigger text-green-400 cursor-pointer hover:underline"
@@ -929,7 +928,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           data-strike={market.groupItemTitle || ''}
                           data-end-date={d.endDate || ''}
                           onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                        >{yesAsk}</span>
+                        >{yesBid}</span>
                         {'\\'}
                         <span
                           className="ob-trigger text-red-400 cursor-pointer hover:underline"

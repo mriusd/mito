@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAccount } from 'wagmi';
-import { RefreshCw, Clock, Settings, Plus, Github } from 'lucide-react';
+import { RefreshCw, Clock, Settings, Plus, Github, Send } from 'lucide-react';
 import logoSvg from '../assets/logo.svg';
 import { HelpTooltip } from './HelpTooltip';
 import { WalletButton } from './WalletButton';
@@ -294,7 +294,7 @@ export function Header({ onRefresh }: HeaderProps) {
                 />
                 <span className="text-xs text-gray-300">Show place order dialog</span>
               </label>
-              <div className="mt-2 pt-2 border-t border-gray-700">
+              <div className="mt-2 pt-2 border-t border-gray-700 space-y-1">
                 <a
                   href="https://github.com/mriusd/mito"
                   target="_blank"
@@ -304,6 +304,16 @@ export function Header({ onRefresh }: HeaderProps) {
                 >
                   <Github className="w-3.5 h-3.5 flex-shrink-0" />
                   GitHub
+                </a>
+                <a
+                  href="https://t.me/+fy8YkW8NqMk0Y2Ji"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-2 py-1.5 text-xs text-gray-300 hover:text-white hover:bg-gray-700 rounded transition"
+                  onClick={() => setShowSettings(false)}
+                >
+                  <Send className="w-3.5 h-3.5 flex-shrink-0" />
+                  MITO Chat (Telegram)
                 </a>
               </div>
               <div className="mt-2 pt-2 border-t border-gray-700">

@@ -8,42 +8,6 @@ import type { AssetSymbol } from '../../types';
 import { getMarketProbability } from '../../utils/bsMath';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 
-const YEAR_MS = 365.25 * 86_400_000;
-
-function invNormCDF(p: number): number {
-  const plow = 0.02425, phigh = 1 - plow;
-  const a = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2, -3.066479806614716e1, 2.506628238459213];
-  const b = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1, -1.328068155288572e1];
-  const c = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
-  const d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416];
-  if (p <= 0 || p >= 1) return 0;
-  if (p < plow) {
-    const q = Math.sqrt(-2 * Math.log(p));
-    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
-  }
-  if (p > phigh) {
-    const q = Math.sqrt(-2 * Math.log(1 - p));
-    return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
-  }
-  const q = p - 0.5, r = q * q;
-  return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
-}
-
-function clampP(p: number) { return Math.min(0.98, Math.max(0.02, p)); }
-
-function rbsImpliedSpot(
-  strike: number,
-  pUp: number,
-  sigma: number,
-  tYears: number,
-): number | null {
-  if (strike <= 0 || sigma <= 0 || tYears <= 1e-9) return null;
-  const z = invNormCDF(clampP(pUp));
-  const sqrtT = Math.sqrt(tYears);
-  const s = strike * Math.exp(z * sigma * sqrtT + (sigma * sigma * tYears) / 2);
-  return Number.isFinite(s) && s > 0 ? s : null;
-}
-
 function formatCountdown(ms: number): string {
   const rem = ms - Date.now();
   if (rem <= 0) return '0s';
@@ -123,6 +87,25 @@ function formatTargetStrikePrice(p: number | undefined | null, fractionDigits: n
 function strikePriceFromMarket(market: Market, tokenId: string, lookup: Record<string, Market>): number | undefined {
   const p = market.priceToBeat ?? (tokenId ? lookup[tokenId]?.priceToBeat : undefined);
   return p != null && Number.isFinite(p) ? p : undefined;
+}
+
+function polymarketVolumeNumber(market: Market, tokenId: string, lookup: Record<string, Market>): number | null {
+  const raw = market.volume ?? (tokenId ? lookup[tokenId]?.volume : undefined);
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return raw;
+  if (typeof raw === 'string') {
+    const n = parseFloat(raw.replace(/,/g, ''));
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  }
+  return null;
+}
+
+function formatPolymarketVolume(usd: number | null): string {
+  if (usd === null || !Number.isFinite(usd)) return '—';
+  if (usd === 0) return '$0';
+  if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(2)}M`;
+  if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}k`;
+  return `$${usd.toFixed(0)}`;
 }
 
 export function UpDownMarketsPanel() {
@@ -308,10 +291,13 @@ export function UpDownMarketsPanel() {
                     Market
                   </th>
                   <th
-                    className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-purple-300 font-semibold"
+                    className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-sky-300 font-semibold"
                     style={assetBorderStyle(asset, { R: true })}
                   >
-                    RBS
+                    <span className="inline-flex items-center justify-center gap-0.5">
+                      Vol
+                      <HelpTooltip text="Trading volume for this market from Polymarket (Gamma API), same field as the standard market endpoints. Refreshes with market data polling." />
+                    </span>
                   </th>
                 </Fragment>
               ))}
@@ -488,18 +474,7 @@ export function UpDownMarketsPanel() {
                       </div>
                     </td>
                   ) : null;
-                  const rbsValue = (() => {
-                    if (strikeTarget === undefined || !market.endDate) return null;
-                    const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
-                    const endMs = new Date(market.endDate).getTime();
-                    const tYears = (endMs - now) / YEAR_MS;
-                    let pUp = 0.5;
-                    if (bestBid != null && bestAsk != null && Number.isFinite(bestBid) && Number.isFinite(bestAsk))
-                      pUp = (bestBid + bestAsk) / 2;
-                    else if (bestBid != null && Number.isFinite(bestBid)) pUp = bestBid;
-                    else if (bestAsk != null && Number.isFinite(bestAsk)) pUp = bestAsk;
-                    return rbsImpliedSpot(strikeTarget, pUp, sigma, tYears);
-                  })();
+                  const polymarketVol = polymarketVolumeNumber(market, yesTokenId, _bidAskLookup);
 
                   const yesAsk = bestAsk ? (bestAsk * 100).toFixed(1) : '-';
                   const noAsk = bestBid ? ((1 - bestBid) * 100).toFixed(1) : '-';
@@ -567,19 +542,14 @@ export function UpDownMarketsPanel() {
                     </td>
                   );
 
-                  const rbsCell = (
+                  const volumeCell = (
                     <td
-                      key={`${asset}-rbs`}
-                      className={`px-0.5 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/40 text-purple-400 font-bold tabular-nums text-[9px] whitespace-nowrap ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+                      key={`${asset}-vol`}
+                      className={`px-0.5 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/40 text-sky-300/95 font-bold tabular-nums text-[9px] whitespace-nowrap ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
                       style={assetBorderStyle(asset, { R: true, B: isLastTfRow })}
-                      title="RBS implied spot price (reverse Black-Scholes)"
+                      title="Polymarket / Gamma reported volume (USDC)"
                     >
-                      {rbsValue !== null
-                        ? rbsValue.toLocaleString(undefined, {
-                            minimumFractionDigits: TARGET_STRIKE_DECIMALS[asset],
-                            maximumFractionDigits: TARGET_STRIKE_DECIMALS[asset],
-                          })
-                        : '-'}
+                      {formatPolymarketVolume(polymarketVol)}
                     </td>
                   );
 
@@ -587,7 +557,7 @@ export function UpDownMarketsPanel() {
                     <Fragment key={asset}>
                       {targetCell}
                       {quoteCell}
-                      {rbsCell}
+                      {volumeCell}
                     </Fragment>
                   );
                 })}

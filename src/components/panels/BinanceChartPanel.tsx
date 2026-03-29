@@ -436,25 +436,25 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
         className="flex flex-wrap items-center gap-x-3 gap-y-1 shrink-0 mb-2 no-drag"
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <div className="flex flex-wrap gap-1">
-          {INTERVALS.map((iv) => (
-            <button
-              key={iv}
-              type="button"
-              onClick={() => {
-                setTimeframe(iv);
-                localStorage.setItem(`polybot-binance-interval-${panelId}`, iv);
-              }}
-              className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
-                timeframe === iv
-                  ? 'bg-cyan-900/70 border-cyan-600 text-cyan-100'
-                  : 'bg-gray-900/80 border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-200'
-              }`}
-            >
-              {iv}
-            </button>
-          ))}
-        </div>
+        <label className="flex items-center gap-1.5 min-w-0">
+          <span className="text-[9px] text-gray-500 shrink-0">Resolution</span>
+          <select
+            value={timeframe}
+            onChange={(e) => {
+              const iv = e.target.value as KlineInterval;
+              setTimeframe(iv);
+              localStorage.setItem(`polybot-binance-interval-${panelId}`, iv);
+            }}
+            className="max-w-full rounded border border-cyan-700/50 bg-gray-900/90 py-0.5 pl-1.5 pr-6 text-[10px] font-semibold text-cyan-100 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40"
+            aria-label="Chart resolution"
+          >
+            {INTERVALS.map((iv) => (
+              <option key={iv} value={iv}>
+                {iv}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="flex items-center gap-1.5 min-w-0">
           <span className="text-[9px] text-gray-500 shrink-0">Window</span>
           <select

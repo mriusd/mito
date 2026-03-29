@@ -730,15 +730,8 @@ function ForecastChart({
   const dayTicks = [];
   for (let d = 0; d <= Math.floor(tMax); d++) dayTicks.push(d);
 
-  // Spot horizontal reference
-  const spotY = sy(s0);
-
   return (
     <div className="rounded border border-gray-700/60 bg-gray-900/40 p-1.5 min-w-0 flex flex-col min-h-0">
-      <div className="flex items-center justify-between mb-0.5 px-0.5 shrink-0">
-        <span className="text-[11px] font-bold" style={{ color }}>{asset} 7-Day Forecast</span>
-        <span className="text-[9px] text-gray-500 tabular-nums">Spot ${s0.toLocaleString()}</span>
-      </div>
       <svg className="w-full flex-1 min-h-0 block" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`${asset} 7-day price forecast`}>
         <defs>
           <linearGradient id={`pf7-band-h-${asset}`} x1="0" y1="0" x2="1" y2="0">
@@ -765,9 +758,6 @@ function ForecastChart({
             </text>
           </g>
         ))}
-
-        {/* spot reference line */}
-        <line x1={padL} x2={W - padR} y1={spotY} y2={spotY} stroke="rgba(250,204,21,0.25)" strokeDasharray="4 4" strokeWidth={0.7} />
 
         {/* confidence band (shaded area) */}
         <path d={bandPath} fill={`url(#pf7-band-h-${asset})`} />
@@ -798,7 +788,6 @@ function ForecastChart({
         <span><span style={{ color }}>—</span> crowd-implied</span>
         <span><span className="text-yellow-400/70">┄</span> reverse BS</span>
         <span><span style={{ color, opacity: 0.4 }}>╌</span> 10–90% band</span>
-        <span><span className="text-yellow-300/50">╌</span> spot</span>
       </div>
     </div>
   );
@@ -846,16 +835,8 @@ export function PriceForecastPanel() {
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 h-full">
-      <div className="panel-header flex flex-col gap-1 mb-2 shrink-0 cursor-grab">
+      <div className="panel-header mb-2 shrink-0 cursor-grab">
         <h3 className="text-sm font-bold text-teal-300">Price Forecast</h3>
-        <p className="text-[9px] text-gray-500 leading-snug cursor-default" onPointerDown={(e) => e.stopPropagation()}>
-          7-day implied trajectories. First 24 h driven by <span className="text-gray-400">5m/15m/1h/24h</span> up-or-down
-          markets (high granularity), then anchored to daily <span className="text-gray-400">Above</span>,{' '}
-          <span className="text-gray-400">Between</span>, and <span className="text-gray-400">Hit</span> (weekly reach/dip)
-          market expected values. Hit barriers widen confidence bands and bias direction. Shaded band =
-          10th–90th-percentile confidence (or ±1.5σ√t in the short term). Illustrative crowd-implied forecast, not
-          financial advice.
-        </p>
       </div>
       <div
         className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 sm:grid-rows-2 gap-2"

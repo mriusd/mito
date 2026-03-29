@@ -12,7 +12,7 @@ export function useVwapAndVolatility() {
   useEffect(() => {
     async function fetchVWAP(symbol: AssetSymbol) {
       try {
-        const resp = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=1m&limit=${vwapCandles}`);
+        const resp = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=${vwapCandles}`);
         const klines = await resp.json();
         let sumPV = 0, sumV = 0;
         for (const k of klines) {
@@ -42,7 +42,7 @@ export function useVwapAndVolatility() {
     async function fetchVolatility() {
       for (const symbol of SYMBOLS) {
         try {
-          const response = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=1d&limit=365`);
+          const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1d&limit=365`);
           const klines = await response.json();
           if (klines && klines.length >= 2) {
             const returns: number[] = [];

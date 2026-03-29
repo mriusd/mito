@@ -149,8 +149,8 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, even
     const binanceSymbol = `${chainlinkAsset.toUpperCase()}USDT`;
     const binanceStream = `${chainlinkAsset.toLowerCase()}usdt`;
 
-    // Fetch initial candles from Binance futures REST
-    fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${binanceSymbol}&interval=${interval}&limit=500`)
+    // Fetch initial candles from Binance spot REST
+    fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=500`)
       .then(r => r.json())
       .then((klines: any[][]) => {
         if (!Array.isArray(klines)) { setChainlinkReady(true); return; }
@@ -167,8 +167,8 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, even
       })
       .catch(() => setChainlinkReady(true));
 
-    // Subscribe to Binance futures kline WS for live updates
-    const ws = new WebSocket(`wss://fstream.binance.com/ws/${binanceStream}@kline_${interval}`);
+    // Subscribe to Binance spot kline WS for live updates
+    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${binanceStream}@kline_${interval}`);
     chainlinkWsRef.current = ws;
 
     ws.onmessage = (event) => {

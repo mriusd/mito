@@ -48,8 +48,8 @@ export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChart
       wsRef.current = null;
     }
 
-    // Fetch last 100 candles from Binance futures
-    fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${binanceSymbol}&interval=${interval}&limit=100`)
+    // Fetch last 100 candles from Binance spot
+    fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=100`)
       .then(r => r.json())
       .then((klines: any[][]) => {
         if (!Array.isArray(klines)) { setReady(true); return; }
@@ -68,8 +68,8 @@ export function ChainlinkChart({ asset, eventSlug, targetPrice }: ChainlinkChart
       })
       .catch(() => setReady(true));
 
-    // Binance futures kline WS
-    const ws = new WebSocket(`wss://fstream.binance.com/ws/${binanceStreamSymbol}@kline_${interval}`);
+    // Binance spot kline WS
+    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${binanceStreamSymbol}@kline_${interval}`);
     wsRef.current = ws;
 
     ws.onmessage = (event) => {

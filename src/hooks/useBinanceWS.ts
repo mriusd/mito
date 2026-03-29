@@ -9,7 +9,7 @@ export function useBinanceWS() {
   useEffect(() => {
     function connect() {
       const streams = ['btcusdt@ticker', 'ethusdt@ticker', 'solusdt@ticker', 'xrpusdt@ticker'];
-      const wsUrl = `wss://fstream.binance.com/stream?streams=${streams.join('/')}`;
+      const wsUrl = `wss://stream.binance.com:9443/stream?streams=${streams.join('/')}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -32,7 +32,7 @@ export function useBinanceWS() {
     }
 
     // Fetch initial prices
-    fetch('https://fapi.binance.com/fapi/v1/ticker/price')
+    fetch('https://api.binance.com/api/v3/ticker/price')
       .then((r) => r.json())
       .then((data) => {
         const symbols: AssetSymbol[] = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT'];

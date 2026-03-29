@@ -174,7 +174,7 @@ async function fetchKlinesForWindow(
       endTime === undefined
         ? `symbol=${symbol}USDT&interval=${interval}&limit=1500`
         : `symbol=${symbol}USDT&interval=${interval}&endTime=${endTime}&limit=1500`;
-    const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?${q}`);
+    const res = await fetch(`https://api.binance.com/api/v3/klines?${q}`);
     const rows = (await res.json()) as unknown;
     if (!Array.isArray(rows) || rows.length === 0) break;
     let oldest = Infinity;
@@ -224,7 +224,7 @@ export function RelativeChartPanel() {
     }
   }, [timeWindow]);
 
-  // Fetch history + Binance futures combined kline stream
+  // Fetch history + Binance spot combined kline stream
   useEffect(() => {
     const loadGen = ++loadGenRef.current;
     mapsRef.current = emptyMaps();
@@ -257,7 +257,7 @@ export function RelativeChartPanel() {
     });
 
     const streams = ASSETS.map((a) => `${a.toLowerCase()}usdt@kline_${interval}`).join('/');
-    const ws = new WebSocket(`wss://fstream.binance.com/stream?streams=${streams}`);
+    const ws = new WebSocket(`wss://stream.binance.com:9443/stream?streams=${streams}`);
     wsRef.current = ws;
 
     ws.onmessage = (ev) => {
@@ -456,7 +456,7 @@ export function RelativeChartPanel() {
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 h-full">
       <div className="panel-header flex items-center gap-2 mb-2 flex-wrap cursor-grab shrink-0">
         <h3 className="text-sm font-bold text-cyan-300">Relative Chart</h3>
-        <span className="text-[9px] text-gray-500 ml-1">% change vs window open (Binance USDT-M)</span>
+        <span className="text-[9px] text-gray-500 ml-1">% change vs window open (Binance spot)</span>
         <span className="text-[9px] text-gray-500 ml-auto">{status}</span>
       </div>
       <div

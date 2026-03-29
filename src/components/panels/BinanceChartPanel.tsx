@@ -67,8 +67,8 @@ function mergeKlineIntoSeries(prev: Candle[], t: number, o: number, h: number, l
   return next.filter((x) => x.t >= windowStart);
 }
 
-/** USD-M (USDT-margined) perpetual futures kline stream */
-const BINANCE_FUTURES_WS_BASE = 'wss://fstream.binance.com/ws';
+/** Binance spot kline stream (raw WS) */
+const BINANCE_SPOT_WS_BASE = 'wss://stream.binance.com:9443/ws';
 
 const YEAR_MS = 365.25 * 86_400_000;
 
@@ -545,7 +545,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
           limit: '1000',
         });
         if (endTime !== undefined) params.set('endTime', String(endTime));
-        const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?${params}`);
+        const res = await fetch(`https://api.binance.com/api/v3/klines?${params}`);
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         const rows = await res.json();
         if (!Array.isArray(rows) || rows.length === 0) break;
@@ -595,7 +595,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     const connect = () => {
       if (disposed) return;
       const stream = `${sym.toLowerCase()}@kline_${timeframe}`;
-      ws = new WebSocket(`${BINANCE_FUTURES_WS_BASE}/${stream}`);
+      ws = new WebSocket(`${BINANCE_SPOT_WS_BASE}/${stream}`);
 
       ws.onopen = () => {
         attempt = 0;

@@ -67,6 +67,26 @@ function srLineColor(probUp: number): string {
   return '#6b7280';
 }
 
+/** Stronger line when YES probability is far from 50% (conviction). */
+function srLineOpacity(probUp: number): number {
+  const deviation = 2 * Math.abs(probUp - 0.5);
+  const minA = 0.18;
+  const maxA = 0.92;
+  return minA + deviation * (maxA - minA);
+}
+
+const SR_PRICE_DECIMALS: Record<AssetName, number> = {
+  BTC: 0,
+  ETH: 1,
+  SOL: 2,
+  XRP: 4,
+};
+
+function formatSrStrike(p: number, asset: AssetName): string {
+  const d = SR_PRICE_DECIMALS[asset] ?? 2;
+  return p.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+
 function drawCandles(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -74,6 +94,7 @@ function drawCandles(
   candles: Candle[],
   interval: KlineInterval,
   srLines: SRLine[],
+  asset: AssetName,
 ) {
   ctx.fillStyle = '#0f1419';
   ctx.fillRect(0, 0, w, h);
@@ -155,7 +176,7 @@ function drawCandles(
     ctx.setLineDash(dashByTf[sr.label] || [6, 4]);
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = srLineOpacity(sr.probUp);
     ctx.beginPath();
     ctx.moveTo(padL, y);
     ctx.lineTo(padL + cw, y);
@@ -163,8 +184,7 @@ function drawCandles(
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
 
-    const probPct = Math.round(sr.probUp * 100);
-    const tag = `${sr.label} ${probPct}%`;
+    const tag = sr.label;
     ctx.font = 'bold 9px ui-sans-serif, system-ui, sans-serif';
     const tw = ctx.measureText(tag).width;
     const tagX = padL + 4;
@@ -204,6 +224,24 @@ function drawCandles(
   }
 
   ctx.restore();
+
+  // S/R target prices on Y-axis (left margin, aligned with each line)
+  ctx.font = 'bold 9px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (const sr of srLines) {
+    const y = yPx(sr.price);
+    if (y < yTop || y > yBot) continue;
+    const color = srLineColor(sr.probUp);
+    const txt = formatSrStrike(sr.price, asset);
+    const tw = ctx.measureText(txt).width;
+    const ax = padL - 4;
+    const pillL = Math.max(2, ax - tw - 4);
+    ctx.fillStyle = 'rgba(15,20,25,0.9)';
+    ctx.fillRect(pillL, y - 5, ax - pillL + 2, 10);
+    ctx.fillStyle = color;
+    ctx.fillText(txt, ax, y);
+  }
 
   // x labels (first, mid, last)
   ctx.fillStyle = '#6b7280';
@@ -387,14 +425,14 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawCandles(ctx, w, h, candles, timeframe, srLines);
+      drawCandles(ctx, w, h, candles, timeframe, srLines, asset);
     };
 
     paint();
     const ro = new ResizeObserver(() => paint());
     ro.observe(container);
     return () => ro.disconnect();
-  }, [candles, timeframe, srLines]);
+  }, [candles, timeframe, srLines, asset]);
 
   const titleColor = ASSET_COLORS[asset] || 'text-white';
 

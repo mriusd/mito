@@ -111,7 +111,7 @@ function computeRBSPrice(
   if (s0 <= 0 || sigma <= 0) return null;
 
   const implied: { price: number; weight: number }[] = [];
-  for (const tf of SR_TIMEFRAMES) {
+  for (const tf of RBS_TIMEFRAMES) {
     const markets = (assetMarkets[tf] || [])
       .filter((m: Market) => !m.closed && m.endDate && new Date(m.endDate).getTime() > now)
       .sort((a: Market, b: Market) => {
@@ -160,6 +160,8 @@ interface SRLine {
 }
 
 const SR_TIMEFRAMES = ['5m', '15m', '1h', '24h'] as const;
+
+const RBS_TIMEFRAMES = ['15m', '1h', '24h'] as const;
 
 function srLineColor(probUp: number): string {
   if (probUp > 0.55) return '#22c55e';

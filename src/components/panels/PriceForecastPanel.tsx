@@ -1,6 +1,15 @@
 import { useCallback, useMemo, useRef, useEffect, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import type { AssetSymbol, Market } from '../../types';
+import { HelpTooltip } from '../HelpTooltip';
+
+const PRICE_FORECAST_HELP =
+  'Crowd-implied path over ~7 days, not a prediction of spot.\n\n' +
+  '• Solid line (asset color): expected price built from Up/Down markets (5m → 15m → 1h → 24h) for the first day, then blended into daily expiries.\n' +
+  '• Shaded band: ~10th–90th percentile where daily buckets allow; short horizon uses a volatility band (σ from your settings).\n' +
+  '• Yellow dashed: reverse Black-Scholes — long-dated “above” strikes imply a spot path vs time.\n' +
+  '• Weekly Hit (reach/dip) markets widen the band and nudge direction when included.\n\n' +
+  'Uses live YES mids and Binance-based spot/vol inputs. Illustrative only; not financial advice.';
 
 /* ───────── constants ───────── */
 
@@ -783,6 +792,19 @@ function ForecastChart({
             <circle cx={sxPoint(p, i)} cy={sy(p.expected)} r={i === 0 ? 3.5 : 2.5} fill={i === 0 ? color : '#e5e7eb'} stroke={color} strokeWidth={i === 0 ? 0 : 1} />
           </g>
         ))}
+
+        <text
+          x={padL + 4}
+          y={padT + 11}
+          fill={color}
+          style={{ fontSize: 11, fontWeight: 700, fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}
+          paintOrder="stroke fill"
+          stroke="rgba(15,23,42,0.75)"
+          strokeWidth={3}
+          strokeLinejoin="round"
+        >
+          {asset}
+        </text>
       </svg>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 px-0.5 mt-0.5 text-[8px] text-gray-500 shrink-0">
         <span><span style={{ color }}>—</span> crowd-implied</span>
@@ -835,8 +857,11 @@ export function PriceForecastPanel() {
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 h-full">
-      <div className="panel-header mb-2 shrink-0 cursor-grab">
+      <div className="panel-header mb-2 shrink-0 cursor-grab flex items-center gap-2 flex-wrap">
         <h3 className="text-sm font-bold text-teal-300">Price Forecast</h3>
+        <span className="no-drag cursor-default" onPointerDown={(e) => e.stopPropagation()}>
+          <HelpTooltip text={PRICE_FORECAST_HELP} />
+        </span>
       </div>
       <div
         className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 sm:grid-rows-2 gap-2"

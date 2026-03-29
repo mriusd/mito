@@ -10,6 +10,12 @@ const LINE_COLORS: Record<AssetSym, string> = {
   XRP: '#22d3ee',
 };
 
+/** % points from mean of other assets at last bar — must exceed to consider “away from pack”. */
+const DIVERGE_MIN_GAP_PP = 0.32;
+/** % points — one-bar change in that gap counts as “sudden”. */
+const DIVERGE_SUDDEN_DELTA_PP = 0.22;
+const FLASH_PERIOD_MS = 110;
+
 const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'] as const;
 type IntervalKey = (typeof INTERVALS)[number];
 
@@ -123,6 +129,34 @@ function buildPctSeries(
   return { times, pct };
 }
 
+function othersMeanAt(pct: Record<AssetSym, number[]>, idx: number, exclude: AssetSym): number {
+  let s = 0;
+  let c = 0;
+  for (const a of ASSETS) {
+    if (a === exclude) continue;
+    s += pct[a][idx];
+    c++;
+  }
+  return c > 0 ? s / c : 0;
+}
+
+/** Asset is flashing if it’s meaningfully away from the other three and the gap jumped on the latest bar. */
+function computeFlashingAssets(pct: Record<AssetSym, number[]>): Set<AssetSym> {
+  const out = new Set<AssetSym>();
+  const n = pct.BTC.length;
+  if (n < 3) return out;
+  const i = n - 1;
+  const j = n - 2;
+  for (const sym of ASSETS) {
+    const gapNow = pct[sym][i] - othersMeanAt(pct, i, sym);
+    const gapPrev = pct[sym][j] - othersMeanAt(pct, j, sym);
+    if (Math.abs(gapNow) >= DIVERGE_MIN_GAP_PP && Math.abs(gapNow - gapPrev) >= DIVERGE_SUDDEN_DELTA_PP) {
+      out.add(sym);
+    }
+  }
+  return out;
+}
+
 async function fetchKlinesForWindow(
   symbol: string,
   interval: IntervalKey,
@@ -169,6 +203,7 @@ export function RelativeChartPanel() {
   const loadGenRef = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const pulseRafRef = useRef(0);
   const [drawTick, setDrawTick] = useState(0);
 
   const bumpDraw = useCallback(() => setDrawTick((n) => n + 1), []);
@@ -299,6 +334,10 @@ export function RelativeChartPanel() {
     const chartB = H - padB;
 
     if (!built) {
+      if (pulseRafRef.current) {
+        cancelAnimationFrame(pulseRafRef.current);
+        pulseRafRef.current = 0;
+      }
       ctx.fillStyle = 'rgba(255,255,255,0.25)';
       ctx.font = '11px monospace';
       ctx.textAlign = 'center';
@@ -308,6 +347,21 @@ export function RelativeChartPanel() {
     }
 
     const { times, pct } = built;
+    const flashing = computeFlashingAssets(pct);
+    if (flashing.size > 0) {
+      if (!pulseRafRef.current) {
+        const step = () => {
+          pulseRafRef.current = requestAnimationFrame(step);
+          bumpDraw();
+        };
+        pulseRafRef.current = requestAnimationFrame(step);
+      }
+    } else if (pulseRafRef.current) {
+      cancelAnimationFrame(pulseRafRef.current);
+      pulseRafRef.current = 0;
+    }
+
+    const flashPulse = 0.5 + 0.5 * Math.sin(Date.now() / FLASH_PERIOD_MS);
     let yMin = Infinity;
     let yMax = -Infinity;
     for (const sym of ASSETS) {
@@ -349,8 +403,10 @@ export function RelativeChartPanel() {
 
     for (const sym of ASSETS) {
       const ys = pct[sym];
+      const isFlash = flashing.has(sym);
       ctx.strokeStyle = LINE_COLORS[sym];
-      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = isFlash ? 0.35 + 0.65 * flashPulse : 1;
+      ctx.lineWidth = isFlash ? 1.5 + 2.25 * flashPulse : 1.5;
       ctx.beginPath();
       for (let i = 0; i < ys.length; i++) {
         const x = toX(i);
@@ -359,6 +415,7 @@ export function RelativeChartPanel() {
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
+      ctx.globalAlpha = 1;
     }
 
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
@@ -374,11 +431,20 @@ export function RelativeChartPanel() {
       const timePart = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
       ctx.fillText(showTime ? `${datePart} ${timePart}` : datePart, toX(i), chartB + 3);
     }
-  }, [timeWindow]);
+  }, [timeWindow, bumpDraw]);
 
   useLayoutEffect(() => {
     draw();
   }, [draw, drawTick, interval, timeWindow]);
+
+  useEffect(() => {
+    return () => {
+      if (pulseRafRef.current) {
+        cancelAnimationFrame(pulseRafRef.current);
+        pulseRafRef.current = 0;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const ro = new ResizeObserver(() => bumpDraw());

@@ -16,6 +16,8 @@ html, body, #root {
   font-family: 'Berkeley Mono', monospace;
   margin: 0;
   padding: 0;
+  background-color: #050505;
+  color-scheme: dark;
 }
 
 /* Touch browsers: stop double-tap zoom and “select whole page” / smart selection on iOS */

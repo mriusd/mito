@@ -3,6 +3,8 @@ import { Settings } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import type { AssetName, Market } from '../../types';
 import { ASSET_COLORS } from '../../types';
+import { API_BASE, WS_BASE } from '../../lib/env';
+import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { assetToSymbol, formatPrice } from '../../utils/format';
 
 const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
@@ -69,6 +71,26 @@ function mergeKlineIntoSeries(prev: Candle[], t: number, o: number, h: number, l
 
 /** Binance spot kline stream (raw WS) */
 const BINANCE_SPOT_WS_BASE = 'wss://stream.binance.com:9443/ws';
+
+type ChartPriceSource = 'binance' | 'chainlink';
+
+/** Synthetic token id for polycandles Chainlink OHLC (see polycandles chainlinkTokenId). */
+function chainlinkKlineSymbol(asset: AssetName): string {
+  return `chainlink_${asset.toLowerCase()}usd`;
+}
+
+/** Polycandles /api/v3/klines only supports 1m, 5m, 15m, 1h — coarser selections use 1h bars. */
+function polycandlesChartInterval(tf: KlineInterval): '1m' | '5m' | '15m' | '1h' {
+  if (tf === '4h' || tf === '1d') return '1h';
+  return tf;
+}
+
+/** Paths from Simple Icons (MIT); used in the candle-source toggle only. */
+const BINANCE_LOGO_PATH =
+  'M16.624 13.9202l2.7175 2.7154-7.353 7.353-7.353-7.352 2.7175-2.7164 4.6355 4.6595 4.6356-4.6595zm4.6366-4.6366L24 12l-2.7154 2.7164L18.5682 12l2.6924-2.7164zm-9.272.001l2.7163 2.6914-2.7164 2.7174v-.001L9.2721 12l2.7164-2.7154zm-9.2722-.001L5.4088 12l-2.6914 2.6924L0 12l2.7164-2.7164zM11.9885.0115l7.353 7.329-2.7174 2.7154-4.6356-4.6356-4.6355 4.6595-2.7174-2.7154 7.353-7.353z';
+
+const CHAINLINK_LOGO_PATH =
+  'M12 0L9.798 1.266l-6 3.468L1.596 6v12l2.202 1.266 6.055 3.468L12.055 24l2.202-1.266 5.945-3.468L22.404 18V6l-2.202-1.266-6-3.468zM6 15.468V8.532l6-3.468 6 3.468v6.936l-6 3.468z';
 
 const YEAR_MS = 365.25 * 86_400_000;
 
@@ -475,6 +497,10 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     if (saved && (TIME_WINDOWS as readonly string[]).includes(saved)) return saved;
     return '24h';
   });
+  const [priceSource, setPriceSource] = useState<ChartPriceSource>(() => {
+    const saved = localStorage.getItem(`polybot-binance-chart-source-${panelId}`) as ChartPriceSource | null;
+    return saved === 'chainlink' ? 'chainlink' : 'binance';
+  });
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
   const [rbsSettingsOpen, setRbsSettingsOpen] = useState(false);
   const [rbsTfEnabled, setRbsTfEnabled] = useState<Record<UpDownTfKey, boolean>>(() =>
@@ -492,6 +518,14 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const sym = assetToSymbol(asset);
   const livePrice = priceData[sym]?.price ?? 0;
+  const chainlinkPrices = useChainlinkPricesMap();
+  const spotForChart = useMemo(() => {
+    if (priceSource === 'chainlink') {
+      const cl = chainlinkPrices[asset];
+      if (cl != null && Number.isFinite(cl) && cl > 0) return cl;
+    }
+    return livePrice;
+  }, [priceSource, chainlinkPrices, asset, livePrice]);
 
   const srLines = useMemo<SRLine[]>(() => {
     const assetMarkets = upOrDownMarkets[asset];
@@ -528,17 +562,21 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   }, [asset, upOrDownMarkets, marketLookup]);
 
   const rbsPrice = useMemo<number | null>(() => {
-    if (livePrice <= 0) return null;
+    if (spotForChart <= 0) return null;
     const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
     const assetMarkets = upOrDownMarkets[asset] || {};
-    return computeRBSPrice(livePrice, sigma, assetMarkets, marketLookup, Date.now(), rbsTfEnabled);
-  }, [asset, livePrice, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup, rbsTfEnabled]);
+    return computeRBSPrice(spotForChart, sigma, assetMarkets, marketLookup, Date.now(), rbsTfEnabled);
+  }, [asset, spotForChart, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup, rbsTfEnabled]);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const timeWindowRef = useRef(timeWindow);
   timeWindowRef.current = timeWindow;
+  const timeframeRef = useRef(timeframe);
+  timeframeRef.current = timeframe;
+  const priceSourceRef = useRef(priceSource);
+  priceSourceRef.current = priceSource;
 
   const fetchKlines = useCallback(async () => {
     setLoading(true);
@@ -552,31 +590,65 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
       let endTime: number | undefined;
       let iterations = 0;
 
-      while (iterations++ < 20 && byTime.size < targetCount) {
-        const params = new URLSearchParams({
-          symbol: sym,
-          interval: timeframe,
-          limit: '1000',
-        });
-        if (endTime !== undefined) params.set('endTime', String(endTime));
-        const res = await fetch(`https://api.binance.com/api/v3/klines?${params}`);
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        const rows = await res.json();
-        if (!Array.isArray(rows) || rows.length === 0) break;
-        let oldest = Infinity;
-        for (const row of rows) {
-          if (!Array.isArray(row) || row.length < 6) continue;
-          const t = Number(row[0]);
-          const o = parseFloat(String(row[1]));
-          const h = parseFloat(String(row[2]));
-          const l = parseFloat(String(row[3]));
-          const c = parseFloat(String(row[4]));
-          if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) continue;
-          oldest = Math.min(oldest, t);
-          byTime.set(t, { t, o, h, l, c });
+      if (priceSource === 'chainlink') {
+        const clSymbol = chainlinkKlineSymbol(asset);
+        const apiIv = polycandlesChartInterval(timeframe);
+        const barMs = INTERVAL_MS[apiIv];
+        const targetBars = Math.min(5000, Math.ceil(windowMs / barMs) + 8);
+
+        while (iterations++ < 20 && byTime.size < targetBars) {
+          const params = new URLSearchParams({
+            symbol: clSymbol,
+            interval: apiIv,
+            limit: '1000',
+          });
+          if (endTime !== undefined) params.set('endTime', String(endTime));
+          const res = await fetch(`${API_BASE}/api/v3/klines?${params}`);
+          if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+          const rows = await res.json();
+          if (!Array.isArray(rows) || rows.length === 0) break;
+          let oldest = Infinity;
+          for (const row of rows) {
+            if (!Array.isArray(row) || row.length < 6) continue;
+            const t = Number(row[0]);
+            const o = parseFloat(String(row[1]));
+            const h = parseFloat(String(row[2]));
+            const l = parseFloat(String(row[3]));
+            const c = parseFloat(String(row[4]));
+            if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) continue;
+            oldest = Math.min(oldest, t);
+            byTime.set(t, { t, o, h, l, c });
+          }
+          if (oldest <= windowStart) break;
+          endTime = oldest - 1;
         }
-        if (oldest <= windowStart) break;
-        endTime = oldest - 1;
+      } else {
+        while (iterations++ < 20 && byTime.size < targetCount) {
+          const params = new URLSearchParams({
+            symbol: sym,
+            interval: timeframe,
+            limit: '1000',
+          });
+          if (endTime !== undefined) params.set('endTime', String(endTime));
+          const res = await fetch(`https://api.binance.com/api/v3/klines?${params}`);
+          if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+          const rows = await res.json();
+          if (!Array.isArray(rows) || rows.length === 0) break;
+          let oldest = Infinity;
+          for (const row of rows) {
+            if (!Array.isArray(row) || row.length < 6) continue;
+            const t = Number(row[0]);
+            const o = parseFloat(String(row[1]));
+            const h = parseFloat(String(row[2]));
+            const l = parseFloat(String(row[3]));
+            const c = parseFloat(String(row[4]));
+            if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) continue;
+            oldest = Math.min(oldest, t);
+            byTime.set(t, { t, o, h, l, c });
+          }
+          if (oldest <= windowStart) break;
+          endTime = oldest - 1;
+        }
       }
 
       const filtered = [...byTime.values()]
@@ -589,7 +661,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     } finally {
       setLoading(false);
     }
-  }, [sym, timeframe, timeWindow]);
+  }, [sym, timeframe, timeWindow, priceSource, asset]);
 
   useEffect(() => {
     void fetchKlines();
@@ -601,6 +673,8 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   }, [fetchKlines]);
 
   useEffect(() => {
+    if (priceSource !== 'binance') return;
+
     let disposed = false;
     let ws: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
@@ -673,7 +747,107 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
         /* ignore */
       }
     };
-  }, [sym, timeframe]);
+  }, [sym, timeframe, priceSource]);
+
+  useEffect(() => {
+    if (priceSource !== 'chainlink') return;
+
+    const clSym = chainlinkKlineSymbol(asset);
+
+    let disposed = false;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let pingIv: ReturnType<typeof setInterval> | undefined;
+    let attempt = 0;
+
+    const connect = () => {
+      if (disposed) return;
+      ws = new WebSocket(`${WS_BASE}/ws/chart`);
+
+      ws.onopen = () => {
+        attempt = 0;
+        const subIv = polycandlesChartInterval(timeframeRef.current);
+        ws?.send(
+          JSON.stringify({
+            type: 'subscribeKlineStream',
+            data: { symbol: clSym, interval: subIv },
+          }),
+        );
+        pingIv = setInterval(() => {
+          if (ws?.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 30_000);
+      };
+
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data as string) as {
+            type?: string;
+            data?: { data?: { k?: { t: number; o: string; h: string; l: string; c: string; s?: string; i?: string } } };
+          };
+          if (msg.type !== 'klineStreamUpdate') return;
+          const k = msg.data?.data?.k;
+          if (!k) return;
+          if (k.s !== clSym || k.i !== polycandlesChartInterval(timeframeRef.current)) return;
+          const tOpen = Number(k.t);
+          const o = parseFloat(k.o);
+          const h = parseFloat(k.h);
+          const l = parseFloat(k.l);
+          const c = parseFloat(k.c);
+          if (!Number.isFinite(tOpen) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return;
+          if (disposed || priceSourceRef.current !== 'chainlink') return;
+          const windowStart = Date.now() - WINDOW_MS[timeWindowRef.current];
+          setCandles((prev) => mergeKlineIntoSeries(prev, tOpen, o, h, l, c, windowStart));
+        } catch {
+          /* ignore malformed */
+        }
+      };
+
+      ws.onerror = () => {
+        try {
+          ws?.close();
+        } catch {
+          /* ignore */
+        }
+      };
+
+      ws.onclose = () => {
+        clearInterval(pingIv);
+        pingIv = undefined;
+        if (disposed) return;
+        const delay = Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5));
+        attempt += 1;
+        reconnectTimer = setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      clearInterval(pingIv);
+      if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
+      const subIv = polycandlesChartInterval(timeframe);
+      try {
+        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+          ws.send(
+            JSON.stringify({
+              type: 'unsubscribeKlineStream',
+              data: { symbol: clSym, interval: subIv },
+            }),
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+      try {
+        ws?.close();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [asset, timeframe, timeWindow, priceSource]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -727,7 +901,15 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
           <span className="relative binance-asset-dropdown-root no-drag inline-flex items-center cursor-pointer select-none" onClick={() => setAssetDropdownOpen(v => !v)}>
             {asset}:{' '}
             <span className="font-bold text-white">
-              {livePrice > 0 ? formatPrice(livePrice, asset) : '--'}
+              {spotForChart > 0 ? formatPrice(spotForChart, asset) : '--'}
+            </span>
+            <span
+              className={`ml-1 rounded px-0.5 text-[7px] font-bold leading-tight ${
+                priceSource === 'chainlink' ? 'bg-blue-700 text-white' : 'bg-yellow-500/90 text-black'
+              }`}
+              title={priceSource === 'chainlink' ? 'Spot from backend Chainlink feed' : 'Binance spot'}
+            >
+              {priceSource === 'chainlink' ? 'CL' : 'BN'}
             </span>
             <svg className="w-3 h-3 ml-0.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <polyline points="6 9 12 15 18 9" />
@@ -756,6 +938,46 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
           className="flex items-center gap-1.5 shrink-0 no-drag cursor-default"
           onPointerDown={(e) => e.stopPropagation()}
         >
+          <div
+            className="flex shrink-0 overflow-hidden rounded border border-gray-600"
+            title="Candle source: Binance spot API or polycandles Chainlink klines"
+          >
+            <button
+              type="button"
+              aria-label="Binance spot candles"
+              className={`flex items-center justify-center px-1.5 py-0.5 ${priceSource === 'binance' ? 'bg-cyan-900/75' : 'bg-gray-900 hover:opacity-90'}`}
+              onClick={() => {
+                setPriceSource('binance');
+                localStorage.setItem(`polybot-binance-chart-source-${panelId}`, 'binance');
+              }}
+            >
+              <svg
+                className={`h-3 w-3 shrink-0 ${priceSource === 'binance' ? 'opacity-100' : 'opacity-40'}`}
+                viewBox="0 0 24 24"
+                aria-hidden
+              >
+                <path fill="#F0B90B" d={BINANCE_LOGO_PATH} />
+              </svg>
+            </button>
+            <button
+              type="button"
+              aria-label="Chainlink candles (polycandles klines)"
+              className={`flex items-center justify-center border-l border-gray-600 px-1.5 py-0.5 ${priceSource === 'chainlink' ? 'bg-blue-900/75 text-blue-200' : 'bg-gray-900 text-gray-500 hover:text-gray-300'}`}
+              onClick={() => {
+                setPriceSource('chainlink');
+                localStorage.setItem(`polybot-binance-chart-source-${panelId}`, 'chainlink');
+              }}
+              title="Uses polycandles /api/v3/klines (synthetic chainlink_*usd). 4h and 1d resolutions use 1h bars."
+            >
+              <svg
+                className={`h-3 w-3 shrink-0 ${priceSource === 'chainlink' ? 'opacity-100' : 'opacity-40'}`}
+                viewBox="0 0 24 24"
+                aria-hidden
+              >
+                <path fill="currentColor" d={CHAINLINK_LOGO_PATH} />
+              </svg>
+            </button>
+          </div>
           <select
             value={timeframe}
             onChange={(e) => {
@@ -847,7 +1069,12 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
         {loading && candles.length === 0 && !loadErr && (
           <div className="absolute inset-0 flex items-center justify-center z-10 text-[11px] text-gray-500">Loading…</div>
         )}
-        <canvas ref={canvasRef} className="block w-full h-full" role="img" aria-label={`${asset} candlestick chart`} />
+        <canvas
+          ref={canvasRef}
+          className="block w-full h-full"
+          role="img"
+          aria-label={`${asset} candlestick chart (${priceSource === 'chainlink' ? 'Chainlink via polycandles' : 'Binance spot'})`}
+        />
       </div>
     </div>
   );

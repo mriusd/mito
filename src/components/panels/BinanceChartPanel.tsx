@@ -53,6 +53,22 @@ function parseKlines(raw: unknown[]): Candle[] {
   return out;
 }
 
+function mergeKlineIntoSeries(prev: Candle[], t: number, o: number, h: number, l: number, c: number, windowStart: number): Candle[] {
+  const candle: Candle = { t, o, h, l, c };
+  const idx = prev.findIndex((x) => x.t === t);
+  let next: Candle[];
+  if (idx >= 0) {
+    next = prev.slice();
+    next[idx] = candle;
+  } else {
+    next = [...prev, candle].sort((a, b) => a.t - b.t);
+  }
+  return next.filter((x) => x.t >= windowStart);
+}
+
+/** USD-M (USDT-margined) perpetual futures kline stream */
+const BINANCE_FUTURES_WS_BASE = 'wss://fstream.binance.com/ws';
+
 interface SRLine {
   price: number;
   probUp: number;
@@ -336,6 +352,8 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   const wrapRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const timeWindowRef = useRef(timeWindow);
+  timeWindowRef.current = timeWindow;
 
   const fetchKlines = useCallback(async () => {
     setLoading(true);
@@ -356,7 +374,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
           limit: '1000',
         });
         if (endTime !== undefined) params.set('endTime', String(endTime));
-        const res = await fetch(`https://api.binance.com/api/v3/klines?${params}`);
+        const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?${params}`);
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         const rows = await res.json();
         if (!Array.isArray(rows) || rows.length === 0) break;
@@ -393,9 +411,84 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   }, [fetchKlines]);
 
   useEffect(() => {
-    const t = setInterval(() => void fetchKlines(), 60_000);
+    const t = setInterval(() => void fetchKlines(), 180_000);
     return () => clearInterval(t);
   }, [fetchKlines]);
+
+  useEffect(() => {
+    let disposed = false;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let attempt = 0;
+
+    const connect = () => {
+      if (disposed) return;
+      const stream = `${sym.toLowerCase()}@kline_${timeframe}`;
+      ws = new WebSocket(`${BINANCE_FUTURES_WS_BASE}/${stream}`);
+
+      ws.onopen = () => {
+        attempt = 0;
+      };
+
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data as string) as {
+            e?: string;
+            k?: {
+              t: number;
+              o: string;
+              h: string;
+              l: string;
+              c: string;
+              s?: string;
+              i?: string;
+            };
+          };
+          if (msg.e !== 'kline' || !msg.k) return;
+          const k = msg.k;
+          if (k.s !== sym || k.i !== timeframe) return;
+          const tOpen = Number(k.t);
+          const o = parseFloat(k.o);
+          const h = parseFloat(k.h);
+          const l = parseFloat(k.l);
+          const c = parseFloat(k.c);
+          if (!Number.isFinite(tOpen) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return;
+          if (disposed) return;
+          const windowStart = Date.now() - WINDOW_MS[timeWindowRef.current];
+          setCandles((prev) => mergeKlineIntoSeries(prev, tOpen, o, h, l, c, windowStart));
+        } catch {
+          /* ignore malformed */
+        }
+      };
+
+      ws.onerror = () => {
+        try {
+          ws?.close();
+        } catch {
+          /* ignore */
+        }
+      };
+
+      ws.onclose = () => {
+        if (disposed) return;
+        const delay = Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5));
+        attempt += 1;
+        reconnectTimer = setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
+      try {
+        ws?.close();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [sym, timeframe]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {

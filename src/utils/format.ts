@@ -41,8 +41,14 @@ export function getPolymarketVolumeUsd(market: Market, yesTokenId: string, looku
   return null;
 }
 
-/** e.g. Vol. 12.3k$ (thousands USDC); Vol. — when unknown. */
+/** Thousands of USDC, one decimal (e.g. 12.3k). */
 export function formatPolymarketVolumeK(usd: number | null): string {
+  if (usd === null || !Number.isFinite(usd)) return '—';
+  return `${(usd / 1000).toFixed(1)}k`;
+}
+
+/** Sidebar orderbook line only: Vol. 12.3k$; Vol. — when unknown. */
+export function formatPolymarketVolumeSidebar(usd: number | null): string {
   if (usd === null || !Number.isFinite(usd)) return 'Vol. —';
   return `Vol. ${(usd / 1000).toFixed(1)}k$`;
 }

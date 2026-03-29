@@ -8,7 +8,7 @@ import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
 import {
   extractAssetFromMarket,
-  formatPolymarketVolumeK,
+  formatPolymarketVolumeSidebar,
   getPolymarketVolumeUsd,
   getTokenOutcome,
   shortenMarketName,
@@ -59,7 +59,7 @@ export function Sidebar() {
   const liveOrderbookVolumeDisplay = useMemo(() => {
     if (!selectedMarket?.clobTokenIds?.[0]) return null;
     const usd = getPolymarketVolumeUsd(selectedMarket, selectedMarket.clobTokenIds[0], marketLookup);
-    return formatPolymarketVolumeK(usd);
+    return formatPolymarketVolumeSidebar(usd);
   }, [selectedMarket, marketLookup]);
   const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
 

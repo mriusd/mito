@@ -6,7 +6,14 @@ import { placeOrder, cancelOrder, signOrder, submitSignedOrder } from '../api';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
-import { getTokenOutcome, extractAssetFromMarket, shortenMarketName, upDownMarketUsesChainlinkSpot } from '../utils/format';
+import {
+  extractAssetFromMarket,
+  formatPolymarketVolumeK,
+  getPolymarketVolumeUsd,
+  getTokenOutcome,
+  shortenMarketName,
+  upDownMarketUsesChainlinkSpot,
+} from '../utils/format';
 import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarkets } from '../utils/bsMath';
 import { API_BASE } from '../lib/env';
 import { fetchUpDownTargetFromCrypto, upDownCryptoTimeframe } from '../lib/upDownTargetFromCrypto';
@@ -48,6 +55,12 @@ export function Sidebar() {
   const orders = useAppStore((s) => s.orders);
   const trades = useAppStore((s) => s.trades);
   const marketLookup = useAppStore((s) => s.marketLookup);
+
+  const liveOrderbookVolumeDisplay = useMemo(() => {
+    if (!selectedMarket?.clobTokenIds?.[0]) return null;
+    const usd = getPolymarketVolumeUsd(selectedMarket, selectedMarket.clobTokenIds[0], marketLookup);
+    return formatPolymarketVolumeK(usd);
+  }, [selectedMarket, marketLookup]);
   const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
 
   // Tick every second so relative trade times update
@@ -960,10 +973,18 @@ export function Sidebar() {
             <button
               type="button"
               onClick={() => setLiveOrderbookExpanded(v => !v)}
-              className="text-xs text-gray-400 mb-2 flex items-center gap-1 hover:text-gray-200 transition"
+              className="text-xs text-gray-400 mb-2 flex w-full min-w-0 items-center gap-1 hover:text-gray-200 transition"
             >
-              <span className="text-[10px] text-gray-500">{liveOrderbookExpanded ? '▾' : '▸'}</span>
-              <span>Live Orderbook</span>
+              <span className="text-[10px] text-gray-500 shrink-0">{liveOrderbookExpanded ? '▾' : '▸'}</span>
+              <span className="shrink-0">Live Orderbook</span>
+              {liveOrderbookVolumeDisplay != null && (
+                <span
+                  className="ml-auto shrink-0 tabular-nums text-[10px] font-bold text-sky-300/95"
+                  title="Polymarket volume (USDC, YES outcome), same source as Up/Down grid"
+                >
+                  {liveOrderbookVolumeDisplay}
+                </span>
+              )}
               {/* HIDDEN: Toxic Flow button disabled while polygon RPC is off
               <button
                 onClick={() => setToxicDialogOpen(true)}

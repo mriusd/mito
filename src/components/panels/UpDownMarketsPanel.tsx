@@ -6,6 +6,7 @@ import { HelpTooltip } from '../HelpTooltip';
 import type { Market } from '../../types';
 import type { AssetSymbol } from '../../types';
 import { getMarketProbability } from '../../utils/bsMath';
+import { formatPolymarketVolumeK, getPolymarketVolumeUsd } from '../../utils/format';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 
 function formatCountdown(ms: number): string {
@@ -87,31 +88,6 @@ function formatTargetStrikePrice(p: number | undefined | null, fractionDigits: n
 function strikePriceFromMarket(market: Market, tokenId: string, lookup: Record<string, Market>): number | undefined {
   const p = market.priceToBeat ?? (tokenId ? lookup[tokenId]?.priceToBeat : undefined);
   return p != null && Number.isFinite(p) ? p : undefined;
-}
-
-function polymarketVolumeNumber(market: Market, tokenId: string, lookup: Record<string, Market>): number | null {
-  const live = tokenId ? lookup[tokenId] : undefined;
-  // bidAskBatch only patches marketLookup; upOrDownMarkets can keep stale Market refs until the next Gamma sync.
-  // Prefer live volume when it belongs to this market so 5m rollovers don't show the previous window's volume.
-  let raw: unknown;
-  if (live != null && live.id === market.id) {
-    raw = live.volume !== undefined && live.volume !== null ? live.volume : market.volume;
-  } else {
-    raw = market.volume;
-  }
-  if (raw === undefined || raw === null) return null;
-  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return raw;
-  if (typeof raw === 'string') {
-    const n = parseFloat(raw.replace(/,/g, ''));
-    return Number.isFinite(n) && n >= 0 ? n : null;
-  }
-  return null;
-}
-
-/** Polymarket volume in thousands of USDC, always one decimal (e.g. 12.3k). */
-function formatPolymarketVolume(usd: number | null): string {
-  if (usd === null || !Number.isFinite(usd)) return '—';
-  return `${(usd / 1000).toFixed(1)}k`;
 }
 
 export function UpDownMarketsPanel() {
@@ -302,7 +278,7 @@ export function UpDownMarketsPanel() {
                   >
                     <span className="inline-flex w-full items-center justify-end gap-0.5">
                       Vol
-                      <HelpTooltip text="Trading volume (USDC) from Polymarket Gamma, updated with live bid/ask batches over the chart WebSocket and refreshed from Gamma on a short interval between full market syncs. Shown in thousands (e.g. 12.3k)." />
+                      <HelpTooltip text="Trading volume (USDC) from Polymarket Gamma, updated with live bid/ask batches over the chart WebSocket and refreshed from Gamma on a short interval between full market syncs. Shown in thousands (e.g. Vol. 12.3k$)." />
                     </span>
                   </th>
                 </Fragment>
@@ -480,7 +456,7 @@ export function UpDownMarketsPanel() {
                       </div>
                     </td>
                   ) : null;
-                  const polymarketVol = polymarketVolumeNumber(market, yesTokenId, _bidAskLookup);
+                  const polymarketVol = getPolymarketVolumeUsd(market, yesTokenId, _bidAskLookup);
 
                   const yesAsk = bestAsk ? (bestAsk * 100).toFixed(1) : '-';
                   const noAsk = bestBid ? ((1 - bestBid) * 100).toFixed(1) : '-';
@@ -555,7 +531,7 @@ export function UpDownMarketsPanel() {
                       style={assetBorderStyle(asset, { R: true, B: isLastTfRow })}
                       title="Polymarket / Gamma reported volume (USDC), shown in thousands"
                     >
-                      {formatPolymarketVolume(polymarketVol)}
+                      {formatPolymarketVolumeK(polymarketVol)}
                     </td>
                   );
 

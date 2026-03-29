@@ -20,6 +20,33 @@ export function upDownMarketUsesChainlinkSpot(market: { eventSlug?: string; ques
   return false;
 }
 
+/**
+ * Gamma / chart-WS volume in USDC (YES token row). Prefers `marketLookup` when `live.id === market.id`
+ * so nested `upOrDownMarkets` refs stay in sync with `bidAskBatch` patches.
+ */
+export function getPolymarketVolumeUsd(market: Market, yesTokenId: string, lookup: Record<string, Market>): number | null {
+  const live = yesTokenId ? lookup[yesTokenId] : undefined;
+  let raw: unknown;
+  if (live != null && live.id === market.id) {
+    raw = live.volume !== undefined && live.volume !== null ? live.volume : market.volume;
+  } else {
+    raw = market.volume;
+  }
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return raw;
+  if (typeof raw === 'string') {
+    const n = parseFloat(raw.replace(/,/g, ''));
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  }
+  return null;
+}
+
+/** e.g. Vol. 12.3k$ (thousands USDC); Vol. — when unknown. */
+export function formatPolymarketVolumeK(usd: number | null): string {
+  if (usd === null || !Number.isFinite(usd)) return 'Vol. —';
+  return `Vol. ${(usd / 1000).toFixed(1)}k$`;
+}
+
 export function formatPrice(price: number, asset?: AssetName): string {
   const decimals = asset === 'XRP' ? 4 : 2;
   return '$' + price.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });

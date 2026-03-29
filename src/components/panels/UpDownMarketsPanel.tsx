@@ -90,7 +90,7 @@ function strikePriceFromMarket(market: Market, tokenId: string, lookup: Record<s
 }
 
 function polymarketVolumeNumber(market: Market, tokenId: string, lookup: Record<string, Market>): number | null {
-  const raw = market.volume ?? (tokenId ? lookup[tokenId]?.volume : undefined);
+  const raw: unknown = market.volume ?? (tokenId ? lookup[tokenId]?.volume : undefined);
   if (raw === undefined || raw === null) return null;
   if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return raw;
   if (typeof raw === 'string') {

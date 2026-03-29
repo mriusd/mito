@@ -121,7 +121,7 @@ const SR_TIMEFRAMES = ['5m', '15m', '1h', '24h'] as const;
 type UpDownTfKey = (typeof SR_TIMEFRAMES)[number];
 
 /** Skip Polymarket windows whose expiry is within this many ms (noisy feed); hold last RBS if all enabled windows are in this regime. */
-const RBS_MIN_TIME_TO_EXPIRY_MS = 15_000;
+const RBS_MIN_TIME_TO_EXPIRY_MS = 30_000;
 
 type RBSComputeResult = { kind: 'price'; value: number } | { kind: 'hold' } | { kind: 'clear' };
 

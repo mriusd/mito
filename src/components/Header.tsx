@@ -22,6 +22,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'relative-chart', title: 'Relative Chart' },
   { type: 'perp-bot', title: 'Perp Bot', devOnly: true },
   { type: 'price-forecast', title: 'Price Forecast' },
+  { type: 'binance-chart', title: 'Binance Chart', multi: true },
   { type: 'chat', title: 'Chat' },
 ];
 

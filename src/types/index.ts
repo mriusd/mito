@@ -216,6 +216,7 @@ export type PanelType =
   | 'relative-chart'
   | 'perp-bot'
   | 'price-forecast'
+  | 'binance-chart'
   | 'chat';
 
 export interface PanelConfig {

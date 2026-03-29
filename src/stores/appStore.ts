@@ -142,6 +142,7 @@ const PANEL_TITLES: Record<string, string> = {
   'asset-BTC': 'BTC', 'asset-ETH': 'ETH', 'asset-SOL': 'SOL', 'asset-XRP': 'XRP',
   'trades-positions-orders': 'Trades/Positions/Orders', 'updown-overview': 'Up/Down Markets',
   'relative-chart': 'Relative Chart', 'perp-bot': 'Perp Bot', 'price-forecast': 'Price Forecast',
+  'binance-chart': 'Binance Chart',
   'signals': 'Signals', 'chat': 'Chat', 'pnl': 'P&L', 'arbs': 'Hedges', 'summary': 'Summary',
 };
 

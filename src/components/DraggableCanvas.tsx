@@ -15,6 +15,7 @@ import { UpDownMarketsPanel } from './panels/UpDownMarketsPanel';
 import { RelativeChartPanel } from './panels/RelativeChartPanel';
 import { PerpBotPanel } from './panels/PerpBotPanel';
 import { PriceForecastPanel } from './panels/PriceForecastPanel';
+import { BinanceChartPanel } from './panels/BinanceChartPanel';
 import { ChatPanel } from './panels/ChatPanel';
 import type { PanelConfig, PanelType } from '../types';
 import BREAKPOINT_LAYOUTS, { HEIGHT_VARIANTS, GRID_COLS } from '../lib/defaultLayouts';
@@ -133,6 +134,8 @@ function renderPanel(panel: PanelConfig): React.ReactNode {
       return <PerpBotPanel />;
     case 'price-forecast':
       return <PriceForecastPanel />;
+    case 'binance-chart':
+      return <BinanceChartPanel panelId={panel.id} initialAsset="BTC" />;
     case 'chat':
       return <ChatPanel />;
     default:
@@ -262,6 +265,7 @@ export function DraggableCanvas() {
     'relative-chart': 'Relative Chart',
     'perp-bot': 'Perp Bot',
     'price-forecast': 'Price Forecast',
+    'binance-chart': 'Binance Chart',
     'signals': 'Signals', 'chat': 'Chat', 'pnl': 'P&L',
   };
 

@@ -526,15 +526,47 @@ function ForecastChart({
   yMin -= padY;
   yMax += padY;
 
-  const sx = (t: number) => padL + (t / tMax) * innerW;
+  /** 5m / 15m / 1h each occupy a fixed 3% of inner plot width; rest is proportional time. */
+  const SHORT_FIXED_FRAC = 0.03;
+  const LONG_START_FRAC = 3 * SHORT_FIXED_FRAC;
+  const fixedShortLabels = new Set<string>(['5m', '15m', '1h']);
+  const hasFixedShortSlots = trajectory.some(p => fixedShortLabels.has(p.label ?? ''));
+  const shortEndTDays = hasFixedShortSlots
+    ? trajectory.filter(p => fixedShortLabels.has(p.label ?? '')).reduce((m, p) => Math.max(m, p.tDays), 0)
+    : 0;
+  const longSpanTDays = Math.max(tMax - shortEndTDays, 1e-9);
+  const longUsableFrac = 1 - LONG_START_FRAC;
+
+  const sxTime = (t: number) => padL + (t / tMax) * innerW;
+
+  /** Calendar / long-horizon axis position (integer days, 24h, etc.). */
+  const sxAxisFromTDays = (t: number) => {
+    if (!hasFixedShortSlots) return sxTime(t);
+    if (t <= 0) return padL;
+    return padL + LONG_START_FRAC * innerW + ((t - shortEndTDays) / longSpanTDays) * longUsableFrac * innerW;
+  };
+
+  const sxPoint = (p: TrajectoryPoint, i: number) => {
+    if (!hasFixedShortSlots) return sxTime(p.tDays);
+    const lbl = p.label ?? '';
+    if (p.tDays <= 0 && i === 0) return padL;
+    if (lbl === '5m') return padL + SHORT_FIXED_FRAC * innerW;
+    if (lbl === '15m') return padL + 2 * SHORT_FIXED_FRAC * innerW;
+    if (lbl === '1h') return padL + 3 * SHORT_FIXED_FRAC * innerW;
+    return sxAxisFromTDays(p.tDays);
+  };
+
   const sy = (y: number) => padT + innerH - ((y - yMin) / (yMax - yMin)) * innerH;
 
   // Paths
-  const expectedPath = trajectory.map((p, i) => `${i === 0 ? 'M' : 'L'} ${sx(p.tDays).toFixed(1)} ${sy(p.expected).toFixed(1)}`).join(' ');
+  const expectedPath = trajectory.map((p, i) => `${i === 0 ? 'M' : 'L'} ${sxPoint(p, i).toFixed(1)} ${sy(p.expected).toFixed(1)}`).join(' ');
   const bandPath =
-    trajectory.map((p, i) => `${i === 0 ? 'M' : 'L'} ${sx(p.tDays).toFixed(1)} ${sy(p.hi).toFixed(1)}`).join(' ') +
+    trajectory.map((p, i) => `${i === 0 ? 'M' : 'L'} ${sxPoint(p, i).toFixed(1)} ${sy(p.hi).toFixed(1)}`).join(' ') +
     ' ' +
-    [...trajectory].reverse().map((p, i) => `${i === 0 ? 'L' : 'L'} ${sx(p.tDays).toFixed(1)} ${sy(p.lo).toFixed(1)}`).join(' ') +
+    [...trajectory].reverse().map((p, revI) => {
+      const origI = trajectory.length - 1 - revI;
+      return `L ${sxPoint(p, origI).toFixed(1)} ${sy(p.lo).toFixed(1)}`;
+    }).join(' ') +
     ' Z';
 
   // Y-axis ticks (5 levels)
@@ -576,8 +608,8 @@ function ForecastChart({
         {/* x-axis day labels */}
         {dayTicks.map(d => (
           <g key={d}>
-            <line x1={sx(d)} x2={sx(d)} y1={padT} y2={H - padB} stroke="rgba(75,85,99,0.18)" strokeWidth={0.5} />
-            <text x={sx(d)} y={H - 8} textAnchor="middle" className="fill-gray-500" style={{ fontSize: 8 }}>
+            <line x1={sxAxisFromTDays(d)} x2={sxAxisFromTDays(d)} y1={padT} y2={H - padB} stroke="rgba(75,85,99,0.18)" strokeWidth={0.5} />
+            <text x={sxAxisFromTDays(d)} y={H - 8} textAnchor="middle" className="fill-gray-500" style={{ fontSize: 8 }}>
               {d === 0 ? 'now' : (() => { const dt = new Date(nowMs + d * DAY_MS); const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()]; return `${mo} ${dt.getDate()}`; })()}
             </text>
           </g>
@@ -589,8 +621,8 @@ function ForecastChart({
         {/* confidence band (shaded area) */}
         <path d={bandPath} fill={`url(#pf7-band-h-${asset})`} />
         {/* band borders */}
-        <path d={trajectory.map((p, i) => `${i===0?'M':'L'} ${sx(p.tDays).toFixed(1)} ${sy(p.hi).toFixed(1)}`).join(' ')} fill="none" stroke={color} strokeOpacity={0.25} strokeWidth={0.8} strokeDasharray="3 2" />
-        <path d={trajectory.map((p, i) => `${i===0?'M':'L'} ${sx(p.tDays).toFixed(1)} ${sy(p.lo).toFixed(1)}`).join(' ')} fill="none" stroke={color} strokeOpacity={0.25} strokeWidth={0.8} strokeDasharray="3 2" />
+        <path d={trajectory.map((p, i) => `${i===0?'M':'L'} ${sxPoint(p, i).toFixed(1)} ${sy(p.hi).toFixed(1)}`).join(' ')} fill="none" stroke={color} strokeOpacity={0.25} strokeWidth={0.8} strokeDasharray="3 2" />
+        <path d={trajectory.map((p, i) => `${i===0?'M':'L'} ${sxPoint(p, i).toFixed(1)} ${sy(p.lo).toFixed(1)}`).join(' ')} fill="none" stroke={color} strokeOpacity={0.25} strokeWidth={0.8} strokeDasharray="3 2" />
 
         {/* expected price line */}
         <path d={expectedPath} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
@@ -599,7 +631,7 @@ function ForecastChart({
         {trajectory.map((p, i) => (
           <g key={i}>
             <title>{`${p.label ?? `t=${p.tDays.toFixed(2)}d`}: $${p.expected.toLocaleString()} (${fmtY(p.lo)}–${fmtY(p.hi)})`}</title>
-            <circle cx={sx(p.tDays)} cy={sy(p.expected)} r={i === 0 ? 3.5 : 2.5} fill={i === 0 ? color : '#e5e7eb'} stroke={color} strokeWidth={i === 0 ? 0 : 1} />
+            <circle cx={sxPoint(p, i)} cy={sy(p.expected)} r={i === 0 ? 3.5 : 2.5} fill={i === 0 ? color : '#e5e7eb'} stroke={color} strokeWidth={i === 0 ? 0 : 1} />
           </g>
         ))}
       </svg>

@@ -400,8 +400,8 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
 
   return (
     <div ref={wrapRef} className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 h-full">
-      <div className="panel-header shrink-0 mb-2 cursor-grab">
-        <h3 className={`text-sm font-bold flex items-center gap-1 flex-wrap ${titleColor}`}>
+      <div className="panel-header shrink-0 mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 cursor-grab">
+        <h3 className={`text-sm font-bold flex items-center gap-1 flex-wrap min-w-0 flex-1 ${titleColor}`}>
           <span className="relative binance-asset-dropdown-root no-drag inline-flex items-center cursor-pointer select-none" onClick={() => setAssetDropdownOpen(v => !v)}>
             {asset}:{' '}
             <span className="font-bold text-white">
@@ -430,14 +430,10 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
             )}
           </span>
         </h3>
-      </div>
-
-      <div
-        className="flex flex-wrap items-center gap-x-3 gap-y-1 shrink-0 mb-2 no-drag"
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <label className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[9px] text-gray-500 shrink-0">Resolution</span>
+        <div
+          className="flex items-center gap-1.5 shrink-0 no-drag cursor-default"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <select
             value={timeframe}
             onChange={(e) => {
@@ -445,7 +441,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
               setTimeframe(iv);
               localStorage.setItem(`polybot-binance-interval-${panelId}`, iv);
             }}
-            className="max-w-full rounded border border-cyan-700/50 bg-gray-900/90 py-0.5 pl-1.5 pr-6 text-[10px] font-semibold text-cyan-100 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40"
+            className="w-[4.75rem] rounded border border-cyan-700/50 bg-gray-900/90 py-0.5 pl-1 pr-5 text-[10px] font-semibold text-cyan-100 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40"
             aria-label="Chart resolution"
           >
             {INTERVALS.map((iv) => (
@@ -454,9 +450,6 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
               </option>
             ))}
           </select>
-        </label>
-        <label className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[9px] text-gray-500 shrink-0">Window</span>
           <select
             value={timeWindow}
             onChange={(e) => {
@@ -464,7 +457,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
               setTimeWindow(v);
               localStorage.setItem(`polybot-binance-window-${panelId}`, v);
             }}
-            className="max-w-full rounded border border-violet-700/50 bg-gray-900/90 py-0.5 pl-1.5 pr-6 text-[10px] font-semibold text-violet-100 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+            className="w-[4.25rem] rounded border border-violet-700/50 bg-gray-900/90 py-0.5 pl-1 pr-5 text-[10px] font-semibold text-violet-100 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500/40"
             aria-label="Chart time window"
           >
             {TIME_WINDOWS.map((w) => (
@@ -473,7 +466,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
               </option>
             ))}
           </select>
-        </label>
+        </div>
       </div>
 
       <div ref={chartRef} className="flex-1 min-h-0 min-w-0 relative rounded border border-gray-700/80 bg-gray-950/60 overflow-hidden">

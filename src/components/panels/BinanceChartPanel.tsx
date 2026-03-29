@@ -120,6 +120,11 @@ const SR_TIMEFRAMES = ['5m', '15m', '1h', '24h'] as const;
 
 type UpDownTfKey = (typeof SR_TIMEFRAMES)[number];
 
+/** Skip Polymarket windows whose expiry is within this many ms (noisy feed); hold last RBS if all enabled windows are in this regime. */
+const RBS_MIN_TIME_TO_EXPIRY_MS = 15_000;
+
+type RBSComputeResult = { kind: 'price'; value: number } | { kind: 'hold' } | { kind: 'clear' };
+
 const DEFAULT_RBS_TF_ENABLED: Record<UpDownTfKey, boolean> = {
   '5m': true,
   '15m': true,
@@ -161,18 +166,25 @@ function marketVolumeUsdc(m: Market, tokenId: string, lookup: Record<string, Mar
  *
  * Final price = weighted average of per-timeframe implied prices.
  * Weight = Polymarket volume (USDC) × (1/√T): more liquid windows and shorter horizons count more.
+ *
+ * Markets with expiry within `minTteMs` are ignored. If at least one enabled timeframe has a not-yet-expired
+ * market but none pass the min TTE filter, returns `hold` (caller keeps last drawn value). If no live markets,
+ * returns `clear`.
  */
-function computeRBSPrice(
+function computeRBSPriceResult(
   s0: number,
   sigma: number,
   assetMarkets: Record<string, Market[]>,
   marketLookup: Record<string, Market>,
   now: number,
   rbsTfEnabled: Record<UpDownTfKey, boolean>,
-): number | null {
-  if (s0 <= 0 || sigma <= 0) return null;
+  minTteMs: number,
+): RBSComputeResult {
+  if (s0 <= 0 || sigma <= 0) return { kind: 'clear' };
 
   const implied: { price: number; weight: number }[] = [];
+  let anyAlive = false;
+
   for (const tf of SR_TIMEFRAMES) {
     if (!rbsTfEnabled[tf]) continue;
     const markets = (assetMarkets[tf] || [])
@@ -185,6 +197,10 @@ function computeRBSPrice(
     const m = markets[0];
     if (!m?.endDate) continue;
     const endMs = new Date(m.endDate).getTime();
+    if (endMs <= now) continue;
+    anyAlive = true;
+    if (endMs <= now + minTteMs) continue;
+
     const tYears = (endMs - now) / YEAR_MS;
     if (tYears <= 1e-9) continue;
     const tokenId = m.clobTokenIds?.[0] || '';
@@ -204,18 +220,22 @@ function computeRBSPrice(
     if (!Number.isFinite(impliedSpot) || impliedSpot <= 0) continue;
     const vol = marketVolumeUsdc(m, tokenId, marketLookup);
     const volW = Math.max(vol, 1);
-    implied.push({ price: impliedSpot, weight: (volW / sqrtT) });
+    implied.push({ price: impliedSpot, weight: volW / sqrtT });
   }
-  if (implied.length === 0) return null;
 
-  let wSum = 0;
-  let pSum = 0;
-  for (const { price, weight } of implied) {
-    pSum += price * weight;
-    wSum += weight;
+  if (implied.length > 0) {
+    let wSum = 0;
+    let pSum = 0;
+    for (const { price, weight } of implied) {
+      pSum += price * weight;
+      wSum += weight;
+    }
+    const result = pSum / wSum;
+    return Number.isFinite(result) ? { kind: 'price', value: result } : { kind: 'clear' };
   }
-  const result = pSum / wSum;
-  return Number.isFinite(result) ? result : null;
+
+  if (anyAlive) return { kind: 'hold' };
+  return { kind: 'clear' };
 }
 
 interface SRLine {
@@ -592,12 +612,37 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     return lines;
   }, [asset, upOrDownMarkets, marketLookup]);
 
-  const rbsPrice = useMemo<number | null>(() => {
-    if (spotForChart <= 0) return null;
+  const rbsStaleRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    rbsStaleRef.current = null;
+  }, [asset]);
+
+  const rbsResult = useMemo<RBSComputeResult>(() => {
+    if (spotForChart <= 0) return { kind: 'clear' };
     const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
     const assetMarkets = upOrDownMarkets[asset] || {};
-    return computeRBSPrice(spotForChart, sigma, assetMarkets, marketLookup, Date.now(), rbsTfEnabled);
+    return computeRBSPriceResult(
+      spotForChart,
+      sigma,
+      assetMarkets,
+      marketLookup,
+      Date.now(),
+      rbsTfEnabled,
+      RBS_MIN_TIME_TO_EXPIRY_MS,
+    );
   }, [asset, spotForChart, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup, rbsTfEnabled]);
+
+  useEffect(() => {
+    if (rbsResult.kind === 'price') {
+      rbsStaleRef.current = rbsResult.value;
+    } else if (rbsResult.kind === 'clear') {
+      rbsStaleRef.current = null;
+    }
+  }, [rbsResult]);
+
+  const rbsPrice: number | null =
+    rbsResult.kind === 'price' ? rbsResult.value : rbsResult.kind === 'hold' ? rbsStaleRef.current : null;
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const chartHeaderRef = useRef<HTMLDivElement>(null);

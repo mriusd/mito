@@ -13,6 +13,8 @@ import { TradesPositionsOrders } from './panels/TradesPositionsOrders';
 import { PnLPanel } from './panels/PnLPanel';
 import { UpDownMarketsPanel } from './panels/UpDownMarketsPanel';
 import { RelativeChartPanel } from './panels/RelativeChartPanel';
+import { PerpBotPanel } from './panels/PerpBotPanel';
+import { PriceForecastPanel } from './panels/PriceForecastPanel';
 import { ChatPanel } from './panels/ChatPanel';
 import type { PanelConfig, PanelType } from '../types';
 import BREAKPOINT_LAYOUTS, { HEIGHT_VARIANTS, GRID_COLS } from '../lib/defaultLayouts';
@@ -127,6 +129,10 @@ function renderPanel(panel: PanelConfig): React.ReactNode {
       return <UpDownMarketsPanel />;
     case 'relative-chart':
       return <RelativeChartPanel />;
+    case 'perp-bot':
+      return <PerpBotPanel />;
+    case 'price-forecast':
+      return <PriceForecastPanel />;
     case 'chat':
       return <ChatPanel />;
     default:
@@ -254,6 +260,8 @@ export function DraggableCanvas() {
     'asset-BTC': 'BTC', 'asset-ETH': 'ETH', 'asset-SOL': 'SOL', 'asset-XRP': 'XRP',
     'trades-positions-orders': 'Trades/Positions/Orders', 'updown-overview': 'Up/Down Markets',
     'relative-chart': 'Relative Chart',
+    'perp-bot': 'Perp Bot',
+    'price-forecast': 'Price Forecast',
     'signals': 'Signals', 'chat': 'Chat', 'pnl': 'P&L',
   };
 

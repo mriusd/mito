@@ -214,6 +214,8 @@ export type PanelType =
   | 'pnl'
   | 'updown-overview'
   | 'relative-chart'
+  | 'perp-bot'
+  | 'price-forecast'
   | 'chat';
 
 export interface PanelConfig {

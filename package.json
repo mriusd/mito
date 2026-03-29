@@ -21,6 +21,7 @@
     "@types/react-resizable": "^3.0.8",
     "ethers": "^5.8.0",
     "html2canvas": "^1.4.1",
+    "lighter-sdk-client": "^0.2.32",
     "lucide-react": "^0.577.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

@@ -9,7 +9,9 @@ import { saveSetting } from '../api';
 import { gridSizeFromDefaultLayoutMins } from '../lib/defaultLayouts';
 import type { PanelType } from '../types';
 
-const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean }[] = [
+const IS_DEV = import.meta.env.DEV;
+
+const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnly?: boolean }[] = [
   { type: 'asset-BTC', title: 'Market Grid', multi: true },
   // { type: 'arbs', title: 'Hedges' },
   // { type: 'summary', title: 'Summary' },
@@ -18,6 +20,8 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean }[] = [
   { type: 'pnl', title: 'P&L' },
   { type: 'updown-overview', title: 'Up/Down Markets' },
   { type: 'relative-chart', title: 'Relative Chart' },
+  { type: 'perp-bot', title: 'Perp Bot', devOnly: true },
+  { type: 'price-forecast', title: 'Price Forecast' },
   { type: 'chat', title: 'Chat' },
 ];
 
@@ -204,7 +208,7 @@ export function Header({ onRefresh }: HeaderProps) {
           </button>
           {showAddMenu && (
             <div className="absolute right-0 max-[639px]:left-0 max-[639px]:right-auto mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[180px] w-[min(220px,calc(100vw-16px))] z-50">
-              {ALL_PANEL_TYPES.map((t) => (
+              {ALL_PANEL_TYPES.filter((t) => !t.devOnly || IS_DEV).map((t) => (
                   <button
                     key={t.type}
                     onClick={() => handleAddPanel(t.type, t.title)}

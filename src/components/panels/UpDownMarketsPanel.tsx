@@ -308,6 +308,13 @@ export function UpDownMarketsPanel() {
                   const sym = (asset + 'USDT') as AssetSymbol;
                   const livePrice = priceData[sym]?.price;
                   const strikeTarget = strikePriceFromMarket(market, yesTokenId, _bidAskLookup);
+                  const strikeVsSpotPct =
+                    livePrice != null &&
+                    livePrice > 0 &&
+                    strikeTarget != null &&
+                    Number.isFinite(strikeTarget)
+                      ? ((strikeTarget / livePrice) - 1) * 100
+                      : null;
 
                   let mathYesProb: number | null = null;
                   if (livePrice && strikeTarget !== undefined && market.endDate) {
@@ -352,6 +359,16 @@ export function UpDownMarketsPanel() {
                       <div className="flex flex-row items-center justify-center gap-1 leading-none">
                         <span className="font-medium tabular-nums">
                           {formatTargetStrikePrice(strikeTarget, TARGET_STRIKE_DECIMALS[asset])}
+                          {strikeVsSpotPct !== null && (
+                            <span
+                              className="text-gray-500 font-normal"
+                              title={`Target vs ${asset} spot (Binance): ${strikeVsSpotPct >= 0 ? '+' : ''}${strikeVsSpotPct.toFixed(2)}%`}
+                            >
+                              {' '}
+                              ({strikeVsSpotPct >= 0 ? '+' : ''}
+                              {strikeVsSpotPct.toFixed(1)}%)
+                            </span>
+                          )}
                         </span>
                         {mathYesProb !== null && (
                           <div className="inline-flex items-center gap-0.5 shrink-0">

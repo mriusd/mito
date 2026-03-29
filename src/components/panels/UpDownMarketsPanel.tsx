@@ -90,7 +90,15 @@ function strikePriceFromMarket(market: Market, tokenId: string, lookup: Record<s
 }
 
 function polymarketVolumeNumber(market: Market, tokenId: string, lookup: Record<string, Market>): number | null {
-  const raw: unknown = market.volume ?? (tokenId ? lookup[tokenId]?.volume : undefined);
+  const live = tokenId ? lookup[tokenId] : undefined;
+  // bidAskBatch only patches marketLookup; upOrDownMarkets can keep stale Market refs until the next Gamma sync.
+  // Prefer live volume when it belongs to this market so 5m rollovers don't show the previous window's volume.
+  let raw: unknown;
+  if (live != null && live.id === market.id) {
+    raw = live.volume !== undefined && live.volume !== null ? live.volume : market.volume;
+  } else {
+    raw = market.volume;
+  }
   if (raw === undefined || raw === null) return null;
   if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return raw;
   if (typeof raw === 'string') {

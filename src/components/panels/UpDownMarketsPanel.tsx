@@ -174,6 +174,34 @@ export function UpDownMarketsPanel() {
     return markets[currentIdx];
   };
 
+  /** Timeframe rows whose current window ends at the same instant as another row (2+ timeframes). */
+  const timeframesWithSharedExpiry = (() => {
+    const endMsByTf: Partial<Record<(typeof TIMEFRAMES)[number], number>> = {};
+    for (const tf of TIMEFRAMES) {
+      let endMs = 0;
+      for (const a of ASSETS) {
+        const m = getCurrentMarket(a, tf);
+        if (m?.endDate) {
+          endMs = new Date(m.endDate).getTime();
+          break;
+        }
+      }
+      endMsByTf[tf] = endMs;
+    }
+    const byEnd = new Map<number, (typeof TIMEFRAMES)[number][]>();
+    for (const tf of TIMEFRAMES) {
+      const e = endMsByTf[tf];
+      if (!e || e <= 0) continue;
+      if (!byEnd.has(e)) byEnd.set(e, []);
+      byEnd.get(e)!.push(tf);
+    }
+    const dup = new Set<string>();
+    for (const list of byEnd.values()) {
+      if (list.length >= 2) list.forEach(t => dup.add(t));
+    }
+    return dup;
+  })();
+
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
       <div className="panel-header flex items-center gap-2 mb-2 cursor-grab flex-wrap">
@@ -277,9 +305,15 @@ export function UpDownMarketsPanel() {
               const tfProgressPct = (tfProgress * 100).toFixed(1);
               const isLastTfRow = tf === LAST_TIMEFRAME;
 
+              const tfDupExpiry = timeframesWithSharedExpiry.has(tf);
               return (
               <tr key={tf} className="hover:bg-gray-800/50">
-                <td className="px-1 py-1 font-bold text-white border-b border-r border-gray-700 bg-gray-900 whitespace-nowrap relative">
+                <td
+                  className={`px-1 py-1 font-bold text-white border-b border-r border-gray-700 whitespace-nowrap relative ${
+                    tfDupExpiry ? 'bg-red-950/70' : 'bg-gray-900'
+                  }`}
+                  title={tfDupExpiry ? 'This timeframe shares the same expiry instant as another row' : undefined}
+                >
                   <div className="flex items-center justify-between gap-1">
                     <span>{tf}</span>
                     <span className={`text-[8px] font-normal ${endMs > 0 && endMs - now < 60000 ? 'text-red-400' : endMs > 0 && endMs - now < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>{endMs > 0 ? formatCountdown(endMs) : ''}</span>
@@ -308,13 +342,6 @@ export function UpDownMarketsPanel() {
                   const sym = (asset + 'USDT') as AssetSymbol;
                   const livePrice = priceData[sym]?.price;
                   const strikeTarget = strikePriceFromMarket(market, yesTokenId, _bidAskLookup);
-                  const strikeVsSpotPct =
-                    livePrice != null &&
-                    livePrice > 0 &&
-                    strikeTarget != null &&
-                    Number.isFinite(strikeTarget)
-                      ? ((strikeTarget / livePrice) - 1) * 100
-                      : null;
 
                   let mathYesProb: number | null = null;
                   if (livePrice && strikeTarget !== undefined && market.endDate) {
@@ -359,16 +386,6 @@ export function UpDownMarketsPanel() {
                       <div className="flex flex-row items-center justify-center gap-1 leading-none">
                         <span className="font-medium tabular-nums">
                           {formatTargetStrikePrice(strikeTarget, TARGET_STRIKE_DECIMALS[asset])}
-                          {strikeVsSpotPct !== null && (
-                            <span
-                              className="text-gray-500 font-normal"
-                              title={`Target vs ${asset} spot (Binance): ${strikeVsSpotPct >= 0 ? '+' : ''}${strikeVsSpotPct.toFixed(2)}%`}
-                            >
-                              {' '}
-                              ({strikeVsSpotPct >= 0 ? '+' : ''}
-                              {strikeVsSpotPct.toFixed(1)}%)
-                            </span>
-                          )}
                         </span>
                         {mathYesProb !== null && (
                           <div className="inline-flex items-center gap-0.5 shrink-0">

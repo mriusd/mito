@@ -511,7 +511,7 @@ function ForecastChart({
 
   if (trajectory.length < 2 || s0 <= 0) {
     return (
-      <div className="rounded border border-gray-700/60 bg-gray-900/40 p-3 flex items-center justify-center min-h-[160px]">
+      <div className="rounded border border-gray-700/60 bg-gray-900/40 p-3 flex items-center justify-center min-h-[120px]">
         <span className="text-[10px] text-gray-500">{asset}: insufficient market data for forecast</span>
       </div>
     );
@@ -551,12 +551,12 @@ function ForecastChart({
   const spotY = sy(s0);
 
   return (
-    <div className="rounded border border-gray-700/60 bg-gray-900/40 p-1.5 min-w-0">
-      <div className="flex items-center justify-between mb-0.5 px-0.5">
+    <div className="rounded border border-gray-700/60 bg-gray-900/40 p-1.5 min-w-0 flex flex-col min-h-0">
+      <div className="flex items-center justify-between mb-0.5 px-0.5 shrink-0">
         <span className="text-[11px] font-bold" style={{ color }}>{asset} 7-Day Forecast</span>
         <span className="text-[9px] text-gray-500 tabular-nums">Spot ${s0.toLocaleString()}</span>
       </div>
-      <svg className="w-full block" style={{ height: 180 }} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={`${asset} 7-day price forecast`}>
+      <svg className="w-full flex-1 min-h-0 block" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`${asset} 7-day price forecast`}>
         <defs>
           <linearGradient id={`pf7-band-h-${asset}`} x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor={color} stopOpacity="0.32" />
@@ -603,7 +603,7 @@ function ForecastChart({
           </g>
         ))}
       </svg>
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5 px-0.5 mt-0.5 text-[8px] text-gray-500">
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 px-0.5 mt-0.5 text-[8px] text-gray-500 shrink-0">
         <span><span style={{ color }}>—</span> expected path</span>
         <span><span style={{ color, opacity: 0.4 }}>╌</span> 10–90% band</span>
         <span><span className="text-yellow-300/50">╌</span> spot</span>
@@ -665,7 +665,7 @@ export function PriceForecastPanel() {
         </p>
       </div>
       <div
-        className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2 content-start"
+        className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 sm:grid-rows-2 gap-2"
         onPointerDown={(e) => e.stopPropagation()}
       >
         {ASSETS.map((asset) => (

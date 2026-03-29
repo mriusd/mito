@@ -769,7 +769,11 @@ export function Sidebar() {
           {/* Up or Down: Target & Current Price (below chart) */}
           {isUpDownMarket && (() => {
             const binanceSym = (upDownAsset?.toUpperCase() + 'USDT') as AssetSymbol;
-            const currentPrice = priceData[binanceSym]?.price || 0;
+            // Polymarket settles short crypto windows on Chainlink; backend mirrors RTDS at /ws/prices (usePolymarketPrice).
+            const chainlinkPrice = polyPrice.price != null && polyPrice.price > 0 ? polyPrice.price : 0;
+            const binancePrice = priceData[binanceSym]?.price || 0;
+            const currentPrice = chainlinkPrice || binancePrice;
+            const currentPriceSource: 'chainlink' | 'binance' = chainlinkPrice > 0 ? 'chainlink' : 'binance';
             // Use 4 decimals for low-priced assets (XRP), 2 for others
             const priceDec = upDownAsset?.toUpperCase() === 'XRP' ? 4 : 2;
             const diff = upDownTargetPrice && currentPrice ? currentPrice - upDownTargetPrice : null;
@@ -851,7 +855,15 @@ export function Sidebar() {
                     </div>
                   ) : null}
                   <div className="text-right">
-                    <div className="text-[10px] text-gray-500 flex items-center justify-end gap-1">Current <span className="px-0.5 rounded-sm text-[8px] font-bold bg-yellow-400 text-black leading-tight">BINANCE</span></div>
+                    <div className="text-[10px] text-gray-500 flex items-center justify-end gap-1">
+                      Current{' '}
+                      <span
+                        className={`px-0.5 rounded-sm text-[8px] font-bold leading-tight ${currentPriceSource === 'chainlink' ? 'bg-emerald-500 text-white' : 'bg-yellow-400 text-black'}`}
+                        title={currentPriceSource === 'chainlink' ? 'Polymarket RTDS Chainlink (via backend)' : 'Binance spot (fallback until Chainlink connects)'}
+                      >
+                        {currentPriceSource === 'chainlink' ? 'CHAINLINK' : 'BINANCE'}
+                      </span>
+                    </div>
                     <div ref={upDownPriceRef} className="text-xs font-bold text-white">{currentPrice ? `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}` : '...'}</div>
                     {diff !== null && diffPct !== null && (
                       <div className={`text-[10px] font-bold flex flex-wrap items-center justify-end gap-0.5 ${isUp ? 'text-green-400' : 'text-red-400'}`}>

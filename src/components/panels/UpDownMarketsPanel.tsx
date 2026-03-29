@@ -6,6 +6,7 @@ import { HelpTooltip } from '../HelpTooltip';
 import type { Market } from '../../types';
 import type { AssetSymbol } from '../../types';
 import { getMarketProbability } from '../../utils/bsMath';
+import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 
 const YEAR_MS = 365.25 * 86_400_000;
 
@@ -161,6 +162,7 @@ export function UpDownMarketsPanel() {
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const priceData = useAppStore((s) => s.priceData);
+  const chainlinkPrices = useChainlinkPricesMap();
 
   const positionTokenIds = useMemo(() => {
     const s = new Set<string>();
@@ -382,11 +384,14 @@ export function UpDownMarketsPanel() {
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
                   const sym = (asset + 'USDT') as AssetSymbol;
-                  const livePrice = priceData[sym]?.price;
+                  const cl = chainlinkPrices[asset];
+                  const binanceSpot = priceData[sym]?.price;
+                  const livePrice =
+                    cl != null && cl > 0 ? cl : binanceSpot != null && binanceSpot > 0 ? binanceSpot : undefined;
                   const strikeTarget = strikePriceFromMarket(market, yesTokenId, _bidAskLookup);
 
                   let mathYesProb: number | null = null;
-                  if (livePrice && strikeTarget !== undefined && market.endDate) {
+                  if (livePrice != null && livePrice > 0 && strikeTarget !== undefined && market.endDate) {
                     const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
                     const bsYes = getMarketProbability('>' + strikeTarget, livePrice, market.endDate, sigma, bsTimeOffsetHours);
                     if (bsYes !== null) {
@@ -436,7 +441,7 @@ export function UpDownMarketsPanel() {
                               title={
                                 bestBid != null && Number.isFinite(bestBid)
                                   ? `Math P(Up) — green >${50 + MATH_PROB_NEUTRAL_BAND}%, red <${50 - MATH_PROB_NEUTRAL_BAND}%, gray if ${50 - MATH_PROB_NEUTRAL_BAND}–${50 + MATH_PROB_NEUTRAL_BAND}% (YES bid ${(bestBid * 100).toFixed(1)}¢)`
-                                  : `Math P(Up) — green >${50 + MATH_PROB_NEUTRAL_BAND}%, red <${50 - MATH_PROB_NEUTRAL_BAND}%, gray if ${50 - MATH_PROB_NEUTRAL_BAND}–${50 + MATH_PROB_NEUTRAL_BAND}%; terminal vs target (Binance spot, σ)`
+                                  : `Math P(Up) — green >${50 + MATH_PROB_NEUTRAL_BAND}%, red <${50 - MATH_PROB_NEUTRAL_BAND}%, gray if ${50 - MATH_PROB_NEUTRAL_BAND}–${50 + MATH_PROB_NEUTRAL_BAND}%; terminal vs target (Polymarket Chainlink via backend; Binance fallback, σ)`
                               }
                             >
                               <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />

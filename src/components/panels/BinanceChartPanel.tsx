@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Settings } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import type { AssetName, Market } from '../../types';
@@ -510,6 +510,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [chartHeaderStackControls, setChartHeaderStackControls] = useState(false);
 
   const priceData = useAppStore((s) => s.priceData);
   useAppStore((s) => s.bidAskTick);
@@ -570,6 +571,9 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   }, [asset, spotForChart, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup, rbsTfEnabled]);
 
   const wrapRef = useRef<HTMLDivElement>(null);
+  const chartHeaderRef = useRef<HTMLDivElement>(null);
+  const chartTitleRef = useRef<HTMLHeadingElement>(null);
+  const chartControlsRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const timeWindowRef = useRef(timeWindow);
@@ -578,6 +582,33 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   timeframeRef.current = timeframe;
   const priceSourceRef = useRef(priceSource);
   priceSourceRef.current = priceSource;
+
+  useLayoutEffect(() => {
+    const header = chartHeaderRef.current;
+    const title = chartTitleRef.current;
+    const controls = chartControlsRef.current;
+    if (!header || !title || !controls) return;
+
+    const gapPx = 8; // gap-x-2
+
+    const measure = () => {
+      requestAnimationFrame(() => {
+        const h = chartHeaderRef.current;
+        const t = chartTitleRef.current;
+        const c = chartControlsRef.current;
+        if (!h || !t || !c) return;
+        const needSecondRow = t.scrollWidth + gapPx + c.scrollWidth > h.clientWidth + 0.5;
+        setChartHeaderStackControls(needSecondRow);
+      });
+    };
+
+    const ro = new ResizeObserver(measure);
+    ro.observe(header);
+    ro.observe(title);
+    ro.observe(controls);
+    measure();
+    return () => ro.disconnect();
+  }, [asset, spotForChart, priceSource, timeframe, timeWindow]);
 
   const fetchKlines = useCallback(async () => {
     setLoading(true);
@@ -897,8 +928,14 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
 
   return (
     <div ref={wrapRef} className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 h-full">
-      <div className="panel-header shrink-0 mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 cursor-grab">
-        <h3 className={`text-sm font-bold flex items-center gap-1 flex-wrap min-w-0 flex-1 ${titleColor}`}>
+      <div
+        ref={chartHeaderRef}
+        className="panel-header shrink-0 mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 cursor-grab"
+      >
+        <h3
+          ref={chartTitleRef}
+          className={`text-sm font-bold flex items-center gap-1 flex-wrap min-w-0 ${chartHeaderStackControls ? 'w-full shrink-0 basis-full' : 'flex-1'} ${titleColor}`}
+        >
           <span className="relative binance-asset-dropdown-root no-drag inline-flex items-center cursor-pointer select-none" onClick={() => setAssetDropdownOpen(v => !v)}>
             {asset}:{' '}
             <span className="font-bold text-white">
@@ -936,7 +973,8 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
           </span>
         </h3>
         <div
-          className="flex items-center gap-1.5 shrink-0 no-drag cursor-default"
+          ref={chartControlsRef}
+          className={`flex items-center gap-1.5 no-drag cursor-default ${chartHeaderStackControls ? 'w-full shrink-0 basis-full justify-end flex-wrap' : 'shrink-0'}`}
           onPointerDown={(e) => e.stopPropagation()}
         >
           <div

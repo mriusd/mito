@@ -118,14 +118,26 @@ function parseRbsTfEnabledFromStorage(raw: string | null): Record<UpDownTfKey, b
   }
 }
 
+/** Polymarket Gamma `volume` (USDC) for weighting; 0 if missing. */
+function marketVolumeUsdc(m: Market, tokenId: string, lookup: Record<string, Market>): number {
+  const raw: unknown = m.volume ?? (tokenId ? lookup[tokenId]?.volume : undefined);
+  if (raw === undefined || raw === null) return 0;
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return raw;
+  if (typeof raw === 'string') {
+    const n = parseFloat(raw.replace(/,/g, ''));
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  }
+  return 0;
+}
+
 /**
  * Reverse Black-Scholes predicted price from up/down markets.
  *
  * For each timeframe with strike K, P(S_T > K) = pUp, time T:
  *   S* = K × exp( Φ⁻¹(pUp) × σ√T + σ²T/2 )
  *
- * Final price = weighted average of per-market implied prices,
- * weighted by 1/√T so shorter timeframes (more certain) count more.
+ * Final price = weighted average of per-timeframe implied prices.
+ * Weight = Polymarket volume (USDC) × (1/√T): more liquid windows and shorter horizons count more.
  */
 function computeRBSPrice(
   s0: number,
@@ -167,7 +179,9 @@ function computeRBSPrice(
     const sqrtT = Math.sqrt(tYears);
     const impliedSpot = strike * Math.exp(z * sigma * sqrtT + (sigma * sigma * tYears) / 2);
     if (!Number.isFinite(impliedSpot) || impliedSpot <= 0) continue;
-    implied.push({ price: impliedSpot, weight: 1 / sqrtT });
+    const vol = marketVolumeUsdc(m, tokenId, marketLookup);
+    const volW = Math.max(vol, 1);
+    implied.push({ price: impliedSpot, weight: (volW / sqrtT) });
   }
   if (implied.length === 0) return null;
 
@@ -790,8 +804,11 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
             </button>
             {rbsSettingsOpen && (
               <div className="absolute right-0 top-full z-50 mt-1 min-w-[9.5rem] rounded border border-gray-600 bg-gray-800 py-1.5 px-2 shadow-lg">
-                <div className="mb-1 border-b border-gray-700 pb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-500">
-                  RBS markets
+                <div className="mb-1 border-b border-gray-700 pb-1">
+                  <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">RBS markets</div>
+                  <div className="mt-0.5 text-[8px] font-normal normal-case tracking-normal text-gray-500 leading-tight">
+                    Blend weights: Polymarket vol × 1/√T
+                  </div>
                 </div>
                 {SR_TIMEFRAMES.map((tf) => (
                   <label

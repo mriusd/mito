@@ -12,7 +12,7 @@ const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
 const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'] as const;
 type KlineInterval = (typeof INTERVALS)[number];
 
-const TIME_WINDOWS = ['1h', '4h', '12h', '24h', '3d', '7d'] as const;
+const TIME_WINDOWS = ['1h', '2h', '4h', '12h', '24h', '3d', '7d'] as const;
 type TimeWindowKey = (typeof TIME_WINDOWS)[number];
 
 const INTERVAL_MS: Record<KlineInterval, number> = {
@@ -26,6 +26,7 @@ const INTERVAL_MS: Record<KlineInterval, number> = {
 
 const WINDOW_MS: Record<TimeWindowKey, number> = {
   '1h': 60 * 60_000,
+  '2h': 2 * 60 * 60_000,
   '4h': 4 * 60 * 60_000,
   '12h': 12 * 60 * 60_000,
   '24h': 24 * 60 * 60_000,

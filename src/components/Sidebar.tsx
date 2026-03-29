@@ -6,7 +6,7 @@ import { placeOrder, cancelOrder, signOrder, submitSignedOrder } from '../api';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
-import { getTokenOutcome, extractAssetFromMarket, shortenMarketName } from '../utils/format';
+import { getTokenOutcome, extractAssetFromMarket, shortenMarketName, upDownMarketUsesChainlinkSpot } from '../utils/format';
 import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarkets } from '../utils/bsMath';
 import { API_BASE } from '../lib/env';
 import { usePolymarketOB } from '../hooks/usePolymarketOB';
@@ -182,9 +182,13 @@ export function Sidebar() {
   const [upDownCountdown, setUpDownCountdown] = useState('');
   const [upDownRemaining, setUpDownRemaining] = useState(Infinity);
 
-  // Polymarket live price via Chainlink WS
+  // Chainlink spot only for 5m/15m Up/Down; 1h/24h use Binance in UI
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(selectedMarket!) : null;
-  const polyPrice = usePolymarketPrice(upDownAsset);
+  const upDownSpotUsesChainlink = useMemo(
+    () => !!(isUpDownMarket && selectedMarket && upDownMarketUsesChainlinkSpot(selectedMarket)),
+    [isUpDownMarket, selectedMarket],
+  );
+  const polyPrice = usePolymarketPrice(upDownSpotUsesChainlink ? upDownAsset : null);
 
   // Compute market start time for Up or Down charts
   const upDownStartTime = useMemo(() => {
@@ -769,11 +773,12 @@ export function Sidebar() {
           {/* Up or Down: Target & Current Price (below chart) */}
           {isUpDownMarket && (() => {
             const binanceSym = (upDownAsset?.toUpperCase() + 'USDT') as AssetSymbol;
-            // Polymarket settles short crypto windows on Chainlink; backend mirrors RTDS at /ws/prices (usePolymarketPrice).
-            const chainlinkPrice = polyPrice.price != null && polyPrice.price > 0 ? polyPrice.price : 0;
+            const chainlinkPrice =
+              upDownSpotUsesChainlink && polyPrice.price != null && polyPrice.price > 0 ? polyPrice.price : 0;
             const binancePrice = priceData[binanceSym]?.price || 0;
-            const currentPrice = chainlinkPrice || binancePrice;
-            const currentPriceSource: 'chainlink' | 'binance' = chainlinkPrice > 0 ? 'chainlink' : 'binance';
+            const currentPrice = upDownSpotUsesChainlink ? chainlinkPrice || binancePrice : binancePrice;
+            const currentPriceSource: 'chainlink' | 'binance' =
+              upDownSpotUsesChainlink && chainlinkPrice > 0 ? 'chainlink' : 'binance';
             // Use 4 decimals for low-priced assets (XRP), 2 for others
             const priceDec = upDownAsset?.toUpperCase() === 'XRP' ? 4 : 2;
             const diff = upDownTargetPrice && currentPrice ? currentPrice - upDownTargetPrice : null;
@@ -833,7 +838,11 @@ export function Sidebar() {
                       <div className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">
                         <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
                         Math
-                        <HelpTooltip text={"Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the Polymarket Chainlink current price as the underlying, the target price as the strike, time to expiry, and implied volatility (σ).\n\nFor Up (YES): probability that price will be above the target at expiry.\nFor Down (NO): probability that price will be below the target at expiry.\n\nCompare this to the market price to find mispricings."} />
+                        <HelpTooltip
+                          text={
+                            'Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the same spot as “Current” on the right: Polymarket Chainlink for 5m/15m windows, Binance spot for 1h/24h. Inputs: target strike, time to expiry, implied volatility (σ).\n\nFor Up (YES): probability price is above the target at expiry. For Down (NO): below.\n\nCompare to the market price to spot mispricings.'
+                          }
+                        />
                       </div>
                       {(() => {
                         const bestAsk = asks.length > 0 ? parseFloat(asks[0].price) * 100 : null;
@@ -858,8 +867,14 @@ export function Sidebar() {
                     <div className="text-[10px] text-gray-500 flex items-center justify-end gap-1">
                       Current{' '}
                       <span
-                        className={`px-0.5 rounded-sm text-[8px] font-bold leading-tight ${currentPriceSource === 'chainlink' ? 'bg-emerald-500 text-white' : 'bg-yellow-400 text-black'}`}
-                        title={currentPriceSource === 'chainlink' ? 'Polymarket RTDS Chainlink (via backend)' : 'Binance spot (fallback until Chainlink connects)'}
+                        className={`px-0.5 rounded-sm text-[8px] font-bold leading-tight ${currentPriceSource === 'chainlink' ? 'bg-blue-600 text-white' : 'bg-yellow-400 text-black'}`}
+                        title={
+                          currentPriceSource === 'chainlink'
+                            ? 'Polymarket RTDS Chainlink (via backend)'
+                            : upDownSpotUsesChainlink
+                              ? 'Binance spot (fallback until Chainlink connects)'
+                              : 'Binance spot (1h/24h Up/Down)'
+                        }
                       >
                         {currentPriceSource === 'chainlink' ? 'CHAINLINK' : 'BINANCE'}
                       </span>

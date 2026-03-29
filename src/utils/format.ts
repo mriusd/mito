@@ -8,6 +8,18 @@ export function assetToSymbol(asset: AssetName): AssetSymbol {
   return (asset + 'USDT') as AssetSymbol;
 }
 
+/**
+ * Up/Down: 5m/15m windows align with Polymarket Chainlink settlement — use Chainlink spot in UI when available.
+ * 1h and 24h use Binance spot as the displayed underlying.
+ */
+export function upDownMarketUsesChainlinkSpot(market: { eventSlug?: string; question?: string } | null | undefined): boolean {
+  if (!market) return false;
+  const combined = `${market.eventSlug || ''} ${market.question || ''}`;
+  if (combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i)) return true;
+  if (combined.match(/updown-15m/i) || combined.match(/\b15[- ]?min/i)) return true;
+  return false;
+}
+
 export function formatPrice(price: number, asset?: AssetName): string {
   const decimals = asset === 'XRP' ? 4 : 2;
   return '$' + price.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });

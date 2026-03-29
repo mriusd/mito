@@ -386,8 +386,16 @@ export function UpDownMarketsPanel() {
                   const sym = (asset + 'USDT') as AssetSymbol;
                   const cl = chainlinkPrices[asset];
                   const binanceSpot = priceData[sym]?.price;
-                  const livePrice =
-                    cl != null && cl > 0 ? cl : binanceSpot != null && binanceSpot > 0 ? binanceSpot : undefined;
+                  const preferChainlink = tf === '5m' || tf === '15m';
+                  const livePrice = preferChainlink
+                    ? cl != null && cl > 0
+                      ? cl
+                      : binanceSpot != null && binanceSpot > 0
+                        ? binanceSpot
+                        : undefined
+                    : binanceSpot != null && binanceSpot > 0
+                      ? binanceSpot
+                      : undefined;
                   const strikeTarget = strikePriceFromMarket(market, yesTokenId, _bidAskLookup);
 
                   let mathYesProb: number | null = null;
@@ -441,7 +449,7 @@ export function UpDownMarketsPanel() {
                               title={
                                 bestBid != null && Number.isFinite(bestBid)
                                   ? `Math P(Up) — green >${50 + MATH_PROB_NEUTRAL_BAND}%, red <${50 - MATH_PROB_NEUTRAL_BAND}%, gray if ${50 - MATH_PROB_NEUTRAL_BAND}–${50 + MATH_PROB_NEUTRAL_BAND}% (YES bid ${(bestBid * 100).toFixed(1)}¢)`
-                                  : `Math P(Up) — green >${50 + MATH_PROB_NEUTRAL_BAND}%, red <${50 - MATH_PROB_NEUTRAL_BAND}%, gray if ${50 - MATH_PROB_NEUTRAL_BAND}–${50 + MATH_PROB_NEUTRAL_BAND}%; terminal vs target (Polymarket Chainlink via backend; Binance fallback, σ)`
+                                  : `Math P(Up) — green >${50 + MATH_PROB_NEUTRAL_BAND}%, red <${50 - MATH_PROB_NEUTRAL_BAND}%, gray if ${50 - MATH_PROB_NEUTRAL_BAND}–${50 + MATH_PROB_NEUTRAL_BAND}%. Spot: 5m/15m = Chainlink (Binance fallback); 1h/24h = Binance. σ from vol settings.`
                               }
                             >
                               <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />

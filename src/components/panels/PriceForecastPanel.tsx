@@ -716,7 +716,53 @@ function ForecastChart({
     return sxAxisFromTDays(p.tDays);
   };
 
-  const sy = (y: number) => padT + innerH - ((y - yMin) / (yMax - yMin)) * innerH;
+  /** Nice step for Y-axis (BTC/ETH → k-style ticks; SOL → tens; XRP → small decimals). */
+  const niceYStep = (span: number, a: AssetSym): number => {
+    const base = span / 4;
+    const log = Math.floor(Math.log10(Math.max(base, 1e-12)));
+    const pow = Math.pow(10, log);
+    const frac = base / pow;
+    const u = frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10;
+    let step = u * pow;
+    if (a === 'BTC') step = Math.max(step, 1000);
+    else if (a === 'ETH') step = Math.max(step, 50);
+    else if (a === 'SOL') step = Math.max(Math.ceil(step / 10) * 10, 10);
+    else {
+      const s0 = Math.max(step, 1e-6);
+      const exp = Math.floor(Math.log10(s0));
+      const p10 = Math.pow(10, exp);
+      const r = s0 / p10;
+      const nu = r <= 1 ? 1 : r <= 2 ? 2 : r <= 5 ? 5 : 10;
+      step = Math.max(nu * p10, 0.0001);
+    }
+    return step;
+  };
+
+  let yStep = niceYStep(yMax - yMin, asset);
+  let axisY0 = Math.floor(yMin / yStep) * yStep;
+  let axisY1 = Math.ceil(yMax / yStep) * yStep;
+  let yTicks: number[] = [];
+  for (let v = axisY0; v <= axisY1 + yStep * 1e-9; v += yStep) yTicks.push(v);
+  while (yTicks.length > 8) {
+    yStep *= 2;
+    axisY0 = Math.floor(yMin / yStep) * yStep;
+    axisY1 = Math.ceil(yMax / yStep) * yStep;
+    yTicks = [];
+    for (let v = axisY0; v <= axisY1 + yStep * 1e-9; v += yStep) yTicks.push(v);
+  }
+  while (yTicks.length < 4 && yStep > 1e-12) {
+    yStep /= 2;
+    axisY0 = Math.floor(yMin / yStep) * yStep;
+    axisY1 = Math.ceil(yMax / yStep) * yStep;
+    yTicks = [];
+    for (let v = axisY0; v <= axisY1 + yStep * 1e-9; v += yStep) yTicks.push(v);
+  }
+
+  const ySpan = axisY1 - axisY0;
+  const sy = (y: number) => {
+    if (ySpan <= 0) return padT + innerH / 2;
+    return padT + innerH - ((y - axisY0) / ySpan) * innerH;
+  };
 
   // Paths
   const expectedPath = trajectory.map((p, i) => `${i === 0 ? 'M' : 'L'} ${sxPoint(p, i).toFixed(1)} ${sy(p.expected).toFixed(1)}`).join(' ');
@@ -729,11 +775,21 @@ function ForecastChart({
     }).join(' ') +
     ' Z';
 
-  // Y-axis ticks (5 levels)
-  const yTicks = Array.from({ length: 5 }, (_, i) => yMin + (i / 4) * (yMax - yMin));
-  const fmtY = (v: number) => asset === 'BTC' || asset === 'ETH'
-    ? v.toLocaleString(undefined, { maximumFractionDigits: 0 })
-    : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const formatForecastYAxis = (v: number) => {
+    if (asset === 'BTC' || asset === 'ETH') {
+      if (v >= 1000) {
+        const k = v / 1000;
+        const rk = Math.round(k);
+        if (Math.abs(k - rk) < 0.04) return `${rk}k`;
+        return `${k.toFixed(1)}k`;
+      }
+      return String(Math.round(v));
+    }
+    if (asset === 'SOL') return String(Math.round(v));
+    if (v >= 1) return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    return v.toLocaleString(undefined, { maximumFractionDigits: 4, minimumFractionDigits: 2 });
+  };
+  const fmtY = formatForecastYAxis;
 
   // X-axis day ticks
   const dayTicks = [];

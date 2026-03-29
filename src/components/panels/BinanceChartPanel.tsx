@@ -224,8 +224,9 @@ interface SRLine {
   label: string;
 }
 
+/** Align with `index.css` `.price-yes` / `.price-no` and YES/NO grid accents (emerald / red). */
 function srLineColor(probUp: number): string {
-  if (probUp > 0.55) return '#22c55e';
+  if (probUp > 0.55) return '#10b981';
   if (probUp < 0.45) return '#ef4444';
   return '#6b7280';
 }
@@ -252,6 +253,12 @@ function formatSrStrike(p: number, asset: AssetName): string {
 
 /** S/R and RBS lines only widen the Y scale if within this fraction of the candle range beyond the wicks (so distant strikes don’t squash candles). */
 const SR_RBS_NEAR_CANDLE_RANGE_FRAC = 0.15;
+
+/** Candle colors: same family as `.price-yes` / `.price-no` in index.css and `text-green-400` / `text-red-400` grids (Tailwind emerald-500/400, red-500/400). */
+const CANDLE_BULL_BODY = '#10b981';
+const CANDLE_BULL_WICK = '#34d399';
+const CANDLE_BEAR_BODY = '#ef4444';
+const CANDLE_BEAR_WICK = '#f87171';
 
 function drawCandles(
   ctx: CanvasRenderingContext2D,
@@ -397,8 +404,8 @@ function drawCandles(
     const top = Math.min(yO, yC);
     const bot = Math.max(yO, yC);
     const bull = c.c >= c.o;
-    const wick = bull ? '#4ade80' : '#f87171';
-    const fill = bull ? '#22c55e' : '#ef4444';
+    const wick = bull ? CANDLE_BULL_WICK : CANDLE_BEAR_WICK;
+    const fill = bull ? CANDLE_BULL_BODY : CANDLE_BEAR_BODY;
     ctx.strokeStyle = wick;
     ctx.lineWidth = 1;
     ctx.beginPath();

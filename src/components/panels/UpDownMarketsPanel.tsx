@@ -7,6 +7,42 @@ import type { Market } from '../../types';
 import type { AssetSymbol } from '../../types';
 import { getMarketProbability } from '../../utils/bsMath';
 
+const YEAR_MS = 365.25 * 86_400_000;
+
+function invNormCDF(p: number): number {
+  const plow = 0.02425, phigh = 1 - plow;
+  const a = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2, -3.066479806614716e1, 2.506628238459213];
+  const b = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1, -1.328068155288572e1];
+  const c = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+  const d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416];
+  if (p <= 0 || p >= 1) return 0;
+  if (p < plow) {
+    const q = Math.sqrt(-2 * Math.log(p));
+    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+  if (p > phigh) {
+    const q = Math.sqrt(-2 * Math.log(1 - p));
+    return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+  const q = p - 0.5, r = q * q;
+  return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+}
+
+function clampP(p: number) { return Math.min(0.98, Math.max(0.02, p)); }
+
+function rbsImpliedSpot(
+  strike: number,
+  pUp: number,
+  sigma: number,
+  tYears: number,
+): number | null {
+  if (strike <= 0 || sigma <= 0 || tYears <= 1e-9) return null;
+  const z = invNormCDF(clampP(pUp));
+  const sqrtT = Math.sqrt(tYears);
+  const s = strike * Math.exp(z * sigma * sqrtT + (sigma * sigma * tYears) / 2);
+  return Number.isFinite(s) && s > 0 ? s : null;
+}
+
 function formatCountdown(ms: number): string {
   const rem = ms - Date.now();
   if (rem <= 0) return '0s';
@@ -240,11 +276,11 @@ export function UpDownMarketsPanel() {
         <table className="w-full border-collapse text-xs">
           <thead className="sticky top-0 z-10 bg-gray-900">
             <tr>
-              <th className="px-2 py-1 text-center text-gray-400 font-bold border-b border-r border-gray-700 bg-gray-900" rowSpan={showTarget ? 2 : 1} />
+              <th className="px-2 py-1 text-center text-gray-400 font-bold border-b border-r border-gray-700 bg-gray-900" rowSpan={2} />
               {ASSETS.map((asset) => (
                 <th
                   key={asset}
-                  colSpan={showTarget ? 2 : 1}
+                  colSpan={showTarget ? 3 : 2}
                   className={`px-2 py-1 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900 font-bold ${ASSET_COLORS[asset] || 'text-white'}`}
                   style={assetBorderStyle(asset, { L: true, R: true })}
                 >
@@ -252,26 +288,32 @@ export function UpDownMarketsPanel() {
                 </th>
               ))}
             </tr>
-            {showTarget && (
-              <tr>
-                {ASSETS.map((asset) => (
-                  <Fragment key={asset}>
+            <tr>
+              {ASSETS.map((asset) => (
+                <Fragment key={asset}>
+                  {showTarget && (
                     <th
                       className="px-1 py-0.5 text-center border-b border-r border-l border-gray-700 border-solid bg-gray-900 text-[9px] text-gray-400 font-semibold"
                       style={assetBorderStyle(asset, { L: true })}
                     >
                       Target
                     </th>
-                    <th
-                      className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-gray-400 font-semibold"
-                      style={assetBorderStyle(asset, { R: true })}
-                    >
-                      Market
-                    </th>
-                  </Fragment>
-                ))}
-              </tr>
-            )}
+                  )}
+                  <th
+                    className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-gray-400 font-semibold"
+                    style={assetBorderStyle(asset, showTarget ? {} : { L: true })}
+                  >
+                    Market
+                  </th>
+                  <th
+                    className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-purple-300 font-semibold"
+                    style={assetBorderStyle(asset, { R: true })}
+                  >
+                    RBS
+                  </th>
+                </Fragment>
+              ))}
+            </tr>
           </thead>
           <tbody>
             {TIMEFRAMES.map((tf) => {
@@ -326,7 +368,7 @@ export function UpDownMarketsPanel() {
                     return (
                       <td
                         key={asset}
-                        colSpan={showTarget ? 2 : 1}
+                        colSpan={showTarget ? 3 : 2}
                         className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 text-gray-600 ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
                         style={assetBorderStyle(asset, { L: true, R: true, B: isLastTfRow })}
                       >
@@ -433,6 +475,19 @@ export function UpDownMarketsPanel() {
                       </div>
                     </td>
                   ) : null;
+                  const rbsValue = (() => {
+                    if (strikeTarget === undefined || !market.endDate) return null;
+                    const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
+                    const endMs = new Date(market.endDate).getTime();
+                    const tYears = (endMs - now) / YEAR_MS;
+                    let pUp = 0.5;
+                    if (bestBid != null && bestAsk != null && Number.isFinite(bestBid) && Number.isFinite(bestAsk))
+                      pUp = (bestBid + bestAsk) / 2;
+                    else if (bestBid != null && Number.isFinite(bestBid)) pUp = bestBid;
+                    else if (bestAsk != null && Number.isFinite(bestAsk)) pUp = bestAsk;
+                    return rbsImpliedSpot(strikeTarget, pUp, sigma, tYears);
+                  })();
+
                   const yesAsk = bestAsk ? (bestAsk * 100).toFixed(1) : '-';
                   const noAsk = bestBid ? ((1 - bestBid) * 100).toFixed(1) : '-';
                   const yesProb = bestBid || 0;
@@ -452,8 +507,8 @@ export function UpDownMarketsPanel() {
                       style={{
                         minWidth: 60,
                         ...assetBorderStyle(asset, showTarget
-                          ? { R: true, B: isLastTfRow }
-                          : { L: true, R: true, B: isLastTfRow }),
+                          ? { B: isLastTfRow }
+                          : { L: true, B: isLastTfRow }),
                       }}
                       onClick={() => handleCellClick(market)}
                     >
@@ -499,10 +554,27 @@ export function UpDownMarketsPanel() {
                     </td>
                   );
 
+                  const rbsCell = (
+                    <td
+                      key={`${asset}-rbs`}
+                      className={`px-0.5 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/40 text-purple-400 font-bold tabular-nums text-[9px] whitespace-nowrap ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+                      style={assetBorderStyle(asset, { R: true, B: isLastTfRow })}
+                      title="RBS implied spot price (reverse Black-Scholes)"
+                    >
+                      {rbsValue !== null
+                        ? rbsValue.toLocaleString(undefined, {
+                            minimumFractionDigits: TARGET_STRIKE_DECIMALS[asset],
+                            maximumFractionDigits: TARGET_STRIKE_DECIMALS[asset],
+                          })
+                        : '-'}
+                    </td>
+                  );
+
                   return (
                     <Fragment key={asset}>
                       {targetCell}
                       {quoteCell}
+                      {rbsCell}
                     </Fragment>
                   );
                 })}

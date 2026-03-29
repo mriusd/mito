@@ -69,6 +69,90 @@ function mergeKlineIntoSeries(prev: Candle[], t: number, o: number, h: number, l
 /** USD-M (USDT-margined) perpetual futures kline stream */
 const BINANCE_FUTURES_WS_BASE = 'wss://fstream.binance.com/ws';
 
+const YEAR_MS = 365.25 * 86_400_000;
+
+function invNormCDF(p: number): number {
+  const plow = 0.02425, phigh = 1 - plow;
+  const a = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2, -3.066479806614716e1, 2.506628238459213];
+  const b = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1, -1.328068155288572e1];
+  const c = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+  const d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416];
+  if (p <= 0 || p >= 1) return 0;
+  if (p < plow) {
+    const q = Math.sqrt(-2 * Math.log(p));
+    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+  if (p > phigh) {
+    const q = Math.sqrt(-2 * Math.log(1 - p));
+    return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+  const q = p - 0.5, r = q * q;
+  return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+}
+
+function clampP(p: number) { return Math.min(0.98, Math.max(0.02, p)); }
+
+/**
+ * Reverse Black-Scholes predicted price from up/down markets.
+ *
+ * For each timeframe with strike K, P(S_T > K) = pUp, time T:
+ *   S* = K × exp( Φ⁻¹(pUp) × σ√T + σ²T/2 )
+ *
+ * Final price = weighted average of per-market implied prices,
+ * weighted by 1/√T so shorter timeframes (more certain) count more.
+ */
+function computeRBSPrice(
+  s0: number,
+  sigma: number,
+  assetMarkets: Record<string, Market[]>,
+  marketLookup: Record<string, Market>,
+  now: number,
+): number | null {
+  if (s0 <= 0 || sigma <= 0) return null;
+
+  const implied: { price: number; weight: number }[] = [];
+  for (const tf of SR_TIMEFRAMES) {
+    const markets = (assetMarkets[tf] || [])
+      .filter((m: Market) => !m.closed && m.endDate && new Date(m.endDate).getTime() > now)
+      .sort((a: Market, b: Market) => {
+        const ta = a.endDate ? new Date(a.endDate).getTime() : Infinity;
+        const tb = b.endDate ? new Date(b.endDate).getTime() : Infinity;
+        return ta - tb;
+      });
+    const m = markets[0];
+    if (!m?.endDate) continue;
+    const endMs = new Date(m.endDate).getTime();
+    const tYears = (endMs - now) / YEAR_MS;
+    if (tYears <= 1e-9) continue;
+    const tokenId = m.clobTokenIds?.[0] || '';
+    const strike = m.priceToBeat ?? (tokenId ? marketLookup[tokenId]?.priceToBeat : undefined);
+    if (strike == null || !Number.isFinite(strike) || strike <= 0) continue;
+    const live = tokenId ? marketLookup[tokenId] : null;
+    const bb = live?.bestBid ?? m.bestBid;
+    const ba = live?.bestAsk ?? m.bestAsk;
+    let pUp = 0.5;
+    if (bb != null && ba != null && Number.isFinite(bb) && Number.isFinite(ba)) pUp = (bb + ba) / 2;
+    else if (bb != null && Number.isFinite(bb)) pUp = bb;
+    else if (ba != null && Number.isFinite(ba)) pUp = ba;
+
+    const z = invNormCDF(clampP(pUp));
+    const sqrtT = Math.sqrt(tYears);
+    const impliedSpot = strike * Math.exp(z * sigma * sqrtT + (sigma * sigma * tYears) / 2);
+    if (!Number.isFinite(impliedSpot) || impliedSpot <= 0) continue;
+    implied.push({ price: impliedSpot, weight: 1 / sqrtT });
+  }
+  if (implied.length === 0) return null;
+
+  let wSum = 0;
+  let pSum = 0;
+  for (const { price, weight } of implied) {
+    pSum += price * weight;
+    wSum += weight;
+  }
+  const result = pSum / wSum;
+  return Number.isFinite(result) ? result : null;
+}
+
 interface SRLine {
   price: number;
   probUp: number;
@@ -111,6 +195,7 @@ function drawCandles(
   interval: KlineInterval,
   srLines: SRLine[],
   asset: AssetName,
+  rbsPrice: number | null,
 ) {
   ctx.fillStyle = '#0f1419';
   ctx.fillRect(0, 0, w, h);
@@ -132,6 +217,10 @@ function drawCandles(
   for (const sr of srLines) {
     lo = Math.min(lo, sr.price);
     hi = Math.max(hi, sr.price);
+  }
+  if (rbsPrice != null) {
+    lo = Math.min(lo, rbsPrice);
+    hi = Math.max(hi, rbsPrice);
   }
   if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo === hi) {
     const mid = Number.isFinite(lo) ? lo : 0;
@@ -239,6 +328,34 @@ function drawCandles(
     }
   }
 
+  // Reverse BS predicted price (purple full-width line)
+  if (rbsPrice != null) {
+    const y = yPx(rbsPrice);
+    if (y >= yTop - 1 && y <= yBot + 1) {
+      ctx.setLineDash([6, 3]);
+      ctx.strokeStyle = '#c084fc';
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.75;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(padL + cw, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+
+      const tag = 'RBS';
+      ctx.font = 'bold 9px ui-sans-serif, system-ui, sans-serif';
+      const tw = ctx.measureText(tag).width;
+      const tagX = padL + 4;
+      ctx.fillStyle = 'rgba(15,20,25,0.8)';
+      ctx.fillRect(tagX - 3, y - 7, tw + 6, 13);
+      ctx.fillStyle = '#c084fc';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(tag, tagX, y);
+    }
+  }
+
   ctx.restore();
 
   // S/R target prices on Y-axis (left margin, aligned with each line)
@@ -257,6 +374,21 @@ function drawCandles(
     ctx.fillRect(pillL, y - 5, ax - pillL + 2, 10);
     ctx.fillStyle = color;
     ctx.fillText(txt, ax, y);
+  }
+
+  // RBS predicted price on Y-axis
+  if (rbsPrice != null) {
+    const y = yPx(rbsPrice);
+    if (y >= yTop && y <= yBot) {
+      const txt = formatSrStrike(rbsPrice, asset);
+      const tw = ctx.measureText(txt).width;
+      const ax = padL - 4;
+      const pillL = Math.max(2, ax - tw - 4);
+      ctx.fillStyle = 'rgba(15,20,25,0.9)';
+      ctx.fillRect(pillL, y - 5, ax - pillL + 2, 10);
+      ctx.fillStyle = '#c084fc';
+      ctx.fillText(txt, ax, y);
+    }
   }
 
   // x labels (first, mid, last)
@@ -312,6 +444,8 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   useAppStore((s) => s.bidAskTick);
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
   const marketLookup = useAppStore((s) => s.marketLookup);
+  const volatilityData = useAppStore((s) => s.volatilityData);
+  const volMultiplier = useAppStore((s) => s.volMultiplier);
   const sym = assetToSymbol(asset);
   const livePrice = priceData[sym]?.price ?? 0;
 
@@ -348,6 +482,13 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     }
     return lines;
   }, [asset, upOrDownMarkets, marketLookup]);
+
+  const rbsPrice = useMemo<number | null>(() => {
+    if (livePrice <= 0) return null;
+    const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
+    const assetMarkets = upOrDownMarkets[asset] || {};
+    return computeRBSPrice(livePrice, sigma, assetMarkets, marketLookup, Date.now());
+  }, [asset, livePrice, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup]);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);
@@ -518,14 +659,14 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawCandles(ctx, w, h, candles, timeframe, srLines, asset);
+      drawCandles(ctx, w, h, candles, timeframe, srLines, asset, rbsPrice);
     };
 
     paint();
     const ro = new ResizeObserver(() => paint());
     ro.observe(container);
     return () => ro.disconnect();
-  }, [candles, timeframe, srLines, asset]);
+  }, [candles, timeframe, srLines, asset, rbsPrice]);
 
   const titleColor = ASSET_COLORS[asset] || 'text-white';
 

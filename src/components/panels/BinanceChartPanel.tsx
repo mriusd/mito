@@ -967,7 +967,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
         >
           <span className="relative binance-asset-dropdown-root no-drag inline-flex items-center cursor-pointer select-none" onClick={() => setAssetDropdownOpen(v => !v)}>
             {asset}:{' '}
-            <span className="font-bold text-white">
+            <span className="font-bold">
               {spotForChart > 0 ? formatPrice(spotForChart, asset) : '--'}
             </span>
             <span

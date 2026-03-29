@@ -9,6 +9,7 @@ import { signingDialog, isDialogHidden } from './SigningDialog';
 import { getTokenOutcome, extractAssetFromMarket, shortenMarketName, upDownMarketUsesChainlinkSpot } from '../utils/format';
 import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarkets } from '../utils/bsMath';
 import { API_BASE } from '../lib/env';
+import { fetchUpDownTargetFromCrypto, upDownCryptoTimeframe } from '../lib/upDownTargetFromCrypto';
 import { usePolymarketOB } from '../hooks/usePolymarketOB';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
@@ -229,29 +230,30 @@ export function Sidebar() {
     const q = selectedMarket.question || '';
     const combined = `${slug} ${q}`;
     const is5m = !!(combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i));
-    let cancelled = false;
 
     if (is5m) {
       // 5m markets: priceToBeat comes from backend Chainlink collector via market refresh.
       // Nothing to fetch here — it will arrive with the next market data refresh.
       return;
-    } else {
-      // 15m/1h/24h: crypto-price API works correctly for these
-      let variant = 'hourly';
-      let intervalMs = 60 * 60 * 1000;
-      if (combined.match(/updown-15m/i) || combined.match(/\b15[- ]?min/i)) { variant = 'fifteen'; intervalMs = 15 * 60 * 1000; }
-      else if (combined.match(/up-or-down-on-/i) || combined.match(/\b24[- ]?h/i)) { variant = 'daily'; intervalMs = 24 * 60 * 60 * 1000; }
-
-      const startISO = new Date(endMs - intervalMs).toISOString();
-      const asset = extractAssetFromMarket(selectedMarket);
-      const endISO = new Date(endMs).toISOString();
-
-      fetch(`${API_BASE}/api/polyproxy/site/api/crypto/crypto-price?symbol=${asset}&eventStartTime=${startISO}&variant=${variant}&endDate=${endISO}`)
-        .then(r => r.json())
-        .then(d => { if (!cancelled && d?.openPrice) setUpDownTargetPrice(d.openPrice); })
-        .catch(() => {});
     }
-    return () => { cancelled = true; };
+    if (!upDownCryptoTimeframe(combined)) return;
+
+    const asset = extractAssetFromMarket(selectedMarket);
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      const p = await fetchUpDownTargetFromCrypto(API_BASE, asset, endMs, combined);
+      if (!cancelled && p != null) setUpDownTargetPrice(p);
+    };
+    void tick();
+    // Hourly openPrice often lags ~5m; retry briefly so target appears as soon as the API has it.
+    const iv = setInterval(() => void tick(), 12_000);
+    const stopIv = setTimeout(() => clearInterval(iv), 150_000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+      clearTimeout(stopIv);
+    };
   }, [isUpDownMarket, selectedMarket?.endDate, selectedMarket?.eventSlug, selectedMarket, livePriceToBeat]);
 
   // Countdown timer for market expiry (all markets)

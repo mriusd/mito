@@ -165,7 +165,7 @@ function marketVolumeUsdc(m: Market, tokenId: string, lookup: Record<string, Mar
  *   S* = K × exp( Φ⁻¹(pUp) × σ√T + σ²T/2 )
  *
  * Final price = weighted average of per-timeframe implied prices.
- * Weight = Polymarket volume (USDC) × (1/√T): more liquid windows and shorter horizons count more.
+ * When `volWeightAdjusted`: weight = Polymarket volume (USDC) × (1/√T). Otherwise weight = 1/√T only.
  *
  * Markets with expiry within `minTteMs` are ignored. If at least one enabled timeframe has a not-yet-expired
  * market but none pass the min TTE filter, returns `hold` (caller keeps last drawn value). If no live markets,
@@ -179,6 +179,7 @@ function computeRBSPriceResult(
   now: number,
   rbsTfEnabled: Record<UpDownTfKey, boolean>,
   minTteMs: number,
+  volWeightAdjusted: boolean,
 ): RBSComputeResult {
   if (s0 <= 0 || sigma <= 0) return { kind: 'clear' };
 
@@ -218,9 +219,10 @@ function computeRBSPriceResult(
     const sqrtT = Math.sqrt(tYears);
     const impliedSpot = strike * Math.exp(z * sigma * sqrtT + (sigma * sigma * tYears) / 2);
     if (!Number.isFinite(impliedSpot) || impliedSpot <= 0) continue;
-    const vol = marketVolumeUsdc(m, tokenId, marketLookup);
-    const volW = Math.max(vol, 1);
-    implied.push({ price: impliedSpot, weight: volW / sqrtT });
+    const tWeight = 1 / sqrtT;
+    const volW = Math.max(marketVolumeUsdc(m, tokenId, marketLookup), 1);
+    const weight = volWeightAdjusted ? volW * tWeight : tWeight;
+    implied.push({ price: impliedSpot, weight });
   }
 
   if (implied.length > 0) {
@@ -257,6 +259,37 @@ function srLineOpacity(probUp: number): number {
   const minA = 0.18;
   const maxA = 0.92;
   return minA + deviation * (maxA - minA);
+}
+
+/** Same breakpoints as `srLineColor`: bullish ▲, bearish ▼, else none. */
+function srLineTriangleDir(probUp: number): 'up' | 'down' | null {
+  if (probUp > 0.55) return 'up';
+  if (probUp < 0.45) return 'down';
+  return null;
+}
+
+function drawSrLabelTriangle(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  dir: 'up' | 'down',
+  fillStyle: string,
+) {
+  const w = 3.5;
+  const h = 4.5;
+  ctx.beginPath();
+  if (dir === 'up') {
+    ctx.moveTo(cx, cy - h);
+    ctx.lineTo(cx - w, cy + h * 0.55);
+    ctx.lineTo(cx + w, cy + h * 0.55);
+  } else {
+    ctx.moveTo(cx - w, cy - h * 0.55);
+    ctx.lineTo(cx + w, cy - h * 0.55);
+    ctx.lineTo(cx, cy + h);
+  }
+  ctx.closePath();
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
 }
 
 const SR_PRICE_DECIMALS: Record<AssetName, number> = {
@@ -404,10 +437,16 @@ function drawCandles(
     const tag = sr.label;
     ctx.font = 'bold 9px ui-sans-serif, system-ui, sans-serif';
     const tw = ctx.measureText(tag).width;
-    const tagX = padL + 4;
+    const triDir = srLineTriangleDir(sr.probUp);
+    const triColW = triDir != null ? 11 : 0;
+    const labelPadL = padL + 4;
+    const tagX = labelPadL + triColW;
     const tagY = y;
     ctx.fillStyle = 'rgba(15,20,25,0.8)';
-    ctx.fillRect(tagX - 3, tagY - 7, tw + 6, 13);
+    ctx.fillRect(labelPadL - 3, tagY - 7, triColW + tw + 6, 13);
+    if (triDir != null) {
+      drawSrLabelTriangle(ctx, labelPadL + 4, tagY, triDir, color);
+    }
     ctx.fillStyle = color;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
@@ -556,6 +595,10 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   const [rbsTfEnabled, setRbsTfEnabled] = useState<Record<UpDownTfKey, boolean>>(() =>
     parseRbsTfEnabledFromStorage(localStorage.getItem(`polybot-binance-rbs-tf-${panelId}`)),
   );
+  const [rbsVolWeightAdjusted, setRbsVolWeightAdjusted] = useState(() => {
+    const raw = localStorage.getItem(`polybot-binance-rbs-vol-weight-${panelId}`);
+    return raw !== 'false';
+  });
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -630,8 +673,9 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
       Date.now(),
       rbsTfEnabled,
       RBS_MIN_TIME_TO_EXPIRY_MS,
+      rbsVolWeightAdjusted,
     );
-  }, [asset, spotForChart, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup, rbsTfEnabled]);
+  }, [asset, spotForChart, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup, rbsTfEnabled, rbsVolWeightAdjusted]);
 
   useEffect(() => {
     if (rbsResult.kind === 'price') {
@@ -1142,7 +1186,9 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
                 <div className="mb-1 border-b border-gray-700 pb-1">
                   <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">RBS markets</div>
                   <div className="mt-0.5 text-[8px] font-normal normal-case tracking-normal text-gray-500 leading-tight">
-                    Blend weights: Polymarket vol × 1/√T
+                    {rbsVolWeightAdjusted
+                      ? 'Blend weights: Polymarket vol × 1/√T'
+                      : 'Blend weights: 1/√T (market vol ignored)'}
                   </div>
                 </div>
                 {SR_TIMEFRAMES.map((tf) => (
@@ -1167,6 +1213,27 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
                     <span>{tf} Market</span>
                   </label>
                 ))}
+                <div className="mt-1 border-t border-gray-700 pt-1">
+                  <label
+                    className="flex cursor-pointer items-center gap-2 py-0.5 text-[10px] text-gray-200 hover:text-white"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={rbsVolWeightAdjusted}
+                      onChange={() => {
+                        setRbsVolWeightAdjusted((prev) => {
+                          const next = !prev;
+                          localStorage.setItem(`polybot-binance-rbs-vol-weight-${panelId}`, next ? 'true' : 'false');
+                          return next;
+                        });
+                      }}
+                      className="accent-purple-500 rounded"
+                    />
+                    <span>Vol weight adjusted</span>
+                  </label>
+                </div>
               </div>
             )}
           </div>

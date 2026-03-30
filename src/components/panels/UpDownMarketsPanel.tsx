@@ -8,6 +8,7 @@ import type { AssetSymbol } from '../../types';
 import { getMarketProbability } from '../../utils/bsMath';
 import { formatPolymarketVolumeK, getPolymarketVolumeUsd } from '../../utils/format';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
+import { impliedNoQuoteDisplayCents, noTokenQuoteProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 
 function formatCountdown(ms: number): string {
   const rem = ms - Date.now();
@@ -222,7 +223,7 @@ export function UpDownMarketsPanel() {
               onMouseDown={(e) => e.stopPropagation()}
             />
             <span className="text-[10px] text-gray-400">%</span>
-            <HelpTooltip text="Highlight bids and asks that are this % cheaper than the average of the other assets in the same timeframe." />
+            <HelpTooltip text="Left: YES mid (bid+ask)/2 or one-sided quote, with Gamma fallback when WS book is empty. Right: implied NO in ¢ as 100×(1 − p_NO), with p_NO from NO book or synthetic from YES when NO is thin. Highlights vs peer averages." />
           </div>
           <label
             className="flex items-center gap-1 cursor-default text-[10px] text-gray-300 select-none"
@@ -287,23 +288,28 @@ export function UpDownMarketsPanel() {
           </thead>
           <tbody>
             {TIMEFRAMES.map((tf) => {
-              // Pre-compute yes/no ask prices per asset for cheap-detection
-              const askByAsset: Record<string, number> = {};
-              const noAskByAsset: Record<string, number> = {};
+              // Pre-compute YES/NO mids (mid or single-sided quote) per asset for peer highlights
+              const yesMidByAsset: Record<string, number> = {};
+              /** Implied NO column in [0,1] (= 1 − p_NO). */
+              const noImpliedByAsset: Record<string, number> = {};
               for (const a of ASSETS) {
                 const m = getCurrentMarket(a, tf);
                 if (m) {
-                  const { bestBid: bb, bestAsk: ba } = getLiveBidAsk(m);
-                  if (ba) askByAsset[a] = ba;
-                  if (bb) noAskByAsset[a] = 1 - bb;
+                  const yT = m.clobTokenIds?.[0];
+                  const nT = m.clobTokenIds?.[1];
+                  const gamma = { bestBid: m.bestBid, bestAsk: m.bestAsk };
+                  const y = outcomeMidOrOneSideProb(yT, _bidAskLookup, gamma);
+                  const pNo = noTokenQuoteProb(nT, yT, _bidAskLookup, gamma);
+                  if (y != null) yesMidByAsset[a] = y;
+                  if (pNo != null) noImpliedByAsset[a] = 1 - pNo;
                 }
               }
-              const otherAsks = (asset: string) => {
-                const vals = ASSETS.filter(a => a !== asset && askByAsset[a] !== undefined).map(a => askByAsset[a]);
+              const otherYesMids = (asset: string) => {
+                const vals = ASSETS.filter(a => a !== asset && yesMidByAsset[a] !== undefined).map(a => yesMidByAsset[a]);
                 return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
               };
-              const otherNoAsks = (asset: string) => {
-                const vals = ASSETS.filter(a => a !== asset && noAskByAsset[a] !== undefined).map(a => noAskByAsset[a]);
+              const otherNoImplied = (asset: string) => {
+                const vals = ASSETS.filter(a => a !== asset && noImpliedByAsset[a] !== undefined).map(a => noImpliedByAsset[a]);
                 return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
               };
 
@@ -347,7 +353,7 @@ export function UpDownMarketsPanel() {
                     );
                   }
 
-                  const { bestBid, bestAsk } = getLiveBidAsk(market);
+                  const { bestBid } = getLiveBidAsk(market);
                   const tokenIds = market.clobTokenIds || [];
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
@@ -458,16 +464,21 @@ export function UpDownMarketsPanel() {
                   ) : null;
                   const polymarketVol = getPolymarketVolumeUsd(market, yesTokenId, _bidAskLookup);
 
-                  const yesBid = bestBid ? (bestBid * 100).toFixed(1) : '-';
-                  const noAsk = bestBid ? ((1 - bestBid) * 100).toFixed(1) : '-';
-                  const yesProb = bestBid || 0;
+                  const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
+                  const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
+                  const noImpliedCents = impliedNoQuoteDisplayCents(noTokenId, yesTokenId, _bidAskLookup, gammaYes);
+                  const noImpliedDec = noImpliedCents != null ? noImpliedCents / 100 : null;
+                  const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
+                  const noMidStr = noImpliedCents != null ? noImpliedCents.toFixed(1) : '-';
+                  const yesProb = yesMidProb ?? bestBid ?? 0;
                   const bgColor = yesProb > 0.5 ? 'bg-green-900/30' : 'bg-red-900/30';
                   const isSelected = selectedMarket?.id === market.id;
-                  const avg = otherAsks(asset);
-                  const isCheap = bestAsk !== undefined && avg > 0 && bestAsk <= avg * thresholdFactor;
-                  const noAskVal = bestBid ? 1 - bestBid : undefined;
-                  const noAvg = otherNoAsks(asset);
-                  const isNoCheap = noAskVal !== undefined && noAvg > 0 && noAskVal <= noAvg * thresholdFactor;
+                  const avgNoImplied = otherNoImplied(asset);
+                  const isNoImpliedStrong =
+                    noImpliedDec != null && avgNoImplied > 0 && noImpliedDec >= avgNoImplied / thresholdFactor;
+                  const avgYesMid = otherYesMids(asset);
+                  const isYesMidStrong =
+                    yesMidProb != null && avgYesMid > 0 && yesMidProb >= avgYesMid / thresholdFactor;
 
                   const quoteCell = (
                     <td
@@ -496,14 +507,14 @@ export function UpDownMarketsPanel() {
                       )}
                       <div className="text-[10px] text-gray-400">
                         <span
-                          className={`cursor-pointer hover:underline ${isCheap ? 'bg-green-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-green-400'}`}
+                          className={`cursor-pointer hover:underline ${isYesMidStrong ? 'bg-green-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-green-400'}`}
                           onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                        >{yesBid}</span>
+                        >{yesMidStr}</span>
                         {'\\'}
                         <span
-                          className={`cursor-pointer hover:underline ${isNoCheap ? 'bg-red-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-red-400'}`}
+                          className={`cursor-pointer hover:underline ${isNoImpliedStrong ? 'bg-red-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-red-400'}`}
                           onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                        >{noAsk}</span>
+                        >{noMidStr}</span>
                       </div>
 
                       {/* Order badges - YES bottom-left, NO bottom-right */}

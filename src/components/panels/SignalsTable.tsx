@@ -1,8 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { formatPriceShort, ASSET_COLORS, shortenMarketName } from '../../utils/format';
-import { Share2, Zap } from 'lucide-react';
-import { showToast } from '../../utils/toast';
+import { formatPriceShort, ASSET_COLORS } from '../../utils/format';
+import { Zap } from 'lucide-react';
 import { HelpTooltip } from '../HelpTooltip';
 
 export function SignalsTable() {
@@ -40,148 +39,8 @@ export function SignalsTable() {
   );
   const [sortCol, setSortCol] = useState<'date' | 'diff' | null>('diff');
   const [sortAsc, setSortAsc] = useState(true);
-  const [shareOpenId, setShareOpenId] = useState<string | null>(null);
-  const [sharingId, setSharingId] = useState<string | null>(null);
   const stopPanelDrag = (e: React.SyntheticEvent) => {
     e.stopPropagation();
-  };
-
-  const getSignalKey = (sig: typeof signals[number]) => `${sig.market.id}-${sig.origSide}`;
-  const getShareLink = (sig: typeof signals[number], campaign: 'x' | 'tg') =>
-    `https://mito.trade/?market=${encodeURIComponent(sig.market.id)}&side=${sig.origSide.toLowerCase()}&utm_source=sig&utm_campaign=${campaign}`;
-
-  const toBlob = (canvas: HTMLCanvasElement): Promise<Blob | null> =>
-    new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/png'));
-
-  const captureSidebarShareImage = async (): Promise<Blob | null> => {
-    const sidebar = (document.querySelector('.right-sidebar.open') || document.querySelector('.right-sidebar')) as HTMLElement | null;
-    if (!sidebar) return null;
-    // Let layout settle before snapshot (helps with charts/text baseline).
-    await new Promise((r) => requestAnimationFrame(() => r(null)));
-    if ('fonts' in document) {
-      try { await (document as Document & { fonts: FontFaceSet }).fonts.ready; } catch { /* noop */ }
-    }
-    const liveTrades = sidebar.querySelector('.live-trades-section') as HTMLElement | null;
-    const sidebarRect = sidebar.getBoundingClientRect();
-    const cropHeight = liveTrades
-      ? Math.max(200, Math.floor(liveTrades.getBoundingClientRect().top - sidebarRect.top))
-      : Math.floor(sidebarRect.height);
-
-    const html2canvas = (await import('html2canvas')).default;
-    const canvas = await html2canvas(sidebar, {
-      backgroundColor: '#0f172a',
-      useCORS: true,
-      scale: Math.min(2, window.devicePixelRatio || 1.5),
-      windowWidth: window.innerWidth,
-      windowHeight: window.innerHeight,
-      scrollX: window.scrollX,
-      scrollY: window.scrollY,
-      width: Math.floor(sidebarRect.width),
-      height: cropHeight,
-      onclone: (doc) => {
-        const cloneSidebar = doc.querySelector('.right-sidebar') as HTMLElement | null;
-        if (!cloneSidebar) return;
-        // Freeze sidebar geometry to avoid CSS transition/transform offsets in clone.
-        cloneSidebar.style.position = 'fixed';
-        cloneSidebar.style.top = `${Math.floor(sidebarRect.top)}px`;
-        cloneSidebar.style.right = `${Math.max(0, Math.floor(window.innerWidth - sidebarRect.right))}px`;
-        cloneSidebar.style.width = `${Math.floor(sidebarRect.width)}px`;
-        cloneSidebar.style.maxWidth = `${Math.floor(sidebarRect.width)}px`;
-        cloneSidebar.style.transform = 'none';
-        cloneSidebar.style.transition = 'none';
-        cloneSidebar.classList.add('open');
-
-        // Disable transitions globally in cloned doc to prevent shifted intermediate frames.
-        const style = doc.createElement('style');
-        style.textContent = `*, *::before, *::after { transition: none !important; animation: none !important; }`;
-        doc.head.appendChild(style);
-        // Keep only top-5 bid/ask levels in the captured image.
-        const bids = Array.from(cloneSidebar.querySelectorAll('.live-ob-bid'));
-        const asks = Array.from(cloneSidebar.querySelectorAll('.live-ob-ask'));
-        bids.slice(5).forEach((el) => ((el as HTMLElement).closest('div') as HTMLElement | null)?.remove());
-        asks.slice(5).forEach((el) => ((el as HTMLElement).closest('div') as HTMLElement | null)?.remove());
-      },
-    });
-    return toBlob(canvas);
-  };
-
-  const downloadBlob = (blob: Blob, filename: string) => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  };
-
-  const shareSignal = async (platform: 'telegram' | 'x', sig: typeof signals[number]) => {
-    const key = getSignalKey(sig);
-    setSharingId(key);
-    setShareOpenId(null);
-    // Ensure sidebar reflects this signal before capture.
-    handleMarketClick(sig.market, sig.origSide);
-    await new Promise((r) => setTimeout(r, 250));
-    const blob = await captureSidebarShareImage();
-    const diffValuePct = makerMode ? sig.bidDiffPct : sig.diffPct;
-    const diffCents = makerMode
-      ? (sig.bidPrice - sig.bsPrice) * 100
-      : (sig.price - sig.bsPrice) * 100;
-    const diff = `${diffCents >= 0 ? '+' : ''}${diffCents.toFixed(1)}c`;
-    const bestAsk = (sig.price * 100).toFixed(1);
-    const mathProb = (sig.bsPrice * 100).toFixed(1);
-    const marketTitle = shortenMarketName(
-      sig.market.question || sig.market.groupItemTitle,
-      undefined,
-      undefined,
-      sig.market.eventSlug
-    );
-    const campaign = platform === 'telegram' ? 'tg' : 'x';
-    const link = getShareLink(sig, campaign);
-    const text = [
-      `@Polymarket market underpriced by ${Math.abs(diffValuePct).toFixed(1)}%`,
-      `Market: ${marketTitle}`,
-      `Mathematical Probability: ${mathProb}%`,
-      `Best ask: ${bestAsk}¢`,
-      `Discount: ${diff}`,
-      `-> ${link}`,
-    ].join('\n');
-
-    if (!blob) {
-      showToast('Share image could not be generated', 'error');
-    }
-
-    let copiedImage = false;
-    try {
-      if (blob && 'clipboard' in navigator && 'ClipboardItem' in window) {
-        // Helpful for X/Telegram web composer: user can paste image after window opens.
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        copiedImage = true;
-        showToast('Share image copied to clipboard', 'success');
-      }
-    } catch {
-      copiedImage = false;
-    }
-
-    if (platform === 'telegram') {
-      const bodyWithoutLink = text.replace(`\n-> ${link}`, '');
-      // Telegram share works reliably when `url` is provided.
-      // Keep blank lines at the end of text, then let Telegram append the link.
-      const tgText = `${bodyWithoutLink}\n\n\n`;
-      const tg = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(tgText)}`;
-      window.open(tg, '_blank', 'noopener,noreferrer');
-    } else {
-      const x = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}`;
-      window.open(x, '_blank', 'noopener,noreferrer');
-    }
-
-    // Always provide a tangible image file so it never gets lost.
-    if (blob) {
-      downloadBlob(blob, `mito-signal-${sig.asset}-${sig.market.id}.png`);
-      if (!copiedImage) showToast('Share image downloaded', 'success');
-    }
-    setSharingId(null);
   };
 
   const toggleSort = (col: 'date' | 'diff') => {
@@ -313,12 +172,10 @@ export function SignalsTable() {
                   </th>
                   <th className="text-right px-1 py-0.5">{makerMode ? 'Bid' : 'Ask'}</th>
                   <th className="text-right px-1 py-0.5 cursor-pointer select-none" onClick={() => toggleSort('diff')}>Diff{sortCol === 'diff' ? (sortAsc ? ' ▲' : ' ▼') : ''}</th>
-                  <th className="text-center px-1 py-0.5">Share</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((sig, i) => {
-                  const sigKey = getSignalKey(sig);
                   const acol = ASSET_COLORS[sig.asset] || 'text-gray-400';
                   // Date formatting matching HTML
                   const endD = new Date(sig.endDate);
@@ -346,38 +203,6 @@ export function SignalsTable() {
                       <td className="text-right px-1 py-0.5 text-gray-300">{(sig.bsPrice * 100).toFixed(1)}</td>
                       <td className="text-right px-1 py-0.5 text-gray-300">{displayPrice.toFixed(1)}¢</td>
                       <td className="text-right px-1 py-0.5 text-green-400 font-bold">{displayDiff}</td>
-                      <td className="text-center px-1 py-0.5 relative">
-                        <button
-                          className="inline-flex items-center justify-center w-5 h-5 rounded bg-gray-700 hover:bg-gray-600 text-gray-200"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShareOpenId((prev) => (prev === sigKey ? null : sigKey));
-                          }}
-                          title="Share signal"
-                          disabled={sharingId === sigKey}
-                        >
-                          <Share2 className="w-3 h-3" />
-                        </button>
-                        {shareOpenId === sigKey && (
-                          <div
-                            className="absolute right-0 top-6 z-20 bg-gray-800 border border-gray-600 rounded shadow-lg min-w-[88px]"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <button
-                              className="block w-full text-left px-2 py-1 text-[10px] text-gray-100 hover:bg-gray-700"
-                              onClick={() => { void shareSignal('telegram', sig); }}
-                            >
-                              Telegram
-                            </button>
-                            <button
-                              className="block w-full text-left px-2 py-1 text-[10px] text-gray-100 hover:bg-gray-700"
-                              onClick={() => { void shareSignal('x', sig); }}
-                            >
-                              X
-                            </button>
-                          </div>
-                        )}
-                      </td>
                     </tr>
                   );
                 })}

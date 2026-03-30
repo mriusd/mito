@@ -621,6 +621,19 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     return livePrice;
   }, [priceSource, chainlinkPrices, asset, livePrice]);
 
+  /** (max high − min low) / min low × 100 over candles in the visible window. */
+  const candleRangePct = useMemo(() => {
+    if (candles.length === 0) return null;
+    let minL = Infinity;
+    let maxH = -Infinity;
+    for (const c of candles) {
+      if (Number.isFinite(c.l) && c.l < minL) minL = c.l;
+      if (Number.isFinite(c.h) && c.h > maxH) maxH = c.h;
+    }
+    if (!Number.isFinite(minL) || !Number.isFinite(maxH) || minL <= 0 || maxH < minL) return null;
+    return ((maxH - minL) / minL) * 100;
+  }, [candles]);
+
   const srLines = useMemo<SRLine[]>(() => {
     const assetMarkets = upOrDownMarkets[asset];
     if (!assetMarkets) return [];
@@ -1240,21 +1253,41 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
         </div>
       </div>
 
-      <div ref={chartRef} className="flex-1 min-h-0 min-w-0 relative rounded border border-gray-700/80 bg-gray-950/60 overflow-hidden">
-        {loadErr && (
-          <div className="absolute inset-0 flex items-center justify-center z-10 bg-gray-950/80 text-[11px] text-red-300 px-2 text-center">
-            {loadErr}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-row gap-0">
+        {candles.length > 0 && (
+          <div
+            className="relative z-10 flex w-7 shrink-0 flex-col items-stretch justify-stretch rounded-l-md border border-gray-700/80 border-r-0 bg-gray-950/90"
+            title="High−low range over visible candles: (highest high − lowest low) ÷ lowest low × 100"
+          >
+            <span
+              className="pointer-events-none absolute left-1/2 top-1/2 whitespace-nowrap text-[10px] font-semibold tabular-nums text-gray-400"
+              style={{ transform: 'translate(-50%, -50%) rotate(-90deg)' }}
+            >
+              {candleRangePct != null ? `Range ${candleRangePct.toFixed(2)}%` : '—'}
+            </span>
           </div>
         )}
-        {loading && candles.length === 0 && !loadErr && (
-          <div className="absolute inset-0 flex items-center justify-center z-10 text-[11px] text-gray-500">Loading…</div>
-        )}
-        <canvas
-          ref={canvasRef}
-          className="block w-full h-full"
-          role="img"
-          aria-label={`${asset} candlestick chart (${priceSource === 'chainlink' ? 'Chainlink via polycandles' : 'Binance spot'})`}
-        />
+        <div
+          ref={chartRef}
+          className={`relative min-h-0 min-w-0 flex-1 overflow-hidden border border-gray-700/80 bg-gray-950/60 ${
+            candles.length > 0 ? 'rounded-l-none border-l-0' : 'rounded-md'
+          } ${candles.length > 0 ? 'rounded-r-md' : ''}`}
+        >
+          {loadErr && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-950/80 px-2 text-center text-[11px] text-red-300">
+              {loadErr}
+            </div>
+          )}
+          {loading && candles.length === 0 && !loadErr && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center text-[11px] text-gray-500">Loading…</div>
+          )}
+          <canvas
+            ref={canvasRef}
+            className="block h-full w-full"
+            role="img"
+            aria-label={`${asset} candlestick chart (${priceSource === 'chainlink' ? 'Chainlink via polycandles' : 'Binance spot'})`}
+          />
+        </div>
       </div>
     </div>
   );

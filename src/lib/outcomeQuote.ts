@@ -5,13 +5,14 @@ function hasQuoteSide(p: number | undefined): p is number {
   return p != null && Number.isFinite(p) && p > 0;
 }
 
-function pickSide(
-  liveSide: number | undefined,
-  gammaSide: number | undefined
-): number | undefined {
-  if (hasQuoteSide(liveSide)) return liveSide;
-  if (hasQuoteSide(gammaSide)) return gammaSide;
-  return undefined;
+function pickSide(liveSide: number | undefined, gammaSide: number | undefined): number | undefined {
+  // Important: WS uses `0` to mean "no quote". In that case we must *not* fall back to Gamma,
+  // otherwise the UI can look stale after background WS updates.
+  // We only fall back to Gamma when the WS field is truly `undefined` (never populated).
+  if (liveSide == null) {
+    return hasQuoteSide(gammaSide) ? gammaSide : undefined;
+  }
+  return hasQuoteSide(liveSide) ? liveSide : undefined;
 }
 
 /**

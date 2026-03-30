@@ -31,12 +31,23 @@ export function useBidAskWS() {
             for (const item of msg.data) {
               if (!item.assetId) continue;
               const entry = lookup[item.assetId];
-              if (!entry) continue;
-              const next: typeof entry = {
-                ...entry,
-                bestBid: item.bestBid ?? 0,
-                bestAsk: item.bestAsk ?? 0,
-              };
+              // WS batches always include numeric bid/ask; when a side is missing it will be 0.
+              // Even if the token is not present in marketLookup yet, we still patch bestBid/bestAsk
+              // so quote helpers don't keep falling back to older values.
+              const bestBid = item.bestBid ?? 0;
+              const bestAsk = item.bestAsk ?? 0;
+              const next = entry
+                ? {
+                    ...entry,
+                    bestBid,
+                    bestAsk,
+                  }
+                : ({
+                    id: item.assetId,
+                    clobTokenIds: [item.assetId],
+                    bestBid,
+                    bestAsk,
+                  } as any);
               const v = item.volume;
               if (typeof v === 'number' && Number.isFinite(v)) {
                 next.volume = v;

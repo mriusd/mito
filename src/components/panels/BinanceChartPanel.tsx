@@ -184,7 +184,6 @@ function computeRBSPriceResult(
   marketLookup: Record<string, Market>,
   now: number,
   rbsTfEnabled: Record<UpDownTfKey, boolean>,
-  volWeightAdjusted: boolean,
 ): RBSComputeResult {
   if (s0 <= 0 || sigma <= 0) return { kind: 'clear' };
 
@@ -697,7 +696,6 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
       marketLookup,
       Date.now(),
       rbsTfEnabled,
-      rbsVolWeightAdjusted,
     );
   }, [asset, spotForChart, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup, rbsTfEnabled, rbsVolWeightAdjusted]);
 

@@ -714,7 +714,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   const rbsPrice: number | null =
     rbsResult.kind === 'price' ? rbsResult.value : rbsResult.kind === 'hold' ? rbsStaleRef.current : null;
 
-  const rbsArrowSignal = useMemo<{ dir: 'up' | 'down'; count: 1 | 2 | 3 } | null>(() => {
+  const rbsArrowSignal = useMemo<{ dir: 'up' | 'down'; count: 1 | 2 | 3 | 4 | 5 } | null>(() => {
     const rp = rbsPrice;
     const sp = spotForChart;
     const threshRel = rbsPulseThresholdPct / 100;
@@ -723,12 +723,17 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     const absDev = Math.abs(dev);
     if (absDev < threshRel) return null;
     const dir = dev > 0 ? 'up' as const : 'down' as const;
-    const count: 1 | 2 | 3 = absDev >= threshRel * 5 ? 3 : absDev >= threshRel * 2.5 ? 2 : 1;
+    const count: 1 | 2 | 3 | 4 | 5 =
+      absDev >= threshRel * 10 ? 5
+      : absDev >= threshRel * 7 ? 4
+      : absDev >= threshRel * 4.5 ? 3
+      : absDev >= threshRel * 2.5 ? 2
+      : 1;
     return { dir, count };
   }, [rbsPrice, spotForChart, rbsPulseThresholdPct]);
 
-  const arrowRefs = useRef<(HTMLDivElement | null)[]>([null, null, null]);
-  const arrowAnimsRef = useRef<(Animation | null)[]>([null, null, null]);
+  const arrowRefs = useRef<(HTMLDivElement | null)[]>([null, null, null, null, null]);
+  const arrowAnimsRef = useRef<(Animation | null)[]>([null, null, null, null, null]);
   const prevArrowKeyRef = useRef('');
 
   useEffect(() => {
@@ -736,7 +741,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     if (key === prevArrowKeyRef.current) return;
     prevArrowKeyRef.current = key;
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
       arrowAnimsRef.current[i]?.cancel();
       arrowAnimsRef.current[i] = null;
       const el = arrowRefs.current[i];
@@ -746,10 +751,10 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     if (!rbsArrowSignal) return;
     const { count } = rbsArrowSignal;
     const cycleDuration = 1200;
-    const stagger = cycleDuration / 3;
+    const stagger = cycleDuration / count;
 
     for (let i = 0; i < count; i++) {
-      const slotIdx = 3 - count + i;
+      const slotIdx = 5 - count + i;
       const el = arrowRefs.current[slotIdx];
       if (!el) continue;
       arrowAnimsRef.current[slotIdx] = el.animate(
@@ -1402,8 +1407,8 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
                   : { bottom: 4, flexDirection: 'column' }
                 }
               >
-                {[0, 1, 2].map((i) => {
-                  const visible = i >= 3 - rbsArrowSignal.count;
+                {[0, 1, 2, 3, 4].map((i) => {
+                  const visible = i >= 5 - rbsArrowSignal.count;
                   const color = rbsArrowSignal.dir === 'up' ? '#10b981' : '#ef4444';
                   return (
                     <div

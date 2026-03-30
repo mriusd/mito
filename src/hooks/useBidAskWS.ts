@@ -23,12 +23,12 @@ export function useBidAskWS() {
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === 'bidAskBatch' && Array.isArray(msg.data)) {
+          const applyUpdates = (items: any[]) => {
             const store = useAppStore.getState();
             const lookup = store.marketLookup;
             let changed = false;
             const patch: Record<string, any> = {};
-            for (const item of msg.data) {
+            for (const item of items) {
               if (!item.assetId) continue;
               const entry = lookup[item.assetId];
               // WS batches always include numeric bid/ask; when a side is missing it will be 0.
@@ -61,6 +61,12 @@ export function useBidAskWS() {
                 bidAskTick: store.bidAskTick + 1,
               });
             }
+          };
+
+          if (msg.type === 'bidAskBatch' && Array.isArray(msg.data)) {
+            applyUpdates(msg.data);
+          } else if (msg.type === 'bidAskUpDown' && msg.data && typeof msg.data === 'object') {
+            applyUpdates([msg.data]);
           }
         } catch {}
       };

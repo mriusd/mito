@@ -128,6 +128,26 @@ const RBS_TF_LABEL: Record<UpDownTfKey, string> = {
   '24h': 'RBS24',
 };
 
+/** Distinct line/label color per RBS timeframe (canvas hex). */
+const RBS_TF_COLOR: Record<UpDownTfKey, string> = {
+  '5m': '#2dd4bf',
+  '15m': '#38bdf8',
+  '1h': '#fbbf24',
+  '24h': '#c084fc',
+};
+
+/** Canvas paint order: lower drawn first (underneath); 5m is topmost when prices coincide. */
+const RBS_CANVAS_LAYER: Record<UpDownTfKey, number> = {
+  '24h': 0,
+  '1h': 1,
+  '15m': 2,
+  '5m': 3,
+};
+
+function rbsTfLinesForCanvasPaint(lines: RBSTfLine[]): RBSTfLine[] {
+  return [...lines].sort((a, b) => RBS_CANVAS_LAYER[a.tf] - RBS_CANVAS_LAYER[b.tf]);
+}
+
 /** Treat near-certain market probabilities as saturated (0%/100%) for RBS inversion. */
 const RBS_SATURATION_EPS = 1e-3;
 /** For RBS, skip markets that are too close to expiry (noisy final seconds). */
@@ -351,6 +371,8 @@ function drawCandles(
   const ch = h - padT - padB;
   if (candles.length === 0 || cw <= 0 || ch <= 0) return;
 
+  const rbsPaintOrder = rbsTfLinesForCanvasPaint(rbsTfLines);
+
   let lo = Infinity;
   let hi = -Infinity;
   for (const c of candles) {
@@ -497,36 +519,31 @@ function drawCandles(
     }
   }
 
-  // Reverse BS predicted lines per timeframe.
-  for (const rl of rbsTfLines) {
+  // Reverse BS predicted lines per timeframe (paint order: 24h bottom → 5m top).
+  for (const rl of rbsPaintOrder) {
     const y = yPx(rl.price);
     if (y >= yTop - 1 && y <= yBot + 1) {
       const isSelected = selectedRbsTf != null && rl.tf === selectedRbsTf;
-      const lineAlpha = isSelected ? (rl.followsSpot ? 0.375 : 0.75) : 0.22;
+      const tfColor = RBS_TF_COLOR[rl.tf];
       ctx.setLineDash([6, 3]);
-      ctx.strokeStyle = '#c084fc';
+      ctx.strokeStyle = tfColor;
       ctx.lineWidth = isSelected ? 1.7 : 1;
-      ctx.globalAlpha = lineAlpha;
       ctx.beginPath();
       ctx.moveTo(padL, y);
       ctx.lineTo(padL + cw, y);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.globalAlpha = 1;
 
       const tag = RBS_TF_LABEL[rl.tf];
       ctx.font = 'bold 9px ui-sans-serif, system-ui, sans-serif';
       const tw = ctx.measureText(tag).width;
       const tagX = padL + 4;
-      const oldAlpha = ctx.globalAlpha;
-      ctx.globalAlpha = lineAlpha;
       ctx.fillStyle = 'rgba(15,20,25,0.8)';
       ctx.fillRect(tagX - 3, y - 7, tw + 6, 13);
-      ctx.fillStyle = '#c084fc';
+      ctx.fillStyle = tfColor;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(tag, tagX, y);
-      ctx.globalAlpha = oldAlpha;
     }
   }
 
@@ -550,23 +567,18 @@ function drawCandles(
     ctx.fillText(txt, ax, y);
   }
 
-  // RBS timeframe prices on Y-axis
-  for (const rl of rbsTfLines) {
+  // RBS timeframe prices on Y-axis (same stacking as horizontal lines).
+  for (const rl of rbsPaintOrder) {
     const y = yPx(rl.price);
     if (y >= yTop && y <= yBot) {
-      const isSelected = selectedRbsTf != null && rl.tf === selectedRbsTf;
-      const lineAlpha = isSelected ? (rl.followsSpot ? 0.375 : 0.75) : 0.22;
       const txt = formatSrStrike(rl.price, asset);
       const tw = ctx.measureText(txt).width;
       const ax = padL - 4;
       const pillL = Math.max(2, ax - tw - 4);
-      const oldAlpha = ctx.globalAlpha;
-      ctx.globalAlpha = lineAlpha;
       ctx.fillStyle = 'rgba(15,20,25,0.9)';
       ctx.fillRect(pillL, y - 5, ax - pillL + 2, 10);
-      ctx.fillStyle = '#c084fc';
+      ctx.fillStyle = RBS_TF_COLOR[rl.tf];
       ctx.fillText(txt, ax, y);
-      ctx.globalAlpha = oldAlpha;
     }
   }
 
@@ -1484,14 +1496,25 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
           />
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-0.5 text-[10px] text-gray-300">
-        {SR_TIMEFRAMES.map((tf) => (
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-0.5 text-[10px]">
+        {SR_TIMEFRAMES.map((tf) => {
+          const tfHex = RBS_TF_COLOR[tf];
+          const usedInRbs = rbsUsedTfSet.has(tf);
+          return (
           <label
             key={tf}
-            className={`inline-flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 transition ${
-              rbsUsedTfSet.has(tf) ? 'bg-purple-500/25 ring-1 ring-purple-400/60' : ''
-            }`}
-            title={rbsUsedTfSet.has(tf) ? 'Used in current RBS calculation' : undefined}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 transition"
+            style={{
+              position: 'relative',
+              zIndex: RBS_CANVAS_LAYER[tf],
+              ...(usedInRbs
+                ? {
+                    backgroundColor: `color-mix(in srgb, ${tfHex} 28%, transparent)`,
+                    boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${tfHex} 62%, transparent)`,
+                  }
+                : {}),
+            }}
+            title={usedInRbs ? 'Used in current RBS calculation' : undefined}
           >
             <input
               type="checkbox"
@@ -1503,11 +1526,13 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
                   return next;
                 });
               }}
-              className="accent-purple-500 rounded"
+              className="rounded"
+              style={{ accentColor: tfHex }}
             />
-            <span>{tf}</span>
+            <span style={{ color: tfHex }}>{tf}</span>
           </label>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

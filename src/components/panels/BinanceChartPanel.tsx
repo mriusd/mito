@@ -120,6 +120,13 @@ function clampP(p: number) { return Math.min(0.98, Math.max(0.02, p)); }
 const SR_TIMEFRAMES = ['5m', '15m', '1h', '24h'] as const;
 
 type UpDownTfKey = (typeof SR_TIMEFRAMES)[number];
+type RBSTfLine = { tf: UpDownTfKey; price: number; followsSpot: boolean };
+const RBS_TF_LABEL: Record<UpDownTfKey, string> = {
+  '5m': 'RBS5',
+  '15m': 'RBS15',
+  '1h': 'RBS60',
+  '24h': 'RBS24',
+};
 
 /** Treat near-certain market probabilities as saturated (0%/100%) for RBS inversion. */
 const RBS_SATURATION_EPS = 1e-3;
@@ -127,7 +134,7 @@ const RBS_SATURATION_EPS = 1e-3;
 const RBS_MIN_TTE_MS = 30_000;
 
 type RBSComputeResult =
-  | { kind: 'price'; value: number; followsSpot: boolean; usedTimeframes: UpDownTfKey[] }
+  | { kind: 'price'; value: number; followsSpot: boolean; usedTimeframes: UpDownTfKey[]; tfLines: RBSTfLine[] }
   | { kind: 'hold' }
   | { kind: 'clear' };
 
@@ -187,8 +194,8 @@ function computeRBSPriceResult(
 ): RBSComputeResult {
   if (s0 <= 0 || sigma <= 0) return { kind: 'clear' };
 
-  // Strict priority mode: use the first available enabled timeframe only.
-  // 5m -> 15m -> 1h -> 24h
+  const tfLines: RBSTfLine[] = [];
+
   for (const tf of SR_TIMEFRAMES) {
     if (!rbsTfEnabled[tf]) continue;
     const markets = (assetMarkets[tf] || [])
@@ -232,9 +239,20 @@ function computeRBSPriceResult(
     }
     if (!Number.isFinite(impliedSpot) || impliedSpot <= 0) continue;
     const followsSpot = pUp <= RBS_SATURATION_EPS || pUp >= 1 - RBS_SATURATION_EPS;
-    return { kind: 'price', value: impliedSpot, followsSpot, usedTimeframes: [tf] };
+    tfLines.push({ tf, price: impliedSpot, followsSpot });
   }
 
+  // Strict priority mode: selected value is first available timeframe in order 5m -> 15m -> 1h -> 24h.
+  if (tfLines.length > 0) {
+    const selected = tfLines[0];
+    return {
+      kind: 'price',
+      value: selected.price,
+      followsSpot: selected.followsSpot,
+      usedTimeframes: [selected.tf],
+      tfLines,
+    };
+  }
   return { kind: 'clear' };
 }
 
@@ -321,6 +339,8 @@ function drawCandles(
   asset: AssetName,
   rbsPrice: number | null,
   rbsFollowsSpot: boolean,
+  rbsTfLines: RBSTfLine[],
+  selectedRbsTf: UpDownTfKey | null,
 ) {
   ctx.fillStyle = '#0f1419';
   ctx.fillRect(0, 0, w, h);
@@ -359,10 +379,11 @@ function drawCandles(
     lo = Math.min(lo, sr.price);
     hi = Math.max(hi, sr.price);
   }
-  if (rbsPrice != null && Number.isFinite(rbsPrice)) {
-    if (rbsPrice >= candleLo - nearSlack && rbsPrice <= candleHi + nearSlack) {
-      lo = Math.min(lo, rbsPrice);
-      hi = Math.max(hi, rbsPrice);
+  for (const rl of rbsTfLines) {
+    if (!Number.isFinite(rl.price)) continue;
+    if (rl.price >= candleLo - nearSlack && rl.price <= candleHi + nearSlack) {
+      lo = Math.min(lo, rl.price);
+      hi = Math.max(hi, rl.price);
     }
   }
 
@@ -478,14 +499,16 @@ function drawCandles(
     }
   }
 
-  // Reverse BS predicted price (purple full-width line)
-  if (rbsPrice != null) {
-    const y = yPx(rbsPrice);
+  // Reverse BS predicted lines per timeframe.
+  for (const rl of rbsTfLines) {
+    const y = yPx(rl.price);
     if (y >= yTop - 1 && y <= yBot + 1) {
+      const isSelected = selectedRbsTf != null && rl.tf === selectedRbsTf;
+      const lineAlpha = isSelected ? (rl.followsSpot ? 0.375 : 0.75) : 0.22;
       ctx.setLineDash([6, 3]);
       ctx.strokeStyle = '#c084fc';
-      ctx.lineWidth = 1.5;
-      ctx.globalAlpha = rbsFollowsSpot ? 0.375 : 0.75;
+      ctx.lineWidth = isSelected ? 1.7 : 1;
+      ctx.globalAlpha = lineAlpha;
       ctx.beginPath();
       ctx.moveTo(padL, y);
       ctx.lineTo(padL + cw, y);
@@ -493,16 +516,19 @@ function drawCandles(
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
 
-      const tag = 'RBS';
+      const tag = RBS_TF_LABEL[rl.tf];
       ctx.font = 'bold 9px ui-sans-serif, system-ui, sans-serif';
       const tw = ctx.measureText(tag).width;
       const tagX = padL + 4;
+      const oldAlpha = ctx.globalAlpha;
+      ctx.globalAlpha = lineAlpha;
       ctx.fillStyle = 'rgba(15,20,25,0.8)';
       ctx.fillRect(tagX - 3, y - 7, tw + 6, 13);
       ctx.fillStyle = '#c084fc';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(tag, tagX, y);
+      ctx.globalAlpha = oldAlpha;
     }
   }
 
@@ -526,18 +552,23 @@ function drawCandles(
     ctx.fillText(txt, ax, y);
   }
 
-  // RBS predicted price on Y-axis
-  if (rbsPrice != null) {
-    const y = yPx(rbsPrice);
+  // RBS timeframe prices on Y-axis
+  for (const rl of rbsTfLines) {
+    const y = yPx(rl.price);
     if (y >= yTop && y <= yBot) {
-      const txt = formatSrStrike(rbsPrice, asset);
+      const isSelected = selectedRbsTf != null && rl.tf === selectedRbsTf;
+      const lineAlpha = isSelected ? (rl.followsSpot ? 0.375 : 0.75) : 0.22;
+      const txt = formatSrStrike(rl.price, asset);
       const tw = ctx.measureText(txt).width;
       const ax = padL - 4;
       const pillL = Math.max(2, ax - tw - 4);
+      const oldAlpha = ctx.globalAlpha;
+      ctx.globalAlpha = lineAlpha;
       ctx.fillStyle = 'rgba(15,20,25,0.9)';
       ctx.fillRect(pillL, y - 5, ax - pillL + 2, 10);
       ctx.fillStyle = '#c084fc';
       ctx.fillText(txt, ax, y);
+      ctx.globalAlpha = oldAlpha;
     }
   }
 
@@ -710,6 +741,8 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   const rbsPrice: number | null =
     rbsResult.kind === 'price' ? rbsResult.value : rbsResult.kind === 'hold' ? rbsStaleRef.current : null;
   const rbsFollowsSpot = rbsResult.kind === 'price' ? rbsResult.followsSpot : false;
+  const rbsTfLines = rbsResult.kind === 'price' ? rbsResult.tfLines : [];
+  const selectedRbsTf = rbsResult.kind === 'price' ? rbsResult.usedTimeframes[0] ?? null : null;
   const rbsUsedTfSet = useMemo(() => {
     return new Set<UpDownTfKey>(rbsResult.kind === 'price' ? rbsResult.usedTimeframes : []);
   }, [rbsResult]);
@@ -1156,14 +1189,14 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawCandles(ctx, w, h, candles, timeframe, srLines, asset, rbsPrice, rbsFollowsSpot);
+      drawCandles(ctx, w, h, candles, timeframe, srLines, asset, rbsPrice, rbsFollowsSpot, rbsTfLines, selectedRbsTf);
     };
 
     paint();
     const ro = new ResizeObserver(() => paint());
     ro.observe(container);
     return () => ro.disconnect();
-  }, [candles, timeframe, srLines, asset, rbsPrice, rbsFollowsSpot, spotForChart]);
+  }, [candles, timeframe, srLines, asset, rbsPrice, rbsFollowsSpot, rbsTfLines, selectedRbsTf, spotForChart]);
 
   const titleColor = ASSET_COLORS[asset] || 'text-white';
 

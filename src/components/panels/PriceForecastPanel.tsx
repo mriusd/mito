@@ -98,6 +98,52 @@ function parseHitTitle(s: string): { direction: 'up' | 'down'; barrier: number }
   return { direction: isUp ? 'up' : 'down', barrier: num };
 }
 
+/** Parse weekly hit window from event slug, e.g.
+ * what-price-will-bitcoin-hit-march-30-april-5
+ * what-price-will-ethereum-hit-march-24-30
+ */
+function parseWeeklyHitWindowFromSlug(
+  slug: string,
+  fallbackEndMs: number,
+): { startMs: number; endMs: number } | null {
+  if (!slug || !slug.includes('-hit-')) return null;
+  const hitIdx = slug.indexOf('-hit-');
+  if (hitIdx < 0) return null;
+  const tail = slug.slice(hitIdx + 5); // after "-hit-"
+  const parts = tail.split('-').filter(Boolean);
+  if (parts.length < 3) return null;
+
+  const monthToIdx: Record<string, number> = {
+    january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
+    july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
+  };
+  const m0 = monthToIdx[parts[0]];
+  if (m0 == null) return null;
+  const d0 = parseInt(parts[1], 10);
+  if (!Number.isFinite(d0) || d0 <= 0 || d0 > 31) return null;
+
+  let m1 = m0;
+  let d1 = parseInt(parts[2], 10);
+  let dayIndex = 2;
+  if (parts.length >= 4 && monthToIdx[parts[2]] != null) {
+    m1 = monthToIdx[parts[2]];
+    d1 = parseInt(parts[3], 10);
+    dayIndex = 3;
+  }
+  if (!Number.isFinite(d1) || d1 <= 0 || d1 > 31) return null;
+
+  // Optional trailing year token in slug (rare for weekly hit but harmless to support)
+  const explicitYear = parts.length > dayIndex + 1 ? parseInt(parts[dayIndex + 1], 10) : NaN;
+  const endYear = Number.isFinite(explicitYear) ? explicitYear : new Date(fallbackEndMs).getUTCFullYear();
+  let startYear = endYear;
+  if (m1 < m0) startYear = endYear - 1; // week crossing New Year
+
+  const startMs = Date.UTC(startYear, m0, d0, 0, 0, 0, 0);
+  const endMs = Date.UTC(endYear, m1, d1, 23, 59, 59, 999);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return null;
+  return { startMs, endMs };
+}
+
 /* ───────── Step 1: daily expected prices from Above + Between + Hit markets ───────── */
 
 interface DailyAnchor {
@@ -167,6 +213,7 @@ function buildDailyAnchors(
 
   // Group Hit markets by eventSlug
   interface HitSlugData {
+    startMs: number;
     endMs: number;
     barriers: { direction: 'up' | 'down'; barrier: number; pTouch: number }[];
   }
@@ -174,7 +221,9 @@ function buildDailyAnchors(
   for (const m of activeHits) {
     const slug = m.eventSlug || m.endDate;
     const endMs = new Date(m.endDate).getTime();
-    if (!hitBySlug.has(slug)) hitBySlug.set(slug, { endMs, barriers: [] });
+    const parsedWindow = parseWeeklyHitWindowFromSlug(slug, endMs);
+    const startMs = parsedWindow?.startMs ?? Math.max(now, endMs - 7 * DAY_MS);
+    if (!hitBySlug.has(slug)) hitBySlug.set(slug, { startMs, endMs, barriers: [] });
     const entry = hitBySlug.get(slug)!;
     const parsed = parseHitTitle(m.groupItemTitle || '');
     const p = yesMid(m, lookup);
@@ -281,39 +330,42 @@ function buildDailyAnchors(
     const ups = hitData.barriers.filter(b => b.direction === 'up').sort((a, b) => a.barrier - b.barrier);
     const downs = hitData.barriers.filter(b => b.direction === 'down').sort((a, b) => b.barrier - a.barrier);
 
-    // Find an existing anchor within ±1 day of this Hit expiry
-    const nearAnchor = anchors.find(a => Math.abs(a.dayOffset - dayOffset) < 1.0);
+    // Hit markets resolve on touch-anytime during their active window (not just at expiry).
+    // Apply their constraints to every anchor that lands within [startMs, endMs].
+    const coveredAnchors = anchors.filter(a => a.endMs >= hitData.startMs && a.endMs <= hitData.endMs + 1);
 
-    if (nearAnchor) {
-      // Refine the existing anchor's bands using Hit barriers.
+    if (coveredAnchors.length > 0) {
+      // Refine all covered anchors' bands using Hit barriers.
       //
       // If P(touch ↑K) is high, the upper quantile should be at least K.
       // If P(touch ↓K) is high, the lower quantile should be at most K.
       // Also shift expected value based on touch asymmetry.
-      for (const up of ups) {
-        if (up.pTouch > 0.5 && up.barrier > nearAnchor.q90) {
-          nearAnchor.q90 = up.barrier;
+      for (const anchor of coveredAnchors) {
+        for (const up of ups) {
+          if (up.pTouch > 0.5 && up.barrier > anchor.q90) {
+            anchor.q90 = up.barrier;
+          }
+          if (up.pTouch > 0.3 && up.barrier > anchor.q90) {
+            anchor.q90 = anchor.q90 + (up.barrier - anchor.q90) * up.pTouch;
+          }
         }
-        if (up.pTouch > 0.3 && up.barrier > nearAnchor.q90) {
-          nearAnchor.q90 = nearAnchor.q90 + (up.barrier - nearAnchor.q90) * up.pTouch;
+        for (const dn of downs) {
+          if (dn.pTouch > 0.5 && dn.barrier < anchor.q10) {
+            anchor.q10 = dn.barrier;
+          }
+          if (dn.pTouch > 0.3 && dn.barrier < anchor.q10) {
+            anchor.q10 = anchor.q10 - (anchor.q10 - dn.barrier) * dn.pTouch;
+          }
         }
-      }
-      for (const dn of downs) {
-        if (dn.pTouch > 0.5 && dn.barrier < nearAnchor.q10) {
-          nearAnchor.q10 = dn.barrier;
-        }
-        if (dn.pTouch > 0.3 && dn.barrier < nearAnchor.q10) {
-          nearAnchor.q10 = nearAnchor.q10 - (nearAnchor.q10 - dn.barrier) * dn.pTouch;
-        }
-      }
 
-      // Directional bias: shift expected value toward the side with higher touch probability
-      const avgUp = ups.length > 0 ? ups.reduce((s, u) => s + u.pTouch, 0) / ups.length : 0.5;
-      const avgDn = downs.length > 0 ? downs.reduce((s, d) => s + d.pTouch, 0) / downs.length : 0.5;
-      const hitBias = (avgUp - avgDn) * 0.2; // small weight
-      if (Math.abs(hitBias) > 0.001) {
-        const range = nearAnchor.q90 - nearAnchor.q10;
-        nearAnchor.expected += hitBias * range;
+        // Directional bias: shift expected value toward the side with higher touch probability
+        const avgUp = ups.length > 0 ? ups.reduce((s, u) => s + u.pTouch, 0) / ups.length : 0.5;
+        const avgDn = downs.length > 0 ? downs.reduce((s, d) => s + d.pTouch, 0) / downs.length : 0.5;
+        const hitBias = (avgUp - avgDn) * 0.2; // small weight
+        if (Math.abs(hitBias) > 0.001) {
+          const range = anchor.q90 - anchor.q10;
+          anchor.expected += hitBias * range;
+        }
       }
     } else {
       // No Above/Between anchor here — create a Hit-only anchor.

@@ -200,8 +200,8 @@ function marketVolumeUsdc(m: Market, tokenId: string, lookup: Record<string, Mar
  * Final price = weighted average of per-timeframe implied prices.
  * When `volWeightAdjusted`: weight = Polymarket volume (USDC) × (1/√T). Otherwise weight = 1/√T only.
  *
- * If a market probability is saturated (~0% or ~100%), inversion becomes unbounded;
- * in that case we snap that market's implied spot to the current spot (`s0`).
+ * If a market probability is saturated (~0% or ~100%), inversion is ill-defined;
+ * that timeframe is omitted (no RBS line) instead of clamping implied spot to `s0`.
  * If no live markets, returns `clear`.
  */
 function computeRBSPriceResult(
@@ -248,18 +248,13 @@ function computeRBSPriceResult(
     else if (bb != null && Number.isFinite(bb)) pUp = bb;
     else if (ba != null && Number.isFinite(ba)) pUp = ba;
 
-    let impliedSpot: number;
-    if (pUp <= RBS_SATURATION_EPS || pUp >= 1 - RBS_SATURATION_EPS) {
-      // Near-certain outcomes don't pin a unique spot; snap to current spot.
-      impliedSpot = s0;
-    } else {
-      const z = invNormCDF(clampP(pUp));
-      const sqrtT = Math.sqrt(tYears);
-      impliedSpot = strike * Math.exp(z * sigma * sqrtT + (sigma * sigma * tYears) / 2);
-    }
+    if (pUp <= RBS_SATURATION_EPS || pUp >= 1 - RBS_SATURATION_EPS) continue;
+
+    const z = invNormCDF(clampP(pUp));
+    const sqrtT = Math.sqrt(tYears);
+    const impliedSpot = strike * Math.exp(z * sigma * sqrtT + (sigma * sigma * tYears) / 2);
     if (!Number.isFinite(impliedSpot) || impliedSpot <= 0) continue;
-    const followsSpot = pUp <= RBS_SATURATION_EPS || pUp >= 1 - RBS_SATURATION_EPS;
-    tfLines.push({ tf, price: impliedSpot, followsSpot });
+    tfLines.push({ tf, price: impliedSpot, followsSpot: false });
   }
 
   // Strict priority mode: selected value is first available timeframe in order 5m -> 15m -> 1h -> 24h.
@@ -692,6 +687,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     const now = Date.now();
     const lines: SRLine[] = [];
     for (const tf of SR_TIMEFRAMES) {
+      if (!rbsTfEnabled[tf]) continue;
       const markets: Market[] = (assetMarkets[tf] || [])
         .filter((m: Market) => !m.closed && m.endDate && new Date(m.endDate).getTime() > now)
         .sort((a: Market, b: Market) => {
@@ -718,7 +714,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
       lines.push({ price: strike, probUp, label: tf });
     }
     return lines;
-  }, [asset, upOrDownMarkets, marketLookup]);
+  }, [asset, upOrDownMarkets, marketLookup, rbsTfEnabled]);
 
   const rbsStaleRef = useRef<number | null>(null);
 

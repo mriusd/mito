@@ -8,6 +8,7 @@ import { RangeEditDialog } from '../RangeEditDialog';
 import { HelpTooltip } from '../HelpTooltip';
 import type { AssetName, Market } from '../../types';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMath';
 
 function StrikeRangeIndicator({ markets, livePrice }: { markets: Market[]; livePrice: number }) {
   if (livePrice <= 0 || markets.length === 0) return null;
@@ -134,6 +135,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   const signalsOnGrid = useAppStore((s) => s.signalsOnGrid);
   const signals = useAppStore((s) => s.signals);
   const signalMakerMode = useAppStore((s) => s.signalMakerMode);
+  const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
 
   // Build signal lookup: marketId -> { yesDiff, noDiff } (only negative diffs)
   const signalByMarket: Record<string, { yesDiff: string | null; noDiff: string | null }> = {};
@@ -346,6 +348,33 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     return false;
   };
 
+  const deltaBgStyle = (
+    priceStr: string,
+    yesMidProb: number | null,
+    endDate: string,
+    isHit = false,
+  ): React.CSSProperties => {
+    if (yesMidProb == null || livePrice <= 0 || !endDate) return {};
+    const cleaned = priceStr
+      .replace(/\$/g, '').replace(/,/g, '')
+      .replace(/↑/g, '>').replace(/↓/g, '<')
+      .trim();
+    const ps = (cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-'))
+      ? cleaned : '>' + cleaned;
+    const mathProb = isHit
+      ? getHitMarketProbability(ps, livePrice, endDate, adjVol, bsTimeOffsetHours)
+      : getMarketProbability(ps, livePrice, endDate, adjVol, bsTimeOffsetHours);
+    if (mathProb == null) return {};
+    const delta = (yesMidProb - mathProb) * 100;
+    const alpha = Math.min(0.55, Math.abs(delta) * 0.035);
+    if (alpha < 0.02) return {};
+    return {
+      backgroundColor: delta > 0
+        ? `rgba(34, 197, 94, ${alpha.toFixed(3)})`
+        : `rgba(239, 68, 68, ${alpha.toFixed(3)})`,
+    };
+  };
+
   const renderWeeklyHitTable = () => {
     const now = Date.now();
     const dayNames = ['Su','Mo','Tu','We','Th','Fr','Sa'];
@@ -490,7 +519,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
                   const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
                   const yesProb = yesMidProb ?? _hBid ?? 0;
-                  const bgColor = yesProb > 0.5 ? 'bg-green-900/30' : 'bg-red-900/30';
+                  const hitDeltaBg = deltaBgStyle(priceStr, yesMidProb, ev.endDate, true);
                   const isSelected = selectedMarket?.id === market.id;
 
                   const yesPos = positionLookup[yesTokenId];
@@ -506,8 +535,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     <td
                       key={ev.slug}
                       data-market-id={market.id}
-                      className={`market-cell px-0.5 py-1 text-center ${yellowBorder} ${bgColor} whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''}`}
-                      style={{ minWidth: 68 }}
+                      className={`market-cell px-0.5 py-1 text-center ${yellowBorder} whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''}`}
+                      style={{ minWidth: 68, ...hitDeltaBg }}
                       onClick={() => handleCellClick(market)}
                     >
                       {/* Signal diff overlays */}
@@ -677,7 +706,10 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
                   const yesProb = yesMidProb ?? _uBid ?? 0;
                   const isPast = showPast && colIdx === 0;
-                  const _bgColor = isPast ? 'bg-gray-700/30' : (yesProb > 0.5 ? 'bg-green-900/30' : 'bg-red-900/30');
+                  const ptb = market.priceToBeat ?? _bidAskLookup[yesTokenId]?.priceToBeat;
+                  const udDeltaBg = (!isPast && ptb != null)
+                    ? deltaBgStyle('>' + ptb, yesMidProb, market.endDate)
+                    : {};
                   const isSelected = selectedMarket?.id === market.id;
 
                   const yesPos = positionLookup[yesTokenId];
@@ -696,8 +728,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     <td
                       key={colIdx}
                       data-market-id={market.id}
-                      className={`market-cell px-0.5 py-1 text-center border-b border-gray-700/50 ${isPast ? 'opacity-50' : ''} whitespace-nowrap border border-gray-400 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''} ${_bgColor}`}
-                      style={{ minWidth: 60 }}
+                      className={`market-cell px-0.5 py-1 text-center border-b border-gray-700/50 ${isPast ? 'opacity-50 bg-gray-700/30' : ''} whitespace-nowrap border border-gray-400 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''}`}
+                      style={{ minWidth: 60, ...udDeltaBg }}
                       onClick={() => handleCellClick(market)}
                     >
                       {/* YES mid \ P(NO)¢ = 100 − YES mid */}
@@ -797,7 +829,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                 const dt = new Date(d.endDate);
                 const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
                 const isEnded = d.endDate && new Date(d.endDate).getTime() < Date.now();
-                const isDateHighlighted = selectedEndDate && d.endDate === selectedEndDate;
+                const isDateHighlighted = false;
                 return (
                   <th
                     key={d.slug}
@@ -877,9 +909,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
                   const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
 
-                  // Background: green if YES > 50%, red otherwise, gray if closed
-                  const yesProb = yesMidProb ?? _aBid ?? 0;
-                  const bgColor = isClosed ? 'bg-gray-700/30' : (yesProb > 0.5 ? 'bg-green-900/30' : 'bg-red-900/30');
+                  const gridDeltaBg = !isClosed ? deltaBgStyle(priceStr, yesMidProb, d.endDate) : {};
+                  const bgColor = isClosed ? 'bg-gray-700/30' : '';
 
                   // Price condition border (yellow for price-on when condition is met)
                   const conditionMet = isPriceConditionTrue(priceStr, livePrice);
@@ -906,14 +937,17 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   };
 
                   const isSelected = selectedMarket?.id === market.id;
-                  const isColHighlighted = selectedEndDate && d.endDate === selectedEndDate;
+                  const isColHighlighted = false;
 
                   return (
                     <td
                       key={d.slug}
                       data-market-id={market.id}
                       className={`market-cell px-0.5 py-0.5 text-center border-b border-gray-700/50 ${bgColor} ${isClosed ? 'opacity-50' : ''} whitespace-nowrap ${borderClass} relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''} ${isColHighlighted && !isSelected ? 'date-column-highlighted' : ''}`}
-                      style={isWeekend && !isSelected && !isColHighlighted ? { boxShadow: 'inset 0 0 0 100px rgba(147, 51, 234, 0.08)' } : undefined}
+                      style={{
+                        ...(isWeekend && !isSelected && !isColHighlighted ? { boxShadow: 'inset 0 0 0 100px rgba(147, 51, 234, 0.08)' } : {}),
+                        ...gridDeltaBg,
+                      }}
                       onClick={() => handleCellClick(market)}
                     >
                       {/* Signal diff overlays (top corners) */}

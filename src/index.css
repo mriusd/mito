@@ -269,7 +269,6 @@ input[type="range"].vol-slider::-moz-range-thumb {
   z-index: 10;
   position: relative;
   border-color: #3b82f6;
-  background-color: rgba(59, 130, 246, 0.2) !important;
 }
 .market-cell.selected::after {
   content: '';
@@ -463,7 +462,6 @@ input[type="range"].vol-slider::-moz-range-thumb {
   z-index: 10;
   position: relative;
   border-color: #3b82f6;
-  background-color: rgba(59, 130, 246, 0.2);
 }
 .market-cell.selected::after {
   content: '';

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Settings } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import type { AssetName, Market } from '../../types';
@@ -571,6 +572,7 @@ interface BinanceChartPanelProps {
 }
 
 export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelProps) {
+  const portalRoot = typeof document !== 'undefined' ? document.body : null;
   const [asset, setAsset] = useState<AssetName>(() => {
     const saved = localStorage.getItem(`polybot-binance-chart-asset-${panelId}`);
     if (saved && ALL_ASSETS.includes(saved as AssetName)) return saved as AssetName;
@@ -599,6 +601,17 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     const raw = localStorage.getItem(`polybot-binance-rbs-vol-weight-${panelId}`);
     return raw !== 'false';
   });
+  // Pulse "start when deviation >= threshold" (percentage, e.g. 0.05 means 0.05%).
+  const [rbsPulseThresholdPct, setRbsPulseThresholdPct] = useState(() => {
+    const raw = localStorage.getItem(`polybot-binance-rbs-pulse-threshold-${panelId}`);
+    const v = raw == null ? 0.05 : Number(raw);
+    if (!Number.isFinite(v)) return 0.05;
+    // Keep sane bounds: 0%..5%.
+    return Math.max(0, Math.min(5, v));
+  });
+  const [rbsSettingsMenuPos, setRbsSettingsMenuPos] = useState<{ left: number; top: number } | null>(null);
+  const rbsSettingsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const rbsSettingsMenuRef = useRef<HTMLDivElement | null>(null);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -708,11 +721,11 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   const pulseOverlayRef = useRef<HTMLDivElement>(null);
   const pulseAnimRef = useRef<Animation | null>(null);
   const pulseActiveRef = useRef(false);
+  const lastPulseThresholdPctRef = useRef<number>(rbsPulseThresholdPct);
 
   // Pulse when RBS deviates from the displayed spot in the header.
   // Add hysteresis to prevent rapid start/stop "jitter" around the threshold.
-  const RBS_PULSE_THRESHOLD_REL = 0.0005; // 0.05% start
-  const RBS_PULSE_STOP_THRESHOLD_REL = 0.00035; // 0.035% stop
+  const RBS_PULSE_HYSTERESIS_STOP_RATIO = 0.7; // stop = start * 0.7 (keeps 0.05% -> 0.035%)
   const RBS_PULSE_SCALE_REL = 0.0015; // deviation above threshold -> max strength
 
   useEffect(() => {
@@ -721,6 +734,8 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
 
     const rp = rbsPrice;
     const sp = spotForChart;
+    const pulseThresholdRel = rbsPulseThresholdPct / 100;
+    const pulseStopThresholdRel = pulseThresholdRel * RBS_PULSE_HYSTERESIS_STOP_RATIO;
 
     if (rp == null || !Number.isFinite(rp) || sp <= 0 || !Number.isFinite(sp)) {
       pulseAnimRef.current?.cancel();
@@ -731,8 +746,8 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     }
 
     const devRel = Math.abs((rp - sp) / sp);
-    const shouldStart = devRel >= RBS_PULSE_THRESHOLD_REL;
-    const shouldStop = devRel < RBS_PULSE_STOP_THRESHOLD_REL;
+    const shouldStart = devRel >= pulseThresholdRel;
+    const shouldStop = devRel < pulseStopThresholdRel;
 
     if (pulseActiveRef.current && shouldStop) {
       pulseAnimRef.current?.cancel();
@@ -746,7 +761,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
 
     const baseStrength = Math.max(
       0,
-      Math.min(1, (devRel - RBS_PULSE_THRESHOLD_REL) / RBS_PULSE_SCALE_REL),
+      Math.min(1, (devRel - pulseThresholdRel) / RBS_PULSE_SCALE_REL),
     );
     const strength = Math.max(0.15, baseStrength);
     const color = rp >= sp ? 'rgba(16,185,129,' : 'rgba(239,68,68,';
@@ -755,7 +770,10 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     overlay.style.background = `${color}1)`;
     overlay.style.boxShadow = `inset 0 0 ${Math.round(10 * strength)}px ${color}${(0.35 + strength * 0.35).toFixed(2)})`;
 
-    if (!pulseActiveRef.current) {
+    const thresholdChanged =
+      Math.abs(lastPulseThresholdPctRef.current - rbsPulseThresholdPct) > 1e-9;
+
+    if (!pulseActiveRef.current || thresholdChanged) {
       pulseActiveRef.current = true;
       pulseAnimRef.current?.cancel();
       pulseAnimRef.current = overlay.animate(
@@ -767,7 +785,64 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
         { duration: 1400, iterations: Infinity, easing: 'ease-in-out' },
       );
     }
-  }, [rbsPrice, spotForChart]);
+
+    lastPulseThresholdPctRef.current = rbsPulseThresholdPct;
+  }, [rbsPrice, spotForChart, rbsPulseThresholdPct]);
+
+  const rbsArrowSignal = useMemo<{ dir: 'up' | 'down'; count: 1 | 2 | 3 } | null>(() => {
+    const rp = rbsPrice;
+    const sp = spotForChart;
+    const threshRel = rbsPulseThresholdPct / 100;
+    if (rp == null || !Number.isFinite(rp) || sp <= 0 || !Number.isFinite(sp) || threshRel <= 0) return null;
+    const dev = (rp - sp) / sp;
+    const absDev = Math.abs(dev);
+    if (absDev < threshRel) return null;
+    const dir = dev > 0 ? 'up' as const : 'down' as const;
+    const count: 1 | 2 | 3 = absDev >= threshRel * 5 ? 3 : absDev >= threshRel * 2.5 ? 2 : 1;
+    return { dir, count };
+  }, [rbsPrice, spotForChart, rbsPulseThresholdPct]);
+
+  const arrowRefs = useRef<(HTMLDivElement | null)[]>([null, null, null]);
+  const arrowAnimsRef = useRef<(Animation | null)[]>([null, null, null]);
+  const prevArrowKeyRef = useRef('');
+
+  useEffect(() => {
+    const key = rbsArrowSignal ? `${rbsArrowSignal.dir}-${rbsArrowSignal.count}` : '';
+    if (key === prevArrowKeyRef.current) return;
+    prevArrowKeyRef.current = key;
+
+    for (let i = 0; i < 3; i++) {
+      arrowAnimsRef.current[i]?.cancel();
+      arrowAnimsRef.current[i] = null;
+      const el = arrowRefs.current[i];
+      if (el) el.style.opacity = '0';
+    }
+
+    if (!rbsArrowSignal) return;
+    const { count } = rbsArrowSignal;
+    const cycleDuration = 1200;
+    const stagger = cycleDuration / 3;
+
+    for (let i = 0; i < count; i++) {
+      const slotIdx = 3 - count + i;
+      const el = arrowRefs.current[slotIdx];
+      if (!el) continue;
+      arrowAnimsRef.current[slotIdx] = el.animate(
+        [
+          { opacity: 0, offset: 0 },
+          { opacity: 0.85, offset: 0.4 },
+          { opacity: 0.85, offset: 0.6 },
+          { opacity: 0, offset: 1 },
+        ],
+        {
+          duration: cycleDuration,
+          delay: i * stagger,
+          iterations: Infinity,
+          easing: 'ease-in-out',
+        },
+      );
+    }
+  }, [rbsArrowSignal]);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const chartHeaderRef = useRef<HTMLDivElement>(null);
@@ -1088,13 +1163,44 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
         if (el && !el.contains(t)) setAssetDropdownOpen(false);
       }
       if (rbsSettingsOpen) {
-        const el = wrapRef.current?.querySelector('.binance-rbs-settings-root');
-        if (el && !el.contains(t)) setRbsSettingsOpen(false);
+        const btn = rbsSettingsButtonRef.current;
+        const menu = rbsSettingsMenuRef.current;
+        const clickedInside = (btn && btn.contains(t)) || (menu && menu.contains(t));
+        if (!clickedInside) setRbsSettingsOpen(false);
       }
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [assetDropdownOpen, rbsSettingsOpen]);
+
+  useEffect(() => {
+    if (!rbsSettingsOpen) {
+      setRbsSettingsMenuPos(null);
+      return;
+    }
+
+    const rafId = requestAnimationFrame(() => {
+      const btn = rbsSettingsButtonRef.current;
+      const menu = rbsSettingsMenuRef.current;
+      if (!btn || !menu) return;
+
+      const btnRect = btn.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      const margin = 8;
+
+      let left = btnRect.right - menuRect.width;
+      left = Math.max(margin, Math.min(left, window.innerWidth - menuRect.width - margin));
+
+      let top = btnRect.bottom + 6;
+      if (top + menuRect.height > window.innerHeight - margin) {
+        top = btnRect.top - menuRect.height - 6;
+        if (top < margin) top = margin;
+      }
+
+      setRbsSettingsMenuPos({ left, top });
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [rbsSettingsOpen]);
 
   useEffect(() => {
     const container = chartRef.current;
@@ -1242,6 +1348,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
           </select>
           <div className="relative binance-rbs-settings-root">
             <button
+              ref={rbsSettingsButtonRef}
               type="button"
               aria-label="RBS market settings"
               aria-expanded={rbsSettingsOpen}
@@ -1254,8 +1361,17 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
             >
               <Settings className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
             </button>
-            {rbsSettingsOpen && (
-              <div className="absolute right-0 top-full z-50 mt-1 min-w-[9.5rem] rounded border border-gray-600 bg-gray-800 py-1.5 px-2 shadow-lg">
+            {rbsSettingsOpen && portalRoot && createPortal(
+              <div
+                ref={rbsSettingsMenuRef}
+                className="fixed z-[9999] min-w-[9.5rem] rounded border border-gray-600 bg-gray-800 py-1.5 px-2 shadow-lg"
+                style={
+                  rbsSettingsMenuPos
+                    ? { left: rbsSettingsMenuPos.left, top: rbsSettingsMenuPos.top }
+                    : { visibility: 'hidden' }
+                }
+                onPointerDown={(e) => e.stopPropagation()}
+              >
                 <div className="mb-1 border-b border-gray-700 pb-1">
                   <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">RBS markets</div>
                   <div className="mt-0.5 text-[8px] font-normal normal-case tracking-normal text-gray-500 leading-tight">
@@ -1268,8 +1384,6 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
                   <label
                     key={tf}
                     className="flex cursor-pointer items-center gap-2 py-0.5 text-[10px] text-gray-200 hover:text-white"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => e.stopPropagation()}
                   >
                     <input
                       type="checkbox"
@@ -1289,8 +1403,6 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
                 <div className="mt-1 border-t border-gray-700 pt-1">
                   <label
                     className="flex cursor-pointer items-center gap-2 py-0.5 text-[10px] text-gray-200 hover:text-white"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => e.stopPropagation()}
                   >
                     <input
                       type="checkbox"
@@ -1307,7 +1419,39 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
                     <span>Vol weight adjusted</span>
                   </label>
                 </div>
-              </div>
+                <div className="mt-1 border-t border-gray-700 pt-1">
+                  <label
+                    className="flex items-center justify-between gap-2 py-0.5 text-[10px] text-gray-200 hover:text-white"
+                  >
+                    <span>Pulse threshold</span>
+                    <input
+                      type="number"
+                      step={0.01}
+                      min={0}
+                      max={5}
+                      value={Number.isFinite(rbsPulseThresholdPct) ? rbsPulseThresholdPct : 0.05}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw.trim() === '') return;
+                        const next = Number(raw);
+                        if (!Number.isFinite(next)) return;
+                        const clamped = Math.max(0, Math.min(5, next));
+                        setRbsPulseThresholdPct(clamped);
+                        localStorage.setItem(
+                          `polybot-binance-rbs-pulse-threshold-${panelId}`,
+                          String(clamped),
+                        );
+                      }}
+                      className="w-[4.3rem] rounded border border-gray-700 bg-gray-900/70 px-1 py-0.5 text-right text-[10px] text-gray-100 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40 [field-sizing:content]"
+                      aria-label="Pulse threshold percent"
+                    />
+                  </label>
+                  <div className="mt-0.5 text-[8px] text-gray-500 leading-tight">
+                    Start when |RBS - spot| / spot &gt;= threshold
+                  </div>
+                </div>
+              </div>,
+              portalRoot,
             )}
           </div>
         </div>
@@ -1325,6 +1469,49 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
             >
               {candleRangePct != null ? `Range ${candleRangePct.toFixed(2)}%` : '—'}
             </span>
+            {rbsArrowSignal && (
+              <div
+                className="pointer-events-none absolute inset-x-0 flex flex-col items-center"
+                style={rbsArrowSignal.dir === 'up'
+                  ? { top: 4, flexDirection: 'column-reverse' }
+                  : { bottom: 4, flexDirection: 'column' }
+                }
+              >
+                {[0, 1, 2].map((i) => {
+                  const visible = i >= 3 - rbsArrowSignal.count;
+                  const color = rbsArrowSignal.dir === 'up' ? '#10b981' : '#ef4444';
+                  return (
+                    <div
+                      key={i}
+                      ref={(el) => { arrowRefs.current[i] = el; }}
+                      style={{
+                        opacity: 0,
+                        display: visible ? 'block' : 'none',
+                        filter: `drop-shadow(0 0 3px ${color})`,
+                        marginTop: rbsArrowSignal.dir === 'down' && i > 0 ? -4 : 0,
+                        marginBottom: rbsArrowSignal.dir === 'up' && i > 0 ? -4 : 0,
+                      }}
+                    >
+                      <svg
+                        width="20"
+                        height="14"
+                        viewBox="0 0 24 16"
+                        fill="none"
+                        stroke={color}
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        {rbsArrowSignal.dir === 'up'
+                          ? <polyline points="4,13 12,4 20,13" />
+                          : <polyline points="4,3 12,12 20,3" />
+                        }
+                      </svg>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
         <div

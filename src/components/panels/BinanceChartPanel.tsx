@@ -672,6 +672,10 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
 
   useEffect(() => {
     rbsStaleRef.current = null;
+    pulseAnimRef.current?.cancel();
+    pulseAnimRef.current = null;
+    pulseActiveRef.current = false;
+    if (pulseOverlayRef.current) pulseOverlayRef.current.style.opacity = '0';
   }, [asset]);
 
   const rbsResult = useMemo<RBSComputeResult>(() => {
@@ -700,6 +704,70 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
 
   const rbsPrice: number | null =
     rbsResult.kind === 'price' ? rbsResult.value : rbsResult.kind === 'hold' ? rbsStaleRef.current : null;
+
+  const pulseOverlayRef = useRef<HTMLDivElement>(null);
+  const pulseAnimRef = useRef<Animation | null>(null);
+  const pulseActiveRef = useRef(false);
+
+  // Pulse when RBS deviates from the displayed spot in the header.
+  // Add hysteresis to prevent rapid start/stop "jitter" around the threshold.
+  const RBS_PULSE_THRESHOLD_REL = 0.0005; // 0.05% start
+  const RBS_PULSE_STOP_THRESHOLD_REL = 0.00035; // 0.035% stop
+  const RBS_PULSE_SCALE_REL = 0.0015; // deviation above threshold -> max strength
+
+  useEffect(() => {
+    const overlay = pulseOverlayRef.current;
+    if (!overlay) return;
+
+    const rp = rbsPrice;
+    const sp = spotForChart;
+
+    if (rp == null || !Number.isFinite(rp) || sp <= 0 || !Number.isFinite(sp)) {
+      pulseAnimRef.current?.cancel();
+      pulseAnimRef.current = null;
+      pulseActiveRef.current = false;
+      overlay.style.opacity = '0';
+      return;
+    }
+
+    const devRel = Math.abs((rp - sp) / sp);
+    const shouldStart = devRel >= RBS_PULSE_THRESHOLD_REL;
+    const shouldStop = devRel < RBS_PULSE_STOP_THRESHOLD_REL;
+
+    if (pulseActiveRef.current && shouldStop) {
+      pulseAnimRef.current?.cancel();
+      pulseAnimRef.current = null;
+      pulseActiveRef.current = false;
+      overlay.style.opacity = '0';
+      return;
+    }
+
+    if (!shouldStart && !pulseActiveRef.current) return;
+
+    const baseStrength = Math.max(
+      0,
+      Math.min(1, (devRel - RBS_PULSE_THRESHOLD_REL) / RBS_PULSE_SCALE_REL),
+    );
+    const strength = Math.max(0.15, baseStrength);
+    const color = rp >= sp ? 'rgba(16,185,129,' : 'rgba(239,68,68,';
+    const peakAlpha = 0.02 + strength * 0.06;
+
+    overlay.style.background = `${color}1)`;
+    overlay.style.boxShadow = `inset 0 0 ${Math.round(10 * strength)}px ${color}${(0.35 + strength * 0.35).toFixed(2)})`;
+
+    if (!pulseActiveRef.current) {
+      pulseActiveRef.current = true;
+      pulseAnimRef.current?.cancel();
+      pulseAnimRef.current = overlay.animate(
+        [
+          { opacity: 0 },
+          { opacity: peakAlpha },
+          { opacity: 0 },
+        ],
+        { duration: 1400, iterations: Infinity, easing: 'ease-in-out' },
+      );
+    }
+  }, [rbsPrice, spotForChart]);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const chartHeaderRef = useRef<HTMLDivElement>(null);
@@ -1053,7 +1121,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     const ro = new ResizeObserver(() => paint());
     ro.observe(container);
     return () => ro.disconnect();
-  }, [candles, timeframe, srLines, asset, rbsPrice]);
+  }, [candles, timeframe, srLines, asset, rbsPrice, spotForChart]);
 
   const titleColor = ASSET_COLORS[asset] || 'text-white';
 
@@ -1071,14 +1139,6 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
             {asset}:{' '}
             <span className="font-bold">
               {spotForChart > 0 ? formatPrice(spotForChart, asset) : '--'}
-            </span>
-            <span
-              className={`ml-1 rounded px-0.5 text-[7px] font-bold leading-tight ${
-                priceSource === 'chainlink' ? 'bg-blue-700 text-white' : 'bg-yellow-500/90 text-black'
-              }`}
-              title={priceSource === 'chainlink' ? 'Spot from backend Chainlink feed' : 'Binance spot'}
-            >
-              {priceSource === 'chainlink' ? 'CL' : 'BN'}
             </span>
             <svg className="w-3 h-3 ml-0.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <polyline points="6 9 12 15 18 9" />
@@ -1105,7 +1165,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
         </h3>
         <div
           ref={chartControlsRef}
-          className={`flex items-center gap-1.5 no-drag cursor-default ${chartHeaderStackControls ? 'w-full shrink-0 basis-full justify-end flex-wrap' : 'shrink-0'}`}
+          className={`flex items-center gap-1.5 no-drag cursor-default ${chartHeaderStackControls ? 'w-full shrink-0 basis-full justify-start flex-wrap' : 'shrink-0'}`}
           onPointerDown={(e) => e.stopPropagation()}
         >
           <div
@@ -1286,6 +1346,11 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
             className="block h-full w-full"
             role="img"
             aria-label={`${asset} candlestick chart (${priceSource === 'chainlink' ? 'Chainlink via polycandles' : 'Binance spot'})`}
+          />
+          <div
+            ref={pulseOverlayRef}
+            className="absolute inset-0 pointer-events-none"
+            style={{ opacity: 0 }}
           />
         </div>
       </div>

@@ -337,8 +337,6 @@ function drawCandles(
   interval: KlineInterval,
   srLines: SRLine[],
   asset: AssetName,
-  rbsPrice: number | null,
-  rbsFollowsSpot: boolean,
   rbsTfLines: RBSTfLine[],
   selectedRbsTf: UpDownTfKey | null,
 ) {
@@ -1189,14 +1187,14 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawCandles(ctx, w, h, candles, timeframe, srLines, asset, rbsPrice, rbsFollowsSpot, rbsTfLines, selectedRbsTf);
+      drawCandles(ctx, w, h, candles, timeframe, srLines, asset, rbsTfLines, selectedRbsTf);
     };
 
     paint();
     const ro = new ResizeObserver(() => paint());
     ro.observe(container);
     return () => ro.disconnect();
-  }, [candles, timeframe, srLines, asset, rbsPrice, rbsFollowsSpot, rbsTfLines, selectedRbsTf, spotForChart]);
+  }, [candles, timeframe, srLines, asset, rbsTfLines, selectedRbsTf, spotForChart]);
 
   const titleColor = ASSET_COLORS[asset] || 'text-white';
 

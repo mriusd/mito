@@ -1304,34 +1304,14 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
                 onPointerDown={(e) => e.stopPropagation()}
               >
                 <div className="mb-1 border-b border-gray-700 pb-1">
-                  <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">RBS markets</div>
+                  <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">RBS settings</div>
                   <div className="mt-0.5 text-[8px] font-normal normal-case tracking-normal text-gray-500 leading-tight">
                     {rbsVolWeightAdjusted
                       ? 'Blend weights: Polymarket vol × 1/√T'
                       : 'Blend weights: 1/√T (market vol ignored)'}
                   </div>
                 </div>
-                {SR_TIMEFRAMES.map((tf) => (
-                  <label
-                    key={tf}
-                    className="flex cursor-pointer items-center gap-2 py-0.5 text-[10px] text-gray-200 hover:text-white"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={rbsTfEnabled[tf]}
-                      onChange={() => {
-                        setRbsTfEnabled((prev) => {
-                          const next = { ...prev, [tf]: !prev[tf] };
-                          localStorage.setItem(`polybot-binance-rbs-tf-${panelId}`, JSON.stringify(next));
-                          return next;
-                        });
-                      }}
-                      className="accent-purple-500 rounded"
-                    />
-                    <span>{tf} Market</span>
-                  </label>
-                ))}
-                <div className="mt-1 border-t border-gray-700 pt-1">
+                <div className="mt-1">
                   <label
                     className="flex cursor-pointer items-center gap-2 py-0.5 text-[10px] text-gray-200 hover:text-white"
                   >
@@ -1462,6 +1442,25 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
             aria-label={`${asset} candlestick chart (${priceSource === 'chainlink' ? 'Chainlink via polycandles' : 'Binance spot'})`}
           />
         </div>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-0.5 text-[10px] text-gray-300">
+        {SR_TIMEFRAMES.map((tf) => (
+          <label key={tf} className="inline-flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={rbsTfEnabled[tf]}
+              onChange={() => {
+                setRbsTfEnabled((prev) => {
+                  const next = { ...prev, [tf]: !prev[tf] };
+                  localStorage.setItem(`polybot-binance-rbs-tf-${panelId}`, JSON.stringify(next));
+                  return next;
+                });
+              }}
+              className="accent-purple-500 rounded"
+            />
+            <span>{tf}</span>
+          </label>
+        ))}
       </div>
     </div>
   );

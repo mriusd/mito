@@ -195,7 +195,7 @@ export function DraggableCanvas() {
     if (!el || !viewportNarrow || containerWidth === 0) return;
 
     const cancelSel =
-      '.no-drag,input,select,textarea,button,label,option,.cursor-help,[data-no-drag="true"]';
+      '.no-drag,.no-drag *,input,select,textarea,button,label,option,.cursor-help,[data-no-drag="true"],[data-no-drag="true"] *';
 
     const onTouchEnd = (e: TouchEvent) => {
       const target = e.target as HTMLElement;
@@ -235,12 +235,24 @@ export function DraggableCanvas() {
   }, []);
 
   useEffect(() => {
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
+    const el = containerRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const rect = el.getBoundingClientRect();
       const availableH = window.innerHeight - rect.top;
       setContainerWidth(rect.width);
-      setRowHeight(availableH / TOTAL_ROWS);
-    }
+      setRowHeight(Math.max(1, availableH / TOTAL_ROWS));
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
   }, []);
 
   // Close layout menu on click outside
@@ -473,7 +485,7 @@ export function DraggableCanvas() {
         isDraggable={layoutInteractEnabled}
         isResizable={true}
         draggableHandle=".panel-header"
-        draggableCancel=".no-drag,input,select,textarea,button,label,option,.cursor-help,[data-no-drag='true']"
+        draggableCancel=".no-drag,.no-drag *,input,select,textarea,button,label,option,.cursor-help,[data-no-drag='true'],[data-no-drag='true'] *"
         compactType="vertical"
         margin={[0, 0]}
         containerPadding={[0, 0]}

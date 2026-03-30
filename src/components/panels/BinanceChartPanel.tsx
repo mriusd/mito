@@ -121,10 +121,15 @@ const SR_TIMEFRAMES = ['5m', '15m', '1h', '24h'] as const;
 
 type UpDownTfKey = (typeof SR_TIMEFRAMES)[number];
 
-/** Skip Polymarket windows whose expiry is within this many ms (noisy feed); hold last RBS if all enabled windows are in this regime. */
-const RBS_MIN_TIME_TO_EXPIRY_MS = 30_000;
+/** Treat near-certain market probabilities as saturated (0%/100%) for RBS inversion. */
+const RBS_SATURATION_EPS = 1e-3;
+/** For RBS, skip markets that are too close to expiry (noisy final seconds). */
+const RBS_MIN_TTE_MS = 30_000;
 
-type RBSComputeResult = { kind: 'price'; value: number } | { kind: 'hold' } | { kind: 'clear' };
+type RBSComputeResult =
+  | { kind: 'price'; value: number; followsSpot: boolean; usedTimeframes: UpDownTfKey[] }
+  | { kind: 'hold' }
+  | { kind: 'clear' };
 
 const DEFAULT_RBS_TF_ENABLED: Record<UpDownTfKey, boolean> = {
   '5m': true,
@@ -168,9 +173,9 @@ function marketVolumeUsdc(m: Market, tokenId: string, lookup: Record<string, Mar
  * Final price = weighted average of per-timeframe implied prices.
  * When `volWeightAdjusted`: weight = Polymarket volume (USDC) × (1/√T). Otherwise weight = 1/√T only.
  *
- * Markets with expiry within `minTteMs` are ignored. If at least one enabled timeframe has a not-yet-expired
- * market but none pass the min TTE filter, returns `hold` (caller keeps last drawn value). If no live markets,
- * returns `clear`.
+ * If a market probability is saturated (~0% or ~100%), inversion becomes unbounded;
+ * in that case we snap that market's implied spot to the current spot (`s0`).
+ * If no live markets, returns `clear`.
  */
 function computeRBSPriceResult(
   s0: number,
@@ -179,29 +184,30 @@ function computeRBSPriceResult(
   marketLookup: Record<string, Market>,
   now: number,
   rbsTfEnabled: Record<UpDownTfKey, boolean>,
-  minTteMs: number,
   volWeightAdjusted: boolean,
 ): RBSComputeResult {
   if (s0 <= 0 || sigma <= 0) return { kind: 'clear' };
 
-  const implied: { price: number; weight: number }[] = [];
-  let anyAlive = false;
-
+  // Strict priority mode: use the first available enabled timeframe only.
+  // 5m -> 15m -> 1h -> 24h
   for (const tf of SR_TIMEFRAMES) {
     if (!rbsTfEnabled[tf]) continue;
     const markets = (assetMarkets[tf] || [])
-      .filter((m: Market) => !m.closed && m.endDate && new Date(m.endDate).getTime() > now)
+      .filter((m: Market) => !m.closed && m.endDate)
       .sort((a: Market, b: Market) => {
         const ta = a.endDate ? new Date(a.endDate).getTime() : Infinity;
         const tb = b.endDate ? new Date(b.endDate).getTime() : Infinity;
         return ta - tb;
       });
-    const m = markets[0];
+    // Shortest available market that still has >=30s to expiry.
+    const m = markets.find((x: Market) => {
+      if (!x.endDate) return false;
+      const tte = new Date(x.endDate).getTime() - now;
+      return tte >= RBS_MIN_TTE_MS;
+    });
     if (!m?.endDate) continue;
     const endMs = new Date(m.endDate).getTime();
     if (endMs <= now) continue;
-    anyAlive = true;
-    if (endMs <= now + minTteMs) continue;
 
     const tYears = (endMs - now) / YEAR_MS;
     if (tYears <= 1e-9) continue;
@@ -216,28 +222,20 @@ function computeRBSPriceResult(
     else if (bb != null && Number.isFinite(bb)) pUp = bb;
     else if (ba != null && Number.isFinite(ba)) pUp = ba;
 
-    const z = invNormCDF(clampP(pUp));
-    const sqrtT = Math.sqrt(tYears);
-    const impliedSpot = strike * Math.exp(z * sigma * sqrtT + (sigma * sigma * tYears) / 2);
-    if (!Number.isFinite(impliedSpot) || impliedSpot <= 0) continue;
-    const tWeight = 1 / sqrtT;
-    const volW = Math.max(marketVolumeUsdc(m, tokenId, marketLookup), 1);
-    const weight = volWeightAdjusted ? volW * tWeight : tWeight;
-    implied.push({ price: impliedSpot, weight });
-  }
-
-  if (implied.length > 0) {
-    let wSum = 0;
-    let pSum = 0;
-    for (const { price, weight } of implied) {
-      pSum += price * weight;
-      wSum += weight;
+    let impliedSpot: number;
+    if (pUp <= RBS_SATURATION_EPS || pUp >= 1 - RBS_SATURATION_EPS) {
+      // Near-certain outcomes don't pin a unique spot; snap to current spot.
+      impliedSpot = s0;
+    } else {
+      const z = invNormCDF(clampP(pUp));
+      const sqrtT = Math.sqrt(tYears);
+      impliedSpot = strike * Math.exp(z * sigma * sqrtT + (sigma * sigma * tYears) / 2);
     }
-    const result = pSum / wSum;
-    return Number.isFinite(result) ? { kind: 'price', value: result } : { kind: 'clear' };
+    if (!Number.isFinite(impliedSpot) || impliedSpot <= 0) continue;
+    const followsSpot = pUp <= RBS_SATURATION_EPS || pUp >= 1 - RBS_SATURATION_EPS;
+    return { kind: 'price', value: impliedSpot, followsSpot, usedTimeframes: [tf] };
   }
 
-  if (anyAlive) return { kind: 'hold' };
   return { kind: 'clear' };
 }
 
@@ -323,6 +321,7 @@ function drawCandles(
   srLines: SRLine[],
   asset: AssetName,
   rbsPrice: number | null,
+  rbsFollowsSpot: boolean,
 ) {
   ctx.fillStyle = '#0f1419';
   ctx.fillRect(0, 0, w, h);
@@ -487,7 +486,7 @@ function drawCandles(
       ctx.setLineDash([6, 3]);
       ctx.strokeStyle = '#c084fc';
       ctx.lineWidth = 1.5;
-      ctx.globalAlpha = 0.75;
+      ctx.globalAlpha = rbsFollowsSpot ? 0.375 : 0.75;
       ctx.beginPath();
       ctx.moveTo(padL, y);
       ctx.lineTo(padL + cw, y);
@@ -698,7 +697,6 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
       marketLookup,
       Date.now(),
       rbsTfEnabled,
-      RBS_MIN_TIME_TO_EXPIRY_MS,
       rbsVolWeightAdjusted,
     );
   }, [asset, spotForChart, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup, rbsTfEnabled, rbsVolWeightAdjusted]);
@@ -713,6 +711,10 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
 
   const rbsPrice: number | null =
     rbsResult.kind === 'price' ? rbsResult.value : rbsResult.kind === 'hold' ? rbsStaleRef.current : null;
+  const rbsFollowsSpot = rbsResult.kind === 'price' ? rbsResult.followsSpot : false;
+  const rbsUsedTfSet = useMemo(() => {
+    return new Set<UpDownTfKey>(rbsResult.kind === 'price' ? rbsResult.usedTimeframes : []);
+  }, [rbsResult]);
 
   const rbsArrowSignal = useMemo<{ dir: 'up' | 'down'; count: 1 | 2 | 3 | 4 | 5 } | null>(() => {
     const rp = rbsPrice;
@@ -787,6 +789,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   timeframeRef.current = timeframe;
   const priceSourceRef = useRef(priceSource);
   priceSourceRef.current = priceSource;
+  const fetchVersionRef = useRef(0);
 
   useLayoutEffect(() => {
     const header = chartHeaderRef.current;
@@ -816,6 +819,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   }, [asset, spotForChart, priceSource, timeframe, timeWindow]);
 
   const fetchKlines = useCallback(async () => {
+    const myVersion = ++fetchVersionRef.current;
     setLoading(true);
     setLoadErr(null);
     try {
@@ -891,11 +895,14 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
       const filtered = [...byTime.values()]
         .filter((c) => c.t >= windowStart)
         .sort((a, b) => a.t - b.t);
+      if (myVersion !== fetchVersionRef.current) return;
       setCandles(filtered);
     } catch (e) {
+      if (myVersion !== fetchVersionRef.current) return;
       setCandles([]);
       setLoadErr(e instanceof Error ? e.message : 'Failed to load klines');
     } finally {
+      if (myVersion !== fetchVersionRef.current) return;
       setLoading(false);
     }
   }, [sym, timeframe, timeWindow, priceSource, asset]);
@@ -1151,14 +1158,14 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawCandles(ctx, w, h, candles, timeframe, srLines, asset, rbsPrice);
+      drawCandles(ctx, w, h, candles, timeframe, srLines, asset, rbsPrice, rbsFollowsSpot);
     };
 
     paint();
     const ro = new ResizeObserver(() => paint());
     ro.observe(container);
     return () => ro.disconnect();
-  }, [candles, timeframe, srLines, asset, rbsPrice, spotForChart]);
+  }, [candles, timeframe, srLines, asset, rbsPrice, rbsFollowsSpot, spotForChart]);
 
   const titleColor = ASSET_COLORS[asset] || 'text-white';
 
@@ -1204,6 +1211,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
           ref={chartControlsRef}
           className={`flex items-center gap-1.5 no-drag cursor-default ${chartHeaderStackControls ? 'w-full shrink-0 basis-full justify-start flex-wrap' : 'shrink-0'}`}
           onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           <div
             className="flex shrink-0 overflow-hidden rounded border border-gray-600"
@@ -1252,8 +1260,10 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
               setTimeframe(iv);
               localStorage.setItem(`polybot-binance-interval-${panelId}`, iv);
             }}
-            className="w-max shrink-0 rounded border border-cyan-700/50 bg-gray-900/90 py-0.5 pl-1 pr-2 text-[10px] font-semibold text-cyan-100 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40 [field-sizing:content]"
+            className="no-drag w-max shrink-0 rounded border border-cyan-700/50 bg-gray-900/90 py-0.5 pl-1 pr-2 text-[10px] font-semibold text-cyan-100 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40 [field-sizing:content]"
             aria-label="Chart resolution"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             {INTERVALS.map((iv) => (
               <option key={iv} value={iv}>
@@ -1268,8 +1278,10 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
               setTimeWindow(v);
               localStorage.setItem(`polybot-binance-window-${panelId}`, v);
             }}
-            className="w-max shrink-0 rounded border border-violet-700/50 bg-gray-900/90 py-0.5 pl-1 pr-2 text-[10px] font-semibold text-violet-100 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500/40 [field-sizing:content]"
+            className="no-drag w-max shrink-0 rounded border border-violet-700/50 bg-gray-900/90 py-0.5 pl-1 pr-2 text-[10px] font-semibold text-violet-100 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500/40 [field-sizing:content]"
             aria-label="Chart time window"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             {TIME_WINDOWS.map((w) => (
               <option key={w} value={w}>
@@ -1445,7 +1457,13 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-0.5 text-[10px] text-gray-300">
         {SR_TIMEFRAMES.map((tf) => (
-          <label key={tf} className="inline-flex cursor-pointer items-center gap-1.5">
+          <label
+            key={tf}
+            className={`inline-flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 transition ${
+              rbsUsedTfSet.has(tf) ? 'bg-purple-500/25 ring-1 ring-purple-400/60' : ''
+            }`}
+            title={rbsUsedTfSet.has(tf) ? 'Used in current RBS calculation' : undefined}
+          >
             <input
               type="checkbox"
               checked={rbsTfEnabled[tf]}

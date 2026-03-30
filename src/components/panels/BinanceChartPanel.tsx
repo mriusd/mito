@@ -130,7 +130,7 @@ const RBS_TF_LABEL: Record<UpDownTfKey, string> = {
 
 /** Distinct line/label color per RBS timeframe (canvas hex). */
 const RBS_TF_COLOR: Record<UpDownTfKey, string> = {
-  '5m': '#2dd4bf',
+  '5m': '#f97316',
   '15m': '#38bdf8',
   '1h': '#fbbf24',
   '24h': '#c084fc',

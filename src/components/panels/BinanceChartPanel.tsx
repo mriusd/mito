@@ -685,10 +685,6 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
 
   useEffect(() => {
     rbsStaleRef.current = null;
-    pulseAnimRef.current?.cancel();
-    pulseAnimRef.current = null;
-    pulseActiveRef.current = false;
-    if (pulseOverlayRef.current) pulseOverlayRef.current.style.opacity = '0';
   }, [asset]);
 
   const rbsResult = useMemo<RBSComputeResult>(() => {
@@ -717,77 +713,6 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
 
   const rbsPrice: number | null =
     rbsResult.kind === 'price' ? rbsResult.value : rbsResult.kind === 'hold' ? rbsStaleRef.current : null;
-
-  const pulseOverlayRef = useRef<HTMLDivElement>(null);
-  const pulseAnimRef = useRef<Animation | null>(null);
-  const pulseActiveRef = useRef(false);
-  const lastPulseThresholdPctRef = useRef<number>(rbsPulseThresholdPct);
-
-  // Pulse when RBS deviates from the displayed spot in the header.
-  // Add hysteresis to prevent rapid start/stop "jitter" around the threshold.
-  const RBS_PULSE_HYSTERESIS_STOP_RATIO = 0.7; // stop = start * 0.7 (keeps 0.05% -> 0.035%)
-  const RBS_PULSE_SCALE_REL = 0.0015; // deviation above threshold -> max strength
-
-  useEffect(() => {
-    const overlay = pulseOverlayRef.current;
-    if (!overlay) return;
-
-    const rp = rbsPrice;
-    const sp = spotForChart;
-    const pulseThresholdRel = rbsPulseThresholdPct / 100;
-    const pulseStopThresholdRel = pulseThresholdRel * RBS_PULSE_HYSTERESIS_STOP_RATIO;
-
-    if (rp == null || !Number.isFinite(rp) || sp <= 0 || !Number.isFinite(sp)) {
-      pulseAnimRef.current?.cancel();
-      pulseAnimRef.current = null;
-      pulseActiveRef.current = false;
-      overlay.style.opacity = '0';
-      return;
-    }
-
-    const devRel = Math.abs((rp - sp) / sp);
-    const shouldStart = devRel >= pulseThresholdRel;
-    const shouldStop = devRel < pulseStopThresholdRel;
-
-    if (pulseActiveRef.current && shouldStop) {
-      pulseAnimRef.current?.cancel();
-      pulseAnimRef.current = null;
-      pulseActiveRef.current = false;
-      overlay.style.opacity = '0';
-      return;
-    }
-
-    if (!shouldStart && !pulseActiveRef.current) return;
-
-    const baseStrength = Math.max(
-      0,
-      Math.min(1, (devRel - pulseThresholdRel) / RBS_PULSE_SCALE_REL),
-    );
-    const strength = Math.max(0.15, baseStrength);
-    const color = rp >= sp ? 'rgba(16,185,129,' : 'rgba(239,68,68,';
-    const peakAlpha = 0.02 + strength * 0.06;
-
-    overlay.style.background = `${color}1)`;
-    overlay.style.boxShadow = `inset 0 0 ${Math.round(10 * strength)}px ${color}${(0.35 + strength * 0.35).toFixed(2)})`;
-
-    const thresholdChanged =
-      Math.abs(lastPulseThresholdPctRef.current - rbsPulseThresholdPct) > 1e-9;
-
-    if (!pulseActiveRef.current || thresholdChanged) {
-      pulseActiveRef.current = true;
-      pulseAnimRef.current?.cancel();
-      pulseAnimRef.current = overlay.animate(
-        [
-          { opacity: 0 },
-          { opacity: peakAlpha },
-          { opacity: 0 },
-        ],
-        { duration: 1400, iterations: Infinity, easing: 'ease-in-out' },
-      );
-    }
-
-    lastPulseThresholdPctRef.current = rbsPulseThresholdPct;
-  }, [rbsPrice, spotForChart, rbsPulseThresholdPct]);
 
   const rbsArrowSignal = useMemo<{ dir: 'up' | 'down'; count: 1 | 2 | 3 } | null>(() => {
     const rp = rbsPrice;
@@ -1423,7 +1348,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
                   <label
                     className="flex items-center justify-between gap-2 py-0.5 text-[10px] text-gray-200 hover:text-white"
                   >
-                    <span>Pulse threshold</span>
+                    <span>Chevron threshold</span>
                     <input
                       type="number"
                       step={0.01}
@@ -1533,11 +1458,6 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
             className="block h-full w-full"
             role="img"
             aria-label={`${asset} candlestick chart (${priceSource === 'chainlink' ? 'Chainlink via polycandles' : 'Binance spot'})`}
-          />
-          <div
-            ref={pulseOverlayRef}
-            className="absolute inset-0 pointer-events-none"
-            style={{ opacity: 0 }}
           />
         </div>
       </div>

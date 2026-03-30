@@ -749,7 +749,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     }
 
     if (!rbsArrowSignal) return;
-    const { count } = rbsArrowSignal;
+    const { count, dir } = rbsArrowSignal;
     const cycleDuration = 1200;
     const stagger = cycleDuration / count;
 
@@ -757,6 +757,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
       const slotIdx = 5 - count + i;
       const el = arrowRefs.current[slotIdx];
       if (!el) continue;
+      const delayIdx = dir === 'up' ? i : count - 1 - i;
       arrowAnimsRef.current[slotIdx] = el.animate(
         [
           { opacity: 0, offset: 0 },
@@ -766,7 +767,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
         ],
         {
           duration: cycleDuration,
-          delay: i * stagger,
+          delay: delayIdx * stagger,
           iterations: Infinity,
           easing: 'ease-in-out',
         },
@@ -1402,10 +1403,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
             {rbsArrowSignal && (
               <div
                 className="pointer-events-none absolute inset-x-0 flex flex-col items-center"
-                style={rbsArrowSignal.dir === 'up'
-                  ? { top: 4, flexDirection: 'column-reverse' }
-                  : { bottom: 4, flexDirection: 'column' }
-                }
+                style={{ top: 4, flexDirection: 'column-reverse' }}
               >
                 {[0, 1, 2, 3, 4].map((i) => {
                   const visible = i >= 5 - rbsArrowSignal.count;
@@ -1418,8 +1416,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
                         opacity: 0,
                         display: visible ? 'block' : 'none',
                         filter: `drop-shadow(0 0 3px ${color})`,
-                        marginTop: rbsArrowSignal.dir === 'down' && i > 0 ? -4 : 0,
-                        marginBottom: rbsArrowSignal.dir === 'up' && i > 0 ? -4 : 0,
+                        marginBottom: i > 0 ? -4 : 0,
                       }}
                     >
                       <svg

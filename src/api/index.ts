@@ -305,35 +305,47 @@ export async function fetchPriceHistory(tokenId: string, interval = 'max', fidel
   return resp.json();
 }
 
+/**
+ * Polycandles/Gamma attach `bestBid`/`bestAsk` to the market row for the YES token ([0]) only.
+ * If both clob ids pointed at the same object, WS `bidAskBatch` would replace only one key’s copy
+ * while the other still read those YES fields as the NO book → duplicate YES/NO cells after updates.
+ * YES entry: shallow clone with API bid/ask. NO entry: clone without top-level bid/ask until WS patches that token.
+ */
+function addMarketToTokenLookup(lookup: Record<string, Market>, m: Market) {
+  const tokenIds = m.clobTokenIds || [];
+  if (tokenIds.length === 0) return;
+  if (tokenIds.length === 1) {
+    const id = tokenIds[0];
+    if (id) lookup[id] = { ...m };
+    return;
+  }
+  const yesId = tokenIds[0];
+  const noId = tokenIds[1];
+  if (yesId) lookup[yesId] = { ...m };
+  if (noId) lookup[noId] = { ...m, bestBid: undefined, bestAsk: undefined };
+}
+
 export function buildMarketLookup(aboveMarkets: Record<string, Market[]>, priceOnMarkets: Record<string, Market[]>, weeklyHitMarkets: Record<string, Market[]> = {}, upOrDownMarkets: Record<string, Record<string, Market[]>> = {}): Record<string, Market> {
   const lookup: Record<string, Market> = {};
   for (const assetName of Object.keys(aboveMarkets)) {
     for (const m of aboveMarkets[assetName] || []) {
-      const tokenIds = m.clobTokenIds || [];
-      if (tokenIds[0]) lookup[tokenIds[0]] = m;
-      if (tokenIds[1]) lookup[tokenIds[1]] = m;
+      addMarketToTokenLookup(lookup, m);
     }
   }
   for (const assetName of Object.keys(priceOnMarkets)) {
     for (const m of priceOnMarkets[assetName] || []) {
-      const tokenIds = m.clobTokenIds || [];
-      if (tokenIds[0]) lookup[tokenIds[0]] = m;
-      if (tokenIds[1]) lookup[tokenIds[1]] = m;
+      addMarketToTokenLookup(lookup, m);
     }
   }
   for (const assetName of Object.keys(weeklyHitMarkets)) {
     for (const m of weeklyHitMarkets[assetName] || []) {
-      const tokenIds = m.clobTokenIds || [];
-      if (tokenIds[0]) lookup[tokenIds[0]] = m;
-      if (tokenIds[1]) lookup[tokenIds[1]] = m;
+      addMarketToTokenLookup(lookup, m);
     }
   }
   for (const assetName of Object.keys(upOrDownMarkets)) {
     for (const tf of Object.keys(upOrDownMarkets[assetName] || {})) {
       for (const m of upOrDownMarkets[assetName][tf] || []) {
-        const tokenIds = m.clobTokenIds || [];
-        if (tokenIds[0]) lookup[tokenIds[0]] = m;
-        if (tokenIds[1]) lookup[tokenIds[1]] = m;
+        addMarketToTokenLookup(lookup, m);
       }
     }
   }

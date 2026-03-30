@@ -223,7 +223,7 @@ export function UpDownMarketsPanel() {
               onMouseDown={(e) => e.stopPropagation()}
             />
             <span className="text-[10px] text-gray-400">%</span>
-            <HelpTooltip text="Left: YES mid (bid+ask)/2 or one-sided quote (Gamma fallback if WS is empty). Right: NO-token mid from the NO book only — no synthetic fill, so it won’t mirror YES when NO is thin. Highlights vs peer averages." />
+            <HelpTooltip text="Left: YES mid in ¢. Right: implied NO probability in ¢ as 100 − YES mid (complementary to the same YES quote). Highlights vs peer averages." />
           </div>
           <label
             className="flex items-center gap-1 cursor-default text-[10px] text-gray-300 select-none"
@@ -288,27 +288,27 @@ export function UpDownMarketsPanel() {
           </thead>
           <tbody>
             {TIMEFRAMES.map((tf) => {
-              // Pre-compute YES mid + raw NO-token mid (no synthetic) for peer highlights
+              // Pre-compute YES mid and P(NO)=1−P(YES) for peer highlights (same YES mid drives both columns)
               const yesMidByAsset: Record<string, number> = {};
-              const noMidByAsset: Record<string, number> = {};
+              const noProbByAsset: Record<string, number> = {};
               for (const a of ASSETS) {
                 const m = getCurrentMarket(a, tf);
                 if (m) {
                   const yT = m.clobTokenIds?.[0];
-                  const nT = m.clobTokenIds?.[1];
                   const gamma = { bestBid: m.bestBid, bestAsk: m.bestAsk };
                   const y = outcomeMidOrOneSideProb(yT, _bidAskLookup, gamma);
-                  const n = outcomeMidOrOneSideProb(nT, _bidAskLookup, undefined);
-                  if (y != null) yesMidByAsset[a] = y;
-                  if (n != null) noMidByAsset[a] = n;
+                  if (y != null) {
+                    yesMidByAsset[a] = y;
+                    noProbByAsset[a] = 1 - y;
+                  }
                 }
               }
               const otherYesMids = (asset: string) => {
                 const vals = ASSETS.filter(a => a !== asset && yesMidByAsset[a] !== undefined).map(a => yesMidByAsset[a]);
                 return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
               };
-              const otherNoMids = (asset: string) => {
-                const vals = ASSETS.filter(a => a !== asset && noMidByAsset[a] !== undefined).map(a => noMidByAsset[a]);
+              const otherNoProb = (asset: string) => {
+                const vals = ASSETS.filter(a => a !== asset && noProbByAsset[a] !== undefined).map(a => noProbByAsset[a]);
                 return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
               };
 
@@ -465,15 +465,15 @@ export function UpDownMarketsPanel() {
 
                   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
                   const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noMidProb = outcomeMidOrOneSideProb(noTokenId, _bidAskLookup, undefined);
+                  const noProb = yesMidProb != null ? 1 - yesMidProb : null;
                   const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
-                  const noMidStr = noMidProb != null ? (noMidProb * 100).toFixed(1) : '-';
+                  const noProbStr = noProb != null ? (noProb * 100).toFixed(1) : '-';
                   const yesProb = yesMidProb ?? bestBid ?? 0;
                   const bgColor = yesProb > 0.5 ? 'bg-green-900/30' : 'bg-red-900/30';
                   const isSelected = selectedMarket?.id === market.id;
-                  const avgNoMid = otherNoMids(asset);
-                  const isNoMidCheap =
-                    noMidProb != null && avgNoMid > 0 && noMidProb <= avgNoMid * thresholdFactor;
+                  const avgNoProb = otherNoProb(asset);
+                  const isNoProbStrong =
+                    noProb != null && avgNoProb > 0 && noProb >= avgNoProb / thresholdFactor;
                   const avgYesMid = otherYesMids(asset);
                   const isYesMidStrong =
                     yesMidProb != null && avgYesMid > 0 && yesMidProb >= avgYesMid / thresholdFactor;
@@ -510,9 +510,9 @@ export function UpDownMarketsPanel() {
                         >{yesMidStr}</span>
                         {'\\'}
                         <span
-                          className={`cursor-pointer hover:underline ${isNoMidCheap ? 'bg-red-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-red-400'}`}
+                          className={`cursor-pointer hover:underline ${isNoProbStrong ? 'bg-red-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-red-400'}`}
                           onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                        >{noMidStr}</span>
+                        >{noProbStr}</span>
                       </div>
 
                       {/* Order badges - YES bottom-left, NO bottom-right */}

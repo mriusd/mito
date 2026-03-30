@@ -7,7 +7,7 @@ import { PriceTicks } from '../PriceTicks';
 import { RangeEditDialog } from '../RangeEditDialog';
 import { HelpTooltip } from '../HelpTooltip';
 import type { AssetName, Market } from '../../types';
-import { impliedNoQuoteDisplayCents, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 
 function StrikeRangeIndicator({ markets, livePrice }: { markets: Market[]; livePrice: number }) {
   if (livePrice <= 0 || markets.length === 0) return null;
@@ -486,9 +486,9 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const noTokenId = tokenIds[1] || '';
                   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
                   const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noImpliedCents = impliedNoQuoteDisplayCents(noTokenId, yesTokenId, _bidAskLookup, gammaYes);
+                  const noProbCents = yesMidProb != null ? (1 - yesMidProb) * 100 : null;
                   const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
-                  const noMidStr = noImpliedCents != null ? noImpliedCents.toFixed(1) : '-';
+                  const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
                   const yesProb = yesMidProb ?? _hBid ?? 0;
                   const bgColor = yesProb > 0.5 ? 'bg-green-900/30' : 'bg-red-900/30';
                   const isSelected = selectedMarket?.id === market.id;
@@ -521,7 +521,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           )}
                         </>
                       )}
-                      {/* YES mid \ implied NO ¢ */}
+                      {/* YES mid \ P(NO)¢ = 100 − YES mid */}
                       <div className="text-[10px] text-gray-400">
                         <span
                           className="ob-trigger text-green-400 cursor-pointer hover:underline"
@@ -536,7 +536,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                         <span
                           className="ob-trigger text-red-400 cursor-pointer hover:underline"
                           data-token-id={noTokenId}
-                          data-market-title={`${market.question || market.groupItemTitle || ''} (NO implied ¢)`}
+                          data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
                           data-asset={asset}
                           data-strike={market.groupItemTitle || ''}
                           data-end-date={ev.endDate || ''}
@@ -672,9 +672,9 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const noTokenId = tokenIds[1] || '';
                   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
                   const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noImpliedCents = impliedNoQuoteDisplayCents(noTokenId, yesTokenId, _bidAskLookup, gammaYes);
+                  const noProbCents = yesMidProb != null ? (1 - yesMidProb) * 100 : null;
                   const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
-                  const noMidStr = noImpliedCents != null ? noImpliedCents.toFixed(1) : '-';
+                  const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
                   const yesProb = yesMidProb ?? _uBid ?? 0;
                   const isPast = showPast && colIdx === 0;
                   const _bgColor = isPast ? 'bg-gray-700/30' : (yesProb > 0.5 ? 'bg-green-900/30' : 'bg-red-900/30');
@@ -700,7 +700,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       style={{ minWidth: 60 }}
                       onClick={() => handleCellClick(market)}
                     >
-                      {/* YES mid \ implied NO ¢ */}
+                      {/* YES mid \ P(NO)¢ = 100 − YES mid */}
                       <div className="text-[10px] text-gray-400">
                         <span
                           className="ob-trigger text-green-400 cursor-pointer hover:underline"
@@ -715,7 +715,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                         <span
                           className="ob-trigger text-red-400 cursor-pointer hover:underline"
                           data-token-id={noTokenId}
-                          data-market-title={`${market.question || ''} (NO implied ¢)`}
+                          data-market-title={`${market.question || ''} (P(NO) ¢)`}
                           data-asset={asset}
                           data-strike={market.groupItemTitle || ''}
                           data-end-date={market.endDate || ''}
@@ -873,9 +873,9 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const { bestBid: _aBid } = getLiveBidAsk(market);
                   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
                   const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noImpliedCents = impliedNoQuoteDisplayCents(noTokenId, yesTokenId, _bidAskLookup, gammaYes);
+                  const noProbCents = yesMidProb != null ? (1 - yesMidProb) * 100 : null;
                   const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
-                  const noMidStr = noImpliedCents != null ? noImpliedCents.toFixed(1) : '-';
+                  const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
 
                   // Background: green if YES > 50%, red otherwise, gray if closed
                   const yesProb = yesMidProb ?? _aBid ?? 0;
@@ -927,7 +927,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           )}
                         </>
                       )}
-                      {/* YES mid \ implied NO ¢ */}
+                      {/* YES mid \ P(NO)¢ = 100 − YES mid */}
                       <div className="text-[10px] text-gray-400">
                         <span
                           className="ob-trigger text-green-400 cursor-pointer hover:underline"
@@ -942,7 +942,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                         <span
                           className="ob-trigger text-red-400 cursor-pointer hover:underline"
                           data-token-id={noTokenId}
-                          data-market-title={`${market.question || market.groupItemTitle || ''} (NO implied ¢)`}
+                          data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
                           data-asset={asset}
                           data-strike={market.groupItemTitle || ''}
                           data-end-date={d.endDate || ''}

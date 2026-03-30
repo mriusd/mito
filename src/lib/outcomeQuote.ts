@@ -33,35 +33,3 @@ export function outcomeMidOrOneSideProb(
   if (ha) return ba!;
   return null;
 }
-
-/**
- * NO-token price in [0,1] from the NO book, or synthetic (1 − p_YES) when NO book has no quote.
- */
-export function noTokenQuoteProb(
-  noTokenId: string | undefined,
-  yesTokenId: string | undefined,
-  lookup: Record<string, Market>,
-  gammaYes?: { bestBid?: number; bestAsk?: number }
-): number | null {
-  const fromNo = outcomeMidOrOneSideProb(noTokenId, lookup, undefined);
-  if (fromNo != null) return fromNo;
-  const yesP = outcomeMidOrOneSideProb(yesTokenId, lookup, gammaYes);
-  if (yesP == null) return null;
-  return 1 - yesP;
-}
-
-/**
- * Grid NO column: implied probability in cents (0–100) as seen from the orderbook —
- * `100 × (1 − p_NO)` where `p_NO` is the NO-token mid / one-sided quote, or synthetic from YES when NO is empty.
- * Matches “YES bid 99.8¢, NO thin” → **99.8** not 0.2.
- */
-export function impliedNoQuoteDisplayCents(
-  noTokenId: string | undefined,
-  yesTokenId: string | undefined,
-  lookup: Record<string, Market>,
-  gammaYes?: { bestBid?: number; bestAsk?: number }
-): number | null {
-  const pNo = noTokenQuoteProb(noTokenId, yesTokenId, lookup, gammaYes);
-  if (pNo == null) return null;
-  return (1 - pNo) * 100;
-}

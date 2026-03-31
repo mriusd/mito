@@ -124,8 +124,8 @@ type RBSTfLine = { tf: UpDownTfKey; price: number; followsSpot: boolean };
 const RBS_TF_LABEL: Record<UpDownTfKey, string> = {
   '5m': 'RBS5',
   '15m': 'RBS15',
-  '1h': 'RBS60',
-  '4h': 'RBS240',
+  '1h': 'RBS1H',
+  '4h': 'RBS4H',
   '24h': 'RBS24',
 };
 

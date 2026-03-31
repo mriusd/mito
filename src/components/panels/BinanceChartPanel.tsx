@@ -134,7 +134,7 @@ const RBS_TF_COLOR: Record<UpDownTfKey, string> = {
   '5m': '#f97316',
   '15m': '#38bdf8',
   '1h': '#fbbf24',
-  '4h': '#f43f5e',
+  '4h': '#818cf8',
   '24h': '#c084fc',
 };
 

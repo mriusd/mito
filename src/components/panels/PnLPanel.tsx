@@ -165,7 +165,7 @@ export function PnLPanel() {
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
       <div className="panel-header flex items-center justify-between gap-2 mb-2 cursor-grab flex-wrap">
         <h3 className="text-sm font-bold text-yellow-400">P&L</h3>
-        <div className="flex flex-col items-end gap-1 shrink-0 cursor-default" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 shrink-0 cursor-default flex-wrap justify-end" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
           <div className="flex items-center rounded border border-gray-600 overflow-hidden text-[9px] font-bold">
             <button
               type="button"
@@ -184,7 +184,7 @@ export function PnLPanel() {
               Market Expiry
             </button>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-[9px] text-gray-300">
+          <div className="flex items-center justify-end gap-x-2 gap-y-0.5 text-[9px] text-gray-300">
             <label className="inline-flex items-center gap-1">
               <input type="checkbox" className="rounded accent-cyan-500" checked={marketTypeFilter.updown} onChange={() => toggleMarketType('updown')} />
               <span>Up or Down</span>

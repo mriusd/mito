@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound } from 'lucide-react';
-import { fetchToxicFlow, fetchWalletSummary } from '../api';
-import type { ToxicFlowData, WalletPosition, WalletSummary } from '../api';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink } from 'lucide-react';
+import { fetchToxicFlow, fetchWalletSummary, fetchWalletPositions, fetchOnchainFills } from '../api';
+import type { ToxicFlowData, WalletPosition, WalletSummary, OnchainFillRow } from '../api';
+import { shortenMarketName } from '../utils/format';
+import { useAppStore } from '../stores/appStore';
 
 interface ToxicFlowDialogProps {
   open: boolean;
@@ -12,6 +14,45 @@ interface ToxicFlowDialogProps {
 
 type Tab = 'topHolders' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
 
+function getDateDisplay(endDate: string | null): { label: string; color: string } {
+  if (!endDate) return { label: '-', color: 'text-gray-400' };
+  const dt = new Date(endDate);
+  const hoursLeft = (dt.getTime() - Date.now()) / (1000 * 60 * 60);
+  const isToday = hoursLeft > 0 && hoursLeft < 24;
+  const isTmr = !isToday && hoursLeft > 0 && hoursLeft < 48;
+  const dayAbbr = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][dt.getDay()];
+  if (isToday) return { label: 'TODAY', color: 'text-red-400 font-bold' };
+  if (isTmr) return { label: 'TMR', color: 'text-yellow-400 font-bold' };
+  const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+  return { label: `${dayAbbr} ${dt.getDate()}`, color: isWeekend ? 'text-purple-400' : 'text-gray-400' };
+}
+
+function getResolvedDisplay(market: any): { label: string; color: string } {
+  if (!market?.closed) return { label: '-', color: 'text-gray-500' };
+  const isUpDown = /up\s+or\s+down|updown|up-or-down/i.test(`${market?.question || ''} ${market?.eventSlug || ''}`);
+  const yesLabel = isUpDown ? 'UP' : 'YES';
+  const noLabel = isUpDown ? 'DOWN' : 'NO';
+  const raw = market?.outcomePrices;
+  let yesPrice: number | null = null;
+  let noPrice: number | null = null;
+  if (Array.isArray(raw) && raw.length >= 2) {
+    yesPrice = Number(raw[0]);
+    noPrice = Number(raw[1]);
+  } else if (typeof raw === 'string' && raw.trim()) {
+    const cleaned = raw.replace(/^\[/, '').replace(/\]$/, '');
+    const parts = cleaned.split(',').map((s) => Number(String(s).trim()));
+    if (parts.length >= 2) {
+      yesPrice = parts[0];
+      noPrice = parts[1];
+    }
+  }
+  if (yesPrice != null && noPrice != null && Number.isFinite(yesPrice) && Number.isFinite(noPrice)) {
+    if (yesPrice > noPrice) return { label: yesLabel, color: 'text-green-400 font-bold' };
+    if (noPrice > yesPrice) return { label: noLabel, color: 'text-red-400 font-bold' };
+  }
+  return { label: 'RESOLVED', color: 'text-gray-400' };
+}
+
 function shortenWallet(w: string): string {
   if (w.length <= 12) return w;
   return w.slice(0, 6) + '…' + w.slice(-4);
@@ -20,7 +61,7 @@ function shortenWallet(w: string): string {
 // Wallet hover tooltip — fetches summary on hover, caches results
 const summaryCache: Record<string, WalletSummary | null> = {};
 
-function WalletLink({ wallet, netShares }: { wallet: string; netShares?: number }) {
+function WalletLink({ wallet, netShares, onOpenWallet }: { wallet: string; netShares?: number; onOpenWallet?: (wallet: string, netShares?: number) => void }) {
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [show, setShow] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -46,9 +87,16 @@ function WalletLink({ wallet, netShares }: { wallet: string; netShares?: number 
 
   return (
     <span className="relative" onMouseEnter={onEnter} onMouseLeave={onLeave}>
-      <a href={polygonUrl} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline font-mono">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenWallet?.(wallet, netShares);
+        }}
+        className="text-blue-400 hover:underline font-mono"
+      >
         {shortenWallet(wallet)}
-      </a>
+      </button>
       {show && (
         <div className="absolute z-[60000] left-0 top-full mt-1 bg-gray-900 border border-gray-600 rounded shadow-xl p-2 min-w-[190px] text-[9px]"
           onMouseEnter={() => setShow(true)} onMouseLeave={onLeave}>
@@ -93,7 +141,7 @@ function WalletLink({ wallet, netShares }: { wallet: string; netShares?: number 
   );
 }
 
-function WalletTable({ wallets, label, totalShares }: { wallets: WalletPosition[] | null; label: string; totalShares?: number }) {
+function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: WalletPosition[] | null; label: string; totalShares?: number; onOpenWallet?: (wallet: string, netShares?: number) => void }) {
   if (!wallets || wallets.length === 0) {
     return <div className="text-gray-500 text-center py-3 text-[10px]">No {label} data yet</div>;
   }
@@ -132,7 +180,7 @@ function WalletTable({ wallets, label, totalShares }: { wallets: WalletPosition[
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
                 <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
-                <td className="px-1"><WalletLink wallet={w.wallet} netShares={w.net} /></td>
+                <td className="px-1"><WalletLink wallet={w.wallet} netShares={w.net} onOpenWallet={onOpenWallet} /></td>
                 <td className="text-right px-1 text-green-400">{w.boughtYes > 0 ? w.boughtYes.toFixed(1) : '-'}</td>
                 <td className="text-right px-1 text-green-300/60">{w.soldYes > 0 ? w.soldYes.toFixed(1) : '-'}</td>
                 <td className="text-right px-1 text-red-400">{w.boughtNo > 0 ? w.boughtNo.toFixed(1) : '-'}</td>
@@ -154,11 +202,241 @@ function WalletTable({ wallets, label, totalShares }: { wallets: WalletPosition[
   );
 }
 
+function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: boolean; wallet: string; initialNetShares?: number; onClose: () => void }) {
+  const marketLookup = useAppStore((s) => s.marketLookup);
+  const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
+  const [markets, setMarkets] = useState<WalletPosition[]>([]);
+  const [selectedMarketId, setSelectedMarketId] = useState('');
+  const [fills, setFills] = useState<OnchainFillRow[]>([]);
+  const [loadingMarkets, setLoadingMarkets] = useState(false);
+  const [loadingFills, setLoadingFills] = useState(false);
+  const [fillsTotal, setFillsTotal] = useState(0);
+  const [fillsPage, setFillsPage] = useState(0);
+  const fillsPageSize = 50;
+  const marketById = useMemo(() => {
+    const m: Record<string, any> = {};
+    for (const mk of Object.values(marketLookup || {})) {
+      if (mk?.id && !m[mk.id]) m[mk.id] = mk;
+    }
+    return m;
+  }, [marketLookup]);
+
+  useEffect(() => {
+    if (!open || !wallet) return;
+    setSummary(undefined);
+    setMarkets([]);
+    setSelectedMarketId('');
+    setFills([]);
+    setFillsTotal(0);
+    setFillsPage(0);
+    setLoadingMarkets(true);
+    (async () => {
+      try {
+        const [s, p] = await Promise.all([
+          fetchWalletSummary(wallet),
+          fetchWalletPositions({ wallet, sort_by: 'last_trade_time', limit: 100 }),
+        ]);
+        setSummary(s);
+        const sorted = [...(p.positions || [])].sort((a, b) => (b.lastTradeTime || 0) - (a.lastTradeTime || 0));
+        setMarkets(sorted);
+        if (sorted.length > 0) {
+          setSelectedMarketId(sorted[0].marketId);
+          setFillsPage(0);
+        }
+      } finally {
+        setLoadingMarkets(false);
+      }
+    })();
+  }, [open, wallet]);
+
+  useEffect(() => {
+    if (!open || !wallet || !selectedMarketId) return;
+    setLoadingFills(true);
+    setFills([]);
+    (async () => {
+      try {
+        const res = await fetchOnchainFills({ wallet, market_id: selectedMarketId, limit: fillsPageSize, offset: fillsPage * fillsPageSize });
+        setFills(res.fills || []);
+        setFillsTotal(res.total || 0);
+      } finally {
+        setLoadingFills(false);
+      }
+    })();
+  }, [open, wallet, selectedMarketId, fillsPage]);
+
+  if (!open) return null;
+  const polygonUrl = `https://polygonscan.com/address/${wallet}`;
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[60010] flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-gray-800 rounded-lg p-3 max-w-6xl w-full mx-4 shadow-xl border border-gray-700" style={{ maxHeight: '88vh' }}>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm font-bold text-yellow-400">Wallet Info</span>
+            <span className="text-xs text-blue-400 font-mono truncate">{wallet}</span>
+            <a href={polygonUrl} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white" title="Open in Polygonscan">
+              <ExternalLink size={13} />
+            </a>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={16} /></button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-2 text-[10px]">
+          <div className="bg-gray-900 rounded p-2">
+            <div className="text-gray-500">Net shares (selected market context)</div>
+            <div className={`font-bold ${((initialNetShares || 0) > 0.001) ? 'text-green-400' : ((initialNetShares || 0) < -0.001) ? 'text-red-400' : 'text-gray-300'}`}>
+              {(initialNetShares || 0) > 0 ? '+' : ''}{(initialNetShares || 0).toFixed(2)}
+            </div>
+          </div>
+          <div className="bg-gray-900 rounded p-2">
+            <div className="text-gray-500">Summary</div>
+            {summary === undefined && <div className="text-gray-500">Loading...</div>}
+            {summary === null && <div className="text-gray-500">No wallet summary</div>}
+            {summary && (
+              <div className="text-[10px] text-gray-300">
+                Trades <span className="text-white">{summary.totalTrades}</span> | Vol In <span className="text-yellow-400">${summary.totalUsdcIn.toFixed(2)}</span> | PnL <span className={summary.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>{summary.pnl >= 0 ? '+' : ''}{summary.pnl.toFixed(2)}</span>
+                {(summary.wins > 0 || summary.losses > 0 || summary.flat > 0) && (
+                  <>
+                    {' '}| Win Rate <span className={summary.winRate >= 0.5 ? 'text-green-400' : 'text-red-400'}>{(summary.winRate * 100).toFixed(0)}%</span>
+                    {' '}| W/L/F <span className="text-white">{summary.wins}/{summary.losses}/{summary.flat}</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 overflow-hidden" style={{ height: 'calc(88vh - 160px)' }}>
+          <div className="bg-gray-900 rounded p-2 overflow-y-auto">
+            <div className="text-[10px] text-gray-400 font-bold mb-1">Latest Markets Traded</div>
+            {loadingMarkets ? (
+              <div className="text-gray-500 text-[10px]">Loading markets...</div>
+            ) : markets.length === 0 ? (
+              <div className="text-gray-500 text-[10px]">No markets found.</div>
+            ) : (
+              <table className="w-full text-[10px]">
+                <thead>
+                  <tr className="text-gray-500 border-b border-gray-700">
+                    <th className="text-left py-1">Date</th>
+                    <th className="text-left">Market</th>
+                    <th className="text-left">Resolved</th>
+                    <th className="text-right">Net</th>
+                    <th className="text-right">USDC In</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {markets.map((m) => (
+                    (() => {
+                      const mk = marketById[m.marketId];
+                      const marketName = mk
+                        ? shortenMarketName(mk.question || mk.groupItemTitle, undefined, undefined, mk.eventSlug)
+                        : `${m.marketAsset || '-'} ${m.marketTimeframe || ''} #${m.marketId}`;
+                      const dd = getDateDisplay(mk?.endDate || null);
+                      const rd = getResolvedDisplay(mk);
+                      return (
+                    <tr
+                      key={`${m.marketId}-${m.wallet}`}
+                      className={`border-b border-gray-800 cursor-pointer hover:bg-gray-700/30 ${selectedMarketId === m.marketId ? 'bg-gray-700/40' : ''}`}
+                      onClick={() => { setSelectedMarketId(m.marketId); setFillsPage(0); }}
+                    >
+                      <td className={`py-0.5 ${dd.color}`}>{dd.label}</td>
+                      <td className="py-0.5 text-gray-200">{marketName}</td>
+                      <td className={`py-0.5 ${rd.color}`}>{rd.label}</td>
+                      <td className={`text-right ${(m.net || 0) > 0.001 ? 'text-green-400' : (m.net || 0) < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{(m.net || 0) > 0 ? '+' : ''}{(m.net || 0).toFixed(1)}</td>
+                      <td className="text-right text-yellow-400">${(m.usdcIn || 0).toFixed(2)}</td>
+                    </tr>
+                      );
+                    })()
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="bg-gray-900 rounded p-2 overflow-y-auto">
+            <div className="text-[10px] text-gray-400 font-bold mb-1">Trades For Selected Market</div>
+            {loadingFills ? (
+              <div className="text-gray-500 text-[10px]">Loading trades...</div>
+            ) : fills.length === 0 ? (
+              <div className="text-gray-500 text-[10px]">No trades for this wallet/market.</div>
+            ) : (
+              <table className="w-full text-[10px]">
+                <thead>
+                  <tr className="text-gray-500 border-b border-gray-700">
+                    <th className="text-left py-1">Time</th>
+                    <th className="text-left">Action</th>
+                    <th className="text-left">Side</th>
+                    <th className="text-right">Shares</th>
+                    <th className="text-right">USDC</th>
+                    <th className="text-right">Tx</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fills.map((f) => {
+                    const walletLower = wallet.toLowerCase();
+                    const isTaker = (f.taker || '').toLowerCase() === walletLower;
+                    const walletPaysUsdc = (isTaker && f.takerAssetId === '0') || (!isTaker && f.makerAssetId === '0');
+                    const action = walletPaysUsdc ? 'BUY' : 'SELL';
+                    const shares = walletPaysUsdc
+                      ? (isTaker ? f.makerAmount : f.takerAmount)
+                      : (isTaker ? f.takerAmount : f.makerAmount);
+                    const usdc = walletPaysUsdc
+                      ? (isTaker ? f.takerAmount : f.makerAmount)
+                      : (isTaker ? f.makerAmount : f.takerAmount);
+                    const ts = f.blockTime && f.blockTime > 0 ? new Date(f.blockTime * 1000).toLocaleString() : `#${f.blockNumber}`;
+                    return (
+                      <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
+                        <td className="py-0.5">{ts}</td>
+                        <td className={action === 'BUY' ? 'text-green-400' : 'text-red-400'}>{action}</td>
+                        <td className={f.side === 'YES' ? 'text-green-400' : 'text-red-400'}>{f.side}</td>
+                        <td className="text-right">{shares.toFixed(2)}</td>
+                        <td className="text-right text-yellow-400">${usdc.toFixed(2)}</td>
+                        <td className="text-right">
+                          <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
+                            {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}
+                          </a>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+            <div className="mt-2 flex items-center justify-between text-[10px] text-gray-400">
+              <span>Page {fillsPage + 1} / {Math.max(1, Math.ceil(fillsTotal / fillsPageSize))} ({fillsTotal} trades)</span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className="px-2 py-0.5 rounded bg-gray-700 disabled:opacity-40"
+                  disabled={fillsPage <= 0 || loadingFills}
+                  onClick={() => setFillsPage((p) => Math.max(0, p - 1))}
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  className="px-2 py-0.5 rounded bg-gray-700 disabled:opacity-40"
+                  disabled={loadingFills || ((fillsPage + 1) * fillsPageSize >= fillsTotal)}
+                  onClick={() => setFillsPage((p) => p + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFlowDialogProps) {
   const [data, setData] = useState<ToxicFlowData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [tab, setTab] = useState<Tab>('topHolders');
+  const [walletDialogOpen, setWalletDialogOpen] = useState(false);
+  const [selectedWallet, setSelectedWallet] = useState('');
+  const [selectedWalletNet, setSelectedWalletNet] = useState<number | undefined>(undefined);
 
   const load = useCallback(async () => {
     if (!marketId) return;
@@ -192,6 +470,12 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
   }, [open, load, marketId]);
 
   if (!open) return null;
+
+  const openWalletDialog = (wallet: string, netShares?: number) => {
+    setSelectedWallet(wallet);
+    setSelectedWalletNet(netShares);
+    setWalletDialogOpen(true);
+  };
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'topHolders', label: 'Top Holders', icon: <Crown size={11} /> },
@@ -380,7 +664,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                           <span className="text-gray-200">
                             {f.wallet ? (
                               <>
-                                <WalletLink wallet={f.wallet} netShares={netByWallet[f.wallet.toLowerCase()]} />{' '}
+                                <WalletLink wallet={f.wallet} netShares={netByWallet[f.wallet.toLowerCase()]} onOpenWallet={openWalletDialog} />{' '}
                                 {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
                               </>
                             ) : f.detail}
@@ -393,7 +677,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                           <span className="text-gray-300">
                             {f.wallet ? (
                               <>
-                                <WalletLink wallet={f.wallet} netShares={netByWallet[f.wallet.toLowerCase()]} />{' '}
+                                <WalletLink wallet={f.wallet} netShares={netByWallet[f.wallet.toLowerCase()]} onOpenWallet={openWalletDialog} />{' '}
                                 {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
                               </>
                             ) : f.detail}
@@ -471,24 +755,30 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                 </div>
 
                 {tab === 'topHolders' && (
-                  <WalletTable wallets={data.topHolders} label="holders" totalShares={data.totalShares} />
+                  <WalletTable wallets={data.topHolders} label="holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topYes' && (
-                  <WalletTable wallets={data.topYes} label="YES holders" totalShares={data.totalShares} />
+                  <WalletTable wallets={data.topYes} label="YES holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topNo' && (
-                  <WalletTable wallets={data.topNo} label="NO holders" totalShares={data.totalShares} />
+                  <WalletTable wallets={data.topNo} label="NO holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topVolume' && (
-                  <WalletTable wallets={data.topVolume} label="volume" totalShares={data.totalShares} />
+                  <WalletTable wallets={data.topVolume} label="volume" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topTraders' && (
-                  <WalletTable wallets={data.topTraders} label="traders" totalShares={data.totalShares} />
+                  <WalletTable wallets={data.topTraders} label="traders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
               </div>
             </div>
           )}
         </div>
+        <WalletInfoDialog
+          open={walletDialogOpen}
+          wallet={selectedWallet}
+          initialNetShares={selectedWalletNet}
+          onClose={() => setWalletDialogOpen(false)}
+        />
       </div>
     </div>
   );

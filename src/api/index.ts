@@ -431,6 +431,40 @@ export async function fetchWalletPositions(params: { market_id?: string; wallet?
   return resp.json();
 }
 
+export interface OnchainFillRow {
+  txHash: string;
+  logIndex: number;
+  blockNumber: number;
+  blockTime: number;
+  contract: string;
+  orderHash: string;
+  maker: string;
+  taker: string;
+  makerAssetId: string;
+  takerAssetId: string;
+  makerAmount: number;
+  takerAmount: number;
+  fee: number;
+  tokenId: string;
+  side: string;
+  marketId: string;
+  marketAsset: string;
+  marketType: string;
+  marketTimeframe: string;
+}
+
+export async function fetchOnchainFills(params: { market_id?: string; wallet?: string; token_id?: string; limit?: number; offset?: number }): Promise<{ fills: OnchainFillRow[]; count: number; total: number }> {
+  const qs = new URLSearchParams();
+  if (params.market_id) qs.set('market_id', params.market_id);
+  if (params.wallet) qs.set('wallet', params.wallet);
+  if (params.token_id) qs.set('token_id', params.token_id);
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.offset) qs.set('offset', String(params.offset));
+  const resp = await fetch(`${BASE}/api/onchain-fills?${qs.toString()}`);
+  if (!resp.ok) throw new Error('Failed to fetch on-chain fills');
+  return resp.json();
+}
+
 // --- Wallet Summary API ---
 
 export interface WalletSummary {

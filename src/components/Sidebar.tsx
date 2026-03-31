@@ -63,7 +63,7 @@ function readCustomSidebarButtons(): CustomSidebarButton[] {
         amount: Number(b.amount) || 0,
         priceCents: Number(b.priceCents) || 0,
         maxSell: !!b.maxSell,
-        label: String(b.label || '?').slice(0, 2),
+        label: String(b.label || '?').slice(0, 3),
         color: String(b.color || '#2563eb'),
       }));
   } catch {
@@ -626,10 +626,10 @@ export function Sidebar() {
     const amount = customSide === 'SELL' && customSellMax ? 0 : parseFloat(customAmount);
     const priceCents = parseFloat(customPrice);
     const label = customLabel.trim();
-    if (!label) { showToast('Enter button id (1-2 chars)', 'error'); return; }
+    if (!label) { showToast('Enter button label (1-3 chars)', 'error'); return; }
     if (!(customSide === 'SELL' && customSellMax) && (!Number.isFinite(amount) || amount <= 0)) { showToast('Invalid amount', 'error'); return; }
     if (!Number.isFinite(priceCents) || priceCents <= 0 || priceCents >= 100) { showToast('Invalid price', 'error'); return; }
-    if (label.length < 1 || label.length > 2) { showToast('Button id must be 1-2 characters', 'error'); return; }
+    if (label.length < 1 || label.length > 3) { showToast('Button label must be 1-3 characters', 'error'); return; }
 
     const next: CustomSidebarButton = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1774,17 +1774,17 @@ export function Sidebar() {
               <div className="flex gap-1">
                 <button
                   onClick={handleSubmitOrder}
-                  className={`flex-1 py-2 rounded-lg font-bold text-sm transition ${
+                  className={`flex-1 h-9 rounded-lg font-bold text-sm transition whitespace-nowrap overflow-hidden ${
                     orderSide === 'BUY' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
                   }`}
                 >
                   {isDialogHidden() && signingState.visible && signingState.sign === 'active' ? (
-                    <span className="flex items-center justify-center gap-1.5">
+                    <span className="flex items-center justify-center gap-1 whitespace-nowrap text-xs">
                       <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                      {useAppStore.getState().signingMode === 'privateKey' ? 'Signing with PK' : 'Sign in wallet'}
+                      {useAppStore.getState().signingMode === 'privateKey' ? 'Signing PK' : 'Sign wallet'}
                     </span>
                   ) : isDialogHidden() && signingState.visible && signingState.submit === 'active' ? (
-                    <span className="flex items-center justify-center gap-1.5">
+                    <span className="flex items-center justify-center gap-1 whitespace-nowrap text-xs">
                       <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
                       Submitting...
                     </span>
@@ -1794,31 +1794,63 @@ export function Sidebar() {
                     orderSide
                   )}
                 </button>
-                {customButtons.map((btn) => (
-                  <button
-                    key={btn.id}
-                    onClick={() => handleCustomButtonClick(btn)}
-                    className="relative group w-9 py-2 rounded-lg font-bold text-sm transition text-white"
-                    style={{ backgroundColor: btn.color }}
-                    title={`${btn.side} ${btn.maxSell ? 'MAX' : btn.amount} @ ${btn.priceCents}¢`}
-                  >
-                    {btn.label}
-                    <span
-                      onClick={(e) => { e.stopPropagation(); handleRemoveCustomButton(btn.id); }}
-                      className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center w-3.5 h-3.5 rounded-full bg-black/70 text-white"
+                {customButtons.length > 4 ? (
+                  <div className="h-9 grid grid-rows-2 grid-flow-col auto-cols-max gap-1">
+                    {customButtons.map((btn) => (
+                      <button
+                        key={btn.id}
+                        onClick={() => handleCustomButtonClick(btn)}
+                        className="relative group w-7 h-4 rounded text-[9px] font-bold leading-none transition text-white"
+                        style={{ backgroundColor: btn.color }}
+                        title={`${btn.side} ${btn.maxSell ? 'MAX' : btn.amount} @ ${btn.priceCents}¢`}
+                      >
+                        {btn.label}
+                        <span
+                          onClick={(e) => { e.stopPropagation(); handleRemoveCustomButton(btn.id); }}
+                          className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center rounded-full bg-black/70 text-white w-3 h-3"
+                        >
+                          <X className="w-2 h-2" />
+                        </span>
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setCustomDialogOpen(true)}
+                      className="w-7 h-4 rounded text-[9px] font-bold leading-none transition bg-gray-700 hover:bg-gray-600 text-gray-200 flex items-center justify-center"
+                      title="Create Custom Button"
                     >
-                      <X className="w-2.5 h-2.5" />
-                    </span>
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setCustomDialogOpen(true)}
-                  className="w-9 py-2 rounded-lg font-bold text-sm transition bg-gray-700 hover:bg-gray-600 text-gray-200 flex items-center justify-center"
-                  title="Create Custom Button"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {customButtons.map((btn) => (
+                      <button
+                        key={btn.id}
+                        onClick={() => handleCustomButtonClick(btn)}
+                        className="relative group w-9 py-2 text-sm rounded-lg font-bold transition text-white"
+                        style={{ backgroundColor: btn.color }}
+                        title={`${btn.side} ${btn.maxSell ? 'MAX' : btn.amount} @ ${btn.priceCents}¢`}
+                      >
+                        {btn.label}
+                        <span
+                          onClick={(e) => { e.stopPropagation(); handleRemoveCustomButton(btn.id); }}
+                          className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center rounded-full bg-black/70 text-white w-3.5 h-3.5"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </span>
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setCustomDialogOpen(true)}
+                      className="w-9 py-2 rounded-lg font-bold text-sm transition bg-gray-700 hover:bg-gray-600 text-gray-200 flex items-center justify-center"
+                      title="Create Custom Button"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
                 {/* Smart Order button hidden — use backend bot mode via API */}
               </div>
             )}
@@ -2123,9 +2155,9 @@ export function Sidebar() {
                 </label>
               )}
               <div className="flex items-center gap-2">
-                <span className="text-gray-400 w-16">ID</span>
-                <input value={customLabel} onChange={(e) => setCustomLabel(e.target.value.slice(0, 2))} maxLength={2} className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 text-center font-bold" />
-                <span className="text-gray-500 text-[10px]">1-2 chars</span>
+                <span className="text-gray-400 w-16">Label</span>
+                <input value={customLabel} onChange={(e) => setCustomLabel(e.target.value.slice(0, 3))} maxLength={3} className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 text-center font-bold" />
+                <span className="text-gray-500 text-[10px]">1-3 chars</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-gray-400 w-16">Color</span>

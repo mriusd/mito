@@ -328,6 +328,7 @@ export function UpDownMarketsPanel() {
                   {showNextMarket && (
                     <th
                       className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/70 text-[9px] text-gray-400 font-semibold"
+                      style={assetBorderStyle(asset, showVolume ? {} : { R: true })}
                     >
                       Next
                     </th>
@@ -631,6 +632,7 @@ export function UpDownMarketsPanel() {
                         <td
                           key={`${asset}-next`}
                           className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-gray-600 text-[10px] whitespace-nowrap ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+                          style={assetBorderStyle(asset, showVolume ? { B: isLastTfRow } : { R: true, B: isLastTfRow })}
                         >
                           -
                         </td>
@@ -645,6 +647,7 @@ export function UpDownMarketsPanel() {
                       <td
                         key={`${asset}-next`}
                         className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap cursor-pointer hover:brightness-125 ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+                        style={assetBorderStyle(asset, showVolume ? { B: isLastTfRow } : { R: true, B: isLastTfRow })}
                         onClick={() => handleCellClick(nextMarket)}
                         title="Next market in this lane"
                       >

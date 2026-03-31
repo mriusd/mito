@@ -1057,7 +1057,7 @@ export function Sidebar() {
               const negLabel = isUpDownMarket ? 'DOWN' : 'NO';
               const biasLabel = biasPct > 0.01 ? posLabel : biasPct < -0.01 ? negLabel : 'FLAT';
               const biasColor = biasPct > 0.01 ? 'text-green-400' : biasPct < -0.01 ? 'text-red-400' : 'text-gray-500';
-              const barPct = Math.max(2, Math.min(98, 50 + biasPct * 100));
+              const barPct = Math.max(2, Math.min(98, 50 + biasPct * 10));
               return (
                 <div className="mt-1.5">
                   <div className="flex items-center justify-between mb-0.5">

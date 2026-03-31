@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, Fragment } from 'react';
 import type { CSSProperties } from 'react';
-import { CirclePercent, Minus, Triangle } from 'lucide-react';
+import { CirclePercent, GraduationCap, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { HelpTooltip } from '../HelpTooltip';
 import type { Market } from '../../types';
@@ -497,6 +497,21 @@ export function UpDownMarketsPanel() {
                       ? Math.max(0, Math.min(1, (now - marketStartMs) / duration))
                       : 0;
                   const marketProgressPct = (marketProgress * 100).toFixed(1);
+                  const smartMoneyRaw = yesTokenId ? (_bidAskLookup[yesTokenId]?.smartMoneyBias ?? 0) : 0;
+                  const smartMoneyTotalShares = yesTokenId ? (_bidAskLookup[yesTokenId]?.sharesInExistence ?? 0) : 0;
+                  const smartMoneyPct =
+                    smartMoneyTotalShares > 0 ? (smartMoneyRaw / smartMoneyTotalShares) * 100 : 0;
+                  const smartMoneyBarPct = Math.max(2, Math.min(98, 50 + smartMoneyPct * 10));
+                  // Contrarian smart-money signal:
+                  // - Market odds lean NO when YES mid < 45c
+                  // - Market odds lean YES when YES mid > 55c
+                  // Show icon only when smart money strongly leans the opposite direction.
+                  const marketLeansNo = yesMidProb != null && yesMidProb < 0.45;
+                  const marketLeansYes = yesMidProb != null && yesMidProb > 0.55;
+                  const smartMoneyLeansYes = smartMoneyBarPct > 75;
+                  const smartMoneyLeansNo = smartMoneyBarPct < 25;
+                  const showSmartMoneyLeftIcon = marketLeansYes && smartMoneyLeansNo;   // NO vs market YES
+                  const showSmartMoneyRightIcon = marketLeansNo && smartMoneyLeansYes;  // YES vs market NO
 
                   const quoteCell = (
                     <td
@@ -523,6 +538,22 @@ export function UpDownMarketsPanel() {
                           className="absolute right-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-rose-400 shadow-[0_0_3px_rgba(251,113,133,0.8)]"
                           title="NO position"
                         />
+                      )}
+                      {showSmartMoneyLeftIcon && (
+                        <span
+                          className="absolute left-0.5 top-1/2 -translate-y-1/2 z-10 text-red-300 animate-pulse"
+                          title={`Contrarian smart money: market leans YES (${((yesMidProb ?? 0) * 100).toFixed(1)}c), smart money leans NO (${smartMoneyBarPct.toFixed(1)}%)`}
+                        >
+                          <GraduationCap size={11} />
+                        </span>
+                      )}
+                      {showSmartMoneyRightIcon && (
+                        <span
+                          className="absolute right-0.5 top-1/2 -translate-y-1/2 z-10 text-green-300 animate-pulse"
+                          title={`Contrarian smart money: market leans NO (${((yesMidProb ?? 0) * 100).toFixed(1)}c), smart money leans YES (${smartMoneyBarPct.toFixed(1)}%)`}
+                        >
+                          <GraduationCap size={11} />
+                        </span>
                       )}
                       <div className="text-[10px] text-gray-400">
                         <span

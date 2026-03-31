@@ -286,7 +286,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                           </span>
                         </div>
                         <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
-                          <div className="bg-green-500/70 h-full transition-all" style={{ width: `${Math.max(2, Math.min(98, 50 + smbPct * 100))}%` }} />
+                          <div className="bg-green-500/70 h-full transition-all" style={{ width: `${Math.max(2, Math.min(98, 50 + smbPct * 10))}%` }} />
                           <div className="bg-red-500/70 h-full transition-all flex-1" />
                         </div>
                       </div>

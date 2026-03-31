@@ -510,8 +510,8 @@ export function UpDownMarketsPanel() {
                   const marketLeansYes = yesMidProb != null && yesMidProb > 0.55;
                   const smartMoneyLeansYes = smartMoneyBarPct > 75;
                   const smartMoneyLeansNo = smartMoneyBarPct < 25;
-                  const showSmartMoneyLeftIcon = marketLeansYes && smartMoneyLeansNo;   // NO vs market YES
-                  const showSmartMoneyRightIcon = marketLeansNo && smartMoneyLeansYes;  // YES vs market NO
+                  const showSmartMoneyLeftIcon = marketLeansNo && smartMoneyLeansYes;   // YES vs market NO
+                  const showSmartMoneyRightIcon = marketLeansYes && smartMoneyLeansNo;  // NO vs market YES
 
                   const quoteCell = (
                     <td
@@ -542,7 +542,7 @@ export function UpDownMarketsPanel() {
                       {showSmartMoneyLeftIcon && (
                         <span
                           className="absolute left-0.5 top-1/2 -translate-y-1/2 z-10 text-red-300 animate-pulse"
-                          title={`Contrarian smart money: market leans YES (${((yesMidProb ?? 0) * 100).toFixed(1)}c), smart money leans NO (${smartMoneyBarPct.toFixed(1)}%)`}
+                          title={`Contrarian smart money: market leans NO (${((yesMidProb ?? 0) * 100).toFixed(1)}c), smart money leans YES (${smartMoneyBarPct.toFixed(1)}%)`}
                         >
                           <GraduationCap size={11} />
                         </span>
@@ -550,7 +550,7 @@ export function UpDownMarketsPanel() {
                       {showSmartMoneyRightIcon && (
                         <span
                           className="absolute right-0.5 top-1/2 -translate-y-1/2 z-10 text-green-300 animate-pulse"
-                          title={`Contrarian smart money: market leans NO (${((yesMidProb ?? 0) * 100).toFixed(1)}c), smart money leans YES (${smartMoneyBarPct.toFixed(1)}%)`}
+                          title={`Contrarian smart money: market leans YES (${((yesMidProb ?? 0) * 100).toFixed(1)}c), smart money leans NO (${smartMoneyBarPct.toFixed(1)}%)`}
                         >
                           <GraduationCap size={11} />
                         </span>

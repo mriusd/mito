@@ -3,6 +3,7 @@ import { useAppStore } from '../../stores/appStore';
 import type { Trade } from '../../types';
 
 const PNL_BUCKET_KEY = 'polybot-pnl-bucket-mode';
+const PNL_MARKET_TYPE_FILTER_KEY = 'polybot-pnl-market-type-filter';
 
 function getTradeTimeMs(trade: Trade): number {
   const ts = (trade as { match_time?: string }).match_time || trade.timestamp || trade.created_at || trade.matchTime || '';
@@ -41,6 +42,24 @@ function fmtUsd(v: number): string {
 }
 
 type PnlBucketMode = 'trade' | 'market';
+type PnlMarketType = 'updown' | 'hit' | 'above' | 'between';
+type PnlMarketTypeFilter = Record<PnlMarketType, boolean>;
+
+const DEFAULT_MARKET_TYPE_FILTER: PnlMarketTypeFilter = {
+  updown: true,
+  hit: true,
+  above: true,
+  between: true,
+};
+
+function classifyMarketType(question: string | null | undefined, eventSlug?: string | null): PnlMarketType | null {
+  const combined = `${question || ''} ${eventSlug || ''}`.toLowerCase();
+  if (/(up\s+or\s+down|updown)/i.test(combined)) return 'updown';
+  if (/(reach\s+\$?|dip\s+to\s+\$?| hit\b)/i.test(combined)) return 'hit';
+  if (/\bbetween\b.+\band\b/i.test(combined)) return 'between';
+  if (/(above\s+\$?|greater than|more than|over\s+\$?|less than|below|under)/i.test(combined)) return 'above';
+  return null;
+}
 
 export function PnLPanel() {
   const trades = useAppStore((s) => s.trades);
@@ -50,10 +69,33 @@ export function PnLPanel() {
     const saved = localStorage.getItem(PNL_BUCKET_KEY);
     return saved === 'market' ? 'market' : 'trade';
   });
+  const [marketTypeFilter, setMarketTypeFilter] = useState<PnlMarketTypeFilter>(() => {
+    try {
+      const raw = localStorage.getItem(PNL_MARKET_TYPE_FILTER_KEY);
+      if (!raw) return { ...DEFAULT_MARKET_TYPE_FILTER };
+      const parsed = JSON.parse(raw) as Partial<PnlMarketTypeFilter>;
+      return {
+        updown: parsed.updown !== false,
+        hit: parsed.hit !== false,
+        above: parsed.above !== false,
+        between: parsed.between !== false,
+      };
+    } catch {
+      return { ...DEFAULT_MARKET_TYPE_FILTER };
+    }
+  });
 
   const setBucket = useCallback((mode: PnlBucketMode) => {
     setBucketMode(mode);
     localStorage.setItem(PNL_BUCKET_KEY, mode);
+  }, []);
+
+  const toggleMarketType = useCallback((k: PnlMarketType) => {
+    setMarketTypeFilter((prev) => {
+      const next = { ...prev, [k]: !prev[k] };
+      localStorage.setItem(PNL_MARKET_TYPE_FILTER_KEY, JSON.stringify(next));
+      return next;
+    });
   }, []);
 
   const { dates, dataByDate } = useMemo(() => {
@@ -79,13 +121,15 @@ export function PnLPanel() {
     for (const trade of trades) {
       const timeMs = getTradeTimeMs(trade);
       if (timeMs === 0) continue;
+      const tid = tradeTokenId(trade);
+      const market = tid ? marketLookup[tid] : undefined;
+      const mType = classifyMarketType(market?.question || market?.groupItemTitle || market?.eventTitle, market?.eventSlug);
+      if (mType == null || !marketTypeFilter[mType]) continue;
 
       let dateKey: string | null = null;
       if (bucketMode === 'trade') {
         dateKey = getDateKey(new Date(timeMs));
       } else {
-        const tid = tradeTokenId(trade);
-        const market = tid ? marketLookup[tid] : undefined;
         const end = market?.endDate;
         if (end) {
           const endMs = new Date(end).getTime();
@@ -113,7 +157,7 @@ export function PnLPanel() {
     }
 
     return { dates, dataByDate };
-  }, [trades, marketLookup, bucketMode]);
+  }, [trades, marketLookup, bucketMode, marketTypeFilter]);
 
   const todayKey = getDateKey(new Date());
 
@@ -121,27 +165,43 @@ export function PnLPanel() {
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
       <div className="panel-header flex items-center justify-between gap-2 mb-2 cursor-grab flex-wrap">
         <h3 className="text-sm font-bold text-yellow-400">P&L</h3>
-        <div
-          className="flex items-center rounded border border-gray-600 overflow-hidden text-[9px] font-bold shrink-0 cursor-default"
-          onPointerDown={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            title="Bucket by trade execution date"
-            className={`px-1.5 py-0.5 transition ${bucketMode === 'trade' ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'}`}
-            onClick={() => setBucket('trade')}
-          >
-            Trade Time
-          </button>
-          <button
-            type="button"
-            title="Bucket by market expiry date (falls back to trade date if unknown)"
-            className={`px-1.5 py-0.5 transition ${bucketMode === 'market' ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'}`}
-            onClick={() => setBucket('market')}
-          >
-            Market Expiry
-          </button>
+        <div className="flex flex-col items-end gap-1 shrink-0 cursor-default" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+          <div className="flex items-center rounded border border-gray-600 overflow-hidden text-[9px] font-bold">
+            <button
+              type="button"
+              title="Bucket by trade execution date"
+              className={`px-1.5 py-0.5 transition ${bucketMode === 'trade' ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'}`}
+              onClick={() => setBucket('trade')}
+            >
+              Trade Time
+            </button>
+            <button
+              type="button"
+              title="Bucket by market expiry date (falls back to trade date if unknown)"
+              className={`px-1.5 py-0.5 transition ${bucketMode === 'market' ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'}`}
+              onClick={() => setBucket('market')}
+            >
+              Market Expiry
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-[9px] text-gray-300">
+            <label className="inline-flex items-center gap-1">
+              <input type="checkbox" className="rounded accent-cyan-500" checked={marketTypeFilter.updown} onChange={() => toggleMarketType('updown')} />
+              <span>Up or Down</span>
+            </label>
+            <label className="inline-flex items-center gap-1">
+              <input type="checkbox" className="rounded accent-cyan-500" checked={marketTypeFilter.hit} onChange={() => toggleMarketType('hit')} />
+              <span>Hit</span>
+            </label>
+            <label className="inline-flex items-center gap-1">
+              <input type="checkbox" className="rounded accent-cyan-500" checked={marketTypeFilter.above} onChange={() => toggleMarketType('above')} />
+              <span>Above</span>
+            </label>
+            <label className="inline-flex items-center gap-1">
+              <input type="checkbox" className="rounded accent-cyan-500" checked={marketTypeFilter.between} onChange={() => toggleMarketType('between')} />
+              <span>Between</span>
+            </label>
+          </div>
         </div>
       </div>
       <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">

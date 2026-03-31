@@ -1618,22 +1618,40 @@ export function Sidebar() {
                   const size = pos.size || 0;
                   const avg = pos.avgPrice || 0;
                   const cost = size * avg;
-                  const bestBid = bids.length > 0 ? parseFloat(bids[0].price) : 0;
-                  const bestAsk = asks.length > 0 ? parseFloat(asks[0].price) : 0;
-                  const currentPrice = outcome === 'YES' ? bestBid : (bestAsk ? (1 - bestAsk) : 0);
+                  // Mark each position to its own token's live bid (same outcome token),
+                  // not the currently viewed opposite-side orderbook.
+                  const tokenId = pos.asset || '';
+                  const tokenLive = tokenId ? marketLookup[tokenId] : undefined;
+                  const tokenBestBid = tokenLive?.bestBid;
+                  const currentPrice =
+                    typeof tokenBestBid === 'number' && Number.isFinite(tokenBestBid) && tokenBestBid > 0
+                      ? tokenBestBid
+                      : 0;
                   const currentValue = size * currentPrice;
                   const pnl = currentValue - cost;
                   const pnlPct = cost > 0 ? (pnl / cost) * 100 : 0;
                   const pnlColor = pnl >= 0 ? 'text-green-400' : 'text-red-400';
                   const pnlSign = pnl >= 0 ? '+' : '';
                   return (
-                    <div key={i} className="bg-gray-700/30 rounded px-1.5 py-0.5 flex items-center gap-1 text-[12px] whitespace-nowrap">
-                      <span className={`${outcomeColor} font-medium`}>{outcomeLabel}</span>
-                      <span className="text-gray-300">{Math.floor(size * 100) / 100}</span>
-                      <span className="text-gray-500">@</span>
-                      <span className="text-yellow-400">{(avg * 100).toFixed(1)}¢</span>
-                      <span className="text-gray-400">${currentValue.toFixed(2)}\${cost.toFixed(2)}</span>
-                      <span className={pnlColor}>{pnlSign}${Math.abs(Math.round(pnl))} ({pnlSign}{Math.round(pnlPct)}%)</span>
+                    <div key={i} className="bg-gray-700/30 rounded px-1.5 py-0.5 text-[12px] min-w-0">
+                      <div
+                        className="w-full text-gray-300 leading-tight break-words"
+                        style={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <span className={`${outcomeColor} font-medium`}>{outcomeLabel}</span>
+                        <span> {Math.floor(size * 100) / 100}</span>
+                        <span className="text-gray-500"> @ </span>
+                        <span className="text-yellow-400">{(avg * 100).toFixed(1)}¢</span>
+                        <span className="text-gray-400"> ${currentValue.toFixed(2)}\${cost.toFixed(2)}</span>
+                      </div>
+                      <div className={`${pnlColor} w-full leading-tight`}>
+                        {pnlSign}${Math.abs(Math.round(pnl))} ({pnlSign}{Math.round(pnlPct)}%)
+                      </div>
                     </div>
                   );
                 })

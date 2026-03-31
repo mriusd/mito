@@ -28,8 +28,7 @@ function getDateDisplay(endDate: string | null): { label: string; color: string 
   const dayAbbr = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][dt.getDay()];
   if (isToday) return { label: 'TODAY', color: 'text-red-400 font-bold' };
   if (isTmr) return { label: 'TMR', color: 'text-yellow-400 font-bold' };
-  const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
-  return { label: `${dayAbbr} ${dt.getDate()}`, color: isWeekend ? 'text-purple-400' : 'text-gray-400' };
+  return { label: `${dayAbbr} ${dt.getDate()}`, color: 'text-gray-400' };
 }
 
 function getTimeLeftDisplay(endDate: string | null): { label: string; color: string } {
@@ -55,8 +54,7 @@ function getTimeLeftDisplay(endDate: string | null): { label: string; color: str
   }
 
   const d = Math.max(1, Math.floor(daysLeft));
-  const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
-  return { label: `${d}d`, color: isWeekend ? 'text-purple-400' : 'text-gray-400' };
+  return { label: `${d}d`, color: 'text-gray-400' };
 }
 
 export function TradesPositionsOrders({ panelId }: { panelId: string }) {

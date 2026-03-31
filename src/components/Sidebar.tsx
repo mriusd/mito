@@ -1016,10 +1016,12 @@ export function Sidebar() {
               <div className="rounded border border-gray-700/70 bg-gray-900/50 px-2 py-1">
                 <div className="text-[9px] uppercase tracking-wide text-gray-500">Vol</div>
                 <div
-                  className="tabular-nums font-bold text-sky-300/95"
+                  className="tabular-nums font-bold text-green-400"
                   title="Toxic Flow USDC volume (wallet_positions usdc_in), same source as Up/Down grid"
                 >
-                  {liveOrderbookVolumeDisplay ?? '--'}
+                  {liveOrderbookVolumeDisplay && liveOrderbookVolumeDisplay !== '--'
+                    ? `$${liveOrderbookVolumeDisplay}`
+                    : '--'}
                 </div>
               </div>
               <div className="rounded border border-gray-700/70 bg-gray-900/50 px-2 py-1">

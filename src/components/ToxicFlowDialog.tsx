@@ -361,13 +361,27 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                       {highFlags.map((f, i) => (
                         <div key={`h${i}`} className="flex items-start gap-1.5 text-[10px]">
                           <AlertTriangle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
-                          <span className="text-gray-200">{f.detail}</span>
+                          <span className="text-gray-200">
+                            {f.wallet ? (
+                              <>
+                                <WalletLink wallet={f.wallet} />{' '}
+                                {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
+                              </>
+                            ) : f.detail}
+                          </span>
                         </div>
                       ))}
                       {medFlags.map((f, i) => (
                         <div key={`m${i}`} className="flex items-start gap-1.5 text-[10px]">
                           <AlertTriangle size={12} className="text-yellow-400 flex-shrink-0 mt-0.5" />
-                          <span className="text-gray-300">{f.detail}</span>
+                          <span className="text-gray-300">
+                            {f.wallet ? (
+                              <>
+                                <WalletLink wallet={f.wallet} />{' '}
+                                {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
+                              </>
+                            ) : f.detail}
+                          </span>
                         </div>
                       ))}
                       {hasConcentration && (

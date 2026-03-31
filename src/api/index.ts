@@ -401,7 +401,7 @@ export interface ToxicFlowData {
   yesUsdcIn: number;
   noUsdcIn: number;
   // Manipulation red flags
-  redFlags?: { flag: string; detail: string; level: string; value: number }[];
+  redFlags?: { flag: string; detail: string; level: string; value: number; wallet?: string }[];
   /** Backend: POLYGON_WSS_URL set */
   polygonWssConfigured?: boolean;
   /** All-time OrderFilled logs processed since process start */

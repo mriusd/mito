@@ -47,10 +47,10 @@ function getResolvedDisplay(market: any): { label: string; color: string } {
     }
   }
   if (yesPrice != null && noPrice != null && Number.isFinite(yesPrice) && Number.isFinite(noPrice)) {
-    if (yesPrice > noPrice) return { label: yesLabel, color: 'text-green-400 font-bold' };
-    if (noPrice > yesPrice) return { label: noLabel, color: 'text-red-400 font-bold' };
+    if (yesPrice > noPrice) return { label: `Resolved ${yesLabel}`, color: 'text-green-400 font-bold' };
+    if (noPrice > yesPrice) return { label: `Resolved ${noLabel}`, color: 'text-red-400 font-bold' };
   }
-  return { label: 'RESOLVED', color: 'text-gray-400' };
+  return { label: 'Resolved', color: 'text-gray-400' };
 }
 
 function shortenWallet(w: string): string {

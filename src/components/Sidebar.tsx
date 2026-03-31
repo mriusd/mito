@@ -71,6 +71,7 @@ export function Sidebar() {
     return {
       sharesInExistence: entry.sharesInExistence,
       marketNetDirection: entry.marketNetDirection,
+      holders: entry.holders,
     };
   }, [selectedMarket, marketLookup]);
   const sharesInExistenceDisplay = useMemo(() => {
@@ -79,6 +80,11 @@ export function Sidebar() {
     return Math.abs(v) >= 1000
       ? v.toLocaleString(undefined, { maximumFractionDigits: 0 })
       : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }, [liveShareStats]);
+  const holdersCountDisplay = useMemo(() => {
+    const v = liveShareStats?.holders;
+    if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
+    return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
   }, [liveShareStats]);
   const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
 
@@ -1031,7 +1037,7 @@ export function Sidebar() {
               >
                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-yellow-300">
                   <UsersRound size={13} />
-                  Holders
+                  {holdersCountDisplay}
                 </span>
               </button>
             </div>

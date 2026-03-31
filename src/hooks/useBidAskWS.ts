@@ -58,6 +58,9 @@ export function useBidAskWS() {
               if (typeof item.marketNetDirection === 'number' && Number.isFinite(item.marketNetDirection)) {
                 next.marketNetDirection = item.marketNetDirection;
               }
+              if (typeof item.holders === 'number' && Number.isFinite(item.holders)) {
+                next.holders = item.holders;
+              }
               patch[item.assetId] = next;
               changed = true;
             }

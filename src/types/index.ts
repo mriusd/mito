@@ -32,6 +32,7 @@ export interface Market {
   volume?: number;
   sharesInExistence?: number;
   marketNetDirection?: number;
+  holders?: number;
   // B-S computed values from server
   bs1?: number;
   bs2?: number;

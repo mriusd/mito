@@ -467,6 +467,43 @@ export async function fetchOnchainFills(params: { market_id?: string; wallet?: s
   return resp.json();
 }
 
+export interface OnchainMarketPositionRow {
+  tokenId: string;
+  size: number;
+  avgPrice: number;
+}
+
+export async function fetchOnchainMarketPositions(params: { token_ids: string[]; wallet: string }): Promise<{ positions: OnchainMarketPositionRow[]; count: number }> {
+  const qs = new URLSearchParams();
+  qs.set('token_ids', params.token_ids.join(','));
+  qs.set('wallet', params.wallet);
+  const resp = await fetch(`${BASE}/api/onchain-market-positions?${qs.toString()}`);
+  if (!resp.ok) throw new Error('Failed to fetch on-chain market positions');
+  return resp.json();
+}
+
+export interface OnchainMarketTradeRow {
+  txHash: string;
+  logIndex: number;
+  blockNumber: number;
+  blockTime: number;
+  tokenId: string;
+  side: 'BUY' | 'SELL';
+  size: number;
+  price: number;
+}
+
+export async function fetchOnchainMarketTrades(params: { token_ids: string[]; wallet: string; limit?: number; offset?: number }): Promise<{ trades: OnchainMarketTradeRow[]; count: number; total: number }> {
+  const qs = new URLSearchParams();
+  qs.set('token_ids', params.token_ids.join(','));
+  qs.set('wallet', params.wallet);
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.offset) qs.set('offset', String(params.offset));
+  const resp = await fetch(`${BASE}/api/onchain-market-trades?${qs.toString()}`);
+  if (!resp.ok) throw new Error('Failed to fetch on-chain market trades');
+  return resp.json();
+}
+
 // --- Wallet Summary API ---
 
 export interface WalletSummary {

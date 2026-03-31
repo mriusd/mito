@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAccount } from 'wagmi';
 import { useAppStore } from '../stores/appStore';
 import { appKit } from '../lib/wallet';
-import { placeOrder, cancelOrder, signOrder, submitSignedOrder } from '../api';
+import { placeOrder, cancelOrder, signOrder, submitSignedOrder, fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
+import { fetchProxyWallet } from '../api/polymarket';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
@@ -47,7 +48,7 @@ function readSidebarOrderKind(): 'limit' | 'market' {
 }
 
 export function Sidebar() {
-  const { isConnected: walletConnected } = useAccount();
+  const { isConnected: walletConnected, address: walletAddress } = useAccount();
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   // const setProgDialogOpen = useAppStore((s) => s.setProgDialogOpen);
@@ -133,6 +134,26 @@ export function Sidebar() {
   const [displayBids, setDisplayBids] = useState(bids);
   const [displayAsks, setDisplayAsks] = useState(asks);
   const [displayLiveTrades, setDisplayLiveTrades] = useState(onchainLiveTrades);
+  const [onchainSidebarPositions, setOnchainSidebarPositions] = useState<Array<{
+    tokenId: string;
+    size: number;
+    avgPrice: number;
+  }>>([]);
+  const [onchainSidebarTrades, setOnchainSidebarTrades] = useState<Array<{
+    tokenId: string;
+    side: 'BUY' | 'SELL';
+    price: number;
+    size: number;
+    blockTime: number;
+  }>>([]);
+  const [proxyWallet, setProxyWallet] = useState<string | null>(null);
+  useEffect(() => {
+    if (!walletAddress) { setProxyWallet(null); return; }
+    let cancelled = false;
+    fetchProxyWallet(walletAddress).then((pw) => { if (!cancelled) setProxyWallet(pw); });
+    return () => { cancelled = true; };
+  }, [walletAddress]);
+
   const [liveOrderbookExpanded, setLiveOrderbookExpanded] = useState(() => localStorage.getItem('sidebar-live-orderbook-expanded') !== 'false');
   const [liveTradesExpanded, setLiveTradesExpanded] = useState(() => {
     const saved = localStorage.getItem('sidebar-live-trades-expanded');
@@ -150,6 +171,60 @@ export function Sidebar() {
   useEffect(() => {
     setDisplayLiveTrades(liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketLiveTrades);
   }, [liveTradesSource, onchainLiveTrades, polymarketLiveTrades]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const tokenIds = selectedMarket?.clobTokenIds;
+      if (liveTradesSource !== 'onchain' || !proxyWallet || !tokenIds?.length) {
+        if (!cancelled) {
+          setOnchainSidebarPositions([]);
+          setOnchainSidebarTrades([]);
+        }
+        return;
+      }
+      try {
+        const [posRes, trRes] = await Promise.all([
+          fetchOnchainMarketPositions({
+            token_ids: tokenIds,
+            wallet: proxyWallet,
+          }),
+          fetchOnchainMarketTrades({
+            token_ids: tokenIds,
+            wallet: proxyWallet,
+            limit: 200,
+          }),
+        ]);
+        if (cancelled) return;
+        const mappedPos = Array.isArray(posRes.positions)
+          ? posRes.positions.map((p) => ({
+              tokenId: String(p.tokenId || ''),
+              size: Number(p.size || 0),
+              avgPrice: Number(p.avgPrice || 0),
+            })).filter((p) => p.tokenId && p.size > 0)
+          : [];
+        const mappedTrades = Array.isArray(trRes.trades)
+          ? trRes.trades.map((t) => ({
+              tokenId: String(t.tokenId || ''),
+              side: (String(t.side || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL',
+              size: Number(t.size || 0),
+              price: Number(t.price || 0),
+              blockTime: Number(t.blockTime || 0),
+            })).filter((t) => t.tokenId && t.size > 0 && t.price > 0)
+          : [];
+        setOnchainSidebarPositions(mappedPos);
+        setOnchainSidebarTrades(mappedTrades);
+      } catch {
+        if (!cancelled) {
+          setOnchainSidebarPositions([]);
+          setOnchainSidebarTrades([]);
+        }
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [liveTradesSource, proxyWallet, selectedMarket?.clobTokenIds]);
   useEffect(() => {
     localStorage.setItem('sidebar-live-orderbook-expanded', liveOrderbookExpanded ? 'true' : 'false');
   }, [liveOrderbookExpanded]);
@@ -180,11 +255,35 @@ export function Sidebar() {
     const endMs = new Date(selectedMarket.endDate).getTime();
     return Number.isFinite(endMs) && endMs <= Date.now();
   }, [selectedMarket]);
-  const myPositions = positions.filter((p) => marketTokenIds.includes(p.asset || ''));
+  const myPositions = useMemo(() => {
+    if (liveTradesSource !== 'onchain') {
+      return positions.filter((p) => marketTokenIds.includes(p.asset || ''));
+    }
+    return onchainSidebarPositions
+      .filter((p) => marketTokenIds.includes(p.tokenId))
+      .map((p) => ({ asset: p.tokenId, size: p.size, avgPrice: p.avgPrice }));
+  }, [liveTradesSource, positions, marketTokenIds, onchainSidebarPositions]);
   const allMarketOrders = orders.filter((o) => marketTokenIds.includes(o.asset_id || o.token_id || o.market || ''));
   const myOrders = allMarketOrders.filter((o) => !progOrderMap[o.id]);
   const progOrders = allMarketOrders.filter((o) => !!progOrderMap[o.id]);
-  const myTrades = trades.filter((t) => marketTokenIds.includes(t.asset_id || t.token_id || t.market || ''));
+  const myTrades = useMemo(() => {
+    if (liveTradesSource !== 'onchain') {
+      return trades.filter((t) => marketTokenIds.includes(t.asset_id || t.token_id || t.market || ''));
+    }
+    return onchainSidebarTrades
+      .filter((f) => marketTokenIds.includes(f.tokenId) && f.size >= 0.01)
+      .sort((a, b) => b.blockTime - a.blockTime)
+      .map((f) => ({
+        asset_id: f.tokenId,
+        token_id: f.tokenId,
+        side: f.side,
+        price: String(f.price),
+        size: String(f.size),
+        timestamp: f.blockTime > 0 ? f.blockTime * 1000 : Date.now(),
+        created_at: '',
+        matchTime: '',
+      }));
+  }, [liveTradesSource, trades, marketTokenIds, onchainSidebarTrades]);
 
   // Build set of user order prices for sidebar OB highlighting
   const sidebarUserBidPrices = useMemo(() => {
@@ -1845,7 +1944,7 @@ export function Sidebar() {
                   const size = parseFloat(trade.size);
                   const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
                   const side = isClaim ? 'CLAIM' : trade.side;
-                  const ts = trade.timestamp || trade.created_at || trade.matchTime;
+                  const ts = (trade as any).timestamp || (trade as any).created_at || (trade as any).matchTime;
                   return (
                     <div key={i} className="flex justify-between">
                       <span>

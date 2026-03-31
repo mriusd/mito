@@ -28,7 +28,7 @@ import { LiveTradeChart } from './LiveTradeChart';
 import { ChainlinkChart } from './ChainlinkChart';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { ToxicFlowDialog } from './ToxicFlowDialog';
-import { ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, Plus, UsersRound, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, Pencil, Plus, UsersRound, X } from 'lucide-react';
 import type { AssetSymbol } from '../types';
 
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
@@ -149,6 +149,7 @@ export function Sidebar() {
   const [customSellMax, setCustomSellMax] = useState(false);
   const [customLabel, setCustomLabel] = useState('');
   const [customColor, setCustomColor] = useState('#2563eb');
+  const [editingCustomButtonId, setEditingCustomButtonId] = useState<string | null>(null);
   const [orderExpiry, setOrderExpiry] = useState(localStorage.getItem('polymarket-order-expiry') || '180');
   const [orderExpiryUnit, setOrderExpiryUnit] = useState<'s' | 'm' | 'h'>(() => {
     const v = localStorage.getItem('polymarket-order-expiry-unit');
@@ -632,7 +633,7 @@ export function Sidebar() {
     if (label.length < 1 || label.length > 3) { showToast('Button label must be 1-3 characters', 'error'); return; }
 
     const next: CustomSidebarButton = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: editingCustomButtonId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       side: customSide,
       amount,
       priceCents,
@@ -640,12 +641,28 @@ export function Sidebar() {
       label,
       color: customColor,
     };
-    setCustomButtons((prev) => [...prev, next]);
+    if (editingCustomButtonId) {
+      setCustomButtons((prev) => prev.map((b) => (b.id === editingCustomButtonId ? next : b)));
+    } else {
+      setCustomButtons((prev) => [...prev, next]);
+    }
+    setEditingCustomButtonId(null);
     setCustomDialogOpen(false);
   };
 
   const handleRemoveCustomButton = (id: string) => {
     setCustomButtons((prev) => prev.filter((b) => b.id !== id));
+  };
+
+  const handleEditCustomButton = (btn: CustomSidebarButton) => {
+    setEditingCustomButtonId(btn.id);
+    setCustomSide(btn.side);
+    setCustomAmount(btn.amount > 0 ? String(btn.amount) : '1');
+    setCustomPrice(String(btn.priceCents));
+    setCustomSellMax(!!btn.maxSell);
+    setCustomLabel(btn.label);
+    setCustomColor(btn.color);
+    setCustomDialogOpen(true);
   };
 
   const handleCustomButtonClick = async (btn: CustomSidebarButton) => {
@@ -1805,11 +1822,19 @@ export function Sidebar() {
                         title={`${btn.side} ${btn.maxSell ? 'MAX' : btn.amount} @ ${btn.priceCents}¢`}
                       >
                         {btn.label}
-                        <span
-                          onClick={(e) => { e.stopPropagation(); handleRemoveCustomButton(btn.id); }}
-                          className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center rounded-full bg-black/70 text-white w-3 h-3"
-                        >
-                          <X className="w-2 h-2" />
+                        <span className="absolute -top-1 -right-1 hidden group-hover:flex items-center gap-0.5">
+                          <span
+                            onClick={(e) => { e.stopPropagation(); handleEditCustomButton(btn); }}
+                            className="flex items-center justify-center rounded-full bg-black/70 text-white w-3 h-3"
+                          >
+                            <Pencil className="w-2 h-2" />
+                          </span>
+                          <span
+                            onClick={(e) => { e.stopPropagation(); handleRemoveCustomButton(btn.id); }}
+                            className="flex items-center justify-center rounded-full bg-black/70 text-white w-3 h-3"
+                          >
+                            <X className="w-2 h-2" />
+                          </span>
                         </span>
                       </button>
                     ))}
@@ -1833,11 +1858,19 @@ export function Sidebar() {
                         title={`${btn.side} ${btn.maxSell ? 'MAX' : btn.amount} @ ${btn.priceCents}¢`}
                       >
                         {btn.label}
-                        <span
-                          onClick={(e) => { e.stopPropagation(); handleRemoveCustomButton(btn.id); }}
-                          className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center rounded-full bg-black/70 text-white w-3.5 h-3.5"
-                        >
-                          <X className="w-2.5 h-2.5" />
+                        <span className="absolute -top-1 -right-1 hidden group-hover:flex items-center gap-0.5">
+                          <span
+                            onClick={(e) => { e.stopPropagation(); handleEditCustomButton(btn); }}
+                            className="flex items-center justify-center rounded-full bg-black/70 text-white w-3.5 h-3.5"
+                          >
+                            <Pencil className="w-2.5 h-2.5" />
+                          </span>
+                          <span
+                            onClick={(e) => { e.stopPropagation(); handleRemoveCustomButton(btn.id); }}
+                            className="flex items-center justify-center rounded-full bg-black/70 text-white w-3.5 h-3.5"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </span>
                         </span>
                       </button>
                     ))}
@@ -2131,7 +2164,7 @@ export function Sidebar() {
       {customDialogOpen && typeof document !== 'undefined' && createPortal((
         <div className="fixed inset-0 z-[60000] bg-black/70 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) setCustomDialogOpen(false); }}>
           <div className="w-full max-w-sm mx-4 rounded-lg border border-gray-600 bg-gray-800 p-4">
-            <div className="text-sm font-bold text-white mb-3">Create Custom Button</div>
+            <div className="text-sm font-bold text-white mb-3">{editingCustomButtonId ? 'Edit Custom Button' : 'Create Custom Button'}</div>
             <div className="space-y-2 text-xs">
               <div className="flex items-center gap-2">
                 <span className="text-gray-400 w-16">Side</span>
@@ -2165,8 +2198,8 @@ export function Sidebar() {
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setCustomDialogOpen(false)} className="px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-xs font-medium">Cancel</button>
-              <button onClick={handleCreateCustomButton} className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-bold">Create</button>
+              <button onClick={() => { setCustomDialogOpen(false); setEditingCustomButtonId(null); }} className="px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-xs font-medium">Cancel</button>
+              <button onClick={handleCreateCustomButton} className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-bold">{editingCustomButtonId ? 'Save' : 'Create'}</button>
             </div>
           </div>
         </div>

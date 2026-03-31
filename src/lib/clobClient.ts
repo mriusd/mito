@@ -304,6 +304,20 @@ function getOrderRawAmounts(side: 'BUY' | 'SELL', size: number, price: number, t
   }
 }
 
+function adjustedSellSizeFromBalanceError(errMsg: string, currentSize: number): number | null {
+  const m = /balance:\s*([0-9]+)\s*,\s*order amount:\s*([0-9]+)/i.exec(errMsg);
+  if (!m) return null;
+  const balanceRaw = parseInt(m[1], 10);
+  const orderAmtRaw = parseInt(m[2], 10);
+  if (!Number.isFinite(balanceRaw) || !Number.isFinite(orderAmtRaw) || balanceRaw <= 0 || orderAmtRaw <= 0) return null;
+  if (balanceRaw >= orderAmtRaw) return null;
+  // Outcome token amounts are 6 decimals on CLOB payloads; keep 0.01 share UI precision.
+  const maxByBalance = roundDown(Math.max(0, (balanceRaw - 1) / 1e6), 2);
+  if (!Number.isFinite(maxByBalance) || maxByBalance <= 0) return null;
+  if (maxByBalance >= currentSize) return null;
+  return maxByBalance;
+}
+
 // --- Build and sign an order using @polymarket/order-utils ---
 async function buildSignedOrder(
   signer: ethers.Signer,
@@ -469,6 +483,31 @@ export async function placeOrderDirect(params: {
 
     if (data.error || data.errorMsg) {
       const errMsg = data.error || data.errorMsg;
+      // Retry once on tiny sell balance shortfall: "balance: X, order amount: Y"
+      if ((params.side as 'BUY' | 'SELL') === 'SELL') {
+        const adjustedSize = adjustedSellSizeFromBalanceError(errMsg, params.size);
+        if (adjustedSize != null) {
+          const retrySigned = await buildSignedOrder(
+            signer, params.proxyWallet, params.tokenId,
+            params.side as 'BUY' | 'SELL', params.price, adjustedSize,
+            feeRateBps, tickSize, negRisk, params.expiration,
+          );
+          const retryBody = JSON.stringify(orderToJson(retrySigned, creds.key, resolvedOrderType));
+          const retryHeaders = await buildL2Headers(signer, creds, 'POST', '/order', retryBody);
+          const retryBuilderHeaders = await fetchBuilderHeaders('POST', '/order', retryBody);
+          const retryResp = await fetch(`${CLOB_URL}/order`, {
+            method: 'POST',
+            headers: { ...retryHeaders, ...retryBuilderHeaders, 'Content-Type': 'application/json' },
+            body: retryBody,
+          });
+          const retryData = await retryResp.json();
+          if (!(retryData.error || retryData.errorMsg)) {
+            sd.setStep('submit', 'done');
+            setTimeout(() => sd.close(), 1200);
+            return { success: true, orderID: retryData.orderID || retryData.id };
+          }
+        }
+      }
       // Retry on tick size error
       if (errMsg.includes('invalid tick size')) {
         const retryTick = await fetch(`${CLOB_URL}/tick-size?token_id=${params.tokenId}`).then(r => r.json());

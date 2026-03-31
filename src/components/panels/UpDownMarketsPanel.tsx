@@ -541,7 +541,7 @@ export function UpDownMarketsPanel() {
                       )}
                       {showSmartMoneyLeftIcon && (
                         <span
-                          className="absolute left-[2px] top-1/2 -translate-y-1/2 z-10 text-green-300 animate-[pulse_0.7s_ease-in-out_infinite]"
+                          className="absolute left-[4px] top-1/2 -translate-y-1/2 z-10 text-green-300 animate-[pulse_0.7s_ease-in-out_infinite]"
                           title={`Contrarian smart money: market leans NO (${((yesMidProb ?? 0) * 100).toFixed(1)}c), smart money leans YES (${smartMoneyBarPct.toFixed(1)}%)`}
                         >
                           <GraduationCap size={11} />
@@ -549,7 +549,7 @@ export function UpDownMarketsPanel() {
                       )}
                       {showSmartMoneyRightIcon && (
                         <span
-                          className="absolute right-[2px] top-1/2 -translate-y-1/2 z-10 text-red-300 animate-[pulse_0.7s_ease-in-out_infinite]"
+                          className="absolute right-[4px] top-1/2 -translate-y-1/2 z-10 text-red-300 animate-[pulse_0.7s_ease-in-out_infinite]"
                           title={`Contrarian smart money: market leans YES (${((yesMidProb ?? 0) * 100).toFixed(1)}c), smart money leans NO (${smartMoneyBarPct.toFixed(1)}%)`}
                         >
                           <GraduationCap size={11} />

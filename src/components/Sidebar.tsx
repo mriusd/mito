@@ -958,8 +958,7 @@ export function Sidebar() {
                         <span className="inline-flex items-center gap-0.5 tabular-nums">
                           (
                           {diffPct >= 0 ? '+' : ''}
-                          <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
-                          {diffPct.toFixed(2)}
+                          {diffPct.toFixed(2)}%
                           {')'}
                         </span>
                       </div>
@@ -1019,7 +1018,7 @@ export function Sidebar() {
           <div className="sidebar-section py-1">
             <div className="grid grid-cols-3 gap-2 text-[10px]">
               <div className="rounded border border-gray-700/70 bg-gray-900/50 px-2 py-1">
-                <div className="text-[9px] uppercase tracking-wide text-gray-500">Vol</div>
+                <div className="text-[9px] uppercase tracking-wide text-gray-500">Volume</div>
                 <div
                   className="tabular-nums font-bold text-green-400"
                   title="Toxic Flow USDC volume (wallet_positions usdc_in), same source as Up/Down grid"
@@ -1039,13 +1038,11 @@ export function Sidebar() {
                 type="button"
                 onClick={() => setToxicDialogOpen(true)}
                 onPointerDown={(e) => e.stopPropagation()}
-                className="rounded border border-yellow-500/50 bg-yellow-900/20 px-2 py-1 hover:bg-yellow-500/20 transition-colors"
+                className="rounded border border-yellow-500/50 bg-yellow-900/20 px-2 py-1 text-left hover:bg-yellow-500/20 transition-colors"
                 title="Holders Analysis"
               >
-                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-yellow-300">
-                  <UsersRound size={13} />
-                  {holdersCountDisplay}
-                </span>
+                <div className="text-[9px] uppercase tracking-wide text-yellow-400">Holders</div>
+                <div className="tabular-nums font-bold text-yellow-300">{holdersCountDisplay}</div>
               </button>
             </div>
             {/* Smart Money Bias bar */}

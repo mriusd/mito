@@ -1,34 +1,55 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { useAccount } from 'wagmi';
+import { ethers } from 'ethers';
 import { useAppStore } from '../stores/appStore';
 import { fetchProxyWallet, fetchWalletPositions, fetchWalletActivity, fetchWalletBalance } from '../api/polymarket';
 import { fetchOpenOrdersDirect, setWalletRefreshFn, hasCredsForWallet, ensureCredsForWallet } from '../lib/clobClient';
 import { showSignatureExplainer } from '../components/SignatureExplainerDialog';
 import { isWebMode } from '../lib/env';
+import { getStoredPrivateKey } from '../components/PrivateKeyImportDialog';
 
 // Web mode only: resolve the Polymarket Safe proxy wallet for the connected EOA,
 // then fetch positions, orders, trades, balance from Polymarket directly.
 // In app mode this hook is a no-op.
 export function useWalletData() {
   const { address, isConnected } = useAccount();
+  const signingMode = useAppStore((s) => s.signingMode);
+  const setPkAddress = useAppStore((s) => s.setPkAddress);
   const store = useAppStore();
   const fetchingRef = useRef(false);
   const [proxyWallet, setProxyWallet] = useState<string | null>(null);
   const credsCheckedRef = useRef(false);
 
-  // Resolve proxy wallet when EOA connects
+  // Derive EOA from private key when PK mode is active
+  const pkEoa = useMemo(() => {
+    if (signingMode !== 'privateKey') return null;
+    const pk = getStoredPrivateKey();
+    if (!pk) return null;
+    try {
+      return new ethers.Wallet(pk).address;
+    } catch { return null; }
+  }, [signingMode]);
+
+  // Publish pkAddress to store so other components can read it
+  useEffect(() => { setPkAddress(pkEoa); }, [pkEoa, setPkAddress]);
+
+  // The effective EOA: PK address when in PK mode, otherwise wagmi address
+  const effectiveEoa = signingMode === 'privateKey' && pkEoa ? pkEoa : address;
+  const effectiveConnected = signingMode === 'privateKey' && pkEoa ? true : isConnected;
+
+  // Resolve proxy wallet when EOA connects (or changes due to PK switch)
   useEffect(() => {
-    if (!isWebMode || !isConnected || !address) {
+    if (!isWebMode || !effectiveConnected || !effectiveEoa) {
       setProxyWallet(null);
       credsCheckedRef.current = false;
       return;
     }
     (async () => {
-      const pw = await fetchProxyWallet(address);
-      console.log(`[useWalletData] EOA ${address} → proxy wallet ${pw}`);
+      const pw = await fetchProxyWallet(effectiveEoa);
+      console.log(`[useWalletData] EOA ${effectiveEoa} → proxy wallet ${pw}`);
       setProxyWallet(pw);
     })();
-  }, [isConnected, address]);
+  }, [effectiveConnected, effectiveEoa]);
 
   const fetchAll = useCallback(async () => {
     if (!isWebMode || !proxyWallet || fetchingRef.current) return;
@@ -80,26 +101,35 @@ export function useWalletData() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proxyWallet]);
 
-  // Auto-derive API creds if not available (triggers wallet signature once per session)
+  // Auto-derive API creds if not available
   useEffect(() => {
     if (!isWebMode || !proxyWallet || credsCheckedRef.current) return;
     credsCheckedRef.current = true;
     if (!hasCredsForWallet(proxyWallet)) {
-      console.log('[useWalletData] No cached API creds for wallet, asking user...');
-      showSignatureExplainer(
-        'Wallet Signature Required',
-        'Your wallet will request a signature to derive your Polymarket API credentials. These credentials are used for reading your open orders, positions, and trades, and for cancelling orders.\n\nPlacing new orders requires a separate signature each time. No withdrawals or transfers are possible with these keys.',
-        () => ensureCredsForWallet(proxyWallet),
-      ).then((success) => {
-        if (success) {
-          console.log('[useWalletData] API creds derived successfully');
+      if (signingMode === 'privateKey' && pkEoa) {
+        // PK mode: sign silently in the background, no dialog needed
+        console.log('[useWalletData] PK mode — deriving API creds silently...');
+        ensureCredsForWallet(proxyWallet).then(() => {
+          console.log('[useWalletData] API creds derived successfully (PK)');
           fetchAll();
-        } else {
-          credsCheckedRef.current = false;
-        }
-      });
+        }).catch(() => { credsCheckedRef.current = false; });
+      } else {
+        console.log('[useWalletData] No cached API creds for wallet, asking user...');
+        showSignatureExplainer(
+          'Wallet Signature Required',
+          'Your wallet will request a signature to derive your Polymarket API credentials. These credentials are used for reading your open orders, positions, and trades, and for cancelling orders.\n\nPlacing new orders requires a separate signature each time. No withdrawals or transfers are possible with these keys.',
+          () => ensureCredsForWallet(proxyWallet),
+        ).then((success) => {
+          if (success) {
+            console.log('[useWalletData] API creds derived successfully');
+            fetchAll();
+          } else {
+            credsCheckedRef.current = false;
+          }
+        });
+      }
     }
-  }, [proxyWallet, fetchAll]);
+  }, [proxyWallet, fetchAll, signingMode, pkEoa]);
 
   // Fetch once proxy wallet is resolved
   useEffect(() => {

@@ -60,6 +60,12 @@ interface AppState {
   signalPriceMode: string;
   signalsOnGrid: boolean;
 
+  // Signing mode
+  signingMode: 'wallet' | 'privateKey';
+  pkAddress: string | null; // EOA address derived from imported private key
+  setSigningMode: (v: 'wallet' | 'privateKey') => void;
+  setPkAddress: (v: string | null) => void;
+
   // Sidebar
   sidebarOpen: boolean;
   selectedMarket: Market | null;
@@ -332,6 +338,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   signalMakerMode: localStorage.getItem('polymarket-signal-maker-mode') === 'true',
   signalPriceMode: localStorage.getItem('polymarket-signal-price-mode') || 'ASK',
   signalsOnGrid: localStorage.getItem('polymarket-signals-on-grid') !== 'false',
+
+  signingMode: (localStorage.getItem('polymarket-signing-mode') === 'privateKey' ? 'privateKey' : 'wallet') as 'wallet' | 'privateKey',
+  pkAddress: null,
+  setSigningMode: (v) => { localStorage.setItem('polymarket-signing-mode', v); set({ signingMode: v }); },
+  setPkAddress: (v) => set({ pkAddress: v }),
 
   sidebarOpen: true,
   selectedMarket: null,

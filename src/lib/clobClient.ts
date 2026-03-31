@@ -9,6 +9,8 @@ import type { OrderData, SignedOrder } from '@polymarket/order-utils';
 import { getWalletClient } from '@wagmi/core';
 import { wagmiAdapter } from './wallet';
 import { signingDialog } from '../components/SigningDialog';
+import { useAppStore } from '../stores/appStore';
+import { getStoredPrivateKey } from '../components/PrivateKeyImportDialog';
 
 const CLOB_URL = 'https://clob.polymarket.com';
 const CHAIN_ID = 137;
@@ -174,7 +176,7 @@ async function hmacSha256Base64(secret: string, message: string): Promise<string
 }
 
 // --- L1 Auth: EIP-712 signature for API key derivation ---
-async function buildL1Headers(signer: ethers.providers.JsonRpcSigner): Promise<Record<string, string>> {
+async function buildL1Headers(signer: ethers.Signer): Promise<Record<string, string>> {
   const address = await signer.getAddress();
   const ts = Math.floor(Date.now() / 1000);
   const nonce = 0;
@@ -188,7 +190,7 @@ async function buildL1Headers(signer: ethers.providers.JsonRpcSigner): Promise<R
     ],
   };
   const value = { address, timestamp: `${ts}`, nonce, message: MSG_TO_SIGN };
-  const sig = await signer._signTypedData(domain, types, value);
+  const sig = await (signer as any)._signTypedData(domain, types, value);
   return {
     POLY_ADDRESS: address,
     POLY_SIGNATURE: sig,
@@ -199,7 +201,7 @@ async function buildL1Headers(signer: ethers.providers.JsonRpcSigner): Promise<R
 
 // --- L2 Auth: HMAC signature for authenticated API calls ---
 async function buildL2Headers(
-  signer: ethers.providers.JsonRpcSigner,
+  signer: ethers.Signer,
   creds: ApiKeyCreds,
   method: string,
   requestPath: string,
@@ -229,8 +231,16 @@ async function buildL2HeadersWithAddress(
   };
 }
 
-// --- Convert viem WalletClient to ethers v5 JsonRpcSigner ---
-async function getEthersSigner(): Promise<ethers.providers.JsonRpcSigner> {
+// --- Get signer: private key wallet (instant) or browser wallet (popup) ---
+async function getEthersSigner(): Promise<ethers.Signer> {
+  const { signingMode } = useAppStore.getState();
+  if (signingMode === 'privateKey') {
+    const pk = getStoredPrivateKey();
+    if (pk) {
+      const provider = new ethers.providers.JsonRpcProvider('https://polygon-rpc.com', 137);
+      return new ethers.Wallet(pk, provider);
+    }
+  }
   const walletClient = await getWalletClient(wagmiAdapter.wagmiConfig);
   if (!walletClient) throw new Error('No wallet connected');
   const { account, chain, transport } = walletClient;
@@ -240,7 +250,7 @@ async function getEthersSigner(): Promise<ethers.providers.JsonRpcSigner> {
 }
 
 // --- API key derivation ---
-async function deriveApiKey(signer: ethers.providers.JsonRpcSigner): Promise<ApiKeyCreds> {
+async function deriveApiKey(signer: ethers.Signer): Promise<ApiKeyCreds> {
   const headers = await buildL1Headers(signer);
   // Try derive first
   let resp = await fetch(`${CLOB_URL}/auth/derive-api-key`, { headers });
@@ -254,7 +264,7 @@ async function deriveApiKey(signer: ethers.providers.JsonRpcSigner): Promise<Api
 }
 
 // --- Ensure we have cached creds for this address ---
-async function ensureCreds(signer: ethers.providers.JsonRpcSigner, proxyWallet: string): Promise<ApiKeyCreds> {
+async function ensureCreds(signer: ethers.Signer, proxyWallet: string): Promise<ApiKeyCreds> {
   const addr = (await signer.getAddress()).toLowerCase();
   if (cachedCreds && cachedAddress === addr && cachedProxyWallet === proxyWallet.toLowerCase()) {
     return cachedCreds;
@@ -296,7 +306,7 @@ function getOrderRawAmounts(side: 'BUY' | 'SELL', size: number, price: number, t
 
 // --- Build and sign an order using @polymarket/order-utils ---
 async function buildSignedOrder(
-  signer: ethers.providers.JsonRpcSigner,
+  signer: ethers.Signer,
   proxyWallet: string,
   tokenId: string,
   side: 'BUY' | 'SELL',
@@ -512,7 +522,7 @@ export async function signOrderOnly(params: {
   size: number;
   expiration?: number;
   proxyWallet: string;
-}): Promise<{ success: boolean; signedPayload?: { body: string; signer: ethers.providers.JsonRpcSigner; creds: ApiKeyCreds }; error?: string }> {
+}): Promise<{ success: boolean; signedPayload?: { body: string; signer: ethers.Signer; creds: ApiKeyCreds }; error?: string }> {
   try {
     const signer = await getEthersSigner();
     const creds = await ensureCreds(signer, params.proxyWallet);
@@ -550,7 +560,7 @@ export async function signOrderOnly(params: {
 // Submit a previously signed order to the CLOB.
 export async function submitSignedOrderDirect(signedPayload: {
   body: string;
-  signer: ethers.providers.JsonRpcSigner;
+  signer: ethers.Signer;
   creds: ApiKeyCreds;
 }): Promise<{ success: boolean; orderID?: string; error?: string }> {
   try {

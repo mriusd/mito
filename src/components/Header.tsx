@@ -8,6 +8,7 @@ import { useAppStore } from '../stores/appStore';
 import { saveSetting } from '../api';
 import { gridSizeFromDefaultLayoutMins } from '../lib/defaultLayouts';
 import type { PanelType } from '../types';
+import { PrivateKeyImportDialog, getStoredPrivateKey } from './PrivateKeyImportDialog';
 
 const IS_DEV = import.meta.env.DEV;
 
@@ -360,9 +361,72 @@ export function Header({ onRefresh }: HeaderProps) {
           </a>
         )}
 
+        {/* Signing Mode Switch */}
+        {walletConnected && <SigningModeSwitch />}
+
         {/* Wallet Connect */}
         <WalletButton />
       </div>
     </header>
+  );
+}
+
+function SigningModeSwitch() {
+  const signingMode = useAppStore((s) => s.signingMode);
+  const setSigningMode = useAppStore((s) => s.setSigningMode);
+  const [pkDialogOpen, setPkDialogOpen] = useState(false);
+  const [hasPk, setHasPk] = useState(!!getStoredPrivateKey());
+
+  const refreshPk = () => setHasPk(!!getStoredPrivateKey());
+
+  const handleClick = (mode: 'wallet' | 'privateKey') => {
+    if (mode === 'wallet') {
+      setSigningMode('wallet');
+      return;
+    }
+    if (!hasPk) {
+      setPkDialogOpen(true);
+    } else if (signingMode === 'privateKey') {
+      setPkDialogOpen(true);
+    } else {
+      setSigningMode('privateKey');
+    }
+  };
+
+  return (
+    <>
+      <div className="flex items-center rounded border border-gray-600 overflow-hidden text-[9px] font-bold h-[28px]">
+        <button
+          type="button"
+          className={`px-2 h-full transition ${signingMode === 'wallet' ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'}`}
+          onClick={() => handleClick('wallet')}
+        >
+          Wallet
+        </button>
+        <button
+          type="button"
+          className={`px-2 h-full transition flex items-center gap-1 ${signingMode === 'privateKey' ? 'bg-yellow-700 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'}`}
+          onClick={() => handleClick('privateKey')}
+        >
+          PK
+          {signingMode === 'privateKey' && hasPk && <span className="w-1.5 h-1.5 rounded-full bg-green-400" />}
+        </button>
+      </div>
+      <PrivateKeyImportDialog
+        open={pkDialogOpen}
+        onDone={() => {
+          setPkDialogOpen(false);
+          refreshPk();
+          setSigningMode('privateKey');
+        }}
+        onCancel={() => {
+          setPkDialogOpen(false);
+          refreshPk();
+          if (!getStoredPrivateKey() && signingMode === 'privateKey') {
+            setSigningMode('wallet');
+          }
+        }}
+      />
+    </>
   );
 }

@@ -18,6 +18,7 @@ import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarke
 import { API_BASE } from '../lib/env';
 import { fetchUpDownTargetFromCrypto, upDownCryptoTimeframe } from '../lib/upDownTargetFromCrypto';
 import { usePolymarketOB } from '../hooks/usePolymarketOB';
+import { useOnchainTradesWS } from '../hooks/useOnchainTradesWS';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
 import { PriceChart } from './PriceChart';
@@ -25,10 +26,11 @@ import { LiveTradeChart } from './LiveTradeChart';
 import { ChainlinkChart } from './ChainlinkChart';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { ToxicFlowDialog } from './ToxicFlowDialog';
-import { Biohazard, CirclePercent, Clock } from 'lucide-react';
+import { Biohazard, ChevronDown, ChevronRight, CirclePercent, Clock } from 'lucide-react';
 import type { AssetSymbol } from '../types';
 
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
+const SIDEBAR_LIVE_TRADES_SOURCE_KEY = 'polymarket-sidebar-live-trades-source';
 /** FAK buy: pay up to this per share to lift asks. */
 const MARKET_AGGRESSIVE_BUY = 0.99;
 /** FAK sell: accept down to this per share to hit bids. */
@@ -90,10 +92,15 @@ export function Sidebar() {
     if (!sidebarOpen || !selectedMarket?.clobTokenIds) return null;
     return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 0 : 1] || null;
   }, [sidebarOpen, selectedMarket, orderOutcome]);
-  const { bids, asks, trades: liveTrades, loading: obLoading } = usePolymarketOB(obTokenId);
+  const { bids, asks, trades: polymarketLiveTrades, loading: obLoading } = usePolymarketOB(obTokenId);
+  const { trades: onchainLiveTrades } = useOnchainTradesWS(obTokenId);
+  const [liveTradesSource, setLiveTradesSource] = useState<'onchain' | 'polymarket'>(() => {
+    const saved = localStorage.getItem(SIDEBAR_LIVE_TRADES_SOURCE_KEY);
+    return saved === 'polymarket' ? 'polymarket' : 'onchain';
+  });
   const [displayBids, setDisplayBids] = useState(bids);
   const [displayAsks, setDisplayAsks] = useState(asks);
-  const [displayLiveTrades, setDisplayLiveTrades] = useState(liveTrades);
+  const [displayLiveTrades, setDisplayLiveTrades] = useState(onchainLiveTrades);
   const [liveOrderbookExpanded, setLiveOrderbookExpanded] = useState(() => localStorage.getItem('sidebar-live-orderbook-expanded') !== 'false');
   const [liveTradesExpanded, setLiveTradesExpanded] = useState(() => {
     const saved = localStorage.getItem('sidebar-live-trades-expanded');
@@ -106,15 +113,20 @@ export function Sidebar() {
     if (!obLoading) {
       setDisplayBids(bids);
       setDisplayAsks(asks);
-      setDisplayLiveTrades(liveTrades);
     }
-  }, [obLoading, bids, asks, liveTrades]);
+  }, [obLoading, bids, asks]);
+  useEffect(() => {
+    setDisplayLiveTrades(liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketLiveTrades);
+  }, [liveTradesSource, onchainLiveTrades, polymarketLiveTrades]);
   useEffect(() => {
     localStorage.setItem('sidebar-live-orderbook-expanded', liveOrderbookExpanded ? 'true' : 'false');
   }, [liveOrderbookExpanded]);
   useEffect(() => {
     localStorage.setItem('sidebar-live-trades-expanded', liveTradesExpanded ? 'true' : 'false');
   }, [liveTradesExpanded]);
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_LIVE_TRADES_SOURCE_KEY, liveTradesSource);
+  }, [liveTradesSource]);
 
   useEffect(() => {
     try {
@@ -787,7 +799,7 @@ export function Sidebar() {
 
             {/* Price History Chart (or Live Trade Chart for Up or Down) */}
             {isUpDownMarket
-              ? <LiveTradeChart trades={liveTrades} isNo={orderOutcome === 'NO'} tokenId={selectedMarket.clobTokenIds?.[0] || ''} startTime={upDownStartTime} endTime={selectedMarket.endDate ? new Date(selectedMarket.endDate).getTime() : undefined} eventSlug={selectedMarket.eventSlug} chainlinkAsset={upDownAsset || undefined} targetPrice={upDownTargetPrice} />
+              ? <LiveTradeChart trades={polymarketLiveTrades} isNo={orderOutcome === 'NO'} tokenId={selectedMarket.clobTokenIds?.[0] || ''} startTime={upDownStartTime} endTime={selectedMarket.endDate ? new Date(selectedMarket.endDate).getTime() : undefined} eventSlug={selectedMarket.eventSlug} chainlinkAsset={upDownAsset || undefined} targetPrice={upDownTargetPrice} />
               : <PriceChart market={selectedMarket} isNo={orderOutcome === 'NO'} />
             }
           </div>
@@ -971,13 +983,27 @@ export function Sidebar() {
 
           {/* Live Orderbook + Trades */}
           <div className="sidebar-section flex flex-col min-h-0 overflow-hidden" style={{ height: orderbookSectionHeight, minHeight: orderbookSectionHeight, maxHeight: orderbookSectionHeight }}>
-            <button
-              type="button"
-              onClick={() => setLiveOrderbookExpanded(v => !v)}
-              className="text-xs text-gray-400 mb-2 flex w-full min-w-0 items-center gap-1 hover:text-gray-200 transition"
-            >
-              <span className="text-[10px] text-gray-500 shrink-0">{liveOrderbookExpanded ? '▾' : '▸'}</span>
+            <div className="text-xs text-gray-400 mb-2 flex w-full min-w-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setLiveOrderbookExpanded(v => !v)}
+                className="shrink-0 rounded p-0.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition"
+                title={liveOrderbookExpanded ? 'Collapse' : 'Expand'}
+              >
+                {liveOrderbookExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </button>
               <span className="shrink-0">Live Orderbook</span>
+              <span
+                className="inline-flex items-center rounded px-1 py-0.5 text-[9px] font-bold leading-none border border-[#2d57ff] bg-[#2f5cff]"
+                title="This orderbook data comes from Polymarket's live market feed."
+              >
+                <img
+                  src="/polymarket-favicon.ico"
+                  alt="Polymarket"
+                  className="h-3 w-3 rounded-[2px]"
+                  style={{ filter: 'brightness(0) invert(1)' }}
+                />
+              </span>
               {liveOrderbookVolumeDisplay != null && (
                 <span
                   className="ml-auto shrink-0 tabular-nums text-[10px] font-bold text-sky-300/95"
@@ -998,7 +1024,7 @@ export function Sidebar() {
               >
                 <Biohazard size={14} className="text-yellow-400" />
               </button>
-            </button>
+            </div>
             {liveOrderbookExpanded && (
               <div className="relative grid grid-cols-2 gap-2 flex-1 min-h-0 overflow-y-auto" style={{ minHeight: 120 }}>
                 <div>
@@ -1068,14 +1094,43 @@ export function Sidebar() {
 
           {/* Live Trades */}
           <div className={`sidebar-section live-trades-section ${liveTradesExpanded ? 'expanded' : ''} ${liveTradesExpanded && !liveOrderbookExpanded ? 'boosted' : ''} flex flex-col min-h-0 overflow-hidden flex-shrink-0`} style={{ height: liveTradesSectionHeight, minHeight: liveTradesSectionHeight, maxHeight: liveTradesSectionHeight }}>
-            <button
-              type="button"
-              onClick={() => setLiveTradesExpanded(v => !v)}
-              className="text-xs text-gray-400 mb-2 flex items-center gap-1 hover:text-gray-200 transition"
-            >
-              <span className="text-[10px] text-gray-500">{liveTradesExpanded ? '▾' : '▸'}</span>
+            <div className="text-xs text-gray-400 mb-2 flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setLiveTradesExpanded(v => !v)}
+                className="shrink-0 rounded p-0.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition"
+                title={liveTradesExpanded ? 'Collapse' : 'Expand'}
+              >
+                {liveTradesExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </button>
               <span>Live Trades</span>
-            </button>
+              <div className="ml-1 inline-flex overflow-hidden rounded border border-gray-600/70">
+                <button
+                  type="button"
+                  className={`px-1.5 py-0.5 text-[9px] font-bold leading-none transition ${
+                    liveTradesSource === 'onchain'
+                      ? 'bg-purple-700/60 text-purple-100'
+                      : 'bg-gray-900/80 text-gray-400 hover:text-gray-200'
+                  }`}
+                  onClick={() => setLiveTradesSource('onchain')}
+                  title="Show on-chain live trades"
+                >
+                  ONCHAIN
+                </button>
+                <button
+                  type="button"
+                  className={`px-1.5 py-0.5 text-[9px] font-bold leading-none transition ${
+                    liveTradesSource === 'polymarket'
+                      ? 'bg-blue-700/60 text-blue-100'
+                      : 'bg-gray-900/80 text-gray-400 hover:text-gray-200'
+                  }`}
+                  onClick={() => setLiveTradesSource('polymarket')}
+                  title="Show Polymarket live trades"
+                >
+                  POLYMARKET
+                </button>
+              </div>
+            </div>
             {liveTradesExpanded && (
               <>
                 <div className="grid grid-cols-5 gap-1 text-[10px] text-gray-500 mb-1">

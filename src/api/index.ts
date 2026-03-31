@@ -373,6 +373,8 @@ export interface WalletPosition {
   marketAsset: string;
   marketType: string;
   marketTimeframe: string;
+  resultYes?: number;
+  resolvedAt?: number;
   netSide: string;
   inventoryBias: number;
 }

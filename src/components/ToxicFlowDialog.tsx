@@ -27,11 +27,16 @@ function getDateDisplay(endDate: string | null): { label: string; color: string 
   return { label: `${dayAbbr} ${dt.getDate()}`, color: isWeekend ? 'text-purple-400' : 'text-gray-400' };
 }
 
-function getResolvedDisplay(market: any): { label: string; color: string } {
-  if (!market?.closed) return { label: '-', color: 'text-gray-500' };
+function getResolvedDisplay(market: any, row?: WalletPosition): { label: string; color: string } {
   const isUpDown = /up\s+or\s+down|updown|up-or-down/i.test(`${market?.question || ''} ${market?.eventSlug || ''}`);
   const yesLabel = isUpDown ? 'UP' : 'YES';
   const noLabel = isUpDown ? 'DOWN' : 'NO';
+  // Prefer backend truth from market_results join on wallet_positions.
+  if (typeof row?.resultYes === 'number' && row.resultYes >= 0) {
+    if (row.resultYes === 1) return { label: `Resolved ${yesLabel}`, color: 'text-green-400 font-bold' };
+    return { label: `Resolved ${noLabel}`, color: 'text-red-400 font-bold' };
+  }
+  if (!market?.closed) return { label: '-', color: 'text-gray-500' };
   const raw = market?.outcomePrices;
   let yesPrice: number | null = null;
   let noPrice: number | null = null;
@@ -331,7 +336,7 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
                         ? shortenMarketName(mk.question || mk.groupItemTitle, undefined, undefined, mk.eventSlug)
                         : `${m.marketAsset || '-'} ${m.marketTimeframe || ''} #${m.marketId}`;
                       const dd = getDateDisplay(mk?.endDate || null);
-                      const rd = getResolvedDisplay(mk);
+                      const rd = getResolvedDisplay(mk, m);
                       return (
                     <tr
                       key={`${m.marketId}-${m.wallet}`}
@@ -382,7 +387,10 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
                     const usdc = walletPaysUsdc
                       ? (isTaker ? f.takerAmount : f.makerAmount)
                       : (isTaker ? f.makerAmount : f.takerAmount);
-                    const ts = f.blockTime && f.blockTime > 0 ? new Date(f.blockTime * 1000).toLocaleString() : `#${f.blockNumber}`;
+                    const bt = Number((f as any).blockTime ?? 0);
+                    const ts = bt > 0
+                      ? (bt > 1e12 ? new Date(bt) : new Date(bt * 1000)).toLocaleString()
+                      : '-';
                     return (
                       <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
                         <td className="py-0.5">{ts}</td>

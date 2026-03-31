@@ -634,11 +634,11 @@ export function Sidebar() {
   };
 
   const handleCreateCustomButton = () => {
-    const amount = parseFloat(customAmount);
+    const amount = customSide === 'SELL' && customSellMax ? 0 : parseFloat(customAmount);
     const priceCents = parseFloat(customPrice);
     const label = customLabel.trim();
     if (!label) { showToast('Enter button id (1-2 chars)', 'error'); return; }
-    if (!Number.isFinite(amount) || amount <= 0) { showToast('Invalid amount', 'error'); return; }
+    if (!(customSide === 'SELL' && customSellMax) && (!Number.isFinite(amount) || amount <= 0)) { showToast('Invalid amount', 'error'); return; }
     if (!Number.isFinite(priceCents) || priceCents <= 0 || priceCents >= 100) { showToast('Invalid price', 'error'); return; }
     if (label.length < 1 || label.length > 2) { showToast('Button id must be 1-2 characters', 'error'); return; }
 
@@ -2121,7 +2121,7 @@ export function Sidebar() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-gray-400 w-16">Amount</span>
-                <input value={customAmount} onChange={(e) => setCustomAmount(e.target.value)} type="number" min="0" step="0.01" className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white flex-1" />
+                <input value={customAmount} onChange={(e) => setCustomAmount(e.target.value)} type="number" min="0" step="0.01" disabled={customSide === 'SELL' && customSellMax} className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white flex-1 disabled:opacity-50 disabled:cursor-not-allowed" />
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-gray-400 w-16">Price ¢</span>

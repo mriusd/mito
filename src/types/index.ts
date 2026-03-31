@@ -37,6 +37,7 @@ export interface Market {
   provenSMS?: number;
   crowdBias?: number;
   liveBias?: number;
+  liveBiasWindowMin?: number;
   // B-S computed values from server
   bs1?: number;
   bs2?: number;

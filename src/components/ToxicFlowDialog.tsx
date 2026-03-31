@@ -563,6 +563,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                   const biasColor = (v: number) => v > 0.01 ? 'text-green-400' : v < -0.01 ? 'text-red-400' : 'text-gray-500';
                   const barFor = (v: number) => Math.max(2, Math.min(98, 50 + v * 50));
                   const live = (data as any).liveBias || 0;
+                  const liveWin = (data as any).liveBiasWindowMin || 30;
                   const proven = (data as any).provenSMS || 0;
                   const crowd = (data as any).crowdBias || 0;
                   const livePct = live * 100;
@@ -575,7 +576,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                       {/* Live Taker Flow Bias */}
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[9px] text-gray-500">Live Flow (30m taker bias)</span>
+                          <span className="text-[9px] text-gray-500">Live Flow ({liveWin}m taker bias)</span>
                           <span className={`text-[11px] font-bold ${biasColor(live)}`}>
                             {biasLabel(live)} <span className="text-[9px] font-normal">({livePct > 0 ? '+' : ''}{livePct.toFixed(1)}%)</span>
                           </span>

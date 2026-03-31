@@ -76,6 +76,7 @@ export function Sidebar() {
       provenSMS: entry.provenSMS,
       crowdBias: entry.crowdBias,
       liveBias: entry.liveBias,
+      liveBiasWindowMin: entry.liveBiasWindowMin,
     };
   }, [selectedMarket, marketLookup]);
   const sharesInExistenceDisplay = useMemo(() => {
@@ -1057,6 +1058,7 @@ export function Sidebar() {
               const barFor = (v: number) => Math.max(2, Math.min(98, 50 + v * 50));
 
               const live = liveShareStats?.liveBias ?? 0;
+              const liveWin = liveShareStats?.liveBiasWindowMin || 30;
               const proven = liveShareStats?.provenSMS ?? 0;
               const crowd = liveShareStats?.crowdBias ?? 0;
               const livePct = live * 100;
@@ -1086,7 +1088,7 @@ export function Sidebar() {
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[9px] text-gray-500">Live Flow (30m)</span>
+                      <span className="text-[9px] text-gray-500">Live Flow ({liveWin}m)</span>
                       <span className={`text-[10px] font-bold ${colorFor(live)}`}>
                         {labelFor(live)}
                         <span className="text-[9px] font-normal ml-0.5">({livePct > 0 ? '+' : ''}{livePct.toFixed(1)}%)</span>
@@ -1159,27 +1161,34 @@ export function Sidebar() {
                     <span>Bid</span><span className="text-right">Size</span>
                   </div>
                   <div className="space-y-0.5">
-                    {displayBids.map((bid, i) => {
-                      const bp = (parseFloat(bid.price) * 100).toFixed(1);
-                      const hl = sidebarUserBidPrices.has(bp) ? 'bg-blue-900/50 font-bold' : '';
-                      return (
-                        <div
-                          key={i}
-                          className={`grid grid-cols-2 gap-1 text-[11px] px-1 hover:bg-green-900/30 cursor-pointer ${hl}`}
-                          onClick={() => {
-                            setOrderSide('SELL');
-                            setOrderPrice(bp.replace(/\.0$/, ''));
-                            const tokenId = selectedMarket?.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
-                            const pos = positions.find((p) => p.asset === tokenId && p.size > 0);
-                            if (pos) setOrderAmount(String(Math.floor(pos.size * 100) / 100));
-                            else setOrderAmount('');
-                          }}
-                        >
-                          <span className="live-ob-bid">{bp}¢</span>
-                          <span className="text-right text-gray-400">{parseFloat(bid.size).toFixed(0)}</span>
-                        </div>
-                      );
-                    })}
+                    {(() => {
+                      let cumul = 0;
+                      const cumuls = displayBids.map((b) => { cumul += parseFloat(b.size) || 0; return cumul; });
+                      const maxCumul = cumuls.length > 0 ? cumuls[cumuls.length - 1] : 1;
+                      return displayBids.map((bid, i) => {
+                        const bp = (parseFloat(bid.price) * 100).toFixed(1);
+                        const hl = sidebarUserBidPrices.has(bp) ? 'bg-blue-900/50 font-bold' : '';
+                        const depthPct = maxCumul > 0 ? (cumuls[i] / maxCumul) * 100 : 0;
+                        return (
+                          <div
+                            key={i}
+                            className={`relative grid grid-cols-2 gap-1 text-[11px] px-1 hover:bg-green-900/30 cursor-pointer ${hl}`}
+                            onClick={() => {
+                              setOrderSide('SELL');
+                              setOrderPrice(bp.replace(/\.0$/, ''));
+                              const tokenId = selectedMarket?.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
+                              const pos = positions.find((p) => p.asset === tokenId && p.size > 0);
+                              if (pos) setOrderAmount(String(Math.floor(pos.size * 100) / 100));
+                              else setOrderAmount('');
+                            }}
+                          >
+                            <div className="absolute inset-y-0 right-0 bg-green-500/10 pointer-events-none" style={{ width: `${depthPct}%` }} />
+                            <span className="relative live-ob-bid">{bp}¢</span>
+                            <span className="relative text-right text-gray-400">{parseFloat(bid.size).toFixed(0)}</span>
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
                 <div>
@@ -1187,27 +1196,32 @@ export function Sidebar() {
                     <span>Ask</span><span className="text-right">Size</span>
                   </div>
                   <div className="space-y-0.5">
-                    {displayAsks.map((ask, i) => {
-                      const ap = (parseFloat(ask.price) * 100).toFixed(1);
-                      const hl = sidebarUserAskPrices.has(ap) ? 'bg-orange-900/50 font-bold' : '';
-                      const cumulativeAskSize = displayAsks
-                        .slice(0, i + 1)
-                        .reduce((sum, level) => sum + (parseFloat(level.size) || 0), 0);
-                      return (
-                        <div
-                          key={i}
-                          className={`grid grid-cols-2 gap-1 text-[11px] px-1 hover:bg-red-900/30 cursor-pointer ${hl}`}
-                          onClick={() => {
-                            setOrderSide('BUY');
-                            setOrderPrice(ap.replace(/\.0$/, ''));
-                            setOrderAmount(cumulativeAskSize.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'));
-                          }}
-                        >
-                          <span className="live-ob-ask">{ap}¢</span>
-                          <span className="text-right text-gray-400">{parseFloat(ask.size).toFixed(0)}</span>
-                        </div>
-                      );
-                    })}
+                    {(() => {
+                      let cumul = 0;
+                      const cumuls = displayAsks.map((a) => { cumul += parseFloat(a.size) || 0; return cumul; });
+                      const maxCumul = cumuls.length > 0 ? cumuls[cumuls.length - 1] : 1;
+                      return displayAsks.map((ask, i) => {
+                        const ap = (parseFloat(ask.price) * 100).toFixed(1);
+                        const hl = sidebarUserAskPrices.has(ap) ? 'bg-orange-900/50 font-bold' : '';
+                        const cumulativeAskSize = cumuls[i];
+                        const depthPct = maxCumul > 0 ? (cumulativeAskSize / maxCumul) * 100 : 0;
+                        return (
+                          <div
+                            key={i}
+                            className={`relative grid grid-cols-2 gap-1 text-[11px] px-1 hover:bg-red-900/30 cursor-pointer ${hl}`}
+                            onClick={() => {
+                              setOrderSide('BUY');
+                              setOrderPrice(ap.replace(/\.0$/, ''));
+                              setOrderAmount(cumulativeAskSize.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'));
+                            }}
+                          >
+                            <div className="absolute inset-y-0 left-0 bg-red-500/10 pointer-events-none" style={{ width: `${depthPct}%` }} />
+                            <span className="relative live-ob-ask">{ap}¢</span>
+                            <span className="relative text-right text-gray-400">{parseFloat(ask.size).toFixed(0)}</span>
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
                 {obLoading && (

@@ -75,6 +75,7 @@ export function Sidebar() {
       smartMoneyBias: entry.smartMoneyBias,
       provenSMS: entry.provenSMS,
       crowdBias: entry.crowdBias,
+      liveBias: entry.liveBias,
     };
   }, [selectedMarket, marketLookup]);
   const sharesInExistenceDisplay = useMemo(() => {
@@ -1047,7 +1048,7 @@ export function Sidebar() {
                 <div className="tabular-nums font-bold text-yellow-300">{holdersCountDisplay}</div>
               </button>
             </div>
-            {/* Proven Smart Money + Crowd bars */}
+            {/* Live Bias + Smart Money + Crowd bars */}
             {(() => {
               const posLabel = isUpDownMarket ? 'UP' : 'YES';
               const negLabel = isUpDownMarket ? 'DOWN' : 'NO';
@@ -1055,13 +1056,28 @@ export function Sidebar() {
               const colorFor = (v: number) => v > 0.01 ? 'text-green-400' : v < -0.01 ? 'text-red-400' : 'text-gray-500';
               const barFor = (v: number) => Math.max(2, Math.min(98, 50 + v * 50));
 
+              const live = liveShareStats?.liveBias ?? 0;
               const proven = liveShareStats?.provenSMS ?? 0;
               const crowd = liveShareStats?.crowdBias ?? 0;
+              const livePct = live * 100;
               const provenPct = proven * 100;
               const crowdPct = crowd * 100;
 
               return (
                 <div className="mt-1.5 space-y-1">
+                  <div>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-[9px] text-gray-500">Live Flow (30m)</span>
+                      <span className={`text-[10px] font-bold ${colorFor(live)}`}>
+                        {labelFor(live)}
+                        <span className="text-[9px] font-normal ml-0.5">({livePct > 0 ? '+' : ''}{livePct.toFixed(1)}%)</span>
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden flex">
+                      <div className="bg-cyan-500/70 h-full transition-all" style={{ width: `${barFor(live)}%` }} />
+                      <div className="bg-pink-500/70 h-full transition-all flex-1" />
+                    </div>
+                  </div>
                   <div>
                     <div className="flex items-center justify-between mb-0.5">
                       <span className="text-[9px] text-gray-500">Smart Money</span>

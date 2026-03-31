@@ -36,6 +36,7 @@ export interface Market {
   smartMoneyBias?: number;
   provenSMS?: number;
   crowdBias?: number;
+  liveBias?: number;
   // B-S computed values from server
   bs1?: number;
   bs2?: number;

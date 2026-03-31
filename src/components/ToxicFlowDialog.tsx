@@ -562,14 +562,30 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                   const biasLabel = (v: number) => v > 0.01 ? posLabel : v < -0.01 ? negLabel : 'FLAT';
                   const biasColor = (v: number) => v > 0.01 ? 'text-green-400' : v < -0.01 ? 'text-red-400' : 'text-gray-500';
                   const barFor = (v: number) => Math.max(2, Math.min(98, 50 + v * 50));
+                  const live = (data as any).liveBias || 0;
                   const proven = (data as any).provenSMS || 0;
                   const crowd = (data as any).crowdBias || 0;
+                  const livePct = live * 100;
                   const provenPct = proven * 100;
                   const crowdPct = crowd * 100;
                   const yesTotal = (data.yesUsdcIn || 0) + (data.noUsdcIn || 0);
                   const yesPct = yesTotal > 0 ? (data.yesUsdcIn / yesTotal) * 100 : 50;
                   return (
                     <div className="space-y-2.5">
+                      {/* Live Taker Flow Bias */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[9px] text-gray-500">Live Flow (30m taker bias)</span>
+                          <span className={`text-[11px] font-bold ${biasColor(live)}`}>
+                            {biasLabel(live)} <span className="text-[9px] font-normal">({livePct > 0 ? '+' : ''}{livePct.toFixed(1)}%)</span>
+                          </span>
+                        </div>
+                        <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
+                          <div className="bg-cyan-500/70 h-full transition-all" style={{ width: `${barFor(live)}%` }} />
+                          <div className="bg-pink-500/70 h-full transition-all flex-1" />
+                        </div>
+                      </div>
+
                       {/* Proven Smart Money */}
                       <div>
                         <div className="flex items-center justify-between mb-1">

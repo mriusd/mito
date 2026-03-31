@@ -70,6 +70,9 @@ export function useBidAskWS() {
               if (typeof item.crowdBias === 'number' && Number.isFinite(item.crowdBias)) {
                 next.crowdBias = item.crowdBias;
               }
+              if (typeof item.liveBias === 'number' && Number.isFinite(item.liveBias)) {
+                next.liveBias = item.liveBias;
+              }
               patch[item.assetId] = next;
               changed = true;
             }

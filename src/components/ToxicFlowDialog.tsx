@@ -263,11 +263,13 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
               <div className="bg-gray-900 rounded p-3">
                 <div className="text-[10px] text-gray-500 mb-2 font-bold">Informed Trader Bias</div>
                 {(() => {
-                  const smb = data.smartMoneyBias || 0;
+                  const rawSmb = data.smartMoneyBias || 0;
+                  const totalShares = data.totalShares || 0;
+                  const smbPct = totalShares > 0 ? (rawSmb / totalShares) * 100 : 0;
                   const thb = data.topHoldersBias || 0;
                   const wb = data.whaleBias || 0;
-                  const biasLabel = (v: number) => v > 0.001 ? 'YES' : v < -0.001 ? 'NO' : 'FLAT';
-                  const biasColor = (v: number) => v > 0.001 ? 'text-green-400' : v < -0.001 ? 'text-red-400' : 'text-gray-500';
+                  const biasLabel = (v: number) => v > 0.01 ? 'YES' : v < -0.01 ? 'NO' : 'FLAT';
+                  const biasColor = (v: number) => v > 0.01 ? 'text-green-400' : v < -0.01 ? 'text-red-400' : 'text-gray-500';
                   const yesTotal = (data.yesUsdcIn || 0) + (data.noUsdcIn || 0);
                   const yesPct = yesTotal > 0 ? (data.yesUsdcIn / yesTotal) * 100 : 50;
                   return (
@@ -276,12 +278,12 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[9px] text-gray-500">Smart Money (vol-weighted)</span>
-                          <span className={`text-[11px] font-bold ${biasColor(smb)}`}>
-                            {biasLabel(smb)} {smb !== 0 && <span className="text-[9px] font-normal">({smb > 0 ? '+' : ''}{smb.toFixed(2)})</span>}
+                          <span className={`text-[11px] font-bold ${biasColor(smbPct)}`}>
+                            {biasLabel(smbPct)} {smbPct !== 0 && <span className="text-[9px] font-normal">({smbPct > 0 ? '+' : ''}{smbPct.toFixed(2)}%)</span>}
                           </span>
                         </div>
                         <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
-                          <div className="bg-green-500/70 h-full transition-all" style={{ width: `${Math.max(2, Math.min(98, 50 + smb * 5))}%` }} />
+                          <div className="bg-green-500/70 h-full transition-all" style={{ width: `${Math.max(2, Math.min(98, 50 + smbPct * 100))}%` }} />
                           <div className="bg-red-500/70 h-full transition-all flex-1" />
                         </div>
                       </div>

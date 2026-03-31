@@ -569,6 +569,10 @@ export function Sidebar() {
   };
 
   const setOrderAmountDollar = (dollars: number) => {
+    if (orderKind === 'market') {
+      setOrderAmount(String(dollars));
+      return;
+    }
     const price = parseFloat(orderPrice) / 100;
     if (price > 0) {
       const shares = Math.floor(dollars / price);
@@ -1049,7 +1053,9 @@ export function Sidebar() {
               const rawSmb = liveShareStats?.smartMoneyBias ?? 0;
               const totalShares = liveShareStats?.sharesInExistence ?? 0;
               const biasPct = totalShares > 0 ? (rawSmb / totalShares) * 100 : 0;
-              const biasLabel = biasPct > 0.01 ? 'YES' : biasPct < -0.01 ? 'NO' : 'FLAT';
+              const posLabel = isUpDownMarket ? 'UP' : 'YES';
+              const negLabel = isUpDownMarket ? 'DOWN' : 'NO';
+              const biasLabel = biasPct > 0.01 ? posLabel : biasPct < -0.01 ? negLabel : 'FLAT';
               const biasColor = biasPct > 0.01 ? 'text-green-400' : biasPct < -0.01 ? 'text-red-400' : 'text-gray-500';
               const barPct = Math.max(2, Math.min(98, 50 + biasPct * 100));
               return (
@@ -1058,7 +1064,11 @@ export function Sidebar() {
                     <span className="text-[9px] text-gray-500">Smart Money</span>
                     <span className={`text-[10px] font-bold ${biasColor}`}>
                       {biasLabel}
-                      {biasPct !== 0 && <span className="text-[9px] font-normal ml-0.5">({biasPct > 0 ? '+' : ''}{biasPct.toFixed(2)}%)</span>}
+                      {(rawSmb !== 0 || biasPct !== 0) && (
+                        <span className="text-[9px] font-normal ml-0.5">
+                          ({rawSmb > 0 ? '+' : ''}{rawSmb.toFixed(2)}, {biasPct > 0 ? '+' : ''}{biasPct.toFixed(2)}%)
+                        </span>
+                      )}
                     </span>
                   </div>
                   <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden flex">

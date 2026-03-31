@@ -268,7 +268,10 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                   const smbPct = totalShares > 0 ? (rawSmb / totalShares) * 100 : 0;
                   const thb = data.topHoldersBias || 0;
                   const wb = data.whaleBias || 0;
-                  const biasLabel = (v: number) => v > 0.01 ? 'YES' : v < -0.01 ? 'NO' : 'FLAT';
+                  const isUpDownMarket = /up\s+or\s+down|updown|up-or-down/i.test(marketName || '');
+                  const posLabel = isUpDownMarket ? 'UP' : 'YES';
+                  const negLabel = isUpDownMarket ? 'DOWN' : 'NO';
+                  const biasLabel = (v: number) => v > 0.01 ? posLabel : v < -0.01 ? negLabel : 'FLAT';
                   const biasColor = (v: number) => v > 0.01 ? 'text-green-400' : v < -0.01 ? 'text-red-400' : 'text-gray-500';
                   const yesTotal = (data.yesUsdcIn || 0) + (data.noUsdcIn || 0);
                   const yesPct = yesTotal > 0 ? (data.yesUsdcIn / yesTotal) * 100 : 50;
@@ -279,7 +282,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[9px] text-gray-500">Smart Money (vol-weighted)</span>
                           <span className={`text-[11px] font-bold ${biasColor(smbPct)}`}>
-                            {biasLabel(smbPct)} {smbPct !== 0 && <span className="text-[9px] font-normal">({smbPct > 0 ? '+' : ''}{smbPct.toFixed(2)}%)</span>}
+                            {biasLabel(smbPct)} {(rawSmb !== 0 || smbPct !== 0) && <span className="text-[9px] font-normal">({rawSmb > 0 ? '+' : ''}{rawSmb.toFixed(2)}, {smbPct > 0 ? '+' : ''}{smbPct.toFixed(2)}%)</span>}
                           </span>
                         </div>
                         <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">

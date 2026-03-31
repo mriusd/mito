@@ -189,12 +189,15 @@ export function Sidebar() {
     blockTime: number;
   }>>([]);
   const [proxyWallet, setProxyWallet] = useState<string | null>(null);
+  const pkAddress = useAppStore((s) => s.pkAddress);
+  const signingMode = useAppStore((s) => s.signingMode);
+  const effectiveSidebarEoa = signingMode === 'privateKey' && pkAddress ? pkAddress : walletAddress;
   useEffect(() => {
-    if (!walletAddress) { setProxyWallet(null); return; }
+    if (!effectiveSidebarEoa) { setProxyWallet(null); return; }
     let cancelled = false;
-    fetchProxyWallet(walletAddress).then((pw) => { if (!cancelled) setProxyWallet(pw); });
+    fetchProxyWallet(effectiveSidebarEoa).then((pw) => { if (!cancelled) setProxyWallet(pw); });
     return () => { cancelled = true; };
-  }, [walletAddress]);
+  }, [effectiveSidebarEoa]);
 
   const [liveOrderbookExpanded, setLiveOrderbookExpanded] = useState(() => localStorage.getItem('sidebar-live-orderbook-expanded') !== 'false');
   const [liveTradesExpanded, setLiveTradesExpanded] = useState(() => {

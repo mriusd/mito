@@ -390,8 +390,18 @@ export interface ToxicFlowData {
   totalUsdcOut: number;
   totalWallets: number;
   totalTrades: number;
-  netImbalance: number;
   concentration: number;
+  // Informed trader bias metrics
+  smartMoneyBias: number;
+  topHoldersBias: number;
+  whaleBias: number;
+  whaleCount: number;
+  yesWallets: number;
+  noWallets: number;
+  yesUsdcIn: number;
+  noUsdcIn: number;
+  // Manipulation red flags
+  redFlags?: { flag: string; detail: string; level: string; value: number }[];
   /** Backend: POLYGON_WSS_URL set */
   polygonWssConfigured?: boolean;
   /** All-time OrderFilled logs processed since process start */

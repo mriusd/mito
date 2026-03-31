@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Biohazard, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown } from 'lucide-react';
+import { X, Biohazard, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert } from 'lucide-react';
 import { fetchToxicFlow, fetchWalletSummary } from '../api';
 import type { ToxicFlowData, WalletPosition, WalletSummary } from '../api';
 
@@ -252,89 +252,175 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                 </div>
               </div>
 
-              {/* Imbalance Indicator */}
+              {/* Informed Trader Bias */}
               <div className="bg-gray-900 rounded p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] text-gray-500">Net Market Imbalance</span>
-                  <span className={`text-xs font-bold ${data.netImbalance > 0 ? 'text-green-400' : data.netImbalance < 0 ? 'text-red-400' : 'text-gray-500'}`}>
-                    {data.netImbalance > 0 ? 'YES bias' : data.netImbalance < 0 ? 'NO bias' : 'Balanced'}
-                    {' '}({data.netImbalance > 0 ? '+' : ''}{data.netImbalance.toFixed(1)} shares)
-                  </span>
-                </div>
-                {/* Visual bar */}
-                <div className="h-3 bg-gray-700 rounded-full overflow-hidden flex">
-                  {(() => {
-                    const total = data.totalYesVol + data.totalNoVol;
-                    const yesPct = total > 0 ? (data.totalYesVol / total) * 100 : 50;
-                    return (
-                      <>
-                        <div className="bg-green-500/60 h-full transition-all" style={{ width: `${yesPct}%` }} />
-                        <div className="bg-red-500/60 h-full transition-all" style={{ width: `${100 - yesPct}%` }} />
-                      </>
-                    );
-                  })()}
-                </div>
-                <div className="flex justify-between mt-1 text-[9px] text-gray-500">
-                  <span>YES vol: {data.totalYesVol.toFixed(1)}</span>
-                  <span>NO vol: {data.totalNoVol.toFixed(1)}</span>
-                </div>
+                <div className="text-[10px] text-gray-500 mb-2 font-bold">Informed Trader Bias</div>
+                {(() => {
+                  const smb = data.smartMoneyBias || 0;
+                  const thb = data.topHoldersBias || 0;
+                  const wb = data.whaleBias || 0;
+                  const biasLabel = (v: number) => v > 0.001 ? 'YES' : v < -0.001 ? 'NO' : 'FLAT';
+                  const biasColor = (v: number) => v > 0.001 ? 'text-green-400' : v < -0.001 ? 'text-red-400' : 'text-gray-500';
+                  const yesTotal = (data.yesUsdcIn || 0) + (data.noUsdcIn || 0);
+                  const yesPct = yesTotal > 0 ? (data.yesUsdcIn / yesTotal) * 100 : 50;
+                  return (
+                    <div className="space-y-2.5">
+                      {/* Smart Money Bias (volume-weighted) */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[9px] text-gray-500">Smart Money (vol-weighted)</span>
+                          <span className={`text-[11px] font-bold ${biasColor(smb)}`}>
+                            {biasLabel(smb)} {smb !== 0 && <span className="text-[9px] font-normal">({smb > 0 ? '+' : ''}{smb.toFixed(2)})</span>}
+                          </span>
+                        </div>
+                        <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
+                          <div className="bg-green-500/70 h-full transition-all" style={{ width: `${Math.max(2, Math.min(98, 50 + smb * 5))}%` }} />
+                          <div className="bg-red-500/70 h-full transition-all flex-1" />
+                        </div>
+                      </div>
+
+                      {/* Top 10 Holders Bias */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] text-gray-500">Top 10 Holders Direction</span>
+                        <span className={`text-[11px] font-bold ${biasColor(thb)}`}>
+                          {biasLabel(thb)} <span className="text-[9px] font-normal">({thb > 0 ? '+' : ''}{thb.toFixed(1)} shares)</span>
+                        </span>
+                      </div>
+
+                      {/* Whale Bias */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] text-gray-500">Whale Bias ({data.whaleCount || 0} above-median wallets)</span>
+                        <span className={`text-[11px] font-bold ${biasColor(wb)}`}>
+                          {biasLabel(wb)} <span className="text-[9px] font-normal">({wb > 0 ? '+' : ''}{wb.toFixed(1)} shares)</span>
+                        </span>
+                      </div>
+
+                      {/* YES vs NO wallet breakdown */}
+                      <div className="border-t border-gray-700/70 pt-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[9px] text-gray-500">Wallet Split</span>
+                          <span className="text-[9px] text-gray-400">
+                            <span className="text-green-400 font-bold">{data.yesWallets || 0}</span> YES
+                            {' / '}
+                            <span className="text-red-400 font-bold">{data.noWallets || 0}</span> NO
+                          </span>
+                        </div>
+                        <div className="h-2.5 bg-gray-700 rounded-full overflow-hidden flex">
+                          <div className="bg-green-500/60 h-full transition-all" style={{ width: `${yesPct}%` }} />
+                          <div className="bg-red-500/60 h-full transition-all flex-1" />
+                        </div>
+                        <div className="flex justify-between mt-0.5 text-[9px] text-gray-500">
+                          <span>YES ${(data.yesUsdcIn || 0).toFixed(2)}</span>
+                          <span>NO ${(data.noUsdcIn || 0).toFixed(2)}</span>
+                        </div>
+                      </div>
+
+                      {/* YES/NO token volume */}
+                      <div className="border-t border-gray-700/70 pt-2">
+                        <div className="h-2.5 bg-gray-700 rounded-full overflow-hidden flex">
+                          {(() => {
+                            const total = data.totalYesVol + data.totalNoVol;
+                            const yp = total > 0 ? (data.totalYesVol / total) * 100 : 50;
+                            return (
+                              <>
+                                <div className="bg-green-500/60 h-full transition-all" style={{ width: `${yp}%` }} />
+                                <div className="bg-red-500/60 h-full transition-all flex-1" />
+                              </>
+                            );
+                          })()}
+                        </div>
+                        <div className="flex justify-between mt-0.5 text-[9px] text-gray-500">
+                          <span>YES vol: {data.totalYesVol.toFixed(1)}</span>
+                          <span>NO vol: {data.totalNoVol.toFixed(1)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
-              {/* Risk Indicators */}
-              <div className="bg-gray-900 rounded p-3">
-                <div className="text-[10px] text-gray-500 mb-2">Risk Indicators</div>
-                <div className="space-y-1.5">
-                  {data.concentration > 0.5 && (
-                    <div className="flex items-center gap-1.5 text-[10px]">
-                      <AlertTriangle size={12} className="text-red-400 flex-shrink-0" />
-                      <span className="text-red-400 font-bold">High concentration:</span>
-                      <span className="text-gray-300">Top 5 wallets control {(data.concentration * 100).toFixed(0)}% of volume — potential whale manipulation</span>
+              {/* Manipulation Red Flags */}
+              {(() => {
+                const rf = data.redFlags ?? [];
+                const highFlags = rf.filter(f => f.level === 'high');
+                const medFlags = rf.filter(f => f.level === 'medium');
+                const hasConcentration = data.concentration > 0.5;
+                const hasTopHolderBias = Math.abs(data.topHoldersBias || 0) > 50;
+                const totalFlags = highFlags.length + medFlags.length + (hasConcentration ? 1 : 0) + (hasTopHolderBias ? 1 : 0);
+
+                return (
+                  <div className={`rounded p-3 ${highFlags.length > 0 ? 'bg-red-950/40 border border-red-800/40' : 'bg-gray-900'}`}>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <ShieldAlert size={12} className={highFlags.length > 0 ? 'text-red-400' : 'text-gray-500'} />
+                      <span className={`text-[10px] font-bold ${highFlags.length > 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                        Manipulation Signals
+                        {totalFlags > 0 && <span className="ml-1 text-[9px] rounded bg-red-500/30 px-1 py-0.5">{totalFlags} active</span>}
+                      </span>
                     </div>
-                  )}
-                  {Math.abs(data.netImbalance) > 50 && (
-                    <div className="flex items-center gap-1.5 text-[10px]">
-                      <AlertTriangle size={12} className="text-yellow-400 flex-shrink-0" />
-                      <span className="text-yellow-400 font-bold">Large imbalance:</span>
-                      <span className="text-gray-300">Net {data.netImbalance > 0 ? 'YES' : 'NO'} position of {Math.abs(data.netImbalance).toFixed(0)} shares — smart money leaning {data.netImbalance > 0 ? 'YES' : 'NO'}</span>
+                    <div className="space-y-1.5">
+                      {highFlags.map((f, i) => (
+                        <div key={`h${i}`} className="flex items-start gap-1.5 text-[10px]">
+                          <AlertTriangle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
+                          <span className="text-gray-200">{f.detail}</span>
+                        </div>
+                      ))}
+                      {medFlags.map((f, i) => (
+                        <div key={`m${i}`} className="flex items-start gap-1.5 text-[10px]">
+                          <AlertTriangle size={12} className="text-yellow-400 flex-shrink-0 mt-0.5" />
+                          <span className="text-gray-300">{f.detail}</span>
+                        </div>
+                      ))}
+                      {hasConcentration && (
+                        <div className="flex items-start gap-1.5 text-[10px]">
+                          <AlertTriangle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
+                          <span className="text-gray-200">Top 5 wallets control {(data.concentration * 100).toFixed(0)}% of volume — potential whale manipulation</span>
+                        </div>
+                      )}
+                      {hasTopHolderBias && (
+                        <div className="flex items-start gap-1.5 text-[10px]">
+                          <AlertTriangle size={12} className="text-yellow-400 flex-shrink-0 mt-0.5" />
+                          <span className="text-gray-300">Top 10 holders have {Math.abs(data.topHoldersBias).toFixed(0)} net {data.topHoldersBias > 0 ? 'YES' : 'NO'} shares — informed players positioned {data.topHoldersBias > 0 ? 'YES' : 'NO'}</span>
+                        </div>
+                      )}
+                      {data.totalWallets === 0 && (
+                        <div className="space-y-1.5 text-[10px] text-gray-500">
+                          {data.polygonWssConfigured === false && (
+                            <p className="text-amber-400/95">
+                              On-chain collection is off: polycandles needs <span className="font-mono">POLYGON_WSS_URL</span> (Polygon JSON-RPC WebSocket). Check server logs and{' '}
+                              <span className="font-mono">/api/onchain-status</span>.
+                            </p>
+                          )}
+                          {data.polygonWssConfigured === true && (data.orderFilledEventsProcessed ?? 0) === 0 && (
+                            <p>
+                              Polygon WSS is configured but no <span className="font-mono">OrderFilled</span> events have been processed yet — verify the endpoint, subscription, and that trading is happening on tracked contracts.
+                            </p>
+                          )}
+                          {data.polygonWssConfigured === true &&
+                            (data.orderFilledEventsProcessed ?? 0) > 0 &&
+                            (data.onchainFillsForMarket ?? 0) === 0 && (
+                            <p>
+                              Events are ingesting globally, but no fills are linked to this market in <span className="font-mono">onchain_fills</span> yet. Wait for the next Gamma sync (token map refreshes after each refresh), or confirm this market&apos;s CLOB token IDs are in the DB.
+                            </p>
+                          )}
+                          {(data.onchainFillsForMarket ?? 0) > 0 && (
+                            <p className="text-gray-400">
+                              {data.onchainFillsForMarket} raw fill(s) for this market in DB; wallet rollups only appear after fills are matched to token IDs. If tables stay empty, check <span className="font-mono">wallet_positions</span> and server logs.
+                            </p>
+                          )}
+                          <p>
+                            Toxic Flow aggregates <span className="font-mono">wallet_positions</span> for this market (not the CLOB orderbook). Data persists across restarts and backfills missed blocks automatically.
+                          </p>
+                        </div>
+                      )}
+                      {data.totalWallets > 0 && totalFlags === 0 && (
+                        <div className="flex items-center gap-1.5 text-[10px]">
+                          <span className="text-green-400">No manipulation signals detected.</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {data.totalWallets === 0 && (
-                    <div className="space-y-1.5 text-[10px] text-gray-500">
-                      {data.polygonWssConfigured === false && (
-                        <p className="text-amber-400/95">
-                          On-chain collection is off: polycandles needs <span className="font-mono">POLYGON_WSS_URL</span> (Polygon JSON-RPC WebSocket). Check server logs and{' '}
-                          <span className="font-mono">/api/onchain-status</span>.
-                        </p>
-                      )}
-                      {data.polygonWssConfigured === true && (data.orderFilledEventsProcessed ?? 0) === 0 && (
-                        <p>
-                          Polygon WSS is configured but no <span className="font-mono">OrderFilled</span> events have been processed yet — verify the endpoint, subscription, and that trading is happening on tracked contracts.
-                        </p>
-                      )}
-                      {data.polygonWssConfigured === true &&
-                        (data.orderFilledEventsProcessed ?? 0) > 0 &&
-                        (data.onchainFillsForMarket ?? 0) === 0 && (
-                        <p>
-                          Events are ingesting globally, but no fills are linked to this market in <span className="font-mono">onchain_fills</span> yet. Wait for the next Gamma sync (token map refreshes after each refresh), or confirm this market&apos;s CLOB token IDs are in the DB.
-                        </p>
-                      )}
-                      {(data.onchainFillsForMarket ?? 0) > 0 && (
-                        <p className="text-gray-400">
-                          {data.onchainFillsForMarket} raw fill(s) for this market in DB; wallet rollups only appear after fills are matched to token IDs. If tables stay empty, check <span className="font-mono">wallet_positions</span> and server logs.
-                        </p>
-                      )}
-                      <p>
-                        Toxic Flow aggregates <span className="font-mono">wallet_positions</span> for this market (not the CLOB orderbook). Rows reset when the backend clears that table on DB init; new activity repopulates them.
-                      </p>
-                    </div>
-                  )}
-                  {data.totalWallets > 0 && data.concentration <= 0.5 && Math.abs(data.netImbalance) <= 50 && (
-                    <div className="flex items-center gap-1.5 text-[10px]">
-                      <span className="text-green-400">No significant risk indicators detected.</span>
-                    </div>
-                  )}
-                </div>
-              </div>
+                  </div>
+                );
+              })()}
 
               {/* Top Holders Table */}
               <div className="bg-gray-900 rounded p-2">

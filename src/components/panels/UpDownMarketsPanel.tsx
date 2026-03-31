@@ -373,14 +373,11 @@ export function UpDownMarketsPanel() {
                 return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
               };
 
-              // Progress for this timeframe (use first available market)
+              // Timeframe countdown (keep timing text, remove progress bars)
               const tfDurations: Record<string, number> = { '5m': 5*60*1000, '15m': 15*60*1000, '1h': 60*60*1000, '4h': 4*60*60*1000, '24h': 24*60*60*1000 };
               const duration = tfDurations[tf] || 0;
               const firstMarket = ASSETS.map(a => getCurrentAndNextMarket(a, tf).current).find(m => m !== null);
               const endMs = firstMarket?.endDate ? new Date(firstMarket.endDate).getTime() : 0;
-              const startMs = endMs - duration;
-              const tfProgress = endMs > 0 && duration > 0 ? Math.max(0, Math.min(1, (now - startMs) / duration)) : 0;
-              const tfProgressPct = (tfProgress * 100).toFixed(1);
               const isLastTfRow = tf === LAST_TIMEFRAME;
 
               const tfDupExpiry = timeframesWithSharedExpiry.has(tf);
@@ -396,7 +393,6 @@ export function UpDownMarketsPanel() {
                     <span>{tf}</span>
                     <span className={`text-[8px] font-normal ${endMs > 0 && endMs - now < 60000 ? 'text-red-400' : endMs > 0 && endMs - now < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>{endMs > 0 ? formatCountdown(endMs) : ''}</span>
                   </div>
-                  <div className="absolute bottom-0 left-0 h-[2px]" style={{ width: `${tfProgressPct}%`, backgroundColor: 'rgba(6,182,212,0.6)' }} />
                 </td>
                 {ASSETS.map((asset) => {
                   const { current: market, next: nextMarket } = getCurrentAndNextMarket(asset, tf);
@@ -537,13 +533,6 @@ export function UpDownMarketsPanel() {
                   const avgYesMid = otherYesMids(asset);
                   const isYesMidStrong =
                     yesMidProb != null && avgYesMid > 0 && yesMidProb >= avgYesMid / thresholdFactor;
-                  const marketEndMs = market.endDate ? new Date(market.endDate).getTime() : 0;
-                  const marketStartMs = marketEndMs - duration;
-                  const marketProgress =
-                    marketEndMs > 0 && duration > 0
-                      ? Math.max(0, Math.min(1, (now - marketStartMs) / duration))
-                      : 0;
-                  const marketProgressPct = (marketProgress * 100).toFixed(1);
                   const provenSMS = yesTokenId ? (_bidAskLookup[yesTokenId]?.provenSMS ?? 0) : 0;
                   const smartMoneyBarPct = Math.max(2, Math.min(98, 50 + provenSMS * 50));
                   const marketLeansNo = yesMidProb != null && yesMidProb < 0.45;
@@ -622,10 +611,6 @@ export function UpDownMarketsPanel() {
                           {noSell.length > 0 && <div className={`absolute ${noBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>{(Math.min(...noSell.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
                         </>;
                       })()}
-                      <div
-                        className="absolute bottom-0 left-0 h-[2px] pointer-events-none"
-                        style={{ width: `${marketProgressPct}%`, backgroundColor: 'rgba(6,182,212,0.6)' }}
-                      />
                     </td>
                   );
 

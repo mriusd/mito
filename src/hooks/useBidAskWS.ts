@@ -48,7 +48,7 @@ export function useBidAskWS() {
                     bestBid,
                     bestAsk,
                   } as any);
-              const v = item.volume;
+              const v = (item.usdcVolume ?? item.volume);
               if (typeof v === 'number' && Number.isFinite(v)) {
                 next.volume = v;
               }

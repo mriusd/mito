@@ -1033,6 +1033,9 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
             data: { symbol: clSym, interval: subIv },
           }),
         );
+        // Backend just came back: clear stale fetch overlay and backfill history.
+        setLoadErr(null);
+        void fetchKlines();
         pingIv = setInterval(() => {
           if (ws?.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'ping' }));
@@ -1057,6 +1060,8 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
           const c = parseFloat(k.c);
           if (!Number.isFinite(tOpen) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return;
           if (disposed || priceSourceRef.current !== 'chainlink') return;
+          // Any valid live candle means the stream is healthy; remove stale overlay.
+          setLoadErr(null);
           const windowStart = Date.now() - WINDOW_MS[timeWindowRef.current];
           setCandles((prev) => mergeKlineIntoSeries(prev, tOpen, o, h, l, c, windowStart));
         } catch {

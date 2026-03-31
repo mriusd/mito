@@ -981,7 +981,7 @@ export function Sidebar() {
               {liveOrderbookVolumeDisplay != null && (
                 <span
                   className="ml-auto shrink-0 tabular-nums text-[10px] font-bold text-sky-300/95"
-                  title="Polymarket volume (USDC, YES outcome), same source as Up/Down grid"
+                  title="Toxic Flow USDC volume (wallet_positions usdc_in), same source as Up/Down grid"
                 >
                   {liveOrderbookVolumeDisplay}
                 </span>

@@ -59,6 +59,7 @@ const LAST_TIMEFRAME = TIMEFRAMES[TIMEFRAMES.length - 1];
 const THRESHOLD_KEY = 'updown-cheap-threshold';
 const SHOW_TARGET_KEY = 'updown-show-target';
 const SHOW_NEXT_MARKET_KEY = 'updown-show-next-market';
+const SHOW_VOLUME_KEY = 'updown-show-volume';
 
 const TARGET_STRIKE_DECIMALS: Record<(typeof ASSETS)[number], number> = {
   BTC: 0,
@@ -109,6 +110,7 @@ function deltaMidVsMathBg(yesMidProb: number | null, mathYesProb: number | null)
 export function UpDownMarketsPanel() {
   const [showTarget, setShowTarget] = useState(() => localStorage.getItem(SHOW_TARGET_KEY) !== 'false');
   const [showNextMarket, setShowNextMarket] = useState(() => localStorage.getItem(SHOW_NEXT_MARKET_KEY) === 'true');
+  const [showVolume, setShowVolume] = useState(() => localStorage.getItem(SHOW_VOLUME_KEY) === 'true');
 
   const [thresholdStr, setThresholdStr] = useState<string>(() => {
     const saved = localStorage.getItem(THRESHOLD_KEY);
@@ -132,6 +134,10 @@ export function UpDownMarketsPanel() {
   const setShowNextMarketColumn = (on: boolean) => {
     setShowNextMarket(on);
     localStorage.setItem(SHOW_NEXT_MARKET_KEY, on ? 'true' : 'false');
+  };
+  const setShowVolumeColumn = (on: boolean) => {
+    setShowVolume(on);
+    localStorage.setItem(SHOW_VOLUME_KEY, on ? 'true' : 'false');
   };
 
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
@@ -271,6 +277,19 @@ export function UpDownMarketsPanel() {
               className="accent-blue-500 rounded"
             />
           </label>
+          <label
+            className="flex items-center gap-1 cursor-default text-[10px] text-gray-300 select-none"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <span>Volume:</span>
+            <input
+              type="checkbox"
+              checked={showVolume}
+              onChange={(e) => setShowVolumeColumn(e.target.checked)}
+              className="accent-blue-500 rounded"
+            />
+          </label>
         </div>
       </div>
       <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
@@ -281,7 +300,7 @@ export function UpDownMarketsPanel() {
               {ASSETS.map((asset) => (
                 <th
                   key={asset}
-                  colSpan={(showTarget ? 3 : 2) + (showNextMarket ? 1 : 0)}
+                  colSpan={(showTarget ? 1 : 0) + 1 + (showNextMarket ? 1 : 0) + (showVolume ? 1 : 0)}
                   className={`px-2 py-1 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900 font-bold ${ASSET_COLORS[asset] || 'text-white'}`}
                   style={assetBorderStyle(asset, { L: true, R: true })}
                 >
@@ -313,15 +332,17 @@ export function UpDownMarketsPanel() {
                       Next
                     </th>
                   )}
-                  <th
-                    className="px-1 py-0.5 text-right border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-sky-300 font-semibold"
-                    style={assetBorderStyle(asset, { R: true })}
-                  >
-                    <span className="inline-flex w-full items-center justify-end gap-0.5">
-                      Vol
-                      <HelpTooltip text="Trading volume (USDC In) from Toxic Flow aggregation (wallet_positions), pushed over chart WebSocket together with bid/ask updates. Shown in thousands (e.g. 12.3k)." />
-                    </span>
-                  </th>
+                  {showVolume && (
+                    <th
+                      className="px-1 py-0.5 text-right border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-sky-300 font-semibold"
+                      style={assetBorderStyle(asset, { R: true })}
+                    >
+                      <span className="inline-flex w-full items-center justify-end gap-0.5">
+                        Vol
+                        <HelpTooltip text="Trading volume (USDC In) from Toxic Flow aggregation (wallet_positions), pushed over chart WebSocket together with bid/ask updates. Shown in thousands (e.g. 12.3k)." />
+                      </span>
+                    </th>
+                  )}
                 </Fragment>
               ))}
             </tr>
@@ -383,7 +404,7 @@ export function UpDownMarketsPanel() {
                     return (
                       <td
                         key={asset}
-                        colSpan={(showTarget ? 3 : 2) + (showNextMarket ? 1 : 0)}
+                        colSpan={(showTarget ? 1 : 0) + 1 + (showNextMarket ? 1 : 0) + (showVolume ? 1 : 0)}
                         className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 text-gray-600 ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
                         style={assetBorderStyle(asset, { L: true, R: true, B: isLastTfRow })}
                       >
@@ -664,7 +685,7 @@ export function UpDownMarketsPanel() {
                       {targetCell}
                       {quoteCell}
                       {showNextMarket && nextCell}
-                      {volumeCell}
+                      {showVolume && volumeCell}
                     </Fragment>
                   );
                 })}

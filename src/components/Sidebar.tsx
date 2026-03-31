@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAccount } from 'wagmi';
+import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
 import { appKit } from '../lib/wallet';
 import { placeOrder, cancelOrder, signOrder, submitSignedOrder, fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
@@ -27,15 +28,48 @@ import { LiveTradeChart } from './LiveTradeChart';
 import { ChainlinkChart } from './ChainlinkChart';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { ToxicFlowDialog } from './ToxicFlowDialog';
-import { ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, UsersRound } from 'lucide-react';
+import { ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, Plus, UsersRound, X } from 'lucide-react';
 import type { AssetSymbol } from '../types';
 
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_LIVE_TRADES_SOURCE_KEY = 'polymarket-sidebar-live-trades-source';
+const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
 /** FAK buy: pay up to this per share to lift asks. */
 const MARKET_AGGRESSIVE_BUY = 0.99;
 /** FAK sell: accept down to this per share to hit bids. */
 const MARKET_AGGRESSIVE_SELL = 0.01;
+
+type CustomSidebarButton = {
+  id: string;
+  side: 'BUY' | 'SELL';
+  amount: number;
+  priceCents: number;
+  maxSell: boolean;
+  label: string;
+  color: string;
+};
+
+function readCustomSidebarButtons(): CustomSidebarButton[] {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_CUSTOM_BUTTONS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((b) => b && (b.side === 'BUY' || b.side === 'SELL'))
+      .map((b) => ({
+        id: String(b.id || `${Date.now()}-${Math.random()}`),
+        side: b.side as 'BUY' | 'SELL',
+        amount: Number(b.amount) || 0,
+        priceCents: Number(b.priceCents) || 0,
+        maxSell: !!b.maxSell,
+        label: String(b.label || '?').slice(0, 2),
+        color: String(b.color || '#2563eb'),
+      }));
+  } catch {
+    return [];
+  }
+}
 
 function readSidebarOrderKind(): 'limit' | 'market' {
   try {
@@ -107,6 +141,14 @@ export function Sidebar() {
   const [orderPrice, setOrderPrice] = useState('');
   const [orderKind, setOrderKind] = useState<'limit' | 'market'>(() => readSidebarOrderKind());
   const [orderAmount, setOrderAmount] = useState('');
+  const [customButtons, setCustomButtons] = useState<CustomSidebarButton[]>(() => readCustomSidebarButtons());
+  const [customDialogOpen, setCustomDialogOpen] = useState(false);
+  const [customSide, setCustomSide] = useState<'BUY' | 'SELL'>('BUY');
+  const [customAmount, setCustomAmount] = useState('1');
+  const [customPrice, setCustomPrice] = useState('');
+  const [customSellMax, setCustomSellMax] = useState(false);
+  const [customLabel, setCustomLabel] = useState('');
+  const [customColor, setCustomColor] = useState('#2563eb');
   const [orderExpiry, setOrderExpiry] = useState(localStorage.getItem('polymarket-order-expiry') || '180');
   const [orderExpiryUnit, setOrderExpiryUnit] = useState<'s' | 'm' | 'h'>(() => {
     const v = localStorage.getItem('polymarket-order-expiry-unit');
@@ -168,6 +210,9 @@ export function Sidebar() {
       setDisplayAsks(asks);
     }
   }, [obLoading, bids, asks]);
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_CUSTOM_BUTTONS_KEY, JSON.stringify(customButtons));
+  }, [customButtons]);
   useEffect(() => {
     setDisplayLiveTrades(liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketLiveTrades);
   }, [liveTradesSource, onchainLiveTrades, polymarketLiveTrades]);
@@ -582,6 +627,78 @@ export function Sidebar() {
       }
     } catch (e) {
       showToast('Order failed', 'error');
+    }
+  };
+
+  const handleCreateCustomButton = () => {
+    const amount = parseFloat(customAmount);
+    const priceCents = parseFloat(customPrice);
+    const label = customLabel.trim();
+    if (!label) { showToast('Enter button id (1-2 chars)', 'error'); return; }
+    if (!Number.isFinite(amount) || amount <= 0) { showToast('Invalid amount', 'error'); return; }
+    if (!Number.isFinite(priceCents) || priceCents <= 0 || priceCents >= 100) { showToast('Invalid price', 'error'); return; }
+    if (label.length < 1 || label.length > 2) { showToast('Button id must be 1-2 characters', 'error'); return; }
+
+    const next: CustomSidebarButton = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      side: customSide,
+      amount,
+      priceCents,
+      maxSell: customSide === 'SELL' ? customSellMax : false,
+      label,
+      color: customColor,
+    };
+    setCustomButtons((prev) => [...prev, next]);
+    setCustomDialogOpen(false);
+  };
+
+  const handleRemoveCustomButton = (id: string) => {
+    setCustomButtons((prev) => prev.filter((b) => b.id !== id));
+  };
+
+  const handleCustomButtonClick = async (btn: CustomSidebarButton) => {
+    if (!selectedMarket) return;
+    const tokenId = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1];
+    if (!tokenId) return;
+
+    let size = btn.amount;
+    if (btn.side === 'SELL' && btn.maxSell) {
+      const pos = positions.find((p) => p.asset === tokenId && p.size > 0);
+      size = pos ? Math.floor(pos.size * 100) / 100 : 0;
+    }
+    if (!size || size <= 0) {
+      showToast('No position size available for MAX sell', 'error');
+      return;
+    }
+
+    let expiration: number | undefined;
+    if (btn.side === 'BUY') {
+      const expLeadSec = getOrderExpiryLeadSeconds() || 180 * 60;
+      const marketEndDate = selectedMarket.endDate;
+      if (marketEndDate) {
+        const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
+        const secToEnd = endTimeSec - Math.floor(Date.now() / 1000);
+        expiration = secToEnd < expLeadSec ? endTimeSec - 30 : endTimeSec - expLeadSec;
+      } else {
+        expiration = Math.floor(Date.now() / 1000) + 86400;
+      }
+      const minExpiration = Math.floor(Date.now() / 1000) + 120;
+      if (expiration < minExpiration) expiration = minExpiration;
+    }
+
+    const result = await placeOrder({
+      tokenId,
+      side: btn.side,
+      price: btn.priceCents / 100,
+      size,
+      ...(expiration !== undefined ? { expiration } : {}),
+      orderInfo: `${btn.side} ${size} ${orderOutcome} for ${marketName} @ ${btn.priceCents}¢`,
+    });
+    if (result.success) {
+      showToast('Custom order placed', 'success');
+      triggerWalletRefresh();
+    } else {
+      showToast(result.error || 'Custom order failed', 'error');
     }
   };
 
@@ -1685,6 +1802,31 @@ export function Sidebar() {
                     orderSide
                   )}
                 </button>
+                {customButtons.map((btn) => (
+                  <button
+                    key={btn.id}
+                    onClick={() => handleCustomButtonClick(btn)}
+                    className="relative group w-9 py-2 rounded-lg font-bold text-sm transition text-white"
+                    style={{ backgroundColor: btn.color }}
+                    title={`${btn.side} ${btn.maxSell ? 'MAX' : btn.amount} @ ${btn.priceCents}¢`}
+                  >
+                    {btn.label}
+                    <span
+                      onClick={(e) => { e.stopPropagation(); handleRemoveCustomButton(btn.id); }}
+                      className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center w-3.5 h-3.5 rounded-full bg-black/70 text-white"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setCustomDialogOpen(true)}
+                  className="w-9 py-2 rounded-lg font-bold text-sm transition bg-gray-700 hover:bg-gray-600 text-gray-200 flex items-center justify-center"
+                  title="Create Custom Button"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
                 {/* Smart Order button hidden — use backend bot mode via API */}
               </div>
             )}
@@ -1962,6 +2104,49 @@ export function Sidebar() {
           </div>
         </>
       )}
+      {customDialogOpen && typeof document !== 'undefined' && createPortal((
+        <div className="fixed inset-0 z-[60000] bg-black/70 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) setCustomDialogOpen(false); }}>
+          <div className="w-full max-w-sm mx-4 rounded-lg border border-gray-600 bg-gray-800 p-4">
+            <div className="text-sm font-bold text-white mb-3">Create Custom Button</div>
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 w-16">Side</span>
+                <select value={customSide} onChange={(e) => setCustomSide(e.target.value as 'BUY' | 'SELL')} className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white flex-1">
+                  <option value="BUY">BUY</option>
+                  <option value="SELL">SELL</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 w-16">Amount</span>
+                <input value={customAmount} onChange={(e) => setCustomAmount(e.target.value)} type="number" min="0" step="0.01" className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white flex-1" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 w-16">Price ¢</span>
+                <input value={customPrice} onChange={(e) => setCustomPrice(e.target.value)} type="number" min="0.1" max="99.9" step="0.1" className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white flex-1" />
+              </div>
+              {customSide === 'SELL' && (
+                <label className="flex items-center gap-2 ml-[4.5rem] text-gray-300">
+                  <input type="checkbox" checked={customSellMax} onChange={(e) => setCustomSellMax(e.target.checked)} className="rounded accent-red-500" />
+                  <span>Max</span>
+                </label>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 w-16">ID</span>
+                <input value={customLabel} onChange={(e) => setCustomLabel(e.target.value.slice(0, 2))} maxLength={2} className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 text-center font-bold" />
+                <span className="text-gray-500 text-[10px]">1-2 chars</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 w-16">Color</span>
+                <input value={customColor} onChange={(e) => setCustomColor(e.target.value)} type="color" className="w-10 h-8 bg-transparent border border-gray-600 rounded cursor-pointer" />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setCustomDialogOpen(false)} className="px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-xs font-medium">Cancel</button>
+              <button onClick={handleCreateCustomButton} className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-bold">Create</button>
+            </div>
+          </div>
+        </div>
+      ), document.body)}
     </div>
     </>
   );

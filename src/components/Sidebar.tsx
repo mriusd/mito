@@ -221,60 +221,56 @@ export function Sidebar() {
   useEffect(() => {
     setDisplayLiveTrades(liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketLiveTrades);
   }, [liveTradesSource, onchainLiveTrades, polymarketLiveTrades]);
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      const tokenIds = selectedMarket?.clobTokenIds;
-      if (liveTradesSource !== 'onchain' || !proxyWallet || !tokenIds?.length) {
-        if (!cancelled) {
-          setOnchainSidebarPositions([]);
-          setOnchainSidebarTrades([]);
-        }
-        return;
-      }
-      try {
-        const [posRes, trRes] = await Promise.all([
-          fetchOnchainMarketPositions({
-            token_ids: tokenIds,
-            wallet: proxyWallet,
-          }),
-          fetchOnchainMarketTrades({
-            token_ids: tokenIds,
-            wallet: proxyWallet,
-            limit: 200,
-          }),
-        ]);
-        if (cancelled) return;
-        const mappedPos = Array.isArray(posRes.positions)
-          ? posRes.positions.map((p) => ({
-              tokenId: String(p.tokenId || ''),
-              size: Number(p.size || 0),
-              avgPrice: Number(p.avgPrice || 0),
-            })).filter((p) => p.tokenId && p.size > 0)
-          : [];
-        const mappedTrades = Array.isArray(trRes.trades)
-          ? trRes.trades.map((t) => ({
-              tokenId: String(t.tokenId || ''),
-              side: (String(t.side || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL',
-              size: Number(t.size || 0),
-              price: Number(t.price || 0),
-              blockTime: Number(t.blockTime || 0),
-            })).filter((t) => t.tokenId && t.size > 0 && t.price > 0)
-          : [];
-        setOnchainSidebarPositions(mappedPos);
-        setOnchainSidebarTrades(mappedTrades);
-      } catch {
-        if (!cancelled) {
-          setOnchainSidebarPositions([]);
-          setOnchainSidebarTrades([]);
-        }
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
+  const loadOnchainSidebarData = useCallback(async () => {
+    const tokenIds = selectedMarket?.clobTokenIds;
+    if (liveTradesSource !== 'onchain' || !proxyWallet || !tokenIds?.length) {
+      setOnchainSidebarPositions([]);
+      setOnchainSidebarTrades([]);
+      return;
+    }
+    try {
+      const [posRes, trRes] = await Promise.all([
+        fetchOnchainMarketPositions({
+          token_ids: tokenIds,
+          wallet: proxyWallet,
+        }),
+        fetchOnchainMarketTrades({
+          token_ids: tokenIds,
+          wallet: proxyWallet,
+          limit: 200,
+        }),
+      ]);
+      const mappedPos = Array.isArray(posRes.positions)
+        ? posRes.positions.map((p) => ({
+            tokenId: String(p.tokenId || ''),
+            size: Number(p.size || 0),
+            avgPrice: Number(p.avgPrice || 0),
+          })).filter((p) => p.tokenId && p.size > 0)
+        : [];
+      const mappedTrades = Array.isArray(trRes.trades)
+        ? trRes.trades.map((t) => ({
+            tokenId: String(t.tokenId || ''),
+            side: (String(t.side || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL',
+            size: Number(t.size || 0),
+            price: Number(t.price || 0),
+            blockTime: Number(t.blockTime || 0),
+          })).filter((t) => t.tokenId && t.size > 0 && t.price > 0)
+        : [];
+      setOnchainSidebarPositions(mappedPos);
+      setOnchainSidebarTrades(mappedTrades);
+    } catch {
+      setOnchainSidebarPositions([]);
+      setOnchainSidebarTrades([]);
+    }
   }, [liveTradesSource, proxyWallet, selectedMarket?.clobTokenIds]);
+  useEffect(() => {
+    void loadOnchainSidebarData();
+  }, [loadOnchainSidebarData]);
+  useEffect(() => {
+    if (liveTradesSource !== 'onchain') return;
+    const id = setInterval(() => { void loadOnchainSidebarData(); }, 15000);
+    return () => clearInterval(id);
+  }, [liveTradesSource, loadOnchainSidebarData]);
   useEffect(() => {
     localStorage.setItem('sidebar-live-orderbook-expanded', liveOrderbookExpanded ? 'true' : 'false');
   }, [liveOrderbookExpanded]);
@@ -1925,6 +1921,9 @@ export function Sidebar() {
                 onClick={() => {
                   setPositionsRefreshing(true);
                   triggerWalletRefresh();
+                  if (liveTradesSource === 'onchain') {
+                    void loadOnchainSidebarData();
+                  }
                   setTimeout(() => setPositionsRefreshing(false), 2000);
                 }}
                 className="text-gray-500 hover:text-white transition"

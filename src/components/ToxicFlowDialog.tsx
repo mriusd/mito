@@ -220,29 +220,12 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 mb-3 border-b border-gray-700 pb-2">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-colors ${
-                tab === t.key
-                  ? 'bg-yellow-400/20 text-yellow-400'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
-              }`}
-            >
-              {t.icon} {t.label}
-            </button>
-          ))}
-        </div>
-
         {/* Content */}
         <div className="overflow-y-auto" style={{ maxHeight: 'calc(85vh - 120px)' }}>
           {loading && <div className="text-gray-500 text-center py-8">Loading on-chain data...</div>}
           {error && <div className="text-red-400 text-center py-8">Error: {error}</div>}
 
-          {!loading && !error && data && tab === 'overview' && (
+          {!loading && !error && data && (
             <div className="space-y-3">
               {/* Summary Cards */}
               <div className="grid grid-cols-4 gap-2">
@@ -470,30 +453,44 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                 );
               })()}
 
-              {/* Top Holders Table */}
-              <div className="bg-gray-900 rounded p-2">
-                <div className="text-[10px] text-gray-400 font-bold mb-1 flex items-center gap-1">
-                  <Crown size={10} /> Top Holders (hover wallet for stats)
+              {/* Tabs + bottom table (switch only this section) */}
+              <div className="bg-gray-900/60 rounded p-2">
+                <div className="flex gap-1 mb-2 border-b border-gray-700 pb-2">
+                  {tabs.map((t) => (
+                    <button
+                      key={t.key}
+                      onClick={() => setTab(t.key)}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-colors ${
+                        tab === t.key
+                          ? 'bg-yellow-400/20 text-yellow-400'
+                          : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                      }`}
+                    >
+                      {t.icon} {t.label}
+                    </button>
+                  ))}
                 </div>
-                <WalletTable wallets={data.topHolders} label="holders" totalShares={data.totalShares} />
+
+                {tab === 'topHolders' && (
+                  <WalletTable wallets={data.topHolders} label="holders" totalShares={data.totalShares} />
+                )}
+                {tab === 'topYes' && (
+                  <WalletTable wallets={data.topYes} label="YES holders" totalShares={data.totalShares} />
+                )}
+                {tab === 'topNo' && (
+                  <WalletTable wallets={data.topNo} label="NO holders" totalShares={data.totalShares} />
+                )}
+                {tab === 'topVolume' && (
+                  <WalletTable wallets={data.topVolume} label="volume" totalShares={data.totalShares} />
+                )}
+                {tab === 'topTraders' && (
+                  <WalletTable wallets={data.topTraders} label="traders" totalShares={data.totalShares} />
+                )}
+                {tab === 'overview' && (
+                  <WalletTable wallets={data.topHolders} label="holders" totalShares={data.totalShares} />
+                )}
               </div>
             </div>
-          )}
-
-          {!loading && !error && data && tab === 'topHolders' && (
-            <WalletTable wallets={data.topHolders} label="holders" totalShares={data.totalShares} />
-          )}
-          {!loading && !error && data && tab === 'topYes' && (
-            <WalletTable wallets={data.topYes} label="YES holders" totalShares={data.totalShares} />
-          )}
-          {!loading && !error && data && tab === 'topNo' && (
-            <WalletTable wallets={data.topNo} label="NO holders" totalShares={data.totalShares} />
-          )}
-          {!loading && !error && data && tab === 'topVolume' && (
-            <WalletTable wallets={data.topVolume} label="volume" totalShares={data.totalShares} />
-          )}
-          {!loading && !error && data && tab === 'topTraders' && (
-            <WalletTable wallets={data.topTraders} label="traders" totalShares={data.totalShares} />
           )}
         </div>
       </div>

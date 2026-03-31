@@ -538,7 +538,7 @@ export function Sidebar() {
     if (marketEndDate) {
       const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
       const expiration = endTimeSec - expLeadSec;
-      const invalidLead = (endTimeSec-nowSec) <= expLeadSec || expiration < (nowSec + 120);
+      const invalidLead = (endTimeSec - nowSec) <= expLeadSec;
       return { expiration, invalidLead };
     }
     return { expiration: nowSec + 86400, invalidLead: false };
@@ -598,7 +598,7 @@ export function Sidebar() {
     } else {
       const exp = computeLimitExpiration(selectedMarket.endDate);
       expiration = exp.expiration;
-      if (exp.invalidLead) {
+      if (orderSide === 'BUY' && exp.invalidLead) {
         showToast('Lead time to expiration already passed for this market', 'error');
         return;
       }
@@ -686,7 +686,7 @@ export function Sidebar() {
 
     const exp = computeLimitExpiration(selectedMarket.endDate);
     const expiration = exp.expiration;
-    if (exp.invalidLead) {
+    if (btn.side === 'BUY' && exp.invalidLead) {
       showToast('Lead time to expiration already passed for this market', 'error');
       return;
     }
@@ -748,7 +748,7 @@ export function Sidebar() {
       signingDialog.setStep('sign', 'active');
       const exp = computeLimitExpiration(selectedMarket?.endDate);
       const expiration = exp.expiration;
-      if (exp.invalidLead) {
+      if (side === 'BUY' && exp.invalidLead) {
         showToast('Lead time to expiration already passed for this market', 'error');
         setEditingOrderId(null);
         return;

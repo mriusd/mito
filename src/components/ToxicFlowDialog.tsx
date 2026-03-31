@@ -20,7 +20,7 @@ function shortenWallet(w: string): string {
 // Wallet hover tooltip — fetches summary on hover, caches results
 const summaryCache: Record<string, WalletSummary | null> = {};
 
-function WalletLink({ wallet }: { wallet: string }) {
+function WalletLink({ wallet, netShares }: { wallet: string; netShares?: number }) {
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [show, setShow] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,6 +57,17 @@ function WalletLink({ wallet }: { wallet: string }) {
           {summary === null && <div className="text-gray-500">No data yet</div>}
           {summary && (
             <div className="space-y-0.5">
+              {typeof netShares === 'number' && Number.isFinite(netShares) && (
+                <>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-gray-500">Net shares</span>
+                    <span className={`font-bold ${netShares > 0.001 ? 'text-green-400' : netShares < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>
+                      {netShares > 0 ? '+' : ''}{netShares.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="border-t border-gray-700 my-0.5" />
+                </>
+              )}
               <div className="flex justify-between gap-3"><span className="text-gray-500">Markets</span><span className="text-white font-bold">{summary.totalMarkets}{summary.resolvedMarkets > 0 ? <span className="text-gray-500 font-normal"> ({summary.resolvedMarkets} resolved)</span> : ''}</span></div>
               <div className="flex justify-between gap-3"><span className="text-gray-500">Trades</span><span className="text-white">{summary.totalTrades}</span></div>
               <div className="flex justify-between gap-3"><span className="text-gray-500">Vol In</span><span className="text-yellow-400">${summary.totalUsdcIn.toFixed(2)}</span></div>
@@ -121,7 +132,7 @@ function WalletTable({ wallets, label, totalShares }: { wallets: WalletPosition[
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
                 <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
-                <td className="px-1"><WalletLink wallet={w.wallet} /></td>
+                <td className="px-1"><WalletLink wallet={w.wallet} netShares={w.net} /></td>
                 <td className="text-right px-1 text-green-400">{w.boughtYes > 0 ? w.boughtYes.toFixed(1) : '-'}</td>
                 <td className="text-right px-1 text-green-300/60">{w.soldYes > 0 ? w.soldYes.toFixed(1) : '-'}</td>
                 <td className="text-right px-1 text-red-400">{w.boughtNo > 0 ? w.boughtNo.toFixed(1) : '-'}</td>
@@ -356,6 +367,17 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                 const rf = data.redFlags ?? [];
                 const highFlags = rf.filter(f => f.level === 'high');
                 const medFlags = rf.filter(f => f.level === 'medium');
+                const netByWallet: Record<string, number> = {};
+                const addWallets = (arr?: WalletPosition[] | null) => {
+                  for (const w of arr || []) {
+                    if (w?.wallet) netByWallet[w.wallet.toLowerCase()] = w.net || 0;
+                  }
+                };
+                addWallets(data.topHolders);
+                addWallets(data.topYes);
+                addWallets(data.topNo);
+                addWallets(data.topVolume);
+                addWallets(data.topTraders);
                 const hasConcentration = data.concentration > 0.5;
                 const hasTopHolderBias = Math.abs(data.topHoldersBias || 0) > 50;
                 const totalFlags = highFlags.length + medFlags.length + (hasConcentration ? 1 : 0) + (hasTopHolderBias ? 1 : 0);
@@ -376,7 +398,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                           <span className="text-gray-200">
                             {f.wallet ? (
                               <>
-                                <WalletLink wallet={f.wallet} />{' '}
+                                <WalletLink wallet={f.wallet} netShares={netByWallet[f.wallet.toLowerCase()]} />{' '}
                                 {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
                               </>
                             ) : f.detail}
@@ -389,7 +411,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                           <span className="text-gray-300">
                             {f.wallet ? (
                               <>
-                                <WalletLink wallet={f.wallet} />{' '}
+                                <WalletLink wallet={f.wallet} netShares={netByWallet[f.wallet.toLowerCase()]} />{' '}
                                 {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
                               </>
                             ) : f.detail}

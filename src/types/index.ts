@@ -34,6 +34,8 @@ export interface Market {
   marketNetDirection?: number;
   holders?: number;
   smartMoneyBias?: number;
+  provenSMS?: number;
+  crowdBias?: number;
   // B-S computed values from server
   bs1?: number;
   bs2?: number;

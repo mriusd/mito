@@ -497,21 +497,14 @@ export function UpDownMarketsPanel() {
                       ? Math.max(0, Math.min(1, (now - marketStartMs) / duration))
                       : 0;
                   const marketProgressPct = (marketProgress * 100).toFixed(1);
-                  const smartMoneyRaw = yesTokenId ? (_bidAskLookup[yesTokenId]?.smartMoneyBias ?? 0) : 0;
-                  const smartMoneyTotalShares = yesTokenId ? (_bidAskLookup[yesTokenId]?.sharesInExistence ?? 0) : 0;
-                  const smartMoneyPct =
-                    smartMoneyTotalShares > 0 ? (smartMoneyRaw / smartMoneyTotalShares) * 100 : 0;
-                  const smartMoneyBarPct = Math.max(2, Math.min(98, 50 + smartMoneyPct * 10));
-                  // Contrarian smart-money signal:
-                  // - Market odds lean NO when YES mid < 45c
-                  // - Market odds lean YES when YES mid > 55c
-                  // Show icon only when smart money strongly leans the opposite direction.
+                  const provenSMS = yesTokenId ? (_bidAskLookup[yesTokenId]?.provenSMS ?? 0) : 0;
+                  const smartMoneyBarPct = Math.max(2, Math.min(98, 50 + provenSMS * 50));
                   const marketLeansNo = yesMidProb != null && yesMidProb < 0.45;
                   const marketLeansYes = yesMidProb != null && yesMidProb > 0.55;
                   const smartMoneyLeansYes = smartMoneyBarPct > 75;
                   const smartMoneyLeansNo = smartMoneyBarPct < 25;
-                  const showSmartMoneyLeftIcon = marketLeansNo && smartMoneyLeansYes;   // YES vs market NO
-                  const showSmartMoneyRightIcon = marketLeansYes && smartMoneyLeansNo;  // NO vs market YES
+                  const showSmartMoneyLeftIcon = marketLeansNo && smartMoneyLeansYes;
+                  const showSmartMoneyRightIcon = marketLeansYes && smartMoneyLeansNo;
 
                   const quoteCell = (
                     <td

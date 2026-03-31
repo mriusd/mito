@@ -73,6 +73,8 @@ export function Sidebar() {
       marketNetDirection: entry.marketNetDirection,
       holders: entry.holders,
       smartMoneyBias: entry.smartMoneyBias,
+      provenSMS: entry.provenSMS,
+      crowdBias: entry.crowdBias,
     };
   }, [selectedMarket, marketLookup]);
   const sharesInExistenceDisplay = useMemo(() => {
@@ -1045,32 +1047,46 @@ export function Sidebar() {
                 <div className="tabular-nums font-bold text-yellow-300">{holdersCountDisplay}</div>
               </button>
             </div>
-            {/* Smart Money Bias bar */}
+            {/* Proven Smart Money + Crowd bars */}
             {(() => {
-              const rawSmb = liveShareStats?.smartMoneyBias ?? 0;
-              const totalShares = liveShareStats?.sharesInExistence ?? 0;
-              const biasPct = totalShares > 0 ? (rawSmb / totalShares) * 100 : 0;
               const posLabel = isUpDownMarket ? 'UP' : 'YES';
               const negLabel = isUpDownMarket ? 'DOWN' : 'NO';
-              const biasLabel = biasPct > 0.01 ? posLabel : biasPct < -0.01 ? negLabel : 'FLAT';
-              const biasColor = biasPct > 0.01 ? 'text-green-400' : biasPct < -0.01 ? 'text-red-400' : 'text-gray-500';
-              const barPct = Math.max(2, Math.min(98, 50 + biasPct * 10));
+              const labelFor = (v: number) => v > 0.01 ? posLabel : v < -0.01 ? negLabel : 'FLAT';
+              const colorFor = (v: number) => v > 0.01 ? 'text-green-400' : v < -0.01 ? 'text-red-400' : 'text-gray-500';
+              const barFor = (v: number) => Math.max(2, Math.min(98, 50 + v * 50));
+
+              const proven = liveShareStats?.provenSMS ?? 0;
+              const crowd = liveShareStats?.crowdBias ?? 0;
+              const provenPct = proven * 100;
+              const crowdPct = crowd * 100;
+
               return (
-                <div className="mt-1.5">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[9px] text-gray-500">Smart Money</span>
-                    <span className={`text-[10px] font-bold ${biasColor}`}>
-                      {biasLabel}
-                      {(rawSmb !== 0 || biasPct !== 0) && (
-                        <span className="text-[9px] font-normal ml-0.5">
-                          ({rawSmb > 0 ? '+' : ''}{rawSmb.toFixed(2)}, {biasPct > 0 ? '+' : ''}{biasPct.toFixed(2)}%)
-                        </span>
-                      )}
-                    </span>
+                <div className="mt-1.5 space-y-1">
+                  <div>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-[9px] text-gray-500">Smart Money</span>
+                      <span className={`text-[10px] font-bold ${colorFor(proven)}`}>
+                        {labelFor(proven)}
+                        <span className="text-[9px] font-normal ml-0.5">({provenPct > 0 ? '+' : ''}{provenPct.toFixed(1)}%)</span>
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden flex">
+                      <div className="bg-green-500/70 h-full transition-all" style={{ width: `${barFor(proven)}%` }} />
+                      <div className="bg-red-500/70 h-full transition-all flex-1" />
+                    </div>
                   </div>
-                  <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden flex">
-                    <div className="bg-green-500/70 h-full transition-all" style={{ width: `${barPct}%` }} />
-                    <div className="bg-red-500/70 h-full transition-all flex-1" />
+                  <div>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-[9px] text-gray-500">Crowd</span>
+                      <span className={`text-[10px] font-bold ${colorFor(crowd)}`}>
+                        {labelFor(crowd)}
+                        <span className="text-[9px] font-normal ml-0.5">({crowdPct > 0 ? '+' : ''}{crowdPct.toFixed(1)}%)</span>
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden flex">
+                      <div className="bg-blue-500/70 h-full transition-all" style={{ width: `${barFor(crowd)}%` }} />
+                      <div className="bg-orange-500/70 h-full transition-all flex-1" />
+                    </div>
                   </div>
                 </div>
               );

@@ -64,6 +64,12 @@ export function useBidAskWS() {
               if (typeof item.smartMoneyBias === 'number' && Number.isFinite(item.smartMoneyBias)) {
                 next.smartMoneyBias = item.smartMoneyBias;
               }
+              if (typeof item.provenSMS === 'number' && Number.isFinite(item.provenSMS)) {
+                next.provenSMS = item.provenSMS;
+              }
+              if (typeof item.crowdBias === 'number' && Number.isFinite(item.crowdBias)) {
+                next.crowdBias = item.crowdBias;
+              }
               patch[item.assetId] = next;
               changed = true;
             }

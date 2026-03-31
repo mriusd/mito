@@ -554,9 +554,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
               <div className="bg-gray-900 rounded p-3">
                 <div className="text-[10px] text-gray-500 mb-2 font-bold">Informed Trader Bias</div>
                 {(() => {
-                  const rawSmb = data.smartMoneyBias || 0;
-                  const totalShares = data.totalShares || 0;
-                  const smbPct = totalShares > 0 ? (rawSmb / totalShares) * 100 : 0;
                   const thb = data.topHoldersBias || 0;
                   const wb = data.whaleBias || 0;
                   const isUpDownMarket = /up\s+or\s+down|updown|up-or-down/i.test(marketName || '');
@@ -564,21 +561,40 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                   const negLabel = isUpDownMarket ? 'DOWN' : 'NO';
                   const biasLabel = (v: number) => v > 0.01 ? posLabel : v < -0.01 ? negLabel : 'FLAT';
                   const biasColor = (v: number) => v > 0.01 ? 'text-green-400' : v < -0.01 ? 'text-red-400' : 'text-gray-500';
+                  const barFor = (v: number) => Math.max(2, Math.min(98, 50 + v * 50));
+                  const proven = (data as any).provenSMS || 0;
+                  const crowd = (data as any).crowdBias || 0;
+                  const provenPct = proven * 100;
+                  const crowdPct = crowd * 100;
                   const yesTotal = (data.yesUsdcIn || 0) + (data.noUsdcIn || 0);
                   const yesPct = yesTotal > 0 ? (data.yesUsdcIn / yesTotal) * 100 : 50;
                   return (
                     <div className="space-y-2.5">
-                      {/* Smart Money Bias (volume-weighted) */}
+                      {/* Proven Smart Money */}
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[9px] text-gray-500">Smart Money (vol-weighted)</span>
-                          <span className={`text-[11px] font-bold ${biasColor(smbPct)}`}>
-                            {biasLabel(smbPct)} {(rawSmb !== 0 || smbPct !== 0) && <span className="text-[9px] font-normal">({rawSmb > 0 ? '+' : ''}{rawSmb.toFixed(2)}, {smbPct > 0 ? '+' : ''}{smbPct.toFixed(2)}%)</span>}
+                          <span className="text-[9px] text-gray-500">Smart Money (proven wallets)</span>
+                          <span className={`text-[11px] font-bold ${biasColor(proven)}`}>
+                            {biasLabel(proven)} <span className="text-[9px] font-normal">({provenPct > 0 ? '+' : ''}{provenPct.toFixed(1)}%)</span>
                           </span>
                         </div>
                         <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
-                          <div className="bg-green-500/70 h-full transition-all" style={{ width: `${Math.max(2, Math.min(98, 50 + smbPct * 10))}%` }} />
+                          <div className="bg-green-500/70 h-full transition-all" style={{ width: `${barFor(proven)}%` }} />
                           <div className="bg-red-500/70 h-full transition-all flex-1" />
+                        </div>
+                      </div>
+
+                      {/* Crowd Bias */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[9px] text-gray-500">Crowd (all wallets)</span>
+                          <span className={`text-[11px] font-bold ${biasColor(crowd)}`}>
+                            {biasLabel(crowd)} <span className="text-[9px] font-normal">({crowdPct > 0 ? '+' : ''}{crowdPct.toFixed(1)}%)</span>
+                          </span>
+                        </div>
+                        <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
+                          <div className="bg-blue-500/70 h-full transition-all" style={{ width: `${barFor(crowd)}%` }} />
+                          <div className="bg-orange-500/70 h-full transition-all flex-1" />
                         </div>
                       </div>
 

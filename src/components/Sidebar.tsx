@@ -530,17 +530,6 @@ export function Sidebar() {
     return Math.floor(n * 60);
   };
 
-  /** T-EXP: if market expires sooner than entered lead time, show 0 — setting does not apply. */
-  const orderExpiryInputDisplay = (() => {
-    const expSec = getOrderExpiryLeadSeconds();
-    if (!selectedMarket?.endDate || expSec <= 0) return orderExpiry;
-    const endMs = new Date(selectedMarket.endDate).getTime();
-    if (Number.isNaN(endMs)) return orderExpiry;
-    const secToEnd = (endMs - Date.now()) / 1000;
-    if (secToEnd < expSec) return '0';
-    return orderExpiry;
-  })();
-
   const formatPreExpiryLead = (orderExpiration?: string): string | null => {
     if (!orderExpiration || !selectedMarket?.endDate) return null;
     const endMs = new Date(selectedMarket.endDate).getTime();
@@ -1740,7 +1729,7 @@ export function Sidebar() {
                 <div className="flex items-center gap-1 w-full">
                   <input
                     type="number"
-                    value={orderExpiryInputDisplay}
+                    value={orderExpiry}
                     disabled={orderKind === 'market'}
                     title={orderKind === 'market' ? 'T-EXP applies to limit (GTD) buys only' : undefined}
                     onChange={(e) => {

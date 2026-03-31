@@ -392,6 +392,12 @@ export interface ToxicFlowData {
   totalTrades: number;
   netImbalance: number;
   concentration: number;
+  /** Backend: POLYGON_WSS_URL set */
+  polygonWssConfigured?: boolean;
+  /** All-time OrderFilled logs processed since process start */
+  orderFilledEventsProcessed?: number;
+  /** Rows in onchain_fills for this market_id */
+  onchainFillsForMarket?: number;
 }
 
 export async function fetchToxicFlow(marketId: string): Promise<ToxicFlowData> {

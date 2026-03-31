@@ -206,8 +206,8 @@ function marketVolumeUsdc(m: Market, tokenId: string, lookup: Record<string, Mar
  * Final price = weighted average of per-timeframe implied prices.
  * When `volWeightAdjusted`: weight = Polymarket volume (USDC) × (1/√T). Otherwise weight = 1/√T only.
  *
- * If a market probability is saturated (~0% or ~100%), inversion is ill-defined;
- * that timeframe is omitted (no RBS line) instead of clamping implied spot to `s0`.
+ * If a market probability is saturated (~0% or ~100%), inversion becomes unbounded;
+ * in that case we snap that market's implied spot to the current spot (`s0`).
  * If no live markets, returns `clear`.
  */
 function computeRBSPriceResult(
@@ -255,13 +255,17 @@ function computeRBSPriceResult(
     else if (ba != null && Number.isFinite(ba)) pUp = ba;
 
     if (pUp <= RBS_HIDE_EXTREME_PROB || pUp >= 1-RBS_HIDE_EXTREME_PROB) continue;
-    if (pUp <= RBS_SATURATION_EPS || pUp >= 1 - RBS_SATURATION_EPS) continue;
-
-    const z = invNormCDF(clampP(pUp));
-    const sqrtT = Math.sqrt(tYears);
-    const impliedSpot = strike * Math.exp(z * sigma * sqrtT + (sigma * sigma * tYears) / 2);
+    const followsSpot = pUp <= RBS_SATURATION_EPS || pUp >= 1 - RBS_SATURATION_EPS;
+    let impliedSpot: number;
+    if (followsSpot) {
+      impliedSpot = s0;
+    } else {
+      const z = invNormCDF(clampP(pUp));
+      const sqrtT = Math.sqrt(tYears);
+      impliedSpot = strike * Math.exp(z * sigma * sqrtT + (sigma * sigma * tYears) / 2);
+    }
     if (!Number.isFinite(impliedSpot) || impliedSpot <= 0) continue;
-    tfLines.push({ tf, price: impliedSpot, followsSpot: false });
+    tfLines.push({ tf, price: impliedSpot, followsSpot });
   }
 
   // Strict priority mode: selected value is first available timeframe in order 5m -> 15m -> 1h -> 4h -> 24h.

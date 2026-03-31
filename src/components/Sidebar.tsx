@@ -987,7 +987,12 @@ export function Sidebar() {
                 </span>
               )}
               <button
-                onClick={() => setToxicDialogOpen(true)}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setToxicDialogOpen(true);
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
                 className="p-0.5 rounded hover:bg-yellow-400/20 transition-colors"
                 title="Toxic Flow Analysis"
               >

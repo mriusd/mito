@@ -299,8 +299,33 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                     </div>
                   )}
                   {data.totalWallets === 0 && (
-                    <div className="flex items-center gap-1.5 text-[10px]">
-                      <span className="text-gray-500">No on-chain fills recorded yet for this market. Data accumulates from when the collector started.</span>
+                    <div className="space-y-1.5 text-[10px] text-gray-500">
+                      {data.polygonWssConfigured === false && (
+                        <p className="text-amber-400/95">
+                          On-chain collection is off: polycandles needs <span className="font-mono">POLYGON_WSS_URL</span> (Polygon JSON-RPC WebSocket). Check server logs and{' '}
+                          <span className="font-mono">/api/onchain-status</span>.
+                        </p>
+                      )}
+                      {data.polygonWssConfigured === true && (data.orderFilledEventsProcessed ?? 0) === 0 && (
+                        <p>
+                          Polygon WSS is configured but no <span className="font-mono">OrderFilled</span> events have been processed yet — verify the endpoint, subscription, and that trading is happening on tracked contracts.
+                        </p>
+                      )}
+                      {data.polygonWssConfigured === true &&
+                        (data.orderFilledEventsProcessed ?? 0) > 0 &&
+                        (data.onchainFillsForMarket ?? 0) === 0 && (
+                        <p>
+                          Events are ingesting globally, but no fills are linked to this market in <span className="font-mono">onchain_fills</span> yet. Wait for the next Gamma sync (token map refreshes after each refresh), or confirm this market&apos;s CLOB token IDs are in the DB.
+                        </p>
+                      )}
+                      {(data.onchainFillsForMarket ?? 0) > 0 && (
+                        <p className="text-gray-400">
+                          {data.onchainFillsForMarket} raw fill(s) for this market in DB; wallet rollups only appear after fills are matched to token IDs. If tables stay empty, check <span className="font-mono">wallet_positions</span> and server logs.
+                        </p>
+                      )}
+                      <p>
+                        Toxic Flow aggregates <span className="font-mono">wallet_positions</span> for this market (not the CLOB orderbook). Rows reset when the backend clears that table on DB init; new activity repopulates them.
+                      </p>
                     </div>
                   )}
                   {data.totalWallets > 0 && data.concentration <= 0.5 && Math.abs(data.netImbalance) <= 50 && (

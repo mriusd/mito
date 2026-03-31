@@ -337,7 +337,7 @@ async function buildSignedOrder(
   };
 
   const exchangeAddress = negRisk ? NEG_RISK_EXCHANGE : EXCHANGE_ADDRESS;
-  const builder = new ExchangeOrderBuilder(exchangeAddress, CHAIN_ID, signer);
+  const builder = new ExchangeOrderBuilder(exchangeAddress, CHAIN_ID, signer as any);
   return builder.buildSignedOrder(orderData);
 }
 

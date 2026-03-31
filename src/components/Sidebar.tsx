@@ -107,6 +107,10 @@ export function Sidebar() {
   const [orderKind, setOrderKind] = useState<'limit' | 'market'>(() => readSidebarOrderKind());
   const [orderAmount, setOrderAmount] = useState('');
   const [orderExpiry, setOrderExpiry] = useState(localStorage.getItem('polymarket-order-expiry') || '180');
+  const [orderExpiryUnit, setOrderExpiryUnit] = useState<'s' | 'm' | 'h'>(() => {
+    const v = localStorage.getItem('polymarket-order-expiry-unit');
+    return v === 's' || v === 'h' ? v : 'm';
+  });
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [editingOrderPrice, setEditingOrderPrice] = useState('');
   const [cancellingOrderIds, setCancellingOrderIds] = useState<Set<string>>(new Set());
@@ -163,6 +167,9 @@ export function Sidebar() {
       /* ignore */
     }
   }, [orderKind]);
+  useEffect(() => {
+    localStorage.setItem('polymarket-order-expiry-unit', orderExpiryUnit);
+  }, [orderExpiryUnit]);
 
   // Filter positions/orders/trades for selected market
   const marketTokenIds = selectedMarket?.clobTokenIds || [];
@@ -368,14 +375,22 @@ export function Sidebar() {
     return a;
   }, [orderAmount]);
 
-  /** T-EXP: if the market expires sooner than the entered lead time (minutes), show 0 — setting does not apply. */
+  const getOrderExpiryLeadSeconds = () => {
+    const n = parseFloat(orderExpiry);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    if (orderExpiryUnit === 's') return Math.floor(n);
+    if (orderExpiryUnit === 'h') return Math.floor(n * 3600);
+    return Math.floor(n * 60);
+  };
+
+  /** T-EXP: if market expires sooner than entered lead time, show 0 — setting does not apply. */
   const orderExpiryInputDisplay = (() => {
-    const expMinutes = parseInt(orderExpiry, 10);
-    if (!selectedMarket?.endDate || Number.isNaN(expMinutes)) return orderExpiry;
+    const expSec = getOrderExpiryLeadSeconds();
+    if (!selectedMarket?.endDate || expSec <= 0) return orderExpiry;
     const endMs = new Date(selectedMarket.endDate).getTime();
     if (Number.isNaN(endMs)) return orderExpiry;
-    const minutesToEnd = (endMs - Date.now()) / 60000;
-    if (minutesToEnd < expMinutes) return '0';
+    const secToEnd = (endMs - Date.now()) / 1000;
+    if (secToEnd < expSec) return '0';
     return orderExpiry;
   })();
 
@@ -431,15 +446,15 @@ export function Sidebar() {
     if (isMarket) {
       expiration = 0;
     } else if (orderSide === 'BUY') {
-      const expMinutes = parseInt(orderExpiry) || 180;
+      const expLeadSec = getOrderExpiryLeadSeconds() || 180 * 60;
       const marketEndDate = selectedMarket.endDate;
       if (marketEndDate) {
         const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
-        const marketDurationMin = (endTimeSec - Math.floor(Date.now() / 1000)) / 60;
-        if (marketDurationMin < expMinutes) {
+        const secToEnd = endTimeSec - Math.floor(Date.now() / 1000);
+        if (secToEnd < expLeadSec) {
           expiration = endTimeSec - 30;
         } else {
-          expiration = endTimeSec - expMinutes * 60;
+          expiration = endTimeSec - expLeadSec;
         }
       } else {
         expiration = Math.floor(Date.now() / 1000) + 86400;
@@ -499,15 +514,15 @@ export function Sidebar() {
       signingDialog.setStep('sign', 'active');
       let expiration: number | undefined;
       if (side === 'BUY') {
-        const expMinutes = parseInt(orderExpiry) || 180;
+        const expLeadSec = getOrderExpiryLeadSeconds() || 180 * 60;
         const marketEndDate = selectedMarket?.endDate;
         if (marketEndDate) {
           const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
-          const marketDurationMin = (endTimeSec - Math.floor(Date.now() / 1000)) / 60;
-          if (marketDurationMin < expMinutes) {
+          const secToEnd = endTimeSec - Math.floor(Date.now() / 1000);
+          if (secToEnd < expLeadSec) {
             expiration = endTimeSec - 30;
           } else {
-            expiration = endTimeSec - expMinutes * 60;
+            expiration = endTimeSec - expLeadSec;
           }
         } else {
           expiration = Math.floor(Date.now() / 1000) + 86400;
@@ -1493,29 +1508,42 @@ export function Sidebar() {
 
             {/* Order Summary */}
             <div className="flex gap-1 mb-3 items-stretch">
-              <div className="bg-gray-700/50 rounded p-2 text-[10px] text-gray-400 flex flex-col items-center justify-center" style={{ width: '60px', flexShrink: 0 }}>
-                <label className="text-[8px] text-gray-500 mb-0.5 flex items-center gap-0.5">
+              <div className="bg-gray-700/50 rounded p-2 text-[10px] text-gray-400 flex flex-col items-center justify-center" style={{ width: '90px', flexShrink: 0 }}>
+                <label className="text-[10px] text-gray-400 mb-0.5 flex items-center justify-start gap-0.5 w-full">
                   T-EXP
                   <span className="relative group cursor-help">
                     <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className="text-gray-500 hover:text-gray-300"><circle cx="8" cy="8" r="7.5" fill="none" stroke="currentColor" strokeWidth="1"/><text x="8" y="12" textAnchor="middle" fontSize="11" fill="currentColor">?</text></svg>
                     <span className="absolute bottom-full left-0 mb-1 hidden group-hover:block bg-gray-900 border border-gray-600 text-gray-200 text-[9px] rounded px-2 py-1 w-40 text-left whitespace-normal z-50 leading-tight">
-                      Minutes before market expiration. Order expires at: market end time minus this value.
+                      Time before market expiration. Order expires at: market end time minus this value/unit.
                     </span>
                   </span>
                 </label>
-                <input
-                  type="number"
-                  value={orderExpiryInputDisplay}
-                  disabled={orderKind === 'market'}
-                  title={orderKind === 'market' ? 'T-EXP applies to limit (GTD) buys only' : undefined}
-                  onChange={(e) => {
-                    setOrderExpiry(e.target.value);
-                    localStorage.setItem('polymarket-order-expiry', e.target.value);
-                  }}
-                  className="bg-transparent text-center text-white text-[11px] w-full outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:cursor-not-allowed disabled:opacity-40"
-                  min={0}
-                  step={10}
-                />
+                <div className="flex items-center gap-1 w-full">
+                  <input
+                    type="number"
+                    value={orderExpiryInputDisplay}
+                    disabled={orderKind === 'market'}
+                    title={orderKind === 'market' ? 'T-EXP applies to limit (GTD) buys only' : undefined}
+                    onChange={(e) => {
+                      setOrderExpiry(e.target.value);
+                      localStorage.setItem('polymarket-order-expiry', e.target.value);
+                    }}
+                    className="bg-transparent text-left text-white text-[11px] w-full outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:cursor-not-allowed disabled:opacity-40"
+                    min={0}
+                    step={10}
+                  />
+                  <select
+                    value={orderExpiryUnit}
+                    disabled={orderKind === 'market'}
+                    onChange={(e) => setOrderExpiryUnit(e.target.value as 's' | 'm' | 'h')}
+                    className="bg-gray-800 text-gray-200 text-[10px] rounded px-1 py-0.5 outline-none border border-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Expiration unit"
+                  >
+                    <option value="s">s</option>
+                    <option value="m">m</option>
+                    <option value="h">h</option>
+                  </select>
+                </div>
               </div>
               <div className="bg-gray-700/50 rounded p-2 text-[10px] flex-1 flex flex-col text-gray-400">
                 <div className="flex justify-between"><span>Cost:</span><span>Payout:</span></div>

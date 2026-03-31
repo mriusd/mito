@@ -123,8 +123,12 @@ export function PnLPanel() {
       if (timeMs === 0) continue;
       const tid = tradeTokenId(trade);
       const market = tid ? marketLookup[tid] : undefined;
-      const mType = classifyMarketType(market?.question || market?.groupItemTitle || market?.eventTitle, market?.eventSlug);
-      if (mType == null || !marketTypeFilter[mType]) continue;
+      const fallbackQuestion = (trade as Trade).title || market?.question || market?.groupItemTitle || market?.eventTitle;
+      const fallbackEventSlug = (trade as Trade).eventSlug || (trade as Trade).slug || market?.eventSlug;
+      const mType = classifyMarketType(fallbackQuestion, fallbackEventSlug);
+      // If market type cannot be classified (missing lookup/meta), keep the trade
+      // so P&L totals stay complete.
+      if (mType != null && !marketTypeFilter[mType]) continue;
 
       let dateKey: string | null = null;
       if (bucketMode === 'trade') {

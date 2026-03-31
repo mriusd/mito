@@ -5,7 +5,7 @@ import { HelpTooltip } from '../HelpTooltip';
 
 const PRICE_FORECAST_HELP =
   'Crowd-implied path over ~7 days, not a prediction of spot.\n\n' +
-  '• Solid line (asset color): expected price built from Up/Down markets (5m → 15m → 1h → 24h) for the first day, then blended into daily expiries.\n' +
+  '• Solid line (asset color): expected price built from Up/Down markets (5m → 15m → 1h → 4h → 24h) for the first day, then blended into daily expiries.\n' +
   '• Shaded band: ~10th–90th percentile where daily buckets allow; short horizon uses a volatility band (σ from your settings).\n' +
   '• Yellow dashed: reverse Black-Scholes — long-dated “above” strikes imply a spot path vs time.\n' +
   '• Weekly Hit (reach/dip) markets widen the band and nudge direction when included.\n\n' +
@@ -20,8 +20,8 @@ const ASSET_HEX: Record<AssetSym, string> = {
   BTC: '#fb923c', ETH: '#60a5fa', SOL: '#c084fc', XRP: '#22d3ee',
 };
 
-const TIMEFRAMES = ['5m', '15m', '1h', '24h'] as const;
-const TF_MINUTES: Record<string, number> = { '5m': 5, '15m': 15, '1h': 60, '24h': 1440 };
+const TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
+const TF_MINUTES: Record<string, number> = { '5m': 5, '15m': 15, '1h': 60, '4h': 240, '24h': 1440 };
 const DAY_MS = 86_400_000;
 const YEAR_MS = 365.25 * DAY_MS;
 
@@ -417,7 +417,7 @@ interface ShortTermPoint {
 /**
  * Chain short-term Up/Down implied drifts for the first ~24 h.
  *
- * For each timeframe (5m, 15m, 1h, 24h), get P(Up), infer μ = σ√t · Φ⁻¹(P),
+ * For each timeframe (5m, 15m, 1h, 4h, 24h), get P(Up), infer μ = σ√t · Φ⁻¹(P),
  * accumulate a chained expected price from current spot.
  */
 function buildShortTermPath(

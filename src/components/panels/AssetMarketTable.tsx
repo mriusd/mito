@@ -619,7 +619,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
   const renderUpOrDownTable = () => {
     const assetData = upOrDownMarkets[asset] || {};
-    const timeframes = ['5m', '15m', '1h', '24h'] as const;
+    const timeframes = ['5m', '15m', '1h', '4h', '24h'] as const;
     const colLabels = showPast ? ['Past', 'Current'] : ['Current'];
     const now = Date.now();
 
@@ -661,7 +661,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
           </thead>
           <tbody>
             {timeframes.map(tf => {
-              const tfDurations: Record<string, number> = { '5m': 5*60*1000, '15m': 15*60*1000, '1h': 60*60*1000, '24h': 24*60*60*1000 };
+              const tfDurations: Record<string, number> = { '5m': 5*60*1000, '15m': 15*60*1000, '1h': 60*60*1000, '4h': 4*60*60*1000, '24h': 24*60*60*1000 };
               const duration = tfDurations[tf] || 0;
               const currentMarket = showPast ? rows[tf][1] : rows[tf][0];
               const tfEndMs = currentMarket?.endDate ? new Date(currentMarket.endDate).getTime() : 0;

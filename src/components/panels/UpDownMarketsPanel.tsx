@@ -23,7 +23,7 @@ function formatCountdown(ms: number): string {
 }
 
 const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
-const TIMEFRAMES = ['5m', '15m', '1h', '24h'] as const;
+const TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
 const ASSET_COLORS: Record<string, string> = {
   BTC: 'text-orange-400',
   ETH: 'text-blue-400',
@@ -327,7 +327,7 @@ export function UpDownMarketsPanel() {
               };
 
               // Progress for this timeframe (use first available market)
-              const tfDurations: Record<string, number> = { '5m': 5*60*1000, '15m': 15*60*1000, '1h': 60*60*1000, '24h': 24*60*60*1000 };
+              const tfDurations: Record<string, number> = { '5m': 5*60*1000, '15m': 15*60*1000, '1h': 60*60*1000, '4h': 4*60*60*1000, '24h': 24*60*60*1000 };
               const duration = tfDurations[tf] || 0;
               const firstMarket = ASSETS.map(a => getCurrentMarket(a, tf)).find(m => m !== null);
               const endMs = firstMarket?.endDate ? new Date(firstMarket.endDate).getTime() : 0;
@@ -436,7 +436,7 @@ export function UpDownMarketsPanel() {
                               title={
                                 bestBid != null && Number.isFinite(bestBid)
                                   ? `Math P(Up) — green >${50 + MATH_PROB_NEUTRAL_BAND}%, red <${50 - MATH_PROB_NEUTRAL_BAND}%, gray if ${50 - MATH_PROB_NEUTRAL_BAND}–${50 + MATH_PROB_NEUTRAL_BAND}% (YES bid ${(bestBid * 100).toFixed(1)}¢)`
-                                  : `Math P(Up) — green >${50 + MATH_PROB_NEUTRAL_BAND}%, red <${50 - MATH_PROB_NEUTRAL_BAND}%, gray if ${50 - MATH_PROB_NEUTRAL_BAND}–${50 + MATH_PROB_NEUTRAL_BAND}%. Spot: 5m/15m = Chainlink (Binance fallback); 1h/24h = Binance. σ from vol settings.`
+                                  : `Math P(Up) — green >${50 + MATH_PROB_NEUTRAL_BAND}%, red <${50 - MATH_PROB_NEUTRAL_BAND}%, gray if ${50 - MATH_PROB_NEUTRAL_BAND}–${50 + MATH_PROB_NEUTRAL_BAND}%. Spot: 5m/15m = Chainlink (Binance fallback); 1h/4h/24h = Binance. σ from vol settings.`
                               }
                             >
                               <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />

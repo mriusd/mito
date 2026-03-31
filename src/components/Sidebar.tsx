@@ -196,7 +196,7 @@ export function Sidebar() {
   const [upDownCountdown, setUpDownCountdown] = useState('');
   const [upDownRemaining, setUpDownRemaining] = useState(Infinity);
 
-  // Chainlink spot only for 5m/15m Up/Down; 1h/24h use Binance in UI
+  // Chainlink spot only for 5m/15m Up/Down; 1h/4h/24h use Binance in UI
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(selectedMarket!) : null;
   const upDownSpotUsesChainlink = useMemo(
     () => !!(isUpDownMarket && selectedMarket && upDownMarketUsesChainlinkSpot(selectedMarket)),
@@ -215,6 +215,7 @@ export function Sidebar() {
     let intervalMs = 60 * 60 * 1000;
     if (combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i)) intervalMs = 5 * 60 * 1000;
     else if (combined.match(/updown-15m/i) || combined.match(/\b15[- ]?min/i)) intervalMs = 15 * 60 * 1000;
+    else if (combined.match(/updown-4h/i) || combined.match(/\b4[- ]?h/i)) intervalMs = 4 * 60 * 60 * 1000;
     else if (combined.match(/up-or-down-on-/i) || combined.match(/\b24[- ]?h/i)) intervalMs = 24 * 60 * 60 * 1000;
     return endMs - intervalMs;
   }, [isUpDownMarket, selectedMarket?.endDate, selectedMarket?.eventSlug, selectedMarket?.question]);
@@ -862,7 +863,7 @@ export function Sidebar() {
                         Math
                         <HelpTooltip
                           text={
-                            'Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the same spot as “Current” on the right: Polymarket Chainlink for 5m/15m windows, Binance spot for 1h/24h. Inputs: target strike, time to expiry, implied volatility (σ).\n\nFor Up (YES): probability price is above the target at expiry. For Down (NO): below.\n\nCompare to the market price to spot mispricings.'
+                            'Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the same spot as “Current” on the right: Polymarket Chainlink for 5m/15m windows, Binance spot for 1h/4h/24h. Inputs: target strike, time to expiry, implied volatility (σ).\n\nFor Up (YES): probability price is above the target at expiry. For Down (NO): below.\n\nCompare to the market price to spot mispricings.'
                           }
                         />
                       </div>
@@ -895,7 +896,7 @@ export function Sidebar() {
                             ? 'Polymarket RTDS Chainlink (via backend)'
                             : upDownSpotUsesChainlink
                               ? 'Binance spot (fallback until Chainlink connects)'
-                              : 'Binance spot (1h/24h Up/Down)'
+                            : 'Binance spot (1h/4h/24h Up/Down)'
                         }
                       >
                         {currentPriceSource === 'chainlink' ? 'CHAINLINK' : 'BINANCE'}

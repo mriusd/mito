@@ -117,7 +117,7 @@ function invNormCDF(p: number): number {
 
 function clampP(p: number) { return Math.min(0.98, Math.max(0.02, p)); }
 
-const SR_TIMEFRAMES = ['5m', '15m', '1h', '24h'] as const;
+const SR_TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
 
 type UpDownTfKey = (typeof SR_TIMEFRAMES)[number];
 type RBSTfLine = { tf: UpDownTfKey; price: number; followsSpot: boolean };
@@ -125,6 +125,7 @@ const RBS_TF_LABEL: Record<UpDownTfKey, string> = {
   '5m': 'RBS5',
   '15m': 'RBS15',
   '1h': 'RBS60',
+  '4h': 'RBS240',
   '24h': 'RBS24',
 };
 
@@ -133,15 +134,17 @@ const RBS_TF_COLOR: Record<UpDownTfKey, string> = {
   '5m': '#f97316',
   '15m': '#38bdf8',
   '1h': '#fbbf24',
+  '4h': '#f43f5e',
   '24h': '#c084fc',
 };
 
 /** Canvas paint order: lower drawn first (underneath); 5m is topmost when prices coincide. */
 const RBS_CANVAS_LAYER: Record<UpDownTfKey, number> = {
   '24h': 0,
-  '1h': 1,
-  '15m': 2,
-  '5m': 3,
+  '4h': 1,
+  '1h': 2,
+  '15m': 3,
+  '5m': 4,
 };
 
 function rbsTfLinesForCanvasPaint(lines: RBSTfLine[]): RBSTfLine[] {
@@ -162,6 +165,7 @@ const DEFAULT_RBS_TF_ENABLED: Record<UpDownTfKey, boolean> = {
   '5m': true,
   '15m': true,
   '1h': true,
+  '4h': true,
   '24h': true,
 };
 
@@ -257,7 +261,7 @@ function computeRBSPriceResult(
     tfLines.push({ tf, price: impliedSpot, followsSpot: false });
   }
 
-  // Strict priority mode: selected value is first available timeframe in order 5m -> 15m -> 1h -> 24h.
+  // Strict priority mode: selected value is first available timeframe in order 5m -> 15m -> 1h -> 4h -> 24h.
   if (tfLines.length > 0) {
     const selected = tfLines[0];
     return {

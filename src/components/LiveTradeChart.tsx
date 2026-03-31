@@ -14,7 +14,7 @@ function toPrice(raw: number, isNo: boolean): number {
   return isNo ? 100 - raw : raw;
 }
 
-const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000 };
+const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000, '4h': 14400000 };
 
 interface LiveTradeChartProps {
   trades: LiveTrade[];

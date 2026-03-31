@@ -10,7 +10,7 @@ export function assetToSymbol(asset: AssetName): AssetSymbol {
 
 /**
  * Up/Down: 5m/15m windows align with Polymarket Chainlink settlement — use Chainlink spot in UI when available.
- * 1h and 24h use Binance spot as the displayed underlying.
+ * 1h/4h/24h use Binance spot as the displayed underlying.
  */
 export function upDownMarketUsesChainlinkSpot(market: { eventSlug?: string; question?: string } | null | undefined): boolean {
   if (!market) return false;
@@ -90,10 +90,12 @@ export function getMarketPriceCondition(question: string | null | undefined, tok
   if (upDownMatch) {
     const fiveMin = combined.match(/\b5[- ]?min/i) || combined.match(/updown-5m/i);
     const fifteenMin = combined.match(/\b15[- ]?min/i) || combined.match(/updown-15m/i);
+    const fourHour = combined.match(/\b4[- ]?h/i) || combined.match(/updown-4h/i);
     const hourlySlug = combined.match(/up-or-down-\w+-\d+-\d{4}-(\d+)(am|pm)-et/i);
     const dailySlug = combined.match(/up-or-down-on-/i);
     if (fiveMin) return '↑↓ 5m';
     if (fifteenMin) return '↑↓ 15m';
+    if (fourHour) return '↑↓ 4h';
     if (hourlySlug) return `↑↓ 1h ${hourlySlug[1]}${hourlySlug[2].toUpperCase()}`;
     if (dailySlug) {
       const dm = combined.match(/on\s+(\w+)\s+(\d+)/i);
@@ -147,6 +149,7 @@ export function shortenMarketName(question: string | null | undefined, tokenId?:
     // Detect timeframe from question + slug combined text
     const fiveMinMatch = combinedText.match(/\b5[- ]?min/i) || combinedText.match(/updown-5m/i);
     const fifteenMinMatch = combinedText.match(/\b15[- ]?min/i) || combinedText.match(/updown-15m/i);
+    const fourHourMatch = combinedText.match(/\b4[- ]?h/i) || combinedText.match(/updown-4h/i);
     // 1h slug: bitcoin-up-or-down-march-17-2026-3am-et (has hour+am/pm before -et)
     const hourlySlugMatch = combinedText.match(/up-or-down-\w+-\d+-\d{4}-(\d+)(am|pm)-et/i);
     const timeMatch = combinedText.match(/between\s+([\d:]+\s*[AP]M)\s+and\s+([\d:]+\s*[AP]M)/i);
@@ -160,6 +163,8 @@ export function shortenMarketName(question: string | null | undefined, tokenId?:
       tf = '5m';
     } else if (fifteenMinMatch) {
       tf = '15m';
+    } else if (fourHourMatch) {
+      tf = '4h';
     } else if (hourlySlugMatch) {
       tf = '1h';
       timeStr = `${hourlySlugMatch[1]}${hourlySlugMatch[2].toUpperCase()} ET`;

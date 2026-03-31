@@ -30,6 +30,8 @@ export interface Market {
   bestAsk?: number;
   lastTradePrice?: number;
   volume?: number;
+  sharesInExistence?: number;
+  marketNetDirection?: number;
   // B-S computed values from server
   bs1?: number;
   bs2?: number;

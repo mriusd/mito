@@ -52,6 +52,12 @@ export function useBidAskWS() {
               if (typeof v === 'number' && Number.isFinite(v)) {
                 next.volume = v;
               }
+              if (typeof item.sharesInExistence === 'number' && Number.isFinite(item.sharesInExistence)) {
+                next.sharesInExistence = item.sharesInExistence;
+              }
+              if (typeof item.marketNetDirection === 'number' && Number.isFinite(item.marketNetDirection)) {
+                next.marketNetDirection = item.marketNetDirection;
+              }
               patch[item.assetId] = next;
               changed = true;
             }

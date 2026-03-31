@@ -151,7 +151,7 @@ function rbsTfLinesForCanvasPaint(lines: RBSTfLine[]): RBSTfLine[] {
   return [...lines].sort((a, b) => RBS_CANVAS_LAYER[a.tf] - RBS_CANVAS_LAYER[b.tf]);
 }
 
-/** Treat near-certain market probabilities as saturated (0%/100%) for RBS inversion. */
+/** Keep tiny epsilon for metadata only; inversion always uses clamped probability. */
 const RBS_SATURATION_EPS = 1e-3;
 /** Hide RBS lines when market probability is too extreme (<=2% or >=98%). */
 const RBS_HIDE_EXTREME_PROB = 0.02;
@@ -255,16 +255,11 @@ function computeRBSPriceResult(
     else if (ba != null && Number.isFinite(ba)) pUp = ba;
 
     if (pUp <= RBS_HIDE_EXTREME_PROB || pUp >= 1-RBS_HIDE_EXTREME_PROB) continue;
-    const followsSpot = pUp <= RBS_SATURATION_EPS || pUp >= 1 - RBS_SATURATION_EPS;
-    let impliedSpot: number;
-    if (followsSpot) {
-      impliedSpot = s0;
-    } else {
-      const z = invNormCDF(clampP(pUp));
-      const sqrtT = Math.sqrt(tYears);
-      impliedSpot = strike * Math.exp(z * sigma * sqrtT + (sigma * sigma * tYears) / 2);
-    }
+    const z = invNormCDF(clampP(pUp));
+    const sqrtT = Math.sqrt(tYears);
+    const impliedSpot = strike * Math.exp(z * sigma * sqrtT + (sigma * sigma * tYears) / 2);
     if (!Number.isFinite(impliedSpot) || impliedSpot <= 0) continue;
+    const followsSpot = pUp <= RBS_SATURATION_EPS || pUp >= 1 - RBS_SATURATION_EPS;
     tfLines.push({ tf, price: impliedSpot, followsSpot });
   }
 

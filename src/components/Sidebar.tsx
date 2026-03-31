@@ -26,7 +26,7 @@ import { LiveTradeChart } from './LiveTradeChart';
 import { ChainlinkChart } from './ChainlinkChart';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { ToxicFlowDialog } from './ToxicFlowDialog';
-import { Biohazard, ChevronDown, ChevronRight, CirclePercent, Clock } from 'lucide-react';
+import { Biohazard, ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink } from 'lucide-react';
 import type { AssetSymbol } from '../types';
 
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
@@ -63,6 +63,32 @@ export function Sidebar() {
     const usd = getPolymarketVolumeUsd(selectedMarket, selectedMarket.clobTokenIds[0], marketLookup);
     return formatPolymarketVolumeSidebar(usd);
   }, [selectedMarket, marketLookup]);
+  const liveShareStats = useMemo(() => {
+    const tokenId = selectedMarket?.clobTokenIds?.[0];
+    if (!tokenId) return null;
+    const entry = marketLookup[tokenId];
+    if (!entry) return null;
+    return {
+      sharesInExistence: entry.sharesInExistence,
+      marketNetDirection: entry.marketNetDirection,
+    };
+  }, [selectedMarket, marketLookup]);
+  const sharesInExistenceDisplay = useMemo(() => {
+    const v = liveShareStats?.sharesInExistence;
+    if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
+    return Math.abs(v) >= 1000
+      ? v.toLocaleString(undefined, { maximumFractionDigits: 0 })
+      : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }, [liveShareStats]);
+  const marketNetDirectionDisplay = useMemo(() => {
+    const v = liveShareStats?.marketNetDirection;
+    if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
+    const sign = v > 0 ? '+' : '';
+    const val = Math.abs(v) >= 1000
+      ? v.toLocaleString(undefined, { maximumFractionDigits: 0 })
+      : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    return `${sign}${val}`;
+  }, [liveShareStats]);
   const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
 
   // Tick every second so relative trade times update
@@ -138,6 +164,13 @@ export function Sidebar() {
 
   // Filter positions/orders/trades for selected market
   const marketTokenIds = selectedMarket?.clobTokenIds || [];
+  const isMarketExpired = useMemo(() => {
+    if (!selectedMarket) return false;
+    if (selectedMarket.closed) return true;
+    if (!selectedMarket.endDate) return false;
+    const endMs = new Date(selectedMarket.endDate).getTime();
+    return Number.isFinite(endMs) && endMs <= Date.now();
+  }, [selectedMarket]);
   const myPositions = positions.filter((p) => marketTokenIds.includes(p.asset || ''));
   const allMarketOrders = orders.filter((o) => marketTokenIds.includes(o.asset_id || o.token_id || o.market || ''));
   const myOrders = allMarketOrders.filter((o) => !progOrderMap[o.id]);
@@ -981,6 +1014,51 @@ export function Sidebar() {
             ) : null;
           })()}
 
+          <div className="sidebar-section py-1">
+            <div className="grid grid-cols-4 gap-2 text-[10px]">
+              <div className="rounded border border-gray-700/70 bg-gray-900/50 px-2 py-1">
+                <div className="text-[9px] uppercase tracking-wide text-gray-500">Vol</div>
+                <div
+                  className="tabular-nums font-bold text-sky-300/95"
+                  title="Toxic Flow USDC volume (wallet_positions usdc_in), same source as Up/Down grid"
+                >
+                  {liveOrderbookVolumeDisplay ?? '--'}
+                </div>
+              </div>
+              <div className="rounded border border-gray-700/70 bg-gray-900/50 px-2 py-1">
+                <div className="text-[9px] uppercase tracking-wide text-gray-500">Shares</div>
+                <div className="tabular-nums font-bold text-gray-200" title="Shares in existence from net wallet balances: sum(abs(YES-NO))">
+                  {sharesInExistenceDisplay}
+                </div>
+              </div>
+              <div className="rounded border border-gray-700/70 bg-gray-900/50 px-2 py-1">
+                <div className="text-[9px] uppercase tracking-wide text-gray-500">Net Dir</div>
+                <div
+                  className={`tabular-nums font-bold ${
+                    typeof liveShareStats?.marketNetDirection === 'number'
+                      ? (liveShareStats.marketNetDirection >= 0 ? 'text-green-400' : 'text-red-400')
+                      : 'text-gray-200'
+                  }`}
+                  title="Market net direction = sum(YES-NO) across wallets; positive is net YES, negative is net NO"
+                >
+                  {marketNetDirectionDisplay}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setToxicDialogOpen(true)}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="rounded border border-yellow-500/50 bg-yellow-900/20 px-2 py-1 hover:bg-yellow-500/20 transition-colors"
+                title="Toxic Flow Analysis"
+              >
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-yellow-300">
+                  <Biohazard size={13} />
+                  Toxic Flow
+                </span>
+              </button>
+            </div>
+          </div>
+
           {/* Live Orderbook + Trades */}
           <div className="sidebar-section flex flex-col min-h-0 overflow-hidden" style={{ height: orderbookSectionHeight, minHeight: orderbookSectionHeight, maxHeight: orderbookSectionHeight }}>
             <div className="text-xs text-gray-400 mb-2 flex w-full min-w-0 items-center gap-1">
@@ -1004,26 +1082,6 @@ export function Sidebar() {
                   style={{ filter: 'brightness(0) invert(1)' }}
                 />
               </span>
-              {liveOrderbookVolumeDisplay != null && (
-                <span
-                  className="ml-auto shrink-0 tabular-nums text-[10px] font-bold text-sky-300/95"
-                  title="Toxic Flow USDC volume (wallet_positions usdc_in), same source as Up/Down grid"
-                >
-                  {liveOrderbookVolumeDisplay}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setToxicDialogOpen(true);
-                }}
-                onPointerDown={(e) => e.stopPropagation()}
-                className="p-0.5 rounded hover:bg-yellow-400/20 transition-colors"
-                title="Toxic Flow Analysis"
-              >
-                <Biohazard size={14} className="text-yellow-400" />
-              </button>
             </div>
             {liveOrderbookExpanded && (
               <div className="relative grid grid-cols-2 gap-2 flex-1 min-h-0 overflow-y-auto" style={{ minHeight: 120 }}>
@@ -1085,7 +1143,9 @@ export function Sidebar() {
                 </div>
                 {obLoading && (
                   <div className="absolute inset-0 z-10 bg-gray-900/55 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
-                    <div className="text-[10px] text-gray-300">Loading orderbook...</div>
+                    <div className={`text-[10px] ${isMarketExpired ? 'text-red-400' : 'text-gray-300'}`}>
+                      {isMarketExpired ? 'Market Expired' : 'Loading orderbook...'}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1145,7 +1205,20 @@ export function Sidebar() {
                     const usdValue = (parseFloat(t.price) * parseFloat(t.size)).toFixed(2);
                     return (
                       <div key={i} className="grid grid-cols-5 gap-1 text-[11px] px-1">
-                        <span className={isBuy ? 'text-green-400' : 'text-red-400'}>{tp}¢</span>
+                        <span className={`inline-flex items-center gap-1 ${isBuy ? 'text-green-400' : 'text-red-400'}`}>
+                          {tp}¢
+                          {liveTradesSource === 'onchain' && t.txHash && (
+                            <a
+                              href={`https://polygonscan.com/tx/${t.txHash}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="View transaction on Polygonscan"
+                              className="text-gray-400 hover:text-blue-300"
+                            >
+                              <ExternalLink size={11} />
+                            </a>
+                          )}
+                        </span>
                         <span className={`text-right text-[9px] ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? 'Buy' : 'Sell'}</span>
                         <span className="text-right text-gray-400">{parseFloat(t.size).toFixed(0)}</span>
                         <span className="text-right text-gray-400">{usdValue}</span>
@@ -1155,11 +1228,6 @@ export function Sidebar() {
                   })}
                   {displayLiveTrades.length === 0 && (
                     <div className="text-[10px] text-gray-600 px-1">Waiting...</div>
-                  )}
-                  {obLoading && (
-                    <div className="absolute inset-0 z-10 bg-gray-900/55 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
-                      <div className="text-[10px] text-gray-300">Loading trades...</div>
-                    </div>
                   )}
                 </div>
               </>

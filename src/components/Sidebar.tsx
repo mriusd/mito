@@ -986,7 +986,6 @@ export function Sidebar() {
                   {liveOrderbookVolumeDisplay}
                 </span>
               )}
-              {/* HIDDEN: Toxic Flow button disabled while polygon RPC is off
               <button
                 onClick={() => setToxicDialogOpen(true)}
                 className="p-0.5 rounded hover:bg-yellow-400/20 transition-colors"
@@ -994,7 +993,6 @@ export function Sidebar() {
               >
                 <Biohazard size={14} className="text-yellow-400" />
               </button>
-              */}
             </button>
             {liveOrderbookExpanded && (
               <div className="relative grid grid-cols-2 gap-2 flex-1 min-h-0 overflow-y-auto" style={{ minHeight: 120 }}>

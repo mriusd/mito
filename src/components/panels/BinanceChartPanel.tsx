@@ -171,6 +171,10 @@ const DEFAULT_RBS_TF_ENABLED: Record<UpDownTfKey, boolean> = {
   '24h': true,
 };
 
+function visibleRbsTimeframesForSource(source: ChartPriceSource): UpDownTfKey[] {
+  return source === 'chainlink' ? ['5m', '15m'] : ['1h', '4h', '24h'];
+}
+
 function parseRbsTfEnabledFromStorage(raw: string | null): Record<UpDownTfKey, boolean> {
   if (!raw) return { ...DEFAULT_RBS_TF_ENABLED };
   try {
@@ -656,6 +660,17 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [chartHeaderStackControls, setChartHeaderStackControls] = useState(false);
+  const visibleRbsTimeframes = useMemo(() => visibleRbsTimeframesForSource(priceSource), [priceSource]);
+  const effectiveRbsTfEnabled = useMemo<Record<UpDownTfKey, boolean>>(() => {
+    const visible = new Set<UpDownTfKey>(visibleRbsTimeframes);
+    return {
+      '5m': visible.has('5m') ? !!rbsTfEnabled['5m'] : false,
+      '15m': visible.has('15m') ? !!rbsTfEnabled['15m'] : false,
+      '1h': visible.has('1h') ? !!rbsTfEnabled['1h'] : false,
+      '4h': visible.has('4h') ? !!rbsTfEnabled['4h'] : false,
+      '24h': visible.has('24h') ? !!rbsTfEnabled['24h'] : false,
+    };
+  }, [rbsTfEnabled, visibleRbsTimeframes]);
 
   const priceData = useAppStore((s) => s.priceData);
   useAppStore((s) => s.bidAskTick);
@@ -706,9 +721,9 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
       assetMarkets,
       marketLookup,
       Date.now(),
-      rbsTfEnabled,
+      effectiveRbsTfEnabled,
     );
-  }, [asset, spotForChart, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup, rbsTfEnabled, rbsVolWeightAdjusted]);
+  }, [asset, spotForChart, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup, effectiveRbsTfEnabled, rbsVolWeightAdjusted]);
 
   useEffect(() => {
     if (rbsResult.kind === 'price') {
@@ -1472,7 +1487,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
         </div>
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-0.5 text-[10px]">
-        {SR_TIMEFRAMES.map((tf) => {
+        {visibleRbsTimeframes.map((tf) => {
           const tfHex = RBS_TF_COLOR[tf];
           const usedInRbs = rbsUsedTfSet.has(tf);
           return (

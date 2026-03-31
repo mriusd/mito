@@ -8,7 +8,7 @@ import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
 import {
   extractAssetFromMarket,
-  formatPolymarketVolumeSidebar,
+  formatPolymarketVolumeK,
   getPolymarketVolumeUsd,
   getTokenOutcome,
   shortenMarketName,
@@ -26,7 +26,7 @@ import { LiveTradeChart } from './LiveTradeChart';
 import { ChainlinkChart } from './ChainlinkChart';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { ToxicFlowDialog } from './ToxicFlowDialog';
-import { Biohazard, ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink } from 'lucide-react';
+import { ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, UsersRound } from 'lucide-react';
 import type { AssetSymbol } from '../types';
 
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
@@ -61,7 +61,7 @@ export function Sidebar() {
   const liveOrderbookVolumeDisplay = useMemo(() => {
     if (!selectedMarket?.clobTokenIds?.[0]) return null;
     const usd = getPolymarketVolumeUsd(selectedMarket, selectedMarket.clobTokenIds[0], marketLookup);
-    return formatPolymarketVolumeSidebar(usd);
+    return formatPolymarketVolumeK(usd);
   }, [selectedMarket, marketLookup]);
   const liveShareStats = useMemo(() => {
     const tokenId = selectedMarket?.clobTokenIds?.[0];
@@ -79,15 +79,6 @@ export function Sidebar() {
     return Math.abs(v) >= 1000
       ? v.toLocaleString(undefined, { maximumFractionDigits: 0 })
       : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  }, [liveShareStats]);
-  const marketNetDirectionDisplay = useMemo(() => {
-    const v = liveShareStats?.marketNetDirection;
-    if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
-    const sign = v > 0 ? '+' : '';
-    const val = Math.abs(v) >= 1000
-      ? v.toLocaleString(undefined, { maximumFractionDigits: 0 })
-      : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
-    return `${sign}${val}`;
   }, [liveShareStats]);
   const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
 
@@ -1015,7 +1006,7 @@ export function Sidebar() {
           })()}
 
           <div className="sidebar-section py-1">
-            <div className="grid grid-cols-4 gap-2 text-[10px]">
+            <div className="grid grid-cols-3 gap-2 text-[10px]">
               <div className="rounded border border-gray-700/70 bg-gray-900/50 px-2 py-1">
                 <div className="text-[9px] uppercase tracking-wide text-gray-500">Vol</div>
                 <div
@@ -1031,29 +1022,16 @@ export function Sidebar() {
                   {sharesInExistenceDisplay}
                 </div>
               </div>
-              <div className="rounded border border-gray-700/70 bg-gray-900/50 px-2 py-1">
-                <div className="text-[9px] uppercase tracking-wide text-gray-500">Net Dir</div>
-                <div
-                  className={`tabular-nums font-bold ${
-                    typeof liveShareStats?.marketNetDirection === 'number'
-                      ? (liveShareStats.marketNetDirection >= 0 ? 'text-green-400' : 'text-red-400')
-                      : 'text-gray-200'
-                  }`}
-                  title="Market net direction = sum(YES-NO) across wallets; positive is net YES, negative is net NO"
-                >
-                  {marketNetDirectionDisplay}
-                </div>
-              </div>
               <button
                 type="button"
                 onClick={() => setToxicDialogOpen(true)}
                 onPointerDown={(e) => e.stopPropagation()}
                 className="rounded border border-yellow-500/50 bg-yellow-900/20 px-2 py-1 hover:bg-yellow-500/20 transition-colors"
-                title="Toxic Flow Analysis"
+                title="Holders Analysis"
               >
                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-yellow-300">
-                  <Biohazard size={13} />
-                  Toxic Flow
+                  <UsersRound size={13} />
+                  Holders
                 </span>
               </button>
             </div>

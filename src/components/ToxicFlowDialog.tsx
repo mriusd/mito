@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Biohazard, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound } from 'lucide-react';
 import { fetchToxicFlow, fetchWalletSummary } from '../api';
 import type { ToxicFlowData, WalletPosition, WalletSummary } from '../api';
 
@@ -197,8 +197,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Biohazard size={16} className="text-yellow-400" />
-            <span className="text-sm font-bold text-yellow-400">Toxic Flow</span>
+            <UsersRound size={16} className="text-yellow-400" />
+            <span className="text-sm font-bold text-yellow-400">Holders</span>
             <span className="text-xs text-gray-400 truncate max-w-[300px]">{marketName}</span>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-white">
@@ -408,7 +408,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                             </p>
                           )}
                           <p>
-                            Toxic Flow aggregates <span className="font-mono">wallet_positions</span> for this market (not the CLOB orderbook). Data persists across restarts and backfills missed blocks automatically.
+                            Holders aggregates <span className="font-mono">wallet_positions</span> for this market (not the CLOB orderbook). Data persists across restarts and backfills missed blocks automatically.
                           </p>
                         </div>
                       )}

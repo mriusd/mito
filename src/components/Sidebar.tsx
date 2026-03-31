@@ -28,7 +28,7 @@ import { LiveTradeChart } from './LiveTradeChart';
 import { ChainlinkChart } from './ChainlinkChart';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { ToxicFlowDialog } from './ToxicFlowDialog';
-import { ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, Pencil, Plus, UsersRound, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
 import type { AssetSymbol } from '../types';
 
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
@@ -150,6 +150,7 @@ export function Sidebar() {
   const [customLabel, setCustomLabel] = useState('');
   const [customColor, setCustomColor] = useState('#2563eb');
   const [editingCustomButtonId, setEditingCustomButtonId] = useState<string | null>(null);
+  const [draggingCustomId, setDraggingCustomId] = useState<string | null>(null);
   const [orderExpiry, setOrderExpiry] = useState(localStorage.getItem('polymarket-order-expiry') || '180');
   const [orderExpiryUnit, setOrderExpiryUnit] = useState<'s' | 'm' | 'h'>(() => {
     const v = localStorage.getItem('polymarket-order-expiry-unit');
@@ -709,6 +710,19 @@ export function Sidebar() {
     } else {
       showToast(result.error || 'Custom order failed', 'error');
     }
+  };
+
+  const reorderCustomButtons = (fromId: string, toId: string) => {
+    if (!fromId || !toId || fromId === toId) return;
+    setCustomButtons((prev) => {
+      const fromIdx = prev.findIndex((b) => b.id === fromId);
+      const toIdx = prev.findIndex((b) => b.id === toId);
+      if (fromIdx < 0 || toIdx < 0) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
   };
 
   const handleCancelOrder = async (orderId: string) => {
@@ -1817,11 +1831,26 @@ export function Sidebar() {
                       <button
                         key={btn.id}
                         onClick={() => handleCustomButtonClick(btn)}
-                        className="relative group w-7 h-4 rounded text-[9px] font-bold leading-none transition text-white"
+                        draggable
+                        onDragStart={() => setDraggingCustomId(btn.id)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => {
+                          if (draggingCustomId) reorderCustomButtons(draggingCustomId, btn.id);
+                          setDraggingCustomId(null);
+                        }}
+                        onDragEnd={() => setDraggingCustomId(null)}
+                        className="relative group w-7 h-4 rounded text-[9px] font-bold leading-none transition text-black"
                         style={{ backgroundColor: btn.color }}
                         title={`${btn.side} ${btn.maxSell ? 'MAX' : btn.amount} @ ${btn.priceCents}¢`}
                       >
                         {btn.label}
+                        <span
+                          className="absolute -top-1 -left-1 hidden group-hover:flex items-center justify-center rounded-full bg-black/70 text-white w-3 h-3 cursor-grab active:cursor-grabbing"
+                          title="Drag to reorder"
+                          onMouseDown={(e) => e.stopPropagation()}
+                        >
+                          <GripVertical className="w-2 h-2" />
+                        </span>
                         <span className="absolute -top-1 -right-1 hidden group-hover:flex items-center gap-0.5">
                           <span
                             onClick={(e) => { e.stopPropagation(); handleEditCustomButton(btn); }}
@@ -1853,11 +1882,26 @@ export function Sidebar() {
                       <button
                         key={btn.id}
                         onClick={() => handleCustomButtonClick(btn)}
-                        className="relative group w-9 py-2 text-sm rounded-lg font-bold transition text-white"
+                        draggable
+                        onDragStart={() => setDraggingCustomId(btn.id)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => {
+                          if (draggingCustomId) reorderCustomButtons(draggingCustomId, btn.id);
+                          setDraggingCustomId(null);
+                        }}
+                        onDragEnd={() => setDraggingCustomId(null)}
+                        className="relative group w-9 py-2 text-sm rounded-lg font-bold transition text-black"
                         style={{ backgroundColor: btn.color }}
                         title={`${btn.side} ${btn.maxSell ? 'MAX' : btn.amount} @ ${btn.priceCents}¢`}
                       >
                         {btn.label}
+                        <span
+                          className="absolute -top-1 -left-1 hidden group-hover:flex items-center justify-center rounded-full bg-black/70 text-white w-3.5 h-3.5 cursor-grab active:cursor-grabbing"
+                          title="Drag to reorder"
+                          onMouseDown={(e) => e.stopPropagation()}
+                        >
+                          <GripVertical className="w-2.5 h-2.5" />
+                        </span>
                         <span className="absolute -top-1 -right-1 hidden group-hover:flex items-center gap-0.5">
                           <span
                             onClick={(e) => { e.stopPropagation(); handleEditCustomButton(btn); }}

@@ -72,6 +72,7 @@ export function Sidebar() {
       sharesInExistence: entry.sharesInExistence,
       marketNetDirection: entry.marketNetDirection,
       holders: entry.holders,
+      smartMoneyBias: entry.smartMoneyBias,
     };
   }, [selectedMarket, marketLookup]);
   const sharesInExistenceDisplay = useMemo(() => {
@@ -1043,6 +1044,28 @@ export function Sidebar() {
                 </span>
               </button>
             </div>
+            {/* Smart Money Bias bar */}
+            {(() => {
+              const smb = liveShareStats?.smartMoneyBias ?? 0;
+              const biasLabel = smb > 0.001 ? 'YES' : smb < -0.001 ? 'NO' : 'FLAT';
+              const biasColor = smb > 0.001 ? 'text-green-400' : smb < -0.001 ? 'text-red-400' : 'text-gray-500';
+              const pct = Math.max(2, Math.min(98, 50 + smb * 5));
+              return (
+                <div className="mt-1.5">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[9px] text-gray-500">Smart Money</span>
+                    <span className={`text-[10px] font-bold ${biasColor}`}>
+                      {biasLabel}
+                      {smb !== 0 && <span className="text-[9px] font-normal ml-0.5">({smb > 0 ? '+' : ''}{smb.toFixed(2)})</span>}
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden flex">
+                    <div className="bg-green-500/70 h-full transition-all" style={{ width: `${pct}%` }} />
+                    <div className="bg-red-500/70 h-full transition-all flex-1" />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Live Orderbook + Trades */}

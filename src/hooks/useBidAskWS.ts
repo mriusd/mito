@@ -61,6 +61,9 @@ export function useBidAskWS() {
               if (typeof item.holders === 'number' && Number.isFinite(item.holders)) {
                 next.holders = item.holders;
               }
+              if (typeof item.smartMoneyBias === 'number' && Number.isFinite(item.smartMoneyBias)) {
+                next.smartMoneyBias = item.smartMoneyBias;
+              }
               patch[item.assetId] = next;
               changed = true;
             }

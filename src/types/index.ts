@@ -33,6 +33,7 @@ export interface Market {
   sharesInExistence?: number;
   marketNetDirection?: number;
   holders?: number;
+  smartMoneyBias?: number;
   // B-S computed values from server
   bs1?: number;
   bs2?: number;

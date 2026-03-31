@@ -266,7 +266,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                 </div>
                 <div className="bg-gray-900 rounded p-2 text-center">
                   <div className="text-[10px] text-gray-500">Total Shares</div>
-                  <div className="text-sm font-bold text-gray-200">{(data.totalShares || 0).toFixed(1)}</div>
+                  <div className="text-sm font-bold text-gray-200">{Math.floor(data.totalShares || 0).toLocaleString()}</div>
                 </div>
               </div>
 

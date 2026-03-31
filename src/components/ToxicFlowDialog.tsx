@@ -324,6 +324,7 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
                     <th className="text-left py-1">Date</th>
                     <th className="text-left">Market</th>
                     <th className="text-left">Resolved</th>
+                    <th className="text-center">W/L</th>
                     <th className="text-right">Net</th>
                     <th className="text-right">USDC In</th>
                   </tr>
@@ -337,6 +338,14 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
                         : `${m.marketAsset || '-'} ${m.marketTimeframe || ''} #${m.marketId}`;
                       const dd = getDateDisplay(mk?.endDate || null);
                       const rd = getResolvedDisplay(mk, m);
+                      const net = m.net || 0;
+                      const resolvedYes = typeof m.resultYes === 'number' ? m.resultYes : -1;
+                      const wl = resolvedYes >= 0
+                        ? (net > 0.001
+                            ? (resolvedYes === 1 ? 'W' : 'L')
+                            : (net < -0.001 ? (resolvedYes === 0 ? 'W' : 'L') : '-'))
+                        : '-';
+                      const wlColor = wl === 'W' ? 'text-green-400' : wl === 'L' ? 'text-red-400' : 'text-gray-500';
                       return (
                     <tr
                       key={`${m.marketId}-${m.wallet}`}
@@ -346,7 +355,8 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
                       <td className={`py-0.5 ${dd.color}`}>{dd.label}</td>
                       <td className="py-0.5 text-gray-200">{marketName}</td>
                       <td className={`py-0.5 ${rd.color}`}>{rd.label}</td>
-                      <td className={`text-right ${(m.net || 0) > 0.001 ? 'text-green-400' : (m.net || 0) < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{(m.net || 0) > 0 ? '+' : ''}{(m.net || 0).toFixed(1)}</td>
+                      <td className={`text-center font-bold ${wlColor}`}>{wl}</td>
+                      <td className={`text-right ${net > 0.001 ? 'text-green-400' : net < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{net > 0 ? '+' : ''}{net.toFixed(1)}</td>
                       <td className="text-right text-yellow-400">${(m.usdcIn || 0).toFixed(2)}</td>
                     </tr>
                       );

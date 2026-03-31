@@ -163,7 +163,7 @@ export function PnLPanel() {
                   key={dk}
                   className={`px-1.5 py-1 text-center border-b border-l border-gray-700 bg-gray-900 font-bold ${isWeekend ? 'bg-purple-900/20' : ''}`}
                 >
-                  <div className={`flex flex-col items-center justify-center leading-tight gap-0.5 text-[10px] ${textCls}`}>
+                  <div className={`flex flex-col sm:flex-row items-center justify-center leading-tight gap-0.5 sm:gap-1 text-[10px] sm:whitespace-nowrap ${textCls}`}>
                     <span>{DAY_NAMES[dt.getDay()]}</span>
                     <span>{dt.getDate()} {MONTH_NAMES[dt.getMonth()]}</span>
                   </div>

@@ -386,6 +386,7 @@ export interface ToxicFlowData {
   topTraders: WalletPosition[];
   totalYesVol: number;
   totalNoVol: number;
+  totalShares: number;
   totalUsdcIn: number;
   totalUsdcOut: number;
   totalWallets: number;

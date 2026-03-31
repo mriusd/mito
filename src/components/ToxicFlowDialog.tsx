@@ -82,7 +82,7 @@ function WalletLink({ wallet }: { wallet: string }) {
   );
 }
 
-function WalletTable({ wallets, label }: { wallets: WalletPosition[] | null; label: string }) {
+function WalletTable({ wallets, label, totalShares }: { wallets: WalletPosition[] | null; label: string; totalShares?: number }) {
   if (!wallets || wallets.length === 0) {
     return <div className="text-gray-500 text-center py-3 text-[10px]">No {label} data yet</div>;
   }
@@ -102,6 +102,7 @@ function WalletTable({ wallets, label }: { wallets: WalletPosition[] | null; lab
             <th className="text-right px-1">Net N</th>
             <th className="text-right px-1">Net</th>
             <th className="text-right px-1">USDC In</th>
+            <th className="text-right px-1">% Shares</th>
             <th className="text-right px-1">PnL</th>
             <th className="text-right px-1">Trades</th>
             <th className="text-right px-1">Bias</th>
@@ -114,6 +115,7 @@ function WalletTable({ wallets, label }: { wallets: WalletPosition[] | null; lab
             const biasColor = bias > 0.5 ? 'text-yellow-400' : bias > 0.3 ? 'text-orange-400' : 'text-gray-400';
             const nY = w.netYes ?? ((w.boughtYes || 0) - (w.soldYes || 0));
             const nN = w.netNo ?? ((w.boughtNo || 0) - (w.soldNo || 0));
+            const sharesPct = totalShares && totalShares > 0 ? (Math.abs(w.net || 0) / totalShares) * 100 : 0;
             const nYColor = nY > 0.001 ? 'text-green-400' : nY < -0.001 ? 'text-red-400' : 'text-gray-500';
             const nNColor = nN > 0.001 ? 'text-red-400' : nN < -0.001 ? 'text-green-400' : 'text-gray-500';
             return (
@@ -128,6 +130,7 @@ function WalletTable({ wallets, label }: { wallets: WalletPosition[] | null; lab
                 <td className={`text-right px-1 font-bold ${nNColor}`}>{nN.toFixed(1)}</td>
                 <td className={`text-right px-1 font-bold ${(w.net || 0) > 0.001 ? 'text-green-400' : (w.net || 0) < -0.001 ? 'text-red-400' : 'text-gray-500'}`}>{(w.net || 0) > 0 ? '+' : ''}{(w.net || 0).toFixed(1)}</td>
                 <td className="text-right px-1 text-yellow-400">${w.usdcIn.toFixed(2)}</td>
+                <td className="text-right px-1 text-cyan-300">{sharesPct > 0 ? `${sharesPct.toFixed(1)}%` : '-'}</td>
                 <td className={`text-right px-1 font-bold ${(w.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{(w.pnl || 0) >= 0 ? '+' : ''}{(w.pnl || 0).toFixed(2)}</td>
                 <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
                 <td className={`text-right px-1 ${biasColor}`}>{(bias * 100).toFixed(0)}%</td>
@@ -249,6 +252,10 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                   <div className={`text-sm font-bold ${data.concentration > 0.5 ? 'text-red-400' : data.concentration > 0.3 ? 'text-yellow-400' : 'text-green-400'}`}>
                     {(data.concentration * 100).toFixed(0)}%
                   </div>
+                </div>
+                <div className="bg-gray-900 rounded p-2 text-center">
+                  <div className="text-[10px] text-gray-500">Total Shares</div>
+                  <div className="text-sm font-bold text-gray-200">{(data.totalShares || 0).toFixed(1)}</div>
                 </div>
               </div>
 
@@ -441,25 +448,25 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                 <div className="text-[10px] text-gray-400 font-bold mb-1 flex items-center gap-1">
                   <Crown size={10} /> Top Holders (hover wallet for stats)
                 </div>
-                <WalletTable wallets={data.topHolders} label="holders" />
+                <WalletTable wallets={data.topHolders} label="holders" totalShares={data.totalShares} />
               </div>
             </div>
           )}
 
           {!loading && !error && data && tab === 'topHolders' && (
-            <WalletTable wallets={data.topHolders} label="holders" />
+            <WalletTable wallets={data.topHolders} label="holders" totalShares={data.totalShares} />
           )}
           {!loading && !error && data && tab === 'topYes' && (
-            <WalletTable wallets={data.topYes} label="YES holders" />
+            <WalletTable wallets={data.topYes} label="YES holders" totalShares={data.totalShares} />
           )}
           {!loading && !error && data && tab === 'topNo' && (
-            <WalletTable wallets={data.topNo} label="NO holders" />
+            <WalletTable wallets={data.topNo} label="NO holders" totalShares={data.totalShares} />
           )}
           {!loading && !error && data && tab === 'topVolume' && (
-            <WalletTable wallets={data.topVolume} label="volume" />
+            <WalletTable wallets={data.topVolume} label="volume" totalShares={data.totalShares} />
           )}
           {!loading && !error && data && tab === 'topTraders' && (
-            <WalletTable wallets={data.topTraders} label="traders" />
+            <WalletTable wallets={data.topTraders} label="traders" totalShares={data.totalShares} />
           )}
         </div>
       </div>

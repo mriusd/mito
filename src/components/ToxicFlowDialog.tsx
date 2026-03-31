@@ -10,7 +10,7 @@ interface ToxicFlowDialogProps {
   onClose: () => void;
 }
 
-type Tab = 'overview' | 'topHolders' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
+type Tab = 'topHolders' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
 
 function shortenWallet(w: string): string {
   if (w.length <= 12) return w;
@@ -158,7 +158,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
   const [data, setData] = useState<ToxicFlowData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>('topHolders');
 
   const load = useCallback(async () => {
     if (!marketId) return;
@@ -176,7 +176,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
 
   useEffect(() => {
     if (open) {
-      setTab('overview');
+      setTab('topHolders');
       load();
       // Auto-refresh every 5s while open
       const iv = setInterval(async () => {
@@ -194,7 +194,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
   if (!open) return null;
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: 'overview', label: 'Overview', icon: <BarChart3 size={11} /> },
     { key: 'topHolders', label: 'Top Holders', icon: <Crown size={11} /> },
     { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
     { key: 'topNo', label: 'Top NO', icon: <TrendingDown size={11} /> },
@@ -485,9 +484,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                 )}
                 {tab === 'topTraders' && (
                   <WalletTable wallets={data.topTraders} label="traders" totalShares={data.totalShares} />
-                )}
-                {tab === 'overview' && (
-                  <WalletTable wallets={data.topHolders} label="holders" totalShares={data.totalShares} />
                 )}
               </div>
             </div>

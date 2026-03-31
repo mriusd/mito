@@ -371,6 +371,7 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
                     <th className="text-left">Action</th>
                     <th className="text-left">Side</th>
                     <th className="text-right">Shares</th>
+                    <th className="text-right">Price</th>
                     <th className="text-right">USDC</th>
                     <th className="text-right">Tx</th>
                   </tr>
@@ -387,6 +388,10 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
                     const usdc = walletPaysUsdc
                       ? (isTaker ? f.takerAmount : f.makerAmount)
                       : (isTaker ? f.makerAmount : f.takerAmount);
+                    const pricePerShare = shares > 1e-9 ? usdc / shares : NaN;
+                    const priceLabel = Number.isFinite(pricePerShare)
+                      ? `${(pricePerShare * 100).toFixed(1)}¢`
+                      : '—';
                     const bt = Number((f as any).blockTime ?? 0);
                     const ts = bt > 0
                       ? (bt > 1e12 ? new Date(bt) : new Date(bt * 1000)).toLocaleString()
@@ -397,6 +402,7 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
                         <td className={action === 'BUY' ? 'text-green-400' : 'text-red-400'}>{action}</td>
                         <td className={f.side === 'YES' ? 'text-green-400' : 'text-red-400'}>{f.side}</td>
                         <td className="text-right">{shares.toFixed(2)}</td>
+                        <td className="text-right text-gray-300 tabular-nums">{priceLabel}</td>
                         <td className="text-right text-yellow-400">${usdc.toFixed(2)}</td>
                         <td className="text-right">
                           <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">

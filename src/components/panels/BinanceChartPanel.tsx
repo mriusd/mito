@@ -688,40 +688,8 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     return ((maxH - minL) / minL) * 100;
   }, [candles]);
 
-  const srLines = useMemo<SRLine[]>(() => {
-    const assetMarkets = upOrDownMarkets[asset];
-    if (!assetMarkets) return [];
-    const now = Date.now();
-    const lines: SRLine[] = [];
-    for (const tf of SR_TIMEFRAMES) {
-      if (!rbsTfEnabled[tf]) continue;
-      const markets: Market[] = (assetMarkets[tf] || [])
-        .filter((m: Market) => !m.closed && m.endDate && new Date(m.endDate).getTime() > now)
-        .sort((a: Market, b: Market) => {
-          const ta = a.endDate ? new Date(a.endDate).getTime() : Infinity;
-          const tb = b.endDate ? new Date(b.endDate).getTime() : Infinity;
-          return ta - tb;
-        });
-      const market = markets[0];
-      if (!market) continue;
-      const tokenId = market.clobTokenIds?.[0] || '';
-      const strike = market.priceToBeat ?? (tokenId ? marketLookup[tokenId]?.priceToBeat : undefined);
-      if (strike == null || !Number.isFinite(strike)) continue;
-      const live = tokenId ? marketLookup[tokenId] : null;
-      const bid = live?.bestBid ?? market.bestBid;
-      const ask = live?.bestAsk ?? market.bestAsk;
-      let probUp = 0.5;
-      if (bid != null && ask != null && Number.isFinite(bid) && Number.isFinite(ask)) {
-        probUp = (bid + ask) / 2;
-      } else if (bid != null && Number.isFinite(bid)) {
-        probUp = bid;
-      } else if (ask != null && Number.isFinite(ask)) {
-        probUp = ask;
-      }
-      lines.push({ price: strike, probUp, label: tf });
-    }
-    return lines;
-  }, [asset, upOrDownMarkets, marketLookup, rbsTfEnabled]);
+  // S/R lines intentionally hidden on this chart.
+  const srLines = useMemo<SRLine[]>(() => [], []);
 
   const rbsStaleRef = useRef<number | null>(null);
 

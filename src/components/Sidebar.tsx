@@ -532,6 +532,18 @@ export function Sidebar() {
     return Math.floor(n * 60);
   };
 
+  const computeLimitExpiration = (marketEndDate?: string): { expiration: number; invalidLead: boolean } => {
+    const expLeadSec = getOrderExpiryLeadSeconds() || 180 * 60;
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (marketEndDate) {
+      const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
+      const expiration = endTimeSec - expLeadSec;
+      const invalidLead = (endTimeSec-nowSec) <= expLeadSec || expiration < (nowSec + 120);
+      return { expiration, invalidLead };
+    }
+    return { expiration: nowSec + 86400, invalidLead: false };
+  };
+
   const formatPreExpiryLead = (orderExpiration?: string): string | null => {
     if (!orderExpiration || !selectedMarket?.endDate) return null;
     const endMs = new Date(selectedMarket.endDate).getTime();
@@ -583,22 +595,13 @@ export function Sidebar() {
     let expiration: number | undefined;
     if (isMarket) {
       expiration = 0;
-    } else if (orderSide === 'BUY') {
-      const expLeadSec = getOrderExpiryLeadSeconds() || 180 * 60;
-      const marketEndDate = selectedMarket.endDate;
-      if (marketEndDate) {
-        const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
-        const secToEnd = endTimeSec - Math.floor(Date.now() / 1000);
-        if (secToEnd < expLeadSec) {
-          expiration = endTimeSec - 30;
-        } else {
-          expiration = endTimeSec - expLeadSec;
-        }
-      } else {
-        expiration = Math.floor(Date.now() / 1000) + 86400;
+    } else {
+      const exp = computeLimitExpiration(selectedMarket.endDate);
+      expiration = exp.expiration;
+      if (exp.invalidLead) {
+        showToast('Lead time to expiration already passed for this market', 'error');
+        return;
       }
-      const minExpiration = Math.floor(Date.now() / 1000) + 120;
-      if (expiration < minExpiration) expiration = minExpiration;
     }
     const orderInfo = isMarket
       ? `${orderSide} ${size} ${orderOutcome} for ${marketName} (market FAK)`
@@ -606,10 +609,10 @@ export function Sidebar() {
     try {
       const result = await placeOrder({
         tokenId,
-        side: orderSide,
+      side: orderSide,
         price,
         size,
-        ...(expiration !== undefined ? { expiration } : {}),
+      expiration,
         ...(isMarket ? { orderType: 'FAK' as const } : {}),
         orderInfo,
       });
@@ -681,19 +684,11 @@ export function Sidebar() {
       return;
     }
 
-    let expiration: number | undefined;
-    if (btn.side === 'BUY') {
-      const expLeadSec = getOrderExpiryLeadSeconds() || 180 * 60;
-      const marketEndDate = selectedMarket.endDate;
-      if (marketEndDate) {
-        const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
-        const secToEnd = endTimeSec - Math.floor(Date.now() / 1000);
-        expiration = secToEnd < expLeadSec ? endTimeSec - 30 : endTimeSec - expLeadSec;
-      } else {
-        expiration = Math.floor(Date.now() / 1000) + 86400;
-      }
-      const minExpiration = Math.floor(Date.now() / 1000) + 120;
-      if (expiration < minExpiration) expiration = minExpiration;
+    const exp = computeLimitExpiration(selectedMarket.endDate);
+    const expiration = exp.expiration;
+    if (exp.invalidLead) {
+      showToast('Lead time to expiration already passed for this market', 'error');
+      return;
     }
 
     const result = await placeOrder({
@@ -701,7 +696,7 @@ export function Sidebar() {
       side: btn.side,
       price: btn.priceCents / 100,
       size,
-      ...(expiration !== undefined ? { expiration } : {}),
+      expiration,
       orderInfo: `${btn.side} ${size} ${orderOutcome} for ${marketName} @ ${btn.priceCents}¢`,
     });
     if (result.success) {
@@ -751,23 +746,12 @@ export function Sidebar() {
     try {
       // Step 1: Sign new order (wallet popup) — user can reject here without affecting old order
       signingDialog.setStep('sign', 'active');
-      let expiration: number | undefined;
-      if (side === 'BUY') {
-        const expLeadSec = getOrderExpiryLeadSeconds() || 180 * 60;
-        const marketEndDate = selectedMarket?.endDate;
-        if (marketEndDate) {
-          const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
-          const secToEnd = endTimeSec - Math.floor(Date.now() / 1000);
-          if (secToEnd < expLeadSec) {
-            expiration = endTimeSec - 30;
-          } else {
-            expiration = endTimeSec - expLeadSec;
-          }
-        } else {
-          expiration = Math.floor(Date.now() / 1000) + 86400;
-        }
-        const minExpiration = Math.floor(Date.now() / 1000) + 120;
-        if (expiration < minExpiration) expiration = minExpiration;
+      const exp = computeLimitExpiration(selectedMarket?.endDate);
+      const expiration = exp.expiration;
+      if (exp.invalidLead) {
+        showToast('Lead time to expiration already passed for this market', 'error');
+        setEditingOrderId(null);
+        return;
       }
 
       const signResult = await signOrder({
@@ -775,7 +759,7 @@ export function Sidebar() {
         side,
         price: newPrice,
         size,
-        ...(expiration !== undefined ? { expiration } : {}),
+        expiration,
       });
       if (!signResult.success || !signResult.signedPayload) {
         signingDialog.setStep('sign', 'error', signResult.error || 'Signing failed');

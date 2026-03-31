@@ -153,6 +153,8 @@ function rbsTfLinesForCanvasPaint(lines: RBSTfLine[]): RBSTfLine[] {
 
 /** Treat near-certain market probabilities as saturated (0%/100%) for RBS inversion. */
 const RBS_SATURATION_EPS = 1e-3;
+/** Hide RBS lines when market probability is too extreme (<=2% or >=98%). */
+const RBS_HIDE_EXTREME_PROB = 0.02;
 /** For RBS, skip markets that are too close to expiry (noisy final seconds). */
 const RBS_MIN_TTE_MS = 30_000;
 
@@ -252,6 +254,7 @@ function computeRBSPriceResult(
     else if (bb != null && Number.isFinite(bb)) pUp = bb;
     else if (ba != null && Number.isFinite(ba)) pUp = ba;
 
+    if (pUp <= RBS_HIDE_EXTREME_PROB || pUp >= 1-RBS_HIDE_EXTREME_PROB) continue;
     if (pUp <= RBS_SATURATION_EPS || pUp >= 1 - RBS_SATURATION_EPS) continue;
 
     const z = invNormCDF(clampP(pUp));

@@ -1063,8 +1063,27 @@ export function Sidebar() {
               const provenPct = proven * 100;
               const crowdPct = crowd * 100;
 
+              const bidTotal = displayBids.reduce((s, l) => s + parseFloat(l.size), 0);
+              const askTotal = displayAsks.reduce((s, l) => s + parseFloat(l.size), 0);
+              const bookDenom = bidTotal + askTotal;
+              const book = bookDenom > 0 ? (bidTotal - askTotal) / bookDenom : 0;
+              const bookPct = book * 100;
+
               return (
                 <div className="mt-1.5 space-y-1">
+                  <div>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-[9px] text-gray-500">Book Imbalance</span>
+                      <span className={`text-[10px] font-bold ${colorFor(book)}`}>
+                        {labelFor(book)}
+                        <span className="text-[9px] font-normal ml-0.5">({bookPct > 0 ? '+' : ''}{bookPct.toFixed(1)}%)</span>
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden flex">
+                      <div className="bg-emerald-500/70 h-full transition-all" style={{ width: `${barFor(book)}%` }} />
+                      <div className="bg-amber-500/70 h-full transition-all flex-1" />
+                    </div>
+                  </div>
                   <div>
                     <div className="flex items-center justify-between mb-0.5">
                       <span className="text-[9px] text-gray-500">Live Flow (30m)</span>

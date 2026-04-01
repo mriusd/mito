@@ -376,14 +376,13 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                                     style={{ height: `${concPct}%`, backgroundColor: concColor }}
                                   />
                                 </div>
-                                {/* Winners $ — right vertical bar, grows upward */}
+                                {/* Winners $ — horizontal bottom bar */}
                                 <div
-                                  className="absolute right-0 bottom-0 w-[2px] pointer-events-none z-0 overflow-hidden flex flex-col-reverse"
-                                  style={{ height: '100%' }}
+                                  className="absolute bottom-0 left-0 w-full h-[2px] pointer-events-none z-0 flex"
                                   title={`Winners $ (USDC, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
                                 >
-                                  <div className="bg-green-500/70 w-full" style={{ height: `${wbPct}%` }} />
-                                  <div className="bg-red-500/70 w-full flex-1" />
+                                  <div className="bg-green-500/70 h-full" style={{ width: `${wbPct}%` }} />
+                                  <div className="bg-red-500/70 h-full flex-1" />
                                 </div>
                               </>
                             );

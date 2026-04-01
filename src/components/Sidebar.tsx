@@ -3,7 +3,7 @@ import { useAccount } from 'wagmi';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
 import { appKit } from '../lib/wallet';
-import { placeOrder, cancelOrder, signOrder, submitSignedOrder, fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
+import { placeOrder, cancelOrder, signOrder, submitSignedOrder } from '../api';
 import { fetchProxyWallet } from '../api/polymarket';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { showToast } from '../utils/toast';
@@ -170,14 +170,12 @@ export function Sidebar() {
     return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 0 : 1] || null;
   }, [sidebarOpen, selectedMarket, orderOutcome]);
   const { bids, asks, trades: polymarketLiveTrades, loading: obLoading } = usePolymarketOB(obTokenId);
-  const { trades: onchainLiveTrades } = useOnchainTradesWS(obTokenId);
   const [liveTradesSource, setLiveTradesSource] = useState<'onchain' | 'polymarket'>(() => {
     const saved = localStorage.getItem(SIDEBAR_LIVE_TRADES_SOURCE_KEY);
     return saved === 'polymarket' ? 'polymarket' : 'onchain';
   });
   const [displayBids, setDisplayBids] = useState(bids);
   const [displayAsks, setDisplayAsks] = useState(asks);
-  const [displayLiveTrades, setDisplayLiveTrades] = useState(onchainLiveTrades);
   const [onchainSidebarPositions, setOnchainSidebarPositions] = useState<Array<{
     tokenId: string;
     size: number;
@@ -201,6 +199,10 @@ export function Sidebar() {
     return () => { cancelled = true; };
   }, [effectiveSidebarEoa]);
 
+  const onchainWallet = liveTradesSource === 'onchain' ? proxyWallet : null;
+  const { trades: onchainLiveTrades, walletPositions: wsPositions, walletTrades: wsTrades, refreshWallet } = useOnchainTradesWS(obTokenId, onchainWallet);
+  const [displayLiveTrades, setDisplayLiveTrades] = useState(onchainLiveTrades);
+
   const [liveOrderbookExpanded, setLiveOrderbookExpanded] = useState(() => localStorage.getItem('sidebar-live-orderbook-expanded') !== 'false');
   const [liveTradesExpanded, setLiveTradesExpanded] = useState(() => {
     const saved = localStorage.getItem('sidebar-live-trades-expanded');
@@ -221,56 +223,15 @@ export function Sidebar() {
   useEffect(() => {
     setDisplayLiveTrades(liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketLiveTrades);
   }, [liveTradesSource, onchainLiveTrades, polymarketLiveTrades]);
-  const loadOnchainSidebarData = useCallback(async () => {
-    const tokenIds = selectedMarket?.clobTokenIds;
-    if (liveTradesSource !== 'onchain' || !proxyWallet || !tokenIds?.length) {
-      setOnchainSidebarPositions([]);
-      setOnchainSidebarTrades([]);
-      return;
-    }
-    try {
-      const [posRes, trRes] = await Promise.all([
-        fetchOnchainMarketPositions({
-          token_ids: tokenIds,
-          wallet: proxyWallet,
-        }),
-        fetchOnchainMarketTrades({
-          token_ids: tokenIds,
-          wallet: proxyWallet,
-          limit: 200,
-        }),
-      ]);
-      const mappedPos = Array.isArray(posRes.positions)
-        ? posRes.positions.map((p) => ({
-            tokenId: String(p.tokenId || ''),
-            size: Number(p.size || 0),
-            avgPrice: Number(p.avgPrice || 0),
-          })).filter((p) => p.tokenId && p.size > 0)
-        : [];
-      const mappedTrades = Array.isArray(trRes.trades)
-        ? trRes.trades.map((t) => ({
-            tokenId: String(t.tokenId || ''),
-            side: (String(t.side || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL',
-            size: Number(t.size || 0),
-            price: Number(t.price || 0),
-            blockTime: Number(t.blockTime || 0),
-          })).filter((t) => t.tokenId && t.size > 0 && t.price > 0)
-        : [];
-      setOnchainSidebarPositions(mappedPos);
-      setOnchainSidebarTrades(mappedTrades);
-    } catch {
-      setOnchainSidebarPositions([]);
-      setOnchainSidebarTrades([]);
-    }
-  }, [liveTradesSource, proxyWallet, selectedMarket?.clobTokenIds]);
-  useEffect(() => {
-    void loadOnchainSidebarData();
-  }, [loadOnchainSidebarData]);
+  // Sync WS-pushed wallet positions/trades into sidebar state
   useEffect(() => {
     if (liveTradesSource !== 'onchain') return;
-    const id = setInterval(() => { void loadOnchainSidebarData(); }, 15000);
-    return () => clearInterval(id);
-  }, [liveTradesSource, loadOnchainSidebarData]);
+    setOnchainSidebarPositions(wsPositions);
+  }, [liveTradesSource, wsPositions]);
+  useEffect(() => {
+    if (liveTradesSource !== 'onchain') return;
+    setOnchainSidebarTrades(wsTrades);
+  }, [liveTradesSource, wsTrades]);
   useEffect(() => {
     localStorage.setItem('sidebar-live-orderbook-expanded', liveOrderbookExpanded ? 'true' : 'false');
   }, [liveOrderbookExpanded]);
@@ -1922,7 +1883,7 @@ export function Sidebar() {
                   setPositionsRefreshing(true);
                   triggerWalletRefresh();
                   if (liveTradesSource === 'onchain') {
-                    void loadOnchainSidebarData();
+                    refreshWallet();
                   }
                   setTimeout(() => setPositionsRefreshing(false), 2000);
                 }}

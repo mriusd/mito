@@ -13,13 +13,31 @@ interface OnchainFillRow {
   txHash?: string;
 }
 
-export function useOnchainTradesWS(tokenId: string | null) {
+export interface WSPosition {
+  tokenId: string;
+  size: number;
+  avgPrice: number;
+}
+
+export interface WSTrade {
+  tokenId: string;
+  side: 'BUY' | 'SELL';
+  size: number;
+  price: number;
+  blockTime: number;
+  txHash?: string;
+}
+
+export function useOnchainTradesWS(tokenId: string | null, wallet?: string | null) {
   const [trades, setTrades] = useState<LiveTrade[]>([]);
+  const [walletPositions, setWalletPositions] = useState<WSPosition[]>([]);
+  const [walletTrades, setWalletTrades] = useState<WSTrade[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tokenRef = useRef<string | null>(null);
+  const walletRef = useRef<string | null | undefined>(null);
 
   const cleanup = useCallback(() => {
     if (pingRef.current) {
@@ -44,11 +62,28 @@ export function useOnchainTradesWS(tokenId: string | null) {
     }
   }, []);
 
+  // When wallet changes while WS is already open, send subscribe/unsubscribe
+  useEffect(() => {
+    walletRef.current = wallet;
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (wallet) {
+      ws.send(JSON.stringify({ type: 'subscribeWallet', wallet }));
+    } else {
+      ws.send(JSON.stringify({ type: 'unsubscribeWallet' }));
+      setWalletPositions([]);
+      setWalletTrades([]);
+    }
+  }, [wallet]);
+
   useEffect(() => {
     tokenRef.current = tokenId;
+    walletRef.current = wallet;
     if (!tokenId) {
       cleanup();
       setTrades([]);
+      setWalletPositions([]);
+      setWalletTrades([]);
       return;
     }
 
@@ -108,21 +143,50 @@ export function useOnchainTradesWS(tokenId: string | null) {
         pingRef.current = setInterval(() => {
           if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
         }, 30000);
+        // Subscribe wallet for position/trade updates if available
+        const w = walletRef.current;
+        if (w && ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'subscribeWallet', wallet: w }));
+        }
       };
 
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg?.type !== 'onchainTrade' || !msg?.data) return;
-          const d = msg.data as { tokenId?: string; side?: string; size?: number; price?: number; timestamp?: number; txHash?: string };
-          if (!d.tokenId || d.tokenId !== tokenRef.current) return;
-          const side = (d.side === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
-          const size = Number(d.size ?? 0);
-          const price = Number(d.price ?? 0);
-          const ts = Number(d.timestamp ?? Date.now());
-          if (!(size > 0 && price > 0)) return;
-          const t: LiveTrade = { side, size: String(size), price: String(price), timestamp: ts, txHash: d.txHash };
-          setTrades((prev) => [t, ...prev].slice(0, MAX_TRADES));
+          if (!msg?.type) return;
+
+          if (msg.type === 'onchainTrade' && msg.data) {
+            const d = msg.data as { tokenId?: string; side?: string; size?: number; price?: number; timestamp?: number; txHash?: string };
+            if (!d.tokenId || d.tokenId !== tokenRef.current) return;
+            const side = (d.side === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
+            const size = Number(d.size ?? 0);
+            const price = Number(d.price ?? 0);
+            const ts = Number(d.timestamp ?? Date.now());
+            if (!(size > 0 && price > 0)) return;
+            const t: LiveTrade = { side, size: String(size), price: String(price), timestamp: ts, txHash: d.txHash };
+            setTrades((prev) => [t, ...prev].slice(0, MAX_TRADES));
+          } else if (msg.type === 'walletPositions' && Array.isArray(msg.data)) {
+            const positions = (msg.data as Array<{ tokenId?: string; size?: number; avgPrice?: number }>)
+              .map((p) => ({
+                tokenId: String(p.tokenId || ''),
+                size: Number(p.size || 0),
+                avgPrice: Number(p.avgPrice || 0),
+              }))
+              .filter((p) => p.tokenId && p.size > 0);
+            setWalletPositions(positions);
+          } else if (msg.type === 'walletTrades' && Array.isArray(msg.data)) {
+            const wt = (msg.data as Array<{ tokenId?: string; side?: string; size?: number; price?: number; blockTime?: number; txHash?: string }>)
+              .map((t) => ({
+                tokenId: String(t.tokenId || ''),
+                side: (String(t.side || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL',
+                size: Number(t.size || 0),
+                price: Number(t.price || 0),
+                blockTime: Number(t.blockTime || 0),
+                txHash: t.txHash,
+              }))
+              .filter((t) => t.tokenId && t.size > 0 && t.price > 0);
+            setWalletTrades(wt);
+          }
         } catch {
           /* ignore */
         }
@@ -142,7 +206,6 @@ export function useOnchainTradesWS(tokenId: string | null) {
           pingRef.current = null;
         }
         if (disposed || !tokenRef.current) return;
-        // If endpoint is unavailable (proxy/backend not deployed), stop WS spam and use polling fallback.
         if (attempt >= 2) {
           startPollingFallback();
           return;
@@ -159,8 +222,17 @@ export function useOnchainTradesWS(tokenId: string | null) {
       disposed = true;
       cleanup();
     };
+  // wallet changes are handled by the separate useEffect above
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tokenId, cleanup]);
 
-  return { trades };
-}
+  const refreshWallet = useCallback(() => {
+    const ws = wsRef.current;
+    const w = walletRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN && w) {
+      ws.send(JSON.stringify({ type: 'subscribeWallet', wallet: w }));
+    }
+  }, []);
 
+  return { trades, walletPositions, walletTrades, refreshWallet };
+}

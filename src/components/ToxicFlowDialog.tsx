@@ -416,6 +416,29 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
                 </thead>
                 <tbody>
                   {fills.map((f) => {
+                    const bt = Number((f as any).blockTime ?? 0);
+                    const ts = bt > 0
+                      ? (bt > 1e12 ? new Date(bt) : new Date(bt * 1000)).toLocaleString()
+                      : '-';
+                    const isSplitMerge = f.orderHash === 'SPLIT' || f.orderHash === 'MERGE';
+                    if (isSplitMerge) {
+                      const label = f.orderHash as string;
+                      const amount = f.makerAmount;
+                      return (
+                        <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
+                          <td className="py-0.5">{ts}</td>
+                          <td className="text-purple-400" colSpan={2}>{label}</td>
+                          <td className="text-right">{amount.toFixed(2)}</td>
+                          <td className="text-right text-gray-500">—</td>
+                          <td className="text-right text-gray-500">${amount.toFixed(2)}</td>
+                          <td className="text-right">
+                            <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
+                              {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}
+                            </a>
+                          </td>
+                        </tr>
+                      );
+                    }
                     const walletLower = wallet.toLowerCase();
                     const isTaker = (f.taker || '').toLowerCase() === walletLower;
                     const walletPaysUsdc = (isTaker && f.takerAssetId === '0') || (!isTaker && f.makerAssetId === '0');
@@ -430,10 +453,6 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
                     const priceLabel = Number.isFinite(pricePerShare)
                       ? `${(pricePerShare * 100).toFixed(1)}¢`
                       : '—';
-                    const bt = Number((f as any).blockTime ?? 0);
-                    const ts = bt > 0
-                      ? (bt > 1e12 ? new Date(bt) : new Date(bt * 1000)).toLocaleString()
-                      : '-';
                     return (
                       <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
                         <td className="py-0.5">{ts}</td>

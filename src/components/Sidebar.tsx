@@ -533,16 +533,22 @@ export function Sidebar() {
   };
 
   const computeLimitExpiration = (marketEndDate?: string): { expiration: number; invalidLead: boolean } => {
+    const CLOB_MIN_EXPIRY_SEC = 90; // CLOB requires expiration >= now + 60s; use 90s buffer
     const expLeadSec = getOrderExpiryLeadSeconds();
     const nowSec = Math.floor(Date.now() / 1000);
     if (marketEndDate) {
       const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
       if (expLeadSec <= 0) {
-        // No lead configured — expire at market end (GTC-like for this market)
+        if (endTimeSec - nowSec < CLOB_MIN_EXPIRY_SEC) {
+          return { expiration: 0, invalidLead: false }; // too close to end → GTC
+        }
         return { expiration: endTimeSec, invalidLead: false };
       }
       const expiration = endTimeSec - expLeadSec;
       const invalidLead = (endTimeSec - nowSec) <= expLeadSec;
+      if (expiration - nowSec < CLOB_MIN_EXPIRY_SEC) {
+        return { expiration: 0, invalidLead }; // too close → GTC fallback
+      }
       return { expiration, invalidLead };
     }
     return { expiration: nowSec + 86400, invalidLead: false };

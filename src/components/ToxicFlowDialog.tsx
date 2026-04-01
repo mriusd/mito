@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink } from 'lucide-react';
 import { fetchToxicFlow, fetchWalletSummary, fetchWalletPositions, fetchOnchainFills } from '../api';
 import type { ToxicFlowData, WalletPosition, WalletSummary, OnchainFillRow } from '../api';
@@ -83,6 +84,8 @@ function WinRateBottomBar({ winRate, className }: { winRate: number; className?:
 // Wallet hover tooltip — fetches summary on hover, caches results
 const summaryCache: Record<string, WalletSummary | null> = {};
 
+type WalletTipPos = { left: number; top: number; placeAbove: boolean };
+
 function WalletLink({
   wallet,
   netShares,
@@ -94,11 +97,69 @@ function WalletLink({
 }) {
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [show, setShow] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const polygonUrl = `https://polygonscan.com/address/${wallet}`;
+  const [tipPos, setTipPos] = useState<WalletTipPos | null>(null);
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const enterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const onEnter = () => {
-    timerRef.current = setTimeout(async () => {
+  const clearLeaveTimer = () => {
+    if (leaveTimerRef.current) {
+      clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = null;
+    }
+  };
+
+  const scheduleHide = () => {
+    clearLeaveTimer();
+    leaveTimerRef.current = window.setTimeout(() => {
+      leaveTimerRef.current = null;
+      setShow(false);
+      setSummary(undefined);
+      setTipPos(null);
+    }, 220);
+  };
+
+  const updateTipPosition = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el || !show) return;
+    const r = el.getBoundingClientRect();
+    const estH = 260;
+    const margin = 6;
+    const spaceBelow = window.innerHeight - r.bottom - 12;
+    const placeAbove = spaceBelow < estH && r.top > estH + 32;
+    const minW = 200;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - minW - 16));
+    setTipPos({
+      left,
+      top: placeAbove ? r.top - margin : r.bottom + margin,
+      placeAbove,
+    });
+  }, [show]);
+
+  useLayoutEffect(() => {
+    if (!show) {
+      setTipPos(null);
+      return;
+    }
+    updateTipPosition();
+  }, [show, summary, wallet, updateTipPosition]);
+
+  useEffect(() => {
+    if (!show) return;
+    updateTipPosition();
+    const onMove = () => updateTipPosition();
+    window.addEventListener('scroll', onMove, true);
+    window.addEventListener('resize', onMove);
+    return () => {
+      window.removeEventListener('scroll', onMove, true);
+      window.removeEventListener('resize', onMove);
+    };
+  }, [show, updateTipPosition]);
+
+  const onEnterAnchor = () => {
+    clearLeaveTimer();
+    enterTimerRef.current = window.setTimeout(async () => {
+      enterTimerRef.current = null;
       setShow(true);
       if (wallet in summaryCache) {
         setSummary(summaryCache[wallet]);
@@ -109,14 +170,79 @@ function WalletLink({
       }
     }, 300);
   };
-  const onLeave = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setShow(false);
-    setSummary(undefined);
+
+  const onLeaveAnchor = () => {
+    if (enterTimerRef.current) {
+      clearTimeout(enterTimerRef.current);
+      enterTimerRef.current = null;
+    }
+    scheduleHide();
   };
 
+  const tooltipInner = (
+    <>
+      <div className="font-mono text-blue-400 mb-1 text-[8px]">{wallet.slice(0, 10)}...{wallet.slice(-6)}</div>
+      {summary === undefined && <div className="text-gray-500">Loading...</div>}
+      {summary === null && <div className="text-gray-500">No data yet</div>}
+      {summary && (
+        <div className="space-y-0.5">
+          {typeof netShares === 'number' && Number.isFinite(netShares) && (
+            <>
+              <div className="flex justify-between gap-3">
+                <span className="text-gray-500">Net shares</span>
+                <span className={`font-bold ${netShares > 0.001 ? 'text-green-400' : netShares < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>
+                  {netShares > 0 ? '+' : ''}{netShares.toFixed(2)}
+                </span>
+              </div>
+              <div className="border-t border-gray-700 my-0.5" />
+            </>
+          )}
+          <div className="flex justify-between gap-3"><span className="text-gray-500">Markets</span><span className="text-white font-bold">{summary.totalMarkets}{summary.resolvedMarkets > 0 ? <span className="text-gray-500 font-normal"> ({summary.resolvedMarkets} resolved)</span> : ''}</span></div>
+          <div className="flex justify-between gap-3"><span className="text-gray-500">Trades</span><span className="text-white">{summary.totalTrades}</span></div>
+          <div className="flex justify-between gap-3"><span className="text-gray-500">Vol In</span><span className="text-yellow-400">${summary.totalUsdcIn.toFixed(2)}</span></div>
+          <div className="flex justify-between gap-3"><span className="text-gray-500">Vol Out</span><span className="text-yellow-400">${summary.totalUsdcOut.toFixed(2)}</span></div>
+          <div className="border-t border-gray-700 my-0.5" />
+          <div className="flex justify-between gap-3"><span className="text-gray-500">Trading PnL</span><span className={`${summary.tradingPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.tradingPnl >= 0 ? '+' : ''}{summary.tradingPnl.toFixed(2)}</span></div>
+          {summary.resolvedMarkets > 0 && (
+            <div className="flex justify-between gap-3"><span className="text-gray-500">Resolution</span><span className={`${summary.resolutionValue >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.resolutionValue >= 0 ? '+' : ''}{summary.resolutionValue.toFixed(2)}</span></div>
+          )}
+          <div className="flex justify-between gap-3"><span className="text-gray-500">Total PnL</span><span className={`font-bold ${summary.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.pnl >= 0 ? '+' : ''}{summary.pnl.toFixed(2)}</span></div>
+          {(summary.wins > 0 || summary.losses > 0) && (
+            <>
+              <div className="border-t border-gray-700 my-0.5" />
+              <div className="flex justify-between gap-3"><span className="text-gray-500">Win Rate</span><span className={`font-bold ${summary.winRate >= 0.5 ? 'text-green-400' : 'text-red-400'}`}>{(summary.winRate * 100).toFixed(0)}%</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-500">W / L / F</span><span className="text-white">{summary.wins}/{summary.losses}/{summary.flat}</span></div>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  const portalTooltip =
+    show &&
+    tipPos &&
+    typeof document !== 'undefined' &&
+    createPortal(
+      <div
+        className="bg-gray-900 border border-gray-600 rounded shadow-xl p-2 min-w-[190px] max-w-[min(260px,calc(100vw-16px))] max-h-[min(320px,70vh)] overflow-y-auto text-[9px] pointer-events-auto"
+        style={{
+          position: 'fixed',
+          left: tipPos.left,
+          top: tipPos.top,
+          transform: tipPos.placeAbove ? 'translateY(-100%)' : undefined,
+          zIndex: 70000,
+        }}
+        onMouseEnter={clearLeaveTimer}
+        onMouseLeave={scheduleHide}
+      >
+        {tooltipInner}
+      </div>,
+      document.body,
+    );
+
   return (
-    <span className="relative" onMouseEnter={onEnter} onMouseLeave={onLeave}>
+    <span ref={anchorRef} className="relative inline-block" onMouseEnter={onEnterAnchor} onMouseLeave={onLeaveAnchor}>
       <button
         type="button"
         onClick={(e) => {
@@ -127,46 +253,7 @@ function WalletLink({
       >
         <span>{shortenWallet(wallet)}</span>
       </button>
-      {show && (
-        <div className="absolute z-[60000] left-0 top-full mt-1 bg-gray-900 border border-gray-600 rounded shadow-xl p-2 min-w-[190px] text-[9px]"
-          onMouseEnter={() => setShow(true)} onMouseLeave={onLeave}>
-          <div className="font-mono text-blue-400 mb-1 text-[8px]">{wallet.slice(0, 10)}...{wallet.slice(-6)}</div>
-          {summary === undefined && <div className="text-gray-500">Loading...</div>}
-          {summary === null && <div className="text-gray-500">No data yet</div>}
-          {summary && (
-            <div className="space-y-0.5">
-              {typeof netShares === 'number' && Number.isFinite(netShares) && (
-                <>
-                  <div className="flex justify-between gap-3">
-                    <span className="text-gray-500">Net shares</span>
-                    <span className={`font-bold ${netShares > 0.001 ? 'text-green-400' : netShares < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>
-                      {netShares > 0 ? '+' : ''}{netShares.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="border-t border-gray-700 my-0.5" />
-                </>
-              )}
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Markets</span><span className="text-white font-bold">{summary.totalMarkets}{summary.resolvedMarkets > 0 ? <span className="text-gray-500 font-normal"> ({summary.resolvedMarkets} resolved)</span> : ''}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Trades</span><span className="text-white">{summary.totalTrades}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Vol In</span><span className="text-yellow-400">${summary.totalUsdcIn.toFixed(2)}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Vol Out</span><span className="text-yellow-400">${summary.totalUsdcOut.toFixed(2)}</span></div>
-              <div className="border-t border-gray-700 my-0.5" />
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Trading PnL</span><span className={`${summary.tradingPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.tradingPnl >= 0 ? '+' : ''}{summary.tradingPnl.toFixed(2)}</span></div>
-              {summary.resolvedMarkets > 0 && (
-                <div className="flex justify-between gap-3"><span className="text-gray-500">Resolution</span><span className={`${summary.resolutionValue >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.resolutionValue >= 0 ? '+' : ''}{summary.resolutionValue.toFixed(2)}</span></div>
-              )}
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Total PnL</span><span className={`font-bold ${summary.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.pnl >= 0 ? '+' : ''}{summary.pnl.toFixed(2)}</span></div>
-              {(summary.wins > 0 || summary.losses > 0) && (
-                <>
-                  <div className="border-t border-gray-700 my-0.5" />
-                  <div className="flex justify-between gap-3"><span className="text-gray-500">Win Rate</span><span className={`font-bold ${summary.winRate >= 0.5 ? 'text-green-400' : 'text-red-400'}`}>{(summary.winRate * 100).toFixed(0)}%</span></div>
-                  <div className="flex justify-between gap-3"><span className="text-gray-500">W / L / F</span><span className="text-white">{summary.wins}/{summary.losses}/{summary.flat}</span></div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      {portalTooltip}
     </span>
   );
 }
@@ -177,6 +264,18 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
   }
   const fmtInt = (v: number) => Math.round(v).toLocaleString();
   const fmtSignedInt = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString()}`;
+  /** USDC per share as Polymarket price in ¢ (0–100). */
+  const fmtAvgCents = (usdc: number, shareVol: number) => {
+    if (!Number.isFinite(usdc) || !Number.isFinite(shareVol) || shareVol <= 0) return '–';
+    const cents = (usdc / shareVol) * 100;
+    return Number.isFinite(cents) ? `${cents.toFixed(1)}¢` : '–';
+  };
+  /** Implied average price of signed net position: (USDC in − out) / net shares, in ¢. */
+  const fmtNetAvgCents = (usdcIn: number, usdcOut: number, net: number) => {
+    if (!Number.isFinite(net) || Math.abs(net) < 1e-6) return '–';
+    const cents = ((usdcIn - usdcOut) / net) * 100;
+    return Number.isFinite(cents) ? `${cents.toFixed(1)}¢` : '–';
+  };
 
   return (
     <div className="overflow-x-auto">
@@ -191,10 +290,13 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             <th className="text-right px-1 bg-red-900/15">B.No</th>
             <th className="text-right px-1 bg-red-900/15">S.No</th>
             <th className="text-right px-1 bg-red-900/15">Net N</th>
+            <th className="text-right px-1 text-gray-400" title="Avg buy: USDC in ÷ (bought YES + bought NO)">Avg B</th>
+            <th className="text-right px-1 text-gray-400" title="Avg sell: USDC out ÷ (sold YES + sold NO)">Avg S</th>
             <th className="text-right px-1">USDC In</th>
             <th className="text-right px-1">PnL</th>
             <th className="text-right px-1">Trades</th>
             <th className="text-right px-1">Net</th>
+            <th className="text-right px-1 text-gray-400" title="Implied avg price of net position: (USDC in − out) ÷ net shares">Avg P</th>
             <th className="text-right px-1">%</th>
             <th className="text-right px-1">Cum%</th>
             <th className="text-right px-1">Bias</th>
@@ -213,6 +315,11 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               cumSharesPct += sharesPct;
               const nYColor = nY > 0.001 ? 'text-green-400' : nY < -0.001 ? 'text-red-400' : 'text-gray-500';
               const nNColor = nN > 0.001 ? 'text-green-400' : nN < -0.001 ? 'text-red-400' : 'text-gray-500';
+              const boughtShares = (w.boughtYes || 0) + (w.boughtNo || 0);
+              const soldShares = (w.soldYes || 0) + (w.soldNo || 0);
+              const avgB = fmtAvgCents(w.usdcIn || 0, boughtShares);
+              const avgS = fmtAvgCents(w.usdcOut || 0, soldShares);
+              const avgP = fmtNetAvgCents(w.usdcIn || 0, w.usdcOut || 0, w.net || 0);
               const showWinBar =
                 typeof w.winLossTotal === 'number' &&
                 w.winLossTotal > 0 &&
@@ -231,10 +338,13 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                   <td className="text-right px-1 text-green-400 bg-red-900/10">{w.boughtNo > 0 ? fmtInt(w.boughtNo) : '-'}</td>
                   <td className="text-right px-1 text-red-300/60 bg-red-900/10">{w.soldNo > 0 ? fmtInt(w.soldNo) : '-'}</td>
                   <td className={`text-right px-1 font-bold ${nNColor} bg-red-900/10`}>{fmtSignedInt(nN)}</td>
+                  <td className="text-right px-1 text-gray-300">{avgB}</td>
+                  <td className="text-right px-1 text-gray-300">{avgS}</td>
                   <td className="text-right px-1 text-yellow-400">${fmtInt(w.usdcIn)}</td>
                   <td className={`text-right px-1 font-bold ${(w.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtSignedInt(w.pnl || 0)}</td>
                   <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
                   <td className={`text-right px-1 font-bold ${(w.net || 0) > 0.001 ? 'text-green-400' : (w.net || 0) < -0.001 ? 'text-red-400' : 'text-gray-500'}`}>{fmtSignedInt(w.net || 0)}</td>
+                  <td className="text-right px-1 text-gray-300">{avgP}</td>
                   <td className="text-right px-1 text-cyan-300">{sharesPct > 0 ? `${sharesPct.toFixed(1)}%` : '-'}</td>
                   <td className="text-right px-1 text-cyan-200/70">{cumSharesPct > 0 ? `${cumSharesPct.toFixed(1)}%` : '-'}</td>
                   <td className={`text-right px-1 ${biasColor}`}>{(bias * 100).toFixed(0)}%</td>

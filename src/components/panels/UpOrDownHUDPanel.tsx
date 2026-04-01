@@ -197,7 +197,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
               <th className="px-1 py-0.5 text-center border-b border-r border-l border-gray-700 border-solid bg-gray-900 text-[9px] text-gray-400 font-semibold">Target</th>
               <th className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-gray-400 font-semibold">Current</th>
               <th className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/70 text-[9px] text-gray-400 font-semibold">Next</th>
-              <th className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/40 text-[9px] text-sky-400/90 font-semibold" title="Toxic Flow USDC (wallet usdc_in), thousands">
+              <th className="px-1 py-0.5 text-right border-b border-l border-r border-gray-700 border-solid bg-gray-900/40 text-[9px] text-sky-400/90 font-semibold" title="Toxic Flow USDC (wallet usdc_in), thousands">
                 Vol
               </th>
             </tr>
@@ -350,6 +350,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                                 ? liveRow.winnerBias
                                 : 0;
                             const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
+                            const winnerBiasBarFlash = wbPct > 75 || wbPct < 25;
                             const concRaw =
                               typeof liveRow?.concentration === 'number' && Number.isFinite(liveRow.concentration)
                                 ? liveRow.concentration
@@ -397,14 +398,34 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                                     style={{ height: `${concPct}%`, backgroundColor: concColor }}
                                   />
                                 </div>
-                                {/* Winners $ — horizontal bottom bar */}
+                                {/* Winners $ (USDC bias) — right vertical bar, green from bottom */}
                                 <div
-                                  className="absolute bottom-0 left-0 w-full h-[2px] pointer-events-none z-0 flex"
+                                  className={`absolute right-0 top-0 bottom-0 w-[2px] pointer-events-none z-0 bg-red-500/70 overflow-hidden${winnerBiasBarFlash ? ' updown-winner-bias-bar-flash' : ''}`}
                                   title={`Winners $ (USDC, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
                                 >
-                                  <div className="bg-green-500/70 h-full" style={{ width: `${wbPct}%` }} />
-                                  <div className="bg-red-500/70 h-full flex-1" />
+                                  <div
+                                    className="absolute bottom-0 left-0 w-full bg-green-500/70 transition-all"
+                                    style={{ height: `${wbPct}%` }}
+                                  />
                                 </div>
+                                {/* Market YES probability (mid / one-sided quote) — horizontal bottom bar */}
+                                {currentYes != null && Number.isFinite(currentYes) ? (
+                                  <div
+                                    className="absolute bottom-0 left-[2px] right-[2px] h-[2px] pointer-events-none z-0 flex"
+                                    title={`Market YES ~${(currentYes * 100).toFixed(1)}¢`}
+                                  >
+                                    <div
+                                      className="bg-green-500/80 h-full shrink-0 transition-[width]"
+                                      style={{ width: `${Math.max(0, Math.min(100, currentYes * 100))}%` }}
+                                    />
+                                    <div className="bg-red-500/60 h-full flex-1 min-w-0" />
+                                  </div>
+                                ) : (
+                                  <div
+                                    className="absolute bottom-0 left-[2px] right-[2px] h-[2px] pointer-events-none z-0 bg-gray-700/70"
+                                    title="No YES mid"
+                                  />
+                                )}
                               </>
                             );
                           })()}

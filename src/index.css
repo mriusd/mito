@@ -77,6 +77,11 @@ html, body, #root {
   animation: updown-math-flash 0.55s ease-in-out infinite;
 }
 
+/* Up/Down HUD: vertical winner-bias bar when >75% green or >75% red */
+.updown-winner-bias-bar-flash {
+  animation: updown-math-flash 0.55s ease-in-out infinite;
+}
+
 input[type="number"].no-spin::-webkit-outer-spin-button,
 input[type="number"].no-spin::-webkit-inner-spin-button {
   -webkit-appearance: none;

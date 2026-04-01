@@ -1331,8 +1331,16 @@ export function Sidebar() {
               const liveWin = liveShareStats?.liveBiasWindowMin || 30;
               const livePct = live * 100;
 
-              const bidTotal = displayBids.reduce((s, l) => s + parseFloat(l.size), 0);
-              const askTotal = displayAsks.reduce((s, l) => s + parseFloat(l.size), 0);
+              const bidTotal = displayBids.reduce((s, l) => {
+                const pCents = parseFloat(l.price) * 100;
+                if (!Number.isFinite(pCents) || pCents < 5 || pCents > 95) return s;
+                return s + parseFloat(l.size);
+              }, 0);
+              const askTotal = displayAsks.reduce((s, l) => {
+                const pCents = parseFloat(l.price) * 100;
+                if (!Number.isFinite(pCents) || pCents < 5 || pCents > 95) return s;
+                return s + parseFloat(l.size);
+              }, 0);
               const bookDenom = bidTotal + askTotal;
               const book = bookDenom > 0 ? (bidTotal - askTotal) / bookDenom : 0;
               const bookPct = book * 100;

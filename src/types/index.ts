@@ -225,6 +225,7 @@ export type PanelType =
   | 'perp-bot'
   | 'price-forecast'
   | 'binance-chart'
+  | 'updown-hud'
   | 'chat';
 
 export interface PanelConfig {

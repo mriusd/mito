@@ -344,7 +344,7 @@ export function UpDownMarketsPanel() {
                     className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-gray-400 font-semibold"
                     style={assetBorderStyle(asset, showTarget ? {} : { L: true })}
                   >
-                    Market
+                    Current
                   </th>
                   {showNextMarket && (
                     <th

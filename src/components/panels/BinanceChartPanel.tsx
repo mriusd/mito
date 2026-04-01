@@ -613,11 +613,15 @@ function drawCandles(
 interface BinanceChartPanelProps {
   panelId: string;
   initialAsset: AssetName;
+  assetOverride?: AssetName;
+  forcedPriceSource?: ChartPriceSource;
+  compact?: boolean;
 }
 
-export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelProps) {
+export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forcedPriceSource, compact = false }: BinanceChartPanelProps) {
   const portalRoot = typeof document !== 'undefined' ? document.body : null;
   const [asset, setAsset] = useState<AssetName>(() => {
+    if (assetOverride) return assetOverride;
     const saved = localStorage.getItem(`polybot-binance-chart-asset-${panelId}`);
     if (saved && ALL_ASSETS.includes(saved as AssetName)) return saved as AssetName;
     return initialAsset;
@@ -633,11 +637,18 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
     return '24h';
   });
   const [priceSource, setPriceSource] = useState<ChartPriceSource>(() => {
+    if (forcedPriceSource) return forcedPriceSource;
     const saved = localStorage.getItem(`polybot-binance-chart-source-${panelId}`) as ChartPriceSource | null;
     return saved === 'chainlink' ? 'chainlink' : 'binance';
   });
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
   const [rbsSettingsOpen, setRbsSettingsOpen] = useState(false);
+  useEffect(() => {
+    if (assetOverride && asset !== assetOverride) setAsset(assetOverride);
+  }, [assetOverride, asset]);
+  useEffect(() => {
+    if (forcedPriceSource && priceSource !== forcedPriceSource) setPriceSource(forcedPriceSource);
+  }, [forcedPriceSource, priceSource]);
   const [rbsTfEnabled, setRbsTfEnabled] = useState<Record<UpDownTfKey, boolean>>(() =>
     parseRbsTfEnabledFromStorage(localStorage.getItem(`polybot-binance-rbs-tf-${panelId}`)),
   );
@@ -1201,7 +1212,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
   const titleColor = ASSET_COLORS[asset] || 'text-white';
 
   return (
-    <div ref={wrapRef} className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 h-full">
+    <div ref={wrapRef} className={`panel-wrapper bg-gray-800/50 rounded-lg ${compact ? 'p-2' : 'p-3'} flex flex-col min-h-0 h-full`}>
       <div
         ref={chartHeaderRef}
         className="panel-header shrink-0 mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 cursor-grab"
@@ -1210,7 +1221,10 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
           ref={chartTitleRef}
           className={`text-sm font-bold flex items-center gap-1 flex-wrap min-w-0 ${chartHeaderStackControls ? 'w-full shrink-0 basis-full' : 'flex-1'} ${titleColor}`}
         >
-          <span className="relative binance-asset-dropdown-root no-drag inline-flex items-center cursor-pointer select-none" onClick={() => setAssetDropdownOpen(v => !v)}>
+          <span
+            className={`relative binance-asset-dropdown-root no-drag inline-flex items-center select-none ${assetOverride ? 'cursor-default' : 'cursor-pointer'}`}
+            onClick={() => { if (!assetOverride) setAssetDropdownOpen(v => !v); }}
+          >
             {asset}:{' '}
             <span className="font-bold">
               {spotForChart > 0 ? formatPrice(spotForChart, asset) : '--'}
@@ -1218,7 +1232,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
             <svg className="w-3 h-3 ml-0.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <polyline points="6 9 12 15 18 9" />
             </svg>
-            {assetDropdownOpen && (
+            {!assetOverride && assetDropdownOpen && (
               <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[80px]">
                 {ALL_ASSETS.map(a => (
                   <div
@@ -1238,13 +1252,13 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
             )}
           </span>
         </h3>
-        <div
+          <div
           ref={chartControlsRef}
           className={`flex items-center gap-1.5 no-drag cursor-default ${chartHeaderStackControls ? 'w-full shrink-0 basis-full justify-start flex-wrap' : 'shrink-0'}`}
           onPointerDown={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <div
+          {!forcedPriceSource && <div
             className="flex shrink-0 overflow-hidden rounded border border-gray-600"
             title="Candle source: Binance spot API or polycandles Chainlink klines"
           >
@@ -1283,7 +1297,7 @@ export function BinanceChartPanel({ panelId, initialAsset }: BinanceChartPanelPr
                 <path fill="currentColor" d={CHAINLINK_LOGO_PATH} />
               </svg>
             </button>
-          </div>
+          </div>}
           <select
             value={timeframe}
             onChange={(e) => {

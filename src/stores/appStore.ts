@@ -149,6 +149,7 @@ const PANEL_TITLES: Record<string, string> = {
   'trades-positions-orders': 'Trades/Positions/Orders', 'updown-overview': 'Up/Down Markets',
   'relative-chart': 'Relative Chart', 'perp-bot': 'Perp Bot', 'price-forecast': 'Price Forecast',
   'binance-chart': 'Asset Candle Chart',
+  'updown-hud': 'UpOrDown HUD',
   'signals': 'Signals', 'chat': 'Chat', 'pnl': 'P&L', 'arbs': 'Hedges', 'summary': 'Summary',
 };
 

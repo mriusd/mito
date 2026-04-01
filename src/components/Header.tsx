@@ -20,6 +20,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'trades-positions-orders', title: 'Trades/Positions/Orders' },
   { type: 'pnl', title: 'P&L' },
   { type: 'updown-overview', title: 'Up/Down Markets' },
+  { type: 'updown-hud', title: 'UpOrDown HUD' },
   { type: 'relative-chart', title: 'Relative Chart' },
   { type: 'perp-bot', title: 'Perp Bot', devOnly: true },
   { type: 'price-forecast', title: 'Price Forecast' },

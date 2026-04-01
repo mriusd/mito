@@ -1217,41 +1217,47 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
         ref={chartHeaderRef}
         className="panel-header shrink-0 mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 cursor-grab"
       >
-        <h3
-          ref={chartTitleRef}
-          className={`text-sm font-bold flex items-center gap-1 flex-wrap min-w-0 ${chartHeaderStackControls ? 'w-full shrink-0 basis-full' : 'flex-1'} ${titleColor}`}
-        >
-          <span
-            className={`relative binance-asset-dropdown-root no-drag inline-flex items-center select-none ${assetOverride ? 'cursor-default' : 'cursor-pointer'}`}
-            onClick={() => { if (!assetOverride) setAssetDropdownOpen(v => !v); }}
+        {assetOverride && compact ? (
+          <div ref={chartTitleRef} className={`${chartHeaderStackControls ? 'w-full shrink-0 basis-full' : 'flex-1'} min-w-0`} />
+        ) : (
+          <h3
+            ref={chartTitleRef}
+            className={`text-sm font-bold flex items-center gap-1 flex-wrap min-w-0 ${chartHeaderStackControls ? 'w-full shrink-0 basis-full' : 'flex-1'} ${titleColor}`}
           >
-            {asset}:{' '}
-            <span className="font-bold">
-              {spotForChart > 0 ? formatPrice(spotForChart, asset) : '--'}
+            <span
+              className={`relative binance-asset-dropdown-root no-drag inline-flex items-center select-none ${assetOverride ? 'cursor-default' : 'cursor-pointer'}`}
+              onClick={() => { if (!assetOverride) setAssetDropdownOpen(v => !v); }}
+            >
+              {asset}:{' '}
+              <span className="font-bold">
+                {spotForChart > 0 ? formatPrice(spotForChart, asset) : '--'}
+              </span>
+              {!assetOverride && (
+                <svg className="w-3 h-3 ml-0.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              )}
+              {!assetOverride && assetDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[80px]">
+                  {ALL_ASSETS.map(a => (
+                    <div
+                      key={a}
+                      className={`px-3 py-1 text-xs font-bold hover:bg-gray-700 cursor-pointer ${a === asset ? 'text-white bg-gray-700' : 'text-gray-300'}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAsset(a);
+                        localStorage.setItem(`polybot-binance-chart-asset-${panelId}`, a);
+                        setAssetDropdownOpen(false);
+                      }}
+                    >
+                      {a}
+                    </div>
+                  ))}
+                </div>
+              )}
             </span>
-            <svg className="w-3 h-3 ml-0.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-            {!assetOverride && assetDropdownOpen && (
-              <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[80px]">
-                {ALL_ASSETS.map(a => (
-                  <div
-                    key={a}
-                    className={`px-3 py-1 text-xs font-bold hover:bg-gray-700 cursor-pointer ${a === asset ? 'text-white bg-gray-700' : 'text-gray-300'}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setAsset(a);
-                      localStorage.setItem(`polybot-binance-chart-asset-${panelId}`, a);
-                      setAssetDropdownOpen(false);
-                    }}
-                  >
-                    {a}
-                  </div>
-                ))}
-              </div>
-            )}
-          </span>
-        </h3>
+          </h3>
+        )}
           <div
           ref={chartControlsRef}
           className={`flex items-center gap-1.5 no-drag cursor-default ${chartHeaderStackControls ? 'w-full shrink-0 basis-full justify-start flex-wrap' : 'shrink-0'}`}
@@ -1298,6 +1304,18 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
               </svg>
             </button>
           </div>}
+          {forcedPriceSource && (
+            <span
+              className={`inline-flex items-center justify-center rounded border px-1.5 py-0.5 text-[9px] font-bold leading-none ${
+                forcedPriceSource === 'chainlink'
+                  ? 'border-blue-600/60 bg-blue-900/70 text-blue-200'
+                  : 'border-yellow-500/60 bg-yellow-900/60 text-yellow-200'
+              }`}
+              title={forcedPriceSource === 'chainlink' ? 'Chainlink candles' : 'Binance candles'}
+            >
+              {forcedPriceSource === 'chainlink' ? 'CHAINLINK' : 'BINANCE'}
+            </span>
+          )}
           <select
             value={timeframe}
             onChange={(e) => {

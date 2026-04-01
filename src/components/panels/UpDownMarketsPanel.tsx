@@ -277,39 +277,39 @@ export function UpDownMarketsPanel() {
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <span>Show Target:</span>
             <input
               type="checkbox"
               checked={showTarget}
               onChange={(e) => setShowTargetColumn(e.target.checked)}
               className="accent-blue-500 rounded"
             />
+            <span>Show Target:</span>
           </label>
           <label
             className="flex items-center gap-1 cursor-default text-[10px] text-gray-300 select-none"
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <span>Next Market:</span>
             <input
               type="checkbox"
               checked={showNextMarket}
               onChange={(e) => setShowNextMarketColumn(e.target.checked)}
               className="accent-blue-500 rounded"
             />
+            <span>Next Market:</span>
           </label>
           <label
             className="flex items-center gap-1 cursor-default text-[10px] text-gray-300 select-none"
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <span>Volume:</span>
             <input
               type="checkbox"
               checked={showVolume}
               onChange={(e) => setShowVolumeColumn(e.target.checked)}
               className="accent-blue-500 rounded"
             />
+            <span>Volume:</span>
           </label>
         </div>
       </div>

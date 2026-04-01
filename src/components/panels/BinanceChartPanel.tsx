@@ -616,9 +616,10 @@ interface BinanceChartPanelProps {
   assetOverride?: AssetName;
   forcedPriceSource?: ChartPriceSource;
   compact?: boolean;
+  hideRbsSettings?: boolean;
 }
 
-export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forcedPriceSource, compact = false }: BinanceChartPanelProps) {
+export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forcedPriceSource, compact = false, hideRbsSettings = false }: BinanceChartPanelProps) {
   const portalRoot = typeof document !== 'undefined' ? document.body : null;
   const [asset, setAsset] = useState<AssetName>(() => {
     if (assetOverride) return assetOverride;
@@ -1352,7 +1353,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
               </option>
             ))}
           </select>
-          <div className="relative binance-rbs-settings-root">
+          {!hideRbsSettings && <div className="relative binance-rbs-settings-root">
             <button
               ref={rbsSettingsButtonRef}
               type="button"
@@ -1439,7 +1440,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
               </div>,
               portalRoot,
             )}
-          </div>
+          </div>}
         </div>
       </div>
 

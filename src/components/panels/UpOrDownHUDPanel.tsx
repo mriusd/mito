@@ -359,6 +359,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
             assetOverride={asset}
             forcedPriceSource="chainlink"
             compact
+            hideRbsSettings
           />
         </div>
         <div className="min-h-0">
@@ -368,6 +369,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
             assetOverride={asset}
             forcedPriceSource="binance"
             compact
+            hideRbsSettings
           />
         </div>
       </div>

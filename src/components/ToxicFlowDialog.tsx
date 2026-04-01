@@ -9,6 +9,7 @@ interface ToxicFlowDialogProps {
   open: boolean;
   marketId: string;
   marketName: string;
+  yesTokenId?: string;
   onClose: () => void;
 }
 
@@ -506,7 +507,8 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
   );
 }
 
-export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFlowDialogProps) {
+export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClose }: ToxicFlowDialogProps) {
+  const marketLookup = useAppStore((s) => s.marketLookup);
   const [data, setData] = useState<ToxicFlowData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -695,52 +697,19 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                         </span>
                       </div>
 
-                      {/* Winner Bias (USDC & Shares) */}
+                      {/* Winner Bias (USDC & Shares) — from backend via WS, same source as sidebar */}
                       {(() => {
-                        const calcByUsdc = (wallets: WalletPosition[]) => {
-                          const filtered = wallets.filter(w => w.usdcIn > 0);
-                          const sorted = [...filtered].sort((a, b) => b.usdcIn - a.usdcIn);
-                          const total = sorted.reduce((s, w) => s + w.usdcIn, 0);
-                          if (total <= 0) return null;
-                          const threshold = total * 0.3;
-                          let accum = 0, wrSum = 0, wrWeight = 0;
-                          for (const w of sorted) {
-                            if (accum >= threshold) break;
-                            accum += w.usdcIn;
-                            if (typeof w.winRate === 'number' && Number.isFinite(w.winRate) && (w.winLossTotal ?? 0) > 0) {
-                              wrSum += w.winRate * w.usdcIn;
-                              wrWeight += w.usdcIn;
-                            }
-                          }
-                          return wrWeight > 0 ? wrSum / wrWeight : null;
-                        };
-                        const calcByShares = (wallets: WalletPosition[]) => {
-                          const filtered = wallets.filter(w => Math.abs(w.net) > 0.001);
-                          const sorted = [...filtered].sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
-                          const total = sorted.reduce((s, w) => s + Math.abs(w.net), 0);
-                          if (total <= 0) return null;
-                          const threshold = total * 0.3;
-                          let accum = 0, wrSum = 0, wrWeight = 0;
-                          for (const w of sorted) {
-                            if (accum >= threshold) break;
-                            const sz = Math.abs(w.net);
-                            accum += sz;
-                            if (typeof w.winRate === 'number' && Number.isFinite(w.winRate) && (w.winLossTotal ?? 0) > 0) {
-                              wrSum += w.winRate * sz;
-                              wrWeight += sz;
-                            }
-                          }
-                          return wrWeight > 0 ? wrSum / wrWeight : null;
-                        };
-                        const yesFiltered = data.topYes.filter(w => w.net > 0);
-                        const noFiltered = data.topNo.filter(w => w.net < 0);
+                        const live = yesTokenId ? marketLookup[yesTokenId] : undefined;
+                        const wbUsdc = typeof live?.winnerBias === 'number' && Number.isFinite(live.winnerBias) ? live.winnerBias : null;
+                        const yesWR = typeof live?.winnerBiasYesWR === 'number' ? live.winnerBiasYesWR : null;
+                        const noWR = typeof live?.winnerBiasNoWR === 'number' ? live.winnerBiasNoWR : null;
+                        const wbShares = typeof live?.winBiasShares === 'number' && Number.isFinite(live.winBiasShares) ? live.winBiasShares : null;
+                        const yesWRs = typeof live?.winBiasSharesYes === 'number' ? live.winBiasSharesYes : null;
+                        const noWRs = typeof live?.winBiasSharesNo === 'number' ? live.winBiasSharesNo : null;
 
-                        const renderBar = (label: string, yesWr: number | null, noWr: number | null) => {
-                          if (yesWr == null && noWr == null) return null;
-                          const yesVal = yesWr ?? 0.5;
-                          const noVal = noWr ?? 0.5;
-                          const bias = yesVal - noVal;
-                          const barPct = Math.max(2, Math.min(98, 50 + bias * 100));
+                        const renderBar = (label: string, bias: number | null, yesWr: number | null, noWr: number | null) => {
+                          if (bias == null) return null;
+                          const barPct = Math.max(2, Math.min(98, 50 + bias * 50));
                           const side = bias > 0.01 ? posLabel : bias < -0.01 ? negLabel : 'EVEN';
                           const color = bias > 0.01 ? 'text-green-400' : bias < -0.01 ? 'text-red-400' : 'text-gray-500';
                           return (
@@ -754,8 +723,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                                 <div className="bg-red-500/70 h-full transition-all flex-1" />
                               </div>
                               <div className="flex justify-between mt-0.5 text-[9px] text-gray-500">
-                                <span>{posLabel} WR: <span className={yesVal >= 0.5 ? 'text-green-400' : 'text-red-400'}>{(yesVal * 100).toFixed(0)}%</span></span>
-                                <span>{negLabel} WR: <span className={noVal >= 0.5 ? 'text-green-400' : 'text-red-400'}>{(noVal * 100).toFixed(0)}%</span></span>
+                                {yesWr != null && <span>{posLabel} WR: <span className={yesWr >= 0.5 ? 'text-green-400' : 'text-red-400'}>{(yesWr * 100).toFixed(0)}%</span></span>}
+                                {noWr != null && <span>{negLabel} WR: <span className={noWr >= 0.5 ? 'text-green-400' : 'text-red-400'}>{(noWr * 100).toFixed(0)}%</span></span>}
                               </div>
                             </div>
                           );
@@ -763,8 +732,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
 
                         return (
                           <>
-                            {renderBar('Winner Bias (top 30% USDC)', calcByUsdc(yesFiltered), calcByUsdc(noFiltered))}
-                            {renderBar('Winner Bias (top 30% Shares)', calcByShares(yesFiltered), calcByShares(noFiltered))}
+                            {renderBar('Winner Bias (top 30% USDC)', wbUsdc, yesWR, noWR)}
+                            {renderBar('Winner Bias (top 30% Shares)', wbShares, yesWRs, noWRs)}
                           </>
                         );
                       })()}

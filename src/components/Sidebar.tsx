@@ -933,6 +933,7 @@ export function Sidebar() {
       open={toxicDialogOpen}
       marketId={selectedMarket?.id || ''}
       marketName={marketName}
+      yesTokenId={selectedMarket?.clobTokenIds?.[0] || ''}
       onClose={() => setToxicDialogOpen(false)}
     />
     {isMobileSheet && sidebarOpen && (

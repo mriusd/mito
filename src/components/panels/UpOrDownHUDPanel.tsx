@@ -69,7 +69,11 @@ function getCurrentAndNext(assetMarkets: Record<string, Market[]>, tf: string): 
 }
 
 export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
-  const [asset, setAsset] = useState<AssetName>('BTC');
+  const [asset, setAsset] = useState<AssetName>(() => {
+    const saved = localStorage.getItem(`polybot-updown-hud-asset-${panelId}`);
+    if (saved && ASSETS.includes(saved as AssetName)) return saved as AssetName;
+    return 'BTC';
+  });
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
@@ -97,6 +101,9 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
+  useEffect(() => {
+    localStorage.setItem(`polybot-updown-hud-asset-${panelId}`, asset);
+  }, [panelId, asset]);
 
   const rows = useMemo(() => {
     return TIMEFRAMES.map((tf) => {

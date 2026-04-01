@@ -168,6 +168,8 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
   if (!wallets || wallets.length === 0) {
     return <div className="text-gray-500 text-center py-3 text-[10px]">No {label} data yet</div>;
   }
+  const fmtInt = (v: number) => Math.round(v).toLocaleString();
+  const fmtSignedInt = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString()}`;
 
   return (
     <div className="overflow-x-auto">
@@ -199,7 +201,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             const nN = w.netNo ?? ((w.boughtNo || 0) - (w.soldNo || 0));
             const sharesPct = totalShares && totalShares > 0 ? (Math.abs(w.net || 0) / totalShares) * 100 : 0;
             const nYColor = nY > 0.001 ? 'text-green-400' : nY < -0.001 ? 'text-red-400' : 'text-gray-500';
-            const nNColor = nN > 0.001 ? 'text-red-400' : nN < -0.001 ? 'text-green-400' : 'text-gray-500';
+            const nNColor = nN > 0.001 ? 'text-green-400' : nN < -0.001 ? 'text-red-400' : 'text-gray-500';
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
                 <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
@@ -212,17 +214,17 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                     onOpenWallet={onOpenWallet}
                   />
                 </td>
-                <td className="text-right px-1 text-green-400 bg-green-900/10">{w.boughtYes > 0 ? w.boughtYes.toFixed(1) : '-'}</td>
-                <td className="text-right px-1 text-red-400 bg-green-900/10">{w.soldYes > 0 ? w.soldYes.toFixed(1) : '-'}</td>
-                <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{nY.toFixed(1)}</td>
-                <td className="text-right px-1 text-green-400 bg-red-900/10">{w.boughtNo > 0 ? w.boughtNo.toFixed(1) : '-'}</td>
-                <td className="text-right px-1 text-red-300/60 bg-red-900/10">{w.soldNo > 0 ? w.soldNo.toFixed(1) : '-'}</td>
-                <td className={`text-right px-1 font-bold ${nNColor} bg-red-900/10`}>{nN.toFixed(1)}</td>
-                <td className="text-right px-1 text-yellow-400">${w.usdcIn.toFixed(2)}</td>
+                <td className="text-right px-1 text-green-400 bg-green-900/10">{w.boughtYes > 0 ? fmtInt(w.boughtYes) : '-'}</td>
+                <td className="text-right px-1 text-red-400 bg-green-900/10">{w.soldYes > 0 ? fmtInt(w.soldYes) : '-'}</td>
+                <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{fmtSignedInt(nY)}</td>
+                <td className="text-right px-1 text-green-400 bg-red-900/10">{w.boughtNo > 0 ? fmtInt(w.boughtNo) : '-'}</td>
+                <td className="text-right px-1 text-red-300/60 bg-red-900/10">{w.soldNo > 0 ? fmtInt(w.soldNo) : '-'}</td>
+                <td className={`text-right px-1 font-bold ${nNColor} bg-red-900/10`}>{fmtSignedInt(nN)}</td>
+                <td className="text-right px-1 text-yellow-400">${fmtInt(w.usdcIn)}</td>
                 <td className="text-right px-1 text-cyan-300">{sharesPct > 0 ? `${sharesPct.toFixed(1)}%` : '-'}</td>
-                <td className={`text-right px-1 font-bold ${(w.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{(w.pnl || 0) >= 0 ? '+' : ''}{(w.pnl || 0).toFixed(2)}</td>
+                <td className={`text-right px-1 font-bold ${(w.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtSignedInt(w.pnl || 0)}</td>
                 <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
-                <td className={`text-right px-1 font-bold ${(w.net || 0) > 0.001 ? 'text-green-400' : (w.net || 0) < -0.001 ? 'text-red-400' : 'text-gray-500'}`}>{(w.net || 0) > 0 ? '+' : ''}{(w.net || 0).toFixed(1)}</td>
+                <td className={`text-right px-1 font-bold ${(w.net || 0) > 0.001 ? 'text-green-400' : (w.net || 0) < -0.001 ? 'text-red-400' : 'text-gray-500'}`}>{fmtSignedInt(w.net || 0)}</td>
                 <td className={`text-right px-1 ${biasColor}`}>{(bias * 100).toFixed(0)}%</td>
               </tr>
             );
@@ -593,13 +595,14 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                   const thb = data.topHoldersBias || 0;
                   const wb = data.whaleBias || 0;
                   const isUpDownMarket = /up\s+or\s+down|updown|up-or-down/i.test(marketName || '');
+                  const isUpDown1hOr4h = isUpDownMarket && /\b1[- ]?h\b|updown-4h|\b4[- ]?h\b/i.test(marketName || '');
                   const posLabel = isUpDownMarket ? 'UP' : 'YES';
                   const negLabel = isUpDownMarket ? 'DOWN' : 'NO';
                   const biasLabel = (v: number) => v > 0.01 ? posLabel : v < -0.01 ? negLabel : 'FLAT';
                   const biasColor = (v: number) => v > 0.01 ? 'text-green-400' : v < -0.01 ? 'text-red-400' : 'text-gray-500';
                   const barFor = (v: number) => Math.max(2, Math.min(98, 50 + v * 50));
                   const live = (data as any).liveBias || 0;
-                  const liveWin = (data as any).liveBiasWindowMin || 30;
+                  const liveWin = isUpDown1hOr4h ? 5 : ((data as any).liveBiasWindowMin || 30);
                   const proven = (data as any).provenSMS || 0;
                   const crowd = (data as any).crowdBias || 0;
                   const livePct = live * 100;

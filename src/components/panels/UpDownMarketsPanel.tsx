@@ -283,7 +283,7 @@ export function UpDownMarketsPanel() {
               onChange={(e) => setShowTargetColumn(e.target.checked)}
               className="accent-blue-500 rounded"
             />
-            <span>Show Target:</span>
+            <span>Show Target</span>
           </label>
           <label
             className="flex items-center gap-1 cursor-default text-[10px] text-gray-300 select-none"
@@ -296,7 +296,7 @@ export function UpDownMarketsPanel() {
               onChange={(e) => setShowNextMarketColumn(e.target.checked)}
               className="accent-blue-500 rounded"
             />
-            <span>Next Market:</span>
+            <span>Next Market</span>
           </label>
           <label
             className="flex items-center gap-1 cursor-default text-[10px] text-gray-300 select-none"
@@ -309,7 +309,7 @@ export function UpDownMarketsPanel() {
               onChange={(e) => setShowVolumeColumn(e.target.checked)}
               className="accent-blue-500 rounded"
             />
-            <span>Volume:</span>
+            <span>Volume</span>
           </label>
         </div>
       </div>

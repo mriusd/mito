@@ -53,6 +53,9 @@ function deltaMidVsMathBg(yesMidProb: number | null, mathYesProb: number | null)
         : `rgba(239, 68, 68, ${alpha.toFixed(3)})`,
   };
 }
+function formatBadgePriceCents(v: number): string {
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
 
 function getCurrentAndNext(assetMarkets: Record<string, Market[]>, tf: string): { current: Market | null; next: Market | null } {
   const now = Date.now();
@@ -321,10 +324,10 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                             const noSell = noOrders.filter(o => o.side === 'SELL');
                             return (
                               <>
-                                {yesBuy.length > 0 && <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">{(Math.max(...yesBuy.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
-                                {yesSell.length > 0 && <div className={`absolute ${yesBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`} style={{ color: '#78350f' }}>{(Math.min(...yesSell.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
-                                {noBuy.length > 0 && <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">{(Math.max(...noBuy.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
-                                {noSell.length > 0 && <div className={`absolute ${noBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>{(Math.min(...noSell.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
+                                {yesBuy.length > 0 && <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">{formatBadgePriceCents(Math.max(...yesBuy.map(o => parseFloat(o.price || '0') * 100)))}</div>}
+                                {yesSell.length > 0 && <div className={`absolute ${yesBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`} style={{ color: '#78350f' }}>{formatBadgePriceCents(Math.min(...yesSell.map(o => parseFloat(o.price || '0') * 100)))}</div>}
+                                {noBuy.length > 0 && <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">{formatBadgePriceCents(Math.max(...noBuy.map(o => parseFloat(o.price || '0') * 100)))}</div>}
+                                {noSell.length > 0 && <div className={`absolute ${noBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>{formatBadgePriceCents(Math.min(...noSell.map(o => parseFloat(o.price || '0') * 100)))}</div>}
                               </>
                             );
                           })()}

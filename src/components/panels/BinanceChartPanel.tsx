@@ -1219,7 +1219,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
         className="panel-header shrink-0 mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 cursor-grab"
       >
         {assetOverride && compact ? (
-          <div ref={chartTitleRef} className={`${chartHeaderStackControls ? 'w-full shrink-0 basis-full' : 'flex-1'} min-w-0`} />
+          <div ref={chartTitleRef} className="hidden" />
         ) : (
           <h3
             ref={chartTitleRef}

@@ -110,6 +110,7 @@ export function Sidebar() {
       crowdBias: entry.crowdBias,
       liveBias: entry.liveBias,
       liveBiasWindowMin: entry.liveBiasWindowMin,
+      concentration: entry.concentration,
     };
   }, [selectedMarket, marketLookup]);
   const sharesInExistenceDisplay = useMemo(() => {
@@ -1378,6 +1379,26 @@ export function Sidebar() {
                       <div className="bg-pink-500/70 h-full transition-all flex-1" />
                     </div>
                   </div>
+                  {(() => {
+                    const conc = liveShareStats?.concentration ?? 0;
+                    const concPct = Math.max(0, Math.min(100, conc * 100));
+                    const r = Math.round(Math.min(255, conc * 2 * 255));
+                    const g = Math.round(Math.min(255, (1 - conc) * 2 * 255));
+                    const barColor = `rgb(${r}, ${g}, 0)`;
+                    return (
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[9px] text-gray-500">Concentration</span>
+                          <span className="text-[10px] font-bold" style={{ color: barColor }}>
+                            {concPct.toFixed(0)}%
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                          <div className="h-full transition-all rounded-full" style={{ width: `${concPct}%`, backgroundColor: barColor }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}

@@ -76,6 +76,9 @@ export function useBidAskWS() {
               if (typeof item.liveBiasWindowMin === 'number' && item.liveBiasWindowMin > 0) {
                 next.liveBiasWindowMin = item.liveBiasWindowMin;
               }
+              if (typeof item.concentration === 'number' && Number.isFinite(item.concentration)) {
+                next.concentration = item.concentration;
+              }
               patch[item.assetId] = next;
               changed = true;
             }

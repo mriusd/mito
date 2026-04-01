@@ -827,7 +827,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                           if (bias == null) return null;
                           const barPct = Math.max(2, Math.min(98, 50 + bias * 50));
                           const side = bias > 0.01 ? posLabel : bias < -0.01 ? negLabel : 'EVEN';
-                          const color = bias > 0.01 ? 'text-green-400' : bias < -0.01 ? 'text-red-400' : 'text-gray-500';
+                          const color = bias > 0.01 ? 'text-cyan-300' : bias < -0.01 ? 'text-pink-300' : 'text-gray-500';
                           return (
                             <div>
                               <div className="flex items-center justify-between mb-1">
@@ -835,12 +835,12 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                 <span className={`text-[11px] font-bold ${color}`}>{side}</span>
                               </div>
                               <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
-                                <div className="bg-green-500/70 h-full transition-all" style={{ width: `${barPct}%` }} />
-                                <div className="bg-red-500/70 h-full transition-all flex-1" />
+                                <div className="bg-cyan-400/75 h-full transition-all" style={{ width: `${barPct}%` }} />
+                                <div className="bg-pink-400/75 h-full transition-all flex-1" />
                               </div>
                               <div className="flex justify-between mt-0.5 text-[9px] text-gray-500">
-                                {yesWr != null && <span>{posLabel} WR: <span className={yesWr >= 0.5 ? 'text-green-400' : 'text-red-400'}>{(yesWr * 100).toFixed(0)}%</span></span>}
-                                {noWr != null && <span>{negLabel} WR: <span className={noWr >= 0.5 ? 'text-green-400' : 'text-red-400'}>{(noWr * 100).toFixed(0)}%</span></span>}
+                                {yesWr != null && <span>{posLabel} WR: <span className={yesWr >= 0.5 ? 'text-cyan-300' : 'text-pink-300'}>{(yesWr * 100).toFixed(0)}%</span></span>}
+                                {noWr != null && <span>{negLabel} WR: <span className={noWr >= 0.5 ? 'text-cyan-300' : 'text-pink-300'}>{(noWr * 100).toFixed(0)}%</span></span>}
                               </div>
                             </div>
                           );

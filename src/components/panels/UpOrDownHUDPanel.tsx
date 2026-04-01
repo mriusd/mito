@@ -402,8 +402,8 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                                   className={`absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-0 flex${winnerBiasBarFlash ? ' updown-winner-bias-bar-flash' : ''}`}
                                   title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
                                 >
-                                  <div className="bg-green-500/70 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
-                                  <div className="bg-red-500/70 h-full flex-1 min-w-0" />
+                                  <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
+                                  <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
                                 </div>
                                 {/* Market YES probability — stripe above winner bar (inset left for concentration) */}
                                 {currentYes != null && Number.isFinite(currentYes) ? (
@@ -430,7 +430,11 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                       </>
                     );
                   })()}
-                  <td className="px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap cursor-pointer hover:brightness-125 relative border-b border-gray-700/50">
+                  <td
+                    className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap cursor-pointer hover:brightness-125 relative border-b border-gray-700/50 ${
+                      selectedMarket?.id === next?.id ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''
+                    }`}
+                  >
                     {next ? (
                       <MarketCellMidRow
                         className="text-gray-400"

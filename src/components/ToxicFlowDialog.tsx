@@ -176,17 +176,17 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
           <tr className="text-gray-500 border-b border-gray-700">
             <th className="text-left py-1 px-1">#</th>
             <th className="text-left px-1">Wallet</th>
-            <th className="text-right px-1">B.Yes</th>
-            <th className="text-right px-1">S.Yes</th>
-            <th className="text-right px-1">B.No</th>
-            <th className="text-right px-1">S.No</th>
-            <th className="text-right px-1">Net Y</th>
-            <th className="text-right px-1">Net N</th>
-            <th className="text-right px-1">Net</th>
+            <th className="text-right px-1 bg-green-900/15">B.Yes</th>
+            <th className="text-right px-1 bg-green-900/15">S.Yes</th>
+            <th className="text-right px-1 bg-green-900/15">Net Y</th>
+            <th className="text-right px-1 bg-red-900/15">B.No</th>
+            <th className="text-right px-1 bg-red-900/15">S.No</th>
+            <th className="text-right px-1 bg-red-900/15">Net N</th>
             <th className="text-right px-1">USDC In</th>
             <th className="text-right px-1">% Shares</th>
             <th className="text-right px-1">PnL</th>
             <th className="text-right px-1">Trades</th>
+            <th className="text-right px-1">Net</th>
             <th className="text-right px-1">Bias</th>
           </tr>
         </thead>
@@ -212,17 +212,17 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                     onOpenWallet={onOpenWallet}
                   />
                 </td>
-                <td className="text-right px-1 text-green-400">{w.boughtYes > 0 ? w.boughtYes.toFixed(1) : '-'}</td>
-                <td className="text-right px-1 text-green-300/60">{w.soldYes > 0 ? w.soldYes.toFixed(1) : '-'}</td>
-                <td className="text-right px-1 text-red-400">{w.boughtNo > 0 ? w.boughtNo.toFixed(1) : '-'}</td>
-                <td className="text-right px-1 text-red-300/60">{w.soldNo > 0 ? w.soldNo.toFixed(1) : '-'}</td>
-                <td className={`text-right px-1 font-bold ${nYColor}`}>{nY.toFixed(1)}</td>
-                <td className={`text-right px-1 font-bold ${nNColor}`}>{nN.toFixed(1)}</td>
-                <td className={`text-right px-1 font-bold ${(w.net || 0) > 0.001 ? 'text-green-400' : (w.net || 0) < -0.001 ? 'text-red-400' : 'text-gray-500'}`}>{(w.net || 0) > 0 ? '+' : ''}{(w.net || 0).toFixed(1)}</td>
+                <td className="text-right px-1 text-green-400 bg-green-900/10">{w.boughtYes > 0 ? w.boughtYes.toFixed(1) : '-'}</td>
+                <td className="text-right px-1 text-red-400 bg-green-900/10">{w.soldYes > 0 ? w.soldYes.toFixed(1) : '-'}</td>
+                <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{nY.toFixed(1)}</td>
+                <td className="text-right px-1 text-green-400 bg-red-900/10">{w.boughtNo > 0 ? w.boughtNo.toFixed(1) : '-'}</td>
+                <td className="text-right px-1 text-red-300/60 bg-red-900/10">{w.soldNo > 0 ? w.soldNo.toFixed(1) : '-'}</td>
+                <td className={`text-right px-1 font-bold ${nNColor} bg-red-900/10`}>{nN.toFixed(1)}</td>
                 <td className="text-right px-1 text-yellow-400">${w.usdcIn.toFixed(2)}</td>
                 <td className="text-right px-1 text-cyan-300">{sharesPct > 0 ? `${sharesPct.toFixed(1)}%` : '-'}</td>
                 <td className={`text-right px-1 font-bold ${(w.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{(w.pnl || 0) >= 0 ? '+' : ''}{(w.pnl || 0).toFixed(2)}</td>
                 <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
+                <td className={`text-right px-1 font-bold ${(w.net || 0) > 0.001 ? 'text-green-400' : (w.net || 0) < -0.001 ? 'text-red-400' : 'text-gray-500'}`}>{(w.net || 0) > 0 ? '+' : ''}{(w.net || 0).toFixed(1)}</td>
                 <td className={`text-right px-1 ${biasColor}`}>{(bias * 100).toFixed(0)}%</td>
               </tr>
             );

@@ -88,6 +88,15 @@ export function useBidAskWS() {
               if (typeof item.winnerBiasNoWR === 'number' && Number.isFinite(item.winnerBiasNoWR)) {
                 next.winnerBiasNoWR = item.winnerBiasNoWR;
               }
+              if (typeof item.winBiasShares === 'number' && Number.isFinite(item.winBiasShares)) {
+                next.winBiasShares = item.winBiasShares;
+              }
+              if (typeof item.winBiasSharesYes === 'number' && Number.isFinite(item.winBiasSharesYes)) {
+                next.winBiasSharesYes = item.winBiasSharesYes;
+              }
+              if (typeof item.winBiasSharesNo === 'number' && Number.isFinite(item.winBiasSharesNo)) {
+                next.winBiasSharesNo = item.winBiasSharesNo;
+              }
               patch[item.assetId] = next;
               changed = true;
             }

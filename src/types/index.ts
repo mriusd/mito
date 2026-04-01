@@ -42,6 +42,9 @@ export interface Market {
   winnerBias?: number;
   winnerBiasYesWR?: number;
   winnerBiasNoWR?: number;
+  winBiasShares?: number;
+  winBiasSharesYes?: number;
+  winBiasSharesNo?: number;
   // B-S computed values from server
   bs1?: number;
   bs2?: number;

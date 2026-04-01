@@ -114,6 +114,9 @@ export function Sidebar() {
       winnerBias: entry.winnerBias,
       winnerBiasYesWR: entry.winnerBiasYesWR,
       winnerBiasNoWR: entry.winnerBiasNoWR,
+      winBiasShares: entry.winBiasShares,
+      winBiasSharesYes: entry.winBiasSharesYes,
+      winBiasSharesNo: entry.winBiasSharesNo,
     };
   }, [selectedMarket, marketLookup]);
   const sharesInExistenceDisplay = useMemo(() => {
@@ -1360,6 +1363,9 @@ export function Sidebar() {
               const wb = liveShareStats?.winnerBias ?? 0;
               const yesWR = liveShareStats?.winnerBiasYesWR ?? 0;
               const noWR = liveShareStats?.winnerBiasNoWR ?? 0;
+              const wbs = liveShareStats?.winBiasShares ?? 0;
+              const yesWRs = liveShareStats?.winBiasSharesYes ?? 0;
+              const noWRs = liveShareStats?.winBiasSharesNo ?? 0;
 
               const MiniBar = ({ label, value, leftColor, rightColor, tooltip }: { label: string; value: number; leftColor: string; rightColor: string; tooltip?: string }) => (
                 <div className="flex items-center gap-1 min-w-0" title={tooltip}>
@@ -1378,7 +1384,8 @@ export function Sidebar() {
                 <div className="mt-1 space-y-0.5">
                   <MiniBar label="Book" value={book} leftColor="bg-emerald-500/70" rightColor="bg-amber-500/70" tooltip={`Book Imbalance: ${(book * 100).toFixed(1)}%`} />
                   <MiniBar label={`Flow${liveWin}m`} value={live} leftColor="bg-cyan-500/70" rightColor="bg-pink-500/70" tooltip={`Live Flow (${liveWin}m): ${(live * 100).toFixed(1)}%`} />
-                  <MiniBar label="Winner" value={wb} leftColor="bg-green-500/70" rightColor="bg-red-500/70" tooltip={`Winner Bias: ${posLabel} WR ${(yesWR * 100).toFixed(0)}% / ${negLabel} WR ${(noWR * 100).toFixed(0)}%`} />
+                  <MiniBar label="Win$" value={wb} leftColor="bg-green-500/70" rightColor="bg-red-500/70" tooltip={`Winner Bias (USDC): ${posLabel} WR ${(yesWR * 100).toFixed(0)}% / ${negLabel} WR ${(noWR * 100).toFixed(0)}%`} />
+                  <MiniBar label="WinS" value={wbs} leftColor="bg-green-500/70" rightColor="bg-red-500/70" tooltip={`Winner Bias (Shares): ${posLabel} WR ${(yesWRs * 100).toFixed(0)}% / ${negLabel} WR ${(noWRs * 100).toFixed(0)}%`} />
                   <div className="flex items-center gap-1 min-w-0" title={`Concentration: ${concPct.toFixed(0)}%`}>
                     <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate">Conc</span>
                     <div className="h-[5px] bg-gray-700 rounded-full overflow-hidden flex-1 min-w-0">

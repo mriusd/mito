@@ -274,7 +274,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                     const winnerBiasBarFlash = wbPct > 75 || wbPct < 25;
                     return (
                       <>
-                        <td className="px-1 py-1 align-middle border-l border-r border-solid border-gray-700 text-center text-[9px] whitespace-nowrap text-gray-300 bg-gray-900/50 border-b border-gray-700/50 relative overflow-hidden pb-0.5">
+                        <td className="px-1 py-1 align-middle border-l border-r border-solid border-gray-700 text-center text-[9px] whitespace-nowrap text-gray-300 bg-gray-900/50 border-b border-gray-700/50">
                           <div className="flex flex-row items-center justify-center gap-1 leading-none">
                             <span className={`font-medium tabular-nums ${titleColor}`}>
                               {strike != null ? strike.toLocaleString(undefined, { minimumFractionDigits: TARGET_STRIKE_DECIMALS[asset], maximumFractionDigits: TARGET_STRIKE_DECIMALS[asset] }) : '-'}
@@ -303,18 +303,9 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                               </div>
                             )}
                           </div>
-                          {current && yesTokenId && (
-                            <div
-                              className={`absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-0 flex${winnerBiasBarFlash ? ' updown-winner-bias-bar-flash' : ''}`}
-                              title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
-                            >
-                              <div className="bg-green-500/70 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
-                              <div className="bg-red-500/70 h-full flex-1 min-w-0" />
-                            </div>
-                          )}
                         </td>
                         <td
-                          className={`px-0.5 py-1 text-center whitespace-nowrap border-l border-r border-solid border-gray-700 relative cursor-pointer hover:brightness-125 border-b border-gray-700/50 ${
+                          className={`px-0.5 py-1 text-center whitespace-nowrap border-l border-r border-solid border-gray-700 relative cursor-pointer hover:brightness-125 border-b border-gray-700/50 pb-1 ${
                             selectedMarket?.id === current?.id ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''
                           }`}
                           style={quoteDeltaBg}
@@ -406,10 +397,18 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                                     style={{ height: `${concPct}%`, backgroundColor: concColor }}
                                   />
                                 </div>
-                                {/* Market YES probability — bottom bar (inset left for concentration strip) */}
+                                {/* Winners $ (USDC bias) — horizontal bottom of market cell (outer stripe) */}
+                                <div
+                                  className={`absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-0 flex${winnerBiasBarFlash ? ' updown-winner-bias-bar-flash' : ''}`}
+                                  title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
+                                >
+                                  <div className="bg-green-500/70 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
+                                  <div className="bg-red-500/70 h-full flex-1 min-w-0" />
+                                </div>
+                                {/* Market YES probability — stripe above winner bar (inset left for concentration) */}
                                 {currentYes != null && Number.isFinite(currentYes) ? (
                                   <div
-                                    className="absolute bottom-0 left-[2px] right-0 h-[2px] pointer-events-none z-0 flex"
+                                    className="absolute bottom-[2px] left-[2px] right-0 h-[2px] pointer-events-none z-0 flex"
                                     title={`Market YES ~${(currentYes * 100).toFixed(1)}¢`}
                                   >
                                     <div
@@ -420,7 +419,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                                   </div>
                                 ) : (
                                   <div
-                                    className="absolute bottom-0 left-[2px] right-0 h-[2px] pointer-events-none z-0 bg-gray-700/70"
+                                    className="absolute bottom-[2px] left-[2px] right-0 h-[2px] pointer-events-none z-0 bg-gray-700/70"
                                     title="No YES mid"
                                   />
                                 )}

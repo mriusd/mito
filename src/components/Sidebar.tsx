@@ -291,6 +291,20 @@ export function Sidebar() {
         matchTime: '',
       }));
   }, [liveTradesSource, trades, marketTokenIds, onchainSidebarTrades]);
+  const myTradesDisplay = useMemo(() => myTrades.slice(0, 20), [myTrades]);
+  const myTradesPnl = useMemo(() => {
+    let totalSellCost = 0;
+    let totalBuyCost = 0;
+    for (const trade of myTradesDisplay) {
+      const rawPrice = parseFloat(trade.price);
+      const size = parseFloat(trade.size);
+      if (!Number.isFinite(rawPrice) || !Number.isFinite(size)) continue;
+      const cost = rawPrice * size;
+      if (trade.side === 'SELL') totalSellCost += cost;
+      else if (trade.side === 'BUY') totalBuyCost += cost;
+    }
+    return totalSellCost - totalBuyCost;
+  }, [myTradesDisplay]);
 
   // Build set of user order prices for sidebar OB highlighting
   const sidebarUserBidPrices = useMemo(() => {
@@ -2137,30 +2151,47 @@ export function Sidebar() {
 
           {/* My Trades */}
           <div className="sidebar-section">
-            <div className="text-xs text-gray-400 mb-2">My Trades</div>
-            <div className="space-y-1 text-xs max-h-48 overflow-y-auto">
-              {myTrades.length === 0 ? (
+            <div className="mb-2 flex items-center justify-between text-xs text-gray-400">
+              <span>My Trades</span>
+              <span className={myTradesPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                PnL {myTradesPnl >= 0 ? '+' : ''}${Math.abs(myTradesPnl).toFixed(2)}
+              </span>
+            </div>
+            <div className="max-h-48 overflow-y-auto text-[11px]">
+              {myTradesDisplay.length === 0 ? (
                 <div className="text-gray-600">No trades</div>
               ) : (
-                myTrades.slice(0, 20).map((trade, i) => {
+                <table className="w-full table-fixed border-separate border-spacing-y-0.5">
+                  <thead>
+                    <tr className="text-[10px] uppercase tracking-wide text-gray-500">
+                      <th className="text-left font-medium">Dir</th>
+                      <th className="text-left font-medium">Side</th>
+                      <th className="text-right font-medium">Size</th>
+                      <th className="text-right font-medium">Price</th>
+                      <th className="text-right font-medium">Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                {myTradesDisplay.map((trade, i) => {
                   const outcome = getTokenOutcome(trade.asset_id || trade.token_id || '', marketLookup);
+                  const sideLabel = isUpDownMarket ? (outcome === 'YES' ? 'UP' : 'DOWN') : outcome;
                   const rawPrice = parseFloat(trade.price);
                   const size = parseFloat(trade.size);
                   const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
                   const side = isClaim ? 'CLAIM' : trade.side;
-                  const ts = (trade as any).timestamp || (trade as any).created_at || (trade as any).matchTime;
+                  const cost = Number.isFinite(rawPrice) && Number.isFinite(size) ? rawPrice * size : 0;
                   return (
-                    <div key={i} className="flex justify-between">
-                      <span>
-                        <span className={side === 'BUY' ? 'text-green-400' : side === 'CLAIM' ? 'text-blue-400' : 'text-red-400'}>{side}</span>
-                        {' '}{outcome} {size.toFixed(0)} @{(rawPrice * 100).toFixed(1)}¢
-                      </span>
-                      <span className="text-gray-600 text-[9px]">
-                        {ts ? new Date(ts).toLocaleTimeString() : ''}
-                      </span>
-                    </div>
+                    <tr key={i} className="text-gray-300">
+                      <td className={`py-0.5 ${side === 'BUY' ? 'text-emerald-400' : side === 'CLAIM' ? 'text-blue-400' : 'text-rose-400'}`}>{side || '-'}</td>
+                      <td className={outcome === 'YES' ? 'py-0.5 text-emerald-400' : 'py-0.5 text-rose-400'}>{sideLabel}</td>
+                      <td className="py-0.5 text-right">{Number.isFinite(size) ? size.toFixed(2) : '-'}</td>
+                      <td className="py-0.5 text-right">{Number.isFinite(rawPrice) ? `${(rawPrice * 100).toFixed(1)}¢` : '-'}</td>
+                      <td className="py-0.5 text-right">${cost.toFixed(2)}</td>
+                    </tr>
                   );
-                })
+                })}
+                  </tbody>
+                </table>
               )}
             </div>
           </div>

@@ -738,7 +738,9 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     if (!hudGateSupportLinesByExchange) return true;
     if (priceSource === 'chainlink') {
       const cl = chainlinkPrices[asset];
-      return cl != null && Number.isFinite(cl) && cl > 0;
+      if (cl != null && Number.isFinite(cl) && cl > 0) return true;
+      // Same fallback as Up/Down 5m/15m rows: Binance spot when Chainlink feed is missing
+      return livePrice > 0 && Number.isFinite(livePrice);
     }
     return livePrice > 0 && Number.isFinite(livePrice);
   }, [hudGateSupportLinesByExchange, priceSource, chainlinkPrices, asset, livePrice]);

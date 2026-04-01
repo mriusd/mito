@@ -185,50 +185,56 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             <th className="text-right px-1 bg-red-900/15">S.No</th>
             <th className="text-right px-1 bg-red-900/15">Net N</th>
             <th className="text-right px-1">USDC In</th>
-            <th className="text-right px-1">% Shares</th>
             <th className="text-right px-1">PnL</th>
             <th className="text-right px-1">Trades</th>
             <th className="text-right px-1">Net</th>
+            <th className="text-right px-1">%</th>
+            <th className="text-right px-1">Cum%</th>
             <th className="text-right px-1">Bias</th>
           </tr>
         </thead>
         <tbody>
-          {wallets.map((w, i) => {
-            const totalVol = (w.boughtYes || 0) + (w.soldYes || 0) + (w.boughtNo || 0) + (w.soldNo || 0);
-            const bias = totalVol > 0 ? Math.abs(w.net || 0) / totalVol : 0;
-            const biasColor = bias > 0.5 ? 'text-yellow-400' : bias > 0.3 ? 'text-orange-400' : 'text-gray-400';
-            const nY = w.netYes ?? ((w.boughtYes || 0) - (w.soldYes || 0));
-            const nN = w.netNo ?? ((w.boughtNo || 0) - (w.soldNo || 0));
-            const sharesPct = totalShares && totalShares > 0 ? (Math.abs(w.net || 0) / totalShares) * 100 : 0;
-            const nYColor = nY > 0.001 ? 'text-green-400' : nY < -0.001 ? 'text-red-400' : 'text-gray-500';
-            const nNColor = nN > 0.001 ? 'text-green-400' : nN < -0.001 ? 'text-red-400' : 'text-gray-500';
-            return (
-              <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
-                <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
-                <td className="px-1">
-                  <WalletLink
-                    wallet={w.wallet}
-                    netShares={w.net}
-                    winRate={w.winRate}
-                    winLossTotal={w.winLossTotal}
-                    onOpenWallet={onOpenWallet}
-                  />
-                </td>
-                <td className="text-right px-1 text-green-400 bg-green-900/10">{w.boughtYes > 0 ? fmtInt(w.boughtYes) : '-'}</td>
-                <td className="text-right px-1 text-red-400 bg-green-900/10">{w.soldYes > 0 ? fmtInt(w.soldYes) : '-'}</td>
-                <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{fmtSignedInt(nY)}</td>
-                <td className="text-right px-1 text-green-400 bg-red-900/10">{w.boughtNo > 0 ? fmtInt(w.boughtNo) : '-'}</td>
-                <td className="text-right px-1 text-red-300/60 bg-red-900/10">{w.soldNo > 0 ? fmtInt(w.soldNo) : '-'}</td>
-                <td className={`text-right px-1 font-bold ${nNColor} bg-red-900/10`}>{fmtSignedInt(nN)}</td>
-                <td className="text-right px-1 text-yellow-400">${fmtInt(w.usdcIn)}</td>
-                <td className="text-right px-1 text-cyan-300">{sharesPct > 0 ? `${sharesPct.toFixed(1)}%` : '-'}</td>
-                <td className={`text-right px-1 font-bold ${(w.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtSignedInt(w.pnl || 0)}</td>
-                <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
-                <td className={`text-right px-1 font-bold ${(w.net || 0) > 0.001 ? 'text-green-400' : (w.net || 0) < -0.001 ? 'text-red-400' : 'text-gray-500'}`}>{fmtSignedInt(w.net || 0)}</td>
-                <td className={`text-right px-1 ${biasColor}`}>{(bias * 100).toFixed(0)}%</td>
-              </tr>
-            );
-          })}
+          {(() => {
+            let cumSharesPct = 0;
+            return wallets.map((w, i) => {
+              const totalVol = (w.boughtYes || 0) + (w.soldYes || 0) + (w.boughtNo || 0) + (w.soldNo || 0);
+              const bias = totalVol > 0 ? Math.abs(w.net || 0) / totalVol : 0;
+              const biasColor = bias > 0.5 ? 'text-yellow-400' : bias > 0.3 ? 'text-orange-400' : 'text-gray-400';
+              const nY = w.netYes ?? ((w.boughtYes || 0) - (w.soldYes || 0));
+              const nN = w.netNo ?? ((w.boughtNo || 0) - (w.soldNo || 0));
+              const sharesPct = totalShares && totalShares > 0 ? (Math.abs(w.net || 0) / totalShares) * 100 : 0;
+              cumSharesPct += sharesPct;
+              const nYColor = nY > 0.001 ? 'text-green-400' : nY < -0.001 ? 'text-red-400' : 'text-gray-500';
+              const nNColor = nN > 0.001 ? 'text-green-400' : nN < -0.001 ? 'text-red-400' : 'text-gray-500';
+              return (
+                <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
+                  <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
+                  <td className="px-1">
+                    <WalletLink
+                      wallet={w.wallet}
+                      netShares={w.net}
+                      winRate={w.winRate}
+                      winLossTotal={w.winLossTotal}
+                      onOpenWallet={onOpenWallet}
+                    />
+                  </td>
+                  <td className="text-right px-1 text-green-400 bg-green-900/10">{w.boughtYes > 0 ? fmtInt(w.boughtYes) : '-'}</td>
+                  <td className="text-right px-1 text-red-400 bg-green-900/10">{w.soldYes > 0 ? fmtInt(w.soldYes) : '-'}</td>
+                  <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{fmtSignedInt(nY)}</td>
+                  <td className="text-right px-1 text-green-400 bg-red-900/10">{w.boughtNo > 0 ? fmtInt(w.boughtNo) : '-'}</td>
+                  <td className="text-right px-1 text-red-300/60 bg-red-900/10">{w.soldNo > 0 ? fmtInt(w.soldNo) : '-'}</td>
+                  <td className={`text-right px-1 font-bold ${nNColor} bg-red-900/10`}>{fmtSignedInt(nN)}</td>
+                  <td className="text-right px-1 text-yellow-400">${fmtInt(w.usdcIn)}</td>
+                  <td className={`text-right px-1 font-bold ${(w.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtSignedInt(w.pnl || 0)}</td>
+                  <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
+                  <td className={`text-right px-1 font-bold ${(w.net || 0) > 0.001 ? 'text-green-400' : (w.net || 0) < -0.001 ? 'text-red-400' : 'text-gray-500'}`}>{fmtSignedInt(w.net || 0)}</td>
+                  <td className="text-right px-1 text-cyan-300">{sharesPct > 0 ? `${sharesPct.toFixed(1)}%` : '-'}</td>
+                  <td className="text-right px-1 text-cyan-200/70">{cumSharesPct > 0 ? `${cumSharesPct.toFixed(1)}%` : '-'}</td>
+                  <td className={`text-right px-1 ${biasColor}`}>{(bias * 100).toFixed(0)}%</td>
+                </tr>
+              );
+            });
+          })()}
         </tbody>
       </table>
     </div>

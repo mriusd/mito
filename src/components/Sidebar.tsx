@@ -161,6 +161,9 @@ export function Sidebar() {
   const [cancellingOrderIds, setCancellingOrderIds] = useState<Set<string>>(new Set());
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
   const [toxicDialogOpen, setToxicDialogOpen] = useState(false);
+  const [crossingConfirmOpen, setCrossingConfirmOpen] = useState(false);
+  const [crossingConfirmMessage, setCrossingConfirmMessage] = useState('');
+  const crossingConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
   // Inline signing step display when dialog is hidden
   const [signingState, setSigningState] = useState(signingDialog.getState());
   useEffect(() => signingDialog.subscribe(setSigningState), []);
@@ -202,6 +205,20 @@ export function Sidebar() {
   const onchainWallet = liveTradesSource === 'onchain' ? proxyWallet : null;
   const { trades: onchainLiveTrades, walletPositions: wsPositions, walletTrades: wsTrades, refreshWallet } = useOnchainTradesWS(obTokenId, onchainWallet);
   const [displayLiveTrades, setDisplayLiveTrades] = useState(onchainLiveTrades);
+
+  const requestCrossingConfirm = useCallback((bestPriceCents: number) => {
+    return new Promise<boolean>((resolve) => {
+      crossingConfirmResolver.current = resolve;
+      setCrossingConfirmMessage(`Current best price is ${bestPriceCents.toFixed(1)}¢, your order will be instantly executed`);
+      setCrossingConfirmOpen(true);
+    });
+  }, []);
+  const closeCrossingConfirm = useCallback((confirmed: boolean) => {
+    setCrossingConfirmOpen(false);
+    const resolver = crossingConfirmResolver.current;
+    crossingConfirmResolver.current = null;
+    if (resolver) resolver(confirmed);
+  }, []);
 
   const [liveOrderbookExpanded, setLiveOrderbookExpanded] = useState(() => localStorage.getItem('sidebar-live-orderbook-expanded') !== 'false');
   const [liveTradesExpanded, setLiveTradesExpanded] = useState(() => {
@@ -566,6 +583,17 @@ export function Sidebar() {
     } else {
       price = parseFloat(orderPrice) / 100;
       if (!price) return;
+      const orderPriceCents = parseFloat(orderPrice);
+      const bestBidCents = displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
+      const bestAskCents = displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
+      const crossesBook =
+        (orderSide === 'SELL' && bestBidCents !== null && orderPriceCents <= bestBidCents) ||
+        (orderSide === 'BUY' && bestAskCents !== null && orderPriceCents >= bestAskCents);
+      if (crossesBook) {
+        const bestPrice = orderSide === 'SELL' ? bestBidCents : bestAskCents;
+        const confirmed = await requestCrossingConfirm(bestPrice ?? 0);
+        if (!confirmed) return;
+      }
     }
 
     let expiration: number | undefined;
@@ -672,6 +700,17 @@ export function Sidebar() {
       }
     }
 
+    const bestBidCents = displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
+    const bestAskCents = displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
+    const crossesBook =
+      (btn.side === 'SELL' && bestBidCents !== null && btn.priceCents <= bestBidCents) ||
+      (btn.side === 'BUY' && bestAskCents !== null && btn.priceCents >= bestAskCents);
+    if (crossesBook) {
+      const bestPrice = btn.side === 'SELL' ? bestBidCents : bestAskCents;
+      const confirmed = await requestCrossingConfirm(bestPrice ?? 0);
+      if (!confirmed) return;
+    }
+
     const result = await placeOrder({
       tokenId,
       side: btn.side,
@@ -728,9 +767,7 @@ export function Sidebar() {
       (side === 'BUY' && bestAskCents !== null && newPriceCents >= bestAskCents);
     if (crossesBook) {
       const bestPrice = side === 'SELL' ? bestBidCents : bestAskCents;
-      const confirmed = window.confirm(
-        `Current best price is ${(bestPrice ?? 0).toFixed(1)}¢, your order will be instantly executed`
-      );
+      const confirmed = await requestCrossingConfirm(bestPrice ?? 0);
       if (!confirmed) {
         setEditingOrderId(null);
         return;
@@ -1286,7 +1323,7 @@ export function Sidebar() {
                 <div className="tabular-nums font-bold text-yellow-300">{holdersCountDisplay}</div>
               </button>
             </div>
-            {/* Live Bias + Smart Money + Crowd bars */}
+            {/* Live Bias bars */}
             {(() => {
               const posLabel = isUpDownMarket ? 'UP' : 'YES';
               const negLabel = isUpDownMarket ? 'DOWN' : 'NO';
@@ -1296,11 +1333,7 @@ export function Sidebar() {
 
               const live = liveShareStats?.liveBias ?? 0;
               const liveWin = liveShareStats?.liveBiasWindowMin || 30;
-              const proven = liveShareStats?.provenSMS ?? 0;
-              const crowd = liveShareStats?.crowdBias ?? 0;
               const livePct = live * 100;
-              const provenPct = proven * 100;
-              const crowdPct = crowd * 100;
 
               const bidTotal = displayBids.reduce((s, l) => s + parseFloat(l.size), 0);
               const askTotal = displayAsks.reduce((s, l) => s + parseFloat(l.size), 0);
@@ -1334,32 +1367,6 @@ export function Sidebar() {
                     <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden flex">
                       <div className="bg-cyan-500/70 h-full transition-all" style={{ width: `${barFor(live)}%` }} />
                       <div className="bg-pink-500/70 h-full transition-all flex-1" />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[9px] text-gray-500">Smart Money</span>
-                      <span className={`text-[10px] font-bold ${colorFor(proven)}`}>
-                        {labelFor(proven)}
-                        <span className="text-[9px] font-normal ml-0.5">({provenPct > 0 ? '+' : ''}{provenPct.toFixed(1)}%)</span>
-                      </span>
-                    </div>
-                    <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden flex">
-                      <div className="bg-green-500/70 h-full transition-all" style={{ width: `${barFor(proven)}%` }} />
-                      <div className="bg-red-500/70 h-full transition-all flex-1" />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[9px] text-gray-500">Crowd</span>
-                      <span className={`text-[10px] font-bold ${colorFor(crowd)}`}>
-                        {labelFor(crowd)}
-                        <span className="text-[9px] font-normal ml-0.5">({crowdPct > 0 ? '+' : ''}{crowdPct.toFixed(1)}%)</span>
-                      </span>
-                    </div>
-                    <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden flex">
-                      <div className="bg-blue-500/70 h-full transition-all" style={{ width: `${barFor(crowd)}%` }} />
-                      <div className="bg-orange-500/70 h-full transition-all flex-1" />
                     </div>
                   </div>
                 </div>
@@ -2075,13 +2082,29 @@ export function Sidebar() {
                           {[-10, -5, -2, -1, 1, 2, 5, 10].map((delta) => {
                             const newP = parseFloat((price * 100 + delta).toFixed(1));
                             if (newP < 0.1 || newP > 99.9) return null;
+                            const deltaClass =
+                              delta < 0
+                                ? (Math.abs(delta) >= 10
+                                    ? 'bg-red-950/85 text-red-200 hover:bg-red-900'
+                                    : Math.abs(delta) >= 5
+                                      ? 'bg-red-900/80 text-red-200 hover:bg-red-800'
+                                      : Math.abs(delta) >= 2
+                                      ? 'bg-red-900/65 text-red-200 hover:bg-red-800/80'
+                                        : 'bg-red-900/45 text-red-300 hover:bg-red-800/70')
+                                : (delta >= 10
+                                    ? 'bg-green-900/35 text-green-300 hover:bg-green-800/60'
+                                    : delta >= 5
+                                      ? 'bg-green-900/45 text-green-300 hover:bg-green-800/70'
+                                      : delta >= 2
+                                        ? 'bg-green-900/65 text-green-200 hover:bg-green-800/80'
+                                        : 'bg-green-900/80 text-green-200 hover:bg-green-700/90');
                             return (
                               <button
                                 key={delta}
                                 onClick={() => {
                                   handleReplaceOrder(order.id, newP, order.asset_id || order.token_id || '', order.side as 'BUY' | 'SELL', size);
                                 }}
-                                className={`text-[9px] px-1 py-0 rounded ${delta < 0 ? 'bg-red-900/50 text-red-300 hover:bg-red-800/70' : 'bg-green-900/50 text-green-300 hover:bg-green-800/70'}`}
+                                className={`text-[9px] px-1 py-0 rounded ${deltaClass}`}
                               >
                                 {delta > 0 ? '+' : ''}{delta}¢
                               </button>
@@ -2254,6 +2277,18 @@ export function Sidebar() {
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => { setCustomDialogOpen(false); setEditingCustomButtonId(null); }} className="px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-xs font-medium">Cancel</button>
               <button onClick={handleCreateCustomButton} className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-bold">{editingCustomButtonId ? 'Save' : 'Create'}</button>
+            </div>
+          </div>
+        </div>
+      ), document.body)}
+      {crossingConfirmOpen && typeof document !== 'undefined' && createPortal((
+        <div className="fixed inset-0 z-[61000] bg-black/70 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) closeCrossingConfirm(false); }}>
+          <div className="w-full max-w-sm mx-4 rounded-lg border border-amber-500/40 bg-gray-900 p-4">
+            <div className="text-sm font-bold text-amber-300 mb-2">Instant execution warning</div>
+            <div className="text-xs text-gray-200">{crossingConfirmMessage}</div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => closeCrossingConfirm(false)} className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-xs font-medium">Cancel</button>
+              <button onClick={() => closeCrossingConfirm(true)} className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-xs font-bold text-black">Continue</button>
             </div>
           </div>
         </div>

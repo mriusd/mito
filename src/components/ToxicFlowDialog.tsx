@@ -731,10 +731,14 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                         };
 
                         return (
-                          <>
+                          <div>
+                            <p className="text-[8px] text-gray-500 leading-snug mb-1.5">
+                              Compares <span className="text-gray-400">historical win rate</span> (top 30% of USDC or shares on each side).
+                              Table <span className="text-gray-400">PnL</span> is this market only — they often diverge.
+                            </p>
                             {renderBar('Winner Bias (top 30% USDC)', wbUsdc, yesWR, noWR)}
                             {renderBar('Winner Bias (top 30% Shares)', wbShares, yesWRs, noWRs)}
-                          </>
+                          </div>
                         );
                       })()}
 

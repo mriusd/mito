@@ -294,9 +294,21 @@ export function Sidebar() {
       .filter((p) => marketTokenIds.includes(p.tokenId))
       .map((p) => ({ asset: p.tokenId, size: p.size, avgPrice: p.avgPrice }));
   }, [liveTradesSource, positions, marketTokenIds, onchainSidebarPositions]);
-  const allMarketOrders = orders.filter((o) => marketTokenIds.includes(o.asset_id || o.token_id || o.market || ''));
-  const myOrders = allMarketOrders.filter((o) => !progOrderMap[o.id]);
-  const progOrders = allMarketOrders.filter((o) => !!progOrderMap[o.id]);
+  const { myOrders, progOrders } = useMemo(() => {
+    const all = orders.filter((o) => marketTokenIds.includes(o.asset_id || o.token_id || o.market || ''));
+    const sideRank = (side: string | undefined) => {
+      const s = (side || '').toUpperCase();
+      if (s === 'BUY') return 0;
+      if (s === 'SELL') return 1;
+      return 2;
+    };
+    const sortBuyFirst = <T extends { side?: string }>(arr: T[]) =>
+      [...arr].sort((a, b) => sideRank(a.side) - sideRank(b.side));
+    return {
+      myOrders: sortBuyFirst(all.filter((o) => !progOrderMap[o.id])),
+      progOrders: sortBuyFirst(all.filter((o) => !!progOrderMap[o.id])),
+    };
+  }, [orders, marketTokenIds, progOrderMap]);
   const myTrades = useMemo(() => {
     if (liveTradesSource !== 'onchain') {
       return trades.filter((t) => marketTokenIds.includes(t.asset_id || t.token_id || t.market || ''));

@@ -24,8 +24,12 @@ interface LiveTradeChartProps {
   endTime?: number;
   /** Slug + question + group title — default candle resolution for longer Up/Down windows */
   intervalContext?: string;
+  /** When set, wins over intervalContext parsing (e.g. sidebar Up/Down duration → kline size). */
+  defaultIntervalOverride?: string;
   chainlinkAsset?: string; // e.g. 'BTC' -> fetches chainlink_btcusd candles
   targetPrice?: number | null; // target price in USD, placed at 50% Y-axis
+  /** Hide dashed last-outcome-price line and spot (Binance/Chainlink) overlay — sidebar right chart */
+  hidePriceLines?: boolean;
 }
 
 function defaultInterval(context?: string): string {
@@ -37,7 +41,18 @@ function defaultInterval(context?: string): string {
   return '1m';
 }
 
-export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, intervalContext, chainlinkAsset, targetPrice }: LiveTradeChartProps) {
+export function LiveTradeChart({
+  trades,
+  isNo,
+  tokenId,
+  startTime,
+  endTime,
+  intervalContext,
+  defaultIntervalOverride,
+  chainlinkAsset,
+  targetPrice,
+  hidePriceLines,
+}: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
   const chainlinkCandleMapRef = useRef<Map<number, Candle>>(new Map());
@@ -46,14 +61,15 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, inte
   const [chainlinkReady, setChainlinkReady] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const chainlinkWsRef = useRef<WebSocket | null>(null);
-  const [interval, setInterval_] = useState(() => defaultInterval(intervalContext));
+  const resolvedDefaultInterval = defaultIntervalOverride || defaultInterval(intervalContext);
+  const [interval, setInterval_] = useState(() => resolvedDefaultInterval);
   const [wsTick, setWsTick] = useState(0);
   const [chainlinkTick, setChainlinkTick] = useState(0);
 
   // Reset default interval when market changes
   useEffect(() => {
-    setInterval_(defaultInterval(intervalContext));
-  }, [intervalContext, tokenId]);
+    setInterval_(defaultIntervalOverride || defaultInterval(intervalContext));
+  }, [intervalContext, defaultIntervalOverride, tokenId]);
 
   const candleMs = INTERVAL_MS[interval] || 60000;
 
@@ -149,7 +165,10 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, inte
       chainlinkWsRef.current = null;
     }
 
-    if (!chainlinkAsset) return;
+    if (!chainlinkAsset || hidePriceLines) {
+      setChainlinkReady(true);
+      return;
+    }
 
     const binanceSymbol = `${chainlinkAsset.toUpperCase()}USDT`;
     const binanceStream = `${chainlinkAsset.toLowerCase()}usdt`;
@@ -198,7 +217,7 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, inte
       }
       chainlinkWsRef.current = null;
     };
-  }, [chainlinkAsset, startTime, endTime, interval]);
+  }, [chainlinkAsset, hidePriceLines, startTime, endTime, interval]);
 
   // Trigger redraw when new trades arrive (candle data comes from kline WS, not trades)
   useEffect(() => {
@@ -309,24 +328,24 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, inte
       ctx.fillRect(cx - candleW / 2, bodyTop, candleW, bodyH);
     }
 
-    // Last price line
-    const lastPrice = candles[candles.length - 1].c;
-    const lastY = toY(lastPrice);
-    ctx.beginPath();
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([2, 2]);
-    ctx.moveTo(chartLeft, lastY);
-    ctx.lineTo(chartRight, lastY);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    if (!hidePriceLines) {
+      const lastPrice = candles[candles.length - 1].c;
+      const lastY = toY(lastPrice);
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 2]);
+      ctx.moveTo(chartLeft, lastY);
+      ctx.lineTo(chartRight, lastY);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
-    // Last price label on right
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 9px monospace';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(lastPrice.toFixed(1) + '¢', chartRight, lastY - 6);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(lastPrice.toFixed(1) + '¢', chartRight, lastY - 6);
+    }
 
     // --- Chainlink / Binance price overlay (mapped onto 0-100¢ Y-axis, target = 50¢) ---
     // X-axis is only [minT, maxT] (market window). Binance fetch keeps ~500 candles of history;
@@ -336,7 +355,7 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, inte
     const clCandles = clAll.filter(
       (c) => c.time < maxT + candleMs && c.time + candleMs > minT
     );
-    if (clCandles.length > 0 && targetPrice && targetPrice > 0) {
+    if (!hidePriceLines && clCandles.length > 0 && targetPrice && targetPrice > 0) {
       // Scale from deviation from target (include closes so spikes stay in range)
       let maxDev = 0;
       for (const c of clCandles) {
@@ -400,7 +419,7 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, inte
       ctx.textBaseline = 'middle';
       ctx.fillText('$' + clLast.toFixed(clLast > 100 ? 0 : 2), chartLeft + 2, clLastY - 6);
     }
-  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice]);
+  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines]);
 
   useEffect(() => {
     draw();

@@ -23,7 +23,6 @@ import { usePolymarketOB } from '../hooks/usePolymarketOB';
 import { useOnchainTradesWS } from '../hooks/useOnchainTradesWS';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
-import { PriceChart } from './PriceChart';
 import { LiveTradeChart } from './LiveTradeChart';
 import { ChainlinkChart } from './ChainlinkChart';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
@@ -412,6 +411,16 @@ export function Sidebar() {
     if (!isUpDownMarket || !selectedMarket) return undefined;
     return `${selectedMarket.eventSlug || ''} ${selectedMarket.question || ''} ${selectedMarket.groupItemTitle || ''}`.trim();
   }, [isUpDownMarket, selectedMarket?.eventSlug, selectedMarket?.question, selectedMarket?.groupItemTitle]);
+  /** Default kline size for right chart; 1h (explicit or implicit) → 5m — aligned with upDownStartTime window detection. */
+  const upDownKlineDefaultInterval = useMemo((): string | undefined => {
+    if (!isUpDownMarket || !selectedMarket) return undefined;
+    const combined = `${selectedMarket.eventSlug || ''} ${selectedMarket.question || ''}`;
+    if (combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i)) return '1m';
+    if (combined.match(/updown-15m/i) || combined.match(/\b15[- ]?min/i)) return '1m';
+    if (combined.match(/updown-4h/i) || combined.match(/\b4[- ]?h/i)) return '15m';
+    if (combined.match(/up-or-down-on-/i) || combined.match(/\b24[- ]?h/i)) return '15m';
+    return '5m';
+  }, [isUpDownMarket, selectedMarket?.eventSlug, selectedMarket?.question]);
   const polyPrice = usePolymarketPrice(upDownSpotUsesChainlink ? upDownAsset : null);
 
   // Compute market start time for Up or Down charts
@@ -1138,10 +1147,29 @@ export function Sidebar() {
             })()}
 
             {/* Price History Chart (or Live Trade Chart for Up or Down) */}
-            {isUpDownMarket
-              ? <LiveTradeChart trades={polymarketLiveTrades} isNo={orderOutcome === 'NO'} tokenId={selectedMarket.clobTokenIds?.[0] || ''} startTime={upDownStartTime} endTime={selectedMarket.endDate ? new Date(selectedMarket.endDate).getTime() : undefined} intervalContext={upDownIntervalContext} chainlinkAsset={upDownAsset || undefined} targetPrice={upDownTargetPrice} />
-              : <PriceChart market={selectedMarket} isNo={orderOutcome === 'NO'} />
-            }
+            {isUpDownMarket ? (
+              <LiveTradeChart
+                trades={displayLiveTrades}
+                isNo={orderOutcome === 'NO'}
+                tokenId={selectedMarket.clobTokenIds?.[0] || ''}
+                startTime={upDownStartTime}
+                endTime={selectedMarket.endDate ? new Date(selectedMarket.endDate).getTime() : undefined}
+                intervalContext={upDownIntervalContext}
+                defaultIntervalOverride={upDownKlineDefaultInterval}
+                chainlinkAsset={upDownAsset || undefined}
+                targetPrice={upDownTargetPrice}
+                hidePriceLines
+              />
+            ) : (
+              <LiveTradeChart
+                trades={displayLiveTrades}
+                isNo={orderOutcome === 'NO'}
+                tokenId={selectedMarket.clobTokenIds?.[0] || ''}
+                endTime={selectedMarket.endDate ? new Date(selectedMarket.endDate).getTime() : undefined}
+                defaultIntervalOverride="5m"
+                hidePriceLines
+              />
+            )}
           </div>
 
 

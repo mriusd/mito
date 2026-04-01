@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { formatPrice, assetToSymbol, formatDateShort } from '../../utils/format';
 import { saveRange } from '../../api';
@@ -81,6 +81,7 @@ interface AssetMarketTableProps {
 }
 
 const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
+const MANUAL_VOL_KEY_PREFIX = 'polybot-manual-vol-pct-';
 
 export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTableProps) {
   const [asset, setAsset] = useState<AssetName>(() => {
@@ -191,7 +192,34 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
   const livePrice = priceData[symbol]?.price || 0;
   const vwapPrice = vwapData[symbol]?.price || 0;
-  const adjVol = (volatilityData[symbol] || 0.6) * volMultiplier;
+  const autoAdjVol = (volatilityData[symbol] || 0.6) * volMultiplier;
+  const [sigmaEditing, setSigmaEditing] = useState(false);
+  const [manualVolPctInput, setManualVolPctInput] = useState<string>(() => {
+    const raw = localStorage.getItem(`${MANUAL_VOL_KEY_PREFIX}${symbol}`);
+    return raw ?? '';
+  });
+  useEffect(() => {
+    const raw = localStorage.getItem(`${MANUAL_VOL_KEY_PREFIX}${symbol}`);
+    setManualVolPctInput(raw ?? '');
+    setSigmaEditing(false);
+  }, [symbol]);
+  const manualVolPct = parseFloat(manualVolPctInput);
+  const hasManualVol = Number.isFinite(manualVolPct) && manualVolPct > 0;
+  const adjVol = hasManualVol ? manualVolPct / 100 : autoAdjVol;
+
+  const commitManualVol = useCallback(() => {
+    const n = parseFloat(manualVolPctInput);
+    if (!Number.isFinite(n) || n <= 0) {
+      localStorage.removeItem(`${MANUAL_VOL_KEY_PREFIX}${symbol}`);
+      setManualVolPctInput('');
+      setSigmaEditing(false);
+      return;
+    }
+    const clamped = Math.min(1000, Math.max(0, n));
+    localStorage.setItem(`${MANUAL_VOL_KEY_PREFIX}${symbol}`, String(clamped));
+    setManualVolPctInput(String(clamped));
+    setSigmaEditing(false);
+  }, [manualVolPctInput, symbol]);
   const activeSlot = activeRangeSlot[symbol];
   const slot0 = manualPriceSlots[symbol][0];
   const slot1 = manualPriceSlots[symbol][1];
@@ -1110,7 +1138,43 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
             );
           })}
           <HelpTooltip text={"Price ranges let you see how underlying asset price moves translate into B-S probabilities, helping you find better entry and exit prices.\n\nSet two ranges:\n• Range 1 (cyan) — a tighter range, producing the BS1 values used across the app.\n• Range 2 (pink) — a wider range, producing the BS2 values.\n\nBS1 and BS2 show the max and min B-S probability across the price range. For 'Above' markets, these coincide with the range edges. For 'Between' markets, the max probability may fall in the middle of the range rather than at the edges.\n\nSince underlying price volatility directly influences probabilities and therefore the orderbook, these ranges let the trader anticipate how the market will reprice and enter/exit at better levels before the move is reflected in the orderbook.\n\nBS1 and BS2 values appear throughout the dashboard — in the grid, signals, hedges, and sidebar.\n\nIf VWAP moves outside a range, it will pulse to alert you."} />
-          <span className="text-[11px] font-bold text-yellow-400 border border-yellow-400/50 rounded px-1 py-0.5">σ{(adjVol * 100).toFixed(0)}%</span>
+          {sigmaEditing ? (
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-pink-400 border border-pink-400/60 rounded px-1 py-0.5">
+              <span>σ</span>
+              <input
+                autoFocus
+                value={manualVolPctInput}
+                onChange={(e) => setManualVolPctInput(e.target.value)}
+                onBlur={commitManualVol}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitManualVol();
+                  if (e.key === 'Escape') {
+                    const raw = localStorage.getItem(`${MANUAL_VOL_KEY_PREFIX}${symbol}`);
+                    setManualVolPctInput(raw ?? '');
+                    setSigmaEditing(false);
+                  }
+                }}
+                type="number"
+                min={0}
+                step={1}
+                className="w-12 bg-transparent outline-none text-pink-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                title="Manual volatility % (0 resets to automatic)"
+              />
+              <span>%</span>
+            </span>
+          ) : (
+            <span
+              onClick={() => setSigmaEditing(true)}
+              className={`text-[11px] font-bold border rounded px-1 py-0.5 cursor-pointer ${
+                hasManualVol
+                  ? 'text-pink-400 border-pink-400/60'
+                  : 'text-yellow-400 border-yellow-400/50'
+              }`}
+              title="Click to set manual volatility % (0 resets to automatic)"
+            >
+              σ{(adjVol * 100).toFixed(0)}%
+            </span>
+          )}
           <HelpTooltip text={"Annualized volatility (σ) used for Black-Scholes probability calculations.\n\nThis value is fetched from Binance as the asset's historical realized volatility, then multiplied by the global volatility multiplier set in settings.\n\nHigher volatility means wider expected price distributions — strike prices further from the current price will have higher B-S probabilities. Lower volatility narrows the distribution, making distant strikes less likely.\n\nThis directly affects all B-S values shown across the dashboard: the flower, grid cells, signals, and hedges."} />
           <StrikeRangeIndicator markets={aboveMarketsForAsset} livePrice={livePrice} />
           <HelpTooltip text={"This bar shows where the current asset price sits relative to the active market strike prices.\n\nThe colored ticks represent individual market strikes (target prices). The yellow marker shows the current live price position within that range.\n\nThis gives a quick visual sense of how close the asset is to triggering different markets — the closer the live price is to a strike, the more sensitive that market's probability becomes to small price moves."} />

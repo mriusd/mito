@@ -370,6 +370,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
             forcedPriceSource="chainlink"
             compact
             hideRbsSettings
+            hudGateSupportLinesByExchange
           />
         </div>
         <div className="min-h-0">
@@ -380,6 +381,8 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
             forcedPriceSource="binance"
             compact
             hideRbsSettings
+            hudGateSupportLinesByExchange
+            hudSyncBinanceIntervalFromMarket
           />
         </div>
       </div>

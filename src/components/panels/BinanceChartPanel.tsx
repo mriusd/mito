@@ -13,8 +13,8 @@ const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
 const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'] as const;
 type KlineInterval = (typeof INTERVALS)[number];
 
-const TIME_WINDOWS = ['1h', '2h', '4h', '12h', '24h', '3d', '7d'] as const;
-type TimeWindowKey = (typeof TIME_WINDOWS)[number];
+const CANDLE_COUNTS = [10, 20, 50] as const;
+type CandleCount = (typeof CANDLE_COUNTS)[number];
 
 const INTERVAL_MS: Record<KlineInterval, number> = {
   '1m': 60_000,
@@ -25,15 +25,36 @@ const INTERVAL_MS: Record<KlineInterval, number> = {
   '1d': 24 * 60 * 60_000,
 };
 
-const WINDOW_MS: Record<TimeWindowKey, number> = {
-  '1h': 60 * 60_000,
-  '2h': 2 * 60 * 60_000,
-  '4h': 4 * 60 * 60_000,
-  '12h': 12 * 60 * 60_000,
-  '24h': 24 * 60 * 60_000,
-  '3d': 3 * 24 * 60 * 60_000,
-  '7d': 7 * 24 * 60 * 60_000,
-};
+type ChartPriceSource = 'binance' | 'chainlink';
+
+const UP_DOWN_TABLE_TFS = ['5m', '15m', '1h', '4h', '24h'] as const;
+type UpDownTableTf = (typeof UP_DOWN_TABLE_TFS)[number];
+
+function upDownTableTfToKlineInterval(tf: string): KlineInterval | null {
+  if (tf === '24h') return '1d';
+  if (tf === '5m' || tf === '15m' || tf === '1h' || tf === '4h') return tf;
+  return null;
+}
+
+function findUpDownTableTfForMarket(
+  asset: AssetName,
+  marketId: string | undefined,
+  upOrDown: Record<string, Record<string, Market[]>>,
+): UpDownTableTf | null {
+  if (!marketId) return null;
+  const buckets = upOrDown[asset];
+  if (!buckets) return null;
+  for (const tf of UP_DOWN_TABLE_TFS) {
+    const arr = buckets[tf];
+    if (arr?.some((m) => m.id === marketId)) return tf;
+  }
+  return null;
+}
+
+function parseCandleCount(raw: string | null): CandleCount {
+  if (raw === '10' || raw === '20' || raw === '50') return Number(raw) as CandleCount;
+  return 50;
+}
 
 interface Candle {
   t: number;
@@ -74,8 +95,6 @@ function mergeKlineIntoSeries(prev: Candle[], t: number, o: number, h: number, l
 /** Binance spot kline stream (raw WS) */
 const BINANCE_SPOT_WS_BASE = 'wss://stream.binance.com:9443/ws';
 
-type ChartPriceSource = 'binance' | 'chainlink';
-
 /** Synthetic token id for polycandles Chainlink OHLC (see polycandles chainlinkTokenId). */
 function chainlinkKlineSymbol(asset: AssetName): string {
   return `chainlink_${asset.toLowerCase()}usd`;
@@ -85,6 +104,17 @@ function chainlinkKlineSymbol(asset: AssetName): string {
 function polycandlesChartInterval(tf: KlineInterval): '1m' | '5m' | '15m' | '1h' {
   if (tf === '4h' || tf === '1d') return '1h';
   return tf;
+}
+
+function chartBarMsForWindow(timeframe: KlineInterval, priceSource: ChartPriceSource): number {
+  if (priceSource === 'chainlink') {
+    return INTERVAL_MS[polycandlesChartInterval(timeframe)];
+  }
+  return INTERVAL_MS[timeframe];
+}
+
+function candleWindowStart(now: number, candleCount: CandleCount, timeframe: KlineInterval, priceSource: ChartPriceSource): number {
+  return now - candleCount * chartBarMsForWindow(timeframe, priceSource);
 }
 
 /** Paths from Simple Icons (MIT); used in the candle-source toggle only. */
@@ -617,9 +647,13 @@ interface BinanceChartPanelProps {
   forcedPriceSource?: ChartPriceSource;
   compact?: boolean;
   hideRbsSettings?: boolean;
+  /** When true (e.g. UpOrDown HUD): draw strike S/R + RBS lines only for timeframes tied to this chart's price source, and only while that feed is live (5m/15m ↔ Chainlink; 1h/4h/24h ↔ Binance). */
+  hudGateSupportLinesByExchange?: boolean;
+  /** When true with `forcedPriceSource="binance"` (HUD): set candle resolution from the selected Up/Down market row (1h→1h, 4h→4h, 24h→1d). */
+  hudSyncBinanceIntervalFromMarket?: boolean;
 }
 
-export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forcedPriceSource, compact = false, hideRbsSettings = false }: BinanceChartPanelProps) {
+export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forcedPriceSource, compact = false, hideRbsSettings = false, hudGateSupportLinesByExchange = false, hudSyncBinanceIntervalFromMarket = false }: BinanceChartPanelProps) {
   const portalRoot = typeof document !== 'undefined' ? document.body : null;
   const [asset, setAsset] = useState<AssetName>(() => {
     if (assetOverride) return assetOverride;
@@ -632,11 +666,9 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     if (saved && INTERVALS.includes(saved)) return saved;
     return '15m';
   });
-  const [timeWindow, setTimeWindow] = useState<TimeWindowKey>(() => {
-    const saved = localStorage.getItem(`polybot-binance-window-${panelId}`) as TimeWindowKey | null;
-    if (saved && (TIME_WINDOWS as readonly string[]).includes(saved)) return saved;
-    return '24h';
-  });
+  const [candleCount, setCandleCount] = useState<CandleCount>(() =>
+    parseCandleCount(localStorage.getItem(`polybot-binance-candle-count-${panelId}`)),
+  );
   const [priceSource, setPriceSource] = useState<ChartPriceSource>(() => {
     if (forcedPriceSource) return forcedPriceSource;
     const saved = localStorage.getItem(`polybot-binance-chart-source-${panelId}`) as ChartPriceSource | null;
@@ -687,6 +719,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   const priceData = useAppStore((s) => s.priceData);
   useAppStore((s) => s.bidAskTick);
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
+  const selectedMarket = useAppStore((s) => s.selectedMarket);
   const marketLookup = useAppStore((s) => s.marketLookup);
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
@@ -701,6 +734,61 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     return livePrice;
   }, [priceSource, chainlinkPrices, asset, livePrice]);
 
+  const hudExchangeSpotReady = useMemo(() => {
+    if (!hudGateSupportLinesByExchange) return true;
+    if (priceSource === 'chainlink') {
+      const cl = chainlinkPrices[asset];
+      return cl != null && Number.isFinite(cl) && cl > 0;
+    }
+    return livePrice > 0 && Number.isFinite(livePrice);
+  }, [hudGateSupportLinesByExchange, priceSource, chainlinkPrices, asset, livePrice]);
+
+  const rbsTfEnabledForCompute = useMemo<Record<UpDownTfKey, boolean>>(() => {
+    if (!hudGateSupportLinesByExchange || hudExchangeSpotReady) return effectiveRbsTfEnabled;
+    return { '5m': false, '15m': false, '1h': false, '4h': false, '24h': false };
+  }, [hudGateSupportLinesByExchange, hudExchangeSpotReady, effectiveRbsTfEnabled]);
+
+  /** Strike S/R horizontals: enabled only in HUD when the active exchange feed matches the Up/Down table (see `hudGateSupportLinesByExchange`), and only for RBS timeframes that are checked in settings. */
+  const srLines = useMemo<SRLine[]>(() => {
+    if (!hudGateSupportLinesByExchange || !hudExchangeSpotReady) return [];
+    const assetMarkets = upOrDownMarkets[asset];
+    if (!assetMarkets) return [];
+    const now = Date.now();
+    const lines: SRLine[] = [];
+    for (const tf of SR_TIMEFRAMES) {
+      if (!rbsTfEnabledForCompute[tf]) continue;
+      const markets: Market[] = (assetMarkets[tf] || [])
+        .filter((m: Market) => {
+          if (m.closed || !m.endDate) return false;
+          const tte = new Date(m.endDate).getTime() - now;
+          return tte >= RBS_MIN_TTE_MS;
+        })
+        .sort((a: Market, b: Market) => {
+          const ta = a.endDate ? new Date(a.endDate).getTime() : Infinity;
+          const tb = b.endDate ? new Date(b.endDate).getTime() : Infinity;
+          return ta - tb;
+        });
+      const market = markets[0];
+      if (!market) continue;
+      const tokenId = market.clobTokenIds?.[0] || '';
+      const strike = market.priceToBeat ?? (tokenId ? marketLookup[tokenId]?.priceToBeat : undefined);
+      if (strike == null || !Number.isFinite(strike) || strike <= 0) continue;
+      const live = tokenId ? marketLookup[tokenId] : null;
+      const bid = live?.bestBid ?? market.bestBid;
+      const ask = live?.bestAsk ?? market.bestAsk;
+      let probUp = 0.5;
+      if (bid != null && ask != null && Number.isFinite(bid) && Number.isFinite(ask)) {
+        probUp = (bid + ask) / 2;
+      } else if (bid != null && Number.isFinite(bid)) {
+        probUp = bid;
+      } else if (ask != null && Number.isFinite(ask)) {
+        probUp = ask;
+      }
+      lines.push({ price: strike, probUp, label: tf });
+    }
+    return lines;
+  }, [hudGateSupportLinesByExchange, hudExchangeSpotReady, asset, upOrDownMarkets, marketLookup, rbsTfEnabledForCompute]);
+
   /** (max high − min low) / min low × 100 over candles in the visible window. */
   const candleRangePct = useMemo(() => {
     if (candles.length === 0) return null;
@@ -713,9 +801,6 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     if (!Number.isFinite(minL) || !Number.isFinite(maxH) || minL <= 0 || maxH < minL) return null;
     return ((maxH - minL) / minL) * 100;
   }, [candles]);
-
-  // S/R lines intentionally hidden on this chart.
-  const srLines = useMemo<SRLine[]>(() => [], []);
 
   const rbsStaleRef = useRef<number | null>(null);
 
@@ -733,9 +818,9 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
       assetMarkets,
       marketLookup,
       Date.now(),
-      effectiveRbsTfEnabled,
+      rbsTfEnabledForCompute,
     );
-  }, [asset, spotForChart, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup, effectiveRbsTfEnabled, rbsVolWeightAdjusted]);
+  }, [asset, spotForChart, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup, rbsTfEnabledForCompute, rbsVolWeightAdjusted]);
 
   useEffect(() => {
     if (rbsResult.kind === 'price') {
@@ -821,8 +906,8 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   const chartControlsRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const timeWindowRef = useRef(timeWindow);
-  timeWindowRef.current = timeWindow;
+  const candleCountRef = useRef(candleCount);
+  candleCountRef.current = candleCount;
   const timeframeRef = useRef(timeframe);
   timeframeRef.current = timeframe;
   const priceSourceRef = useRef(priceSource);
@@ -854,17 +939,31 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     ro.observe(controls);
     measure();
     return () => ro.disconnect();
-  }, [asset, spotForChart, priceSource, timeframe, timeWindow]);
+  }, [asset, spotForChart, priceSource, timeframe, candleCount]);
+
+  useEffect(() => {
+    if (!hudSyncBinanceIntervalFromMarket || forcedPriceSource !== 'binance' || !assetOverride) return;
+    const mid = selectedMarket?.id;
+    if (!mid) return;
+    const tf = findUpDownTableTfForMarket(assetOverride, mid, upOrDownMarkets);
+    if (!tf) return;
+    const iv = upDownTableTfToKlineInterval(tf);
+    if (!iv) return;
+    setTimeframe((prev) => {
+      if (prev === iv) return prev;
+      localStorage.setItem(`polybot-binance-interval-${panelId}`, iv);
+      return iv;
+    });
+  }, [hudSyncBinanceIntervalFromMarket, forcedPriceSource, assetOverride, selectedMarket?.id, upOrDownMarkets, panelId]);
 
   const fetchKlines = useCallback(async () => {
     const myVersion = ++fetchVersionRef.current;
     setLoading(true);
     setLoadErr(null);
     try {
-      const windowMs = WINDOW_MS[timeWindow];
-      const ivMs = INTERVAL_MS[timeframe];
-      const targetCount = Math.min(5000, Math.ceil(windowMs / ivMs) + 8);
-      const windowStart = Date.now() - windowMs;
+      const now = Date.now();
+      const windowStart = candleWindowStart(now, candleCount, timeframe, priceSource);
+      const targetBars = Math.min(5000, candleCount + 12);
       const byTime = new Map<number, Candle>();
       let endTime: number | undefined;
       let iterations = 0;
@@ -872,8 +971,6 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
       if (priceSource === 'chainlink') {
         const clSymbol = chainlinkKlineSymbol(asset);
         const apiIv = polycandlesChartInterval(timeframe);
-        const barMs = INTERVAL_MS[apiIv];
-        const targetBars = Math.min(5000, Math.ceil(windowMs / barMs) + 8);
 
         while (iterations++ < 20 && byTime.size < targetBars) {
           const params = new URLSearchParams({
@@ -902,7 +999,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
           endTime = oldest - 1;
         }
       } else {
-        while (iterations++ < 20 && byTime.size < targetCount) {
+        while (iterations++ < 20 && byTime.size < targetBars) {
           const params = new URLSearchParams({
             symbol: sym,
             interval: timeframe,
@@ -943,7 +1040,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
       if (myVersion !== fetchVersionRef.current) return;
       setLoading(false);
     }
-  }, [sym, timeframe, timeWindow, priceSource, asset]);
+  }, [sym, timeframe, candleCount, priceSource, asset]);
 
   useEffect(() => {
     void fetchKlines();
@@ -995,7 +1092,12 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
           const c = parseFloat(k.c);
           if (!Number.isFinite(tOpen) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return;
           if (disposed) return;
-          const windowStart = Date.now() - WINDOW_MS[timeWindowRef.current];
+          const windowStart = candleWindowStart(
+            Date.now(),
+            candleCountRef.current,
+            timeframeRef.current,
+            'binance',
+          );
           setCandles((prev) => mergeKlineIntoSeries(prev, tOpen, o, h, l, c, windowStart));
         } catch {
           /* ignore malformed */
@@ -1084,7 +1186,12 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
           if (disposed || priceSourceRef.current !== 'chainlink') return;
           // Any valid live candle means the stream is healthy; remove stale overlay.
           setLoadErr(null);
-          const windowStart = Date.now() - WINDOW_MS[timeWindowRef.current];
+          const windowStart = candleWindowStart(
+            Date.now(),
+            candleCountRef.current,
+            timeframeRef.current,
+            'chainlink',
+          );
           setCandles((prev) => mergeKlineIntoSeries(prev, tOpen, o, h, l, c, windowStart));
         } catch {
           /* ignore malformed */
@@ -1134,7 +1241,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
         /* ignore */
       }
     };
-  }, [asset, timeframe, timeWindow, priceSource]);
+  }, [asset, timeframe, candleCount, priceSource]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -1336,20 +1443,22 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
             ))}
           </select>
           <select
-            value={timeWindow}
+            value={String(candleCount)}
             onChange={(e) => {
-              const v = e.target.value as TimeWindowKey;
-              setTimeWindow(v);
-              localStorage.setItem(`polybot-binance-window-${panelId}`, v);
+              const v = Number(e.target.value) as CandleCount;
+              if (v !== 10 && v !== 20 && v !== 50) return;
+              setCandleCount(v);
+              localStorage.setItem(`polybot-binance-candle-count-${panelId}`, String(v));
             }}
             className="no-drag w-max shrink-0 rounded border border-violet-700/50 bg-gray-900/90 py-0.5 pl-1 pr-2 text-[10px] font-semibold text-violet-100 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500/40 [field-sizing:content]"
-            aria-label="Chart time window"
+            aria-label="Number of candles"
+            title="Visible history length in bars"
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            {TIME_WINDOWS.map((w) => (
-              <option key={w} value={w}>
-                {w}
+            {CANDLE_COUNTS.map((n) => (
+              <option key={n} value={String(n)}>
+                {n} bars
               </option>
             ))}
           </select>

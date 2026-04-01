@@ -490,10 +490,14 @@ export function Sidebar() {
   };
 
   const computeLimitExpiration = (marketEndDate?: string): { expiration: number; invalidLead: boolean } => {
-    const expLeadSec = getOrderExpiryLeadSeconds() || 180 * 60;
+    const expLeadSec = getOrderExpiryLeadSeconds();
     const nowSec = Math.floor(Date.now() / 1000);
     if (marketEndDate) {
       const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
+      if (expLeadSec <= 0) {
+        // No lead configured — expire at market end (GTC-like for this market)
+        return { expiration: endTimeSec, invalidLead: false };
+      }
       const expiration = endTimeSec - expLeadSec;
       const invalidLead = (endTimeSec - nowSec) <= expLeadSec;
       return { expiration, invalidLead };
@@ -510,12 +514,13 @@ export function Sidebar() {
     if (!Number.isFinite(raw) || raw <= 0) return null;
     const expMs = raw < 1e12 ? raw * 1000 : raw;
 
-    // Only show when this order expires before contract expiry.
     const leadMs = endMs - expMs;
     if (leadMs <= 0) return null;
 
+    const leadSec = leadMs / 1000;
     const leadMin = leadMs / 60000;
     const leadHr = leadMs / 3600000;
+    if (leadSec < 60) return `${Math.round(leadSec)}s`;
     if (leadMin < 60) return `${Math.round(leadMin)}m`;
     if (leadHr < 48) return `${leadHr.toFixed(1)}h`;
     return `${(leadMs / 86400000).toFixed(1)}d`;

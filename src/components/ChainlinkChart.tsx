@@ -11,7 +11,8 @@ interface Candle {
 
 interface ChainlinkChartProps {
   asset: string;        // e.g. 'BTC', 'ETH', 'SOL', 'XRP'
-  eventSlug?: string;   // used to determine timeframe
+  /** Up/Down: slug + question + group title — picks candle resolution (e.g. 15m for 4h/24h). */
+  intervalContext?: string;
   targetPrice?: number | null;
   /** 5m/15m Up/Down: polycandles Chainlink klines + WS; otherwise Binance spot. */
   chainlinkCandles?: boolean;
@@ -21,20 +22,23 @@ function chainlinkKlineSymbol(asset: string): string {
   return `chainlink_${asset.toLowerCase()}usd`;
 }
 
-// Determine kline interval from market slug
-function getIntervalFromSlug(slug?: string): string {
-  if (!slug) return '1h';
-  const s = slug.toLowerCase();
-  if (s.match(/updown-5m/) || s.match(/5[- ]?min/)) return '5m';
-  if (s.match(/updown-15m/) || s.match(/15[- ]?min/)) return '15m';
-  if (s.match(/updown-4h/) || s.match(/4[- ]?h/)) return '4h';
-  if (s.match(/up-or-down-on-/) || s.match(/24[- ]?h/)) return '1d';
+// Determine kline interval from Up/Down context (slug + question + group title)
+function getIntervalFromSlug(context?: string): string {
+  if (!context) return '1h';
+  const s = context.toLowerCase();
+  if (s.match(/updown-5m/) || s.match(/\b5[- ]?min\b/)) return '5m';
+  if (s.match(/updown-15m/) || s.match(/\b15[- ]?min\b/)) return '15m';
+  // Longer windows: finer default resolution for the top sidebar chart
+  if (s.match(/updown-4h/) || s.match(/\b4[- ]?h\b/)) return '15m';
+  if (s.match(/up-or-down-on-/) || s.match(/\b24[- ]?h\b/)) return '15m';
+  // 1h Up/Down (not 4h/24h): default 5m
+  if (s.match(/updown-1h/) || s.match(/(?:^|[^0-9])1[- ]?h\b/) || s.match(/\b1[- ]?hour\b/)) return '5m';
   return '1h';
 }
 
 const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000, '4h': 14400000, '1d': 86400000 };
 
-export function ChainlinkChart({ asset, eventSlug, targetPrice, chainlinkCandles = false }: ChainlinkChartProps) {
+export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkCandles = false }: ChainlinkChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
   const wsRef = useRef<WebSocket | null>(null);
@@ -42,7 +46,7 @@ export function ChainlinkChart({ asset, eventSlug, targetPrice, chainlinkCandles
   const [ready, setReady] = useState(false);
   const [tick, setTick] = useState(0);
 
-  const interval = getIntervalFromSlug(eventSlug);
+  const interval = getIntervalFromSlug(intervalContext);
   const candleMs = INTERVAL_MS[interval] || 3600000;
   intervalRef.current = interval;
   const binanceSymbol = `${asset.toUpperCase()}USDT`;

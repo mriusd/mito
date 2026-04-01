@@ -1,6 +1,15 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { cancelOrder } from '../../api';
+import {
+  cancelOrder,
+  fetchWalletPositions,
+  fetchOnchainMarketPositions,
+  fetchOnchainMarketTrades,
+  type OnchainMarketPositionRow,
+  type OnchainMarketTradeRow,
+} from '../../api';
+import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import type { Position, Trade } from '../../types';
 import { showToast } from '../../utils/toast';
 import { getMarketPriceCondition, getTokenOutcome, extractAssetFromMarket, formatPriceShort, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
 import type { Market } from '../../types';
@@ -62,10 +71,130 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
   const orders = useAppStore((s) => s.orders);
   const trades = useAppStore((s) => s.trades);
   const marketLookup = useAppStore((s) => s.marketLookup);
+  const bidAskTick = useAppStore((s) => s.bidAskTick);
+  const liveTradesSource = useAppStore((s) => s.liveTradesSource);
+  const makerAddress = useAppStore((s) => s.makerAddress);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
+
+  const [onchainPosRows, setOnchainPosRows] = useState<OnchainMarketPositionRow[]>([]);
+  const [onchainTrRows, setOnchainTrRows] = useState<OnchainMarketTradeRow[]>([]);
+  const [onchainLoading, setOnchainLoading] = useState(false);
+
+  const polymarketTokenKey = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of positions) {
+      if (p.asset) s.add(p.asset);
+    }
+    for (const o of orders) {
+      const t = o.asset_id || o.token_id;
+      if (t) s.add(t);
+    }
+    for (const t of trades) {
+      const id = t.asset_id || t.asset || t.token_id;
+      if (id) s.add(id);
+    }
+    return Array.from(s).sort().join(',');
+  }, [positions, orders, trades]);
+
+  useEffect(() => {
+    if (liveTradesSource !== 'onchain' || !makerAddress) {
+      setOnchainPosRows([]);
+      setOnchainTrRows([]);
+      setOnchainLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      setOnchainLoading(true);
+      try {
+        const walletRes = await fetchWalletPositions({ wallet: makerAddress, limit: 500 });
+        const idSet = new Set<string>();
+        for (const wp of walletRes.positions || []) {
+          if (wp.tokenIdYes) idSet.add(wp.tokenIdYes);
+          if (wp.tokenIdNo) idSet.add(wp.tokenIdNo);
+        }
+        for (const p of positions) {
+          if (p.asset) idSet.add(p.asset);
+        }
+        for (const o of orders) {
+          const t = o.asset_id || o.token_id;
+          if (t) idSet.add(t);
+        }
+        for (const t of trades) {
+          const id = t.asset_id || t.asset || t.token_id;
+          if (id) idSet.add(id);
+        }
+        const token_ids = Array.from(idSet).filter(Boolean);
+        if (token_ids.length === 0) {
+          if (!cancelled) {
+            setOnchainPosRows([]);
+            setOnchainTrRows([]);
+          }
+          return;
+        }
+        const [pr, tr] = await Promise.all([
+          fetchOnchainMarketPositions({ token_ids, wallet: makerAddress }),
+          fetchOnchainMarketTrades({ token_ids, wallet: makerAddress, limit: 500 }),
+        ]);
+        if (!cancelled) {
+          setOnchainPosRows(pr.positions || []);
+          setOnchainTrRows(tr.trades || []);
+        }
+      } catch {
+        if (!cancelled) {
+          setOnchainPosRows([]);
+          setOnchainTrRows([]);
+        }
+      } finally {
+        if (!cancelled) setOnchainLoading(false);
+      }
+    };
+    void load();
+    const iv = window.setInterval(load, 45_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(iv);
+    };
+  }, [liveTradesSource, makerAddress, polymarketTokenKey, positions, orders, trades]);
+
+  const onchainPositionsAsPM = useMemo((): Position[] => {
+    return onchainPosRows.map((r) => {
+      const m = marketLookup[r.tokenId];
+      const mid = outcomeMidOrOneSideProb(
+        r.tokenId,
+        marketLookup,
+        m ? { bestBid: m.bestBid, bestAsk: m.bestAsk } : {},
+      );
+      const cur = mid ?? m?.lastTradePrice ?? r.avgPrice;
+      return {
+        asset: r.tokenId,
+        size: r.size,
+        avgPrice: r.avgPrice,
+        curPrice: cur,
+      };
+    });
+  }, [onchainPosRows, marketLookup, bidAskTick]);
+
+  const onchainTradesAsPM = useMemo((): Trade[] => {
+    return onchainTrRows.map((t, i) => {
+      const tsMs = t.blockTime > 1e12 ? t.blockTime : t.blockTime * 1000;
+      return {
+        id: `${t.txHash}-${t.logIndex}-${i}`,
+        asset_id: t.tokenId,
+        token_id: t.tokenId,
+        side: t.side,
+        price: String(t.price),
+        size: String(t.size),
+        timestamp: String(tsMs),
+      };
+    });
+  }, [onchainTrRows]);
+
+  const positionsForTable = liveTradesSource === 'onchain' ? onchainPositionsAsPM : positions;
+  const tradesForTable = liveTradesSource === 'onchain' ? onchainTradesAsPM : trades;
 
   const handleMarketClick = useCallback((tokenId: string) => {
     const market = marketLookup[tokenId];
@@ -137,7 +266,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
   };
 
   // Process trades
-  const processedTrades = trades
+  const processedTrades = tradesForTable
     .filter((t) => {
       const tid = t.asset_id || t.asset || t.token_id || t.market || '';
       if (assetFilter !== 'ALL') {
@@ -203,7 +332,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
     });
 
   // Process positions
-  const processedPositions = positions
+  const processedPositions = positionsForTable
     .filter((p) => {
       if ((p.size || 0) <= 0) return false;
       const tid = p.asset || '';
@@ -350,12 +479,19 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
           )}
         </div>
         <span className="flex-1" />
+        {liveTradesSource === 'onchain' && (
+          <span className="text-[9px] font-bold text-purple-300/90 shrink-0" title="Positions & trades from backend on-chain rollups (wallet_positions / onchain_fills)">
+            ONCHAIN
+          </span>
+        )}
       </div>
 
       <div className="panel-body text-[10px] flex-1 min-h-0 flex flex-col">
         {/* Trades */}
         {tab === 'trades' && (
-          processedTrades.length === 0 ? (
+          onchainLoading && liveTradesSource === 'onchain' && processedTrades.length === 0 ? (
+            <div className="text-purple-300/90 text-center py-4">Loading on-chain trades…</div>
+          ) : processedTrades.length === 0 ? (
             <div className="text-gray-500 text-center py-4">No trades</div>
           ) : (<div className="flex flex-col flex-1 min-h-0">
             {/* Fixed header */}
@@ -398,8 +534,16 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
 
         {/* Positions */}
         {tab === 'positions' && (
-          processedPositions.length === 0 ? (
-            <div className="text-gray-500 text-center py-4">No positions</div>
+          onchainLoading && liveTradesSource === 'onchain' && processedPositions.length === 0 ? (
+            <div className="text-purple-300/90 text-center py-4">Loading on-chain positions…</div>
+          ) : processedPositions.length === 0 ? (
+            <div className="text-gray-500 text-center py-4">
+              {liveTradesSource === 'onchain' && !makerAddress
+                ? 'Connect wallet (proxy) for on-chain positions'
+                : liveTradesSource === 'onchain'
+                  ? 'No on-chain positions for known tokens'
+                  : 'No positions'}
+            </div>
           ) : (<div className="flex flex-col flex-1 min-h-0">
             {/* Fixed header */}
             <table className="w-full text-[10px] table-fixed">{posColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">

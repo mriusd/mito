@@ -32,7 +32,6 @@ import { ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVert
 import type { AssetSymbol } from '../types';
 
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
-const SIDEBAR_LIVE_TRADES_SOURCE_KEY = 'polymarket-sidebar-live-trades-source';
 const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
 /** FAK buy: pay up to this per share to lift asks. */
 const MARKET_AGGRESSIVE_BUY = 0.99;
@@ -177,10 +176,8 @@ export function Sidebar() {
     return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 0 : 1] || null;
   }, [sidebarOpen, selectedMarket, orderOutcome]);
   const { bids, asks, trades: polymarketLiveTrades, loading: obLoading } = usePolymarketOB(obTokenId);
-  const [liveTradesSource, setLiveTradesSource] = useState<'onchain' | 'polymarket'>(() => {
-    const saved = localStorage.getItem(SIDEBAR_LIVE_TRADES_SOURCE_KEY);
-    return saved === 'polymarket' ? 'polymarket' : 'onchain';
-  });
+  const liveTradesSource = useAppStore((s) => s.liveTradesSource);
+  const setLiveTradesSource = useAppStore((s) => s.setLiveTradesSource);
   const [displayBids, setDisplayBids] = useState(bids);
   const [displayAsks, setDisplayAsks] = useState(asks);
   const [onchainSidebarPositions, setOnchainSidebarPositions] = useState<Array<{
@@ -259,10 +256,6 @@ export function Sidebar() {
   useEffect(() => {
     localStorage.setItem('sidebar-live-trades-expanded', liveTradesExpanded ? 'true' : 'false');
   }, [liveTradesExpanded]);
-  useEffect(() => {
-    localStorage.setItem(SIDEBAR_LIVE_TRADES_SOURCE_KEY, liveTradesSource);
-  }, [liveTradesSource]);
-
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_ORDER_KIND_KEY, orderKind);
@@ -412,6 +405,10 @@ export function Sidebar() {
     () => !!(isUpDownMarket && selectedMarket && upDownMarketUsesChainlinkSpot(selectedMarket)),
     [isUpDownMarket, selectedMarket],
   );
+  const upDownIntervalContext = useMemo(() => {
+    if (!isUpDownMarket || !selectedMarket) return undefined;
+    return `${selectedMarket.eventSlug || ''} ${selectedMarket.question || ''} ${selectedMarket.groupItemTitle || ''}`.trim();
+  }, [isUpDownMarket, selectedMarket?.eventSlug, selectedMarket?.question, selectedMarket?.groupItemTitle]);
   const polyPrice = usePolymarketPrice(upDownSpotUsesChainlink ? upDownAsset : null);
 
   // Compute market start time for Up or Down charts
@@ -1130,7 +1127,7 @@ export function Sidebar() {
               return (
                 <ChainlinkChart
                   asset={chartAsset}
-                  eventSlug={isUpDownMarket ? selectedMarket.eventSlug : undefined}
+                  intervalContext={upDownIntervalContext}
                   targetPrice={isUpDownMarket ? upDownTargetPrice : undefined}
                   chainlinkCandles={isUpDownMarket && upDownSpotUsesChainlink}
                 />
@@ -1139,7 +1136,7 @@ export function Sidebar() {
 
             {/* Price History Chart (or Live Trade Chart for Up or Down) */}
             {isUpDownMarket
-              ? <LiveTradeChart trades={polymarketLiveTrades} isNo={orderOutcome === 'NO'} tokenId={selectedMarket.clobTokenIds?.[0] || ''} startTime={upDownStartTime} endTime={selectedMarket.endDate ? new Date(selectedMarket.endDate).getTime() : undefined} eventSlug={selectedMarket.eventSlug} chainlinkAsset={upDownAsset || undefined} targetPrice={upDownTargetPrice} />
+              ? <LiveTradeChart trades={polymarketLiveTrades} isNo={orderOutcome === 'NO'} tokenId={selectedMarket.clobTokenIds?.[0] || ''} startTime={upDownStartTime} endTime={selectedMarket.endDate ? new Date(selectedMarket.endDate).getTime() : undefined} intervalContext={upDownIntervalContext} chainlinkAsset={upDownAsset || undefined} targetPrice={upDownTargetPrice} />
               : <PriceChart market={selectedMarket} isNo={orderOutcome === 'NO'} />
             }
           </div>

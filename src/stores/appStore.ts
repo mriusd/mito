@@ -70,6 +70,9 @@ interface AppState {
   sidebarOpen: boolean;
   selectedMarket: Market | null;
   sidebarOutcome: 'YES' | 'NO';
+  /** Synced with sidebar live-trades ONCHAIN / POLYMARKET toggle (localStorage). */
+  liveTradesSource: 'onchain' | 'polymarket';
+  setLiveTradesSource: (v: 'onchain' | 'polymarket') => void;
 
   // Dialogs
   progDialogOpen: boolean;
@@ -348,6 +351,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarOpen: true,
   selectedMarket: null,
   sidebarOutcome: 'YES' as const,
+  liveTradesSource: (() => {
+    if (typeof localStorage === 'undefined') return 'onchain';
+    return localStorage.getItem('polymarket-sidebar-live-trades-source') === 'polymarket' ? 'polymarket' : 'onchain';
+  })(),
+  setLiveTradesSource: (v) => {
+    localStorage.setItem('polymarket-sidebar-live-trades-source', v);
+    set({ liveTradesSource: v });
+  },
 
   progDialogOpen: false,
   progDialogData: null,

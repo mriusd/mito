@@ -22,17 +22,22 @@ interface LiveTradeChartProps {
   tokenId?: string;
   startTime?: number;
   endTime?: number;
-  eventSlug?: string;
+  /** Slug + question + group title — default candle resolution for longer Up/Down windows */
+  intervalContext?: string;
   chainlinkAsset?: string; // e.g. 'BTC' -> fetches chainlink_btcusd candles
   targetPrice?: number | null; // target price in USD, placed at 50% Y-axis
 }
 
-function defaultInterval(eventSlug?: string): string {
-  if (eventSlug?.match(/up-or-down-on-/)) return '5m';
+function defaultInterval(context?: string): string {
+  if (!context) return '1m';
+  const s = context.toLowerCase();
+  if (s.match(/updown-4h/) || s.match(/\b4[- ]?h\b/)) return '15m';
+  if (s.match(/up-or-down-on-/) || s.match(/\b24[- ]?h\b/)) return '15m';
+  if (s.match(/updown-1h/) || s.match(/(?:^|[^0-9])1[- ]?h\b/) || s.match(/\b1[- ]?hour\b/)) return '5m';
   return '1m';
 }
 
-export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, eventSlug, chainlinkAsset, targetPrice }: LiveTradeChartProps) {
+export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, intervalContext, chainlinkAsset, targetPrice }: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
   const chainlinkCandleMapRef = useRef<Map<number, Candle>>(new Map());
@@ -41,14 +46,14 @@ export function LiveTradeChart({ trades, isNo, tokenId, startTime, endTime, even
   const [chainlinkReady, setChainlinkReady] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const chainlinkWsRef = useRef<WebSocket | null>(null);
-  const [interval, setInterval_] = useState(() => defaultInterval(eventSlug));
+  const [interval, setInterval_] = useState(() => defaultInterval(intervalContext));
   const [wsTick, setWsTick] = useState(0);
   const [chainlinkTick, setChainlinkTick] = useState(0);
 
   // Reset default interval when market changes
   useEffect(() => {
-    setInterval_(defaultInterval(eventSlug));
-  }, [eventSlug, tokenId]);
+    setInterval_(defaultInterval(intervalContext));
+  }, [intervalContext, tokenId]);
 
   const candleMs = INTERVAL_MS[interval] || 60000;
 

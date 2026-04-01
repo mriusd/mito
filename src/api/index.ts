@@ -357,6 +357,9 @@ export function buildMarketLookup(aboveMarkets: Record<string, Market[]>, priceO
 export interface WalletPosition {
   wallet: string;
   marketId: string;
+  /** Present on /api/wallet-positions rows; used to discover CLOB token IDs for on-chain fetches. */
+  tokenIdYes?: string;
+  tokenIdNo?: string;
   boughtYes: number;
   soldYes: number;
   boughtNo: number;

@@ -4,7 +4,7 @@ import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import type { AssetName, AssetSymbol, Market } from '../../types';
 import { ASSET_COLORS } from '../../types';
-import { assetToSymbol, formatPrice } from '../../utils/format';
+import { assetToSymbol, formatPolymarketVolumeK, formatPrice, getPolymarketVolumeUsd } from '../../utils/format';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { BinanceChartPanel } from './BinanceChartPanel';
 import { MarketCellMidRow } from './MarketCellMidRow';
@@ -181,7 +181,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
           <thead className="sticky top-0 z-10 bg-gray-900">
             <tr>
               <th className="px-2 py-1 text-center text-gray-400 font-bold border-b border-r border-gray-700 bg-gray-900" rowSpan={2} />
-              <th colSpan={3} className={`px-2 py-1 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900 font-bold ${titleColor}`}>
+              <th colSpan={4} className={`px-2 py-1 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900 font-bold ${titleColor}`}>
                 {asset}
               </th>
             </tr>
@@ -189,6 +189,9 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
               <th className="px-1 py-0.5 text-center border-b border-r border-l border-gray-700 border-solid bg-gray-900 text-[9px] text-gray-400 font-semibold">Target</th>
               <th className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-gray-400 font-semibold">Current</th>
               <th className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/70 text-[9px] text-gray-400 font-semibold">Next</th>
+              <th className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/40 text-[9px] text-sky-400/90 font-semibold" title="Toxic Flow USDC (wallet usdc_in), thousands">
+                Vol
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -196,6 +199,9 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
               const duration = TF_DURATIONS_MS[tf] || 0;
               const endMs = current?.endDate ? new Date(current.endDate).getTime() : 0;
               const tfProgress = expiryProgress(now, endMs, duration);
+              const volYesToken = current?.clobTokenIds?.[0] || '';
+              const polymarketVol =
+                current && volYesToken ? getPolymarketVolumeUsd(current, volYesToken, marketLookup) : null;
               return (
                 <tr key={tf} className="hover:bg-gray-800/50">
                   <td className="px-1 py-1 font-bold text-white border-b border-r border-gray-700 whitespace-nowrap relative bg-gray-900">
@@ -422,6 +428,12 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                         style={{ width: `${(expiryProgress(now, new Date(next.endDate).getTime(), duration) * 100).toFixed(1)}%`, backgroundColor: EXPIRY_BAR_BG }}
                       />
                     )}
+                  </td>
+                  <td
+                    className="px-1 py-1 text-right border-l border-r border-solid border-gray-700 bg-gray-900/40 text-sky-300/95 font-bold tabular-nums text-[9px] whitespace-nowrap border-b border-gray-700/50 align-middle"
+                    title="Toxic Flow USDC volume (wallet_positions usdc_in), shown in thousands"
+                  >
+                    {formatPolymarketVolumeK(polymarketVol)}
                   </td>
                 </tr>
               );

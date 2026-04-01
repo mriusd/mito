@@ -579,7 +579,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           )}
                         </>
                       )}
-                      {/* YES mid \ P(NO)¢ = 100 − YES mid */}
+                      {/* YES mid | P(NO)¢ = 100 − YES mid */}
                       <MarketCellMidRow
                         className="text-[10px] text-gray-400"
                         left={
@@ -765,7 +765,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       style={{ minWidth: 60, ...udDeltaBg }}
                       onClick={() => handleCellClick(market)}
                     >
-                      {/* YES mid \ P(NO)¢ = 100 − YES mid */}
+                      {/* YES mid | P(NO)¢ = 100 − YES mid */}
                       <MarketCellMidRow
                         className="text-[10px] text-gray-400"
                         left={
@@ -998,7 +998,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           )}
                         </>
                       )}
-                      {/* YES mid \ P(NO)¢ = 100 − YES mid */}
+                      {/* YES mid | P(NO)¢ = 100 − YES mid */}
                       <MarketCellMidRow
                         className="text-[10px] text-gray-400"
                         left={

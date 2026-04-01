@@ -64,21 +64,32 @@ function shortenWallet(w: string): string {
   return w.slice(0, 6) + '…' + w.slice(-4);
 }
 
+/** Green segment = win rate, red = loss rate (0–1). Use as cell bottom edge or stacked under wallet. */
+function WinRateBottomBar({ winRate, className }: { winRate: number; className?: string }) {
+  const w = Math.min(1, Math.max(0, winRate));
+  const pctWin = w * 100;
+  const pctLoss = (1 - w) * 100;
+  return (
+    <div
+      className={`flex h-0.5 w-full min-w-[40px] overflow-hidden rounded-[1px] ${className ?? ''}`}
+      title={`Win ${pctWin.toFixed(0)}% · loss ${pctLoss.toFixed(0)}%`}
+    >
+      <div className="h-full shrink-0 bg-emerald-500" style={{ width: `${pctWin}%` }} />
+      <div className="h-full shrink-0 bg-red-600" style={{ width: `${pctLoss}%` }} />
+    </div>
+  );
+}
+
 // Wallet hover tooltip — fetches summary on hover, caches results
 const summaryCache: Record<string, WalletSummary | null> = {};
 
 function WalletLink({
   wallet,
   netShares,
-  winRate,
-  winLossTotal,
   onOpenWallet,
 }: {
   wallet: string;
   netShares?: number;
-  /** 0–1; shown only when winLossTotal > 0 */
-  winRate?: number;
-  winLossTotal?: number;
   onOpenWallet?: (wallet: string, netShares?: number) => void;
 }) {
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
@@ -115,11 +126,6 @@ function WalletLink({
         className="text-blue-400 hover:underline font-mono inline-flex items-baseline flex-wrap gap-x-0"
       >
         <span>{shortenWallet(wallet)}</span>
-        {typeof winLossTotal === 'number' && winLossTotal > 0 && typeof winRate === 'number' && Number.isFinite(winRate) && (
-          <span className={`ml-0.5 font-sans font-bold ${winRate >= 0.5 ? 'text-green-400' : 'text-red-400'}`}>
-            ({(winRate * 100).toFixed(0)}%)
-          </span>
-        )}
       </button>
       {show && (
         <div className="absolute z-[60000] left-0 top-full mt-1 bg-gray-900 border border-gray-600 rounded shadow-xl p-2 min-w-[190px] text-[9px]"
@@ -207,17 +213,17 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               cumSharesPct += sharesPct;
               const nYColor = nY > 0.001 ? 'text-green-400' : nY < -0.001 ? 'text-red-400' : 'text-gray-500';
               const nNColor = nN > 0.001 ? 'text-green-400' : nN < -0.001 ? 'text-red-400' : 'text-gray-500';
+              const showWinBar =
+                typeof w.winLossTotal === 'number' &&
+                w.winLossTotal > 0 &&
+                typeof w.winRate === 'number' &&
+                Number.isFinite(w.winRate);
               return (
                 <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
                   <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
-                  <td className="px-1">
-                    <WalletLink
-                      wallet={w.wallet}
-                      netShares={w.net}
-                      winRate={w.winRate}
-                      winLossTotal={w.winLossTotal}
-                      onOpenWallet={onOpenWallet}
-                    />
+                  <td className={`relative align-top px-1 py-0.5 ${showWinBar ? 'pb-2' : ''}`}>
+                    <WalletLink wallet={w.wallet} netShares={w.net} onOpenWallet={onOpenWallet} />
+                    {showWinBar && <WinRateBottomBar winRate={w.winRate!} className="absolute bottom-0 left-0 right-0" />}
                   </td>
                   <td className="text-right px-1 text-green-400 bg-green-900/10">{w.boughtYes > 0 ? fmtInt(w.boughtYes) : '-'}</td>
                   <td className="text-right px-1 text-red-400 bg-green-900/10">{w.soldYes > 0 ? fmtInt(w.soldYes) : '-'}</td>
@@ -824,44 +830,74 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                       </span>
                     </div>
                     <div className="space-y-1.5">
-                      {highFlags.map((f, i) => (
-                        <div key={`h${i}`} className="flex items-start gap-1.5 text-[10px]">
-                          <AlertTriangle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
-                          <span className="text-gray-200">
-                            {f.wallet ? (
-                              <>
-                                <WalletLink
-                                  wallet={f.wallet}
-                                  netShares={netByWallet[f.wallet.toLowerCase()]}
-                                  winRate={winStatsByWallet[f.wallet.toLowerCase()]?.winRate}
-                                  winLossTotal={winStatsByWallet[f.wallet.toLowerCase()]?.winLossTotal}
-                                  onOpenWallet={openWalletDialog}
-                                />{' '}
-                                {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
-                              </>
-                            ) : f.detail}
-                          </span>
-                        </div>
-                      ))}
-                      {medFlags.map((f, i) => (
-                        <div key={`m${i}`} className="flex items-start gap-1.5 text-[10px]">
-                          <AlertTriangle size={12} className="text-yellow-400 flex-shrink-0 mt-0.5" />
-                          <span className="text-gray-300">
-                            {f.wallet ? (
-                              <>
-                                <WalletLink
-                                  wallet={f.wallet}
-                                  netShares={netByWallet[f.wallet.toLowerCase()]}
-                                  winRate={winStatsByWallet[f.wallet.toLowerCase()]?.winRate}
-                                  winLossTotal={winStatsByWallet[f.wallet.toLowerCase()]?.winLossTotal}
-                                  onOpenWallet={openWalletDialog}
-                                />{' '}
-                                {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
-                              </>
-                            ) : f.detail}
-                          </span>
-                        </div>
-                      ))}
+                      {highFlags.map((f, i) => {
+                        const st = f.wallet ? winStatsByWallet[f.wallet.toLowerCase()] : undefined;
+                        const showWinBar = !!(st && st.winLossTotal > 0 && Number.isFinite(st.winRate));
+                        return (
+                          <div key={`h${i}`} className="flex items-start gap-1.5 text-[10px]">
+                            <AlertTriangle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
+                            <span className="text-gray-200">
+                              {f.wallet ? (
+                                <>
+                                  {showWinBar ? (
+                                    <span className="inline-flex flex-col gap-0.5 align-baseline mr-0.5">
+                                      <WalletLink
+                                        wallet={f.wallet}
+                                        netShares={netByWallet[f.wallet.toLowerCase()]}
+                                        onOpenWallet={openWalletDialog}
+                                      />
+                                      <WinRateBottomBar winRate={st!.winRate} />
+                                    </span>
+                                  ) : (
+                                    <WalletLink
+                                      wallet={f.wallet}
+                                      netShares={netByWallet[f.wallet.toLowerCase()]}
+                                      onOpenWallet={openWalletDialog}
+                                    />
+                                  )}{' '}
+                                  {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
+                                </>
+                              ) : (
+                                f.detail
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {medFlags.map((f, i) => {
+                        const st = f.wallet ? winStatsByWallet[f.wallet.toLowerCase()] : undefined;
+                        const showWinBar = !!(st && st.winLossTotal > 0 && Number.isFinite(st.winRate));
+                        return (
+                          <div key={`m${i}`} className="flex items-start gap-1.5 text-[10px]">
+                            <AlertTriangle size={12} className="text-yellow-400 flex-shrink-0 mt-0.5" />
+                            <span className="text-gray-300">
+                              {f.wallet ? (
+                                <>
+                                  {showWinBar ? (
+                                    <span className="inline-flex flex-col gap-0.5 align-baseline mr-0.5">
+                                      <WalletLink
+                                        wallet={f.wallet}
+                                        netShares={netByWallet[f.wallet.toLowerCase()]}
+                                        onOpenWallet={openWalletDialog}
+                                      />
+                                      <WinRateBottomBar winRate={st!.winRate} />
+                                    </span>
+                                  ) : (
+                                    <WalletLink
+                                      wallet={f.wallet}
+                                      netShares={netByWallet[f.wallet.toLowerCase()]}
+                                      onOpenWallet={openWalletDialog}
+                                    />
+                                  )}{' '}
+                                  {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
+                                </>
+                              ) : (
+                                f.detail
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
                       {hasConcentration && (
                         <div className="flex items-start gap-1.5 text-[10px]">
                           <AlertTriangle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />

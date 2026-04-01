@@ -1452,13 +1452,13 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
             }}
             className="no-drag w-max shrink-0 rounded border border-violet-700/50 bg-gray-900/90 py-0.5 pl-1 pr-2 text-[10px] font-semibold text-violet-100 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500/40 [field-sizing:content]"
             aria-label="Number of candles"
-            title="Visible history length in bars"
+            title="Number of candles shown"
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >
             {CANDLE_COUNTS.map((n) => (
               <option key={n} value={String(n)}>
-                {n} bars
+                {n}
               </option>
             ))}
           </select>

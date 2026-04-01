@@ -509,8 +509,13 @@ export function Sidebar() {
   const payout = useMemo(() => {
     const a = parseFloat(orderAmount);
     if (!a) return 0;
+    if (orderSide === 'SELL') {
+      const p = summaryPriceDecimal;
+      if (orderKind === 'limit' && (!orderPrice || !p)) return 0;
+      return p * a;
+    }
     return a;
-  }, [orderAmount]);
+  }, [orderAmount, orderSide, summaryPriceDecimal, orderKind, orderPrice]);
 
   const getOrderExpiryLeadSeconds = () => {
     const n = parseFloat(orderExpiry);
@@ -1781,7 +1786,7 @@ export function Sidebar() {
               <div className="bg-gray-700/50 rounded p-2 text-[10px] flex-1 flex flex-col text-gray-400">
                 <div className="flex justify-between"><span>Cost:</span><span>Payout:</span></div>
                 <div className="flex justify-between items-baseline mt-0.5">
-                  <span className="text-red-400 font-bold text-[13px]">${cost.toFixed(2)}</span>
+                  <span className="text-red-400 font-bold text-[13px]">{orderSide === 'SELL' ? '' : `$${cost.toFixed(2)}`}</span>
                   <span className="text-green-400 font-bold text-[13px]">${payout.toFixed(2)}</span>
                 </div>
               </div>

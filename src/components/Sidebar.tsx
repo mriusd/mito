@@ -111,6 +111,9 @@ export function Sidebar() {
       liveBias: entry.liveBias,
       liveBiasWindowMin: entry.liveBiasWindowMin,
       concentration: entry.concentration,
+      winnerBias: entry.winnerBias,
+      winnerBiasYesWR: entry.winnerBiasYesWR,
+      winnerBiasNoWR: entry.winnerBiasNoWR,
     };
   }, [selectedMarket, marketLookup]);
   const sharesInExistenceDisplay = useMemo(() => {
@@ -1325,17 +1328,15 @@ export function Sidebar() {
                 <div className="tabular-nums font-bold text-yellow-300">{holdersCountDisplay}</div>
               </button>
             </div>
-            {/* Live Bias bars */}
+            {/* Compact bias bars */}
             {(() => {
               const posLabel = isUpDownMarket ? 'UP' : 'YES';
               const negLabel = isUpDownMarket ? 'DOWN' : 'NO';
-              const labelFor = (v: number) => v > 0.01 ? posLabel : v < -0.01 ? negLabel : 'FLAT';
               const colorFor = (v: number) => v > 0.01 ? 'text-green-400' : v < -0.01 ? 'text-red-400' : 'text-gray-500';
               const barFor = (v: number) => Math.max(2, Math.min(98, 50 + v * 50));
 
               const live = liveShareStats?.liveBias ?? 0;
               const liveWin = liveShareStats?.liveBiasWindowMin || 30;
-              const livePct = live * 100;
 
               const bidTotal = displayBids.reduce((s, l) => {
                 const pCents = parseFloat(l.price) * 100;
@@ -1349,56 +1350,44 @@ export function Sidebar() {
               }, 0);
               const bookDenom = bidTotal + askTotal;
               const book = bookDenom > 0 ? (bidTotal - askTotal) / bookDenom : 0;
-              const bookPct = book * 100;
+
+              const conc = liveShareStats?.concentration ?? 0;
+              const concPct = Math.max(0, Math.min(100, conc * 100));
+              const cR = Math.round(Math.min(255, conc * 2 * 255));
+              const cG = Math.round(Math.min(255, (1 - conc) * 2 * 255));
+              const concColor = `rgb(${cR}, ${cG}, 0)`;
+
+              const wb = liveShareStats?.winnerBias ?? 0;
+              const yesWR = liveShareStats?.winnerBiasYesWR ?? 0;
+              const noWR = liveShareStats?.winnerBiasNoWR ?? 0;
+
+              const MiniBar = ({ label, value, leftColor, rightColor, tooltip }: { label: string; value: number; leftColor: string; rightColor: string; tooltip?: string }) => (
+                <div className="flex items-center gap-1 min-w-0" title={tooltip}>
+                  <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate">{label}</span>
+                  <div className="h-[5px] bg-gray-700 rounded-full overflow-hidden flex flex-1 min-w-0">
+                    <div className={`${leftColor} h-full transition-all`} style={{ width: `${barFor(value)}%` }} />
+                    <div className={`${rightColor} h-full transition-all flex-1`} />
+                  </div>
+                  <span className={`text-[8px] font-bold w-[28px] shrink-0 text-right ${colorFor(value)}`}>
+                    {(value * 100) > 0 ? '+' : ''}{(value * 100).toFixed(0)}%
+                  </span>
+                </div>
+              );
 
               return (
-                <div className="mt-1.5 space-y-1">
-                  <div>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[9px] text-gray-500">Book Imbalance</span>
-                      <span className={`text-[10px] font-bold ${colorFor(book)}`}>
-                        {labelFor(book)}
-                        <span className="text-[9px] font-normal ml-0.5">({bookPct > 0 ? '+' : ''}{bookPct.toFixed(1)}%)</span>
-                      </span>
+                <div className="mt-1 space-y-0.5">
+                  <MiniBar label="Book" value={book} leftColor="bg-emerald-500/70" rightColor="bg-amber-500/70" tooltip={`Book Imbalance: ${(book * 100).toFixed(1)}%`} />
+                  <MiniBar label={`Flow${liveWin}m`} value={live} leftColor="bg-cyan-500/70" rightColor="bg-pink-500/70" tooltip={`Live Flow (${liveWin}m): ${(live * 100).toFixed(1)}%`} />
+                  <MiniBar label="Winner" value={wb} leftColor="bg-green-500/70" rightColor="bg-red-500/70" tooltip={`Winner Bias: ${posLabel} WR ${(yesWR * 100).toFixed(0)}% / ${negLabel} WR ${(noWR * 100).toFixed(0)}%`} />
+                  <div className="flex items-center gap-1 min-w-0" title={`Concentration: ${concPct.toFixed(0)}%`}>
+                    <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate">Conc</span>
+                    <div className="h-[5px] bg-gray-700 rounded-full overflow-hidden flex-1 min-w-0">
+                      <div className="h-full transition-all rounded-full" style={{ width: `${concPct}%`, backgroundColor: concColor }} />
                     </div>
-                    <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden flex">
-                      <div className="bg-emerald-500/70 h-full transition-all" style={{ width: `${barFor(book)}%` }} />
-                      <div className="bg-amber-500/70 h-full transition-all flex-1" />
-                    </div>
+                    <span className="text-[8px] font-bold w-[28px] shrink-0 text-right" style={{ color: concColor }}>
+                      {concPct.toFixed(0)}%
+                    </span>
                   </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[9px] text-gray-500">Live Flow ({liveWin}m)</span>
-                      <span className={`text-[10px] font-bold ${colorFor(live)}`}>
-                        {labelFor(live)}
-                        <span className="text-[9px] font-normal ml-0.5">({livePct > 0 ? '+' : ''}{livePct.toFixed(1)}%)</span>
-                      </span>
-                    </div>
-                    <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden flex">
-                      <div className="bg-cyan-500/70 h-full transition-all" style={{ width: `${barFor(live)}%` }} />
-                      <div className="bg-pink-500/70 h-full transition-all flex-1" />
-                    </div>
-                  </div>
-                  {(() => {
-                    const conc = liveShareStats?.concentration ?? 0;
-                    const concPct = Math.max(0, Math.min(100, conc * 100));
-                    const r = Math.round(Math.min(255, conc * 2 * 255));
-                    const g = Math.round(Math.min(255, (1 - conc) * 2 * 255));
-                    const barColor = `rgb(${r}, ${g}, 0)`;
-                    return (
-                      <div>
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[9px] text-gray-500">Concentration</span>
-                          <span className="text-[10px] font-bold" style={{ color: barColor }}>
-                            {concPct.toFixed(0)}%
-                          </span>
-                        </div>
-                        <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                          <div className="h-full transition-all rounded-full" style={{ width: `${concPct}%`, backgroundColor: barColor }} />
-                        </div>
-                      </div>
-                    );
-                  })()}
                 </div>
               );
             })()}

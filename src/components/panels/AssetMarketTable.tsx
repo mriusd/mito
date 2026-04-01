@@ -8,7 +8,7 @@ import { RangeEditDialog } from '../RangeEditDialog';
 import { HelpTooltip } from '../HelpTooltip';
 import type { AssetName, Market } from '../../types';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
-import { getMarketProbability, getHitMarketProbability, getImpliedSpotPrice } from '../../utils/bsMath';
+import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMath';
 
 function StrikeRangeIndicator({ markets, livePrice }: { markets: Market[]; livePrice: number }) {
   if (livePrice <= 0 || markets.length === 0) return null;
@@ -104,7 +104,6 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   });
   const [showAbove, setShowAbove] = useState(() => localStorage.getItem(`polybot-show-above-${panelId}`) !== 'false');
   const [showBetween, setShowBetween] = useState(() => localStorage.getItem(`polybot-show-between-${panelId}`) !== 'false');
-  const [showImpliedPrice, setShowImpliedPrice] = useState(() => localStorage.getItem(`polybot-grid-implied-${panelId}`) === 'true');
   const symbol = assetToSymbol(asset);
   const aboveMarkets = useAppStore((s) => s.aboveMarkets);
   const priceOnMarkets = useAppStore((s) => s.priceOnMarkets);
@@ -230,18 +229,6 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     setSidebarOutcome(outcome);
     setSidebarOpen(true);
   }, [setSelectedMarket, setSidebarOpen, setSidebarOutcome]);
-
-  const fmtImplied = useCallback((strike: string, yesProb: number | null, endDate: string | undefined): string | null => {
-    if (!showImpliedPrice || yesProb == null || !endDate) return null;
-    const s = getImpliedSpotPrice(strike, yesProb, endDate, adjVol, bsTimeOffsetHours);
-    if (s == null || !Number.isFinite(s) || s <= 0) return null;
-    if (s >= 100_000) return (s / 1000).toFixed(1) + 'k';
-    if (s >= 10_000) return (s / 1000).toFixed(2) + 'k';
-    if (s >= 1000) return (s / 1000).toFixed(2) + 'k';
-    if (s >= 100) return s.toFixed(1);
-    if (s >= 1) return s.toFixed(2);
-    return s.toFixed(4);
-  }, [showImpliedPrice, adjVol, bsTimeOffsetHours]);
 
   const aboveMarketsForAsset = aboveMarkets[asset] || [];
   const priceOnMarketsForAsset = priceOnMarkets[asset] || [];
@@ -591,34 +578,28 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           )}
                         </>
                       )}
-                      {/* YES mid \ P(NO)¢  — or implied price */}
-                      {(() => {
-                        const imp = fmtImplied(priceStr, yesMidProb, ev.endDate);
-                        if (imp) return <div className="text-[10px] text-amber-300 font-mono cursor-pointer" onClick={() => handleCellClick(market)}>${imp}</div>;
-                        return (
-                          <div className="text-[10px] text-gray-400">
-                            <span
-                              className="ob-trigger text-green-400 cursor-pointer hover:underline"
-                              data-token-id={yesTokenId}
-                              data-market-title={`${market.question || market.groupItemTitle || ''} (YES mid)`}
-                              data-asset={asset}
-                              data-strike={market.groupItemTitle || ''}
-                              data-end-date={ev.endDate || ''}
-                              onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                            >{yesMidStr}</span>
-                            {'\\'}
-                            <span
-                              className="ob-trigger text-red-400 cursor-pointer hover:underline"
-                              data-token-id={noTokenId}
-                              data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
-                              data-asset={asset}
-                              data-strike={market.groupItemTitle || ''}
-                              data-end-date={ev.endDate || ''}
-                              onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                            >{noMidStr}</span>
-                          </div>
-                        );
-                      })()}
+                      {/* YES mid \ P(NO)¢ = 100 − YES mid */}
+                      <div className="text-[10px] text-gray-400">
+                        <span
+                          className="ob-trigger text-green-400 cursor-pointer hover:underline"
+                          data-token-id={yesTokenId}
+                          data-market-title={`${market.question || market.groupItemTitle || ''} (YES mid)`}
+                          data-asset={asset}
+                          data-strike={market.groupItemTitle || ''}
+                          data-end-date={ev.endDate || ''}
+                          onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
+                        >{yesMidStr}</span>
+                        {'\\'}
+                        <span
+                          className="ob-trigger text-red-400 cursor-pointer hover:underline"
+                          data-token-id={noTokenId}
+                          data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
+                          data-asset={asset}
+                          data-strike={market.groupItemTitle || ''}
+                          data-end-date={ev.endDate || ''}
+                          onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
+                        >{noMidStr}</span>
+                      </div>
 
                       {/* Position indicators */}
                       {(yesPos || noPos) && (
@@ -779,35 +760,28 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       style={{ minWidth: 60, ...udDeltaBg }}
                       onClick={() => handleCellClick(market)}
                     >
-                      {/* YES mid \ P(NO)¢  — or implied price */}
-                      {(() => {
-                        const udStrike = ptb != null ? '>' + ptb : null;
-                        const imp = udStrike ? fmtImplied(udStrike, yesMidProb, market.endDate) : null;
-                        if (imp) return <div className="text-[10px] text-amber-300 font-mono cursor-pointer" onClick={() => handleCellClick(market)}>${imp}</div>;
-                        return (
-                          <div className="text-[10px] text-gray-400">
-                            <span
-                              className="ob-trigger text-green-400 cursor-pointer hover:underline"
-                              data-token-id={yesTokenId}
-                              data-market-title={`${market.question || ''} (YES mid)`}
-                              data-asset={asset}
-                              data-strike={market.groupItemTitle || ''}
-                              data-end-date={market.endDate || ''}
-                              onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                            >{yesMidStr}</span>
-                            {'\\'}
-                            <span
-                              className="ob-trigger text-red-400 cursor-pointer hover:underline"
-                              data-token-id={noTokenId}
-                              data-market-title={`${market.question || ''} (P(NO) ¢)`}
-                              data-asset={asset}
-                              data-strike={market.groupItemTitle || ''}
-                              data-end-date={market.endDate || ''}
-                              onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                            >{noMidStr}</span>
-                          </div>
-                        );
-                      })()}
+                      {/* YES mid \ P(NO)¢ = 100 − YES mid */}
+                      <div className="text-[10px] text-gray-400">
+                        <span
+                          className="ob-trigger text-green-400 cursor-pointer hover:underline"
+                          data-token-id={yesTokenId}
+                          data-market-title={`${market.question || ''} (YES mid)`}
+                          data-asset={asset}
+                          data-strike={market.groupItemTitle || ''}
+                          data-end-date={market.endDate || ''}
+                          onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
+                        >{yesMidStr}</span>
+                        {'\\'}
+                        <span
+                          className="ob-trigger text-red-400 cursor-pointer hover:underline"
+                          data-token-id={noTokenId}
+                          data-market-title={`${market.question || ''} (P(NO) ¢)`}
+                          data-asset={asset}
+                          data-strike={market.groupItemTitle || ''}
+                          data-end-date={market.endDate || ''}
+                          onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
+                        >{noMidStr}</span>
+                      </div>
 
                       {/* Position indicators */}
                       {(yesPos || noPos) && (
@@ -1015,34 +989,28 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           )}
                         </>
                       )}
-                      {/* YES mid \ P(NO)¢  — or implied price */}
-                      {(() => {
-                        const imp = fmtImplied(priceStr, yesMidProb, d.endDate);
-                        if (imp) return <div className="text-[10px] text-amber-300 font-mono cursor-pointer" onClick={() => handleCellClick(market)}>${imp}</div>;
-                        return (
-                          <div className="text-[10px] text-gray-400">
-                            <span
-                              className="ob-trigger text-green-400 cursor-pointer hover:underline"
-                              data-token-id={yesTokenId}
-                              data-market-title={`${market.question || market.groupItemTitle || ''} (YES mid)`}
-                              data-asset={asset}
-                              data-strike={market.groupItemTitle || ''}
-                              data-end-date={d.endDate || ''}
-                              onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                            >{yesMidStr}</span>
-                            {'\\'}
-                            <span
-                              className="ob-trigger text-red-400 cursor-pointer hover:underline"
-                              data-token-id={noTokenId}
-                              data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
-                              data-asset={asset}
-                              data-strike={market.groupItemTitle || ''}
-                              data-end-date={d.endDate || ''}
-                              onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                            >{noMidStr}</span>
-                          </div>
-                        );
-                      })()}
+                      {/* YES mid \ P(NO)¢ = 100 − YES mid */}
+                      <div className="text-[10px] text-gray-400">
+                        <span
+                          className="ob-trigger text-green-400 cursor-pointer hover:underline"
+                          data-token-id={yesTokenId}
+                          data-market-title={`${market.question || market.groupItemTitle || ''} (YES mid)`}
+                          data-asset={asset}
+                          data-strike={market.groupItemTitle || ''}
+                          data-end-date={d.endDate || ''}
+                          onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
+                        >{yesMidStr}</span>
+                        {'\\'}
+                        <span
+                          className="ob-trigger text-red-400 cursor-pointer hover:underline"
+                          data-token-id={noTokenId}
+                          data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
+                          data-asset={asset}
+                          data-strike={market.groupItemTitle || ''}
+                          data-end-date={d.endDate || ''}
+                          onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
+                        >{noMidStr}</span>
+                      </div>
 
                       {/* Position indicators */}
                       {(yesPos || noPos) && (
@@ -1220,21 +1188,6 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
             Past
           </label>
           <HelpTooltip text={"Show past/expired markets in the grid. When enabled, markets that have already expired will remain visible so you can review past data and outcomes."} />
-          <button
-            className={`no-drag text-[10px] font-bold px-1.5 py-0.5 rounded border ml-1 transition-colors ${
-              showImpliedPrice
-                ? 'text-amber-300 border-amber-500/60 bg-amber-900/30'
-                : 'text-gray-400 border-gray-600/50 hover:text-gray-300'
-            }`}
-            onClick={() => {
-              const next = !showImpliedPrice;
-              setShowImpliedPrice(next);
-              localStorage.setItem(`polybot-grid-implied-${panelId}`, String(next));
-            }}
-            title={showImpliedPrice ? 'Showing implied spot price from market odds (click to show market bid/ask)' : 'Showing market bid/ask (click to show implied spot price)'}
-          >
-            {showImpliedPrice ? 'Implied $' : 'Market'}
-          </button>
           {[['Up\\Down', showUpDown, setShowUpDown, `polybot-show-updown-${panelId}`] as const,
             ['Hit', showHit, setShowHit, `polybot-show-hit-${panelId}`] as const,
             ['Above', showAbove, setShowAbove, `polybot-show-above-${panelId}`] as const,

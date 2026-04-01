@@ -7,7 +7,7 @@ import type { Market } from '../types';
 const WS_FIELDS: (keyof Market)[] = [
   'bestBid', 'bestAsk', 'volume', 'sharesInExistence', 'marketNetDirection',
   'holders', 'smartMoneyBias', 'provenSMS', 'crowdBias', 'liveBias',
-  'liveBiasWindowMin', 'concentration',
+  'liveBiasWindowMin', 'concentration', 'winnerBias', 'winnerBiasYesWR', 'winnerBiasNoWR',
 ];
 
 function mergeWsFields(fresh: Record<string, Market>, prev: Record<string, Market>): Record<string, Market> {

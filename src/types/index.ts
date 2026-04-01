@@ -39,6 +39,9 @@ export interface Market {
   liveBias?: number;
   liveBiasWindowMin?: number;
   concentration?: number;
+  winnerBias?: number;
+  winnerBiasYesWR?: number;
+  winnerBiasNoWR?: number;
   // B-S computed values from server
   bs1?: number;
   bs2?: number;

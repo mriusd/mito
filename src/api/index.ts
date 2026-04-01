@@ -377,6 +377,10 @@ export interface WalletPosition {
   resolvedAt?: number;
   netSide: string;
   inventoryBias: number;
+  /** From wallet_scores: wins / (wins+losses); only set in toxic-flow response when winLossTotal > 0. */
+  winRate?: number;
+  /** Resolved markets with a win or loss (excludes flat-only); from wallet_scores. */
+  winLossTotal?: number;
 }
 
 export interface ToxicFlowData {

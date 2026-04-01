@@ -66,7 +66,20 @@ function shortenWallet(w: string): string {
 // Wallet hover tooltip — fetches summary on hover, caches results
 const summaryCache: Record<string, WalletSummary | null> = {};
 
-function WalletLink({ wallet, netShares, onOpenWallet }: { wallet: string; netShares?: number; onOpenWallet?: (wallet: string, netShares?: number) => void }) {
+function WalletLink({
+  wallet,
+  netShares,
+  winRate,
+  winLossTotal,
+  onOpenWallet,
+}: {
+  wallet: string;
+  netShares?: number;
+  /** 0–1; shown only when winLossTotal > 0 */
+  winRate?: number;
+  winLossTotal?: number;
+  onOpenWallet?: (wallet: string, netShares?: number) => void;
+}) {
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [show, setShow] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -98,9 +111,14 @@ function WalletLink({ wallet, netShares, onOpenWallet }: { wallet: string; netSh
           e.stopPropagation();
           onOpenWallet?.(wallet, netShares);
         }}
-        className="text-blue-400 hover:underline font-mono"
+        className="text-blue-400 hover:underline font-mono inline-flex items-baseline flex-wrap gap-x-0"
       >
-        {shortenWallet(wallet)}
+        <span>{shortenWallet(wallet)}</span>
+        {typeof winLossTotal === 'number' && winLossTotal > 0 && typeof winRate === 'number' && Number.isFinite(winRate) && (
+          <span className={`ml-0.5 font-sans font-bold ${winRate >= 0.5 ? 'text-green-400' : 'text-red-400'}`}>
+            ({(winRate * 100).toFixed(0)}%)
+          </span>
+        )}
       </button>
       {show && (
         <div className="absolute z-[60000] left-0 top-full mt-1 bg-gray-900 border border-gray-600 rounded shadow-xl p-2 min-w-[190px] text-[9px]"
@@ -185,7 +203,15 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
                 <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
-                <td className="px-1"><WalletLink wallet={w.wallet} netShares={w.net} onOpenWallet={onOpenWallet} /></td>
+                <td className="px-1">
+                  <WalletLink
+                    wallet={w.wallet}
+                    netShares={w.net}
+                    winRate={w.winRate}
+                    winLossTotal={w.winLossTotal}
+                    onOpenWallet={onOpenWallet}
+                  />
+                </td>
                 <td className="text-right px-1 text-green-400">{w.boughtYes > 0 ? w.boughtYes.toFixed(1) : '-'}</td>
                 <td className="text-right px-1 text-green-300/60">{w.soldYes > 0 ? w.soldYes.toFixed(1) : '-'}</td>
                 <td className="text-right px-1 text-red-400">{w.boughtNo > 0 ? w.boughtNo.toFixed(1) : '-'}</td>
@@ -691,9 +717,17 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                 const highFlags = rf.filter(f => f.level === 'high');
                 const medFlags = rf.filter(f => f.level === 'medium');
                 const netByWallet: Record<string, number> = {};
+                const winStatsByWallet: Record<string, { winRate: number; winLossTotal: number }> = {};
                 const addWallets = (arr?: WalletPosition[] | null) => {
                   for (const w of arr || []) {
-                    if (w?.wallet) netByWallet[w.wallet.toLowerCase()] = w.net || 0;
+                    if (!w?.wallet) continue;
+                    const k = w.wallet.toLowerCase();
+                    netByWallet[k] = w.net || 0;
+                    const wl = w.winLossTotal;
+                    const wr = w.winRate;
+                    if (typeof wl === 'number' && wl > 0 && typeof wr === 'number' && Number.isFinite(wr)) {
+                      winStatsByWallet[k] = { winRate: wr, winLossTotal: wl };
+                    }
                   }
                 };
                 addWallets(data.topHolders);
@@ -721,7 +755,13 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                           <span className="text-gray-200">
                             {f.wallet ? (
                               <>
-                                <WalletLink wallet={f.wallet} netShares={netByWallet[f.wallet.toLowerCase()]} onOpenWallet={openWalletDialog} />{' '}
+                                <WalletLink
+                                  wallet={f.wallet}
+                                  netShares={netByWallet[f.wallet.toLowerCase()]}
+                                  winRate={winStatsByWallet[f.wallet.toLowerCase()]?.winRate}
+                                  winLossTotal={winStatsByWallet[f.wallet.toLowerCase()]?.winLossTotal}
+                                  onOpenWallet={openWalletDialog}
+                                />{' '}
                                 {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
                               </>
                             ) : f.detail}
@@ -734,7 +774,13 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                           <span className="text-gray-300">
                             {f.wallet ? (
                               <>
-                                <WalletLink wallet={f.wallet} netShares={netByWallet[f.wallet.toLowerCase()]} onOpenWallet={openWalletDialog} />{' '}
+                                <WalletLink
+                                  wallet={f.wallet}
+                                  netShares={netByWallet[f.wallet.toLowerCase()]}
+                                  winRate={winStatsByWallet[f.wallet.toLowerCase()]?.winRate}
+                                  winLossTotal={winStatsByWallet[f.wallet.toLowerCase()]?.winLossTotal}
+                                  onOpenWallet={openWalletDialog}
+                                />{' '}
                                 {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
                               </>
                             ) : f.detail}

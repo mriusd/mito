@@ -9,6 +9,7 @@ import { getMarketProbability } from '../../utils/bsMath';
 import { formatPolymarketVolumeK, getPolymarketVolumeUsd } from '../../utils/format';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { MarketCellMidRow } from './MarketCellMidRow';
 
 function formatCountdown(ms: number): string {
   const rem = ms - Date.now();
@@ -612,17 +613,21 @@ export function UpDownMarketsPanel() {
                           <GraduationCap size={11} />
                         </span>
                       )}
-                      <div className="text-[10px] text-gray-400">
-                        <span
-                          className={`cursor-pointer hover:underline ${isYesMidStrong ? 'bg-green-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-green-400'}`}
-                          onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                        >{yesMidStr}</span>
-                        {'\\'}
-                        <span
-                          className={`cursor-pointer hover:underline ${isNoProbStrong ? 'bg-red-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-red-400'}`}
-                          onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                        >{noProbStr}</span>
-                      </div>
+                      <MarketCellMidRow
+                        className="text-[10px] text-gray-400"
+                        left={
+                          <span
+                            className={`cursor-pointer hover:underline ${isYesMidStrong ? 'bg-green-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-green-400'}`}
+                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
+                          >{yesMidStr}</span>
+                        }
+                        right={
+                          <span
+                            className={`cursor-pointer hover:underline ${isNoProbStrong ? 'bg-red-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-red-400'}`}
+                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
+                          >{noProbStr}</span>
+                        }
+                      />
 
                       {/* Order badges - YES bottom-left, NO bottom-right */}
                       {(() => {
@@ -688,19 +693,25 @@ export function UpDownMarketsPanel() {
                         onClick={() => handleCellClick(nextMarket)}
                         title="Next market in this lane"
                       >
-                        <span
-                          className="text-green-400 cursor-pointer hover:underline"
-                          onClick={(e) => { e.stopPropagation(); handleCellClick(nextMarket, 'YES'); }}
-                        >
-                          {nextYesMid != null ? (nextYesMid * 100).toFixed(1) : '-'}
-                        </span>
-                        {'\\'}
-                        <span
-                          className="text-red-400 cursor-pointer hover:underline"
-                          onClick={(e) => { e.stopPropagation(); handleCellClick(nextMarket, 'NO'); }}
-                        >
-                          {nextNoProb != null ? (nextNoProb * 100).toFixed(1) : '-'}
-                        </span>
+                        <MarketCellMidRow
+                          className="text-gray-400"
+                          left={
+                            <span
+                              className="text-green-400 cursor-pointer hover:underline"
+                              onClick={(e) => { e.stopPropagation(); handleCellClick(nextMarket, 'YES'); }}
+                            >
+                              {nextYesMid != null ? (nextYesMid * 100).toFixed(1) : '-'}
+                            </span>
+                          }
+                          right={
+                            <span
+                              className="text-red-400 cursor-pointer hover:underline"
+                              onClick={(e) => { e.stopPropagation(); handleCellClick(nextMarket, 'NO'); }}
+                            >
+                              {nextNoProb != null ? (nextNoProb * 100).toFixed(1) : '-'}
+                            </span>
+                          }
+                        />
                         {nextMarket.endDate && duration > 0 && (() => {
                           const nEnd = new Date(nextMarket.endDate).getTime();
                           const p = expiryProgress(now, nEnd, duration);

@@ -9,6 +9,7 @@ import { HelpTooltip } from '../HelpTooltip';
 import type { AssetName, Market } from '../../types';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMath';
+import { MarketCellMidRow } from './MarketCellMidRow';
 
 function StrikeRangeIndicator({ markets, livePrice }: { markets: Market[]; livePrice: number }) {
   if (livePrice <= 0 || markets.length === 0) return null;
@@ -579,27 +580,31 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                         </>
                       )}
                       {/* YES mid \ P(NO)¢ = 100 − YES mid */}
-                      <div className="text-[10px] text-gray-400">
-                        <span
-                          className="ob-trigger text-green-400 cursor-pointer hover:underline"
-                          data-token-id={yesTokenId}
-                          data-market-title={`${market.question || market.groupItemTitle || ''} (YES mid)`}
-                          data-asset={asset}
-                          data-strike={market.groupItemTitle || ''}
-                          data-end-date={ev.endDate || ''}
-                          onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                        >{yesMidStr}</span>
-                        {'\\'}
-                        <span
-                          className="ob-trigger text-red-400 cursor-pointer hover:underline"
-                          data-token-id={noTokenId}
-                          data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
-                          data-asset={asset}
-                          data-strike={market.groupItemTitle || ''}
-                          data-end-date={ev.endDate || ''}
-                          onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                        >{noMidStr}</span>
-                      </div>
+                      <MarketCellMidRow
+                        className="text-[10px] text-gray-400"
+                        left={
+                          <span
+                            className="ob-trigger text-green-400 cursor-pointer hover:underline"
+                            data-token-id={yesTokenId}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES mid)`}
+                            data-asset={asset}
+                            data-strike={market.groupItemTitle || ''}
+                            data-end-date={ev.endDate || ''}
+                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
+                          >{yesMidStr}</span>
+                        }
+                        right={
+                          <span
+                            className="ob-trigger text-red-400 cursor-pointer hover:underline"
+                            data-token-id={noTokenId}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
+                            data-asset={asset}
+                            data-strike={market.groupItemTitle || ''}
+                            data-end-date={ev.endDate || ''}
+                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
+                          >{noMidStr}</span>
+                        }
+                      />
 
                       {/* Position indicators */}
                       {(yesPos || noPos) && (
@@ -761,27 +766,31 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       onClick={() => handleCellClick(market)}
                     >
                       {/* YES mid \ P(NO)¢ = 100 − YES mid */}
-                      <div className="text-[10px] text-gray-400">
-                        <span
-                          className="ob-trigger text-green-400 cursor-pointer hover:underline"
-                          data-token-id={yesTokenId}
-                          data-market-title={`${market.question || ''} (YES mid)`}
-                          data-asset={asset}
-                          data-strike={market.groupItemTitle || ''}
-                          data-end-date={market.endDate || ''}
-                          onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                        >{yesMidStr}</span>
-                        {'\\'}
-                        <span
-                          className="ob-trigger text-red-400 cursor-pointer hover:underline"
-                          data-token-id={noTokenId}
-                          data-market-title={`${market.question || ''} (P(NO) ¢)`}
-                          data-asset={asset}
-                          data-strike={market.groupItemTitle || ''}
-                          data-end-date={market.endDate || ''}
-                          onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                        >{noMidStr}</span>
-                      </div>
+                      <MarketCellMidRow
+                        className="text-[10px] text-gray-400"
+                        left={
+                          <span
+                            className="ob-trigger text-green-400 cursor-pointer hover:underline"
+                            data-token-id={yesTokenId}
+                            data-market-title={`${market.question || ''} (YES mid)`}
+                            data-asset={asset}
+                            data-strike={market.groupItemTitle || ''}
+                            data-end-date={market.endDate || ''}
+                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
+                          >{yesMidStr}</span>
+                        }
+                        right={
+                          <span
+                            className="ob-trigger text-red-400 cursor-pointer hover:underline"
+                            data-token-id={noTokenId}
+                            data-market-title={`${market.question || ''} (P(NO) ¢)`}
+                            data-asset={asset}
+                            data-strike={market.groupItemTitle || ''}
+                            data-end-date={market.endDate || ''}
+                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
+                          >{noMidStr}</span>
+                        }
+                      />
 
                       {/* Position indicators */}
                       {(yesPos || noPos) && (
@@ -990,27 +999,31 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                         </>
                       )}
                       {/* YES mid \ P(NO)¢ = 100 − YES mid */}
-                      <div className="text-[10px] text-gray-400">
-                        <span
-                          className="ob-trigger text-green-400 cursor-pointer hover:underline"
-                          data-token-id={yesTokenId}
-                          data-market-title={`${market.question || market.groupItemTitle || ''} (YES mid)`}
-                          data-asset={asset}
-                          data-strike={market.groupItemTitle || ''}
-                          data-end-date={d.endDate || ''}
-                          onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                        >{yesMidStr}</span>
-                        {'\\'}
-                        <span
-                          className="ob-trigger text-red-400 cursor-pointer hover:underline"
-                          data-token-id={noTokenId}
-                          data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
-                          data-asset={asset}
-                          data-strike={market.groupItemTitle || ''}
-                          data-end-date={d.endDate || ''}
-                          onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                        >{noMidStr}</span>
-                      </div>
+                      <MarketCellMidRow
+                        className="text-[10px] text-gray-400"
+                        left={
+                          <span
+                            className="ob-trigger text-green-400 cursor-pointer hover:underline"
+                            data-token-id={yesTokenId}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES mid)`}
+                            data-asset={asset}
+                            data-strike={market.groupItemTitle || ''}
+                            data-end-date={d.endDate || ''}
+                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
+                          >{yesMidStr}</span>
+                        }
+                        right={
+                          <span
+                            className="ob-trigger text-red-400 cursor-pointer hover:underline"
+                            data-token-id={noTokenId}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
+                            data-asset={asset}
+                            data-strike={market.groupItemTitle || ''}
+                            data-end-date={d.endDate || ''}
+                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
+                          >{noMidStr}</span>
+                        }
+                      />
 
                       {/* Position indicators */}
                       {(yesPos || noPos) && (

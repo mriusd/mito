@@ -7,6 +7,7 @@ import { ASSET_COLORS } from '../../types';
 import { assetToSymbol, formatPrice } from '../../utils/format';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { BinanceChartPanel } from './BinanceChartPanel';
+import { MarketCellMidRow } from './MarketCellMidRow';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { getMarketProbability } from '../../utils/bsMath';
 
@@ -302,16 +303,22 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                             />
                           )}
                           {current ? (
-                            <>
-                              <span className="text-green-400 cursor-pointer hover:underline" onClick={() => openMarket(current, 'YES')}>
-                                {currentYes != null ? (currentYes * 100).toFixed(1) : '-'}
-                              </span>
-                              {'\\'}
-                              <span className="text-red-400 cursor-pointer hover:underline" onClick={() => openMarket(current, 'NO')}>
-                                {currentYes != null ? (100 - currentYes * 100).toFixed(1) : '-'}
-                              </span>
-                            </>
-                          ) : <span className="text-gray-600">-</span>}
+                            <MarketCellMidRow
+                              className="text-[9px] text-gray-400"
+                              left={
+                                <span className="text-green-400 cursor-pointer hover:underline" onClick={() => openMarket(current, 'YES')}>
+                                  {currentYes != null ? (currentYes * 100).toFixed(1) : '-'}
+                                </span>
+                              }
+                              right={
+                                <span className="text-red-400 cursor-pointer hover:underline" onClick={() => openMarket(current, 'NO')}>
+                                  {currentYes != null ? (100 - currentYes * 100).toFixed(1) : '-'}
+                                </span>
+                              }
+                            />
+                          ) : (
+                            <span className="text-gray-600">-</span>
+                          )}
                           {(() => {
                             if (!current) return null;
                             const yesTokenId = current.clobTokenIds?.[0] || '';
@@ -393,16 +400,22 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                   })()}
                   <td className="px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap cursor-pointer hover:brightness-125 relative border-b border-gray-700/50">
                     {next ? (
-                      <>
-                        <span className="text-green-400 cursor-pointer hover:underline" onClick={() => openMarket(next, 'YES')}>
-                          {nextYes != null ? (nextYes * 100).toFixed(1) : '-'}
-                        </span>
-                        {'\\'}
-                        <span className="text-red-400 cursor-pointer hover:underline" onClick={() => openMarket(next, 'NO')}>
-                          {nextYes != null ? (100 - nextYes * 100).toFixed(1) : '-'}
-                        </span>
-                      </>
-                    ) : <span className="text-gray-600">-</span>}
+                      <MarketCellMidRow
+                        className="text-gray-400"
+                        left={
+                          <span className="text-green-400 cursor-pointer hover:underline" onClick={() => openMarket(next, 'YES')}>
+                            {nextYes != null ? (nextYes * 100).toFixed(1) : '-'}
+                          </span>
+                        }
+                        right={
+                          <span className="text-red-400 cursor-pointer hover:underline" onClick={() => openMarket(next, 'NO')}>
+                            {nextYes != null ? (100 - nextYes * 100).toFixed(1) : '-'}
+                          </span>
+                        }
+                      />
+                    ) : (
+                      <span className="text-gray-600">-</span>
+                    )}
                     {next?.endDate && duration > 0 && (
                       <div
                         className="absolute bottom-0 left-0 z-0 h-[2px] pointer-events-none"

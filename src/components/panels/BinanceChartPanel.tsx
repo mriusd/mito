@@ -649,11 +649,11 @@ interface BinanceChartPanelProps {
   hideRbsSettings?: boolean;
   /** When true (e.g. UpOrDown HUD): draw strike S/R + RBS lines only for timeframes tied to this chart's price source, and only while that feed is live (5m/15m ↔ Chainlink; 1h/4h/24h ↔ Binance). */
   hudGateSupportLinesByExchange?: boolean;
-  /** When true with `forcedPriceSource="binance"` (HUD): set candle resolution from the selected Up/Down market row (1h→1h, 4h→4h, 24h→1d). */
-  hudSyncBinanceIntervalFromMarket?: boolean;
+  /** When true (HUD): set resolution from selected Up/Down market — 5m/15m → Chainlink chart only; 1h/4h/24h → Binance chart only. */
+  hudSyncIntervalFromMarket?: boolean;
 }
 
-export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forcedPriceSource, compact = false, hideRbsSettings = false, hudGateSupportLinesByExchange = false, hudSyncBinanceIntervalFromMarket = false }: BinanceChartPanelProps) {
+export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forcedPriceSource, compact = false, hideRbsSettings = false, hudGateSupportLinesByExchange = false, hudSyncIntervalFromMarket = false }: BinanceChartPanelProps) {
   const portalRoot = typeof document !== 'undefined' ? document.body : null;
   const [asset, setAsset] = useState<AssetName>(() => {
     if (assetOverride) return assetOverride;
@@ -942,11 +942,16 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   }, [asset, spotForChart, priceSource, timeframe, candleCount]);
 
   useEffect(() => {
-    if (!hudSyncBinanceIntervalFromMarket || forcedPriceSource !== 'binance' || !assetOverride) return;
+    if (!hudSyncIntervalFromMarket || !assetOverride) return;
     const mid = selectedMarket?.id;
     if (!mid) return;
     const tf = findUpDownTableTfForMarket(assetOverride, mid, upOrDownMarkets);
     if (!tf) return;
+    const isShortTf = tf === '5m' || tf === '15m';
+    const isLongTf = tf === '1h' || tf === '4h' || tf === '24h';
+    if (isShortTf && forcedPriceSource !== 'chainlink') return;
+    if (isLongTf && forcedPriceSource !== 'binance') return;
+    if (!isShortTf && !isLongTf) return;
     const iv = upDownTableTfToKlineInterval(tf);
     if (!iv) return;
     setTimeframe((prev) => {
@@ -954,7 +959,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
       localStorage.setItem(`polybot-binance-interval-${panelId}`, iv);
       return iv;
     });
-  }, [hudSyncBinanceIntervalFromMarket, forcedPriceSource, assetOverride, selectedMarket?.id, upOrDownMarkets, panelId]);
+  }, [hudSyncIntervalFromMarket, forcedPriceSource, assetOverride, selectedMarket?.id, upOrDownMarkets, panelId]);
 
   const fetchKlines = useCallback(async () => {
     const myVersion = ++fetchVersionRef.current;

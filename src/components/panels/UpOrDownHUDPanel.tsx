@@ -371,6 +371,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
             compact
             hideRbsSettings
             hudGateSupportLinesByExchange
+            hudSyncIntervalFromMarket
           />
         </div>
         <div className="min-h-0">
@@ -382,7 +383,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
             compact
             hideRbsSettings
             hudGateSupportLinesByExchange
-            hudSyncBinanceIntervalFromMarket
+            hudSyncIntervalFromMarket
           />
         </div>
       </div>

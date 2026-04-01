@@ -557,10 +557,12 @@ export function Sidebar() {
     let expiration: number | undefined;
     if (isMarket) {
       expiration = 0;
+    } else if (orderSide === 'SELL') {
+      expiration = 0;
     } else {
       const exp = computeLimitExpiration(selectedMarket.endDate);
       expiration = exp.expiration;
-      if (orderSide === 'BUY' && exp.invalidLead) {
+      if (exp.invalidLead) {
         showToast('Lead time to expiration already passed for this market', 'error');
         return;
       }
@@ -646,11 +648,14 @@ export function Sidebar() {
       return;
     }
 
-    const exp = computeLimitExpiration(selectedMarket.endDate);
-    const expiration = exp.expiration;
-    if (btn.side === 'BUY' && exp.invalidLead) {
-      showToast('Lead time to expiration already passed for this market', 'error');
-      return;
+    let expiration = 0;
+    if (btn.side === 'BUY') {
+      const exp = computeLimitExpiration(selectedMarket.endDate);
+      expiration = exp.expiration;
+      if (exp.invalidLead) {
+        showToast('Lead time to expiration already passed for this market', 'error');
+        return;
+      }
     }
 
     const result = await placeOrder({
@@ -708,12 +713,15 @@ export function Sidebar() {
     try {
       // Step 1: Sign new order (wallet popup) — user can reject here without affecting old order
       signingDialog.setStep('sign', 'active');
-      const exp = computeLimitExpiration(selectedMarket?.endDate);
-      const expiration = exp.expiration;
-      if (side === 'BUY' && exp.invalidLead) {
-        showToast('Lead time to expiration already passed for this market', 'error');
-        setEditingOrderId(null);
-        return;
+      let expiration = 0;
+      if (side === 'BUY') {
+        const exp = computeLimitExpiration(selectedMarket?.endDate);
+        expiration = exp.expiration;
+        if (exp.invalidLead) {
+          showToast('Lead time to expiration already passed for this market', 'error');
+          setEditingOrderId(null);
+          return;
+        }
       }
 
       const signResult = await signOrder({

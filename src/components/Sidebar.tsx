@@ -178,6 +178,7 @@ export function Sidebar() {
   const { bids, asks, trades: polymarketLiveTrades, loading: obLoading } = usePolymarketOB(obTokenId);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const setLiveTradesSource = useAppStore((s) => s.setLiveTradesSource);
+  const setOnchainGridPositions = useAppStore((s) => s.setOnchainGridPositions);
   const [displayBids, setDisplayBids] = useState(bids);
   const [displayAsks, setDisplayAsks] = useState(asks);
   const [onchainSidebarPositions, setOnchainSidebarPositions] = useState<Array<{
@@ -245,11 +246,13 @@ export function Sidebar() {
   useEffect(() => {
     if (liveTradesSource !== 'onchain') return;
     setOnchainSidebarPositions(wsPositions);
-  }, [liveTradesSource, wsPositions]);
+    setOnchainGridPositions(wsPositions.map((p) => ({ tokenId: p.tokenId, size: p.size })));
+  }, [liveTradesSource, wsPositions, setOnchainGridPositions]);
   useEffect(() => {
     if (liveTradesSource !== 'onchain') return;
     setOnchainSidebarTrades(wsTrades);
   }, [liveTradesSource, wsTrades]);
+
   useEffect(() => {
     localStorage.setItem('sidebar-live-orderbook-expanded', liveOrderbookExpanded ? 'true' : 'false');
   }, [liveOrderbookExpanded]);

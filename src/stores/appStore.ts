@@ -73,6 +73,9 @@ interface AppState {
   /** Synced with sidebar live-trades ONCHAIN / POLYMARKET toggle (localStorage). */
   liveTradesSource: 'onchain' | 'polymarket';
   setLiveTradesSource: (v: 'onchain' | 'polymarket') => void;
+  /** Wallet positions from on-chain WS when source is onchain; used for grid dots / badges. Cleared when switching to Polymarket. */
+  onchainGridPositions: Array<{ tokenId: string; size: number }>;
+  setOnchainGridPositions: (p: Array<{ tokenId: string; size: number }>) => void;
 
   // Dialogs
   progDialogOpen: boolean;
@@ -357,8 +360,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   })(),
   setLiveTradesSource: (v) => {
     localStorage.setItem('polymarket-sidebar-live-trades-source', v);
-    set({ liveTradesSource: v });
+    set({ liveTradesSource: v, ...(v === 'polymarket' ? { onchainGridPositions: [] } : {}) });
   },
+
+  onchainGridPositions: [],
+  setOnchainGridPositions: (p) => set({ onchainGridPositions: p }),
 
   progDialogOpen: false,
   progDialogData: null,

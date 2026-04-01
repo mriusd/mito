@@ -87,6 +87,8 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const positions = useAppStore((s) => s.positions);
+  const liveTradesSource = useAppStore((s) => s.liveTradesSource);
+  const onchainGridPositions = useAppStore((s) => s.onchainGridPositions);
   const orders = useAppStore((s) => s.orders);
   const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
   const priceData = useAppStore((s) => s.priceData);
@@ -121,12 +123,18 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
   }, [assetMarkets, marketLookup]);
   const positionTokenIds = useMemo(() => {
     const s = new Set<string>();
+    if (liveTradesSource === 'onchain') {
+      for (const p of onchainGridPositions) {
+        if (p.tokenId && p.size > 0) s.add(p.tokenId);
+      }
+      return s;
+    }
     for (const pos of positions) {
       const tid = pos.asset || '';
       if (tid && (pos.size || 0) > 0) s.add(tid);
     }
     return s;
-  }, [positions]);
+  }, [liveTradesSource, onchainGridPositions, positions]);
   const orderLookup: Record<string, typeof orders> = {};
   for (const o of orders) {
     if (progOrderMap[o.id]) continue;
@@ -299,13 +307,13 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                           {current && positionTokenIds.has(current.clobTokenIds?.[0] || '') && (
                             <span
                               className="absolute left-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_3px_rgba(52,211,153,0.8)]"
-                              title="YES position"
+                              title={liveTradesSource === 'onchain' ? 'YES position (on-chain)' : 'YES position'}
                             />
                           )}
                           {current && positionTokenIds.has(current.clobTokenIds?.[1] || '') && (
                             <span
                               className="absolute right-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-rose-400 shadow-[0_0_3px_rgba(251,113,133,0.8)]"
-                              title="NO position"
+                              title={liveTradesSource === 'onchain' ? 'NO position (on-chain)' : 'NO position'}
                             />
                           )}
                           {current ? (

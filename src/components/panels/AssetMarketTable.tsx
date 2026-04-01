@@ -126,6 +126,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   const showPast = useAppStore((s) => s.showPast);
   const setShowPast = useAppStore((s) => s.setShowPast);
   const positions = useAppStore((s) => s.positions);
+  const liveTradesSource = useAppStore((s) => s.liveTradesSource);
+  const onchainGridPositions = useAppStore((s) => s.onchainGridPositions);
   const orders = useAppStore((s) => s.orders);
   const setManualPriceSlot = useAppStore((s) => s.setManualPriceSlot);
   const setActiveRangeSlot = useAppStore((s) => s.setActiveRangeSlot);
@@ -337,12 +339,18 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     return { dates, prices, marketLookup };
   };
 
-  // Build position/order lookups by tokenId
+  // Build position/order lookups by tokenId (on-chain rollups when sidebar source is ONCHAIN)
   const positionLookup: Record<string, { size: number }> = {};
-  for (const pos of positions) {
-    const tid = pos.asset || '';
-    const sz = pos.size || 0;
-    if (tid && sz > 0) positionLookup[tid] = { size: sz };
+  if (liveTradesSource === 'onchain') {
+    for (const p of onchainGridPositions) {
+      if (p.tokenId && p.size > 0) positionLookup[p.tokenId] = { size: p.size };
+    }
+  } else {
+    for (const pos of positions) {
+      const tid = pos.asset || '';
+      const sz = pos.size || 0;
+      if (tid && sz > 0) positionLookup[tid] = { size: sz };
+    }
   }
   const orderLookup: Record<string, typeof orders> = {};
   for (const ord of orders) {

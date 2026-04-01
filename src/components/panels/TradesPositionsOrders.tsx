@@ -110,7 +110,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
     const load = async () => {
       setOnchainLoading(true);
       try {
-        const walletRes = await fetchWalletPositions({ wallet: makerAddress, limit: 500 });
+        const walletRes = await fetchWalletPositions({ wallet: makerAddress, limit: 500, active_only: true });
         const idSet = new Set<string>();
         for (const wp of walletRes.positions || []) {
           if (wp.tokenIdYes) idSet.add(wp.tokenIdYes);
@@ -136,7 +136,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
           return;
         }
         const [pr, tr] = await Promise.all([
-          fetchOnchainMarketPositions({ token_ids, wallet: makerAddress }),
+          fetchOnchainMarketPositions({ token_ids, wallet: makerAddress, active_only: true }),
           fetchOnchainMarketTrades({ token_ids, wallet: makerAddress, limit: 500 }),
         ]);
         if (!cancelled) {

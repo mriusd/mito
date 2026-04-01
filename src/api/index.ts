@@ -380,6 +380,10 @@ export interface WalletPosition {
   resolvedAt?: number;
   netSide: string;
   inventoryBias: number;
+  /** From joined `markets` row when present. */
+  question?: string;
+  slug?: string;
+  eventSlug?: string;
   /** From wallet_scores: wins / (wins+losses); only set in toxic-flow response when winLossTotal > 0. */
   winRate?: number;
   /** Resolved markets with a win or loss (excludes flat-only); from wallet_scores. */
@@ -426,7 +430,17 @@ export async function fetchToxicFlow(marketId: string): Promise<ToxicFlowData> {
   return resp.json();
 }
 
-export async function fetchWalletPositions(params: { market_id?: string; wallet?: string; asset?: string; type?: string; min_trades?: number; sort_by?: string; limit?: number }): Promise<{ positions: WalletPosition[]; count: number; total: number }> {
+export async function fetchWalletPositions(params: {
+  market_id?: string;
+  wallet?: string;
+  asset?: string;
+  type?: string;
+  min_trades?: number;
+  sort_by?: string;
+  limit?: number;
+  /** When true, server excludes closed markets and past end_date (joins `markets`). */
+  active_only?: boolean;
+}): Promise<{ positions: WalletPosition[]; count: number; total: number }> {
   const qs = new URLSearchParams();
   if (params.market_id) qs.set('market_id', params.market_id);
   if (params.wallet) qs.set('wallet', params.wallet);
@@ -435,6 +449,7 @@ export async function fetchWalletPositions(params: { market_id?: string; wallet?
   if (params.min_trades) qs.set('min_trades', String(params.min_trades));
   if (params.sort_by) qs.set('sort_by', params.sort_by);
   if (params.limit) qs.set('limit', String(params.limit));
+  if (params.active_only) qs.set('active_only', '1');
   const resp = await fetch(`${BASE}/api/wallet-positions?${qs.toString()}`);
   if (!resp.ok) throw new Error('Failed to fetch wallet positions');
   return resp.json();
@@ -480,10 +495,15 @@ export interface OnchainMarketPositionRow {
   avgPrice: number;
 }
 
-export async function fetchOnchainMarketPositions(params: { token_ids: string[]; wallet: string }): Promise<{ positions: OnchainMarketPositionRow[]; count: number }> {
+export async function fetchOnchainMarketPositions(params: {
+  token_ids: string[];
+  wallet: string;
+  active_only?: boolean;
+}): Promise<{ positions: OnchainMarketPositionRow[]; count: number }> {
   const qs = new URLSearchParams();
   qs.set('token_ids', params.token_ids.join(','));
   qs.set('wallet', params.wallet);
+  if (params.active_only) qs.set('active_only', '1');
   const resp = await fetch(`${BASE}/api/onchain-market-positions?${qs.toString()}`);
   if (!resp.ok) throw new Error('Failed to fetch on-chain market positions');
   return resp.json();

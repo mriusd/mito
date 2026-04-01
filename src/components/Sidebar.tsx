@@ -1975,7 +1975,13 @@ export function Sidebar() {
                         }}
                       >
                         <span className={`${outcomeColor} font-medium`}>{outcomeLabel}</span>
-                        <span> {Math.floor(size * 100) / 100}</span>
+                        <span
+                          className="cursor-pointer hover:underline"
+                          onClick={() => setOrderAmount((Math.floor(size * 100) / 100).toString())}
+                          title="Use this size as order amount"
+                        >
+                          {' '}{Math.floor(size * 100) / 100}
+                        </span>
                         <span className="text-gray-500"> @ </span>
                         <span className="text-yellow-400">{(avg * 100).toFixed(1)}¢</span>
                         <span className="text-gray-400"> ${currentValue.toFixed(2)}\${cost.toFixed(2)}</span>

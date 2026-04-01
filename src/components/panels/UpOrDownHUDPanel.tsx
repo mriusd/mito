@@ -329,18 +329,56 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                                 ? liveRow.winnerBias
                                 : 0;
                             const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
+                            const concRaw =
+                              typeof liveRow?.concentration === 'number' && Number.isFinite(liveRow.concentration)
+                                ? liveRow.concentration
+                                : 0;
+                            const concPct = Math.max(0, Math.min(100, concRaw * 100));
+                            const cR = Math.round(Math.min(255, concRaw * 2 * 255));
+                            const cG = Math.round(Math.min(255, (1 - concRaw) * 2 * 255));
+                            const concColor = `rgb(${cR}, ${cG}, 0)`;
                             return (
                               <>
-                                {yesBuy.length > 0 && <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">{formatBadgePriceCents(Math.max(...yesBuy.map(o => parseFloat(o.price || '0') * 100)))}</div>}
-                                {yesSell.length > 0 && <div className={`absolute ${yesBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`} style={{ color: '#78350f' }}>{formatBadgePriceCents(Math.min(...yesSell.map(o => parseFloat(o.price || '0') * 100)))}</div>}
-                                {noBuy.length > 0 && <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">{formatBadgePriceCents(Math.max(...noBuy.map(o => parseFloat(o.price || '0') * 100)))}</div>}
-                                {noSell.length > 0 && <div className={`absolute ${noBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>{formatBadgePriceCents(Math.min(...noSell.map(o => parseFloat(o.price || '0') * 100)))}</div>}
-                                <div
-                                  className="absolute bottom-0 left-0 w-full h-[2px] pointer-events-none z-0 flex"
-                                  title={`Winner bias (USDC, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
-                                >
-                                  <div className="bg-green-500/70 h-full" style={{ width: `${wbPct}%` }} />
-                                  <div className="bg-red-500/70 h-full flex-1" />
+                                {yesBuy.length > 0 && (
+                                  <div className="absolute bottom-1 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
+                                    {formatBadgePriceCents(Math.max(...yesBuy.map(o => parseFloat(o.price || '0') * 100)))}
+                                  </div>
+                                )}
+                                {yesSell.length > 0 && (
+                                  <div
+                                    className={`absolute left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm ${yesBuy.length > 0 ? 'bottom-[13px]' : 'bottom-1'}`}
+                                    style={{ color: '#78350f' }}
+                                  >
+                                    {formatBadgePriceCents(Math.min(...yesSell.map(o => parseFloat(o.price || '0') * 100)))}
+                                  </div>
+                                )}
+                                {noBuy.length > 0 && (
+                                  <div className="absolute bottom-1 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
+                                    {formatBadgePriceCents(Math.max(...noBuy.map(o => parseFloat(o.price || '0') * 100)))}
+                                  </div>
+                                )}
+                                {noSell.length > 0 && (
+                                  <div
+                                    className={`absolute right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm ${noBuy.length > 0 ? 'bottom-[13px]' : 'bottom-1'}`}
+                                    style={{ color: '#78350f' }}
+                                  >
+                                    {formatBadgePriceCents(Math.min(...noSell.map(o => parseFloat(o.price || '0') * 100)))}
+                                  </div>
+                                )}
+                                <div className="absolute bottom-0 left-0 w-full flex flex-col pointer-events-none z-0">
+                                  <div
+                                    className="flex h-[2px] w-full"
+                                    title={`Winners $ (USDC, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
+                                  >
+                                    <div className="bg-green-500/70 h-full" style={{ width: `${wbPct}%` }} />
+                                    <div className="bg-red-500/70 h-full flex-1" />
+                                  </div>
+                                  <div
+                                    className="h-[2px] w-full bg-gray-800/80 overflow-hidden"
+                                    title={`Concentration (top wallets): ${concPct.toFixed(0)}%`}
+                                  >
+                                    <div className="h-full transition-all" style={{ width: `${concPct}%`, backgroundColor: concColor }} />
+                                  </div>
                                 </div>
                               </>
                             );

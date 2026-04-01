@@ -1958,7 +1958,7 @@ export function Sidebar() {
             </div>
             <div className="my-3 border-t border-gray-700/70" />
             <div className="text-xs text-gray-400 mb-2 mt-3">My Orders</div>
-            <div className="space-y-1 text-xs">
+            <div className="space-y-2 text-xs">
               {myOrders.length === 0 && progOrders.length === 0 ? (
                 <div className="text-gray-600">No orders</div>
               ) : (
@@ -1974,8 +1974,12 @@ export function Sidebar() {
                   const expiresBeforeContract = formatPreExpiryLead(order.expiration);
 
                   const isEditing = editingOrderId === order.id;
+                  const orderCardClass =
+                    order.side === 'BUY'
+                      ? 'rounded-md border border-emerald-900/60 bg-emerald-950/35'
+                      : 'rounded-md border border-rose-900/60 bg-rose-950/35';
                   return (
-                    <div key={order.id}>
+                    <div key={order.id} className={`${orderCardClass} px-2 py-1.5`}>
                       <div className="flex justify-between items-center">
                         <span>
                           <span className={order.side === 'BUY' ? 'text-green-400' : 'text-red-400'}>{order.side}</span>

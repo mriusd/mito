@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, Fragment } from 'react';
+import { useCallback, useEffect, useMemo, useState, Fragment } from 'react';
 import type { CSSProperties } from 'react';
 import { CirclePercent, GraduationCap, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
@@ -55,6 +55,23 @@ function assetBorderStyle(
 }
 
 const LAST_TIMEFRAME = TIMEFRAMES[TIMEFRAMES.length - 1];
+
+const TF_DURATIONS_MS: Record<string, number> = {
+  '5m': 5 * 60 * 1000,
+  '15m': 15 * 60 * 1000,
+  '1h': 60 * 60 * 1000,
+  '4h': 4 * 60 * 60 * 1000,
+  '24h': 24 * 60 * 60 * 1000,
+};
+
+/** Elapsed fraction [0,1] of fixed window ending at endMs (same as AssetMarketTable). */
+function expiryProgress(nowMs: number, endMs: number, durationMs: number): number {
+  if (endMs <= 0 || durationMs <= 0) return 0;
+  const startMs = endMs - durationMs;
+  return Math.max(0, Math.min(1, (nowMs - startMs) / durationMs));
+}
+
+const EXPIRY_BAR_BG = 'rgba(6, 182, 212, 0.6)';
 
 const THRESHOLD_KEY = 'updown-cheap-threshold';
 const SHOW_TARGET_KEY = 'updown-show-target';
@@ -187,7 +204,11 @@ export function UpDownMarketsPanel() {
     setSidebarOpen(true);
   }, [setSelectedMarket, setSidebarOutcome, setSidebarOpen]);
 
-  const now = Date.now();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   // For each asset+timeframe, find the current and next market
   const getCurrentAndNextMarket = (asset: string, tf: string): { current: Market | null; next: Market | null } => {
@@ -374,11 +395,11 @@ export function UpDownMarketsPanel() {
                 return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
               };
 
-              // Timeframe countdown (keep timing text, remove progress bars)
-              const tfDurations: Record<string, number> = { '5m': 5*60*1000, '15m': 15*60*1000, '1h': 60*60*1000, '4h': 4*60*60*1000, '24h': 24*60*60*1000 };
-              const duration = tfDurations[tf] || 0;
+              const duration = TF_DURATIONS_MS[tf] || 0;
               const firstMarket = ASSETS.map(a => getCurrentAndNextMarket(a, tf).current).find(m => m !== null);
               const endMs = firstMarket?.endDate ? new Date(firstMarket.endDate).getTime() : 0;
+              const tfProgress = expiryProgress(now, endMs, duration);
+              const tfProgressPct = (tfProgress * 100).toFixed(1);
               const isLastTfRow = tf === LAST_TIMEFRAME;
 
               const tfDupExpiry = timeframesWithSharedExpiry.has(tf);
@@ -394,6 +415,12 @@ export function UpDownMarketsPanel() {
                     <span>{tf}</span>
                     <span className={`text-[8px] font-normal ${endMs > 0 && endMs - now < 60000 ? 'text-red-400' : endMs > 0 && endMs - now < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>{endMs > 0 ? formatCountdown(endMs) : ''}</span>
                   </div>
+                  {endMs > 0 && duration > 0 && (
+                    <div
+                      className="absolute bottom-0 left-0 z-0 h-[2px] pointer-events-none"
+                      style={{ width: `${tfProgressPct}%`, backgroundColor: EXPIRY_BAR_BG }}
+                    />
+                  )}
                 </td>
                 {ASSETS.map((asset) => {
                   const { current: market, next: nextMarket } = getCurrentAndNextMarket(asset, tf);
@@ -612,6 +639,16 @@ export function UpDownMarketsPanel() {
                           {noSell.length > 0 && <div className={`absolute ${noBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>{(Math.min(...noSell.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
                         </>;
                       })()}
+                      {market.endDate && duration > 0 && (() => {
+                        const mEnd = new Date(market.endDate).getTime();
+                        const p = expiryProgress(now, mEnd, duration);
+                        return (
+                          <div
+                            className="absolute bottom-0 left-0 z-0 h-[2px] pointer-events-none"
+                            style={{ width: `${(p * 100).toFixed(1)}%`, backgroundColor: EXPIRY_BAR_BG }}
+                          />
+                        );
+                      })()}
                     </td>
                   );
 
@@ -646,7 +683,7 @@ export function UpDownMarketsPanel() {
                     return (
                       <td
                         key={`${asset}-next`}
-                        className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap cursor-pointer hover:brightness-125 ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+                        className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap cursor-pointer hover:brightness-125 relative ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
                         style={assetBorderStyle(asset, showVolume ? { B: isLastTfRow } : { R: true, B: isLastTfRow })}
                         onClick={() => handleCellClick(nextMarket)}
                         title="Next market in this lane"
@@ -664,6 +701,16 @@ export function UpDownMarketsPanel() {
                         >
                           {nextNoProb != null ? (nextNoProb * 100).toFixed(1) : '-'}
                         </span>
+                        {nextMarket.endDate && duration > 0 && (() => {
+                          const nEnd = new Date(nextMarket.endDate).getTime();
+                          const p = expiryProgress(now, nEnd, duration);
+                          return (
+                            <div
+                              className="absolute bottom-0 left-0 z-0 h-[2px] pointer-events-none"
+                              style={{ width: `${(p * 100).toFixed(1)}%`, backgroundColor: EXPIRY_BAR_BG }}
+                            />
+                          );
+                        })()}
                       </td>
                     );
                   })();

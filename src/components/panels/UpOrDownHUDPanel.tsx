@@ -322,15 +322,23 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                             const yesSell = yesOrders.filter(o => o.side === 'SELL');
                             const noBuy = noOrders.filter(o => o.side === 'BUY');
                             const noSell = noOrders.filter(o => o.side === 'SELL');
-                            const wbVal = (yesTokenId ? marketLookup[yesTokenId]?.winnerBias : undefined) ?? 0;
-                            const wbPct = Math.max(2, Math.min(98, 50 + wbVal * 50));
+                            const liveRow = yesTokenId ? marketLookup[yesTokenId] : undefined;
+                            // USDC winner bias only (backend `winnerBias`); not `winBiasShares`
+                            const wbUsdc =
+                              typeof liveRow?.winnerBias === 'number' && Number.isFinite(liveRow.winnerBias)
+                                ? liveRow.winnerBias
+                                : 0;
+                            const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
                             return (
                               <>
                                 {yesBuy.length > 0 && <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">{formatBadgePriceCents(Math.max(...yesBuy.map(o => parseFloat(o.price || '0') * 100)))}</div>}
                                 {yesSell.length > 0 && <div className={`absolute ${yesBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`} style={{ color: '#78350f' }}>{formatBadgePriceCents(Math.min(...yesSell.map(o => parseFloat(o.price || '0') * 100)))}</div>}
                                 {noBuy.length > 0 && <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">{formatBadgePriceCents(Math.max(...noBuy.map(o => parseFloat(o.price || '0') * 100)))}</div>}
                                 {noSell.length > 0 && <div className={`absolute ${noBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>{formatBadgePriceCents(Math.min(...noSell.map(o => parseFloat(o.price || '0') * 100)))}</div>}
-                                <div className="absolute bottom-0 left-0 w-full h-[2px] pointer-events-none z-0 flex">
+                                <div
+                                  className="absolute bottom-0 left-0 w-full h-[2px] pointer-events-none z-0 flex"
+                                  title={`Winner bias (USDC, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
+                                >
                                   <div className="bg-green-500/70 h-full" style={{ width: `${wbPct}%` }} />
                                   <div className="bg-red-500/70 h-full flex-1" />
                                 </div>

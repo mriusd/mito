@@ -1827,7 +1827,7 @@ export function Sidebar() {
                         onDragEnd={() => setDraggingCustomId(null)}
                         className="relative group w-7 h-4 rounded text-[11px] font-extrabold leading-none transition text-white"
                         style={{ backgroundColor: btn.color, textShadow: '-1px 0 #000, 0 1px #000, 1px 0 #000, 0 -1px #000' }}
-                        title={`${btn.side} ${btn.maxSell ? 'MAX' : btn.amount} @ ${btn.priceCents}¢`}
+                        title={`${btn.side} ${btn.maxSell ? 'MAX' : (orderAmount || '?')} @ ${btn.priceCents}¢`}
                       >
                         {btn.label}
                         <span
@@ -1878,7 +1878,7 @@ export function Sidebar() {
                         onDragEnd={() => setDraggingCustomId(null)}
                         className="relative group w-9 py-2 text-[16px] rounded-lg font-extrabold transition text-white"
                         style={{ backgroundColor: btn.color, textShadow: '-1px 0 #000, 0 1px #000, 1px 0 #000, 0 -1px #000' }}
-                        title={`${btn.side} ${btn.maxSell ? 'MAX' : btn.amount} @ ${btn.priceCents}¢`}
+                        title={`${btn.side} ${btn.maxSell ? 'MAX' : (orderAmount || '?')} @ ${btn.priceCents}¢`}
                       >
                         {btn.label}
                         <span

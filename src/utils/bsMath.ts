@@ -17,6 +17,18 @@ function normalCDF(x: number): number {
   return 0.5 * (1.0 + sign * y);
 }
 
+// Inverse standard normal CDF (probit) — rational approximation (Beasley-Springer-Moro)
+function normalCDFInv(p: number): number {
+  if (p <= 0) return -Infinity;
+  if (p >= 1) return Infinity;
+  if (p === 0.5) return 0;
+  if (p < 0.5) return -normalCDFInv(1 - p);
+  const t = Math.sqrt(-2 * Math.log(1 - p));
+  const c0 = 2.515517, c1 = 0.802853, c2 = 0.010328;
+  const d1 = 1.432788, d2 = 0.189269, d3 = 0.001308;
+  return t - (c0 + c1 * t + c2 * t * t) / (1 + d1 * t + d2 * t * t + d3 * t * t * t);
+}
+
 // Risk-free rate
 const R = 0.045;
 
@@ -368,4 +380,54 @@ export function getBsTriple(
     range0, range1,
     livePrice,
   };
+}
+
+/**
+ * Reverse Black-Scholes: given the market YES probability (mid), the strike,
+ * expiry, and σ, return the spot price S implied by that probability.
+ *
+ * For "above" (>K) markets:  P(YES) = N(d2)  →  S = K · exp(N⁻¹(P)·σ√T − (r − σ²/2)·T)
+ */
+export function getImpliedSpotPrice(
+  priceStr: string,
+  yesProb: number,
+  endDate: string,
+  sigma: number,
+  bsTimeOffsetHours: number = 0,
+): number | null {
+  if (yesProb <= 0 || yesProb >= 1 || !endDate || sigma <= 0) return null;
+  const T = yearsToExpiryOrNull(endDate, bsTimeOffsetHours);
+  if (T === null) return null;
+
+  const cleaned = priceStr.replace(/\$/g, '').replace(/,/g, '');
+  let strike: number | null = null;
+  let isAbove = true;
+
+  if (cleaned.startsWith('>')) {
+    strike = parseNum(cleaned.substring(1));
+    isAbove = true;
+  } else if (cleaned.startsWith('<')) {
+    strike = parseNum(cleaned.substring(1));
+    isAbove = false;
+  } else if (!cleaned.includes('-')) {
+    strike = parseNum(cleaned);
+    isAbove = true;
+  }
+
+  if (strike == null || !Number.isFinite(strike) || strike <= 0) return null;
+  // Between/range markets don't have a single implied price
+  if (cleaned.includes('-')) return null;
+
+  const sqrtT = Math.sqrt(T);
+  const drift = (R - (sigma * sigma) / 2) * T;
+
+  if (isAbove) {
+    // P(YES) = N(d2) where d2 = [ln(S/K) + drift] / (σ√T)
+    const d2 = normalCDFInv(yesProb);
+    return strike * Math.exp(d2 * sigma * sqrtT - drift);
+  } else {
+    // P(YES below) = 1 - N(d2) = N(-d2) → d2 = -N⁻¹(yesProb)
+    const d2 = -normalCDFInv(yesProb);
+    return strike * Math.exp(d2 * sigma * sqrtT - drift);
+  }
 }

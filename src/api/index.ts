@@ -531,6 +531,42 @@ export async function fetchOnchainMarketTrades(params: { token_ids: string[]; wa
   return resp.json();
 }
 
+// --- Wallet P&L (on-chain fills, daily buckets) ---
+
+export interface WalletPnlDailyResponse {
+  source: string;
+  bucket: string;
+  wallet: string;
+  from: string;
+  to: string;
+  byDate: Record<string, { bought: number; sold: number }>;
+  updated?: string;
+}
+
+export async function fetchWalletPnlDaily(params: {
+  wallet: string;
+  from: string;
+  to: string;
+  bucket: 'trade' | 'market';
+  updown: boolean;
+  hit: boolean;
+  above: boolean;
+  between: boolean;
+}): Promise<WalletPnlDailyResponse> {
+  const qs = new URLSearchParams();
+  qs.set('wallet', params.wallet.toLowerCase());
+  qs.set('from', params.from);
+  qs.set('to', params.to);
+  qs.set('bucket', params.bucket);
+  qs.set('updown', params.updown ? '1' : '0');
+  qs.set('hit', params.hit ? '1' : '0');
+  qs.set('above', params.above ? '1' : '0');
+  qs.set('between', params.between ? '1' : '0');
+  const resp = await fetch(`${BASE}/api/wallet-pnl-daily?${qs.toString()}`);
+  if (!resp.ok) throw new Error('Failed to fetch wallet P&L (on-chain)');
+  return resp.json();
+}
+
 // --- Wallet Summary API ---
 
 export interface WalletSummary {

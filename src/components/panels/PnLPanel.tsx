@@ -1,5 +1,6 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
+import { fetchWalletPnlDaily } from '../../api';
 import type { Trade } from '../../types';
 import { getTradeClobTokenId } from '../../utils/format';
 
@@ -61,6 +62,36 @@ function classifyMarketType(question: string | null | undefined, eventSlug?: str
 export function PnLPanel() {
   const trades = useAppStore((s) => s.trades);
   const marketLookup = useAppStore((s) => s.marketLookup);
+  const makerAddress = useAppStore((s) => s.makerAddress);
+
+  const [calendarBump, setCalendarBump] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setCalendarBump((b) => b + 1), 5 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const dateWindow = useMemo(() => {
+    const now = new Date();
+    const DAYS_PAST = 3;
+    const DAYS_FUTURE = 7;
+    const dates: string[] = [];
+    for (let i = -DAYS_PAST; i <= DAYS_FUTURE; i++) {
+      const d = new Date(now);
+      d.setDate(d.getDate() + i);
+      dates.push(getDateKey(d));
+    }
+    return {
+      dates,
+      fromStr: dates[0]!,
+      toStr: dates[dates.length - 1]!,
+      dateSet: new Set(dates),
+    };
+  }, [calendarBump]);
+
+  /** `inactive` = no wallet or fetch failed → Polymarket activity trades; `pending` = loading (show activity); object = on-chain buckets */
+  const [onchainByDate, setOnchainByDate] = useState<
+    Record<string, { bought: number; sold: number }> | 'pending' | 'inactive'
+  >('inactive');
 
   const [bucketMode, setBucketMode] = useState<PnlBucketMode>(() => {
     const saved = localStorage.getItem(PNL_BUCKET_KEY);
@@ -95,25 +126,61 @@ export function PnLPanel() {
     });
   }, []);
 
-  const { dates, dataByDate } = useMemo(() => {
-    const now = new Date();
-
-    // 3 calendar days before today through 7 after (inclusive of today), oldest → newest
-    const DAYS_PAST = 3;
-    const DAYS_FUTURE = 7;
-    const dates: string[] = [];
-    for (let i = -DAYS_PAST; i <= DAYS_FUTURE; i++) {
-      const d = new Date(now);
-      d.setDate(d.getDate() + i);
-      dates.push(getDateKey(d));
+  useEffect(() => {
+    const w = makerAddress?.trim();
+    if (!w) {
+      setOnchainByDate('inactive');
+      return;
     }
+    let cancelled = false;
+    setOnchainByDate('pending');
+    void fetchWalletPnlDaily({
+      wallet: w,
+      from: dateWindow.fromStr,
+      to: dateWindow.toStr,
+      bucket: bucketMode,
+      updown: marketTypeFilter.updown,
+      hit: marketTypeFilter.hit,
+      above: marketTypeFilter.above,
+      between: marketTypeFilter.between,
+    })
+      .then((res) => {
+        if (!cancelled) setOnchainByDate(res.byDate || {});
+      })
+      .catch(() => {
+        if (!cancelled) setOnchainByDate('inactive');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    makerAddress,
+    dateWindow.fromStr,
+    dateWindow.toStr,
+    bucketMode,
+    marketTypeFilter.updown,
+    marketTypeFilter.hit,
+    marketTypeFilter.above,
+    marketTypeFilter.between,
+  ]);
+
+  const { dates, dataByDate } = useMemo(() => {
+    const { dates, dateSet } = dateWindow;
 
     const dataByDate: Record<string, { bought: number; sold: number }> = {};
     for (const dk of dates) {
       dataByDate[dk] = { bought: 0, sold: 0 };
     }
 
-    const dateSet = new Set(dates);
+    if (typeof onchainByDate === 'object' && makerAddress?.trim()) {
+      for (const dk of dates) {
+        const row = onchainByDate[dk];
+        if (row) {
+          dataByDate[dk] = { bought: row.bought, sold: row.sold };
+        }
+      }
+      return { dates, dataByDate };
+    }
 
     for (const trade of trades) {
       const timeMs = getTradeTimeMs(trade);
@@ -158,14 +225,22 @@ export function PnLPanel() {
     }
 
     return { dates, dataByDate };
-  }, [trades, marketLookup, bucketMode, marketTypeFilter]);
+  }, [dateWindow, onchainByDate, makerAddress, trades, marketLookup, bucketMode, marketTypeFilter]);
 
   const todayKey = getDateKey(new Date());
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
       <div className="panel-header flex items-center justify-between gap-2 mb-2 cursor-grab flex-wrap">
-        <h3 className="text-sm font-bold text-yellow-400">P&L</h3>
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <h3 className="text-sm font-bold text-yellow-400">P&L</h3>
+          {makerAddress?.trim() && typeof onchainByDate === 'object' && (
+            <span className="text-[8px] text-cyan-400/90 font-medium">On-chain fills</span>
+          )}
+          {makerAddress?.trim() && onchainByDate === 'pending' && (
+            <span className="text-[8px] text-gray-500">Loading on-chain…</span>
+          )}
+        </div>
         <div className="flex items-center gap-2 shrink-0 cursor-default flex-wrap justify-end" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
           <div className="flex items-center rounded border border-gray-600 overflow-hidden text-[9px] font-bold">
             <button

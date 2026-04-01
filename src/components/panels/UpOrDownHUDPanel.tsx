@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { CSSProperties } from 'react';
 import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import type { AssetName, AssetSymbol, Market } from '../../types';
@@ -41,18 +40,6 @@ function expiryProgress(nowMs: number, endMs: number, durationMs: number): numbe
   if (endMs <= 0 || durationMs <= 0) return 0;
   const startMs = endMs - durationMs;
   return Math.max(0, Math.min(1, (nowMs - startMs) / durationMs));
-}
-function deltaMidVsMathBg(yesMidProb: number | null, mathYesProb: number | null): CSSProperties {
-  if (yesMidProb == null || mathYesProb == null) return {};
-  const delta = (yesMidProb - mathYesProb) * 100;
-  const alpha = Math.min(0.55, Math.abs(delta) * 0.035);
-  if (alpha < 0.02) return {};
-  return {
-    backgroundColor:
-      delta > 0
-        ? `rgba(34, 197, 94, ${alpha.toFixed(3)})`
-        : `rgba(239, 68, 68, ${alpha.toFixed(3)})`,
-  };
 }
 function formatBadgePriceCents(v: number): string {
   return Number.isInteger(v) ? String(v) : v.toFixed(1);
@@ -265,7 +252,6 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                           : mathPctRounded > 50
                             ? 'bg-green-900/55 text-green-200 border border-green-700/40'
                             : 'bg-red-900/55 text-red-200 border border-red-700/40';
-                    const quoteDeltaBg = deltaMidVsMathBg(currentYes, mathYesProb);
                     const wbUsdc =
                       typeof liveEntry?.winnerBias === 'number' && Number.isFinite(liveEntry.winnerBias)
                         ? liveEntry.winnerBias
@@ -308,7 +294,6 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                           className={`px-0.5 py-1 text-center whitespace-nowrap border-l border-r border-solid border-gray-700 relative cursor-pointer hover:brightness-125 border-b border-gray-700/50 ${
                             selectedMarket?.id === current?.id ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''
                           }`}
-                          style={quoteDeltaBg}
                         >
                           {current && positionTokenIds.has(current.clobTokenIds?.[0] || '') && (
                             <span

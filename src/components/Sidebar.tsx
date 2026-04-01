@@ -721,6 +721,21 @@ export function Sidebar() {
   const handleReplaceOrder = async (orderId: string, newPriceCents: number, tokenId: string, side: 'BUY' | 'SELL', size: number) => {
     const newPrice = newPriceCents / 100;
     if (!newPrice || newPrice <= 0 || newPrice >= 1 || !size) { setEditingOrderId(null); return; }
+    const bestBidCents = displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
+    const bestAskCents = displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
+    const crossesBook =
+      (side === 'SELL' && bestBidCents !== null && newPriceCents <= bestBidCents) ||
+      (side === 'BUY' && bestAskCents !== null && newPriceCents >= bestAskCents);
+    if (crossesBook) {
+      const bestPrice = side === 'SELL' ? bestBidCents : bestAskCents;
+      const confirmed = window.confirm(
+        `Current best price is ${(bestPrice ?? 0).toFixed(1)}¢, your order will be instantly executed`
+      );
+      if (!confirmed) {
+        setEditingOrderId(null);
+        return;
+      }
+    }
     const outcome = getTokenOutcome(tokenId, marketLookup);
     const orderInfo = `${side} ${size} ${outcome} for ${marketName} @ ${newPriceCents}¢`;
     signingDialog.open(false, { title: 'Replacing Order', signLabel: 'Sign new order in wallet', submitLabel: 'Cancel old & submit new', orderInfo });
@@ -2180,13 +2195,16 @@ export function Sidebar() {
                   const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
                   const side = isClaim ? 'CLAIM' : trade.side;
                   const cost = Number.isFinite(rawPrice) && Number.isFinite(size) ? rawPrice * size : 0;
+                  const signedCost = side === 'BUY' ? -cost : cost;
                   return (
                     <tr key={i} className="text-gray-300">
                       <td className={`py-0.5 ${side === 'BUY' ? 'text-emerald-400' : side === 'CLAIM' ? 'text-blue-400' : 'text-rose-400'}`}>{side || '-'}</td>
                       <td className={outcome === 'YES' ? 'py-0.5 text-emerald-400' : 'py-0.5 text-rose-400'}>{sideLabel}</td>
                       <td className="py-0.5 text-right">{Number.isFinite(size) ? size.toFixed(2) : '-'}</td>
                       <td className="py-0.5 text-right">{Number.isFinite(rawPrice) ? `${(rawPrice * 100).toFixed(1)}¢` : '-'}</td>
-                      <td className="py-0.5 text-right">${cost.toFixed(2)}</td>
+                      <td className={`py-0.5 text-right ${side === 'BUY' ? 'text-rose-400' : side === 'SELL' ? 'text-emerald-400' : 'text-gray-300'}`}>
+                        {signedCost >= 0 ? '+' : '-'}${Math.abs(signedCost).toFixed(2)}
+                      </td>
                     </tr>
                   );
                 })}

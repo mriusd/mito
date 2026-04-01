@@ -99,8 +99,8 @@ function WalletLink({
   const [show, setShow] = useState(false);
   const [tipPos, setTipPos] = useState<WalletTipPos | null>(null);
   const anchorRef = useRef<HTMLSpanElement>(null);
-  const enterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const enterTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const leaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   const clearLeaveTimer = () => {
     if (leaveTimerRef.current) {

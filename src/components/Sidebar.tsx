@@ -41,6 +41,11 @@ const MARKET_AGGRESSIVE_BUY = 0.99;
 /** FAK sell: accept down to this per share to hit bids. */
 const MARKET_AGGRESSIVE_SELL = 0.01;
 
+/** Polymarket rows may include `size_filled`; on-chain mapped trades only have `size`. */
+function tradeFilledSizeShares(trade: { size: string; size_filled?: string }): number {
+  return parseFloat(trade.size_filled ?? trade.size);
+}
+
 type CustomSidebarButton = {
   id: string;
   side: 'BUY' | 'SELL';
@@ -330,7 +335,7 @@ export function Sidebar() {
     let totalBuyCost = 0;
     for (const trade of myTradesDisplay) {
       const rawPrice = parseFloat(trade.price);
-      const size = parseFloat(trade.size_filled || trade.size);
+      const size = tradeFilledSizeShares(trade);
       if (!Number.isFinite(rawPrice) || !Number.isFinite(size)) continue;
       const cost = rawPrice * size;
       if (trade.side === 'SELL') totalSellCost += cost;
@@ -2297,7 +2302,7 @@ export function Sidebar() {
                   const outcome = getTokenOutcome(tid, marketLookup);
                   const sideLabel = isUpDownMarket ? (outcome === 'YES' ? 'UP' : 'DOWN') : outcome;
                   const rawPrice = parseFloat(trade.price);
-                  const size = parseFloat(trade.size_filled || trade.size);
+                  const size = tradeFilledSizeShares(trade);
                   const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
                   const side = isClaim ? 'CLAIM' : trade.side;
                   const cost = Number.isFinite(rawPrice) && Number.isFinite(size) ? rawPrice * size : 0;

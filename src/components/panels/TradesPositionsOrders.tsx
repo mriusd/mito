@@ -11,7 +11,7 @@ import {
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import type { Position, Trade } from '../../types';
 import { showToast } from '../../utils/toast';
-import { getMarketPriceCondition, getTokenOutcome, extractAssetFromMarket, formatPriceShort, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
+import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, extractAssetFromMarket, formatPriceShort, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
 import type { Market } from '../../types';
 
 const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
@@ -268,7 +268,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
   // Process trades
   const processedTrades = tradesForTable
     .filter((t) => {
-      const tid = t.asset_id || t.asset || t.token_id || t.market || '';
+      const tid = getTradeClobTokenId(t);
       if (assetFilter !== 'ALL') {
         const market = marketLookup[tid];
         if (market) {
@@ -282,7 +282,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
       return true;
     })
     .map((trade) => {
-      const tid = trade.asset_id || trade.asset || trade.token_id || trade.market || '';
+      const tid = getTradeClobTokenId(trade);
       const market = marketLookup[tid];
       let asset = market ? extractAssetFromMarket(market) || '' : '';
       let endDate = market?.endDate || null;
@@ -389,13 +389,13 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
   // Process orders
   const processedOrders = orders
     .filter((o) => {
-      const tid = o.asset_id || o.token_id || o.market || '';
+      const tid = getOrderClobTokenId(o);
       if (!filterByAsset(tid)) return false;
       if (ordersFilter !== 'ALL' && o.side !== ordersFilter) return false;
       return true;
     })
     .map((order) => {
-      const tid = order.asset_id || order.token_id || order.market || '';
+      const tid = getOrderClobTokenId(order);
       const market = marketLookup[tid];
       const asset = market ? extractAssetFromMarket(market) || '' : '';
       const endDate = market?.endDate || null;

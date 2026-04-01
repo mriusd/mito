@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import type { Trade } from '../../types';
+import { getTradeClobTokenId } from '../../utils/format';
 
 const PNL_BUCKET_KEY = 'polybot-pnl-bucket-mode';
 const PNL_MARKET_TYPE_FILTER_KEY = 'polybot-pnl-market-type-filter';
@@ -14,10 +15,6 @@ function getTradeTimeMs(trade: Trade): number {
   }
   const parsed = new Date(ts);
   return isNaN(parsed.getTime()) ? 0 : parsed.getTime();
-}
-
-function tradeTokenId(trade: Trade): string {
-  return trade.asset_id || trade.asset || trade.token_id || trade.market || '';
 }
 
 function getDateKey(date: Date): string {
@@ -121,7 +118,7 @@ export function PnLPanel() {
     for (const trade of trades) {
       const timeMs = getTradeTimeMs(trade);
       if (timeMs === 0) continue;
-      const tid = tradeTokenId(trade);
+      const tid = getTradeClobTokenId(trade);
       const market = tid ? marketLookup[tid] : undefined;
       const fallbackQuestion = (trade as Trade).title || market?.question || market?.groupItemTitle || market?.eventTitle;
       const fallbackEventSlug = (trade as Trade).eventSlug || (trade as Trade).slug || market?.eventSlug;

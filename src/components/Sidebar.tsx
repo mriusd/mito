@@ -11,9 +11,13 @@ import { signingDialog, isDialogHidden } from './SigningDialog';
 import {
   extractAssetFromMarket,
   formatPolymarketVolumeK,
+  getOrderClobTokenId,
   getPolymarketVolumeUsd,
   getTokenOutcome,
+  getTradeClobTokenId,
+  outcomeTokenBelongsToSelectedMarket,
   shortenMarketName,
+  tradeMatchesSelectedMarket,
   upDownMarketUsesChainlinkSpot,
 } from '../utils/format';
 import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarkets } from '../utils/bsMath';
@@ -272,8 +276,6 @@ export function Sidebar() {
     localStorage.setItem('polymarket-order-amount', orderAmount);
   }, [orderAmount]);
 
-  // Filter positions/orders/trades for selected market
-  const marketTokenIds = selectedMarket?.clobTokenIds || [];
   const isMarketExpired = useMemo(() => {
     if (!selectedMarket) return false;
     if (selectedMarket.closed) return true;
@@ -283,14 +285,14 @@ export function Sidebar() {
   }, [selectedMarket]);
   const myPositions = useMemo(() => {
     if (liveTradesSource !== 'onchain') {
-      return positions.filter((p) => marketTokenIds.includes(p.asset || ''));
+      return positions.filter((p) => outcomeTokenBelongsToSelectedMarket(String(p.asset || '').trim(), selectedMarket, marketLookup));
     }
     return onchainSidebarPositions
-      .filter((p) => marketTokenIds.includes(p.tokenId))
+      .filter((p) => outcomeTokenBelongsToSelectedMarket(p.tokenId, selectedMarket, marketLookup))
       .map((p) => ({ asset: p.tokenId, size: p.size, avgPrice: p.avgPrice }));
-  }, [liveTradesSource, positions, marketTokenIds, onchainSidebarPositions]);
+  }, [liveTradesSource, positions, selectedMarket, marketLookup, onchainSidebarPositions]);
   const { myOrders, progOrders } = useMemo(() => {
-    const all = orders.filter((o) => marketTokenIds.includes(o.asset_id || o.token_id || o.market || ''));
+    const all = orders.filter((o) => outcomeTokenBelongsToSelectedMarket(getOrderClobTokenId(o), selectedMarket, marketLookup));
     const sideRank = (side: string | undefined) => {
       const s = (side || '').toUpperCase();
       if (s === 'BUY') return 0;
@@ -303,13 +305,13 @@ export function Sidebar() {
       myOrders: sortBuyFirst(all.filter((o) => !progOrderMap[o.id])),
       progOrders: sortBuyFirst(all.filter((o) => !!progOrderMap[o.id])),
     };
-  }, [orders, marketTokenIds, progOrderMap]);
+  }, [orders, progOrderMap, selectedMarket, marketLookup]);
   const myTrades = useMemo(() => {
     if (liveTradesSource !== 'onchain') {
-      return trades.filter((t) => marketTokenIds.includes(t.asset_id || t.token_id || t.market || ''));
+      return trades.filter((t) => tradeMatchesSelectedMarket(t, selectedMarket, marketLookup));
     }
     return onchainSidebarTrades
-      .filter((f) => marketTokenIds.includes(f.tokenId) && f.size >= 0.01)
+      .filter((f) => f.size >= 0.01 && outcomeTokenBelongsToSelectedMarket(f.tokenId, selectedMarket, marketLookup))
       .sort((a, b) => b.blockTime - a.blockTime)
       .map((f) => ({
         asset_id: f.tokenId,
@@ -321,14 +323,14 @@ export function Sidebar() {
         created_at: '',
         matchTime: '',
       }));
-  }, [liveTradesSource, trades, marketTokenIds, onchainSidebarTrades]);
+  }, [liveTradesSource, trades, selectedMarket, marketLookup, onchainSidebarTrades]);
   const myTradesDisplay = useMemo(() => myTrades.slice(0, 20), [myTrades]);
   const myTradesPnl = useMemo(() => {
     let totalSellCost = 0;
     let totalBuyCost = 0;
     for (const trade of myTradesDisplay) {
       const rawPrice = parseFloat(trade.price);
-      const size = parseFloat(trade.size);
+      const size = parseFloat(trade.size_filled || trade.size);
       if (!Number.isFinite(rawPrice) || !Number.isFinite(size)) continue;
       const cost = rawPrice * size;
       if (trade.side === 'SELL') totalSellCost += cost;
@@ -2055,7 +2057,7 @@ export function Sidebar() {
                         <span
                           className="cursor-pointer hover:underline"
                           onClick={() => setOrderAmount((Math.floor(size * 100) / 100).toString())}
-                          title="Use this size as order amount"
+                          title="Net contracts held for this outcome (after sells; fills may report slightly different share amounts vs order size due to fees/rounding). Click to use as order amount."
                         >
                           {' '}{Math.floor(size * 100) / 100}
                         </span>
@@ -2291,10 +2293,11 @@ export function Sidebar() {
                   </thead>
                   <tbody>
                 {myTradesDisplay.map((trade, i) => {
-                  const outcome = getTokenOutcome(trade.asset_id || trade.token_id || '', marketLookup);
+                  const tid = getTradeClobTokenId(trade) || String(trade.asset_id || trade.token_id || '').trim();
+                  const outcome = getTokenOutcome(tid, marketLookup);
                   const sideLabel = isUpDownMarket ? (outcome === 'YES' ? 'UP' : 'DOWN') : outcome;
                   const rawPrice = parseFloat(trade.price);
-                  const size = parseFloat(trade.size);
+                  const size = parseFloat(trade.size_filled || trade.size);
                   const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
                   const side = isClaim ? 'CLAIM' : trade.side;
                   const cost = Number.isFinite(rawPrice) && Number.isFinite(size) ? rawPrice * size : 0;

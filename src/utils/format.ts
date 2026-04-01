@@ -1,4 +1,4 @@
-import type { AssetName, AssetSymbol, Market } from '../types';
+import type { AssetName, AssetSymbol, Market, Order, Trade } from '../types';
 
 export function symbolToAsset(symbol: AssetSymbol): AssetName {
   return symbol.replace('USDT', '') as AssetName;
@@ -205,6 +205,45 @@ export function getTokenOutcome(tokenId: string, marketLookup: Record<string, Ma
   if (tokenIds[0] === tokenId) return 'YES';
   if (tokenIds[1] === tokenId) return 'NO';
   return '';
+}
+
+/** Polymarket Data API uses `asset` for the outcome token id; avoid using `market` unless it looks like a numeric CLOB id (slugs caused false matches). */
+export function getTradeClobTokenId(t: Pick<Trade, 'asset_id' | 'asset' | 'token_id' | 'market'>): string {
+  const a = String(t.asset_id ?? t.asset ?? t.token_id ?? '').trim();
+  if (a) return a;
+  const m = String(t.market ?? '').trim();
+  if (/^\d{15,}$/.test(m)) return m;
+  return '';
+}
+
+export function getOrderClobTokenId(o: Pick<Order, 'asset_id' | 'token_id'>): string {
+  return String(o.asset_id ?? o.token_id ?? '').trim();
+}
+
+/** True if this outcome token is one of the selected market's CLOB ids and lookup agrees on Gamma `market.id` when present. */
+export function outcomeTokenBelongsToSelectedMarket(
+  tokenId: string,
+  selected: Market | null | undefined,
+  marketLookup: Record<string, Market>,
+): boolean {
+  if (!tokenId || !selected?.clobTokenIds?.length) return false;
+  if (!selected.clobTokenIds.includes(tokenId)) return false;
+  const row = marketLookup[tokenId];
+  if (row?.id && selected.id && row.id !== selected.id) return false;
+  return true;
+}
+
+export function tradeMatchesSelectedMarket(
+  t: Trade,
+  selected: Market | null | undefined,
+  marketLookup: Record<string, Market>,
+): boolean {
+  const tid = getTradeClobTokenId(t);
+  if (!tid) return false;
+  if (!outcomeTokenBelongsToSelectedMarket(tid, selected, marketLookup)) return false;
+  const cond = String(t.conditionId ?? '').trim();
+  if (cond && selected?.id && cond !== selected.id) return false;
+  return true;
 }
 
 export function extractAssetFromMarket(market: Market): AssetName | '' {

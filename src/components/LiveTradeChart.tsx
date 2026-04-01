@@ -328,9 +328,9 @@ export function LiveTradeChart({
       ctx.fillRect(cx - candleW / 2, bodyTop, candleW, bodyH);
     }
 
+    const lastPrice = candles[candles.length - 1].c;
+    const lastY = toY(lastPrice);
     if (!hidePriceLines) {
-      const lastPrice = candles[candles.length - 1].c;
-      const lastY = toY(lastPrice);
       ctx.beginPath();
       ctx.strokeStyle = 'rgba(255,255,255,0.3)';
       ctx.lineWidth = 1;
@@ -339,13 +339,14 @@ export function LiveTradeChart({
       ctx.lineTo(chartRight, lastY);
       ctx.stroke();
       ctx.setLineDash([]);
-
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 9px monospace';
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(lastPrice.toFixed(1) + '¢', chartRight, lastY - 6);
     }
+    // Latest candle close (no horizontal line when hidePriceLines — label only)
+    const labelY = Math.max(chartTop + 8, Math.min(chartBot - 8, lastY));
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(lastPrice.toFixed(1) + '¢', chartRight - 2, labelY);
 
     // --- Chainlink / Binance price overlay (mapped onto 0-100¢ Y-axis, target = 50¢) ---
     // X-axis is only [minT, maxT] (market window). Binance fetch keeps ~500 candles of history;

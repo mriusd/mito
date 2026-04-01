@@ -703,7 +703,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                             .sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
                           const totalShares = sorted.reduce((s, w) => s + Math.abs(w.net), 0);
                           if (totalShares <= 0) return null;
-                          const halfTarget = totalShares * 0.5;
+                          const halfTarget = totalShares * 0.3;
                           let accum = 0;
                           let wrSum = 0;
                           let wrWeight = 0;
@@ -730,7 +730,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                         return (
                           <div>
                             <div className="flex items-center justify-between mb-1">
-                              <span className="text-[9px] text-gray-500">Winner Bias (top 50% holders)</span>
+                              <span className="text-[9px] text-gray-500">Winner Bias (top 30% holders)</span>
                               <span className={`text-[11px] font-bold ${winnerColor}`}>
                                 {winnerSide}
                               </span>

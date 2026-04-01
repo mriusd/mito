@@ -2,6 +2,27 @@ import { useEffect, useCallback, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { fetchMarkets, buildMarketLookup } from '../api';
 import { isWebMode } from '../lib/env';
+import type { Market } from '../types';
+
+const WS_FIELDS: (keyof Market)[] = [
+  'bestBid', 'bestAsk', 'volume', 'sharesInExistence', 'marketNetDirection',
+  'holders', 'smartMoneyBias', 'provenSMS', 'crowdBias', 'liveBias',
+  'liveBiasWindowMin', 'concentration',
+];
+
+function mergeWsFields(fresh: Record<string, Market>, prev: Record<string, Market>): Record<string, Market> {
+  for (const tokenId of Object.keys(fresh)) {
+    const old = prev[tokenId];
+    if (!old) continue;
+    const entry = fresh[tokenId];
+    for (const key of WS_FIELDS) {
+      if (entry[key] == null && old[key] != null) {
+        (entry as any)[key] = old[key];
+      }
+    }
+  }
+  return fresh;
+}
 
 export function useMarketData() {
   const store = useAppStore();
@@ -12,7 +33,11 @@ export function useMarketData() {
     refreshingRef.current = true;
     try {
       const data = await fetchMarkets();
-      const lookup = buildMarketLookup(data.aboveMarkets || {}, data.priceOnMarkets || {}, data.weeklyHitMarkets || {}, data.upOrDownMarkets || {});
+      const prevLookup = useAppStore.getState().marketLookup;
+      const lookup = mergeWsFields(
+        buildMarketLookup(data.aboveMarkets || {}, data.priceOnMarkets || {}, data.weeklyHitMarkets || {}, data.upOrDownMarkets || {}),
+        prevLookup,
+      );
 
       if (isWebMode) {
         // Web mode: only market/smart-order data from backend; wallet data comes from useWalletData

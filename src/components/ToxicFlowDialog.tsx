@@ -695,6 +695,58 @@ export function ToxicFlowDialog({ open, marketId, marketName, onClose }: ToxicFl
                         </span>
                       </div>
 
+                      {/* Winner Bias */}
+                      {(() => {
+                        const calcWeightedWinRate = (wallets: WalletPosition[]) => {
+                          const sorted = [...wallets]
+                            .filter(w => Math.abs(w.net) > 0.001)
+                            .sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
+                          const totalShares = sorted.reduce((s, w) => s + Math.abs(w.net), 0);
+                          if (totalShares <= 0) return null;
+                          const halfTarget = totalShares * 0.5;
+                          let accum = 0;
+                          let wrSum = 0;
+                          let wrWeight = 0;
+                          for (const w of sorted) {
+                            if (accum >= halfTarget) break;
+                            const sz = Math.abs(w.net);
+                            accum += sz;
+                            if (typeof w.winRate === 'number' && Number.isFinite(w.winRate) && (w.winLossTotal ?? 0) > 0) {
+                              wrSum += w.winRate * sz;
+                              wrWeight += sz;
+                            }
+                          }
+                          return wrWeight > 0 ? wrSum / wrWeight : null;
+                        };
+                        const yesWr = calcWeightedWinRate(data.topYes.filter(w => w.net > 0));
+                        const noWr = calcWeightedWinRate(data.topNo.filter(w => w.net < 0));
+                        if (yesWr == null && noWr == null) return null;
+                        const yesVal = yesWr ?? 0.5;
+                        const noVal = noWr ?? 0.5;
+                        const bias = yesVal - noVal;
+                        const barPct = Math.max(2, Math.min(98, 50 + bias * 100));
+                        const winnerSide = bias > 0.01 ? posLabel : bias < -0.01 ? negLabel : 'EVEN';
+                        const winnerColor = bias > 0.01 ? 'text-green-400' : bias < -0.01 ? 'text-red-400' : 'text-gray-500';
+                        return (
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[9px] text-gray-500">Winner Bias (top 50% holders)</span>
+                              <span className={`text-[11px] font-bold ${winnerColor}`}>
+                                {winnerSide}
+                              </span>
+                            </div>
+                            <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
+                              <div className="bg-green-500/70 h-full transition-all" style={{ width: `${barPct}%` }} />
+                              <div className="bg-red-500/70 h-full transition-all flex-1" />
+                            </div>
+                            <div className="flex justify-between mt-0.5 text-[9px] text-gray-500">
+                              <span>{posLabel} avg WR: <span className={yesVal >= 0.5 ? 'text-green-400' : 'text-red-400'}>{(yesVal * 100).toFixed(0)}%</span></span>
+                              <span>{negLabel} avg WR: <span className={noVal >= 0.5 ? 'text-green-400' : 'text-red-400'}>{(noVal * 100).toFixed(0)}%</span></span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* YES vs NO wallet breakdown */}
                       <div className="border-t border-gray-700/70 pt-2">
                         <div className="flex items-center justify-between mb-1">

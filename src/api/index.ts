@@ -518,6 +518,7 @@ export interface OnchainMarketTradeRow {
   side: 'BUY' | 'SELL';
   size: number;
   price: number;
+  fee: number;
   /** From `markets` join (Polymarket question) */
   title?: string;
   slug?: string;

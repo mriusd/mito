@@ -199,6 +199,7 @@ export function Sidebar() {
     side: 'BUY' | 'SELL';
     price: number;
     size: number;
+    fee: number;
     blockTime: number;
     txHash?: string;
   }>>([]);
@@ -325,6 +326,7 @@ export function Sidebar() {
         side: f.side,
         price: String(f.price),
         size: String(f.size),
+        fee: String(f.fee || 0),
         timestamp: f.blockTime > 0 ? f.blockTime * 1000 : Date.now(),
         created_at: '',
         matchTime: '',
@@ -2317,6 +2319,7 @@ export function Sidebar() {
                       <th className="text-right font-medium">Size</th>
                       <th className="text-right font-medium">Price</th>
                       <th className="text-right font-medium">Cost</th>
+                      <th className="text-right font-medium">Fee</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2330,6 +2333,7 @@ export function Sidebar() {
                   const side = isClaim ? 'CLAIM' : trade.side;
                   const cost = Number.isFinite(rawPrice) && Number.isFinite(size) ? rawPrice * size : 0;
                   const signedCost = side === 'BUY' ? -cost : cost;
+                  const tradeFee = parseFloat(trade.fee || '0');
                   return (
                     <tr key={i} className="text-gray-300">
                       <td className={`py-0.5 ${side === 'BUY' ? 'text-emerald-400' : side === 'CLAIM' ? 'text-blue-400' : 'text-rose-400'}`}>{side || '-'}</td>
@@ -2339,6 +2343,7 @@ export function Sidebar() {
                       <td className={`py-0.5 text-right ${side === 'BUY' ? 'text-rose-400' : side === 'SELL' ? 'text-emerald-400' : 'text-gray-300'}`}>
                         {signedCost >= 0 ? '+' : '-'}${Math.abs(signedCost).toFixed(2)}
                       </td>
+                      <td className="py-0.5 text-right text-yellow-400/80">{tradeFee > 0 ? `$${tradeFee.toFixed(2)}` : '-'}</td>
                     </tr>
                   );
                 })}

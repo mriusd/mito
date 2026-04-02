@@ -24,6 +24,7 @@ export interface WSTrade {
   side: 'BUY' | 'SELL';
   size: number;
   price: number;
+  fee: number;
   blockTime: number;
   txHash?: string;
   title?: string;
@@ -178,12 +179,13 @@ export function useOnchainTradesWS(tokenId: string | null, wallet?: string | nul
               .filter((p) => p.tokenId && p.size > 0);
             setWalletPositions(positions);
           } else if (msg.type === 'walletTrades' && Array.isArray(msg.data)) {
-            const wt = (msg.data as Array<{ tokenId?: string; side?: string; size?: number; price?: number; blockTime?: number; txHash?: string }>)
+            const wt = (msg.data as Array<{ tokenId?: string; side?: string; size?: number; price?: number; fee?: number; blockTime?: number; txHash?: string }>)
               .map((t) => ({
                 tokenId: String(t.tokenId || ''),
                 side: (String(t.side || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL',
                 size: Number(t.size || 0),
                 price: Number(t.price || 0),
+                fee: Number(t.fee || 0),
                 blockTime: Number(t.blockTime || 0),
                 txHash: t.txHash,
               }))

@@ -188,6 +188,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
         side: t.side,
         price: String(t.price),
         size: String(t.size),
+        fee: String(t.fee || 0),
         timestamp: String(tsMs),
         ...(t.title ? { title: t.title } : {}),
         ...(t.slug ? { slug: t.slug } : {}),
@@ -330,8 +331,9 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
         if (t < 1e12) t = t * 1000;
         timeMs = t;
       }
+      const fee = parseFloat(trade.fee || '0');
       const clickable = !!market;
-      return { tid, asset, endDate, marketName: mktLabel, outcome, side, price, size, value, timeMs, marketId: market?.id, clickable };
+      return { tid, asset, endDate, marketName: mktLabel, outcome, side, price, size, value, fee, timeMs, marketId: market?.id, clickable };
     });
 
   // Process positions
@@ -425,7 +427,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
 
   const hCls = 'text-gray-500 py-1 px-1';
 
-  const trColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'25%'}}/><col style={{width:'8%'}}/><col style={{width:'6%'}}/><col style={{width:'12%'}}/><col style={{width:'10%'}}/><col style={{width:'12%'}}/><col style={{width:'12%'}}/></colgroup>;
+  const trColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'22%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'12%'}}/></colgroup>;
   const posColgroup = <colgroup><col style={{width:'5%'}}/><col style={{width:'8%'}}/><col style={{width:'16%'}}/><col style={{width:'5%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'10%'}}/><col style={{width:'8%'}}/><col style={{width:'10%'}}/><col style={{width:'11%'}}/><col style={{width:'11%'}}/></colgroup>;
   const ordColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'22%'}}/><col style={{width:'8%'}}/><col style={{width:'6%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'12%'}}/><col style={{width:'7%'}}/></colgroup>;
 
@@ -507,6 +509,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
               <th className={`${hCls} text-right`}>Size</th>
               <th className={`${hCls} text-right`}>Price</th>
               <th className={`${hCls} text-right`}>Value</th>
+              <th className={`${hCls} text-right`}>Fee</th>
               <th className={`${hCls} text-right`}>Time</th>
             </tr></thead></table>
             {/* Scrollable body */}
@@ -526,6 +529,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
                       <td className="py-1 px-1 text-right text-gray-300">{Math.round(t.size).toLocaleString()}</td>
                       <td className="py-1 px-1 text-right text-gray-300">{t.price.toFixed(1)}¢</td>
                       <td className="py-1 px-1 text-right text-gray-300">${t.value.toFixed(2)}</td>
+                      <td className="py-1 px-1 text-right text-yellow-400/80">{t.fee > 0 ? `$${t.fee.toFixed(2)}` : '-'}</td>
                       <td className={`py-1 px-1 text-right ${timeColor}`}>{t.timeMs > 0 ? formatElapsed(t.timeMs) : ''}</td>
                     </tr>
                   );

@@ -200,6 +200,7 @@ export function Sidebar() {
     price: number;
     size: number;
     blockTime: number;
+    txHash?: string;
   }>>([]);
   const [proxyWallet, setProxyWallet] = useState<string | null>(null);
   const pkAddress = useAppStore((s) => s.pkAddress);

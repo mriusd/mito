@@ -73,83 +73,184 @@ export function LiveTradeChart({
 
   const candleMs = INTERVAL_MS[interval] || 60000;
 
-  // Reset candle map + fetch klines from Go backend + subscribe to WS
+  // Reset candle map + fetch klines from Go backend + subscribe to WS (reconnect + tab visibility)
   useEffect(() => {
     candleMapRef.current = new Map();
     lastTradeCountRef.current = 0;
     setReady(false);
 
-    // Cleanup previous WS
     if (wsRef.current) {
-      wsRef.current.close();
+      try {
+        wsRef.current.close();
+      } catch {
+        /* ignore */
+      }
       wsRef.current = null;
     }
 
     if (!tokenId) return;
 
-    // Fetch initial candles from Go backend
+    let cancelled = false;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    let pingIv: ReturnType<typeof setInterval> | null = null;
+    let reconnectAttempt = 0;
+
     const st = startTime || (Date.now() - 24 * 60 * 60 * 1000);
     const et = endTime || (Date.now() + 60 * 60 * 1000);
-    fetch(`${API_BASE}/api/v3/klines?symbol=${tokenId}&interval=${interval}&startTime=${st}&endTime=${et}&limit=1500`)
-      .then(r => r.json())
-      .then((klines: any[][]) => {
-        if (!Array.isArray(klines)) { setReady(true); return; }
-        const map = candleMapRef.current;
-        for (const k of klines) {
-          const openTime = k[0] as number;
-          const o = toPrice(parseFloat(k[1] as string) * 100, isNo);
-          const h = toPrice(parseFloat(k[2] as string) * 100, isNo);
-          const l = toPrice(parseFloat(k[3] as string) * 100, isNo);
-          const c = toPrice(parseFloat(k[4] as string) * 100, isNo);
-          const hi = Math.max(o, h, l, c);
-          const lo = Math.min(o, h, l, c);
-          map.set(openTime, { time: openTime, o, h: hi, l: lo, c });
-        }
-        setReady(true);
-      })
-      .catch(() => setReady(true));
 
-    // Subscribe to WS for live kline updates
-    const ws = new WebSocket(`${WS_BASE}/ws/chart`);
-    wsRef.current = ws;
-    let pingIv: ReturnType<typeof setInterval>;
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({
-        type: 'subscribeKlineStream',
-        data: { symbol: tokenId, interval },
-      }));
-      pingIv = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping' }));
-        }
-      }, 30000);
+    const applyKlines = (klines: any[][]) => {
+      if (!Array.isArray(klines)) return;
+      const map = candleMapRef.current;
+      for (const k of klines) {
+        const openTime = k[0] as number;
+        const o = toPrice(parseFloat(k[1] as string) * 100, isNo);
+        const h = toPrice(parseFloat(k[2] as string) * 100, isNo);
+        const l = toPrice(parseFloat(k[3] as string) * 100, isNo);
+        const c = toPrice(parseFloat(k[4] as string) * 100, isNo);
+        const hi = Math.max(o, h, l, c);
+        const lo = Math.min(o, h, l, c);
+        map.set(openTime, { time: openTime, o, h: hi, l: lo, c });
+      }
     };
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'klineStreamUpdate') {
-          const k = msg.data?.data?.k;
-          if (!k) return;
-          const map = candleMapRef.current;
-          const openTime = k.t as number;
-          const o = toPrice(parseFloat(k.o) * 100, isNo);
-          const h = toPrice(parseFloat(k.h) * 100, isNo);
-          const l = toPrice(parseFloat(k.l) * 100, isNo);
-          const c = toPrice(parseFloat(k.c) * 100, isNo);
-          const hi = Math.max(o, h, l, c);
-          const lo = Math.min(o, h, l, c);
-          map.set(openTime, { time: openTime, o, h: hi, l: lo, c });
-          setWsTick(n => n + 1);
-        }
-      } catch {}
+    const loadKlines = () =>
+      fetch(`${API_BASE}/api/v3/klines?symbol=${tokenId}&interval=${interval}&startTime=${st}&endTime=${et}&limit=1500`)
+        .then((r) => r.json())
+        .then((klines: any[][]) => {
+          if (!cancelled) {
+            applyKlines(klines);
+            setReady(true);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setReady(true);
+        });
+
+    void loadKlines();
+
+    const clearPing = () => {
+      if (pingIv != null) {
+        clearInterval(pingIv);
+        pingIv = null;
+      }
     };
+
+    const scheduleReconnect = () => {
+      if (cancelled) return;
+      const delay = Math.min(30_000, 800 * Math.pow(2, reconnectAttempt));
+      reconnectAttempt = Math.min(reconnectAttempt + 1, 10);
+      reconnectTimeout = window.setTimeout(() => {
+        reconnectTimeout = null;
+        connectWs();
+      }, delay);
+    };
+
+    const connectWs = () => {
+      if (cancelled || !tokenId) return;
+
+      clearPing();
+      const prev = wsRef.current;
+      if (prev && (prev.readyState === WebSocket.OPEN || prev.readyState === WebSocket.CONNECTING)) {
+        try {
+          prev.close();
+        } catch {
+          /* ignore */
+        }
+      }
+      wsRef.current = null;
+
+      const ws = new WebSocket(`${WS_BASE}/ws/chart`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (cancelled) return;
+        const wasReconnect = reconnectAttempt > 0;
+        reconnectAttempt = 0;
+        ws.send(
+          JSON.stringify({
+            type: 'subscribeKlineStream',
+            data: { symbol: tokenId, interval },
+          }),
+        );
+        pingIv = window.setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 30_000);
+        if (wasReconnect) {
+          void loadKlines().then(() => {
+            if (!cancelled) setWsTick((n) => n + 1);
+          });
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'klineStreamUpdate') {
+            const k = msg.data?.data?.k;
+            if (!k) return;
+            const map = candleMapRef.current;
+            const openTime = k.t as number;
+            const o = toPrice(parseFloat(k.o) * 100, isNo);
+            const h = toPrice(parseFloat(k.h) * 100, isNo);
+            const l = toPrice(parseFloat(k.l) * 100, isNo);
+            const c = toPrice(parseFloat(k.c) * 100, isNo);
+            const hi = Math.max(o, h, l, c);
+            const lo = Math.min(o, h, l, c);
+            map.set(openTime, { time: openTime, o, h: hi, l: lo, c });
+            setWsTick((n) => n + 1);
+          }
+        } catch {
+          /* ignore */
+        }
+      };
+
+      ws.onerror = () => {
+        try {
+          ws.close();
+        } catch {
+          /* ignore */
+        }
+      };
+
+      ws.onclose = () => {
+        clearPing();
+        if (wsRef.current === ws) wsRef.current = null;
+        if (!cancelled) scheduleReconnect();
+      };
+    };
+
+    const onVisibility = () => {
+      if (cancelled || document.visibilityState !== 'visible') return;
+      const w = wsRef.current;
+      if (w && w.readyState === WebSocket.OPEN) return;
+      reconnectAttempt = 0;
+      if (reconnectTimeout != null) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+      }
+      void loadKlines().then(() => {
+        if (!cancelled) setWsTick((n) => n + 1);
+      });
+      connectWs();
+    };
+
+    connectWs();
+    document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
-      clearInterval(pingIv);
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (reconnectTimeout != null) clearTimeout(reconnectTimeout);
+      clearPing();
+      const w = wsRef.current;
+      if (w && (w.readyState === WebSocket.OPEN || w.readyState === WebSocket.CONNECTING)) {
+        try {
+          w.close();
+        } catch {
+          /* ignore */
+        }
       }
       wsRef.current = null;
     };

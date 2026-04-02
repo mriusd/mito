@@ -283,7 +283,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                         ? liveEntry.winnerBias
                         : 0;
                     const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
-                    const winnerBiasBarFlash = wbPct > 75 || wbPct < 25;
+                    const winnerBiasBarFlash = wbPct > 60 || wbPct < 40;
                     return (
                       <>
                         <td className="px-1 py-1 align-middle border-l border-r border-solid border-gray-700 text-center text-[9px] whitespace-nowrap text-gray-300 bg-gray-900/50 border-b border-gray-700/50">

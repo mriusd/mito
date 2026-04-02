@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink, Copy } from 'lucide-react';
 import { fetchToxicFlow, fetchWalletSummary, fetchWalletPositions, fetchOnchainFills } from '../api';
 import type { ToxicFlowData, WalletPosition, WalletSummary, OnchainFillRow } from '../api';
 import { shortenMarketName } from '../utils/format';
@@ -429,6 +429,17 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-bold text-yellow-400">Wallet Info</span>
             <span className="text-xs text-blue-400 font-mono truncate">{wallet}</span>
+            <button
+              type="button"
+              className="text-gray-400 hover:text-white"
+              title="Copy wallet address"
+              aria-label="Copy wallet address"
+              onClick={() => {
+                void navigator.clipboard.writeText(wallet);
+              }}
+            >
+              <Copy size={13} />
+            </button>
             <a href={polygonUrl} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white" title="Open in Polygonscan">
               <ExternalLink size={13} />
             </a>
@@ -519,7 +530,9 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
           </div>
 
           <div className="bg-gray-900 rounded p-2 overflow-y-auto">
-            <div className="text-[10px] text-gray-400 font-bold mb-1">Trades For Selected Market</div>
+            <div className="text-[10px] text-gray-400 font-bold mb-1">
+              Trades For Selected Market {selectedMarketId ? <span className="text-gray-500 font-mono">({selectedMarketId})</span> : null}
+            </div>
             {loadingFills ? (
               <div className="text-gray-500 text-[10px]">Loading trades...</div>
             ) : fills.length === 0 ? (

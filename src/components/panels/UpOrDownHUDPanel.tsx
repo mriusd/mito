@@ -108,6 +108,13 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
       return { tf, current, next, currentYes, nextYes };
     });
   }, [assetMarkets, marketLookup]);
+
+  const selectedMarketInPanel = useMemo(() => {
+    const id = selectedMarket?.id;
+    if (!id) return false;
+    return rows.some((r) => r.current?.id === id || r.next?.id === id);
+  }, [selectedMarket?.id, rows]);
+
   const positionTokenIds = useMemo(() => {
     const s = new Set<string>();
     if (liveTradesSource === 'onchain') {
@@ -138,7 +145,13 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
   };
 
   return (
-    <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 h-full gap-2">
+    <div
+      className={`panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 h-full gap-2 ${
+        selectedMarketInPanel
+          ? 'ring-2 ring-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.65),0_0_28px_rgba(37,99,235,0.35)] z-[1]'
+          : ''
+      }`}
+    >
       <div className="panel-header flex items-center gap-2 cursor-grab">
         <h3 className={`text-sm font-bold ${titleColor}`}>
           <span

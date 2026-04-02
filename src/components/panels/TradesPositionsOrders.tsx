@@ -136,7 +136,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
           return;
         }
         const [pr, tr] = await Promise.all([
-          fetchOnchainMarketPositions({ token_ids, wallet: makerAddress, active_only: true }),
+          fetchOnchainMarketPositions({ token_ids, wallet: makerAddress }),
           fetchOnchainMarketTrades({ token_ids, wallet: makerAddress, limit: 500 }),
         ]);
         if (!cancelled) {

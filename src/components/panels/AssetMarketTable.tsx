@@ -567,6 +567,13 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const noBuyOrders = noOrders.filter((o) => o.side === 'BUY');
                   const yesSellOrders = yesOrders.filter((o) => o.side === 'SELL');
                   const noSellOrders = noOrders.filter((o) => o.side === 'SELL');
+                  const wbUsdc =
+                    typeof _bidAskLookup[yesTokenId]?.winnerBias === 'number' &&
+                    Number.isFinite(_bidAskLookup[yesTokenId]?.winnerBias)
+                      ? _bidAskLookup[yesTokenId]!.winnerBias!
+                      : 0;
+                  const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
+                  const winnerBiasBarFlash = wbPct > 60 || wbPct < 40;
 
                   return (
                     <td
@@ -647,6 +654,13 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           {(Math.min(...noSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
+                      <div
+                        className={`absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex${winnerBiasBarFlash ? ' updown-winner-bias-bar-flash' : ''}`}
+                        title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
+                      >
+                        <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
+                        <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
+                      </div>
                     </td>
                   );
                 })}
@@ -759,6 +773,13 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const noOrders = orderLookup[noTokenId] || [];
                   const yesBuyOrders = yesOrders.filter((o) => o.side === 'BUY');
                   const noBuyOrders = noOrders.filter((o) => o.side === 'BUY');
+                  const wbUsdc =
+                    typeof _bidAskLookup[yesTokenId]?.winnerBias === 'number' &&
+                    Number.isFinite(_bidAskLookup[yesTokenId]?.winnerBias)
+                      ? _bidAskLookup[yesTokenId]!.winnerBias!
+                      : 0;
+                  const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
+                  const winnerBiasBarFlash = wbPct > 60 || wbPct < 40;
 
                   const fmtSz = (sz: number) => {
                     const v = Math.floor(sz);
@@ -819,6 +840,13 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           {(Math.max(...noBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
+                      <div
+                        className={`absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex${winnerBiasBarFlash ? ' updown-winner-bias-bar-flash' : ''}`}
+                        title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
+                      >
+                        <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
+                        <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
+                      </div>
                     </td>
                   );
                 })}
@@ -974,6 +1002,13 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const noBuyOrders = noOrders.filter((o) => o.side === 'BUY');
                   const yesSellOrders = yesOrders.filter((o) => o.side === 'SELL');
                   const noSellOrders = noOrders.filter((o) => o.side === 'SELL');
+                  const wbUsdc =
+                    typeof _bidAskLookup[yesTokenId]?.winnerBias === 'number' &&
+                    Number.isFinite(_bidAskLookup[yesTokenId]?.winnerBias)
+                      ? _bidAskLookup[yesTokenId]!.winnerBias!
+                      : 0;
+                  const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
+                  const winnerBiasBarFlash = wbPct > 60 || wbPct < 40;
 
                   // Format size (1000+ => 1.2k)
                   const fmtSz = (sz: number) => {
@@ -1070,6 +1105,13 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           {(Math.min(...noSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
+                      <div
+                        className={`absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex${winnerBiasBarFlash ? ' updown-winner-bias-bar-flash' : ''}`}
+                        title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
+                      >
+                        <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
+                        <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
+                      </div>
                     </td>
                   );
                   })}

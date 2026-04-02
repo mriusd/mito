@@ -578,6 +578,13 @@ export function UpDownMarketsPanel() {
                   const smartMoneyLeansNo = smartMoneyBarPct < 25;
                   const showSmartMoneyLeftIcon = marketLeansNo && smartMoneyLeansYes;
                   const showSmartMoneyRightIcon = marketLeansYes && smartMoneyLeansNo;
+                  const wbUsdc =
+                    typeof _bidAskLookup[yesTokenId]?.winnerBias === 'number' &&
+                    Number.isFinite(_bidAskLookup[yesTokenId]?.winnerBias)
+                      ? _bidAskLookup[yesTokenId]!.winnerBias!
+                      : 0;
+                  const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
+                  const winnerBiasBarFlash = wbPct > 60 || wbPct < 40;
 
                   const quoteCell = (
                     <td
@@ -652,12 +659,20 @@ export function UpDownMarketsPanel() {
                           {noSell.length > 0 && <div className={`absolute ${noBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>{(Math.min(...noSell.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
                         </>;
                       })()}
+                      {/* Winners $ (USDC bias, top 30%) — same style as Up/Down HUD */}
+                      <div
+                        className={`absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex${winnerBiasBarFlash ? ' updown-winner-bias-bar-flash' : ''}`}
+                        title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
+                      >
+                        <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
+                        <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
+                      </div>
                       {market.endDate && duration > 0 && (() => {
                         const mEnd = new Date(market.endDate).getTime();
                         const p = expiryProgress(now, mEnd, duration);
                         return (
                           <div
-                            className="absolute bottom-0 left-0 z-0 h-[2px] pointer-events-none"
+                            className="absolute bottom-[2px] left-0 z-0 h-[2px] pointer-events-none"
                             style={{ width: `${(p * 100).toFixed(1)}%`, backgroundColor: EXPIRY_BAR_BG }}
                           />
                         );

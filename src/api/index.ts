@@ -545,6 +545,29 @@ export async function fetchOnchainMarketTrades(params: { token_ids: string[]; wa
   return resp.json();
 }
 
+// --- On-chain claims (PayoutRedemption) ---
+
+export interface OnchainClaimRow {
+  txHash: string;
+  blockNumber: number;
+  blockTime: number;
+  conditionId: string;
+  payout: number;
+  marketId?: string;
+  title?: string;
+  eventSlug?: string;
+}
+
+export async function fetchOnchainClaims(params: { wallet: string; limit?: number; offset?: number }): Promise<{ claims: OnchainClaimRow[]; count: number; total: number }> {
+  const qs = new URLSearchParams();
+  qs.set('wallet', params.wallet);
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.offset) qs.set('offset', String(params.offset));
+  const resp = await fetch(`${BASE}/api/onchain-claims?${qs.toString()}`);
+  if (!resp.ok) throw new Error('Failed to fetch on-chain claims');
+  return resp.json();
+}
+
 // --- Wallet P&L (on-chain fills, daily buckets) ---
 
 export interface WalletPnlDailyResponse {

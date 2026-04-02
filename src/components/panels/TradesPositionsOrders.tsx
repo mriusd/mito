@@ -5,8 +5,10 @@ import {
   fetchWalletPositions,
   fetchOnchainMarketPositions,
   fetchOnchainMarketTrades,
+  fetchOnchainClaims,
   type OnchainMarketPositionRow,
   type OnchainMarketTradeRow,
+  type OnchainClaimRow,
 } from '../../api';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import type { Position, Trade } from '../../types';
@@ -90,6 +92,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
 
   const [onchainPosRows, setOnchainPosRows] = useState<OnchainMarketPositionRow[]>([]);
   const [onchainTrRows, setOnchainTrRows] = useState<OnchainMarketTradeRow[]>([]);
+  const [onchainClaimRows, setOnchainClaimRows] = useState<OnchainClaimRow[]>([]);
   const [onchainLoading, setOnchainLoading] = useState(false);
 
   const polymarketTokenKey = useMemo(() => {
@@ -112,6 +115,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
     if (liveTradesSource !== 'onchain' || !makerAddress) {
       setOnchainPosRows([]);
       setOnchainTrRows([]);
+      setOnchainClaimRows([]);
       setOnchainLoading(false);
       return;
     }
@@ -144,18 +148,21 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
           }
           return;
         }
-        const [pr, tr] = await Promise.all([
+        const [pr, tr, cl] = await Promise.all([
           fetchOnchainMarketPositions({ token_ids, wallet: makerAddress }),
           fetchOnchainMarketTrades({ token_ids, wallet: makerAddress, limit: 500 }),
+          fetchOnchainClaims({ wallet: makerAddress, limit: 200 }),
         ]);
         if (!cancelled) {
           setOnchainPosRows(pr.positions || []);
           setOnchainTrRows(tr.trades || []);
+          setOnchainClaimRows(cl.claims || []);
         }
       } catch {
         if (!cancelled) {
           setOnchainPosRows([]);
           setOnchainTrRows([]);
+          setOnchainClaimRows([]);
         }
       } finally {
         if (!cancelled) setOnchainLoading(false);
@@ -213,8 +220,33 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
     });
   }, [onchainTrRows]);
 
+  const onchainClaimsAsPM = useMemo((): Trade[] => {
+    return onchainClaimRows.map((c, i) => {
+      const tsMs = c.blockTime > 1e12 ? c.blockTime : c.blockTime * 1000;
+      return {
+        id: `claim-${c.txHash}-${i}`,
+        asset_id: '',
+        token_id: '',
+        side: '' as any,
+        price: '0',
+        size: String(c.payout),
+        usdcSize: c.payout,
+        fee: '0',
+        timestamp: String(tsMs),
+        ...(c.title ? { title: c.title } : {}),
+        ...(c.eventSlug ? { eventSlug: c.eventSlug } : {}),
+      };
+    });
+  }, [onchainClaimRows]);
+
   const positionsForTable = liveTradesSource === 'onchain' ? onchainPositionsAsPM : positions;
-  const tradesForTable = liveTradesSource === 'onchain' ? onchainTradesAsPM : trades;
+  const tradesForTable = liveTradesSource === 'onchain'
+    ? [...onchainTradesAsPM, ...onchainClaimsAsPM].sort((a, b) => {
+        const ta = parseInt(a.timestamp || '0', 10);
+        const tb = parseInt(b.timestamp || '0', 10);
+        return tb - ta;
+      })
+    : trades;
 
   const handleMarketClick = useCallback((tokenId: string) => {
     const market = marketLookup[tokenId];
@@ -548,9 +580,9 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
                       <td className={`py-1 px-1 ${assetColorMap2[t.asset] || 'text-gray-300'} truncate`}>{t.marketName}</td>
                       <td className={`py-1 px-1 font-bold ${t.side === 'BUY' ? 'text-green-400' : t.side === 'CLAIM' ? 'text-blue-400' : 'text-red-400'}`}>{t.side}</td>
                       <td className={`py-1 px-1 font-bold ${t.outcome === 'YES' || t.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{t.outcome || '-'}</td>
-                      <td className="py-1 px-1 text-right text-gray-300">{Math.round(t.size).toLocaleString()}</td>
-                      <td className="py-1 px-1 text-right text-gray-300">{t.price.toFixed(1)}¢</td>
-                      <td className="py-1 px-1 text-right text-gray-300">${t.value.toFixed(2)}</td>
+                      <td className="py-1 px-1 text-right text-gray-300">{t.side === 'CLAIM' ? '—' : Math.round(t.size).toLocaleString()}</td>
+                      <td className="py-1 px-1 text-right text-gray-300">{t.side === 'CLAIM' ? '—' : `${t.price.toFixed(1)}¢`}</td>
+                      <td className={`py-1 px-1 text-right ${t.side === 'CLAIM' ? 'text-blue-300 font-bold' : 'text-gray-300'}`}>${t.value.toFixed(2)}</td>
                       <td className="py-1 px-1 text-right text-yellow-400/80">{t.fee > 0 ? `$${t.fee.toFixed(2)}` : '-'}</td>
                       <td className={`py-1 px-1 text-right ${timeColor}`}>{t.timeMs > 0 ? formatElapsed(t.timeMs) : ''}</td>
                     </tr>

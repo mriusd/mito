@@ -594,10 +594,8 @@ export function Sidebar() {
     const strikeRaw = (selectedMarket.groupItemTitle || '').trim();
     if (!strikeRaw) return null;
 
-    const vwapPx = vwapData[sym]?.price;
-    const binancePx = priceData[sym]?.price;
-    const currentPrice = vwapPx || binancePx || 0;
-    const currentSource: 'vwap' | 'binance' = vwapPx ? 'vwap' : 'binance';
+    const currentPrice = priceData[sym]?.price || 0;
+    const currentSource = 'binance' as const;
 
     const cleaned = strikeRaw.replace(/^Hit\s*/i, '').replace(/[\$,]/g, '').replace(/↑/g, '>').replace(/↓/g, '<').trim();
     const ps = (cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-')) ? cleaned : '>' + cleaned;
@@ -662,7 +660,6 @@ export function Sidebar() {
     upDownSpotUsesChainlink,
     polyPrice.price,
     priceData,
-    vwapData,
     volatilityData,
     volMultiplier,
     bsTimeOffsetHours,
@@ -1373,8 +1370,8 @@ export function Sidebar() {
               row.mode === 'updown'
                 ? 'Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the same spot as “Current” on the right: Polymarket Chainlink for 5m/15m windows, Binance spot for 1h/4h/24h. Inputs: target strike, time to expiry, implied volatility (σ).\n\nFor Up (YES): probability price is above the target at expiry. For Down (NO): below.\n\nCompare to the market price to spot mispricings.'
                 : row.hitModel
-                  ? 'Fair-value probability for this Hit market (one-touch / first-passage under GBM): risk-neutral chance price touches the strike by expiry. Same VWAP/Binance spot as “Current”, σ from settings.\n\nCompare to the order book to spot mispricings.'
-                  : 'Fair-value probability (terminal Black-Scholes–style) for this market’s strike vs spot.\n\nUses VWAP when available else Binance, time to expiry, and σ. For YES/NO: YES uses model YES probability; NO uses 100% − YES.\n\nCompare to the market price to spot mispricings.';
+                  ? 'Fair-value probability for this Hit market (one-touch / first-passage under GBM): risk-neutral chance price touches the strike by expiry. Same Binance spot as “Current”, σ from settings.\n\nCompare to the order book to spot mispricings.'
+                  : 'Fair-value probability (terminal Black-Scholes–style) for this market’s strike vs spot.\n\nUses Binance spot, time to expiry, and σ. For YES/NO: YES uses model YES probability; NO uses 100% − YES.\n\nCompare to the market price to spot mispricings.';
 
             const currentBadge =
               row.mode === 'updown'
@@ -1389,9 +1386,9 @@ export function Sidebar() {
                           : 'Binance spot (1h/4h/24h Up/Down)',
                   }
                 : {
-                    label: row.currentSource === 'vwap' ? 'VWAP' : 'BINANCE',
-                    className: row.currentSource === 'vwap' ? 'bg-teal-600 text-white' : 'bg-yellow-400 text-black',
-                    title: row.currentSource === 'vwap' ? 'Session VWAP (underlying)' : 'Binance spot',
+                    label: 'BINANCE',
+                    className: 'bg-yellow-400 text-black',
+                    title: 'Binance spot',
                   };
 
             const bestAsk = asks.length > 0 ? parseFloat(asks[0].price) * 100 : null;

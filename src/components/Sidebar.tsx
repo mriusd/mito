@@ -31,7 +31,7 @@ import { LiveTradeChart } from './LiveTradeChart';
 import { ChainlinkChart } from './ChainlinkChart';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { ToxicFlowDialog } from './ToxicFlowDialog';
-import { ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, CirclePercent, Clock, Copy, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
 import type { AssetSymbol } from '../types';
 
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
@@ -1019,6 +1019,28 @@ export function Sidebar() {
           <div className="text-[10px] text-gray-500 leading-tight mt-0.5 break-words w-full">
             {fullMarketName}
           </div>
+          {selectedMarket.id ? (
+            <div className="flex items-center gap-1 mt-1 min-w-0 w-full">
+              <span className="text-[9px] text-gray-600 font-mono truncate flex-1 min-w-0" title={selectedMarket.id}>
+                {selectedMarket.id}
+              </span>
+              <button
+                type="button"
+                className="shrink-0 p-0.5 rounded text-gray-500 hover:text-cyan-400 hover:bg-gray-700/50"
+                title="Copy market id"
+                aria-label="Copy market id"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => {
+                  void navigator.clipboard.writeText(selectedMarket.id).then(
+                    () => showToast('Market id copied', 'success'),
+                    () => showToast('Copy failed', 'error'),
+                  );
+                }}
+              >
+                <Copy size={12} />
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
 

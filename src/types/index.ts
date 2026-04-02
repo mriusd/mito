@@ -18,6 +18,8 @@ export interface PriceRange {
 
 export interface Market {
   id: string;
+  /** Gnosis CTF condition id (bytes32 hex); required for on-chain merge. */
+  conditionId?: string;
   question: string;
   eventTitle?: string;
   eventSlug?: string;

@@ -6,6 +6,7 @@ import { appKit } from '../lib/wallet';
 import { placeOrder, cancelOrder, signOrder, submitSignedOrder } from '../api';
 import { fetchProxyWallet } from '../api/polymarket';
 import { triggerWalletRefresh } from '../lib/clobClient';
+import { executeMergePositions } from '../lib/mergePositions';
 import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
 import {
@@ -33,6 +34,7 @@ import { LiveTradeChart } from './LiveTradeChart';
 import { ChainlinkChart } from './ChainlinkChart';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { ToxicFlowDialog } from './ToxicFlowDialog';
+import { MergePositionsDialog } from './MergePositionsDialog';
 import { ChevronDown, ChevronRight, CirclePercent, Clock, Copy, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
 import type { AssetSymbol } from '../types';
 
@@ -96,6 +98,7 @@ export function Sidebar() {
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const positions = useAppStore((s) => s.positions);
+  const makerAddressForMerge = useAppStore((s) => s.makerAddress);
   const orders = useAppStore((s) => s.orders);
   const trades = useAppStore((s) => s.trades);
   const marketLookup = useAppStore((s) => s.marketLookup);
@@ -174,6 +177,10 @@ export function Sidebar() {
   const [cancellingOrderIds, setCancellingOrderIds] = useState<Set<string>>(new Set());
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
   const [toxicDialogOpen, setToxicDialogOpen] = useState(false);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  useEffect(() => {
+    setMergeDialogOpen(false);
+  }, [selectedMarket?.id]);
   const [crossingConfirmOpen, setCrossingConfirmOpen] = useState(false);
   const [crossingConfirmMessage, setCrossingConfirmMessage] = useState('');
   const crossingConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
@@ -217,6 +224,7 @@ export function Sidebar() {
   }, [effectiveSidebarEoa]);
 
   const onchainWallet = liveTradesSource === 'onchain' ? proxyWallet : null;
+  const mergeFunderWallet = (makerAddressForMerge || proxyWallet || '').trim();
   const { trades: onchainLiveTrades, walletPositions: wsPositions, walletTrades: wsTrades, refreshWallet } = useOnchainTradesWS(obTokenId, onchainWallet);
   const [displayLiveTrades, setDisplayLiveTrades] = useState(onchainLiveTrades);
 
@@ -300,6 +308,29 @@ export function Sidebar() {
       .filter((p) => outcomeTokenBelongsToSelectedMarket(p.tokenId, selectedMarket, marketLookup))
       .map((p) => ({ asset: p.tokenId, size: p.size, avgPrice: p.avgPrice }));
   }, [liveTradesSource, positions, selectedMarket, marketLookup, onchainSidebarPositions]);
+
+  const mergeEligible = useMemo(() => {
+    if (!selectedMarket?.clobTokenIds || selectedMarket.clobTokenIds.length < 2) {
+      return { showButton: false, canOpenDialog: false, maxMerge: 0, conditionId: '' };
+    }
+    const yesT = selectedMarket.clobTokenIds[0] || '';
+    const noT = selectedMarket.clobTokenIds[1] || '';
+    const yesP = myPositions.find((p) => (p.asset || '').trim() === yesT);
+    const noP = myPositions.find((p) => (p.asset || '').trim() === noT);
+    const yesSz = yesP?.size || 0;
+    const noSz = noP?.size || 0;
+    if (yesSz <= 0 || noSz <= 0) {
+      return { showButton: false, canOpenDialog: false, maxMerge: 0, conditionId: '' };
+    }
+    let conditionId = (selectedMarket.conditionId || '').trim();
+    if (!conditionId && yesP && typeof (yesP as { conditionId?: string }).conditionId === 'string') {
+      conditionId = String((yesP as { conditionId?: string }).conditionId).trim();
+    }
+    const maxMerge = Math.min(yesSz, noSz);
+    const canOpenDialog = !!conditionId && !!mergeFunderWallet;
+    return { showButton: true, canOpenDialog, maxMerge, conditionId };
+  }, [selectedMarket, myPositions, mergeFunderWallet]);
+
   const { myOrders, progOrders } = useMemo(() => {
     const all = orders.filter((o) => outcomeTokenBelongsToSelectedMarket(getOrderClobTokenId(o), selectedMarket, marketLookup));
     const sideRank = (side: string | undefined) => {
@@ -1122,8 +1153,39 @@ export function Sidebar() {
     mobileDragStartYRef.current = null;
   };
 
+  const handleMergeSubmit = useCallback(
+    async (amount: number) => {
+      if (!mergeEligible.conditionId || !mergeFunderWallet) {
+        return { success: false, error: 'Missing condition id or proxy wallet' };
+      }
+      const res = await executeMergePositions({
+        conditionId: mergeEligible.conditionId,
+        amount,
+        funderAddress: mergeFunderWallet,
+      });
+      if (res.success) {
+        showToast('Merge confirmed', 'success');
+        triggerWalletRefresh();
+        if (liveTradesSource === 'onchain') refreshWallet();
+      } else {
+        showToast(res.error, 'error');
+      }
+      return res;
+    },
+    [mergeEligible.conditionId, mergeFunderWallet, liveTradesSource, refreshWallet],
+  );
+
   return (
     <>
+    <MergePositionsDialog
+      open={mergeDialogOpen}
+      onClose={() => setMergeDialogOpen(false)}
+      maxShares={mergeEligible.maxMerge}
+      conditionId={mergeEligible.conditionId}
+      title={fullMarketName || marketName}
+      outcomePairLabel={isUpDownMarket ? 'UP / DOWN' : 'YES / NO'}
+      onSubmit={handleMergeSubmit}
+    />
     <ToxicFlowDialog
       open={toxicDialogOpen}
       marketId={selectedMarket?.id || ''}
@@ -2184,8 +2246,27 @@ export function Sidebar() {
 
           {/* My Positions & Orders */}
           <div className="sidebar-section">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-gray-400">My Positions</span>
+            <div className="flex items-center justify-between mb-2 gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xs text-gray-400 shrink-0">My Positions</span>
+                {mergeEligible.showButton && !isMarketExpired && (
+                  <button
+                    type="button"
+                    disabled={!mergeEligible.canOpenDialog}
+                    onClick={() => mergeEligible.canOpenDialog && setMergeDialogOpen(true)}
+                    title={
+                      !mergeEligible.canOpenDialog
+                        ? !mergeEligible.conditionId
+                          ? 'Market conditionId missing — refresh markets or re-open sidebar'
+                          : 'Resolve Polymarket proxy wallet (connect wallet / API keys)'
+                        : `Merge complementary ${isUpDownMarket ? 'UP/DOWN' : 'YES/NO'} shares into USDC`
+                    }
+                    className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-cyan-600/60 text-cyan-300 hover:bg-cyan-900/40 disabled:opacity-35 disabled:cursor-not-allowed shrink-0"
+                  >
+                    Merge
+                  </button>
+                )}
+              </div>
               <button
                 onClick={() => {
                   setPositionsRefreshing(true);
@@ -2195,7 +2276,7 @@ export function Sidebar() {
                   }
                   setTimeout(() => setPositionsRefreshing(false), 2000);
                 }}
-                className="text-gray-500 hover:text-white transition"
+                className="text-gray-500 hover:text-white transition shrink-0"
                 title="Refresh positions"
               >
                 <svg className={`w-3 h-3 ${positionsRefreshing ? 'animate-spin' : ''}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>

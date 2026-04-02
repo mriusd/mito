@@ -232,7 +232,7 @@ async function buildL2HeadersWithAddress(
 }
 
 // --- Get signer: private key wallet (instant) or browser wallet (popup) ---
-async function getEthersSigner(): Promise<ethers.Signer> {
+export async function getEthersSigner(): Promise<ethers.Signer> {
   const { signingMode } = useAppStore.getState();
   if (signingMode === 'privateKey') {
     const pk = getStoredPrivateKey();

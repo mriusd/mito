@@ -8,6 +8,7 @@ interface Candle {
   h: number;
   l: number;
   c: number;
+  v: number;
 }
 
 function toPrice(raw: number, isNo: boolean): number {
@@ -107,9 +108,10 @@ export function LiveTradeChart({
         const h = toPrice(parseFloat(k[2] as string) * 100, isNo);
         const l = toPrice(parseFloat(k[3] as string) * 100, isNo);
         const c = toPrice(parseFloat(k[4] as string) * 100, isNo);
+        const v = parseFloat(k[5] as string) || 0;
         const hi = Math.max(o, h, l, c);
         const lo = Math.min(o, h, l, c);
-        map.set(openTime, { time: openTime, o, h: hi, l: lo, c });
+        map.set(openTime, { time: openTime, o, h: hi, l: lo, c, v });
       }
     };
 
@@ -198,9 +200,10 @@ export function LiveTradeChart({
             const h = toPrice(parseFloat(k.h) * 100, isNo);
             const l = toPrice(parseFloat(k.l) * 100, isNo);
             const c = toPrice(parseFloat(k.c) * 100, isNo);
+            const v = parseFloat(k.v) || 0;
             const hi = Math.max(o, h, l, c);
             const lo = Math.min(o, h, l, c);
-            map.set(openTime, { time: openTime, o, h: hi, l: lo, c });
+            map.set(openTime, { time: openTime, o, h: hi, l: lo, c, v });
             setWsTick((n) => n + 1);
           }
         } catch {
@@ -291,7 +294,7 @@ export function LiveTradeChart({
           const h = parseFloat(k[2] as string);
           const l = parseFloat(k[3] as string);
           const c = parseFloat(k[4] as string);
-          map.set(openTime, { time: openTime, o, h, l, c });
+          map.set(openTime, { time: openTime, o, h, l, c, v: 0 });
         }
         setChainlinkReady(true);
       })
@@ -308,7 +311,7 @@ export function LiveTradeChart({
           const k = msg.k;
           const map = chainlinkCandleMapRef.current;
           const openTime = k.t as number;
-          map.set(openTime, { time: openTime, o: parseFloat(k.o), h: parseFloat(k.h), l: parseFloat(k.l), c: parseFloat(k.c) });
+          map.set(openTime, { time: openTime, o: parseFloat(k.o), h: parseFloat(k.h), l: parseFloat(k.l), c: parseFloat(k.c), v: 0 });
           setChainlinkTick(n => n + 1);
         }
       } catch {}
@@ -365,7 +368,10 @@ export function LiveTradeChart({
     const chartLeft = 30;
     const chartRight = W - 4;
     const chartTop = 4;
-    const chartBot = H - 14;
+    const volHeight = 18;
+    const chartBot = H - 14 - volHeight;
+    const volTop = chartBot + 3;
+    const volBot = H - 14;
 
     // Fixed 0-100 Y-axis range
     const minP = 0;
@@ -405,7 +411,7 @@ export function LiveTradeChart({
     for (let i = 0; i <= labelCount; i++) {
       const t = minT + rangeT * (i / labelCount);
       const d = new Date(t);
-      ctx.fillText(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`, toX(t), chartBot + 2);
+      ctx.fillText(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`, toX(t), volBot + 2);
     }
 
     // Draw candles — width based on total market duration, not data count
@@ -432,6 +438,23 @@ export function LiveTradeChart({
       const bodyH = Math.max(bodyBot - bodyTop, 1);
       ctx.fillStyle = color;
       ctx.fillRect(cx - candleW / 2, bodyTop, candleW, bodyH);
+    }
+
+    // Volume bars
+    let maxVol = 0;
+    for (const c of candles) {
+      if (c.v > maxVol) maxVol = c.v;
+    }
+    if (maxVol > 0) {
+      const volRange = volBot - volTop;
+      for (const c of candles) {
+        if (c.v <= 0) continue;
+        const cx = toX(c.time + candleMs / 2);
+        const isBull = c.c >= c.o;
+        const barH = Math.max(1, (c.v / maxVol) * volRange);
+        ctx.fillStyle = isBull ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)';
+        ctx.fillRect(cx - candleW / 2, volBot - barH, candleW, barH);
+      }
     }
 
     const lastPrice = candles[candles.length - 1].c;

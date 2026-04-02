@@ -161,9 +161,10 @@ export function LiveTradeChart({
 
       const ws = new WebSocket(`${WS_BASE}/ws/chart`);
       wsRef.current = ws;
+      const isLiveSocket = () => wsRef.current === ws;
 
       ws.onopen = () => {
-        if (cancelled) return;
+        if (cancelled || !isLiveSocket()) return;
         const wasReconnect = reconnectAttempt > 0;
         reconnectAttempt = 0;
         ws.send(
@@ -185,6 +186,7 @@ export function LiveTradeChart({
       };
 
       ws.onmessage = (event) => {
+        if (!isLiveSocket()) return;
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'klineStreamUpdate') {
@@ -207,6 +209,7 @@ export function LiveTradeChart({
       };
 
       ws.onerror = () => {
+        if (!isLiveSocket()) return;
         try {
           ws.close();
         } catch {
@@ -215,8 +218,10 @@ export function LiveTradeChart({
       };
 
       ws.onclose = () => {
+        // Ignore close events from stale sockets we intentionally replaced.
+        if (!isLiveSocket()) return;
         clearPing();
-        if (wsRef.current === ws) wsRef.current = null;
+        wsRef.current = null;
         if (!cancelled) scheduleReconnect();
       };
     };

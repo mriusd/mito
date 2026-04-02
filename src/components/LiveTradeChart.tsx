@@ -91,8 +91,8 @@ export function LiveTradeChart({
     if (!tokenId) return;
 
     let cancelled = false;
-    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-    let pingIv: ReturnType<typeof setInterval> | null = null;
+    let reconnectTimeout: number | null = null;
+    let pingIv: number | null = null;
     let reconnectAttempt = 0;
 
     const st = startTime || (Date.now() - 24 * 60 * 60 * 1000);

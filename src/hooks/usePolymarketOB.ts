@@ -12,6 +12,8 @@ export interface LiveTrade {
   side: 'BUY' | 'SELL';
   timestamp: number;
   txHash?: string;
+  maker?: string;
+  taker?: string;
 }
 
 interface BookState {

@@ -333,6 +333,7 @@ export function Sidebar() {
       }));
   }, [liveTradesSource, trades, selectedMarket, marketLookup, onchainSidebarTrades]);
   const myTradesDisplay = useMemo(() => myTrades.slice(0, 20), [myTrades]);
+  const myOnchainWalletLower = (onchainWallet || '').toLowerCase();
   const myTradesPnl = useMemo(() => {
     let totalSellCost = 0;
     let totalBuyCost = 0;
@@ -1632,13 +1633,29 @@ export function Sidebar() {
                   {displayLiveTrades.map((t, i) => {
                     const tp = (parseFloat(t.price) * 100).toFixed(1);
                     const isBuy = t.side === 'BUY';
+                    const makerLower = (t.maker || '').toLowerCase();
+                    const takerLower = (t.taker || '').toLowerCase();
+                    const isMine =
+                      liveTradesSource === 'onchain' &&
+                      !!myOnchainWalletLower &&
+                      (makerLower === myOnchainWalletLower || takerLower === myOnchainWalletLower);
                     const agoSec = Math.max(0, Math.floor((tradeTickNow - t.timestamp) / 1000));
                     const agoStr = agoSec < 60 ? `${agoSec}s` : agoSec < 3600 ? `${Math.floor(agoSec / 60)}m` : agoSec < 86400 ? `${Math.floor(agoSec / 3600)}h` : `${Math.floor(agoSec / 86400)}d`;
                     const usdValue = (parseFloat(t.price) * parseFloat(t.size)).toFixed(2);
                     return (
-                      <div key={i} className="grid grid-cols-5 gap-1 text-[11px] px-1">
+                      <div
+                        key={i}
+                        className={`grid grid-cols-5 gap-1 text-[11px] px-1 rounded-sm ${
+                          isMine ? 'bg-blue-900/35 ring-1 ring-blue-500/60 shadow-[0_0_8px_rgba(59,130,246,0.25)]' : ''
+                        }`}
+                      >
                         <span className={`inline-flex items-center gap-1 ${isBuy ? 'text-green-400' : 'text-red-400'}`}>
                           {tp}¢
+                          {isMine && (
+                            <span className="inline-flex items-center rounded bg-blue-500/30 px-1 py-[1px] text-[8px] font-bold leading-none text-blue-200">
+                              ME
+                            </span>
+                          )}
                           {liveTradesSource === 'onchain' && t.txHash && (
                             <a
                               href={`https://polygonscan.com/tx/${t.txHash}`}

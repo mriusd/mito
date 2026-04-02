@@ -160,14 +160,31 @@ export function useOnchainTradesWS(tokenId: string | null, wallet?: string | nul
           if (!msg?.type) return;
 
           if (msg.type === 'onchainTrade' && msg.data) {
-            const d = msg.data as { tokenId?: string; side?: string; size?: number; price?: number; timestamp?: number; txHash?: string };
+            const d = msg.data as {
+              tokenId?: string;
+              side?: string;
+              size?: number;
+              price?: number;
+              timestamp?: number;
+              txHash?: string;
+              maker?: string;
+              taker?: string;
+            };
             if (!d.tokenId || d.tokenId !== tokenRef.current) return;
             const side = (d.side === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
             const size = Number(d.size ?? 0);
             const price = Number(d.price ?? 0);
             const ts = Number(d.timestamp ?? Date.now());
             if (!(size > 0 && price > 0)) return;
-            const t: LiveTrade = { side, size: String(size), price: String(price), timestamp: ts, txHash: d.txHash };
+            const t: LiveTrade = {
+              side,
+              size: String(size),
+              price: String(price),
+              timestamp: ts,
+              txHash: d.txHash,
+              maker: d.maker ? String(d.maker).toLowerCase() : undefined,
+              taker: d.taker ? String(d.taker).toLowerCase() : undefined,
+            };
             setTrades((prev) => [t, ...prev].slice(0, MAX_TRADES));
           } else if (msg.type === 'walletPositions' && Array.isArray(msg.data)) {
             const positions = (msg.data as Array<{ tokenId?: string; size?: number; avgPrice?: number }>)

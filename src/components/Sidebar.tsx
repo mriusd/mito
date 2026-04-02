@@ -11,6 +11,8 @@ import { signingDialog, isDialogHidden } from './SigningDialog';
 import {
   extractAssetFromMarket,
   formatPolymarketVolumeK,
+  formatPriceShort,
+  getMarketPriceCondition,
   getOrderClobTokenId,
   getPolymarketVolumeUsd,
   getTokenOutcome,
@@ -407,7 +409,7 @@ export function Sidebar() {
   // Up or Down market detection and state
   const [upDownTargetPrice, setUpDownTargetPrice] = useState<number | null>(null);
   const isUpDownMarket = !!(selectedMarket?.question?.match(/up\s+or\s+down/i) || selectedMarket?.eventSlug?.match(/up-or-down|updown/i));
-  const upDownPriceRef = useRef<HTMLDivElement>(null);
+  const sidebarSpotCurrentPriceRef = useRef<HTMLDivElement>(null);
   const prevPriceRef = useRef<number>(0);
   const [upDownCountdown, setUpDownCountdown] = useState('');
   const [upDownRemaining, setUpDownRemaining] = useState(Infinity);
@@ -524,6 +526,164 @@ export function Sidebar() {
     const iv = setInterval(tick, 1000);
     return () => clearInterval(iv);
   }, [selectedMarket?.endDate]);
+
+  useEffect(() => {
+    prevPriceRef.current = 0;
+  }, [selectedMarket?.id]);
+
+  /** Target | Math | Current row below charts (Up/Down + all strike markets). */
+  const sidebarSpotStrip = useMemo(() => {
+    if (!selectedMarket?.endDate) return null;
+    const endDate = selectedMarket.endDate;
+    const asset = extractAssetFromMarket(selectedMarket);
+    if (!asset) return null;
+    const sym = (asset + 'USDT') as AssetSymbol;
+    const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
+    const priceDec = asset.toUpperCase() === 'XRP' ? 4 : 2;
+
+    const nowOffset = Date.now() + bsTimeOffsetHours * 3600000;
+    const expiryMs = new Date(endDate).getTime();
+    const pastExpiry = bsTimeOffsetHours > 0 && nowOffset >= expiryMs;
+
+    if (isUpDownMarket) {
+      const binanceSym = (asset.toUpperCase() + 'USDT') as AssetSymbol;
+      const chainlinkPrice =
+        upDownSpotUsesChainlink && polyPrice.price != null && polyPrice.price > 0 ? polyPrice.price : 0;
+      const binancePrice = priceData[binanceSym]?.price || 0;
+      const currentPrice = upDownSpotUsesChainlink ? chainlinkPrice || binancePrice : binancePrice;
+      const currentSource: 'chainlink' | 'binance' =
+        upDownSpotUsesChainlink && chainlinkPrice > 0 ? 'chainlink' : 'binance';
+
+      let mathCents: number | null = null;
+      if (!pastExpiry && upDownTargetPrice && currentPrice) {
+        const probUp = getMarketProbability('>' + upDownTargetPrice, currentPrice, endDate, sigma, bsTimeOffsetHours);
+        if (probUp !== null) {
+          mathCents = (orderOutcome === 'YES' ? probUp : 1 - probUp) * 100;
+        }
+      }
+
+      const diff =
+        upDownTargetPrice && currentPrice
+          ? (() => {
+              const signedDelta = currentPrice - upDownTargetPrice;
+              return {
+                abs: Math.abs(signedDelta),
+                pct: (signedDelta / upDownTargetPrice) * 100,
+                isUp: signedDelta >= 0,
+              };
+            })()
+          : null;
+
+      return {
+        mode: 'updown' as const,
+        targetDisplay:
+          upDownTargetPrice != null
+            ? `$${upDownTargetPrice.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}`
+            : '...',
+        priceDec,
+        countdown: upDownCountdown,
+        remaining: upDownRemaining,
+        mathCents,
+        pastExpiry,
+        currentPrice,
+        currentSource,
+        diff,
+      };
+    }
+
+    const strikeRaw = (selectedMarket.groupItemTitle || '').trim();
+    if (!strikeRaw) return null;
+
+    const vwapPx = vwapData[sym]?.price;
+    const binancePx = priceData[sym]?.price;
+    const currentPrice = vwapPx || binancePx || 0;
+    const currentSource: 'vwap' | 'binance' = vwapPx ? 'vwap' : 'binance';
+
+    const cleaned = strikeRaw.replace(/^Hit\s*/i, '').replace(/[\$,]/g, '').replace(/↑/g, '>').replace(/↓/g, '<').trim();
+    const ps = (cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-')) ? cleaned : '>' + cleaned;
+
+    const targetDisplay =
+      getMarketPriceCondition(
+        selectedMarket.question || selectedMarket.groupItemTitle,
+        selectedMarket.clobTokenIds?.[0],
+        marketLookup,
+      ) || formatPriceShort(ps);
+
+    let mathCents: number | null = null;
+    if (!pastExpiry && currentPrice > 0) {
+      const probYes = selectedMarketIsHit
+        ? getHitMarketProbability(ps, currentPrice, endDate, sigma, bsTimeOffsetHours)
+        : getMarketProbability(ps, currentPrice, endDate, sigma, bsTimeOffsetHours);
+      if (probYes !== null) {
+        mathCents = (orderOutcome === 'YES' ? probYes : 1 - probYes) * 100;
+      }
+    }
+
+    let diff: { abs: number; pct: number; isUp: boolean } | null = null;
+    if (currentPrice > 0 && !ps.includes('-')) {
+      let rest = ps.replace(/,/g, '');
+      if (rest.startsWith('>') || rest.startsWith('<')) rest = rest.slice(1);
+      let K: number;
+      if (rest.toLowerCase().endsWith('k')) {
+        const n = parseFloat(rest.slice(0, -1));
+        if (isNaN(n) || n <= 0) K = NaN;
+        else K = n * 1000;
+      } else {
+        K = parseFloat(rest);
+      }
+      if (!isNaN(K) && K > 0) {
+        const signedDelta = currentPrice - K;
+        diff = {
+          abs: Math.abs(signedDelta),
+          pct: (signedDelta / K) * 100,
+          isUp: signedDelta >= 0,
+        };
+      }
+    }
+
+    return {
+      mode: 'generic' as const,
+      targetDisplay,
+      priceDec,
+      countdown: upDownCountdown,
+      remaining: upDownRemaining,
+      mathCents,
+      pastExpiry,
+      currentPrice,
+      currentSource,
+      diff,
+      hitModel: selectedMarketIsHit,
+    };
+  }, [
+    selectedMarket,
+    marketLookup,
+    isUpDownMarket,
+    upDownTargetPrice,
+    upDownSpotUsesChainlink,
+    polyPrice.price,
+    priceData,
+    vwapData,
+    volatilityData,
+    volMultiplier,
+    bsTimeOffsetHours,
+    orderOutcome,
+    selectedMarketIsHit,
+    upDownCountdown,
+    upDownRemaining,
+  ]);
+
+  useEffect(() => {
+    const p = sidebarSpotStrip?.currentPrice;
+    if (!p || p <= 0 || !sidebarSpotCurrentPriceRef.current) return;
+    const el = sidebarSpotCurrentPriceRef.current;
+    if (prevPriceRef.current && p !== prevPriceRef.current) {
+      const cls = p > prevPriceRef.current ? 'updown-flash-up' : 'updown-flash-down';
+      el.classList.remove('updown-flash-up', 'updown-flash-down');
+      void el.offsetWidth;
+      el.classList.add(cls);
+    }
+    prevPriceRef.current = p;
+  }, [sidebarSpotStrip?.currentPrice]);
 
   const summaryPriceDecimal = useMemo(() => {
     if (orderKind === 'market') {
@@ -1206,51 +1366,39 @@ export function Sidebar() {
           </div>
 
 
-          {/* Up or Down: Target & Current Price (below chart) */}
-          {isUpDownMarket && (() => {
-            const binanceSym = (upDownAsset?.toUpperCase() + 'USDT') as AssetSymbol;
-            const chainlinkPrice =
-              upDownSpotUsesChainlink && polyPrice.price != null && polyPrice.price > 0 ? polyPrice.price : 0;
-            const binancePrice = priceData[binanceSym]?.price || 0;
-            const currentPrice = upDownSpotUsesChainlink ? chainlinkPrice || binancePrice : binancePrice;
-            const currentPriceSource: 'chainlink' | 'binance' =
-              upDownSpotUsesChainlink && chainlinkPrice > 0 ? 'chainlink' : 'binance';
-            // Use 4 decimals for low-priced assets (XRP), 2 for others
-            const priceDec = upDownAsset?.toUpperCase() === 'XRP' ? 4 : 2;
-            const diff = upDownTargetPrice && currentPrice ? currentPrice - upDownTargetPrice : null;
-            const diffPct = upDownTargetPrice && diff !== null ? (diff / upDownTargetPrice) * 100 : null;
-            const isUp = diff !== null && diff >= 0;
+          {/* Target, math probability, current spot — Up/Down and all strike-based markets */}
+          {sidebarSpotStrip && (() => {
+            const row = sidebarSpotStrip;
+            const mathTooltip =
+              row.mode === 'updown'
+                ? 'Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the same spot as “Current” on the right: Polymarket Chainlink for 5m/15m windows, Binance spot for 1h/4h/24h. Inputs: target strike, time to expiry, implied volatility (σ).\n\nFor Up (YES): probability price is above the target at expiry. For Down (NO): below.\n\nCompare to the market price to spot mispricings.'
+                : row.hitModel
+                  ? 'Fair-value probability for this Hit market (one-touch / first-passage under GBM): risk-neutral chance price touches the strike by expiry. Same VWAP/Binance spot as “Current”, σ from settings.\n\nCompare to the order book to spot mispricings.'
+                  : 'Fair-value probability (terminal Black-Scholes–style) for this market’s strike vs spot.\n\nUses VWAP when available else Binance, time to expiry, and σ. For YES/NO: YES uses model YES probability; NO uses 100% − YES.\n\nCompare to the market price to spot mispricings.';
 
-            // Flash animation on price change
-            if (currentPrice && currentPrice !== prevPriceRef.current && upDownPriceRef.current) {
-              const el = upDownPriceRef.current;
-              const cls = currentPrice > prevPriceRef.current ? 'updown-flash-up' : 'updown-flash-down';
-              el.classList.remove('updown-flash-up', 'updown-flash-down');
-              void el.offsetWidth; // force reflow
-              el.classList.add(cls);
-              prevPriceRef.current = currentPrice;
-            } else if (currentPrice && !prevPriceRef.current) {
-              prevPriceRef.current = currentPrice;
-            }
+            const currentBadge =
+              row.mode === 'updown'
+                ? {
+                    label: row.currentSource === 'chainlink' ? 'CHAINLINK' : 'BINANCE',
+                    className: row.currentSource === 'chainlink' ? 'bg-blue-600 text-white' : 'bg-yellow-400 text-black',
+                    title:
+                      row.currentSource === 'chainlink'
+                        ? 'Polymarket RTDS Chainlink (via backend)'
+                        : upDownSpotUsesChainlink
+                          ? 'Binance spot (fallback until Chainlink connects)'
+                          : 'Binance spot (1h/4h/24h Up/Down)',
+                  }
+                : {
+                    label: row.currentSource === 'vwap' ? 'VWAP' : 'BINANCE',
+                    className: row.currentSource === 'vwap' ? 'bg-teal-600 text-white' : 'bg-yellow-400 text-black',
+                    title: row.currentSource === 'vwap' ? 'Session VWAP (underlying)' : 'Binance spot',
+                  };
 
-            // Math (terminal BS) probability for up/down: "Up" = above target price at expiry
-            let bsUpDown: number | null = null;
-            let bsTimeMachinePastExpiry = false;
-            if (upDownTargetPrice && currentPrice && selectedMarket?.endDate) {
-              // Check if time machine pushes past expiry
-              const nowOffset = Date.now() + bsTimeOffsetHours * 3600000;
-              const expiryMs = new Date(selectedMarket.endDate).getTime();
-              if (bsTimeOffsetHours > 0 && nowOffset >= expiryMs) {
-                bsTimeMachinePastExpiry = true;
-              } else {
-                const asset = extractAssetFromMarket(selectedMarket);
-                const sym = (asset + 'USDT') as AssetSymbol;
-                const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
-                const probUp = getMarketProbability('>' + upDownTargetPrice, currentPrice, selectedMarket.endDate, sigma, bsTimeOffsetHours);
-                if (probUp !== null) {
-                  bsUpDown = (orderOutcome === 'YES' ? probUp : 1 - probUp) * 100;
-                }
-              }
+            const bestAsk = asks.length > 0 ? parseFloat(asks[0].price) * 100 : null;
+            let bsColor = 'text-yellow-400';
+            if (bestAsk !== null && row.mathCents !== null) {
+              if (bestAsk < row.mathCents * 0.95) bsColor = 'text-green-400';
+              else if (bestAsk > row.mathCents * 1.05) bsColor = 'text-red-400';
             }
 
             return (
@@ -1258,10 +1406,16 @@ export function Sidebar() {
                 <div className="flex items-start justify-between">
                   <div className="text-left">
                     <div className="text-[10px] text-gray-500">Target</div>
-                    <div className="text-xs font-bold text-white">{upDownTargetPrice ? `$${upDownTargetPrice.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}` : '...'}</div>
-                    {upDownCountdown && <div className={`text-[10px] ${upDownCountdown === 'Expired' ? 'text-red-400' : upDownRemaining < 60000 ? 'text-red-400' : upDownRemaining > 300000 ? 'text-green-400' : 'text-yellow-400'}`}>{upDownCountdown}</div>}
+                    <div className="text-xs font-bold text-white">{row.targetDisplay}</div>
+                    {row.countdown && (
+                      <div
+                        className={`text-[10px] ${row.countdown === 'Expired' ? 'text-red-400' : row.remaining < 60000 ? 'text-red-400' : row.remaining > 300000 ? 'text-green-400' : 'text-yellow-400'}`}
+                      >
+                        {row.countdown}
+                      </div>
+                    )}
                   </div>
-                  {bsTimeMachinePastExpiry ? (
+                  {row.pastExpiry ? (
                     <div className="text-center" title="Time machine ahead of expiration">
                       <div className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">
                         <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
@@ -1269,63 +1423,49 @@ export function Sidebar() {
                       </div>
                       <div className="text-xs font-bold text-gray-500">&gt;⏱</div>
                     </div>
-                  ) : bsUpDown !== null ? (
+                  ) : row.mathCents !== null ? (
                     <div className="text-center">
                       <div className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">
                         <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
                         Math
-                        <HelpTooltip
-                          text={
-                            'Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the same spot as “Current” on the right: Polymarket Chainlink for 5m/15m windows, Binance spot for 1h/4h/24h. Inputs: target strike, time to expiry, implied volatility (σ).\n\nFor Up (YES): probability price is above the target at expiry. For Down (NO): below.\n\nCompare to the market price to spot mispricings.'
-                          }
-                        />
+                        <HelpTooltip text={mathTooltip} />
                       </div>
-                      {(() => {
-                        const bestAsk = asks.length > 0 ? parseFloat(asks[0].price) * 100 : null;
-                        let bsColor = 'text-yellow-400';
-                        if (bestAsk !== null && bsUpDown !== null) {
-                          if (bestAsk < bsUpDown * 0.95) bsColor = 'text-green-400';
-                          else if (bestAsk > bsUpDown * 1.05) bsColor = 'text-red-400';
-                        }
-                        return (
-                          <div
-                            className={`inline-flex items-center justify-center gap-0.5 text-xs font-bold ${bsColor} cursor-pointer hover:underline`}
-                            onClick={() => setOrderPrice(bsUpDown!.toFixed(1))}
-                          >
-                            <CirclePercent className="h-3 w-3 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
-                            <span className="tabular-nums">{bsUpDown!.toFixed(1)}</span>
-                          </div>
-                        );
-                      })()}
+                      <div
+                        className={`inline-flex items-center justify-center gap-0.5 text-xs font-bold ${bsColor} cursor-pointer hover:underline`}
+                        onClick={() => setOrderPrice(row.mathCents!.toFixed(1))}
+                      >
+                        <CirclePercent className="h-3 w-3 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
+                        <span className="tabular-nums">{row.mathCents!.toFixed(1)}</span>
+                      </div>
                     </div>
                   ) : null}
                   <div className="text-right">
                     <div className="text-[10px] text-gray-500 flex items-center justify-end gap-1">
                       Current{' '}
                       <span
-                        className={`px-0.5 rounded-sm text-[8px] font-bold leading-tight ${currentPriceSource === 'chainlink' ? 'bg-blue-600 text-white' : 'bg-yellow-400 text-black'}`}
-                        title={
-                          currentPriceSource === 'chainlink'
-                            ? 'Polymarket RTDS Chainlink (via backend)'
-                            : upDownSpotUsesChainlink
-                              ? 'Binance spot (fallback until Chainlink connects)'
-                            : 'Binance spot (1h/4h/24h Up/Down)'
-                        }
+                        className={`px-0.5 rounded-sm text-[8px] font-bold leading-tight ${currentBadge.className}`}
+                        title={currentBadge.title}
                       >
-                        {currentPriceSource === 'chainlink' ? 'CHAINLINK' : 'BINANCE'}
+                        {currentBadge.label}
                       </span>
                     </div>
-                    <div ref={upDownPriceRef} className="text-xs font-bold text-white">{currentPrice ? `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}` : '...'}</div>
-                    {diff !== null && diffPct !== null && (
-                      <div className={`text-[10px] font-bold flex flex-wrap items-center justify-end gap-0.5 ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+                    <div ref={sidebarSpotCurrentPriceRef} className="text-xs font-bold text-white">
+                      {row.currentPrice
+                        ? `$${row.currentPrice.toLocaleString(undefined, { minimumFractionDigits: row.priceDec, maximumFractionDigits: row.priceDec })}`
+                        : '...'}
+                    </div>
+                    {row.diff && row.currentPrice > 0 && (
+                      <div
+                        className={`text-[10px] font-bold flex flex-wrap items-center justify-end gap-0.5 ${row.diff.isUp ? 'text-green-400' : 'text-red-400'}`}
+                      >
                         <span>
-                          {isUp ? '↑' : '↓'}{Math.abs(diff).toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}
+                          {row.diff.isUp ? '↑' : '↓'}
+                          {row.diff.abs.toLocaleString(undefined, { minimumFractionDigits: row.priceDec, maximumFractionDigits: row.priceDec })}
                         </span>
                         <span className="inline-flex items-center gap-0.5 tabular-nums">
                           (
-                          {diffPct >= 0 ? '+' : ''}
-                          {diffPct.toFixed(2)}%
-                          {')'}
+                          {row.diff.pct >= 0 ? '+' : ''}
+                          {row.diff.pct.toFixed(2)}%)
                         </span>
                       </div>
                     )}

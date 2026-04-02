@@ -17,6 +17,13 @@ export interface WSPosition {
   tokenId: string;
   size: number;
   avgPrice: number;
+  title?: string;
+  slug?: string;
+  eventSlug?: string;
+  marketId?: string;
+  outcome?: string;
+  endDate?: string;
+  underlyingAsset?: string;
 }
 
 export interface WSTrade {

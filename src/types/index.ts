@@ -77,6 +77,9 @@ export interface Position {
   slug?: string;
   eventSlug?: string;
   outcomeIndex?: number;
+  /** From local `markets.asset` when hydrating on-chain positions */
+  underlyingAsset?: string;
+  endDate?: string;
 }
 
 export interface Order {

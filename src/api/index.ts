@@ -493,6 +493,15 @@ export interface OnchainMarketPositionRow {
   tokenId: string;
   size: number;
   avgPrice: number;
+  /** `markets.question` */
+  title?: string;
+  slug?: string;
+  eventSlug?: string;
+  marketId?: string;
+  /** YES or NO from CLOB token match */
+  outcome?: string;
+  endDate?: string;
+  underlyingAsset?: string;
 }
 
 export async function fetchOnchainMarketPositions(params: {

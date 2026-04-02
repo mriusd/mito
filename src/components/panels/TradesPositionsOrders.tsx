@@ -16,6 +16,15 @@ import type { Market } from '../../types';
 
 const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
 
+function normalizeDbUnderlying(raw: string | undefined): string {
+  if (!raw?.trim()) return '';
+  const k = raw.trim().toLowerCase();
+  const m: Record<string, string> = {
+    btc: 'BTC', bitcoin: 'BTC', eth: 'ETH', ethereum: 'ETH', sol: 'SOL', solana: 'SOL', xrp: 'XRP', ripple: 'XRP',
+  };
+  return m[k] || (raw.trim().length <= 6 ? raw.trim().toUpperCase() : '');
+}
+
 function formatElapsed(ms: number): string {
   const diff = Date.now() - ms;
   if (diff < 0) return '';
@@ -174,6 +183,13 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
         size: r.size,
         avgPrice: r.avgPrice,
         curPrice: cur,
+        ...(r.title ? { title: r.title } : {}),
+        ...(r.slug ? { slug: r.slug } : {}),
+        ...(r.eventSlug ? { eventSlug: r.eventSlug } : {}),
+        ...(r.outcome ? { outcome: r.outcome } : {}),
+        ...(r.endDate ? { endDate: r.endDate } : {}),
+        ...(r.underlyingAsset ? { underlyingAsset: r.underlyingAsset } : {}),
+        ...(r.marketId ? { market: r.marketId } : {}),
       };
     });
   }, [onchainPosRows, marketLookup, bidAskTick]);
@@ -344,6 +360,8 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
       if (assetFilter === 'ALL') return true;
       const market = marketLookup[tid];
       if (market) return extractAssetFromMarket(market) === assetFilter;
+      const uA = normalizeDbUnderlying(p.underlyingAsset);
+      if (uA && uA === assetFilter) return true;
       if (p.title) {
         const m = p.title.match(/\b(BTC|ETH|SOL|XRP)\b/i);
         if (m) return m[1].toUpperCase() === assetFilter;
@@ -356,20 +374,24 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
     .map((pos) => {
       const tid = pos.asset || '';
       const market = marketLookup[tid];
-      let asset = market ? extractAssetFromMarket(market) || '' : '';
-      const endDate = market?.endDate || null;
+      let asset = market ? extractAssetFromMarket(market) || '' : normalizeDbUnderlying(pos.underlyingAsset);
+      const endDate = market?.endDate || pos.endDate || null;
       let marketName = getMarketPriceCondition(null, tid, marketLookup);
       let mktLabel = asset ? `${asset} ${formatPriceShort(marketName)}` : marketName;
       let outcome = getTokenOutcome(tid, marketLookup) || '';
 
-      // Fallback to positions API fields when market not in lookup
-      if (!market && pos.title) {
-        const combined = pos.eventSlug ? `${pos.title} ${pos.eventSlug}` : pos.title;
-        const shortened = getMarketPriceCondition(combined);
-        const nameMap: Record<string, string> = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', ripple: 'XRP', xrp: 'XRP', btc: 'BTC', eth: 'ETH', sol: 'SOL' };
-        const nameMatch = pos.title.match(/\b(Bitcoin|Ethereum|Solana|Ripple|BTC|ETH|SOL|XRP)\b/i);
-        if (nameMatch) asset = nameMap[nameMatch[1].toLowerCase()] || nameMatch[1].toUpperCase();
-        mktLabel = asset ? `${formatPriceShort(shortened)}` : shortened;
+      // Fallback when market not in live lookup (on-chain rollups, API snapshot fields)
+      if (!market && (pos.title || pos.slug || pos.outcome || pos.outcomeIndex !== undefined || pos.underlyingAsset)) {
+        if (pos.title) {
+          const combined = pos.eventSlug ? `${pos.title} ${pos.eventSlug}` : pos.title;
+          const shortened = getMarketPriceCondition(combined);
+          const nameMap: Record<string, string> = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', ripple: 'XRP', xrp: 'XRP', btc: 'BTC', eth: 'ETH', sol: 'SOL' };
+          const nameMatch = pos.title.match(/\b(Bitcoin|Ethereum|Solana|Ripple|BTC|ETH|SOL|XRP)\b/i);
+          if (nameMatch) asset = asset || nameMap[nameMatch[1].toLowerCase()] || nameMatch[1].toUpperCase();
+          mktLabel = asset ? `${formatPriceShort(shortened)}` : shortened;
+        } else if (pos.slug) {
+          mktLabel = asset ? `${asset} ${pos.slug}` : pos.slug;
+        }
         if (pos.outcome) {
           const upper = pos.outcome.toUpperCase();
           outcome = upper === 'YES' ? 'YES' : upper === 'NO' ? 'NO' : upper;
@@ -388,7 +410,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
       const pnl = currentValue - cost;
       const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
       const clickable = !!market;
-      return { tid, asset, endDate, marketName: mktLabel, outcome, size, entryPrice, cost, currentPrice, currentValue, pnl, pnlPercent, marketId: market?.id, clickable };
+      return { tid, asset, endDate, marketName: mktLabel, outcome, size, entryPrice, cost, currentPrice, currentValue, pnl, pnlPercent, marketId: market?.id ?? pos.market, clickable };
     });
 
   // Process orders

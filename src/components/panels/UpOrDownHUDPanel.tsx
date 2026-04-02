@@ -305,7 +305,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                         </td>
                         <td
                           className={`px-0.5 py-1 text-center whitespace-nowrap border-l border-r border-solid border-gray-700 relative cursor-pointer hover:brightness-125 border-b border-gray-700/50 ${
-                            selectedMarket?.id === current?.id ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''
+                            selectedMarket?.id === current?.id ? 'bg-purple-600/35 z-10' : ''
                           }`}
                         >
                           {current && positionTokenIds.has(current.clobTokenIds?.[0] || '') && (
@@ -411,8 +411,8 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                     );
                   })()}
                   <td
-                    className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap cursor-pointer hover:brightness-125 relative border-b border-gray-700/50 ${
-                      selectedMarket?.id === next?.id ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''
+                    className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 text-[10px] whitespace-nowrap cursor-pointer hover:brightness-125 relative border-b border-gray-700/50 ${
+                      selectedMarket?.id === next?.id ? 'bg-purple-600/35 z-10' : 'bg-gray-900/30'
                     }`}
                   >
                     {next ? (

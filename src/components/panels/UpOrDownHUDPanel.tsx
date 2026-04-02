@@ -72,6 +72,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
+  const sidebarOutcome = useAppStore((s) => s.sidebarOutcome);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const positions = useAppStore((s) => s.positions);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
@@ -122,6 +123,10 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
   }, [selectedMarket?.id, rows]);
   const highlightLeftChart = selectedMarketTf === '5m' || selectedMarketTf === '15m';
   const highlightRightChart = selectedMarketTf === '1h' || selectedMarketTf === '4h' || selectedMarketTf === '24h';
+  const chartSideHighlightClass =
+    sidebarOutcome === 'NO'
+      ? 'ring-2 ring-red-500 shadow-[0_0_12px_rgba(239,68,68,0.65),0_0_24px_rgba(220,38,38,0.30)]'
+      : 'ring-2 ring-green-500 shadow-[0_0_12px_rgba(34,197,94,0.65),0_0_24px_rgba(22,163,74,0.30)]';
 
   const positionTokenIds = useMemo(() => {
     const s = new Set<string>();
@@ -464,7 +469,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
         <div
           className={`min-h-0 rounded ${
             highlightLeftChart
-              ? 'ring-2 ring-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.65),0_0_24px_rgba(37,99,235,0.30)]'
+              ? chartSideHighlightClass
               : ''
           }`}
         >
@@ -482,7 +487,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
         <div
           className={`min-h-0 rounded ${
             highlightRightChart
-              ? 'ring-2 ring-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.65),0_0_24px_rgba(37,99,235,0.30)]'
+              ? chartSideHighlightClass
               : ''
           }`}
         >

@@ -65,9 +65,16 @@ function shortenWallet(w: string): string {
   return w.slice(0, 6) + '…' + w.slice(-4);
 }
 
+function normalizeWinRate(v: number | null | undefined): number | null {
+  if (v == null || !Number.isFinite(v)) return null;
+  // Accept either 0..1 or 0..100 from backend variants.
+  const scaled = v > 1 ? v / 100 : v;
+  return Math.max(0, Math.min(1, scaled));
+}
+
 /** Green segment = win rate, red = loss rate (0–1). Use as cell bottom edge or stacked under wallet. */
 function WinRateBottomBar({ winRate, className }: { winRate: number; className?: string }) {
-  const w = Math.min(1, Math.max(0, winRate));
+  const w = normalizeWinRate(winRate) ?? 0;
   const pctWin = w * 100;
   const pctLoss = (1 - w) * 100;
   return (
@@ -259,9 +266,38 @@ function WalletLink({
 }
 
 function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: WalletPosition[] | null; label: string; totalShares?: number; onOpenWallet?: (wallet: string, netShares?: number) => void }) {
-  if (!wallets || wallets.length === 0) {
+  const rows = wallets || [];
+  const [walletSummaryMap, setWalletSummaryMap] = useState<Record<string, WalletSummary | null>>({});
+  useEffect(() => {
+    let cancelled = false;
+    const uniq = Array.from(new Set(rows.map((w) => (w.wallet || '').toLowerCase()).filter(Boolean)));
+    if (uniq.length === 0) {
+      setWalletSummaryMap({});
+      return;
+    }
+    (async () => {
+      const pairs = await Promise.all(
+        uniq.map(async (w) => {
+          if (w in summaryCache) return [w, summaryCache[w]] as const;
+          const s = await fetchWalletSummary(w);
+          summaryCache[w] = s;
+          return [w, s] as const;
+        }),
+      );
+      if (cancelled) return;
+      const next: Record<string, WalletSummary | null> = {};
+      for (const [w, s] of pairs) next[w] = s;
+      setWalletSummaryMap(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rows]);
+
+  if (rows.length === 0) {
     return <div className="text-gray-500 text-center py-3 text-[10px]">No {label} data yet</div>;
   }
+
   const fmtInt = (v: number) => Math.round(v).toLocaleString();
   const fmtSignedInt = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString()}`;
   /** USDC per share as Polymarket price in ¢ (0–100). */
@@ -305,7 +341,13 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
         <tbody>
           {(() => {
             let cumSharesPct = 0;
-            return wallets.map((w, i) => {
+            return rows.map((w, i) => {
+              const wk = (w.wallet || '').toLowerCase();
+              const sum = walletSummaryMap[wk];
+              const summaryWinLossTotal = sum ? ((sum.wins || 0) + (sum.losses || 0)) : 0;
+              const fallbackWinLossTotal = typeof w.winLossTotal === 'number' ? w.winLossTotal : 0;
+              const effectiveWinLossTotal = sum ? summaryWinLossTotal : fallbackWinLossTotal;
+              const effectiveWinRate = normalizeWinRate(sum ? sum.winRate : w.winRate);
               const totalVol = (w.boughtYes || 0) + (w.soldYes || 0) + (w.boughtNo || 0) + (w.soldNo || 0);
               const bias = totalVol > 0 ? Math.abs(w.net || 0) / totalVol : 0;
               const biasColor = bias > 0.5 ? 'text-yellow-400' : bias > 0.3 ? 'text-orange-400' : 'text-gray-400';
@@ -320,17 +362,13 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               const avgB = fmtAvgCents(w.usdcIn || 0, boughtShares);
               const avgS = fmtAvgCents(w.usdcOut || 0, soldShares);
               const avgP = fmtNetAvgCents(w.usdcIn || 0, w.usdcOut || 0, w.net || 0);
-              const showWinBar =
-                typeof w.winLossTotal === 'number' &&
-                w.winLossTotal > 0 &&
-                typeof w.winRate === 'number' &&
-                Number.isFinite(w.winRate);
+              const showWinBar = effectiveWinLossTotal > 0 && effectiveWinRate != null;
               return (
                 <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
                   <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
                   <td className={`relative align-top px-1 py-0.5 ${showWinBar ? 'pb-2' : ''}`}>
                     <WalletLink wallet={w.wallet} netShares={w.net} onOpenWallet={onOpenWallet} />
-                    {showWinBar && <WinRateBottomBar winRate={w.winRate!} className="absolute bottom-0 left-0 right-0" />}
+                    {showWinBar && <WinRateBottomBar winRate={effectiveWinRate!} className="absolute bottom-0 left-0 right-0" />}
                   </td>
                   <td className="text-right px-1 text-green-400 bg-green-900/10">{w.boughtYes > 0 ? fmtInt(w.boughtYes) : '-'}</td>
                   <td className="text-right px-1 text-red-400 bg-green-900/10">{w.soldYes > 0 ? fmtInt(w.soldYes) : '-'}</td>

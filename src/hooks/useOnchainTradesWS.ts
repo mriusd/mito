@@ -138,7 +138,7 @@ export function useOnchainTradesWS(tokenId: string | null, wallet?: string | nul
     const connect = () => {
       if (disposed || !tokenRef.current) return;
       cleanup();
-      const url = `${WS_BASE}/ws/onchain-trades?token_id=${encodeURIComponent(tokenRef.current)}&active_only=1`;
+      const url = `${WS_BASE}/ws/onchain-trades?token_id=${encodeURIComponent(tokenRef.current)}`;
       ws = new WebSocket(url);
       wsRef.current = ws;
 

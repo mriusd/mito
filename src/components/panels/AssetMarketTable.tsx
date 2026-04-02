@@ -572,8 +572,16 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     Number.isFinite(_bidAskLookup[yesTokenId]?.winnerBias)
                       ? _bidAskLookup[yesTokenId]!.winnerBias!
                       : 0;
+                  const concRaw =
+                    typeof _bidAskLookup[yesTokenId]?.concentration === 'number' &&
+                    Number.isFinite(_bidAskLookup[yesTokenId]?.concentration)
+                      ? _bidAskLookup[yesTokenId]!.concentration!
+                      : 0;
+                  const concPct = Math.max(0, Math.min(100, concRaw * 100));
+                  const cR = Math.round(Math.min(255, concRaw * 2 * 255));
+                  const cG = Math.round(Math.min(255, (1 - concRaw) * 2 * 255));
+                  const concColor = `rgb(${cR}, ${cG}, 0)`;
                   const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
-                  const winnerBiasBarFlash = wbPct > 60 || wbPct < 40;
 
                   return (
                     <td
@@ -654,8 +662,19 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           {(Math.min(...noSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
+                      {/* Concentration — left vertical bar, grows upward */}
                       <div
-                        className={`absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex${winnerBiasBarFlash ? ' updown-winner-bias-bar-flash' : ''}`}
+                        className="absolute left-0 bottom-0 w-[2px] pointer-events-none z-0 bg-gray-800/80 overflow-hidden"
+                        style={{ height: '100%' }}
+                        title={`Concentration (top wallets): ${concPct.toFixed(0)}%`}
+                      >
+                        <div
+                          className="absolute bottom-0 left-0 w-full transition-all"
+                          style={{ height: `${concPct}%`, backgroundColor: concColor }}
+                        />
+                      </div>
+                      <div
+                        className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
                         title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
                       >
                         <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
@@ -778,8 +797,16 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     Number.isFinite(_bidAskLookup[yesTokenId]?.winnerBias)
                       ? _bidAskLookup[yesTokenId]!.winnerBias!
                       : 0;
+                  const concRaw =
+                    typeof _bidAskLookup[yesTokenId]?.concentration === 'number' &&
+                    Number.isFinite(_bidAskLookup[yesTokenId]?.concentration)
+                      ? _bidAskLookup[yesTokenId]!.concentration!
+                      : 0;
+                  const concPct = Math.max(0, Math.min(100, concRaw * 100));
+                  const cR = Math.round(Math.min(255, concRaw * 2 * 255));
+                  const cG = Math.round(Math.min(255, (1 - concRaw) * 2 * 255));
+                  const concColor = `rgb(${cR}, ${cG}, 0)`;
                   const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
-                  const winnerBiasBarFlash = wbPct > 60 || wbPct < 40;
 
                   const fmtSz = (sz: number) => {
                     const v = Math.floor(sz);
@@ -840,8 +867,19 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           {(Math.max(...noBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
+                      {/* Concentration — left vertical bar, grows upward */}
                       <div
-                        className={`absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex${winnerBiasBarFlash ? ' updown-winner-bias-bar-flash' : ''}`}
+                        className="absolute left-0 bottom-0 w-[2px] pointer-events-none z-0 bg-gray-800/80 overflow-hidden"
+                        style={{ height: '100%' }}
+                        title={`Concentration (top wallets): ${concPct.toFixed(0)}%`}
+                      >
+                        <div
+                          className="absolute bottom-0 left-0 w-full transition-all"
+                          style={{ height: `${concPct}%`, backgroundColor: concColor }}
+                        />
+                      </div>
+                      <div
+                        className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
                         title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
                       >
                         <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
@@ -1007,8 +1045,16 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     Number.isFinite(_bidAskLookup[yesTokenId]?.winnerBias)
                       ? _bidAskLookup[yesTokenId]!.winnerBias!
                       : 0;
+                  const concRaw =
+                    typeof _bidAskLookup[yesTokenId]?.concentration === 'number' &&
+                    Number.isFinite(_bidAskLookup[yesTokenId]?.concentration)
+                      ? _bidAskLookup[yesTokenId]!.concentration!
+                      : 0;
+                  const concPct = Math.max(0, Math.min(100, concRaw * 100));
+                  const cR = Math.round(Math.min(255, concRaw * 2 * 255));
+                  const cG = Math.round(Math.min(255, (1 - concRaw) * 2 * 255));
+                  const concColor = `rgb(${cR}, ${cG}, 0)`;
                   const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
-                  const winnerBiasBarFlash = wbPct > 60 || wbPct < 40;
 
                   // Format size (1000+ => 1.2k)
                   const fmtSz = (sz: number) => {
@@ -1105,8 +1151,19 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           {(Math.min(...noSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
+                      {/* Concentration — left vertical bar, grows upward */}
                       <div
-                        className={`absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex${winnerBiasBarFlash ? ' updown-winner-bias-bar-flash' : ''}`}
+                        className="absolute left-0 bottom-0 w-[2px] pointer-events-none z-0 bg-gray-800/80 overflow-hidden"
+                        style={{ height: '100%' }}
+                        title={`Concentration (top wallets): ${concPct.toFixed(0)}%`}
+                      >
+                        <div
+                          className="absolute bottom-0 left-0 w-full transition-all"
+                          style={{ height: `${concPct}%`, backgroundColor: concColor }}
+                        />
+                      </div>
+                      <div
+                        className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
                         title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
                       >
                         <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />

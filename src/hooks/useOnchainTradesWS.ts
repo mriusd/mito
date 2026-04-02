@@ -26,6 +26,9 @@ export interface WSTrade {
   price: number;
   blockTime: number;
   txHash?: string;
+  title?: string;
+  slug?: string;
+  eventSlug?: string;
 }
 
 export function useOnchainTradesWS(tokenId: string | null, wallet?: string | null) {

@@ -189,6 +189,9 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
         price: String(t.price),
         size: String(t.size),
         timestamp: String(tsMs),
+        ...(t.title ? { title: t.title } : {}),
+        ...(t.slug ? { slug: t.slug } : {}),
+        ...(t.eventSlug ? { eventSlug: t.eventSlug } : {}),
       };
     });
   }, [onchainTrRows]);

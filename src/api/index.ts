@@ -518,6 +518,10 @@ export interface OnchainMarketTradeRow {
   side: 'BUY' | 'SELL';
   size: number;
   price: number;
+  /** From `markets` join (Polymarket question) */
+  title?: string;
+  slug?: string;
+  eventSlug?: string;
 }
 
 export async function fetchOnchainMarketTrades(params: { token_ids: string[]; wallet: string; limit?: number; offset?: number }): Promise<{ trades: OnchainMarketTradeRow[]; count: number; total: number }> {

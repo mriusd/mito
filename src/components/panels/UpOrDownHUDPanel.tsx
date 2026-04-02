@@ -114,6 +114,14 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
     if (!id) return false;
     return rows.some((r) => r.current?.id === id || r.next?.id === id);
   }, [selectedMarket?.id, rows]);
+  const selectedMarketTf = useMemo(() => {
+    const id = selectedMarket?.id;
+    if (!id) return null;
+    const hit = rows.find((r) => r.current?.id === id || r.next?.id === id);
+    return hit?.tf ?? null;
+  }, [selectedMarket?.id, rows]);
+  const highlightLeftChart = selectedMarketTf === '5m' || selectedMarketTf === '15m';
+  const highlightRightChart = selectedMarketTf === '1h' || selectedMarketTf === '4h' || selectedMarketTf === '24h';
 
   const positionTokenIds = useMemo(() => {
     const s = new Set<string>();
@@ -453,7 +461,13 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2 min-h-0 flex-1">
-        <div className="min-h-0">
+        <div
+          className={`min-h-0 rounded ${
+            highlightLeftChart
+              ? 'ring-2 ring-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.65),0_0_24px_rgba(37,99,235,0.30)]'
+              : ''
+          }`}
+        >
           <BinanceChartPanel
             panelId={`${panelId}-chainlink`}
             initialAsset={asset}
@@ -465,7 +479,13 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
             hudSyncIntervalFromMarket
           />
         </div>
-        <div className="min-h-0">
+        <div
+          className={`min-h-0 rounded ${
+            highlightRightChart
+              ? 'ring-2 ring-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.65),0_0_24px_rgba(37,99,235,0.30)]'
+              : ''
+          }`}
+        >
           <BinanceChartPanel
             panelId={`${panelId}-binance`}
             initialAsset={asset}

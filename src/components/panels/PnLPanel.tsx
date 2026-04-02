@@ -133,25 +133,33 @@ export function PnLPanel() {
       return;
     }
     let cancelled = false;
-    setOnchainByDate('pending');
-    void fetchWalletPnlDaily({
-      wallet: w,
-      from: dateWindow.fromStr,
-      to: dateWindow.toStr,
-      bucket: bucketMode,
-      updown: marketTypeFilter.updown,
-      hit: marketTypeFilter.hit,
-      above: marketTypeFilter.above,
-      between: marketTypeFilter.between,
-    })
-      .then((res) => {
-        if (!cancelled) setOnchainByDate(res.byDate || {});
+
+    const load = (showPending: boolean) => {
+      if (showPending) setOnchainByDate('pending');
+      void fetchWalletPnlDaily({
+        wallet: w,
+        from: dateWindow.fromStr,
+        to: dateWindow.toStr,
+        bucket: bucketMode,
+        updown: marketTypeFilter.updown,
+        hit: marketTypeFilter.hit,
+        above: marketTypeFilter.above,
+        between: marketTypeFilter.between,
       })
-      .catch(() => {
-        if (!cancelled) setOnchainByDate('inactive');
-      });
+        .then((res) => {
+          if (!cancelled) setOnchainByDate(res.byDate || {});
+        })
+        .catch(() => {
+          if (!cancelled && showPending) setOnchainByDate('inactive');
+        });
+    };
+
+    load(true);
+    const intervalId = window.setInterval(() => load(false), 10_000);
+
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
     };
   }, [
     makerAddress,

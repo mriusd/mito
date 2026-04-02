@@ -225,7 +225,9 @@ export function PnLPanel() {
       const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
       const value = isClaim ? (trade.usdcSize || size) : (trade.usdcSize || (rawPrice * size));
 
-      if (trade.side === 'BUY' || isClaim) {
+      if (isClaim) {
+        dataByDate[dateKey].sold += value;
+      } else if (trade.side === 'BUY') {
         dataByDate[dateKey].bought += value;
       } else {
         dataByDate[dateKey].sold += value;

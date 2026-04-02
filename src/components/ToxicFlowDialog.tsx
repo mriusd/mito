@@ -188,11 +188,11 @@ function WalletLink({
 
   const tooltipInner = (
     <>
-      <div className="font-mono text-blue-400 mb-1 text-[8px]">{wallet.slice(0, 10)}...{wallet.slice(-6)}</div>
-      {summary === undefined && <div className="text-gray-500">Loading...</div>}
-      {summary === null && <div className="text-gray-500">No data yet</div>}
-      {summary && (
-        <div className="space-y-0.5">
+          <div className="font-mono text-blue-400 mb-1 text-[8px]">{wallet.slice(0, 10)}...{wallet.slice(-6)}</div>
+          {summary === undefined && <div className="text-gray-500">Loading...</div>}
+          {summary === null && <div className="text-gray-500">No data yet</div>}
+          {summary && (
+            <div className="space-y-0.5">
           {typeof netShares === 'number' && Number.isFinite(netShares) && (
             <>
               <div className="flex justify-between gap-3">
@@ -204,25 +204,25 @@ function WalletLink({
               <div className="border-t border-gray-700 my-0.5" />
             </>
           )}
-          <div className="flex justify-between gap-3"><span className="text-gray-500">Markets</span><span className="text-white font-bold">{summary.totalMarkets}{summary.resolvedMarkets > 0 ? <span className="text-gray-500 font-normal"> ({summary.resolvedMarkets} resolved)</span> : ''}</span></div>
-          <div className="flex justify-between gap-3"><span className="text-gray-500">Trades</span><span className="text-white">{summary.totalTrades}</span></div>
-          <div className="flex justify-between gap-3"><span className="text-gray-500">Vol In</span><span className="text-yellow-400">${summary.totalUsdcIn.toFixed(2)}</span></div>
-          <div className="flex justify-between gap-3"><span className="text-gray-500">Vol Out</span><span className="text-yellow-400">${summary.totalUsdcOut.toFixed(2)}</span></div>
-          <div className="border-t border-gray-700 my-0.5" />
-          <div className="flex justify-between gap-3"><span className="text-gray-500">Trading PnL</span><span className={`${summary.tradingPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.tradingPnl >= 0 ? '+' : ''}{summary.tradingPnl.toFixed(2)}</span></div>
-          {summary.resolvedMarkets > 0 && (
-            <div className="flex justify-between gap-3"><span className="text-gray-500">Resolution</span><span className={`${summary.resolutionValue >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.resolutionValue >= 0 ? '+' : ''}{summary.resolutionValue.toFixed(2)}</span></div>
-          )}
-          <div className="flex justify-between gap-3"><span className="text-gray-500">Total PnL</span><span className={`font-bold ${summary.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.pnl >= 0 ? '+' : ''}{summary.pnl.toFixed(2)}</span></div>
-          {(summary.wins > 0 || summary.losses > 0) && (
-            <>
+              <div className="flex justify-between gap-3"><span className="text-gray-500">Markets</span><span className="text-white font-bold">{summary.totalMarkets}{summary.resolvedMarkets > 0 ? <span className="text-gray-500 font-normal"> ({summary.resolvedMarkets} resolved)</span> : ''}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-500">Trades</span><span className="text-white">{summary.totalTrades}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-500">Vol In</span><span className="text-yellow-400">${summary.totalUsdcIn.toFixed(2)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-500">Vol Out</span><span className="text-yellow-400">${summary.totalUsdcOut.toFixed(2)}</span></div>
               <div className="border-t border-gray-700 my-0.5" />
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Win Rate</span><span className={`font-bold ${summary.winRate >= 0.5 ? 'text-green-400' : 'text-red-400'}`}>{(summary.winRate * 100).toFixed(0)}%</span></div>
-              <div className="flex justify-between gap-3"><span className="text-gray-500">W / L / F</span><span className="text-white">{summary.wins}/{summary.losses}/{summary.flat}</span></div>
-            </>
+              <div className="flex justify-between gap-3"><span className="text-gray-500">Trading PnL</span><span className={`${summary.tradingPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.tradingPnl >= 0 ? '+' : ''}{summary.tradingPnl.toFixed(2)}</span></div>
+              {summary.resolvedMarkets > 0 && (
+                <div className="flex justify-between gap-3"><span className="text-gray-500">Resolution</span><span className={`${summary.resolutionValue >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.resolutionValue >= 0 ? '+' : ''}{summary.resolutionValue.toFixed(2)}</span></div>
+              )}
+              <div className="flex justify-between gap-3"><span className="text-gray-500">Total PnL</span><span className={`font-bold ${summary.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.pnl >= 0 ? '+' : ''}{summary.pnl.toFixed(2)}</span></div>
+              {(summary.wins > 0 || summary.losses > 0) && (
+                <>
+                  <div className="border-t border-gray-700 my-0.5" />
+                  <div className="flex justify-between gap-3"><span className="text-gray-500">Win Rate</span><span className={`font-bold ${summary.winRate >= 0.5 ? 'text-green-400' : 'text-red-400'}`}>{(summary.winRate * 100).toFixed(0)}%</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-gray-500">W / L / F</span><span className="text-white">{summary.wins}/{summary.losses}/{summary.flat}</span></div>
+                </>
+              )}
+            </div>
           )}
-        </div>
-      )}
     </>
   );
 
@@ -348,14 +348,14 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               const fallbackWinLossTotal = typeof w.winLossTotal === 'number' ? w.winLossTotal : 0;
               const effectiveWinLossTotal = sum ? summaryWinLossTotal : fallbackWinLossTotal;
               const effectiveWinRate = normalizeWinRate(sum ? sum.winRate : w.winRate);
-              const totalVol = (w.boughtYes || 0) + (w.soldYes || 0) + (w.boughtNo || 0) + (w.soldNo || 0);
-              const bias = totalVol > 0 ? Math.abs(w.net || 0) / totalVol : 0;
-              const biasColor = bias > 0.5 ? 'text-yellow-400' : bias > 0.3 ? 'text-orange-400' : 'text-gray-400';
-              const nY = w.netYes ?? ((w.boughtYes || 0) - (w.soldYes || 0));
-              const nN = w.netNo ?? ((w.boughtNo || 0) - (w.soldNo || 0));
+            const totalVol = (w.boughtYes || 0) + (w.soldYes || 0) + (w.boughtNo || 0) + (w.soldNo || 0);
+            const bias = totalVol > 0 ? Math.abs(w.net || 0) / totalVol : 0;
+            const biasColor = bias > 0.5 ? 'text-yellow-400' : bias > 0.3 ? 'text-orange-400' : 'text-gray-400';
+            const nY = w.netYes ?? ((w.boughtYes || 0) - (w.soldYes || 0));
+            const nN = w.netNo ?? ((w.boughtNo || 0) - (w.soldNo || 0));
               const sharesPct = totalShares && totalShares > 0 ? (Math.abs(w.net || 0) / totalShares) * 100 : 0;
               cumSharesPct += sharesPct;
-              const nYColor = nY > 0.001 ? 'text-green-400' : nY < -0.001 ? 'text-red-400' : 'text-gray-500';
+            const nYColor = nY > 0.001 ? 'text-green-400' : nY < -0.001 ? 'text-red-400' : 'text-gray-500';
               const nNColor = nN > 0.001 ? 'text-green-400' : nN < -0.001 ? 'text-red-400' : 'text-gray-500';
               const boughtShares = (w.boughtYes || 0) + (w.boughtNo || 0);
               const soldShares = (w.soldYes || 0) + (w.soldNo || 0);
@@ -363,9 +363,9 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               const avgS = fmtAvgCents(w.usdcOut || 0, soldShares);
               const avgP = fmtNetAvgCents(w.usdcIn || 0, w.usdcOut || 0, w.net || 0);
               const showWinBar = effectiveWinLossTotal > 0 && effectiveWinRate != null;
-              return (
-                <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
-                  <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
+            return (
+              <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
+                <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
                   <td className={`relative align-top px-1 py-0.5 ${showWinBar ? 'pb-2' : ''}`}>
                     <WalletLink wallet={w.wallet} netShares={w.net} onOpenWallet={onOpenWallet} />
                     {showWinBar && <WinRateBottomBar winRate={effectiveWinRate!} className="absolute bottom-0 left-0 right-0" />}
@@ -380,14 +380,14 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                   <td className="text-right px-1 text-gray-300">{avgS}</td>
                   <td className="text-right px-1 text-yellow-400">${fmtInt(w.usdcIn)}</td>
                   <td className={`text-right px-1 font-bold ${(w.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtSignedInt(w.pnl || 0)}</td>
-                  <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
+                <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
                   <td className={`text-right px-1 font-bold ${(w.net || 0) > 0.001 ? 'text-green-400' : (w.net || 0) < -0.001 ? 'text-red-400' : 'text-gray-500'}`}>{fmtSignedInt(w.net || 0)}</td>
                   <td className="text-right px-1 text-gray-300">{avgP}</td>
                   <td className="text-right px-1 text-cyan-300">{sharesPct > 0 ? `${sharesPct.toFixed(1)}%` : '-'}</td>
                   <td className="text-right px-1 text-cyan-200/70">{cumSharesPct > 0 ? `${cumSharesPct.toFixed(1)}%` : '-'}</td>
-                  <td className={`text-right px-1 ${biasColor}`}>{(bias * 100).toFixed(0)}%</td>
-                </tr>
-              );
+                <td className={`text-right px-1 ${biasColor}`}>{(bias * 100).toFixed(0)}%</td>
+              </tr>
+            );
             });
           })()}
         </tbody>
@@ -917,8 +917,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                             <span className="text-green-400 font-bold">{data.yesWallets || 0}</span> YES
                             {' / '}
                             <span className="text-red-400 font-bold">{data.noWallets || 0}</span> NO
-                          </span>
-                        </div>
+                  </span>
+                </div>
                         <div className="h-2.5 bg-gray-700 rounded-full overflow-hidden flex">
                           <div className="bg-green-500/60 h-full transition-all" style={{ width: `${yesPct}%` }} />
                           <div className="bg-red-500/60 h-full transition-all flex-1" />
@@ -932,22 +932,22 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                       {/* YES/NO token volume */}
                       <div className="border-t border-gray-700/70 pt-2">
                         <div className="h-2.5 bg-gray-700 rounded-full overflow-hidden flex">
-                          {(() => {
-                            const total = data.totalYesVol + data.totalNoVol;
+                  {(() => {
+                    const total = data.totalYesVol + data.totalNoVol;
                             const yp = total > 0 ? (data.totalYesVol / total) * 100 : 50;
-                            return (
-                              <>
+                    return (
+                      <>
                                 <div className="bg-green-500/60 h-full transition-all" style={{ width: `${yp}%` }} />
                                 <div className="bg-red-500/60 h-full transition-all flex-1" />
-                              </>
-                            );
-                          })()}
-                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
                         <div className="flex justify-between mt-0.5 text-[9px] text-gray-500">
-                          <span>YES vol: {data.totalYesVol.toFixed(1)}</span>
-                          <span>NO vol: {data.totalNoVol.toFixed(1)}</span>
-                        </div>
-                      </div>
+                  <span>YES vol: {data.totalYesVol.toFixed(1)}</span>
+                  <span>NO vol: {data.totalNoVol.toFixed(1)}</span>
+                </div>
+              </div>
                     </div>
                   );
                 })()}
@@ -1069,9 +1069,9 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                         <div className="flex items-start gap-1.5 text-[10px]">
                           <AlertTriangle size={12} className="text-yellow-400 flex-shrink-0 mt-0.5" />
                           <span className="text-gray-300">Top 10 holders have {Math.abs(data.topHoldersBias).toFixed(0)} net {data.topHoldersBias > 0 ? 'YES' : 'NO'} shares — informed players positioned {data.topHoldersBias > 0 ? 'YES' : 'NO'}</span>
-                        </div>
-                      )}
-                      {data.totalWallets === 0 && (
+                    </div>
+                  )}
+                  {data.totalWallets === 0 && (
                         <div className="space-y-1.5 text-[10px] text-gray-500">
                           {data.polygonWssConfigured === false && (
                             <p className="text-amber-400/95">
@@ -1099,15 +1099,15 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                           <p>
                             Holders aggregates <span className="font-mono">wallet_positions</span> for this market (not the CLOB orderbook). Data persists across restarts and backfills missed blocks automatically.
                           </p>
-                        </div>
-                      )}
-                      {data.totalWallets > 0 && totalFlags === 0 && (
-                        <div className="flex items-center gap-1.5 text-[10px]">
-                          <span className="text-green-400">No manipulation signals detected.</span>
-                        </div>
-                      )}
                     </div>
-                  </div>
+                  )}
+                      {data.totalWallets > 0 && totalFlags === 0 && (
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                          <span className="text-green-400">No manipulation signals detected.</span>
+                    </div>
+                  )}
+                </div>
+              </div>
                 );
               })()}
 

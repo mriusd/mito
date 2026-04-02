@@ -70,7 +70,7 @@ function StrikeRangeIndicator({ markets, livePrice }: { markets: Market[]; liveP
         <line x1={pad} y1={barY} x2={w - pad} y2={barY} stroke="#4b5563" strokeWidth={1.5} />
         <line x1={pad} y1={barY - tickH} x2={pad} y2={barY} stroke="#6b7280" strokeWidth={1.5} />
         <line x1={w - pad} y1={barY - tickH} x2={w - pad} y2={barY} stroke="#6b7280" strokeWidth={1.5} />
-        <line x1={markerX} y1={barY - tickH - 1} x2={markerX} y2={barY} stroke="#f59e0b" strokeWidth={2} />
+        <line x1={markerX} y1={barY - tickH - 1} x2={markerX} y2={barY} stroke="#94a3b8" strokeWidth={2} />
       </svg>
     </span>
   );
@@ -467,15 +467,14 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
       }
     }
 
-    // Find yellow line index: last ↓ row before first ↑ row
-    let yellowLineIdx = -1;
+    // Scroll anchor: last ↓ row (dip strikes below current); fallback = closest row to live price
+    let anchorRowIdx = -1;
     for (let i = 0; i < prices.length; i++) {
-      if (prices[i].includes('↓')) yellowLineIdx = i;
+      if (prices[i].includes('↓')) anchorRowIdx = i;
     }
 
-    // Fallback: find the row closest to livePrice for centering
     let closestRowIdx = -1;
-    if (yellowLineIdx === -1 && livePrice > 0) {
+    if (anchorRowIdx === -1 && livePrice > 0) {
       let minDist = Infinity;
       for (let i = 0; i < prices.length; i++) {
         const dist = Math.abs(hitPrice(prices[i]) - livePrice);
@@ -518,11 +517,11 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
           </thead>
           <tbody>
             {prices.map((priceStr, rowIdx) => {
-              const isYellowLine = rowIdx === yellowLineIdx;
-              const yellowBorder = isYellowLine ? 'border-b-2 border-b-yellow-400' : 'border-b border-gray-700/50';
+              const rowBorder = 'border-b border-gray-700/50';
+              const isAnchorRow = rowIdx === anchorRowIdx;
               return (
-              <tr key={priceStr} className="hover:bg-gray-800/50" ref={isYellowLine ? scrollToCenterRef('hit') : (rowIdx === closestRowIdx ? scrollToCenterRef('hit-closest') : undefined)}>
-                <td className={`price-col-cell sticky left-0 bg-gray-900 z-10 px-1 py-0.5 font-bold ${titleColor} ${yellowBorder} whitespace-nowrap text-xs`}>
+              <tr key={priceStr} className="hover:bg-gray-800/50" ref={isAnchorRow ? scrollToCenterRef('hit') : (rowIdx === closestRowIdx ? scrollToCenterRef('hit-closest') : undefined)}>
+                <td className={`price-col-cell sticky left-0 bg-gray-900 z-10 px-1 py-0.5 font-bold ${titleColor} ${rowBorder} whitespace-nowrap text-xs`}>
                   {(() => {
                     const arrow = priceStr.includes('↑') ? '↑' : priceStr.includes('↓') ? '↓' : '';
                     const num = hitPrice(priceStr);
@@ -543,7 +542,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                 {events.map((ev) => {
                   const market = hitLookup[priceStr]?.[ev.slug];
                   if (!market) {
-                    return <td key={ev.slug} className={`text-center px-1 py-0.5 ${yellowBorder} text-gray-600 text-[10px]`} style={{ minWidth: 68 }}>-</td>;
+                    return <td key={ev.slug} className={`text-center px-1 py-0.5 ${rowBorder} text-gray-600 text-[10px]`} style={{ minWidth: 68 }}>-</td>;
                   }
 
                   const { bestBid: _hBid } = getLiveBidAsk(market);
@@ -587,7 +586,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     <td
                       key={ev.slug}
                       data-market-id={market.id}
-                      className={`market-cell px-0.5 py-1 text-center ${yellowBorder} whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''}`}
+                      className={`market-cell px-0.5 py-1 text-center ${rowBorder} whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''}`}
                       style={{ minWidth: 68, ...hitDeltaBg }}
                       onClick={() => handleCellClick(market)}
                     >
@@ -908,11 +907,11 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
       return <div className="text-gray-500 text-center py-2 text-xs">No active markets</div>;
     }
 
-    // For ABOVE tables, find last row where condition is true (yellow line)
-    let yellowLineRowIdx = -1;
+    // Above tables: anchor scroll to last row where live price satisfies the strike condition
+    let aboveAnchorRowIdx = -1;
     if (tableType === 'above') {
       for (let i = 0; i < prices.length; i++) {
-        if (isPriceConditionTrue(prices[i], livePrice)) yellowLineRowIdx = i;
+        if (isPriceConditionTrue(prices[i], livePrice)) aboveAnchorRowIdx = i;
       }
     }
 
@@ -966,7 +965,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
               const conditionTrue = isPriceConditionTrue(priceStr, livePrice);
               const priceCellBg = conditionTrue ? 'bg-green-900/50' : 'bg-gray-900';
               const priceFontSize = tableType === 'price' ? 'text-[10px]' : 'text-xs';
-              const isYellowLineRow = tableType === 'above' && rowIdx === yellowLineRowIdx;
+              const isAboveAnchorRow = tableType === 'above' && rowIdx === aboveAnchorRowIdx;
 
               // % change from live price
               const bounds = parsePriceBounds(priceStr);
@@ -980,7 +979,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
               const pctSign = pctChange >= 0 ? '+' : '';
 
               return (
-                <tr key={priceStr} className="hover:bg-gray-800/50" ref={isYellowLineRow ? scrollToCenterRef(tableType + '-yellow') : (isCurrentRange ? scrollToCenterRef(tableType + '-range') : (rowIdx === closestPriceRowIdx ? scrollToCenterRef(tableType + '-closest') : undefined))} style={isYellowLineRow ? { borderBottom: '2px solid #facc15' } : undefined}>
+                <tr key={priceStr} className="hover:bg-gray-800/50" ref={isAboveAnchorRow ? scrollToCenterRef(tableType + '-yellow') : (isCurrentRange ? scrollToCenterRef(tableType + '-range') : (rowIdx === closestPriceRowIdx ? scrollToCenterRef(tableType + '-closest') : undefined))}>
                   <td
                     className={`price-col-cell sticky left-0 ${priceCellBg} z-10 px-1 py-0.5 font-bold ${titleColor} border-b border-gray-700/50 whitespace-nowrap ${priceFontSize}`}
                     data-price-low={bounds.low}
@@ -1023,9 +1022,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const gridDeltaBg = !isClosed ? deltaBgStyle(priceStr, yesMidProb, d.endDate) : {};
                   const bgColor = isClosed ? 'bg-gray-700/30' : '';
 
-                  // Price condition border (yellow for price-on when condition is met)
                   const conditionMet = isPriceConditionTrue(priceStr, livePrice);
-                  const borderClass = (conditionMet && tableType !== 'above') ? 'border-2 border-yellow-400' : 'border border-gray-400';
+                  const borderClass = 'border border-gray-700';
 
                   // Positions
                   const yesPos = positionLookup[yesTokenId];
@@ -1297,7 +1295,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
           )}
           <HelpTooltip text={"Annualized volatility (σ) used for Black-Scholes probability calculations.\n\nThis value is fetched from Binance as the asset's historical realized volatility, then multiplied by the global volatility multiplier set in settings.\n\nHigher volatility means wider expected price distributions — strike prices further from the current price will have higher B-S probabilities. Lower volatility narrows the distribution, making distant strikes less likely.\n\nThis directly affects all B-S values shown across the dashboard: the flower, grid cells, signals, and hedges."} />
           <StrikeRangeIndicator markets={aboveMarketsForAsset} livePrice={livePrice} />
-          <HelpTooltip text={"This bar shows where the current asset price sits relative to the active market strike prices.\n\nThe colored ticks represent individual market strikes (target prices). The yellow marker shows the current live price position within that range.\n\nThis gives a quick visual sense of how close the asset is to triggering different markets — the closer the live price is to a strike, the more sensitive that market's probability becomes to small price moves."} />
+          <HelpTooltip text={"This bar shows where the current asset price sits relative to the active market strike prices.\n\nThe gray ticks at the ends are the nearest strikes below and above spot; the vertical marker is the live price between them.\n\nThis gives a quick visual sense of how close the asset is to triggering different markets — the closer the live price is to a strike, the more sensitive that market's probability becomes to small price moves."} />
           <label className="no-drag inline-flex items-center gap-1 text-[10px] text-gray-400 cursor-pointer ml-1 font-normal">
             <input
               type="checkbox"

@@ -41,6 +41,7 @@ function PnlDrilldownGlobal() {
 
 function App() {
   const loading = useAppStore((s) => s.loading);
+  const backendConnected = useAppStore((s) => s.backendConnected);
   const marketLookup = useAppStore((s) => s.marketLookup);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const sidebarOutcome = useAppStore((s) => s.sidebarOutcome);
@@ -179,6 +180,43 @@ function App() {
       {/* Signing Dialog */}
       <SigningDialog />
       <SignatureExplainerDialog />
+
+      {backendConnected === false && (
+        <div
+          className="fixed inset-0 z-[59000] flex items-center justify-center bg-black/75 p-4"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="maintenance-dialog-title"
+          aria-describedby="maintenance-dialog-desc"
+        >
+          <div className="w-full max-w-md rounded-xl border border-amber-600/60 bg-gray-900 shadow-2xl px-5 py-5">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-400 text-lg font-bold">
+                !
+              </div>
+              <div className="min-w-0">
+                <h2 id="maintenance-dialog-title" className="text-sm font-bold text-amber-200">
+                  Server sync in progress
+                </h2>
+                <p id="maintenance-dialog-desc" className="mt-2 text-xs text-gray-300 leading-relaxed">
+                  The server is currently syncing all blockchain data. On-chain Polymarket history is being downloaded and indexed.
+                  Estimated finish: <span className="text-amber-100/95 font-semibold">8 Apr</span>.
+                  This dialog closes automatically when the server is ready again; you can also retry below.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => void handleRefresh()}
+                className="rounded-lg bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-500 transition"
+              >
+                Retry connection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast container */}
       <div id="toastContainer" className="toast-container" />

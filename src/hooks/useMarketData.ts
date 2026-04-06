@@ -72,9 +72,11 @@ export function useMarketData() {
           marketLookup: lookup,
         });
       }
+      store.setBackendConnected(true);
       store.setLoading(false);
     } catch (err) {
       console.error('Failed to fetch markets:', err);
+      store.setBackendConnected(false);
       store.setLoading(false);
     } finally {
       refreshingRef.current = false;

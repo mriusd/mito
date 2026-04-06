@@ -46,6 +46,8 @@ interface AppState {
   marketCount: number;
   lastUpdated: string;
   loading: boolean;
+  /** null = not checked yet; false = /api/markets unreachable */
+  backendConnected: boolean | null;
 
   // Market lookup by token ID
   marketLookup: Record<string, Market>;
@@ -107,6 +109,7 @@ interface AppState {
   setSignalsOnGrid: (v: boolean) => void;
   setMarketData: (data: Partial<Pick<AppState, 'aboveMarkets' | 'priceOnMarkets' | 'weeklyHitMarkets' | 'upOrDownMarkets' | 'positions' | 'orders' | 'trades' | 'cashBalance' | 'makerAddress' | 'tokenInfo' | 'progOrderMap' | 'marketCount' | 'lastUpdated' | 'marketLookup'>>) => void;
   setLoading: (v: boolean) => void;
+  setBackendConnected: (v: boolean | null) => void;
   setArbs: (arbs: ArbOpportunity[]) => void;
   setTriArbs: (arbs: ArbOpportunity[]) => void;
   setSignals: (signals: Signal[]) => void;
@@ -335,6 +338,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   marketCount: 0,
   lastUpdated: '',
   loading: true,
+  backendConnected: null,
   marketLookup: {},
 
   arbs: [],
@@ -461,6 +465,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   bidAskTick: 0,
   setMarketData: (data) => set(data),
   setLoading: (v) => set({ loading: v }),
+  setBackendConnected: (v) => set({ backendConnected: v }),
   setArbs: (a) => set({ arbs: a }),
   setTriArbs: (a) => set({ triArbs: a }),
   setSignals: (s) => set({ signals: s }),

@@ -196,12 +196,12 @@ function App() {
               </div>
               <div className="min-w-0">
                 <h2 id="maintenance-dialog-title" className="text-sm font-bold text-amber-200">
-                  Server sync in progress
+                  We're getting things ready
                 </h2>
                 <p id="maintenance-dialog-desc" className="mt-2 text-xs text-gray-300 leading-relaxed">
-                  The server is currently syncing all blockchain data. On-chain Polymarket history is being downloaded and indexed.
-                  Estimated finish: <span className="text-amber-100/95 font-semibold">8 Apr</span>.
-                  This dialog closes automatically when the server is ready again; you can also retry below.
+                  The server is currently syncing the full blockchain history. On-chain Polymarket data is being downloaded and indexed.
+                  We expect to be back online by <span className="text-amber-100/95 font-semibold">April 9th</span>.
+                  This message will disappear automatically once we're ready — thank you for your patience!
                 </p>
               </div>
             </div>

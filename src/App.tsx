@@ -200,7 +200,7 @@ function App() {
                 </h2>
                 <p id="maintenance-dialog-desc" className="mt-2 text-xs text-gray-300 leading-relaxed">
                   The server is currently syncing the full blockchain history. On-chain Polymarket data is being downloaded and indexed.
-                  We expect to be back online by <span className="text-amber-100/95 font-semibold">April 9th</span>.
+                  We expect to be back online by <span className="text-amber-100/95 font-semibold">10 April</span>.
                   This message will disappear automatically once we're ready — thank you for your patience!
                 </p>
               </div>

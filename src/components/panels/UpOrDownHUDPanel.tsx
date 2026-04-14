@@ -3,7 +3,7 @@ import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import type { AssetName, AssetSymbol, Market } from '../../types';
 import { ASSET_COLORS } from '../../types';
-import { assetToSymbol, formatPolymarketVolumeK, formatPrice, getPolymarketVolumeUsd } from '../../utils/format';
+import { assetToSymbol, formatPolymarketVolumeK, formatPrice, getPolymarketVolumeUsd, getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { BinanceChartPanel } from './BinanceChartPanel';
 import { MarketCellMidRow } from './MarketCellMidRow';
@@ -132,13 +132,14 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
     const s = new Set<string>();
     if (liveTradesSource === 'onchain') {
       for (const p of onchainGridPositions) {
-        if (p.tokenId && p.size > 0) s.add(p.tokenId);
+        const k = normalizeClobTokenId(p.tokenId);
+        if (k && p.size > 0) s.add(k);
       }
       return s;
     }
     for (const pos of positions) {
-      const tid = pos.asset || '';
-      if (tid && (pos.size || 0) > 0) s.add(tid);
+      const k = normalizeClobTokenId(getPositionClobTokenId(pos));
+      if (k && (pos.size || 0) > 0) s.add(k);
     }
     return s;
   }, [liveTradesSource, onchainGridPositions, positions]);
@@ -318,13 +319,13 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                             selectedMarket?.id === current?.id ? 'bg-purple-600/35 z-10' : ''
                           }`}
                         >
-                          {current && positionTokenIds.has(current.clobTokenIds?.[0] || '') && (
+                          {current && current.clobTokenIds?.[0] && positionTokenIds.has(normalizeClobTokenId(current.clobTokenIds[0])) && (
                             <span
                               className="absolute left-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_3px_rgba(52,211,153,0.8)]"
                               title={liveTradesSource === 'onchain' ? 'YES position (on-chain)' : 'YES position'}
                             />
                           )}
-                          {current && positionTokenIds.has(current.clobTokenIds?.[1] || '') && (
+                          {current && current.clobTokenIds?.[1] && positionTokenIds.has(normalizeClobTokenId(current.clobTokenIds[1])) && (
                             <span
                               className="absolute right-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-rose-400 shadow-[0_0_3px_rgba(251,113,133,0.8)]"
                               title={liveTradesSource === 'onchain' ? 'NO position (on-chain)' : 'NO position'}

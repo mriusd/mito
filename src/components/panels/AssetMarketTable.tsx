@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { formatPrice, assetToSymbol, formatDateShort } from '../../utils/format';
+import { formatPrice, assetToSymbol, formatDateShort, getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
 import { saveRange } from '../../api';
 import { showToast } from '../../utils/toast';
 import { PriceTicks } from '../PriceTicks';
@@ -343,13 +343,15 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   const positionLookup: Record<string, { size: number }> = {};
   if (liveTradesSource === 'onchain') {
     for (const p of onchainGridPositions) {
-      if (p.tokenId && p.size > 0) positionLookup[p.tokenId] = { size: p.size };
+      const k = normalizeClobTokenId(p.tokenId);
+      if (k && p.size > 0) positionLookup[k] = { size: p.size };
     }
   } else {
     for (const pos of positions) {
-      const tid = pos.asset || '';
+      const tid = getPositionClobTokenId(pos);
       const sz = pos.size || 0;
-      if (tid && sz > 0) positionLookup[tid] = { size: sz };
+      const k = normalizeClobTokenId(tid);
+      if (k && sz > 0) positionLookup[k] = { size: sz };
     }
   }
   const orderLookup: Record<string, typeof orders> = {};
@@ -558,8 +560,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const hitDeltaBg = deltaBgStyle(priceStr, yesMidProb, ev.endDate, true);
                   const isSelected = selectedMarket?.id === market.id;
 
-                  const yesPos = positionLookup[yesTokenId];
-                  const noPos = positionLookup[noTokenId];
+                  const yesPos = yesTokenId ? positionLookup[normalizeClobTokenId(yesTokenId)] : undefined;
+                  const noPos = noTokenId ? positionLookup[normalizeClobTokenId(noTokenId)] : undefined;
                   const yesOrders = orderLookup[yesTokenId] || [];
                   const noOrders = orderLookup[noTokenId] || [];
                   const yesBuyOrders = yesOrders.filter((o) => o.side === 'BUY');
@@ -794,8 +796,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     : {};
                   const isSelected = selectedMarket?.id === market.id;
 
-                  const yesPos = positionLookup[yesTokenId];
-                  const noPos = positionLookup[noTokenId];
+                  const yesPos = yesTokenId ? positionLookup[normalizeClobTokenId(yesTokenId)] : undefined;
+                  const noPos = noTokenId ? positionLookup[normalizeClobTokenId(noTokenId)] : undefined;
                   const yesOrders = orderLookup[yesTokenId] || [];
                   const noOrders = orderLookup[noTokenId] || [];
                   const yesBuyOrders = yesOrders.filter((o) => o.side === 'BUY');
@@ -1044,8 +1046,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const borderClass = 'border border-gray-700';
 
                   // Positions
-                  const yesPos = positionLookup[yesTokenId];
-                  const noPos = positionLookup[noTokenId];
+                  const yesPos = yesTokenId ? positionLookup[normalizeClobTokenId(yesTokenId)] : undefined;
+                  const noPos = noTokenId ? positionLookup[normalizeClobTokenId(noTokenId)] : undefined;
                   const yesWinning = conditionMet;
                   const noWinning = !conditionMet && livePrice > 0;
 

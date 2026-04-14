@@ -6,7 +6,7 @@ import { HelpTooltip } from '../HelpTooltip';
 import type { Market } from '../../types';
 import type { AssetSymbol } from '../../types';
 import { getMarketProbability } from '../../utils/bsMath';
-import { formatPolymarketVolumeK, getPolymarketVolumeUsd } from '../../utils/format';
+import { formatPolymarketVolumeK, getPolymarketVolumeUsd, getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { MarketCellMidRow } from './MarketCellMidRow';
@@ -180,13 +180,14 @@ export function UpDownMarketsPanel() {
     const s = new Set<string>();
     if (liveTradesSource === 'onchain') {
       for (const p of onchainGridPositions) {
-        if (p.tokenId && p.size > 0) s.add(p.tokenId);
+        const k = normalizeClobTokenId(p.tokenId);
+        if (k && p.size > 0) s.add(k);
       }
       return s;
     }
     for (const pos of positions) {
-      const tid = pos.asset || '';
-      if (tid && (pos.size || 0) > 0) s.add(tid);
+      const k = normalizeClobTokenId(getPositionClobTokenId(pos));
+      if (k && (pos.size || 0) > 0) s.add(k);
     }
     return s;
   }, [liveTradesSource, onchainGridPositions, positions]);
@@ -602,13 +603,13 @@ export function UpDownMarketsPanel() {
                       }}
                       onClick={() => handleCellClick(market)}
                     >
-                      {positionTokenIds.has(yesTokenId) && (
+                      {yesTokenId && positionTokenIds.has(normalizeClobTokenId(yesTokenId)) && (
                         <span
                           className="absolute left-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_3px_rgba(52,211,153,0.8)]"
                           title={liveTradesSource === 'onchain' ? 'YES position (on-chain)' : 'YES position'}
                         />
                       )}
-                      {positionTokenIds.has(noTokenId) && (
+                      {noTokenId && positionTokenIds.has(normalizeClobTokenId(noTokenId)) && (
                         <span
                           className="absolute right-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-rose-400 shadow-[0_0_3px_rgba(251,113,133,0.8)]"
                           title={liveTradesSource === 'onchain' ? 'NO position (on-chain)' : 'NO position'}

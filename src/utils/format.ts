@@ -1,4 +1,4 @@
-import type { AssetName, AssetSymbol, Market, Order, Trade } from '../types';
+import type { AssetName, AssetSymbol, Market, Order, Position, Trade } from '../types';
 
 export function symbolToAsset(symbol: AssetSymbol): AssetName {
   return symbol.replace('USDT', '') as AssetName;
@@ -218,6 +218,22 @@ export function getTradeClobTokenId(t: Pick<Trade, 'asset_id' | 'asset' | 'token
 
 export function getOrderClobTokenId(o: Pick<Order, 'asset_id' | 'token_id'>): string {
   return String(o.asset_id ?? o.token_id ?? '').trim();
+}
+
+/** Canonical decimal string for CLOB outcome token id (matches on-chain WS / wallet position keys). */
+export function normalizeClobTokenId(id: string | null | undefined): string {
+  const s = String(id ?? '').trim();
+  if (!s) return '';
+  try {
+    return BigInt(s).toString();
+  } catch {
+    return s;
+  }
+}
+
+/** Polymarket position row → outcome token id (Data API may use `asset`, `asset_id`, or `token_id`). */
+export function getPositionClobTokenId(p: Pick<Position, 'asset' | 'asset_id' | 'token_id'>): string {
+  return String(p.asset ?? p.asset_id ?? p.token_id ?? '').trim();
 }
 
 /** True if this outcome token is one of the selected market's CLOB ids and lookup agrees on Gamma `market.id` when present. */

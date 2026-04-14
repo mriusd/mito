@@ -816,8 +816,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                           </span>
                         </div>
                         <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
-                          <div className="bg-green-500/70 h-full transition-all" style={{ width: `${barFor(proven)}%` }} />
-                          <div className="bg-red-500/70 h-full transition-all flex-1" />
+                          <div className="bg-yellow-400/75 h-full transition-all" style={{ width: `${barFor(proven)}%` }} />
+                          <div className="bg-purple-400/75 h-full transition-all flex-1" />
                         </div>
                       </div>
 

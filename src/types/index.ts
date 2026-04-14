@@ -198,6 +198,10 @@ export interface SmartMoneySignalMarket {
   marketType?: string;
   /** Same shape as Signal.priceStr / Gamma groupItemTitle when market not in lookup */
   priceStr?: string;
+  /** USDC volume from on-chain fills (toxicVolumeByMarket) */
+  volume?: number;
+  /** Best ask 0–1 for signal-direction token (YES/UP vs NO/DOWN), live CLOB */
+  bestAsk?: number;
 }
 
 export interface SmartMoneySignalsResponse {

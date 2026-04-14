@@ -3,13 +3,14 @@ import { GraduationCap } from 'lucide-react';
 import { fetchSmartMoneySignals } from '../../api';
 import { useAppStore } from '../../stores/appStore';
 import type { Market, SmartMoneySignalMarket } from '../../types';
-import { ASSET_COLORS, formatPriceShort, getSignalTablePriceStr } from '../../utils/format';
+import { ASSET_COLORS, formatPolymarketVolumeK, formatPriceShort, getSignalTablePriceStr } from '../../utils/format';
 
-function formatUsd(v: number): string {
-  if (!Number.isFinite(v)) return '-';
-  if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(v) >= 1_000) return `$${(v / 1_000).toFixed(1)}k`;
-  return `$${v.toFixed(0)}`;
+const MAX_PRICE_LS_KEY = 'polymarket-smart-money-max-price';
+
+function signalBestAskCents(row: SmartMoneySignalMarket): number | null {
+  const a = row.bestAsk;
+  if (typeof a !== 'number' || !Number.isFinite(a) || a <= 0 || a > 1) return null;
+  return a * 100;
 }
 
 function signalTableDateStyle(endDate: string): { dateStr: string; dateColor: string } {
@@ -41,6 +42,11 @@ export function SmartMoneyPanel() {
   const [count, setCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [maxPriceFilter, setMaxPriceFilter] = useState(() => localStorage.getItem(MAX_PRICE_LS_KEY) || '');
+
+  const stopPanelDrag = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -85,15 +91,47 @@ export function SmartMoneyPanel() {
     setSidebarOpen(true);
   }, [marketsById, setSelectedMarket, setSidebarOutcome, setSidebarOpen]);
 
+  const filteredRows = useMemo(() => {
+    const maxCents = parseFloat(maxPriceFilter);
+    const hasMax = maxPriceFilter.trim() !== '' && Number.isFinite(maxCents) && maxCents > 0;
+    if (!hasMax) return rows;
+    return rows.filter((row) => {
+      const cents = signalBestAskCents(row);
+      if (cents == null) return true;
+      return cents <= maxCents;
+    });
+  }, [rows, maxPriceFilter]);
+
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
-      <div className="panel-header flex items-center justify-between gap-2 mb-2 cursor-grab">
+      <div className="panel-header flex items-center justify-between gap-2 mb-2 cursor-grab flex-wrap">
         <h3 className="text-sm font-bold text-yellow-400 flex items-center gap-1">
           <GraduationCap className="w-3.5 h-3.5" />
           Smart Money
         </h3>
-        <div className="text-[9px] text-gray-500">
-          WR {threshold}%+ | {count} mkts
+        <div
+          className="flex gap-1.5 items-center no-drag text-[9px] text-gray-500"
+          onPointerDownCapture={stopPanelDrag}
+          onMouseDown={stopPanelDrag}
+          onTouchStart={stopPanelDrag}
+        >
+          <span>WR {threshold}%+ | {count} mkts</span>
+          <label className="flex items-center gap-0.5 text-gray-400">
+            <span>Max Price</span>
+            <span className="text-gray-500">¢</span>
+            <input
+              type="number"
+              value={maxPriceFilter}
+              onChange={(e) => {
+                setMaxPriceFilter(e.target.value);
+                localStorage.setItem(MAX_PRICE_LS_KEY, e.target.value);
+              }}
+              onPointerDownCapture={stopPanelDrag}
+              onMouseDown={stopPanelDrag}
+              onTouchStart={stopPanelDrag}
+              className="w-9 bg-gray-700 text-white text-[9px] px-0.5 rounded border border-gray-600 text-center no-spin h-[22px]"
+            />
+          </label>
         </div>
       </div>
 
@@ -104,6 +142,8 @@ export function SmartMoneyPanel() {
           <div className="text-red-400 text-center py-4">{error}</div>
         ) : rows.length === 0 ? (
           <div className="text-gray-500 text-center py-4">No smart money signals</div>
+        ) : filteredRows.length === 0 ? (
+          <div className="text-gray-500 text-center py-4">No rows under max price</div>
         ) : (
           <table className="w-full text-[10px]">
             <thead className="sticky top-0 bg-gray-900 z-10">
@@ -113,12 +153,12 @@ export function SmartMoneyPanel() {
                 <th className="text-left px-1 py-0.5">Market</th>
                 <th className="text-center px-1 py-0.5">Dir</th>
                 <th className="text-right px-1 py-0.5">Smart</th>
-                <th className="text-right px-1 py-0.5">Exp</th>
-                <th className="text-right px-1 py-0.5">Shares</th>
+                <th className="text-right px-1 py-0.5">Price</th>
+                <th className="text-right px-1 py-0.5">Vol</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {filteredRows.map((row) => {
                 const acol = ASSET_COLORS[row.asset] || 'text-gray-400';
                 const { dateStr, dateColor } = signalTableDateStyle(row.endDate);
                 const m = marketsById.get(row.marketId);
@@ -128,6 +168,8 @@ export function SmartMoneyPanel() {
                 const dirColor = dirOutcome === 'YES' ? 'text-green-400' : 'text-red-400';
                 const barPct = Math.max(2, Math.min(98, Number.isFinite(row.barPct) ? row.barPct : (50 + (row.provenSMS || 0) * 50)));
                 const canOpen = marketsById.has(row.marketId);
+                const askCents = signalBestAskCents(row);
+                const volUsd = typeof row.volume === 'number' && Number.isFinite(row.volume) ? row.volume : null;
                 return (
                   <tr
                     key={row.marketId}
@@ -151,8 +193,12 @@ export function SmartMoneyPanel() {
                       </div>
                       <div className="text-[8px] text-gray-500 mt-0.5 text-right">{row.smartWalletCount || 0}w</div>
                     </td>
-                    <td className="px-1 py-0.5 text-right text-cyan-300">{formatUsd(row.smartExposure || 0)}</td>
-                    <td className="px-1 py-0.5 text-right text-gray-300">{Math.round(row.totalShares || 0).toLocaleString()}</td>
+                    <td className="text-right px-1 py-0.5 text-gray-300 tabular-nums">
+                      {askCents != null ? `${askCents.toFixed(1)}¢` : '—'}
+                    </td>
+                    <td className="text-right px-1 py-0.5 text-sky-300/95 font-bold tabular-nums text-[9px]">
+                      {formatPolymarketVolumeK(volUsd)}
+                    </td>
                   </tr>
                 );
               })}

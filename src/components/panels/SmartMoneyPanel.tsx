@@ -3,6 +3,7 @@ import { GraduationCap } from 'lucide-react';
 import { fetchSmartMoneySignals } from '../../api';
 import { useAppStore } from '../../stores/appStore';
 import type { Market, SmartMoneySignalMarket } from '../../types';
+import { ASSET_COLORS, formatPriceShort } from '../../utils/format';
 
 function formatUsd(v: number): string {
   if (!Number.isFinite(v)) return '-';
@@ -11,16 +12,38 @@ function formatUsd(v: number): string {
   return `$${v.toFixed(0)}`;
 }
 
-function formatDateShort(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '-';
-  const day = d.getDate();
-  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()];
-  return `${day} ${month}`;
+function signalTableDateStyle(endDate: string): { dateStr: string; dateColor: string } {
+  const endD = new Date(endDate);
+  if (Number.isNaN(endD.getTime())) return { dateStr: '-', dateColor: 'text-gray-400' };
+  const hoursUntil = (endD.getTime() - Date.now()) / 3600000;
+  const dayAbbr = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][endD.getDay()];
+  const isWeekend2 = endD.getDay() === 0 || endD.getDay() === 6;
+  if (hoursUntil > 0 && hoursUntil < 24) return { dateStr: 'TODAY', dateColor: 'text-red-400 font-bold' };
+  if (hoursUntil >= 24 && hoursUntil < 48) return { dateStr: 'TMR', dateColor: 'text-yellow-400 font-bold' };
+  return {
+    dateStr: dayAbbr + ' ' + endD.getDate(),
+    dateColor: isWeekend2 ? 'text-purple-400' : 'text-gray-400',
+  };
 }
 
 function directionToOutcome(direction: string): 'YES' | 'NO' {
   return direction === 'YES' || direction === 'UP' ? 'YES' : 'NO';
+}
+
+function shortMarketLabel(row: SmartMoneySignalMarket): string {
+  const asset = row.asset || '';
+  const q = String(row.question || '').trim();
+  const dirMatch = q.match(/([<>↑↓])\s*\$?\s*([\d.,]+)/);
+  if (dirMatch) {
+    const short = formatPriceShort(`${dirMatch[1]}${dirMatch[2]}`);
+    return asset ? `${asset} ${short}` : short;
+  }
+  const rangeMatch = q.match(/\$?\s*([\d.,]+)\s*-\s*\$?\s*([\d.,]+)/);
+  if (rangeMatch) {
+    const short = formatPriceShort(`${rangeMatch[1]}-${rangeMatch[2]}`);
+    return asset ? `${asset} ${short}` : short;
+  }
+  return q || row.marketId;
 }
 
 export function SmartMoneyPanel() {
@@ -102,7 +125,7 @@ export function SmartMoneyPanel() {
             <thead className="sticky top-0 bg-gray-900 z-10">
               <tr className="text-gray-500 border-b border-gray-700">
                 <th className="text-left px-1 py-0.5">Asset</th>
-                <th className="text-left px-1 py-0.5">End</th>
+                <th className="text-left px-1 py-0.5">Date</th>
                 <th className="text-left px-1 py-0.5">Market</th>
                 <th className="text-center px-1 py-0.5">Dir</th>
                 <th className="text-right px-1 py-0.5">Smart</th>
@@ -112,6 +135,8 @@ export function SmartMoneyPanel() {
             </thead>
             <tbody>
               {rows.map((row) => {
+                const acol = ASSET_COLORS[row.asset] || 'text-gray-400';
+                const { dateStr, dateColor } = signalTableDateStyle(row.endDate);
                 const dirOutcome = directionToOutcome(row.direction);
                 const dirColor = dirOutcome === 'YES' ? 'text-green-400' : 'text-red-400';
                 const barPct = Math.max(2, Math.min(98, Number.isFinite(row.barPct) ? row.barPct : (50 + (row.provenSMS || 0) * 50)));
@@ -123,9 +148,14 @@ export function SmartMoneyPanel() {
                     className={`border-b border-gray-700/30 ${canOpen ? 'hover:bg-gray-700/30 cursor-pointer' : 'opacity-80'}`}
                     title={canOpen ? 'Open market in sidebar' : 'Market not in current lookup'}
                   >
-                    <td className="px-1 py-0.5 font-bold text-gray-200">{row.asset || '-'}</td>
-                    <td className="px-1 py-0.5 text-gray-400 whitespace-nowrap">{formatDateShort(row.endDate)}</td>
-                    <td className="px-1 py-0.5 text-gray-300 truncate max-w-[220px]">{row.question || row.marketId}</td>
+                    <td className={`px-1 py-0.5 font-bold ${acol}`}>{row.asset || '-'}</td>
+                    <td className={`px-1 py-0.5 ${dateColor} whitespace-nowrap`}>{dateStr}</td>
+                    <td
+                      className={`px-1 py-0.5 ${acol} whitespace-nowrap truncate max-w-[100px] hover:underline cursor-pointer`}
+                      onClick={(e) => { e.stopPropagation(); openMarket(row); }}
+                    >
+                      {shortMarketLabel(row)}
+                    </td>
                     <td className={`px-1 py-0.5 text-center font-bold ${dirColor}`}>{row.direction}</td>
                     <td className="px-1 py-0.5">
                       <div className="h-[6px] bg-gray-700 rounded-full overflow-hidden flex">

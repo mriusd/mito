@@ -5,7 +5,7 @@ import {
   fetchWalletPositions,
   fetchOnchainMarketPositions,
   fetchOnchainMarketTrades,
-  fetchOnchainClaims,
+  // fetchOnchainClaims,
   type OnchainMarketPositionRow,
   type OnchainMarketTradeRow,
   type OnchainClaimRow,
@@ -148,15 +148,15 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
           }
           return;
         }
-        const [pr, tr, cl] = await Promise.all([
+        const [pr, tr] = await Promise.all([
           fetchOnchainMarketPositions({ token_ids, wallet: makerAddress }),
           fetchOnchainMarketTrades({ token_ids, wallet: makerAddress, limit: 500 }),
-          fetchOnchainClaims({ wallet: makerAddress, limit: 200 }),
+          // fetchOnchainClaims({ wallet: makerAddress, limit: 200 }),
         ]);
         if (!cancelled) {
           setOnchainPosRows(pr.positions || []);
           setOnchainTrRows(tr.trades || []);
-          setOnchainClaimRows(cl.claims || []);
+          setOnchainClaimRows([]);
         }
       } catch {
         if (!cancelled) {

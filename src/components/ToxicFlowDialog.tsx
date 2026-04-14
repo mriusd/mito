@@ -1063,8 +1063,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                         <div className="flex items-start gap-1.5 text-[10px]">
                           <AlertTriangle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
                           <span className="text-gray-200">Top 5 wallets control {(data.concentration * 100).toFixed(0)}% of volume — potential whale manipulation</span>
-                        </div>
-                      )}
+                    </div>
+                  )}
                       {hasTopHolderBias && (
                         <div className="flex items-start gap-1.5 text-[10px]">
                           <AlertTriangle size={12} className="text-yellow-400 flex-shrink-0 mt-0.5" />

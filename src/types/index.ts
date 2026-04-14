@@ -196,6 +196,8 @@ export interface SmartMoneySignalMarket {
   endDate: string;
   eventSlug?: string;
   marketType?: string;
+  /** Same shape as Signal.priceStr / Gamma groupItemTitle when market not in lookup */
+  priceStr?: string;
 }
 
 export interface SmartMoneySignalsResponse {

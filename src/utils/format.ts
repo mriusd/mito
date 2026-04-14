@@ -255,6 +255,77 @@ export function extractAssetFromMarket(market: Market): AssetName | '' {
   return '';
 }
 
+/**
+ * Weekly/monthly hit markets from Gamma often put only the strike in groupItemTitle (e.g. "$84,000")
+ * with no ↑/↓. Direction comes from the question ("reach $X" vs "dip to $X").
+ * Shared with signals computation and Smart Money panel display.
+ */
+export function hitStrikeMetaForBs(m: Market): { bsPriceStr: string; isReachHit: boolean; isDipHit: boolean } | null {
+  const q = (m.question || '').trim();
+  const reach =
+    q.match(/reach\s+\$?([\d,.]+[kK]?)/i)
+    || q.match(/\bhit\s+\$?([\d,.]+[kK]?)/i);
+  const dip = q.match(/dip\s+to\s+\$?([\d,.]+[kK]?)/i);
+  const norm = (cap: string) => cap.replace(/,/g, '').trim();
+  if (reach && !dip) {
+    return { bsPriceStr: '>' + norm(reach[1]), isReachHit: true, isDipHit: false };
+  }
+  if (dip && !reach) {
+    return { bsPriceStr: '<' + norm(dip[1]), isReachHit: false, isDipHit: true };
+  }
+
+  const priceStr = m.groupItemTitle || '';
+  if (!priceStr) return null;
+  const raw = priceStr.replace(/[\$,]/g, '').replace(/\s+/g, '');
+  const hasUp = raw.includes('↑');
+  const hasDown = raw.includes('↓');
+  if (hasUp && !hasDown) {
+    const num = raw.replace(/[↑↓]/g, '');
+    if (num) return { bsPriceStr: '>' + num, isReachHit: true, isDipHit: false };
+  }
+  if (hasDown && !hasUp) {
+    const num = raw.replace(/[↑↓]/g, '');
+    if (num) return { bsPriceStr: '<' + num, isReachHit: false, isDipHit: true };
+  }
+
+  const cleaned = priceStr.replace(/[\$,]/g, '').replace(/(.+)↑/, '>$1').replace(/(.+)↓/, '<$1').trim();
+  const bsPriceStr =
+    cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-') ? cleaned : '>' + cleaned;
+  const isDipHit = cleaned.startsWith('<');
+  return { bsPriceStr, isReachHit: !isDipHit, isDipHit };
+}
+
+export function hitDisplayStrike(groupTitle: string, bsPriceStr: string, isReachHit: boolean): string {
+  if (groupTitle) return groupTitle;
+  const n = bsPriceStr.replace(/^[<>]/, '');
+  return isReachHit ? `${n}↑` : `${n}↓`;
+}
+
+function inferSignalTableType(m: Market): 'above' | 'price' | 'hit' {
+  if (hitStrikeMetaForBs(m) != null) return 'hit';
+  const q = (m.question || '').trim();
+  if (/\bbetween\b.+\band\b/i.test(q)) return 'price';
+  return 'above';
+}
+
+/** Raw strike string passed into `formatPriceShort` in SignalsTable — same rules as useSignalsAndArbs displayPrice. */
+export function getSignalTablePriceStr(m: Market, marketLookup?: Record<string, Market>): string {
+  const tableType = inferSignalTableType(m);
+  const priceStr = m.groupItemTitle || '';
+  if (tableType === 'hit') {
+    const hitMeta = hitStrikeMetaForBs(m);
+    if (!hitMeta) return priceStr || (m.question ? m.question.slice(0, 24) : '');
+    return hitDisplayStrike(priceStr, hitMeta.bsPriceStr, hitMeta.isReachHit);
+  }
+  if (!priceStr) {
+    const tid = m.clobTokenIds?.[0];
+    return getMarketPriceCondition(m.question, tid, marketLookup);
+  }
+  return tableType === 'above' && !priceStr.includes('>') && !priceStr.includes('<')
+    ? '>' + priceStr
+    : priceStr;
+}
+
 export function formatPriceShort(priceStr: string): string {
   const cleaned = priceStr.replace(/\$/g, '').replace(/,/g, '').trim();
   if (cleaned.startsWith('↑') || cleaned.startsWith('↓') || cleaned.startsWith('<') || cleaned.startsWith('>')) {

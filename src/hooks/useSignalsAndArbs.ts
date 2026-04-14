@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { getMarketProbability, getSignalYesProbability } from '../utils/bsMath';
-import { API_BASE } from '../lib/env';
+import { hitStrikeMetaForBs, getSignalTablePriceStr } from '../utils/format';
 import type { AssetSymbol, Market, Signal, ArbOpportunity } from '../types';
 
 const GRID_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
@@ -21,52 +21,6 @@ function parsePriceBounds(priceStr: string): { low: number; high: number } {
   }
   const n = parseFloat(s);
   return { low: n, high: n };
-}
-
-/**
- * Weekly/monthly hit markets from Gamma often put only the strike in groupItemTitle (e.g. "$84,000")
- * with no ↑/↓. Direction comes from the question ("reach $X" vs "dip to $X"). Without that we used to
- * always treat strikes as ">" and mis-label sides, so BS and filters rarely produced hit signals.
- */
-function hitStrikeMetaForBs(m: Market): { bsPriceStr: string; isReachHit: boolean; isDipHit: boolean } | null {
-  const q = (m.question || '').trim();
-  const reach =
-    q.match(/reach\s+\$?([\d,.]+[kK]?)/i)
-    || q.match(/\bhit\s+\$?([\d,.]+[kK]?)/i);
-  const dip = q.match(/dip\s+to\s+\$?([\d,.]+[kK]?)/i);
-  const norm = (cap: string) => cap.replace(/,/g, '').trim();
-  if (reach && !dip) {
-    return { bsPriceStr: '>' + norm(reach[1]), isReachHit: true, isDipHit: false };
-  }
-  if (dip && !reach) {
-    return { bsPriceStr: '<' + norm(dip[1]), isReachHit: false, isDipHit: true };
-  }
-
-  const priceStr = m.groupItemTitle || '';
-  if (!priceStr) return null;
-  const raw = priceStr.replace(/[\$,]/g, '').replace(/\s+/g, '');
-  const hasUp = raw.includes('↑');
-  const hasDown = raw.includes('↓');
-  if (hasUp && !hasDown) {
-    const num = raw.replace(/[↑↓]/g, '');
-    if (num) return { bsPriceStr: '>' + num, isReachHit: true, isDipHit: false };
-  }
-  if (hasDown && !hasUp) {
-    const num = raw.replace(/[↑↓]/g, '');
-    if (num) return { bsPriceStr: '<' + num, isReachHit: false, isDipHit: true };
-  }
-
-  const cleaned = priceStr.replace(/[\$,]/g, '').replace(/(.+)↑/, '>$1').replace(/(.+)↓/, '<$1').trim();
-  const bsPriceStr =
-    cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-') ? cleaned : '>' + cleaned;
-  const isDipHit = cleaned.startsWith('<');
-  return { bsPriceStr, isReachHit: !isDipHit, isDipHit };
-}
-
-function hitDisplayStrike(groupTitle: string, bsPriceStr: string, isReachHit: boolean): string {
-  if (groupTitle) return groupTitle;
-  const n = bsPriceStr.replace(/^[<>]/, '');
-  return isReachHit ? `${n}↑` : `${n}↓`;
 }
 
 /**
@@ -252,10 +206,7 @@ export function useSignalsAndArbs() {
             } else {
               isBullish = false;
             }
-            const displayPrice = tableType === 'hit'
-              ? hitDisplayStrike(priceStr, bsPriceStr, hitIsReach)
-              : (tableType === 'above' && !priceStr.includes('>') && !priceStr.includes('<'))
-              ? '>' + priceStr : priceStr;
+            const displayPrice = getSignalTablePriceStr(m);
             // In maker mode: YES orig -> flip type, show NO side data (bid/BS/diff all NO leg, same % formula as taker)
             signals.push({
               market: m,
@@ -293,10 +244,7 @@ export function useSignalsAndArbs() {
             } else {
               isBullish = priceStr.includes('<');
             }
-            const displayPrice = tableType === 'hit'
-              ? hitDisplayStrike(priceStr, bsPriceStr, hitIsReach)
-              : (tableType === 'above' && !priceStr.includes('>') && !priceStr.includes('<'))
-              ? '>' + priceStr : priceStr;
+            const displayPrice = getSignalTablePriceStr(m);
             // In maker mode: NO orig -> show YES side data (bid/BS/diff all YES leg)
             signals.push({
               market: m,

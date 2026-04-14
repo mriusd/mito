@@ -3,7 +3,7 @@ import { GraduationCap } from 'lucide-react';
 import { fetchSmartMoneySignals } from '../../api';
 import { useAppStore } from '../../stores/appStore';
 import type { Market, SmartMoneySignalMarket } from '../../types';
-import { ASSET_COLORS, formatPriceShort } from '../../utils/format';
+import { ASSET_COLORS, formatPriceShort, getSignalTablePriceStr } from '../../utils/format';
 
 function formatUsd(v: number): string {
   if (!Number.isFinite(v)) return '-';
@@ -28,22 +28,6 @@ function signalTableDateStyle(endDate: string): { dateStr: string; dateColor: st
 
 function directionToOutcome(direction: string): 'YES' | 'NO' {
   return direction === 'YES' || direction === 'UP' ? 'YES' : 'NO';
-}
-
-function shortMarketLabel(row: SmartMoneySignalMarket): string {
-  const asset = row.asset || '';
-  const q = String(row.question || '').trim();
-  const dirMatch = q.match(/([<>↑↓])\s*\$?\s*([\d.,]+)/);
-  if (dirMatch) {
-    const short = formatPriceShort(`${dirMatch[1]}${dirMatch[2]}`);
-    return asset ? `${asset} ${short}` : short;
-  }
-  const rangeMatch = q.match(/\$?\s*([\d.,]+)\s*-\s*\$?\s*([\d.,]+)/);
-  if (rangeMatch) {
-    const short = formatPriceShort(`${rangeMatch[1]}-${rangeMatch[2]}`);
-    return asset ? `${asset} ${short}` : short;
-  }
-  return q || row.marketId;
 }
 
 export function SmartMoneyPanel() {
@@ -137,6 +121,9 @@ export function SmartMoneyPanel() {
               {rows.map((row) => {
                 const acol = ASSET_COLORS[row.asset] || 'text-gray-400';
                 const { dateStr, dateColor } = signalTableDateStyle(row.endDate);
+                const m = marketsById.get(row.marketId);
+                const rawPriceStr = m ? getSignalTablePriceStr(m, marketLookup) : (row.priceStr || '');
+                const strikeLabel = rawPriceStr ? formatPriceShort(rawPriceStr) : '—';
                 const dirOutcome = directionToOutcome(row.direction);
                 const dirColor = dirOutcome === 'YES' ? 'text-green-400' : 'text-red-400';
                 const barPct = Math.max(2, Math.min(98, Number.isFinite(row.barPct) ? row.barPct : (50 + (row.provenSMS || 0) * 50)));
@@ -154,7 +141,7 @@ export function SmartMoneyPanel() {
                       className={`px-1 py-0.5 ${acol} whitespace-nowrap truncate max-w-[100px] hover:underline cursor-pointer`}
                       onClick={(e) => { e.stopPropagation(); openMarket(row); }}
                     >
-                      {shortMarketLabel(row)}
+                      {row.asset || '-'} {strikeLabel}
                     </td>
                     <td className={`px-1 py-0.5 text-center font-bold ${dirColor}`}>{row.direction}</td>
                     <td className="px-1 py-0.5">

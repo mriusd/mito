@@ -169,7 +169,14 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
         .then((res) => {
           if (serial !== effectSerialRef.current) return;
           const fills = Array.isArray(res?.fills) ? (res.fills as OnchainFillRow[]) : [];
-          const maxBlock = fills.reduce((m, f) => Math.max(m, Number(f.blockNumber ?? 0)), 0);
+          // Sort by block number desc, then log index desc (strictly monotonic, unlike blockTime
+          // which can have wall-clock vs block-timestamp inconsistencies across deploys).
+          fills.sort((a, b) => {
+            const bn = (Number(b.blockNumber ?? 0)) - (Number(a.blockNumber ?? 0));
+            if (bn !== 0) return bn;
+            return (Number(b.logIndex ?? 0)) - (Number(a.logIndex ?? 0));
+          });
+          const maxBlock = fills.length > 0 ? Number(fills[0].blockNumber ?? 0) : 0;
           const nowMs = Date.now();
           const mapped: LiveTrade[] = [];
           for (const f of fills) {
@@ -197,7 +204,6 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               });
             }
           }
-          mapped.sort((a, b) => b.timestamp - a.timestamp);
           setTrades(mapped.slice(0, MAX_TRADES));
         })
         .catch(() => {});

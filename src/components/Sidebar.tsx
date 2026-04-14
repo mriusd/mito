@@ -1198,7 +1198,7 @@ export function Sidebar() {
     />
     <ToxicFlowDialog
       open={toxicDialogOpen}
-      marketId={selectedMarket?.id || ''}
+      marketId={selectedMarket?.conditionId || ''}
       marketName={marketName}
       yesTokenId={selectedMarket?.clobTokenIds?.[0] || ''}
       onClose={() => setToxicDialogOpen(false)}

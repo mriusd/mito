@@ -196,12 +196,11 @@ function App() {
               </div>
               <div className="min-w-0">
                 <h2 id="maintenance-dialog-title" className="text-sm font-bold text-amber-200">
-                  We're getting things ready
+                  Server is down or being restarted
                 </h2>
                 <p id="maintenance-dialog-desc" className="mt-2 text-xs text-gray-300 leading-relaxed">
-                  The server is currently syncing the full blockchain history. On-chain Polymarket data is being downloaded and indexed.
-                  We expect to be back online by <span className="text-amber-100/95 font-semibold">14 April</span>.
-                  This message will disappear automatically once we're ready — thank you for your patience!
+                  Please allow for several minutes for it to get back online.
+                  This message will disappear automatically once the server is back online — thank you for your patience!
                 </p>
               </div>
             </div>

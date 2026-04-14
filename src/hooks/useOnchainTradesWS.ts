@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
 import { API_BASE, WS_BASE } from '../lib/env';
 import type { LiveTrade } from './usePolymarketOB';
 
@@ -21,6 +22,8 @@ export type OnchainTradesWSOpts = {
   /** Fallback when condition id missing — single outcome CLOB token id */
   tokenId?: string | null;
   wallet?: string | null;
+  /** YES+NO CLOB ids for selected market: scopes wallet snapshot + fast REST prefetch (WS last-100 is global). */
+  scopedClobTokenIds?: string[] | null;
 };
 
 function canonicalConditionKey(id: string): string {
@@ -31,6 +34,16 @@ function canonicalConditionKey(id: string): string {
   if (!/^[0-9a-f]+$/.test(body) || body.length > 64) return h;
   if (body.length < 64) return `0x${body.padStart(64, '0')}`;
   return h;
+}
+
+function normalizeClobTokenKey(id: string | null | undefined): string {
+  const s = String(id ?? '').trim();
+  if (!s) return '';
+  try {
+    return BigInt(s).toString();
+  } catch {
+    return s;
+  }
 }
 
 function sameDecimalTokenId(a: string | null | undefined, b: string | null | undefined): boolean {
@@ -84,13 +97,15 @@ export interface WSTrade {
   fee: number;
   blockTime: number;
   txHash?: string;
+  /** Same tx can have multiple OrderFilled logs — required for dedupe. */
+  logIndex?: number;
   title?: string;
   slug?: string;
   eventSlug?: string;
 }
 
 export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
-  const { marketId = null, tokenId = null, wallet = null } = opts;
+  const { marketId = null, tokenId = null, wallet = null, scopedClobTokenIds = null } = opts;
   const [trades, setTrades] = useState<LiveTrade[]>([]);
   const [walletPositions, setWalletPositions] = useState<WSPosition[]>([]);
   const [walletTrades, setWalletTrades] = useState<WSTrade[]>([]);
@@ -101,7 +116,81 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   const tokenRef = useRef<string | null>(null);
   const marketRef = useRef<string | null>(null);
   const walletRef = useRef<string | null | undefined>(null);
+  const scopedTokenSetRef = useRef<Set<string> | null>(null);
+  const prefetchSerialRef = useRef(0);
   const effectSerialRef = useRef(0);
+
+  useEffect(() => {
+    if (!scopedClobTokenIds?.length) {
+      scopedTokenSetRef.current = null;
+      return;
+    }
+    const s = new Set<string>();
+    for (const id of scopedClobTokenIds) {
+      const k = normalizeClobTokenKey(id);
+      if (k) s.add(k);
+    }
+    scopedTokenSetRef.current = s.size ? s : null;
+  }, [scopedClobTokenIds?.join('|') ?? '']);
+
+  const tokenInScope = useCallback((tid: string | null | undefined) => {
+    const scope = scopedTokenSetRef.current;
+    if (!scope?.size) return true;
+    const k = normalizeClobTokenKey(tid);
+    return !!(k && scope.has(k));
+  }, []);
+
+  // Fast market-scoped REST before WS snapshot (WS trades are last-100 global, often misses this market).
+  useEffect(() => {
+    const w = (wallet || '').trim().toLowerCase();
+    const ids = (scopedClobTokenIds || []).map((x) => String(x || '').trim()).filter(Boolean);
+    if (!w || ids.length === 0) return;
+    const serial = ++prefetchSerialRef.current;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [pr, tr] = await Promise.all([
+          fetchOnchainMarketPositions({ token_ids: ids, wallet: w }),
+          fetchOnchainMarketTrades({ token_ids: ids, wallet: w, limit: 200 }),
+        ]);
+        if (cancelled || serial !== prefetchSerialRef.current) return;
+        setWalletPositions(
+          (pr.positions || []).map((p) => ({
+            tokenId: String(p.tokenId || ''),
+            size: Number(p.size || 0),
+            avgPrice: Number(p.avgPrice || 0),
+            title: p.title,
+            slug: p.slug,
+            eventSlug: p.eventSlug,
+            marketId: p.marketId,
+            outcome: p.outcome,
+            endDate: p.endDate,
+            underlyingAsset: p.underlyingAsset,
+          })).filter((p) => p.tokenId && tokenInScope(p.tokenId)),
+        );
+        setWalletTrades(
+          (tr.trades || []).map((t) => ({
+            tokenId: String(t.tokenId || ''),
+            side: (String(t.side || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL',
+            size: Number(t.size || 0),
+            price: Number(t.price || 0),
+            fee: Number(t.fee || 0),
+            blockTime: Number(t.blockTime || 0),
+            txHash: t.txHash,
+            logIndex: Number.isFinite(t.logIndex) ? t.logIndex : undefined,
+            title: t.title,
+            slug: t.slug,
+            eventSlug: t.eventSlug,
+          })).filter((t) => t.tokenId && t.size > 0 && t.price > 0 && tokenInScope(t.tokenId)),
+        );
+      } catch {
+        /* keep prior state */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet, scopedClobTokenIds?.join('|') ?? '']);
 
   const cleanup = useCallback(() => {
     if (pingRef.current) {
@@ -288,26 +377,36 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
 
             if (wAddr && d.tokenId && (makerLc === wAddr || takerLc === wAddr)) {
               if (!mSub || !tradeMarket || canonicalConditionKey(tradeMarket) === canonicalConditionKey(mSub)) {
+                const scope = scopedTokenSetRef.current;
+                const tok = String(d.tokenId);
+                const tk = normalizeClobTokenKey(tok);
+                if (scope?.size && (!tk || !scope.has(tk))) {
+                  /* skip wallet row — different outcome token */
+                } else {
                 const side = (d.side === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
                 const size = Number(d.size ?? 0);
                 const price = Number(d.price ?? 0);
                 const ts = Number(d.timestamp ?? Date.now());
+                const liRaw = Number(d.logIndex ?? 0);
+                const li = Number.isFinite(liRaw) && liRaw >= 0 ? liRaw : 0;
                 if (size > 0 && price > 0) {
                   const blockTimeSec = ts >= 1_000_000_000_000 ? Math.floor(ts / 1000) : Math.max(0, Math.floor(ts));
                   setWalletTrades((prev) => {
-                    const row = {
-                      tokenId: String(d.tokenId),
+                    const row: WSTrade = {
+                      tokenId: tok,
                       side,
                       size,
                       price,
                       fee: 0,
                       blockTime: blockTimeSec > 0 ? blockTimeSec : Math.floor(Date.now() / 1000),
                       txHash: d.txHash,
+                      logIndex: li,
                     };
-                    const key = `${String(d.txHash || '')}:${row.tokenId}`;
-                    const filtered = prev.filter((x) => `${String(x.txHash || '')}:${x.tokenId}` !== key);
-                    return [row, ...filtered].slice(0, 100);
+                    const key = `${String(d.txHash || '')}:${li}`;
+                    const filtered = prev.filter((x) => `${String(x.txHash || '')}:${x.logIndex ?? -1}` !== key);
+                    return [row, ...filtered].slice(0, 200);
                   });
+                }
                 }
               }
             }
@@ -349,16 +448,47 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               return merged.slice(0, MAX_TRADES);
             });
           } else if (msg.type === 'walletPositions' && Array.isArray(msg.data)) {
-            const positions = (msg.data as Array<{ tokenId?: string; size?: number; avgPrice?: number }>)
+            const scope = scopedTokenSetRef.current;
+            const raw = (msg.data as Array<{ tokenId?: string; size?: number; avgPrice?: number }>)
               .map((p) => ({
                 tokenId: String(p.tokenId || ''),
                 size: Number(p.size || 0),
                 avgPrice: Number(p.avgPrice || 0),
               }))
               .filter((p) => p.tokenId && p.size > 0);
-            setWalletPositions(positions);
+            const incoming =
+              scope?.size && scope.size > 0
+                ? raw.filter((p) => {
+                    const k = normalizeClobTokenKey(p.tokenId);
+                    return !!(k && scope.has(k));
+                  })
+                : raw;
+            setWalletPositions((prev) => {
+              if (!scope?.size) return incoming;
+              if (incoming.length === 0 && prev.length > 0) return prev;
+              const byTok = new Map<string, WSPosition>();
+              for (const p of prev) {
+                const k = normalizeClobTokenKey(p.tokenId);
+                if (k) byTok.set(k, p);
+              }
+              for (const p of incoming) {
+                const k = normalizeClobTokenKey(p.tokenId);
+                if (k) byTok.set(k, p);
+              }
+              return Array.from(byTok.values()).filter((p) => p.size > 0);
+            });
           } else if (msg.type === 'walletTrades' && Array.isArray(msg.data)) {
-            const wt = (msg.data as Array<{ tokenId?: string; side?: string; size?: number; price?: number; fee?: number; blockTime?: number; txHash?: string }>)
+            const scope = scopedTokenSetRef.current;
+            const raw = (msg.data as Array<{
+              tokenId?: string;
+              side?: string;
+              size?: number;
+              price?: number;
+              fee?: number;
+              blockTime?: number;
+              txHash?: string;
+              logIndex?: number;
+            }>)
               .map((t) => ({
                 tokenId: String(t.tokenId || ''),
                 side: (String(t.side || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL',
@@ -367,9 +497,29 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
                 fee: Number(t.fee || 0),
                 blockTime: Number(t.blockTime || 0),
                 txHash: t.txHash,
+                logIndex: Number.isFinite(Number(t.logIndex)) ? Number(t.logIndex) : undefined,
               }))
               .filter((t) => t.tokenId && t.size > 0 && t.price > 0);
-            setWalletTrades(wt);
+            const incoming =
+              scope?.size && scope.size > 0
+                ? raw.filter((t) => {
+                    const k = normalizeClobTokenKey(t.tokenId);
+                    return !!(k && scope.has(k));
+                  })
+                : raw;
+            const wKey = (t: WSTrade) => `${String(t.txHash || '')}:${t.logIndex ?? -1}:${normalizeClobTokenKey(t.tokenId)}`;
+            setWalletTrades((prev) => {
+              if (!scope?.size) {
+                const sorted = [...incoming].sort((a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0));
+                return sorted.slice(0, 200);
+              }
+              const byKey = new Map<string, WSTrade>();
+              for (const t of prev) byKey.set(wKey(t), t);
+              for (const t of incoming) byKey.set(wKey(t), t);
+              return Array.from(byKey.values())
+                .sort((a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0))
+                .slice(0, 200);
+            });
           }
         } catch {
           /* ignore */

@@ -228,6 +228,10 @@ export function Sidebar() {
 
   const onchainWallet = liveTradesSource === 'onchain' ? proxyWallet : null;
   const mergeFunderWallet = (makerAddressForMerge || proxyWallet || '').trim();
+  const scopedClobPair = useMemo(() => {
+    if (liveTradesSource !== 'onchain' || !sidebarOpen || !selectedMarket?.clobTokenIds?.length) return null;
+    return selectedMarket.clobTokenIds.map((x) => String(x || '').trim()).filter(Boolean);
+  }, [liveTradesSource, sidebarOpen, selectedMarket?.clobTokenIds]);
   const { trades: onchainLiveTrades, walletPositions: wsPositions, walletTrades: wsTrades, refreshWallet } = useOnchainTradesWS({
     marketId:
       liveTradesSource === 'onchain' && sidebarOpen && selectedMarket?.conditionId?.trim()
@@ -235,6 +239,7 @@ export function Sidebar() {
         : null,
     tokenId: liveTradesSource === 'onchain' ? obTokenId : null,
     wallet: onchainWallet,
+    scopedClobTokenIds: scopedClobPair,
   });
   const [displayLiveTrades, setDisplayLiveTrades] = useState(onchainLiveTrades);
 

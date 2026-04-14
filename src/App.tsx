@@ -145,6 +145,15 @@ function App() {
         <Header onRefresh={handleRefresh} />
       </div>
 
+      {backendConnected === false && (
+        <div className="mx-3 mb-2 rounded-md border border-red-700/70 bg-red-950/90 px-3 py-2 text-center">
+          <p className="text-xs font-bold text-red-200">Server is down or being restarted</p>
+          <p className="mt-0.5 text-[11px] text-red-100/90">
+            Please allow for several minutes for it to get back online. This clears automatically once the server is back online.
+          </p>
+        </div>
+      )}
+
       {/* Main content area */}
       <div className="flex-1 min-h-0 flex ml-[288px] max-[767px]:ml-0">
         {/* Canvas area */}
@@ -180,42 +189,6 @@ function App() {
       {/* Signing Dialog */}
       <SigningDialog />
       <SignatureExplainerDialog />
-
-      {backendConnected === false && (
-        <div
-          className="fixed inset-0 z-[59000] flex items-center justify-center bg-black/75 p-4"
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="maintenance-dialog-title"
-          aria-describedby="maintenance-dialog-desc"
-        >
-          <div className="w-full max-w-md rounded-xl border border-amber-600/60 bg-gray-900 shadow-2xl px-5 py-5">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-400 text-lg font-bold">
-                !
-              </div>
-              <div className="min-w-0">
-                <h2 id="maintenance-dialog-title" className="text-sm font-bold text-amber-200">
-                  Server is down or being restarted
-                </h2>
-                <p id="maintenance-dialog-desc" className="mt-2 text-xs text-gray-300 leading-relaxed">
-                  Please allow for several minutes for it to get back online.
-                  This message will disappear automatically once the server is back online — thank you for your patience!
-                </p>
-              </div>
-            </div>
-            <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => void handleRefresh()}
-                className="rounded-lg bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-500 transition"
-              >
-                Retry connection
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Toast container */}
       <div id="toastContainer" className="toast-container" />

@@ -203,6 +203,20 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
         .catch(() => {});
     };
 
+    setTrades([]);
+    void loadFromAPI();
+
+    let disposed = false;
+    let ws: WebSocket | null = null;
+    let attempt = 0;
+
+    const stopPolling = () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+
     const startPollingFallback = () => {
       if (pollRef.current) return;
       void loadFromAPI();
@@ -211,13 +225,6 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
         void loadFromAPI();
       }, 2500);
     };
-
-    setTrades([]);
-    void loadFromAPI();
-
-    let disposed = false;
-    let ws: WebSocket | null = null;
-    let attempt = 0;
 
     const connect = () => {
       if (disposed) return;
@@ -228,7 +235,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       const tok = tokenRef.current?.trim();
       if (m) {
         params.set('market_id', canonicalConditionKey(m));
-        if (tok) params.set('token_id', tok); // ignored by server when market_id set; documents intent for debugging
+        if (tok) params.set('token_id', tok);
       } else if (tok) {
         params.set('token_id', tok);
       }
@@ -238,6 +245,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
 
       ws.onopen = () => {
         attempt = 0;
+        stopPolling();
+        void loadFromAPI();
         pingRef.current = setInterval(() => {
           if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
         }, 30000);
@@ -365,11 +374,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
           pingRef.current = null;
         }
         if (disposed || (!marketRef.current?.trim() && !tokenRef.current?.trim())) return;
-        if (attempt >= 2) {
-          startPollingFallback();
-          return;
-        }
-        const delay = Math.min(15000, 1000 * 2 ** Math.min(attempt, 4));
+        if (attempt >= 2) startPollingFallback();
+        const delay = Math.min(30000, 1000 * 2 ** Math.min(attempt, 5));
         attempt += 1;
         reconnectRef.current = setTimeout(connect, delay);
       };

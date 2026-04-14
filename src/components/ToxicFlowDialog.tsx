@@ -306,10 +306,11 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
     const cents = (usdc / shareVol) * 100;
     return Number.isFinite(cents) ? `${cents.toFixed(1)}¢` : '–';
   };
-  /** Implied average price of signed net position: (USDC in − out) / net shares, in ¢. */
+  /** Implied average cost basis per net share: (USDC in − out) / |net shares|, in ¢. */
   const fmtNetAvgCents = (usdcIn: number, usdcOut: number, net: number) => {
-    if (!Number.isFinite(net) || Math.abs(net) < 1e-6) return '–';
-    const cents = ((usdcIn - usdcOut) / net) * 100;
+    const absNet = Math.abs(net);
+    if (!Number.isFinite(absNet) || absNet < 1e-6) return '–';
+    const cents = ((usdcIn - usdcOut) / absNet) * 100;
     return Number.isFinite(cents) ? `${cents.toFixed(1)}¢` : '–';
   };
 

@@ -279,6 +279,8 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                         : 0;
                     const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
                     const winnerBiasBarFlash = wbPct > 60 || wbPct < 40;
+                    const smsRaw = liveEntry?.provenSMS ?? 0;
+                    const smsPct = Math.max(2, Math.min(98, 50 + smsRaw * 50));
                     return (
                       <>
                         <td className="px-1 py-1 align-middle border-l border-r border-solid border-gray-700 text-center text-[9px] whitespace-nowrap text-gray-300 bg-gray-900/50 border-b border-gray-700/50">
@@ -410,6 +412,13 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                                 >
                                   <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
                                   <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
+                                </div>
+                                <div
+                                  className="absolute bottom-[2px] left-0 right-0 h-[2px] pointer-events-none z-0 flex"
+                                  title={`Smart Money (proven wallets): ${(smsRaw * 100).toFixed(0)}%`}
+                                >
+                                  <div className="bg-yellow-400/75 h-full shrink-0 transition-[width]" style={{ width: `${smsPct}%` }} />
+                                  <div className="bg-purple-400/75 h-full flex-1 min-w-0" />
                                 </div>
                               </>
                             );

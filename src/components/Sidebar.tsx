@@ -1673,7 +1673,6 @@ export function Sidebar() {
               return (
                 <div className="mt-1 space-y-0.5">
                   <MiniBar label="Book" value={book} leftColor="bg-emerald-500/70" rightColor="bg-amber-500/70" tooltip={`Book Imbalance: ${(book * 100).toFixed(1)}%`} />
-                  <MiniBar label={`Flow${liveWin}m`} value={live} leftColor="bg-cyan-500/70" rightColor="bg-pink-500/70" tooltip={`Live Flow (${liveWin}m): ${(live * 100).toFixed(1)}%`} />
                   <MiniBar label="Win$" value={wb} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={`Winner Bias (USDC): ${posLabel} WR ${(yesWR * 100).toFixed(0)}% / ${negLabel} WR ${(noWR * 100).toFixed(0)}%`} />
                   <MiniBar label="WinS" value={wbs} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={`Winner Bias (Shares): ${posLabel} WR ${(yesWRs * 100).toFixed(0)}% / ${negLabel} WR ${(noWRs * 100).toFixed(0)}%`} />
                   <MiniBar label="Smart" value={sms} leftColor="bg-yellow-400/75" rightColor="bg-purple-400/75" tooltip={`Smart Money: proven wallets (≥60% WR, ≥10 mkts, PNL>0) with ≥$2k in this market — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />

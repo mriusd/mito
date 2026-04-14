@@ -97,10 +97,12 @@ function WalletLink({
   wallet,
   netShares,
   onOpenWallet,
+  isSmart,
 }: {
   wallet: string;
   netShares?: number;
   onOpenWallet?: (wallet: string, netShares?: number) => void;
+  isSmart?: boolean;
 }) {
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [show, setShow] = useState(false);
@@ -256,7 +258,8 @@ function WalletLink({
           e.stopPropagation();
           onOpenWallet?.(wallet, netShares);
         }}
-        className="text-blue-400 hover:underline font-mono inline-flex items-baseline flex-wrap gap-x-0"
+        className={`${isSmart ? 'text-yellow-400' : 'text-blue-400'} hover:underline font-mono inline-flex items-baseline flex-wrap gap-x-0`}
+        title={isSmart ? 'Proven smart wallet' : undefined}
       >
         <span>{shortenWallet(wallet)}</span>
       </button>
@@ -366,7 +369,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
                 <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
                   <td className={`relative align-top px-1 py-0.5 ${showWinBar ? 'pb-2' : ''}`}>
-                    <WalletLink wallet={w.wallet} netShares={w.net} onOpenWallet={onOpenWallet} />
+                    <WalletLink wallet={w.wallet} netShares={w.net} onOpenWallet={onOpenWallet} isSmart={w.isSmart} />
                     {showWinBar && <WinRateBottomBar winRate={effectiveWinRate!} className="absolute bottom-0 left-0 right-0" />}
                   </td>
                   <td className="text-right px-1 text-green-400 bg-green-900/10">{w.boughtYes > 0 ? fmtInt(w.boughtYes) : '-'}</td>
@@ -796,31 +799,14 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                   const biasLabel = (v: number) => v > 0.01 ? posLabel : v < -0.01 ? negLabel : 'FLAT';
                   const biasColor = (v: number) => v > 0.01 ? 'text-green-400' : v < -0.01 ? 'text-red-400' : 'text-gray-500';
                   const barFor = (v: number) => Math.max(2, Math.min(98, 50 + v * 50));
-                  const live = (data as any).liveBias || 0;
-                  const liveWin = isUpDown1hOr4h ? 5 : ((data as any).liveBiasWindowMin || 30);
                   const proven = (data as any).provenSMS || 0;
                   const crowd = (data as any).crowdBias || 0;
-                  const livePct = live * 100;
                   const provenPct = proven * 100;
                   const crowdPct = crowd * 100;
                   const yesTotal = (data.yesUsdcIn || 0) + (data.noUsdcIn || 0);
                   const yesPct = yesTotal > 0 ? (data.yesUsdcIn / yesTotal) * 100 : 50;
                   return (
                     <div className="space-y-2.5">
-                      {/* Live Taker Flow Bias */}
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[9px] text-gray-500">Live Flow ({liveWin}m taker bias)</span>
-                          <span className={`text-[11px] font-bold ${biasColor(live)}`}>
-                            {biasLabel(live)} <span className="text-[9px] font-normal">({livePct > 0 ? '+' : ''}{livePct.toFixed(1)}%)</span>
-                          </span>
-                        </div>
-                        <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
-                          <div className="bg-cyan-500/70 h-full transition-all" style={{ width: `${barFor(live)}%` }} />
-                          <div className="bg-pink-500/70 h-full transition-all flex-1" />
-                        </div>
-                      </div>
-
                       {/* Proven Smart Money */}
                       <div>
                         <div className="flex items-center justify-between mb-1">
@@ -961,11 +947,13 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                 const medFlags = rf.filter(f => f.level === 'medium');
                 const netByWallet: Record<string, number> = {};
                 const winStatsByWallet: Record<string, { winRate: number; winLossTotal: number }> = {};
+                const smartSet = new Set<string>();
                 const addWallets = (arr?: WalletPosition[] | null) => {
                   for (const w of arr || []) {
                     if (!w?.wallet) continue;
                     const k = w.wallet.toLowerCase();
                     netByWallet[k] = w.net || 0;
+                    if (w.isSmart) smartSet.add(k);
                     const wl = w.winLossTotal;
                     const wr = w.winRate;
                     if (typeof wl === 'number' && wl > 0 && typeof wr === 'number' && Number.isFinite(wr)) {
@@ -1007,6 +995,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                         wallet={f.wallet}
                                         netShares={netByWallet[f.wallet.toLowerCase()]}
                                         onOpenWallet={openWalletDialog}
+                                        isSmart={smartSet.has(f.wallet.toLowerCase())}
                                       />
                                       <WinRateBottomBar winRate={st!.winRate} />
                                     </span>
@@ -1015,6 +1004,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                       wallet={f.wallet}
                                       netShares={netByWallet[f.wallet.toLowerCase()]}
                                       onOpenWallet={openWalletDialog}
+                                      isSmart={smartSet.has(f.wallet.toLowerCase())}
                                     />
                                   )}{' '}
                                   {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
@@ -1041,6 +1031,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                         wallet={f.wallet}
                                         netShares={netByWallet[f.wallet.toLowerCase()]}
                                         onOpenWallet={openWalletDialog}
+                                        isSmart={smartSet.has(f.wallet.toLowerCase())}
                                       />
                                       <WinRateBottomBar winRate={st!.winRate} />
                                     </span>
@@ -1049,6 +1040,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                       wallet={f.wallet}
                                       netShares={netByWallet[f.wallet.toLowerCase()]}
                                       onOpenWallet={openWalletDialog}
+                                      isSmart={smartSet.has(f.wallet.toLowerCase())}
                                     />
                                   )}{' '}
                                   {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}

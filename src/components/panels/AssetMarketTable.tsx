@@ -571,6 +571,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     Number.isFinite(_bidAskLookup[yesTokenId]?.winnerBias)
                       ? _bidAskLookup[yesTokenId]!.winnerBias!
                       : 0;
+                  const smsRaw = _bidAskLookup[yesTokenId]?.provenSMS ?? 0;
+                  const smsPct = Math.max(2, Math.min(98, 50 + smsRaw * 50));
                   const concRaw =
                     typeof _bidAskLookup[yesTokenId]?.concentration === 'number' &&
                     Number.isFinite(_bidAskLookup[yesTokenId]?.concentration)
@@ -678,6 +680,13 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       >
                         <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
                         <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
+                      </div>
+                      <div
+                        className="absolute bottom-[2px] left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
+                        title={`Smart Money (proven wallets): ${(smsRaw * 100).toFixed(0)}%`}
+                      >
+                        <div className="bg-yellow-400/75 h-full shrink-0 transition-[width]" style={{ width: `${smsPct}%` }} />
+                        <div className="bg-purple-400/75 h-full flex-1 min-w-0" />
                       </div>
                     </td>
                   );
@@ -796,6 +805,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     Number.isFinite(_bidAskLookup[yesTokenId]?.winnerBias)
                       ? _bidAskLookup[yesTokenId]!.winnerBias!
                       : 0;
+                  const smsRaw = _bidAskLookup[yesTokenId]?.provenSMS ?? 0;
+                  const smsPct = Math.max(2, Math.min(98, 50 + smsRaw * 50));
                   const concRaw =
                     typeof _bidAskLookup[yesTokenId]?.concentration === 'number' &&
                     Number.isFinite(_bidAskLookup[yesTokenId]?.concentration)
@@ -883,6 +894,13 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       >
                         <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
                         <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
+                      </div>
+                      <div
+                        className="absolute bottom-[2px] left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
+                        title={`Smart Money (proven wallets): ${(smsRaw * 100).toFixed(0)}%`}
+                      >
+                        <div className="bg-yellow-400/75 h-full shrink-0 transition-[width]" style={{ width: `${smsPct}%` }} />
+                        <div className="bg-purple-400/75 h-full flex-1 min-w-0" />
                       </div>
                     </td>
                   );
@@ -1043,6 +1061,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     Number.isFinite(_bidAskLookup[yesTokenId]?.winnerBias)
                       ? _bidAskLookup[yesTokenId]!.winnerBias!
                       : 0;
+                  const smsRaw = _bidAskLookup[yesTokenId]?.provenSMS ?? 0;
+                  const smsPct = Math.max(2, Math.min(98, 50 + smsRaw * 50));
                   const concRaw =
                     typeof _bidAskLookup[yesTokenId]?.concentration === 'number' &&
                     Number.isFinite(_bidAskLookup[yesTokenId]?.concentration)
@@ -1166,6 +1186,13 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       >
                         <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
                         <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
+                      </div>
+                      <div
+                        className="absolute bottom-[2px] left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
+                        title={`Smart Money (proven wallets): ${(smsRaw * 100).toFixed(0)}%`}
+                      >
+                        <div className="bg-yellow-400/75 h-full shrink-0 transition-[width]" style={{ width: `${smsPct}%` }} />
+                        <div className="bg-purple-400/75 h-full flex-1 min-w-0" />
                       </div>
                     </td>
                   );

@@ -578,11 +578,6 @@ export function UpDownMarketsPanel() {
                   const smartMoneyLeansNo = smartMoneyBarPct < 25;
                   const showSmartMoneyLeftIcon = marketLeansNo && smartMoneyLeansYes;
                   const showSmartMoneyRightIcon = marketLeansYes && smartMoneyLeansNo;
-                  const wbUsdc =
-                    typeof _bidAskLookup[yesTokenId]?.winnerBias === 'number' &&
-                    Number.isFinite(_bidAskLookup[yesTokenId]?.winnerBias)
-                      ? _bidAskLookup[yesTokenId]!.winnerBias!
-                      : 0;
                   const concRaw =
                     typeof _bidAskLookup[yesTokenId]?.concentration === 'number' &&
                     Number.isFinite(_bidAskLookup[yesTokenId]?.concentration)
@@ -592,7 +587,6 @@ export function UpDownMarketsPanel() {
                   const cR = Math.round(Math.min(255, concRaw * 2 * 255));
                   const cG = Math.round(Math.min(255, (1 - concRaw) * 2 * 255));
                   const concColor = `rgb(${cR}, ${cG}, 0)`;
-                  const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
 
                   const quoteCell = (
                     <td
@@ -678,13 +672,13 @@ export function UpDownMarketsPanel() {
                           style={{ height: `${concPct}%`, backgroundColor: concColor }}
                         />
                       </div>
-                      {/* Winners $ (USDC bias, top 30%) — same style as Up/Down HUD */}
+                      {/* Smart Money (proven wallets) */}
                       <div
                         className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
-                        title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
+                        title={`Smart Money (proven wallets): ${(provenSMS * 100).toFixed(0)}%`}
                       >
-                        <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
-                        <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
+                        <div className="bg-yellow-400/75 h-full shrink-0 transition-[width]" style={{ width: `${smartMoneyBarPct}%` }} />
+                        <div className="bg-purple-400/75 h-full flex-1 min-w-0" />
                       </div>
                       {market.endDate && duration > 0 && (() => {
                         const mEnd = new Date(market.endDate).getTime();

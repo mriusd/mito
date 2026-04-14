@@ -72,6 +72,14 @@ function normalizeWinRate(v: number | null | undefined): number | null {
   return Math.max(0, Math.min(1, scaled));
 }
 
+/** Gold “smart” only if proven smart and this-market PnL is not negative (table PnL column). */
+function isSmartGold(row: Pick<WalletPosition, 'isSmart' | 'pnl'>): boolean {
+  if (!row.isSmart) return false;
+  const p = row.pnl;
+  const n = typeof p === 'number' && Number.isFinite(p) ? p : 0;
+  return n >= -1e-6;
+}
+
 /** Holder-row stats when /api/wallet-summary has no DB row (do not cache misses — avoids poisoned tooltip cache). */
 function rowHolderSummary(row: WalletPosition): WalletSummary | null {
   const usdcIn = row.usdcIn || 0;
@@ -414,7 +422,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
                 <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
                   <td className={`relative align-top px-1 py-0.5 ${showWinBar ? 'pb-2' : ''}`}>
-                    <WalletLink wallet={w.wallet} netShares={w.net} onOpenWallet={onOpenWallet} isSmart={w.isSmart} holderRow={w} />
+                    <WalletLink wallet={w.wallet} netShares={w.net} onOpenWallet={onOpenWallet} isSmart={isSmartGold(w)} holderRow={w} />
                     {showWinBar && <WinRateBottomBar winRate={effectiveWinRate!} className="absolute bottom-0 left-0 right-0" />}
                   </td>
                   <td className="text-right px-1 text-green-400 bg-green-900/10">{w.boughtYes > 0 ? fmtInt(w.boughtYes) : '-'}</td>
@@ -998,7 +1006,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                     if (!w?.wallet) continue;
                     const k = w.wallet.toLowerCase();
                     netByWallet[k] = w.net || 0;
-                    if (w.isSmart) smartSet.add(k);
+                    if (isSmartGold(w)) smartSet.add(k);
                     const wl = w.winLossTotal;
                     const wr = w.winRate;
                     if (typeof wl === 'number' && wl > 0 && typeof wr === 'number' && Number.isFinite(wr)) {

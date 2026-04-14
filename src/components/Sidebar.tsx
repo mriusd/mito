@@ -195,6 +195,9 @@ export function Sidebar() {
   const { bids, asks, trades: polymarketLiveTrades, loading: obLoading } = usePolymarketOB(obTokenId);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const setLiveTradesSource = useAppStore((s) => s.setLiveTradesSource);
+  useEffect(() => {
+    setTradeTickNow(Date.now());
+  }, [selectedMarket?.conditionId, liveTradesSource]);
   const setOnchainGridPositions = useAppStore((s) => s.setOnchainGridPositions);
   const [displayBids, setDisplayBids] = useState(bids);
   const [displayAsks, setDisplayAsks] = useState(asks);
@@ -225,7 +228,14 @@ export function Sidebar() {
 
   const onchainWallet = liveTradesSource === 'onchain' ? proxyWallet : null;
   const mergeFunderWallet = (makerAddressForMerge || proxyWallet || '').trim();
-  const { trades: onchainLiveTrades, walletPositions: wsPositions, walletTrades: wsTrades, refreshWallet } = useOnchainTradesWS(obTokenId, onchainWallet);
+  const { trades: onchainLiveTrades, walletPositions: wsPositions, walletTrades: wsTrades, refreshWallet } = useOnchainTradesWS({
+    marketId:
+      liveTradesSource === 'onchain' && sidebarOpen && selectedMarket?.conditionId?.trim()
+        ? String(selectedMarket.conditionId).trim()
+        : null,
+    tokenId: liveTradesSource === 'onchain' ? obTokenId : null,
+    wallet: onchainWallet,
+  });
   const [displayLiveTrades, setDisplayLiveTrades] = useState(onchainLiveTrades);
 
   const requestCrossingConfirm = useCallback((bestPriceCents: number) => {
@@ -1838,12 +1848,14 @@ export function Sidebar() {
                       liveTradesSource === 'onchain' &&
                       !!myOnchainWalletLower &&
                       (makerLower === myOnchainWalletLower || takerLower === myOnchainWalletLower);
-                    const agoSec = Math.max(0, Math.floor((tradeTickNow - t.timestamp) / 1000));
+                    const rawTs = Number(t.timestamp);
+                    const ts = Number.isFinite(rawTs) ? Math.min(rawTs, tradeTickNow) : tradeTickNow;
+                    const agoSec = Math.max(0, Math.floor((tradeTickNow - ts) / 1000));
                     const agoStr = agoSec < 60 ? `${agoSec}s` : agoSec < 3600 ? `${Math.floor(agoSec / 60)}m` : agoSec < 86400 ? `${Math.floor(agoSec / 3600)}h` : `${Math.floor(agoSec / 86400)}d`;
                     const usdValue = (parseFloat(t.price) * parseFloat(t.size)).toFixed(2);
                     return (
                       <div
-                        key={i}
+                        key={`${t.txHash || ''}-${t.logIndex ?? i}-${t.timestamp}-${t.side}-${t.size}`}
                         className={`grid grid-cols-5 gap-1 text-[11px] px-1 rounded-sm ${
                           isMine ? 'bg-blue-900/35 ring-1 ring-blue-500/60 shadow-[0_0_8px_rgba(59,130,246,0.25)]' : ''
                         }`}

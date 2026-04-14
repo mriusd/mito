@@ -12,6 +12,8 @@ export interface LiveTrade {
   side: 'BUY' | 'SELL';
   timestamp: number;
   txHash?: string;
+  /** On-chain log index when present (stable list keys, on-chain tape). */
+  logIndex?: number;
   maker?: string;
   taker?: string;
 }

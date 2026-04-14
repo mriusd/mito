@@ -10,7 +10,57 @@ interface OnchainFillRow {
   makerAssetId?: string;
   takerAssetId?: string;
   blockNumber?: number;
+  blockTime?: number;
+  logIndex?: number;
   txHash?: string;
+}
+
+/** Polymarket condition id (hex) — preferred for live tape: all YES+NO fills on this market. */
+export type OnchainTradesWSOpts = {
+  marketId?: string | null;
+  /** Fallback when condition id missing — single outcome CLOB token id */
+  tokenId?: string | null;
+  wallet?: string | null;
+};
+
+function canonicalConditionKey(id: string): string {
+  let h = id.trim().toLowerCase();
+  if (!h) return '';
+  if (!h.startsWith('0x')) h = `0x${h}`;
+  const body = h.slice(2);
+  if (!/^[0-9a-f]+$/.test(body) || body.length > 64) return h;
+  if (body.length < 64) return `0x${body.padStart(64, '0')}`;
+  return h;
+}
+
+function sameDecimalTokenId(a: string | null | undefined, b: string | null | undefined): boolean {
+  const sa = String(a ?? '').trim();
+  const sb = String(b ?? '').trim();
+  if (!sa || !sb) return false;
+  if (sa === sb) return true;
+  try {
+    return BigInt(sa) === BigInt(sb);
+  } catch {
+    return false;
+  }
+}
+
+/** Wall-clock ms from API blockTime, or a spread relative to `now` from block height when blockTime is missing. */
+function tradeTimestampMs(f: OnchainFillRow, maxBlock: number, nowMs: number): number {
+  const bt = Number(f.blockTime ?? 0);
+  let ms: number;
+  if (bt > 0) {
+    ms = bt >= 1_000_000_000_000 ? bt : bt * 1000;
+  } else {
+    const bn = Number(f.blockNumber ?? 0);
+    const li = Number(f.logIndex ?? 0);
+    if (bn > 0 && maxBlock > 0) {
+      ms = nowMs - (maxBlock - bn) * 2100 - li;
+    } else {
+      ms = nowMs;
+    }
+  }
+  return Math.min(ms, nowMs);
 }
 
 export interface WSPosition {
@@ -39,7 +89,8 @@ export interface WSTrade {
   eventSlug?: string;
 }
 
-export function useOnchainTradesWS(tokenId: string | null, wallet?: string | null) {
+export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
+  const { marketId = null, tokenId = null, wallet = null } = opts;
   const [trades, setTrades] = useState<LiveTrade[]>([]);
   const [walletPositions, setWalletPositions] = useState<WSPosition[]>([]);
   const [walletTrades, setWalletTrades] = useState<WSTrade[]>([]);
@@ -48,7 +99,9 @@ export function useOnchainTradesWS(tokenId: string | null, wallet?: string | nul
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tokenRef = useRef<string | null>(null);
+  const marketRef = useRef<string | null>(null);
   const walletRef = useRef<string | null | undefined>(null);
+  const effectSerialRef = useRef(0);
 
   const cleanup = useCallback(() => {
     if (pingRef.current) {
@@ -73,7 +126,6 @@ export function useOnchainTradesWS(tokenId: string | null, wallet?: string | nul
     }
   }, []);
 
-  // When wallet changes while WS is already open, send subscribe/unsubscribe
   useEffect(() => {
     walletRef.current = wallet;
     const ws = wsRef.current;
@@ -88,9 +140,13 @@ export function useOnchainTradesWS(tokenId: string | null, wallet?: string | nul
   }, [wallet]);
 
   useEffect(() => {
-    tokenRef.current = tokenId;
+    const mid = (marketId || '').trim();
+    const tid = (tokenId || '').trim();
+    tokenRef.current = tid || null;
+    marketRef.current = mid ? canonicalConditionKey(mid) : null;
     walletRef.current = wallet;
-    if (!tokenId) {
+
+    if (!mid && !tid) {
       cleanup();
       setTrades([]);
       setWalletPositions([]);
@@ -98,39 +154,60 @@ export function useOnchainTradesWS(tokenId: string | null, wallet?: string | nul
       return;
     }
 
-    const loadFromAPI = () =>
-      fetch(`${API_BASE}/api/onchain-fills?token_id=${encodeURIComponent(tokenId)}&limit=30`)
+    const serial = ++effectSerialRef.current;
+
+    const loadFromAPI = () => {
+      const m = marketRef.current?.trim() || '';
+      const t = tokenRef.current?.trim() || '';
+      if (!m && !t) return;
+      const qs = new URLSearchParams();
+      qs.set('limit', '30');
+      if (m) qs.set('market_id', canonicalConditionKey(m));
+      if (t) qs.set('token_id', t);
+      void fetch(`${API_BASE}/api/onchain-fills?${qs.toString()}`)
         .then((r) => r.json())
         .then((res) => {
-        const fills = Array.isArray(res?.fills) ? (res.fills as OnchainFillRow[]) : [];
-        const mapped: LiveTrade[] = [];
-        for (const f of fills) {
-          const makerAmt = Number(f.makerAmount ?? 0);
-          const takerAmt = Number(f.takerAmount ?? 0);
-          const makerAsset = String(f.makerAssetId ?? '');
-          const takerAsset = String(f.takerAssetId ?? '');
-          const makerIsUSDC = makerAsset === '0';
-          const takerIsUSDC = takerAsset === '0';
-          const size = makerIsUSDC ? takerAmt : makerAmt;
-          const price = makerIsUSDC
-            ? (takerAmt > 0 ? makerAmt / takerAmt : 0)
-            : (makerAmt > 0 ? takerAmt / makerAmt : 0);
-          const side = (makerIsUSDC ? 'BUY' : takerIsUSDC ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
-          const ts = Date.now() - Number(f.blockNumber ?? 0) % 1000;
-          if (size > 0 && price > 0) {
-            mapped.push({ side, size: String(size), price: String(price), timestamp: ts, txHash: f.txHash });
+          if (serial !== effectSerialRef.current) return;
+          const fills = Array.isArray(res?.fills) ? (res.fills as OnchainFillRow[]) : [];
+          const maxBlock = fills.reduce((m, f) => Math.max(m, Number(f.blockNumber ?? 0)), 0);
+          const nowMs = Date.now();
+          const mapped: LiveTrade[] = [];
+          for (const f of fills) {
+            const makerAmt = Number(f.makerAmount ?? 0);
+            const takerAmt = Number(f.takerAmount ?? 0);
+            const makerAsset = String(f.makerAssetId ?? '');
+            const takerAsset = String(f.takerAssetId ?? '');
+            const makerIsUSDC = makerAsset === '0';
+            const takerIsUSDC = takerAsset === '0';
+            const size = makerIsUSDC ? takerAmt : makerAmt;
+            const price = makerIsUSDC
+              ? (takerAmt > 0 ? makerAmt / takerAmt : 0)
+              : (makerAmt > 0 ? takerAmt / makerAmt : 0);
+            const side = (makerIsUSDC ? 'BUY' : takerIsUSDC ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
+            const ts = tradeTimestampMs(f, maxBlock, nowMs);
+            const logIndex = Number(f.logIndex ?? 0);
+            if (size > 0 && price > 0) {
+              mapped.push({
+                side,
+                size: String(size),
+                price: String(price),
+                timestamp: ts,
+                txHash: f.txHash,
+                logIndex: Number.isFinite(logIndex) ? logIndex : undefined,
+              });
+            }
           }
-        }
-        mapped.sort((a, b) => b.timestamp - a.timestamp);
-        setTrades(mapped.slice(0, MAX_TRADES));
-      })
-      .catch(() => {});
+          mapped.sort((a, b) => b.timestamp - a.timestamp);
+          setTrades(mapped.slice(0, MAX_TRADES));
+        })
+        .catch(() => {});
+    };
 
     const startPollingFallback = () => {
       if (pollRef.current) return;
       void loadFromAPI();
       pollRef.current = setInterval(() => {
-        if (!tokenRef.current) return;
+        if (!marketRef.current?.trim() && !tokenRef.current?.trim()) return;
         void loadFromAPI();
       }, 2500);
     };
@@ -143,9 +220,19 @@ export function useOnchainTradesWS(tokenId: string | null, wallet?: string | nul
     let attempt = 0;
 
     const connect = () => {
-      if (disposed || !tokenRef.current) return;
+      if (disposed) return;
+      if (!marketRef.current?.trim() && !tokenRef.current?.trim()) return;
       cleanup();
-      const url = `${WS_BASE}/ws/onchain-trades?token_id=${encodeURIComponent(tokenRef.current)}`;
+      const params = new URLSearchParams();
+      const m = marketRef.current?.trim();
+      const tok = tokenRef.current?.trim();
+      if (m) {
+        params.set('market_id', canonicalConditionKey(m));
+        if (tok) params.set('token_id', tok); // ignored by server when market_id set; documents intent for debugging
+      } else if (tok) {
+        params.set('token_id', tok);
+      }
+      const url = `${WS_BASE}/ws/onchain-trades?${params.toString()}`;
       ws = new WebSocket(url);
       wsRef.current = ws;
 
@@ -154,7 +241,6 @@ export function useOnchainTradesWS(tokenId: string | null, wallet?: string | nul
         pingRef.current = setInterval(() => {
           if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
         }, 30000);
-        // Subscribe wallet for position/trade updates if available
         const w = walletRef.current;
         if (w && ws?.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'subscribeWallet', wallet: w }));
@@ -169,26 +255,70 @@ export function useOnchainTradesWS(tokenId: string | null, wallet?: string | nul
           if (msg.type === 'onchainTrade' && msg.data) {
             const d = msg.data as {
               tokenId?: string;
+              marketId?: string;
               side?: string;
               size?: number;
               price?: number;
               timestamp?: number;
               txHash?: string;
+              logIndex?: number;
               maker?: string;
               taker?: string;
             };
-            if (!d.tokenId || d.tokenId !== tokenRef.current) return;
+            const wAddr = (walletRef.current || '').trim().toLowerCase();
+            const makerLc = d.maker ? String(d.maker).toLowerCase() : '';
+            const takerLc = d.taker ? String(d.taker).toLowerCase() : '';
+            const mSub = marketRef.current?.trim() || '';
+            const tradeMarket = String(d.marketId || '').trim();
+
+            if (wAddr && d.tokenId && (makerLc === wAddr || takerLc === wAddr)) {
+              if (!mSub || !tradeMarket || canonicalConditionKey(tradeMarket) === canonicalConditionKey(mSub)) {
+                const side = (d.side === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
+                const size = Number(d.size ?? 0);
+                const price = Number(d.price ?? 0);
+                const ts = Number(d.timestamp ?? Date.now());
+                if (size > 0 && price > 0) {
+                  const blockTimeSec = ts >= 1_000_000_000_000 ? Math.floor(ts / 1000) : Math.max(0, Math.floor(ts));
+                  setWalletTrades((prev) => {
+                    const row = {
+                      tokenId: String(d.tokenId),
+                      side,
+                      size,
+                      price,
+                      fee: 0,
+                      blockTime: blockTimeSec > 0 ? blockTimeSec : Math.floor(Date.now() / 1000),
+                      txHash: d.txHash,
+                    };
+                    const key = `${String(d.txHash || '')}:${row.tokenId}`;
+                    const filtered = prev.filter((x) => `${String(x.txHash || '')}:${x.tokenId}` !== key);
+                    return [row, ...filtered].slice(0, 100);
+                  });
+                }
+              }
+            }
+
+            if (!d.tokenId) return;
+            if (mSub) {
+              if (!tradeMarket || canonicalConditionKey(tradeMarket) !== canonicalConditionKey(mSub)) return;
+              const subTok = tokenRef.current?.trim();
+              if (subTok && !sameDecimalTokenId(d.tokenId, subTok)) return;
+            } else {
+              if (!sameDecimalTokenId(d.tokenId, tokenRef.current)) return;
+            }
+
             const side = (d.side === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
             const size = Number(d.size ?? 0);
             const price = Number(d.price ?? 0);
             const ts = Number(d.timestamp ?? Date.now());
             if (!(size > 0 && price > 0)) return;
+            const li = Number(d.logIndex ?? 0);
             const t: LiveTrade = {
               side,
               size: String(size),
               price: String(price),
               timestamp: ts,
               txHash: d.txHash,
+              logIndex: Number.isFinite(li) && li >= 0 ? li : undefined,
               maker: d.maker ? String(d.maker).toLowerCase() : undefined,
               taker: d.taker ? String(d.taker).toLowerCase() : undefined,
             };
@@ -234,7 +364,7 @@ export function useOnchainTradesWS(tokenId: string | null, wallet?: string | nul
           clearInterval(pingRef.current);
           pingRef.current = null;
         }
-        if (disposed || !tokenRef.current) return;
+        if (disposed || (!marketRef.current?.trim() && !tokenRef.current?.trim())) return;
         if (attempt >= 2) {
           startPollingFallback();
           return;
@@ -251,9 +381,9 @@ export function useOnchainTradesWS(tokenId: string | null, wallet?: string | nul
       disposed = true;
       cleanup();
     };
-  // wallet changes are handled by the separate useEffect above
+  // wallet changes only re-send subscribeWallet (separate effect above)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tokenId, cleanup]);
+  }, [marketId, tokenId, cleanup]);
 
   const refreshWallet = useCallback(() => {
     const ws = wsRef.current;

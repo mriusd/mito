@@ -337,7 +337,17 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               maker: d.maker ? String(d.maker).toLowerCase() : undefined,
               taker: d.taker ? String(d.taker).toLowerCase() : undefined,
             };
-            setTrades((prev) => [t, ...prev].slice(0, MAX_TRADES));
+            setTrades((prev) => {
+              const key = `${t.txHash || ''}:${t.logIndex ?? ''}`;
+              const deduped = key ? prev.filter((x) => `${x.txHash || ''}:${x.logIndex ?? ''}` !== key) : prev;
+              const merged = [t, ...deduped];
+              merged.sort((a, b) => {
+                const td = (b.timestamp ?? 0) - (a.timestamp ?? 0);
+                if (td !== 0) return td;
+                return (b.logIndex ?? 0) - (a.logIndex ?? 0);
+              });
+              return merged.slice(0, MAX_TRADES);
+            });
           } else if (msg.type === 'walletPositions' && Array.isArray(msg.data)) {
             const positions = (msg.data as Array<{ tokenId?: string; size?: number; avgPrice?: number }>)
               .map((p) => ({

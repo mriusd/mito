@@ -183,6 +183,27 @@ export interface Signal {
   tableType: 'above' | 'price' | 'hit';
 }
 
+export interface SmartMoneySignalMarket {
+  marketId: string;
+  provenSMS: number;
+  barPct: number;
+  direction: 'YES' | 'NO' | 'UP' | 'DOWN';
+  smartWalletCount: number;
+  smartExposure: number;
+  totalShares: number;
+  asset: string;
+  question: string;
+  endDate: string;
+  eventSlug?: string;
+  marketType?: string;
+}
+
+export interface SmartMoneySignalsResponse {
+  threshold: number;
+  count: number;
+  markets: SmartMoneySignalMarket[];
+}
+
 export interface ProgLeg {
   asset: string;
   strike: string;
@@ -230,6 +251,7 @@ export type PanelType =
   | 'summary'
   | 'arb-positions'
   | 'signals'
+  | 'smart-money'
   | 'trades-positions-orders'
   | 'pnl'
   | 'updown-overview'

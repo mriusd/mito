@@ -18,6 +18,7 @@ import { PriceForecastPanel } from './panels/PriceForecastPanel';
 import { BinanceChartPanel } from './panels/BinanceChartPanel';
 import { UpOrDownHUDPanel } from './panels/UpOrDownHUDPanel';
 import { ChatPanel } from './panels/ChatPanel';
+import { SmartMoneyPanel } from './panels/SmartMoneyPanel';
 import type { PanelConfig, PanelType } from '../types';
 import BREAKPOINT_LAYOUTS, { HEIGHT_VARIANTS, GRID_COLS } from '../lib/defaultLayouts';
 
@@ -123,6 +124,8 @@ function renderPanel(panel: PanelConfig): React.ReactNode {
       return <ArbPositionsTable />;
     case 'signals':
       return <SignalsTable />;
+    case 'smart-money':
+      return <SmartMoneyPanel />;
     case 'trades-positions-orders':
       return <TradesPositionsOrders panelId={panel.id} />;
     case 'pnl':
@@ -282,7 +285,7 @@ export function DraggableCanvas() {
     'price-forecast': 'Price Forecast',
     'binance-chart': 'Asset Candle Chart',
     'updown-hud': 'UpOrDown HUD',
-    'signals': 'Signals', 'chat': 'Chat', 'pnl': 'P&L',
+    'signals': 'Signals', 'smart-money': 'Smart Money', 'chat': 'Chat', 'pnl': 'P&L',
   };
 
   // Auto-include panels defined in the current breakpoint layout but missing from panels list

@@ -1,4 +1,4 @@
-import type { MarketsResponse, Market, Position } from '../types';
+import type { MarketsResponse, Market, Position, SmartMoneySignalsResponse } from '../types';
 import { isWebMode, API_BASE } from '../lib/env';
 import { placeOrderDirect, cancelOrderDirect, signOrderOnly, submitSignedOrderDirect } from '../lib/clobClient';
 import { useAppStore } from '../stores/appStore';
@@ -14,6 +14,12 @@ export async function fetchMarkets(): Promise<MarketsResponse> {
 export async function fetchSettings(): Promise<Record<string, unknown>> {
   const resp = await fetch(`${BASE}/api/settings`);
   if (!resp.ok) throw new Error('Failed to fetch settings');
+  return resp.json();
+}
+
+export async function fetchSmartMoneySignals(): Promise<SmartMoneySignalsResponse> {
+  const resp = await fetch(`${BASE}/api/smart-money-signals`);
+  if (!resp.ok) throw new Error('Failed to fetch smart money signals');
   return resp.json();
 }
 

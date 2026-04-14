@@ -17,6 +17,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   // { type: 'arbs', title: 'Hedges' },
   // { type: 'summary', title: 'Summary' },
   { type: 'signals', title: 'Signals' },
+  { type: 'smart-money', title: 'Smart Money' },
   { type: 'trades-positions-orders', title: 'Trades/Positions/Orders' },
   { type: 'pnl', title: 'P&L' },
   { type: 'updown-overview', title: 'Up/Down Markets' },

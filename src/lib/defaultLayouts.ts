@@ -126,6 +126,7 @@ const PANEL_MIN_PIXELS: Record<string, { minW: number; minH: number }> = {
   'binance-chart': { minW: 380, minH: 300 },
   'updown-hud': { minW: 620, minH: 420 },
   'signals': { minW: 300, minH: 150 },
+  'smart-money': { minW: 320, minH: 180 },
   'chat': { minW: 280, minH: 180 },
   'pnl': { minW: 300, minH: 160 },
 };

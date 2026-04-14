@@ -159,7 +159,7 @@ const PANEL_TITLES: Record<string, string> = {
   'relative-chart': 'Relative Chart', 'perp-bot': 'Perp Bot', 'price-forecast': 'Price Forecast',
   'binance-chart': 'Asset Candle Chart',
   'updown-hud': 'UpOrDown HUD',
-  'signals': 'Signals', 'chat': 'Chat', 'pnl': 'P&L', 'arbs': 'Hedges', 'summary': 'Summary',
+  'signals': 'Signals', 'smart-money': 'Smart Money', 'chat': 'Chat', 'pnl': 'P&L', 'arbs': 'Hedges', 'summary': 'Summary',
 };
 
 // Bump this version to force-reset all users' saved layouts to fresh defaults

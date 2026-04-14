@@ -1655,6 +1655,7 @@ export function Sidebar() {
               const wbs = liveShareStats?.winBiasShares ?? 0;
               const yesWRs = liveShareStats?.winBiasSharesYes ?? 0;
               const noWRs = liveShareStats?.winBiasSharesNo ?? 0;
+              const sms = liveShareStats?.provenSMS ?? 0;
 
               const MiniBar = ({ label, value, leftColor, rightColor, tooltip }: { label: string; value: number; leftColor: string; rightColor: string; tooltip?: string }) => (
                 <div className="flex items-center gap-1 min-w-0" title={tooltip}>
@@ -1675,6 +1676,7 @@ export function Sidebar() {
                   <MiniBar label={`Flow${liveWin}m`} value={live} leftColor="bg-cyan-500/70" rightColor="bg-pink-500/70" tooltip={`Live Flow (${liveWin}m): ${(live * 100).toFixed(1)}%`} />
                   <MiniBar label="Win$" value={wb} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={`Winner Bias (USDC): ${posLabel} WR ${(yesWR * 100).toFixed(0)}% / ${negLabel} WR ${(noWR * 100).toFixed(0)}%`} />
                   <MiniBar label="WinS" value={wbs} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={`Winner Bias (Shares): ${posLabel} WR ${(yesWRs * 100).toFixed(0)}% / ${negLabel} WR ${(noWRs * 100).toFixed(0)}%`} />
+                  <MiniBar label="Smart" value={sms} leftColor="bg-yellow-400/75" rightColor="bg-purple-400/75" tooltip={`Smart Money: proven wallets (≥60% WR, ≥10 mkts, PNL>0) with ≥$2k in this market — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
                   <div className="flex items-center gap-1 min-w-0" title={`Concentration: ${concPct.toFixed(0)}%`}>
                     <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate">Conc</span>
                     <div className="h-[5px] bg-gray-700 rounded-full overflow-hidden flex-1 min-w-0">

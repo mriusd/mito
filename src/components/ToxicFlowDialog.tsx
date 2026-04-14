@@ -72,6 +72,37 @@ function normalizeWinRate(v: number | null | undefined): number | null {
   return Math.max(0, Math.min(1, scaled));
 }
 
+/** Holder-row stats when /api/wallet-summary has no DB row (do not cache misses — avoids poisoned tooltip cache). */
+function rowHolderSummary(row: WalletPosition): WalletSummary | null {
+  const usdcIn = row.usdcIn || 0;
+  const usdcOut = row.usdcOut || 0;
+  const tc = row.tradeCount || 0;
+  const net = row.net || 0;
+  const wr = normalizeWinRate(row.winRate);
+  const wlt = row.winLossTotal || 0;
+  const hasVol = usdcIn + usdcOut > 1e-6;
+  const hasPos = Math.abs(net) > 1e-6;
+  const hasWin = wlt > 0 && wr != null;
+  if (!hasVol && tc === 0 && !hasPos && !hasWin) return null;
+  const tradingPnl = usdcOut - usdcIn;
+  return {
+    found: true,
+    wallet: (row.wallet || '').toLowerCase(),
+    totalMarkets: 0,
+    resolvedMarkets: wlt,
+    totalTrades: tc,
+    totalUsdcIn: usdcIn,
+    totalUsdcOut: usdcOut,
+    tradingPnl,
+    resolutionValue: 0,
+    pnl: typeof row.pnl === 'number' && Number.isFinite(row.pnl) ? row.pnl : tradingPnl,
+    wins: 0,
+    losses: 0,
+    flat: 0,
+    winRate: wr ?? 0,
+  };
+}
+
 /** Green segment = win rate, red = loss rate (0–1). Use as cell bottom edge or stacked under wallet. */
 function WinRateBottomBar({ winRate, className }: { winRate: number; className?: string }) {
   const w = normalizeWinRate(winRate) ?? 0;
@@ -98,11 +129,14 @@ function WalletLink({
   netShares,
   onOpenWallet,
   isSmart,
+  holderRow,
 }: {
   wallet: string;
   netShares?: number;
   onOpenWallet?: (wallet: string, netShares?: number) => void;
   isSmart?: boolean;
+  /** Toxic-flow table row: used for tooltip when wallet-summary API misses. */
+  holderRow?: WalletPosition;
 }) {
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [show, setShow] = useState(false);
@@ -170,13 +204,15 @@ function WalletLink({
     enterTimerRef.current = window.setTimeout(async () => {
       enterTimerRef.current = null;
       setShow(true);
-      if (wallet in summaryCache) {
-        setSummary(summaryCache[wallet]);
-      } else {
-        const s = await fetchWalletSummary(wallet);
-        summaryCache[wallet] = s;
-        setSummary(s);
+      const wk = wallet.toLowerCase();
+      const hit = summaryCache[wk];
+      if (hit) {
+        setSummary(hit);
+        return;
       }
+      const s = await fetchWalletSummary(wallet);
+      if (s) summaryCache[wk] = s;
+      setSummary(s);
     }, 300);
   };
 
@@ -188,13 +224,17 @@ function WalletLink({
     scheduleHide();
   };
 
+  const displaySummary = summary === null && holderRow ? rowHolderSummary(holderRow) : summary;
+  const rowOnly = displaySummary && summary === null && holderRow && displaySummary.totalMarkets === 0;
+
   const tooltipInner = (
     <>
           <div className="font-mono text-blue-400 mb-1 text-[8px]">{wallet.slice(0, 10)}...{wallet.slice(-6)}</div>
           {summary === undefined && <div className="text-gray-500">Loading...</div>}
-          {summary === null && <div className="text-gray-500">No data yet</div>}
-          {summary && (
+          {summary === null && !displaySummary && <div className="text-gray-500">No data yet</div>}
+          {displaySummary && (
             <div className="space-y-0.5">
+          {rowOnly && <div className="text-gray-500 mb-0.5">This market (summary API n/a)</div>}
           {typeof netShares === 'number' && Number.isFinite(netShares) && (
             <>
               <div className="flex justify-between gap-3">
@@ -206,21 +246,25 @@ function WalletLink({
               <div className="border-t border-gray-700 my-0.5" />
             </>
           )}
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Markets</span><span className="text-white font-bold">{summary.totalMarkets}{summary.resolvedMarkets > 0 ? <span className="text-gray-500 font-normal"> ({summary.resolvedMarkets} resolved)</span> : ''}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Trades</span><span className="text-white">{summary.totalTrades}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Vol In</span><span className="text-yellow-400">${summary.totalUsdcIn.toFixed(2)}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Vol Out</span><span className="text-yellow-400">${summary.totalUsdcOut.toFixed(2)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-500">Markets</span><span className="text-white font-bold">{displaySummary.totalMarkets}{displaySummary.resolvedMarkets > 0 && displaySummary.totalMarkets > 0 ? <span className="text-gray-500 font-normal"> ({displaySummary.resolvedMarkets} resolved)</span> : displaySummary.resolvedMarkets > 0 && displaySummary.totalMarkets === 0 ? <span className="text-gray-500 font-normal"> ({displaySummary.resolvedMarkets} scored)</span> : ''}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-500">Trades</span><span className="text-white">{displaySummary.totalTrades}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-500">Vol In</span><span className="text-yellow-400">${displaySummary.totalUsdcIn.toFixed(2)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-500">Vol Out</span><span className="text-yellow-400">${displaySummary.totalUsdcOut.toFixed(2)}</span></div>
               <div className="border-t border-gray-700 my-0.5" />
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Trading PnL</span><span className={`${summary.tradingPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.tradingPnl >= 0 ? '+' : ''}{summary.tradingPnl.toFixed(2)}</span></div>
-              {summary.resolvedMarkets > 0 && (
-                <div className="flex justify-between gap-3"><span className="text-gray-500">Resolution</span><span className={`${summary.resolutionValue >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.resolutionValue >= 0 ? '+' : ''}{summary.resolutionValue.toFixed(2)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-500">Trading PnL</span><span className={`${displaySummary.tradingPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{displaySummary.tradingPnl >= 0 ? '+' : ''}{displaySummary.tradingPnl.toFixed(2)}</span></div>
+              {displaySummary.resolvedMarkets > 0 && displaySummary.totalMarkets > 0 && (
+                <div className="flex justify-between gap-3"><span className="text-gray-500">Resolution</span><span className={`${displaySummary.resolutionValue >= 0 ? 'text-green-400' : 'text-red-400'}`}>{displaySummary.resolutionValue >= 0 ? '+' : ''}{displaySummary.resolutionValue.toFixed(2)}</span></div>
               )}
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Total PnL</span><span className={`font-bold ${summary.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{summary.pnl >= 0 ? '+' : ''}{summary.pnl.toFixed(2)}</span></div>
-              {(summary.wins > 0 || summary.losses > 0) && (
+              <div className="flex justify-between gap-3"><span className="text-gray-500">Total PnL</span><span className={`font-bold ${displaySummary.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{displaySummary.pnl >= 0 ? '+' : ''}{displaySummary.pnl.toFixed(2)}</span></div>
+              {((displaySummary.wins > 0 || displaySummary.losses > 0) || (rowOnly && (holderRow?.winLossTotal || 0) > 0 && normalizeWinRate(holderRow?.winRate) != null)) && (
                 <>
                   <div className="border-t border-gray-700 my-0.5" />
-                  <div className="flex justify-between gap-3"><span className="text-gray-500">Win Rate</span><span className={`font-bold ${summary.winRate >= 0.5 ? 'text-green-400' : 'text-red-400'}`}>{(summary.winRate * 100).toFixed(0)}%</span></div>
-                  <div className="flex justify-between gap-3"><span className="text-gray-500">W / L / F</span><span className="text-white">{summary.wins}/{summary.losses}/{summary.flat}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-gray-500">Win Rate</span><span className={`font-bold ${displaySummary.winRate >= 0.5 ? 'text-green-400' : 'text-red-400'}`}>{(displaySummary.winRate * 100).toFixed(0)}%</span></div>
+                  {(displaySummary.wins > 0 || displaySummary.losses > 0) ? (
+                    <div className="flex justify-between gap-3"><span className="text-gray-500">W / L / F</span><span className="text-white">{displaySummary.wins}/{displaySummary.losses}/{displaySummary.flat}</span></div>
+                  ) : holderRow && (holderRow.winLossTotal || 0) > 0 ? (
+                    <div className="flex justify-between gap-3"><span className="text-gray-500">Scored</span><span className="text-white">{holderRow.winLossTotal} mkts</span></div>
+                  ) : null}
                 </>
               )}
             </div>
@@ -281,9 +325,10 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
     (async () => {
       const pairs = await Promise.all(
         uniq.map(async (w) => {
-          if (w in summaryCache) return [w, summaryCache[w]] as const;
+          const hit = summaryCache[w];
+          if (hit) return [w, hit] as const;
           const s = await fetchWalletSummary(w);
-          summaryCache[w] = s;
+          if (s) summaryCache[w] = s;
           return [w, s] as const;
         }),
       );
@@ -369,7 +414,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
                 <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
                   <td className={`relative align-top px-1 py-0.5 ${showWinBar ? 'pb-2' : ''}`}>
-                    <WalletLink wallet={w.wallet} netShares={w.net} onOpenWallet={onOpenWallet} isSmart={w.isSmart} />
+                    <WalletLink wallet={w.wallet} netShares={w.net} onOpenWallet={onOpenWallet} isSmart={w.isSmart} holderRow={w} />
                     {showWinBar && <WinRateBottomBar winRate={effectiveWinRate!} className="absolute bottom-0 left-0 right-0" />}
                   </td>
                   <td className="text-right px-1 text-green-400 bg-green-900/10">{w.boughtYes > 0 ? fmtInt(w.boughtYes) : '-'}</td>

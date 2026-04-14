@@ -412,6 +412,8 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
     const m: Record<string, any> = {};
     for (const mk of Object.values(marketLookup || {})) {
       if (mk?.id && !m[mk.id]) m[mk.id] = mk;
+      const cid = ((mk as any)?.conditionId || '').trim().toLowerCase();
+      if (cid && !m[cid]) m[cid] = mk;
     }
     return m;
   }, [marketLookup]);
@@ -533,10 +535,10 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
                 <tbody>
                   {markets.map((m) => (
                     (() => {
-                      const mk = marketById[m.marketId];
-                      const marketName = mk
+                      const mk = marketById[m.marketId] || marketById[(m.marketId || '').toLowerCase()] || (m.question ? m as any : null);
+                      const marketName = mk?.question || mk?.groupItemTitle
                         ? shortenMarketName(mk.question || mk.groupItemTitle, undefined, undefined, mk.eventSlug)
-                        : `${m.marketAsset || '-'} ${m.marketTimeframe || ''} #${m.marketId}`;
+                        : `${m.marketAsset || '-'} ${m.marketTimeframe || ''}`;
                       const dd = getDateDisplay(mk?.endDate || null);
                       const rd = getResolvedDisplay(mk, m);
                       const net = m.net || 0;

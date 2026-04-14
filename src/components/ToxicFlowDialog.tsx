@@ -306,11 +306,9 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
     const cents = (usdc / shareVol) * 100;
     return Number.isFinite(cents) ? `${cents.toFixed(1)}¢` : '–';
   };
-  /** Implied average cost basis per net share: (USDC in − out) / |net shares|, in ¢. */
-  const fmtNetAvgCents = (usdcIn: number, usdcOut: number, net: number) => {
-    const absNet = Math.abs(net);
-    if (!Number.isFinite(absNet) || absNet < 1e-6) return '–';
-    const cents = ((usdcIn - usdcOut) / absNet) * 100;
+  const fmtNetAvgCents = (usdcIn: number, boughtTotal: number) => {
+    if (!Number.isFinite(boughtTotal) || boughtTotal < 1e-6 || !Number.isFinite(usdcIn) || usdcIn < 1e-6) return '–';
+    const cents = (usdcIn / boughtTotal) * 100;
     return Number.isFinite(cents) ? `${cents.toFixed(1)}¢` : '–';
   };
 
@@ -362,7 +360,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               const soldShares = (w.soldYes || 0) + (w.soldNo || 0);
               const avgB = fmtAvgCents(w.usdcIn || 0, boughtShares);
               const avgS = fmtAvgCents(w.usdcOut || 0, soldShares);
-              const avgP = fmtNetAvgCents(w.usdcIn || 0, w.usdcOut || 0, w.net || 0);
+              const avgP = fmtNetAvgCents(w.usdcIn || 0, boughtShares);
               const showWinBar = effectiveWinLossTotal > 0 && effectiveWinRate != null;
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">

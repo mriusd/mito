@@ -564,14 +564,22 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
   }, [open, wallet, selectedMarketId, fillsPage]);
 
   if (!open) return null;
-  const polygonUrl = `https://polygonscan.com/address/${wallet}`;
+  const polymarketProfileUrl = `https://polymarket.com/profile/${wallet.trim().toLowerCase()}`;
   return (
     <div className="fixed inset-0 bg-black/60 z-[60010] flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-gray-800 rounded-lg p-3 max-w-6xl w-full mx-4 shadow-xl border border-gray-700" style={{ maxHeight: '88vh' }}>
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-bold text-yellow-400">Wallet Info</span>
-            <span className="text-xs text-blue-400 font-mono truncate">{wallet}</span>
+            <a
+              href={polymarketProfileUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-blue-400 font-mono truncate hover:underline"
+              title="Open Polymarket profile"
+            >
+              {wallet}
+            </a>
             <button
               type="button"
               className="text-gray-400 hover:text-white"
@@ -583,7 +591,7 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
             >
               <Copy size={13} />
             </button>
-            <a href={polygonUrl} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white" title="Open in Polygonscan">
+            <a href={polymarketProfileUrl} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white" title="Open Polymarket profile">
               <ExternalLink size={13} />
             </a>
           </div>

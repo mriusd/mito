@@ -387,9 +387,7 @@ export function Sidebar() {
     if (liveTradesSource !== 'onchain') {
       return trades.filter((t) => tradeMatchesSelectedMarket(t, selectedMarket, marketLookup));
     }
-    const rows = selectedMarket
-      ? onchainSidebarTrades.filter((f) => outcomeTokenBelongsToSelectedMarket(f.tokenId, selectedMarket, marketLookup))
-      : onchainSidebarTrades;
+    const rows = onchainSidebarTrades;
     return rows
       .sort((a, b) => b.blockTime - a.blockTime)
       .map((f) => ({
@@ -404,7 +402,10 @@ export function Sidebar() {
         matchTime: '',
       }));
   }, [liveTradesSource, trades, selectedMarket, marketLookup, onchainSidebarTrades]);
-  const myTradesDisplay = useMemo(() => myTrades.slice(0, 20), [myTrades]);
+  const myTradesDisplay = useMemo(
+    () => (liveTradesSource === 'onchain' ? myTrades : myTrades.slice(0, 20)),
+    [liveTradesSource, myTrades],
+  );
   const myOnchainWalletLower = (onchainWallet || '').toLowerCase();
   const myTradesPnl = useMemo(() => {
     let totalSellCost = 0;

@@ -88,6 +88,10 @@ function rowHolderSummary(row: WalletPosition): WalletSummary | null {
   const net = row.net || 0;
   const wr = normalizeWinRate(row.winRate);
   const wlt = row.winLossTotal || 0;
+  const wins = typeof row.wins === 'number' && Number.isFinite(row.wins) ? row.wins : 0;
+  const losses = typeof row.losses === 'number' && Number.isFinite(row.losses) ? row.losses : 0;
+  const flat = typeof row.flat === 'number' && Number.isFinite(row.flat) ? row.flat : 0;
+  const scoredBreakdown = wins + losses + flat;
   const hasVol = usdcIn + usdcOut > 1e-6;
   const hasPos = Math.abs(net) > 1e-6;
   const hasWin = wlt > 0 && wr != null;
@@ -97,16 +101,16 @@ function rowHolderSummary(row: WalletPosition): WalletSummary | null {
     found: true,
     wallet: (row.wallet || '').toLowerCase(),
     totalMarkets: 0,
-    resolvedMarkets: wlt,
+    resolvedMarkets: scoredBreakdown > 0 ? scoredBreakdown : wlt,
     totalTrades: tc,
     totalUsdcIn: usdcIn,
     totalUsdcOut: usdcOut,
     tradingPnl,
     resolutionValue: 0,
     pnl: typeof row.pnl === 'number' && Number.isFinite(row.pnl) ? row.pnl : tradingPnl,
-    wins: 0,
-    losses: 0,
-    flat: 0,
+    wins,
+    losses,
+    flat,
     winRate: wr ?? 0,
   };
 }
@@ -264,11 +268,12 @@ function WalletLink({
                 <div className="flex justify-between gap-3"><span className="text-gray-500">Resolution</span><span className={`${displaySummary.resolutionValue >= 0 ? 'text-green-400' : 'text-red-400'}`}>{displaySummary.resolutionValue >= 0 ? '+' : ''}{displaySummary.resolutionValue.toFixed(2)}</span></div>
               )}
               <div className="flex justify-between gap-3"><span className="text-gray-500">Total PnL</span><span className={`font-bold ${displaySummary.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{displaySummary.pnl >= 0 ? '+' : ''}{displaySummary.pnl.toFixed(2)}</span></div>
-              {((displaySummary.wins > 0 || displaySummary.losses > 0) || (rowOnly && (holderRow?.winLossTotal || 0) > 0 && normalizeWinRate(holderRow?.winRate) != null)) && (
+              {((displaySummary.wins > 0 || displaySummary.losses > 0 || displaySummary.flat > 0) ||
+                (rowOnly && (holderRow?.winLossTotal || 0) > 0 && normalizeWinRate(holderRow?.winRate) != null)) && (
                 <>
                   <div className="border-t border-gray-700 my-0.5" />
                   <div className="flex justify-between gap-3"><span className="text-gray-500">Win Rate</span><span className={`font-bold ${displaySummary.winRate >= 0.5 ? 'text-green-400' : 'text-red-400'}`}>{(displaySummary.winRate * 100).toFixed(0)}%</span></div>
-                  {(displaySummary.wins > 0 || displaySummary.losses > 0) ? (
+                  {(displaySummary.wins > 0 || displaySummary.losses > 0 || displaySummary.flat > 0) ? (
                     <div className="flex justify-between gap-3"><span className="text-gray-500">W / L / F</span><span className="text-white">{displaySummary.wins}/{displaySummary.losses}/{displaySummary.flat}</span></div>
                   ) : holderRow && (holderRow.winLossTotal || 0) > 0 ? (
                     <div className="flex justify-between gap-3"><span className="text-gray-500">Scored</span><span className="text-white">{holderRow.winLossTotal} mkts</span></div>
@@ -636,70 +641,23 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
               <table className="w-full text-[10px]">
                 <thead>
                   <tr className="text-gray-500 border-b border-gray-700">
-                    <th className="text-left py-1">Time</th>
-                    <th className="text-left">Action</th>
-                    <th className="text-left">Side</th>
-                    <th className="text-right">Shares</th>
-                    <th className="text-right">Price</th>
-                    <th className="text-right">USDC</th>
-                    <th className="text-right">Tx</th>
+                    <th className="text-left py-1 w-20">Tx</th>
+                    <th className="text-left py-1">Fill (API JSON)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {fills.map((f) => {
-                    const bt = Number((f as any).blockTime ?? 0);
-                    const ts = bt > 0
-                      ? (bt > 1e12 ? new Date(bt) : new Date(bt * 1000)).toLocaleString()
-                      : '-';
-                    const isSplitMerge = f.orderHash === 'SPLIT' || f.orderHash === 'MERGE';
-                    if (isSplitMerge) {
-                      const label = f.orderHash as string;
-                      const amount = f.makerAmount;
-                      return (
-                        <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
-                          <td className="py-0.5">{ts}</td>
-                          <td className="text-purple-400" colSpan={2}>{label}</td>
-                          <td className="text-right">{amount.toFixed(2)}</td>
-                          <td className="text-right text-gray-500">—</td>
-                          <td className="text-right text-gray-500">${amount.toFixed(2)}</td>
-                          <td className="text-right">
-                            <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
-                              {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}
-                            </a>
-                          </td>
-                        </tr>
-                      );
-                    }
-                    const walletLower = wallet.toLowerCase();
-                    const isTaker = (f.taker || '').toLowerCase() === walletLower;
-                    const walletPaysUsdc = (isTaker && f.takerAssetId === '0') || (!isTaker && f.makerAssetId === '0');
-                    const action = walletPaysUsdc ? 'BUY' : 'SELL';
-                    const shares = walletPaysUsdc
-                      ? (isTaker ? f.makerAmount : f.takerAmount)
-                      : (isTaker ? f.takerAmount : f.makerAmount);
-                    const usdc = walletPaysUsdc
-                      ? (isTaker ? f.takerAmount : f.makerAmount)
-                      : (isTaker ? f.makerAmount : f.takerAmount);
-                    const pricePerShare = shares > 1e-9 ? usdc / shares : NaN;
-                    const priceLabel = Number.isFinite(pricePerShare)
-                      ? `${(pricePerShare * 100).toFixed(1)}¢`
-                      : '—';
-                    return (
-                      <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
-                        <td className="py-0.5">{ts}</td>
-                        <td className={action === 'BUY' ? 'text-green-400' : 'text-red-400'}>{action}</td>
-                        <td className={f.side === 'YES' ? 'text-green-400' : 'text-red-400'}>{f.side}</td>
-                        <td className="text-right">{shares.toFixed(2)}</td>
-                        <td className="text-right text-gray-300 tabular-nums">{priceLabel}</td>
-                        <td className="text-right text-yellow-400">${usdc.toFixed(2)}</td>
-                        <td className="text-right">
-                          <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
-                            {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}
-                          </a>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {fills.map((f) => (
+                    <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800 align-top">
+                      <td className="py-0.5 whitespace-nowrap">
+                        <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
+                          {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}
+                        </a>
+                      </td>
+                      <td className="py-0.5 font-mono text-[9px] text-gray-300 break-all whitespace-pre-wrap">
+                        {JSON.stringify(f)}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             )}

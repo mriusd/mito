@@ -394,6 +394,10 @@ export interface WalletPosition {
   winRate?: number;
   /** Resolved markets with a win or loss (excludes flat-only); from wallet_scores. */
   winLossTotal?: number;
+  /** From wallet_scores join on toxic-flow rows (for tooltip when /api/wallet-summary misses). */
+  wins?: number;
+  losses?: number;
+  flat?: number;
   /** Proven smart wallet (≥60% WR, ≥10 markets, PNL>0). */
   isSmart?: boolean;
 }

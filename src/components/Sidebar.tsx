@@ -27,7 +27,7 @@ import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarke
 import { API_BASE } from '../lib/env';
 import { fetchUpDownTargetFromCrypto, upDownCryptoTimeframe } from '../lib/upDownTargetFromCrypto';
 import { usePolymarketOB } from '../hooks/usePolymarketOB';
-import { useOnchainTradesWS } from '../hooks/useOnchainTradesWS';
+import { useOnchainTradesWS, type WSTrade } from '../hooks/useOnchainTradesWS';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
 import { LiveTradeChart } from './LiveTradeChart';
@@ -214,15 +214,7 @@ export function Sidebar() {
     size: number;
     avgPrice: number;
   }>>([]);
-  const [onchainSidebarTrades, setOnchainSidebarTrades] = useState<Array<{
-    tokenId: string;
-    side: 'BUY' | 'SELL';
-    price: number;
-    size: number;
-    fee: number;
-    blockTime: number;
-    txHash?: string;
-  }>>([]);
+  const [onchainSidebarTrades, setOnchainSidebarTrades] = useState<WSTrade[]>([]);
   const [proxyWallet, setProxyWallet] = useState<string | null>(null);
   const pkAddress = useAppStore((s) => s.pkAddress);
   const signingMode = useAppStore((s) => s.signingMode);
@@ -2747,16 +2739,33 @@ export function Sidebar() {
                   const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
                   const side = isClaim ? 'CLAIM' : trade.side;
                   const cost = Number.isFinite(rawPrice) && Number.isFinite(size) ? rawPrice * size : 0;
-                  const signedCost = side === 'BUY' ? -cost : cost;
+                  const signedCost =
+                    side === 'BUY' ? -cost : side === 'SELL' ? cost : 0;
                   const tradeFee = parseFloat(trade.fee || '0');
+                  const dirTone =
+                    side === 'BUY'
+                      ? 'text-emerald-400'
+                      : side === 'CLAIM'
+                        ? 'text-blue-400'
+                        : side === 'SPLIT' || side === 'MERGE'
+                          ? 'text-purple-400'
+                          : 'text-rose-400';
                   return (
                     <tr key={i} className="text-gray-300">
-                      <td className={`py-0.5 ${side === 'BUY' ? 'text-emerald-400' : side === 'CLAIM' ? 'text-blue-400' : 'text-rose-400'}`}>{side || '-'}</td>
+                      <td className={`py-0.5 ${dirTone}`}>{side || '-'}</td>
                       <td className={outcome === 'YES' ? 'py-0.5 text-emerald-400' : 'py-0.5 text-rose-400'}>{sideLabel}</td>
                       <td className="py-0.5 text-right">{Number.isFinite(size) ? size.toFixed(2) : '-'}</td>
                       <td className="py-0.5 text-right">{Number.isFinite(rawPrice) ? `${(rawPrice * 100).toFixed(1)}¢` : '-'}</td>
                       <td className="py-0.5 text-right text-yellow-400/80">{tradeFee > 0 ? `$${tradeFee.toFixed(2)}` : '-'}</td>
-                      <td className={`py-0.5 text-right ${side === 'BUY' ? 'text-rose-400' : side === 'SELL' ? 'text-emerald-400' : 'text-gray-300'}`}>
+                      <td
+                        className={`py-0.5 text-right ${
+                          side === 'BUY'
+                            ? 'text-rose-400'
+                            : side === 'SELL'
+                              ? 'text-emerald-400'
+                              : 'text-gray-300'
+                        }`}
+                      >
                         {signedCost >= 0 ? '+' : '-'}${Math.abs(signedCost).toFixed(2)}
                       </td>
                     </tr>

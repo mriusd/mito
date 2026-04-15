@@ -452,6 +452,8 @@ export async function fetchWalletPositions(params: {
   limit?: number;
   /** When true, server excludes closed markets and past end_date (joins `markets`). */
   active_only?: boolean;
+  /** When true, rows from `wallet_market_positions` (ledger). */
+  ledger?: boolean;
 }): Promise<{ positions: WalletPosition[]; count: number; total: number }> {
   const qs = new URLSearchParams();
   if (params.market_id) qs.set('market_id', params.market_id);
@@ -462,6 +464,7 @@ export async function fetchWalletPositions(params: {
   if (params.sort_by) qs.set('sort_by', params.sort_by);
   if (params.limit) qs.set('limit', String(params.limit));
   if (params.active_only) qs.set('active_only', '1');
+  if (params.ledger) qs.set('ledger', '1');
   const resp = await fetch(`${BASE}/api/wallet-positions?${qs.toString()}`);
   if (!resp.ok) throw new Error('Failed to fetch wallet positions');
   return resp.json();
@@ -472,21 +475,32 @@ export interface OnchainFillRow {
   logIndex: number;
   blockNumber: number;
   blockTime: number;
-  contract: string;
-  orderHash: string;
-  maker: string;
-  taker: string;
-  makerAssetId: string;
-  takerAssetId: string;
-  makerAmount: number;
-  takerAmount: number;
-  fee: number;
+  /** DB fallback rows from `wallet_fill_ledger` only */
+  fillSource?: string;
+  wallet?: string;
+  action?: string;
+  size?: number;
+  price?: number | null;
+  deltaInvYes?: number;
+  deltaInvNo?: number;
+  deltaUsdYes?: number;
+  deltaUsdNo?: number;
+  /** Live OrderFilled tape only */
+  contract?: string;
+  orderHash?: string;
+  maker?: string;
+  taker?: string;
+  makerAssetId?: string;
+  takerAssetId?: string;
+  makerAmount?: number;
+  takerAmount?: number;
+  fee?: number;
   tokenId: string;
-  side: string;
+  side?: string;
   marketId: string;
-  marketAsset: string;
-  marketType: string;
-  marketTimeframe: string;
+  marketAsset?: string;
+  marketType?: string;
+  marketTimeframe?: string;
   /** 1 = complementary / mirror leg; still listed for activity when live RAM has it */
   isPhantom?: number;
   makerAccountSide?: string;

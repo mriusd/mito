@@ -44,7 +44,7 @@ function getResolvedDisplay(market: any, row?: WalletPosition): { label: string;
   const isUpDown = /up\s+or\s+down|updown|up-or-down/i.test(`${market?.question || ''} ${market?.eventSlug || ''}`);
   const yesLabel = isUpDown ? 'UP' : 'YES';
   const noLabel = isUpDown ? 'DOWN' : 'NO';
-  // Prefer backend truth from market_results join on wallet_positions.
+  // Prefer backend truth from market_results join on wallet-positions response.
   if (typeof row?.resultYes === 'number' && row.resultYes >= 0) {
     if (row.resultYes === 1) return { label: `Resolved ${yesLabel}`, color: 'text-green-400 font-bold' };
     return { label: `Resolved ${noLabel}`, color: 'text-red-400 font-bold' };
@@ -94,6 +94,19 @@ function isUpDownFromFill(mk: any, f: OnchainFillRow): boolean {
 }
 
 /** API `side` varies (Yes/No/YES/empty). Infer YES/NO (or UP/DOWN) from `tokenId` vs market clob ids when missing. */
+function isLedgerFillRow(f: OnchainFillRow): boolean {
+  return f.fillSource === 'wallet_fill_ledger';
+}
+
+function ledgerAbsUsdc(f: OnchainFillRow): number {
+  const y = Math.abs(f.deltaUsdYes ?? 0);
+  const n = Math.abs(f.deltaUsdNo ?? 0);
+  const side = String(f.side ?? '').toUpperCase();
+  if (side === 'YES') return y;
+  if (side === 'NO') return n;
+  return y + n;
+}
+
 function fillOutcomeDisplay(f: OnchainFillRow, mk: any): { text: string; tone: 'yes' | 'no' | 'muted' } {
   const upDown = isUpDownFromFill(mk, f);
   const yesLab = upDown ? 'UP' : 'YES';
@@ -560,10 +573,10 @@ export function WalletInfoDialog({
       try {
         const [s, p] = await Promise.all([
           fetchWalletSummary(wallet),
-          fetchWalletPositions({ wallet, sort_by: 'last_trade_time', limit: 100 }),
+          fetchWalletPositions({ wallet, sort_by: 'trade_count', limit: 100, ledger: true }),
         ]);
         setSummary(s);
-        const sorted = [...(p.positions || [])].sort((a, b) => (b.lastTradeTime || 0) - (a.lastTradeTime || 0));
+        const sorted = [...(p.positions || [])].sort((a, b) => (b.tradeCount || 0) - (a.tradeCount || 0));
         setMarkets(sorted);
         let pick = '';
         if (pref) {
@@ -738,7 +751,6 @@ export function WalletInfoDialog({
                 <tbody>
                   {fills.map((f) => {
                     const mid = String(f.marketId || '').trim().toLowerCase();
-                    const sel = String(selectedMarketId || '').trim().toLowerCase();
                     const mk =
                       marketById[selectedMarketId] ||
                       (mid && marketById[mid]) ||
@@ -747,6 +759,53 @@ export function WalletInfoDialog({
                     const ts = bt > 0
                       ? (bt > 1e12 ? new Date(bt) : new Date(bt * 1000)).toLocaleString()
                       : '-';
+                    if (isLedgerFillRow(f)) {
+                      const isSplitMerge = f.action === 'SPLIT' || f.action === 'MERGE';
+                      const sz = Number(f.size ?? 0);
+                      if (isSplitMerge) {
+                        return (
+                          <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
+                            <td className="py-0.5">{ts}</td>
+                            <td className="text-purple-400" colSpan={2}>{String(f.action)}</td>
+                            <td className="text-right">{Number.isFinite(sz) ? sz.toFixed(2) : '—'}</td>
+                            <td className="text-right text-gray-500">—</td>
+                            <td className="text-right text-gray-500">—</td>
+                            <td className="text-right">
+                              <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
+                                {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}
+                              </a>
+                            </td>
+                          </tr>
+                        );
+                      }
+                      const nUsdc = ledgerAbsUsdc(f);
+                      const nShares = Number(f.size ?? 0);
+                      const p = f.price != null && Number.isFinite(f.price) ? f.price : NaN;
+                      const pricePerShare = Number.isFinite(p)
+                        ? p
+                        : (nShares > 1e-9 && nUsdc > 0 ? nUsdc / nShares : NaN);
+                      const priceLabel = Number.isFinite(pricePerShare)
+                        ? `${(pricePerShare * 100).toFixed(1)}¢`
+                        : '—';
+                      const action = String(f.action || f.walletAccountSide || '').toUpperCase();
+                      const { text: sideText, tone: sideTone } = fillOutcomeDisplay(f, mk);
+                      const sideCls = sideTone === 'yes' ? 'text-green-400' : sideTone === 'no' ? 'text-red-400' : 'text-gray-300';
+                      return (
+                        <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
+                          <td className="py-0.5">{ts}</td>
+                          <td className={action === 'BUY' ? 'text-green-400' : action === 'SELL' ? 'text-red-400' : 'text-gray-300'}>{action || '—'}</td>
+                          <td className={sideCls}>{sideText}</td>
+                          <td className="text-right">{Number.isFinite(nShares) ? nShares.toFixed(2) : '—'}</td>
+                          <td className="text-right text-gray-300 tabular-nums">{priceLabel}</td>
+                          <td className="text-right text-yellow-400">{nUsdc > 0 ? `$${nUsdc.toFixed(2)}` : '—'}</td>
+                          <td className="text-right">
+                            <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
+                              {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}
+                            </a>
+                          </td>
+                        </tr>
+                      );
+                    }
                     const isSplitMerge = f.orderHash === 'SPLIT' || f.orderHash === 'MERGE';
                     if (isSplitMerge) {
                       const label = String(f.orderHash);
@@ -1251,11 +1310,11 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                           )}
                           {(data.onchainFillsForMarket ?? 0) > 0 && (
                             <p className="text-gray-400">
-                              {data.onchainFillsForMarket} raw fill(s) for this market in DB; wallet rollups only appear after fills are matched to token IDs. If tables stay empty, check <span className="font-mono">wallet_positions</span> and server logs.
+                              {data.onchainFillsForMarket} raw fill(s) for this market in DB; wallet rollups only appear after fills are matched to token IDs. If tables stay empty, check <span className="font-mono">wallet_market_positions</span> and server logs.
                             </p>
                           )}
                           <p>
-                            Holders aggregates <span className="font-mono">wallet_positions</span> for this market (not the CLOB orderbook). Data persists across restarts and backfills missed blocks automatically.
+                            Holders aggregates <span className="font-mono">wallet_market_positions</span> (ledger) for this market (not the CLOB orderbook). Data persists across restarts and backfills missed blocks automatically.
                           </p>
                     </div>
                   )}

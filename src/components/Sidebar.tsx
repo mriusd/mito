@@ -175,6 +175,7 @@ export function Sidebar() {
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [editingOrderPrice, setEditingOrderPrice] = useState('');
   const [cancellingOrderIds, setCancellingOrderIds] = useState<Set<string>>(new Set());
+  const [closingPositionTokens, setClosingPositionTokens] = useState<Set<string>>(new Set());
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
   const [toxicDialogOpen, setToxicDialogOpen] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
@@ -831,6 +832,56 @@ export function Sidebar() {
     return `${(leadMs / 86400000).toFixed(1)}d`;
   };
 
+  const marketName = selectedMarket
+    ? shortenMarketName(selectedMarket.question || selectedMarket.groupItemTitle, undefined, undefined, selectedMarket.eventSlug)
+    : '';
+
+  /** Market FAK path shared by type dropdown Market and close-position ✕. */
+  const submitSidebarMarketFak = useCallback(
+    async (args: {
+      tokenId: string;
+      side: 'BUY' | 'SELL';
+      size: number;
+      orderInfo: string;
+      bids: typeof displayBids;
+      asks: typeof displayAsks;
+      afterSuccess?: () => void;
+    }) => {
+      const { tokenId, side, size, orderInfo, bids, asks, afterSuccess } = args;
+      if (side === 'BUY') {
+        if (!asks.length) {
+          showToast('No asks in book — cannot market buy', 'error');
+          return;
+        }
+      } else if (!bids.length) {
+        showToast('No bids in book — cannot market sell', 'error');
+        return;
+      }
+      const price = side === 'BUY' ? MARKET_AGGRESSIVE_BUY : MARKET_AGGRESSIVE_SELL;
+      try {
+        const result = await placeOrder({
+          tokenId,
+          side,
+          price,
+          size,
+          expiration: 0,
+          orderType: 'FAK',
+          orderInfo,
+        });
+        if (result.success) {
+          showToast('Market order submitted', 'success');
+          triggerWalletRefresh();
+          afterSuccess?.();
+        } else {
+          showToast(result.error || 'Order failed', 'error');
+        }
+      } catch {
+        showToast('Order failed', 'error');
+      }
+    },
+    [],
+  );
+
   const handleSubmitOrder = async () => {
     if (!selectedMarket) return;
     const tokenId = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1];
@@ -839,41 +890,34 @@ export function Sidebar() {
     if (!size) return;
 
     const isMarket = orderKind === 'market';
-    let price: number;
     if (isMarket) {
-      if (orderSide === 'BUY') {
-        if (!displayAsks.length) {
-          showToast('No asks in book — cannot market buy', 'error');
-          return;
-        }
-        price = MARKET_AGGRESSIVE_BUY;
-      } else {
-        if (!displayBids.length) {
-          showToast('No bids in book — cannot market sell', 'error');
-          return;
-        }
-        price = MARKET_AGGRESSIVE_SELL;
-      }
-    } else {
-      price = parseFloat(orderPrice) / 100;
-      if (!price) return;
-      const orderPriceCents = parseFloat(orderPrice);
-      const bestBidCents = displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
-      const bestAskCents = displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
-      const crossesBook =
-        (orderSide === 'SELL' && bestBidCents !== null && orderPriceCents <= bestBidCents) ||
-        (orderSide === 'BUY' && bestAskCents !== null && orderPriceCents >= bestAskCents);
-      if (crossesBook) {
-        const bestPrice = orderSide === 'SELL' ? bestBidCents : bestAskCents;
-        const confirmed = await requestCrossingConfirm(bestPrice ?? 0);
-        if (!confirmed) return;
-      }
+      await submitSidebarMarketFak({
+        tokenId,
+        side: orderSide,
+        size,
+        orderInfo: `${orderSide} ${size} ${orderOutcome} for ${marketName} (market FAK)`,
+        bids: displayBids,
+        asks: displayAsks,
+      });
+      return;
+    }
+
+    const price = parseFloat(orderPrice) / 100;
+    if (!price) return;
+    const orderPriceCents = parseFloat(orderPrice);
+    const bestBidCents = displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
+    const bestAskCents = displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
+    const crossesBook =
+      (orderSide === 'SELL' && bestBidCents !== null && orderPriceCents <= bestBidCents) ||
+      (orderSide === 'BUY' && bestAskCents !== null && orderPriceCents >= bestAskCents);
+    if (crossesBook) {
+      const bestPrice = orderSide === 'SELL' ? bestBidCents : bestAskCents;
+      const confirmed = await requestCrossingConfirm(bestPrice ?? 0);
+      if (!confirmed) return;
     }
 
     let expiration: number | undefined;
-    if (isMarket) {
-      expiration = 0;
-    } else if (orderSide === 'SELL') {
+    if (orderSide === 'SELL') {
       expiration = 0;
     } else {
       const exp = computeLimitExpiration(selectedMarket.endDate);
@@ -883,21 +927,18 @@ export function Sidebar() {
         return;
       }
     }
-    const orderInfo = isMarket
-      ? `${orderSide} ${size} ${orderOutcome} for ${marketName} (market FAK)`
-      : `${orderSide} ${size} ${orderOutcome} for ${marketName} @ ${orderPrice}¢`;
+    const orderInfo = `${orderSide} ${size} ${orderOutcome} for ${marketName} @ ${orderPrice}¢`;
     try {
       const result = await placeOrder({
         tokenId,
-      side: orderSide,
+        side: orderSide,
         price,
         size,
-      expiration,
-        ...(isMarket ? { orderType: 'FAK' as const } : {}),
+        expiration,
         orderInfo,
       });
       if (result.success) {
-        showToast(isMarket ? 'Market order submitted' : 'Order placed', 'success');
+        showToast('Order placed', 'success');
         triggerWalletRefresh();
       } else {
         showToast(result.error || 'Order failed', 'error');
@@ -1128,9 +1169,67 @@ export function Sidebar() {
     }
   };
 
-  const marketName = selectedMarket
-    ? shortenMarketName(selectedMarket.question || selectedMarket.groupItemTitle, undefined, undefined, selectedMarket.eventSlug)
-    : '';
+  /** Close ✕ uses same FAK + liquidity gate as sidebar type Market. */
+  const handleClosePosition = useCallback(
+    async (tokenId: string, rawSize: number) => {
+      const tid = String(tokenId || '').trim();
+      const size = Math.floor(rawSize * 100) / 100;
+      if (!tid || !selectedMarket || !size || size <= 0) return;
+      const sidebarBookToken = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
+      const sameBook = tid === sidebarBookToken;
+      const bestBid = marketLookup[tid]?.bestBid;
+      const hasBidsFromLookup = typeof bestBid === 'number' && Number.isFinite(bestBid) && bestBid > 0;
+      const bids =
+        sameBook && displayBids.length > 0
+          ? displayBids
+          : !sameBook && hasBidsFromLookup
+            ? [{ price: String(bestBid), size: '1' }]
+            : [];
+      const bestAsk = marketLookup[tid]?.bestAsk;
+      const hasAsksFromLookup = typeof bestAsk === 'number' && Number.isFinite(bestAsk) && bestAsk > 0;
+      const asks =
+        sameBook && displayAsks.length > 0
+          ? displayAsks
+          : !sameBook && hasAsksFromLookup
+            ? [{ price: String(bestAsk), size: '1' }]
+            : [];
+      setClosingPositionTokens((prev) => new Set(prev).add(tid));
+      try {
+        const outcome = getTokenOutcome(tid, marketLookup);
+        const ol = isUpDownMarket ? (outcome === 'YES' ? 'UP' : 'DOWN') : outcome;
+        await submitSidebarMarketFak({
+          tokenId: tid,
+          side: 'SELL',
+          size,
+          orderInfo: `SELL ${size} ${ol} close position (${marketName})`,
+          bids,
+          asks,
+          afterSuccess: () => {
+            if (liveTradesSource === 'onchain') refreshWallet();
+          },
+        });
+      } finally {
+        setClosingPositionTokens((prev) => {
+          const s = new Set(prev);
+          s.delete(tid);
+          return s;
+        });
+      }
+    },
+    [
+      selectedMarket,
+      orderOutcome,
+      marketLookup,
+      displayBids,
+      displayAsks,
+      isUpDownMarket,
+      marketName,
+      liveTradesSource,
+      refreshWallet,
+      submitSidebarMarketFak,
+    ],
+  );
+
   const fullMarketName = selectedMarket ? (selectedMarket.question || selectedMarket.groupItemTitle || '') : '';
 
   const sidebarAsset = selectedMarket ? extractAssetFromMarket(selectedMarket) : '';
@@ -2328,28 +2427,43 @@ export function Sidebar() {
                   const pnlPct = cost > 0 ? (pnl / cost) * 100 : 0;
                   const pnlColor = pnl >= 0 ? 'text-green-400' : 'text-red-400';
                   const pnlSign = pnl >= 0 ? '+' : '';
+                  const posTok = String(tokenId || '').trim();
+                  const closing = closingPositionTokens.has(posTok);
                   return (
-                    <div key={i} className="bg-gray-700/30 rounded px-1.5 py-0.5 text-[12px] min-w-0">
-                      <div
-                        className="w-full text-gray-300 leading-tight break-words"
-                        style={{
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden',
-                        }}
-                      >
-                        <span className={`${outcomeColor} font-medium`}>{outcomeLabel}</span>
-                        <span
-                          className="cursor-pointer hover:underline"
-                          onClick={() => setOrderAmount((Math.floor(size * 100) / 100).toString())}
-                          title="Net contracts held for this outcome (after sells; fills may report slightly different share amounts vs order size due to fees/rounding). Click to use as order amount."
+                    <div key={posTok || i} className="bg-gray-700/30 rounded px-1.5 py-0.5 text-[12px] min-w-0">
+                      <div className="flex justify-between items-start gap-1">
+                        <div
+                          className="min-w-0 flex-1 text-gray-300 leading-tight break-words"
+                          style={{
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                          }}
                         >
-                          {' '}{Math.floor(size * 100) / 100}
-                        </span>
-                        <span className="text-gray-500"> @ </span>
-                        <span className="text-yellow-400">{(avg * 100).toFixed(1)}¢</span>
-                        <span className="text-gray-400"> ${currentValue.toFixed(2)}\${cost.toFixed(2)}</span>
+                          <span className={`${outcomeColor} font-medium`}>{outcomeLabel}</span>
+                          <span
+                            className="cursor-pointer hover:underline"
+                            onClick={() => setOrderAmount((Math.floor(size * 100) / 100).toString())}
+                            title="Net contracts held for this outcome (after sells; fills may report slightly different share amounts vs order size due to fees/rounding). Click to use as order amount."
+                          >
+                            {' '}{Math.floor(size * 100) / 100}
+                          </span>
+                          <span className="text-gray-500"> @ </span>
+                          <span className="text-yellow-400">{(avg * 100).toFixed(1)}¢</span>
+                          <span className="text-gray-400"> ${currentValue.toFixed(2)}\${cost.toFixed(2)}</span>
+                        </div>
+                        {!isMarketExpired && (
+                          <button
+                            type="button"
+                            onClick={() => !closing && handleClosePosition(posTok, size)}
+                            disabled={closing}
+                            className="w-4 h-4 shrink-0 rounded-sm flex items-center justify-center bg-red-600 hover:bg-red-500 disabled:bg-red-600/50"
+                            title="Market sell entire position (FAK)"
+                          >
+                            {closing ? <span className="cancel-spinner" /> : <span className="text-black text-[10px] font-bold leading-none">✕</span>}
+                          </button>
+                        )}
                       </div>
                       <div className={`${pnlColor} w-full leading-tight`}>
                         {pnlSign}${Math.abs(Math.round(pnl))} ({pnlSign}{Math.round(pnlPct)}%)

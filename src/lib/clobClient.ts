@@ -419,33 +419,6 @@ export async function fetchOpenOrdersDirect(proxyWallet: string): Promise<any[]>
   }
 }
 
-function openOrdersListContainsOrderId(open: unknown[], orderId: string): boolean {
-  const oid = orderId.trim().toLowerCase();
-  if (!oid) return false;
-  for (const row of open) {
-    if (!row || typeof row !== 'object') continue;
-    const r = row as Record<string, unknown>;
-    const id = String(r.id ?? r.orderID ?? r.order_id ?? '').trim().toLowerCase();
-    if (id === oid) return true;
-  }
-  return false;
-}
-
-/** After CLOB reports cancel, wait until GET /data/orders no longer lists this id (handles brief lag). */
-async function waitUntilOrderNotInOpenBook(
-  orderId: string,
-  proxyWallet: string,
-  maxAttempts = 6,
-  delayMs = 120,
-): Promise<boolean> {
-  for (let i = 0; i < maxAttempts; i++) {
-    const open = await fetchOpenOrdersDirect(proxyWallet);
-    if (!openOrdersListContainsOrderId(open, orderId)) return true;
-    await new Promise((r) => setTimeout(r, delayMs));
-  }
-  return false;
-}
-
 export async function placeOrderDirect(params: {
   tokenId: string;
   side: string;
@@ -702,13 +675,6 @@ export async function cancelOrderDirect(orderId: string, proxyWallet: string): P
 
     const listedAsCanceled = canceled.some((id) => String(id).trim().toLowerCase() === oid);
     if (listedAsCanceled) {
-      const gone = await waitUntilOrderNotInOpenBook(orderId, proxyWallet);
-      if (!gone) {
-        return {
-          success: false,
-          error: 'Cancel accepted but order still appears open; not placing a replacement until this clears.',
-        };
-      }
       return { success: true };
     }
 

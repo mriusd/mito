@@ -419,6 +419,33 @@ export async function fetchOpenOrdersDirect(proxyWallet: string): Promise<any[]>
   }
 }
 
+function openOrdersListContainsOrderId(open: unknown[], orderId: string): boolean {
+  const oid = orderId.trim().toLowerCase();
+  if (!oid) return false;
+  for (const row of open) {
+    if (!row || typeof row !== 'object') continue;
+    const r = row as Record<string, unknown>;
+    const id = String(r.id ?? r.orderID ?? r.order_id ?? '').trim().toLowerCase();
+    if (id === oid) return true;
+  }
+  return false;
+}
+
+/** After CLOB reports cancel, wait until GET /data/orders no longer lists this id (handles brief lag). */
+async function waitUntilOrderNotInOpenBook(
+  orderId: string,
+  proxyWallet: string,
+  maxAttempts = 6,
+  delayMs = 120,
+): Promise<boolean> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const open = await fetchOpenOrdersDirect(proxyWallet);
+    if (!openOrdersListContainsOrderId(open, orderId)) return true;
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return false;
+}
+
 export async function placeOrderDirect(params: {
   tokenId: string;
   side: string;
@@ -636,9 +663,64 @@ export async function cancelOrderDirect(orderId: string, proxyWallet: string): P
       headers: { ...headers, ...builderHeaders, 'Content-Type': 'application/json' },
       body,
     });
-    const data = await resp.json();
-    if (data.error || data.errorMsg) return { success: false, error: data.error || data.errorMsg };
-    return { success: true };
+    const rawText = await resp.text();
+    let data: Record<string, unknown> = {};
+    try {
+      data = JSON.parse(rawText) as Record<string, unknown>;
+    } catch {
+      data = {};
+    }
+
+    if (!resp.ok) {
+      const err = (data.error || data.errorMsg || rawText || `HTTP ${resp.status}`) as string;
+      return { success: false, error: String(err) };
+    }
+    if (data.error || data.errorMsg) {
+      return { success: false, error: String(data.error || data.errorMsg) };
+    }
+
+    const oid = orderId.trim().toLowerCase();
+    const canceledRaw = data.canceled;
+    const notCanceledRaw = data.not_canceled;
+    const canceled: string[] = Array.isArray(canceledRaw)
+      ? canceledRaw.map((x) => String(x))
+      : [];
+    const notCanceled: Record<string, string> =
+      notCanceledRaw && typeof notCanceledRaw === 'object' && !Array.isArray(notCanceledRaw)
+        ? (notCanceledRaw as Record<string, string>)
+        : {};
+
+    for (const k of Object.keys(notCanceled)) {
+      if (String(k).trim().toLowerCase() === oid) {
+        const reason = notCanceled[k];
+        return {
+          success: false,
+          error: String(reason || 'Order could not be cancelled (e.g. already matched or not found)'),
+        };
+      }
+    }
+
+    const listedAsCanceled = canceled.some((id) => String(id).trim().toLowerCase() === oid);
+    if (listedAsCanceled) {
+      const gone = await waitUntilOrderNotInOpenBook(orderId, proxyWallet);
+      if (!gone) {
+        return {
+          success: false,
+          error: 'Cancel accepted but order still appears open; not placing a replacement until this clears.',
+        };
+      }
+      return { success: true };
+    }
+
+    // Legacy / unexpected body: no structured canceled list (avoid false success on filled orders).
+    if (canceled.length === 0 && Object.keys(notCanceled).length === 0) {
+      return { success: false, error: 'Unexpected cancel response; order may have executed. Not assuming cancel succeeded.' };
+    }
+
+    return {
+      success: false,
+      error: 'Order was not in the cancelled list; it may have filled. Replacement aborted.',
+    };
   } catch (err: any) {
     return { success: false, error: err.message };
   }

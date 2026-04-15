@@ -1089,7 +1089,7 @@ export function Sidebar() {
       const submitResult = await submitSignedOrder(signResult.signedPayload);
       if (!submitResult.success) {
         signingDialog.setStep('submit', 'error', submitResult.error || 'Submit failed');
-        showToast(submitResult.error || 'Submit failed (old order was cancelled)', 'error');
+        showToast(submitResult.error || 'Submit failed (resting order was already cancelled)', 'error');
         setEditingOrderId(null);
         return;
       }

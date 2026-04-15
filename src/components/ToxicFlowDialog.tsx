@@ -65,6 +65,44 @@ function shortenWallet(w: string): string {
   return w.slice(0, 6) + '…' + w.slice(-4);
 }
 
+function sameClobToken(a: string, b: string): boolean {
+  const sa = String(a || '').trim();
+  const sb = String(b || '').trim();
+  if (!sa || !sb) return false;
+  if (sa === sb) return true;
+  try {
+    return BigInt(sa) === BigInt(sb);
+  } catch {
+    return false;
+  }
+}
+
+function isUpDownFromFill(mk: any, f: OnchainFillRow): boolean {
+  const blob = `${f.marketType || ''} ${mk?.marketType || ''} ${mk?.question || ''} ${mk?.eventSlug || ''}`.toLowerCase();
+  return /upordown|up-down|up\s*or\s*down|updown/.test(blob);
+}
+
+/** API `side` varies (Yes/No/YES/empty). Infer YES/NO (or UP/DOWN) from `tokenId` vs market clob ids when missing. */
+function fillOutcomeDisplay(f: OnchainFillRow, mk: any): { text: string; tone: 'yes' | 'no' | 'muted' } {
+  const upDown = isUpDownFromFill(mk, f);
+  const yesLab = upDown ? 'UP' : 'YES';
+  const noLab = upDown ? 'DOWN' : 'NO';
+  const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, '');
+  const raw = String(f.side ?? '').trim();
+  if (raw) {
+    const u = norm(raw);
+    if (u === 'YES' || u === 'Y' || u === 'UP') return { text: yesLab, tone: 'yes' };
+    if (u === 'NO' || u === 'N' || u === 'DOWN') return { text: noLab, tone: 'no' };
+    return { text: raw, tone: 'muted' };
+  }
+  const tid = String(f.tokenId || '').trim();
+  const yT = String(mk?.clobTokenIds?.[0] ?? '').trim();
+  const nT = String(mk?.clobTokenIds?.[1] ?? '').trim();
+  if (tid && yT && sameClobToken(tid, yT)) return { text: yesLab, tone: 'yes' };
+  if (tid && nT && sameClobToken(tid, nT)) return { text: noLab, tone: 'no' };
+  return { text: '-', tone: 'muted' };
+}
+
 function normalizeWinRate(v: number | null | undefined): number | null {
   if (v == null || !Number.isFinite(v)) return null;
   // Accept either 0..1 or 0..100 from backend variants.
@@ -466,7 +504,7 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
   const [loadingFills, setLoadingFills] = useState(false);
   const [fillsTotal, setFillsTotal] = useState(0);
   const [fillsPage, setFillsPage] = useState(0);
-  const fillsPageSize = 50;
+  const fillsPageSize = 200;
   const marketById = useMemo(() => {
     const m: Record<string, any> = {};
     for (const mk of Object.values(marketLookup || {})) {
@@ -641,23 +679,80 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
               <table className="w-full text-[10px]">
                 <thead>
                   <tr className="text-gray-500 border-b border-gray-700">
-                    <th className="text-left py-1 w-20">Tx</th>
-                    <th className="text-left py-1">Fill (API JSON)</th>
+                    <th className="text-left py-1">Time</th>
+                    <th className="text-left">Action</th>
+                    <th className="text-left">Side</th>
+                    <th className="text-right">Shares</th>
+                    <th className="text-right">Price</th>
+                    <th className="text-right">USDC</th>
+                    <th className="text-right">Tx</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {fills.map((f) => (
-                    <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800 align-top">
-                      <td className="py-0.5 whitespace-nowrap">
-                        <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
-                          {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}
-                        </a>
-                      </td>
-                      <td className="py-0.5 font-mono text-[9px] text-gray-300 break-all whitespace-pre-wrap">
-                        {JSON.stringify(f)}
-                      </td>
-                    </tr>
-                  ))}
+                  {fills.map((f) => {
+                    const mid = String(f.marketId || '').trim().toLowerCase();
+                    const sel = String(selectedMarketId || '').trim().toLowerCase();
+                    const mk =
+                      marketById[selectedMarketId] ||
+                      (mid && marketById[mid]) ||
+                      {};
+                    const bt = Number((f as { blockTime?: number }).blockTime ?? 0);
+                    const ts = bt > 0
+                      ? (bt > 1e12 ? new Date(bt) : new Date(bt * 1000)).toLocaleString()
+                      : '-';
+                    const isSplitMerge = f.orderHash === 'SPLIT' || f.orderHash === 'MERGE';
+                    if (isSplitMerge) {
+                      const label = String(f.orderHash);
+                      const amount = Number(f.makerAmount ?? 0);
+                      return (
+                        <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
+                          <td className="py-0.5">{ts}</td>
+                          <td className="text-purple-400" colSpan={2}>{label}</td>
+                          <td className="text-right">{Number.isFinite(amount) ? amount.toFixed(2) : '—'}</td>
+                          <td className="text-right text-gray-500">—</td>
+                          <td className="text-right text-gray-500">{Number.isFinite(amount) ? `$${amount.toFixed(2)}` : '—'}</td>
+                          <td className="text-right">
+                            <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
+                              {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}
+                            </a>
+                          </td>
+                        </tr>
+                      );
+                    }
+                    const walletLower = wallet.toLowerCase();
+                    const isTaker = (f.taker || '').toLowerCase() === walletLower;
+                    const walletPaysUsdc = (isTaker && f.takerAssetId === '0') || (!isTaker && f.makerAssetId === '0');
+                    const action = walletPaysUsdc ? 'BUY' : 'SELL';
+                    const shares = walletPaysUsdc
+                      ? (isTaker ? f.makerAmount : f.takerAmount)
+                      : (isTaker ? f.takerAmount : f.makerAmount);
+                    const usdc = walletPaysUsdc
+                      ? (isTaker ? f.takerAmount : f.makerAmount)
+                      : (isTaker ? f.makerAmount : f.takerAmount);
+                    const nShares = Number(shares);
+                    const nUsdc = Number(usdc);
+                    const pricePerShare = nShares > 1e-9 && Number.isFinite(nShares) && Number.isFinite(nUsdc) ? nUsdc / nShares : NaN;
+                    const priceLabel = Number.isFinite(pricePerShare)
+                      ? `${(pricePerShare * 100).toFixed(1)}¢`
+                      : '—';
+                    const { text: sideText, tone: sideTone } = fillOutcomeDisplay(f, mk);
+                    const sideCls = sideTone === 'yes' ? 'text-green-400' : sideTone === 'no' ? 'text-red-400' : 'text-gray-300';
+                    return (
+                      <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
+                        <td className="py-0.5">{ts}</td>
+                        <td className={action === 'BUY' ? 'text-green-400' : 'text-red-400'}>{action}</td>
+                        <td className={sideCls}>{sideText}</td>
+                        <td className="text-right">{Number.isFinite(nShares) ? nShares.toFixed(2) : '—'}</td>
+                        <td className="text-right text-gray-300 tabular-nums">{priceLabel}</td>
+                        <td className="text-right text-yellow-400">{Number.isFinite(nUsdc) ? `$${nUsdc.toFixed(2)}` : '—'}</td>
+                        <td className="text-right">
+                          <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
+                            {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}
+                          </a>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

@@ -98,15 +98,6 @@ function isLedgerFillRow(f: OnchainFillRow): boolean {
   return f.fillSource === 'wallet_fill_ledger';
 }
 
-function ledgerAbsUsdc(f: OnchainFillRow): number {
-  const y = Math.abs(f.deltaUsdYes ?? 0);
-  const n = Math.abs(f.deltaUsdNo ?? 0);
-  const side = String(f.side ?? '').toUpperCase();
-  if (side === 'YES') return y;
-  if (side === 'NO') return n;
-  return y + n;
-}
-
 function fillOutcomeDisplay(f: OnchainFillRow, mk: any): { text: string; tone: 'yes' | 'no' | 'muted' } {
   const upDown = isUpDownFromFill(mk, f);
   const yesLab = upDown ? 'UP' : 'YES';
@@ -745,6 +736,7 @@ export function WalletInfoDialog({
                     <th className="text-right">Shares</th>
                     <th className="text-right">Price</th>
                     <th className="text-right">USDC</th>
+                    <th className="text-right">Fee</th>
                     <th className="text-right">Tx</th>
                   </tr>
                 </thead>
@@ -760,44 +752,39 @@ export function WalletInfoDialog({
                       ? (bt > 1e12 ? new Date(bt) : new Date(bt * 1000)).toLocaleString()
                       : '-';
                     if (isLedgerFillRow(f)) {
-                      const isSplitMerge = f.action === 'SPLIT' || f.action === 'MERGE';
-                      const sz = Number(f.size ?? 0);
-                      if (isSplitMerge) {
-                        return (
-                          <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
-                            <td className="py-0.5">{ts}</td>
-                            <td className="text-purple-400" colSpan={2}>{String(f.action)}</td>
-                            <td className="text-right">{Number.isFinite(sz) ? sz.toFixed(2) : '—'}</td>
-                            <td className="text-right text-gray-500">—</td>
-                            <td className="text-right text-gray-500">—</td>
-                            <td className="text-right">
-                              <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
-                                {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}
-                              </a>
-                            </td>
-                          </tr>
-                        );
-                      }
-                      const nUsdc = ledgerAbsUsdc(f);
-                      const nShares = Number(f.size ?? 0);
-                      const p = f.price != null && Number.isFinite(f.price) ? f.price : NaN;
-                      const pricePerShare = Number.isFinite(p)
-                        ? p
-                        : (nShares > 1e-9 && nUsdc > 0 ? nUsdc / nShares : NaN);
-                      const priceLabel = Number.isFinite(pricePerShare)
-                        ? `${(pricePerShare * 100).toFixed(1)}¢`
-                        : '—';
-                      const action = String(f.action || f.walletAccountSide || '').toUpperCase();
-                      const { text: sideText, tone: sideTone } = fillOutcomeDisplay(f, mk);
-                      const sideCls = sideTone === 'yes' ? 'text-green-400' : sideTone === 'no' ? 'text-red-400' : 'text-gray-300';
+                      const sz = Number(f.size);
+                      const pr = f.price;
+                      const priceFinite = pr != null && Number.isFinite(pr);
+                      const sizeFinite = Number.isFinite(sz);
+                      const priceLabel = priceFinite ? `${(pr * 100).toFixed(1)}¢` : '—';
+                      const usdc = priceFinite && sizeFinite ? pr * sz : NaN;
+                      const usdcLabel = Number.isFinite(usdc) ? `$${usdc.toFixed(2)}` : '—';
+                      const feeN = Number(f.fee);
+                      const feeLabel = Number.isFinite(feeN) ? `$${feeN.toFixed(2)}` : '—';
+                      const rawSide = String(f.side ?? '').trim();
+                      const sideLabel = rawSide || '—';
+                      const su = rawSide.toUpperCase();
+                      const sideCls =
+                        su === 'YES' || su === 'Y' ? 'text-green-400' : su === 'NO' || su === 'N' ? 'text-red-400' : 'text-gray-300';
+                      const action = String(f.action ?? '').trim();
+                      const actionU = action.toUpperCase();
+                      const actionCls =
+                        actionU === 'BUY'
+                          ? 'text-green-400'
+                          : actionU === 'SELL'
+                            ? 'text-red-400'
+                            : actionU === 'SPLIT' || actionU === 'MERGE'
+                              ? 'text-purple-400'
+                              : 'text-gray-300';
                       return (
-                        <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
+                        <tr key={`${f.txHash}-${f.logIndex}-${String(f.tokenId || '')}`} className="border-b border-gray-800">
                           <td className="py-0.5">{ts}</td>
-                          <td className={action === 'BUY' ? 'text-green-400' : action === 'SELL' ? 'text-red-400' : 'text-gray-300'}>{action || '—'}</td>
-                          <td className={sideCls}>{sideText}</td>
-                          <td className="text-right">{Number.isFinite(nShares) ? nShares.toFixed(2) : '—'}</td>
+                          <td className={actionCls}>{action || '—'}</td>
+                          <td className={sideCls}>{sideLabel}</td>
+                          <td className="text-right">{sizeFinite ? sz.toFixed(2) : '—'}</td>
                           <td className="text-right text-gray-300 tabular-nums">{priceLabel}</td>
-                          <td className="text-right text-yellow-400">{nUsdc > 0 ? `$${nUsdc.toFixed(2)}` : '—'}</td>
+                          <td className="text-right text-yellow-400">{usdcLabel}</td>
+                          <td className="text-right text-yellow-400/80">{feeLabel}</td>
                           <td className="text-right">
                             <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
                               {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}
@@ -810,6 +797,8 @@ export function WalletInfoDialog({
                     if (isSplitMerge) {
                       const label = String(f.orderHash);
                       const amount = Number(f.makerAmount ?? 0);
+                      const feeN = Number(f.fee ?? 0);
+                      const feeLabel = Number.isFinite(feeN) ? `$${feeN.toFixed(2)}` : '—';
                       return (
                         <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
                           <td className="py-0.5">{ts}</td>
@@ -817,6 +806,7 @@ export function WalletInfoDialog({
                           <td className="text-right">{Number.isFinite(amount) ? amount.toFixed(2) : '—'}</td>
                           <td className="text-right text-gray-500">—</td>
                           <td className="text-right text-gray-500">{Number.isFinite(amount) ? `$${amount.toFixed(2)}` : '—'}</td>
+                          <td className="text-right text-yellow-400/80">{feeLabel}</td>
                           <td className="text-right">
                             <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
                               {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}
@@ -844,6 +834,8 @@ export function WalletInfoDialog({
                       : '—';
                     const { text: sideText, tone: sideTone } = fillOutcomeDisplay(f, mk);
                     const sideCls = sideTone === 'yes' ? 'text-green-400' : sideTone === 'no' ? 'text-red-400' : 'text-gray-300';
+                    const feeN = Number(f.fee ?? 0);
+                    const feeLabel = Number.isFinite(feeN) ? `$${feeN.toFixed(2)}` : '—';
                     return (
                       <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
                         <td className="py-0.5">{ts}</td>
@@ -852,6 +844,7 @@ export function WalletInfoDialog({
                         <td className="text-right">{Number.isFinite(nShares) ? nShares.toFixed(2) : '—'}</td>
                         <td className="text-right text-gray-300 tabular-nums">{priceLabel}</td>
                         <td className="text-right text-yellow-400">{Number.isFinite(nUsdc) ? `$${nUsdc.toFixed(2)}` : '—'}</td>
+                        <td className="text-right text-yellow-400/80">{feeLabel}</td>
                         <td className="text-right">
                           <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
                             {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}

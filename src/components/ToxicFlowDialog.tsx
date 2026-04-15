@@ -511,7 +511,20 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
   );
 }
 
-function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: boolean; wallet: string; initialNetShares?: number; onClose: () => void }) {
+export function WalletInfoDialog({
+  open,
+  wallet,
+  initialNetShares,
+  initialMarketId,
+  onClose,
+}: {
+  open: boolean;
+  wallet: string;
+  initialNetShares?: number;
+  /** When set (e.g. condition id), trades table opens on this market after load. */
+  initialMarketId?: string;
+  onClose: () => void;
+}) {
   const marketLookup = useAppStore((s) => s.marketLookup);
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [markets, setMarkets] = useState<WalletPosition[]>([]);
@@ -541,6 +554,8 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
     setFillsTotal(0);
     setFillsPage(0);
     setLoadingMarkets(true);
+    const prefRaw = (initialMarketId || '').trim();
+    const pref = prefRaw.toLowerCase();
     (async () => {
       try {
         const [s, p] = await Promise.all([
@@ -550,15 +565,22 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
         setSummary(s);
         const sorted = [...(p.positions || [])].sort((a, b) => (b.lastTradeTime || 0) - (a.lastTradeTime || 0));
         setMarkets(sorted);
-        if (sorted.length > 0) {
-          setSelectedMarketId(sorted[0].marketId);
+        let pick = '';
+        if (pref) {
+          const hit = sorted.find((row) => String(row.marketId || '').trim().toLowerCase() === pref);
+          if (hit) pick = hit.marketId;
+          else pick = prefRaw;
+        }
+        if (!pick && sorted.length > 0) pick = sorted[0].marketId;
+        if (pick) {
+          setSelectedMarketId(pick);
           setFillsPage(0);
         }
       } finally {
         setLoadingMarkets(false);
       }
     })();
-  }, [open, wallet]);
+  }, [open, wallet, initialMarketId]);
 
   useEffect(() => {
     if (!open || !wallet || !selectedMarketId) return;
@@ -1288,6 +1310,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
           open={walletDialogOpen}
           wallet={selectedWallet}
           initialNetShares={selectedWalletNet}
+          initialMarketId={marketId}
           onClose={() => setWalletDialogOpen(false)}
         />
       </div>

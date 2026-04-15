@@ -33,9 +33,9 @@ import { HelpTooltip } from './HelpTooltip';
 import { LiveTradeChart } from './LiveTradeChart';
 import { ChainlinkChart } from './ChainlinkChart';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
-import { ToxicFlowDialog } from './ToxicFlowDialog';
+import { ToxicFlowDialog, WalletInfoDialog } from './ToxicFlowDialog';
 import { MergePositionsDialog } from './MergePositionsDialog';
-import { ChevronDown, ChevronRight, CirclePercent, Clock, Copy, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, CirclePercent, Clock, Copy, ExternalLink, GripVertical, Pencil, Plus, UsersRound, Wallet, X } from 'lucide-react';
 import type { AssetSymbol } from '../types';
 
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
@@ -184,6 +184,7 @@ export function Sidebar() {
   const [closingPositionTokens, setClosingPositionTokens] = useState<Set<string>>(new Set());
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
   const [toxicDialogOpen, setToxicDialogOpen] = useState(false);
+  const [userWalletInfoOpen, setUserWalletInfoOpen] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   useEffect(() => {
     setMergeDialogOpen(false);
@@ -238,6 +239,11 @@ export function Sidebar() {
     liveTradesSource === 'onchain'
       ? ((proxyWallet || makerAddressForMerge || '').trim().toLowerCase() || null)
       : null;
+  /** Same resolution as on-chain sidebar: proxy / maker for DB wallet keys. */
+  const userTradingWalletForDialog = useMemo(
+    () => (makerAddressForMerge || proxyWallet || walletAddress || '').trim().toLowerCase(),
+    [makerAddressForMerge, proxyWallet, walletAddress],
+  );
   const mergeFunderWallet = (makerAddressForMerge || proxyWallet || '').trim();
   const scopedClobPair = useMemo(() => {
     if (liveTradesSource !== 'onchain' || !sidebarOpen || !selectedMarket?.clobTokenIds?.length) return null;
@@ -1337,6 +1343,12 @@ export function Sidebar() {
       yesTokenId={selectedMarket?.clobTokenIds?.[0] || ''}
       onClose={() => setToxicDialogOpen(false)}
     />
+    <WalletInfoDialog
+      open={userWalletInfoOpen}
+      wallet={userTradingWalletForDialog}
+      initialMarketId={selectedMarket?.conditionId?.trim() || ''}
+      onClose={() => setUserWalletInfoOpen(false)}
+    />
     {isMobileSheet && sidebarOpen && (
       <button
         type="button"
@@ -1725,7 +1737,7 @@ export function Sidebar() {
           })()}
 
           <div className="sidebar-section py-1">
-            <div className="grid grid-cols-3 gap-2 text-[10px]">
+            <div className="grid grid-cols-2 gap-2 text-[10px]">
               <div className="rounded border border-gray-700/70 bg-gray-900/50 px-2 py-1">
                 <div className="text-[9px] uppercase tracking-wide text-gray-500">Volume</div>
                 <div
@@ -1743,6 +1755,8 @@ export function Sidebar() {
                   {sharesInExistenceDisplay}
                 </div>
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-[10px] mt-1">
               <button
                 type="button"
                 onClick={() => setToxicDialogOpen(true)}
@@ -1752,6 +1766,20 @@ export function Sidebar() {
               >
                 <div className="text-[9px] uppercase tracking-wide text-yellow-400">Holders</div>
                 <div className="tabular-nums font-bold text-yellow-300">{holdersCountDisplay}</div>
+              </button>
+              <button
+                type="button"
+                disabled={!selectedMarket?.conditionId?.trim() || !userTradingWalletForDialog}
+                onClick={() => setUserWalletInfoOpen(true)}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="rounded border border-cyan-500/50 bg-cyan-950/30 px-2 py-1 text-left hover:bg-cyan-500/15 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                title={!walletConnected ? 'Connect wallet' : !userTradingWalletForDialog ? 'Wallet address not ready' : 'Your trades in this market'}
+              >
+                <div className="flex items-center gap-1 text-[9px] uppercase tracking-wide text-cyan-400">
+                  <Wallet size={10} className="shrink-0" aria-hidden />
+                  My wallet
+                </div>
+                <div className="tabular-nums font-bold text-cyan-200/90">Trades</div>
               </button>
             </div>
             {/* Compact bias bars */}

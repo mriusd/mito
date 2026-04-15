@@ -47,6 +47,33 @@ function normalizeClobTokenKey(id: string | null | undefined): string {
   }
 }
 
+/** USDC leg in OrderFilled (matches Go normalizeWalletMarketTradeRow). */
+function isUsdcAssetId(id: string | null | undefined): boolean {
+  const s = String(id ?? '').trim();
+  return s === '' || s === '0';
+}
+
+/** Side for this wallet on this fill (not the public tape side). */
+function walletRelativeFillSide(
+  walletLower: string,
+  maker: string | undefined,
+  taker: string | undefined,
+  makerAssetId: string | undefined,
+  takerAssetId: string | undefined,
+): 'BUY' | 'SELL' | null {
+  const w = walletLower.trim().toLowerCase();
+  const mk = (maker || '').trim().toLowerCase();
+  const tk = (taker || '').trim().toLowerCase();
+  const makerUSDC = isUsdcAssetId(makerAssetId);
+  const takerUSDC = isUsdcAssetId(takerAssetId);
+  if (makerUSDC === takerUSDC) return null;
+  const isMaker = mk === w && mk !== '';
+  const isTaker = tk === w && tk !== '';
+  if (isMaker) return makerUSDC ? 'BUY' : 'SELL';
+  if (isTaker) return takerUSDC ? 'BUY' : 'SELL';
+  return null;
+}
+
 function sameDecimalTokenId(a: string | null | undefined, b: string | null | undefined): boolean {
   const sa = String(a ?? '').trim();
   const sb = String(b ?? '').trim();
@@ -351,6 +378,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               tokenId?: string;
               marketId?: string;
               side?: string;
+              makerAssetId?: string;
+              takerAssetId?: string;
               size?: number;
               price?: number;
               timestamp?: number;
@@ -368,7 +397,16 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             if (wAddr && d.tokenId && (makerLc === wAddr || takerLc === wAddr)) {
               if (!mSub || !tradeMarket || canonicalConditionKey(tradeMarket) === canonicalConditionKey(mSub)) {
                 const tok = String(d.tokenId);
-                const side = (d.side === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
+                const fromAssets = walletRelativeFillSide(
+                  wAddr,
+                  d.maker,
+                  d.taker,
+                  d.makerAssetId,
+                  d.takerAssetId,
+                );
+                const side = (
+                  fromAssets ?? ((d.side === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL')
+                ) as 'BUY' | 'SELL';
                 const size = Number(d.size ?? 0);
                 const price = Number(d.price ?? 0);
                 const ts = Number(d.timestamp ?? Date.now());
@@ -386,8 +424,10 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
                     txHash: d.txHash,
                     logIndex: li,
                   };
-                  const key = `${String(d.txHash || '')}:${li}`;
-                  const filtered = prev.filter((x) => `${String(x.txHash || '')}:${x.logIndex ?? -1}` !== key);
+                  const rowKey = `${String(d.txHash || '')}:${li}:${normalizeClobTokenKey(tok)}`;
+                  const filtered = prev.filter(
+                    (x) => `${String(x.txHash || '')}:${x.logIndex ?? -1}:${normalizeClobTokenKey(x.tokenId)}` !== rowKey,
+                  );
                   return [row, ...filtered].slice(0, WALLET_TRADES_CAP);
                 });
               }

@@ -16,6 +16,17 @@ interface ToxicFlowDialogProps {
 
 type Tab = 'topHolders' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
 
+/** Same wallet must not rank both tabs: keep stronger |leg| only (tie → YES). */
+function filterTopYesNoTab(wallets: WalletPosition[] | undefined, tab: 'yes' | 'no'): WalletPosition[] {
+  const arr = wallets ?? [];
+  return arr.filter((w) => {
+    const ny = w.netYes ?? 0;
+    const nn = w.netNo ?? 0;
+    if (tab === 'yes') return ny > 0.001 && Math.abs(ny) >= Math.abs(nn);
+    return nn > 0.001 && Math.abs(nn) > Math.abs(ny);
+  });
+}
+
 function getDateDisplay(endDate: string | null): { label: string; color: string } {
   if (!endDate) return { label: '-', color: 'text-gray-400' };
   const dt = new Date(endDate);
@@ -839,6 +850,9 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     }
   }, [open, load, marketId]);
 
+  const topYesWallets = useMemo(() => filterTopYesNoTab(data?.topYes, 'yes'), [data?.topYes]);
+  const topNoWallets = useMemo(() => filterTopYesNoTab(data?.topNo, 'no'), [data?.topNo]);
+
   if (!open) return null;
 
   const openWalletDialog = (wallet: string, netShares?: number) => {
@@ -1090,8 +1104,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                   }
                 };
                 addWallets(data.topHolders);
-                addWallets(data.topYes);
-                addWallets(data.topNo);
+                addWallets(topYesWallets);
+                addWallets(topNoWallets);
                 addWallets(data.topVolume);
                 addWallets(data.topTraders);
                 const hasConcentration = data.concentration > 0.5;
@@ -1254,10 +1268,10 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                   <WalletTable wallets={data.topHolders} label="holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topYes' && (
-                  <WalletTable wallets={data.topYes} label="YES holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                  <WalletTable wallets={topYesWallets} label="YES holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topNo' && (
-                  <WalletTable wallets={data.topNo} label="NO holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                  <WalletTable wallets={topNoWallets} label="NO holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topVolume' && (
                   <WalletTable wallets={data.topVolume} label="volume" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />

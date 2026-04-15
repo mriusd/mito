@@ -1233,10 +1233,10 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                   <WalletTable wallets={data.topHolders} label="holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topYes' && (
-                  <WalletTable wallets={data.topYes.filter(w => w.net >= 0)} label="YES holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                  <WalletTable wallets={data.topYes} label="YES holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topNo' && (
-                  <WalletTable wallets={data.topNo.filter(w => w.net <= 0)} label="NO holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                  <WalletTable wallets={data.topNo} label="NO holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topVolume' && (
                   <WalletTable wallets={data.topVolume} label="volume" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />

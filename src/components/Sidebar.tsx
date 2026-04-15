@@ -226,7 +226,11 @@ export function Sidebar() {
     return () => { cancelled = true; };
   }, [effectiveSidebarEoa]);
 
-  const onchainWallet = liveTradesSource === 'onchain' ? proxyWallet : null;
+  /** Proxy must match DB wallet_positions key; prefer store makerAddress when Sidebar proxy resolve lags (else grid WS stays empty). */
+  const onchainWallet =
+    liveTradesSource === 'onchain'
+      ? ((proxyWallet || makerAddressForMerge || '').trim().toLowerCase() || null)
+      : null;
   const mergeFunderWallet = (makerAddressForMerge || proxyWallet || '').trim();
   const scopedClobPair = useMemo(() => {
     if (liveTradesSource !== 'onchain' || !sidebarOpen || !selectedMarket?.clobTokenIds?.length) return null;

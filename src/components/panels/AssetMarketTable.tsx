@@ -344,7 +344,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   if (liveTradesSource === 'onchain') {
     for (const p of onchainGridPositions) {
       const k = normalizeClobTokenId(p.tokenId);
-      if (k && p.size > 0) positionLookup[k] = { size: p.size };
+      if (k && Math.abs(p.size) > 1e-9) positionLookup[k] = { size: Math.abs(p.size) };
     }
   } else {
     for (const pos of positions) {

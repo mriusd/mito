@@ -466,7 +466,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
                 size: Number(p.size || 0),
                 avgPrice: Number(p.avgPrice || 0),
               }))
-              .filter((p) => p.tokenId && p.size > 0);
+              .filter((p) => p.tokenId && Math.abs(p.size) > 1e-9);
             setGridWalletPositions(raw);
             const incoming =
               scope?.size && scope.size > 0
@@ -487,7 +487,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
                 const k = normalizeClobTokenKey(p.tokenId);
                 if (k) byTok.set(k, p);
               }
-              return Array.from(byTok.values()).filter((p) => p.size > 0);
+              return Array.from(byTok.values()).filter((p) => Math.abs(p.size) > 1e-9);
             });
           } else if (msg.type === 'walletTrades' && Array.isArray(msg.data)) {
             const scope = scopedTokenSetRef.current;

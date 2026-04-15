@@ -487,6 +487,12 @@ export interface OnchainFillRow {
   marketAsset: string;
   marketType: string;
   marketTimeframe: string;
+  /** Present when API serves wallet-scoped fills from `onchain_fills` (incl. phantoms). */
+  isPhantom?: number;
+  walletSide?: 'BUY' | 'SELL';
+  walletShares?: number;
+  walletUsdc?: number;
+  walletPrice?: number;
 }
 
 export async function fetchOnchainFills(params: { market_id?: string; wallet?: string; token_id?: string; limit?: number; offset?: number }): Promise<{ fills: OnchainFillRow[]; count: number; total: number }> {

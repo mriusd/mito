@@ -1767,6 +1767,9 @@ export function Sidebar() {
               const wbs = liveShareStats?.winBiasShares ?? 0;
               const yesWRs = liveShareStats?.winBiasSharesYes ?? 0;
               const noWRs = liveShareStats?.winBiasSharesNo ?? 0;
+              const wbcvUsd = liveShareStats?.winnerBiasConviction ?? 0;
+              const yesWRcvUsd = liveShareStats?.winnerBiasConvictionYesWR ?? 0;
+              const noWRcvUsd = liveShareStats?.winnerBiasConvictionNoWR ?? 0;
               const wbcv = liveShareStats?.winBiasConvictionShares ?? 0;
               const yesWRcv = liveShareStats?.winBiasConvictionSharesYes ?? 0;
               const noWRcv = liveShareStats?.winBiasConvictionSharesNo ?? 0;
@@ -1789,6 +1792,7 @@ export function Sidebar() {
                 <div className="mt-1 space-y-0.5">
                   <MiniBar label="Win$" value={wb} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={`Winner Bias (USDC): ${posLabel} WR ${(yesWR * 100).toFixed(0)}% / ${negLabel} WR ${(noWR * 100).toFixed(0)}%`} />
                   <MiniBar label="WinS" value={wbs} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={`Winner Bias (Shares): ${posLabel} WR ${(yesWRs * 100).toFixed(0)}% / ${negLabel} WR ${(noWRs * 100).toFixed(0)}%`} />
+                  <MiniBar label="Cv$" value={wbcvUsd} leftColor="bg-emerald-400/75" rightColor="bg-orange-400/75" tooltip={`Winner Bias Conviction (USDC): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcvUsd * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcvUsd * 100).toFixed(0)}%`} />
                   <MiniBar label="CvS" value={wbcv} leftColor="bg-teal-400/75" rightColor="bg-rose-400/75" tooltip={`Winner Bias Conviction (shares): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcv * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcv * 100).toFixed(0)}%`} />
                   <MiniBar label="Smart" value={sms} leftColor="bg-yellow-400/75" rightColor="bg-purple-400/75" tooltip={`Smart Money: proven wallets (≥60% WR, ≥10 mkts, PNL>0) with ≥$2k in this market — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
                 </div>

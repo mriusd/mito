@@ -97,6 +97,24 @@ export function useBidAskWS() {
               if (typeof item.winBiasSharesNo === 'number' && Number.isFinite(item.winBiasSharesNo)) {
                 next.winBiasSharesNo = item.winBiasSharesNo;
               }
+              if (typeof item.winnerBiasConviction === 'number' && Number.isFinite(item.winnerBiasConviction)) {
+                next.winnerBiasConviction = item.winnerBiasConviction;
+              }
+              if (typeof item.winnerBiasConvictionYesWR === 'number' && Number.isFinite(item.winnerBiasConvictionYesWR)) {
+                next.winnerBiasConvictionYesWR = item.winnerBiasConvictionYesWR;
+              }
+              if (typeof item.winnerBiasConvictionNoWR === 'number' && Number.isFinite(item.winnerBiasConvictionNoWR)) {
+                next.winnerBiasConvictionNoWR = item.winnerBiasConvictionNoWR;
+              }
+              if (typeof item.winBiasConvictionShares === 'number' && Number.isFinite(item.winBiasConvictionShares)) {
+                next.winBiasConvictionShares = item.winBiasConvictionShares;
+              }
+              if (typeof item.winBiasConvictionSharesYes === 'number' && Number.isFinite(item.winBiasConvictionSharesYes)) {
+                next.winBiasConvictionSharesYes = item.winBiasConvictionSharesYes;
+              }
+              if (typeof item.winBiasConvictionSharesNo === 'number' && Number.isFinite(item.winBiasConvictionSharesNo)) {
+                next.winBiasConvictionSharesNo = item.winBiasConvictionSharesNo;
+              }
               patch[item.assetId] = next;
               changed = true;
             }

@@ -436,8 +436,20 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
                 avgPrice: Number(p.avgPrice || 0),
               }))
               .filter((p) => !!p.tokenId);
-            setGridWalletPositions(raw);
             setWalletPositions(raw);
+            // Market-scoped WS sends walletGridPositions for full book; wallet-only URL uses one payload for both.
+            if (!marketRef.current?.trim()) {
+              setGridWalletPositions(raw);
+            }
+          } else if (msg.type === 'walletGridPositions' && Array.isArray(msg.data)) {
+            const raw = (msg.data as Array<{ tokenId?: string; size?: number; avgPrice?: number }>)
+              .map((p) => ({
+                tokenId: String(p.tokenId || ''),
+                size: Number(p.size || 0),
+                avgPrice: Number(p.avgPrice || 0),
+              }))
+              .filter((p) => !!p.tokenId);
+            setGridWalletPositions(raw);
           } else if (msg.type === 'walletTrades' && Array.isArray(msg.data)) {
             const raw = (msg.data as Array<{
               tokenId?: string;

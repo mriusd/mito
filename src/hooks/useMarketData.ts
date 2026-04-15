@@ -9,6 +9,8 @@ const WS_FIELDS: (keyof Market)[] = [
   'holders', 'smartMoneyBias', 'provenSMS', 'crowdBias', 'liveBias',
   'liveBiasWindowMin', 'concentration', 'winnerBias', 'winnerBiasYesWR', 'winnerBiasNoWR',
   'winBiasShares', 'winBiasSharesYes', 'winBiasSharesNo',
+  'winnerBiasConviction', 'winnerBiasConvictionYesWR', 'winnerBiasConvictionNoWR',
+  'winBiasConvictionShares', 'winBiasConvictionSharesYes', 'winBiasConvictionSharesNo',
 ];
 
 function mergeWsFields(fresh: Record<string, Market>, prev: Record<string, Market>): Record<string, Market> {

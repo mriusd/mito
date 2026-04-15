@@ -447,7 +447,12 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               const effectiveWinLossTotal = sum ? summaryWinLossTotal : fallbackWinLossTotal;
               const effectiveWinRate = normalizeWinRate(sum ? sum.winRate : w.winRate);
             const totalVol = (w.boughtYes || 0) + (w.soldYes || 0) + (w.boughtNo || 0) + (w.soldNo || 0);
-            const bias = totalVol > 0 ? Math.abs(w.net || 0) / totalVol : 0;
+            const bias =
+              typeof w.inventoryBias === 'number' && Number.isFinite(w.inventoryBias)
+                ? w.inventoryBias
+                : totalVol > 0
+                  ? Math.abs(w.net || 0) / totalVol
+                  : 0;
             const biasColor = bias > 0.5 ? 'text-yellow-400' : bias > 0.3 ? 'text-orange-400' : 'text-gray-400';
             const nY = w.netYes ?? ((w.boughtYes || 0) - (w.soldYes || 0));
             const nN = w.netNo ?? ((w.boughtNo || 0) - (w.soldNo || 0));
@@ -967,6 +972,12 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                         const wbShares = typeof live?.winBiasShares === 'number' && Number.isFinite(live.winBiasShares) ? live.winBiasShares : null;
                         const yesWRs = typeof live?.winBiasSharesYes === 'number' ? live.winBiasSharesYes : null;
                         const noWRs = typeof live?.winBiasSharesNo === 'number' ? live.winBiasSharesNo : null;
+                        const wbCvUsdc = typeof live?.winnerBiasConviction === 'number' && Number.isFinite(live.winnerBiasConviction) ? live.winnerBiasConviction : null;
+                        const yesWRcv = typeof live?.winnerBiasConvictionYesWR === 'number' ? live.winnerBiasConvictionYesWR : null;
+                        const noWRcv = typeof live?.winnerBiasConvictionNoWR === 'number' ? live.winnerBiasConvictionNoWR : null;
+                        const wbCvSh = typeof live?.winBiasConvictionShares === 'number' && Number.isFinite(live.winBiasConvictionShares) ? live.winBiasConvictionShares : null;
+                        const yesWRcvs = typeof live?.winBiasConvictionSharesYes === 'number' ? live.winBiasConvictionSharesYes : null;
+                        const noWRcvs = typeof live?.winBiasConvictionSharesNo === 'number' ? live.winBiasConvictionSharesNo : null;
 
                         const renderBar = (label: string, bias: number | null, yesWr: number | null, noWr: number | null) => {
                           if (bias == null) return null;
@@ -999,6 +1010,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                             </p>
                             {renderBar('Winner Bias (top 30% USDC)', wbUsdc, yesWR, noWR)}
                             {renderBar('Winner Bias (top 30% Shares)', wbShares, yesWRs, noWRs)}
+                            {renderBar('Winner Bias Conviction (USDC)', wbCvUsdc, yesWRcv, noWRcv)}
+                            {renderBar('Winner Bias Conviction (Shares)', wbCvSh, yesWRcvs, noWRcvs)}
                           </div>
                         );
                       })()}

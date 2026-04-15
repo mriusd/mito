@@ -275,6 +275,23 @@ export function Sidebar() {
       setDisplayAsks(asks);
     }
   }, [obLoading, bids, asks]);
+
+  /** Book imbalance in 5–95¢ depth (same formula as legacy Sidebar “Book” bar). */
+  const orderbookBookImbalance = useMemo(() => {
+    const bidTotal = displayBids.reduce((s, l) => {
+      const pCents = parseFloat(l.price) * 100;
+      if (!Number.isFinite(pCents) || pCents < 5 || pCents > 95) return s;
+      return s + parseFloat(l.size);
+    }, 0);
+    const askTotal = displayAsks.reduce((s, l) => {
+      const pCents = parseFloat(l.price) * 100;
+      if (!Number.isFinite(pCents) || pCents < 5 || pCents > 95) return s;
+      return s + parseFloat(l.size);
+    }, 0);
+    const bookDenom = bidTotal + askTotal;
+    return bookDenom > 0 ? (bidTotal - askTotal) / bookDenom : 0;
+  }, [displayBids, displayAsks]);
+
   useEffect(() => {
     localStorage.setItem(SIDEBAR_CUSTOM_BUTTONS_KEY, JSON.stringify(customButtons));
   }, [customButtons]);
@@ -1636,28 +1653,6 @@ export function Sidebar() {
               const colorFor = (v: number) => v > 0.01 ? 'text-green-400' : v < -0.01 ? 'text-red-400' : 'text-gray-500';
               const barFor = (v: number) => Math.max(2, Math.min(98, 50 + v * 50));
 
-              const live = liveShareStats?.liveBias ?? 0;
-              const liveWin = liveShareStats?.liveBiasWindowMin || 30;
-
-              const bidTotal = displayBids.reduce((s, l) => {
-                const pCents = parseFloat(l.price) * 100;
-                if (!Number.isFinite(pCents) || pCents < 5 || pCents > 95) return s;
-                return s + parseFloat(l.size);
-              }, 0);
-              const askTotal = displayAsks.reduce((s, l) => {
-                const pCents = parseFloat(l.price) * 100;
-                if (!Number.isFinite(pCents) || pCents < 5 || pCents > 95) return s;
-                return s + parseFloat(l.size);
-              }, 0);
-              const bookDenom = bidTotal + askTotal;
-              const book = bookDenom > 0 ? (bidTotal - askTotal) / bookDenom : 0;
-
-              const conc = liveShareStats?.concentration ?? 0;
-              const concPct = Math.max(0, Math.min(100, conc * 100));
-              const cR = Math.round(Math.min(255, conc * 2 * 255));
-              const cG = Math.round(Math.min(255, (1 - conc) * 2 * 255));
-              const concColor = `rgb(${cR}, ${cG}, 0)`;
-
               const wb = liveShareStats?.winnerBias ?? 0;
               const yesWR = liveShareStats?.winnerBiasYesWR ?? 0;
               const noWR = liveShareStats?.winnerBiasNoWR ?? 0;
@@ -1681,19 +1676,9 @@ export function Sidebar() {
 
               return (
                 <div className="mt-1 space-y-0.5">
-                  <MiniBar label="Book" value={book} leftColor="bg-emerald-500/70" rightColor="bg-amber-500/70" tooltip={`Book Imbalance: ${(book * 100).toFixed(1)}%`} />
                   <MiniBar label="Win$" value={wb} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={`Winner Bias (USDC): ${posLabel} WR ${(yesWR * 100).toFixed(0)}% / ${negLabel} WR ${(noWR * 100).toFixed(0)}%`} />
                   <MiniBar label="WinS" value={wbs} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={`Winner Bias (Shares): ${posLabel} WR ${(yesWRs * 100).toFixed(0)}% / ${negLabel} WR ${(noWRs * 100).toFixed(0)}%`} />
                   <MiniBar label="Smart" value={sms} leftColor="bg-yellow-400/75" rightColor="bg-purple-400/75" tooltip={`Smart Money: proven wallets (≥60% WR, ≥10 mkts, PNL>0) with ≥$2k in this market — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
-                  <div className="flex items-center gap-1 min-w-0" title={`Concentration: ${concPct.toFixed(0)}%`}>
-                    <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate">Conc</span>
-                    <div className="h-[5px] bg-gray-700 rounded-full overflow-hidden flex-1 min-w-0">
-                      <div className="h-full transition-all rounded-full" style={{ width: `${concPct}%`, backgroundColor: concColor }} />
-                    </div>
-                    <span className="text-[8px] font-bold w-[28px] shrink-0 text-right" style={{ color: concColor }}>
-                      {concPct.toFixed(0)}%
-                    </span>
-                  </div>
                 </div>
               );
             })()}
@@ -1724,7 +1709,20 @@ export function Sidebar() {
               </span>
             </div>
             {liveOrderbookExpanded && (
-              <div className="relative grid grid-cols-2 gap-2 flex-1 min-h-0 overflow-y-auto" style={{ minHeight: 120 }}>
+              <div className="flex flex-col flex-1 min-h-0 overflow-y-auto" style={{ minHeight: 120 }}>
+                <div
+                  className="shrink-0 mb-1.5 px-0.5"
+                  title={`Book imbalance: ${(orderbookBookImbalance * 100).toFixed(1)}% (5–95¢ depth)`}
+                >
+                  <div className="h-[5px] bg-gray-700 rounded-full overflow-hidden flex w-full">
+                    <div
+                      className="bg-emerald-500/70 h-full transition-all"
+                      style={{ width: `${Math.max(2, Math.min(98, 50 + orderbookBookImbalance * 50))}%` }}
+                    />
+                    <div className="bg-amber-500/70 h-full transition-all flex-1" />
+                  </div>
+                </div>
+                <div className="relative grid grid-cols-2 gap-2 flex-1 min-h-0">
                 <div>
                   <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-500 mb-1">
                     <span>Bid</span><span className="text-right">Size</span>
@@ -1800,6 +1798,7 @@ export function Sidebar() {
                     </div>
                   </div>
                 )}
+                </div>
               </div>
             )}
           </div>

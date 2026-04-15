@@ -119,7 +119,8 @@ export interface WSPosition {
 
 export interface WSTrade {
   tokenId: string;
-  side: 'BUY' | 'SELL';
+  side: 'BUY' | 'SELL' | 'SPLIT' | 'MERGE';
+  outcome?: string;
   size: number;
   price: number;
   fee: number;
@@ -130,6 +131,14 @@ export interface WSTrade {
   title?: string;
   slug?: string;
   eventSlug?: string;
+}
+
+function normalizeLedgerAction(s: string | undefined): 'BUY' | 'SELL' | 'SPLIT' | 'MERGE' {
+  const u = String(s || '').toUpperCase();
+  if (u === 'SELL') return 'SELL';
+  if (u === 'SPLIT') return 'SPLIT';
+  if (u === 'MERGE') return 'MERGE';
+  return 'BUY';
 }
 
 export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
@@ -180,7 +189,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
         setWalletTrades(
           (tr.trades || []).map((t) => ({
             tokenId: String(t.tokenId || ''),
-            side: (String(t.side || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL',
+            side: normalizeLedgerAction(t.side),
+            outcome: t.outcome ? String(t.outcome) : undefined,
             size: Number(t.size || 0),
             price: Number(t.price || 0),
             fee: Number(t.fee || 0),
@@ -190,7 +200,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             title: t.title,
             slug: t.slug,
             eventSlug: t.eventSlug,
-          })).filter((t) => !!t.tokenId),
+          })).filter((t) => !!t.tokenId || t.side === 'SPLIT' || t.side === 'MERGE'),
         );
       } catch {
         /* keep prior state */
@@ -404,9 +414,9 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
                   d.makerAssetId,
                   d.takerAssetId,
                 );
-                const side = (
-                  fromAssets ?? ((d.side === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL')
-                ) as 'BUY' | 'SELL';
+                const side = normalizeLedgerAction(
+                  fromAssets ?? (d.side === 'SELL' ? 'SELL' : 'BUY'),
+                );
                 const size = Number(d.size ?? 0);
                 const price = Number(d.price ?? 0);
                 const ts = Number(d.timestamp ?? Date.now());
@@ -424,9 +434,11 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
                     txHash: d.txHash,
                     logIndex: li,
                   };
-                  const rowKey = `${String(d.txHash || '')}:${li}:${normalizeClobTokenKey(tok)}`;
+                  const rowKey = `${String(d.txHash || '')}:${li}:${normalizeClobTokenKey(tok)}:${side}`;
                   const filtered = prev.filter(
-                    (x) => `${String(x.txHash || '')}:${x.logIndex ?? -1}:${normalizeClobTokenKey(x.tokenId)}` !== rowKey,
+                    (x) =>
+                      `${String(x.txHash || '')}:${x.logIndex ?? -1}:${normalizeClobTokenKey(x.tokenId)}:${x.side}` !==
+                      rowKey,
                   );
                   return [row, ...filtered].slice(0, WALLET_TRADES_CAP);
                 });
@@ -494,6 +506,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const raw = (msg.data as Array<{
               tokenId?: string;
               side?: string;
+              outcome?: string;
               size?: number;
               price?: number;
               fee?: number;
@@ -503,7 +516,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             }>)
               .map((t) => ({
                 tokenId: String(t.tokenId || ''),
-                side: (String(t.side || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL',
+                side: normalizeLedgerAction(t.side),
+                outcome: t.outcome ? String(t.outcome) : undefined,
                 size: Number(t.size || 0),
                 price: Number(t.price || 0),
                 fee: Number(t.fee || 0),
@@ -511,8 +525,9 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
                 txHash: t.txHash,
                 logIndex: Number.isFinite(Number(t.logIndex)) ? Number(t.logIndex) : undefined,
               }))
-              .filter((t) => !!t.tokenId);
-            const wKey = (t: WSTrade) => `${String(t.txHash || '')}:${t.logIndex ?? -1}:${normalizeClobTokenKey(t.tokenId)}`;
+              .filter((t) => !!t.tokenId || t.side === 'SPLIT' || t.side === 'MERGE');
+            const wKey = (t: WSTrade) =>
+              `${String(t.txHash || '')}:${t.logIndex ?? -1}:${normalizeClobTokenKey(t.tokenId || '')}:${t.side}`;
             setWalletTrades((prev) => {
               const byKey = new Map<string, WSTrade>();
               for (const t of prev) byKey.set(wKey(t), t);

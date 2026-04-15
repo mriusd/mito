@@ -542,7 +542,10 @@ export interface OnchainMarketTradeRow {
   blockNumber: number;
   blockTime: number;
   tokenId: string;
-  side: 'BUY' | 'SELL';
+  /** BUY | SELL | SPLIT | MERGE (from wallet_fill_ledger.action) */
+  side: 'BUY' | 'SELL' | 'SPLIT' | 'MERGE';
+  /** YES | NO when applicable (ledger outcome side) */
+  outcome?: string;
   size: number;
   price: number;
   fee: number;

@@ -210,11 +210,12 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
         id: `${t.txHash}-${t.logIndex}-${i}`,
         asset_id: t.tokenId,
         token_id: t.tokenId,
-        side: t.side,
+        side: t.side as Trade['side'],
         price: String(t.price),
         size: String(t.size),
         fee: String(t.fee || 0),
         timestamp: String(tsMs),
+        ...(t.outcome ? { outcome: t.outcome } : {}),
         ...(t.title ? { title: t.title } : {}),
         ...(t.slug ? { slug: t.slug } : {}),
         ...(t.eventSlug ? { eventSlug: t.eventSlug } : {}),
@@ -581,7 +582,13 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
                       <td className={`py-1 px-1 ${assetColorMap[t.asset] || 'text-gray-400'} font-bold`}>{t.asset}</td>
                       <td className={`py-1 px-1 ${dd.color}`}>{dd.label}</td>
                       <td className={`py-1 px-1 ${assetColorMap2[t.asset] || 'text-gray-300'} truncate`}>{t.marketName}</td>
-                      <td className={`py-1 px-1 font-bold ${t.side === 'BUY' ? 'text-green-400' : t.side === 'CLAIM' ? 'text-blue-400' : 'text-red-400'}`}>{t.side}</td>
+                      <td className={`py-1 px-1 font-bold ${
+                        t.side === 'BUY' ? 'text-green-400'
+                          : t.side === 'CLAIM' ? 'text-blue-400'
+                            : t.side === 'SPLIT' ? 'text-purple-400'
+                              : t.side === 'MERGE' ? 'text-amber-400'
+                                : 'text-red-400'
+                      }`}>{t.outcome ? `${t.side} ${t.outcome}` : t.side}</td>
                       <td className={`py-1 px-1 font-bold ${t.outcome === 'YES' || t.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{t.outcome || '-'}</td>
                       <td className="py-1 px-1 text-right text-gray-300">{t.side === 'CLAIM' ? '—' : Math.round(t.size).toLocaleString()}</td>
                       <td className="py-1 px-1 text-right text-gray-300">{t.side === 'CLAIM' ? '—' : `${t.price.toFixed(1)}¢`}</td>

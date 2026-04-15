@@ -232,7 +232,7 @@ export function Sidebar() {
     if (liveTradesSource !== 'onchain' || !sidebarOpen || !selectedMarket?.clobTokenIds?.length) return null;
     return selectedMarket.clobTokenIds.map((x) => String(x || '').trim()).filter(Boolean);
   }, [liveTradesSource, sidebarOpen, selectedMarket?.clobTokenIds]);
-  const { trades: onchainLiveTrades, walletPositions: wsPositions, walletTrades: wsTrades, refreshWallet } = useOnchainTradesWS({
+  const { trades: onchainLiveTrades, walletPositions: wsPositions, gridWalletPositions, walletTrades: wsTrades, refreshWallet } = useOnchainTradesWS({
     marketId:
       liveTradesSource === 'onchain' && sidebarOpen && selectedMarket?.conditionId?.trim()
         ? String(selectedMarket.conditionId).trim()
@@ -281,8 +281,8 @@ export function Sidebar() {
   useEffect(() => {
     if (liveTradesSource !== 'onchain') return;
     setOnchainSidebarPositions(wsPositions);
-    setOnchainGridPositions(wsPositions.map((p) => ({ tokenId: p.tokenId, size: p.size })));
-  }, [liveTradesSource, wsPositions, setOnchainGridPositions]);
+    setOnchainGridPositions(gridWalletPositions.map((p) => ({ tokenId: p.tokenId, size: p.size })));
+  }, [liveTradesSource, wsPositions, gridWalletPositions, setOnchainGridPositions]);
   useEffect(() => {
     if (liveTradesSource !== 'onchain') return;
     setOnchainSidebarTrades(wsTrades);

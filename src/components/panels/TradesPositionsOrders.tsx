@@ -13,7 +13,7 @@ import {
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import type { Position, Trade } from '../../types';
 import { showToast } from '../../utils/toast';
-import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, extractAssetFromMarket, formatPriceShort, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
+import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, getPositionClobTokenId, extractAssetFromMarket, formatPriceShort, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
 import type { Market } from '../../types';
 
 const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
@@ -98,7 +98,8 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
   const polymarketTokenKey = useMemo(() => {
     const s = new Set<string>();
     for (const p of positions) {
-      if (p.asset) s.add(p.asset);
+      const tid = getPositionClobTokenId(p);
+      if (tid) s.add(tid);
     }
     for (const o of orders) {
       const t = o.asset_id || o.token_id;
@@ -130,7 +131,8 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
           if (wp.tokenIdNo) idSet.add(wp.tokenIdNo);
         }
         for (const p of positions) {
-          if (p.asset) idSet.add(p.asset);
+          const tid = getPositionClobTokenId(p);
+          if (tid) idSet.add(tid);
         }
         for (const o of orders) {
           const t = o.asset_id || o.token_id;
@@ -388,7 +390,8 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
   const processedPositions = positionsForTable
     .filter((p) => {
       if ((p.size || 0) <= 0) return false;
-      const tid = p.asset || '';
+      const tid = getPositionClobTokenId(p);
+      if (!tid) return false;
       if (assetFilter === 'ALL') return true;
       const market = marketLookup[tid];
       if (market) return extractAssetFromMarket(market) === assetFilter;
@@ -404,7 +407,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
       return true;
     })
     .map((pos) => {
-      const tid = pos.asset || '';
+      const tid = getPositionClobTokenId(pos);
       const market = marketLookup[tid];
       let asset = market ? extractAssetFromMarket(market) || '' : normalizeDbUnderlying(pos.underlyingAsset);
       const endDate = market?.endDate || pos.endDate || null;

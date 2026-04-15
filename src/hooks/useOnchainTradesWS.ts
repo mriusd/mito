@@ -108,6 +108,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   const { marketId = null, tokenId = null, wallet = null, scopedClobTokenIds = null } = opts;
   const [trades, setTrades] = useState<LiveTrade[]>([]);
   const [walletPositions, setWalletPositions] = useState<WSPosition[]>([]);
+  /** Full wallet snapshot from WS (never scoped to sidebar YES/NO) — for asset grid / HUD dots. */
+  const [gridWalletPositions, setGridWalletPositions] = useState<WSPosition[]>([]);
   const [walletTrades, setWalletTrades] = useState<WSTrade[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -225,21 +227,24 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       ws.send(JSON.stringify({ type: 'unsubscribeWallet' }));
       setWalletPositions([]);
       setWalletTrades([]);
+      setGridWalletPositions([]);
     }
   }, [wallet]);
 
   useEffect(() => {
     const mid = (marketId || '').trim();
     const tid = (tokenId || '').trim();
+    const wAddr = (wallet || '').trim().toLowerCase();
     tokenRef.current = tid || null;
     marketRef.current = mid ? canonicalConditionKey(mid) : null;
     walletRef.current = wallet;
 
-    if (!mid && !tid) {
+    if (!mid && !tid && !wAddr) {
       cleanup();
       setTrades([]);
       setWalletPositions([]);
       setWalletTrades([]);
+      setGridWalletPositions([]);
       return;
     }
 
@@ -323,16 +328,22 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
 
     const connect = () => {
       if (disposed) return;
-      if (!marketRef.current?.trim() && !tokenRef.current?.trim()) return;
+      const mConn = marketRef.current?.trim();
+      const tConn = tokenRef.current?.trim();
+      const wConn = (walletRef.current || '').trim().toLowerCase();
+      if (!mConn && !tConn && !wConn) return;
       cleanup();
       const params = new URLSearchParams();
       const m = marketRef.current?.trim();
       const tok = tokenRef.current?.trim();
+      const wq = (walletRef.current || '').trim().toLowerCase();
       if (m) {
         params.set('market_id', canonicalConditionKey(m));
         if (tok) params.set('token_id', tok);
       } else if (tok) {
         params.set('token_id', tok);
+      } else if (wq) {
+        params.set('wallet', wq);
       }
       const url = `${WS_BASE}/ws/onchain-trades?${params.toString()}`;
       ws = new WebSocket(url);
@@ -456,6 +467,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
                 avgPrice: Number(p.avgPrice || 0),
               }))
               .filter((p) => p.tokenId && p.size > 0);
+            setGridWalletPositions(raw);
             const incoming =
               scope?.size && scope.size > 0
                 ? raw.filter((p) => {
@@ -539,7 +551,14 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
           clearInterval(pingRef.current);
           pingRef.current = null;
         }
-        if (disposed || (!marketRef.current?.trim() && !tokenRef.current?.trim())) return;
+        if (
+          disposed ||
+          (!marketRef.current?.trim() &&
+            !tokenRef.current?.trim() &&
+            !(walletRef.current || '').trim().toLowerCase())
+        ) {
+          return;
+        }
         if (attempt >= 2) startPollingFallback();
         const delay = Math.min(30000, 1000 * 2 ** Math.min(attempt, 5));
         attempt += 1;
@@ -553,9 +572,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       disposed = true;
       cleanup();
     };
-  // wallet changes only re-send subscribeWallet (separate effect above)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [marketId, tokenId, cleanup]);
+  }, [marketId, tokenId, wallet, cleanup]);
 
   const refreshWallet = useCallback(() => {
     const ws = wsRef.current;
@@ -565,5 +582,5 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     }
   }, []);
 
-  return { trades, walletPositions, walletTrades, refreshWallet };
+  return { trades, walletPositions, gridWalletPositions, walletTrades, refreshWallet };
 }

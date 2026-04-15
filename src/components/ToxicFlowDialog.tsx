@@ -440,7 +440,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             <th className="text-right px-1">USDC In</th>
             <th className="text-right px-1">PnL</th>
             <th className="text-right px-1">Trades</th>
-            <th className="text-right px-1">Net</th>
+            <th className="text-right px-1" title="Net Y − Net N (+ YES-tilt, − NO-tilt)">Net</th>
             <th className="text-right px-1 text-gray-400" title="Implied avg price of net position: (USDC in − out) ÷ net shares">Avg P</th>
             <th className="text-right px-1">%</th>
             <th className="text-right px-1">Cum%</th>
@@ -458,16 +458,17 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               const effectiveWinLossTotal = sum ? summaryWinLossTotal : fallbackWinLossTotal;
               const effectiveWinRate = normalizeWinRate(sum ? sum.winRate : w.winRate);
             const totalVol = (w.boughtYes || 0) + (w.soldYes || 0) + (w.boughtNo || 0) + (w.soldNo || 0);
+            const nY = w.netYes ?? ((w.boughtYes || 0) - (w.soldYes || 0));
+            const nN = w.netNo ?? ((w.boughtNo || 0) - (w.soldNo || 0));
+            const signedLegNet = nY - nN;
             const bias =
               typeof w.inventoryBias === 'number' && Number.isFinite(w.inventoryBias)
                 ? w.inventoryBias
                 : totalVol > 0
-                  ? Math.abs(w.net || 0) / totalVol
+                  ? Math.abs(signedLegNet) / totalVol
                   : 0;
             const biasColor = bias > 0.5 ? 'text-yellow-400' : bias > 0.3 ? 'text-orange-400' : 'text-gray-400';
-            const nY = w.netYes ?? ((w.boughtYes || 0) - (w.soldYes || 0));
-            const nN = w.netNo ?? ((w.boughtNo || 0) - (w.soldNo || 0));
-              const sharesPct = totalShares && totalShares > 0 ? (Math.abs(w.net || 0) / totalShares) * 100 : 0;
+              const sharesPct = totalShares && totalShares > 0 ? (Math.abs(signedLegNet) / totalShares) * 100 : 0;
               cumSharesPct += sharesPct;
             const nYColor = nY > 0.001 ? 'text-green-400' : nY < -0.001 ? 'text-red-400' : 'text-gray-500';
               const nNColor = nN > 0.001 ? 'text-green-400' : nN < -0.001 ? 'text-red-400' : 'text-gray-500';
@@ -481,7 +482,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
                 <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
                   <td className={`relative align-top px-1 py-0.5 ${showWinBar ? 'pb-2' : ''}`}>
-                    <WalletLink wallet={w.wallet} netShares={w.net} onOpenWallet={onOpenWallet} isSmart={isSmartGold(w)} holderRow={w} />
+                    <WalletLink wallet={w.wallet} netShares={signedLegNet} onOpenWallet={onOpenWallet} isSmart={isSmartGold(w)} holderRow={w} />
                     {showWinBar && <WinRateBottomBar winRate={effectiveWinRate!} className="absolute bottom-0 left-0 right-0" />}
                   </td>
                   <td className="text-right px-1 text-green-400 bg-green-900/10">{w.boughtYes > 0 ? fmtInt(w.boughtYes) : '-'}</td>
@@ -495,7 +496,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                   <td className="text-right px-1 text-yellow-400">${fmtInt(w.usdcIn)}</td>
                   <td className={`text-right px-1 font-bold ${(w.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtSignedInt(w.pnl || 0)}</td>
                 <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
-                  <td className={`text-right px-1 font-bold ${(w.net || 0) > 0.001 ? 'text-green-400' : (w.net || 0) < -0.001 ? 'text-red-400' : 'text-gray-500'}`}>{fmtSignedInt(w.net || 0)}</td>
+                  <td className={`text-right px-1 font-bold ${signedLegNet > 0.001 ? 'text-green-400' : signedLegNet < -0.001 ? 'text-red-400' : 'text-gray-500'}`}>{fmtSignedInt(signedLegNet)}</td>
                   <td className="text-right px-1 text-gray-300">{avgP}</td>
                   <td className="text-right px-1 text-cyan-300">{sharesPct > 0 ? `${sharesPct.toFixed(1)}%` : '-'}</td>
                   <td className="text-right px-1 text-cyan-200/70">{cumSharesPct > 0 ? `${cumSharesPct.toFixed(1)}%` : '-'}</td>

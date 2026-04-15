@@ -487,12 +487,12 @@ export interface OnchainFillRow {
   marketAsset: string;
   marketType: string;
   marketTimeframe: string;
-  /** Present when API serves wallet-scoped fills from `onchain_fills` (incl. phantoms). */
+  /** 1 = complementary / mirror leg; still listed for activity when live RAM has it */
   isPhantom?: number;
-  walletSide?: 'BUY' | 'SELL';
-  walletShares?: number;
-  walletUsdc?: number;
-  walletPrice?: number;
+  makerAccountSide?: string;
+  takerAccountSide?: string;
+  /** When fetching with ?wallet= — BUY|SELL for that wallet (Polymarket-style) */
+  walletAccountSide?: string;
 }
 
 export async function fetchOnchainFills(params: { market_id?: string; wallet?: string; token_id?: string; limit?: number; offset?: number }): Promise<{ fills: OnchainFillRow[]; count: number; total: number }> {

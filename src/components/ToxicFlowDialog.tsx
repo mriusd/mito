@@ -720,33 +720,22 @@ function WalletInfoDialog({ open, wallet, initialNetShares, onClose }: { open: b
                       );
                     }
                     const walletLower = wallet.toLowerCase();
-                    let action: string;
-                    let nShares: number;
-                    let nUsdc: number;
-                    let priceLabel: string;
-                    if (f.walletSide === 'BUY' || f.walletSide === 'SELL') {
-                      action = f.walletSide;
-                      nShares = Number(f.walletShares ?? 0);
-                      nUsdc = Number(f.walletUsdc ?? 0);
-                      const wp = Number(f.walletPrice ?? 0);
-                      priceLabel = Number.isFinite(wp) && wp > 0 ? `${(wp * 100).toFixed(1)}¢` : '—';
-                    } else {
-                      const isTaker = (f.taker || '').toLowerCase() === walletLower;
-                      const walletPaysUsdc = (isTaker && f.takerAssetId === '0') || (!isTaker && f.makerAssetId === '0');
-                      action = walletPaysUsdc ? 'BUY' : 'SELL';
-                      const shares = walletPaysUsdc
-                        ? (isTaker ? f.makerAmount : f.takerAmount)
-                        : (isTaker ? f.takerAmount : f.makerAmount);
-                      const usdc = walletPaysUsdc
-                        ? (isTaker ? f.takerAmount : f.makerAmount)
-                        : (isTaker ? f.makerAmount : f.takerAmount);
-                      nShares = Number(shares);
-                      nUsdc = Number(usdc);
-                      const pricePerShare = nShares > 1e-9 && Number.isFinite(nShares) && Number.isFinite(nUsdc) ? nUsdc / nShares : NaN;
-                      priceLabel = Number.isFinite(pricePerShare)
-                        ? `${(pricePerShare * 100).toFixed(1)}¢`
-                        : '—';
-                    }
+                    const isTaker = (f.taker || '').toLowerCase() === walletLower;
+                    const walletPaysUsdc = (isTaker && f.takerAssetId === '0') || (!isTaker && f.makerAssetId === '0');
+                    const wa = String(f.walletAccountSide || '').toUpperCase();
+                    const action = wa === 'BUY' || wa === 'SELL' ? wa : (walletPaysUsdc ? 'BUY' : 'SELL');
+                    const shares = walletPaysUsdc
+                      ? (isTaker ? f.makerAmount : f.takerAmount)
+                      : (isTaker ? f.takerAmount : f.makerAmount);
+                    const usdc = walletPaysUsdc
+                      ? (isTaker ? f.takerAmount : f.makerAmount)
+                      : (isTaker ? f.makerAmount : f.takerAmount);
+                    const nShares = Number(shares);
+                    const nUsdc = Number(usdc);
+                    const pricePerShare = nShares > 1e-9 && Number.isFinite(nShares) && Number.isFinite(nUsdc) ? nUsdc / nShares : NaN;
+                    const priceLabel = Number.isFinite(pricePerShare)
+                      ? `${(pricePerShare * 100).toFixed(1)}¢`
+                      : '—';
                     const { text: sideText, tone: sideTone } = fillOutcomeDisplay(f, mk);
                     const sideCls = sideTone === 'yes' ? 'text-green-400' : sideTone === 'no' ? 'text-red-400' : 'text-gray-300';
                     return (

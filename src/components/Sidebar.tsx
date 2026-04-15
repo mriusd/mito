@@ -387,8 +387,10 @@ export function Sidebar() {
     if (liveTradesSource !== 'onchain') {
       return trades.filter((t) => tradeMatchesSelectedMarket(t, selectedMarket, marketLookup));
     }
-    return onchainSidebarTrades
-      .filter((f) => f.size >= 0.01 && outcomeTokenBelongsToSelectedMarket(f.tokenId, selectedMarket, marketLookup))
+    const rows = selectedMarket
+      ? onchainSidebarTrades.filter((f) => outcomeTokenBelongsToSelectedMarket(f.tokenId, selectedMarket, marketLookup))
+      : onchainSidebarTrades;
+    return rows
       .sort((a, b) => b.blockTime - a.blockTime)
       .map((f) => ({
         asset_id: f.tokenId,

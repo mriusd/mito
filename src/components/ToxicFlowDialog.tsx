@@ -414,16 +414,11 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
 
   const fmtInt = (v: number) => Math.round(v).toLocaleString();
   const fmtSignedInt = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString()}`;
-  /** USDC per share as Polymarket price in ¢ (0–100). */
-  const fmtAvgCents = (usdc: number, shareVol: number) => {
-    if (!Number.isFinite(usdc) || !Number.isFinite(shareVol) || shareVol <= 0) return '–';
-    const cents = (usdc / shareVol) * 100;
-    return Number.isFinite(cents) ? `${cents.toFixed(1)}¢` : '–';
-  };
-  const fmtNetAvgCents = (usdcIn: number, boughtTotal: number) => {
-    if (!Number.isFinite(boughtTotal) || boughtTotal < 1e-6 || !Number.isFinite(usdcIn) || usdcIn < 1e-6) return '–';
-    const cents = (usdcIn / boughtTotal) * 100;
-    return Number.isFinite(cents) ? `${cents.toFixed(1)}¢` : '–';
+  const fmtUsdSigned = (v: number) => {
+    if (!Number.isFinite(v)) return '–';
+    const a = Math.abs(v);
+    const s = v >= 0 ? '+' : '−';
+    return `${s}$${a.toFixed(2)}`;
   };
 
   return (
@@ -433,19 +428,25 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
           <tr className="text-gray-500 border-b border-gray-700">
             <th className="text-left py-1 px-1">#</th>
             <th className="text-left px-1">Wallet</th>
-            <th className="text-right px-1 bg-green-900/15">B.Yes</th>
-            <th className="text-right px-1 bg-green-900/15">S.Yes</th>
-            <th className="text-right px-1 bg-green-900/15">Net Y</th>
-            <th className="text-right px-1 bg-red-900/15">B.No</th>
-            <th className="text-right px-1 bg-red-900/15">S.No</th>
-            <th className="text-right px-1 bg-red-900/15">Net N</th>
-            <th className="text-right px-1 text-gray-400" title="Avg buy: USDC in ÷ (bought YES + bought NO)">Avg B</th>
-            <th className="text-right px-1 text-gray-400" title="Avg sell: USDC out ÷ (sold YES + sold NO)">Avg S</th>
-            <th className="text-right px-1">USDC In</th>
-            <th className="text-right px-1">PnL</th>
+            <th className="text-right px-1 bg-green-900/15" title="inv_yes">
+              Inv Y
+            </th>
+            <th className="text-right px-1 bg-red-900/15" title="inv_no">
+              Inv N
+            </th>
+            <th className="text-right px-1 text-gray-400" title="usd_yes">
+              $ Y
+            </th>
+            <th className="text-right px-1 text-gray-400" title="usd_no">
+              $ N
+            </th>
             <th className="text-right px-1">Trades</th>
-            <th className="text-right px-1" title="Net Y − Net N (+ YES-tilt, − NO-tilt)">Net</th>
-            <th className="text-right px-1 text-gray-400" title="Implied avg price of net position: (USDC in − out) ÷ net shares">Avg P</th>
+            <th className="text-right px-1" title="fee_total">
+              Fees
+            </th>
+            <th className="text-right px-1" title="pnl (ledger cashflow sum)">
+              PnL
+            </th>
             <th className="text-right px-1">%</th>
             <th className="text-right px-1">Cum%</th>
             <th className="text-right px-1">Bias</th>
@@ -461,26 +462,25 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               const fallbackWinLossTotal = typeof w.winLossTotal === 'number' ? w.winLossTotal : 0;
               const effectiveWinLossTotal = sum ? summaryWinLossTotal : fallbackWinLossTotal;
               const effectiveWinRate = normalizeWinRate(sum ? sum.winRate : w.winRate);
-            const totalVol = (w.boughtYes || 0) + (w.soldYes || 0) + (w.boughtNo || 0) + (w.soldNo || 0);
-            const nY = w.netYes ?? ((w.boughtYes || 0) - (w.soldYes || 0));
-            const nN = w.netNo ?? ((w.boughtNo || 0) - (w.soldNo || 0));
-            const signedLegNet = nY - nN;
+            const iy = typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
+            const inn = typeof w.invNo === 'number' && Number.isFinite(w.invNo) ? w.invNo : w.netNo ?? 0;
+            const signedLegNet = iy - inn;
+            const grossLeg = Math.abs(iy) + Math.abs(inn);
             const bias =
               typeof w.inventoryBias === 'number' && Number.isFinite(w.inventoryBias)
                 ? w.inventoryBias
-                : totalVol > 0
-                  ? Math.abs(signedLegNet) / totalVol
+                : grossLeg > 0
+                  ? Math.abs(signedLegNet) / grossLeg
                   : 0;
             const biasColor = bias > 0.5 ? 'text-yellow-400' : bias > 0.3 ? 'text-orange-400' : 'text-gray-400';
               const sharesPct = totalShares && totalShares > 0 ? (Math.abs(signedLegNet) / totalShares) * 100 : 0;
               cumSharesPct += sharesPct;
-            const nYColor = nY > 0.001 ? 'text-green-400' : nY < -0.001 ? 'text-red-400' : 'text-gray-500';
-              const nNColor = nN > 0.001 ? 'text-green-400' : nN < -0.001 ? 'text-red-400' : 'text-gray-500';
-              const boughtShares = (w.boughtYes || 0) + (w.boughtNo || 0);
-              const soldShares = (w.soldYes || 0) + (w.soldNo || 0);
-              const avgB = fmtAvgCents(w.usdcIn || 0, boughtShares);
-              const avgS = fmtAvgCents(w.usdcOut || 0, soldShares);
-              const avgP = fmtNetAvgCents(w.usdcIn || 0, boughtShares);
+            const nYColor = iy > 0.001 ? 'text-green-400' : iy < -0.001 ? 'text-red-400' : 'text-gray-500';
+            const nNColor = inn > 0.001 ? 'text-green-400' : inn < -0.001 ? 'text-red-400' : 'text-gray-500';
+              const uy = typeof w.usdYes === 'number' && Number.isFinite(w.usdYes) ? w.usdYes : 0;
+              const un = typeof w.usdNo === 'number' && Number.isFinite(w.usdNo) ? w.usdNo : 0;
+              const fees = typeof w.feeTotal === 'number' && Number.isFinite(w.feeTotal) ? w.feeTotal : 0;
+              const pnl = typeof w.pnl === 'number' && Number.isFinite(w.pnl) ? w.pnl : 0;
               const showWinBar = effectiveWinLossTotal > 0 && effectiveWinRate != null;
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
@@ -489,19 +489,13 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                     <WalletLink wallet={w.wallet} netShares={signedLegNet} onOpenWallet={onOpenWallet} isSmart={isSmartGold(w)} holderRow={w} />
                     {showWinBar && <WinRateBottomBar winRate={effectiveWinRate!} className="absolute bottom-0 left-0 right-0" />}
                   </td>
-                  <td className="text-right px-1 text-green-400 bg-green-900/10">{w.boughtYes > 0 ? fmtInt(w.boughtYes) : '-'}</td>
-                  <td className="text-right px-1 text-red-400 bg-green-900/10">{w.soldYes > 0 ? fmtInt(w.soldYes) : '-'}</td>
-                  <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{fmtSignedInt(nY)}</td>
-                  <td className="text-right px-1 text-green-400 bg-red-900/10">{w.boughtNo > 0 ? fmtInt(w.boughtNo) : '-'}</td>
-                  <td className="text-right px-1 text-red-300/60 bg-red-900/10">{w.soldNo > 0 ? fmtInt(w.soldNo) : '-'}</td>
-                  <td className={`text-right px-1 font-bold ${nNColor} bg-red-900/10`}>{fmtSignedInt(nN)}</td>
-                  <td className="text-right px-1 text-gray-300">{avgB}</td>
-                  <td className="text-right px-1 text-gray-300">{avgS}</td>
-                  <td className="text-right px-1 text-yellow-400">${fmtInt(w.usdcIn)}</td>
-                  <td className={`text-right px-1 font-bold ${(w.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtSignedInt(w.pnl || 0)}</td>
+                  <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{fmtSignedInt(iy)}</td>
+                  <td className={`text-right px-1 font-bold ${nNColor} bg-red-900/10`}>{fmtSignedInt(inn)}</td>
+                  <td className={`text-right px-1 text-gray-300 ${uy >= 0 ? '' : 'text-orange-300'}`}>{fmtUsdSigned(uy)}</td>
+                  <td className={`text-right px-1 text-gray-300 ${un >= 0 ? '' : 'text-orange-300'}`}>{fmtUsdSigned(un)}</td>
                 <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
-                  <td className={`text-right px-1 font-bold ${signedLegNet > 0.001 ? 'text-green-400' : signedLegNet < -0.001 ? 'text-red-400' : 'text-gray-500'}`}>{fmtSignedInt(signedLegNet)}</td>
-                  <td className="text-right px-1 text-gray-300">{avgP}</td>
+                  <td className="text-right px-1 text-amber-200/90">{fees > 0 ? `$${fees.toFixed(2)}` : fees < 0 ? `−$${Math.abs(fees).toFixed(2)}` : '–'}</td>
+                  <td className={`text-right px-1 font-bold ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(pnl)}</td>
                   <td className="text-right px-1 text-cyan-300">{sharesPct > 0 ? `${sharesPct.toFixed(1)}%` : '-'}</td>
                   <td className="text-right px-1 text-cyan-200/70">{cumSharesPct > 0 ? `${cumSharesPct.toFixed(1)}%` : '-'}</td>
                 <td className={`text-right px-1 ${biasColor}`}>{(bias * 100).toFixed(0)}%</td>

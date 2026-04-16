@@ -27,6 +27,13 @@ function walletNet(w: WalletPosition): number {
   return walletInvY(w) - walletInvN(w);
 }
 
+function walletLedgerWLFCell(m: WalletPosition) {
+  if (m.w === 1) return <span className="font-bold text-green-400">W</span>;
+  if (m.l === 1) return <span className="font-bold text-red-400">L</span>;
+  if (m.f === 1) return <span className="font-bold text-yellow-400">F</span>;
+  return <span className="text-gray-600">–</span>;
+}
+
 function fmtPriceShare(p: number | undefined): string {
   if (p == null || !Number.isFinite(p)) return '–';
   if (Math.abs(p) < 1e-12) return '-';
@@ -763,6 +770,7 @@ export function WalletInfoDialog({
                 <thead>
                   <tr className="text-gray-500 border-b border-gray-700">
                     <th className="text-left py-1">Date</th>
+                    <th className="text-center w-7 py-1" title="Outcome when resolved: W win, L loss, F flat (ledger)">W</th>
                     <th className="text-left">Market</th>
                     <th className="text-right bg-green-900/15 text-green-300 font-bold py-1">Net Y</th>
                     <th className="text-right bg-red-900/15 text-red-300 font-bold py-1">Net N</th>
@@ -798,6 +806,7 @@ export function WalletInfoDialog({
                       onClick={() => { setSelectedMarketId(m.marketId); setFillsPage(0); }}
                     >
                       <td className={`py-0.5 ${dd.color}`}>{dd.label}</td>
+                      <td className="text-center py-0.5 align-middle tabular-nums">{walletLedgerWLFCell(m)}</td>
                       <td className="py-0.5 text-gray-200">{marketName}</td>
                       <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15">{fmtLegShares(iy)}</td>
                       <td className="text-right tabular-nums font-bold text-red-400 bg-red-900/15">{fmtLegShares(inn)}</td>

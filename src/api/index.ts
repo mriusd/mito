@@ -392,6 +392,10 @@ export interface WalletPosition {
   /** Running avg buy price YES/NO from `wallet_market_positions` (USDC/share, 0–1). */
   priceYes?: number;
   priceNo?: number;
+  /** Ledger `wallet_market_positions`: resolved win (1), loss (1), or flat box (1). */
+  w?: number;
+  l?: number;
+  f?: number;
   /** `pnl_yes` + `pnl_no` (realized trading legs only). */
   rPnl?: number;
   tradeCount: number;

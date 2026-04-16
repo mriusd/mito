@@ -38,6 +38,13 @@ function rPnlToneClass(v: number): string {
   return v > 0 ? 'text-green-400' : 'text-red-400';
 }
 
+function fmtUsdSignedLedger(v: number): string {
+  if (!Number.isFinite(v)) return '–';
+  const a = Math.abs(v);
+  const s = v >= 0 ? '+' : '−';
+  return `${s}$${a.toFixed(2)}`;
+}
+
 /** Same wallet must not rank both tabs: keep stronger |leg| only (tie → YES). */
 function filterTopYesNoTab(wallets: WalletPosition[] | undefined, tab: 'yes' | 'no'): WalletPosition[] {
   const arr = wallets ?? [];
@@ -721,11 +728,13 @@ export function WalletInfoDialog({
                   <tr className="text-gray-500 border-b border-gray-700">
                     <th className="text-left py-1">Date</th>
                     <th className="text-left">Market</th>
-                    <th className="text-right">Net Y</th>
-                    <th className="text-right">Net N</th>
+                    <th className="text-right bg-green-900/15 text-green-300 font-bold py-1">Net Y</th>
+                    <th className="text-right bg-red-900/15 text-red-300 font-bold py-1">Net N</th>
                     <th className="text-right">Net</th>
                     <th className="text-right" title="price_yes">Px Y</th>
                     <th className="text-right" title="price_no">Px N</th>
+                    <th className="text-right" title="pnl_yes (realized)">rPnL Y</th>
+                    <th className="text-right" title="pnl_no (realized)">rPnL N</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -743,6 +752,9 @@ export function WalletInfoDialog({
                       const inn = walletInvN(m);
                       const netLeg = walletNet(m);
                       const fmtInv = (v: number) => `${v > 0.001 ? '+' : ''}${v.toFixed(1)}`;
+                      const fmtLegShares = (v: number) => (Number.isFinite(v) ? v.toFixed(1) : '–');
+                      const pyes = typeof m.pnlYes === 'number' && Number.isFinite(m.pnlYes) ? m.pnlYes : 0;
+                      const pno = typeof m.pnlNo === 'number' && Number.isFinite(m.pnlNo) ? m.pnlNo : 0;
                       return (
                     <tr
                       key={`${m.marketId}-${m.wallet}`}
@@ -751,11 +763,13 @@ export function WalletInfoDialog({
                     >
                       <td className={`py-0.5 ${dd.color}`}>{dd.label}</td>
                       <td className="py-0.5 text-gray-200">{marketName}</td>
-                      <td className={`text-right tabular-nums ${iy > 0.001 ? 'text-green-400' : iy < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(iy)}</td>
-                      <td className={`text-right tabular-nums ${inn > 0.001 ? 'text-green-400' : inn < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(inn)}</td>
+                      <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15">{fmtLegShares(iy)}</td>
+                      <td className="text-right tabular-nums font-bold text-red-400 bg-red-900/15">{fmtLegShares(inn)}</td>
                       <td className={`text-right tabular-nums ${netLeg > 0.001 ? 'text-green-400' : netLeg < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(netLeg)}</td>
                       <td className="text-right text-gray-300 tabular-nums">{fmtPriceShare(m.priceYes)}</td>
                       <td className="text-right text-gray-300 tabular-nums">{fmtPriceShare(m.priceNo)}</td>
+                      <td className={`text-right tabular-nums font-bold ${rPnlToneClass(pyes)}`}>{fmtUsdSignedLedger(pyes)}</td>
+                      <td className={`text-right tabular-nums font-bold ${rPnlToneClass(pno)}`}>{fmtUsdSignedLedger(pno)}</td>
                     </tr>
                       );
                     })()

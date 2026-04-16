@@ -27,6 +27,14 @@ function walletNet(w: WalletPosition): number {
   return walletInvY(w) - walletInvN(w);
 }
 
+/** Implied avg USDC/share on one leg (Polymarket 0–1 $/share → ¢). */
+function fmtAvgLegCents(usd: number, inv: number): string {
+  if (!Number.isFinite(usd) || !Number.isFinite(inv) || Math.abs(inv) < 1e-6) return '–';
+  const px = usd / inv;
+  if (!Number.isFinite(px)) return '–';
+  return `${(px * 100).toFixed(1)}¢`;
+}
+
 /** Same wallet must not rank both tabs: keep stronger |leg| only (tie → YES). */
 function filterTopYesNoTab(wallets: WalletPosition[] | undefined, tab: 'yes' | 'no'): WalletPosition[] {
   const arr = wallets ?? [];
@@ -426,13 +434,6 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
 
   const fmtInt = (v: number) => Math.round(v).toLocaleString();
   const fmtSignedInt = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString()}`;
-  /** Implied avg USDC/share on one leg (Polymarket 0–1 $/share → ¢). */
-  const fmtAvgLegCents = (usd: number, inv: number) => {
-    if (!Number.isFinite(usd) || !Number.isFinite(inv) || Math.abs(inv) < 1e-6) return '–';
-    const px = usd / inv;
-    if (!Number.isFinite(px)) return '–';
-    return `${(px * 100).toFixed(1)}¢`;
-  };
   const fmtUsdSigned = (v: number) => {
     if (!Number.isFinite(v)) return '–';
     const a = Math.abs(v);
@@ -706,29 +707,30 @@ export function WalletInfoDialog({
                   <tr className="text-gray-500 border-b border-gray-700">
                     <th className="text-left py-1">Date</th>
                     <th className="text-left">Market</th>
-                    <th className="text-left">Resolved</th>
-                    <th className="text-center">W/L</th>
+                    <th className="text-right">Net Y</th>
+                    <th className="text-right">Net N</th>
                     <th className="text-right">Net</th>
-                    <th className="text-right">USDC In</th>
+                    <th className="text-right">Avg P Y</th>
+                    <th className="text-right">Avg P NO</th>
                   </tr>
                 </thead>
                 <tbody>
                   {markets.map((m) => (
                     (() => {
                       const mk = marketById[m.marketId] || marketById[(m.marketId || '').toLowerCase()] || (m.question ? m as any : null);
-                      const marketName = mk?.question || mk?.groupItemTitle
-                        ? shortenMarketName(mk.question || mk.groupItemTitle, undefined, undefined, mk.eventSlug)
+                      const qFromApi = (m.question || '').trim();
+                      const title = qFromApi || mk?.question || mk?.groupItemTitle;
+                      const marketName = title
+                        ? shortenMarketName(title, undefined, undefined, m.eventSlug || mk?.eventSlug)
                         : `${m.marketAsset || '-'} ${m.marketTimeframe || ''}`;
-                      const dd = getDateDisplay(mk?.endDate || null);
-                      const rd = getResolvedDisplay(mk, m);
-                      const net = m.net || 0;
-                      const resolvedYes = typeof m.resultYes === 'number' ? m.resultYes : -1;
-                      const wl = resolvedYes >= 0
-                        ? (net > 0.001
-                            ? (resolvedYes === 1 ? 'W' : 'L')
-                            : (net < -0.001 ? (resolvedYes === 0 ? 'W' : 'L') : '-'))
-                        : '-';
-                      const wlColor = wl === 'W' ? 'text-green-400' : wl === 'L' ? 'text-red-400' : 'text-gray-500';
+                      const endRaw = (m.endDate || '').trim() || (mk?.endDate ? String(mk.endDate).trim() : '');
+                      const dd = getDateDisplay(endRaw || null);
+                      const iy = walletInvY(m);
+                      const inn = walletInvN(m);
+                      const netLeg = walletNet(m);
+                      const uy = typeof m.usdYes === 'number' ? m.usdYes : 0;
+                      const un = typeof m.usdNo === 'number' ? m.usdNo : 0;
+                      const fmtInv = (v: number) => `${v > 0.001 ? '+' : ''}${v.toFixed(1)}`;
                       return (
                     <tr
                       key={`${m.marketId}-${m.wallet}`}
@@ -737,10 +739,11 @@ export function WalletInfoDialog({
                     >
                       <td className={`py-0.5 ${dd.color}`}>{dd.label}</td>
                       <td className="py-0.5 text-gray-200">{marketName}</td>
-                      <td className={`py-0.5 ${rd.color}`}>{rd.label}</td>
-                      <td className={`text-center font-bold ${wlColor}`}>{wl}</td>
-                      <td className={`text-right ${net > 0.001 ? 'text-green-400' : net < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{net > 0 ? '+' : ''}{net.toFixed(1)}</td>
-                      <td className="text-right text-yellow-400">${(m.usdcIn || 0).toFixed(2)}</td>
+                      <td className={`text-right tabular-nums ${iy > 0.001 ? 'text-green-400' : iy < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(iy)}</td>
+                      <td className={`text-right tabular-nums ${inn > 0.001 ? 'text-green-400' : inn < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(inn)}</td>
+                      <td className={`text-right tabular-nums ${netLeg > 0.001 ? 'text-green-400' : netLeg < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(netLeg)}</td>
+                      <td className="text-right text-gray-300 tabular-nums">{fmtAvgLegCents(uy, iy)}</td>
+                      <td className="text-right text-gray-300 tabular-nums">{fmtAvgLegCents(un, inn)}</td>
                     </tr>
                       );
                     })()

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink, Copy } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink, Copy, RefreshCw } from 'lucide-react';
 import { fetchToxicFlow, fetchWalletSummary, fetchWalletPositions, fetchOnchainFills } from '../api';
 import type { ToxicFlowData, WalletPosition, WalletSummary, OnchainFillRow } from '../api';
 import { shortenMarketName } from '../utils/format';
@@ -592,6 +592,7 @@ export function WalletInfoDialog({
   const [loadingFills, setLoadingFills] = useState(false);
   const [fillsTotal, setFillsTotal] = useState(0);
   const [fillsPage, setFillsPage] = useState(0);
+  const [fillsRefreshToken, setFillsRefreshToken] = useState(0);
   const fillsPageSize = 200;
   const marketById = useMemo(() => {
     const m: Record<string, any> = {};
@@ -603,6 +604,34 @@ export function WalletInfoDialog({
     return m;
   }, [marketLookup]);
 
+  const loadMarketsAndSelect = useCallback(
+    async (preserveSelected: string | null, resetFillsPage: boolean) => {
+      if (!wallet) return '';
+      const prefRaw = (initialMarketId || '').trim();
+      const pref = prefRaw.toLowerCase();
+      const [s, p] = await Promise.all([
+        fetchWalletSummary(wallet),
+        fetchWalletPositions({ wallet, sort_by: 'trade_count', limit: 100, ledger: true }),
+      ]);
+      setSummary(s);
+      const sorted = [...(p.positions || [])].sort((a, b) => (b.tradeCount || 0) - (a.tradeCount || 0));
+      setMarkets(sorted);
+      let pick = '';
+      if (preserveSelected && sorted.some((row) => row.marketId === preserveSelected)) {
+        pick = preserveSelected;
+      } else if (pref) {
+        const hit = sorted.find((row) => String(row.marketId || '').trim().toLowerCase() === pref);
+        if (hit) pick = hit.marketId;
+        else pick = prefRaw;
+      }
+      if (!pick && sorted.length > 0) pick = sorted[0].marketId;
+      setSelectedMarketId(pick);
+      if (resetFillsPage) setFillsPage(0);
+      return pick;
+    },
+    [wallet, initialMarketId],
+  );
+
   useEffect(() => {
     if (!open || !wallet) return;
     setSummary(undefined);
@@ -611,34 +640,27 @@ export function WalletInfoDialog({
     setFills([]);
     setFillsTotal(0);
     setFillsPage(0);
+    setFillsRefreshToken(0);
     setLoadingMarkets(true);
-    const prefRaw = (initialMarketId || '').trim();
-    const pref = prefRaw.toLowerCase();
     (async () => {
       try {
-        const [s, p] = await Promise.all([
-          fetchWalletSummary(wallet),
-          fetchWalletPositions({ wallet, sort_by: 'trade_count', limit: 100, ledger: true }),
-        ]);
-        setSummary(s);
-        const sorted = [...(p.positions || [])].sort((a, b) => (b.tradeCount || 0) - (a.tradeCount || 0));
-        setMarkets(sorted);
-        let pick = '';
-        if (pref) {
-          const hit = sorted.find((row) => String(row.marketId || '').trim().toLowerCase() === pref);
-          if (hit) pick = hit.marketId;
-          else pick = prefRaw;
-        }
-        if (!pick && sorted.length > 0) pick = sorted[0].marketId;
-        if (pick) {
-          setSelectedMarketId(pick);
-          setFillsPage(0);
-        }
+        await loadMarketsAndSelect(null, false);
       } finally {
         setLoadingMarkets(false);
       }
     })();
-  }, [open, wallet, initialMarketId]);
+  }, [open, wallet, initialMarketId, loadMarketsAndSelect]);
+
+  const onRefreshMarketsAndTrades = useCallback(async () => {
+    if (!open || !wallet) return;
+    setLoadingMarkets(true);
+    try {
+      await loadMarketsAndSelect(selectedMarketId, true);
+      setFillsRefreshToken((n) => n + 1);
+    } finally {
+      setLoadingMarkets(false);
+    }
+  }, [open, wallet, selectedMarketId, loadMarketsAndSelect]);
 
   useEffect(() => {
     if (!open || !wallet || !selectedMarketId) return;
@@ -653,7 +675,7 @@ export function WalletInfoDialog({
         setLoadingFills(false);
       }
     })();
-  }, [open, wallet, selectedMarketId, fillsPage]);
+  }, [open, wallet, selectedMarketId, fillsPage, fillsRefreshToken]);
 
   if (!open) return null;
   const polymarketProfileUrl = `https://polymarket.com/profile/${wallet.trim().toLowerCase()}`;
@@ -692,7 +714,21 @@ export function WalletInfoDialog({
 
         <div className="grid grid-cols-2 gap-2 mb-2 text-[10px]">
           <div className="bg-gray-900 rounded p-2">
-            <div className="text-gray-500">Net shares (selected market context)</div>
+            <div className="flex items-start justify-between gap-1 mb-0.5">
+              <div className="text-gray-500 leading-tight">Net shares (selected market context)</div>
+              <button
+                type="button"
+                className="shrink-0 p-0.5 rounded text-gray-500 hover:text-white hover:bg-gray-800 disabled:opacity-40"
+                title="Refresh markets & trades"
+                aria-label="Refresh markets and trades"
+                disabled={!wallet || loadingMarkets || loadingFills}
+                onClick={() => {
+                  void onRefreshMarketsAndTrades();
+                }}
+              >
+                <RefreshCw size={12} className={loadingMarkets || loadingFills ? 'animate-spin' : ''} />
+              </button>
+            </div>
             <div className={`font-bold ${((initialNetShares || 0) > 0.001) ? 'text-green-400' : ((initialNetShares || 0) < -0.001) ? 'text-red-400' : 'text-gray-300'}`}>
               {(initialNetShares || 0) > 0 ? '+' : ''}{(initialNetShares || 0).toFixed(2)}
             </div>

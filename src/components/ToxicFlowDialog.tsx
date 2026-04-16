@@ -414,6 +414,13 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
 
   const fmtInt = (v: number) => Math.round(v).toLocaleString();
   const fmtSignedInt = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString()}`;
+  /** Implied avg USDC/share on one leg (Polymarket 0–1 $/share → ¢). */
+  const fmtAvgLegCents = (usd: number, inv: number) => {
+    if (!Number.isFinite(usd) || !Number.isFinite(inv) || Math.abs(inv) < 1e-6) return '–';
+    const px = usd / inv;
+    if (!Number.isFinite(px)) return '–';
+    return `${(px * 100).toFixed(1)}¢`;
+  };
   const fmtUsdSigned = (v: number) => {
     if (!Number.isFinite(v)) return '–';
     const a = Math.abs(v);
@@ -431,14 +438,23 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             <th className="text-right px-1 bg-green-900/15" title="inv_yes">
               Inv Y
             </th>
-            <th className="text-right px-1 bg-red-900/15" title="inv_no">
+            <th className="text-right px-1 bg-red-900/15 text-red-300" title="inv_no">
               Inv N
+            </th>
+            <th className="text-right px-1" title="inv_yes − inv_no">
+              Net
             </th>
             <th className="text-right px-1 text-gray-400" title="usd_yes">
               $ Y
             </th>
             <th className="text-right px-1 text-gray-400" title="usd_no">
               $ N
+            </th>
+            <th className="text-right px-1 text-gray-400" title="usd_yes / inv_yes">
+              Avg P Y
+            </th>
+            <th className="text-right px-1 text-gray-400" title="usd_no / inv_no">
+              Avg P N
             </th>
             <th className="text-right px-1">Trades</th>
             <th className="text-right px-1" title="fee_total">
@@ -476,7 +492,8 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               const sharesPct = totalShares && totalShares > 0 ? (Math.abs(signedLegNet) / totalShares) * 100 : 0;
               cumSharesPct += sharesPct;
             const nYColor = iy > 0.001 ? 'text-green-400' : iy < -0.001 ? 'text-red-400' : 'text-gray-500';
-            const nNColor = inn > 0.001 ? 'text-green-400' : inn < -0.001 ? 'text-red-400' : 'text-gray-500';
+            const netYNColor =
+              signedLegNet < -0.001 ? 'text-red-400' : signedLegNet > 0.001 ? 'text-green-400' : 'text-gray-500';
               const uy = typeof w.usdYes === 'number' && Number.isFinite(w.usdYes) ? w.usdYes : 0;
               const un = typeof w.usdNo === 'number' && Number.isFinite(w.usdNo) ? w.usdNo : 0;
               const fees = typeof w.feeTotal === 'number' && Number.isFinite(w.feeTotal) ? w.feeTotal : 0;
@@ -489,10 +506,13 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                     <WalletLink wallet={w.wallet} netShares={signedLegNet} onOpenWallet={onOpenWallet} isSmart={isSmartGold(w)} holderRow={w} />
                     {showWinBar && <WinRateBottomBar winRate={effectiveWinRate!} className="absolute bottom-0 left-0 right-0" />}
                   </td>
-                  <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{fmtSignedInt(iy)}</td>
-                  <td className={`text-right px-1 font-bold ${nNColor} bg-red-900/10`}>{fmtSignedInt(inn)}</td>
+                  <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{fmtInt(iy)}</td>
+                  <td className="text-right px-1 font-bold text-red-400 bg-red-900/10">{fmtInt(inn)}</td>
+                  <td className={`text-right px-1 font-bold ${netYNColor}`}>{fmtInt(signedLegNet)}</td>
                   <td className={`text-right px-1 text-gray-300 ${uy >= 0 ? '' : 'text-orange-300'}`}>{fmtUsdSigned(uy)}</td>
                   <td className={`text-right px-1 text-gray-300 ${un >= 0 ? '' : 'text-orange-300'}`}>{fmtUsdSigned(un)}</td>
+                  <td className="text-right px-1 text-gray-300">{fmtAvgLegCents(uy, iy)}</td>
+                  <td className="text-right px-1 text-gray-300">{fmtAvgLegCents(un, inn)}</td>
                 <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
                   <td className="text-right px-1 text-amber-200/90">{fees > 0 ? `$${fees.toFixed(2)}` : fees < 0 ? `−$${Math.abs(fees).toFixed(2)}` : '–'}</td>
                   <td className={`text-right px-1 font-bold ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(pnl)}</td>

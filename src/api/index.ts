@@ -383,11 +383,17 @@ export interface WalletPosition {
   usdcOut: number;
   /** Σ `wallet_fill_ledger.delta_usd` (ledger cash flow). */
   cashFlow?: number;
-  /** Σ `delta_usd_yes` / `delta_usd_no` on ledger. */
+  /** Realized trading PnL YES leg (`pnl_yes`). */
   pnlYes?: number;
+  /** Realized trading PnL NO leg (`pnl_no`). */
   pnlNo?: number;
-  /** Trading leg PnL + optional resolution bump (`w=1`). */
+  /** Full-row PnL from DB (includes resolution when applied). */
   pnl: number;
+  /** Running avg buy price YES/NO from `wallet_market_positions` (USDC/share, 0–1). */
+  priceYes?: number;
+  priceNo?: number;
+  /** `pnl_yes` + `pnl_no` (realized trading legs only). */
+  rPnl?: number;
   tradeCount: number;
   firstTradeTime: number;
   lastTradeTime: number;
@@ -521,6 +527,8 @@ export interface OnchainFillRow {
   takerAccountSide?: string;
   /** When fetching with ?wallet= — BUY|SELL for that wallet (Polymarket-style) */
   walletAccountSide?: string;
+  /** Ledger: true = OrderFilled taker sweep (maker=wallet, taker=CTF exchange); false = maker leg or split/merge */
+  isTaker?: boolean;
 }
 
 export async function fetchOnchainFills(params: { market_id?: string; wallet?: string; token_id?: string; limit?: number; offset?: number }): Promise<{ fills: OnchainFillRow[]; count: number; total: number }> {

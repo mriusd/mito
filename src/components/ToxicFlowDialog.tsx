@@ -35,6 +35,11 @@ function fmtAvgLegCents(usd: number, inv: number): string {
   return `${(px * 100).toFixed(1)}¢`;
 }
 
+function fmtPriceShare(p: number | undefined): string {
+  if (p == null || !Number.isFinite(p)) return '–';
+  return `${(p * 100).toFixed(1)}¢`;
+}
+
 /** Same wallet must not rank both tabs: keep stronger |leg| only (tie → YES). */
 function filterTopYesNoTab(wallets: WalletPosition[] | undefined, tab: 'yes' | 'no'): WalletPosition[] {
   const arr = wallets ?? [];
@@ -469,6 +474,12 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             <th className="text-right px-1 text-gray-400" title="usd_no / inv_no">
               Avg P N
             </th>
+            <th className="text-right px-1 text-gray-400" title="price_yes">
+              Px Y
+            </th>
+            <th className="text-right px-1 text-gray-400" title="price_no">
+              Px N
+            </th>
             <th className="text-right px-1">Trades</th>
             <th className="text-right px-1" title="fee_total">
               Fees
@@ -476,8 +487,14 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             <th className="text-right px-1" title="Σ ledger delta_usd (cash flow)">
               Cash Flow
             </th>
-            <th className="text-right px-1" title="pnl_yes + pnl_no + resolution payout when w=1">
-              PnL
+            <th className="text-right px-1 text-gray-400" title="pnl_yes">
+              rPnL Y
+            </th>
+            <th className="text-right px-1 text-gray-400" title="pnl_no">
+              rPnL N
+            </th>
+            <th className="text-right px-1" title="pnl_yes + pnl_no">
+              rPnL
             </th>
             <th className="text-right px-1">%</th>
             <th className="text-right px-1">Cum%</th>
@@ -515,7 +532,10 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               const fees = typeof w.feeTotal === 'number' && Number.isFinite(w.feeTotal) ? w.feeTotal : 0;
               const cashFlow =
                 typeof w.cashFlow === 'number' && Number.isFinite(w.cashFlow) ? w.cashFlow : 0;
-              const pnl = typeof w.pnl === 'number' && Number.isFinite(w.pnl) ? w.pnl : 0;
+              const pyes = typeof w.pnlYes === 'number' && Number.isFinite(w.pnlYes) ? w.pnlYes : 0;
+              const pno = typeof w.pnlNo === 'number' && Number.isFinite(w.pnlNo) ? w.pnlNo : 0;
+              const rPnl =
+                typeof w.rPnl === 'number' && Number.isFinite(w.rPnl) ? w.rPnl : pyes + pno;
               const showWinBar = effectiveWinLossTotal > 0 && effectiveWinRate != null;
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
@@ -531,10 +551,14 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                   <td className={`text-right px-1 text-gray-300 ${un >= 0 ? '' : 'text-orange-300'}`}>{fmtUsdSigned(un)}</td>
                   <td className="text-right px-1 text-gray-300">{fmtAvgLegCents(uy, iy)}</td>
                   <td className="text-right px-1 text-gray-300">{fmtAvgLegCents(un, inn)}</td>
+                  <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceYes)}</td>
+                  <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceNo)}</td>
                 <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
                   <td className="text-right px-1 text-amber-200/90">{fees > 0 ? `$${fees.toFixed(2)}` : fees < 0 ? `−$${Math.abs(fees).toFixed(2)}` : '–'}</td>
                   <td className={`text-right px-1 font-bold ${cashFlow >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(cashFlow)}</td>
-                  <td className={`text-right px-1 font-bold ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(pnl)}</td>
+                  <td className={`text-right px-1 font-bold ${pyes >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(pyes)}</td>
+                  <td className={`text-right px-1 font-bold ${pno >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(pno)}</td>
+                  <td className={`text-right px-1 font-bold ${rPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(rPnl)}</td>
                   <td className="text-right px-1 text-cyan-300">{sharesPct > 0 ? `${sharesPct.toFixed(1)}%` : '-'}</td>
                   <td className="text-right px-1 text-cyan-200/70">{cumSharesPct > 0 ? `${cumSharesPct.toFixed(1)}%` : '-'}</td>
                 <td className={`text-right px-1 ${biasColor}`}>{(bias * 100).toFixed(0)}%</td>
@@ -711,7 +735,9 @@ export function WalletInfoDialog({
                     <th className="text-right">Net N</th>
                     <th className="text-right">Net</th>
                     <th className="text-right">Avg P Y</th>
-                    <th className="text-right">Avg P NO</th>
+                    <th className="text-right">Avg P N</th>
+                    <th className="text-right" title="price_yes">Px Y</th>
+                    <th className="text-right" title="price_no">Px N</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -744,6 +770,8 @@ export function WalletInfoDialog({
                       <td className={`text-right tabular-nums ${netLeg > 0.001 ? 'text-green-400' : netLeg < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(netLeg)}</td>
                       <td className="text-right text-gray-300 tabular-nums">{fmtAvgLegCents(uy, iy)}</td>
                       <td className="text-right text-gray-300 tabular-nums">{fmtAvgLegCents(un, inn)}</td>
+                      <td className="text-right text-gray-300 tabular-nums">{fmtPriceShare(m.priceYes)}</td>
+                      <td className="text-right text-gray-300 tabular-nums">{fmtPriceShare(m.priceNo)}</td>
                     </tr>
                       );
                     })()
@@ -1162,7 +1190,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                           <div>
                             <p className="text-[8px] text-gray-500 leading-snug mb-1.5">
                               Compares <span className="text-gray-400">historical win rate</span> (top 30% of USDC or shares on each side).
-                              Table <span className="text-gray-400">Cash Flow / PnL</span> is this market only — they often diverge.
+                              Table <span className="text-gray-400">Cash Flow / rPnL</span> is this market only — they often diverge.
                             </p>
                             {renderBar('Winner Bias (top 30% USDC)', wbUsdc, yesWR, noWR)}
                             {renderBar('Winner Bias (top 30% Shares)', wbShares, yesWRs, noWRs)}

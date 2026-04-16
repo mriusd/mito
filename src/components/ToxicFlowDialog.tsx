@@ -136,11 +136,11 @@ function normalizeWinRate(v: number | null | undefined): number | null {
   return Math.max(0, Math.min(1, scaled));
 }
 
-/** Gold “smart” only if proven smart and this-market PnL is not negative (table PnL column). */
-function isSmartGold(row: Pick<WalletPosition, 'isSmart' | 'pnl'>): boolean {
+/** Gold “smart” only if proven smart and this-market cash flow is not negative. */
+function isSmartGold(row: Pick<WalletPosition, 'isSmart' | 'cashFlow'>): boolean {
   if (!row.isSmart) return false;
-  const p = row.pnl;
-  const n = typeof p === 'number' && Number.isFinite(p) ? p : 0;
+  const c = row.cashFlow;
+  const n = typeof c === 'number' && Number.isFinite(c) ? c : 0;
   return n >= -1e-6;
 }
 
@@ -160,7 +160,8 @@ function rowHolderSummary(row: WalletPosition): WalletSummary | null {
   const hasPos = Math.abs(net) > 1e-6;
   const hasWin = wlt > 0 && wr != null;
   if (!hasVol && tc === 0 && !hasPos && !hasWin) return null;
-  const tradingPnl = usdcOut - usdcIn;
+  const tradingPnl =
+    typeof row.cashFlow === 'number' && Number.isFinite(row.cashFlow) ? row.cashFlow : usdcOut - usdcIn;
   return {
     found: true,
     wallet: (row.wallet || '').toLowerCase(),
@@ -327,7 +328,7 @@ function WalletLink({
               <div className="flex justify-between gap-3"><span className="text-gray-500">Vol In</span><span className="text-yellow-400">${displaySummary.totalUsdcIn.toFixed(2)}</span></div>
               <div className="flex justify-between gap-3"><span className="text-gray-500">Vol Out</span><span className="text-yellow-400">${displaySummary.totalUsdcOut.toFixed(2)}</span></div>
               <div className="border-t border-gray-700 my-0.5" />
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Trading PnL</span><span className={`${displaySummary.tradingPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{displaySummary.tradingPnl >= 0 ? '+' : ''}{displaySummary.tradingPnl.toFixed(2)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-500">Cash flow</span><span className={`${displaySummary.tradingPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{displaySummary.tradingPnl >= 0 ? '+' : ''}{displaySummary.tradingPnl.toFixed(2)}</span></div>
               {displaySummary.resolvedMarkets > 0 && displaySummary.totalMarkets > 0 && (
                 <div className="flex justify-between gap-3"><span className="text-gray-500">Resolution</span><span className={`${displaySummary.resolutionValue >= 0 ? 'text-green-400' : 'text-red-400'}`}>{displaySummary.resolutionValue >= 0 ? '+' : ''}{displaySummary.resolutionValue.toFixed(2)}</span></div>
               )}
@@ -471,7 +472,10 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             <th className="text-right px-1" title="fee_total">
               Fees
             </th>
-            <th className="text-right px-1" title="pnl (ledger cashflow sum)">
+            <th className="text-right px-1" title="Σ ledger delta_usd (cash flow)">
+              Cash Flow
+            </th>
+            <th className="text-right px-1" title="pnl_yes + pnl_no + resolution payout when w=1">
               PnL
             </th>
             <th className="text-right px-1">%</th>
@@ -508,6 +512,8 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               const uy = typeof w.usdYes === 'number' && Number.isFinite(w.usdYes) ? w.usdYes : 0;
               const un = typeof w.usdNo === 'number' && Number.isFinite(w.usdNo) ? w.usdNo : 0;
               const fees = typeof w.feeTotal === 'number' && Number.isFinite(w.feeTotal) ? w.feeTotal : 0;
+              const cashFlow =
+                typeof w.cashFlow === 'number' && Number.isFinite(w.cashFlow) ? w.cashFlow : 0;
               const pnl = typeof w.pnl === 'number' && Number.isFinite(w.pnl) ? w.pnl : 0;
               const showWinBar = effectiveWinLossTotal > 0 && effectiveWinRate != null;
             return (
@@ -526,6 +532,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                   <td className="text-right px-1 text-gray-300">{fmtAvgLegCents(un, inn)}</td>
                 <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
                   <td className="text-right px-1 text-amber-200/90">{fees > 0 ? `$${fees.toFixed(2)}` : fees < 0 ? `−$${Math.abs(fees).toFixed(2)}` : '–'}</td>
+                  <td className={`text-right px-1 font-bold ${cashFlow >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(cashFlow)}</td>
                   <td className={`text-right px-1 font-bold ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(pnl)}</td>
                   <td className="text-right px-1 text-cyan-300">{sharesPct > 0 ? `${sharesPct.toFixed(1)}%` : '-'}</td>
                   <td className="text-right px-1 text-cyan-200/70">{cumSharesPct > 0 ? `${cumSharesPct.toFixed(1)}%` : '-'}</td>
@@ -1152,7 +1159,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                           <div>
                             <p className="text-[8px] text-gray-500 leading-snug mb-1.5">
                               Compares <span className="text-gray-400">historical win rate</span> (top 30% of USDC or shares on each side).
-                              Table <span className="text-gray-400">PnL</span> is this market only — they often diverge.
+                              Table <span className="text-gray-400">Cash Flow / PnL</span> is this market only — they often diverge.
                             </p>
                             {renderBar('Winner Bias (top 30% USDC)', wbUsdc, yesWR, noWR)}
                             {renderBar('Winner Bias (top 30% Shares)', wbShares, yesWRs, noWRs)}

@@ -381,6 +381,12 @@ export interface WalletPosition {
   netNo: number;
   usdcIn: number;
   usdcOut: number;
+  /** Σ `wallet_fill_ledger.delta_usd` (ledger cash flow). */
+  cashFlow?: number;
+  /** Σ `delta_usd_yes` / `delta_usd_no` on ledger. */
+  pnlYes?: number;
+  pnlNo?: number;
+  /** Trading leg PnL + optional resolution bump (`w=1`). */
   pnl: number;
   tradeCount: number;
   firstTradeTime: number;

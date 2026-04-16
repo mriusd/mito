@@ -487,7 +487,7 @@ export interface OnchainFillRow {
   logIndex: number;
   blockNumber: number;
   blockTime: number;
-  /** DB fallback rows from `wallet_fill_ledger` only */
+  /** `wallet_fill_ledger` when request includes ?wallet= */
   fillSource?: string;
   wallet?: string;
   action?: string;

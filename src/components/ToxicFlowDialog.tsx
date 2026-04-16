@@ -16,12 +16,23 @@ interface ToxicFlowDialogProps {
 
 type Tab = 'topHolders' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
 
+function walletInvY(w: WalletPosition): number {
+  return typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
+}
+function walletInvN(w: WalletPosition): number {
+  return typeof w.invNo === 'number' && Number.isFinite(w.invNo) ? w.invNo : w.netNo ?? 0;
+}
+/** Net = Inv Y − Inv N (matches holders table). */
+function walletNet(w: WalletPosition): number {
+  return walletInvY(w) - walletInvN(w);
+}
+
 /** Same wallet must not rank both tabs: keep stronger |leg| only (tie → YES). */
 function filterTopYesNoTab(wallets: WalletPosition[] | undefined, tab: 'yes' | 'no'): WalletPosition[] {
   const arr = wallets ?? [];
   return arr.filter((w) => {
-    const ny = w.netYes ?? 0;
-    const nn = w.netNo ?? 0;
+    const ny = walletInvY(w);
+    const nn = walletInvN(w);
     if (tab === 'yes') return ny > 0.001 && Math.abs(ny) >= Math.abs(nn);
     return nn > 0.001 && Math.abs(nn) > Math.abs(ny);
   });
@@ -939,8 +950,32 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     }
   }, [open, load, marketId]);
 
-  const topYesWallets = useMemo(() => filterTopYesNoTab(data?.topYes, 'yes'), [data?.topYes]);
-  const topNoWallets = useMemo(() => filterTopYesNoTab(data?.topNo, 'no'), [data?.topNo]);
+  const topYesWallets = useMemo(() => {
+    const arr = filterTopYesNoTab(data?.topYes, 'yes');
+    return [...arr].sort((a, b) => {
+      const d = walletNet(b) - walletNet(a);
+      if (d !== 0) return d;
+      return (a.wallet || '').localeCompare(b.wallet || '');
+    });
+  }, [data?.topYes]);
+  const topNoWallets = useMemo(() => {
+    const arr = filterTopYesNoTab(data?.topNo, 'no');
+    return [...arr].sort((a, b) => {
+      const d = walletNet(a) - walletNet(b);
+      if (d !== 0) return d;
+      return (a.wallet || '').localeCompare(b.wallet || '');
+    });
+  }, [data?.topNo]);
+
+  const topHoldersWallets = useMemo(() => {
+    const arr = data?.topHolders ?? [];
+    return [...arr].sort((a, b) => {
+      const da = Math.abs(walletNet(a));
+      const db = Math.abs(walletNet(b));
+      if (db !== da) return db - da;
+      return (a.wallet || '').localeCompare(b.wallet || '');
+    });
+  }, [data?.topHolders]);
 
   if (!open) return null;
 
@@ -1192,7 +1227,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                     }
                   }
                 };
-                addWallets(data.topHolders);
+                addWallets(topHoldersWallets);
                 addWallets(topYesWallets);
                 addWallets(topNoWallets);
                 addWallets(data.topVolume);
@@ -1354,7 +1389,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                 </div>
 
                 {tab === 'topHolders' && (
-                  <WalletTable wallets={data.topHolders} label="holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                  <WalletTable wallets={topHoldersWallets} label="holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topYes' && (
                   <WalletTable wallets={topYesWallets} label="YES holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />

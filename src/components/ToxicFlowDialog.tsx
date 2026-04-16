@@ -27,17 +27,15 @@ function walletNet(w: WalletPosition): number {
   return walletInvY(w) - walletInvN(w);
 }
 
-/** Implied avg USDC/share on one leg (Polymarket 0–1 $/share → ¢). */
-function fmtAvgLegCents(usd: number, inv: number): string {
-  if (!Number.isFinite(usd) || !Number.isFinite(inv) || Math.abs(inv) < 1e-6) return '–';
-  const px = usd / inv;
-  if (!Number.isFinite(px)) return '–';
-  return `${(px * 100).toFixed(1)}¢`;
-}
-
 function fmtPriceShare(p: number | undefined): string {
   if (p == null || !Number.isFinite(p)) return '–';
+  if (Math.abs(p) < 1e-12) return '-';
   return `${(p * 100).toFixed(1)}¢`;
+}
+
+function rPnlToneClass(v: number): string {
+  if (!Number.isFinite(v) || Math.abs(v) < 1e-9) return 'text-gray-400';
+  return v > 0 ? 'text-green-400' : 'text-red-400';
 }
 
 /** Same wallet must not rank both tabs: keep stronger |leg| only (tie → YES). */
@@ -468,12 +466,6 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             <th className="text-right px-1 text-gray-400" title="usd_no">
               $ N
             </th>
-            <th className="text-right px-1 text-gray-400" title="usd_yes / inv_yes">
-              Avg P Y
-            </th>
-            <th className="text-right px-1 text-gray-400" title="usd_no / inv_no">
-              Avg P N
-            </th>
             <th className="text-right px-1 text-gray-400" title="price_yes">
               Px Y
             </th>
@@ -549,16 +541,14 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                   <td className={`text-right px-1 font-bold ${netYNColor}`}>{fmtInt(signedLegNet)}</td>
                   <td className={`text-right px-1 text-gray-300 ${uy >= 0 ? '' : 'text-orange-300'}`}>{fmtUsdSigned(uy)}</td>
                   <td className={`text-right px-1 text-gray-300 ${un >= 0 ? '' : 'text-orange-300'}`}>{fmtUsdSigned(un)}</td>
-                  <td className="text-right px-1 text-gray-300">{fmtAvgLegCents(uy, iy)}</td>
-                  <td className="text-right px-1 text-gray-300">{fmtAvgLegCents(un, inn)}</td>
                   <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceYes)}</td>
                   <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceNo)}</td>
                 <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
                   <td className="text-right px-1 text-amber-200/90">{fees > 0 ? `$${fees.toFixed(2)}` : fees < 0 ? `−$${Math.abs(fees).toFixed(2)}` : '–'}</td>
                   <td className={`text-right px-1 font-bold ${cashFlow >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(cashFlow)}</td>
-                  <td className={`text-right px-1 font-bold ${pyes >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(pyes)}</td>
-                  <td className={`text-right px-1 font-bold ${pno >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(pno)}</td>
-                  <td className={`text-right px-1 font-bold ${rPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(rPnl)}</td>
+                  <td className={`text-right px-1 font-bold ${rPnlToneClass(pyes)}`}>{fmtUsdSigned(pyes)}</td>
+                  <td className={`text-right px-1 font-bold ${rPnlToneClass(pno)}`}>{fmtUsdSigned(pno)}</td>
+                  <td className={`text-right px-1 font-bold ${rPnlToneClass(rPnl)}`}>{fmtUsdSigned(rPnl)}</td>
                   <td className="text-right px-1 text-cyan-300">{sharesPct > 0 ? `${sharesPct.toFixed(1)}%` : '-'}</td>
                   <td className="text-right px-1 text-cyan-200/70">{cumSharesPct > 0 ? `${cumSharesPct.toFixed(1)}%` : '-'}</td>
                 <td className={`text-right px-1 ${biasColor}`}>{(bias * 100).toFixed(0)}%</td>
@@ -734,8 +724,6 @@ export function WalletInfoDialog({
                     <th className="text-right">Net Y</th>
                     <th className="text-right">Net N</th>
                     <th className="text-right">Net</th>
-                    <th className="text-right">Avg P Y</th>
-                    <th className="text-right">Avg P N</th>
                     <th className="text-right" title="price_yes">Px Y</th>
                     <th className="text-right" title="price_no">Px N</th>
                   </tr>
@@ -754,8 +742,6 @@ export function WalletInfoDialog({
                       const iy = walletInvY(m);
                       const inn = walletInvN(m);
                       const netLeg = walletNet(m);
-                      const uy = typeof m.usdYes === 'number' ? m.usdYes : 0;
-                      const un = typeof m.usdNo === 'number' ? m.usdNo : 0;
                       const fmtInv = (v: number) => `${v > 0.001 ? '+' : ''}${v.toFixed(1)}`;
                       return (
                     <tr
@@ -768,8 +754,6 @@ export function WalletInfoDialog({
                       <td className={`text-right tabular-nums ${iy > 0.001 ? 'text-green-400' : iy < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(iy)}</td>
                       <td className={`text-right tabular-nums ${inn > 0.001 ? 'text-green-400' : inn < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(inn)}</td>
                       <td className={`text-right tabular-nums ${netLeg > 0.001 ? 'text-green-400' : netLeg < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(netLeg)}</td>
-                      <td className="text-right text-gray-300 tabular-nums">{fmtAvgLegCents(uy, iy)}</td>
-                      <td className="text-right text-gray-300 tabular-nums">{fmtAvgLegCents(un, inn)}</td>
                       <td className="text-right text-gray-300 tabular-nums">{fmtPriceShare(m.priceYes)}</td>
                       <td className="text-right text-gray-300 tabular-nums">{fmtPriceShare(m.priceNo)}</td>
                     </tr>
@@ -796,6 +780,9 @@ export function WalletInfoDialog({
                     <th className="text-left py-1">Time</th>
                     <th className="text-left">Action</th>
                     <th className="text-left">Side</th>
+                    <th className="text-center w-6 px-0" title="Taker (wallet_fill_ledger.is_taker)">
+                      T
+                    </th>
                     <th className="text-right">Shares</th>
                     <th className="text-right">Price</th>
                     <th className="text-right">USDC</th>
@@ -844,6 +831,9 @@ export function WalletInfoDialog({
                           <td className="py-0.5">{ts}</td>
                           <td className={actionCls}>{action || '—'}</td>
                           <td className={sideCls}>{sideLabel}</td>
+                          <td className="text-center text-amber-300 font-bold tabular-nums px-0">
+                            {f.isTaker === true ? 'T' : ''}
+                          </td>
                           <td className="text-right">{sizeFinite ? sz.toFixed(2) : '—'}</td>
                           <td className="text-right text-gray-300 tabular-nums">{priceLabel}</td>
                           <td className="text-right text-yellow-400">{usdcLabel}</td>
@@ -866,6 +856,7 @@ export function WalletInfoDialog({
                         <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
                           <td className="py-0.5">{ts}</td>
                           <td className="text-purple-400" colSpan={2}>{label}</td>
+                          <td className="text-center text-amber-300 font-bold px-0">{f.isTaker === true ? 'T' : ''}</td>
                           <td className="text-right">{Number.isFinite(amount) ? amount.toFixed(2) : '—'}</td>
                           <td className="text-right text-gray-500">—</td>
                           <td className="text-right text-gray-500">{Number.isFinite(amount) ? `$${amount.toFixed(2)}` : '—'}</td>
@@ -904,6 +895,9 @@ export function WalletInfoDialog({
                         <td className="py-0.5">{ts}</td>
                         <td className={action === 'BUY' ? 'text-green-400' : 'text-red-400'}>{action}</td>
                         <td className={sideCls}>{sideText}</td>
+                        <td className="text-center text-amber-300 font-bold tabular-nums px-0">
+                          {f.isTaker === true ? 'T' : ''}
+                        </td>
                         <td className="text-right">{Number.isFinite(nShares) ? nShares.toFixed(2) : '—'}</td>
                         <td className="text-right text-gray-300 tabular-nums">{priceLabel}</td>
                         <td className="text-right text-yellow-400">{Number.isFinite(nUsdc) ? `$${nUsdc.toFixed(2)}` : '—'}</td>

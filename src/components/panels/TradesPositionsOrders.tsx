@@ -124,7 +124,12 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
     const load = async () => {
       setOnchainLoading(true);
       try {
-        const walletRes = await fetchWalletPositions({ wallet: makerAddress, limit: 500, active_only: true });
+        const walletRes = await fetchWalletPositions({
+          wallet: makerAddress,
+          limit: 500,
+          active_only: true,
+          ledger: true,
+        });
         const idSet = new Set<string>();
         for (const wp of walletRes.positions || []) {
           if (wp.tokenIdYes) idSet.add(wp.tokenIdYes);

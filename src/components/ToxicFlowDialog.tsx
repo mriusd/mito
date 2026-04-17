@@ -779,6 +779,8 @@ export function WalletInfoDialog({
                     <th className="text-right" title="price_no">Px N</th>
                     <th className="text-right" title="pnl_yes (realized)">rPnL Y</th>
                     <th className="text-right" title="pnl_no (realized)">rPnL N</th>
+                    <th className="text-right" title="wallet_market_positions.pnl">PnL</th>
+                    <th className="text-right" title="wallet_market_positions.res_pnl">Payout</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -799,6 +801,10 @@ export function WalletInfoDialog({
                       const fmtLegShares = (v: number) => (Number.isFinite(v) ? v.toFixed(1) : '–');
                       const pyes = typeof m.pnlYes === 'number' && Number.isFinite(m.pnlYes) ? m.pnlYes : 0;
                       const pno = typeof m.pnlNo === 'number' && Number.isFinite(m.pnlNo) ? m.pnlNo : 0;
+                      const rowPnl = typeof m.pnl === 'number' && Number.isFinite(m.pnl) ? m.pnl : 0;
+                      const rowRPnl = typeof m.rPnl === 'number' && Number.isFinite(m.rPnl) ? m.rPnl : 0;
+                      const wlfSum = (m.w ?? 0) + (m.l ?? 0) + (m.f ?? 0);
+                      const payoutUnresolved = wlfSum === 0;
                       return (
                     <tr
                       key={`${m.marketId}-${m.wallet}`}
@@ -815,6 +821,13 @@ export function WalletInfoDialog({
                       <td className="text-right text-gray-300 tabular-nums">{fmtPriceShare(m.priceNo)}</td>
                       <td className={`text-right tabular-nums font-bold ${rPnlToneClass(pyes)}`}>{fmtUsdSignedLedger(pyes)}</td>
                       <td className={`text-right tabular-nums font-bold ${rPnlToneClass(pno)}`}>{fmtUsdSignedLedger(pno)}</td>
+                      <td className={`text-right tabular-nums font-bold ${rPnlToneClass(rowPnl)}`}>{fmtUsdSignedLedger(rowPnl)}</td>
+                      <td
+                        className={`text-right tabular-nums font-bold ${payoutUnresolved ? 'text-gray-500' : rPnlToneClass(rowRPnl)}`}
+                        title={payoutUnresolved ? 'Market not scored (W/L/F all zero)' : 'res_pnl'}
+                      >
+                        {payoutUnresolved ? '-' : fmtUsdSignedLedger(rowRPnl)}
+                      </td>
                     </tr>
                       );
                     })()

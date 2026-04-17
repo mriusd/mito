@@ -396,7 +396,7 @@ export interface WalletPosition {
   w?: number;
   l?: number;
   f?: number;
-  /** `pnl_yes` + `pnl_no` (realized trading legs only). */
+  /** `wallet_market_positions.res_pnl` (resolution payout formula). */
   rPnl?: number;
   tradeCount: number;
   firstTradeTime: number;

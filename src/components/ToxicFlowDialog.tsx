@@ -87,7 +87,7 @@ function fmtSignedShares1En(v: number): string {
 }
 
 /** `wallet_scores_ledger` fields from /api/wallet-summary. */
-function WalletScoresLedgerSummaryGrid({ s, dense }: { s: WalletSummary; dense?: boolean }) {
+function WalletScoresLedgerSummaryGrid({ s, dense, narrowSummary }: { s: WalletSummary; dense?: boolean; narrowSummary?: boolean }) {
   const tm = s.totalMarkets ?? 0;
   const rm = s.resolvedMarkets ?? 0;
   const tt = s.totalTrades ?? 0;
@@ -106,60 +106,77 @@ function WalletScoresLedgerSummaryGrid({ s, dense }: { s: WalletSummary; dense?:
   const prFrac = prRaw > 1 ? prRaw / 100 : prRaw;
   const prPct = prFrac * 100;
   const roiLedgerFmt = fmtRoiPercent(s.roi ?? undefined);
-  const text = dense ? 'text-[8px]' : 'text-[10px]';
-  const row = `flex justify-between gap-2 ${text} text-gray-300`;
+  const text = dense ? 'text-[8px]' : narrowSummary ? 'text-[9px]' : 'text-[10px]';
+  const row = `flex justify-between gap-1.5 ${text} text-gray-300`;
   const wrPctStr = wrPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const prPctStr = prPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const volStr = tradedVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const L = (full: string, short: string) => (narrowSummary ? short : full);
   return (
-    <div className={`grid grid-cols-1 gap-y-1 ${dense ? 'max-w-[min(100vw-24px,320px)]' : ''}`}>
+    <div
+      className={`grid grid-cols-1 gap-y-0.5 ${dense ? 'max-w-[min(100vw-24px,320px)]' : narrowSummary ? 'max-w-[11rem]' : ''}`}
+    >
       <div className={row}>
-        <span className="text-gray-500">Total Markets</span>
-        <span className="text-white font-medium tabular-nums">{fmtIntEn(tm)}</span>
+        <span className="text-gray-500 shrink min-w-0 truncate" title={L('Total Markets', 'Mkts')}>
+          {L('Total Markets', 'Mkts')}
+        </span>
+        <span className="text-white font-medium tabular-nums shrink-0">{fmtIntEn(tm)}</span>
       </div>
       <div className={row}>
-        <span className="text-gray-500">Resolved Markets</span>
-        <span className="text-white font-medium tabular-nums">{fmtIntEn(rm)}</span>
+        <span className="text-gray-500 shrink min-w-0 truncate" title={L('Resolved Markets', 'Resolved')}>
+          {L('Resolved Markets', 'Resolved')}
+        </span>
+        <span className="text-white font-medium tabular-nums shrink-0">{fmtIntEn(rm)}</span>
       </div>
       <div className={row}>
-        <span className="text-gray-500">Total Trades</span>
-        <span className="text-white font-medium tabular-nums">{fmtIntEn(tt)}</span>
+        <span className="text-gray-500 shrink min-w-0 truncate" title={L('Total Trades', 'Trades')}>
+          {L('Total Trades', 'Trades')}
+        </span>
+        <span className="text-white font-medium tabular-nums shrink-0">{fmtIntEn(tt)}</span>
       </div>
       <div className={row}>
-        <span className="text-gray-500">W / L / F</span>
-        <span className="text-white font-medium tabular-nums">
+        <span className="text-gray-500 shrink min-w-0">W/L/F</span>
+        <span className="text-white font-medium tabular-nums shrink-0">
           {fmtIntEn(wn)}/{fmtIntEn(ls)}/{fmtIntEn(fl)}
         </span>
       </div>
       <div className={row}>
-        <span className="text-gray-500">Win rate</span>
-        <span className={`font-bold tabular-nums ${wrPct < 50 ? 'text-red-400' : 'text-green-400'}`}>{wrPctStr}%</span>
+        <span className="text-gray-500 shrink min-w-0 truncate" title={L('Win rate', 'Win %')}>
+          {L('Win rate', 'Win %')}
+        </span>
+        <span className={`font-bold tabular-nums shrink-0 ${wrPct < 50 ? 'text-red-400' : 'text-green-400'}`}>{wrPctStr}%</span>
       </div>
       <div className={row}>
-        <span className="text-gray-500">PnL</span>
-        <span className={`font-bold tabular-nums ${rPnlToneClass(pnl)}`}>{fmtUsdSignedLedger(pnl)}</span>
+        <span className="text-gray-500 shrink min-w-0">PnL</span>
+        <span className={`font-bold tabular-nums shrink-0 ${rPnlToneClass(pnl)}`}>{fmtUsdSignedLedger(pnl)}</span>
       </div>
       <div className={row}>
-        <span className="text-gray-500">Net Cash</span>
-        <span className={`font-bold tabular-nums ${rPnlToneClass(cf)}`}>{fmtUsdSignedLedger(cf)}</span>
+        <span className="text-gray-500 shrink min-w-0 truncate" title={L('Net Cash', 'Cash')}>
+          {L('Net Cash', 'Cash')}
+        </span>
+        <span className={`font-bold tabular-nums shrink-0 ${rPnlToneClass(cf)}`}>{fmtUsdSignedLedger(cf)}</span>
       </div>
       <div className={row}>
-        <span className="text-gray-500">P / L</span>
-        <span className="text-white font-medium tabular-nums">
+        <span className="text-gray-500 shrink min-w-0">P/L</span>
+        <span className="text-white font-medium tabular-nums shrink-0">
           {fmtIntEn(pm)}/{fmtIntEn(lm)}
         </span>
       </div>
       <div className={row}>
-        <span className="text-gray-500">Profit Rate</span>
-        <span className="text-gray-200 font-medium tabular-nums">{prPctStr}%</span>
+        <span className="text-gray-500 shrink min-w-0 truncate" title={L('Profit Rate', 'Pr %')}>
+          {L('Profit Rate', 'Pr %')}
+        </span>
+        <span className="text-gray-200 font-medium tabular-nums shrink-0">{prPctStr}%</span>
       </div>
       <div className={row}>
-        <span className="text-gray-500">Traded Volume</span>
-        <span className="text-yellow-400 font-medium tabular-nums">${volStr}</span>
+        <span className="text-gray-500 shrink min-w-0 truncate" title={L('Traded Volume', 'Vol')}>
+          {L('Traded Volume', 'Vol')}
+        </span>
+        <span className="text-yellow-400 font-medium tabular-nums shrink-0">${volStr}</span>
       </div>
       <div className={row}>
-        <span className="text-gray-500">ROI</span>
-        <span className={`font-bold tabular-nums ${roiLedgerFmt.tone}`}>{roiLedgerFmt.text}</span>
+        <span className="text-gray-500 shrink min-w-0">ROI</span>
+        <span className={`font-bold tabular-nums shrink-0 ${roiLedgerFmt.tone}`}>{roiLedgerFmt.text}</span>
       </div>
     </div>
   );
@@ -851,13 +868,13 @@ export function WalletInfoDialog({
             </div>
             {summary === undefined && <div className="text-gray-500">Loading...</div>}
             {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
-            <div className="mt-1 grid grid-cols-1 md:grid-cols-2 gap-3 items-start min-w-0">
-              <div className="min-w-0">
-                {summary && <WalletScoresLedgerSummaryGrid s={summary} />}
+            <div className="mt-1 flex flex-col lg:flex-row gap-3 items-stretch min-w-0">
+              <div className="shrink-0 w-full lg:w-[min(11rem,calc(100%/6))] lg:max-w-[11rem]">
+                {summary && <WalletScoresLedgerSummaryGrid s={summary} narrowSummary />}
               </div>
               {wallet.trim() ? (
-                <div className="min-w-0 md:border-l md:border-gray-800 md:pl-3">
-                  <WalletScoresDailyCharts wallet={wallet.trim()} refreshToken={dailySnapshotsRefresh} />
+                <div className="min-w-0 flex-1 lg:border-l lg:border-gray-800 lg:pl-3">
+                  <WalletScoresDailyCharts wallet={wallet.trim()} refreshToken={dailySnapshotsRefresh} chartsLayout="row" />
                 </div>
               ) : null}
             </div>

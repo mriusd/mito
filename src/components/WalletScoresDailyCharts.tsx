@@ -354,9 +354,12 @@ function MiniLineCanvas({
 export function WalletScoresDailyCharts({
   wallet,
   refreshToken = 0,
+  chartsLayout = 'stack',
 }: {
   wallet: string;
   refreshToken?: number;
+  /** `row`: win/profit/ROI and PnL canvases side by side (e.g. wallet info dialog). */
+  chartsLayout?: 'stack' | 'row';
 }) {
   const [windowSel, setWindowSel] = useState<WalletScoresDailyWindow>('30d');
   const [points, setPoints] = useState<WalletScoresDailyPoint[]>([]);
@@ -418,7 +421,13 @@ export function WalletScoresDailyCharts({
       {loading && <div className="text-gray-500 text-[9px]">Loading chart…</div>}
       {err && <div className="text-red-400 text-[9px]">{err}</div>}
       {!loading && !err && (
-        <div className="flex flex-col gap-3 min-w-0">
+        <div
+          className={
+            chartsLayout === 'row'
+              ? 'flex flex-col sm:flex-row gap-2 min-w-0 [&>*]:min-w-0 [&>*]:flex-1'
+              : 'flex flex-col gap-3 min-w-0'
+          }
+        >
           <RatesRoiCanvas dates={dates} win={wr} profit={pr} roi={roi} />
           <MiniLineCanvas title="PnL $" dates={dates} values={pnl} stroke="#fbbf24" yFmt="money" />
         </div>

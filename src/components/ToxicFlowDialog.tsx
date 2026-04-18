@@ -75,6 +75,7 @@ function fmtUsdSignedLedger(v: number): string {
 /** `wallet_scores_ledger` fields from /api/wallet-summary. */
 function WalletScoresLedgerSummaryGrid({ s, dense }: { s: WalletSummary; dense?: boolean }) {
   const tm = s.totalMarkets ?? 0;
+  const tt = s.totalTrades ?? 0;
   const wn = s.wins ?? 0;
   const ls = s.losses ?? 0;
   const fl = s.flat ?? 0;
@@ -98,6 +99,10 @@ function WalletScoresLedgerSummaryGrid({ s, dense }: { s: WalletSummary; dense?:
       <div className={row}>
         <span className="text-gray-500">Total Markets</span>
         <span className="text-white font-medium tabular-nums">{tm}</span>
+      </div>
+      <div className={row}>
+        <span className="text-gray-500">Total Trades</span>
+        <span className="text-white font-medium tabular-nums">{tt.toLocaleString()}</span>
       </div>
       <div className={row}>
         <span className="text-gray-500">W / L / F</span>
@@ -298,6 +303,7 @@ function rowHolderSummary(row: WalletPosition): WalletSummary | null {
     usdcIn,
     usdcOut,
     roi: Number.isFinite(roiEst) ? roiEst : 0,
+    totalTrades: typeof row.tradeCount === 'number' && Number.isFinite(row.tradeCount) ? row.tradeCount : 0,
   };
 }
 
@@ -404,7 +410,7 @@ function WalletLink({
       setShow(true);
       const wk = wallet.toLowerCase();
       const hit = summaryCache[wk];
-      if (hit && typeof hit.cashFlow === 'number') {
+      if (hit && typeof hit.cashFlow === 'number' && typeof hit.totalTrades === 'number') {
         setSummary(hit);
         return;
       }
@@ -502,7 +508,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
       const pairs = await Promise.all(
         uniq.map(async (w) => {
           const hit = summaryCache[w];
-          if (hit && typeof hit.cashFlow === 'number') return [w, hit] as const;
+          if (hit && typeof hit.cashFlow === 'number' && typeof hit.totalTrades === 'number') return [w, hit] as const;
           const s = await fetchWalletSummary(w);
           if (s) summaryCache[w] = s;
           return [w, s] as const;

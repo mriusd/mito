@@ -806,8 +806,9 @@ export function WalletInfoDialog({
                     <th className="text-right whitespace-nowrap" title="pnl_yes (realized)">rPnL Y</th>
                     <th className="text-right whitespace-nowrap" title="pnl_no (realized)">rPnL N</th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.pnl">PnL</th>
+                    <th className="text-right whitespace-nowrap" title="Staked">Staked</th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">Fee</th>
-                    <th className="text-right whitespace-nowrap" title="wallet_market_positions.res_pnl">Return</th>
+                    <th className="text-right whitespace-nowrap" title="wallet_market_positions.res_pnl">Gained</th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.roi">ROI</th>
                   </tr>
                 </thead>
@@ -835,6 +836,7 @@ export function WalletInfoDialog({
                       const pyes = typeof m.pnlYes === 'number' && Number.isFinite(m.pnlYes) ? m.pnlYes : 0;
                       const pno = typeof m.pnlNo === 'number' && Number.isFinite(m.pnlNo) ? m.pnlNo : 0;
                       const rowPnl = typeof m.pnl === 'number' && Number.isFinite(m.pnl) ? m.pnl : 0;
+                      const rowUsdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
                       const rowRPnl = typeof m.rPnl === 'number' && Number.isFinite(m.rPnl) ? m.rPnl : 0;
                       const wlfSum = (m.w ?? 0) + (m.l ?? 0) + (m.f ?? 0);
                       const payoutUnresolved = wlfSum === 0;
@@ -861,6 +863,9 @@ export function WalletInfoDialog({
                       <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(pyes)}`}>{fmtUsdSignedLedger(pyes)}</td>
                       <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(pno)}`}>{fmtUsdSignedLedger(pno)}</td>
                       <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(rowPnl)}`}>{fmtUsdSignedLedger(rowPnl)}</td>
+                      <td className="text-right tabular-nums text-yellow-400 whitespace-nowrap" title="Staked">
+                        ${rowUsdcIn.toFixed(2)}
+                      </td>
                       <td className="text-right tabular-nums text-amber-200/90 whitespace-nowrap" title="fee_total">{fmtFeeLedger(m.feeTotal)}</td>
                       <td
                         className={`text-right tabular-nums font-bold whitespace-nowrap ${payoutUnresolved ? 'text-gray-500' : rPnlToneClass(rowRPnl)}`}

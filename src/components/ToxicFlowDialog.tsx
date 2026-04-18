@@ -6,6 +6,7 @@ import type { ToxicFlowData, WalletPosition, WalletSummary, OnchainFillRow } fro
 import type { Market } from '../types';
 import { shortenUpDownMarketListCell, ASSET_COLORS, extractAssetFromMarket, assetTickerFromQuestion } from '../utils/format';
 import { useAppStore } from '../stores/appStore';
+import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 
 interface ToxicFlowDialogProps {
   open: boolean;
@@ -694,6 +695,7 @@ export function WalletInfoDialog({
   const [fillsTotal, setFillsTotal] = useState(0);
   const [fillsPage, setFillsPage] = useState(0);
   const [fillsRefreshToken, setFillsRefreshToken] = useState(0);
+  const [dailySnapshotsRefresh, setDailySnapshotsRefresh] = useState(0);
   const fillsPageSize = 200;
   const marketById = useMemo(() => {
     const m: Record<string, any> = {};
@@ -742,6 +744,7 @@ export function WalletInfoDialog({
     setFillsTotal(0);
     setFillsPage(0);
     setFillsRefreshToken(0);
+    setDailySnapshotsRefresh(0);
     setLoadingMarkets(true);
     (async () => {
       try {
@@ -758,6 +761,7 @@ export function WalletInfoDialog({
     try {
       await loadMarketsAndSelect(selectedMarketId, true);
       setFillsRefreshToken((n) => n + 1);
+      setDailySnapshotsRefresh((n) => n + 1);
     } finally {
       setLoadingMarkets(false);
     }
@@ -836,12 +840,15 @@ export function WalletInfoDialog({
             {summary === undefined && <div className="text-gray-500">Loading...</div>}
             {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
             {summary && <WalletScoresLedgerSummaryGrid s={summary} />}
+            {wallet.trim() ? (
+              <WalletScoresDailyCharts wallet={wallet.trim()} refreshToken={dailySnapshotsRefresh} />
+            ) : null}
           </div>
         </div>
 
         <div
           className="grid gap-2 overflow-hidden"
-          style={{ height: 'calc(88vh - 160px)', gridTemplateColumns: 'minmax(0, 1fr) minmax(16rem, 36rem)' }}
+          style={{ height: 'calc(88vh - 280px)', gridTemplateColumns: 'minmax(0, 1fr) minmax(16rem, 36rem)' }}
         >
           <div className="bg-gray-900 rounded p-2 overflow-y-auto overflow-x-auto min-w-0">
             <div className="text-[10px] text-gray-400 font-bold mb-1">Latest Markets Traded</div>

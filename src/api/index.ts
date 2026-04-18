@@ -704,6 +704,35 @@ export async function fetchWalletSummary(wallet: string): Promise<WalletSummary 
   return data.found ? data : null;
 }
 
+/** GET /api/wallet-scores-daily — `wallet_scores_daily_snapshot` rows for charting. */
+export type WalletScoresDailyWindow = '7d' | '30d' | 'all';
+
+export interface WalletScoresDailyPoint {
+  date: string;
+  winRate: number;
+  profitRate: number;
+  pnl: number;
+  roi: number;
+}
+
+export interface WalletScoresDailyResponse {
+  wallet: string;
+  window: WalletScoresDailyWindow;
+  points: WalletScoresDailyPoint[];
+}
+
+export async function fetchWalletScoresDaily(
+  wallet: string,
+  window: WalletScoresDailyWindow = 'all',
+): Promise<WalletScoresDailyResponse> {
+  const w = wallet.toLowerCase();
+  const resp = await fetch(
+    `${BASE}/api/wallet-scores-daily?wallet=${encodeURIComponent(w)}&window=${encodeURIComponent(window)}`,
+  );
+  if (!resp.ok) throw new Error('Failed to fetch wallet scores daily');
+  return resp.json();
+}
+
 // --- Chat API ---
 
 export interface ChatMessage {

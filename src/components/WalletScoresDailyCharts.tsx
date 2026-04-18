@@ -410,9 +410,13 @@ export function WalletScoresDailyCharts({
       {loading && <div className="text-gray-500 text-[9px]">Loading chart…</div>}
       {err && <div className="text-red-400 text-[9px]">{err}</div>}
       {!loading && !err && (
-        <div className="grid grid-cols-1 gap-3">
-          <RatesRoiCanvas dates={dates} win={wr} profit={pr} roi={roi} />
-          <MiniLineCanvas title="PnL $" dates={dates} values={pnl} stroke="#fbbf24" yFmt="money" />
+        <div className="grid grid-cols-2 gap-3 min-w-0">
+          <div className="min-w-0">
+            <RatesRoiCanvas dates={dates} win={wr} profit={pr} roi={roi} />
+          </div>
+          <div className="min-w-0">
+            <MiniLineCanvas title="PnL $" dates={dates} values={pnl} stroke="#fbbf24" yFmt="money" />
+          </div>
         </div>
       )}
     </div>

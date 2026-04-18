@@ -74,7 +74,15 @@ function fmtUsdSignedLedger(v: number): string {
 
 /** `wallet_scores_ledger` fields from /api/wallet-summary. */
 function WalletScoresLedgerSummaryGrid({ s, dense }: { s: WalletSummary; dense?: boolean }) {
-  const tradedVol = (s.usdcIn || 0) + (s.usdcOut || 0);
+  const tm = s.totalMarkets ?? 0;
+  const wn = s.wins ?? 0;
+  const ls = s.losses ?? 0;
+  const fl = s.flat ?? 0;
+  const pnl = s.pnl ?? 0;
+  const cf = s.cashFlow ?? 0;
+  const pm = s.pm ?? 0;
+  const lm = s.lm ?? 0;
+  const tradedVol = (s.usdcIn ?? 0) + (s.usdcOut ?? 0);
   const wrRaw = typeof s.winRate === 'number' && Number.isFinite(s.winRate) ? s.winRate : 0;
   const wrFrac = wrRaw > 1 ? wrRaw / 100 : wrRaw;
   const wrPct = wrFrac * 100;
@@ -89,12 +97,12 @@ function WalletScoresLedgerSummaryGrid({ s, dense }: { s: WalletSummary; dense?:
     <div className={`grid grid-cols-1 min-[420px]:grid-cols-2 gap-x-6 gap-y-1 ${dense ? 'max-w-[min(100vw-24px,320px)]' : ''}`}>
       <div className={row}>
         <span className="text-gray-500">Total Markets</span>
-        <span className="text-white font-medium tabular-nums">{s.totalMarkets}</span>
+        <span className="text-white font-medium tabular-nums">{tm}</span>
       </div>
       <div className={row}>
         <span className="text-gray-500">W / L / F</span>
         <span className="text-white font-medium tabular-nums">
-          {s.wins}/{s.losses}/{s.flat}
+          {wn}/{ls}/{fl}
         </span>
       </div>
       <div className={row}>
@@ -103,16 +111,16 @@ function WalletScoresLedgerSummaryGrid({ s, dense }: { s: WalletSummary; dense?:
       </div>
       <div className={row}>
         <span className="text-gray-500">PnL</span>
-        <span className={`font-bold tabular-nums ${rPnlToneClass(s.pnl ?? 0)}`}>{fmtUsdSignedLedger(s.pnl ?? 0)}</span>
+        <span className={`font-bold tabular-nums ${rPnlToneClass(pnl)}`}>{fmtUsdSignedLedger(pnl)}</span>
       </div>
       <div className={row}>
         <span className="text-gray-500">Net Cash</span>
-        <span className={`font-bold tabular-nums ${rPnlToneClass(s.cashFlow ?? 0)}`}>{fmtUsdSignedLedger(s.cashFlow ?? 0)}</span>
+        <span className={`font-bold tabular-nums ${rPnlToneClass(cf)}`}>{fmtUsdSignedLedger(cf)}</span>
       </div>
       <div className={row}>
         <span className="text-gray-500">P / L</span>
         <span className="text-white font-medium tabular-nums">
-          {s.pm}/{s.lm}
+          {pm}/{lm}
         </span>
       </div>
       <div className={row}>
@@ -396,7 +404,7 @@ function WalletLink({
       setShow(true);
       const wk = wallet.toLowerCase();
       const hit = summaryCache[wk];
-      if (hit) {
+      if (hit && typeof hit.cashFlow === 'number') {
         setSummary(hit);
         return;
       }
@@ -494,7 +502,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
       const pairs = await Promise.all(
         uniq.map(async (w) => {
           const hit = summaryCache[w];
-          if (hit) return [w, hit] as const;
+          if (hit && typeof hit.cashFlow === 'number') return [w, hit] as const;
           const s = await fetchWalletSummary(w);
           if (s) summaryCache[w] = s;
           return [w, s] as const;
@@ -1099,7 +1107,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   const [tab, setTab] = useState<Tab>('topHolders');
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState('');
-  const [selectedWalletNet, setSelectedWalletNet] = useState<number | undefined>(undefined);
 
   const load = useCallback(async () => {
     if (!marketId) return;
@@ -1161,9 +1168,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
 
   if (!open) return null;
 
-  const openWalletDialog = (wallet: string, netShares?: number) => {
+  const openWalletDialog = (wallet: string, _netShares?: number) => {
     setSelectedWallet(wallet);
-    setSelectedWalletNet(netShares);
     setWalletDialogOpen(true);
   };
 

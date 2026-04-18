@@ -41,11 +41,6 @@ function walletOutcomeLetterCell(m: WalletPosition) {
   return <span className={cls}>{letter}</span>;
 }
 
-function fmtFeeLedger(v: number | undefined): string {
-  if (v == null || !Number.isFinite(v)) return '–';
-  return `$${v.toFixed(2)}`;
-}
-
 function fmtPriceShare(p: number | undefined): string {
   if (p == null || !Number.isFinite(p)) return '–';
   if (Math.abs(p) < 1e-12) return '-';
@@ -902,6 +897,7 @@ export function WalletInfoDialog({
                       const pno = typeof m.pnlNo === 'number' && Number.isFinite(m.pnlNo) ? m.pnlNo : 0;
                       const rowPnl = typeof m.pnl === 'number' && Number.isFinite(m.pnl) ? m.pnl : 0;
                       const rowUsdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
+                      const rowFee = typeof m.feeTotal === 'number' && Number.isFinite(m.feeTotal) ? m.feeTotal : 0;
                       const rowRPnl = typeof m.rPnl === 'number' && Number.isFinite(m.rPnl) ? m.rPnl : 0;
                       const wlfSum = (m.w ?? 0) + (m.l ?? 0) + (m.f ?? 0);
                       const payoutUnresolved = wlfSum === 0;
@@ -923,15 +919,17 @@ export function WalletInfoDialog({
                       <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15 whitespace-nowrap">{fmtLegShares(iy)}</td>
                       <td className="text-right tabular-nums font-bold text-red-400 bg-red-900/15 whitespace-nowrap">{fmtLegShares(inn)}</td>
                       <td className={`text-right tabular-nums whitespace-nowrap ${netLeg > 0.001 ? 'text-green-400' : netLeg < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(netLeg)}</td>
-                      <td className="text-right text-gray-300 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceYes)}</td>
-                      <td className="text-right text-gray-300 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceNo)}</td>
+                      <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceYes)}</td>
+                      <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceNo)}</td>
                       <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(pyes)}`}>{fmtUsdSignedLedger(pyes)}</td>
                       <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(pno)}`}>{fmtUsdSignedLedger(pno)}</td>
                       <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(rowPnl)}`}>{fmtUsdSignedLedger(rowPnl)}</td>
-                      <td className="text-right tabular-nums text-yellow-400 whitespace-nowrap" title="Staked">
-                        ${rowUsdcIn.toFixed(2)}
+                      <td className="text-right tabular-nums font-medium text-red-400 whitespace-nowrap" title="Staked (USDC in)">
+                        −${rowUsdcIn.toFixed(2)}
                       </td>
-                      <td className="text-right tabular-nums text-amber-200/90 whitespace-nowrap" title="fee_total">{fmtFeeLedger(m.feeTotal)}</td>
+                      <td className="text-right tabular-nums font-medium text-red-400 whitespace-nowrap" title="fee_total">
+                        −${rowFee.toFixed(2)}
+                      </td>
                       <td
                         className={`text-right tabular-nums font-bold whitespace-nowrap ${payoutUnresolved ? 'text-gray-500' : rPnlToneClass(rowRPnl)}`}
                         title={payoutUnresolved ? 'Market not scored (W/L/F all zero)' : 'res_pnl'}

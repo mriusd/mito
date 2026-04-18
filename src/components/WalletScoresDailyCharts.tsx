@@ -14,13 +14,13 @@ function padRange(min: number, max: number): [number, number] {
 type YFmt = 'pct0' | 'pct1' | 'money';
 
 function formatYAxis(kind: YFmt, v: number): string {
-  if (kind === 'pct0') return `${v.toFixed(0)}%`;
-  if (kind === 'pct1') return `${v.toFixed(1)}%`;
+  if (kind === 'pct0') return `${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}%`;
+  if (kind === 'pct1') return `${v.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
   const a = Math.abs(v);
   const pref = v >= 0 ? '' : '−';
-  if (a >= 1e6) return `${pref}$${(a / 1e6).toFixed(1)}M`;
-  if (a >= 1e3) return `${pref}$${(a / 1e3).toFixed(1)}k`;
-  return `${pref}$${a.toFixed(0)}`;
+  if (a >= 1e6) return `${pref}$${(a / 1e6).toLocaleString('en-US', { maximumFractionDigits: 1 })}M`;
+  if (a >= 1e3) return `${pref}$${(a / 1e3).toLocaleString('en-US', { maximumFractionDigits: 1 })}k`;
+  return pref + '$' + a.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
 type RateSeries = {
@@ -59,17 +59,20 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
-    const padL = 50;
-    const padR = 4;
+    const padL = 6;
+    const padR = 52;
     const padT = 4;
     const padB = 14;
     const innerW = W - padL - padR;
     const innerH = H - padT - padB;
+    const plotRight = padL + innerW;
+    const labelX = plotRight + 4;
 
     if (n === 0) {
       ctx.fillStyle = '#6b7280';
       ctx.font = '9px sans-serif';
-      ctx.fillText('No data', padL, H / 2);
+      ctx.textAlign = 'center';
+      ctx.fillText('No data', W / 2, H / 2);
       return;
     }
 
@@ -90,17 +93,17 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
     ctx.strokeStyle = '#374151';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(padL, padT);
-    ctx.lineTo(padL, padT + innerH);
-    ctx.lineTo(padL + innerW, padT + innerH);
+    ctx.moveTo(padL, padT + innerH);
+    ctx.lineTo(plotRight, padT + innerH);
+    ctx.lineTo(plotRight, padT);
     ctx.stroke();
 
     ctx.fillStyle = '#6b7280';
     ctx.font = '8px monospace';
-    ctx.textAlign = 'right';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(`${vmax.toFixed(0)}%`, padL - 2, padT + 7);
-    ctx.fillText(`${vmin.toFixed(0)}%`, padL - 2, padT + innerH);
+    ctx.fillText(`${vmax.toLocaleString('en-US', { maximumFractionDigits: 0 })}%`, labelX, padT + 7);
+    ctx.fillText(`${vmin.toLocaleString('en-US', { maximumFractionDigits: 0 })}%`, labelX, padT + innerH);
 
     const lastIdx = n - 1;
     const lastX = xAt(lastIdx);
@@ -115,8 +118,8 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
-      ctx.moveTo(padL, lastY);
-      ctx.lineTo(lastX, lastY);
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(plotRight, lastY);
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
@@ -164,11 +167,11 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
       if (ty > padT + innerH - 2) ty = padT + innerH - 2;
       prevTy = ty;
       ctx.save();
-      ctx.textAlign = 'right';
+      ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = L.stroke;
       ctx.font = 'bold 8px monospace';
-      ctx.fillText(formatYAxis(L.yFmt, L.lastVal), padL - 2, ty);
+      ctx.fillText(formatYAxis(L.yFmt, L.lastVal), labelX, ty);
       ctx.restore();
     }
 
@@ -241,17 +244,20 @@ function MiniLineCanvas({
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
-    const padL = 46;
-    const padR = 4;
+    const padL = 6;
+    const padR = 52;
     const padT = 4;
     const padB = 14;
     const innerW = W - padL - padR;
     const innerH = H - padT - padB;
+    const plotRight = padL + innerW;
+    const labelX = plotRight + 4;
     const n = values.length;
     if (n === 0) {
       ctx.fillStyle = '#6b7280';
       ctx.font = '9px sans-serif';
-      ctx.fillText('No data', padL, H / 2);
+      ctx.textAlign = 'center';
+      ctx.fillText('No data', W / 2, H / 2);
       return;
     }
     let vmin = Math.min(...values);
@@ -263,9 +269,9 @@ function MiniLineCanvas({
     ctx.strokeStyle = '#374151';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(padL, padT);
-    ctx.lineTo(padL, padT + innerH);
-    ctx.lineTo(padL + innerW, padT + innerH);
+    ctx.moveTo(padL, padT + innerH);
+    ctx.lineTo(plotRight, padT + innerH);
+    ctx.lineTo(plotRight, padT);
     ctx.stroke();
 
     const lastIdx = n - 1;
@@ -275,10 +281,10 @@ function MiniLineCanvas({
 
     ctx.fillStyle = '#6b7280';
     ctx.font = '8px monospace';
-    ctx.textAlign = 'right';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(formatYAxis(yFmt, vmax), padL - 2, padT + 7);
-    ctx.fillText(formatYAxis(yFmt, vmin), padL - 2, padT + innerH);
+    ctx.fillText(formatYAxis(yFmt, vmax), labelX, padT + 7);
+    ctx.fillText(formatYAxis(yFmt, vmin), labelX, padT + innerH);
 
     ctx.save();
     ctx.strokeStyle = stroke;
@@ -286,8 +292,8 @@ function MiniLineCanvas({
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
-    ctx.moveTo(padL, lastY);
-    ctx.lineTo(lastX, lastY);
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(plotRight, lastY);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
@@ -317,11 +323,11 @@ function MiniLineCanvas({
     }
 
     ctx.save();
-    ctx.textAlign = 'right';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = stroke;
     ctx.font = 'bold 8px monospace';
-    ctx.fillText(formatYAxis(yFmt, lastVal), padL - 2, lastY);
+    ctx.fillText(formatYAxis(yFmt, lastVal), labelX, lastY);
     ctx.restore();
 
     ctx.fillStyle = '#9ca3af';
@@ -398,7 +404,7 @@ export function WalletScoresDailyCharts({
   );
 
   return (
-    <div className="mt-2 pt-2 border-t border-gray-800">
+    <div className="min-w-0">
       <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
         <span className="text-[9px] text-gray-500 font-semibold">Daily (UTC)</span>
         <div className="flex gap-0.5 shrink-0">
@@ -410,13 +416,9 @@ export function WalletScoresDailyCharts({
       {loading && <div className="text-gray-500 text-[9px]">Loading chart…</div>}
       {err && <div className="text-red-400 text-[9px]">{err}</div>}
       {!loading && !err && (
-        <div className="grid grid-cols-2 gap-3 min-w-0">
-          <div className="min-w-0">
-            <RatesRoiCanvas dates={dates} win={wr} profit={pr} roi={roi} />
-          </div>
-          <div className="min-w-0">
-            <MiniLineCanvas title="PnL $" dates={dates} values={pnl} stroke="#fbbf24" yFmt="money" />
-          </div>
+        <div className="flex flex-col gap-3 min-w-0">
+          <RatesRoiCanvas dates={dates} win={wr} profit={pr} roi={roi} />
+          <MiniLineCanvas title="PnL $" dates={dates} values={pnl} stroke="#fbbf24" yFmt="money" />
         </div>
       )}
     </div>

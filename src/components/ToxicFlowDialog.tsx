@@ -44,7 +44,7 @@ function walletOutcomeLetterCell(m: WalletPosition) {
 function fmtPriceShare(p: number | undefined): string {
   if (p == null || !Number.isFinite(p)) return '–';
   if (Math.abs(p) < 1e-12) return '-';
-  return `${(p * 100).toFixed(1)}¢`;
+  return `${(p * 100).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}¢`;
 }
 
 function rPnlToneClass(v: number): string {
@@ -58,14 +58,32 @@ function fmtRoiPercent(roi: number | undefined): { text: string; tone: string } 
   const pct = roi * 100;
   const s = pct >= 0 ? '+' : '';
   const tone = Math.abs(roi) < 1e-12 ? 'text-gray-400' : roi > 0 ? 'text-green-400' : 'text-red-400';
-  return { text: `${s}${pct.toFixed(1)}%`, tone };
+  const txt = pct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return { text: `${s}${txt}%`, tone };
+}
+
+function fmtIntEn(n: number): string {
+  if (!Number.isFinite(n)) return '–';
+  return Math.trunc(n).toLocaleString('en-US');
 }
 
 function fmtUsdSignedLedger(v: number): string {
   if (!Number.isFinite(v)) return '–';
-  const a = Math.abs(v);
   const s = v >= 0 ? '+' : '−';
-  return `${s}$${a.toFixed(2)}`;
+  const a = Math.abs(v);
+  return `${s}$${a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtUsd2En(absVal: number): string {
+  if (!Number.isFinite(absVal)) return '–';
+  return absVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtSignedShares1En(v: number): string {
+  if (!Number.isFinite(v)) return '–';
+  if (Math.abs(v) < 1e-9) return (0).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const sign = v > 0 ? '+' : '−';
+  return sign + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
 /** `wallet_scores_ledger` fields from /api/wallet-summary. */
@@ -91,29 +109,33 @@ function WalletScoresLedgerSummaryGrid({ s, dense }: { s: WalletSummary; dense?:
   const roiPct = roi * 100;
   const text = dense ? 'text-[8px]' : 'text-[10px]';
   const row = `flex justify-between gap-2 ${text} text-gray-300`;
+  const wrPctStr = wrPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const prPctStr = prPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const roiPctStr = roiPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const volStr = tradedVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return (
-    <div className={`grid grid-cols-1 min-[420px]:grid-cols-2 gap-x-6 gap-y-1 ${dense ? 'max-w-[min(100vw-24px,320px)]' : ''}`}>
+    <div className={`grid grid-cols-1 gap-y-1 ${dense ? 'max-w-[min(100vw-24px,320px)]' : ''}`}>
       <div className={row}>
         <span className="text-gray-500">Total Markets</span>
-        <span className="text-white font-medium tabular-nums">{tm}</span>
+        <span className="text-white font-medium tabular-nums">{fmtIntEn(tm)}</span>
       </div>
       <div className={row}>
         <span className="text-gray-500">Resolved Markets</span>
-        <span className="text-white font-medium tabular-nums">{rm}</span>
+        <span className="text-white font-medium tabular-nums">{fmtIntEn(rm)}</span>
       </div>
       <div className={row}>
         <span className="text-gray-500">Total Trades</span>
-        <span className="text-white font-medium tabular-nums">{tt.toLocaleString()}</span>
+        <span className="text-white font-medium tabular-nums">{fmtIntEn(tt)}</span>
       </div>
       <div className={row}>
         <span className="text-gray-500">W / L / F</span>
         <span className="text-white font-medium tabular-nums">
-          {wn}/{ls}/{fl}
+          {fmtIntEn(wn)}/{fmtIntEn(ls)}/{fmtIntEn(fl)}
         </span>
       </div>
       <div className={row}>
         <span className="text-gray-500">Win rate</span>
-        <span className={`font-bold tabular-nums ${wrPct < 50 ? 'text-red-400' : 'text-green-400'}`}>{wrPct.toFixed(1)}%</span>
+        <span className={`font-bold tabular-nums ${wrPct < 50 ? 'text-red-400' : 'text-green-400'}`}>{wrPctStr}%</span>
       </div>
       <div className={row}>
         <span className="text-gray-500">PnL</span>
@@ -126,22 +148,22 @@ function WalletScoresLedgerSummaryGrid({ s, dense }: { s: WalletSummary; dense?:
       <div className={row}>
         <span className="text-gray-500">P / L</span>
         <span className="text-white font-medium tabular-nums">
-          {pm}/{lm}
+          {fmtIntEn(pm)}/{fmtIntEn(lm)}
         </span>
       </div>
       <div className={row}>
         <span className="text-gray-500">Profit Rate</span>
-        <span className="text-gray-200 font-medium tabular-nums">{prPct.toFixed(1)}%</span>
+        <span className="text-gray-200 font-medium tabular-nums">{prPctStr}%</span>
       </div>
       <div className={row}>
         <span className="text-gray-500">Traded Volume</span>
-        <span className="text-yellow-400 font-medium tabular-nums">${tradedVol.toFixed(2)}</span>
+        <span className="text-yellow-400 font-medium tabular-nums">${volStr}</span>
       </div>
       <div className={row}>
         <span className="text-gray-500">ROI</span>
         <span className={`font-bold tabular-nums ${roi >= 0 ? 'text-green-400' : 'text-red-400'}`}>
           {roi >= 0 ? '+' : ''}
-          {roiPct.toFixed(1)}%
+          {roiPctStr}%
         </span>
       </div>
     </div>
@@ -834,10 +856,16 @@ export function WalletInfoDialog({
             </div>
             {summary === undefined && <div className="text-gray-500">Loading...</div>}
             {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
-            {summary && <WalletScoresLedgerSummaryGrid s={summary} />}
-            {wallet.trim() ? (
-              <WalletScoresDailyCharts wallet={wallet.trim()} refreshToken={dailySnapshotsRefresh} />
-            ) : null}
+            <div className="mt-1 grid grid-cols-1 md:grid-cols-2 gap-3 items-start min-w-0">
+              <div className="min-w-0">
+                {summary && <WalletScoresLedgerSummaryGrid s={summary} />}
+              </div>
+              {wallet.trim() ? (
+                <div className="min-w-0 md:border-l md:border-gray-800 md:pl-3">
+                  <WalletScoresDailyCharts wallet={wallet.trim()} refreshToken={dailySnapshotsRefresh} />
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -891,8 +919,8 @@ export function WalletInfoDialog({
                       const iy = walletInvY(m);
                       const inn = walletInvN(m);
                       const netLeg = walletNet(m);
-                      const fmtInv = (v: number) => `${v > 0.001 ? '+' : ''}${v.toFixed(1)}`;
-                      const fmtLegShares = (v: number) => (Number.isFinite(v) ? v.toFixed(1) : '–');
+                      const fmtInv = (v: number) => fmtSignedShares1En(v);
+                      const fmtLegShares = (v: number) => fmtSignedShares1En(v);
                       const pyes = typeof m.pnlYes === 'number' && Number.isFinite(m.pnlYes) ? m.pnlYes : 0;
                       const pno = typeof m.pnlNo === 'number' && Number.isFinite(m.pnlNo) ? m.pnlNo : 0;
                       const rowPnl = typeof m.pnl === 'number' && Number.isFinite(m.pnl) ? m.pnl : 0;
@@ -925,10 +953,10 @@ export function WalletInfoDialog({
                       <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(pno)}`}>{fmtUsdSignedLedger(pno)}</td>
                       <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(rowPnl)}`}>{fmtUsdSignedLedger(rowPnl)}</td>
                       <td className="text-right tabular-nums font-medium text-red-400 whitespace-nowrap" title="Staked (USDC in)">
-                        −${rowUsdcIn.toFixed(2)}
+                        −${fmtUsd2En(rowUsdcIn)}
                       </td>
                       <td className="text-right tabular-nums font-medium text-red-400 whitespace-nowrap" title="fee_total">
-                        −${rowFee.toFixed(2)}
+                        −${fmtUsd2En(rowFee)}
                       </td>
                       <td
                         className={`text-right tabular-nums font-bold whitespace-nowrap ${payoutUnresolved ? 'text-gray-500' : rPnlToneClass(rowRPnl)}`}
@@ -992,11 +1020,13 @@ export function WalletInfoDialog({
                       const pr = f.price;
                       const priceFinite = pr != null && Number.isFinite(pr);
                       const sizeFinite = Number.isFinite(sz);
-                      const priceLabel = priceFinite ? `${(pr * 100).toFixed(1)}¢` : '—';
+                      const priceLabel = priceFinite
+                        ? `${(pr * 100).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}¢`
+                        : '—';
                       const usdc = priceFinite && sizeFinite ? pr * sz : NaN;
-                      const usdcLabel = Number.isFinite(usdc) ? `$${usdc.toFixed(2)}` : '—';
+                      const usdcLabel = Number.isFinite(usdc) ? `$${fmtUsd2En(usdc)}` : '—';
                       const feeN = Number(f.fee);
-                      const feeLabel = Number.isFinite(feeN) ? `$${feeN.toFixed(2)}` : '—';
+                      const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
                       const rawSide = String(f.side ?? '').trim();
                       const sideLabel = rawSide || '—';
                       const su = rawSide.toUpperCase();
@@ -1020,7 +1050,9 @@ export function WalletInfoDialog({
                           <td className="text-center text-amber-300 font-bold tabular-nums px-0">
                             {f.isTaker === true ? 'T' : ''}
                           </td>
-                          <td className="text-right">{sizeFinite ? sz.toFixed(2) : '—'}</td>
+                          <td className="text-right tabular-nums">
+                            {sizeFinite ? sz.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                          </td>
                           <td className="text-right text-gray-300 tabular-nums">{priceLabel}</td>
                           <td className="text-right text-yellow-400">{usdcLabel}</td>
                           <td className="text-right text-yellow-400/80">{feeLabel}</td>
@@ -1037,15 +1069,21 @@ export function WalletInfoDialog({
                       const label = String(f.orderHash);
                       const amount = Number(f.makerAmount ?? 0);
                       const feeN = Number(f.fee ?? 0);
-                      const feeLabel = Number.isFinite(feeN) ? `$${feeN.toFixed(2)}` : '—';
+                      const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
                       return (
                         <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
                           <td className="py-0.5">{ts}</td>
                           <td className="text-purple-400" colSpan={2}>{label}</td>
                           <td className="text-center text-amber-300 font-bold px-0">{f.isTaker === true ? 'T' : ''}</td>
-                          <td className="text-right">{Number.isFinite(amount) ? amount.toFixed(2) : '—'}</td>
+                          <td className="text-right tabular-nums">
+                            {Number.isFinite(amount)
+                              ? amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : '—'}
+                          </td>
                           <td className="text-right text-gray-500">—</td>
-                          <td className="text-right text-gray-500">{Number.isFinite(amount) ? `$${amount.toFixed(2)}` : '—'}</td>
+                          <td className="text-right text-gray-500 tabular-nums">
+                            {Number.isFinite(amount) ? `$${fmtUsd2En(amount)}` : '—'}
+                          </td>
                           <td className="text-right text-yellow-400/80">{feeLabel}</td>
                           <td className="text-right">
                             <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
@@ -1070,12 +1108,12 @@ export function WalletInfoDialog({
                     const nUsdc = Number(usdc);
                     const pricePerShare = nShares > 1e-9 && Number.isFinite(nShares) && Number.isFinite(nUsdc) ? nUsdc / nShares : NaN;
                     const priceLabel = Number.isFinite(pricePerShare)
-                      ? `${(pricePerShare * 100).toFixed(1)}¢`
+                      ? `${(pricePerShare * 100).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}¢`
                       : '—';
                     const { text: sideText, tone: sideTone } = fillOutcomeDisplay(f, mk);
                     const sideCls = sideTone === 'yes' ? 'text-green-400' : sideTone === 'no' ? 'text-red-400' : 'text-gray-300';
                     const feeN = Number(f.fee ?? 0);
-                    const feeLabel = Number.isFinite(feeN) ? `$${feeN.toFixed(2)}` : '—';
+                    const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
                     return (
                       <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
                         <td className="py-0.5">{ts}</td>
@@ -1084,10 +1122,16 @@ export function WalletInfoDialog({
                         <td className="text-center text-amber-300 font-bold tabular-nums px-0">
                           {f.isTaker === true ? 'T' : ''}
                         </td>
-                        <td className="text-right">{Number.isFinite(nShares) ? nShares.toFixed(2) : '—'}</td>
+                        <td className="text-right tabular-nums">
+                          {Number.isFinite(nShares)
+                            ? nShares.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                            : '—'}
+                        </td>
                         <td className="text-right text-gray-300 tabular-nums">{priceLabel}</td>
-                        <td className="text-right text-yellow-400">{Number.isFinite(nUsdc) ? `$${nUsdc.toFixed(2)}` : '—'}</td>
-                        <td className="text-right text-yellow-400/80">{feeLabel}</td>
+                        <td className="text-right text-yellow-400 tabular-nums">
+                          {Number.isFinite(nUsdc) ? `$${fmtUsd2En(nUsdc)}` : '—'}
+                        </td>
+                        <td className="text-right text-yellow-400/80 tabular-nums">{feeLabel}</td>
                         <td className="text-right">
                           <a href={`https://polygonscan.com/tx/${f.txHash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
                             {f.txHash.slice(0, 6)}…{f.txHash.slice(-4)}
@@ -1100,7 +1144,10 @@ export function WalletInfoDialog({
               </table>
             )}
             <div className="mt-2 flex items-center justify-between text-[10px] text-gray-400">
-              <span>Page {fillsPage + 1} / {Math.max(1, Math.ceil(fillsTotal / fillsPageSize))} ({fillsTotal} trades)</span>
+              <span>
+                Page {fmtIntEn(fillsPage + 1)} / {fmtIntEn(Math.max(1, Math.ceil(fillsTotal / fillsPageSize)))} (
+                {fmtIntEn(fillsTotal)} trades)
+              </span>
               <div className="flex items-center gap-1">
                 <button
                   type="button"

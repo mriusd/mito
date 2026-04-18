@@ -207,7 +207,7 @@ export function assetTickerFromQuestion(question: string | null | undefined): st
 
 /**
  * Wallet info “Latest Markets”: same label as {@link shortenMarketName} (incl. `↑↓` for up/down).
- * For 5m / 15m / 4h windows, appends market end clock from `endDateIso` when valid.
+ * When `endDateIso` is valid, appends local window `start - end` (from timeframe: 5m / 15m / 1h / 4h / 24h daily).
  */
 export function shortenUpDownMarketListCell(
   question: string | null | undefined,
@@ -235,16 +235,24 @@ export function shortenUpDownMarketListCell(
     !fourHourMatch &&
     !oneHourMatch;
 
-  const shortTf = fiveMinMatch || fifteenMinMatch || fourHourMatch || oneHourMatch;
-  if (isDailyOnly || !shortTf) return base;
+  let windowMs = 0;
+  if (fiveMinMatch) windowMs = 5 * 60 * 1000;
+  else if (fifteenMinMatch) windowMs = 15 * 60 * 1000;
+  else if (fourHourMatch) windowMs = 4 * 60 * 60 * 1000;
+  else if (oneHourMatch) windowMs = 60 * 60 * 1000;
+  else if (isDailyOnly) windowMs = 24 * 60 * 60 * 1000;
+  else return base;
 
   const end = (endDateIso || '').trim();
   if (!end) return base;
-  const d = new Date(end);
-  if (Number.isNaN(d.getTime())) return base;
+  const dEnd = new Date(end);
+  if (Number.isNaN(dEnd.getTime())) return base;
 
-  const timeLabel = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  return `${base} · ${timeLabel}`.replace(/\s+/g, ' ').trim();
+  const tfOpts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+  const dStart = new Date(dEnd.getTime() - windowMs);
+  const startLabel = dStart.toLocaleTimeString(undefined, tfOpts);
+  const endLabel = dEnd.toLocaleTimeString(undefined, tfOpts);
+  return `${base} · ${startLabel} - ${endLabel}`.replace(/\s+/g, ' ').trim();
 }
 
 export function getTokenOutcome(tokenId: string, marketLookup: Record<string, Market>): string {

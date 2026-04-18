@@ -676,6 +676,8 @@ export interface WalletSummary {
   found: boolean;
   wallet: string;
   totalMarkets: number;
+  /** `wallet_market_positions` rows with `outcome` set (resolved). */
+  resolvedMarkets?: number;
   /** Σ `wallet_market_positions.trades` (fill rows). */
   totalTrades: number;
   wins: number;

@@ -388,7 +388,9 @@ export function WalletScoresDailyCharts({
   const wr = points.map((p) => (Number.isFinite(p.winRate) ? p.winRate * 100 : 0));
   const pr = points.map((p) => (Number.isFinite(p.profitRate) ? p.profitRate * 100 : 0));
   const pnl = points.map((p) => (Number.isFinite(p.pnl) ? p.pnl : 0));
-  const roi = points.map((p) => (Number.isFinite(p.roi) ? p.roi * 100 : 0));
+  const roi = points.map((p) =>
+    typeof p.roi === 'number' && Number.isFinite(p.roi) ? p.roi * 100 : 0,
+  );
 
   const btn = (w: WalletScoresDailyWindow, label: string) => (
     <button

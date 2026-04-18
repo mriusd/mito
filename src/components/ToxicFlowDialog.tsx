@@ -105,13 +105,11 @@ function WalletScoresLedgerSummaryGrid({ s, dense }: { s: WalletSummary; dense?:
   const prRaw = typeof s.profitRate === 'number' && Number.isFinite(s.profitRate) ? s.profitRate : 0;
   const prFrac = prRaw > 1 ? prRaw / 100 : prRaw;
   const prPct = prFrac * 100;
-  const roi = typeof s.roi === 'number' && Number.isFinite(s.roi) ? s.roi : 0;
-  const roiPct = roi * 100;
+  const roiLedgerFmt = fmtRoiPercent(s.roi ?? undefined);
   const text = dense ? 'text-[8px]' : 'text-[10px]';
   const row = `flex justify-between gap-2 ${text} text-gray-300`;
   const wrPctStr = wrPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const prPctStr = prPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  const roiPctStr = roiPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const volStr = tradedVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return (
     <div className={`grid grid-cols-1 gap-y-1 ${dense ? 'max-w-[min(100vw-24px,320px)]' : ''}`}>
@@ -161,10 +159,7 @@ function WalletScoresLedgerSummaryGrid({ s, dense }: { s: WalletSummary; dense?:
       </div>
       <div className={row}>
         <span className="text-gray-500">ROI</span>
-        <span className={`font-bold tabular-nums ${roi >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-          {roi >= 0 ? '+' : ''}
-          {roiPctStr}%
-        </span>
+        <span className={`font-bold tabular-nums ${roiLedgerFmt.tone}`}>{roiLedgerFmt.text}</span>
       </div>
     </div>
   );

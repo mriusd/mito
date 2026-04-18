@@ -693,8 +693,8 @@ export interface WalletSummary {
   profitRate: number;
   usdcIn: number;
   usdcOut: number;
-  /** Stored decimal (e.g. 0.12 = 12%); display ×100 for %. */
-  roi: number;
+  /** Stored decimal (e.g. 0.12 = 12%); display ×100 for %. Null until resolved-markets basis exists. */
+  roi?: number | null;
 }
 
 export async function fetchWalletSummary(wallet: string): Promise<WalletSummary | null> {
@@ -712,7 +712,7 @@ export interface WalletScoresDailyPoint {
   winRate: number;
   profitRate: number;
   pnl: number;
-  roi: number;
+  roi?: number | null;
 }
 
 export interface WalletScoresDailyResponse {

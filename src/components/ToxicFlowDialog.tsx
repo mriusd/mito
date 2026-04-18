@@ -27,18 +27,16 @@ function walletNet(w: WalletPosition): number {
   return walletInvY(w) - walletInvN(w);
 }
 
-function walletLedgerWLFCell(m: WalletPosition) {
-  if (m.w === 1) return <span className="font-bold text-green-400">W</span>;
-  if (m.l === 1) return <span className="font-bold text-red-400">L</span>;
-  if (m.f === 1) return <span className="font-bold text-yellow-400">F</span>;
-  return <span className="text-gray-600">–</span>;
-}
-
 function walletOutcomeLetterCell(m: WalletPosition) {
   const oc = m.outcome;
   if (oc !== 0 && oc !== 1) return <span className="text-gray-600">–</span>;
-  if (oc === 1) return <span className="font-bold text-green-400">Y</span>;
-  return <span className="font-bold text-red-400">N</span>;
+  const letter = oc === 1 ? 'Y' : 'N';
+  let cls: string;
+  if (m.w === 1) cls = 'font-bold text-green-400';
+  else if (m.l === 1) cls = 'font-bold text-red-400';
+  else if (m.f === 1) cls = 'font-bold text-gray-400';
+  else cls = oc === 1 ? 'font-bold text-green-400' : 'font-bold text-red-400';
+  return <span className={cls}>{letter}</span>;
 }
 
 function fmtFeeLedger(v: number | undefined): string {
@@ -797,8 +795,7 @@ export function WalletInfoDialog({
                 <thead>
                   <tr className="text-gray-500 border-b border-gray-700">
                     <th className="text-left py-1 whitespace-nowrap">Date</th>
-                    <th className="text-center w-7 py-1 whitespace-nowrap" title="Outcome when resolved: W win, L loss, F flat (ledger)">W</th>
-                    <th className="text-center w-5 py-1 whitespace-nowrap" title="Chain outcome: YES vs NO (ledger)">O</th>
+                    <th className="text-center w-5 py-1 whitespace-nowrap" title="Resolved chain side (Y/N); color = ledger win (green) / loss (red) / flat (gray)">O</th>
                     <th className="text-left whitespace-nowrap">Market</th>
                     <th className="text-right bg-green-900/15 text-green-300 font-bold py-1 whitespace-nowrap">Net Y</th>
                     <th className="text-right bg-red-900/15 text-red-300 font-bold py-1 whitespace-nowrap">Net N</th>
@@ -843,7 +840,6 @@ export function WalletInfoDialog({
                       onClick={() => { setSelectedMarketId(m.marketId); setFillsPage(0); }}
                     >
                       <td className={`py-0.5 whitespace-nowrap ${dd.color}`}>{dd.label}</td>
-                      <td className="text-center py-0.5 align-middle tabular-nums whitespace-nowrap">{walletLedgerWLFCell(m)}</td>
                       <td className="text-center py-0.5 align-middle whitespace-nowrap">{walletOutcomeLetterCell(m)}</td>
                       <td className="py-0.5 text-gray-200 whitespace-nowrap">{marketName}</td>
                       <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15 whitespace-nowrap">{fmtLegShares(iy)}</td>

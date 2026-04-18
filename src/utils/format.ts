@@ -247,8 +247,9 @@ export function shortenUpDownMarketListCell(
   const asset = assetMatch
     ? assetMatch[1].toUpperCase().replace('BITCOIN', 'BTC').replace('ETHEREUM', 'ETH').replace('SOLANA', 'SOL')
     : '';
-  const base = `${asset ? `${asset} ` : ''}↑↓ ${timeLabel}`.replace(/\s+/g, ' ').trim();
-  return base || timeLabel;
+  const tfLabel = fiveMinMatch ? '5m' : fifteenMinMatch ? '15m' : fourHourMatch ? '4h' : '1h';
+  const base = `${asset ? `${asset} ` : ''}${tfLabel} ${timeLabel}`.replace(/\s+/g, ' ').trim();
+  return base || `${tfLabel} ${timeLabel}`;
 }
 
 export function getTokenOutcome(tokenId: string, marketLookup: Record<string, Market>): string {

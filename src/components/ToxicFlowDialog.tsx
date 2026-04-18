@@ -34,17 +34,16 @@ function walletLedgerWLFCell(m: WalletPosition) {
   return <span className="text-gray-600">–</span>;
 }
 
-function isUpDownWalletMarketRow(m: WalletPosition, mk: any): boolean {
-  const blob = `${m.question || ''} ${m.eventSlug || ''} ${mk?.question || ''} ${mk?.eventSlug || ''}`.toLowerCase();
-  return /up\s+or\s+down|updown|up-or-down/i.test(blob);
-}
-
-function walletOutcomeLetterCell(m: WalletPosition, mk: any) {
+function walletOutcomeLetterCell(m: WalletPosition) {
   const oc = m.outcome;
   if (oc !== 0 && oc !== 1) return <span className="text-gray-600">–</span>;
-  const upDown = isUpDownWalletMarketRow(m, mk);
-  if (oc === 1) return <span className="font-bold text-green-400">{upDown ? 'U' : 'Y'}</span>;
-  return <span className="font-bold text-red-400">{upDown ? 'D' : 'N'}</span>;
+  if (oc === 1) return <span className="font-bold text-green-400">Y</span>;
+  return <span className="font-bold text-red-400">N</span>;
+}
+
+function fmtFeeLedger(v: number | undefined): string {
+  if (v == null || !Number.isFinite(v)) return '–';
+  return `$${v.toFixed(2)}`;
 }
 
 function fmtPriceShare(p: number | undefined): string {
@@ -710,7 +709,10 @@ export function WalletInfoDialog({
   const polymarketProfileUrl = `https://polymarket.com/profile/${wallet.trim().toLowerCase()}`;
   return (
     <div className="fixed inset-0 bg-black/60 z-[60010] flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-gray-800 rounded-lg p-3 max-w-6xl w-full mx-4 shadow-xl border border-gray-700" style={{ maxHeight: '88vh' }}>
+      <div
+        className="bg-gray-800 rounded-lg p-3 w-full mx-4 shadow-xl border border-gray-700 max-w-[min(98vw,93.6rem)]"
+        style={{ maxHeight: '88vh' }}
+      >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-bold text-yellow-400">Wallet Info</span>
@@ -780,31 +782,35 @@ export function WalletInfoDialog({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 overflow-hidden" style={{ height: 'calc(88vh - 160px)' }}>
-          <div className="bg-gray-900 rounded p-2 overflow-y-auto">
+        <div
+          className="grid gap-2 overflow-hidden"
+          style={{ height: 'calc(88vh - 160px)', gridTemplateColumns: 'minmax(0, 1fr) minmax(16rem, 36rem)' }}
+        >
+          <div className="bg-gray-900 rounded p-2 overflow-y-auto overflow-x-auto min-w-0">
             <div className="text-[10px] text-gray-400 font-bold mb-1">Latest Markets Traded</div>
             {loadingMarkets ? (
               <div className="text-gray-500 text-[10px]">Loading markets...</div>
             ) : markets.length === 0 ? (
               <div className="text-gray-500 text-[10px]">No markets found.</div>
             ) : (
-              <table className="w-full text-[10px]">
+              <table className="w-full text-[10px] whitespace-nowrap">
                 <thead>
                   <tr className="text-gray-500 border-b border-gray-700">
-                    <th className="text-left py-1">Date</th>
-                    <th className="text-center w-7 py-1" title="Outcome when resolved: W win, L loss, F flat (ledger)">W</th>
-                    <th className="text-center w-5 py-1" title="Chain outcome: Y/N or U/D (up-down); green YES/UP, red NO/DOWN">O</th>
-                    <th className="text-left">Market</th>
-                    <th className="text-right bg-green-900/15 text-green-300 font-bold py-1">Net Y</th>
-                    <th className="text-right bg-red-900/15 text-red-300 font-bold py-1">Net N</th>
-                    <th className="text-right">Net</th>
-                    <th className="text-right" title="price_yes">Px Y</th>
-                    <th className="text-right" title="price_no">Px N</th>
-                    <th className="text-right" title="pnl_yes (realized)">rPnL Y</th>
-                    <th className="text-right" title="pnl_no (realized)">rPnL N</th>
-                    <th className="text-right" title="wallet_market_positions.pnl">PnL</th>
-                    <th className="text-right" title="wallet_market_positions.res_pnl">Return</th>
-                    <th className="text-right" title="wallet_market_positions.roi">ROI</th>
+                    <th className="text-left py-1 whitespace-nowrap">Date</th>
+                    <th className="text-center w-7 py-1 whitespace-nowrap" title="Outcome when resolved: W win, L loss, F flat (ledger)">W</th>
+                    <th className="text-center w-5 py-1 whitespace-nowrap" title="Chain outcome: YES vs NO (ledger)">O</th>
+                    <th className="text-left whitespace-nowrap">Market</th>
+                    <th className="text-right bg-green-900/15 text-green-300 font-bold py-1 whitespace-nowrap">Net Y</th>
+                    <th className="text-right bg-red-900/15 text-red-300 font-bold py-1 whitespace-nowrap">Net N</th>
+                    <th className="text-right whitespace-nowrap">Net</th>
+                    <th className="text-right whitespace-nowrap" title="price_yes">Px Y</th>
+                    <th className="text-right whitespace-nowrap" title="price_no">Px N</th>
+                    <th className="text-right whitespace-nowrap" title="pnl_yes (realized)">rPnL Y</th>
+                    <th className="text-right whitespace-nowrap" title="pnl_no (realized)">rPnL N</th>
+                    <th className="text-right whitespace-nowrap" title="wallet_market_positions.pnl">PnL</th>
+                    <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">Fee</th>
+                    <th className="text-right whitespace-nowrap" title="wallet_market_positions.res_pnl">Return</th>
+                    <th className="text-right whitespace-nowrap" title="wallet_market_positions.roi">ROI</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -836,26 +842,27 @@ export function WalletInfoDialog({
                       className={`border-b border-gray-800 cursor-pointer hover:bg-gray-700/30 ${selectedMarketId === m.marketId ? 'bg-gray-700/40' : ''}`}
                       onClick={() => { setSelectedMarketId(m.marketId); setFillsPage(0); }}
                     >
-                      <td className={`py-0.5 ${dd.color}`}>{dd.label}</td>
-                      <td className="text-center py-0.5 align-middle tabular-nums">{walletLedgerWLFCell(m)}</td>
-                      <td className="text-center py-0.5 align-middle">{walletOutcomeLetterCell(m, mk)}</td>
-                      <td className="py-0.5 text-gray-200">{marketName}</td>
-                      <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15">{fmtLegShares(iy)}</td>
-                      <td className="text-right tabular-nums font-bold text-red-400 bg-red-900/15">{fmtLegShares(inn)}</td>
-                      <td className={`text-right tabular-nums ${netLeg > 0.001 ? 'text-green-400' : netLeg < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(netLeg)}</td>
-                      <td className="text-right text-gray-300 tabular-nums">{fmtPriceShare(m.priceYes)}</td>
-                      <td className="text-right text-gray-300 tabular-nums">{fmtPriceShare(m.priceNo)}</td>
-                      <td className={`text-right tabular-nums font-bold ${rPnlToneClass(pyes)}`}>{fmtUsdSignedLedger(pyes)}</td>
-                      <td className={`text-right tabular-nums font-bold ${rPnlToneClass(pno)}`}>{fmtUsdSignedLedger(pno)}</td>
-                      <td className={`text-right tabular-nums font-bold ${rPnlToneClass(rowPnl)}`}>{fmtUsdSignedLedger(rowPnl)}</td>
+                      <td className={`py-0.5 whitespace-nowrap ${dd.color}`}>{dd.label}</td>
+                      <td className="text-center py-0.5 align-middle tabular-nums whitespace-nowrap">{walletLedgerWLFCell(m)}</td>
+                      <td className="text-center py-0.5 align-middle whitespace-nowrap">{walletOutcomeLetterCell(m)}</td>
+                      <td className="py-0.5 text-gray-200 whitespace-nowrap">{marketName}</td>
+                      <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15 whitespace-nowrap">{fmtLegShares(iy)}</td>
+                      <td className="text-right tabular-nums font-bold text-red-400 bg-red-900/15 whitespace-nowrap">{fmtLegShares(inn)}</td>
+                      <td className={`text-right tabular-nums whitespace-nowrap ${netLeg > 0.001 ? 'text-green-400' : netLeg < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(netLeg)}</td>
+                      <td className="text-right text-gray-300 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceYes)}</td>
+                      <td className="text-right text-gray-300 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceNo)}</td>
+                      <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(pyes)}`}>{fmtUsdSignedLedger(pyes)}</td>
+                      <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(pno)}`}>{fmtUsdSignedLedger(pno)}</td>
+                      <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(rowPnl)}`}>{fmtUsdSignedLedger(rowPnl)}</td>
+                      <td className="text-right tabular-nums text-amber-200/90 whitespace-nowrap" title="fee_total">{fmtFeeLedger(m.feeTotal)}</td>
                       <td
-                        className={`text-right tabular-nums font-bold ${payoutUnresolved ? 'text-gray-500' : rPnlToneClass(rowRPnl)}`}
+                        className={`text-right tabular-nums font-bold whitespace-nowrap ${payoutUnresolved ? 'text-gray-500' : rPnlToneClass(rowRPnl)}`}
                         title={payoutUnresolved ? 'Market not scored (W/L/F all zero)' : 'res_pnl'}
                       >
                         {payoutUnresolved ? '-' : fmtUsdSignedLedger(rowRPnl)}
                       </td>
                       <td
-                        className={`text-right tabular-nums font-bold ${roiFmt.tone}`}
+                        className={`text-right tabular-nums font-bold whitespace-nowrap ${roiFmt.tone}`}
                         title="wallet_market_positions.roi"
                       >
                         {roiFmt.text}
@@ -869,7 +876,7 @@ export function WalletInfoDialog({
             )}
           </div>
 
-          <div className="bg-gray-900 rounded p-2 overflow-y-auto">
+          <div className="bg-gray-900 rounded p-2 overflow-y-auto shrink-0 min-w-0">
             <div className="text-[10px] text-gray-400 font-bold mb-1">
               Trades For Selected Market {selectedMarketId ? <span className="text-gray-500 font-mono">({selectedMarketId})</span> : null}
             </div>

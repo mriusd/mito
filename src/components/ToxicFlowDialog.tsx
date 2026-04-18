@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink, Copy, RefreshCw } from 'lucide-react';
 import { fetchToxicFlow, fetchWalletSummary, fetchWalletPositions, fetchOnchainFills } from '../api';
 import type { ToxicFlowData, WalletPosition, WalletSummary, OnchainFillRow } from '../api';
-import { shortenUpDownMarketListCell } from '../utils/format';
+import type { Market } from '../types';
+import { shortenUpDownMarketListCell, ASSET_COLORS, extractAssetFromMarket, assetTickerFromQuestion } from '../utils/format';
 import { useAppStore } from '../stores/appStore';
 
 interface ToxicFlowDialogProps {
@@ -820,6 +821,11 @@ export function WalletInfoDialog({
                       const marketName = title
                         ? shortenUpDownMarketListCell(title, m.eventSlug || mk?.eventSlug || null, endRaw || null)
                         : `${m.marketAsset || '-'} ${m.marketTimeframe || ''}`;
+                      const titleForAsset = (title || '').trim();
+                      const assetForColor =
+                        mk && typeof (mk as Market).question === 'string'
+                          ? extractAssetFromMarket(mk as Market) || assetTickerFromQuestion(titleForAsset)
+                          : assetTickerFromQuestion(titleForAsset);
                       const dd = getDateDisplay(endRaw || null);
                       const iy = walletInvY(m);
                       const inn = walletInvN(m);
@@ -841,7 +847,12 @@ export function WalletInfoDialog({
                     >
                       <td className={`py-0.5 whitespace-nowrap ${dd.color}`}>{dd.label}</td>
                       <td className="text-center py-0.5 align-middle whitespace-nowrap">{walletOutcomeLetterCell(m)}</td>
-                      <td className="py-0.5 text-gray-200 whitespace-nowrap">{marketName}</td>
+                      <td
+                        className={`py-0.5 whitespace-nowrap font-bold ${ASSET_COLORS[assetForColor] || 'text-gray-200'}`}
+                        title={titleForAsset || undefined}
+                      >
+                        {marketName}
+                      </td>
                       <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15 whitespace-nowrap">{fmtLegShares(iy)}</td>
                       <td className="text-right tabular-nums font-bold text-red-400 bg-red-900/15 whitespace-nowrap">{fmtLegShares(inn)}</td>
                       <td className={`text-right tabular-nums whitespace-nowrap ${netLeg > 0.001 ? 'text-green-400' : netLeg < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(netLeg)}</td>

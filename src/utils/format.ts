@@ -198,20 +198,26 @@ export function shortenMarketName(question: string | null | undefined, tokenId?:
   return question.slice(0, 25) + (question.length > 25 ? '...' : '');
 }
 
+/** BTC / ETH / SOL / XRP from question wording (same rules as {@link shortenMarketName}). */
+export function assetTickerFromQuestion(question: string | null | undefined): string {
+  const assetMatch = (question || '').match(/\b(BTC|ETH|SOL|XRP|Bitcoin|Ethereum|Solana)\b/i);
+  if (!assetMatch) return '';
+  return assetMatch[1].toUpperCase().replace('BITCOIN', 'BTC').replace('ETHEREUM', 'ETH').replace('SOLANA', 'SOL');
+}
+
 /**
- * Wallet info “Latest Markets” table: for short up/down (5m / 15m / 1h / 4h), show market end time
- * (e.g. `1:30 PM`) instead of the `↑↓ 5m`-style label. Other markets use {@link shortenMarketName}.
+ * Wallet info “Latest Markets”: same label as {@link shortenMarketName} (incl. `↑↓` for up/down).
+ * For 5m / 15m / 4h windows, appends market end clock from `endDateIso` when valid.
  */
 export function shortenUpDownMarketListCell(
   question: string | null | undefined,
   eventSlug: string | null | undefined,
   endDateIso: string | null | undefined,
 ): string {
+  const base = shortenMarketName(question, undefined, undefined, eventSlug || undefined);
   const combinedText = eventSlug ? `${question || ''} ${eventSlug}` : question || '';
   const upDownMatch = combinedText.match(/up\s+or\s+down/i) || combinedText.match(/updown/i);
-  if (!upDownMatch) {
-    return shortenMarketName(question, undefined, undefined, eventSlug || undefined);
-  }
+  if (!upDownMatch) return base;
 
   const fiveMinMatch = combinedText.match(/\b5[- ]?min/i) || combinedText.match(/updown-5m/i);
   const fifteenMinMatch = combinedText.match(/\b15[- ]?min/i) || combinedText.match(/updown-15m/i);
@@ -229,27 +235,16 @@ export function shortenUpDownMarketListCell(
     !fourHourMatch &&
     !oneHourMatch;
 
-  if (isDailyOnly || (!fiveMinMatch && !fifteenMinMatch && !fourHourMatch && !oneHourMatch)) {
-    return shortenMarketName(question, undefined, undefined, eventSlug || undefined);
-  }
+  const shortTf = fiveMinMatch || fifteenMinMatch || fourHourMatch || oneHourMatch;
+  if (isDailyOnly || !shortTf) return base;
 
   const end = (endDateIso || '').trim();
-  if (!end) {
-    return shortenMarketName(question, undefined, undefined, eventSlug || undefined);
-  }
+  if (!end) return base;
   const d = new Date(end);
-  if (Number.isNaN(d.getTime())) {
-    return shortenMarketName(question, undefined, undefined, eventSlug || undefined);
-  }
+  if (Number.isNaN(d.getTime())) return base;
 
   const timeLabel = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  const assetMatch = (question || '').match(/\b(BTC|ETH|SOL|XRP|Bitcoin|Ethereum|Solana)\b/i);
-  const asset = assetMatch
-    ? assetMatch[1].toUpperCase().replace('BITCOIN', 'BTC').replace('ETHEREUM', 'ETH').replace('SOLANA', 'SOL')
-    : '';
-  const tfLabel = fiveMinMatch ? '5m' : fifteenMinMatch ? '15m' : fourHourMatch ? '4h' : '1h';
-  const base = `${asset ? `${asset} ` : ''}${tfLabel} ${timeLabel}`.replace(/\s+/g, ' ').trim();
-  return base || `${tfLabel} ${timeLabel}`;
+  return `${base} · ${timeLabel}`.replace(/\s+/g, ' ').trim();
 }
 
 export function getTokenOutcome(tokenId: string, marketLookup: Record<string, Market>): string {

@@ -63,7 +63,7 @@ function MiniLineCanvas({
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
-    const padL = 38;
+    const padL = 46;
     const padR = 4;
     const padT = 4;
     const padB = 14;
@@ -90,11 +90,30 @@ function MiniLineCanvas({
     ctx.lineTo(padL + innerW, padT + innerH);
     ctx.stroke();
 
+    const lastIdx = n - 1;
+    const lastVal = values[lastIdx];
+    const lastX = xAt(lastIdx);
+    const lastY = yAt(lastVal);
+
     ctx.fillStyle = '#6b7280';
     ctx.font = '8px monospace';
     ctx.textAlign = 'right';
+    ctx.textBaseline = 'alphabetic';
     ctx.fillText(formatYAxis(yFmt, vmax), padL - 2, padT + 7);
     ctx.fillText(formatYAxis(yFmt, vmin), padL - 2, padT + innerH);
+
+    ctx.save();
+    ctx.strokeStyle = stroke;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(padL, lastY);
+    ctx.lineTo(lastX, lastY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    ctx.restore();
 
     ctx.strokeStyle = stroke;
     ctx.lineWidth = 1.5;
@@ -119,9 +138,18 @@ function MiniLineCanvas({
       ctx.stroke();
     }
 
+    ctx.save();
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = stroke;
+    ctx.font = 'bold 8px monospace';
+    ctx.fillText(formatYAxis(yFmt, lastVal), padL - 2, lastY);
+    ctx.restore();
+
     ctx.fillStyle = '#9ca3af';
     ctx.font = '7px monospace';
     ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
     const labelIdxs = n <= 1 ? [0] : n === 2 ? [0, 1] : [0, Math.floor((n - 1) / 2), n - 1];
     for (const i of labelIdxs) {
       const d = dates[i] || '';

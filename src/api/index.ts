@@ -396,8 +396,12 @@ export interface WalletPosition {
   w?: number;
   l?: number;
   f?: number;
-  /** `wallet_market_positions.res_pnl` (resolution payout formula). */
+  /** Ledger: `outcome` after resolution — 0 NO, 1 YES; omitted/null if unresolved. */
+  outcome?: number | null;
+  /** `wallet_market_positions.res_pnl` (resolution return formula). */
   rPnl?: number;
+  /** `wallet_market_positions.roi` (ratio; ×100 for %). */
+  roi?: number;
   tradeCount: number;
   firstTradeTime: number;
   lastTradeTime: number;

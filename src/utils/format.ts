@@ -198,6 +198,59 @@ export function shortenMarketName(question: string | null | undefined, tokenId?:
   return question.slice(0, 25) + (question.length > 25 ? '...' : '');
 }
 
+/**
+ * Wallet info “Latest Markets” table: for short up/down (5m / 15m / 1h / 4h), show market end time
+ * (e.g. `1:30 PM`) instead of the `↑↓ 5m`-style label. Other markets use {@link shortenMarketName}.
+ */
+export function shortenUpDownMarketListCell(
+  question: string | null | undefined,
+  eventSlug: string | null | undefined,
+  endDateIso: string | null | undefined,
+): string {
+  const combinedText = eventSlug ? `${question || ''} ${eventSlug}` : question || '';
+  const upDownMatch = combinedText.match(/up\s+or\s+down/i) || combinedText.match(/updown/i);
+  if (!upDownMatch) {
+    return shortenMarketName(question, undefined, undefined, eventSlug || undefined);
+  }
+
+  const fiveMinMatch = combinedText.match(/\b5[- ]?min/i) || combinedText.match(/updown-5m/i);
+  const fifteenMinMatch = combinedText.match(/\b15[- ]?min/i) || combinedText.match(/updown-15m/i);
+  const fourHourMatch = combinedText.match(/\b4[- ]?h\b/i) || combinedText.match(/updown-4h/i);
+  const oneHourMatch =
+    combinedText.match(/up-or-down-\w+-\d+-\d{4}-\d+(am|pm)-et/i) ||
+    combinedText.match(/between\s+[\d:]+\s*[AP]M\s+and\s+[\d:]+\s*[AP]M/i) ||
+    combinedText.match(/\b1[- ]?h\b/i) ||
+    combinedText.match(/updown-1h/i);
+
+  const isDailyOnly =
+    combinedText.match(/up-or-down-on-/i) &&
+    !fiveMinMatch &&
+    !fifteenMinMatch &&
+    !fourHourMatch &&
+    !oneHourMatch;
+
+  if (isDailyOnly || (!fiveMinMatch && !fifteenMinMatch && !fourHourMatch && !oneHourMatch)) {
+    return shortenMarketName(question, undefined, undefined, eventSlug || undefined);
+  }
+
+  const end = (endDateIso || '').trim();
+  if (!end) {
+    return shortenMarketName(question, undefined, undefined, eventSlug || undefined);
+  }
+  const d = new Date(end);
+  if (Number.isNaN(d.getTime())) {
+    return shortenMarketName(question, undefined, undefined, eventSlug || undefined);
+  }
+
+  const timeLabel = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const assetMatch = (question || '').match(/\b(BTC|ETH|SOL|XRP|Bitcoin|Ethereum|Solana)\b/i);
+  const asset = assetMatch
+    ? assetMatch[1].toUpperCase().replace('BITCOIN', 'BTC').replace('ETHEREUM', 'ETH').replace('SOLANA', 'SOL')
+    : '';
+  const base = `${asset ? `${asset} ` : ''}↑↓ ${timeLabel}`.replace(/\s+/g, ' ').trim();
+  return base || timeLabel;
+}
+
 export function getTokenOutcome(tokenId: string, marketLookup: Record<string, Market>): string {
   const market = marketLookup[tokenId];
   if (!market) return '';

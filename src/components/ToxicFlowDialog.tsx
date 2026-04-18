@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink, Copy, RefreshCw } from 'lucide-react';
 import { fetchToxicFlow, fetchWalletSummary, fetchWalletPositions, fetchOnchainFills } from '../api';
 import type { ToxicFlowData, WalletPosition, WalletSummary, OnchainFillRow } from '../api';
-import { shortenMarketName } from '../utils/format';
+import { shortenUpDownMarketListCell } from '../utils/format';
 import { useAppStore } from '../stores/appStore';
 
 interface ToxicFlowDialogProps {
@@ -34,6 +34,19 @@ function walletLedgerWLFCell(m: WalletPosition) {
   return <span className="text-gray-600">–</span>;
 }
 
+function isUpDownWalletMarketRow(m: WalletPosition, mk: any): boolean {
+  const blob = `${m.question || ''} ${m.eventSlug || ''} ${mk?.question || ''} ${mk?.eventSlug || ''}`.toLowerCase();
+  return /up\s+or\s+down|updown|up-or-down/i.test(blob);
+}
+
+function walletOutcomeLetterCell(m: WalletPosition, mk: any) {
+  const oc = m.outcome;
+  if (oc !== 0 && oc !== 1) return <span className="text-gray-600">–</span>;
+  const upDown = isUpDownWalletMarketRow(m, mk);
+  if (oc === 1) return <span className="font-bold text-green-400">{upDown ? 'U' : 'Y'}</span>;
+  return <span className="font-bold text-red-400">{upDown ? 'D' : 'N'}</span>;
+}
+
 function fmtPriceShare(p: number | undefined): string {
   if (p == null || !Number.isFinite(p)) return '–';
   if (Math.abs(p) < 1e-12) return '-';
@@ -43,6 +56,15 @@ function fmtPriceShare(p: number | undefined): string {
 function rPnlToneClass(v: number): string {
   if (!Number.isFinite(v) || Math.abs(v) < 1e-9) return 'text-gray-400';
   return v > 0 ? 'text-green-400' : 'text-red-400';
+}
+
+/** `roi` from API is decimal (0.12 → 12%). */
+function fmtRoiPercent(roi: number | undefined): { text: string; tone: string } {
+  if (roi == null || !Number.isFinite(roi)) return { text: '–', tone: 'text-gray-500' };
+  const pct = roi * 100;
+  const s = pct >= 0 ? '+' : '';
+  const tone = Math.abs(roi) < 1e-12 ? 'text-gray-400' : roi > 0 ? 'text-green-400' : 'text-red-400';
+  return { text: `${s}${pct.toFixed(1)}%`, tone };
 }
 
 function fmtUsdSignedLedger(v: number): string {
@@ -771,6 +793,7 @@ export function WalletInfoDialog({
                   <tr className="text-gray-500 border-b border-gray-700">
                     <th className="text-left py-1">Date</th>
                     <th className="text-center w-7 py-1" title="Outcome when resolved: W win, L loss, F flat (ledger)">W</th>
+                    <th className="text-center w-5 py-1" title="Chain outcome: Y/N or U/D (up-down); green YES/UP, red NO/DOWN">O</th>
                     <th className="text-left">Market</th>
                     <th className="text-right bg-green-900/15 text-green-300 font-bold py-1">Net Y</th>
                     <th className="text-right bg-red-900/15 text-red-300 font-bold py-1">Net N</th>
@@ -780,7 +803,8 @@ export function WalletInfoDialog({
                     <th className="text-right" title="pnl_yes (realized)">rPnL Y</th>
                     <th className="text-right" title="pnl_no (realized)">rPnL N</th>
                     <th className="text-right" title="wallet_market_positions.pnl">PnL</th>
-                    <th className="text-right" title="wallet_market_positions.res_pnl">Payout</th>
+                    <th className="text-right" title="wallet_market_positions.res_pnl">Return</th>
+                    <th className="text-right" title="wallet_market_positions.roi">ROI</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -789,10 +813,10 @@ export function WalletInfoDialog({
                       const mk = marketById[m.marketId] || marketById[(m.marketId || '').toLowerCase()] || (m.question ? m as any : null);
                       const qFromApi = (m.question || '').trim();
                       const title = qFromApi || mk?.question || mk?.groupItemTitle;
-                      const marketName = title
-                        ? shortenMarketName(title, undefined, undefined, m.eventSlug || mk?.eventSlug)
-                        : `${m.marketAsset || '-'} ${m.marketTimeframe || ''}`;
                       const endRaw = (m.endDate || '').trim() || (mk?.endDate ? String(mk.endDate).trim() : '');
+                      const marketName = title
+                        ? shortenUpDownMarketListCell(title, m.eventSlug || mk?.eventSlug || null, endRaw || null)
+                        : `${m.marketAsset || '-'} ${m.marketTimeframe || ''}`;
                       const dd = getDateDisplay(endRaw || null);
                       const iy = walletInvY(m);
                       const inn = walletInvN(m);
@@ -805,6 +829,7 @@ export function WalletInfoDialog({
                       const rowRPnl = typeof m.rPnl === 'number' && Number.isFinite(m.rPnl) ? m.rPnl : 0;
                       const wlfSum = (m.w ?? 0) + (m.l ?? 0) + (m.f ?? 0);
                       const payoutUnresolved = wlfSum === 0;
+                      const roiFmt = fmtRoiPercent(m.roi);
                       return (
                     <tr
                       key={`${m.marketId}-${m.wallet}`}
@@ -813,6 +838,7 @@ export function WalletInfoDialog({
                     >
                       <td className={`py-0.5 ${dd.color}`}>{dd.label}</td>
                       <td className="text-center py-0.5 align-middle tabular-nums">{walletLedgerWLFCell(m)}</td>
+                      <td className="text-center py-0.5 align-middle">{walletOutcomeLetterCell(m, mk)}</td>
                       <td className="py-0.5 text-gray-200">{marketName}</td>
                       <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15">{fmtLegShares(iy)}</td>
                       <td className="text-right tabular-nums font-bold text-red-400 bg-red-900/15">{fmtLegShares(inn)}</td>
@@ -827,6 +853,12 @@ export function WalletInfoDialog({
                         title={payoutUnresolved ? 'Market not scored (W/L/F all zero)' : 'res_pnl'}
                       >
                         {payoutUnresolved ? '-' : fmtUsdSignedLedger(rowRPnl)}
+                      </td>
+                      <td
+                        className={`text-right tabular-nums font-bold ${roiFmt.tone}`}
+                        title="wallet_market_positions.roi"
+                      >
+                        {roiFmt.text}
                       </td>
                     </tr>
                       );

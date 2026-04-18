@@ -66,7 +66,7 @@ function MiniLineCanvas({
     const padL = 38;
     const padR = 4;
     const padT = 4;
-    const padB = 12;
+    const padB = 14;
     const innerW = W - padL - padR;
     const innerH = H - padT - padB;
     const n = values.length;
@@ -98,14 +98,26 @@ function MiniLineCanvas({
 
     ctx.strokeStyle = stroke;
     ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const x = xAt(i);
-      const y = yAt(values[i]);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+    if (n === 1) {
+      const x = xAt(0);
+      const y = yAt(values[0]);
+      ctx.fillStyle = stroke;
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#1f2937';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const x = xAt(i);
+        const y = yAt(values[i]);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
 
     ctx.fillStyle = '#9ca3af';
     ctx.font = '7px monospace';
@@ -113,8 +125,9 @@ function MiniLineCanvas({
     const labelIdxs = n <= 1 ? [0] : n === 2 ? [0, 1] : [0, Math.floor((n - 1) / 2), n - 1];
     for (const i of labelIdxs) {
       const d = dates[i] || '';
-      const short = d.length >= 10 ? d.slice(5, 10) : d;
-      ctx.fillText(short, xAt(i), H - 2);
+      const short =
+        d.length >= 10 ? d.slice(5, 10) : d.length >= 8 ? d.slice(0, 10) : d.length > 0 ? d : '—';
+      ctx.fillText(short, xAt(i), H - 3);
     }
   }, [width, dates, values, stroke, yFmt]);
 

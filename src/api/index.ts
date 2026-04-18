@@ -671,21 +671,26 @@ export async function fetchWalletPnlDaily(params: {
 
 // --- Wallet Summary API ---
 
+/** GET /api/wallet-summary — one row from `wallet_scores_ledger`. */
 export interface WalletSummary {
   found: boolean;
   wallet: string;
   totalMarkets: number;
-  resolvedMarkets: number;
-  totalTrades: number;
-  totalUsdcIn: number;
-  totalUsdcOut: number;
-  tradingPnl: number;
-  resolutionValue: number;
-  pnl: number;
   wins: number;
   losses: number;
   flat: number;
+  /** Stored ratio (≈ wins / total_markets); display ×100 for %. */
   winRate: number;
+  pnl: number;
+  cashFlow: number;
+  pm: number;
+  lm: number;
+  /** pm / total_markets; display ×100 for %. */
+  profitRate: number;
+  usdcIn: number;
+  usdcOut: number;
+  /** Stored decimal (e.g. 0.12 = 12%); display ×100 for %. */
+  roi: number;
 }
 
 export async function fetchWalletSummary(wallet: string): Promise<WalletSummary | null> {

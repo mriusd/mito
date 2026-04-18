@@ -243,7 +243,7 @@ export function shortenUpDownMarketListCell(
   const d = new Date(end);
   if (Number.isNaN(d.getTime())) return base;
 
-  const timeLabel = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const timeLabel = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   return `${base} · ${timeLabel}`.replace(/\s+/g, ' ').trim();
 }
 

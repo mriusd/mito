@@ -148,14 +148,12 @@ export function Header({ onRefresh }: HeaderProps) {
   return (
     <header className="mb-1 relative z-[220]">
       <div className="flex items-center gap-2 w-full min-w-0">
-        {/* Logo only — left */}
-        <div className="flex items-center h-[28px] flex-shrink-0">
+        <div className="flex items-center gap-2 h-[28px] flex-shrink-0 min-w-0">
           <img src={logoSvg} alt="logo" className="h-5 w-5 flex-shrink-0 min-w-5 min-h-5" />
+          <span className="text-sm font-bold text-white tracking-tight max-[424px]:hidden flex-shrink-0">Mito</span>
         </div>
 
         <div className="flex-1 min-w-[8px]" />
-
-        <span className="text-sm font-bold text-white tracking-tight max-[424px]:hidden flex-shrink-0">Mito</span>
 
         {/* B-S Time Offset Slider */}
         <div className="max-[767px]:hidden flex items-center gap-1 bg-gray-800/50 rounded px-2 h-[28px] min-w-0 w-[min(34vw,260px)]">
@@ -381,9 +379,6 @@ export function Header({ onRefresh }: HeaderProps) {
           </a>
         )}
 
-        {/* Signing Mode Switch */}
-        {walletConnected && <SigningModeSwitch />}
-
         {syncHead != null && syncHead.lastProcessedBlock > 0 && (
           <a
             href={POLYGONSCAN_HOME}
@@ -403,7 +398,8 @@ export function Header({ onRefresh }: HeaderProps) {
           </a>
         )}
 
-        {/* Wallet Connect */}
+        {walletConnected && <SigningModeSwitch />}
+
         <WalletButton />
       </div>
     </header>

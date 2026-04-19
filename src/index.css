@@ -210,6 +210,21 @@ input[type="range"].vol-slider::-moz-range-thumb {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
 }
+
+/** Server-down strip: fixed overlay, does not shift layout */
+@keyframes serverDownBannerIn {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.server-down-banner {
+  animation: serverDownBannerIn 0.35s ease-out both;
+}
 @keyframes flashGreen {
   0%, 100% { background-color: transparent; }
   50% { background-color: rgba(16, 185, 129, 0.6); }

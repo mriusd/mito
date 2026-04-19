@@ -145,15 +145,6 @@ function App() {
         <Header onRefresh={handleRefresh} />
       </div>
 
-      {backendConnected === false && (
-        <div className="mx-3 mb-2 rounded-md border border-red-700/70 bg-red-950/90 px-3 py-2 text-center">
-          <p className="text-xs font-bold text-red-200">Server is down or being restarted</p>
-          <p className="mt-0.5 text-[11px] text-red-100/90">
-            Please allow for several minutes for it to get back online. This clears automatically once the server is back online.
-          </p>
-        </div>
-      )}
-
       {/* Main content area */}
       <div className="flex-1 min-h-0 flex ml-[288px] max-[767px]:ml-0">
         {/* Canvas area */}
@@ -192,6 +183,18 @@ function App() {
 
       {/* Toast container */}
       <div id="toastContainer" className="toast-container" />
+
+      {backendConnected === false && (
+        <div
+          className="server-down-banner fixed top-0 left-0 right-0 z-[350] border-b border-red-700/70 bg-red-950/95 px-3 py-2 text-center shadow-lg pointer-events-auto"
+          role="alert"
+        >
+          <p className="text-xs font-bold text-red-200">Server is down or being restarted</p>
+          <p className="mt-0.5 text-[11px] text-red-100/90">
+            Please allow for several minutes for it to get back online. This clears automatically once the server is back online.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

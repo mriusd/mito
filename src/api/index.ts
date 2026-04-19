@@ -476,20 +476,23 @@ export async function fetchWalletPositions(params: {
   asset?: string;
   type?: string;
   min_trades?: number;
-  sort_by?: string;
   limit?: number;
   /** When true, server excludes closed markets and past end_date (joins `markets`). */
   active_only?: boolean;
   /** When true, rows from `wallet_market_positions` (ledger). */
   ledger?: boolean;
-}): Promise<{ positions: WalletPosition[]; count: number; total: number }> {
+}): Promise<{
+  positions: WalletPosition[];
+  count: number;
+  /** Exact match count when fewer than `limit` rows (inferable); -1 if unknown or full page. */
+  total: number;
+}> {
   const qs = new URLSearchParams();
   if (params.market_id) qs.set('market_id', params.market_id);
   if (params.wallet) qs.set('wallet', params.wallet);
   if (params.asset) qs.set('asset', params.asset);
   if (params.type) qs.set('type', params.type);
   if (params.min_trades) qs.set('min_trades', String(params.min_trades));
-  if (params.sort_by) qs.set('sort_by', params.sort_by);
   if (params.limit) qs.set('limit', String(params.limit));
   if (params.active_only) qs.set('active_only', '1');
   if (params.ledger) qs.set('ledger', '1');

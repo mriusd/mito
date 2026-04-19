@@ -803,7 +803,7 @@ export function WalletInfoDialog({
       const pref = prefRaw.toLowerCase();
       const [s, p] = await Promise.all([
         fetchWalletSummary(wallet),
-        fetchWalletPositions({ wallet, sort_by: 'trade_count', limit: 100, ledger: true }),
+        fetchWalletPositions({ wallet, limit: 100, ledger: true }),
       ]);
       setSummary(s);
       const sorted = [...(p.positions || [])].sort((a, b) => (b.tradeCount || 0) - (a.tradeCount || 0));

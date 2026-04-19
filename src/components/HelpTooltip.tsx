@@ -159,13 +159,13 @@ export function HelpTooltip({ text, openOnHover = false }: HelpTooltipProps) {
           <>
             <button
               type="button"
-              className="fixed inset-0 bg-black/50 backdrop-blur-[1px] z-[9998]"
+              className="fixed inset-0 bg-black/50 backdrop-blur-[1px] z-[61998]"
               onClick={closeMobileSheet}
               aria-label="Close help"
             />
             <div
               ref={popupRef}
-              className="fixed bottom-0 left-0 right-0 z-[9999] bg-gray-800 border border-gray-600 rounded-t-xl shadow-xl overflow-hidden flex flex-col h-[72vh] max-h-[520px] min-h-[260px]"
+              className="fixed bottom-0 left-0 right-0 z-[62000] bg-gray-800 border border-gray-600 rounded-t-xl shadow-xl overflow-hidden flex flex-col h-[72vh] max-h-[520px] min-h-[260px]"
               style={{
                 transform: `translateY(${sheetOffset}px)`,
                 transition: sheetDragging ? 'none' : 'transform 220ms ease',
@@ -194,7 +194,7 @@ export function HelpTooltip({ text, openOnHover = false }: HelpTooltipProps) {
         ) : (
           <div
             ref={popupRef}
-            className="fixed bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-3 min-w-[260px] max-w-[360px] z-[9999]"
+            className="fixed bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-3 min-w-[260px] max-w-[360px] z-[62000]"
             style={{ top: pos.top, left: pos.left }}
             onMouseEnter={openOnHover ? onDesktopPointerEnter : undefined}
             onMouseLeave={openOnHover ? onDesktopPointerLeave : undefined}

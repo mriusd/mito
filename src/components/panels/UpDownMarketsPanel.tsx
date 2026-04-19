@@ -371,7 +371,7 @@ export function UpDownMarketsPanel() {
                     >
                       <span className="inline-flex w-full items-center justify-end gap-0.5">
                         Vol
-                        <HelpTooltip text="Trading volume (USDC In) from Toxic Flow aggregation (wallet_positions), pushed over chart WebSocket together with bid/ask updates. Shown in thousands (e.g. 12.3k)." />
+                        <HelpTooltip text="Trading volume (USDC In) from Toxic Flow aggregation (wallet_market_positions), pushed over chart WebSocket together with bid/ask updates. Shown in thousands (e.g. 12.3k)." />
                       </span>
                     </th>
                   )}
@@ -699,7 +699,7 @@ export function UpDownMarketsPanel() {
                       key={`${asset}-vol`}
                       className={`px-1 py-1 text-right border-l border-r border-solid border-gray-700 bg-gray-900/40 text-sky-300/95 font-bold tabular-nums text-[9px] whitespace-nowrap ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
                       style={assetBorderStyle(asset, { R: true, B: isLastTfRow })}
-                      title="Toxic Flow USDC volume (wallet_positions usdc_in), shown in thousands"
+                      title="Toxic Flow USDC volume (wallet_market_positions usdc_in), shown in thousands"
                     >
                       {formatPolymarketVolumeK(polymarketVol)}
                     </td>

@@ -548,7 +548,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
         </div>
         <span className="flex-1" />
         {liveTradesSource === 'onchain' && (
-          <span className="text-[9px] font-bold text-purple-300/90 shrink-0" title="Positions & trades from backend on-chain rollups (wallet_positions / onchain_fills)">
+          <span className="text-[9px] font-bold text-purple-300/90 shrink-0" title="Positions & trades from backend rollups (wallet_market_positions / wallet_fill_ledger)">
             ONCHAIN
           </span>
         )}

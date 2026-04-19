@@ -226,7 +226,7 @@ export function Sidebar() {
     return () => { cancelled = true; };
   }, [effectiveSidebarEoa]);
 
-  /** Proxy must match DB wallet_positions key; prefer store makerAddress when Sidebar proxy resolve lags (else grid WS stays empty). */
+  /** Proxy must match DB condition_id / wallet key; prefer store makerAddress when Sidebar proxy resolve lags (else grid WS stays empty). */
   const onchainWallet =
     liveTradesSource === 'onchain'
       ? ((proxyWallet || makerAddressForMerge || '').trim().toLowerCase() || null)
@@ -1734,7 +1734,7 @@ export function Sidebar() {
                 <div className="text-[9px] uppercase tracking-wide text-gray-500">Volume</div>
                 <div
                   className="tabular-nums font-bold text-green-400"
-                  title="Toxic Flow USDC volume (wallet_positions usdc_in), same source as Up/Down grid"
+                  title="Toxic Flow USDC volume (wallet_market_positions usdc_in), same source as Up/Down grid"
                 >
                   {liveOrderbookVolumeDisplay && liveOrderbookVolumeDisplay !== '--'
                     ? `$${liveOrderbookVolumeDisplay}`

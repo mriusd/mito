@@ -460,8 +460,8 @@ export interface ToxicFlowData {
   polygonWssConfigured?: boolean;
   /** All-time OrderFilled logs processed since process start */
   orderFilledEventsProcessed?: number;
-  /** Rows in onchain_fills for this market_id */
-  onchainFillsForMarket?: number;
+  /** Sum of wallet_market_positions.trade counts for this market_id */
+  walletMarketTradesForMarket?: number;
 }
 
 export async function fetchToxicFlow(marketId: string): Promise<ToxicFlowData> {

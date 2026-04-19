@@ -3,9 +3,11 @@ import { createPortal } from 'react-dom';
 
 interface HelpTooltipProps {
   text: string;
+  /** Desktop: show on pointer hover (with leave delay). Mobile still uses tap + sheet. */
+  openOnHover?: boolean;
 }
 
-export function HelpTooltip({ text }: HelpTooltipProps) {
+export function HelpTooltip({ text, openOnHover = false }: HelpTooltipProps) {
   const [open, setOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [sheetOffset, setSheetOffset] = useState(20);
@@ -16,6 +18,21 @@ export function HelpTooltip({ text }: HelpTooltipProps) {
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const dragStartYRef = useRef<number | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearCloseTimer = useCallback(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleClose = useCallback(() => {
+    if (!openOnHover || isMobile) return;
+    clearCloseTimer();
+    closeTimerRef.current = setTimeout(() => {
+      setOpen(false);
+    }, 220);
+  }, [openOnHover, isMobile, clearCloseTimer]);
 
   const updatePos = useCallback(() => {
     if (!btnRef.current) return;
@@ -48,9 +65,9 @@ export function HelpTooltip({ text }: HelpTooltipProps) {
 
   useEffect(() => {
     return () => {
-      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+      clearCloseTimer();
     };
-  }, []);
+  }, [clearCloseTimer]);
 
   useEffect(() => {
     if (!open) return;
@@ -109,17 +126,30 @@ export function HelpTooltip({ text }: HelpTooltipProps) {
     else setSheetOffset(0);
   };
 
+  const onDesktopPointerEnter = () => {
+    if (!openOnHover || isMobile) return;
+    clearCloseTimer();
+    setOpen(true);
+  };
+  const onDesktopPointerLeave = () => {
+    if (!openOnHover || isMobile) return;
+    scheduleClose();
+  };
+
   return (
     <>
       <button
         ref={btnRef}
         onClick={() => {
+          if (openOnHover && !isMobile) return;
           if (isMobile && open) {
             closeMobileSheet();
             return;
           }
           setOpen((v) => !v);
         }}
+        onMouseEnter={onDesktopPointerEnter}
+        onMouseLeave={onDesktopPointerLeave}
         className="w-3 h-3 rounded-full border border-gray-500 text-gray-400 hover:text-white hover:border-gray-300 flex items-center justify-center text-[8px] font-bold leading-none transition cursor-pointer flex-shrink-0"
       >
         ?
@@ -166,6 +196,8 @@ export function HelpTooltip({ text }: HelpTooltipProps) {
             ref={popupRef}
             className="fixed bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-3 min-w-[260px] max-w-[360px] z-[9999]"
             style={{ top: pos.top, left: pos.left }}
+            onMouseEnter={openOnHover ? onDesktopPointerEnter : undefined}
+            onMouseLeave={openOnHover ? onDesktopPointerLeave : undefined}
           >
             <div className="text-xs text-gray-200 leading-relaxed whitespace-pre-line">{text}</div>
           </div>

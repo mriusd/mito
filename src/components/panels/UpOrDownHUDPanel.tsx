@@ -459,7 +459,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
                   </td>
                   <td
                     className="px-1 py-1 text-right border-l border-r border-solid border-gray-700 bg-gray-900/40 text-sky-300/95 font-bold tabular-nums text-[9px] whitespace-nowrap border-b border-gray-700/50 align-middle"
-                    title="Toxic Flow USDC volume (wallet_positions usdc_in), shown in thousands"
+                    title="Toxic Flow USDC volume (wallet_market_positions usdc_in), shown in thousands"
                   >
                     {formatPolymarketVolumeK(polymarketVol)}
                   </td>

@@ -29,18 +29,34 @@ type RateSeries = {
   yFmt: YFmt;
 };
 
+const AXIS_FONT_GRAY = '8px monospace';
+const AXIS_FONT_LAST = 'bold 8px monospace';
+const DATE_FONT = '7px monospace';
+/** Right margin: dotted leader + last-value label(s) only (no gray scale here). */
+const PAD_R_LAST = 50;
+const PAD_T = 4;
+const PAD_B = 14;
+
 /** Win %, profit %, ROI % on one Y scale (percentage points). */
 function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: number[]; profit: number[]; roi: number[] }) {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [width, setWidth] = useState(280);
+  const [size, setSize] = useState({ w: 280, h: 120 });
 
   useLayoutEffect(() => {
     const el = wrap.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(Math.max(120, el.clientWidth)));
+    const ro = new ResizeObserver(() => {
+      setSize({
+        w: Math.max(120, el.clientWidth),
+        h: Math.max(72, el.clientHeight),
+      });
+    });
     ro.observe(el);
-    setWidth(Math.max(120, el.clientWidth));
+    setSize({
+      w: Math.max(120, el.clientWidth),
+      h: Math.max(72, el.clientHeight),
+    });
     return () => ro.disconnect();
   }, []);
 
@@ -48,9 +64,9 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
     const c = canvas.current;
     if (!c) return;
     const n = win.length;
-    const H = 56;
+    const W = size.w;
+    const H = size.h;
     const dpr = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
-    const W = Math.max(120, width);
     c.width = Math.floor(W * dpr);
     c.height = Math.floor(H * dpr);
     c.style.width = `${W}px`;
@@ -59,14 +75,11 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
-    const padL = 6;
-    const padR = 52;
-    const padT = 4;
-    const padB = 14;
-    const innerW = W - padL - padR;
+
+    const padT = PAD_T;
+    const padB = PAD_B;
     const innerH = H - padT - padB;
-    const plotRight = padL + innerW;
-    const labelX = plotRight + 4;
+    const plotRight = W - PAD_R_LAST;
 
     if (n === 0) {
       ctx.fillStyle = '#6b7280';
@@ -87,6 +100,12 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
     let vmin = Math.min(...allVals);
     let vmax = Math.max(...allVals);
     [vmin, vmax] = padRange(vmin, vmax);
+
+    const maxStr = `${vmax.toLocaleString('en-US', { maximumFractionDigits: 0 })}%`;
+    const minStr = `${vmin.toLocaleString('en-US', { maximumFractionDigits: 0 })}%`;
+    ctx.font = AXIS_FONT_GRAY;
+    const padL = Math.min(72, Math.max(28, Math.ceil(Math.max(ctx.measureText(maxStr).width, ctx.measureText(minStr).width) + 8)));
+    const innerW = Math.max(1, plotRight - padL);
     const xAt = (i: number) => padL + (n <= 1 ? innerW / 2 : (i / (n - 1)) * innerW);
     const yAt = (v: number) => padT + innerH - ((v - vmin) / (vmax - vmin)) * innerH;
 
@@ -99,14 +118,15 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
     ctx.stroke();
 
     ctx.fillStyle = '#6b7280';
-    ctx.font = '8px monospace';
-    ctx.textAlign = 'left';
+    ctx.font = AXIS_FONT_GRAY;
+    ctx.textAlign = 'right';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(`${vmax.toLocaleString('en-US', { maximumFractionDigits: 0 })}%`, labelX, padT + 7);
-    ctx.fillText(`${vmin.toLocaleString('en-US', { maximumFractionDigits: 0 })}%`, labelX, padT + innerH);
+    ctx.fillText(maxStr, padL - 4, padT + 7);
+    ctx.fillText(minStr, padL - 4, padT + innerH);
 
     const lastIdx = n - 1;
     const lastX = xAt(lastIdx);
+    const dashEndX = plotRight;
 
     for (const s of series) {
       const vals = s.values;
@@ -119,7 +139,7 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
       ctx.moveTo(lastX, lastY);
-      ctx.lineTo(plotRight, lastY);
+      ctx.lineTo(dashEndX, lastY);
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
@@ -152,6 +172,7 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
       }
     }
 
+    const labelX = plotRight + 4;
     type Lbl = { stroke: string; yFmt: YFmt; lastVal: number; lastY: number };
     const lbls: Lbl[] = series.map((s) => ({
       stroke: s.stroke,
@@ -160,23 +181,24 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
       lastY: yAt(s.values[lastIdx]),
     }));
     lbls.sort((a, b) => a.lastY - b.lastY);
+    const stackGap = Math.max(10, Math.floor(innerH * 0.05));
     let prevTy = -1e9;
     for (const L of lbls) {
       let ty = L.lastY;
-      if (ty < prevTy + 10) ty = prevTy + 10;
+      if (ty < prevTy + stackGap) ty = prevTy + stackGap;
       if (ty > padT + innerH - 2) ty = padT + innerH - 2;
       prevTy = ty;
       ctx.save();
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = L.stroke;
-      ctx.font = 'bold 8px monospace';
+      ctx.font = AXIS_FONT_LAST;
       ctx.fillText(formatYAxis(L.yFmt, L.lastVal), labelX, ty);
       ctx.restore();
     }
 
     ctx.fillStyle = '#9ca3af';
-    ctx.font = '7px monospace';
+    ctx.font = DATE_FONT;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     const labelIdxs = n <= 1 ? [0] : n === 2 ? [0, 1] : [0, Math.floor((n - 1) / 2), n - 1];
@@ -186,11 +208,11 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
         d.length >= 10 ? d.slice(5, 10) : d.length >= 8 ? d.slice(0, 10) : d.length > 0 ? d : '—';
       ctx.fillText(short, xAt(i), H - 3);
     }
-  }, [width, dates, win, profit, roi]);
+  }, [size, dates, win, profit, roi]);
 
   return (
-    <div ref={wrap} className="w-full min-w-0">
-      <div className="text-[9px] text-gray-400 mb-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+    <div className="w-full min-w-0 flex flex-col flex-1 min-h-0">
+      <div className="text-[9px] text-gray-400 mb-0.5 shrink-0 flex flex-wrap items-center gap-x-2 gap-y-0.5">
         <span className="font-medium text-gray-300">Win % · Profit % · ROI %</span>
         <span className="text-emerald-400">●</span>
         <span className="text-gray-500">Win</span>
@@ -199,7 +221,9 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
         <span className="text-pink-400">●</span>
         <span className="text-gray-500">ROI</span>
       </div>
-      <canvas ref={canvas} className="block max-w-full" />
+      <div ref={wrap} className="flex-1 min-h-0 w-full min-h-[64px]">
+        <canvas ref={canvas} className="block w-full h-full" />
+      </div>
     </div>
   );
 }
@@ -219,23 +243,31 @@ function MiniLineCanvas({
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [width, setWidth] = useState(280);
+  const [size, setSize] = useState({ w: 280, h: 120 });
 
   useLayoutEffect(() => {
     const el = wrap.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(Math.max(120, el.clientWidth)));
+    const ro = new ResizeObserver(() => {
+      setSize({
+        w: Math.max(120, el.clientWidth),
+        h: Math.max(72, el.clientHeight),
+      });
+    });
     ro.observe(el);
-    setWidth(Math.max(120, el.clientWidth));
+    setSize({
+      w: Math.max(120, el.clientWidth),
+      h: Math.max(72, el.clientHeight),
+    });
     return () => ro.disconnect();
   }, []);
 
   useLayoutEffect(() => {
     const c = canvas.current;
     if (!c) return;
-    const H = 52;
+    const W = size.w;
+    const H = size.h;
     const dpr = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
-    const W = Math.max(120, width);
     c.width = Math.floor(W * dpr);
     c.height = Math.floor(H * dpr);
     c.style.width = `${W}px`;
@@ -244,14 +276,11 @@ function MiniLineCanvas({
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
-    const padL = 6;
-    const padR = 52;
-    const padT = 4;
-    const padB = 14;
-    const innerW = W - padL - padR;
+
+    const padT = PAD_T;
+    const padB = PAD_B;
     const innerH = H - padT - padB;
-    const plotRight = padL + innerW;
-    const labelX = plotRight + 4;
+    const plotRight = W - PAD_R_LAST;
     const n = values.length;
     if (n === 0) {
       ctx.fillStyle = '#6b7280';
@@ -263,6 +292,12 @@ function MiniLineCanvas({
     let vmin = Math.min(...values);
     let vmax = Math.max(...values);
     [vmin, vmax] = padRange(vmin, vmax);
+
+    const maxStr = formatYAxis(yFmt, vmax);
+    const minStr = formatYAxis(yFmt, vmin);
+    ctx.font = AXIS_FONT_GRAY;
+    const padL = Math.min(88, Math.max(28, Math.ceil(Math.max(ctx.measureText(maxStr).width, ctx.measureText(minStr).width) + 8)));
+    const innerW = Math.max(1, plotRight - padL);
     const xAt = (i: number) => padL + (n <= 1 ? innerW / 2 : (i / (n - 1)) * innerW);
     const yAt = (v: number) => padT + innerH - ((v - vmin) / (vmax - vmin)) * innerH;
 
@@ -274,17 +309,18 @@ function MiniLineCanvas({
     ctx.lineTo(plotRight, padT);
     ctx.stroke();
 
+    ctx.fillStyle = '#6b7280';
+    ctx.font = AXIS_FONT_GRAY;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(maxStr, padL - 4, padT + 7);
+    ctx.fillText(minStr, padL - 4, padT + innerH);
+
     const lastIdx = n - 1;
     const lastVal = values[lastIdx];
     const lastX = xAt(lastIdx);
     const lastY = yAt(lastVal);
-
-    ctx.fillStyle = '#6b7280';
-    ctx.font = '8px monospace';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText(formatYAxis(yFmt, vmax), labelX, padT + 7);
-    ctx.fillText(formatYAxis(yFmt, vmin), labelX, padT + innerH);
+    const dashEndX = plotRight;
 
     ctx.save();
     ctx.strokeStyle = stroke;
@@ -293,7 +329,7 @@ function MiniLineCanvas({
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
     ctx.moveTo(lastX, lastY);
-    ctx.lineTo(plotRight, lastY);
+    ctx.lineTo(dashEndX, lastY);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
@@ -322,16 +358,17 @@ function MiniLineCanvas({
       ctx.stroke();
     }
 
+    const labelX = plotRight + 4;
     ctx.save();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = stroke;
-    ctx.font = 'bold 8px monospace';
+    ctx.font = AXIS_FONT_LAST;
     ctx.fillText(formatYAxis(yFmt, lastVal), labelX, lastY);
     ctx.restore();
 
     ctx.fillStyle = '#9ca3af';
-    ctx.font = '7px monospace';
+    ctx.font = DATE_FONT;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     const labelIdxs = n <= 1 ? [0] : n === 2 ? [0, 1] : [0, Math.floor((n - 1) / 2), n - 1];
@@ -341,12 +378,14 @@ function MiniLineCanvas({
         d.length >= 10 ? d.slice(5, 10) : d.length >= 8 ? d.slice(0, 10) : d.length > 0 ? d : '—';
       ctx.fillText(short, xAt(i), H - 3);
     }
-  }, [width, dates, values, stroke, yFmt]);
+  }, [size, dates, values, stroke, yFmt]);
 
   return (
-    <div ref={wrap} className="w-full min-w-0">
-      <div className="text-[9px] text-gray-400 mb-0.5">{title}</div>
-      <canvas ref={canvas} className="block max-w-full" />
+    <div className="w-full min-w-0 flex flex-col flex-1 min-h-0">
+      <div className="text-[9px] text-gray-400 mb-0.5 shrink-0">{title}</div>
+      <div ref={wrap} className="flex-1 min-h-0 w-full min-h-[64px]">
+        <canvas ref={canvas} className="block w-full h-full" />
+      </div>
     </div>
   );
 }
@@ -409,8 +448,8 @@ export function WalletScoresDailyCharts({
   );
 
   return (
-    <div className="min-w-0">
-      <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+    <div className="min-w-0 flex flex-col flex-1 min-h-0 h-full">
+      <div className="flex flex-wrap items-center justify-between gap-1 mb-1 shrink-0">
         <span className="text-[9px] text-gray-500 font-semibold">Daily (UTC)</span>
         <div className="flex gap-0.5 shrink-0">
           {btn('7d', '7d')}
@@ -418,14 +457,14 @@ export function WalletScoresDailyCharts({
           {btn('all', 'All')}
         </div>
       </div>
-      {loading && <div className="text-gray-500 text-[9px]">Loading chart…</div>}
-      {err && <div className="text-red-400 text-[9px]">{err}</div>}
+      {loading && <div className="text-gray-500 text-[9px] shrink-0">Loading chart…</div>}
+      {err && <div className="text-red-400 text-[9px] shrink-0">{err}</div>}
       {!loading && !err && (
         <div
           className={
             chartsLayout === 'row'
-              ? 'flex flex-col sm:flex-row gap-2 min-w-0 [&>*]:min-w-0 [&>*]:flex-1'
-              : 'flex flex-col gap-3 min-w-0'
+              ? 'flex flex-col sm:flex-row gap-2 min-w-0 flex-1 min-h-0 [&>*]:min-w-0 [&>*]:flex-1 [&>*]:flex [&>*]:flex-col'
+              : 'flex flex-col gap-3 min-w-0 flex-1 min-h-0 [&>*]:min-h-0 [&>*]:flex-1 [&>*]:flex [&>*]:flex-col'
           }
         >
           <RatesRoiCanvas dates={dates} win={wr} profit={pr} roi={roi} />

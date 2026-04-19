@@ -9,6 +9,7 @@ import { saveSetting } from '../api';
 import { gridSizeFromDefaultLayoutMins } from '../lib/defaultLayouts';
 import type { PanelType } from '../types';
 import { PrivateKeyImportDialog, getStoredPrivateKey } from './PrivateKeyImportDialog';
+import { useSyncHeadWS } from '../hooks/useSyncHeadWS';
 
 const IS_DEV = import.meta.env.DEV;
 
@@ -34,6 +35,7 @@ interface HeaderProps {
 }
 
 export function Header({ onRefresh }: HeaderProps) {
+  const syncHead = useSyncHeadWS();
   const { isConnected: walletConnected } = useAccount();
   const vwapCandles = useAppStore((s) => s.vwapCandles);
   const setVwapCandles = useAppStore((s) => s.setVwapCandles);
@@ -136,6 +138,21 @@ export function Header({ onRefresh }: HeaderProps) {
           <img src={logoSvg} alt="logo" className="h-5 w-5 flex-shrink-0 min-w-5 min-h-5" />
           <span className="text-sm font-bold text-white tracking-tight max-[424px]:hidden">Mito</span>
         </div>
+
+        {syncHead != null && syncHead.lastProcessedBlock > 0 && (
+          <div
+            className="flex items-center h-[28px] px-2 rounded bg-gray-800/50 text-[10px] text-gray-400 tabular-nums flex-shrink-0 max-[520px]:hidden"
+            title="Backend last processed block (kv_store). Brackets: last − chain tip (negative = behind tip)."
+          >
+            <span className="text-gray-500 mr-1">chain</span>
+            <span className="text-gray-200 font-mono">{syncHead.lastProcessedBlock}</span>
+            {syncHead.chainHeadBlock > 0 && (
+              <span className="text-gray-500 ml-0.5">
+                ({syncHead.behindBlocks})
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="flex-1" />
 

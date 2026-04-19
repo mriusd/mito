@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink, Copy, RefreshCw } from 'lucide-react';
 import { fetchToxicFlow, fetchWalletSummary, fetchWalletPositions, fetchOnchainFills } from '../api';
@@ -7,6 +7,7 @@ import type { Market } from '../types';
 import { shortenUpDownMarketListCell, ASSET_COLORS, extractAssetFromMarket, assetTickerFromQuestion } from '../utils/format';
 import { useAppStore } from '../stores/appStore';
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
+import { HelperTooltip } from './HelperTooltip';
 
 interface ToxicFlowDialogProps {
   open: boolean;
@@ -86,6 +87,30 @@ function fmtSignedShares1En(v: number): string {
   return sign + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
+function LedgerSummaryField({
+  label,
+  help,
+  value,
+  valueClassName = 'text-white font-medium',
+  rowClass,
+}: {
+  label: ReactNode;
+  help: string;
+  value: ReactNode;
+  valueClassName?: string;
+  rowClass: string;
+}) {
+  return (
+    <div className={rowClass}>
+      <span className="flex items-center gap-0.5 min-w-0 shrink text-gray-500">
+        <span className="truncate min-w-0">{label}</span>
+        <HelperTooltip text={help} openOnHover />
+      </span>
+      <span className={`shrink-0 tabular-nums text-right ${valueClassName}`}>{value}</span>
+    </div>
+  );
+}
+
 /** `wallet_scores_ledger` fields from /api/wallet-summary. */
 function WalletScoresLedgerSummaryGrid({ s, dense, narrowSummary }: { s: WalletSummary; dense?: boolean; narrowSummary?: boolean }) {
   const tm = s.totalMarkets ?? 0;
@@ -106,78 +131,103 @@ function WalletScoresLedgerSummaryGrid({ s, dense, narrowSummary }: { s: WalletS
   const prFrac = prRaw > 1 ? prRaw / 100 : prRaw;
   const prPct = prFrac * 100;
   const roiLedgerFmt = fmtRoiPercent(s.roi ?? undefined);
-  const text = dense ? 'text-[8px]' : narrowSummary ? 'text-[9px]' : 'text-[10px]';
-  const row = `flex justify-between gap-1.5 ${text} text-gray-300`;
+  const text = dense ? 'text-[8px]' : narrowSummary ? 'text-[11px]' : 'text-xs';
+  const row = `flex justify-between items-center gap-1.5 ${text} text-gray-300`;
   const wrPctStr = wrPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const prPctStr = prPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const volStr = tradedVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const L = (full: string, short: string) => (narrowSummary ? short : full);
+  const wlf = (
+    <>
+      {fmtIntEn(wn)}
+      {'\\'}
+      {fmtIntEn(ls)}
+      {'\\'}
+      {fmtIntEn(fl)}
+    </>
+  );
+  const plCount = (
+    <>
+      {fmtIntEn(pm)}
+      {'\\'}
+      {fmtIntEn(lm)}
+    </>
+  );
   return (
     <div
-      className={`grid grid-cols-1 gap-y-0.5 ${dense ? 'max-w-[min(100vw-24px,320px)]' : narrowSummary ? 'max-w-[11rem]' : ''}`}
+      className={`grid grid-cols-1 gap-y-0.5 ${dense ? 'max-w-[min(100vw-24px,320px)]' : narrowSummary ? 'max-w-[15rem]' : ''}`}
     >
-      <div className={row}>
-        <span className="text-gray-500 shrink min-w-0 truncate" title={L('Total Markets', 'Mkts')}>
-          {L('Total Markets', 'Mkts')}
-        </span>
-        <span className="text-white font-medium tabular-nums shrink-0">{fmtIntEn(tm)}</span>
-      </div>
-      <div className={row}>
-        <span className="text-gray-500 shrink min-w-0 truncate" title={L('Resolved Markets', 'Resolved')}>
-          {L('Resolved Markets', 'Resolved')}
-        </span>
-        <span className="text-white font-medium tabular-nums shrink-0">{fmtIntEn(rm)}</span>
-      </div>
-      <div className={row}>
-        <span className="text-gray-500 shrink min-w-0 truncate" title={L('Total Trades', 'Trades')}>
-          {L('Total Trades', 'Trades')}
-        </span>
-        <span className="text-white font-medium tabular-nums shrink-0">{fmtIntEn(tt)}</span>
-      </div>
-      <div className={row}>
-        <span className="text-gray-500 shrink min-w-0">W/L/F</span>
-        <span className="text-white font-medium tabular-nums shrink-0">
-          {fmtIntEn(wn)}/{fmtIntEn(ls)}/{fmtIntEn(fl)}
-        </span>
-      </div>
-      <div className={row}>
-        <span className="text-gray-500 shrink min-w-0 truncate" title={L('Win rate', 'Win %')}>
-          {L('Win rate', 'Win %')}
-        </span>
-        <span className={`font-bold tabular-nums shrink-0 ${wrPct < 50 ? 'text-red-400' : 'text-green-400'}`}>{wrPctStr}%</span>
-      </div>
-      <div className={row}>
-        <span className="text-gray-500 shrink min-w-0">PnL</span>
-        <span className={`font-bold tabular-nums shrink-0 ${rPnlToneClass(pnl)}`}>{fmtUsdSignedLedger(pnl)}</span>
-      </div>
-      <div className={row}>
-        <span className="text-gray-500 shrink min-w-0 truncate" title={L('Net Cash', 'Cash')}>
-          {L('Net Cash', 'Cash')}
-        </span>
-        <span className={`font-bold tabular-nums shrink-0 ${rPnlToneClass(cf)}`}>{fmtUsdSignedLedger(cf)}</span>
-      </div>
-      <div className={row}>
-        <span className="text-gray-500 shrink min-w-0">P/L</span>
-        <span className="text-white font-medium tabular-nums shrink-0">
-          {fmtIntEn(pm)}/{fmtIntEn(lm)}
-        </span>
-      </div>
-      <div className={row}>
-        <span className="text-gray-500 shrink min-w-0 truncate" title={L('Profit Rate', 'Pr %')}>
-          {L('Profit Rate', 'Pr %')}
-        </span>
-        <span className="text-gray-200 font-medium tabular-nums shrink-0">{prPctStr}%</span>
-      </div>
-      <div className={row}>
-        <span className="text-gray-500 shrink min-w-0 truncate" title={L('Traded Volume', 'Vol')}>
-          {L('Traded Volume', 'Vol')}
-        </span>
-        <span className="text-yellow-400 font-medium tabular-nums shrink-0">${volStr}</span>
-      </div>
-      <div className={row}>
-        <span className="text-gray-500 shrink min-w-0">ROI</span>
-        <span className={`font-bold tabular-nums shrink-0 ${roiLedgerFmt.tone}`}>{roiLedgerFmt.text}</span>
-      </div>
+      <LedgerSummaryField
+        rowClass={row}
+        label="Total Trades"
+        help="Count of on-chain fill rows (Σ wallet_market_positions.trades) for this wallet across all markets."
+        value={fmtIntEn(tt)}
+      />
+      <LedgerSummaryField
+        rowClass={row}
+        label="Volume"
+        help="Notional traded in USDC: sum of usdc_in + usdc_out across all wallet_market_positions rows for this wallet."
+        value={<>${volStr}</>}
+        valueClassName="text-yellow-400 font-medium"
+      />
+      <LedgerSummaryField
+        rowClass={row}
+        label="Total Markets"
+        help="Number of distinct markets where this wallet has at least one position row in wallet_market_positions."
+        value={fmtIntEn(tm)}
+      />
+      <LedgerSummaryField
+        rowClass={row}
+        label="Resolved Markets"
+        help="Markets with a recorded on-chain outcome (wallet_market_positions.outcome set)."
+        value={fmtIntEn(rm)}
+      />
+      <LedgerSummaryField
+        rowClass={row}
+        label={<>W{'\\'}L{'\\'}F</>}
+        help="Win, loss, and flat counts from resolved positions (ledger w, l, f flags)."
+        value={wlf}
+      />
+      <LedgerSummaryField
+        rowClass={row}
+        label="Win Rate %"
+        help="Approximate win rate from ledger: wins divided by total_markets (stored win_rate on API may be the same ratio)."
+        value={<span className={wrPct < 50 ? 'text-red-400' : 'text-green-400'}>{wrPctStr}%</span>}
+        valueClassName="font-bold"
+      />
+      <LedgerSummaryField
+        rowClass={row}
+        label="PnL"
+        help="Aggregate PnL from wallet_scores_ledger: sum of realized trading PnL plus resolution PnL across markets."
+        value={fmtUsdSignedLedger(pnl)}
+        valueClassName={`font-bold ${rPnlToneClass(pnl)}`}
+      />
+      <LedgerSummaryField
+        rowClass={row}
+        label="Net Cash"
+        help="Sum of cash_flow (USD leg net) across wallet_market_positions for this wallet."
+        value={fmtUsdSignedLedger(cf)}
+        valueClassName={`font-bold ${rPnlToneClass(cf)}`}
+      />
+      <LedgerSummaryField
+        rowClass={row}
+        label={'Profit\\Loss Count'}
+        help="Number of markets with positive total PnL (profit) versus negative (loss), from wallet_scores_ledger pm and lm."
+        value={plCount}
+      />
+      <LedgerSummaryField
+        rowClass={row}
+        label="Profit Rate %"
+        help="Share of markets counted as profitable: pm divided by total_markets (shown as percent)."
+        value={<span className="text-gray-200">{prPctStr}%</span>}
+        valueClassName="font-medium"
+      />
+      <LedgerSummaryField
+        rowClass={row}
+        label="ROI"
+        help="Portfolio ROI on resolved markets only (USDC-weighted). Shown after outcomes exist; may be empty until then."
+        value={<span className={roiLedgerFmt.tone}>{roiLedgerFmt.text}</span>}
+        valueClassName="font-bold"
+      />
     </div>
   );
 }
@@ -575,13 +625,13 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
     return <div className="text-gray-500 text-center py-3 text-[10px]">No {label} data yet</div>;
   }
 
-  const fmtInt = (v: number) => Math.round(v).toLocaleString();
-  const fmtSignedInt = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString()}`;
+  const fmtInt = (v: number) => Math.round(v).toLocaleString('en-US');
+  const fmtSignedInt = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString('en-US')}`;
   const fmtUsdSigned = (v: number) => {
     if (!Number.isFinite(v)) return '–';
     const a = Math.abs(v);
     const s = v >= 0 ? '+' : '−';
-    return `${s}$${a.toFixed(2)}`;
+    return `${s}$${a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   return (
@@ -599,12 +649,6 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             </th>
             <th className="text-right px-1" title="inv_yes − inv_no">
               Net
-            </th>
-            <th className="text-right px-1 text-gray-400" title="usd_yes">
-              $ Y
-            </th>
-            <th className="text-right px-1 text-gray-400" title="usd_no">
-              $ N
             </th>
             <th className="text-right px-1 text-gray-400" title="price_yes">
               Px Y
@@ -659,8 +703,6 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             const nYColor = iy > 0.001 ? 'text-green-400' : iy < -0.001 ? 'text-red-400' : 'text-gray-500';
             const netYNColor =
               signedLegNet < -0.001 ? 'text-red-400' : signedLegNet > 0.001 ? 'text-green-400' : 'text-gray-500';
-              const uy = typeof w.usdYes === 'number' && Number.isFinite(w.usdYes) ? w.usdYes : 0;
-              const un = typeof w.usdNo === 'number' && Number.isFinite(w.usdNo) ? w.usdNo : 0;
               const fees = typeof w.feeTotal === 'number' && Number.isFinite(w.feeTotal) ? w.feeTotal : 0;
               const cashFlow =
                 typeof w.cashFlow === 'number' && Number.isFinite(w.cashFlow) ? w.cashFlow : 0;
@@ -679,19 +721,37 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                   <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{fmtInt(iy)}</td>
                   <td className="text-right px-1 font-bold text-red-400 bg-red-900/10">{fmtInt(inn)}</td>
                   <td className={`text-right px-1 font-bold ${netYNColor}`}>{fmtInt(signedLegNet)}</td>
-                  <td className={`text-right px-1 text-gray-300 ${uy >= 0 ? '' : 'text-orange-300'}`}>{fmtUsdSigned(uy)}</td>
-                  <td className={`text-right px-1 text-gray-300 ${un >= 0 ? '' : 'text-orange-300'}`}>{fmtUsdSigned(un)}</td>
                   <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceYes)}</td>
                   <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceNo)}</td>
-                <td className="text-right px-1 text-gray-400">{w.tradeCount}</td>
-                  <td className="text-right px-1 text-amber-200/90">{fees > 0 ? `$${fees.toFixed(2)}` : fees < 0 ? `−$${Math.abs(fees).toFixed(2)}` : '–'}</td>
+                <td className="text-right px-1 text-gray-400">
+                  {typeof w.tradeCount === 'number' && Number.isFinite(w.tradeCount)
+                    ? Math.round(w.tradeCount).toLocaleString('en-US')
+                    : '–'}
+                </td>
+                  <td className="text-right px-1 text-amber-200/90">
+                  {fees > 0
+                    ? `$${fmtUsd2En(fees)}`
+                    : fees < 0
+                      ? `−$${fmtUsd2En(Math.abs(fees))}`
+                      : '–'}
+                </td>
                   <td className={`text-right px-1 font-bold ${cashFlow >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(cashFlow)}</td>
                   <td className={`text-right px-1 font-bold ${rPnlToneClass(pyes)}`}>{fmtUsdSigned(pyes)}</td>
                   <td className={`text-right px-1 font-bold ${rPnlToneClass(pno)}`}>{fmtUsdSigned(pno)}</td>
                   <td className={`text-right px-1 font-bold ${rPnlToneClass(rPnl)}`}>{fmtUsdSigned(rPnl)}</td>
-                  <td className="text-right px-1 text-cyan-300">{sharesPct > 0 ? `${sharesPct.toFixed(1)}%` : '-'}</td>
-                  <td className="text-right px-1 text-cyan-200/70">{cumSharesPct > 0 ? `${cumSharesPct.toFixed(1)}%` : '-'}</td>
-                <td className={`text-right px-1 ${biasColor}`}>{(bias * 100).toFixed(0)}%</td>
+                  <td className="text-right px-1 text-cyan-300">
+                    {sharesPct > 0
+                      ? `${sharesPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
+                      : '-'}
+                  </td>
+                  <td className="text-right px-1 text-cyan-200/70">
+                    {cumSharesPct > 0
+                      ? `${cumSharesPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
+                      : '-'}
+                  </td>
+                <td className={`text-right px-1 ${biasColor}`}>
+                  {`${(bias * 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}%`}
+                </td>
               </tr>
             );
             });
@@ -873,7 +933,7 @@ export function WalletInfoDialog({
                 {summary && <WalletScoresLedgerSummaryGrid s={summary} narrowSummary />}
               </div>
               {wallet.trim() ? (
-                <div className="min-w-0 flex-1 lg:border-l lg:border-gray-800 lg:pl-3">
+                <div className="min-w-0 flex-1 lg:border-l lg:border-gray-800 lg:pl-3 flex flex-col min-h-[min(42vh,24rem)]">
                   <WalletScoresDailyCharts wallet={wallet.trim()} refreshToken={dailySnapshotsRefresh} chartsLayout="row" />
                 </div>
               ) : null}
@@ -1620,14 +1680,14 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                           )}
                           {data.polygonWssConfigured === true &&
                             (data.orderFilledEventsProcessed ?? 0) > 0 &&
-                            (data.onchainFillsForMarket ?? 0) === 0 && (
+                            (data.walletMarketTradesForMarket ?? 0) === 0 && (
                             <p>
-                              Events are ingesting globally, but no fills are linked to this market in <span className="font-mono">onchain_fills</span> yet. Wait for the next Gamma sync (token map refreshes after each refresh), or confirm this market&apos;s CLOB token IDs are in the DB.
+                              Events are ingesting globally, but no ledger trades are linked to this market in <span className="font-mono">wallet_fill_ledger</span> yet. Wait for the next Gamma sync (token map refreshes after each refresh), or confirm this market&apos;s CLOB token IDs are in the DB.
                             </p>
                           )}
-                          {(data.onchainFillsForMarket ?? 0) > 0 && (
+                          {(data.walletMarketTradesForMarket ?? 0) > 0 && (
                             <p className="text-gray-400">
-                              {data.onchainFillsForMarket} raw fill(s) for this market in DB; wallet rollups only appear after fills are matched to token IDs. If tables stay empty, check <span className="font-mono">wallet_market_positions</span> and server logs.
+                              {data.walletMarketTradesForMarket} trade(s) rolled up for this market; wallet rollups only appear after fills are matched to token IDs. If tables stay empty, check <span className="font-mono">wallet_market_positions</span> and server logs.
                             </p>
                           )}
                           <p>

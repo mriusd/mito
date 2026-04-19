@@ -13,6 +13,16 @@ import { useSyncHeadWS } from '../hooks/useSyncHeadWS';
 
 const IS_DEV = import.meta.env.DEV;
 
+const POLYGONSCAN_HOME = 'https://polygonscan.com/';
+
+/** UI: lastProcessed − tip from /ws/sync-head (negative = chain head ahead of KV). */
+function blockLagToneClass(behindBlocks: number): string {
+  if (!Number.isFinite(behindBlocks)) return 'text-gray-400';
+  if (behindBlocks >= -2) return 'text-emerald-400';
+  if (behindBlocks > -10) return 'text-amber-400';
+  return 'text-red-400';
+}
+
 const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnly?: boolean }[] = [
   { type: 'asset-BTC', title: 'Market Grid', multi: true },
   // { type: 'arbs', title: 'Hedges' },
@@ -130,31 +140,22 @@ export function Header({ onRefresh }: HeaderProps) {
     saveSetting('vwapCorrection', v);
   }, [vwapCorrLocal, setVwapCorrection]);
 
+  const lagTone =
+    syncHead != null && syncHead.chainHeadBlock > 0
+      ? blockLagToneClass(syncHead.behindBlocks)
+      : 'text-gray-400';
+
   return (
     <header className="mb-1 relative z-[220]">
-      <div className="flex items-center gap-2">
-        {/* Brand */}
-        <div className="flex items-center gap-1.5 h-[28px] flex-shrink-0 min-w-0">
+      <div className="flex items-center gap-2 w-full min-w-0">
+        {/* Logo only — left */}
+        <div className="flex items-center h-[28px] flex-shrink-0">
           <img src={logoSvg} alt="logo" className="h-5 w-5 flex-shrink-0 min-w-5 min-h-5" />
-          <span className="text-sm font-bold text-white tracking-tight max-[424px]:hidden">Mito</span>
         </div>
 
-        {syncHead != null && syncHead.lastProcessedBlock > 0 && (
-          <div
-            className="flex items-center h-[28px] px-2 rounded bg-gray-800/50 text-[10px] text-gray-400 tabular-nums flex-shrink-0 max-[520px]:hidden"
-            title="Backend last processed block (kv_store). Brackets: last − chain tip (negative = behind tip)."
-          >
-            <span className="text-gray-500 mr-1">chain</span>
-            <span className="text-gray-200 font-mono">{syncHead.lastProcessedBlock}</span>
-            {syncHead.chainHeadBlock > 0 && (
-              <span className="text-gray-500 ml-0.5">
-                ({syncHead.behindBlocks})
-              </span>
-            )}
-          </div>
-        )}
+        <div className="flex-1 min-w-[8px]" />
 
-        <div className="flex-1" />
+        <span className="text-sm font-bold text-white tracking-tight max-[424px]:hidden flex-shrink-0">Mito</span>
 
         {/* B-S Time Offset Slider */}
         <div className="max-[767px]:hidden flex items-center gap-1 bg-gray-800/50 rounded px-2 h-[28px] min-w-0 w-[min(34vw,260px)]">
@@ -382,6 +383,25 @@ export function Header({ onRefresh }: HeaderProps) {
 
         {/* Signing Mode Switch */}
         {walletConnected && <SigningModeSwitch />}
+
+        {syncHead != null && syncHead.lastProcessedBlock > 0 && (
+          <a
+            href={POLYGONSCAN_HOME}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center h-[28px] px-2 rounded bg-gray-800/50 hover:bg-gray-700/60 text-[10px] tabular-nums flex-shrink-0 max-[520px]:hidden border border-transparent hover:border-gray-600 transition"
+            title={
+              'KV last_processed_block number; parentheses = lastProcessed − chainTip (negative ⇒ tip ahead). ' +
+              '−1 is normal: tip moves with newHeads/logs before the block flush writes KV. Open Polygonscan home.'
+            }
+          >
+            <span className="text-gray-500 mr-1">Block</span>
+            <span className="text-gray-200 font-mono">{syncHead.lastProcessedBlock}</span>
+            {syncHead.chainHeadBlock > 0 && (
+              <span className={`ml-0.5 font-mono ${lagTone}`}>({syncHead.behindBlocks})</span>
+            )}
+          </a>
+        )}
 
         {/* Wallet Connect */}
         <WalletButton />

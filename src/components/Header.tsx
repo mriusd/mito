@@ -151,6 +151,24 @@ export function Header({ onRefresh }: HeaderProps) {
       <div className="flex items-center gap-2 w-full min-w-0">
         <div className="flex items-center gap-2 h-[28px] flex-shrink-0 min-w-0">
           <img src={logoSvg} alt="logo" className="h-5 w-5 flex-shrink-0 min-w-5 min-h-5" />
+          {syncHead != null && syncHead.lastProcessedBlock > 0 && (
+            <a
+              href={POLYGONSCAN_HOME}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center h-[28px] px-1.5 rounded bg-gray-800/50 hover:bg-gray-700/60 text-[10px] tabular-nums flex-shrink-0 max-[520px]:hidden border border-transparent hover:border-gray-600 transition"
+              title={
+                'KV last_processed_block number; parentheses = lastProcessed − chainTip (negative ⇒ tip ahead). ' +
+                '−1 is normal: tip moves with newHeads/logs before the block flush writes KV. Open Polygonscan home.'
+              }
+            >
+              <span className="text-gray-500 mr-1">Block</span>
+              <span className="text-gray-200 font-mono">{syncHead.lastProcessedBlock}</span>
+              {syncHead.chainHeadBlock > 0 && (
+                <span className={`ml-0.5 font-mono ${lagTone}`}>({syncHead.behindBlocks})</span>
+              )}
+            </a>
+          )}
           <span className="text-sm font-bold text-white tracking-tight max-[424px]:hidden flex-shrink-0">Mito</span>
         </div>
 
@@ -377,25 +395,6 @@ export function Header({ onRefresh }: HeaderProps) {
             <span className="text-[10px] text-gray-400">Cash</span>
             <span className="text-xs font-bold text-blue-400">${cashBalance.toFixed(2)}</span>
             <HelpTooltip text="Val: positions (Data API currentValue or size×price) plus Cash. Cash: pUSD + USDC.e in proxy wallet on Polygon." />
-          </a>
-        )}
-
-        {syncHead != null && syncHead.lastProcessedBlock > 0 && (
-          <a
-            href={POLYGONSCAN_HOME}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center h-[28px] px-2 rounded bg-gray-800/50 hover:bg-gray-700/60 text-[10px] tabular-nums flex-shrink-0 max-[520px]:hidden border border-transparent hover:border-gray-600 transition"
-            title={
-              'KV last_processed_block number; parentheses = lastProcessed − chainTip (negative ⇒ tip ahead). ' +
-              '−1 is normal: tip moves with newHeads/logs before the block flush writes KV. Open Polygonscan home.'
-            }
-          >
-            <span className="text-gray-500 mr-1">Block</span>
-            <span className="text-gray-200 font-mono">{syncHead.lastProcessedBlock}</span>
-            {syncHead.chainHeadBlock > 0 && (
-              <span className={`ml-0.5 font-mono ${lagTone}`}>({syncHead.behindBlocks})</span>
-            )}
           </a>
         )}
 

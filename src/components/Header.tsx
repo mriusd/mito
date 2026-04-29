@@ -111,13 +111,13 @@ export function Header({ onRefresh }: HeaderProps) {
   );
 
 
-  // Portfolio value
-  const portfolioValue = positions.reduce((sum, p) => {
+  const positionsValue = positions.reduce((sum, p) => {
     if (p.currentValue != null && Number.isFinite(p.currentValue)) return sum + p.currentValue;
     const size = p.size || 0;
     const price = p.curPrice || 0;
     return sum + size * price;
   }, 0);
+  const totalVal = positionsValue + cashBalance;
 
   // Local state for VWAP inputs to avoid clamping mid-type
   const [vwapCandlesLocal, setVwapCandlesLocal] = useState(String(vwapCandles));
@@ -373,10 +373,10 @@ export function Header({ onRefresh }: HeaderProps) {
             className="flex items-center gap-2 bg-gray-800/50 rounded px-2 h-[28px] hover:bg-gray-700/50 cursor-pointer transition"
           >
             <span className="text-[10px] text-gray-400 max-[639px]:hidden">Val</span>
-            <span className="text-xs font-bold text-green-400 max-[639px]:hidden">${portfolioValue.toFixed(2)}</span>
+            <span className="text-xs font-bold text-green-400 max-[639px]:hidden">${totalVal.toFixed(2)}</span>
             <span className="text-[10px] text-gray-400">Cash</span>
             <span className="text-xs font-bold text-blue-400">${cashBalance.toFixed(2)}</span>
-            <HelpTooltip text="Val: Sum of Polymarket Data API currentValue (or size×price). Cash: pUSD + USDC.e in proxy wallet on Polygon." />
+            <HelpTooltip text="Val: positions (Data API currentValue or size×price) plus Cash. Cash: pUSD + USDC.e in proxy wallet on Polygon." />
           </a>
         )}
 

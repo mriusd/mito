@@ -394,11 +394,14 @@ export function WalletScoresDailyCharts({
   wallet,
   refreshToken = 0,
   chartsLayout = 'stack',
+  compactSummary = false,
 }: {
   wallet: string;
   refreshToken?: number;
   /** `row`: win/profit/ROI and PnL canvases side by side (e.g. wallet info dialog). */
   chartsLayout?: 'stack' | 'row';
+  /** Wallet info dialog: short chart band so summary height follows the ledger column. */
+  compactSummary?: boolean;
 }) {
   const [windowSel, setWindowSel] = useState<WalletScoresDailyWindow>('30d');
   const [points, setPoints] = useState<WalletScoresDailyPoint[]>([]);
@@ -447,8 +450,21 @@ export function WalletScoresDailyCharts({
     </button>
   );
 
+  const rowChartsClass =
+    chartsLayout === 'row'
+      ? compactSummary
+        ? 'flex flex-col sm:flex-row gap-2 min-w-0 items-stretch [&>*]:min-w-0 [&>*]:flex [&>*]:flex-col [&>*]:h-[4.75rem] [&>*]:shrink-0'
+        : 'flex flex-col sm:flex-row gap-2 min-w-0 flex-1 min-h-0 [&>*]:min-w-0 [&>*]:flex-1 [&>*]:flex [&>*]:flex-col'
+      : 'flex flex-col gap-3 min-w-0 flex-1 min-h-0 [&>*]:min-h-0 [&>*]:flex-1 [&>*]:flex [&>*]:flex-col';
+
   return (
-    <div className="min-w-0 flex flex-col flex-1 min-h-0 h-full">
+    <div
+      className={
+        compactSummary && chartsLayout === 'row'
+          ? 'min-w-0 flex flex-col'
+          : 'min-w-0 flex flex-col flex-1 min-h-0 h-full'
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-1 mb-1 shrink-0">
         <span className="text-[9px] text-gray-500 font-semibold">Daily (UTC)</span>
         <div className="flex gap-0.5 shrink-0">
@@ -460,13 +476,7 @@ export function WalletScoresDailyCharts({
       {loading && <div className="text-gray-500 text-[9px] shrink-0">Loading chart…</div>}
       {err && <div className="text-red-400 text-[9px] shrink-0">{err}</div>}
       {!loading && !err && (
-        <div
-          className={
-            chartsLayout === 'row'
-              ? 'flex flex-col sm:flex-row gap-2 min-w-0 flex-1 min-h-0 [&>*]:min-w-0 [&>*]:flex-1 [&>*]:flex [&>*]:flex-col'
-              : 'flex flex-col gap-3 min-w-0 flex-1 min-h-0 [&>*]:min-h-0 [&>*]:flex-1 [&>*]:flex [&>*]:flex-col'
-          }
-        >
+        <div className={rowChartsClass}>
           <RatesRoiCanvas dates={dates} win={wr} profit={pr} roi={roi} />
           <MiniLineCanvas title="PnL $" dates={dates} values={pnl} stroke="#fbbf24" yFmt="money" />
         </div>

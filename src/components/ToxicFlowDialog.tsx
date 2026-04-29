@@ -876,10 +876,9 @@ export function WalletInfoDialog({
   return (
     <div className="fixed inset-0 bg-black/60 z-[60010] flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div
-        className="bg-gray-800 rounded-lg p-3 w-full mx-4 shadow-xl border border-gray-700 max-w-[min(98vw,93.6rem)]"
-        style={{ maxHeight: '88vh' }}
+        className="bg-gray-800 rounded-lg p-3 w-full mx-4 shadow-xl border border-gray-700 max-w-[min(98vw,93.6rem)] max-h-[88vh] min-h-0 flex flex-col overflow-hidden"
       >
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-2 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-bold text-yellow-400">Wallet Info</span>
             <a
@@ -909,7 +908,7 @@ export function WalletInfoDialog({
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={16} /></button>
         </div>
 
-        <div className="mb-2 text-[10px]">
+        <div className="mb-2 text-[10px] shrink-0">
           <div className="bg-gray-900 rounded p-2">
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="text-gray-500 font-semibold">Summary</div>
@@ -928,13 +927,13 @@ export function WalletInfoDialog({
             </div>
             {summary === undefined && <div className="text-gray-500">Loading...</div>}
             {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
-            <div className="mt-1 flex flex-col lg:flex-row gap-3 items-stretch min-w-0">
+            <div className="mt-1 flex flex-col lg:flex-row gap-3 items-start min-w-0">
               <div className="shrink-0 w-full lg:w-[min(11rem,calc(100%/6))] lg:max-w-[11rem]">
                 {summary && <WalletScoresLedgerSummaryGrid s={summary} narrowSummary />}
               </div>
               {wallet.trim() ? (
-                <div className="min-w-0 flex-1 lg:border-l lg:border-gray-800 lg:pl-3 flex flex-col min-h-[min(42vh,24rem)]">
-                  <WalletScoresDailyCharts wallet={wallet.trim()} refreshToken={dailySnapshotsRefresh} chartsLayout="row" />
+                <div className="min-w-0 flex-1 lg:border-l lg:border-gray-800 lg:pl-3 flex flex-col">
+                  <WalletScoresDailyCharts wallet={wallet.trim()} refreshToken={dailySnapshotsRefresh} chartsLayout="row" compactSummary />
                 </div>
               ) : null}
             </div>
@@ -942,11 +941,12 @@ export function WalletInfoDialog({
         </div>
 
         <div
-          className="grid gap-2 overflow-hidden"
-          style={{ height: 'calc(88vh - 280px)', gridTemplateColumns: 'minmax(0, 1fr) minmax(16rem, 36rem)' }}
+          className="grid gap-2 flex-1 min-h-0 overflow-hidden"
+          style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(16rem, 36rem)' }}
         >
-          <div className="bg-gray-900 rounded p-2 overflow-y-auto overflow-x-auto min-w-0">
-            <div className="text-[10px] text-gray-400 font-bold mb-1">Latest Markets Traded</div>
+          <div className="bg-gray-900 rounded p-2 min-h-0 min-w-0 flex flex-col overflow-hidden">
+            <div className="text-[10px] text-gray-400 font-bold mb-1 shrink-0">Latest Markets Traded</div>
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
             {loadingMarkets ? (
               <div className="text-gray-500 text-[10px]">Loading markets...</div>
             ) : markets.length === 0 ? (
@@ -1049,12 +1049,14 @@ export function WalletInfoDialog({
                 </tbody>
               </table>
             )}
+            </div>
           </div>
 
-          <div className="bg-gray-900 rounded p-2 overflow-y-auto shrink-0 min-w-0">
-            <div className="text-[10px] text-gray-400 font-bold mb-1">
+          <div className="bg-gray-900 rounded p-2 min-h-0 min-w-0 flex flex-col overflow-hidden">
+            <div className="text-[10px] text-gray-400 font-bold mb-1 shrink-0">
               Trades For Selected Market {selectedMarketId ? <span className="text-gray-500 font-mono">({selectedMarketId})</span> : null}
             </div>
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
             {loadingFills ? (
               <div className="text-gray-500 text-[10px]">Loading trades...</div>
             ) : fills.length === 0 ? (
@@ -1215,7 +1217,8 @@ export function WalletInfoDialog({
                 </tbody>
               </table>
             )}
-            <div className="mt-2 flex items-center justify-between text-[10px] text-gray-400">
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[10px] text-gray-400 shrink-0 pt-1 border-t border-gray-800">
               <span>
                 Page {fmtIntEn(fillsPage + 1)} / {fmtIntEn(Math.max(1, Math.ceil(fillsTotal / fillsPageSize)))} (
                 {fmtIntEn(fillsTotal)} trades)

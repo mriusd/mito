@@ -11,3 +11,12 @@ export const isFeDev = (import.meta.env.VITE_FE_ENV || import.meta.env.VITE_ENV)
 export const API_BASE = isProd ? 'https://data.mito.trade' : '';
 export const WS_BASE = isProd ? 'wss://data.mito.trade' : `ws://${window.location.hostname}:3099`;
 
+/** CLOB v2 builder attribution: `bytes32` from polymarket.com/settings → Builder (optional). */
+export function vitePolyBuilderCode(): string | undefined {
+  const raw = String(import.meta.env.VITE_POLY_BUILDER_CODE || '').trim();
+  if (!raw) return undefined;
+  const h = raw.startsWith('0x') ? raw : `0x${raw}`;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(h)) return undefined;
+  return h.toLowerCase();
+}
+

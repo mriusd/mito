@@ -14,6 +14,7 @@ import { getStoredPrivateKey } from '../components/PrivateKeyImportDialog';
 export function useWalletData() {
   const { address, isConnected } = useAccount();
   const signingMode = useAppStore((s) => s.signingMode);
+  const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
   const setPkAddress = useAppStore((s) => s.setPkAddress);
   const store = useAppStore();
   const fetchingRef = useRef(false);
@@ -148,6 +149,15 @@ export function useWalletData() {
     const interval = setInterval(fetchAll, 30000);
     return () => clearInterval(interval);
   }, [proxyWallet, fetchAll]);
+
+  // Refetch when user focuses a market (Data API can lag; sidebar filters need fresh rows)
+  useEffect(() => {
+    if (!isWebMode || !proxyWallet || !selectedMarketId) return;
+    const t = window.setTimeout(() => {
+      void fetchAll();
+    }, 400);
+    return () => clearTimeout(t);
+  }, [selectedMarketId, proxyWallet, fetchAll]);
 
   return { refreshWalletData: fetchAll };
 }

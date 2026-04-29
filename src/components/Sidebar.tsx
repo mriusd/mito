@@ -203,6 +203,11 @@ export function Sidebar() {
   const { bids, asks, trades: polymarketLiveTrades, loading: obLoading } = usePolymarketOB(obTokenId);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const setLiveTradesSource = useAppStore((s) => s.setLiveTradesSource);
+  /** On-chain WS + REST prefetch: must not depend on sidebarOpen or tables stay empty after refresh until sidebar opens. */
+  const onchainHookTokenId = useMemo(() => {
+    if (liveTradesSource !== 'onchain' || !selectedMarket?.clobTokenIds?.length) return null;
+    return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 0 : 1] || null;
+  }, [liveTradesSource, selectedMarket, orderOutcome]);
   useEffect(() => {
     setTradeTickNow(Date.now());
   }, [selectedMarket?.conditionId, liveTradesSource]);
@@ -238,15 +243,15 @@ export function Sidebar() {
   );
   const mergeFunderWallet = (makerAddressForMerge || proxyWallet || '').trim();
   const scopedClobPair = useMemo(() => {
-    if (liveTradesSource !== 'onchain' || !sidebarOpen || !selectedMarket?.clobTokenIds?.length) return null;
+    if (liveTradesSource !== 'onchain' || !selectedMarket?.clobTokenIds?.length) return null;
     return selectedMarket.clobTokenIds.map((x) => String(x || '').trim()).filter(Boolean);
-  }, [liveTradesSource, sidebarOpen, selectedMarket?.clobTokenIds]);
+  }, [liveTradesSource, selectedMarket?.clobTokenIds]);
   const { trades: onchainLiveTrades, walletPositions: wsPositions, gridWalletPositions, walletTrades: wsTrades, refreshWallet } = useOnchainTradesWS({
     marketId:
-      liveTradesSource === 'onchain' && sidebarOpen && selectedMarket?.conditionId?.trim()
+      liveTradesSource === 'onchain' && selectedMarket?.conditionId?.trim()
         ? String(selectedMarket.conditionId).trim()
         : null,
-    tokenId: liveTradesSource === 'onchain' ? obTokenId : null,
+    tokenId: liveTradesSource === 'onchain' ? onchainHookTokenId : null,
     wallet: onchainWallet,
     scopedClobTokenIds: scopedClobPair,
   });

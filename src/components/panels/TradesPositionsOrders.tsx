@@ -131,6 +131,10 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
           ledger: true,
         });
         const idSet = new Set<string>();
+        for (const tid of selectedMarket?.clobTokenIds || []) {
+          const t = String(tid || '').trim();
+          if (t) idSet.add(t);
+        }
         for (const wp of walletRes.positions || []) {
           if (wp.tokenIdYes) idSet.add(wp.tokenIdYes);
           if (wp.tokenIdNo) idSet.add(wp.tokenIdNo);
@@ -181,7 +185,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
       cancelled = true;
       window.clearInterval(iv);
     };
-  }, [liveTradesSource, makerAddress, polymarketTokenKey, positions, orders, trades]);
+  }, [liveTradesSource, makerAddress, polymarketTokenKey, positions, orders, trades, selectedMarket?.id, selectedMarket?.clobTokenIds?.join('|')]);
 
   const onchainPositionsAsPM = useMemo((): Position[] => {
     return onchainPosRows.map((r) => {

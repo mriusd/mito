@@ -646,22 +646,22 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
                       {/* Order badges */}
                       {yesBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
+                        <div className="absolute bottom-0 left-0 z-[5] bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
                           {(Math.max(...yesBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
                       {yesSellOrders.length > 0 && (
-                        <div className={`absolute ${yesBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`} style={{ color: '#78350f' }}>
+                        <div className={`absolute ${yesBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 z-[5] bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`} style={{ color: '#78350f' }}>
                           {(Math.min(...yesSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
                       {noBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
+                        <div className="absolute bottom-0 right-0 z-[5] bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
                           {(Math.max(...noBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
                       {noSellOrders.length > 0 && (
-                        <div className={`absolute ${noBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>
+                        <div className={`absolute ${noBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 z-[5] bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>
                           {(Math.min(...noSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
@@ -870,12 +870,12 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
                       {/* Order badges */}
                       {yesBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
+                        <div className="absolute bottom-0 left-0 z-[5] bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
                           {(Math.max(...yesBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
                       {noBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
+                        <div className="absolute bottom-0 right-0 z-[5] bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
                           {(Math.max(...noBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
@@ -1152,22 +1152,22 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
                       {/* Order badges - YES bottom-left, NO bottom-right */}
                       {yesBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
+                        <div className="absolute bottom-0 left-0 z-[5] bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
                           {(Math.max(...yesBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
                       {yesSellOrders.length > 0 && (
-                        <div className={`absolute ${yesBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`} style={{ color: '#78350f' }}>
+                        <div className={`absolute ${yesBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 z-[5] bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`} style={{ color: '#78350f' }}>
                           {(Math.min(...yesSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
                       {noBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
+                        <div className="absolute bottom-0 right-0 z-[5] bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
                           {(Math.max(...noBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}
                       {noSellOrders.length > 0 && (
-                        <div className={`absolute ${noBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>
+                        <div className={`absolute ${noBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 z-[5] bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>
                           {(Math.min(...noSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
                         </div>
                       )}

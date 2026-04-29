@@ -113,10 +113,24 @@ function parseWeeklyHitWindowFromSlug(
   const parts = tail.split('-').filter(Boolean);
   if (parts.length < 3) return null;
 
+  // Daily: ...-hit-on-april-29
   const monthToIdx: Record<string, number> = {
     january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
-    july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
+    july: 6, august: 7, september: 8, october: 9,     november: 10, december: 11,
   };
+  if (parts[0] === 'on' && parts.length >= 3) {
+    const md = monthToIdx[parts[1]];
+    const dayNum = parseInt(parts[2], 10);
+    if (md == null || !Number.isFinite(dayNum) || dayNum <= 0 || dayNum > 31) return null;
+    const y =
+      parts.length >= 4 && Number.isFinite(parseInt(parts[3], 10))
+        ? parseInt(parts[3], 10)
+        : new Date(fallbackEndMs).getUTCFullYear();
+    const startMs = Date.UTC(y, md, dayNum, 0, 0, 0, 0);
+    const endMs = Date.UTC(y, md, dayNum, 23, 59, 59, 999);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
+    return { startMs, endMs };
+  }
   const m0 = monthToIdx[parts[0]];
   if (m0 == null) return null;
   const d0 = parseInt(parts[1], 10);

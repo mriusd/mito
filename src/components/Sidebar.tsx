@@ -2120,20 +2120,30 @@ export function Sidebar() {
                 </label>
                 <div className="relative">
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    spellCheck={false}
                     value={orderPrice}
-                    onChange={(e) => setOrderPrice(e.target.value)}
+                    onChange={(e) => {
+                      const cleaned = e.target.value.replace(/[^\d.]/g, '');
+                      const dot = cleaned.indexOf('.');
+                      const v =
+                        dot === -1 ? cleaned : `${cleaned.slice(0, dot + 1)}${cleaned.slice(dot + 1).replace(/\./g, '')}`;
+                      setOrderPrice(v);
+                    }}
                     disabled={orderKind === 'market'}
-                    className="order-input w-full h-[38px] text-center text-lg font-bold leading-none px-10 no-spin disabled:cursor-not-allowed disabled:opacity-70"
+                    className="order-input w-full h-[38px] text-center text-lg font-bold leading-none px-10 disabled:cursor-not-allowed disabled:opacity-70"
                     placeholder="50"
-                    min={0.1}
-                    max={99.9}
-                    step={0.1}
                   />
                   <button
                     type="button"
                     disabled={orderKind === 'market'}
-                    onClick={() => adjustOrderPriceCents(-1)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      if (orderKind === 'market') return;
+                      adjustOrderPriceCents(-1);
+                    }}
                     className="absolute left-1 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md text-gray-300 hover:text-white hover:bg-gray-700/70 text-2xl leading-none flex items-center justify-center disabled:pointer-events-none disabled:opacity-40"
                     aria-label="Decrease price by 1 cent"
                   >
@@ -2142,7 +2152,11 @@ export function Sidebar() {
                   <button
                     type="button"
                     disabled={orderKind === 'market'}
-                    onClick={() => adjustOrderPriceCents(1)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      if (orderKind === 'market') return;
+                      adjustOrderPriceCents(1);
+                    }}
                     className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md text-gray-300 hover:text-white hover:bg-gray-700/70 text-2xl leading-none flex items-center justify-center disabled:pointer-events-none disabled:opacity-40"
                     aria-label="Increase price by 1 cent"
                   >
@@ -2173,7 +2187,8 @@ export function Sidebar() {
                     type="number"
                     value={orderAmount}
                     onChange={(e) => setOrderAmount(e.target.value)}
-                    className="order-input h-[38px] pr-5 w-full"
+                    onWheel={(e) => e.preventDefault()}
+                    className="order-input no-spin h-[38px] pr-5 w-full"
                     placeholder="100"
                     min={1}
                     step={1}
@@ -2240,6 +2255,7 @@ export function Sidebar() {
                       setOrderExpiry(e.target.value);
                       localStorage.setItem('polymarket-order-expiry', e.target.value);
                     }}
+                    onWheel={(e) => e.preventDefault()}
                     className="bg-transparent text-left text-white text-[11px] w-full outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:cursor-not-allowed disabled:opacity-40"
                     min={0}
                     step={10}

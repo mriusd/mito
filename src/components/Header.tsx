@@ -151,6 +151,7 @@ export function Header({ onRefresh }: HeaderProps) {
       <div className="flex items-center gap-2 w-full min-w-0">
         <div className="flex items-center gap-2 h-[28px] flex-shrink-0 min-w-0">
           <img src={logoSvg} alt="logo" className="h-5 w-5 flex-shrink-0 min-w-5 min-h-5" />
+          <span className="text-sm font-bold text-white tracking-tight max-[424px]:hidden flex-shrink-0">Mito</span>
           {syncHead != null && syncHead.lastProcessedBlock > 0 && (
             <a
               href={POLYGONSCAN_HOME}
@@ -169,7 +170,6 @@ export function Header({ onRefresh }: HeaderProps) {
               )}
             </a>
           )}
-          <span className="text-sm font-bold text-white tracking-tight max-[424px]:hidden flex-shrink-0">Mito</span>
         </div>
 
         <div className="flex-1 min-w-[8px]" />

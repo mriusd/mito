@@ -71,6 +71,8 @@ export interface Position {
   redeemable?: boolean;
   outcome?: string;
   curPrice?: number;
+  /** Data API: mark-to-market USD for this leg */
+  currentValue?: number;
   avgPrice?: number;
   pnl?: number;
   market?: string;

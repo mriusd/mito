@@ -113,6 +113,7 @@ export function Header({ onRefresh }: HeaderProps) {
 
   // Portfolio value
   const portfolioValue = positions.reduce((sum, p) => {
+    if (p.currentValue != null && Number.isFinite(p.currentValue)) return sum + p.currentValue;
     const size = p.size || 0;
     const price = p.curPrice || 0;
     return sum + size * price;
@@ -375,7 +376,7 @@ export function Header({ onRefresh }: HeaderProps) {
             <span className="text-xs font-bold text-green-400 max-[639px]:hidden">${portfolioValue.toFixed(2)}</span>
             <span className="text-[10px] text-gray-400">Cash</span>
             <span className="text-xs font-bold text-blue-400">${cashBalance.toFixed(2)}</span>
-            <HelpTooltip text="Val: Total value of your open positions on Polymarket. Cash: Available USDC balance in your Polymarket wallet." />
+            <HelpTooltip text="Val: Sum of Polymarket Data API currentValue (or size×price). Cash: pUSD + USDC.e in proxy wallet on Polygon." />
           </a>
         )}
 

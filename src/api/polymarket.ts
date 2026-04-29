@@ -69,31 +69,36 @@ export async function fetchProxyWallet(eoaAddress: string): Promise<string | nul
   }
 }
 
-// Fetch USDC balance on Polygon via public RPC
-const USDC_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174';
+// Polymarket proxy wallet: CLOB collateral is pUSD; legacy USDC.e may still sit in wallet
+const PUSD_ADDRESS = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB';
+const USDCE_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174';
 const BALANCE_OF_SIG = '0x70a08231';
+
+async function erc20BalanceOnPolygon(token: string, holder: string): Promise<number> {
+  const paddedAddr = holder.toLowerCase().replace('0x', '').padStart(64, '0');
+  const data = BALANCE_OF_SIG + paddedAddr;
+  const resp = await fetch('https://polygon-bor-rpc.publicnode.com', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'eth_call',
+      params: [{ to: token, data }, 'latest'],
+      id: 1,
+    }),
+  });
+  const json = await resp.json();
+  if (!json.result) return 0;
+  return Number(BigInt(json.result)) / 1e6;
+}
 
 export async function fetchWalletBalance(address: string): Promise<number> {
   try {
-    // Encode balanceOf(address) call
-    const paddedAddr = address.toLowerCase().replace('0x', '').padStart(64, '0');
-    const data = BALANCE_OF_SIG + paddedAddr;
-    const resp = await fetch('https://polygon-bor-rpc.publicnode.com', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'eth_call',
-        params: [{ to: USDC_ADDRESS, data }, 'latest'],
-        id: 1,
-      }),
-    });
-    const json = await resp.json();
-    if (json.result) {
-      const raw = BigInt(json.result);
-      return Number(raw) / 1e6; // USDC has 6 decimals
-    }
-    return 0;
+    const [pusd, usdce] = await Promise.all([
+      erc20BalanceOnPolygon(PUSD_ADDRESS, address),
+      erc20BalanceOnPolygon(USDCE_ADDRESS, address),
+    ]);
+    return pusd + usdce;
   } catch {
     return 0;
   }

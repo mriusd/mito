@@ -593,7 +593,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
                             : t.side === 'SPLIT' ? 'text-purple-400'
                               : t.side === 'MERGE' ? 'text-amber-400'
                                 : 'text-red-400'
-                      }`}>{t.outcome ? `${t.side} ${t.outcome}` : t.side}</td>
+                      }`}>{t.side}</td>
                       <td className={`py-1 px-1 font-bold ${t.outcome === 'YES' || t.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{t.outcome || '-'}</td>
                       <td className="py-1 px-1 text-right text-gray-300">{t.side === 'CLAIM' ? '—' : Math.round(t.size).toLocaleString()}</td>
                       <td className="py-1 px-1 text-right text-gray-300">{t.side === 'CLAIM' ? '—' : `${t.price.toFixed(1)}¢`}</td>

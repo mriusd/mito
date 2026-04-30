@@ -86,6 +86,78 @@ function sameDecimalTokenId(a: string | null | undefined, b: string | null | und
   }
 }
 
+/** Survives market switches: seed sidebar tape from WS rows already received this session. */
+const ONCHAIN_PUBLIC_TAPE_BUFFER_CAP = 5_000;
+
+type BufferedPublicTapeRow = LiveTrade & { __m: string; __tok: string };
+const onchainPublicTapeBuffer: BufferedPublicTapeRow[] = [];
+
+function tapeDedupeKey(t: Pick<LiveTrade, 'txHash' | 'logIndex'>): string {
+  return `${t.txHash || ''}:${t.logIndex ?? ''}`;
+}
+
+function pushPublicTapeBuffer(t: LiveTrade, marketCanon: string, tokenIdRaw: string) {
+  const __m = (marketCanon || '').trim();
+  const __tok = normalizeClobTokenKey(tokenIdRaw);
+  if (!__m && !__tok) return;
+  onchainPublicTapeBuffer.unshift({ ...t, __m, __tok });
+  if (onchainPublicTapeBuffer.length > ONCHAIN_PUBLIC_TAPE_BUFFER_CAP) {
+    onchainPublicTapeBuffer.length = ONCHAIN_PUBLIC_TAPE_BUFFER_CAP;
+  }
+}
+
+function filterPublicTapeBuffer(mCanon: string | null, tokenSub: string | null): LiveTrade[] {
+  if (!mCanon && !tokenSub) return [];
+  const out: LiveTrade[] = [];
+  for (const row of onchainPublicTapeBuffer) {
+    const { __m, __tok, ...rest } = row;
+    if (mCanon) {
+      if (!__m || canonicalConditionKey(__m) !== mCanon) continue;
+      if (tokenSub && !sameDecimalTokenId(__tok, tokenSub)) continue;
+    } else if (tokenSub) {
+      if (!sameDecimalTokenId(__tok, tokenSub)) continue;
+    } else {
+      continue;
+    }
+    out.push(rest);
+  }
+  const seen = new Set<string>();
+  const deduped: LiveTrade[] = [];
+  for (const t of out) {
+    const k = tapeDedupeKey(t);
+    if (!k || k === ':') continue;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    deduped.push(t);
+  }
+  deduped.sort((a, b) => {
+    const td = (b.timestamp ?? 0) - (a.timestamp ?? 0);
+    if (td !== 0) return td;
+    return (b.logIndex ?? 0) - (a.logIndex ?? 0);
+  });
+  return deduped.slice(0, MAX_TRADES);
+}
+
+function mergePublicLiveTapes(apiRows: LiveTrade[], fromBuffer: LiveTrade[]): LiveTrade[] {
+  const byKey = new Map<string, LiveTrade>();
+  for (const t of apiRows) {
+    const k = tapeDedupeKey(t);
+    if (k && k !== ':') byKey.set(k, t);
+  }
+  for (const t of fromBuffer) {
+    const k = tapeDedupeKey(t);
+    if (!k || k === ':') continue;
+    if (!byKey.has(k)) byKey.set(k, t);
+  }
+  const merged = Array.from(byKey.values());
+  merged.sort((a, b) => {
+    const td = (b.timestamp ?? 0) - (a.timestamp ?? 0);
+    if (td !== 0) return td;
+    return (b.logIndex ?? 0) - (a.logIndex ?? 0);
+  });
+  return merged.slice(0, MAX_TRADES);
+}
+
 /** Wall-clock ms from API blockTime, or a spread relative to `now` from block height when blockTime is missing. */
 function tradeTimestampMs(f: OnchainFillRow, maxBlock: number, nowMs: number): number {
   const bt = Number(f.blockTime ?? 0);
@@ -314,12 +386,16 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               logIndex: Number.isFinite(logIndex) ? logIndex : undefined,
             });
           }
-          setTrades(mapped.slice(0, MAX_TRADES));
+          const mForMerge = m ? canonicalConditionKey(m) : null;
+          const tForMerge = t || null;
+          const fromBuf = filterPublicTapeBuffer(mForMerge, tForMerge);
+          setTrades(mergePublicLiveTapes(mapped.slice(0, MAX_TRADES), fromBuf));
         })
         .catch(() => {});
     };
 
-    setTrades([]);
+    const mCanonInit = mid ? canonicalConditionKey(mid) : null;
+    setTrades(filterPublicTapeBuffer(mCanonInit, tid || null));
     void loadFromAPI();
 
     let disposed = false;
@@ -469,6 +545,14 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               maker: d.maker ? String(d.maker).toLowerCase() : undefined,
               taker: d.taker ? String(d.taker).toLowerCase() : undefined,
             };
+            const marketKeyForBuf = tradeMarket
+              ? canonicalConditionKey(tradeMarket)
+              : mSub
+                ? canonicalConditionKey(mSub)
+                : '';
+            if (d.tokenId) {
+              pushPublicTapeBuffer(t, marketKeyForBuf, String(d.tokenId));
+            }
             setTrades((prev) => {
               const key = `${t.txHash || ''}:${t.logIndex ?? ''}`;
               const deduped = key ? prev.filter((x) => `${x.txHash || ''}:${x.logIndex ?? ''}` !== key) : prev;

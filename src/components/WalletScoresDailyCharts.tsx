@@ -453,18 +453,12 @@ export function WalletScoresDailyCharts({
   const rowChartsClass =
     chartsLayout === 'row'
       ? compactSummary
-        ? 'flex flex-col sm:flex-row gap-2 min-w-0 items-stretch [&>*]:min-w-0 [&>*]:flex [&>*]:flex-col [&>*]:h-[4.75rem] [&>*]:shrink-0'
+        ? 'flex flex-col sm:flex-row gap-2 min-w-0 flex-1 min-h-0 items-stretch [&>*]:min-w-0 [&>*]:flex-1 [&>*]:flex [&>*]:flex-col [&>*]:min-h-0'
         : 'flex flex-col sm:flex-row gap-2 min-w-0 flex-1 min-h-0 [&>*]:min-w-0 [&>*]:flex-1 [&>*]:flex [&>*]:flex-col'
       : 'flex flex-col gap-3 min-w-0 flex-1 min-h-0 [&>*]:min-h-0 [&>*]:flex-1 [&>*]:flex [&>*]:flex-col';
 
   return (
-    <div
-      className={
-        compactSummary && chartsLayout === 'row'
-          ? 'min-w-0 flex flex-col'
-          : 'min-w-0 flex flex-col flex-1 min-h-0 h-full'
-      }
-    >
+    <div className="min-w-0 flex flex-col flex-1 min-h-0 h-full">
       <div className="flex flex-wrap items-center justify-between gap-1 mb-1 shrink-0">
         <span className="text-[9px] text-gray-500 font-semibold">Daily (UTC)</span>
         <div className="flex gap-0.5 shrink-0">

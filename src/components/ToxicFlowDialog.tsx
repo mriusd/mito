@@ -908,9 +908,10 @@ export function WalletInfoDialog({
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={16} /></button>
         </div>
 
-        <div className="mb-2 text-[10px] shrink-0">
-          <div className="bg-gray-900 rounded p-2">
-            <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-hidden">
+        <div className="text-[10px] flex-[2] min-h-0 flex flex-col basis-0">
+          <div className="bg-gray-900 rounded p-2 flex-1 min-h-0 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
               <div className="text-gray-500 font-semibold">Summary</div>
               <button
                 type="button"
@@ -927,12 +928,12 @@ export function WalletInfoDialog({
             </div>
             {summary === undefined && <div className="text-gray-500">Loading...</div>}
             {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
-            <div className="mt-1 flex flex-col lg:flex-row gap-3 items-start min-w-0">
-              <div className="shrink-0 w-full lg:w-[min(11rem,calc(100%/6))] lg:max-w-[11rem]">
+            <div className="mt-1 flex flex-col lg:flex-row gap-3 items-stretch min-w-0 flex-1 min-h-0">
+              <div className="shrink-0 w-full lg:w-[min(11rem,calc(100%/6))] lg:max-w-[11rem] flex flex-col">
                 {summary && <WalletScoresLedgerSummaryGrid s={summary} narrowSummary />}
               </div>
               {wallet.trim() ? (
-                <div className="min-w-0 flex-1 lg:border-l lg:border-gray-800 lg:pl-3 flex flex-col">
+                <div className="min-w-0 flex-1 min-h-0 lg:border-l lg:border-gray-800 lg:pl-3 flex flex-col">
                   <WalletScoresDailyCharts wallet={wallet.trim()} refreshToken={dailySnapshotsRefresh} chartsLayout="row" compactSummary />
                 </div>
               ) : null}
@@ -941,7 +942,7 @@ export function WalletInfoDialog({
         </div>
 
         <div
-          className="grid gap-2 flex-1 min-h-0 overflow-hidden"
+          className="grid gap-2 flex-[3] min-h-0 basis-0 overflow-hidden"
           style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(16rem, 36rem)' }}
         >
           <div className="bg-gray-900 rounded p-2 min-h-0 min-w-0 flex flex-col overflow-hidden">
@@ -1244,6 +1245,8 @@ export function WalletInfoDialog({
             </div>
           </div>
         </div>
+        </div>
+
       </div>
     </div>
   );

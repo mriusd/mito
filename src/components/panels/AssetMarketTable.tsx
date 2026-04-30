@@ -618,10 +618,14 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       {(yesPos || noPos) && (
                         <div className="mt-0.5 text-[9px] border-t border-gray-600/50 pt-0.5">
                           {yesPos && (
-                            <div className="text-green-300 text-center">{fmtSz(yesPos.size)}</div>
+                            <div className="text-green-300 text-center bg-yellow-500/40 px-1 rounded font-bold">
+                              {fmtSz(yesPos.size)}
+                            </div>
                           )}
                           {noPos && (
-                            <div className="text-red-300 text-center">{fmtSz(noPos.size)}</div>
+                            <div className="text-red-300 text-center bg-yellow-500/40 px-1 rounded font-bold">
+                              {fmtSz(noPos.size)}
+                            </div>
                           )}
                         </div>
                       )}

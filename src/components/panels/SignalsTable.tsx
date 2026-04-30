@@ -187,7 +187,7 @@ export function SignalsTable() {
                   else if (hoursUntil >= 24 && hoursUntil < 48) { dateStr = 'TMR'; dateColor = 'text-yellow-400 font-bold'; }
                   else { dateStr = dayAbbr + ' ' + endD.getDate(); dateColor = isWeekend2 ? 'text-purple-400' : 'text-gray-400'; }
                   // Market label: "{asset} >{strike}" with formatPriceShort
-                  const strikeLabel = formatPriceShort(sig.priceStr);
+                  const strikeLabel = formatPriceShort(sig.priceStr, sig.asset === 'ETH' ? 'ETH' : undefined);
                   const isSelected = selectedMarket && selectedMarket.id === sig.market.id;
                   const rowHighlight = isSelected ? 'bg-blue-900/40' : '';
                   // Display price: bid in maker/BID mode, ask otherwise

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { CirclePercent } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { getBsTriple, type BsTripleResult } from '../utils/bsMath';
+import { formatThousandsAsK } from '../utils/format';
 import type { AssetSymbol } from '../types';
 
 interface BsFlowerProps {
@@ -47,9 +48,9 @@ function ProbWithIcon({ text, colorClass, clickClass, onClick }: {
   );
 }
 
-const fmtPrice = (v: number | null) => {
+const fmtPrice = (v: number | null, assetUpper: string) => {
   if (v === null || v === undefined) return '-';
-  if (v >= 1000) return (v / 1000).toFixed(v % 1000 === 0 ? 0 : 1) + 'k';
+  if (v >= 1000) return formatThousandsAsK(v, assetUpper === 'ETH' ? 'ETH' : undefined);
   if (v >= 1) return v.toFixed(0);
   return v.toFixed(4);
 };
@@ -118,7 +119,7 @@ function FlowerGrid({ label, fmtFn, bsLive, s0HasRange, s1HasRange, v0L, v0R, v1
   );
 }
 
-function PriceFlower({ s0HasRange, s1HasRange, r0Low, r0High, r1Low, r1High, livePrice }: {
+function PriceFlower({ s0HasRange, s1HasRange, r0Low, r0High, r1Low, r1High, livePrice, assetUpper }: {
   s0HasRange: boolean;
   s1HasRange: boolean;
   r0Low: number | null;
@@ -126,6 +127,7 @@ function PriceFlower({ s0HasRange, s1HasRange, r0Low, r0High, r1Low, r1High, liv
   r1Low: number | null;
   r1High: number | null;
   livePrice: number;
+  assetUpper: string;
 }) {
   if (!s0HasRange && !s1HasRange) return null;
   return (
@@ -134,19 +136,19 @@ function PriceFlower({ s0HasRange, s1HasRange, r0Low, r0High, r1Low, r1High, liv
       style={{ gridTemplateColumns: 'auto auto auto', gridTemplateRows: 'auto auto', columnGap: 3, lineHeight: 1.2 }}
     >
       <span style={{ gridRow: 1, gridColumn: 1 }}>
-        {s0HasRange ? <span className="text-cyan-300">{fmtPrice(r0Low)}</span> : <span className="text-gray-700">-</span>}
+        {s0HasRange ? <span className="text-cyan-300">{fmtPrice(r0Low, assetUpper)}</span> : <span className="text-gray-700">-</span>}
       </span>
       <span style={{ gridRow: '1/3', gridColumn: 2, fontSize: 14, lineHeight: 1 }}>
         <span className="text-white font-bold text-sm">{fmtLivePrice(livePrice)}</span>
       </span>
       <span style={{ gridRow: 1, gridColumn: 3 }}>
-        {s0HasRange ? <span className="text-cyan-300">{fmtPrice(r0High)}</span> : <span className="text-gray-700">-</span>}
+        {s0HasRange ? <span className="text-cyan-300">{fmtPrice(r0High, assetUpper)}</span> : <span className="text-gray-700">-</span>}
       </span>
       <span style={{ gridRow: 2, gridColumn: 1 }}>
-        {s1HasRange ? <span className="text-pink-400">{fmtPrice(r1Low)}</span> : <span className="text-gray-700">-</span>}
+        {s1HasRange ? <span className="text-pink-400">{fmtPrice(r1Low, assetUpper)}</span> : <span className="text-gray-700">-</span>}
       </span>
       <span style={{ gridRow: 2, gridColumn: 3 }}>
-        {s1HasRange ? <span className="text-pink-400">{fmtPrice(r1High)}</span> : <span className="text-gray-700">-</span>}
+        {s1HasRange ? <span className="text-pink-400">{fmtPrice(r1High, assetUpper)}</span> : <span className="text-gray-700">-</span>}
       </span>
     </span>
   );
@@ -253,6 +255,7 @@ export function BsFlower({ asset, strike, endDate, isYes, hitBarrierModel = fals
             r1Low={feFlower.range1?.low ?? null}
             r1High={feFlower.range1?.high ?? null}
             livePrice={feFlower.livePrice}
+            assetUpper={asset.toUpperCase()}
           />
         )}
       </div>

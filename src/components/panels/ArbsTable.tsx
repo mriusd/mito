@@ -12,8 +12,8 @@ function ArbInfoPopover({ arb, anchor, onMouseEnter, onMouseLeave }: { arb: ArbO
   const noAsset = assetParts[1] || assetParts[0] || '';
   const yesStrike = arb.yesMarket?.groupItemTitle || '';
   const noStrike = arb.noMarket?.groupItemTitle || '';
-  const yFmt = formatPriceShort(yesStrike.includes('>') ? yesStrike : '>' + yesStrike).replace(/^>/, '');
-  const nFmt = formatPriceShort(noStrike.includes('>') ? noStrike : '>' + noStrike).replace(/^>/, '');
+  const yFmt = formatPriceShort(yesStrike.includes('>') ? yesStrike : '>' + yesStrike, yesAsset === 'ETH' ? 'ETH' : undefined).replace(/^>/, '');
+  const nFmt = formatPriceShort(noStrike.includes('>') ? noStrike : '>' + noStrike, noAsset === 'ETH' ? 'ETH' : undefined).replace(/^>/, '');
   const yesStrikeVal = parseFloat(yesStrike.replace(/[>$,]/g, ''));
   const noStrikeVal = parseFloat(noStrike.replace(/[>$,]/g, ''));
   const yesLive = priceData[yesAsset + 'USDT' as keyof typeof priceData]?.price || 0;
@@ -356,8 +356,8 @@ export function HedgesTable() {
                   const noAsset = assetParts[1] || assetParts[0] || '';
                   const yesStrike = arb.yesMarket?.groupItemTitle || '';
                   const noStrike = arb.noMarket?.groupItemTitle || '';
-                  const yesLabel = yesAsset + ' ' + formatPriceShort(yesStrike.includes('>') ? yesStrike : '>' + yesStrike);
-                  const noLabel = noAsset + ' ' + formatPriceShort(noStrike.includes('>') ? noStrike : '>' + noStrike);
+                  const yesLabel = yesAsset + ' ' + formatPriceShort(yesStrike.includes('>') ? yesStrike : '>' + yesStrike, yesAsset === 'ETH' ? 'ETH' : undefined);
+                  const noLabel = noAsset + ' ' + formatPriceShort(noStrike.includes('>') ? noStrike : '>' + noStrike, noAsset === 'ETH' ? 'ETH' : undefined);
                   const yesTokenId = arb.yesMarket?.clobTokenIds?.[0] || '';
                   const noTokenId = arb.noMarket?.clobTokenIds?.[1] || '';
                   const yesColor = ASSET_COLORS[yesAsset] || 'text-gray-300';

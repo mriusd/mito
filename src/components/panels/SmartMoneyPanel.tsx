@@ -163,7 +163,7 @@ export function SmartMoneyPanel() {
                 const { dateStr, dateColor } = signalTableDateStyle(row.endDate);
                 const m = marketsById.get(row.marketId);
                 const rawPriceStr = m ? getSignalTablePriceStr(m, marketLookup) : (row.priceStr || '');
-                const strikeLabel = rawPriceStr ? formatPriceShort(rawPriceStr) : '—';
+                const strikeLabel = rawPriceStr ? formatPriceShort(rawPriceStr, row.asset === 'ETH' ? 'ETH' : undefined) : '—';
                 const dirOutcome = directionToOutcome(row.direction);
                 const dirColor = dirOutcome === 'YES' ? 'text-green-400' : 'text-red-400';
                 const barPct = Math.max(2, Math.min(98, Number.isFinite(row.barPct) ? row.barPct : (50 + (row.provenSMS || 0) * 50)));

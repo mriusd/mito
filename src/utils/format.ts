@@ -58,10 +58,27 @@ export function formatPrice(price: number, asset?: AssetName): string {
   return '$' + price.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
-export function formatStrikePrice(price: number): string {
+function trimKFractional(s: string): string {
+  return s.replace(/\.?0+$/, '');
+}
+
+/** Compact "k" mantissa for `price / 1000` (ETH: 2 fractional digits). */
+function thousandsKPart(price: number, asset?: AssetName): string {
+  const k = price / 1000;
+  if (k % 1 === 0) return String(k);
+  if (asset === 'ETH') return trimKFractional(k.toFixed(2));
+  return k.toFixed(1).replace(/\.0$/, '');
+}
+
+/** e.g. 2350 → "2.35k" for ETH, "2.4k" style (one decimal) for others. */
+export function formatThousandsAsK(price: number, asset?: AssetName): string {
+  if (!Number.isFinite(price) || price < 1000) return String(price);
+  return thousandsKPart(price, asset) + 'k';
+}
+
+export function formatStrikePrice(price: number, asset?: AssetName): string {
   if (price >= 1000) {
-    const k = price / 1000;
-    return k % 1 === 0 ? `${k}k` : `${k.toFixed(1).replace(/\.0$/, '')}k`;
+    return formatThousandsAsK(price, asset);
   }
   return price % 1 === 0 ? String(price) : price.toFixed(2).replace(/\.?0+$/, '');
 }
@@ -77,12 +94,14 @@ export function getMarketPriceCondition(question: string | null | undefined, tok
   }
   if (!question) return tokenId?.slice(0, 8) || '?';
 
+  const strikeFmtAsset: AssetName | undefined = assetTickerFromQuestion(question) === 'ETH' ? 'ETH' : undefined;
+
   // Weekly hit: "Will Bitcoin reach $84,000 March 9-15?" or "Will Bitcoin dip to $62,000 March 9-15?"
   const hitReachMatch = question.match(/reach\s+\$?([\d,.]+)/i);
-  if (hitReachMatch) return `Hit ↑${formatStrikePrice(parseFloat(hitReachMatch[1].replace(/,/g, '')))}`;
+  if (hitReachMatch) return `Hit ↑${formatStrikePrice(parseFloat(hitReachMatch[1].replace(/,/g, '')), strikeFmtAsset)}`;
 
   const hitDipMatch = question.match(/dip\s+to\s+\$?([\d,.]+)/i);
-  if (hitDipMatch) return `Hit ↓${formatStrikePrice(parseFloat(hitDipMatch[1].replace(/,/g, '')))}`;
+  if (hitDipMatch) return `Hit ↓${formatStrikePrice(parseFloat(hitDipMatch[1].replace(/,/g, '')), strikeFmtAsset)}`;
 
   // Up or Down markets
   const combined = eventSlug ? `${question} ${eventSlug}` : question;
@@ -105,16 +124,16 @@ export function getMarketPriceCondition(question: string | null | undefined, tok
   }
 
   const aboveMatch = question.match(/above\s+\$?([\d,.]+)/i);
-  if (aboveMatch) return `>${formatStrikePrice(parseFloat(aboveMatch[1].replace(/,/g, '')))}`;
+  if (aboveMatch) return `>${formatStrikePrice(parseFloat(aboveMatch[1].replace(/,/g, '')), strikeFmtAsset)}`;
 
   const betweenMatch = question.match(/between\s+\$?([\d,.]+)\s+and\s+\$?([\d,.]+)/i);
-  if (betweenMatch) return `${formatStrikePrice(parseFloat(betweenMatch[1].replace(/,/g, '')))}-${formatStrikePrice(parseFloat(betweenMatch[2].replace(/,/g, '')))}`;
+  if (betweenMatch) return `${formatStrikePrice(parseFloat(betweenMatch[1].replace(/,/g, '')), strikeFmtAsset)}-${formatStrikePrice(parseFloat(betweenMatch[2].replace(/,/g, '')), strikeFmtAsset)}`;
 
   const lessMatch = question.match(/(?:less than|below|under)\s+\$?([\d,.]+)/i);
-  if (lessMatch) return `<${formatStrikePrice(parseFloat(lessMatch[1].replace(/,/g, '')))}`;
+  if (lessMatch) return `<${formatStrikePrice(parseFloat(lessMatch[1].replace(/,/g, '')), strikeFmtAsset)}`;
 
   const greaterMatch = question.match(/(?:greater than|more than|over)\s+\$?([\d,.]+)/i);
-  if (greaterMatch) return `>${formatStrikePrice(parseFloat(greaterMatch[1].replace(/,/g, '')))}`;
+  if (greaterMatch) return `>${formatStrikePrice(parseFloat(greaterMatch[1].replace(/,/g, '')), strikeFmtAsset)}`;
 
   return question.slice(0, 15) + (question.length > 15 ? '…' : '');
 }
@@ -129,6 +148,7 @@ export function shortenMarketName(question: string | null | undefined, tokenId?:
 
   const assetMatch = question.match(/\b(BTC|ETH|SOL|XRP|Bitcoin|Ethereum|Solana)\b/i);
   const asset = assetMatch ? assetMatch[1].toUpperCase().replace('BITCOIN', 'BTC').replace('ETHEREUM', 'ETH').replace('SOLANA', 'SOL') : '';
+  const strikeFmtAssetShort: AssetName | undefined = asset === 'ETH' ? 'ETH' : undefined;
 
   const dateMatch = question.match(/(?:on|by)\s+(\w+)\s+(\d+)/i);
   const dateStr = dateMatch ? `${dateMatch[1].slice(0, 3).toUpperCase()} ${dateMatch[2]}` : '';
@@ -138,10 +158,10 @@ export function shortenMarketName(question: string | null | undefined, tokenId?:
   const hitDateStr = hitDateMatch ? `${hitDateMatch[1].slice(0, 3).toUpperCase()} ${hitDateMatch[2]}-${hitDateMatch[3]}` : '';
 
   const hitReachMatch = question.match(/reach\s+\$?([\d,.]+)/i);
-  if (hitReachMatch) return `${asset} Hit ↑${formatStrikePrice(parseFloat(hitReachMatch[1].replace(/,/g, '')))} ${hitDateStr}`.trim();
+  if (hitReachMatch) return `${asset} Hit ↑${formatStrikePrice(parseFloat(hitReachMatch[1].replace(/,/g, '')), strikeFmtAssetShort)} ${hitDateStr}`.trim();
 
   const hitDipMatch = question.match(/dip\s+to\s+\$?([\d,.]+)/i);
-  if (hitDipMatch) return `${asset} Hit ↓${formatStrikePrice(parseFloat(hitDipMatch[1].replace(/,/g, '')))} ${hitDateStr}`.trim();
+  if (hitDipMatch) return `${asset} Hit ↓${formatStrikePrice(parseFloat(hitDipMatch[1].replace(/,/g, '')), strikeFmtAssetShort)} ${hitDateStr}`.trim();
 
   // Up or Down: various patterns like "go up or down", "be up or down", "up or down on", slug-based titles
   const upDownMatch = combinedText.match(/up\s+or\s+down/i) || combinedText.match(/updown/i);
@@ -184,16 +204,16 @@ export function shortenMarketName(question: string | null | undefined, tokenId?:
   }
 
   const aboveMatch = question.match(/above\s+\$?([\d,.]+)/i);
-  if (aboveMatch) return `${asset} >$${formatStrikePrice(parseFloat(aboveMatch[1].replace(/,/g, '')))} ${dateStr}`.trim();
+  if (aboveMatch) return `${asset} >$${formatStrikePrice(parseFloat(aboveMatch[1].replace(/,/g, '')), strikeFmtAssetShort)} ${dateStr}`.trim();
 
   const betweenMatch = question.match(/between\s+\$?([\d,.]+)\s+and\s+\$?([\d,.]+)/i);
-  if (betweenMatch) return `${asset} $${formatStrikePrice(parseFloat(betweenMatch[1].replace(/,/g, '')))}-${formatStrikePrice(parseFloat(betweenMatch[2].replace(/,/g, '')))} ${dateStr}`.trim();
+  if (betweenMatch) return `${asset} $${formatStrikePrice(parseFloat(betweenMatch[1].replace(/,/g, '')), strikeFmtAssetShort)}-${formatStrikePrice(parseFloat(betweenMatch[2].replace(/,/g, '')), strikeFmtAssetShort)} ${dateStr}`.trim();
 
   const lessMatch = question.match(/(?:less than|below|under)\s+\$?([\d,.]+)/i);
-  if (lessMatch) return `${asset} <$${formatStrikePrice(parseFloat(lessMatch[1].replace(/,/g, '')))} ${dateStr}`.trim();
+  if (lessMatch) return `${asset} <$${formatStrikePrice(parseFloat(lessMatch[1].replace(/,/g, '')), strikeFmtAssetShort)} ${dateStr}`.trim();
 
   const greaterMatch = question.match(/(?:greater than|more than|over)\s+\$?([\d,.]+)/i);
-  if (greaterMatch) return `${asset} >$${formatStrikePrice(parseFloat(greaterMatch[1].replace(/,/g, '')))} ${dateStr}`.trim();
+  if (greaterMatch) return `${asset} >$${formatStrikePrice(parseFloat(greaterMatch[1].replace(/,/g, '')), strikeFmtAssetShort)} ${dateStr}`.trim();
 
   return question.slice(0, 25) + (question.length > 25 ? '...' : '');
 }
@@ -399,13 +419,13 @@ export function getSignalTablePriceStr(m: Market, marketLookup?: Record<string, 
     : priceStr;
 }
 
-export function formatPriceShort(priceStr: string): string {
+export function formatPriceShort(priceStr: string, asset?: AssetName): string {
   const cleaned = priceStr.replace(/\$/g, '').replace(/,/g, '').trim();
   if (cleaned.startsWith('↑') || cleaned.startsWith('↓') || cleaned.startsWith('<') || cleaned.startsWith('>')) {
     const sym = cleaned[0];
     const num = parseFloat(cleaned.substring(1));
     if (isNaN(num)) return priceStr;
-    if (num >= 1000) return sym + (num / 1000).toFixed(num % 1000 === 0 ? 0 : 1) + 'k';
+    if (num >= 1000) return sym + thousandsKPart(num, asset) + 'k';
     return sym + num;
   }
   if (cleaned.includes('-')) {
@@ -413,14 +433,12 @@ export function formatPriceShort(priceStr: string): string {
     const num1 = parseFloat(parts[0]);
     const num2 = parseFloat(parts[1]);
     if (num1 >= 1000 && num2 >= 1000) {
-      const k1 = (num1 / 1000).toFixed(num1 % 1000 === 0 ? 0 : 1);
-      const k2 = (num2 / 1000).toFixed(num2 % 1000 === 0 ? 0 : 1);
-      return k1 + '-' + k2 + 'k';
+      return thousandsKPart(num1, asset) + '-' + thousandsKPart(num2, asset) + 'k';
     }
     return num1 + '-' + num2;
   }
   const num = parseFloat(cleaned);
-  if (num >= 1000) return (num / 1000).toFixed(num % 1000 === 0 ? 0 : 1) + 'k';
+  if (num >= 1000) return thousandsKPart(num, asset) + 'k';
   return cleaned;
 }
 

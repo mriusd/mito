@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { formatPrice, assetToSymbol, formatDateShort, getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
+import { formatPrice, assetToSymbol, formatDateShort, getPositionClobTokenId, normalizeClobTokenId, formatPriceShort, formatThousandsAsK } from '../../utils/format';
 import { saveRange } from '../../api';
 import { showToast } from '../../utils/toast';
 import { PriceTicks } from '../PriceTicks';
@@ -11,7 +11,7 @@ import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMath';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
-function StrikeRangeIndicator({ markets, livePrice }: { markets: Market[]; livePrice: number }) {
+function StrikeRangeIndicator({ markets, livePrice, asset }: { markets: Market[]; livePrice: number; asset: AssetName }) {
   if (livePrice <= 0 || markets.length === 0) return null;
 
   // Collect active strikes with end dates
@@ -54,7 +54,7 @@ function StrikeRangeIndicator({ markets, livePrice }: { markets: Market[]; liveP
   if (below === null || above === null) return null;
 
   const pct = Math.max(0, Math.min(1, (livePrice - below) / (above - below)));
-  const fmtStrike = (v: number) => v >= 1000 ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : 1) + 'k' : v.toString();
+  const fmtStrike = (v: number) => (v >= 1000 ? formatThousandsAsK(v, asset === 'ETH' ? 'ETH' : undefined) : v.toString());
 
   const w = 60, h = 16, pad = 4;
   const barY = 10, barW = w - pad * 2;
@@ -159,6 +159,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
   const aboveContainerRef = useRef<HTMLDivElement>(null);
   const priceOnContainerRef = useRef<HTMLDivElement>(null);
+  const hitContainerRef = useRef<HTMLDivElement>(null);
   const scrolledRef = useRef<Set<string>>(new Set());
 
   // Callback ref: scroll the row's scrollable parent to center this row
@@ -237,30 +238,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   const priceOnMarketsForAsset = priceOnMarkets[asset] || [];
   const weeklyHitMarketsForAsset = weeklyHitMarkets[asset] || [];
 
-  // Format price for display: abbreviate large numbers, ranges
-  const formatPriceShort = (priceStr: string) => {
-    const cleaned = priceStr.replace(/\$/g, '').replace(/,/g, '');
-    if (cleaned.startsWith('<') || cleaned.startsWith('>')) {
-      const sym = cleaned[0];
-      const num = parseFloat(cleaned.substring(1));
-      if (num >= 1000) return sym + (num / 1000).toFixed(num % 1000 === 0 ? 0 : 1) + 'k';
-      return sym + num;
-    }
-    if (cleaned.includes('-')) {
-      const parts = cleaned.split('-');
-      const num1 = parseFloat(parts[0]);
-      const num2 = parseFloat(parts[1]);
-      if (num1 >= 1000 && num2 >= 1000) {
-        const k1 = (num1 / 1000).toFixed(num1 % 1000 === 0 ? 0 : 1);
-        const k2 = (num2 / 1000).toFixed(num2 % 1000 === 0 ? 0 : 1);
-        return k1 + '-' + k2 + 'k';
-      }
-      return num1 + '-' + num2;
-    }
-    const num = parseFloat(cleaned);
-    if (num >= 1000) return (num / 1000).toFixed(num % 1000 === 0 ? 0 : 1) + 'k';
-    return cleaned;
-  };
+  const priceShortAsset = asset === 'ETH' ? 'ETH' : undefined;
 
   // Numeric value for sorting prices (handles <, >, ranges)
   const getNumericValue = (str: string) => {
@@ -523,11 +501,15 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
               const isAnchorRow = rowIdx === anchorRowIdx;
               return (
               <tr key={priceStr} className="hover:bg-gray-800/50" ref={isAnchorRow ? scrollToCenterRef('hit') : (rowIdx === closestRowIdx ? scrollToCenterRef('hit-closest') : undefined)}>
-                <td className={`price-col-cell sticky left-0 bg-gray-900 z-10 px-1 py-0.5 font-bold ${titleColor} ${rowBorder} whitespace-nowrap text-xs`}>
+                <td
+                  className={`price-col-cell sticky left-0 bg-gray-900 z-10 px-1 py-0.5 font-bold ${titleColor} ${rowBorder} whitespace-nowrap text-xs`}
+                  data-price-low={hitPrice(priceStr)}
+                  data-price-high={hitPrice(priceStr)}
+                >
                   {(() => {
                     const arrow = priceStr.includes('↑') ? '↑' : priceStr.includes('↓') ? '↓' : '';
                     const num = hitPrice(priceStr);
-                    const fmt = num >= 1000 ? (num / 1000).toFixed(num % 1000 === 0 ? 0 : 1) + 'k' : String(num);
+                    const fmt = num >= 1000 ? formatThousandsAsK(num, priceShortAsset) : String(num);
                     const pct = livePrice > 0 && num > 0 ? ((num - livePrice) / livePrice) * 100 : 0;
                     const pctSign = pct >= 0 ? '+' : '';
                     const isAtPrice = livePrice > 0 && Math.abs(pct) < 0.5;
@@ -1006,7 +988,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     data-price-high={bounds.high === Infinity ? 999999999 : bounds.high}
                   >
                     <div className="flex flex-col leading-tight">
-                      <span>{formatPriceShort(priceStr)}</span>
+                      <span>{formatPriceShort(priceStr, priceShortAsset)}</span>
                       {!isCurrentRange && pctChange !== 0 && (
                         <span className="text-gray-400 text-[11px]">{pctSign}{pctChange.toFixed(0)}%</span>
                       )}
@@ -1323,7 +1305,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
             </span>
           )}
           <HelpTooltip text={"Annualized volatility (σ) used for Black-Scholes probability calculations.\n\nThis value is fetched from Binance as the asset's historical realized volatility, then multiplied by the global volatility multiplier set in settings.\n\nHigher volatility means wider expected price distributions — strike prices further from the current price will have higher B-S probabilities. Lower volatility narrows the distribution, making distant strikes less likely.\n\nThis directly affects all B-S values shown across the dashboard: the flower, grid cells, signals, and hedges."} />
-          <StrikeRangeIndicator markets={aboveMarketsForAsset} livePrice={livePrice} />
+          <StrikeRangeIndicator markets={aboveMarketsForAsset} livePrice={livePrice} asset={asset} />
           <HelpTooltip text={"This bar shows where the current asset price sits relative to the active market strike prices.\n\nThe gray ticks at the ends are the nearest strikes below and above spot; the vertical marker is the live price between them.\n\nThis gives a quick visual sense of how close the asset is to triggering different markets — the closer the live price is to a strike, the more sensitive that market's probability becomes to small price moves."} />
           <label className="no-drag inline-flex items-center gap-1 text-[10px] text-gray-400 cursor-pointer ml-1 font-normal">
             <input
@@ -1388,9 +1370,10 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                 );
               })()}
               {showHit && weeklyHitMarketsForAsset.length > 0 && (
-                <div className="flex-1 min-h-0 border border-orange-500/40 rounded flex flex-col overflow-hidden">
+                <div className="flex-1 min-h-0 border border-orange-500/40 rounded flex flex-col overflow-hidden" ref={hitContainerRef} style={{ position: 'relative' }}>
                   <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-orange-400 bg-gray-800/50 rounded-t py-0.5">Hit <HelpTooltip text={"Hit markets resolve YES if the asset price touches or crosses a specific price level at any point before expiry.\n\nUnlike Above markets which only check the price at expiry, Hit markets are path-dependent — they trigger as soon as the price 'hits' the target, regardless of where it ends up.\n\nHit markets come in two varieties: weekly (short-term, expiring each week) and monthly (longer-term, expiring at month end).\n\nRows show strike prices with ↑ (must go up to hit) or ↓ (must go down to hit). Columns show different expiry dates."} /></div>
                   {renderWeeklyHitTable()}
+                  <PriceTicks containerRef={hitContainerRef} livePrice={livePrice} slot0={slot0} slot1={slot1} />
                 </div>
               )}
             </div>

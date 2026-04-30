@@ -685,7 +685,7 @@ export function Sidebar() {
         selectedMarket.question || selectedMarket.groupItemTitle,
         selectedMarket.clobTokenIds?.[0],
         marketLookup,
-      ) || formatPriceShort(ps);
+      ) || formatPriceShort(ps, asset === 'ETH' ? 'ETH' : undefined);
 
     let mathCents: number | null = null;
     if (!pastExpiry && currentPrice > 0) {

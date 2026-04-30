@@ -356,7 +356,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
         endDate = new Date(tsNum).toISOString();
       }
       let marketName = getMarketPriceCondition(null, tid, marketLookup);
-      let mktLabel = asset ? `${asset} ${formatPriceShort(marketName)}` : marketName;
+      let mktLabel = asset ? `${asset} ${formatPriceShort(marketName, asset === 'ETH' ? 'ETH' : undefined)}` : marketName;
       let outcome = getTokenOutcome(tid, marketLookup) || '';
 
       // Fallback to activity API fields when market not in lookup (expired markets)
@@ -368,7 +368,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
         const nameMap: Record<string, string> = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', ripple: 'XRP', xrp: 'XRP', btc: 'BTC', eth: 'ETH', sol: 'SOL' };
         const nameMatch = trade.title.match(/\b(Bitcoin|Ethereum|Solana|Ripple|BTC|ETH|SOL|XRP)\b/i);
         if (nameMatch) asset = nameMap[nameMatch[1].toLowerCase()] || nameMatch[1].toUpperCase();
-        mktLabel = asset ? `${formatPriceShort(shortened)}` : shortened;
+        mktLabel = asset ? `${formatPriceShort(shortened, asset === 'ETH' ? 'ETH' : undefined)}` : shortened;
         if (trade.outcome) {
           const upper = trade.outcome.toUpperCase();
           outcome = upper === 'YES' ? 'YES' : upper === 'NO' ? 'NO' : upper;
@@ -422,7 +422,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
       let asset = market ? extractAssetFromMarket(market) || '' : normalizeDbUnderlying(pos.underlyingAsset);
       const endDate = market?.endDate || pos.endDate || null;
       let marketName = getMarketPriceCondition(null, tid, marketLookup);
-      let mktLabel = asset ? `${asset} ${formatPriceShort(marketName)}` : marketName;
+      let mktLabel = asset ? `${asset} ${formatPriceShort(marketName, asset === 'ETH' ? 'ETH' : undefined)}` : marketName;
       let outcome = getTokenOutcome(tid, marketLookup) || '';
 
       // Fallback when market not in live lookup (on-chain rollups, API snapshot fields)
@@ -433,7 +433,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
           const nameMap: Record<string, string> = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', ripple: 'XRP', xrp: 'XRP', btc: 'BTC', eth: 'ETH', sol: 'SOL' };
           const nameMatch = pos.title.match(/\b(Bitcoin|Ethereum|Solana|Ripple|BTC|ETH|SOL|XRP)\b/i);
           if (nameMatch) asset = asset || nameMap[nameMatch[1].toLowerCase()] || nameMatch[1].toUpperCase();
-          mktLabel = asset ? `${formatPriceShort(shortened)}` : shortened;
+          mktLabel = asset ? `${formatPriceShort(shortened, asset === 'ETH' ? 'ETH' : undefined)}` : shortened;
         } else if (pos.slug) {
           mktLabel = asset ? `${asset} ${pos.slug}` : pos.slug;
         }
@@ -472,7 +472,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
       const asset = market ? extractAssetFromMarket(market) || '' : '';
       const endDate = market?.endDate || null;
       const marketName = getMarketPriceCondition(null, tid, marketLookup);
-      const mktLabel = asset ? `${asset} ${formatPriceShort(marketName)}` : marketName;
+      const mktLabel = asset ? `${asset} ${formatPriceShort(marketName, asset === 'ETH' ? 'ETH' : undefined)}` : marketName;
       const outcome = getTokenOutcome(tid, marketLookup) || '';
       const price = parseFloat(order.price) * 100;
       const size = parseFloat(order.original_size || order.size);

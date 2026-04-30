@@ -31,8 +31,8 @@ export function ArbDialog() {
     const noAsset = assetParts[1] || assetParts[0] || '';
     const yesStrike = arb.yesMarket?.groupItemTitle || '';
     const noStrike = arb.noMarket?.groupItemTitle || '';
-    const yFmt = formatPriceShort(yesStrike.includes('>') ? yesStrike : '>' + yesStrike).replace(/^>/, '');
-    const nFmt = formatPriceShort(noStrike.includes('>') ? noStrike : '>' + noStrike).replace(/^>/, '');
+    const yFmt = formatPriceShort(yesStrike.includes('>') ? yesStrike : '>' + yesStrike, yesAsset === 'ETH' ? 'ETH' : undefined).replace(/^>/, '');
+    const nFmt = formatPriceShort(noStrike.includes('>') ? noStrike : '>' + noStrike, noAsset === 'ETH' ? 'ETH' : undefined).replace(/^>/, '');
     const yesAskCents = arb.yesPrice * 100;
     const noAskCents = arb.noPrice * 100;
     const yesTokenId = arb.yesMarket?.clobTokenIds?.[0] || '';

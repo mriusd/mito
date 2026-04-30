@@ -876,7 +876,7 @@ export function WalletInfoDialog({
   return (
     <div className="fixed inset-0 bg-black/60 z-[60010] flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div
-        className="bg-gray-800 rounded-lg p-3 w-full mx-4 shadow-xl border border-gray-700 max-w-[min(98vw,93.6rem)] max-h-[88vh] min-h-0 flex flex-col overflow-hidden"
+        className="bg-gray-800 rounded-lg p-3 w-full mx-4 shadow-xl border border-gray-700 max-w-[min(98vw,93.6rem)] max-h-[88vh] min-h-[50vh] flex flex-col overflow-hidden"
       >
         <div className="flex items-center justify-between mb-2 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -909,8 +909,8 @@ export function WalletInfoDialog({
         </div>
 
         <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-hidden">
-        <div className="text-[10px] flex-[2] min-h-0 flex flex-col basis-0">
-          <div className="bg-gray-900 rounded p-2 flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div className="text-[10px] shrink-0 flex flex-col">
+          <div className="bg-gray-900 rounded p-2 flex flex-col max-h-[min(40vh,22rem)] overflow-y-auto">
             <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
               <div className="text-gray-500 font-semibold">Summary</div>
               <button
@@ -928,7 +928,7 @@ export function WalletInfoDialog({
             </div>
             {summary === undefined && <div className="text-gray-500">Loading...</div>}
             {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
-            <div className="mt-1 flex flex-col lg:flex-row gap-3 items-stretch min-w-0 flex-1 min-h-0">
+            <div className="mt-1 flex flex-col lg:flex-row gap-3 items-stretch min-w-0">
               <div className="shrink-0 w-full lg:w-[min(11rem,calc(100%/6))] lg:max-w-[11rem] flex flex-col">
                 {summary && <WalletScoresLedgerSummaryGrid s={summary} narrowSummary />}
               </div>
@@ -942,7 +942,7 @@ export function WalletInfoDialog({
         </div>
 
         <div
-          className="grid gap-2 flex-[3] min-h-0 basis-0 overflow-hidden"
+          className="grid gap-2 flex-1 min-h-0 overflow-hidden"
           style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(16rem, 36rem)' }}
         >
           <div className="bg-gray-900 rounded p-2 min-h-0 min-w-0 flex flex-col overflow-hidden">

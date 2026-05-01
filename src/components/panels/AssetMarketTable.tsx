@@ -155,6 +155,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   /** Debounce duplicate Hit trace logs across re-renders */
   const hitTraceGridSigRef = useRef('');
   const hitTraceUiSigRef = useRef('');
+  /** Full Hit table dump when data sig changes (avoids spam on bidAsk tick) */
+  const hitTableRenderDumpSigRef = useRef('');
 
   // Callback ref: scroll the row's scrollable parent to center this row
   const scrollToCenterRef = useCallback((tableKey: string) => (el: HTMLTableRowElement | null) => {
@@ -538,6 +540,46 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
         if (!hitLookup[key]) hitLookup[key] = {};
         hitLookup[key][ev.slug] = m;
       }
+    }
+
+    const renderDumpSig = [
+      panelId,
+      asset,
+      events.map((e) => e.slug).join(','),
+      prices.join('\u001f'),
+      activeMarkets.map((m) => m.id).sort().join(','),
+    ].join('|');
+    if (renderDumpSig !== hitTableRenderDumpSigRef.current) {
+      hitTableRenderDumpSigRef.current = renderDumpSig;
+      console.log('[HitTrace] Hit TABLE BUILD (same render pass as JSX tbody)', {
+        panelId,
+        asset,
+        events: events.length,
+        priceRows: prices.length,
+        activeMarkets: activeMarkets.length,
+        eventSlugs: events.map((e) => ({ slug: e.slug, endDate: e.endDate, nMarkets: e.markets.length })),
+      });
+      activeMarkets.forEach((m, i) => {
+        console.log('[HitTrace] Hit source market', i, {
+          id: m.id,
+          eventSlug: m.eventSlug,
+          rowLabel: hitGridRowLabel(m),
+          groupItemTitle: m.groupItemTitle,
+        });
+      });
+      prices.forEach((priceStr, ri) => {
+        events.forEach((ev, ci) => {
+          const market = hitLookup[priceStr]?.[ev.slug];
+          console.log('[HitTrace] Hit CELL', {
+            panelId,
+            ri,
+            ci,
+            priceStr,
+            eventSlug: ev.slug,
+            marketId: market?.id ?? '—',
+          });
+        });
+      });
     }
 
     // Scroll anchor: last ↓ row (dip strikes below current); fallback = closest row to live price

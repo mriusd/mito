@@ -97,12 +97,8 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     if (saved === 'false') return false;
     return window.innerWidth >= 640;
   });
-  const [showHit, setShowHit] = useState(() => {
-    const saved = localStorage.getItem(`polybot-show-hit-${panelId}`);
-    if (saved === 'true') return true;
-    if (saved === 'false') return false;
-    return window.innerWidth >= 640;
-  });
+  // Default ON (same as Above/Between). Old behavior used narrow viewport => hidden; that hid Hit entirely when Up/Down off.
+  const [showHit, setShowHit] = useState(() => localStorage.getItem(`polybot-show-hit-${panelId}`) !== 'false');
   const [showAbove, setShowAbove] = useState(() => localStorage.getItem(`polybot-show-above-${panelId}`) !== 'false');
   const [showBetween, setShowBetween] = useState(() => localStorage.getItem(`polybot-show-between-${panelId}`) !== 'false');
   const symbol = assetToSymbol(asset);

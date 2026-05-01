@@ -51,7 +51,6 @@ function gammaSearchMarketToMarket(gm: Record<string, unknown>, ev: GammaSearchE
     id: String(gm.id ?? ''),
     conditionId: typeof gm.conditionId === 'string' ? gm.conditionId : undefined,
     question: String(gm.question ?? ''),
-    slug: typeof gm.slug === 'string' ? gm.slug : undefined,
     eventTitle: typeof ev.title === 'string' ? ev.title : undefined,
     eventSlug: typeof ev.slug === 'string' ? ev.slug : undefined,
     groupItemTitle: String(gm.groupItemTitle ?? ''),

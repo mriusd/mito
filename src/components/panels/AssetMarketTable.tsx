@@ -1504,10 +1504,10 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
       {/* Tables: Up/Down stacked on Hit (left column) + Above + Between side by side */}
       <div className="panel-body flex min-h-0 flex-1 flex-col" style={{ overflow: 'hidden' }}>
-        <div className="flex min-h-0 flex-1 gap-2">
+        <div className="flex min-h-0 min-w-0 flex-1 gap-2 overflow-x-auto">
           {/* Left column: Up/Down (no scroll, all rows) stacked on Hit (scrollable) */}
           {(showUpDown || (showHit && weeklyHitMarketsForAsset.length > 0)) && (
-            <div className="flex min-h-0 min-w-0 max-w-[min(560px,50vw)] flex-col gap-1 self-stretch">
+            <div className="flex min-h-0 w-max max-w-[min(560px,50vw)] shrink-0 flex-col gap-1 self-stretch min-w-[300px]">
               {showUpDown && (() => {
                 const upDownContent = renderUpOrDownTable();
                 if (!upDownContent) return null;

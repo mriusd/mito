@@ -99,8 +99,9 @@ function parseHitTitle(s: string): { direction: 'up' | 'down'; barrier: number }
 }
 
 /** Parse weekly hit window from event slug, e.g.
- * what-price-will-bitcoin-hit-march-30-april-5
- * what-price-will-ethereum-hit-march-24-30
+ * what-price-will-bitcoin-hit-april-7-april-13
+ * what-price-will-bitcoin-hit-april-27-may-3
+ * Legacy same-month: what-price-will-ethereum-hit-march-24-30 (month + day + day)
  */
 function parseWeeklyHitWindowFromSlug(
   slug: string,

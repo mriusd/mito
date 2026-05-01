@@ -7,7 +7,7 @@ import { PriceTicks } from '../PriceTicks';
 import { RangeEditDialog } from '../RangeEditDialog';
 import { HelpTooltip } from '../HelpTooltip';
 import type { AssetName, Market } from '../../types';
-import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMath';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
@@ -535,9 +535,10 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const noTokenId = tokenIds[1] || '';
                   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
                   const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noProbCents = yesMidProb != null ? (1 - yesMidProb) * 100 : null;
-                  const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
-                  const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
+                  const yesBestBid = outcomeBestBidProb(yesTokenId, _bidAskLookup, gammaYes);
+                  const noBestBid = outcomeBestBidProb(noTokenId, _bidAskLookup, undefined);
+                  const yesBidStr = yesBestBid != null ? (yesBestBid * 100).toFixed(1) : '-';
+                  const noBidStr = noBestBid != null ? (noBestBid * 100).toFixed(1) : '-';
                   const yesProb = yesMidProb ?? _hBid ?? 0;
                   const hitDeltaBg = deltaBgStyle(priceStr, yesMidProb, ev.endDate, true);
                   const isSelected = selectedMarket?.id === market.id;
@@ -587,30 +588,30 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           )}
                         </>
                       )}
-                      {/* YES mid | P(NO)¢ = 100 − YES mid */}
+                      {/* YES best bid | NO best bid */}
                       <MarketCellMidRow
                         className="text-[10px] text-gray-400"
                         left={
                           <span
                             className="ob-trigger text-green-400 cursor-pointer hover:underline"
                             data-token-id={yesTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES mid)`}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES best bid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={ev.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                          >{yesMidStr}</span>
+                          >{yesBidStr}</span>
                         }
                         right={
                           <span
                             className="ob-trigger text-red-400 cursor-pointer hover:underline"
                             data-token-id={noTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (NO best bid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={ev.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                          >{noMidStr}</span>
+                          >{noBidStr}</span>
                         }
                       />
 
@@ -771,9 +772,10 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const noTokenId = tokenIds[1] || '';
                   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
                   const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noProbCents = yesMidProb != null ? (1 - yesMidProb) * 100 : null;
-                  const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
-                  const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
+                  const yesBestBid = outcomeBestBidProb(yesTokenId, _bidAskLookup, gammaYes);
+                  const noBestBid = outcomeBestBidProb(noTokenId, _bidAskLookup, undefined);
+                  const yesBidStr = yesBestBid != null ? (yesBestBid * 100).toFixed(1) : '-';
+                  const noBidStr = noBestBid != null ? (noBestBid * 100).toFixed(1) : '-';
                   const yesProb = yesMidProb ?? _uBid ?? 0;
                   const isPast = showPast && colIdx === 0;
                   const ptb = market.priceToBeat ?? _bidAskLookup[yesTokenId]?.priceToBeat;
@@ -819,30 +821,30 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       style={{ minWidth: 60, ...udDeltaBg }}
                       onClick={() => handleCellClick(market)}
                     >
-                      {/* YES mid | P(NO)¢ = 100 − YES mid */}
+                      {/* YES best bid | NO best bid */}
                       <MarketCellMidRow
                         className="text-[10px] text-gray-400"
                         left={
                           <span
                             className="ob-trigger text-green-400 cursor-pointer hover:underline"
                             data-token-id={yesTokenId}
-                            data-market-title={`${market.question || ''} (YES mid)`}
+                            data-market-title={`${market.question || ''} (YES best bid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={market.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                          >{yesMidStr}</span>
+                          >{yesBidStr}</span>
                         }
                         right={
                           <span
                             className="ob-trigger text-red-400 cursor-pointer hover:underline"
                             data-token-id={noTokenId}
-                            data-market-title={`${market.question || ''} (P(NO) ¢)`}
+                            data-market-title={`${market.question || ''} (NO best bid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={market.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                          >{noMidStr}</span>
+                          >{noBidStr}</span>
                         }
                       />
 
@@ -1021,9 +1023,10 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const { bestBid: _aBid } = getLiveBidAsk(market);
                   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
                   const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noProbCents = yesMidProb != null ? (1 - yesMidProb) * 100 : null;
-                  const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
-                  const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
+                  const yesBestBid = outcomeBestBidProb(yesTokenId, _bidAskLookup, gammaYes);
+                  const noBestBid = outcomeBestBidProb(noTokenId, _bidAskLookup, undefined);
+                  const yesBidStr = yesBestBid != null ? (yesBestBid * 100).toFixed(1) : '-';
+                  const noBidStr = noBestBid != null ? (noBestBid * 100).toFixed(1) : '-';
 
                   const gridDeltaBg = !isClosed ? deltaBgStyle(priceStr, yesMidProb, d.endDate) : {};
                   const bgColor = isClosed ? 'bg-gray-700/30' : '';
@@ -1093,30 +1096,30 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           )}
                         </>
                       )}
-                      {/* YES mid | P(NO)¢ = 100 − YES mid */}
+                      {/* YES best bid | NO best bid */}
                       <MarketCellMidRow
                         className="text-[10px] text-gray-400"
                         left={
                           <span
                             className="ob-trigger text-green-400 cursor-pointer hover:underline"
                             data-token-id={yesTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES mid)`}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES best bid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={d.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                          >{yesMidStr}</span>
+                          >{yesBidStr}</span>
                         }
                         right={
                           <span
                             className="ob-trigger text-red-400 cursor-pointer hover:underline"
                             data-token-id={noTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (NO best bid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={d.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                          >{noMidStr}</span>
+                          >{noBidStr}</span>
                         }
                       />
 

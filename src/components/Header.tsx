@@ -11,6 +11,8 @@ import type { PanelType } from '../types';
 import { PrivateKeyImportDialog, getStoredPrivateKey } from './PrivateKeyImportDialog';
 import { useSyncHeadWS } from '../hooks/useSyncHeadWS';
 
+
+// test
 const IS_DEV = import.meta.env.DEV;
 
 const POLYGONSCAN_HOME = 'https://polygonscan.com/';

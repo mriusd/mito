@@ -355,7 +355,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSigningMode: (v) => { localStorage.setItem('polymarket-signing-mode', v); set({ signingMode: v }); },
   setPkAddress: (v) => set({ pkAddress: v }),
 
-  sidebarOpen: true,
+  // Mobile sheet: closed on load. Desktop rail: open. Matches CSS (max-width: 767px).
+  sidebarOpen:
+    typeof window !== 'undefined' ? !window.matchMedia('(max-width: 767px)').matches : true,
   selectedMarket: null,
   sidebarOutcome: 'YES' as const,
   liveTradesSource: (() => {

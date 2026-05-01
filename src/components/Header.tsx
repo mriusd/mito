@@ -11,11 +11,7 @@ import type { PanelType } from '../types';
 import { PrivateKeyImportDialog, getStoredPrivateKey } from './PrivateKeyImportDialog';
 import { useSyncHeadWS } from '../hooks/useSyncHeadWS';
 
-
-// test
 const IS_DEV = import.meta.env.DEV;
-
-const POLYGONSCAN_HOME = 'https://polygonscan.com/';
 
 /** UI: lastProcessed − tip from /ws/sync-head (negative = chain head ahead of KV). */
 function blockLagToneClass(behindBlocks: number): string {
@@ -156,13 +152,13 @@ export function Header({ onRefresh }: HeaderProps) {
           <span className="text-sm font-bold text-white tracking-tight max-[424px]:hidden flex-shrink-0">Mito</span>
           {syncHead != null && syncHead.lastProcessedBlock > 0 && (
             <a
-              href={POLYGONSCAN_HOME}
+              href={`https://polygonscan.com/block/${syncHead.lastProcessedBlock}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center h-[28px] px-1.5 rounded bg-gray-800/50 hover:bg-gray-700/60 text-[10px] tabular-nums flex-shrink-0 max-[520px]:hidden border border-transparent hover:border-gray-600 transition"
               title={
                 'KV last_processed_block number; parentheses = lastProcessed − chainTip (negative ⇒ tip ahead). ' +
-                '−1 is normal: tip moves with newHeads/logs before the block flush writes KV. Open Polygonscan home.'
+                '−1 is normal: tip moves with newHeads/logs before the block flush writes KV. Open this block on Polygonscan.'
               }
             >
               <span className="text-gray-500 mr-1">Block</span>

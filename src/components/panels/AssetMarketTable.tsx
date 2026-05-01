@@ -7,7 +7,7 @@ import { PriceTicks } from '../PriceTicks';
 import { RangeEditDialog } from '../RangeEditDialog';
 import { HelpTooltip } from '../HelpTooltip';
 import type { AssetName, Market } from '../../types';
-import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { gammaImpliedNoBestBid, outcomeBestBidProb } from '../../lib/outcomeQuote';
 import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMath';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
@@ -112,11 +112,6 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
   const _bidAskLookup = useAppStore((s) => s.marketLookup);
   useAppStore((s) => s.bidAskTick); // subscribe to bid/ask updates for re-renders
-  const getLiveBidAsk = (m: Market) => {
-    const tid = m.clobTokenIds?.[0];
-    const live = tid ? _bidAskLookup[tid] : null;
-    return { bestBid: live?.bestBid ?? m.bestBid, bestAsk: live?.bestAsk ?? m.bestAsk };
-  };
   const priceData = useAppStore((s) => s.priceData);
   const vwapData = useAppStore((s) => s.vwapData);
   const volatilityData = useAppStore((s) => s.volatilityData);
@@ -367,11 +362,11 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
   const deltaBgStyle = (
     priceStr: string,
-    yesMidProb: number | null,
+    yesProb: number | null,
     endDate: string,
     isHit = false,
   ): React.CSSProperties => {
-    if (yesMidProb == null || livePrice <= 0 || !endDate) return {};
+    if (yesProb == null || livePrice <= 0 || !endDate) return {};
     const cleaned = priceStr
       .replace(/\$/g, '').replace(/,/g, '')
       .replace(/↑/g, '>').replace(/↓/g, '<')
@@ -382,7 +377,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
       ? getHitMarketProbability(ps, livePrice, endDate, adjVol, bsTimeOffsetHours)
       : getMarketProbability(ps, livePrice, endDate, adjVol, bsTimeOffsetHours);
     if (mathProb == null) return {};
-    const delta = (yesMidProb - mathProb) * 100;
+    const delta = (yesProb - mathProb) * 100;
     const alpha = Math.min(0.55, Math.abs(delta) * 0.035);
     if (alpha < 0.02) return {};
     return {
@@ -529,17 +524,16 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     return <td key={ev.slug} className={`text-center px-1 py-0.5 ${rowBorder} text-gray-600 text-[10px]`} style={{ minWidth: 68 }}>-</td>;
                   }
 
-                  const { bestBid: _hBid } = getLiveBidAsk(market);
                   const tokenIds = market.clobTokenIds || [];
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
                   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
-                  const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noProbCents = yesMidProb != null ? (1 - yesMidProb) * 100 : null;
-                  const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
-                  const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
-                  const yesProb = yesMidProb ?? _hBid ?? 0;
-                  const hitDeltaBg = deltaBgStyle(priceStr, yesMidProb, ev.endDate, true);
+                  const gammaNo = gammaImpliedNoBestBid(gammaYes);
+                  const yesBidProb = outcomeBestBidProb(yesTokenId, _bidAskLookup, gammaYes);
+                  const noBidProb = outcomeBestBidProb(noTokenId, _bidAskLookup, gammaNo);
+                  const yesBidStr = yesBidProb != null ? (yesBidProb * 100).toFixed(1) : '-';
+                  const noBidStr = noBidProb != null ? (noBidProb * 100).toFixed(1) : '-';
+                  const hitDeltaBg = deltaBgStyle(priceStr, yesBidProb, ev.endDate, true);
                   const isSelected = selectedMarket?.id === market.id;
 
                   const yesPos = yesTokenId ? positionLookup[normalizeClobTokenId(yesTokenId)] : undefined;
@@ -587,30 +581,30 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           )}
                         </>
                       )}
-                      {/* YES mid | P(NO)¢ = 100 − YES mid */}
+                      {/* YES best bid | NO best bid */}
                       <MarketCellMidRow
                         className="text-[10px] text-gray-400"
                         left={
                           <span
                             className="ob-trigger text-green-400 cursor-pointer hover:underline"
                             data-token-id={yesTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES mid)`}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES bid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={ev.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                          >{yesMidStr}</span>
+                          >{yesBidStr}</span>
                         }
                         right={
                           <span
                             className="ob-trigger text-red-400 cursor-pointer hover:underline"
                             data-token-id={noTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (NO bid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={ev.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                          >{noMidStr}</span>
+                          >{noBidStr}</span>
                         }
                       />
 
@@ -765,20 +759,19 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     return <td key={colIdx} className="text-center px-1 py-1 border-b border-gray-700/50 text-gray-600 text-[10px]">-</td>;
                   }
 
-                  const { bestBid: _uBid } = getLiveBidAsk(market);
                   const tokenIds = market.clobTokenIds || [];
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
                   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
-                  const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noProbCents = yesMidProb != null ? (1 - yesMidProb) * 100 : null;
-                  const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
-                  const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
-                  const yesProb = yesMidProb ?? _uBid ?? 0;
+                  const gammaNo = gammaImpliedNoBestBid(gammaYes);
+                  const yesBidProb = outcomeBestBidProb(yesTokenId, _bidAskLookup, gammaYes);
+                  const noBidProb = outcomeBestBidProb(noTokenId, _bidAskLookup, gammaNo);
+                  const yesBidStr = yesBidProb != null ? (yesBidProb * 100).toFixed(1) : '-';
+                  const noBidStr = noBidProb != null ? (noBidProb * 100).toFixed(1) : '-';
                   const isPast = showPast && colIdx === 0;
                   const ptb = market.priceToBeat ?? _bidAskLookup[yesTokenId]?.priceToBeat;
                   const udDeltaBg = (!isPast && ptb != null)
-                    ? deltaBgStyle('>' + ptb, yesMidProb, market.endDate)
+                    ? deltaBgStyle('>' + ptb, yesBidProb, market.endDate)
                     : {};
                   const isSelected = selectedMarket?.id === market.id;
 
@@ -819,30 +812,30 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       style={{ minWidth: 60, ...udDeltaBg }}
                       onClick={() => handleCellClick(market)}
                     >
-                      {/* YES mid | P(NO)¢ = 100 − YES mid */}
+                      {/* YES best bid | NO best bid */}
                       <MarketCellMidRow
                         className="text-[10px] text-gray-400"
                         left={
                           <span
                             className="ob-trigger text-green-400 cursor-pointer hover:underline"
                             data-token-id={yesTokenId}
-                            data-market-title={`${market.question || ''} (YES mid)`}
+                            data-market-title={`${market.question || ''} (YES bid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={market.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                          >{yesMidStr}</span>
+                          >{yesBidStr}</span>
                         }
                         right={
                           <span
                             className="ob-trigger text-red-400 cursor-pointer hover:underline"
                             data-token-id={noTokenId}
-                            data-market-title={`${market.question || ''} (P(NO) ¢)`}
+                            data-market-title={`${market.question || ''} (NO bid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={market.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                          >{noMidStr}</span>
+                          >{noBidStr}</span>
                         }
                       />
 
@@ -1018,14 +1011,14 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
 
-                  const { bestBid: _aBid } = getLiveBidAsk(market);
                   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
-                  const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noProbCents = yesMidProb != null ? (1 - yesMidProb) * 100 : null;
-                  const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
-                  const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
+                  const gammaNo = gammaImpliedNoBestBid(gammaYes);
+                  const yesBidProb = outcomeBestBidProb(yesTokenId, _bidAskLookup, gammaYes);
+                  const noBidProb = outcomeBestBidProb(noTokenId, _bidAskLookup, gammaNo);
+                  const yesBidStr = yesBidProb != null ? (yesBidProb * 100).toFixed(1) : '-';
+                  const noBidStr = noBidProb != null ? (noBidProb * 100).toFixed(1) : '-';
 
-                  const gridDeltaBg = !isClosed ? deltaBgStyle(priceStr, yesMidProb, d.endDate) : {};
+                  const gridDeltaBg = !isClosed ? deltaBgStyle(priceStr, yesBidProb, d.endDate) : {};
                   const bgColor = isClosed ? 'bg-gray-700/30' : '';
 
                   const conditionMet = isPriceConditionTrue(priceStr, livePrice);
@@ -1093,30 +1086,30 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           )}
                         </>
                       )}
-                      {/* YES mid | P(NO)¢ = 100 − YES mid */}
+                      {/* YES best bid | NO best bid */}
                       <MarketCellMidRow
                         className="text-[10px] text-gray-400"
                         left={
                           <span
                             className="ob-trigger text-green-400 cursor-pointer hover:underline"
                             data-token-id={yesTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES mid)`}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES bid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={d.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                          >{yesMidStr}</span>
+                          >{yesBidStr}</span>
                         }
                         right={
                           <span
                             className="ob-trigger text-red-400 cursor-pointer hover:underline"
                             data-token-id={noTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (NO bid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={d.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                          >{noMidStr}</span>
+                          >{noBidStr}</span>
                         }
                       />
 

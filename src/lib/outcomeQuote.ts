@@ -34,3 +34,25 @@ export function outcomeMidOrOneSideProb(
   if (ha) return ba!;
   return null;
 }
+
+/**
+ * Approximate NO-token best bid from YES Gamma book when NO token not quoted (complete-market bound: 1 − yesAsk).
+ */
+export function gammaImpliedNoBestBid(gammaYesBook: { bestAsk?: number }): { bestBid: number } | undefined {
+  const ba = gammaYesBook.bestAsk;
+  if (!hasQuoteSide(ba)) return undefined;
+  const implied = 1 - ba!;
+  return hasQuoteSide(implied) ? { bestBid: implied } : undefined;
+}
+
+/** Best bid on outcome token as implied probability [0,1]; live book + optional Gamma fallback (same pick rules as mid). */
+export function outcomeBestBidProb(
+  tokenId: string | undefined,
+  lookup: Record<string, Market>,
+  gammaFallback?: { bestBid?: number; bestAsk?: number }
+): number | null {
+  const live = tokenId ? lookup[tokenId] : null;
+  const bb = pickSide(live?.bestBid, gammaFallback?.bestBid);
+  if (hasQuoteSide(bb)) return bb!;
+  return null;
+}

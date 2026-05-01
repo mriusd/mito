@@ -5,10 +5,119 @@ import { useAppStore } from '../stores/appStore';
 
 const BASE = API_BASE;
 
+/** Gamma blocks browser CORS; polycandles proxies via /api/gamma-public-search. */
+async function fetchGammaPublicSearchRaw(q: string): Promise<{ events?: GammaSearchEvent[] } | null> {
+  try {
+    const url = `${BASE}/api/gamma-public-search?q=${encodeURIComponent(q)}`;
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    return (await r.json()) as { events?: GammaSearchEvent[] };
+  } catch {
+    return null;
+  }
+}
+
+interface GammaSearchEvent {
+  slug?: string;
+  title?: string;
+  markets?: Record<string, unknown>[];
+}
+
+function weeklyHitSlugLooksPolymarketWeekly(assetFull: string, slug: string): boolean {
+  const s = slug.toLowerCase().trim();
+  const p = `what-price-will-${assetFull.toLowerCase()}-hit-`;
+  if (!s.startsWith(p)) return false;
+  return !s.includes('-hit-on-');
+}
+
+function parseGammaClobTokenIds(raw: unknown): string[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
+  if (typeof raw === 'string') {
+    try {
+      const arr = JSON.parse(raw) as unknown;
+      if (Array.isArray(arr)) return arr.map(String).filter(Boolean);
+    } catch {
+      /* ignore */
+    }
+  }
+  return [];
+}
+
+function gammaSearchMarketToMarket(gm: Record<string, unknown>, ev: GammaSearchEvent): Market {
+  const bestBid = gm.bestBid;
+  const bestAsk = gm.bestAsk;
+  return {
+    id: String(gm.id ?? ''),
+    conditionId: typeof gm.conditionId === 'string' ? gm.conditionId : undefined,
+    question: String(gm.question ?? ''),
+    slug: typeof gm.slug === 'string' ? gm.slug : undefined,
+    eventTitle: typeof ev.title === 'string' ? ev.title : undefined,
+    eventSlug: typeof ev.slug === 'string' ? ev.slug : undefined,
+    groupItemTitle: String(gm.groupItemTitle ?? ''),
+    endDate: String(gm.endDate ?? gm.expiresAt ?? ''),
+    closed: Boolean(gm.closed),
+    clobTokenIds: parseGammaClobTokenIds(gm.clobTokenIds),
+    bestBid: bestBid != null && bestBid !== '' ? Number(bestBid) : undefined,
+    bestAsk: bestAsk != null && bestAsk !== '' ? Number(bestAsk) : undefined,
+    lastTradePrice:
+      gm.lastTradePrice != null && gm.lastTradePrice !== '' ? Number(gm.lastTradePrice) : undefined,
+    volume: gm.volume != null && gm.volume !== '' ? Number(gm.volume) : undefined,
+  };
+}
+
+function strikeSortKey(title: string | undefined): number {
+  if (!title) return 0;
+  const n = parseFloat(title.replace(/[↑↓,$\s]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Merge weekly/month Hit outcomes from Gamma search so Hit grid works even when /api/markets cache omits slugs. */
+async function mergeWeeklyHitsFromGammaProxy(data: MarketsResponse): Promise<void> {
+  const ASSET_FULL: Record<string, string> = {
+    BTC: 'bitcoin',
+    ETH: 'ethereum',
+    SOL: 'solana',
+    XRP: 'xrp',
+  };
+  if (!data.weeklyHitMarkets) data.weeklyHitMarkets = {};
+
+  for (const [symbol, full] of Object.entries(ASSET_FULL)) {
+    const payload = await fetchGammaPublicSearchRaw(`what-price-will-${full}-hit`);
+    if (!payload?.events?.length) continue;
+
+    const existing = data.weeklyHitMarkets[symbol] || [];
+    const seen = new Set(existing.map((m) => m.id));
+    const added: Market[] = [...existing];
+
+    for (const ev of payload.events) {
+      const slug = String(ev.slug || '');
+      if (!weeklyHitSlugLooksPolymarketWeekly(full, slug)) continue;
+      for (const gm of ev.markets || []) {
+        if (!gm || typeof gm !== 'object') continue;
+        const m = gammaSearchMarketToMarket(gm as Record<string, unknown>, ev);
+        if (!m.id || seen.has(m.id)) continue;
+        seen.add(m.id);
+        added.push(m);
+      }
+    }
+
+    added.sort((a, b) => {
+      const ta = new Date(a.endDate || 0).getTime();
+      const tb = new Date(b.endDate || 0).getTime();
+      if (ta !== tb) return ta - tb;
+      return strikeSortKey(a.groupItemTitle) - strikeSortKey(b.groupItemTitle);
+    });
+    data.weeklyHitMarkets[symbol] = added;
+  }
+}
+
 export async function fetchMarkets(): Promise<MarketsResponse> {
   const resp = await fetch(`${BASE}/api/markets`);
   if (!resp.ok) throw new Error('Failed to fetch markets');
-  return resp.json();
+  const data = (await resp.json()) as MarketsResponse;
+  await mergeWeeklyHitsFromGammaProxy(data);
+  return data;
 }
 
 export async function fetchSettings(): Promise<Record<string, unknown>> {

@@ -603,26 +603,41 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
       return v >= 1000 ? (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : v.toLocaleString();
     };
 
+    /** Text after first "-hit-" in Gamma slug (daily vs weekly window readable). */
+    const hitEventWindowLabel = (slug: string) => {
+      const i = slug.indexOf('-hit-');
+      return i < 0 ? slug : slug.slice(i + '-hit-'.length);
+    };
+
     return (
       <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
-        <table className="w-full border-collapse">
+        <table className="min-w-max border-collapse">
           <thead className="sticky top-0 z-20 bg-gray-900">
             <tr>
-              <th className={`px-1 py-1 text-center ${titleColor} font-bold border-b border-gray-700 text-[10px] bg-gray-900`}>
+              <th
+                className={`sticky left-0 z-30 px-1 py-1 text-center ${titleColor} font-bold border-b border-gray-700 text-[10px] bg-gray-900`}
+              >
                 Price
               </th>
               {events.map((ev) => {
                 const dt = new Date(ev.endDate);
                 return (
-                  <th key={ev.slug} className="px-0.5 py-1 border-b border-gray-700 text-[10px] bg-gray-900">
+                  <th
+                    key={ev.slug}
+                    className="min-w-[76px] max-w-[120px] px-0.5 py-1 border-b border-gray-700 bg-gray-900 align-bottom"
+                  >
                     <a
                       href={`https://polymarket.com/event/${ev.slug}?r=mito`}
                       target="_blank"
                       rel="noreferrer"
                       className="block hover:bg-gray-800/50 rounded p-0.5 transition"
+                      title={ev.slug}
                     >
-                      <div className="font-bold text-white hover:text-blue-400 text-[10px]">
+                      <div className="font-bold text-white hover:text-blue-400 text-[10px] leading-tight">
                         {dayNames[dt.getDay()]} {dt.getDate()} {monthNames[dt.getMonth()]}
+                      </div>
+                      <div className="mt-0.5 text-[8px] leading-tight text-gray-400 break-words hyphens-auto">
+                        {hitEventWindowLabel(ev.slug)}
                       </div>
                     </a>
                   </th>
@@ -637,7 +652,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
               return (
               <tr key={priceStr} className="hover:bg-gray-800/50" ref={isAnchorRow ? scrollToCenterRef('hit') : (rowIdx === closestRowIdx ? scrollToCenterRef('hit-closest') : undefined)}>
                 <td
-                  className={`price-col-cell sticky left-0 bg-gray-900 z-10 px-1 py-0.5 font-bold ${titleColor} ${rowBorder} whitespace-nowrap text-xs`}
+                  className={`price-col-cell sticky left-0 bg-gray-900 z-[25] px-1 py-0.5 font-bold ${titleColor} ${rowBorder} whitespace-nowrap text-xs`}
                   data-price-low={hitStrikeSortKey(priceStr)}
                   data-price-high={hitStrikeSortKey(priceStr)}
                 >
@@ -661,7 +676,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                 {events.map((ev) => {
                   const market = hitLookup[priceStr]?.[ev.slug];
                   if (!market) {
-                    return <td key={ev.slug} className={`text-center px-1 py-0.5 ${rowBorder} text-gray-600 text-[10px]`} style={{ minWidth: 68 }}>-</td>;
+                    return <td key={ev.slug} className={`text-center px-1 py-0.5 ${rowBorder} text-gray-600 text-[10px]`} style={{ minWidth: 76 }}>-</td>;
                   }
 
                   const tokenIds = market.clobTokenIds || [];
@@ -706,7 +721,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       key={ev.slug}
                       data-market-id={market.id}
                       className={`market-cell px-0.5 py-1 text-center ${rowBorder} whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''}`}
-                      style={{ minWidth: 68, ...hitDeltaBg }}
+                      style={{ minWidth: 76, ...hitDeltaBg }}
                       onClick={() => handleCellClick(market)}
                     >
                       {/* Signal diff overlays */}

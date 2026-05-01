@@ -5,38 +5,23 @@ import { useAppStore } from '../stores/appStore';
 
 const BASE = API_BASE;
 
-/** Gamma blocks browser CORS; polycandles proxies via /api/gamma-public-search. */
-async function fetchGammaPublicSearchRaw(q: string): Promise<{ events?: GammaSearchEvent[] } | null> {
-  try {
-    const url = `${BASE}/api/gamma-public-search?q=${encodeURIComponent(q)}`;
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    return (await r.json()) as { events?: GammaSearchEvent[] };
-  } catch {
-    return null;
-  }
-}
-
-interface GammaSearchEvent {
-  slug?: string;
-  title?: string;
-  markets?: Record<string, unknown>[];
-}
-
-function weeklyHitSlugLooksPolymarketWeekly(assetFull: string, slug: string): boolean {
-  const s = slug.toLowerCase().trim();
-  const p = `what-price-will-${assetFull.toLowerCase()}-hit-`;
-  if (!s.startsWith(p)) return false;
-  return !s.includes('-hit-on-');
+/** Gamma Hit family for proxy merge (weekly, monthly, daily one-day). Excludes long `-hit-before-` buckets. */
+function gammaHitSlugKeepForProxy(assetFull: string, slug: string): boolean {
+  const s = slug.trim().toLowerCase();
+  const a = assetFull.trim().toLowerCase();
+  const prefix = `what-price-will-${a}-hit-`;
+  if (!s.startsWith(prefix)) return false;
+  if (s.includes('-hit-before-')) return false;
+  return true;
 }
 
 function parseGammaClobTokenIds(raw: unknown): string[] {
   if (raw == null) return [];
-  if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
+  if (Array.isArray(raw)) return raw.filter((x): x is string => typeof x === 'string');
   if (typeof raw === 'string') {
     try {
       const arr = JSON.parse(raw) as unknown;
-      if (Array.isArray(arr)) return arr.map(String).filter(Boolean);
+      if (Array.isArray(arr)) return arr.filter((x): x is string => typeof x === 'string');
     } catch {
       /* ignore */
     }
@@ -44,34 +29,45 @@ function parseGammaClobTokenIds(raw: unknown): string[] {
   return [];
 }
 
-function gammaSearchMarketToMarket(gm: Record<string, unknown>, ev: GammaSearchEvent): Market {
-  const bestBid = gm.bestBid;
-  const bestAsk = gm.bestAsk;
+function gammaSearchMarketToMarket(gm: Record<string, unknown>, ev: { slug?: string; title?: string }): Market {
+  const id = String(gm.id ?? '');
+  const endDate = String(gm.endDate ?? gm.end_date ?? '');
+  const cr = gm.closed as unknown;
+  const closed = cr === true || cr === 'true' || cr === 1;
   return {
-    id: String(gm.id ?? ''),
-    conditionId: typeof gm.conditionId === 'string' ? gm.conditionId : undefined,
+    id,
+    conditionId: String(gm.conditionId ?? gm.condition_id ?? ''),
     question: String(gm.question ?? ''),
-    eventTitle: typeof ev.title === 'string' ? ev.title : undefined,
-    eventSlug: typeof ev.slug === 'string' ? ev.slug : undefined,
-    groupItemTitle: String(gm.groupItemTitle ?? ''),
-    endDate: String(gm.endDate ?? gm.expiresAt ?? ''),
-    closed: Boolean(gm.closed),
-    clobTokenIds: parseGammaClobTokenIds(gm.clobTokenIds),
-    bestBid: bestBid != null && bestBid !== '' ? Number(bestBid) : undefined,
-    bestAsk: bestAsk != null && bestAsk !== '' ? Number(bestAsk) : undefined,
-    lastTradePrice:
-      gm.lastTradePrice != null && gm.lastTradePrice !== '' ? Number(gm.lastTradePrice) : undefined,
-    volume: gm.volume != null && gm.volume !== '' ? Number(gm.volume) : undefined,
+    eventSlug: String(ev.slug ?? ''),
+    eventTitle: String(ev.title ?? ''),
+    groupItemTitle: String(gm.groupItemTitle ?? gm.group_item_title ?? ''),
+    endDate,
+    closed,
+    clobTokenIds: parseGammaClobTokenIds(gm.clobTokenIds ?? gm.clob_token_ids),
+    outcomePrices: gm.outcomePrices != null ? String(gm.outcomePrices) : undefined,
+    volume:
+      typeof gm.volumeNum === 'number'
+        ? gm.volumeNum
+        : typeof gm.volume === 'number'
+          ? gm.volume
+          : undefined,
+    bestBid: typeof gm.bestBid === 'number' ? gm.bestBid : undefined,
+    bestAsk: typeof gm.bestAsk === 'number' ? gm.bestAsk : undefined,
+    lastTradePrice: typeof gm.lastTradePrice === 'number' ? gm.lastTradePrice : undefined,
   };
 }
 
-function strikeSortKey(title: string | undefined): number {
-  if (!title) return 0;
-  const n = parseFloat(title.replace(/[↑↓,$\s]/g, ''));
-  return Number.isFinite(n) ? n : 0;
+function hitMarketRowActiveFrontend(m: Market, nowMs: number): boolean {
+  const c = m.closed as unknown;
+  if (c === true || c === 'true' || c === 1) return false;
+  if (m.endDate) {
+    const t = new Date(m.endDate).getTime();
+    if (Number.isFinite(t) && t <= nowMs) return false;
+  }
+  return true;
 }
 
-/** Merge weekly/month Hit outcomes from Gamma search so Hit grid works even when /api/markets cache omits slugs. */
+/** Merge Gamma public-search Hit events into backend weeklyHitMarkets (dedupe by id). */
 async function mergeWeeklyHitsFromGammaProxy(data: MarketsResponse): Promise<void> {
   const ASSET_FULL: Record<string, string> = {
     BTC: 'bitcoin',
@@ -80,32 +76,57 @@ async function mergeWeeklyHitsFromGammaProxy(data: MarketsResponse): Promise<voi
     XRP: 'xrp',
   };
   if (!data.weeklyHitMarkets) data.weeklyHitMarkets = {};
+  const nowMs = Date.now();
 
   for (const [symbol, full] of Object.entries(ASSET_FULL)) {
-    const payload = await fetchGammaPublicSearchRaw(`what-price-will-${full}-hit`);
-    if (!payload?.events?.length) continue;
+    let resp: Response;
+    try {
+      resp = await fetch(
+        `${BASE}/api/gamma-public-search?q=${encodeURIComponent(`what-price-will-${full}-hit`)}`,
+      );
+    } catch {
+      continue;
+    }
+    if (!resp.ok) continue;
+
+    let payload: { events?: unknown[] };
+    try {
+      payload = (await resp.json()) as { events?: unknown[] };
+    } catch {
+      continue;
+    }
 
     const existing = data.weeklyHitMarkets[symbol] || [];
     const seen = new Set(existing.map((m) => m.id));
     const added: Market[] = [...existing];
 
-    for (const ev of payload.events) {
+    for (const rawEv of payload.events || []) {
+      if (!rawEv || typeof rawEv !== 'object') continue;
+      const ev = rawEv as Record<string, unknown>;
       const slug = String(ev.slug || '');
-      if (!weeklyHitSlugLooksPolymarketWeekly(full, slug)) continue;
-      for (const gm of ev.markets || []) {
+      if (!gammaHitSlugKeepForProxy(full, slug)) continue;
+      const marketsRaw = ev.markets;
+      if (!Array.isArray(marketsRaw)) continue;
+      for (const gm of marketsRaw) {
         if (!gm || typeof gm !== 'object') continue;
-        const m = gammaSearchMarketToMarket(gm as Record<string, unknown>, ev);
+        const m = gammaSearchMarketToMarket(gm as Record<string, unknown>, {
+          slug,
+          title: String(ev.title || ''),
+        });
         if (!m.id || seen.has(m.id)) continue;
+        if (!hitMarketRowActiveFrontend(m, nowMs)) continue;
         seen.add(m.id);
         added.push(m);
       }
     }
 
     added.sort((a, b) => {
-      const ta = new Date(a.endDate || 0).getTime();
-      const tb = new Date(b.endDate || 0).getTime();
-      if (ta !== tb) return ta - tb;
-      return strikeSortKey(a.groupItemTitle) - strikeSortKey(b.groupItemTitle);
+      const ea = new Date(a.endDate).getTime();
+      const eb = new Date(b.endDate).getTime();
+      if (ea !== eb) return ea - eb;
+      const pa = parseFloat(String(a.groupItemTitle || '').replace(/[↑↓,\s]/g, '')) || 0;
+      const pb = parseFloat(String(b.groupItemTitle || '').replace(/[↑↓,\s]/g, '')) || 0;
+      return pa - pb;
     });
     data.weeklyHitMarkets[symbol] = added;
   }

@@ -98,9 +98,10 @@ function parseHitTitle(s: string): { direction: 'up' | 'down'; barrier: number }
   return { direction: isUp ? 'up' : 'down', barrier: num };
 }
 
-/** Parse weekly hit window from event slug, e.g.
+/** Parse hit window from event slug (weekly, daily, yearly), e.g.
  * what-price-will-bitcoin-hit-march-30-april-5
- * what-price-will-ethereum-hit-march-24-30
+ * what-price-will-ethereum-hit-on-april-29
+ * what-price-will-bitcoin-hit-before-2027
  */
 function parseWeeklyHitWindowFromSlug(
   slug: string,
@@ -111,12 +112,25 @@ function parseWeeklyHitWindowFromSlug(
   if (hitIdx < 0) return null;
   const tail = slug.slice(hitIdx + 5); // after "-hit-"
   const parts = tail.split('-').filter(Boolean);
+  if (parts.length === 0) return null;
+
+  // Yearly: ...-hit-before-2027 → calendar year boundaryYear-1 through last ms before boundaryYear
+  if (parts[0] === 'before' && parts.length >= 2) {
+    const boundaryYear = parseInt(parts[1], 10);
+    if (!Number.isFinite(boundaryYear) || boundaryYear < 2000 || boundaryYear > 2100) return null;
+    const nominalEnd = Date.UTC(boundaryYear, 0, 1, 0, 0, 0, 0) - 1;
+    const endMs = fallbackEndMs > 0 ? Math.min(nominalEnd, fallbackEndMs) : nominalEnd;
+    const startMs = Date.UTC(boundaryYear - 1, 0, 1, 0, 0, 0, 0);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return null;
+    return { startMs, endMs };
+  }
+
   if (parts.length < 3) return null;
 
   // Daily: ...-hit-on-april-29
   const monthToIdx: Record<string, number> = {
     january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
-    july: 6, august: 7, september: 8, october: 9,     november: 10, december: 11,
+    july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
   };
   if (parts[0] === 'on' && parts.length >= 3) {
     const md = monthToIdx[parts[1]];

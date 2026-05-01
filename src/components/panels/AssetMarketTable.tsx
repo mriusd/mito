@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { formatPrice, assetToSymbol, formatDateShort, getPositionClobTokenId, normalizeClobTokenId, formatPriceShort, formatThousandsAsK, hitStrikeMetaForBs, hitDisplayStrike } from '../../utils/format';
+import { formatPrice, assetToSymbol, formatDateShort, getPositionClobTokenId, normalizeClobTokenId, formatPriceShort, formatThousandsAsK } from '../../utils/format';
 import { saveRange } from '../../api';
 import { showToast } from '../../utils/toast';
 import { PriceTicks } from '../PriceTicks';
 import { RangeEditDialog } from '../RangeEditDialog';
 import { HelpTooltip } from '../HelpTooltip';
 import type { AssetName, Market } from '../../types';
-import { outcomeBestBidProb } from '../../lib/outcomeQuote';
+import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMath';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
@@ -97,8 +97,12 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     if (saved === 'false') return false;
     return window.innerWidth >= 640;
   });
-  // Default ON (same as Above/Between). Old behavior used narrow viewport => hidden; that hid Hit entirely when Up/Down off.
-  const [showHit, setShowHit] = useState(() => localStorage.getItem(`polybot-show-hit-${panelId}`) !== 'false');
+  const [showHit, setShowHit] = useState(() => {
+    const saved = localStorage.getItem(`polybot-show-hit-${panelId}`);
+    if (saved === 'true') return true;
+    if (saved === 'false') return false;
+    return window.innerWidth >= 640;
+  });
   const [showAbove, setShowAbove] = useState(() => localStorage.getItem(`polybot-show-above-${panelId}`) !== 'false');
   const [showBetween, setShowBetween] = useState(() => localStorage.getItem(`polybot-show-between-${panelId}`) !== 'false');
   const symbol = assetToSymbol(asset);
@@ -108,6 +112,11 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
   const _bidAskLookup = useAppStore((s) => s.marketLookup);
   useAppStore((s) => s.bidAskTick); // subscribe to bid/ask updates for re-renders
+  const getLiveBidAsk = (m: Market) => {
+    const tid = m.clobTokenIds?.[0];
+    const live = tid ? _bidAskLookup[tid] : null;
+    return { bestBid: live?.bestBid ?? m.bestBid, bestAsk: live?.bestAsk ?? m.bestAsk };
+  };
   const priceData = useAppStore((s) => s.priceData);
   const vwapData = useAppStore((s) => s.vwapData);
   const volatilityData = useAppStore((s) => s.volatilityData);
@@ -152,11 +161,6 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   const priceOnContainerRef = useRef<HTMLDivElement>(null);
   const hitContainerRef = useRef<HTMLDivElement>(null);
   const scrolledRef = useRef<Set<string>>(new Set());
-  /** Debounce duplicate Hit trace logs across re-renders */
-  const hitTraceGridSigRef = useRef('');
-  const hitTraceUiSigRef = useRef('');
-  /** Full Hit table dump when data sig changes (avoids spam on bidAsk tick) */
-  const hitTableRenderDumpSigRef = useRef('');
 
   // Callback ref: scroll the row's scrollable parent to center this row
   const scrollToCenterRef = useCallback((tableKey: string) => (el: HTMLTableRowElement | null) => {
@@ -233,28 +237,6 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   const aboveMarketsForAsset = aboveMarkets[asset] || [];
   const priceOnMarketsForAsset = priceOnMarkets[asset] || [];
   const weeklyHitMarketsForAsset = weeklyHitMarkets[asset] || [];
-
-  useEffect(() => {
-    const rawLen = (weeklyHitMarkets[asset] || []).length;
-    const counts = Object.entries(weeklyHitMarkets)
-      .map(([k, arr]) => `${k}:${Array.isArray(arr) ? arr.length : '?'}`)
-      .join('|');
-    const sig = `${panelId}|${asset}|${showHit}|${showUpDown}|${rawLen}|${counts}`;
-    if (sig === hitTraceUiSigRef.current) return;
-    hitTraceUiSigRef.current = sig;
-    console.log('[HitTrace] AssetMarketTable store slice + UI gates', {
-      panelId,
-      asset,
-      showHit,
-      showUpDown,
-      rawHitRowsThisAsset: rawLen,
-      weeklyHitMarketsAllAssets: Object.fromEntries(
-        Object.entries(weeklyHitMarkets).map(([k, arr]) => [k, Array.isArray(arr) ? arr.length : -1]),
-      ),
-      leftColumnGate: showUpDown || (showHit && rawLen > 0),
-      callsRenderWeeklyHitTable: showHit && rawLen > 0,
-    });
-  }, [panelId, asset, showHit, showUpDown, weeklyHitMarkets]);
 
   const priceShortAsset = asset === 'ETH' ? 'ETH' : undefined;
 
@@ -385,11 +367,11 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
   const deltaBgStyle = (
     priceStr: string,
-    impliedYesFromBestBid: number | null,
+    yesMidProb: number | null,
     endDate: string,
     isHit = false,
   ): React.CSSProperties => {
-    if (impliedYesFromBestBid == null || livePrice <= 0 || !endDate) return {};
+    if (yesMidProb == null || livePrice <= 0 || !endDate) return {};
     const cleaned = priceStr
       .replace(/\$/g, '').replace(/,/g, '')
       .replace(/↑/g, '>').replace(/↓/g, '<')
@@ -400,7 +382,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
       ? getHitMarketProbability(ps, livePrice, endDate, adjVol, bsTimeOffsetHours)
       : getMarketProbability(ps, livePrice, endDate, adjVol, bsTimeOffsetHours);
     if (mathProb == null) return {};
-    const delta = (impliedYesFromBestBid - mathProb) * 100;
+    const delta = (yesMidProb - mathProb) * 100;
     const alpha = Math.min(0.55, Math.abs(delta) * 0.035);
     if (alpha < 0.02) return {};
     return {
@@ -414,95 +396,19 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     const now = Date.now();
     const dayNames = ['Su','Mo','Tu','We','Th','Fr','Sa'];
     const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const hitGridRowLabel = (m: Market): string => {
-      const meta = hitStrikeMetaForBs(m);
-      if (meta) return hitDisplayStrike(m.groupItemTitle || '', meta.bsPriceStr, meta.isReachHit);
-      return (m.groupItemTitle || '').trim();
-    };
-    const hitStrikeSortKey = (label: string) => parseFloat(label.replace(/[$↑↓,\s]/g, '')) || 0;
     // Filter active weekly hit markets, group by eventSlug
     // Filter out dip-to (↓) markets where target is $0 (nonsensical)
     const activeMarkets = weeklyHitMarketsForAsset.filter(m => {
-      const closedRaw = m.closed as unknown;
-      if (closedRaw === true || closedRaw === 'true' || closedRaw === 1) return false;
-      let endMs = 0;
-      if (m.endDate) {
-        const t = new Date(m.endDate).getTime();
-        if (Number.isFinite(t)) endMs = t;
-      }
-      // Before: endMs === 0 treated as expired (0 <= now). Missing/invalid endDate must not hide rows.
-      if (endMs > 0 && endMs <= now) return false;
-      const rowLabel = hitGridRowLabel(m);
-      if (!rowLabel) return false;
-      if (rowLabel.includes('↓')) {
-        const target = hitStrikeSortKey(rowLabel);
+      if (m.closed) return false;
+      const endTime = m.endDate ? new Date(m.endDate).getTime() : 0;
+      if (endTime <= now) return false;
+      const title = m.groupItemTitle || '';
+      if (title.includes('↓')) {
+        const target = parseFloat(title.replace(/[↑↓,\s]/g, '')) || 0;
         if (target <= 0) return false;
       }
       return true;
     });
-
-    const rawLen = weeklyHitMarketsForAsset.length;
-    const breakdown = { closed: 0, expired: 0, emptyRowLabel: 0, dipZero: 0, pass: 0 };
-    for (const m of weeklyHitMarketsForAsset) {
-      const closedRaw = m.closed as unknown;
-      if (closedRaw === true || closedRaw === 'true' || closedRaw === 1) {
-        breakdown.closed++;
-        continue;
-      }
-      let endMs = 0;
-      if (m.endDate) {
-        const t = new Date(m.endDate).getTime();
-        if (Number.isFinite(t)) endMs = t;
-      }
-      if (endMs > 0 && endMs <= now) {
-        breakdown.expired++;
-        continue;
-      }
-      const rowLabel = hitGridRowLabel(m);
-      if (!rowLabel) {
-        breakdown.emptyRowLabel++;
-        continue;
-      }
-      if (rowLabel.includes('↓')) {
-        const target = hitStrikeSortKey(rowLabel);
-        if (target <= 0) {
-          breakdown.dipZero++;
-          continue;
-        }
-      }
-      breakdown.pass++;
-    }
-    const slugHistogram: Record<string, number> = {};
-    for (const m of activeMarkets) {
-      const sl = m.eventSlug || '(empty)';
-      slugHistogram[sl] = (slugHistogram[sl] || 0) + 1;
-    }
-    const sig = `${panelId}|${asset}|${showHit}|${showUpDown}|${rawLen}|${activeMarkets.length}|${breakdown.pass}`;
-    if (sig !== hitTraceGridSigRef.current) {
-      hitTraceGridSigRef.current = sig;
-      console.log('[HitTrace] AssetMarketTable Hit grid', {
-        panelId,
-        asset,
-        showHit,
-        showUpDown,
-        rawHitRows: rawLen,
-        activeAfterFilter: activeMarkets.length,
-        breakdown,
-        leftColumnGate: showUpDown || (showHit && rawLen > 0),
-        hitSectionGate: showHit && rawLen > 0,
-        hitTableRendersRows: activeMarkets.length > 0,
-        activeEventSlugHistogram: slugHistogram,
-        samples: weeklyHitMarketsForAsset.slice(0, 3).map((m) => ({
-          id: m.id,
-          closed: m.closed,
-          endDate: m.endDate,
-          eventSlug: m.eventSlug,
-          groupItemTitle: m.groupItemTitle,
-          questionPrefix: (m.question || '').slice(0, 100),
-        })),
-      });
-    }
-
     if (activeMarkets.length === 0) return null;
 
     // Group by eventSlug (each slug = one weekly event)
@@ -519,67 +425,26 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     });
 
     // Sort markets within each event by price ascending
+    const hitPrice = (t: string) => parseFloat(t.replace(/[↑↓,\s]/g, '')) || 0;
     for (const ev of events) {
-      ev.markets.sort((a, b) => hitStrikeSortKey(hitGridRowLabel(a)) - hitStrikeSortKey(hitGridRowLabel(b)));
+      ev.markets.sort((a, b) => hitPrice(a.groupItemTitle || '0') - hitPrice(b.groupItemTitle || '0'));
     }
 
     // Collect unique prices across all events, sorted ascending
     const priceSet = new Set<string>();
     for (const ev of events) {
-      for (const m of ev.markets) {
-        priceSet.add(hitGridRowLabel(m));
-      }
+      for (const m of ev.markets) priceSet.add(m.groupItemTitle || '');
     }
-    const prices = Array.from(priceSet).sort((a, b) => hitStrikeSortKey(a) - hitStrikeSortKey(b));
+    const prices = Array.from(priceSet).sort((a, b) => hitPrice(a) - hitPrice(b));
 
     // Build lookup: price -> eventSlug -> market
     const hitLookup: Record<string, Record<string, Market>> = {};
     for (const ev of events) {
       for (const m of ev.markets) {
-        const key = hitGridRowLabel(m);
+        const key = m.groupItemTitle || '';
         if (!hitLookup[key]) hitLookup[key] = {};
         hitLookup[key][ev.slug] = m;
       }
-    }
-
-    const renderDumpSig = [
-      panelId,
-      asset,
-      events.map((e) => e.slug).join(','),
-      prices.join('\u001f'),
-      activeMarkets.map((m) => m.id).sort().join(','),
-    ].join('|');
-    if (renderDumpSig !== hitTableRenderDumpSigRef.current) {
-      hitTableRenderDumpSigRef.current = renderDumpSig;
-      console.log('[HitTrace] Hit TABLE BUILD (same render pass as JSX tbody)', {
-        panelId,
-        asset,
-        events: events.length,
-        priceRows: prices.length,
-        activeMarkets: activeMarkets.length,
-        eventSlugs: events.map((e) => ({ slug: e.slug, endDate: e.endDate, nMarkets: e.markets.length })),
-      });
-      activeMarkets.forEach((m, i) => {
-        console.log('[HitTrace] Hit source market', i, {
-          id: m.id,
-          eventSlug: m.eventSlug,
-          rowLabel: hitGridRowLabel(m),
-          groupItemTitle: m.groupItemTitle,
-        });
-      });
-      prices.forEach((priceStr, ri) => {
-        events.forEach((ev, ci) => {
-          const market = hitLookup[priceStr]?.[ev.slug];
-          console.log('[HitTrace] Hit CELL', {
-            panelId,
-            ri,
-            ci,
-            priceStr,
-            eventSlug: ev.slug,
-            marketId: market?.id ?? '—',
-          });
-        });
-      });
     }
 
     // Scroll anchor: last ↓ row (dip strikes below current); fallback = closest row to live price
@@ -592,7 +457,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     if (anchorRowIdx === -1 && livePrice > 0) {
       let minDist = Infinity;
       for (let i = 0; i < prices.length; i++) {
-        const dist = Math.abs(hitStrikeSortKey(prices[i]) - livePrice);
+        const dist = Math.abs(hitPrice(prices[i]) - livePrice);
         if (dist < minDist) { minDist = dist; closestRowIdx = i; }
       }
     }
@@ -603,41 +468,26 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
       return v >= 1000 ? (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : v.toLocaleString();
     };
 
-    /** Text after first "-hit-" in Gamma slug (daily vs weekly window readable). */
-    const hitEventWindowLabel = (slug: string) => {
-      const i = slug.indexOf('-hit-');
-      return i < 0 ? slug : slug.slice(i + '-hit-'.length);
-    };
-
     return (
       <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
-        <table className="min-w-max border-collapse">
+        <table className="w-full border-collapse">
           <thead className="sticky top-0 z-20 bg-gray-900">
             <tr>
-              <th
-                className={`sticky left-0 z-30 px-1 py-1 text-center ${titleColor} font-bold border-b border-gray-700 text-[10px] bg-gray-900`}
-              >
+              <th className={`px-1 py-1 text-center ${titleColor} font-bold border-b border-gray-700 text-[10px] bg-gray-900`}>
                 Price
               </th>
               {events.map((ev) => {
                 const dt = new Date(ev.endDate);
                 return (
-                  <th
-                    key={ev.slug}
-                    className="min-w-[76px] max-w-[120px] px-0.5 py-1 border-b border-gray-700 bg-gray-900 align-bottom"
-                  >
+                  <th key={ev.slug} className="px-0.5 py-1 border-b border-gray-700 text-[10px] bg-gray-900">
                     <a
                       href={`https://polymarket.com/event/${ev.slug}?r=mito`}
                       target="_blank"
                       rel="noreferrer"
                       className="block hover:bg-gray-800/50 rounded p-0.5 transition"
-                      title={ev.slug}
                     >
-                      <div className="font-bold text-white hover:text-blue-400 text-[10px] leading-tight">
+                      <div className="font-bold text-white hover:text-blue-400 text-[10px]">
                         {dayNames[dt.getDay()]} {dt.getDate()} {monthNames[dt.getMonth()]}
-                      </div>
-                      <div className="mt-0.5 text-[8px] leading-tight text-gray-400 break-words hyphens-auto">
-                        {hitEventWindowLabel(ev.slug)}
                       </div>
                     </a>
                   </th>
@@ -652,13 +502,13 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
               return (
               <tr key={priceStr} className="hover:bg-gray-800/50" ref={isAnchorRow ? scrollToCenterRef('hit') : (rowIdx === closestRowIdx ? scrollToCenterRef('hit-closest') : undefined)}>
                 <td
-                  className={`price-col-cell sticky left-0 bg-gray-900 z-[25] px-1 py-0.5 font-bold ${titleColor} ${rowBorder} whitespace-nowrap text-xs`}
-                  data-price-low={hitStrikeSortKey(priceStr)}
-                  data-price-high={hitStrikeSortKey(priceStr)}
+                  className={`price-col-cell sticky left-0 bg-gray-900 z-10 px-1 py-0.5 font-bold ${titleColor} ${rowBorder} whitespace-nowrap text-xs`}
+                  data-price-low={hitPrice(priceStr)}
+                  data-price-high={hitPrice(priceStr)}
                 >
                   {(() => {
                     const arrow = priceStr.includes('↑') ? '↑' : priceStr.includes('↓') ? '↓' : '';
-                    const num = hitStrikeSortKey(priceStr);
+                    const num = hitPrice(priceStr);
                     const fmt = num >= 1000 ? formatThousandsAsK(num, priceShortAsset) : String(num);
                     const pct = livePrice > 0 && num > 0 ? ((num - livePrice) / livePrice) * 100 : 0;
                     const pctSign = pct >= 0 ? '+' : '';
@@ -676,18 +526,20 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                 {events.map((ev) => {
                   const market = hitLookup[priceStr]?.[ev.slug];
                   if (!market) {
-                    return <td key={ev.slug} className={`text-center px-1 py-0.5 ${rowBorder} text-gray-600 text-[10px]`} style={{ minWidth: 76 }}>-</td>;
+                    return <td key={ev.slug} className={`text-center px-1 py-0.5 ${rowBorder} text-gray-600 text-[10px]`} style={{ minWidth: 68 }}>-</td>;
                   }
 
+                  const { bestBid: _hBid } = getLiveBidAsk(market);
                   const tokenIds = market.clobTokenIds || [];
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
                   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
-                  const yesBestBid = outcomeBestBidProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noBestBid = outcomeBestBidProb(noTokenId, _bidAskLookup, undefined);
-                  const yesBidStr = yesBestBid != null ? (yesBestBid * 100).toFixed(1) : '-';
-                  const noBidStr = noBestBid != null ? (noBestBid * 100).toFixed(1) : '-';
-                  const hitDeltaBg = deltaBgStyle(priceStr, yesBestBid, ev.endDate, true);
+                  const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
+                  const noProbCents = yesMidProb != null ? (1 - yesMidProb) * 100 : null;
+                  const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
+                  const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
+                  const yesProb = yesMidProb ?? _hBid ?? 0;
+                  const hitDeltaBg = deltaBgStyle(priceStr, yesMidProb, ev.endDate, true);
                   const isSelected = selectedMarket?.id === market.id;
 
                   const yesPos = yesTokenId ? positionLookup[normalizeClobTokenId(yesTokenId)] : undefined;
@@ -721,7 +573,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       key={ev.slug}
                       data-market-id={market.id}
                       className={`market-cell px-0.5 py-1 text-center ${rowBorder} whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''}`}
-                      style={{ minWidth: 76, ...hitDeltaBg }}
+                      style={{ minWidth: 68, ...hitDeltaBg }}
                       onClick={() => handleCellClick(market)}
                     >
                       {/* Signal diff overlays */}
@@ -735,30 +587,30 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           )}
                         </>
                       )}
-                      {/* YES best bid | NO best bid */}
+                      {/* YES mid | P(NO)¢ = 100 − YES mid */}
                       <MarketCellMidRow
                         className="text-[10px] text-gray-400"
                         left={
                           <span
                             className="ob-trigger text-green-400 cursor-pointer hover:underline"
                             data-token-id={yesTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES best bid)`}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES mid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={ev.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                          >{yesBidStr}</span>
+                          >{yesMidStr}</span>
                         }
                         right={
                           <span
                             className="ob-trigger text-red-400 cursor-pointer hover:underline"
                             data-token-id={noTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (NO best bid)`}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={ev.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                          >{noBidStr}</span>
+                          >{noMidStr}</span>
                         }
                       />
 
@@ -913,18 +765,20 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     return <td key={colIdx} className="text-center px-1 py-1 border-b border-gray-700/50 text-gray-600 text-[10px]">-</td>;
                   }
 
+                  const { bestBid: _uBid } = getLiveBidAsk(market);
                   const tokenIds = market.clobTokenIds || [];
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
                   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
-                  const yesBestBid = outcomeBestBidProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noBestBid = outcomeBestBidProb(noTokenId, _bidAskLookup, undefined);
-                  const yesBidStr = yesBestBid != null ? (yesBestBid * 100).toFixed(1) : '-';
-                  const noBidStr = noBestBid != null ? (noBestBid * 100).toFixed(1) : '-';
+                  const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
+                  const noProbCents = yesMidProb != null ? (1 - yesMidProb) * 100 : null;
+                  const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
+                  const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
+                  const yesProb = yesMidProb ?? _uBid ?? 0;
                   const isPast = showPast && colIdx === 0;
                   const ptb = market.priceToBeat ?? _bidAskLookup[yesTokenId]?.priceToBeat;
                   const udDeltaBg = (!isPast && ptb != null)
-                    ? deltaBgStyle('>' + ptb, yesBestBid, market.endDate)
+                    ? deltaBgStyle('>' + ptb, yesMidProb, market.endDate)
                     : {};
                   const isSelected = selectedMarket?.id === market.id;
 
@@ -965,30 +819,30 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                       style={{ minWidth: 60, ...udDeltaBg }}
                       onClick={() => handleCellClick(market)}
                     >
-                      {/* YES best bid | NO best bid */}
+                      {/* YES mid | P(NO)¢ = 100 − YES mid */}
                       <MarketCellMidRow
                         className="text-[10px] text-gray-400"
                         left={
                           <span
                             className="ob-trigger text-green-400 cursor-pointer hover:underline"
                             data-token-id={yesTokenId}
-                            data-market-title={`${market.question || ''} (YES best bid)`}
+                            data-market-title={`${market.question || ''} (YES mid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={market.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                          >{yesBidStr}</span>
+                          >{yesMidStr}</span>
                         }
                         right={
                           <span
                             className="ob-trigger text-red-400 cursor-pointer hover:underline"
                             data-token-id={noTokenId}
-                            data-market-title={`${market.question || ''} (NO best bid)`}
+                            data-market-title={`${market.question || ''} (P(NO) ¢)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={market.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                          >{noBidStr}</span>
+                          >{noMidStr}</span>
                         }
                       />
 
@@ -1164,13 +1018,14 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
 
+                  const { bestBid: _aBid } = getLiveBidAsk(market);
                   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
-                  const yesBestBid = outcomeBestBidProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noBestBid = outcomeBestBidProb(noTokenId, _bidAskLookup, undefined);
-                  const yesBidStr = yesBestBid != null ? (yesBestBid * 100).toFixed(1) : '-';
-                  const noBidStr = noBestBid != null ? (noBestBid * 100).toFixed(1) : '-';
+                  const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
+                  const noProbCents = yesMidProb != null ? (1 - yesMidProb) * 100 : null;
+                  const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
+                  const noMidStr = noProbCents != null ? noProbCents.toFixed(1) : '-';
 
-                  const gridDeltaBg = !isClosed ? deltaBgStyle(priceStr, yesBestBid, d.endDate) : {};
+                  const gridDeltaBg = !isClosed ? deltaBgStyle(priceStr, yesMidProb, d.endDate) : {};
                   const bgColor = isClosed ? 'bg-gray-700/30' : '';
 
                   const conditionMet = isPriceConditionTrue(priceStr, livePrice);
@@ -1238,30 +1093,30 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                           )}
                         </>
                       )}
-                      {/* YES best bid | NO best bid */}
+                      {/* YES mid | P(NO)¢ = 100 − YES mid */}
                       <MarketCellMidRow
                         className="text-[10px] text-gray-400"
                         left={
                           <span
                             className="ob-trigger text-green-400 cursor-pointer hover:underline"
                             data-token-id={yesTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES best bid)`}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES mid)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={d.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                          >{yesBidStr}</span>
+                          >{yesMidStr}</span>
                         }
                         right={
                           <span
                             className="ob-trigger text-red-400 cursor-pointer hover:underline"
                             data-token-id={noTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (NO best bid)`}
+                            data-market-title={`${market.question || market.groupItemTitle || ''} (P(NO) ¢)`}
                             data-asset={asset}
                             data-strike={market.groupItemTitle || ''}
                             data-end-date={d.endDate || ''}
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                          >{noBidStr}</span>
+                          >{noMidStr}</span>
                         }
                       />
 
@@ -1351,7 +1206,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     : '';
 
   return (
-    <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 min-h-0 w-full min-w-0 flex-1 flex flex-col">
+    <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3">
       {/* Asset Title */}
       <div className="panel-header">
         <h3 className={`text-sm font-bold mb-2 flex items-center gap-1 flex-wrap ${titleColor}`}>
@@ -1503,11 +1358,11 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
       />
 
       {/* Tables: Up/Down stacked on Hit (left column) + Above + Between side by side */}
-      <div className="panel-body flex min-h-0 flex-1 flex-col" style={{ overflow: 'hidden' }}>
-        <div className="flex min-h-0 min-w-0 flex-1 gap-2 overflow-x-auto">
+      <div className="panel-body" style={{ overflow: 'hidden' }}>
+        <div className="flex gap-2 h-full">
           {/* Left column: Up/Down (no scroll, all rows) stacked on Hit (scrollable) */}
           {(showUpDown || (showHit && weeklyHitMarketsForAsset.length > 0)) && (
-            <div className="flex min-h-0 w-max max-w-[min(560px,50vw)] shrink-0 flex-col gap-1 self-stretch min-w-[300px]">
+            <div className="shrink-0 flex flex-col gap-1" style={{ minWidth: '80px' }}>
               {showUpDown && (() => {
                 const upDownContent = renderUpOrDownTable();
                 if (!upDownContent) return null;
@@ -1519,11 +1374,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                 );
               })()}
               {showHit && weeklyHitMarketsForAsset.length > 0 && (
-                <div
-                  className="flex min-h-[140px] min-w-0 flex-1 basis-0 flex-col overflow-hidden border border-orange-500/40 rounded"
-                  ref={hitContainerRef}
-                  style={{ position: 'relative' }}
-                >
+                <div className="flex-1 min-h-0 border border-orange-500/40 rounded flex flex-col overflow-hidden" ref={hitContainerRef} style={{ position: 'relative' }}>
                   <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-orange-400 bg-gray-800/50 rounded-t py-0.5">Hit <HelpTooltip text={"Hit markets resolve YES if the asset price touches or crosses a specific price level at any point before expiry.\n\nUnlike Above markets which only check the price at expiry, Hit markets are path-dependent — they trigger as soon as the price 'hits' the target, regardless of where it ends up.\n\nHit markets come in two varieties: weekly (short-term, expiring each week) and monthly (longer-term, expiring at month end).\n\nRows show strike prices with ↑ (must go up to hit) or ↓ (must go down to hit). Columns show different expiry dates."} /></div>
                   {renderWeeklyHitTable()}
                   <PriceTicks containerRef={hitContainerRef} livePrice={livePrice} slot0={slot0} slot1={slot1} />
@@ -1532,22 +1383,14 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
             </div>
           )}
           {showAbove && (
-            <div
-              className="flex min-h-0 min-w-0 flex-1 flex-col border border-emerald-500/40 rounded"
-              ref={aboveContainerRef}
-              style={{ position: 'relative' }}
-            >
+            <div className="flex-1 min-w-0 border border-emerald-500/40 rounded flex flex-col" ref={aboveContainerRef} style={{ position: 'relative' }}>
               <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-emerald-400 bg-gray-800/50 rounded-t py-0.5">Above <HelpTooltip text={"Above markets resolve YES if the asset price is above a specific strike price at the moment of expiry (noon ET).\n\nThese are the most common market type. Each row is a different strike price and each column is a different expiry date.\n\nThe YES probability increases as the live price moves further above the strike, and decreases as it falls below. At expiry, the market resolves to 100 (YES) or 0 (NO) based purely on where the price is at that moment."} /></div>
               {renderTable(aboveMarketsForAsset, 'above')}
               <PriceTicks containerRef={aboveContainerRef} livePrice={livePrice} slot0={slot0} slot1={slot1} />
             </div>
           )}
           {showBetween && (
-            <div
-              className="flex min-h-0 min-w-0 flex-1 flex-col border border-purple-500/40 rounded"
-              ref={priceOnContainerRef}
-              style={{ position: 'relative' }}
-            >
+            <div className="flex-1 min-w-0 border border-purple-500/40 rounded flex flex-col" ref={priceOnContainerRef} style={{ position: 'relative' }}>
               <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-purple-400 bg-gray-800/50 rounded-t py-0.5">Between <HelpTooltip text={"Between markets resolve YES if the asset price falls within a specific price range at the moment of expiry (noon ET).\n\nEach row shows a price range (e.g. 95k-100k). The market pays out if the price lands inside that range at expiry.\n\nB-S probability for these markets peaks when the price is near the center of the range and drops off toward the edges. Unlike Above markets, the max probability may not be at the range boundary — it can be in the middle."} /></div>
               {renderTable(priceOnMarketsForAsset, 'price')}
               <PriceTicks containerRef={priceOnContainerRef} livePrice={livePrice} slot0={slot0} slot1={slot1} />

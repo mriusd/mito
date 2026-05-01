@@ -34,15 +34,3 @@ export function outcomeMidOrOneSideProb(
   if (ha) return ba!;
   return null;
 }
-
-/** Best bid in [0,1] when quoted; same live/Gamma pick rules as mid helper. */
-export function outcomeBestBidProb(
-  tokenId: string | undefined,
-  lookup: Record<string, Market>,
-  gammaFallback?: { bestBid?: number; bestAsk?: number },
-): number | null {
-  const live = tokenId ? lookup[tokenId] : null;
-  const bb = pickSide(live?.bestBid, gammaFallback?.bestBid);
-  if (hasQuoteSide(bb)) return bb!;
-  return null;
-}

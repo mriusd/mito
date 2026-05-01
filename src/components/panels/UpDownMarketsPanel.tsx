@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, Fragment } from 'react';
 import type { CSSProperties } from 'react';
-import { CirclePercent, Minus, Triangle } from 'lucide-react';
+import { CirclePercent, GraduationCap, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { HelpTooltip } from '../HelpTooltip';
 import type { Market } from '../../types';
@@ -573,6 +573,12 @@ export function UpDownMarketsPanel() {
                     yesMidProb != null && avgYesMid > 0 && yesMidProb >= avgYesMid / thresholdFactor;
                   const provenSMS = yesTokenId ? (_bidAskLookup[yesTokenId]?.provenSMS ?? 0) : 0;
                   const smartMoneyBarPct = Math.max(2, Math.min(98, 50 + provenSMS * 50));
+                  const marketLeansNo = yesMidProb != null && yesMidProb < 0.45;
+                  const marketLeansYes = yesMidProb != null && yesMidProb > 0.55;
+                  const smartMoneyLeansYes = smartMoneyBarPct > 75;
+                  const smartMoneyLeansNo = smartMoneyBarPct < 25;
+                  const showSmartMoneyLeftIcon = marketLeansNo && smartMoneyLeansYes;
+                  const showSmartMoneyRightIcon = marketLeansYes && smartMoneyLeansNo;
                   const concRaw =
                     typeof _bidAskLookup[yesTokenId]?.concentration === 'number' &&
                     Number.isFinite(_bidAskLookup[yesTokenId]?.concentration)
@@ -608,6 +614,22 @@ export function UpDownMarketsPanel() {
                           className="absolute right-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-rose-400 shadow-[0_0_3px_rgba(251,113,133,0.8)]"
                           title={liveTradesSource === 'onchain' ? 'NO position (on-chain)' : 'NO position'}
                         />
+                      )}
+                      {showSmartMoneyLeftIcon && (
+                        <span
+                          className="absolute left-[4px] top-1/2 -translate-y-1/2 z-10 text-green-300 animate-[pulse_0.7s_ease-in-out_infinite]"
+                          title={`Contrarian smart money: market leans NO (${((yesMidProb ?? 0) * 100).toFixed(1)}c), smart money leans YES (${smartMoneyBarPct.toFixed(1)}%)`}
+                        >
+                          <GraduationCap size={11} />
+                        </span>
+                      )}
+                      {showSmartMoneyRightIcon && (
+                        <span
+                          className="absolute right-[4px] top-1/2 -translate-y-1/2 z-10 text-red-300 animate-[pulse_0.7s_ease-in-out_infinite]"
+                          title={`Contrarian smart money: market leans YES (${((yesMidProb ?? 0) * 100).toFixed(1)}c), smart money leans NO (${smartMoneyBarPct.toFixed(1)}%)`}
+                        >
+                          <GraduationCap size={11} />
+                        </span>
                       )}
                       <MarketCellMidRow
                         className="text-[10px] text-gray-400"

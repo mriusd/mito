@@ -499,11 +499,7 @@ export function DraggableCanvas() {
         useCSSTransforms={true}
       >
         {effectivePanels.map((panel) => (
-          <div
-            key={panel.id}
-            data-panel-wrap-id={panel.id}
-            className="relative flex h-full min-h-0 flex-col overflow-hidden p-[2px]"
-          >
+          <div key={panel.id} data-panel-wrap-id={panel.id} className="relative overflow-hidden h-full p-[2px]">
             {/* Remove button */}
             <button
               onClick={(e) => {

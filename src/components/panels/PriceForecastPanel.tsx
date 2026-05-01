@@ -99,9 +99,8 @@ function parseHitTitle(s: string): { direction: 'up' | 'down'; barrier: number }
 }
 
 /** Parse weekly hit window from event slug, e.g.
- * what-price-will-bitcoin-hit-april-7-april-13
- * what-price-will-bitcoin-hit-april-27-may-3
- * Legacy same-month: what-price-will-ethereum-hit-march-24-30 (month + day + day)
+ * what-price-will-bitcoin-hit-march-30-april-5
+ * what-price-will-ethereum-hit-march-24-30
  */
 function parseWeeklyHitWindowFromSlug(
   slug: string,
@@ -193,14 +192,9 @@ function buildDailyAnchors(
 
   // Also gather Hit markets that are active
   const activeHits = weeklyHitMarkets.filter(m => {
-    const closedRaw = m.closed as unknown;
-    if (closedRaw === true || closedRaw === 'true' || closedRaw === 1) return false;
-    let endMs = 0;
-    if (m.endDate) {
-      const t = new Date(m.endDate).getTime();
-      if (Number.isFinite(t)) endMs = t;
-    }
-    if (endMs > 0 && endMs <= now) return false;
+    if (m.closed) return false;
+    const endMs = m.endDate ? new Date(m.endDate).getTime() : 0;
+    if (endMs <= now) return false;
     const title = m.groupItemTitle || '';
     if (title.includes('↓')) {
       const target = parseFloat(title.replace(/[↑↓,\s]/g, '')) || 0;

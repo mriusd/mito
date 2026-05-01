@@ -499,8 +499,6 @@ input[type="range"].vol-slider::-moz-range-thumb {
   position: relative;
 }
 .react-grid-item {
-  display: flex;
-  flex-direction: column;
   transition: all 200ms ease;
   transition-property: left, top;
   user-select: none;
@@ -544,18 +542,11 @@ input[type="range"].vol-slider::-moz-range-thumb {
 
 .panel-wrapper {
   height: 100%;
-  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
-}
-
-.react-grid-item > div[data-panel-wrap-id] {
-  flex: 1 1 0;
-  min-height: 0;
-  min-width: 0;
 }
 
 /* Keep form fields copyable/editable inside non-selectable shells */

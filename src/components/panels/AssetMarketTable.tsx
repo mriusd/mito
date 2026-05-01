@@ -1446,11 +1446,14 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
       />
 
       {/* Tables: Up/Down stacked on Hit (left column) + Above + Between side by side */}
-      <div className="panel-body" style={{ overflow: 'hidden' }}>
-        <div className="flex gap-2 h-full">
+      <div className="panel-body flex min-h-0 flex-1 flex-col" style={{ overflow: 'hidden' }}>
+        <div className="flex min-h-0 flex-1 gap-2">
           {/* Left column: Up/Down (no scroll, all rows) stacked on Hit (scrollable) */}
           {(showUpDown || (showHit && weeklyHitMarketsForAsset.length > 0)) && (
-            <div className="shrink-0 flex flex-col gap-1" style={{ minWidth: '80px' }}>
+            <div
+              className="flex min-h-0 shrink-0 flex-col gap-1 self-stretch"
+              style={{ minWidth: 'min(100%, 120px)' }}
+            >
               {showUpDown && (() => {
                 const upDownContent = renderUpOrDownTable();
                 if (!upDownContent) return null;
@@ -1462,7 +1465,11 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                 );
               })()}
               {showHit && weeklyHitMarketsForAsset.length > 0 && (
-                <div className="flex-1 min-h-0 border border-orange-500/40 rounded flex flex-col overflow-hidden" ref={hitContainerRef} style={{ position: 'relative' }}>
+                <div
+                  className="flex min-h-[140px] min-w-0 flex-1 flex-col overflow-hidden border border-orange-500/40 rounded"
+                  ref={hitContainerRef}
+                  style={{ position: 'relative' }}
+                >
                   <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-orange-400 bg-gray-800/50 rounded-t py-0.5">Hit <HelpTooltip text={"Hit markets resolve YES if the asset price touches or crosses a specific price level at any point before expiry.\n\nUnlike Above markets which only check the price at expiry, Hit markets are path-dependent — they trigger as soon as the price 'hits' the target, regardless of where it ends up.\n\nHit markets come in two varieties: weekly (short-term, expiring each week) and monthly (longer-term, expiring at month end).\n\nRows show strike prices with ↑ (must go up to hit) or ↓ (must go down to hit). Columns show different expiry dates."} /></div>
                   {renderWeeklyHitTable()}
                   <PriceTicks containerRef={hitContainerRef} livePrice={livePrice} slot0={slot0} slot1={slot1} />
@@ -1471,14 +1478,22 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
             </div>
           )}
           {showAbove && (
-            <div className="flex-1 min-w-0 border border-emerald-500/40 rounded flex flex-col" ref={aboveContainerRef} style={{ position: 'relative' }}>
+            <div
+              className="flex min-h-0 min-w-0 flex-1 flex-col border border-emerald-500/40 rounded"
+              ref={aboveContainerRef}
+              style={{ position: 'relative' }}
+            >
               <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-emerald-400 bg-gray-800/50 rounded-t py-0.5">Above <HelpTooltip text={"Above markets resolve YES if the asset price is above a specific strike price at the moment of expiry (noon ET).\n\nThese are the most common market type. Each row is a different strike price and each column is a different expiry date.\n\nThe YES probability increases as the live price moves further above the strike, and decreases as it falls below. At expiry, the market resolves to 100 (YES) or 0 (NO) based purely on where the price is at that moment."} /></div>
               {renderTable(aboveMarketsForAsset, 'above')}
               <PriceTicks containerRef={aboveContainerRef} livePrice={livePrice} slot0={slot0} slot1={slot1} />
             </div>
           )}
           {showBetween && (
-            <div className="flex-1 min-w-0 border border-purple-500/40 rounded flex flex-col" ref={priceOnContainerRef} style={{ position: 'relative' }}>
+            <div
+              className="flex min-h-0 min-w-0 flex-1 flex-col border border-purple-500/40 rounded"
+              ref={priceOnContainerRef}
+              style={{ position: 'relative' }}
+            >
               <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-purple-400 bg-gray-800/50 rounded-t py-0.5">Between <HelpTooltip text={"Between markets resolve YES if the asset price falls within a specific price range at the moment of expiry (noon ET).\n\nEach row shows a price range (e.g. 95k-100k). The market pays out if the price lands inside that range at expiry.\n\nB-S probability for these markets peaks when the price is near the center of the range and drops off toward the edges. Unlike Above markets, the max probability may not be at the range boundary — it can be in the middle."} /></div>
               {renderTable(priceOnMarketsForAsset, 'price')}
               <PriceTicks containerRef={priceOnContainerRef} livePrice={livePrice} slot0={slot0} slot1={slot1} />

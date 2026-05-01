@@ -1294,7 +1294,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     : '';
 
   return (
-    <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3">
+    <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 min-h-0 w-full min-w-0 flex-1 flex flex-col">
       {/* Asset Title */}
       <div className="panel-header">
         <h3 className={`text-sm font-bold mb-2 flex items-center gap-1 flex-wrap ${titleColor}`}>
@@ -1450,10 +1450,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
         <div className="flex min-h-0 flex-1 gap-2">
           {/* Left column: Up/Down (no scroll, all rows) stacked on Hit (scrollable) */}
           {(showUpDown || (showHit && weeklyHitMarketsForAsset.length > 0)) && (
-            <div
-              className="flex min-h-0 shrink-0 flex-col gap-1 self-stretch"
-              style={{ minWidth: 'min(100%, 120px)' }}
-            >
+            <div className="flex min-h-0 min-w-0 max-w-[min(560px,50vw)] flex-col gap-1 self-stretch">
               {showUpDown && (() => {
                 const upDownContent = renderUpOrDownTable();
                 if (!upDownContent) return null;
@@ -1466,7 +1463,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
               })()}
               {showHit && weeklyHitMarketsForAsset.length > 0 && (
                 <div
-                  className="flex min-h-[140px] min-w-0 flex-1 flex-col overflow-hidden border border-orange-500/40 rounded"
+                  className="flex min-h-[140px] min-w-0 flex-1 basis-0 flex-col overflow-hidden border border-orange-500/40 rounded"
                   ref={hitContainerRef}
                   style={{ position: 'relative' }}
                 >

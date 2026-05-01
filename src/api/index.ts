@@ -5,14 +5,17 @@ import { useAppStore } from '../stores/appStore';
 
 const BASE = API_BASE;
 
-/** Gamma Hit family for proxy merge (weekly, monthly, daily one-day). Excludes long `-hit-before-` buckets. */
+/** Gamma Hit family for proxy merge: what-price-will-*-hit-* plus will-*-reach-*-on-* daily. Excludes `-hit-before-`. */
 function gammaHitSlugKeepForProxy(assetFull: string, slug: string): boolean {
   const s = slug.trim().toLowerCase();
   const a = assetFull.trim().toLowerCase();
   const prefix = `what-price-will-${a}-hit-`;
-  if (!s.startsWith(prefix)) return false;
-  if (s.includes('-hit-before-')) return false;
-  return true;
+  if (s.startsWith(prefix)) {
+    if (s.includes('-hit-before-')) return false;
+    return true;
+  }
+  const reach = `will-${a}-reach-`;
+  return s.startsWith(reach) && s.includes('-on-');
 }
 
 function parseGammaClobTokenIds(raw: unknown): string[] {
@@ -79,44 +82,44 @@ async function mergeWeeklyHitsFromGammaProxy(data: MarketsResponse): Promise<voi
   const nowMs = Date.now();
 
   for (const [symbol, full] of Object.entries(ASSET_FULL)) {
-    let resp: Response;
-    try {
-      resp = await fetch(
-        `${BASE}/api/gamma-public-search?q=${encodeURIComponent(`what-price-will-${full}-hit`)}`,
-      );
-    } catch {
-      continue;
-    }
-    if (!resp.ok) continue;
-
-    let payload: { events?: unknown[] };
-    try {
-      payload = (await resp.json()) as { events?: unknown[] };
-    } catch {
-      continue;
-    }
-
     const existing = data.weeklyHitMarkets[symbol] || [];
     const seen = new Set(existing.map((m) => m.id));
     const added: Market[] = [...existing];
 
-    for (const rawEv of payload.events || []) {
-      if (!rawEv || typeof rawEv !== 'object') continue;
-      const ev = rawEv as Record<string, unknown>;
-      const slug = String(ev.slug || '');
-      if (!gammaHitSlugKeepForProxy(full, slug)) continue;
-      const marketsRaw = ev.markets;
-      if (!Array.isArray(marketsRaw)) continue;
-      for (const gm of marketsRaw) {
-        if (!gm || typeof gm !== 'object') continue;
-        const m = gammaSearchMarketToMarket(gm as Record<string, unknown>, {
-          slug,
-          title: String(ev.title || ''),
-        });
-        if (!m.id || seen.has(m.id)) continue;
-        if (!hitMarketRowActiveFrontend(m, nowMs)) continue;
-        seen.add(m.id);
-        added.push(m);
+    for (const q of [`what-price-will-${full}-hit`, `will-${full}-reach`]) {
+      let resp: Response;
+      try {
+        resp = await fetch(`${BASE}/api/gamma-public-search?q=${encodeURIComponent(q)}`);
+      } catch {
+        continue;
+      }
+      if (!resp.ok) continue;
+
+      let payload: { events?: unknown[] };
+      try {
+        payload = (await resp.json()) as { events?: unknown[] };
+      } catch {
+        continue;
+      }
+
+      for (const rawEv of payload.events || []) {
+        if (!rawEv || typeof rawEv !== 'object') continue;
+        const ev = rawEv as Record<string, unknown>;
+        const slug = String(ev.slug || '');
+        if (!gammaHitSlugKeepForProxy(full, slug)) continue;
+        const marketsRaw = ev.markets;
+        if (!Array.isArray(marketsRaw)) continue;
+        for (const gm of marketsRaw) {
+          if (!gm || typeof gm !== 'object') continue;
+          const m = gammaSearchMarketToMarket(gm as Record<string, unknown>, {
+            slug,
+            title: String(ev.title || ''),
+          });
+          if (!m.id || seen.has(m.id)) continue;
+          if (!hitMarketRowActiveFrontend(m, nowMs)) continue;
+          seen.add(m.id);
+          added.push(m);
+        }
       }
     }
 
@@ -124,8 +127,8 @@ async function mergeWeeklyHitsFromGammaProxy(data: MarketsResponse): Promise<voi
       const ea = new Date(a.endDate).getTime();
       const eb = new Date(b.endDate).getTime();
       if (ea !== eb) return ea - eb;
-      const pa = parseFloat(String(a.groupItemTitle || '').replace(/[↑↓,\s]/g, '')) || 0;
-      const pb = parseFloat(String(b.groupItemTitle || '').replace(/[↑↓,\s]/g, '')) || 0;
+      const pa = parseFloat(String(a.groupItemTitle || '').replace(/[$↑↓,\s]/g, '')) || 0;
+      const pb = parseFloat(String(b.groupItemTitle || '').replace(/[$↑↓,\s]/g, '')) || 0;
       return pa - pb;
     });
     data.weeklyHitMarkets[symbol] = added;

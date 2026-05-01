@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { formatPrice, assetToSymbol, formatDateShort, getPositionClobTokenId, normalizeClobTokenId, formatPriceShort, formatThousandsAsK } from '../../utils/format';
+import { formatPrice, assetToSymbol, formatDateShort, getPositionClobTokenId, normalizeClobTokenId, formatPriceShort, formatThousandsAsK, hitStrikeMetaForBs, hitDisplayStrike } from '../../utils/format';
 import { saveRange } from '../../api';
 import { showToast } from '../../utils/toast';
 import { PriceTicks } from '../PriceTicks';
@@ -391,6 +391,12 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     const now = Date.now();
     const dayNames = ['Su','Mo','Tu','We','Th','Fr','Sa'];
     const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const hitGridRowLabel = (m: Market): string => {
+      const meta = hitStrikeMetaForBs(m);
+      if (meta) return hitDisplayStrike(m.groupItemTitle || '', meta.bsPriceStr, meta.isReachHit);
+      return (m.groupItemTitle || '').trim();
+    };
+    const hitStrikeSortKey = (label: string) => parseFloat(label.replace(/[$↑↓,\s]/g, '')) || 0;
     // Filter active weekly hit markets, group by eventSlug
     // Filter out dip-to (↓) markets where target is $0 (nonsensical)
     const activeMarkets = weeklyHitMarketsForAsset.filter(m => {
@@ -403,9 +409,10 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
       }
       // Before: endMs === 0 treated as expired (0 <= now). Missing/invalid endDate must not hide rows.
       if (endMs > 0 && endMs <= now) return false;
-      const title = m.groupItemTitle || '';
-      if (title.includes('↓')) {
-        const target = parseFloat(title.replace(/[↑↓,\s]/g, '')) || 0;
+      const rowLabel = hitGridRowLabel(m);
+      if (!rowLabel) return false;
+      if (rowLabel.includes('↓')) {
+        const target = hitStrikeSortKey(rowLabel);
         if (target <= 0) return false;
       }
       return true;
@@ -426,23 +433,24 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     });
 
     // Sort markets within each event by price ascending
-    const hitPrice = (t: string) => parseFloat(t.replace(/[↑↓,\s]/g, '')) || 0;
     for (const ev of events) {
-      ev.markets.sort((a, b) => hitPrice(a.groupItemTitle || '0') - hitPrice(b.groupItemTitle || '0'));
+      ev.markets.sort((a, b) => hitStrikeSortKey(hitGridRowLabel(a)) - hitStrikeSortKey(hitGridRowLabel(b)));
     }
 
     // Collect unique prices across all events, sorted ascending
     const priceSet = new Set<string>();
     for (const ev of events) {
-      for (const m of ev.markets) priceSet.add(m.groupItemTitle || '');
+      for (const m of ev.markets) {
+        priceSet.add(hitGridRowLabel(m));
+      }
     }
-    const prices = Array.from(priceSet).sort((a, b) => hitPrice(a) - hitPrice(b));
+    const prices = Array.from(priceSet).sort((a, b) => hitStrikeSortKey(a) - hitStrikeSortKey(b));
 
     // Build lookup: price -> eventSlug -> market
     const hitLookup: Record<string, Record<string, Market>> = {};
     for (const ev of events) {
       for (const m of ev.markets) {
-        const key = m.groupItemTitle || '';
+        const key = hitGridRowLabel(m);
         if (!hitLookup[key]) hitLookup[key] = {};
         hitLookup[key][ev.slug] = m;
       }
@@ -458,7 +466,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     if (anchorRowIdx === -1 && livePrice > 0) {
       let minDist = Infinity;
       for (let i = 0; i < prices.length; i++) {
-        const dist = Math.abs(hitPrice(prices[i]) - livePrice);
+        const dist = Math.abs(hitStrikeSortKey(prices[i]) - livePrice);
         if (dist < minDist) { minDist = dist; closestRowIdx = i; }
       }
     }
@@ -504,12 +512,12 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
               <tr key={priceStr} className="hover:bg-gray-800/50" ref={isAnchorRow ? scrollToCenterRef('hit') : (rowIdx === closestRowIdx ? scrollToCenterRef('hit-closest') : undefined)}>
                 <td
                   className={`price-col-cell sticky left-0 bg-gray-900 z-10 px-1 py-0.5 font-bold ${titleColor} ${rowBorder} whitespace-nowrap text-xs`}
-                  data-price-low={hitPrice(priceStr)}
-                  data-price-high={hitPrice(priceStr)}
+                  data-price-low={hitStrikeSortKey(priceStr)}
+                  data-price-high={hitStrikeSortKey(priceStr)}
                 >
                   {(() => {
                     const arrow = priceStr.includes('↑') ? '↑' : priceStr.includes('↓') ? '↓' : '';
-                    const num = hitPrice(priceStr);
+                    const num = hitStrikeSortKey(priceStr);
                     const fmt = num >= 1000 ? formatThousandsAsK(num, priceShortAsset) : String(num);
                     const pct = livePrice > 0 && num > 0 ? ((num - livePrice) / livePrice) * 100 : 0;
                     const pctSign = pct >= 0 ? '+' : '';

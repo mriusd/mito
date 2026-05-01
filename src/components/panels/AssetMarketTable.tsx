@@ -152,6 +152,9 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   const priceOnContainerRef = useRef<HTMLDivElement>(null);
   const hitContainerRef = useRef<HTMLDivElement>(null);
   const scrolledRef = useRef<Set<string>>(new Set());
+  /** Debounce duplicate Hit trace logs across re-renders */
+  const hitTraceGridSigRef = useRef('');
+  const hitTraceUiSigRef = useRef('');
 
   // Callback ref: scroll the row's scrollable parent to center this row
   const scrollToCenterRef = useCallback((tableKey: string) => (el: HTMLTableRowElement | null) => {
@@ -228,6 +231,28 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   const aboveMarketsForAsset = aboveMarkets[asset] || [];
   const priceOnMarketsForAsset = priceOnMarkets[asset] || [];
   const weeklyHitMarketsForAsset = weeklyHitMarkets[asset] || [];
+
+  useEffect(() => {
+    const rawLen = (weeklyHitMarkets[asset] || []).length;
+    const counts = Object.entries(weeklyHitMarkets)
+      .map(([k, arr]) => `${k}:${Array.isArray(arr) ? arr.length : '?'}`)
+      .join('|');
+    const sig = `${panelId}|${asset}|${showHit}|${showUpDown}|${rawLen}|${counts}`;
+    if (sig === hitTraceUiSigRef.current) return;
+    hitTraceUiSigRef.current = sig;
+    console.log('[HitTrace] AssetMarketTable store slice + UI gates', {
+      panelId,
+      asset,
+      showHit,
+      showUpDown,
+      rawHitRowsThisAsset: rawLen,
+      weeklyHitMarketsAllAssets: Object.fromEntries(
+        Object.entries(weeklyHitMarkets).map(([k, arr]) => [k, Array.isArray(arr) ? arr.length : -1]),
+      ),
+      leftColumnGate: showUpDown || (showHit && rawLen > 0),
+      callsRenderWeeklyHitTable: showHit && rawLen > 0,
+    });
+  }, [panelId, asset, showHit, showUpDown, weeklyHitMarkets]);
 
   const priceShortAsset = asset === 'ETH' ? 'ETH' : undefined;
 
@@ -413,6 +438,69 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
       }
       return true;
     });
+
+    const rawLen = weeklyHitMarketsForAsset.length;
+    const breakdown = { closed: 0, expired: 0, emptyRowLabel: 0, dipZero: 0, pass: 0 };
+    for (const m of weeklyHitMarketsForAsset) {
+      const closedRaw = m.closed as unknown;
+      if (closedRaw === true || closedRaw === 'true' || closedRaw === 1) {
+        breakdown.closed++;
+        continue;
+      }
+      let endMs = 0;
+      if (m.endDate) {
+        const t = new Date(m.endDate).getTime();
+        if (Number.isFinite(t)) endMs = t;
+      }
+      if (endMs > 0 && endMs <= now) {
+        breakdown.expired++;
+        continue;
+      }
+      const rowLabel = hitGridRowLabel(m);
+      if (!rowLabel) {
+        breakdown.emptyRowLabel++;
+        continue;
+      }
+      if (rowLabel.includes('↓')) {
+        const target = hitStrikeSortKey(rowLabel);
+        if (target <= 0) {
+          breakdown.dipZero++;
+          continue;
+        }
+      }
+      breakdown.pass++;
+    }
+    const slugHistogram: Record<string, number> = {};
+    for (const m of activeMarkets) {
+      const sl = m.eventSlug || '(empty)';
+      slugHistogram[sl] = (slugHistogram[sl] || 0) + 1;
+    }
+    const sig = `${panelId}|${asset}|${showHit}|${showUpDown}|${rawLen}|${activeMarkets.length}|${breakdown.pass}`;
+    if (sig !== hitTraceGridSigRef.current) {
+      hitTraceGridSigRef.current = sig;
+      console.log('[HitTrace] AssetMarketTable Hit grid', {
+        panelId,
+        asset,
+        showHit,
+        showUpDown,
+        rawHitRows: rawLen,
+        activeAfterFilter: activeMarkets.length,
+        breakdown,
+        leftColumnGate: showUpDown || (showHit && rawLen > 0),
+        hitSectionGate: showHit && rawLen > 0,
+        hitTableRendersRows: activeMarkets.length > 0,
+        activeEventSlugHistogram: slugHistogram,
+        samples: weeklyHitMarketsForAsset.slice(0, 3).map((m) => ({
+          id: m.id,
+          closed: m.closed,
+          endDate: m.endDate,
+          eventSlug: m.eventSlug,
+          groupItemTitle: m.groupItemTitle,
+          questionPrefix: (m.question || '').slice(0, 100),
+        })),
+      });
+    }
+
     if (activeMarkets.length === 0) return null;
 
     // Group by eventSlug (each slug = one weekly event)

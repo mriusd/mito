@@ -90,10 +90,14 @@ async function mergeWeeklyHitsFromGammaProxy(data: MarketsResponse): Promise<voi
       let resp: Response;
       try {
         resp = await fetch(`${BASE}/api/gamma-public-search?q=${encodeURIComponent(q)}`);
-      } catch {
+      } catch (e) {
+        console.warn('[HitTrace] gamma-public-search fetch error', { symbol, q, err: String(e) });
         continue;
       }
-      if (!resp.ok) continue;
+      if (!resp.ok) {
+        console.warn('[HitTrace] gamma-public-search HTTP', { symbol, q, status: resp.status });
+        continue;
+      }
 
       let payload: { events?: unknown[] };
       try {
@@ -132,14 +136,33 @@ async function mergeWeeklyHitsFromGammaProxy(data: MarketsResponse): Promise<voi
       return pa - pb;
     });
     data.weeklyHitMarkets[symbol] = added;
+    console.log('[HitTrace] gamma-proxy merge symbol', {
+      symbol,
+      backendBefore: existing.length,
+      afterMerge: added.length,
+      addedFromProxy: added.length - existing.length,
+    });
   }
 }
 
 export async function fetchMarkets(): Promise<MarketsResponse> {
+  console.log('[HitTrace] fetchMarkets start', { API_BASE: BASE || '(relative)' });
   const resp = await fetch(`${BASE}/api/markets`);
   if (!resp.ok) throw new Error('Failed to fetch markets');
   const data = (await resp.json()) as MarketsResponse;
+  const whBefore = data.weeklyHitMarkets || {};
+  console.log('[HitTrace] fetchMarkets /api/markets weeklyHitMarkets counts (before gamma proxy)', {
+    assets: Object.fromEntries(
+      Object.entries(whBefore).map(([k, arr]) => [k, Array.isArray(arr) ? arr.length : -1]),
+    ),
+  });
   await mergeWeeklyHitsFromGammaProxy(data);
+  const whAfter = data.weeklyHitMarkets || {};
+  console.log('[HitTrace] fetchMarkets after mergeWeeklyHitsFromGammaProxy', {
+    assets: Object.fromEntries(
+      Object.entries(whAfter).map(([k, arr]) => [k, Array.isArray(arr) ? arr.length : -1]),
+    ),
+  });
   return data;
 }
 

@@ -36,6 +36,14 @@ export function useMarketData() {
     refreshingRef.current = true;
     try {
       const data = await fetchMarkets();
+      const wh = data.weeklyHitMarkets || {};
+      console.log('[HitTrace] useMarketData store apply weeklyHitMarkets', {
+        isWebMode,
+        lastUpdated: data.lastUpdated,
+        perAsset: Object.fromEntries(
+          Object.entries(wh).map(([k, arr]) => [k, Array.isArray(arr) ? arr.length : -1]),
+        ),
+      });
       const prevLookup = useAppStore.getState().marketLookup;
       const lookup = mergeWsFields(
         buildMarketLookup(data.aboveMarkets || {}, data.priceOnMarkets || {}, data.weeklyHitMarkets || {}, data.upOrDownMarkets || {}),
@@ -77,7 +85,7 @@ export function useMarketData() {
       store.setBackendConnected(true);
       store.setLoading(false);
     } catch (err) {
-      console.error('Failed to fetch markets:', err);
+      console.error('[HitTrace] fetchMarkets failed — Hit grid stays empty until fixed', err);
       store.setBackendConnected(false);
       store.setLoading(false);
     } finally {

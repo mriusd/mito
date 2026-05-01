@@ -394,9 +394,15 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     // Filter active weekly hit markets, group by eventSlug
     // Filter out dip-to (↓) markets where target is $0 (nonsensical)
     const activeMarkets = weeklyHitMarketsForAsset.filter(m => {
-      if (m.closed) return false;
-      const endTime = m.endDate ? new Date(m.endDate).getTime() : 0;
-      if (endTime <= now) return false;
+      const closedRaw = m.closed as unknown;
+      if (closedRaw === true || closedRaw === 'true' || closedRaw === 1) return false;
+      let endMs = 0;
+      if (m.endDate) {
+        const t = new Date(m.endDate).getTime();
+        if (Number.isFinite(t)) endMs = t;
+      }
+      // Before: endMs === 0 treated as expired (0 <= now). Missing/invalid endDate must not hide rows.
+      if (endMs > 0 && endMs <= now) return false;
       const title = m.groupItemTitle || '';
       if (title.includes('↓')) {
         const target = parseFloat(title.replace(/[↑↓,\s]/g, '')) || 0;

@@ -193,9 +193,14 @@ function buildDailyAnchors(
 
   // Also gather Hit markets that are active
   const activeHits = weeklyHitMarkets.filter(m => {
-    if (m.closed) return false;
-    const endMs = m.endDate ? new Date(m.endDate).getTime() : 0;
-    if (endMs <= now) return false;
+    const closedRaw = m.closed as unknown;
+    if (closedRaw === true || closedRaw === 'true' || closedRaw === 1) return false;
+    let endMs = 0;
+    if (m.endDate) {
+      const t = new Date(m.endDate).getTime();
+      if (Number.isFinite(t)) endMs = t;
+    }
+    if (endMs > 0 && endMs <= now) return false;
     const title = m.groupItemTitle || '';
     if (title.includes('↓')) {
       const target = parseFloat(title.replace(/[↑↓,\s]/g, '')) || 0;

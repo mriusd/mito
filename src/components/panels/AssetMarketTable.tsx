@@ -389,20 +389,27 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
   const renderWeeklyHitTable = () => {
     const now = Date.now();
+    const hitPastWindowMs = 21 * 24 * 60 * 60 * 1000; // ~3 weekly windows; matches “Past” for Hit cadence
     const dayNames = ['Su','Mo','Tu','We','Th','Fr','Sa'];
     const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    // Filter active weekly hit markets, group by eventSlug
-    // Filter out dip-to (↓) markets where target is $0 (nonsensical)
+    // Filter weekly hit markets: default = only active (not closed, end in future). Past checkbox = also recently ended columns.
     const activeMarkets = weeklyHitMarketsForAsset.filter(m => {
-      if (m.closed) return false;
-      const endTime = m.endDate ? new Date(m.endDate).getTime() : 0;
-      if (endTime <= now) return false;
       const title = m.groupItemTitle || '';
       if (title.includes('↓')) {
         const target = parseFloat(title.replace(/[↑↓,\s]/g, '')) || 0;
         if (target <= 0) return false;
       }
-      return true;
+      const endTime = m.endDate ? new Date(m.endDate).getTime() : 0;
+      if (!endTime) return false;
+
+      if (!showPast) {
+        if (m.closed) return false;
+        if (endTime <= now) return false;
+        return true;
+      }
+
+      if (endTime > now) return true;
+      return endTime >= now - hitPastWindowMs;
     });
     if (activeMarkets.length === 0) return null;
 
@@ -473,8 +480,9 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
               </th>
               {events.map((ev) => {
                 const dt = new Date(ev.endDate);
+                const evEnded = showPast && ev.endDate && dt.getTime() <= now;
                 return (
-                  <th key={ev.slug} className="px-0.5 py-1 border-b border-gray-700 text-[10px] bg-gray-900">
+                  <th key={ev.slug} className={`px-0.5 py-1 border-b border-gray-700 text-[10px] bg-gray-900 ${evEnded ? 'opacity-60' : ''}`}>
                     <a
                       href={`https://polymarket.com/event/${ev.slug}?r=mito`}
                       target="_blank"
@@ -520,8 +528,9 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                 </td>
                 {events.map((ev) => {
                   const market = hitLookup[priceStr]?.[ev.slug];
+                  const evEnded = showPast && ev.endDate && new Date(ev.endDate).getTime() <= now;
                   if (!market) {
-                    return <td key={ev.slug} className={`text-center px-1 py-0.5 ${rowBorder} text-gray-600 text-[10px]`} style={{ minWidth: 68 }}>-</td>;
+                    return <td key={ev.slug} className={`text-center px-1 py-0.5 ${rowBorder} text-gray-600 text-[10px] ${evEnded ? 'opacity-50 bg-gray-700/30' : ''}`} style={{ minWidth: 68 }}>-</td>;
                   }
 
                   const tokenIds = market.clobTokenIds || [];
@@ -566,7 +575,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
                     <td
                       key={ev.slug}
                       data-market-id={market.id}
-                      className={`market-cell px-0.5 py-1 text-center ${rowBorder} whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''}`}
+                      className={`market-cell px-0.5 py-1 text-center ${rowBorder} whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''} ${evEnded ? 'opacity-50 bg-gray-700/30' : ''}`}
                       style={{ minWidth: 68, ...hitDeltaBg }}
                       onClick={() => handleCellClick(market)}
                     >

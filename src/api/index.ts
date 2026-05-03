@@ -381,6 +381,8 @@ export interface WalletPosition {
   netNo: number;
   usdcIn: number;
   usdcOut: number;
+  /** Cumulative fill notional from wallet_market_positions (ABS size×price); matches ledger `volume`. */
+  volume?: number;
   /** Σ `wallet_fill_ledger.delta_usd` (ledger cash flow). */
   cashFlow?: number;
   /** Realized trading PnL YES leg (`pnl_yes`). */
@@ -698,6 +700,8 @@ export interface WalletSummary {
   usdcOut: number;
   /** Stored decimal (e.g. 0.12 = 12%); display ×100 for %. Null until resolved-markets basis exists. */
   roi?: number | null;
+  /** Σ wallet_market_positions.volume (ledger rollup on wallet_scores_ledger). */
+  volume?: number;
 }
 
 export async function fetchWalletSummary(wallet: string): Promise<WalletSummary | null> {

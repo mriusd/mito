@@ -1251,9 +1251,7 @@ export function Sidebar() {
   const sidebarSectionHeight = 'max(100px, calc((100vh - 44px) * 0.15))';
   const sidebarDoubleSectionHeight = 'max(100px, calc((100vh - 44px) * 0.30))';
   const collapsedSectionHeight = '36px';
-  const orderbookSectionHeight = liveOrderbookExpanded
-    ? (liveTradesExpanded ? sidebarSectionHeight : sidebarDoubleSectionHeight)
-    : collapsedSectionHeight;
+  const orderbookSectionHeight = liveOrderbookExpanded ? sidebarSectionHeight : collapsedSectionHeight;
   const liveTradesSectionHeight = liveTradesExpanded
     ? (liveOrderbookExpanded ? sidebarSectionHeight : sidebarDoubleSectionHeight)
     : collapsedSectionHeight;

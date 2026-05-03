@@ -688,6 +688,7 @@ export interface WalletSummary {
   flat: number;
   /** Stored ratio (≈ wins / total_markets); display ×100 for %. */
   winRate: number;
+  /** Σ (`usdc_out` − `usdc_in` − `fee_total`) over `wallet_market_positions`. */
   pnl: number;
   cashFlow: number;
   pm: number;

@@ -253,17 +253,19 @@ function filterTopYesNoTab(wallets: WalletPosition[] | undefined, tab: 'yes' | '
   });
 }
 
-function getDateDisplay(endDate: string | null): { label: string; color: string } {
+function marketListEndDateTimeLocale(endDate: string | null): { label: string; color: string } {
   if (!endDate) return { label: '-', color: 'text-gray-400' };
   const dt = new Date(endDate);
-  const hoursLeft = (dt.getTime() - Date.now()) / (1000 * 60 * 60);
-  const isToday = hoursLeft > 0 && hoursLeft < 24;
-  const isTmr = !isToday && hoursLeft > 0 && hoursLeft < 48;
-  const dayAbbr = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][dt.getDay()];
-  if (isToday) return { label: 'TODAY', color: 'text-red-400 font-bold' };
-  if (isTmr) return { label: 'TMR', color: 'text-yellow-400 font-bold' };
+  if (Number.isNaN(dt.getTime())) return { label: '-', color: 'text-gray-400' };
+  const label = dt.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
   const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
-  return { label: `${dayAbbr} ${dt.getDate()}`, color: isWeekend ? 'text-purple-400' : 'text-gray-400' };
+  return { label, color: isWeekend ? 'text-purple-400' : 'text-gray-300' };
 }
 
 function getResolvedDisplay(market: any, row?: WalletPosition): { label: string; color: string } {
@@ -966,7 +968,7 @@ export function WalletInfoDialog({
               <table className="w-full text-[10px] whitespace-nowrap">
                 <thead>
                   <tr className="text-gray-500 border-b border-gray-700">
-                    <th className="text-left py-1 whitespace-nowrap">Date</th>
+                    <th className="text-left py-1 whitespace-normal min-w-[10rem]">Date</th>
                     <th className="text-center w-5 py-1 whitespace-nowrap" title="Resolved chain side (Y/N); color = ledger win (green) / loss (red) / flat (gray)">O</th>
                     <th className="text-left whitespace-nowrap">Market</th>
                     <th className="text-right bg-green-900/15 text-green-300 font-bold py-1 whitespace-nowrap">Net Y</th>
@@ -974,8 +976,6 @@ export function WalletInfoDialog({
                     <th className="text-right whitespace-nowrap">Net</th>
                     <th className="text-right whitespace-nowrap" title="price_yes">Px Y</th>
                     <th className="text-right whitespace-nowrap" title="price_no">Px N</th>
-                    <th className="text-right whitespace-nowrap" title="pnl_yes (realized)">rPnL Y</th>
-                    <th className="text-right whitespace-nowrap" title="pnl_no (realized)">rPnL N</th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.pnl">PnL</th>
                     <th className="text-right whitespace-nowrap" title="Staked">Staked</th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">Fee</th>
@@ -998,14 +998,12 @@ export function WalletInfoDialog({
                         mk && typeof (mk as Market).question === 'string'
                           ? extractAssetFromMarket(mk as Market) || assetTickerFromQuestion(titleForAsset)
                           : assetTickerFromQuestion(titleForAsset);
-                      const dd = getDateDisplay(endRaw || null);
+                      const dd = marketListEndDateTimeLocale(endRaw || null);
                       const iy = walletInvY(m);
                       const inn = walletInvN(m);
                       const netLeg = walletNet(m);
                       const fmtInv = (v: number) => fmtSignedShares1En(v);
                       const fmtLegShares = (v: number) => fmtSignedShares1En(v);
-                      const pyes = typeof m.pnlYes === 'number' && Number.isFinite(m.pnlYes) ? m.pnlYes : 0;
-                      const pno = typeof m.pnlNo === 'number' && Number.isFinite(m.pnlNo) ? m.pnlNo : 0;
                       const rowPnl = typeof m.pnl === 'number' && Number.isFinite(m.pnl) ? m.pnl : 0;
                       const rowUsdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
                       const rowFee = typeof m.feeTotal === 'number' && Number.isFinite(m.feeTotal) ? m.feeTotal : 0;
@@ -1020,7 +1018,7 @@ export function WalletInfoDialog({
                       className={`border-b border-gray-800 cursor-pointer hover:bg-gray-700/30 ${selectedMarketId === m.marketId ? 'bg-gray-700/40' : ''}`}
                       onClick={() => { setSelectedMarketId(m.marketId); setFillsPage(0); }}
                     >
-                      <td className={`py-0.5 whitespace-nowrap ${dd.color}`}>{dd.label}</td>
+                      <td className={`py-0.5 whitespace-normal min-w-[10rem] ${dd.color}`}>{dd.label}</td>
                       <td className="text-center py-0.5 align-middle whitespace-nowrap">{walletOutcomeLetterCell(m)}</td>
                       <td
                         className={`py-0.5 whitespace-nowrap font-bold ${ASSET_COLORS[assetForColor] || 'text-gray-200'}`}
@@ -1033,8 +1031,6 @@ export function WalletInfoDialog({
                       <td className={`text-right tabular-nums whitespace-nowrap ${netLeg > 0.001 ? 'text-green-400' : netLeg < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(netLeg)}</td>
                       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceYes)}</td>
                       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceNo)}</td>
-                      <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(pyes)}`}>{fmtUsdSignedLedger(pyes)}</td>
-                      <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(pno)}`}>{fmtUsdSignedLedger(pno)}</td>
                       <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(rowPnl)}`}>{fmtUsdSignedLedger(rowPnl)}</td>
                       <td className="text-right tabular-nums font-medium text-red-400 whitespace-nowrap" title="Staked (USDC in)">
                         −${fmtUsd2En(rowUsdcIn)}

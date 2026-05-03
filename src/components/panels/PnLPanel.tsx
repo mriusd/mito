@@ -63,6 +63,7 @@ export function PnLPanel() {
   const trades = useAppStore((s) => s.trades);
   const marketLookup = useAppStore((s) => s.marketLookup);
   const makerAddress = useAppStore((s) => s.makerAddress);
+  const liveTradesSource = useAppStore((s) => s.liveTradesSource);
 
   const [calendarBump, setCalendarBump] = useState(0);
   useEffect(() => {
@@ -128,7 +129,7 @@ export function PnLPanel() {
 
   useEffect(() => {
     const w = makerAddress?.trim();
-    if (!w) {
+    if (!w || liveTradesSource !== 'onchain') {
       setOnchainByDate('inactive');
       return;
     }
@@ -163,6 +164,7 @@ export function PnLPanel() {
     };
   }, [
     makerAddress,
+    liveTradesSource,
     dateWindow.fromStr,
     dateWindow.toStr,
     bucketMode,
@@ -180,7 +182,11 @@ export function PnLPanel() {
       dataByDate[dk] = { bought: 0, sold: 0 };
     }
 
-    if (typeof onchainByDate === 'object' && makerAddress?.trim()) {
+    if (
+      liveTradesSource === 'onchain' &&
+      typeof onchainByDate === 'object' &&
+      makerAddress?.trim()
+    ) {
       for (const dk of dates) {
         const row = onchainByDate[dk];
         if (row) {
@@ -235,7 +241,7 @@ export function PnLPanel() {
     }
 
     return { dates, dataByDate };
-  }, [dateWindow, onchainByDate, makerAddress, trades, marketLookup, bucketMode, marketTypeFilter]);
+  }, [dateWindow, onchainByDate, makerAddress, liveTradesSource, trades, marketLookup, bucketMode, marketTypeFilter]);
 
   const todayKey = getDateKey(new Date());
 
@@ -244,10 +250,13 @@ export function PnLPanel() {
       <div className="panel-header flex items-center justify-between gap-2 mb-2 cursor-grab flex-wrap">
         <div className="flex flex-col gap-0.5 min-w-0">
           <h3 className="text-sm font-bold text-yellow-400">P&L</h3>
-          {makerAddress?.trim() && typeof onchainByDate === 'object' && (
+          {makerAddress?.trim() && liveTradesSource === 'onchain' && typeof onchainByDate === 'object' && (
             <span className="text-[8px] text-cyan-400/90 font-medium">On-chain fills</span>
           )}
-          {makerAddress?.trim() && onchainByDate === 'pending' && (
+          {makerAddress?.trim() && liveTradesSource === 'polymarket' && (
+            <span className="text-[8px] text-violet-400/90 font-medium">Polymarket API trades</span>
+          )}
+          {makerAddress?.trim() && liveTradesSource === 'onchain' && onchainByDate === 'pending' && (
             <span className="text-[8px] text-gray-500">Loading on-chain…</span>
           )}
         </div>

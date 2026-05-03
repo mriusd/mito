@@ -381,8 +381,6 @@ export interface WalletPosition {
   netNo: number;
   usdcIn: number;
   usdcOut: number;
-  /** Cumulative fill notional from wallet_market_positions (ABS size×price); matches ledger `volume`. */
-  volume?: number;
   /** Σ `wallet_fill_ledger.delta_usd` (ledger cash flow). */
   cashFlow?: number;
   /** Realized trading PnL YES leg (`pnl_yes`). */
@@ -400,8 +398,8 @@ export interface WalletPosition {
   f?: number;
   /** Ledger: `outcome` after resolution — 0 NO, 1 YES; omitted/null if unresolved. */
   outcome?: number | null;
-  /** `wallet_market_positions.res_pnl` (resolution return formula). */
-  rPnl?: number;
+  /** `wallet_market_positions.payout` (REDEEM gross). */
+  payout?: number;
   /** `wallet_market_positions.roi` (ratio; ×100 for %). */
   roi?: number;
   tradeCount: number;
@@ -700,8 +698,6 @@ export interface WalletSummary {
   usdcOut: number;
   /** Stored decimal (e.g. 0.12 = 12%); display ×100 for %. Null until resolved-markets basis exists. */
   roi?: number | null;
-  /** Σ wallet_market_positions.volume (ledger rollup on wallet_scores_ledger). */
-  volume?: number;
 }
 
 export async function fetchWalletSummary(wallet: string): Promise<WalletSummary | null> {

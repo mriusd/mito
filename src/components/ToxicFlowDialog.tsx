@@ -123,7 +123,7 @@ function WalletScoresLedgerSummaryGrid({ s, dense, narrowSummary }: { s: WalletS
   const cf = s.cashFlow ?? 0;
   const pm = s.pm ?? 0;
   const lm = s.lm ?? 0;
-  const wmpVolSum = typeof s.volume === 'number' && Number.isFinite(s.volume) ? s.volume : 0;
+  const tradedVol = (s.usdcIn ?? 0) + (s.usdcOut ?? 0);
   const wrRaw = typeof s.winRate === 'number' && Number.isFinite(s.winRate) ? s.winRate : 0;
   const wrFrac = wrRaw > 1 ? wrRaw / 100 : wrRaw;
   const wrPct = wrFrac * 100;
@@ -135,7 +135,7 @@ function WalletScoresLedgerSummaryGrid({ s, dense, narrowSummary }: { s: WalletS
   const row = `flex justify-between items-center gap-1.5 ${text} text-gray-300`;
   const wrPctStr = wrPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const prPctStr = prPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  const volStr = wmpVolSum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const volStr = tradedVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const wlf = (
     <>
       {fmtIntEn(wn)}
@@ -165,7 +165,7 @@ function WalletScoresLedgerSummaryGrid({ s, dense, narrowSummary }: { s: WalletS
       <LedgerSummaryField
         rowClass={row}
         label="Volume"
-        help="Σ wallet_market_positions.volume for this wallet (rolled up in wallet_scores_ledger). USDC notional from fills (|size|×price)."
+        help="Notional traded in USDC: sum of usdc_in + usdc_out across all wallet_market_positions rows for this wallet."
         value={<>${volStr}</>}
         valueClassName="text-yellow-400 font-medium"
       />
@@ -368,7 +368,7 @@ function rowHolderSummary(row: WalletPosition): WalletSummary | null {
   const cashFlow =
     typeof row.cashFlow === 'number' && Number.isFinite(row.cashFlow) ? row.cashFlow : usdcOut - usdcIn;
   const feeT = typeof row.feeTotal === 'number' && Number.isFinite(row.feeTotal) ? row.feeTotal : 0;
-  const rP = typeof row.rPnl === 'number' && Number.isFinite(row.rPnl) ? row.rPnl : 0;
+  const rP = typeof row.payout === 'number' && Number.isFinite(row.payout) ? row.payout : 0;
   const pnlLeg = (typeof row.pnl === 'number' && Number.isFinite(row.pnl) ? row.pnl : 0) + rP;
   const denom = usdcIn + feeT;
   const roiEst = denom > 1e-9 ? (usdcOut + rP - usdcIn - feeT) / denom : 0;
@@ -388,7 +388,6 @@ function rowHolderSummary(row: WalletPosition): WalletSummary | null {
     profitRate: 0,
     usdcIn,
     usdcOut,
-    volume: typeof row.volume === 'number' && Number.isFinite(row.volume) ? row.volume : 0,
     roi: Number.isFinite(roiEst) ? roiEst : 0,
     totalTrades: typeof row.tradeCount === 'number' && Number.isFinite(row.tradeCount) ? row.tradeCount : 0,
   };
@@ -709,8 +708,8 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                 typeof w.cashFlow === 'number' && Number.isFinite(w.cashFlow) ? w.cashFlow : 0;
               const pyes = typeof w.pnlYes === 'number' && Number.isFinite(w.pnlYes) ? w.pnlYes : 0;
               const pno = typeof w.pnlNo === 'number' && Number.isFinite(w.pnlNo) ? w.pnlNo : 0;
-              const rPnl =
-                typeof w.rPnl === 'number' && Number.isFinite(w.rPnl) ? w.rPnl : pyes + pno;
+              const payoutVal =
+                typeof w.payout === 'number' && Number.isFinite(w.payout) ? w.payout : pyes + pno;
               const showWinBar = effectiveWinLossTotal > 0 && effectiveWinRate != null;
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
@@ -739,7 +738,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                   <td className={`text-right px-1 font-bold ${cashFlow >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(cashFlow)}</td>
                   <td className={`text-right px-1 font-bold ${rPnlToneClass(pyes)}`}>{fmtUsdSigned(pyes)}</td>
                   <td className={`text-right px-1 font-bold ${rPnlToneClass(pno)}`}>{fmtUsdSigned(pno)}</td>
-                  <td className={`text-right px-1 font-bold ${rPnlToneClass(rPnl)}`}>{fmtUsdSigned(rPnl)}</td>
+                  <td className={`text-right px-1 font-bold ${rPnlToneClass(payoutVal)}`}>{fmtUsdSigned(payoutVal)}</td>
                   <td className="text-right px-1 text-cyan-300">
                     {sharesPct > 0
                       ? `${sharesPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
@@ -970,7 +969,7 @@ export function WalletInfoDialog({
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.pnl">PnL</th>
                     <th className="text-right whitespace-nowrap" title="Staked">Staked</th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">Fee</th>
-                    <th className="text-right whitespace-nowrap" title="wallet_market_positions.res_pnl (payout at resolution)">Payout</th>
+                    <th className="text-right whitespace-nowrap" title="wallet_market_positions.payout">Gained</th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.roi">ROI</th>
                   </tr>
                 </thead>
@@ -1000,7 +999,8 @@ export function WalletInfoDialog({
                       const rowPnl = typeof m.pnl === 'number' && Number.isFinite(m.pnl) ? m.pnl : 0;
                       const rowUsdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
                       const rowFee = typeof m.feeTotal === 'number' && Number.isFinite(m.feeTotal) ? m.feeTotal : 0;
-                      const rowRPnl = typeof m.rPnl === 'number' && Number.isFinite(m.rPnl) ? m.rPnl : 0;
+                      const rowPayout =
+                        typeof m.payout === 'number' && Number.isFinite(m.payout) ? m.payout : 0;
                       const wlfSum = (m.w ?? 0) + (m.l ?? 0) + (m.f ?? 0);
                       const payoutUnresolved = wlfSum === 0;
                       const roiFmt = fmtRoiPercent(m.roi);
@@ -1033,10 +1033,10 @@ export function WalletInfoDialog({
                         −${fmtUsd2En(rowFee)}
                       </td>
                       <td
-                        className={`text-right tabular-nums font-bold whitespace-nowrap ${payoutUnresolved ? 'text-gray-500' : rPnlToneClass(rowRPnl)}`}
-                        title={payoutUnresolved ? 'Market not scored (W/L/F all zero)' : 'wallet_market_positions.res_pnl (payout)'}
+                        className={`text-right tabular-nums font-bold whitespace-nowrap ${payoutUnresolved ? 'text-gray-500' : rPnlToneClass(rowPayout)}`}
+                        title={payoutUnresolved ? 'Market not scored (W/L/F all zero)' : 'payout'}
                       >
-                        {payoutUnresolved ? '-' : fmtUsdSignedLedger(rowRPnl)}
+                        {payoutUnresolved ? '-' : fmtUsdSignedLedger(rowPayout)}
                       </td>
                       <td
                         className={`text-right tabular-nums font-bold whitespace-nowrap ${roiFmt.tone}`}

@@ -394,6 +394,8 @@ function drawCandles(
   asset: AssetName,
   rbsTfLines: RBSTfLine[],
   selectedRbsTf: UpDownTfKey | null,
+  /** HUD: always fit full Y range to every RBS level (default chart keeps distant RBS out to avoid squashing). */
+  includeAllRbsInYRange = false,
 ) {
   ctx.fillStyle = '#0f1419';
   ctx.fillRect(0, 0, w, h);
@@ -436,7 +438,7 @@ function drawCandles(
   }
   for (const rl of rbsTfLines) {
     if (!Number.isFinite(rl.price)) continue;
-    if (rl.price >= candleLo - nearSlack && rl.price <= candleHi + nearSlack) {
+    if (includeAllRbsInYRange || (rl.price >= candleLo - nearSlack && rl.price <= candleHi + nearSlack)) {
       lo = Math.min(lo, rl.price);
       hi = Math.max(hi, rl.price);
     }
@@ -1315,14 +1317,14 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawCandles(ctx, w, h, candles, timeframe, srLines, asset, rbsTfLines, selectedRbsTf);
+      drawCandles(ctx, w, h, candles, timeframe, srLines, asset, rbsTfLines, selectedRbsTf, hudGateSupportLinesByExchange);
     };
 
     paint();
     const ro = new ResizeObserver(() => paint());
     ro.observe(container);
     return () => ro.disconnect();
-  }, [candles, timeframe, srLines, asset, rbsTfLines, selectedRbsTf, spotForChart]);
+  }, [candles, timeframe, srLines, asset, rbsTfLines, selectedRbsTf, spotForChart, hudGateSupportLinesByExchange]);
 
   const titleColor = ASSET_COLORS[asset] || 'text-white';
 

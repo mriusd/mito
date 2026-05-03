@@ -30,19 +30,14 @@ function walletNet(w: WalletPosition): number {
   return walletInvY(w) - walletInvN(w);
 }
 
-/** `usdc_out/(usdc_in + fee)` as % of cost (not return; breakeven = 100%). */
-function fmtWalletMarketRoiQuotientPct(m: WalletPosition): { text: string; tone: string } {
+/** `(usdc_out/(usdc_in + fee)) − 1` as signed ROI decimal → %. */
+function fmtWalletMarketRoiFromFlow(m: WalletPosition): { text: string; tone: string } {
   const usdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
   const usdcOut = typeof m.usdcOut === 'number' && Number.isFinite(m.usdcOut) ? m.usdcOut : 0;
   const fee = typeof m.feeTotal === 'number' && Number.isFinite(m.feeTotal) ? m.feeTotal : 0;
   const denom = usdcIn + fee;
   if (!(denom > 0)) return { text: '–', tone: 'text-gray-500' };
-  const q = usdcOut / denom;
-  const pct = q * 100;
-  const txt = pct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  const tone =
-    Math.abs(q - 1) < 1e-9 ? 'text-gray-400' : q > 1 ? 'text-green-400' : 'text-red-400';
-  return { text: `${txt}%`, tone };
+  return fmtRoiPercent(usdcOut / denom - 1);
 }
 
 function walletOutcomeLetterCell(m: WalletPosition) {
@@ -985,7 +980,7 @@ export function WalletInfoDialog({
                     <th className="text-right whitespace-nowrap" title="Staked">Staked</th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">Fee</th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.payout">Gained</th>
-                    <th className="text-right whitespace-nowrap" title="usdc_out/(usdc_in+fee) × 100% of cost">ROI</th>
+                    <th className="text-right whitespace-nowrap" title="(usdc_out/(usdc_in+fee)) − 1">ROI</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1018,7 +1013,7 @@ export function WalletInfoDialog({
                         typeof m.payout === 'number' && Number.isFinite(m.payout) ? m.payout : 0;
                       const wlfSum = (m.w ?? 0) + (m.l ?? 0) + (m.f ?? 0);
                       const payoutUnresolved = wlfSum === 0;
-                      const roiFmt = fmtWalletMarketRoiQuotientPct(m);
+                      const roiFmt = fmtWalletMarketRoiFromFlow(m);
                       return (
                     <tr
                       key={`${m.marketId}-${m.wallet}`}
@@ -1055,7 +1050,7 @@ export function WalletInfoDialog({
                       </td>
                       <td
                         className={`text-right tabular-nums font-bold whitespace-nowrap ${roiFmt.tone}`}
-                        title="usdc_out/(usdc_in+fee) × 100% of cost"
+                        title="(usdc_out/(usdc_in+fee)) − 1"
                       >
                         {roiFmt.text}
                       </td>

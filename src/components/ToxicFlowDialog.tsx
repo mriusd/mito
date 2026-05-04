@@ -1015,10 +1015,10 @@ export function WalletInfoDialog({
                     <th className="text-right whitespace-nowrap">Net</th>
                     <th className="text-right whitespace-nowrap" title="price_yes">Px Y</th>
                     <th className="text-right whitespace-nowrap" title="price_no">Px N</th>
-                    <th className="text-right whitespace-nowrap" title="wallet_market_positions.pnl">PnL</th>
                     <th className="text-right whitespace-nowrap" title="Staked">Staked</th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">Fee</th>
-                    <th className="text-right whitespace-nowrap" title="wallet_market_positions.payout">Gained</th>
+                    <th className="text-right whitespace-nowrap" title="wallet_market_positions.payout">Payout</th>
+                    <th className="text-right whitespace-nowrap" title="usdc_out − usdc_in − fee">PnL</th>
                     <th className="text-right whitespace-nowrap" title="(usdc_out/(usdc_in+fee)) − 1">ROI</th>
                   </tr>
                 </thead>
@@ -1043,9 +1043,10 @@ export function WalletInfoDialog({
                       const netLeg = walletNet(m);
                       const fmtInv = (v: number) => fmtSignedShares1En(v);
                       const fmtLegShares = (v: number) => fmtSignedShares1En(v);
-                      const rowPnl = typeof m.pnl === 'number' && Number.isFinite(m.pnl) ? m.pnl : 0;
                       const rowUsdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
+                      const rowUsdcOut = typeof m.usdcOut === 'number' && Number.isFinite(m.usdcOut) ? m.usdcOut : 0;
                       const rowFee = typeof m.feeTotal === 'number' && Number.isFinite(m.feeTotal) ? m.feeTotal : 0;
+                      const rowPnlFlow = rowUsdcOut - rowUsdcIn - rowFee;
                       const rowPayout =
                         typeof m.payout === 'number' && Number.isFinite(m.payout) ? m.payout : 0;
                       const wlfSum = (m.w ?? 0) + (m.l ?? 0) + (m.f ?? 0);
@@ -1073,7 +1074,6 @@ export function WalletInfoDialog({
                       <td className={`text-right tabular-nums whitespace-nowrap ${netLeg > 0.001 ? 'text-green-400' : netLeg < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(netLeg)}</td>
                       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceYes)}</td>
                       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceNo)}</td>
-                      <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(rowPnl)}`}>{fmtUsdSignedLedger(rowPnl)}</td>
                       <td className="text-right tabular-nums font-medium text-red-400 whitespace-nowrap" title="Staked (USDC in)">
                         −${fmtUsd2En(rowUsdcIn)}
                       </td>
@@ -1085,6 +1085,12 @@ export function WalletInfoDialog({
                         title={payoutUnresolved ? 'Market not scored (W/L/F all zero)' : 'payout'}
                       >
                         {payoutUnresolved ? '-' : fmtUsdSignedLedger(rowPayout)}
+                      </td>
+                      <td
+                        className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(rowPnlFlow)}`}
+                        title="usdc_out − usdc_in − fee"
+                      >
+                        {fmtUsdSignedLedger(rowPnlFlow)}
                       </td>
                       <td
                         className={`text-right tabular-nums font-bold whitespace-nowrap ${roiFmt.tone}`}

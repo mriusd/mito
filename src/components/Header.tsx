@@ -243,48 +243,44 @@ export function Header({ onRefresh }: HeaderProps) {
         </button>
 
         <div className="inline-flex items-center gap-1 h-[28px] shrink-0">
-          <div className="inline-flex items-center gap-0.5 h-full">
-            <div className="inline-flex overflow-hidden rounded border border-gray-600/70 h-full">
-              <button
-                type="button"
-                className={`px-2 py-0 text-[9px] font-bold leading-none transition ${
-                  liveTradesSource === 'onchain'
-                    ? 'bg-purple-700/60 text-purple-100'
-                    : 'bg-gray-900/80 text-gray-400 hover:text-gray-200'
-                }`}
-                onClick={() => setLiveTradesSource('onchain')}
-              >
-                CHAIN
-              </button>
-            </div>
-            <HelpTooltip
-              openOnHover
-              text={
-                'Polygon on-chain fills: sidebar live tape and Polygonscan tx links; market grid uses chain-backed rollups when a wallet is connected.'
-              }
-            />
-          </div>
-          <div className="inline-flex items-center gap-0.5 h-full">
-            <div className="inline-flex overflow-hidden rounded border border-gray-600/70 h-full">
-              <button
-                type="button"
-                className={`px-2 py-0 text-[9px] font-bold leading-none transition ${
-                  liveTradesSource === 'polymarket'
-                    ? 'bg-blue-700/60 text-blue-100'
-                    : 'bg-gray-900/80 text-gray-400 hover:text-gray-200'
-                }`}
-                onClick={() => setLiveTradesSource('polymarket')}
-              >
-                API
-              </button>
-            </div>
-            <HelpTooltip
-              openOnHover
-              text={
-                'Polymarket public feed: sidebar tape from market WebSocket; portfolio positions and P&L activity from Data API.'
-              }
-            />
-          </div>
+          <HelpTooltip
+            openOnHover
+            wrapClassName="inline-flex h-full overflow-hidden rounded border border-gray-600/70"
+            text={
+              'Polygon on-chain fills: sidebar live tape and Polygonscan tx links; market grid uses chain-backed rollups when a wallet is connected.'
+            }
+          >
+            <button
+              type="button"
+              className={`px-2 py-0 text-[9px] font-bold leading-none transition ${
+                liveTradesSource === 'onchain'
+                  ? 'bg-purple-700/60 text-purple-100'
+                  : 'bg-gray-900/80 text-gray-400 hover:text-gray-200'
+              }`}
+              onClick={() => setLiveTradesSource('onchain')}
+            >
+              CHAIN
+            </button>
+          </HelpTooltip>
+          <HelpTooltip
+            openOnHover
+            wrapClassName="inline-flex h-full overflow-hidden rounded border border-gray-600/70"
+            text={
+              'Polymarket public feed: sidebar tape from market WebSocket; portfolio positions and P&L activity from Data API.'
+            }
+          >
+            <button
+              type="button"
+              className={`px-2 py-0 text-[9px] font-bold leading-none transition ${
+                liveTradesSource === 'polymarket'
+                  ? 'bg-blue-700/60 text-blue-100'
+                  : 'bg-gray-900/80 text-gray-400 hover:text-gray-200'
+              }`}
+              onClick={() => setLiveTradesSource('polymarket')}
+            >
+              API
+            </button>
+          </HelpTooltip>
         </div>
 
         {/* Add Pane */}

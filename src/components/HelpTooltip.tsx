@@ -1,19 +1,23 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 interface HelpTooltipProps {
   text: string;
   /** Desktop: show on pointer hover (with leave delay). Mobile still uses tap + sheet. */
   openOnHover?: boolean;
+  /** When set, hover/tap target is this node (no default “?” control). Use with `wrapClassName` for borders/layout. */
+  children?: ReactNode;
+  /** Classes on the hover wrapper when `children` is set. */
+  wrapClassName?: string;
 }
 
-export function HelpTooltip({ text, openOnHover = false }: HelpTooltipProps) {
+export function HelpTooltip({ text, openOnHover = false, children, wrapClassName }: HelpTooltipProps) {
   const [open, setOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [sheetOffset, setSheetOffset] = useState(20);
   const [sheetDragging, setSheetDragging] = useState(false);
   const [sheetClosing, setSheetClosing] = useState(false);
-  const btnRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLDivElement | HTMLButtonElement | null>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const dragStartYRef = useRef<number | null>(null);
@@ -35,8 +39,8 @@ export function HelpTooltip({ text, openOnHover = false }: HelpTooltipProps) {
   }, [openOnHover, isMobile, clearCloseTimer]);
 
   const updatePos = useCallback(() => {
-    if (!btnRef.current) return;
-    const rect = btnRef.current.getBoundingClientRect();
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
     const popupWidth = popupRef.current?.offsetWidth || 300;
     let left = rect.left + rect.width / 2 - popupWidth / 2;
     // Clamp to viewport edges with 8px padding
@@ -78,7 +82,7 @@ export function HelpTooltip({ text, openOnHover = false }: HelpTooltipProps) {
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
       if (
-        btnRef.current && !btnRef.current.contains(target) &&
+        triggerRef.current && !triggerRef.current.contains(target) &&
         popupRef.current && !popupRef.current.contains(target)
       ) {
         setOpen(false);
@@ -136,24 +140,42 @@ export function HelpTooltip({ text, openOnHover = false }: HelpTooltipProps) {
     scheduleClose();
   };
 
-  return (
-    <>
-      <button
-        ref={btnRef}
-        onClick={() => {
-          if (openOnHover && !isMobile) return;
-          if (isMobile && open) {
-            closeMobileSheet();
-            return;
-          }
-          setOpen((v) => !v);
-        }}
+  const triggerClick = () => {
+    if (openOnHover && !isMobile) return;
+    if (isMobile && open) {
+      closeMobileSheet();
+      return;
+    }
+    setOpen((v) => !v);
+  };
+
+  const trigger =
+    children != null ? (
+      <div
+        ref={triggerRef as React.RefObject<HTMLDivElement>}
+        className={wrapClassName}
         onMouseEnter={onDesktopPointerEnter}
         onMouseLeave={onDesktopPointerLeave}
-        className="w-3 h-3 rounded-full border border-gray-500 text-gray-400 hover:text-white hover:border-gray-300 flex items-center justify-center text-[8px] font-bold leading-none transition cursor-pointer flex-shrink-0"
+        onClick={openOnHover ? undefined : triggerClick}
       >
-        ?
-      </button>
+        {children}
+      </div>
+    ) : (
+      <button
+        ref={triggerRef as React.RefObject<HTMLButtonElement>}
+      type="button"
+      onClick={triggerClick}
+      onMouseEnter={onDesktopPointerEnter}
+      onMouseLeave={onDesktopPointerLeave}
+      className="w-3 h-3 rounded-full border border-gray-500 text-gray-400 hover:text-white hover:border-gray-300 flex items-center justify-center text-[8px] font-bold leading-none transition cursor-pointer flex-shrink-0"
+    >
+      ?
+    </button>
+  );
+
+  return (
+    <>
+      {trigger}
       {(open || (isMobile && sheetClosing)) && createPortal(
         isMobile ? (
           <>

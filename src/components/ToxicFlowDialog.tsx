@@ -774,6 +774,17 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
   );
 }
 
+/** Condition id + legacy id map for wallet dialog rows (same shape as Sidebar marketById). */
+function buildMarketByIdRecord(marketLookup: Record<string, Market> | null | undefined): Record<string, any> {
+  const m: Record<string, any> = {};
+  for (const mk of Object.values(marketLookup || {})) {
+    if (mk?.id && !m[mk.id]) m[mk.id] = mk;
+    const cid = (mk.conditionId || '').trim().toLowerCase();
+    if (cid && !m[cid]) m[cid] = mk;
+  }
+  return m;
+}
+
 /** Same time basis as wallet info market list Date column: market end, then row update, then last trade. */
 function walletPositionListSortMs(m: WalletPosition, marketById: Record<string, any>): number {
   const parse = (s: string) => {
@@ -833,15 +844,7 @@ export function WalletInfoDialog({
   const [fillsRefreshToken, setFillsRefreshToken] = useState(0);
   const [dailySnapshotsRefresh, setDailySnapshotsRefresh] = useState(0);
   const fillsPageSize = 200;
-  const marketById = useMemo(() => {
-    const m: Record<string, any> = {};
-    for (const mk of Object.values(marketLookup || {})) {
-      if (mk?.id && !m[mk.id]) m[mk.id] = mk;
-      const cid = ((mk as any)?.conditionId || '').trim().toLowerCase();
-      if (cid && !m[cid]) m[cid] = mk;
-    }
-    return m;
-  }, [marketLookup]);
+  const marketById = useMemo(() => buildMarketByIdRecord(marketLookup), [marketLookup]);
 
   const loadMarketsAndSelect = useCallback(
     async (preserveSelected: string | null, resetFillsPage: boolean) => {
@@ -853,7 +856,8 @@ export function WalletInfoDialog({
         fetchWalletPositions({ wallet, limit: 100, ledger: true }),
       ]);
       setSummary(s);
-      const sorted = sortWalletPositionsByDisplayedDateDesc(p.positions || [], marketById);
+      const byId = buildMarketByIdRecord(useAppStore.getState().marketLookup);
+      const sorted = sortWalletPositionsByDisplayedDateDesc(p.positions || [], byId);
       setMarkets(sorted);
       let pick = '';
       if (preserveSelected && sorted.some((row) => row.marketId === preserveSelected)) {
@@ -868,7 +872,7 @@ export function WalletInfoDialog({
       if (resetFillsPage) setFillsPage(0);
       return pick;
     },
-    [wallet, initialMarketId, marketById],
+    [wallet, initialMarketId],
   );
 
   useEffect(() => {

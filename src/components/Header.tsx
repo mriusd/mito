@@ -3,8 +3,10 @@ import { useAccount } from 'wagmi';
 import { RefreshCw, Clock, Settings, Plus, Github, Send } from 'lucide-react';
 import logoSvg from '../assets/logo.svg';
 import { HelpTooltip } from './HelpTooltip';
+import { WalletInfoDialog } from './ToxicFlowDialog';
 import { WalletButton } from './WalletButton';
 import { useAppStore } from '../stores/appStore';
+import { useTradingWalletAddress } from '../hooks/useTradingWalletAddress';
 import { saveSetting } from '../api';
 import { gridSizeFromDefaultLayoutMins } from '../lib/defaultLayouts';
 import type { PanelType } from '../types';
@@ -59,6 +61,10 @@ export function Header({ onRefresh }: HeaderProps) {
   const addPanel = useAppStore((s) => s.addPanel);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const setLiveTradesSource = useAppStore((s) => s.setLiveTradesSource);
+  const selectedMarket = useAppStore((s) => s.selectedMarket);
+  const walletSummaryDialogOpen = useAppStore((s) => s.walletSummaryDialogOpen);
+  const setWalletSummaryDialogOpen = useAppStore((s) => s.setWalletSummaryDialogOpen);
+  const tradingWallet = useTradingWalletAddress();
 
   const [refreshing, setRefreshing] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -443,10 +449,35 @@ export function Header({ onRefresh }: HeaderProps) {
           </a>
         )}
 
+        <button
+          type="button"
+          disabled={!selectedMarket?.conditionId?.trim() || !tradingWallet}
+          onClick={() => setWalletSummaryDialogOpen(true)}
+          className="shrink-0 rounded border border-cyan-600/50 bg-cyan-950/35 px-2 h-[28px] text-[10px] font-semibold text-cyan-200 hover:bg-cyan-900/40 disabled:opacity-40 disabled:pointer-events-none whitespace-nowrap"
+          title={
+            !walletConnected
+              ? 'Connect wallet'
+              : !tradingWallet
+                ? 'Wallet address not ready'
+                : !selectedMarket?.conditionId?.trim()
+                  ? 'Select a market in the sidebar'
+                  : 'Wallet summary and trades for this market'
+          }
+        >
+          Wallet Summary
+        </button>
+
         {walletConnected && <SigningModeSwitch />}
 
         <WalletButton />
       </div>
+
+      <WalletInfoDialog
+        open={walletSummaryDialogOpen}
+        wallet={tradingWallet}
+        initialMarketId={selectedMarket?.conditionId?.trim() || ''}
+        onClose={() => setWalletSummaryDialogOpen(false)}
+      />
     </header>
   );
 }

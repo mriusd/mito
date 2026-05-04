@@ -85,6 +85,7 @@ interface AppState {
   arbDialogArb: ArbOpportunity | null;
   editProgArb: ProgArb | null;
   pnlDrilldown: { open: boolean; asset: string; endDates: string[] };
+  walletSummaryDialogOpen: boolean;
 
   // Layout panels
   panels: PanelConfig[];
@@ -123,6 +124,7 @@ interface AppState {
   setEditProgArb: (v: ProgArb | null) => void;
   openPnlDrilldown: (asset: string, endDates: string[]) => void;
   closePnlDrilldown: () => void;
+  setWalletSummaryDialogOpen: (v: boolean) => void;
   setPanels: (panels: PanelConfig[]) => void;
   setLayouts: (layouts: ReactGridLayout.Layouts) => void;
   addPanel: (panel: PanelConfig) => void;
@@ -377,6 +379,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   arbDialogArb: null,
   editProgArb: null,
   pnlDrilldown: { open: false, asset: '', endDates: [] },
+  walletSummaryDialogOpen: false,
 
   panels: loadPanels(),
   layouts: loadLayouts(),
@@ -481,6 +484,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setEditProgArb: (v) => set({ editProgArb: v }),
   openPnlDrilldown: (asset, endDates) => set({ pnlDrilldown: { open: true, asset, endDates } }),
   closePnlDrilldown: () => set({ pnlDrilldown: { open: false, asset: '', endDates: [] } }),
+  setWalletSummaryDialogOpen: (v) => set({ walletSummaryDialogOpen: v }),
   setPanels: (panels) => {
     localStorage.setItem('polybot-react-panels', JSON.stringify(panels));
     set({ panels });

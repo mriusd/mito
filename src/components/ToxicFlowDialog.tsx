@@ -774,6 +774,41 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
   );
 }
 
+/** Same time basis as wallet info market list Date column: market end, then row update, then last trade. */
+function walletPositionListSortMs(m: WalletPosition, marketById: Record<string, any>): number {
+  const parse = (s: string) => {
+    const t = Date.parse(s);
+    return Number.isNaN(t) ? 0 : t;
+  };
+  const raw = (m.endDate || '').trim();
+  if (raw) {
+    const t = parse(raw);
+    if (t) return t;
+  }
+  const mk = marketById[m.marketId] || marketById[String(m.marketId || '').trim().toLowerCase()];
+  const mkEnd = mk?.endDate != null ? String(mk.endDate).trim() : '';
+  if (mkEnd) {
+    const t = parse(mkEnd);
+    if (t) return t;
+  }
+  const lu = (m.lastUpdated || '').trim();
+  if (lu) {
+    const t = parse(lu);
+    if (t) return t;
+  }
+  const lt = m.lastTradeTime;
+  if (typeof lt === 'number' && Number.isFinite(lt) && lt > 0) {
+    return lt < 1e12 ? lt * 1000 : lt;
+  }
+  return 0;
+}
+
+function sortWalletPositionsByDisplayedDateDesc(rows: WalletPosition[], marketById: Record<string, any>): WalletPosition[] {
+  return [...rows].sort(
+    (a, b) => walletPositionListSortMs(b, marketById) - walletPositionListSortMs(a, marketById),
+  );
+}
+
 export function WalletInfoDialog({
   open,
   wallet,
@@ -818,7 +853,7 @@ export function WalletInfoDialog({
         fetchWalletPositions({ wallet, limit: 100, ledger: true }),
       ]);
       setSummary(s);
-      const sorted = [...(p.positions || [])].sort((a, b) => (b.tradeCount || 0) - (a.tradeCount || 0));
+      const sorted = sortWalletPositionsByDisplayedDateDesc(p.positions || [], marketById);
       setMarkets(sorted);
       let pick = '';
       if (preserveSelected && sorted.some((row) => row.marketId === preserveSelected)) {
@@ -833,7 +868,7 @@ export function WalletInfoDialog({
       if (resetFillsPage) setFillsPage(0);
       return pick;
     },
-    [wallet, initialMarketId],
+    [wallet, initialMarketId, marketById],
   );
 
   useEffect(() => {

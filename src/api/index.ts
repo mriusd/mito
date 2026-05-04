@@ -428,6 +428,8 @@ export interface WalletPosition {
   flat?: number;
   /** Proven smart wallet (≥60% WR, ≥10 markets, PNL>0). */
   isSmart?: boolean;
+  /** `wallet_market_positions.last_updated` (RFC3339) when present. */
+  lastUpdated?: string;
 }
 
 export interface ToxicFlowData {

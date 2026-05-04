@@ -97,6 +97,18 @@ function fmtSignedShares1En(v: number): string {
   return sign + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
+/** Absolute share size for “12.4 Y” style Net column. */
+function fmtSharesMag1En(v: number): string {
+  if (!Number.isFinite(v)) return '–';
+  return Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+/** Share count without leading +/− (unsigned magnitude). */
+function fmtSharesDecimal1En(v: number): string {
+  if (!Number.isFinite(v)) return '–';
+  return Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
 function LedgerSummaryField({
   label,
   help,
@@ -122,7 +134,18 @@ function LedgerSummaryField({
 }
 
 /** `wallet_scores_ledger` fields from /api/wallet-summary. */
-function WalletScoresLedgerSummaryGrid({ s, dense, narrowSummary }: { s: WalletSummary; dense?: boolean; narrowSummary?: boolean }) {
+function WalletScoresLedgerSummaryGrid({
+  s,
+  dense,
+  narrowSummary,
+  hideNetCash,
+}: {
+  s: WalletSummary;
+  dense?: boolean;
+  narrowSummary?: boolean;
+  /** e.g. wallet info dialog — omit ledger cash_flow aggregate row. */
+  hideNetCash?: boolean;
+}) {
   const tm = s.totalMarkets ?? 0;
   const rm = s.resolvedMarkets ?? 0;
   const tt = s.totalTrades ?? 0;
@@ -130,7 +153,6 @@ function WalletScoresLedgerSummaryGrid({ s, dense, narrowSummary }: { s: WalletS
   const ls = s.losses ?? 0;
   const fl = s.flat ?? 0;
   const pnl = s.pnl ?? 0;
-  const cf = s.cashFlow ?? 0;
   const pm = s.pm ?? 0;
   const lm = s.lm ?? 0;
   const tradedVol = (s.usdcIn ?? 0) + (s.usdcOut ?? 0);
@@ -211,13 +233,15 @@ function WalletScoresLedgerSummaryGrid({ s, dense, narrowSummary }: { s: WalletS
         value={fmtUsdSignedLedger(pnl)}
         valueClassName={`font-bold ${rPnlToneClass(pnl)}`}
       />
-      <LedgerSummaryField
-        rowClass={row}
-        label="Net Cash"
-        help="Sum of cash_flow (USD leg net) across wallet_market_positions for this wallet."
-        value={fmtUsdSignedLedger(cf)}
-        valueClassName={`font-bold ${rPnlToneClass(cf)}`}
-      />
+      {!hideNetCash ? (
+        <LedgerSummaryField
+          rowClass={row}
+          label="Net Cash"
+          help="Sum of cash_flow (USD leg net) across wallet_market_positions for this wallet."
+          value={fmtUsdSignedLedger(s.cashFlow ?? 0)}
+          valueClassName={`font-bold ${rPnlToneClass(s.cashFlow ?? 0)}`}
+        />
+      ) : null}
       <LedgerSummaryField
         rowClass={row}
         label={'Profit\\Loss Count'}
@@ -981,7 +1005,7 @@ export function WalletInfoDialog({
             {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
             <div className="mt-1 flex flex-col lg:flex-row gap-3 items-stretch min-w-0">
               <div className="shrink-0 w-full lg:w-[min(11rem,calc(100%/6))] lg:max-w-[11rem] flex flex-col">
-                {summary && <WalletScoresLedgerSummaryGrid s={summary} narrowSummary />}
+                {summary && <WalletScoresLedgerSummaryGrid s={summary} narrowSummary hideNetCash />}
               </div>
               {wallet.trim() ? (
                 <div className="min-w-0 flex-1 min-h-0 lg:border-l lg:border-gray-800 lg:pl-3 flex flex-col">
@@ -1041,8 +1065,21 @@ export function WalletInfoDialog({
                       const iy = walletInvY(m);
                       const inn = walletInvN(m);
                       const netLeg = walletNet(m);
-                      const fmtInv = (v: number) => fmtSignedShares1En(v);
-                      const fmtLegShares = (v: number) => fmtSignedShares1En(v);
+                      const netMagStr = fmtSharesMag1En(netLeg);
+                      const netCol =
+                        Math.abs(netLeg) < 0.001 ? (
+                          <span className="text-gray-400">–</span>
+                        ) : netLeg > 0 ? (
+                          <span className="tabular-nums whitespace-nowrap">
+                            <span className="text-gray-200">{netMagStr}</span>{' '}
+                            <span className="text-green-400 font-bold">Y</span>
+                          </span>
+                        ) : (
+                          <span className="tabular-nums whitespace-nowrap">
+                            <span className="text-gray-200">{netMagStr}</span>{' '}
+                            <span className="text-red-400 font-bold">N</span>
+                          </span>
+                        );
                       const rowUsdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
                       const rowUsdcOut = typeof m.usdcOut === 'number' && Number.isFinite(m.usdcOut) ? m.usdcOut : 0;
                       const rowFee = typeof m.feeTotal === 'number' && Number.isFinite(m.feeTotal) ? m.feeTotal : 0;
@@ -1069,9 +1106,15 @@ export function WalletInfoDialog({
                       >
                         {marketName}
                       </td>
-                      <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15 whitespace-nowrap">{fmtLegShares(iy)}</td>
-                      <td className="text-right tabular-nums font-bold text-red-400 bg-red-900/15 whitespace-nowrap">{fmtLegShares(inn)}</td>
-                      <td className={`text-right tabular-nums whitespace-nowrap ${netLeg > 0.001 ? 'text-green-400' : netLeg < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>{fmtInv(netLeg)}</td>
+                      <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15 whitespace-nowrap">
+                        {fmtSharesDecimal1En(iy)}
+                      </td>
+                      <td className="text-right tabular-nums font-bold text-red-400 bg-red-900/15 whitespace-nowrap">
+                        {fmtSharesDecimal1En(inn)}
+                      </td>
+                      <td className="text-right whitespace-nowrap" title="Dominant leg: Inv Y − Inv N (unsigned size + side)">
+                        {netCol}
+                      </td>
                       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceYes)}</td>
                       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceNo)}</td>
                       <td className="text-right tabular-nums font-medium text-red-400 whitespace-nowrap" title="Staked (USDC in)">

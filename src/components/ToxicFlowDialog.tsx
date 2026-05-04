@@ -1070,14 +1070,12 @@ export function WalletInfoDialog({
                         Math.abs(netLeg) < 0.001 ? (
                           <span className="text-gray-400">–</span>
                         ) : netLeg > 0 ? (
-                          <span className="tabular-nums whitespace-nowrap">
-                            <span className="text-gray-200">{netMagStr}</span>{' '}
-                            <span className="text-green-400 font-bold">Y</span>
+                          <span className="tabular-nums whitespace-nowrap font-bold text-green-400">
+                            {netMagStr} Y
                           </span>
                         ) : (
-                          <span className="tabular-nums whitespace-nowrap">
-                            <span className="text-gray-200">{netMagStr}</span>{' '}
-                            <span className="text-red-400 font-bold">N</span>
+                          <span className="tabular-nums whitespace-nowrap font-bold text-red-400">
+                            {netMagStr} N
                           </span>
                         );
                       const rowUsdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;

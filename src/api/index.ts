@@ -400,7 +400,7 @@ export interface WalletPosition {
   outcome?: number | null;
   /** `wallet_market_positions.payout` (REDEEM gross). */
   payout?: number;
-  /** `wallet_market_positions.roi` (ratio; ×100 for %). */
+  /** Deprecated: no longer sent from `/api/wallet-positions`. Derived client-side when needed. */
   roi?: number;
   tradeCount: number;
   firstTradeTime: number;

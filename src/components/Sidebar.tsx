@@ -202,7 +202,6 @@ export function Sidebar() {
   }, [sidebarOpen, selectedMarket, orderOutcome]);
   const { bids, asks, trades: polymarketLiveTrades, loading: obLoading } = usePolymarketOB(obTokenId);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
-  const setLiveTradesSource = useAppStore((s) => s.setLiveTradesSource);
   /** On-chain WS + REST prefetch: must not depend on sidebarOpen or tables stay empty after refresh until sidebar opens. */
   const onchainHookTokenId = useMemo(() => {
     if (liveTradesSource !== 'onchain' || !selectedMarket?.clobTokenIds?.length) return null;
@@ -1954,32 +1953,6 @@ export function Sidebar() {
                 {liveTradesExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               </button>
               <span>Live Trades</span>
-              <div className="ml-1 inline-flex overflow-hidden rounded border border-gray-600/70">
-                <button
-                  type="button"
-                  className={`px-1.5 py-0.5 text-[9px] font-bold leading-none transition ${
-                    liveTradesSource === 'onchain'
-                      ? 'bg-purple-700/60 text-purple-100'
-                      : 'bg-gray-900/80 text-gray-400 hover:text-gray-200'
-                  }`}
-                  onClick={() => setLiveTradesSource('onchain')}
-                  title="Show on-chain live trades"
-                >
-                  ONCHAIN
-                </button>
-                <button
-                  type="button"
-                  className={`px-1.5 py-0.5 text-[9px] font-bold leading-none transition ${
-                    liveTradesSource === 'polymarket'
-                      ? 'bg-blue-700/60 text-blue-100'
-                      : 'bg-gray-900/80 text-gray-400 hover:text-gray-200'
-                  }`}
-                  onClick={() => setLiveTradesSource('polymarket')}
-                  title="Show Polymarket live trades"
-                >
-                  POLYMARKET
-                </button>
-              </div>
             </div>
             {liveTradesExpanded && (
               <>

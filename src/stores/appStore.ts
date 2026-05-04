@@ -72,7 +72,7 @@ interface AppState {
   sidebarOpen: boolean;
   selectedMarket: Market | null;
   sidebarOutcome: 'YES' | 'NO';
-  /** Synced with sidebar live-trades ONCHAIN / POLYMARKET toggle (localStorage). */
+  /** CHAIN vs API live-trades + grid source (header toggle; localStorage). */
   liveTradesSource: 'onchain' | 'polymarket';
   setLiveTradesSource: (v: 'onchain' | 'polymarket') => void;
   /** Wallet positions from on-chain WS when source is onchain; used for grid dots / badges. Cleared when switching to Polymarket. */

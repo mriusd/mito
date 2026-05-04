@@ -57,6 +57,8 @@ export function Header({ onRefresh }: HeaderProps) {
   const setPanels = useAppStore((s) => s.setPanels);
   const setLayouts = useAppStore((s) => s.setLayouts);
   const addPanel = useAppStore((s) => s.addPanel);
+  const liveTradesSource = useAppStore((s) => s.liveTradesSource);
+  const setLiveTradesSource = useAppStore((s) => s.setLiveTradesSource);
 
   const [refreshing, setRefreshing] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -233,6 +235,31 @@ export function Header({ onRefresh }: HeaderProps) {
           <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
           Refresh
         </button>
+
+        <div className="inline-flex overflow-hidden rounded border border-gray-600/70 h-[28px] shrink-0" title="Live trades & grid position source">
+          <button
+            type="button"
+            className={`px-2 py-0 text-[9px] font-bold leading-none transition ${
+              liveTradesSource === 'onchain'
+                ? 'bg-purple-700/60 text-purple-100'
+                : 'bg-gray-900/80 text-gray-400 hover:text-gray-200'
+            }`}
+            onClick={() => setLiveTradesSource('onchain')}
+          >
+            CHAIN
+          </button>
+          <button
+            type="button"
+            className={`px-2 py-0 text-[9px] font-bold leading-none transition ${
+              liveTradesSource === 'polymarket'
+                ? 'bg-blue-700/60 text-blue-100'
+                : 'bg-gray-900/80 text-gray-400 hover:text-gray-200'
+            }`}
+            onClick={() => setLiveTradesSource('polymarket')}
+          >
+            API
+          </button>
+        </div>
 
         {/* Add Pane */}
         <div className="relative" ref={addMenuRef}>

@@ -1050,7 +1050,10 @@ export function WalletInfoDialog({
                         typeof m.payout === 'number' && Number.isFinite(m.payout) ? m.payout : 0;
                       const wlfSum = (m.w ?? 0) + (m.l ?? 0) + (m.f ?? 0);
                       const payoutUnresolved = wlfSum === 0;
-                      const roiFmt = fmtWalletMarketRoiFromFlow(m);
+                      const hasChainOutcome = m.outcome === 0 || m.outcome === 1;
+                      const roiFmt = hasChainOutcome
+                        ? fmtWalletMarketRoiFromFlow(m)
+                        : { text: '–', tone: 'text-gray-500' };
                       return (
                     <tr
                       key={`${m.marketId}-${m.wallet}`}
@@ -1085,7 +1088,11 @@ export function WalletInfoDialog({
                       </td>
                       <td
                         className={`text-right tabular-nums font-bold whitespace-nowrap ${roiFmt.tone}`}
-                        title="(usdc_out/(usdc_in+fee)) − 1"
+                        title={
+                          hasChainOutcome
+                            ? '(usdc_out/(usdc_in+fee)) − 1'
+                            : 'ROI after market outcome is known'
+                        }
                       >
                         {roiFmt.text}
                       </td>

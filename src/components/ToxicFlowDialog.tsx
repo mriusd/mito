@@ -946,6 +946,31 @@ export function WalletInfoDialog({
     })();
   }, [open, wallet, selectedMarketId, fillsPage, fillsRefreshToken]);
 
+  const summaryLeftRef = useRef<HTMLDivElement>(null);
+  const [summaryLeftH, setSummaryLeftH] = useState(0);
+  const [lgChartsSync, setLgChartsSync] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches,
+  );
+
+  useLayoutEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const sync = () => setLgChartsSync(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const el = summaryLeftRef.current;
+    if (!el) return;
+    const measure = () => setSummaryLeftH(Math.round(el.getBoundingClientRect().height));
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    measure();
+    return () => ro.disconnect();
+  }, [open, summary, wallet, lgChartsSync, dailySnapshotsRefresh]);
+
   if (!open) return null;
   const polymarketProfileUrl = `https://polymarket.com/profile/${wallet.trim().toLowerCase()}`;
   return (
@@ -985,7 +1010,7 @@ export function WalletInfoDialog({
 
         <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-hidden">
         <div className="text-[10px] shrink-0 flex flex-col">
-          <div className="bg-gray-900 rounded p-2 flex flex-col max-h-[min(40vh,22rem)] overflow-y-auto">
+          <div className="bg-gray-900 rounded p-2 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
               <div className="text-gray-500 font-semibold">Summary</div>
               <button
@@ -1001,14 +1026,24 @@ export function WalletInfoDialog({
                 <RefreshCw size={12} className={loadingMarkets || loadingFills ? 'animate-spin' : ''} />
               </button>
             </div>
-            {summary === undefined && <div className="text-gray-500">Loading...</div>}
-            {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
-            <div className="mt-1 flex flex-col lg:flex-row gap-3 items-stretch min-w-0">
-              <div className="shrink-0 w-full lg:w-[min(11rem,calc(100%/6))] lg:max-w-[11rem] flex flex-col">
+            <div className="mt-1 flex flex-col lg:flex-row gap-3 items-stretch min-w-0 min-h-0">
+              <div
+                ref={summaryLeftRef}
+                className="shrink-0 w-full lg:w-[min(11rem,calc(100%/6))] lg:max-w-[11rem] flex flex-col"
+              >
+                {summary === undefined && <div className="text-gray-500">Loading...</div>}
+                {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
                 {summary && <WalletScoresLedgerSummaryGrid s={summary} narrowSummary hideNetCash />}
               </div>
               {wallet.trim() ? (
-                <div className="min-w-0 flex-1 min-h-0 lg:border-l lg:border-gray-800 lg:pl-3 flex flex-col">
+                <div
+                  className="min-w-0 flex-1 flex flex-col min-h-0 overflow-hidden lg:border-l lg:border-gray-800 lg:pl-3"
+                  style={
+                    lgChartsSync && summaryLeftH > 0
+                      ? { height: summaryLeftH, maxHeight: summaryLeftH }
+                      : undefined
+                  }
+                >
                   <WalletScoresDailyCharts wallet={wallet.trim()} refreshToken={dailySnapshotsRefresh} chartsLayout="row" compactSummary />
                 </div>
               ) : null}

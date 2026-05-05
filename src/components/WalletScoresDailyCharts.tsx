@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { fetchWalletScoresDaily, type WalletScoresDailyPoint, type WalletScoresDailyWindow } from '../api';
 
 function padRange(min: number, max: number): [number, number] {
@@ -37,11 +37,35 @@ const PAD_R_LAST = 50;
 const PAD_T = 4;
 const PAD_B = 14;
 
+type ChartLayoutGeom = {
+  n: number;
+  padL: number;
+  innerW: number;
+  padT: number;
+  innerH: number;
+};
+
+function hitTestIndex(mx: number, my: number, g: ChartLayoutGeom | null): number | null {
+  if (!g || g.n === 0) return null;
+  if (mx < g.padL || mx > g.padL + g.innerW || my < g.padT || my > g.padT + g.innerH) return null;
+  if (g.n <= 1) return 0;
+  const idx = Math.max(0, Math.min(g.n - 1, Math.round(((mx - g.padL) / g.innerW) * (g.n - 1))));
+  return idx;
+}
+
+function formatTipDate(iso: string): string {
+  const d = iso.trim();
+  if (d.length >= 10) return d.slice(0, 10);
+  return d || '—';
+}
+
 /** Win %, profit %, ROI % on one Y scale (percentage points). */
 function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: number[]; profit: number[]; roi: number[] }) {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const layoutRef = useRef<ChartLayoutGeom | null>(null);
   const [size, setSize] = useState({ w: 280, h: 120 });
+  const [tip, setTip] = useState<{ idx: number; cx: number; cy: number } | null>(null);
 
   useLayoutEffect(() => {
     const el = wrap.current;
@@ -150,17 +174,7 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
       const vals = s.values;
       ctx.strokeStyle = s.stroke;
       ctx.lineWidth = 1.5;
-      if (n === 1) {
-        const x = xAt(0);
-        const y = yAt(vals[0]);
-        ctx.fillStyle = s.stroke;
-        ctx.beginPath();
-        ctx.arc(x, y, 3.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#1f2937';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      } else {
+      if (n > 1) {
         ctx.beginPath();
         for (let i = 0; i < n; i++) {
           const x = xAt(i);
@@ -168,6 +182,23 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         }
+        ctx.stroke();
+      }
+    }
+
+    const hi = tip?.idx ?? -1;
+    for (const s of series) {
+      const vals = s.values;
+      for (let i = 0; i < n; i++) {
+        const x = xAt(i);
+        const y = yAt(vals[i]);
+        const r = hi === i ? 4 : 2.75;
+        ctx.fillStyle = s.stroke;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#111827';
+        ctx.lineWidth = hi === i ? 1.25 : 0.9;
         ctx.stroke();
       }
     }
@@ -208,7 +239,18 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
         d.length >= 10 ? d.slice(5, 10) : d.length >= 8 ? d.slice(0, 10) : d.length > 0 ? d : '—';
       ctx.fillText(short, xAt(i), H - 3);
     }
-  }, [size, dates, win, profit, roi]);
+
+    layoutRef.current = { n, padL, innerW, padT, innerH };
+  }, [size, dates, win, profit, roi, tip]);
+
+  const onCanvasMove = (e: ReactMouseEvent<HTMLCanvasElement>) => {
+    const g = layoutRef.current;
+    const mx = e.nativeEvent.offsetX;
+    const my = e.nativeEvent.offsetY;
+    const idx = hitTestIndex(mx, my, g);
+    if (idx === null) setTip(null);
+    else setTip({ idx, cx: mx, cy: my });
+  };
 
   return (
     <div className="w-full min-w-0 flex flex-col flex-1 min-h-0">
@@ -221,8 +263,30 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
         <span className="text-pink-400">●</span>
         <span className="text-gray-500">ROI</span>
       </div>
-      <div ref={wrap} className="flex-1 min-h-0 w-full min-h-[64px]">
-        <canvas ref={canvas} className="block w-full h-full" />
+      <div ref={wrap} className="relative flex-1 min-h-0 w-full min-h-[64px]">
+        <canvas
+          ref={canvas}
+          className="block w-full h-full"
+          onMouseMove={onCanvasMove}
+          onMouseLeave={() => setTip(null)}
+        />
+        {tip && tip.idx >= 0 && tip.idx < win.length ? (
+          <div
+            className="pointer-events-none absolute z-20 min-w-[7.5rem] max-w-[14rem] rounded border border-gray-600 bg-gray-900/95 px-2 py-1 text-[9px] leading-snug text-gray-200 shadow-md"
+            style={{ left: tip.cx, top: tip.cy, transform: 'translate(-50%, calc(-100% - 8px))' }}
+          >
+            <div className="font-mono text-gray-400">{formatTipDate(dates[tip.idx] || '')}</div>
+            <div>
+              <span className="text-emerald-400">Win</span> {formatYAxis('pct0', win[tip.idx])}
+            </div>
+            <div>
+              <span className="text-sky-400">Profit</span> {formatYAxis('pct0', profit[tip.idx])}
+            </div>
+            <div>
+              <span className="text-pink-400">ROI</span> {formatYAxis('pct1', roi[tip.idx])}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -243,7 +307,9 @@ function MiniLineCanvas({
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const layoutRef = useRef<ChartLayoutGeom | null>(null);
   const [size, setSize] = useState({ w: 280, h: 120 });
+  const [tip, setTip] = useState<{ idx: number; cx: number; cy: number } | null>(null);
 
   useLayoutEffect(() => {
     const el = wrap.current;
@@ -337,17 +403,7 @@ function MiniLineCanvas({
 
     ctx.strokeStyle = stroke;
     ctx.lineWidth = 1.5;
-    if (n === 1) {
-      const x = xAt(0);
-      const y = yAt(values[0]);
-      ctx.fillStyle = stroke;
-      ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#1f2937';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    } else {
+    if (n > 1) {
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
         const x = xAt(i);
@@ -355,6 +411,20 @@ function MiniLineCanvas({
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
+      ctx.stroke();
+    }
+
+    const hi = tip?.idx ?? -1;
+    for (let i = 0; i < n; i++) {
+      const x = xAt(i);
+      const y = yAt(values[i]);
+      const r = hi === i ? 4.5 : 3;
+      ctx.fillStyle = stroke;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#111827';
+      ctx.lineWidth = hi === i ? 1.25 : 0.9;
       ctx.stroke();
     }
 
@@ -378,13 +448,40 @@ function MiniLineCanvas({
         d.length >= 10 ? d.slice(5, 10) : d.length >= 8 ? d.slice(0, 10) : d.length > 0 ? d : '—';
       ctx.fillText(short, xAt(i), H - 3);
     }
-  }, [size, dates, values, stroke, yFmt]);
+
+    layoutRef.current = { n, padL, innerW, padT, innerH };
+  }, [size, dates, values, stroke, yFmt, tip]);
+
+  const onCanvasMove = (e: ReactMouseEvent<HTMLCanvasElement>) => {
+    const g = layoutRef.current;
+    const mx = e.nativeEvent.offsetX;
+    const my = e.nativeEvent.offsetY;
+    const idx = hitTestIndex(mx, my, g);
+    if (idx === null) setTip(null);
+    else setTip({ idx, cx: mx, cy: my });
+  };
 
   return (
     <div className="w-full min-w-0 flex flex-col flex-1 min-h-0">
       <div className="text-[9px] text-gray-400 mb-0.5 shrink-0">{title}</div>
-      <div ref={wrap} className="flex-1 min-h-0 w-full min-h-[64px]">
-        <canvas ref={canvas} className="block w-full h-full" />
+      <div ref={wrap} className="relative flex-1 min-h-0 w-full min-h-[64px]">
+        <canvas
+          ref={canvas}
+          className="block w-full h-full"
+          onMouseMove={onCanvasMove}
+          onMouseLeave={() => setTip(null)}
+        />
+        {tip && tip.idx >= 0 && tip.idx < values.length ? (
+          <div
+            className="pointer-events-none absolute z-20 min-w-[6rem] max-w-[12rem] rounded border border-gray-600 bg-gray-900/95 px-2 py-1 text-[9px] leading-snug text-gray-200 shadow-md"
+            style={{ left: tip.cx, top: tip.cy, transform: 'translate(-50%, calc(-100% - 8px))' }}
+          >
+            <div className="font-mono text-gray-400">{formatTipDate(dates[tip.idx] || '')}</div>
+            <div>
+              <span style={{ color: stroke }}>PnL</span> {formatYAxis(yFmt, values[tip.idx])}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

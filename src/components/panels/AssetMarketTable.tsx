@@ -377,10 +377,10 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
       ? getHitMarketProbability(ps, livePrice, endDate, adjVol, bsTimeOffsetHours)
       : getMarketProbability(ps, livePrice, endDate, adjVol, bsTimeOffsetHours);
     if (mathProb == null || !Number.isFinite(mathProb)) return {};
-    const spreadPp = Math.abs(mathProb - yesMidProb) * 100;
+    const spreadPp = Math.abs(yesMidProb - mathProb) * 100;
     const alpha = Math.min(0.4, spreadPp * 0.035);
     if (alpha < 0.02) return {};
-    const green = mathProb > yesMidProb;
+    const green = yesMidProb > mathProb;
     return {
       backgroundColor: green
         ? `rgba(34, 197, 94, ${alpha.toFixed(3)})`

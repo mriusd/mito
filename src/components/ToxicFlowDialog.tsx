@@ -1153,8 +1153,11 @@ export function WalletInfoDialog({
                       <td className="text-right tabular-nums font-medium text-red-400 whitespace-nowrap" title="Staked (USDC in)">
                         −${fmtUsd2En(rowUsdcIn)}
                       </td>
-                      <td className="text-right tabular-nums font-medium text-red-400 whitespace-nowrap" title="fee_total">
-                        −${fmtUsd2En(rowFee)}
+                      <td
+                        className={`text-right tabular-nums font-medium whitespace-nowrap ${rowFee === 0 ? 'text-gray-400' : 'text-red-400'}`}
+                        title="fee_total"
+                      >
+                        {rowFee === 0 ? `$${fmtUsd2En(0)}` : `−$${fmtUsd2En(rowFee)}`}
                       </td>
                       <td
                         className={`text-right tabular-nums font-bold whitespace-nowrap ${payoutUnresolved ? 'text-gray-500' : rPnlToneClass(rowPayout)}`}

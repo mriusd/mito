@@ -378,7 +378,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
       : getMarketProbability(ps, livePrice, endDate, adjVol, bsTimeOffsetHours);
     if (mathProb == null || mathProb <= 1e-9) return {};
     const delta = ((yesProb - mathProb) / mathProb) * 100;
-    const alpha = Math.min(0.55, Math.abs(delta) * 0.035);
+    const alpha = Math.min(0.4, Math.abs(delta) * 0.035);
     if (alpha < 0.02) return {};
     return {
       backgroundColor: delta > 0

@@ -450,7 +450,9 @@ export function Sidebar() {
     if (liveTradesSource !== 'onchain') {
       return trades.filter((t) => tradeMatchesSelectedMarket(t, selectedMarket, marketLookup));
     }
-    const rows = onchainSidebarTrades;
+    const rows = onchainSidebarTrades.filter((f) =>
+      outcomeTokenBelongsToSelectedMarket(String(f.tokenId || '').trim(), selectedMarket, marketLookup),
+    );
     return rows
       .sort((a, b) => b.blockTime - a.blockTime)
       .map((f) => ({

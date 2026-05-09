@@ -47,33 +47,6 @@ function normalizeClobTokenKey(id: string | null | undefined): string {
   }
 }
 
-/** USDC leg in OrderFilled (matches Go normalizeWalletMarketTradeRow). */
-function isUsdcAssetId(id: string | null | undefined): boolean {
-  const s = String(id ?? '').trim();
-  return s === '' || s === '0';
-}
-
-/** Side for this wallet on this fill (not the public tape side). */
-function walletRelativeFillSide(
-  walletLower: string,
-  maker: string | undefined,
-  taker: string | undefined,
-  makerAssetId: string | undefined,
-  takerAssetId: string | undefined,
-): 'BUY' | 'SELL' | null {
-  const w = walletLower.trim().toLowerCase();
-  const mk = (maker || '').trim().toLowerCase();
-  const tk = (taker || '').trim().toLowerCase();
-  const makerUSDC = isUsdcAssetId(makerAssetId);
-  const takerUSDC = isUsdcAssetId(takerAssetId);
-  if (makerUSDC === takerUSDC) return null;
-  const isMaker = mk === w && mk !== '';
-  const isTaker = tk === w && tk !== '';
-  if (isMaker) return makerUSDC ? 'BUY' : 'SELL';
-  if (isTaker) return takerUSDC ? 'BUY' : 'SELL';
-  return null;
-}
-
 function sameDecimalTokenId(a: string | null | undefined, b: string | null | undefined): boolean {
   const sa = String(a ?? '').trim();
   const sb = String(b ?? '').trim();
@@ -474,52 +447,11 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               maker?: string;
               taker?: string;
             };
-            const wAddr = (walletRef.current || '').trim().toLowerCase();
-            const makerLc = d.maker ? String(d.maker).toLowerCase() : '';
-            const takerLc = d.taker ? String(d.taker).toLowerCase() : '';
             const mSub = marketRef.current?.trim() || '';
             const tradeMarket = String(d.marketId || '').trim();
 
-            if (wAddr && d.tokenId && (makerLc === wAddr || takerLc === wAddr)) {
-              if (!mSub || !tradeMarket || canonicalConditionKey(tradeMarket) === canonicalConditionKey(mSub)) {
-                const tok = String(d.tokenId);
-                const fromAssets = walletRelativeFillSide(
-                  wAddr,
-                  d.maker,
-                  d.taker,
-                  d.makerAssetId,
-                  d.takerAssetId,
-                );
-                const side = normalizeLedgerAction(
-                  fromAssets ?? (d.side === 'SELL' ? 'SELL' : 'BUY'),
-                );
-                const size = Number(d.size ?? 0);
-                const price = Number(d.price ?? 0);
-                const ts = Number(d.timestamp ?? Date.now());
-                const liRaw = Number(d.logIndex ?? 0);
-                const li = Number.isFinite(liRaw) && liRaw >= 0 ? liRaw : 0;
-                const blockTimeSec = ts >= 1_000_000_000_000 ? Math.floor(ts / 1000) : Math.max(0, Math.floor(ts));
-                setWalletTrades((prev) => {
-                  const row: WSTrade = {
-                    tokenId: tok,
-                    side,
-                    size,
-                    price,
-                    fee: 0,
-                    blockTime: blockTimeSec > 0 ? blockTimeSec : Math.floor(Date.now() / 1000),
-                    txHash: d.txHash,
-                    logIndex: li,
-                  };
-                  const rowKey = `${String(d.txHash || '')}:${li}:${normalizeClobTokenKey(tok)}:${side}`;
-                  const filtered = prev.filter(
-                    (x) =>
-                      `${String(x.txHash || '')}:${x.logIndex ?? -1}:${normalizeClobTokenKey(x.tokenId)}:${x.side}` !==
-                      rowKey,
-                  );
-                  return [row, ...filtered].slice(0, WALLET_TRADES_CAP);
-                });
-              }
-            }
+            // Do not mirror onchainTrade into walletTrades — rows come from wallet_fill_ledger via
+            // fetchOnchainMarketTrades prefetch + walletTrades WS snapshots (avoids phantom/extra rows vs WFL).
 
             if (!d.tokenId) return;
             if (mSub) {

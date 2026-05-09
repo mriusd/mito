@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink, Copy, RefreshCw } from 'lucide-react';
-import { fetchToxicFlow, fetchWalletSummary, fetchWalletPositions, fetchOnchainFills } from '../api';
+import { fetchToxicFlow, fetchWalletSummary, fetchWalletPositions, fetchOnchainFills, fetchMarketStakedLegs } from '../api';
 import type { ToxicFlowData, WalletPosition, WalletSummary, OnchainFillRow } from '../api';
 import type { Market } from '../types';
-import { shortenUpDownMarketListCell, ASSET_COLORS, extractAssetFromMarket, assetTickerFromQuestion } from '../utils/format';
+import { shortenUpDownMarketListCell, ASSET_COLORS, extractAssetFromMarket, assetTickerFromQuestion, formatPolymarketVolumeK } from '../utils/format';
 import { useAppStore } from '../stores/appStore';
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { HelperTooltip } from './HelperTooltip';
@@ -55,15 +55,29 @@ function walletStakeTotalUsd(w: WalletPosition): number {
   if (!(Number.isFinite(sy) || Number.isFinite(sn))) return NaN;
   return (Number.isFinite(sy) ? sy : 0) + (Number.isFinite(sn) ? sn : 0);
 }
-/** |inv_y×px_y − inv_n×px_n| — matches abs(Staked Y − Staked N) in holders table columns. */
-function walletStakeNetAbsUsd(w: WalletPosition): number {
+/** Signed YES-leg − NO-leg inv×price. Positive = net YES stake, negative = net NO stake. */
+function walletStakeNetSignedUsd(w: WalletPosition): number {
   const sy = walletStakeYUsd(w);
   const sn = walletStakeNUsd(w);
-  if (Number.isFinite(sy) && Number.isFinite(sn)) return Math.abs(sy - sn);
-  if (Number.isFinite(sy)) return Math.abs(sy);
-  if (Number.isFinite(sn)) return Math.abs(sn);
-  return NaN;
+  if (!(Number.isFinite(sy) || Number.isFinite(sn))) return NaN;
+  return (Number.isFinite(sy) ? sy : 0) - (Number.isFinite(sn) ? sn : 0);
 }
+/** |walletStakeNetSignedUsd| — for sorting by magnitude. */
+function walletStakeNetAbsUsd(w: WalletPosition): number {
+  const s = walletStakeNetSignedUsd(w);
+  return Number.isFinite(s) ? Math.abs(s) : NaN;
+}
+
+function stakedNetSortKeyDesc(w: WalletPosition): number {
+  const v = walletStakeNetSignedUsd(w);
+  return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
+}
+
+function stakedNetSortKeyAsc(w: WalletPosition): number {
+  const v = walletStakeNetSignedUsd(w);
+  return Number.isFinite(v) ? v : Number.POSITIVE_INFINITY;
+}
+
 function stakeSortKeyDesc(w: WalletPosition, leg: 'y' | 'n' | 'tot' | 'net'): number {
   if (leg === 'net') {
     const v = walletStakeNetAbsUsd(w);
@@ -144,6 +158,19 @@ function fmtUsdSignedLedger(v: number): string {
 function fmtUsd2En(absVal: number): string {
   if (!Number.isFinite(absVal)) return '–';
   return absVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+const STAKED_NET_EPS = 1e-6;
+function stakedNetUsdTableCell(signed: number): ReactNode {
+  if (!Number.isFinite(signed)) return '–';
+  const mag = fmtUsd2En(Math.abs(signed));
+  if (Math.abs(signed) <= STAKED_NET_EPS) {
+    return <span className="tabular-nums font-bold text-gray-500">${mag}</span>;
+  }
+  if (signed > STAKED_NET_EPS) {
+    return <span className="tabular-nums font-bold text-green-400">+${mag}</span>;
+  }
+  return <span className="tabular-nums font-bold text-red-400">−${mag}</span>;
 }
 
 function fmtSignedShares1En(v: number): string {
@@ -755,8 +782,8 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             <th className="text-right px-1 bg-red-900/10 text-red-300" title="−(inv_no × price_no) shown red (cost notionally)">
               Staked N
             </th>
-            <th className="text-right px-1 text-gray-300" title="|(inv_y×px_y) − (inv_n×px_n)|">
-              Staked
+            <th className="text-right px-1 text-gray-300" title="(inv_y×px_y) − (inv_n×px_n); + net YES / − net NO">
+              Staked Net
             </th>
             <th className="text-right px-1">%</th>
             <th className="text-right px-1">Cum%</th>
@@ -791,7 +818,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               signedLegNet < -0.001 ? 'text-red-400' : signedLegNet > 0.001 ? 'text-green-400' : 'text-gray-500';
               const stakeYUsd = walletStakeYUsd(w);
               const stakeNUsd = walletStakeNUsd(w);
-              const stakeNetUsd = walletStakeNetAbsUsd(w);
+              const stakeNetSigned = walletStakeNetSignedUsd(w);
               const showWinBar = effectiveWinLossTotal > 0 && effectiveWinRate != null;
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
@@ -816,8 +843,8 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                   <td className="text-right px-1 font-medium tabular-nums text-red-400">
                     {Number.isFinite(stakeNUsd) ? fmtUsdSigned(-stakeNUsd) : '–'}
                   </td>
-                  <td className="text-right px-1 font-bold tabular-nums text-gray-200">
-                    {Number.isFinite(stakeNetUsd) ? `$${fmtUsd2En(stakeNetUsd)}` : '–'}
+                  <td className="text-right px-1 whitespace-nowrap" title="(inv_y×px_y) − (inv_n×px_n)">
+                    {stakedNetUsdTableCell(stakeNetSigned)}
                   </td>
                   <td className="text-right px-1 text-cyan-300">
                     {sharesPct > 0
@@ -1118,8 +1145,8 @@ export function WalletInfoDialog({
                     <th className="text-right whitespace-nowrap">Net</th>
                     <th className="text-right whitespace-nowrap" title="price_yes">Px Y</th>
                     <th className="text-right whitespace-nowrap" title="price_no">Px N</th>
-                    <th className="text-right whitespace-nowrap" title="|Staked Y − Staked N| (inv×price legs)">
-                      Staked
+                    <th className="text-right whitespace-nowrap" title="(inv_y×px_y) − (inv_n×px_n); + net YES / − net NO">
+                      Staked Net
                     </th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">Fee</th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.payout">Payout</th>
@@ -1159,7 +1186,7 @@ export function WalletInfoDialog({
                             {netMagStr} N
                           </span>
                         );
-                      const rowStakedNet = walletStakeNetAbsUsd(m);
+                      const rowStakedNetSigned = walletStakeNetSignedUsd(m);
                       const rowUsdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
                       const rowUsdcOut = typeof m.usdcOut === 'number' && Number.isFinite(m.usdcOut) ? m.usdcOut : 0;
                       const rowFee = typeof m.feeTotal === 'number' && Number.isFinite(m.feeTotal) ? m.feeTotal : 0;
@@ -1197,8 +1224,8 @@ export function WalletInfoDialog({
                       </td>
                       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceYes)}</td>
                       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceNo)}</td>
-                      <td className="text-right tabular-nums font-medium text-gray-200 whitespace-nowrap" title="|Staked Y − Staked N| (inv×price)">
-                        {Number.isFinite(rowStakedNet) ? `$${fmtUsd2En(rowStakedNet)}` : '–'}
+                      <td className="text-right tabular-nums whitespace-nowrap" title="(inv_y×px_y) − (inv_n×px_n)">
+                        {stakedNetUsdTableCell(rowStakedNetSigned)}
                       </td>
                       <td
                         className={`text-right tabular-nums font-medium whitespace-nowrap ${rowFee === 0 ? 'text-gray-400' : 'text-red-400'}`}
@@ -1439,6 +1466,47 @@ export function WalletInfoDialog({
 
 export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClose }: ToxicFlowDialogProps) {
   const marketLookup = useAppStore((s) => s.marketLookup);
+  const [marketStakedLegsRest, setMarketStakedLegsRest] = useState<{ stakedUsdYesLeg: number; stakedUsdNoLeg: number } | null>(null);
+
+  const liveStakedLegUsd = useMemo(() => {
+    const tokenId = (yesTokenId || '').trim();
+    if (!tokenId) return null;
+    const wy = marketLookup[tokenId]?.stakedUsdYesLeg;
+    const wn = marketLookup[tokenId]?.stakedUsdNoLeg;
+    if (typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn)) {
+      return { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
+    }
+    return null;
+  }, [yesTokenId, marketLookup]);
+
+  useEffect(() => {
+    const mid = (marketId || '').trim();
+    if (!open || !mid) {
+      setMarketStakedLegsRest(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const row = await fetchMarketStakedLegs(mid);
+        if (!cancelled) setMarketStakedLegsRest(row);
+      } catch {
+        if (!cancelled) setMarketStakedLegsRest(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, marketId]);
+
+  const dialogMarketStakedLegs = liveStakedLegUsd ?? marketStakedLegsRest;
+  const dialogStakedNetKDisplay = useMemo(() => {
+    if (!dialogMarketStakedLegs) return null;
+    const net = Math.abs(dialogMarketStakedLegs.stakedUsdYesLeg - dialogMarketStakedLegs.stakedUsdNoLeg);
+    if (!Number.isFinite(net)) return null;
+    return formatPolymarketVolumeK(net);
+  }, [dialogMarketStakedLegs]);
+
   const [data, setData] = useState<ToxicFlowData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1480,7 +1548,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   const topYesWallets = useMemo(() => {
     const arr = filterTopYesNoTab(data?.topYes, 'yes');
     return [...arr].sort((a, b) => {
-      const d = stakeSortKeyDesc(b, 'y') - stakeSortKeyDesc(a, 'y');
+      const d = stakedNetSortKeyDesc(b) - stakedNetSortKeyDesc(a);
       if (d !== 0) return d;
       const dn = walletNet(b) - walletNet(a);
       if (dn !== 0) return dn;
@@ -1490,7 +1558,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   const topNoWallets = useMemo(() => {
     const arr = filterTopYesNoTab(data?.topNo, 'no');
     return [...arr].sort((a, b) => {
-      const d = stakeSortKeyDesc(b, 'n') - stakeSortKeyDesc(a, 'n');
+      const d = stakedNetSortKeyAsc(a) - stakedNetSortKeyAsc(b);
       if (d !== 0) return d;
       const dn = walletNet(a) - walletNet(b);
       if (dn !== 0) return dn;
@@ -1551,14 +1619,25 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
       <div className="bg-gray-800 rounded-lg p-4 max-w-4xl w-full mx-4 shadow-xl border border-gray-700" style={{ maxHeight: '85vh' }}>
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <UsersRound size={16} className="text-yellow-400" />
-            <span className="text-sm font-bold text-yellow-400">Holders</span>
-            <span className="text-xs text-gray-400 truncate max-w-[300px]">{marketName}</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <UsersRound size={16} className="text-yellow-400 shrink-0" />
+            <span className="text-sm font-bold text-yellow-400 shrink-0">Holders</span>
+            <span className="text-xs text-gray-400 truncate">{marketName}</span>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-white">
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <div
+              className="rounded border border-emerald-800/60 bg-emerald-950/30 px-2 py-1 text-center min-w-[4.25rem]"
+              title="Market net staked imbalance: |Σ|YES-leg USD| − Σ|NO-leg USD|| (wallet_market_positions), same as sidebar"
+            >
+              <div className="text-[8px] uppercase tracking-wide text-emerald-500/90 leading-tight">Staked</div>
+              <div className="text-xs font-bold tabular-nums text-emerald-300 leading-tight">
+                {dialogStakedNetKDisplay ? `$${dialogStakedNetKDisplay}` : '—'}
+              </div>
+            </div>
+            <button type="button" onClick={onClose} className="text-gray-500 hover:text-white p-0.5" aria-label="Close">
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         {/* Content */}

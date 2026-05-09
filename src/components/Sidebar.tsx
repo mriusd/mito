@@ -3,7 +3,7 @@ import { useAccount } from 'wagmi';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
 import { appKit } from '../lib/wallet';
-import { placeOrder, cancelOrder, signOrder, submitSignedOrder } from '../api';
+import { fetchMarketStakedLegs, placeOrder, cancelOrder, signOrder, submitSignedOrder } from '../api';
 import { fetchProxyWallet } from '../api/polymarket';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { executeMergePositions } from '../lib/mergePositions';
@@ -34,6 +34,7 @@ import { LiveTradeChart } from './LiveTradeChart';
 import { ChainlinkChart } from './ChainlinkChart';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { ToxicFlowDialog } from './ToxicFlowDialog';
+import { StakedLegUsdBar } from './StakedLegUsdBar';
 import { MergePositionsDialog } from './MergePositionsDialog';
 import { ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
 import type { AssetSymbol } from '../types';
@@ -184,10 +185,33 @@ export function Sidebar() {
   const [closingPositionTokens, setClosingPositionTokens] = useState<Set<string>>(new Set());
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
   const [toxicDialogOpen, setToxicDialogOpen] = useState(false);
+  const [marketStakedLegs, setMarketStakedLegs] = useState<{
+    stakedUsdYesLeg: number;
+    stakedUsdNoLeg: number;
+  } | null>(null);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   useEffect(() => {
     setMergeDialogOpen(false);
   }, [selectedMarket?.id]);
+  useEffect(() => {
+    const mid = ((selectedMarket?.conditionId ?? selectedMarket?.id) || '').trim();
+    if (!mid) {
+      setMarketStakedLegs(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const row = await fetchMarketStakedLegs(mid);
+        if (!cancelled) setMarketStakedLegs(row);
+      } catch {
+        if (!cancelled) setMarketStakedLegs(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMarket?.conditionId, selectedMarket?.id]);
   const [crossingConfirmOpen, setCrossingConfirmOpen] = useState(false);
   const [crossingConfirmMessage, setCrossingConfirmMessage] = useState('');
   const crossingConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
@@ -1768,6 +1792,14 @@ export function Sidebar() {
                   <MiniBar label="Cv$" value={wbcvUsd} leftColor="bg-emerald-400/75" rightColor="bg-orange-400/75" tooltip={`Winner Bias Conviction (USDC): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcvUsd * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcvUsd * 100).toFixed(0)}%`} />
                   <MiniBar label="CvS" value={wbcv} leftColor="bg-teal-400/75" rightColor="bg-rose-400/75" tooltip={`Winner Bias Conviction (shares): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcv * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcv * 100).toFixed(0)}%`} />
                   <MiniBar label="Smart" value={sms} leftColor="bg-yellow-400/75" rightColor="bg-purple-400/75" tooltip={`Smart Money: proven wallets (≥60% WR, ≥10 mkts, PNL>0) with ≥$2k in this market — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
+                  {marketStakedLegs ? (
+                    <StakedLegUsdBar
+                      sumYUsd={marketStakedLegs.stakedUsdYesLeg}
+                      sumNUsd={marketStakedLegs.stakedUsdNoLeg}
+                      compact
+                      dense
+                    />
+                  ) : null}
                 </div>
               );
             })()}

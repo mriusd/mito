@@ -1,0 +1,62 @@
+/** Horizontal bar: green = YES-leg USD share, red = NO-leg USD share (sums must be ≥0). */
+
+function fmtUsd(absVal: number): string {
+  return absVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+export function StakedLegUsdBar({
+  sumYUsd,
+  sumNUsd,
+  dense,
+  compact,
+}: {
+  sumYUsd: number;
+  sumNUsd: number;
+  dense?: boolean;
+  /** Match Sidebar MiniBar row (h-[5px], left label column). */
+  compact?: boolean;
+}) {
+  const total = sumYUsd + sumNUsd;
+  if (total <= 1e-9) return null;
+  const pctY = (sumYUsd / total) * 100;
+  const pctN = (sumNUsd / total) * 100;
+  const tip = `YES ${pctY.toFixed(1)}% ($${fmtUsd(sumYUsd)}) · NO ${pctN.toFixed(1)}% ($${fmtUsd(sumNUsd)}) · $${fmtUsd(total)}`;
+
+  const bar = (
+    <div
+      className={`${compact ? 'h-[5px]' : 'h-2'} bg-gray-700 rounded-full overflow-hidden flex w-full`}
+      title={tip}
+    >
+      <div className="bg-emerald-500/80 h-full shrink-0 transition-all" style={{ width: `${pctY}%` }} />
+      <div className="bg-red-500/80 h-full shrink-0 transition-all" style={{ width: `${pctN}%` }} />
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <div className={`flex items-center gap-1 min-w-0 ${dense ? '' : ''}`}>
+        <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate" title={tip}>
+          Stake
+        </span>
+        <div className="flex-1 min-w-0">{bar}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={dense ? 'shrink-0' : 'mb-2 shrink-0'}>
+      <div className="flex justify-between items-center gap-1 text-[9px] text-gray-500 mb-0.5 px-0.5">
+        <span className="text-green-400 tabular-nums font-medium" title="Σ YES leg |USDC| in cohort">
+          Y ${fmtUsd(sumYUsd)}
+        </span>
+        <span className="text-gray-400 tabular-nums" title={`Total $${fmtUsd(total)}`}>
+          ${fmtUsd(total)}
+        </span>
+        <span className="text-red-400 tabular-nums font-medium" title="Σ NO leg |USDC| in cohort">
+          N ${fmtUsd(sumNUsd)}
+        </span>
+      </div>
+      {bar}
+    </div>
+  );
+}

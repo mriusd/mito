@@ -8,6 +8,7 @@ import { shortenUpDownMarketListCell, ASSET_COLORS, extractAssetFromMarket, asse
 import { useAppStore } from '../stores/appStore';
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { HelperTooltip } from './HelperTooltip';
+import { StakedLegUsdBar } from './StakedLegUsdBar';
 
 interface ToxicFlowDialogProps {
   open: boolean;
@@ -18,6 +19,14 @@ interface ToxicFlowDialogProps {
 }
 
 type Tab = 'topHolders' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
+
+const TOXIC_TAB_COHORT_LABEL: Record<Tab, string> = {
+  topHolders: 'Top Holders',
+  topYes: 'Top YES',
+  topNo: 'Top NO',
+  topVolume: 'Top Volume',
+  topTraders: 'Top Traders',
+};
 
 function walletInvY(w: WalletPosition): number {
   return typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
@@ -51,8 +60,8 @@ function stakeSortKeyDesc(w: WalletPosition, leg: 'y' | 'n' | 'tot'): number {
   return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
 }
 
-/** Sum |inv×price| per leg for wallets in this table; bar = YES vs NO share of that total. */
-function ToxicFlowStakedProgressBar({ wallets }: { wallets: WalletPosition[] }) {
+/** Sum |inv×price| per wallet row; cohort split Y vs N. */
+function ToxicFlowStakedProgressBar({ wallets, dense }: { wallets: WalletPosition[]; dense?: boolean }) {
   let sumY = 0;
   let sumN = 0;
   for (const w of wallets) {
@@ -61,32 +70,7 @@ function ToxicFlowStakedProgressBar({ wallets }: { wallets: WalletPosition[] }) 
     if (Number.isFinite(sy)) sumY += Math.abs(sy);
     if (Number.isFinite(sn)) sumN += Math.abs(sn);
   }
-  const total = sumY + sumN;
-  if (total <= 1e-9) return null;
-  const pctY = (sumY / total) * 100;
-  const pctN = (sumN / total) * 100;
-  return (
-    <div className="mb-2 shrink-0">
-      <div className="flex justify-between items-center gap-1 text-[9px] text-gray-500 mb-0.5 px-0.5">
-        <span className="text-green-400 tabular-nums font-medium" title="Σ |inv_yes × price_yes| in this list">
-          Y ${fmtUsd2En(sumY)}
-        </span>
-        <span className="text-gray-400 tabular-nums" title="Σ Y + Σ N (|·| per leg)">
-          ${fmtUsd2En(total)}
-        </span>
-        <span className="text-red-400 tabular-nums font-medium" title="Σ |inv_no × price_no| in this list">
-          N ${fmtUsd2En(sumN)}
-        </span>
-      </div>
-      <div
-        className="h-2 bg-gray-700 rounded-full overflow-hidden flex w-full"
-        title={`YES ${pctY.toFixed(1)}% · NO ${pctN.toFixed(1)}%`}
-      >
-        <div className="bg-emerald-500/80 h-full shrink-0 transition-all" style={{ width: `${pctY}%` }} />
-        <div className="bg-red-500/80 h-full shrink-0 transition-all" style={{ width: `${pctN}%` }} />
-      </div>
-    </div>
-  );
+  return <StakedLegUsdBar sumYUsd={sumY} sumNUsd={sumN} dense={dense} />;
 }
 
 /** `(usdc_out/(usdc_in + fee)) − 1` as signed ROI decimal → %. */
@@ -730,9 +714,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
   };
 
   return (
-    <>
-      <ToxicFlowStakedProgressBar wallets={rows} />
-      <div className="overflow-x-auto">
+    <div className="overflow-x-auto">
       <table className="w-full whitespace-nowrap text-[10px]">
         <thead>
           <tr className="text-gray-500 border-b border-gray-700">
@@ -844,7 +826,6 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
         </tbody>
       </table>
     </div>
-    </>
   );
 }
 
@@ -1513,6 +1494,24 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     });
   }, [data?.topHolders]);
 
+  const walletsForStakedBar = useMemo((): WalletPosition[] => {
+    if (!data) return [];
+    switch (tab) {
+      case 'topHolders':
+        return topHoldersWallets;
+      case 'topYes':
+        return topYesWallets;
+      case 'topNo':
+        return topNoWallets;
+      case 'topVolume':
+        return data.topVolume || [];
+      case 'topTraders':
+        return data.topTraders || [];
+      default:
+        return [];
+    }
+  }, [tab, data, topHoldersWallets, topYesWallets, topNoWallets]);
+
   if (!open) return null;
 
   const openWalletDialog = (wallet: string, _netShares?: number) => {
@@ -1626,6 +1625,15 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                           <div className="bg-blue-500/70 h-full transition-all" style={{ width: `${barFor(crowd)}%` }} />
                           <div className="bg-orange-500/70 h-full transition-all flex-1" />
                         </div>
+                      </div>
+
+                      {/* Staked Y vs N — rows in the active below table tab */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[9px] text-gray-500">Staked USD (|inv×price|)</span>
+                          <span className="text-[8px] text-gray-600">{TOXIC_TAB_COHORT_LABEL[tab]}</span>
+                        </div>
+                        <ToxicFlowStakedProgressBar wallets={walletsForStakedBar} dense />
                       </div>
 
                       {/* Top 10 Holders Bias */}

@@ -475,6 +475,17 @@ export async function fetchToxicFlow(marketId: string): Promise<ToxicFlowData> {
   return resp.json();
 }
 
+export interface MarketStakedLegsResponse {
+  stakedUsdYesLeg: number;
+  stakedUsdNoLeg: number;
+}
+
+export async function fetchMarketStakedLegs(marketId: string): Promise<MarketStakedLegsResponse> {
+  const resp = await fetch(`${BASE}/api/market-staked-legs?market_id=${encodeURIComponent(marketId)}`);
+  if (!resp.ok) throw new Error('Failed to fetch market staked legs');
+  return resp.json();
+}
+
 export async function fetchWalletPositions(params: {
   market_id?: string;
   wallet?: string;

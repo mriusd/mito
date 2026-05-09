@@ -4,7 +4,7 @@ import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, Sh
 import { fetchToxicFlow, fetchWalletSummary, fetchWalletPositions, fetchOnchainFills, fetchMarketStakedLegs } from '../api';
 import type { ToxicFlowData, WalletPosition, WalletSummary, OnchainFillRow } from '../api';
 import type { Market } from '../types';
-import { shortenUpDownMarketListCell, ASSET_COLORS, extractAssetFromMarket, assetTickerFromQuestion, formatPolymarketVolumeK } from '../utils/format';
+import { shortenUpDownMarketListCell, ASSET_COLORS, extractAssetFromMarket, assetTickerFromQuestion } from '../utils/format';
 import { useAppStore } from '../stores/appStore';
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { HelperTooltip } from './HelperTooltip';
@@ -100,7 +100,7 @@ function ToxicFlowStakedProgressBar({ wallets, dense }: { wallets: WalletPositio
     if (net > STAKED_NET_EPS) sumYesNet += net;
     else if (net < -STAKED_NET_EPS) sumNoNet += -net;
   }
-  return <StakedLegUsdBar sumYUsd={sumYesNet} sumNUsd={sumNoNet} dense={dense} />;
+  return <StakedLegUsdBar sumYUsd={sumYesNet} sumNUsd={sumNoNet} dense={dense} barMode="cohortSurplusHalves" />;
 }
 
 /** `(usdc_out/(usdc_in + fee)) − 1` as signed ROI decimal → %. */
@@ -1502,11 +1502,10 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   }, [open, marketId]);
 
   const dialogMarketStakedLegs = liveStakedLegUsd ?? marketStakedLegsRest;
-  const dialogStakedNetKDisplay = useMemo(() => {
+  const dialogStakedNetAbsUsd = useMemo(() => {
     if (!dialogMarketStakedLegs) return null;
-    const net = Math.abs(dialogMarketStakedLegs.stakedUsdYesLeg - dialogMarketStakedLegs.stakedUsdNoLeg);
-    if (!Number.isFinite(net)) return null;
-    return formatPolymarketVolumeK(net);
+    const n = Math.abs(dialogMarketStakedLegs.stakedUsdYesLeg - dialogMarketStakedLegs.stakedUsdNoLeg);
+    return Number.isFinite(n) ? n : null;
   }, [dialogMarketStakedLegs]);
 
   const [data, setData] = useState<ToxicFlowData | null>(null);
@@ -1580,23 +1579,11 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     });
   }, [data?.topHolders]);
 
+  /** Staked bar always aggregates Top Holders cohort regardless of active tab. */
   const walletsForStakedBar = useMemo((): WalletPosition[] => {
     if (!data) return [];
-    switch (tab) {
-      case 'topHolders':
-        return topHoldersWallets;
-      case 'topYes':
-        return topYesWallets;
-      case 'topNo':
-        return topNoWallets;
-      case 'topVolume':
-        return data.topVolume || [];
-      case 'topTraders':
-        return data.topTraders || [];
-      default:
-        return [];
-    }
-  }, [tab, data, topHoldersWallets, topYesWallets, topNoWallets]);
+    return topHoldersWallets;
+  }, [data, topHoldersWallets]);
 
   if (!open) return null;
 
@@ -1626,16 +1613,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
             <span className="text-sm font-bold text-yellow-400 shrink-0">Holders</span>
             <span className="text-xs text-gray-400 truncate">{marketName}</span>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <div
-              className="rounded border border-emerald-800/60 bg-emerald-950/30 px-2 py-1 text-center min-w-[4.25rem]"
-              title="Market net staked imbalance: |Σ|YES-leg USD| − Σ|NO-leg USD|| (wallet_market_positions), same as sidebar"
-            >
-              <div className="text-[8px] uppercase tracking-wide text-emerald-500/90 leading-tight">Staked</div>
-              <div className="text-xs font-bold tabular-nums text-emerald-300 leading-tight">
-                {dialogStakedNetKDisplay ? `$${dialogStakedNetKDisplay}` : '—'}
-              </div>
-            </div>
+          <div className="flex items-center shrink-0">
             <button type="button" onClick={onClose} className="text-gray-500 hover:text-white p-0.5" aria-label="Close">
               <X size={16} />
             </button>
@@ -1650,7 +1628,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
           {!loading && !error && data && (
             <div className="space-y-3">
               {/* Summary Cards */}
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                 <div className="bg-gray-900 rounded p-2 text-center">
                   <div className="text-[10px] text-gray-500">Wallets</div>
                   <div className="text-sm font-bold text-white">{data.totalWallets}</div>
@@ -1662,6 +1640,15 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                 <div className="bg-gray-900 rounded p-2 text-center">
                   <div className="text-[10px] text-gray-500">USDC Volume</div>
                   <div className="text-sm font-bold text-yellow-400">${data.totalUsdcIn.toFixed(2)}</div>
+                </div>
+                <div
+                  className="bg-gray-900 rounded p-2 text-center"
+                  title="|Σ|YES-leg USD| − Σ|NO-leg USD|| (wallet_market_positions), same source as sidebar Staked pill"
+                >
+                  <div className="text-[10px] text-gray-500">Staked</div>
+                  <div className="text-sm font-bold text-yellow-400 tabular-nums">
+                    {dialogStakedNetAbsUsd != null ? `$${dialogStakedNetAbsUsd.toFixed(2)}` : '—'}
+                  </div>
                 </div>
                 <div className="bg-gray-900 rounded p-2 text-center">
                   <div className="text-[10px] text-gray-500">Concentration</div>
@@ -1727,8 +1714,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                       {/* Staked Y vs N — rows in the active below table tab */}
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[9px] text-gray-500">Staked Net USD (Σ per cohort)</span>
-                          <span className="text-[8px] text-gray-600">{TOXIC_TAB_COHORT_LABEL[tab]}</span>
+                          <span className="text-[9px] text-gray-500">Staked Net USD (Top Holders)</span>
+                          <span className="text-[8px] text-gray-600">{TOXIC_TAB_COHORT_LABEL.topHolders}</span>
                         </div>
                         <ToxicFlowStakedProgressBar wallets={walletsForStakedBar} dense />
                       </div>

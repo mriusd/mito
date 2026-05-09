@@ -699,11 +699,14 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             <th className="text-right px-1" title="Σ ledger delta_usd (cash flow)">
               Cash Flow
             </th>
-            <th className="text-right px-1 bg-green-900/10" title="wallet_market_positions.usd_yes (USDC staked YES leg)">
+            <th className="text-right px-1 bg-green-900/10" title="inv_yes × price_yes (USDC)">
               Staked Y
             </th>
-            <th className="text-right px-1 bg-red-900/10 text-red-300" title="wallet_market_positions.usd_no (USDC staked NO leg)">
+            <th className="text-right px-1 bg-red-900/10 text-red-300" title="inv_no × price_no (USDC)">
               Staked N
+            </th>
+            <th className="text-right px-1 text-gray-300" title="Staked Y + Staked N">
+              Staked
             </th>
             <th className="text-right px-1">%</th>
             <th className="text-right px-1">Cum%</th>
@@ -739,10 +742,16 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               const fees = typeof w.feeTotal === 'number' && Number.isFinite(w.feeTotal) ? w.feeTotal : 0;
               const cashFlow =
                 typeof w.cashFlow === 'number' && Number.isFinite(w.cashFlow) ? w.cashFlow : 0;
-              const rawStakeY = w.usdcYes ?? w.usdYes;
-              const rawStakeN = w.usdcNo ?? w.usdNo;
-              const stakeY = typeof rawStakeY === 'number' && Number.isFinite(rawStakeY) ? rawStakeY : NaN;
-              const stakeN = typeof rawStakeN === 'number' && Number.isFinite(rawStakeN) ? rawStakeN : NaN;
+              const pyUsd =
+                typeof w.priceYes === 'number' && Number.isFinite(w.priceYes) ? w.priceYes : NaN;
+              const pnUsd =
+                typeof w.priceNo === 'number' && Number.isFinite(w.priceNo) ? w.priceNo : NaN;
+              const stakeYUsd = Number.isFinite(pyUsd) ? iy * pyUsd : NaN;
+              const stakeNUsd = Number.isFinite(pnUsd) ? inn * pnUsd : NaN;
+              const stakeTotUsd =
+                Number.isFinite(stakeYUsd) || Number.isFinite(stakeNUsd)
+                  ? (Number.isFinite(stakeYUsd) ? stakeYUsd : 0) + (Number.isFinite(stakeNUsd) ? stakeNUsd : 0)
+                  : NaN;
               const showWinBar = effectiveWinLossTotal > 0 && effectiveWinRate != null;
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
@@ -769,11 +778,14 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                       : '–'}
                 </td>
                   <td className={`text-right px-1 font-bold ${cashFlow >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(cashFlow)}</td>
-                  <td className="text-right px-1 font-medium tabular-nums text-green-300/90">
-                    {Number.isFinite(stakeY) ? `$${fmtUsd2En(Math.abs(stakeY))}` : '–'}
+                  <td className={`text-right px-1 font-medium tabular-nums ${rPnlToneClass(stakeYUsd)}`}>
+                    {Number.isFinite(stakeYUsd) ? fmtUsdSigned(stakeYUsd) : '–'}
                   </td>
-                  <td className="text-right px-1 font-medium tabular-nums text-red-300/90">
-                    {Number.isFinite(stakeN) ? `$${fmtUsd2En(Math.abs(stakeN))}` : '–'}
+                  <td className={`text-right px-1 font-medium tabular-nums ${rPnlToneClass(stakeNUsd)}`}>
+                    {Number.isFinite(stakeNUsd) ? fmtUsdSigned(stakeNUsd) : '–'}
+                  </td>
+                  <td className={`text-right px-1 font-bold tabular-nums ${rPnlToneClass(stakeTotUsd)}`}>
+                    {Number.isFinite(stakeTotUsd) ? fmtUsdSigned(stakeTotUsd) : '–'}
                   </td>
                   <td className="text-right px-1 text-cyan-300">
                     {sharesPct > 0

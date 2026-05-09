@@ -118,9 +118,13 @@ export function useBidAskWS() {
               if (typeof item.stakedUsdYesLeg === 'number' && Number.isFinite(item.stakedUsdYesLeg)) {
                 next.stakedUsdYesLeg = item.stakedUsdYesLeg;
               }
+              if (typeof item.stakedUsdNoLeg === 'number' && Number.isFinite(item.stakedUsdNoLeg)) {
+                next.stakedUsdNoLeg = item.stakedUsdNoLeg;
+              }
               if (typeof item.stakedSumAbsSignedNetUsd === 'number' && Number.isFinite(item.stakedSumAbsSignedNetUsd)) {
                 next.stakedSumAbsSignedNetUsd = item.stakedSumAbsSignedNetUsd;
               }
+              if (typeof item.stakedTopHoldersCohortYesUsd === 'number' && Number.isFinite(item.stakedTopHoldersCohortYesUsd)) {
                 next.stakedTopHoldersCohortYesUsd = item.stakedTopHoldersCohortYesUsd;
               }
               if (typeof item.stakedTopHoldersCohortNoUsd === 'number' && Number.isFinite(item.stakedTopHoldersCohortNoUsd)) {

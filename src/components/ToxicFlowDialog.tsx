@@ -30,6 +30,27 @@ function walletNet(w: WalletPosition): number {
   return walletInvY(w) - walletInvN(w);
 }
 
+function walletStakeYUsd(w: WalletPosition): number {
+  const iy = walletInvY(w);
+  const py = typeof w.priceYes === 'number' && Number.isFinite(w.priceYes) ? w.priceYes : NaN;
+  return Number.isFinite(py) ? iy * py : NaN;
+}
+function walletStakeNUsd(w: WalletPosition): number {
+  const inn = walletInvN(w);
+  const pn = typeof w.priceNo === 'number' && Number.isFinite(w.priceNo) ? w.priceNo : NaN;
+  return Number.isFinite(pn) ? inn * pn : NaN;
+}
+function walletStakeTotalUsd(w: WalletPosition): number {
+  const sy = walletStakeYUsd(w);
+  const sn = walletStakeNUsd(w);
+  if (!(Number.isFinite(sy) || Number.isFinite(sn))) return NaN;
+  return (Number.isFinite(sy) ? sy : 0) + (Number.isFinite(sn) ? sn : 0);
+}
+function stakeSortKeyDesc(w: WalletPosition, leg: 'y' | 'n' | 'tot'): number {
+  const v = leg === 'y' ? walletStakeYUsd(w) : leg === 'n' ? walletStakeNUsd(w) : walletStakeTotalUsd(w);
+  return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
+}
+
 /** `(usdc_out/(usdc_in + fee)) − 1` as signed ROI decimal → %. */
 function fmtWalletMarketRoiFromFlow(m: WalletPosition): { text: string; tone: string } {
   const usdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
@@ -693,19 +714,13 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               Px N
             </th>
             <th className="text-right px-1">Trades</th>
-            <th className="text-right px-1" title="fee_total">
-              Fees
-            </th>
-            <th className="text-right px-1" title="Σ ledger delta_usd (cash flow)">
-              Cash Flow
-            </th>
-            <th className="text-right px-1 bg-green-900/10" title="inv_yes × price_yes (USDC)">
+            <th className="text-right px-1 bg-green-900/10" title="−(inv_yes × price_yes) shown red (cost notionally)">
               Staked Y
             </th>
-            <th className="text-right px-1 bg-red-900/10 text-red-300" title="inv_no × price_no (USDC)">
+            <th className="text-right px-1 bg-red-900/10 text-red-300" title="−(inv_no × price_no) shown red (cost notionally)">
               Staked N
             </th>
-            <th className="text-right px-1 text-gray-300" title="Staked Y + Staked N">
+            <th className="text-right px-1 text-gray-300" title="Sum of inv_leg × price_leg; displayed as −(Y+N)">
               Staked
             </th>
             <th className="text-right px-1">%</th>
@@ -739,19 +754,9 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             const nYColor = iy > 0.001 ? 'text-green-400' : iy < -0.001 ? 'text-red-400' : 'text-gray-500';
             const netYNColor =
               signedLegNet < -0.001 ? 'text-red-400' : signedLegNet > 0.001 ? 'text-green-400' : 'text-gray-500';
-              const fees = typeof w.feeTotal === 'number' && Number.isFinite(w.feeTotal) ? w.feeTotal : 0;
-              const cashFlow =
-                typeof w.cashFlow === 'number' && Number.isFinite(w.cashFlow) ? w.cashFlow : 0;
-              const pyUsd =
-                typeof w.priceYes === 'number' && Number.isFinite(w.priceYes) ? w.priceYes : NaN;
-              const pnUsd =
-                typeof w.priceNo === 'number' && Number.isFinite(w.priceNo) ? w.priceNo : NaN;
-              const stakeYUsd = Number.isFinite(pyUsd) ? iy * pyUsd : NaN;
-              const stakeNUsd = Number.isFinite(pnUsd) ? inn * pnUsd : NaN;
-              const stakeTotUsd =
-                Number.isFinite(stakeYUsd) || Number.isFinite(stakeNUsd)
-                  ? (Number.isFinite(stakeYUsd) ? stakeYUsd : 0) + (Number.isFinite(stakeNUsd) ? stakeNUsd : 0)
-                  : NaN;
+              const stakeYUsd = walletStakeYUsd(w);
+              const stakeNUsd = walletStakeNUsd(w);
+              const stakeTotUsd = walletStakeTotalUsd(w);
               const showWinBar = effectiveWinLossTotal > 0 && effectiveWinRate != null;
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
@@ -770,22 +775,14 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                     ? Math.round(w.tradeCount).toLocaleString('en-US')
                     : '–'}
                 </td>
-                  <td className="text-right px-1 text-amber-200/90">
-                  {fees > 0
-                    ? `$${fmtUsd2En(fees)}`
-                    : fees < 0
-                      ? `−$${fmtUsd2En(Math.abs(fees))}`
-                      : '–'}
-                </td>
-                  <td className={`text-right px-1 font-bold ${cashFlow >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(cashFlow)}</td>
-                  <td className={`text-right px-1 font-medium tabular-nums ${rPnlToneClass(stakeYUsd)}`}>
-                    {Number.isFinite(stakeYUsd) ? fmtUsdSigned(stakeYUsd) : '–'}
+                  <td className="text-right px-1 font-medium tabular-nums text-red-400">
+                    {Number.isFinite(stakeYUsd) ? fmtUsdSigned(-stakeYUsd) : '–'}
                   </td>
-                  <td className={`text-right px-1 font-medium tabular-nums ${rPnlToneClass(stakeNUsd)}`}>
-                    {Number.isFinite(stakeNUsd) ? fmtUsdSigned(stakeNUsd) : '–'}
+                  <td className="text-right px-1 font-medium tabular-nums text-red-400">
+                    {Number.isFinite(stakeNUsd) ? fmtUsdSigned(-stakeNUsd) : '–'}
                   </td>
-                  <td className={`text-right px-1 font-bold tabular-nums ${rPnlToneClass(stakeTotUsd)}`}>
-                    {Number.isFinite(stakeTotUsd) ? fmtUsdSigned(stakeTotUsd) : '–'}
+                  <td className="text-right px-1 font-bold tabular-nums text-red-400">
+                    {Number.isFinite(stakeTotUsd) ? fmtUsdSigned(-stakeTotUsd) : '–'}
                   </td>
                   <td className="text-right px-1 text-cyan-300">
                     {sharesPct > 0
@@ -1445,16 +1442,20 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   const topYesWallets = useMemo(() => {
     const arr = filterTopYesNoTab(data?.topYes, 'yes');
     return [...arr].sort((a, b) => {
-      const d = walletNet(b) - walletNet(a);
+      const d = stakeSortKeyDesc(b, 'y') - stakeSortKeyDesc(a, 'y');
       if (d !== 0) return d;
+      const dn = walletNet(b) - walletNet(a);
+      if (dn !== 0) return dn;
       return (a.wallet || '').localeCompare(b.wallet || '');
     });
   }, [data?.topYes]);
   const topNoWallets = useMemo(() => {
     const arr = filterTopYesNoTab(data?.topNo, 'no');
     return [...arr].sort((a, b) => {
-      const d = walletNet(a) - walletNet(b);
+      const d = stakeSortKeyDesc(b, 'n') - stakeSortKeyDesc(a, 'n');
       if (d !== 0) return d;
+      const dn = walletNet(a) - walletNet(b);
+      if (dn !== 0) return dn;
       return (a.wallet || '').localeCompare(b.wallet || '');
     });
   }, [data?.topNo]);
@@ -1462,6 +1463,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   const topHoldersWallets = useMemo(() => {
     const arr = data?.topHolders ?? [];
     return [...arr].sort((a, b) => {
+      const d = stakeSortKeyDesc(b, 'tot') - stakeSortKeyDesc(a, 'tot');
+      if (d !== 0) return d;
       const da = Math.abs(walletNet(a));
       const db = Math.abs(walletNet(b));
       if (db !== da) return db - da;
@@ -1643,7 +1646,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                           <div>
                             <p className="text-[8px] text-gray-500 leading-snug mb-1.5">
                               Compares <span className="text-gray-400">historical win rate</span> (top 30% of USDC or shares on each side).
-                              Table <span className="text-gray-400">Cash flow / staked</span> is this market only — they often diverge.
+                              Table <span className="text-gray-400">staked</span> columns are this market only — they often diverge from all-time win rate.
                             </p>
                             {renderBar('Winner Bias (top 30% USDC)', wbUsdc, yesWR, noWR)}
                             {renderBar('Winner Bias (top 30% Shares)', wbShares, yesWRs, noWRs)}

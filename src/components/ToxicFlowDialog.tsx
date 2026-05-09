@@ -55,7 +55,7 @@ function walletStakeTotalUsd(w: WalletPosition): number {
   if (!(Number.isFinite(sy) || Number.isFinite(sn))) return NaN;
   return (Number.isFinite(sy) ? sy : 0) + (Number.isFinite(sn) ? sn : 0);
 }
-/** Signed YES-leg − NO-leg inv×price. Positive = net YES stake, negative = net NO stake. */
+/** Signed YES-leg − NO-leg: inv_yes×price_yes − inv_no×price_no (same as polycandles cohort bar). */
 function walletStakeNetSignedUsd(w: WalletPosition): number {
   const sy = walletStakeYUsd(w);
   const sn = walletStakeNUsd(w);
@@ -90,7 +90,7 @@ function stakeSortKeyDesc(w: WalletPosition, leg: 'y' | 'n' | 'tot' | 'net'): nu
   return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
 }
 
-/** Σ max(0, net) vs Σ max(0, −net) for inv×price Staked Net in active cohort tab. */
+/** Σ max(0, inv×px net) vs Σ max(0, −net) for cohort (matches sidebar WS). */
 function ToxicFlowStakedProgressBar({ wallets, dense }: { wallets: WalletPosition[]; dense?: boolean }) {
   let sumYesNet = 0;
   let sumNoNet = 0;

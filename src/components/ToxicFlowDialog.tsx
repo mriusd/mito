@@ -351,15 +351,26 @@ function WalletScoresLedgerSummaryGrid({
   );
 }
 
-/** Same wallet must not rank both tabs: keep stronger |leg| only (tie → YES). */
-function filterTopYesNoTab(wallets: WalletPosition[] | undefined, tab: 'yes' | 'no'): WalletPosition[] {
-  const arr = wallets ?? [];
-  return arr.filter((w) => {
-    const ny = walletInvY(w);
-    const nn = walletInvN(w);
-    if (tab === 'yes') return ny > 0.001 && Math.abs(ny) >= Math.abs(nn);
-    return nn > 0.001 && Math.abs(nn) > Math.abs(ny);
-  });
+function dedupeWalletsByAddress(list: WalletPosition[]): WalletPosition[] {
+  const m = new Map<string, WalletPosition>();
+  for (const w of list) {
+    const k = (w.wallet || '').trim().toLowerCase();
+    if (!k) continue;
+    if (!m.has(k)) m.set(k, w);
+  }
+  return [...m.values()];
+}
+
+/** Deduped union of Toxic cohort rows — same wallet often appears on only one API list; Top YES/NO need full set for Staked Net sorts. */
+function toxicFlowWalletUniverse(data: ToxicFlowData | null | undefined): WalletPosition[] {
+  if (!data) return [];
+  return dedupeWalletsByAddress([
+    ...(data.topHolders ?? []),
+    ...(data.topYes ?? []),
+    ...(data.topNo ?? []),
+    ...(data.topVolume ?? []),
+    ...(data.topTraders ?? []),
+  ]);
 }
 
 function marketListEndDateTimeLocale(endDate: string | null): { label: string; color: string } {
@@ -1547,7 +1558,10 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   }, [open, load, marketId]);
 
   const topYesWallets = useMemo(() => {
-    const arr = filterTopYesNoTab(data?.topYes, 'yes');
+    const arr = toxicFlowWalletUniverse(data).filter((w) => {
+      const stake = walletStakeNetSignedUsd(w);
+      return Number.isFinite(stake) && stake > STAKED_NET_EPS;
+    });
     return [...arr].sort((a, b) => {
       const d = stakedNetSortKeyDesc(b) - stakedNetSortKeyDesc(a);
       if (d !== 0) return d;
@@ -1555,9 +1569,12 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
       if (dn !== 0) return dn;
       return (a.wallet || '').localeCompare(b.wallet || '');
     });
-  }, [data?.topYes]);
+  }, [data]);
   const topNoWallets = useMemo(() => {
-    const arr = filterTopYesNoTab(data?.topNo, 'no');
+    const arr = toxicFlowWalletUniverse(data).filter((w) => {
+      const stake = walletStakeNetSignedUsd(w);
+      return Number.isFinite(stake) && stake < -STAKED_NET_EPS;
+    });
     return [...arr].sort((a, b) => {
       const d = stakedNetSortKeyAsc(a) - stakedNetSortKeyAsc(b);
       if (d !== 0) return d;
@@ -1565,7 +1582,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
       if (dn !== 0) return dn;
       return (a.wallet || '').localeCompare(b.wallet || '');
     });
-  }, [data?.topNo]);
+  }, [data]);
 
   const topHoldersWallets = useMemo(() => {
     const arr = data?.topHolders ?? [];
@@ -2019,10 +2036,10 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                   <WalletTable wallets={topHoldersWallets} label="holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topYes' && (
-                  <WalletTable wallets={topYesWallets} label="YES holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                  <WalletTable wallets={topYesWallets} label="Staked Net > 0" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topNo' && (
-                  <WalletTable wallets={topNoWallets} label="NO holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                  <WalletTable wallets={topNoWallets} label="Staked Net < 0" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topVolume' && (
                   <WalletTable wallets={data.topVolume} label="volume" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />

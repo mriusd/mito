@@ -1606,7 +1606,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
       return Number.isFinite(stake) && stake > STAKED_NET_EPS;
     });
     return [...arr].sort((a, b) => {
-      const d = stakedNetSortKeyAsc(a) - stakedNetSortKeyAsc(b);
+      const d = stakedNetSortKeyAsc(b) - stakedNetSortKeyAsc(a);
       if (d !== 0) return d;
       const dn = walletNet(a) - walletNet(b);
       if (dn !== 0) return dn;

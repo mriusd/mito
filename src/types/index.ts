@@ -56,6 +56,8 @@ export interface Market {
   /** SUM(ABS(usd_yes)), SUM(ABS(usd_no)) over wallets — WS + /api/market-staked-legs */
   stakedUsdYesLeg?: number;
   stakedUsdNoLeg?: number;
+  /** Σ_wallet |inv_y×px_y − inv_n×px_n| — headline Staked vs cohort bar denominator */
+  stakedSumAbsSignedNetUsd?: number;
   /** Sidebar Stake cohort bar: Σ max(0, inv_y×px_y − inv_n×px_n) vs Σ max(0, −) for top 20 |CTF net| holders */
   stakedTopHoldersCohortYesUsd?: number;
   stakedTopHoldersCohortNoUsd?: number;

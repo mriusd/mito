@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink, Copy, RefreshCw } from 'lucide-react';
-import { fetchToxicFlow, fetchWalletSummary, fetchWalletPositions, fetchOnchainFills, fetchMarketStakedLegs } from '../api';
+import { fetchToxicFlow, fetchWalletSummary, fetchWalletPositions, fetchOnchainFills, fetchMarketStakedLegs, type MarketStakedLegsResponse } from '../api';
 import type { ToxicFlowData, WalletPosition, WalletSummary, OnchainFillRow } from '../api';
 import type { Market } from '../types';
 import { shortenUpDownMarketListCell, ASSET_COLORS, extractAssetFromMarket, assetTickerFromQuestion } from '../utils/format';
@@ -1479,15 +1479,20 @@ export function WalletInfoDialog({
 
 export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClose }: ToxicFlowDialogProps) {
   const marketLookup = useAppStore((s) => s.marketLookup);
-  const [marketStakedLegsRest, setMarketStakedLegsRest] = useState<{ stakedUsdYesLeg: number; stakedUsdNoLeg: number } | null>(null);
+  const [marketStakedLegsRest, setMarketStakedLegsRest] = useState<MarketStakedLegsResponse | null>(null);
 
   const liveStakedLegUsd = useMemo(() => {
     const tokenId = (yesTokenId || '').trim();
     if (!tokenId) return null;
     const wy = marketLookup[tokenId]?.stakedUsdYesLeg;
     const wn = marketLookup[tokenId]?.stakedUsdNoLeg;
+    const sumAbs = marketLookup[tokenId]?.stakedSumAbsSignedNetUsd;
     if (typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn)) {
-      return { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
+      const row: MarketStakedLegsResponse = { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
+      if (typeof sumAbs === 'number' && Number.isFinite(sumAbs)) {
+        row.stakedSumAbsSignedNetUsd = sumAbs;
+      }
+      return row;
     }
     return null;
   }, [yesTokenId, marketLookup]);
@@ -1515,7 +1520,11 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   const dialogMarketStakedLegs = liveStakedLegUsd ?? marketStakedLegsRest;
   const dialogStakedNetAbsUsd = useMemo(() => {
     if (!dialogMarketStakedLegs) return null;
-    const n = Math.abs(dialogMarketStakedLegs.stakedUsdYesLeg - dialogMarketStakedLegs.stakedUsdNoLeg);
+    let n =
+      typeof dialogMarketStakedLegs.stakedSumAbsSignedNetUsd === 'number' &&
+      Number.isFinite(dialogMarketStakedLegs.stakedSumAbsSignedNetUsd)
+        ? dialogMarketStakedLegs.stakedSumAbsSignedNetUsd
+        : Math.abs(dialogMarketStakedLegs.stakedUsdYesLeg - dialogMarketStakedLegs.stakedUsdNoLeg);
     return Number.isFinite(n) ? n : null;
   }, [dialogMarketStakedLegs]);
 
@@ -1660,7 +1669,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                 </div>
                 <div
                   className="bg-gray-900 rounded p-2 text-center"
-                  title="Headline ‖Σ ‖YES-leg USD‖ − Σ ‖NO-leg USD‖‖ over every wallet—same notion as Sidebar Staked. Unequal to the bar below."
+                  title="Σ_w |inv_y×px_y − inv_n×px_n| over all wallets (same basis as per-wallet Staked Net). Old ‖Σ|YES USD| − Σ|NO USD|‖ shown only if sum field missing."
                 >
                   <div className="text-[10px] text-gray-500">Staked</div>
                   <div className="text-sm font-bold text-yellow-400 tabular-nums">

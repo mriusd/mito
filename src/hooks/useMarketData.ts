@@ -12,6 +12,7 @@ const WS_FIELDS: (keyof Market)[] = [
   'winnerBiasConviction', 'winnerBiasConvictionYesWR', 'winnerBiasConvictionNoWR',
   'winBiasConvictionShares', 'winBiasConvictionSharesYes', 'winBiasConvictionSharesNo',
   'stakedUsdYesLeg', 'stakedUsdNoLeg',
+  'stakedSumAbsSignedNetUsd',
   'stakedTopHoldersCohortYesUsd', 'stakedTopHoldersCohortNoUsd',
 ];
 

@@ -3,7 +3,7 @@ import { useAccount } from 'wagmi';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
 import { appKit } from '../lib/wallet';
-import { fetchMarketStakedLegs, placeOrder, cancelOrder, signOrder, submitSignedOrder } from '../api';
+import { fetchMarketStakedLegs, placeOrder, cancelOrder, signOrder, submitSignedOrder, type MarketStakedLegsResponse } from '../api';
 import { fetchProxyWallet } from '../api/polymarket';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { executeMergePositions } from '../lib/mergePositions';
@@ -187,10 +187,7 @@ export function Sidebar() {
   const [closingPositionTokens, setClosingPositionTokens] = useState<Set<string>>(new Set());
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
   const [toxicDialogOpen, setToxicDialogOpen] = useState(false);
-  const [marketStakedLegs, setMarketStakedLegs] = useState<{
-    stakedUsdYesLeg: number;
-    stakedUsdNoLeg: number;
-  } | null>(null);
+  const [marketStakedLegs, setMarketStakedLegs] = useState<MarketStakedLegsResponse | null>(null);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   useEffect(() => {
     setMergeDialogOpen(false);
@@ -219,15 +216,24 @@ export function Sidebar() {
     if (!tokenId) return null;
     const wy = marketLookup[tokenId]?.stakedUsdYesLeg;
     const wn = marketLookup[tokenId]?.stakedUsdNoLeg;
+    const sumAbs = marketLookup[tokenId]?.stakedSumAbsSignedNetUsd;
     if (typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn)) {
-      return { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
+      const row: MarketStakedLegsResponse = { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
+      if (typeof sumAbs === 'number' && Number.isFinite(sumAbs)) {
+        row.stakedSumAbsSignedNetUsd = sumAbs;
+      }
+      return row;
     }
     return null;
   }, [selectedMarket, marketLookup]);
   const sidebarStakedLegs = liveStakedLegUsd ?? marketStakedLegs;
   const marketStakedNetKDisplay = useMemo(() => {
     if (!sidebarStakedLegs) return null;
-    const net = Math.abs(sidebarStakedLegs.stakedUsdYesLeg - sidebarStakedLegs.stakedUsdNoLeg);
+    let net =
+      typeof sidebarStakedLegs.stakedSumAbsSignedNetUsd === 'number' &&
+      Number.isFinite(sidebarStakedLegs.stakedSumAbsSignedNetUsd)
+        ? sidebarStakedLegs.stakedSumAbsSignedNetUsd
+        : Math.abs(sidebarStakedLegs.stakedUsdYesLeg - sidebarStakedLegs.stakedUsdNoLeg);
     if (!Number.isFinite(net)) return null;
     return formatPolymarketVolumeK(net);
   }, [sidebarStakedLegs]);

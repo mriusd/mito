@@ -699,14 +699,11 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             <th className="text-right px-1" title="Σ ledger delta_usd (cash flow)">
               Cash Flow
             </th>
-            <th className="text-right px-1 text-gray-400" title="pnl_yes">
-              rPnL Y
+            <th className="text-right px-1 bg-green-900/10" title="wallet_market_positions.usd_yes (USDC staked YES leg)">
+              Staked Y
             </th>
-            <th className="text-right px-1 text-gray-400" title="pnl_no">
-              rPnL N
-            </th>
-            <th className="text-right px-1" title="pnl_yes + pnl_no">
-              rPnL
+            <th className="text-right px-1 bg-red-900/10 text-red-300" title="wallet_market_positions.usd_no (USDC staked NO leg)">
+              Staked N
             </th>
             <th className="text-right px-1">%</th>
             <th className="text-right px-1">Cum%</th>
@@ -742,10 +739,10 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               const fees = typeof w.feeTotal === 'number' && Number.isFinite(w.feeTotal) ? w.feeTotal : 0;
               const cashFlow =
                 typeof w.cashFlow === 'number' && Number.isFinite(w.cashFlow) ? w.cashFlow : 0;
-              const pyes = typeof w.pnlYes === 'number' && Number.isFinite(w.pnlYes) ? w.pnlYes : 0;
-              const pno = typeof w.pnlNo === 'number' && Number.isFinite(w.pnlNo) ? w.pnlNo : 0;
-              const payoutVal =
-                typeof w.payout === 'number' && Number.isFinite(w.payout) ? w.payout : pyes + pno;
+              const rawStakeY = w.usdcYes ?? w.usdYes;
+              const rawStakeN = w.usdcNo ?? w.usdNo;
+              const stakeY = typeof rawStakeY === 'number' && Number.isFinite(rawStakeY) ? rawStakeY : NaN;
+              const stakeN = typeof rawStakeN === 'number' && Number.isFinite(rawStakeN) ? rawStakeN : NaN;
               const showWinBar = effectiveWinLossTotal > 0 && effectiveWinRate != null;
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
@@ -772,9 +769,12 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                       : '–'}
                 </td>
                   <td className={`text-right px-1 font-bold ${cashFlow >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtUsdSigned(cashFlow)}</td>
-                  <td className={`text-right px-1 font-bold ${rPnlToneClass(pyes)}`}>{fmtUsdSigned(pyes)}</td>
-                  <td className={`text-right px-1 font-bold ${rPnlToneClass(pno)}`}>{fmtUsdSigned(pno)}</td>
-                  <td className={`text-right px-1 font-bold ${rPnlToneClass(payoutVal)}`}>{fmtUsdSigned(payoutVal)}</td>
+                  <td className="text-right px-1 font-medium tabular-nums text-green-300/90">
+                    {Number.isFinite(stakeY) ? `$${fmtUsd2En(Math.abs(stakeY))}` : '–'}
+                  </td>
+                  <td className="text-right px-1 font-medium tabular-nums text-red-300/90">
+                    {Number.isFinite(stakeN) ? `$${fmtUsd2En(Math.abs(stakeN))}` : '–'}
+                  </td>
                   <td className="text-right px-1 text-cyan-300">
                     {sharesPct > 0
                       ? `${sharesPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
@@ -1631,7 +1631,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                           <div>
                             <p className="text-[8px] text-gray-500 leading-snug mb-1.5">
                               Compares <span className="text-gray-400">historical win rate</span> (top 30% of USDC or shares on each side).
-                              Table <span className="text-gray-400">Cash Flow / rPnL</span> is this market only — they often diverge.
+                              Table <span className="text-gray-400">Cash flow / staked</span> is this market only — they often diverge.
                             </p>
                             {renderBar('Winner Bias (top 30% USDC)', wbUsdc, yesWR, noWR)}
                             {renderBar('Winner Bias (top 30% Shares)', wbShares, yesWRs, noWRs)}

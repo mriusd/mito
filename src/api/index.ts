@@ -368,6 +368,9 @@ export interface WalletPosition {
   invNo?: number;
   usdYes?: number;
   usdNo?: number;
+  /** Same leg USDC as `usdYes` / `usd_no` when API sends `usdc_yes` / `usdc_no`. */
+  usdcYes?: number;
+  usdcNo?: number;
   feeTotal?: number;
   /** Present on /api/wallet-positions rows; used to discover CLOB token IDs for on-chain fetches. */
   tokenIdYes?: string;

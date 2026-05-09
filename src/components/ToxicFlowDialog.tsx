@@ -1,7 +1,15 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink, Copy, RefreshCw } from 'lucide-react';
-import { fetchToxicFlow, fetchWalletSummary, fetchWalletPositions, fetchOnchainFills, fetchMarketStakedLegs, type MarketStakedLegsResponse } from '../api';
+import {
+  fetchToxicFlow,
+  fetchWalletSummary,
+  fetchWalletPositions,
+  fetchOnchainFills,
+  fetchMarketStakedLegs,
+  mergeMarketStakedLegsResponse,
+  type MarketStakedLegsResponse,
+} from '../api';
 import type { ToxicFlowData, WalletPosition, WalletSummary, OnchainFillRow } from '../api';
 import type { Market } from '../types';
 import { shortenUpDownMarketListCell, ASSET_COLORS, extractAssetFromMarket, assetTickerFromQuestion } from '../utils/format';
@@ -1517,7 +1525,10 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     };
   }, [open, marketId]);
 
-  const dialogMarketStakedLegs = liveStakedLegUsd ?? marketStakedLegsRest;
+  const dialogMarketStakedLegs = useMemo(
+    () => mergeMarketStakedLegsResponse(liveStakedLegUsd, marketStakedLegsRest),
+    [liveStakedLegUsd, marketStakedLegsRest],
+  );
   const dialogStakedNetAbsUsd = useMemo(() => {
     if (!dialogMarketStakedLegs) return null;
     let n =

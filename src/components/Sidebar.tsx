@@ -3,7 +3,15 @@ import { useAccount } from 'wagmi';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
 import { appKit } from '../lib/wallet';
-import { fetchMarketStakedLegs, placeOrder, cancelOrder, signOrder, submitSignedOrder, type MarketStakedLegsResponse } from '../api';
+import {
+  fetchMarketStakedLegs,
+  mergeMarketStakedLegsResponse,
+  placeOrder,
+  cancelOrder,
+  signOrder,
+  submitSignedOrder,
+  type MarketStakedLegsResponse,
+} from '../api';
 import { fetchProxyWallet } from '../api/polymarket';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { executeMergePositions } from '../lib/mergePositions';
@@ -226,7 +234,10 @@ export function Sidebar() {
     }
     return null;
   }, [selectedMarket, marketLookup]);
-  const sidebarStakedLegs = liveStakedLegUsd ?? marketStakedLegs;
+  const sidebarStakedLegs = useMemo(
+    () => mergeMarketStakedLegsResponse(liveStakedLegUsd, marketStakedLegs),
+    [liveStakedLegUsd, marketStakedLegs],
+  );
   const marketStakedNetKDisplay = useMemo(() => {
     if (!sidebarStakedLegs) return null;
     let net =

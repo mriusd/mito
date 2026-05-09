@@ -482,6 +482,26 @@ export interface MarketStakedLegsResponse {
   stakedSumAbsSignedNetUsd?: number;
 }
 
+/** WS often sends gross legs without `stakedSumAbsSignedNetUsd`; REST may have it — merge so headline ≠ bogus |ΣY−ΣN|. */
+export function mergeMarketStakedLegsResponse(
+  live: MarketStakedLegsResponse | null | undefined,
+  rest: MarketStakedLegsResponse | null | undefined,
+): MarketStakedLegsResponse | null {
+  if (!live && !rest) return null;
+  const wy = live?.stakedUsdYesLeg ?? rest?.stakedUsdYesLeg;
+  const wn = live?.stakedUsdNoLeg ?? rest?.stakedUsdNoLeg;
+  if (!(typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn))) return null;
+  const out: MarketStakedLegsResponse = { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
+  const sumLive = live?.stakedSumAbsSignedNetUsd;
+  const sumRest = rest?.stakedSumAbsSignedNetUsd;
+  if (typeof sumLive === 'number' && Number.isFinite(sumLive)) {
+    out.stakedSumAbsSignedNetUsd = sumLive;
+  } else if (typeof sumRest === 'number' && Number.isFinite(sumRest)) {
+    out.stakedSumAbsSignedNetUsd = sumRest;
+  }
+  return out;
+}
+
 export async function fetchMarketStakedLegs(marketId: string): Promise<MarketStakedLegsResponse> {
   const resp = await fetch(`${BASE}/api/market-staked-legs?market_id=${encodeURIComponent(marketId)}`);
   if (!resp.ok) throw new Error('Failed to fetch market staked legs');

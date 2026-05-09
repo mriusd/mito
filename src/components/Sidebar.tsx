@@ -229,6 +229,17 @@ export function Sidebar() {
     if (!Number.isFinite(net)) return null;
     return formatPolymarketVolumeK(net);
   }, [sidebarStakedLegs]);
+  /** Align mini-bar totals with Staked pill: split Σ|YES| − Σ|NO| into surplus halves only. */
+  const sidebarStakeBarImbalanceUsd = useMemo(() => {
+    if (!sidebarStakedLegs) return null;
+    const y = sidebarStakedLegs.stakedUsdYesLeg;
+    const n = sidebarStakedLegs.stakedUsdNoLeg;
+    if (!Number.isFinite(y) || !Number.isFinite(n)) return null;
+    return {
+      yesHeavyUsd: Math.max(0, y - n),
+      noHeavyUsd: Math.max(0, n - y),
+    };
+  }, [sidebarStakedLegs]);
   const [crossingConfirmOpen, setCrossingConfirmOpen] = useState(false);
   const [crossingConfirmMessage, setCrossingConfirmMessage] = useState('');
   const crossingConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
@@ -1818,10 +1829,10 @@ export function Sidebar() {
                   <MiniBar label="Cv$" value={wbcvUsd} leftColor="bg-emerald-400/75" rightColor="bg-orange-400/75" tooltip={`Winner Bias Conviction (USDC): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcvUsd * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcvUsd * 100).toFixed(0)}%`} />
                   <MiniBar label="CvS" value={wbcv} leftColor="bg-teal-400/75" rightColor="bg-rose-400/75" tooltip={`Winner Bias Conviction (shares): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcv * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcv * 100).toFixed(0)}%`} />
                   <MiniBar label="Smart" value={sms} leftColor="bg-yellow-400/75" rightColor="bg-purple-400/75" tooltip={`Smart Money: proven wallets (≥60% WR, ≥10 mkts, PNL>0) with ≥$2k in this market — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
-                  {sidebarStakedLegs ? (
+                  {sidebarStakeBarImbalanceUsd ? (
                     <StakedLegUsdBar
-                      sumYUsd={sidebarStakedLegs.stakedUsdYesLeg}
-                      sumNUsd={sidebarStakedLegs.stakedUsdNoLeg}
+                      sumYUsd={sidebarStakeBarImbalanceUsd.yesHeavyUsd}
+                      sumNUsd={sidebarStakeBarImbalanceUsd.noHeavyUsd}
                       compact
                       dense
                     />

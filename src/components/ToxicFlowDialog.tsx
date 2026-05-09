@@ -68,6 +68,9 @@ function walletStakeNetAbsUsd(w: WalletPosition): number {
   return Number.isFinite(s) ? Math.abs(s) : NaN;
 }
 
+/** Epsilon for treating signed staked-net as flat (table + cohort bar). */
+const STAKED_NET_EPS = 1e-6;
+
 function stakedNetSortKeyDesc(w: WalletPosition): number {
   const v = walletStakeNetSignedUsd(w);
   return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
@@ -87,17 +90,17 @@ function stakeSortKeyDesc(w: WalletPosition, leg: 'y' | 'n' | 'tot' | 'net'): nu
   return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
 }
 
-/** Sum |inv×price| per wallet row; cohort split Y vs N. */
+/** Σ max(0, net) vs Σ max(0, −net) for inv×price Staked Net in active cohort tab. */
 function ToxicFlowStakedProgressBar({ wallets, dense }: { wallets: WalletPosition[]; dense?: boolean }) {
-  let sumY = 0;
-  let sumN = 0;
+  let sumYesNet = 0;
+  let sumNoNet = 0;
   for (const w of wallets) {
-    const sy = walletStakeYUsd(w);
-    const sn = walletStakeNUsd(w);
-    if (Number.isFinite(sy)) sumY += Math.abs(sy);
-    if (Number.isFinite(sn)) sumN += Math.abs(sn);
+    const net = walletStakeNetSignedUsd(w);
+    if (!Number.isFinite(net)) continue;
+    if (net > STAKED_NET_EPS) sumYesNet += net;
+    else if (net < -STAKED_NET_EPS) sumNoNet += -net;
   }
-  return <StakedLegUsdBar sumYUsd={sumY} sumNUsd={sumN} dense={dense} />;
+  return <StakedLegUsdBar sumYUsd={sumYesNet} sumNUsd={sumNoNet} dense={dense} />;
 }
 
 /** `(usdc_out/(usdc_in + fee)) − 1` as signed ROI decimal → %. */
@@ -160,7 +163,6 @@ function fmtUsd2En(absVal: number): string {
   return absVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-const STAKED_NET_EPS = 1e-6;
 function stakedNetUsdTableCell(signed: number): ReactNode {
   if (!Number.isFinite(signed)) return '–';
   const mag = fmtUsd2En(Math.abs(signed));
@@ -1725,7 +1727,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                       {/* Staked Y vs N — rows in the active below table tab */}
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[9px] text-gray-500">Staked USD (|inv×price|)</span>
+                          <span className="text-[9px] text-gray-500">Staked Net USD (Σ per cohort)</span>
                           <span className="text-[8px] text-gray-600">{TOXIC_TAB_COHORT_LABEL[tab]}</span>
                         </div>
                         <ToxicFlowStakedProgressBar wallets={walletsForStakedBar} dense />

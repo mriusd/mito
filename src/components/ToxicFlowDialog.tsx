@@ -55,7 +55,20 @@ function walletStakeTotalUsd(w: WalletPosition): number {
   if (!(Number.isFinite(sy) || Number.isFinite(sn))) return NaN;
   return (Number.isFinite(sy) ? sy : 0) + (Number.isFinite(sn) ? sn : 0);
 }
-function stakeSortKeyDesc(w: WalletPosition, leg: 'y' | 'n' | 'tot'): number {
+/** |inv_y×px_y − inv_n×px_n| — matches abs(Staked Y − Staked N) in holders table columns. */
+function walletStakeNetAbsUsd(w: WalletPosition): number {
+  const sy = walletStakeYUsd(w);
+  const sn = walletStakeNUsd(w);
+  if (Number.isFinite(sy) && Number.isFinite(sn)) return Math.abs(sy - sn);
+  if (Number.isFinite(sy)) return Math.abs(sy);
+  if (Number.isFinite(sn)) return Math.abs(sn);
+  return NaN;
+}
+function stakeSortKeyDesc(w: WalletPosition, leg: 'y' | 'n' | 'tot' | 'net'): number {
+  if (leg === 'net') {
+    const v = walletStakeNetAbsUsd(w);
+    return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
+  }
   const v = leg === 'y' ? walletStakeYUsd(w) : leg === 'n' ? walletStakeNUsd(w) : walletStakeTotalUsd(w);
   return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
 }
@@ -742,7 +755,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             <th className="text-right px-1 bg-red-900/10 text-red-300" title="−(inv_no × price_no) shown red (cost notionally)">
               Staked N
             </th>
-            <th className="text-right px-1 text-gray-300" title="Sum of inv_leg × price_leg; displayed as −(Y+N)">
+            <th className="text-right px-1 text-gray-300" title="|(inv_y×px_y) − (inv_n×px_n)|">
               Staked
             </th>
             <th className="text-right px-1">%</th>
@@ -778,7 +791,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               signedLegNet < -0.001 ? 'text-red-400' : signedLegNet > 0.001 ? 'text-green-400' : 'text-gray-500';
               const stakeYUsd = walletStakeYUsd(w);
               const stakeNUsd = walletStakeNUsd(w);
-              const stakeTotUsd = walletStakeTotalUsd(w);
+              const stakeNetUsd = walletStakeNetAbsUsd(w);
               const showWinBar = effectiveWinLossTotal > 0 && effectiveWinRate != null;
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
@@ -803,8 +816,8 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                   <td className="text-right px-1 font-medium tabular-nums text-red-400">
                     {Number.isFinite(stakeNUsd) ? fmtUsdSigned(-stakeNUsd) : '–'}
                   </td>
-                  <td className="text-right px-1 font-bold tabular-nums text-red-400">
-                    {Number.isFinite(stakeTotUsd) ? fmtUsdSigned(-stakeTotUsd) : '–'}
+                  <td className="text-right px-1 font-bold tabular-nums text-gray-200">
+                    {Number.isFinite(stakeNetUsd) ? `$${fmtUsd2En(stakeNetUsd)}` : '–'}
                   </td>
                   <td className="text-right px-1 text-cyan-300">
                     {sharesPct > 0
@@ -1105,7 +1118,9 @@ export function WalletInfoDialog({
                     <th className="text-right whitespace-nowrap">Net</th>
                     <th className="text-right whitespace-nowrap" title="price_yes">Px Y</th>
                     <th className="text-right whitespace-nowrap" title="price_no">Px N</th>
-                    <th className="text-right whitespace-nowrap" title="Staked">Staked</th>
+                    <th className="text-right whitespace-nowrap" title="|Staked Y − Staked N| (inv×price legs)">
+                      Staked
+                    </th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">Fee</th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.payout">Payout</th>
                     <th className="text-right whitespace-nowrap" title="usdc_out − usdc_in − fee">PnL</th>
@@ -1144,6 +1159,7 @@ export function WalletInfoDialog({
                             {netMagStr} N
                           </span>
                         );
+                      const rowStakedNet = walletStakeNetAbsUsd(m);
                       const rowUsdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
                       const rowUsdcOut = typeof m.usdcOut === 'number' && Number.isFinite(m.usdcOut) ? m.usdcOut : 0;
                       const rowFee = typeof m.feeTotal === 'number' && Number.isFinite(m.feeTotal) ? m.feeTotal : 0;
@@ -1181,8 +1197,8 @@ export function WalletInfoDialog({
                       </td>
                       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceYes)}</td>
                       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceNo)}</td>
-                      <td className="text-right tabular-nums font-medium text-red-400 whitespace-nowrap" title="Staked (USDC in)">
-                        −${fmtUsd2En(rowUsdcIn)}
+                      <td className="text-right tabular-nums font-medium text-gray-200 whitespace-nowrap" title="|Staked Y − Staked N| (inv×price)">
+                        {Number.isFinite(rowStakedNet) ? `$${fmtUsd2En(rowStakedNet)}` : '–'}
                       </td>
                       <td
                         className={`text-right tabular-nums font-medium whitespace-nowrap ${rowFee === 0 ? 'text-gray-400' : 'text-red-400'}`}
@@ -1485,7 +1501,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   const topHoldersWallets = useMemo(() => {
     const arr = data?.topHolders ?? [];
     return [...arr].sort((a, b) => {
-      const d = stakeSortKeyDesc(b, 'tot') - stakeSortKeyDesc(a, 'tot');
+      const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
       if (d !== 0) return d;
       const da = Math.abs(walletNet(a));
       const db = Math.abs(walletNet(b));

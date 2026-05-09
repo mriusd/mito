@@ -223,6 +223,12 @@ export function Sidebar() {
     return null;
   }, [selectedMarket, marketLookup]);
   const sidebarStakedLegs = liveStakedLegUsd ?? marketStakedLegs;
+  const marketStakedNetKDisplay = useMemo(() => {
+    if (!sidebarStakedLegs) return null;
+    const net = Math.abs(sidebarStakedLegs.stakedUsdYesLeg - sidebarStakedLegs.stakedUsdNoLeg);
+    if (!Number.isFinite(net)) return null;
+    return formatPolymarketVolumeK(net);
+  }, [sidebarStakedLegs]);
   const [crossingConfirmOpen, setCrossingConfirmOpen] = useState(false);
   const [crossingConfirmMessage, setCrossingConfirmMessage] = useState('');
   const crossingConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
@@ -1733,7 +1739,7 @@ export function Sidebar() {
           })()}
 
           <div className="sidebar-section py-1">
-            <div className="grid grid-cols-3 gap-1.5 text-[10px] min-w-0">
+            <div className="grid grid-cols-4 gap-1.5 text-[10px] min-w-0">
               <div className="rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0">
                 <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Volume</div>
                 <div
@@ -1743,6 +1749,15 @@ export function Sidebar() {
                   {liveOrderbookVolumeDisplay && liveOrderbookVolumeDisplay !== '--'
                     ? `$${liveOrderbookVolumeDisplay}`
                     : '--'}
+                </div>
+              </div>
+              <div className="rounded border border-emerald-800/60 bg-emerald-950/30 px-1.5 py-1 min-w-0">
+                <div className="text-[8px] uppercase tracking-wide text-emerald-500/90 truncate">Staked</div>
+                <div
+                  className="tabular-nums font-bold text-emerald-300 truncate"
+                  title="Market net staked imbalance: |Σ|YES-leg USD| − Σ|NO-leg USD|| (wallet_market_positions)"
+                >
+                  {marketStakedNetKDisplay ? `$${marketStakedNetKDisplay}` : '--'}
                 </div>
               </div>
               <div className="rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0">

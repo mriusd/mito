@@ -20,6 +20,7 @@ export function StakedLegUsdBar({
   if (total <= 1e-9) return null;
   const pctY = (sumYUsd / total) * 100;
   const pctN = (sumNUsd / total) * 100;
+  const lean = (sumYUsd - sumNUsd) / total; // [-1,1]; + = YES-heavy (same vibe as Sidebar MiniBar biases)
   const tip = `YES ${pctY.toFixed(1)}% ($${fmtUsd(sumYUsd)}) · NO ${pctN.toFixed(1)}% ($${fmtUsd(sumNUsd)}) · $${fmtUsd(total)}`;
 
   const bar = (
@@ -33,12 +34,18 @@ export function StakedLegUsdBar({
   );
 
   if (compact) {
+    const leanPct = lean * 100;
+    const leanColor = lean > 0.01 ? 'text-green-400' : lean < -0.01 ? 'text-red-400' : 'text-gray-500';
     return (
       <div className={`flex items-center gap-1 min-w-0 ${dense ? '' : ''}`}>
         <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate" title={tip}>
           Stake
         </span>
         <div className="flex-1 min-w-0">{bar}</div>
+        <span className={`text-[8px] font-bold w-[28px] shrink-0 tabular-nums text-right ${leanColor}`} title={`YES − NO stake share: ${pctY.toFixed(1)}% vs ${pctN.toFixed(1)}%`}>
+          {leanPct > 0 ? '+' : ''}
+          {leanPct.toFixed(0)}%
+        </span>
       </div>
     );
   }

@@ -115,6 +115,12 @@ export function useBidAskWS() {
               if (typeof item.winBiasConvictionSharesNo === 'number' && Number.isFinite(item.winBiasConvictionSharesNo)) {
                 next.winBiasConvictionSharesNo = item.winBiasConvictionSharesNo;
               }
+              if (typeof item.stakedUsdYesLeg === 'number' && Number.isFinite(item.stakedUsdYesLeg)) {
+                next.stakedUsdYesLeg = item.stakedUsdYesLeg;
+              }
+              if (typeof item.stakedUsdNoLeg === 'number' && Number.isFinite(item.stakedUsdNoLeg)) {
+                next.stakedUsdNoLeg = item.stakedUsdNoLeg;
+              }
               patch[item.assetId] = next;
               changed = true;
             }

@@ -212,6 +212,17 @@ export function Sidebar() {
       cancelled = true;
     };
   }, [selectedMarket?.conditionId, selectedMarket?.id]);
+  const liveStakedLegUsd = useMemo(() => {
+    const tokenId = selectedMarket?.clobTokenIds?.[0];
+    if (!tokenId) return null;
+    const wy = marketLookup[tokenId]?.stakedUsdYesLeg;
+    const wn = marketLookup[tokenId]?.stakedUsdNoLeg;
+    if (typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn)) {
+      return { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
+    }
+    return null;
+  }, [selectedMarket, marketLookup]);
+  const sidebarStakedLegs = liveStakedLegUsd ?? marketStakedLegs;
   const [crossingConfirmOpen, setCrossingConfirmOpen] = useState(false);
   const [crossingConfirmMessage, setCrossingConfirmMessage] = useState('');
   const crossingConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
@@ -1792,10 +1803,10 @@ export function Sidebar() {
                   <MiniBar label="Cv$" value={wbcvUsd} leftColor="bg-emerald-400/75" rightColor="bg-orange-400/75" tooltip={`Winner Bias Conviction (USDC): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcvUsd * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcvUsd * 100).toFixed(0)}%`} />
                   <MiniBar label="CvS" value={wbcv} leftColor="bg-teal-400/75" rightColor="bg-rose-400/75" tooltip={`Winner Bias Conviction (shares): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcv * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcv * 100).toFixed(0)}%`} />
                   <MiniBar label="Smart" value={sms} leftColor="bg-yellow-400/75" rightColor="bg-purple-400/75" tooltip={`Smart Money: proven wallets (≥60% WR, ≥10 mkts, PNL>0) with ≥$2k in this market — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
-                  {marketStakedLegs ? (
+                  {sidebarStakedLegs ? (
                     <StakedLegUsdBar
-                      sumYUsd={marketStakedLegs.stakedUsdYesLeg}
-                      sumNUsd={marketStakedLegs.stakedUsdNoLeg}
+                      sumYUsd={sidebarStakedLegs.stakedUsdYesLeg}
+                      sumNUsd={sidebarStakedLegs.stakedUsdNoLeg}
                       compact
                       dense
                     />

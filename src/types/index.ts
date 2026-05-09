@@ -53,6 +53,9 @@ export interface Market {
   winBiasConvictionShares?: number;
   winBiasConvictionSharesYes?: number;
   winBiasConvictionSharesNo?: number;
+  /** SUM(ABS(usd_yes)), SUM(ABS(usd_no)) over wallets — WS + /api/market-staked-legs */
+  stakedUsdYesLeg?: number;
+  stakedUsdNoLeg?: number;
   // B-S computed values from server
   bs1?: number;
   bs2?: number;

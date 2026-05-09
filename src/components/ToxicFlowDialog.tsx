@@ -51,6 +51,44 @@ function stakeSortKeyDesc(w: WalletPosition, leg: 'y' | 'n' | 'tot'): number {
   return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
 }
 
+/** Sum |inv×price| per leg for wallets in this table; bar = YES vs NO share of that total. */
+function ToxicFlowStakedProgressBar({ wallets }: { wallets: WalletPosition[] }) {
+  let sumY = 0;
+  let sumN = 0;
+  for (const w of wallets) {
+    const sy = walletStakeYUsd(w);
+    const sn = walletStakeNUsd(w);
+    if (Number.isFinite(sy)) sumY += Math.abs(sy);
+    if (Number.isFinite(sn)) sumN += Math.abs(sn);
+  }
+  const total = sumY + sumN;
+  if (total <= 1e-9) return null;
+  const pctY = (sumY / total) * 100;
+  const pctN = (sumN / total) * 100;
+  return (
+    <div className="mb-2 shrink-0">
+      <div className="flex justify-between items-center gap-1 text-[9px] text-gray-500 mb-0.5 px-0.5">
+        <span className="text-green-400 tabular-nums font-medium" title="Σ |inv_yes × price_yes| in this list">
+          Y ${fmtUsd2En(sumY)}
+        </span>
+        <span className="text-gray-400 tabular-nums" title="Σ Y + Σ N (|·| per leg)">
+          ${fmtUsd2En(total)}
+        </span>
+        <span className="text-red-400 tabular-nums font-medium" title="Σ |inv_no × price_no| in this list">
+          N ${fmtUsd2En(sumN)}
+        </span>
+      </div>
+      <div
+        className="h-2 bg-gray-700 rounded-full overflow-hidden flex w-full"
+        title={`YES ${pctY.toFixed(1)}% · NO ${pctN.toFixed(1)}%`}
+      >
+        <div className="bg-emerald-500/80 h-full shrink-0 transition-all" style={{ width: `${pctY}%` }} />
+        <div className="bg-red-500/80 h-full shrink-0 transition-all" style={{ width: `${pctN}%` }} />
+      </div>
+    </div>
+  );
+}
+
 /** `(usdc_out/(usdc_in + fee)) − 1` as signed ROI decimal → %. */
 function fmtWalletMarketRoiFromFlow(m: WalletPosition): { text: string; tone: string } {
   const usdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
@@ -692,7 +730,9 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
   };
 
   return (
-    <div className="overflow-x-auto">
+    <>
+      <ToxicFlowStakedProgressBar wallets={rows} />
+      <div className="overflow-x-auto">
       <table className="w-full whitespace-nowrap text-[10px]">
         <thead>
           <tr className="text-gray-500 border-b border-gray-700">
@@ -804,6 +844,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 

@@ -63,12 +63,14 @@ function walletStakeTotalUsd(w: WalletPosition): number {
   if (!(Number.isFinite(sy) || Number.isFinite(sn))) return NaN;
   return (Number.isFinite(sy) ? sy : 0) + (Number.isFinite(sn) ? sn : 0);
 }
-/** Signed YES-leg − NO-leg: inv_yes×price_yes − inv_no×price_no (same as polycandles cohort bar). */
+/** Ledger/display basis: (−inv_y×px_y) − (−inv_n×px_n) = inv_n×px_n − inv_y×px_y — matches Staked Y / Staked N columns (both shown as −(inv×px)). Σ|·| matches backend polycandles. */
 function walletStakeNetSignedUsd(w: WalletPosition): number {
   const sy = walletStakeYUsd(w);
   const sn = walletStakeNUsd(w);
   if (!(Number.isFinite(sy) || Number.isFinite(sn))) return NaN;
-  return (Number.isFinite(sy) ? sy : 0) - (Number.isFinite(sn) ? sn : 0);
+  const y = Number.isFinite(sy) ? sy : 0;
+  const n = Number.isFinite(sn) ? sn : 0;
+  return n - y;
 }
 /** |walletStakeNetSignedUsd| — for sorting by magnitude. */
 function walletStakeNetAbsUsd(w: WalletPosition): number {
@@ -81,7 +83,7 @@ const STAKED_NET_EPS = 1e-6;
 
 function stakedNetSortKeyDesc(w: WalletPosition): number {
   const v = walletStakeNetSignedUsd(w);
-  return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
+  return Number.isFinite(v) ? -v : Number.NEGATIVE_INFINITY;
 }
 
 function stakedNetSortKeyAsc(w: WalletPosition): number {
@@ -98,15 +100,15 @@ function stakeSortKeyDesc(w: WalletPosition, leg: 'y' | 'n' | 'tot' | 'net'): nu
   return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
 }
 
-/** Σ max(0, inv×px net) vs Σ max(0, −net) for cohort (matches sidebar WS). */
+/** Σ surplus on display net: favors Y (−inv×py net < 0) vs favors N (> 0) — aligns with table Staked Net Y/N coloring. */
 function ToxicFlowStakedProgressBar({ wallets, dense }: { wallets: WalletPosition[]; dense?: boolean }) {
   let sumYesNet = 0;
   let sumNoNet = 0;
   for (const w of wallets) {
     const net = walletStakeNetSignedUsd(w);
     if (!Number.isFinite(net)) continue;
-    if (net > STAKED_NET_EPS) sumYesNet += net;
-    else if (net < -STAKED_NET_EPS) sumNoNet += -net;
+    if (net < -STAKED_NET_EPS) sumYesNet += -net;
+    else if (net > STAKED_NET_EPS) sumNoNet += net;
   }
   return <StakedLegUsdBar sumYUsd={sumYesNet} sumNUsd={sumNoNet} dense={dense} barMode="cohortSurplusHalves" />;
 }
@@ -177,10 +179,18 @@ function stakedNetUsdTableCell(signed: number): ReactNode {
   if (Math.abs(signed) <= STAKED_NET_EPS) {
     return <span className="tabular-nums font-bold text-gray-500">${mag}</span>;
   }
-  if (signed > STAKED_NET_EPS) {
-    return <span className="tabular-nums font-bold text-green-400">+${mag}</span>;
+  if (signed < -STAKED_NET_EPS) {
+    return (
+      <span className="tabular-nums font-bold text-green-400">
+        ${mag} Y
+      </span>
+    );
   }
-  return <span className="tabular-nums font-bold text-red-400">−${mag}</span>;
+  return (
+    <span className="tabular-nums font-bold text-red-400">
+      ${mag} N
+    </span>
+  );
 }
 
 function fmtSignedShares1En(v: number): string {
@@ -803,7 +813,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             <th className="text-right px-1 bg-red-900/10 text-red-300" title="−(inv_no × price_no) shown red (cost notionally)">
               Staked N
             </th>
-            <th className="text-right px-1 text-gray-300" title="(inv_y×px_y) − (inv_n×px_n); + net YES / − net NO">
+            <th className="text-right px-1 text-gray-300" title="(−inv_y×px_y) − (−inv_n×px_n) = Staked Y − Staked N as shown; suffix Y / N; green = favors YES / red = favors NO">
               Staked Net
             </th>
             <th className="text-right px-1">%</th>
@@ -864,7 +874,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                   <td className="text-right px-1 font-medium tabular-nums text-red-400">
                     {Number.isFinite(stakeNUsd) ? fmtUsdSigned(-stakeNUsd) : '–'}
                   </td>
-                  <td className="text-right px-1 whitespace-nowrap" title="(inv_y×px_y) − (inv_n×px_n)">
+                  <td className="text-right px-1 whitespace-nowrap" title="Staked Y − Staked N (column display); Y / N suffix">
                     {stakedNetUsdTableCell(stakeNetSigned)}
                   </td>
                   <td className="text-right px-1 text-cyan-300">
@@ -1166,7 +1176,7 @@ export function WalletInfoDialog({
                     <th className="text-right whitespace-nowrap">Net</th>
                     <th className="text-right whitespace-nowrap" title="price_yes">Px Y</th>
                     <th className="text-right whitespace-nowrap" title="price_no">Px N</th>
-                    <th className="text-right whitespace-nowrap" title="(inv_y×px_y) − (inv_n×px_n); + net YES / − net NO">
+                    <th className="text-right whitespace-nowrap" title="(−inv_y×px_y) − (−inv_n×px_n); green Y / red N">
                       Staked Net
                     </th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">Fee</th>
@@ -1580,7 +1590,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   const topYesWallets = useMemo(() => {
     const arr = toxicFlowWalletUniverse(data).filter((w) => {
       const stake = walletStakeNetSignedUsd(w);
-      return Number.isFinite(stake) && stake > STAKED_NET_EPS;
+      return Number.isFinite(stake) && stake < -STAKED_NET_EPS;
     });
     return [...arr].sort((a, b) => {
       const d = stakedNetSortKeyDesc(b) - stakedNetSortKeyDesc(a);
@@ -1593,7 +1603,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   const topNoWallets = useMemo(() => {
     const arr = toxicFlowWalletUniverse(data).filter((w) => {
       const stake = walletStakeNetSignedUsd(w);
-      return Number.isFinite(stake) && stake < -STAKED_NET_EPS;
+      return Number.isFinite(stake) && stake > STAKED_NET_EPS;
     });
     return [...arr].sort((a, b) => {
       const d = stakedNetSortKeyAsc(a) - stakedNetSortKeyAsc(b);
@@ -2056,10 +2066,10 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                   <WalletTable wallets={topHoldersWallets} label="holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topYes' && (
-                  <WalletTable wallets={topYesWallets} label="Staked Net > 0" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                  <WalletTable wallets={topYesWallets} label="Net Y (Staked)" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topNo' && (
-                  <WalletTable wallets={topNoWallets} label="Staked Net < 0" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                  <WalletTable wallets={topNoWallets} label="Net N (Staked)" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                 )}
                 {tab === 'topVolume' && (
                   <WalletTable wallets={data.topVolume} label="volume" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />

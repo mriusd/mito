@@ -56,6 +56,9 @@ export interface Market {
   /** SUM(ABS(usd_yes)), SUM(ABS(usd_no)) over wallets — WS + /api/market-staked-legs */
   stakedUsdYesLeg?: number;
   stakedUsdNoLeg?: number;
+  /** Toxic Flow sidebar bar: Σ max(0, usd_y−usd_n) vs Σ max(0, −) for top 20 |CTF net| holders */
+  stakedTopHoldersCohortYesUsd?: number;
+  stakedTopHoldersCohortNoUsd?: number;
   // B-S computed values from server
   bs1?: number;
   bs2?: number;

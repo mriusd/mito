@@ -136,6 +136,8 @@ export function Sidebar() {
       winBiasConvictionShares: entry.winBiasConvictionShares,
       winBiasConvictionSharesYes: entry.winBiasConvictionSharesYes,
       winBiasConvictionSharesNo: entry.winBiasConvictionSharesNo,
+      stakedTopHoldersCohortYesUsd: entry.stakedTopHoldersCohortYesUsd,
+      stakedTopHoldersCohortNoUsd: entry.stakedTopHoldersCohortNoUsd,
     };
   }, [selectedMarket, marketLookup]);
   const sharesInExistenceDisplay = useMemo(() => {
@@ -1818,15 +1820,28 @@ export function Sidebar() {
                   <MiniBar label="Cv$" value={wbcvUsd} leftColor="bg-emerald-400/75" rightColor="bg-orange-400/75" tooltip={`Winner Bias Conviction (USDC): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcvUsd * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcvUsd * 100).toFixed(0)}%`} />
                   <MiniBar label="CvS" value={wbcv} leftColor="bg-teal-400/75" rightColor="bg-rose-400/75" tooltip={`Winner Bias Conviction (shares): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcv * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcv * 100).toFixed(0)}%`} />
                   <MiniBar label="Smart" value={sms} leftColor="bg-yellow-400/75" rightColor="bg-purple-400/75" tooltip={`Smart Money: proven wallets (≥60% WR, ≥10 mkts, PNL>0) with ≥$2k in this market — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
-                  {sidebarStakedLegs ? (
-                    <StakedLegUsdBar
-                      sumYUsd={sidebarStakedLegs.stakedUsdYesLeg}
-                      sumNUsd={sidebarStakedLegs.stakedUsdNoLeg}
-                      compact
-                      dense
-                      barMode="grossLegTotals"
-                    />
-                  ) : null}
+                  {(() => {
+                    const cy = liveShareStats?.stakedTopHoldersCohortYesUsd;
+                    const cn = liveShareStats?.stakedTopHoldersCohortNoUsd;
+                    if (
+                      typeof cy === 'number' &&
+                      Number.isFinite(cy) &&
+                      typeof cn === 'number' &&
+                      Number.isFinite(cn) &&
+                      cy + cn > 1e-9
+                    ) {
+                      return (
+                        <StakedLegUsdBar
+                          sumYUsd={cy}
+                          sumNUsd={cn}
+                          compact
+                          dense
+                          barMode="cohortSurplusHalves"
+                        />
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               );
             })()}

@@ -121,6 +121,12 @@ export function useBidAskWS() {
               if (typeof item.stakedUsdNoLeg === 'number' && Number.isFinite(item.stakedUsdNoLeg)) {
                 next.stakedUsdNoLeg = item.stakedUsdNoLeg;
               }
+              if (typeof item.stakedTopHoldersCohortYesUsd === 'number' && Number.isFinite(item.stakedTopHoldersCohortYesUsd)) {
+                next.stakedTopHoldersCohortYesUsd = item.stakedTopHoldersCohortYesUsd;
+              }
+              if (typeof item.stakedTopHoldersCohortNoUsd === 'number' && Number.isFinite(item.stakedTopHoldersCohortNoUsd)) {
+                next.stakedTopHoldersCohortNoUsd = item.stakedTopHoldersCohortNoUsd;
+              }
               patch[item.assetId] = next;
               changed = true;
             }

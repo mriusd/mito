@@ -1660,7 +1660,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                 </div>
                 <div
                   className="bg-gray-900 rounded p-2 text-center"
-                  title="|Σ|YES-leg USD| − Σ|NO-leg USD|| (wallet_market_positions), same source as sidebar Staked pill"
+                  title="Headline ‖Σ ‖YES-leg USD‖ − Σ ‖NO-leg USD‖‖ over every wallet—same notion as Sidebar Staked. Unequal to the bar below."
                 >
                   <div className="text-[10px] text-gray-500">Staked</div>
                   <div className="text-sm font-bold text-yellow-400 tabular-nums">
@@ -1729,7 +1729,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                       </div>
 
                       {/* Staked Y vs N — rows in the active below table tab */}
-                      <div>
+                      <div title="Splits each Top Holder signed Staked Net (inv×px) into YES vs NO surplus halves; the number above the bar is sum of absolute per-wallet nets in this cohort—not capped by headline Staked.">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[9px] text-gray-500">Staked Net USD (Top Holders)</span>
                           <span className="text-[8px] text-gray-600">{TOXIC_TAB_COHORT_LABEL.topHolders}</span>

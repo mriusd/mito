@@ -11,6 +11,7 @@ export function StakedLegUsdBar({
   sumNUsd,
   dense,
   compact,
+  compactLabel,
   barMode = 'grossLegTotals',
 }: {
   sumYUsd: number;
@@ -18,6 +19,8 @@ export function StakedLegUsdBar({
   dense?: boolean;
   /** Match Sidebar MiniBar row (h-[5px], left label column). */
   compact?: boolean;
+  /** Left caption when compact (default "Stake"). */
+  compactLabel?: string;
   /** grossLegTotals: market Σ|usd_yes| vs Σ|usd_no|. cohortSurplusHalves: Σ max(0,net) vs Σ max(0,−net) in active toxic tab. */
   barMode?: StakedLegBarMode;
 }) {
@@ -31,7 +34,7 @@ export function StakedLegUsdBar({
   const tip =
     barMode === 'grossLegTotals'
       ? `YES leg ${pctY.toFixed(1)}% ($${fmtUsd(sumYUsd)}) · NO leg ${pctN.toFixed(1)}% ($${fmtUsd(sumNUsd)}) · Σ legs $${fmtUsd(total)} · Staked pill |ΣY−ΣN| $${fmtUsd(netAbs)}`
-      : `Cohort YES-net ${pctY.toFixed(1)}% ($${fmtUsd(sumYUsd)}) · NO-net ${pctN.toFixed(1)}% ($${fmtUsd(sumNUsd)}) · |cohort net| $${fmtUsd(total)}`;
+      : `Splits per wallet inv×px: Σ max(0, signed net) greenside + Σ max(0, −signed) redside equals Σ|net| for this cohort only ($${fmtUsd(total)}). Header Staked is ‖Σ ‖Y-leg‖ − Σ ‖N-leg‖‖ over all wallets—different pooling; neither caps the other.`;
 
   const bar = (
     <div
@@ -49,11 +52,12 @@ export function StakedLegUsdBar({
     const leanTitle =
       barMode === 'grossLegTotals'
         ? `(ΣY − ΣN) / (ΣY + ΣN) tilt: ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}% · |ΣY−ΣN| $${fmtUsd(netAbs)}`
-        : `Cohort imbalance: YES-net ${pctY.toFixed(1)}% vs NO-net ${pctN.toFixed(1)}%; |cohort net| $${fmtUsd(total)}`;
+        : `(Σ splits YES − Σ splits NO)/(Σ splits): ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}%; center $${fmtUsd(total)} = Σ|per-wallet inv×px net| in cohort—not header Staked.`;
+    const leftLbl = compactLabel ?? 'Stake';
     return (
       <div className={`flex items-center gap-1 min-w-0 ${dense ? '' : ''}`}>
         <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate" title={tip}>
-          Stake
+          {leftLbl}
         </span>
         <div className="flex-1 min-w-0">{bar}</div>
         <span className={`text-[8px] font-bold w-[28px] shrink-0 tabular-nums text-right ${leanColor}`} title={leanTitle}>
@@ -67,7 +71,7 @@ export function StakedLegUsdBar({
   const yLbl = barMode === 'grossLegTotals' ? `Y $${fmtUsd(sumYUsd)}` : `Y net $${fmtUsd(sumYUsd)}`;
   const nLbl = barMode === 'grossLegTotals' ? `N $${fmtUsd(sumNUsd)}` : `N net $${fmtUsd(sumNUsd)}`;
   const midTitle =
-    barMode === 'grossLegTotals' ? `Σ legs $${fmtUsd(total)} · |ΣY−ΣN| $${fmtUsd(netAbs)}` : `|cohort net| $${fmtUsd(total)}`;
+    barMode === 'grossLegTotals' ? `Σ legs $${fmtUsd(total)} · |ΣY−ΣN| $${fmtUsd(netAbs)}` : `Σᵢ|inv×px netᵢ| = $${fmtUsd(total)} (Top Holders only)`;
 
   return (
     <div className={dense ? 'shrink-0' : 'mb-2 shrink-0'}>

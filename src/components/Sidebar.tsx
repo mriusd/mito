@@ -1450,20 +1450,9 @@ export function Sidebar() {
               )}
             </div>
             {upDownCountdown && (
-              <div className="flex-shrink-0 flex flex-wrap items-center justify-end gap-1">
-                <span className={`text-xs font-bold inline-flex items-center gap-0.5 ${upDownCountdown === 'Expired' ? 'text-red-400' : upDownRemaining < 60000 ? 'text-red-400' : upDownRemaining < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>
-                  <Clock size={12} /> {upDownCountdown}
-                </span>
-                {upDownCountdown === 'Expired' && isUpDownMarket && liveUpDownSameTfMarket ? (
-                  <button
-                    type="button"
-                    className="text-[10px] font-semibold px-2 py-0.5 rounded bg-teal-600 hover:bg-teal-500 text-white leading-none shrink-0"
-                    onClick={() => setSelectedMarket(liveUpDownSameTfMarket)}
-                  >
-                    Go to Live Market
-                  </button>
-                ) : null}
-              </div>
+              <span className={`text-xs font-bold flex-shrink-0 flex items-center gap-0.5 ${upDownCountdown === 'Expired' ? 'text-red-400' : upDownRemaining < 60000 ? 'text-red-400' : upDownRemaining < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>
+                <Clock size={12} /> {upDownCountdown}
+              </span>
             )}
           </div>
           <div className="text-[10px] text-gray-200 leading-tight mt-0.5 break-words w-full">
@@ -1672,10 +1661,21 @@ export function Sidebar() {
                     <div className="text-[10px] text-gray-500">Target</div>
                     <div className="text-xs font-bold text-white">{row.targetDisplay}</div>
                     {row.countdown && (
-                      <div
-                        className={`text-[10px] ${row.countdown === 'Expired' ? 'text-red-400' : row.remaining < 60000 ? 'text-red-400' : row.remaining > 300000 ? 'text-green-400' : 'text-yellow-400'}`}
-                      >
-                        {row.countdown}
+                      <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                        <div
+                          className={`text-[10px] ${row.countdown === 'Expired' ? 'text-red-400' : row.remaining < 60000 ? 'text-red-400' : row.remaining > 300000 ? 'text-green-400' : 'text-yellow-400'}`}
+                        >
+                          {row.countdown}
+                        </div>
+                        {row.countdown === 'Expired' && row.mode === 'updown' && liveUpDownSameTfMarket ? (
+                          <button
+                            type="button"
+                            className="text-[10px] font-semibold px-2 py-0.5 rounded bg-teal-600 hover:bg-teal-500 text-white leading-none shrink-0"
+                            onClick={() => setSelectedMarket(liveUpDownSameTfMarket)}
+                          >
+                            Go to Live Market
+                          </button>
+                        ) : null}
                       </div>
                     )}
                   </div>

@@ -35,6 +35,13 @@ Notes for `polybot-react`: what shipped, tradeoffs, and backlog ideas.
 - **After:** Single `useAppStore(useShallow(...))` returns `{ cashBalance, totalVal }` (total = `portfolioPositionsValueUsd(positions) + cash`). Header re-renders only when `cashBalance` or `totalVal` change (not when `positions` is replaced with an equivalent-value array). Shared helper **`portfolioPositionsValueUsd`**.
 - **Wallet Summary:** `WalletInfoDialog` via **`React.lazy`** + **`Suspense`**; mounts only when open and `tradingWallet` is set; **hover/focus** on the button warms the async chunk (`ToxicFlowDialog` module — now split off main bundle, see below).
 
+### Sidebar merge dialog + `marketLookup` subscription
+
+- **Merge:** `MergePositionsDialog` lazy-loaded; mounts when merge dialog open + `conditionId`; **hover/focus** on Merge preloads chunk.
+- **`marketLookup` churn:** `useAppStore` on full `marketLookup` made Sidebar subscribe to **object identity** on every bid/ask WS flush (`useBidAskWS` RAF merge).
+- **After:** Store **`marketLookupEpoch`** bumps whenever lookup is replaced (`setMarketData` with `marketLookup`, **`updateBidAsk`**, **`useBidAskWS`** flush). Sidebar uses **`marketLookupEpoch`** + `useMemo(() => getState().marketLookup, [epoch])` — one scalar subscription, fresh map read per paint.
+- **Tradeoff:** Other panels still use `useAppStore(s => s.marketLookup)` (future: same pattern or `useMarketLookupSubset`). Merge dialog unmount-on-close resets dialog local state.
+
 ### Toxic / Holders dialog chunk (`Sidebar.tsx` + Header lazy)
 
 - **Before:** Sidebar statically imported **`ToxicFlowDialog`**, so the module stayed in the main Rollup chunk even if Holders + Wallet Summary were never opened.
@@ -67,7 +74,7 @@ Notes for `polybot-react`: what shipped, tradeoffs, and backlog ideas.
 
 ### Lower impact / polish
 
-1. **More route-/feature-level splitting** — e.g. lazy `MergePositionsDialog`, signing flows, heavy panels — where static imports dominate.
+1. Apply **`marketLookupEpoch` + `getState().marketLookup`** (or `useMarketLookupSubset`) to **panels** that still subscribe to full `marketLookup` (`OrderbookPopup`, `PnLPanel`, `SmartMoneyPanel`, etc.).
 2. **React Profiler + Web Vitals** — Baseline before/after for sidebar open + market select + WS flood.
 3. **Web Worker for `computeAll`** (signals) — If main-thread jank remains; watch serialization cost vs debounce.
 4. **Document store update paths** — Short ADR on what updates `marketLookup` vs `lastUpdated` so future features don’t reintroduce root subscriptions.

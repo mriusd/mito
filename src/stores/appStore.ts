@@ -53,6 +53,8 @@ interface AppState {
 
   // Market lookup by token ID
   marketLookup: Record<string, Market>;
+  /** Incremented on every `marketLookup` replacement — subscribe instead of `marketLookup` when only epoch is needed (avoids reference churn on unrelated store updates). */
+  marketLookupEpoch: number;
 
   // Arbs
   arbs: ArbOpportunity[];
@@ -346,6 +348,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   loading: true,
   backendConnected: null,
   marketLookup: {},
+  marketLookupEpoch: 0,
 
   arbs: [],
   triArbs: [],
@@ -492,7 +495,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     localStorage.setItem('polymarket-signals-on-grid', v ? 'true' : 'false');
     set({ signalsOnGrid: v });
   },
-  setMarketData: (data) => set(data),
+  setMarketData: (data) =>
+    set((s) => ({
+      ...data,
+      ...(data.marketLookup !== undefined ? { marketLookupEpoch: s.marketLookupEpoch + 1 } : {}),
+    })),
   setLoading: (v) => set({ loading: v }),
   setBackendConnected: (v) => set({ backendConnected: v }),
   setArbs: (a) => set({ arbs: a }),
@@ -537,6 +544,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const updated = { ...entry, bestBid, bestAsk };
     return {
       marketLookup: { ...s.marketLookup, [assetId]: updated },
+      marketLookupEpoch: s.marketLookupEpoch + 1,
     };
   }),
   getAssetPrice: (symbol) => {

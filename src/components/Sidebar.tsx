@@ -43,7 +43,6 @@ import { HelpTooltip } from './HelpTooltip';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
 import { SidebarBiasMiniBar } from './SidebarBiasMiniBar';
-import { MergePositionsDialog } from './MergePositionsDialog';
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
@@ -56,6 +55,14 @@ const ToxicFlowDialogLazy = lazy(() =>
 
 function preloadToxicFlowDialog() {
   void import('./ToxicFlowDialog');
+}
+
+const MergePositionsDialogLazy = lazy(() =>
+  import('./MergePositionsDialog').then((m) => ({ default: m.MergePositionsDialog }))
+);
+
+function preloadMergePositionsDialog() {
+  void import('./MergePositionsDialog');
 }
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
@@ -120,7 +127,8 @@ export function Sidebar() {
   const makerAddressForMerge = useAppStore((s) => s.makerAddress);
   const orders = useAppStore((s) => s.orders);
   const trades = useAppStore((s) => s.trades);
-  const marketLookup = useAppStore((s) => s.marketLookup);
+  const marketLookupEpoch = useAppStore((s) => s.marketLookupEpoch);
+  const marketLookup = useMemo(() => useAppStore.getState().marketLookup, [marketLookupEpoch]);
 
   const liveOrderbookVolumeDisplay = useMemo(() => {
     if (!selectedMarket?.clobTokenIds?.[0]) return null;
@@ -1418,15 +1426,19 @@ export function Sidebar() {
 
   return (
     <>
-    <MergePositionsDialog
-      open={mergeDialogOpen}
-      onClose={() => setMergeDialogOpen(false)}
-      maxShares={mergeEligible.maxMerge}
-      conditionId={mergeEligible.conditionId}
-      title={fullMarketName || marketName}
-      outcomePairLabel={isUpDownMarket ? 'UP / DOWN' : 'YES / NO'}
-      onSubmit={handleMergeSubmit}
-    />
+    {mergeDialogOpen && !!mergeEligible.conditionId && (
+      <Suspense fallback={null}>
+        <MergePositionsDialogLazy
+          open
+          onClose={() => setMergeDialogOpen(false)}
+          maxShares={mergeEligible.maxMerge}
+          conditionId={mergeEligible.conditionId}
+          title={fullMarketName || marketName}
+          outcomePairLabel={isUpDownMarket ? 'UP / DOWN' : 'YES / NO'}
+          onSubmit={handleMergeSubmit}
+        />
+      </Suspense>
+    )}
     {toxicDialogOpen && !!selectedMarket?.conditionId?.trim() && (
       <Suspense fallback={null}>
         <ToxicFlowDialogLazy
@@ -1854,7 +1866,7 @@ export function Sidebar() {
                   <SidebarBiasMiniBar label="WinS" value={wbs} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={`Winner Bias (Shares): ${posLabel} WR ${(yesWRs * 100).toFixed(0)}% / ${negLabel} WR ${(noWRs * 100).toFixed(0)}%`} />
                   <SidebarBiasMiniBar label="Cv$" value={wbcvUsd} leftColor="bg-emerald-400/75" rightColor="bg-orange-400/75" tooltip={`Winner Bias Conviction (USDC): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcvUsd * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcvUsd * 100).toFixed(0)}%`} />
                   <SidebarBiasMiniBar label="CvS" value={wbcv} leftColor="bg-teal-400/75" rightColor="bg-rose-400/75" tooltip={`Winner Bias Conviction (shares): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcv * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcv * 100).toFixed(0)}%`} />
-                  <SidebarBiasMiniBar label="Smart" value={sms} leftColor="bg-yellow-400/75" rightColor="bg-purple-400/75" tooltip={`Smart Money: proven wallets (≥60% WR, ≥10 mkts, PNL>0) with ≥$2k in this market — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
+                  <SidebarBiasMiniBar label="Smart" value={sms} leftColor="bg-lime-500/75" rightColor="bg-red-600/75" tooltip={`Smart Money: proven wallets (≥60% WR, ≥10 mkts, PNL>0) with ≥$2k in this market — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
                   {sidebarStakedLegs ? (
                     <StakedLegUsdBar
                       sumYUsd={sidebarStakedLegs.stakedUsdYesLeg}
@@ -2316,6 +2328,8 @@ export function Sidebar() {
                     type="button"
                     disabled={!mergeEligible.canOpenDialog}
                     onClick={() => mergeEligible.canOpenDialog && setMergeDialogOpen(true)}
+                    onMouseEnter={preloadMergePositionsDialog}
+                    onFocus={preloadMergePositionsDialog}
                     title={
                       !mergeEligible.canOpenDialog
                         ? !mergeEligible.conditionId

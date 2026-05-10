@@ -368,10 +368,12 @@ export function LiveTradeChart({
     const chartLeft = 30;
     const chartRight = W - 4;
     const chartTop = 4;
-    const volHeight = 18;
-    const chartBot = H - 14 - volHeight;
-    const volTop = chartBot + 3;
-    const volBot = H - 14;
+    /** hh:mm sits in bottom band — 0¢ is drawn flush above it */
+    const timeBand = 13;
+    const gapZeroAboveTimeLabels = 2;
+    const chartBot = H - timeBand - gapZeroAboveTimeLabels;
+    /** Volume grows downward past chartBot through time-band (below candle pane) */
+    const volFloor = H - 2;
 
     // Fixed 0-100 Y-axis range
     const minP = 0;
@@ -403,19 +405,31 @@ export function LiveTradeChart({
       ctx.fillText(p.toFixed(1) + '¢', chartLeft - 2, y);
     }
 
-    // Time labels — evenly spaced across full duration
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
-    const labelCount = 4;
-    for (let i = 0; i <= labelCount; i++) {
-      const t = minT + rangeT * (i / labelCount);
-      const d = new Date(t);
-      ctx.fillText(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`, toX(t), volBot + 2);
+    /** Time labels sit below chartBot in bottom band (drawn last for z-order) */
+    const timeLabelY = chartBot + gapZeroAboveTimeLabels;
+
+    // Candle widths — before volume (volume drawn behind candles)
+    const candleW = Math.max(2, Math.min(12, ((chartRight - chartLeft) / Math.max(totalCandles, 1)) * 0.7));
+
+    // Volume bars — span into candle pane + full overflow through time band to bottom
+    const volBleedUp = Math.min(40, Math.floor((chartBot - chartTop) * 0.38));
+    const volCeil = chartBot - volBleedUp;
+    const volSpanPx = Math.max(8, volFloor - volCeil);
+    let maxVol = 0;
+    for (const c of candles) {
+      if (c.v > maxVol) maxVol = c.v;
+    }
+    if (maxVol > 0) {
+      for (const c of candles) {
+        if (c.v <= 0) continue;
+        const cx = toX(c.time + candleMs / 2);
+        const isBull = c.c >= c.o;
+        const barH = Math.max(1, (c.v / maxVol) * volSpanPx);
+        ctx.fillStyle = isBull ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)';
+        ctx.fillRect(cx - candleW / 2, volFloor - barH, candleW, barH);
+      }
     }
 
-    // Draw candles — width based on total market duration, not data count
-    const candleW = Math.max(2, Math.min(12, ((chartRight - chartLeft) / Math.max(totalCandles, 1)) * 0.7));
     const bullColor = '#10b981';
     const bearColor = '#ef4444';
 
@@ -438,23 +452,6 @@ export function LiveTradeChart({
       const bodyH = Math.max(bodyBot - bodyTop, 1);
       ctx.fillStyle = color;
       ctx.fillRect(cx - candleW / 2, bodyTop, candleW, bodyH);
-    }
-
-    // Volume bars
-    let maxVol = 0;
-    for (const c of candles) {
-      if (c.v > maxVol) maxVol = c.v;
-    }
-    if (maxVol > 0) {
-      const volRange = volBot - volTop;
-      for (const c of candles) {
-        if (c.v <= 0) continue;
-        const cx = toX(c.time + candleMs / 2);
-        const isBull = c.c >= c.o;
-        const barH = Math.max(1, (c.v / maxVol) * volRange);
-        ctx.fillStyle = isBull ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)';
-        ctx.fillRect(cx - candleW / 2, volBot - barH, candleW, barH);
-      }
     }
 
     const lastPrice = candles[candles.length - 1].c;
@@ -548,6 +545,17 @@ export function LiveTradeChart({
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText('$' + clLast.toFixed(clLast > 100 ? 0 : 2), chartLeft + 2, clLastY - 6);
+    }
+
+    // Time labels — on top so volume overflow through band stays readable where not covered
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    const labelCount = 4;
+    for (let i = 0; i <= labelCount; i++) {
+      const t = minT + rangeT * (i / labelCount);
+      const d = new Date(t);
+      ctx.fillText(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`, toX(t), timeLabelY);
     }
   }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines]);
 

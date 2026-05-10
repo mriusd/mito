@@ -174,8 +174,8 @@ async function fetchKlinesForWindow(
   while (iterations++ < 40 && byTime.size < targetCount) {
     const q =
       endTime === undefined
-        ? `symbol=${symbol}USDT&interval=${interval}&limit=1500`
-        : `symbol=${symbol}USDT&interval=${interval}&endTime=${endTime}&limit=1500`;
+        ? `symbol=${symbol}USDT&interval=${interval}&limit=900`
+        : `symbol=${symbol}USDT&interval=${interval}&endTime=${endTime}&limit=900`;
     const res = await fetch(`https://api.binance.com/api/v3/klines?${q}`);
     const rows = (await res.json()) as unknown;
     if (!Array.isArray(rows) || rows.length === 0) break;

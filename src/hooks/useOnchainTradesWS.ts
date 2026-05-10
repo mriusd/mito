@@ -3,8 +3,9 @@ import { fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
 import { API_BASE, WS_BASE } from '../lib/env';
 import type { LiveTrade } from './usePolymarketOB';
 
-const MAX_TRADES = 10_000;
-const WALLET_TRADES_CAP = 10_000;
+/** Cap sidebar / chart tape arrays — 10k rows × several copies was ~hundreds of MB retained. */
+const MAX_TRADES = 3500;
+const WALLET_TRADES_CAP = 2500;
 
 interface OnchainFillRow {
   makerAmount?: number;
@@ -60,13 +61,25 @@ function sameDecimalTokenId(a: string | null | undefined, b: string | null | und
 }
 
 /** Survives market switches: seed sidebar tape from WS rows already received this session. */
-const ONCHAIN_PUBLIC_TAPE_BUFFER_CAP = 5_000;
+const ONCHAIN_PUBLIC_TAPE_BUFFER_CAP = 3000;
 
 type BufferedPublicTapeRow = LiveTrade & { __m: string; __tok: string };
 const onchainPublicTapeBuffer: BufferedPublicTapeRow[] = [];
 
 function tapeDedupeKey(t: Pick<LiveTrade, 'txHash' | 'logIndex'>): string {
   return `${t.txHash || ''}:${t.logIndex ?? ''}`;
+}
+
+function prependDedupedSortedTape(prev: LiveTrade[], t: LiveTrade, cap: number): LiveTrade[] {
+  const key = tapeDedupeKey(t);
+  const deduped = key && key !== ':' ? prev.filter((x) => tapeDedupeKey(x) !== key) : prev;
+  const merged = [t, ...deduped];
+  merged.sort((a, b) => {
+    const td = (b.timestamp ?? 0) - (a.timestamp ?? 0);
+    if (td !== 0) return td;
+    return (b.logIndex ?? 0) - (a.logIndex ?? 0);
+  });
+  return merged.slice(0, cap);
 }
 
 function pushPublicTapeBuffer(t: LiveTrade, marketCanon: string, tokenIdRaw: string) {
@@ -202,6 +215,9 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   const walletRef = useRef<string | null | undefined>(null);
   const prefetchSerialRef = useRef(0);
   const effectSerialRef = useRef(0);
+  /** Coalesce bursty onchainTrade WS messages to one React update per frame. */
+  const pendingTapeBatchRef = useRef<LiveTrade[]>([]);
+  const tapeBatchRafRef = useRef<number | null>(null);
 
   // Fast market-scoped REST before WS snapshot (WS trades are last-100 global, often misses this market).
   useEffect(() => {
@@ -214,7 +230,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       try {
         const [pr, tr] = await Promise.all([
           fetchOnchainMarketPositions({ token_ids: ids, wallet: w }),
-          fetchOnchainMarketTrades({ token_ids: ids, wallet: w, limit: 2000 }),
+          fetchOnchainMarketTrades({ token_ids: ids, wallet: w, limit: 1500 }),
         ]);
         if (cancelled || serial !== prefetchSerialRef.current) return;
         setWalletPositions(
@@ -303,6 +319,11 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
 
     if (!mid && !tid && !wAddr) {
       cleanup();
+      if (tapeBatchRafRef.current != null) {
+        cancelAnimationFrame(tapeBatchRafRef.current);
+        tapeBatchRafRef.current = null;
+      }
+      pendingTapeBatchRef.current = [];
       setTrades([]);
       setWalletPositions([]);
       setWalletTrades([]);
@@ -312,12 +333,40 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
 
     const serial = ++effectSerialRef.current;
 
+    const cancelPendingTapeBatch = () => {
+      if (tapeBatchRafRef.current != null) {
+        cancelAnimationFrame(tapeBatchRafRef.current);
+        tapeBatchRafRef.current = null;
+      }
+      pendingTapeBatchRef.current = [];
+    };
+
+    const flushTapeBatch = () => {
+      tapeBatchRafRef.current = null;
+      const batch = pendingTapeBatchRef.current;
+      pendingTapeBatchRef.current = [];
+      if (batch.length === 0) return;
+      setTrades((prev) => {
+        let cur = prev;
+        for (const t of batch) {
+          cur = prependDedupedSortedTape(cur, t, MAX_TRADES);
+        }
+        return cur;
+      });
+    };
+
+    const scheduleTapeTrade = (trade: LiveTrade) => {
+      pendingTapeBatchRef.current.push(trade);
+      if (tapeBatchRafRef.current != null) return;
+      tapeBatchRafRef.current = requestAnimationFrame(flushTapeBatch);
+    };
+
     const loadFromAPI = () => {
       const m = marketRef.current?.trim() || '';
       const t = tokenRef.current?.trim() || '';
       if (!m && !t) return;
       const qs = new URLSearchParams();
-      qs.set('limit', '2000');
+      qs.set('limit', '1500');
       if (m) qs.set('market_id', canonicalConditionKey(m));
       if (t) qs.set('token_id', t);
       void fetch(`${API_BASE}/api/onchain-fills?${qs.toString()}`)
@@ -362,11 +411,13 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
           const mForMerge = m ? canonicalConditionKey(m) : null;
           const tForMerge = t || null;
           const fromBuf = filterPublicTapeBuffer(mForMerge, tForMerge);
+          cancelPendingTapeBatch();
           setTrades(mergePublicLiveTapes(mapped.slice(0, MAX_TRADES), fromBuf));
         })
         .catch(() => {});
     };
 
+    cancelPendingTapeBatch();
     const mCanonInit = mid ? canonicalConditionKey(mid) : null;
     setTrades(filterPublicTapeBuffer(mCanonInit, tid || null));
     void loadFromAPI();
@@ -485,17 +536,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             if (d.tokenId) {
               pushPublicTapeBuffer(t, marketKeyForBuf, String(d.tokenId));
             }
-            setTrades((prev) => {
-              const key = `${t.txHash || ''}:${t.logIndex ?? ''}`;
-              const deduped = key ? prev.filter((x) => `${x.txHash || ''}:${x.logIndex ?? ''}` !== key) : prev;
-              const merged = [t, ...deduped];
-              merged.sort((a, b) => {
-                const td = (b.timestamp ?? 0) - (a.timestamp ?? 0);
-                if (td !== 0) return td;
-                return (b.logIndex ?? 0) - (a.logIndex ?? 0);
-              });
-              return merged.slice(0, MAX_TRADES);
-            });
+            scheduleTapeTrade(t);
           } else if (msg.type === 'walletPositions' && Array.isArray(msg.data)) {
             const raw = (msg.data as Array<{ tokenId?: string; size?: number; avgPrice?: number }>)
               .map((p) => ({
@@ -590,6 +631,11 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
 
     return () => {
       disposed = true;
+      if (tapeBatchRafRef.current != null) {
+        cancelAnimationFrame(tapeBatchRafRef.current);
+        tapeBatchRafRef.current = null;
+      }
+      pendingTapeBatchRef.current = [];
       cleanup();
     };
   }, [marketId, tokenId, wallet, cleanup]);

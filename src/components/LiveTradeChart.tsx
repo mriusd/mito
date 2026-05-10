@@ -116,7 +116,7 @@ export function LiveTradeChart({
     };
 
     const loadKlines = () =>
-      fetch(`${API_BASE}/api/v3/klines?symbol=${tokenId}&interval=${interval}&startTime=${st}&endTime=${et}&limit=1500`)
+      fetch(`${API_BASE}/api/v3/klines?symbol=${tokenId}&interval=${interval}&startTime=${st}&endTime=${et}&limit=900`)
         .then((r) => r.json())
         .then((klines: any[][]) => {
           if (!cancelled) {

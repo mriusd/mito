@@ -48,7 +48,7 @@ import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarLiveOrderbookSection } from './SidebarLiveOrderbookSection';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import { ArrowRight, ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
-import type { AssetSymbol } from '../types';
+import type { AssetSymbol, Market } from '../types';
 
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
@@ -1911,11 +1911,13 @@ export function Sidebar() {
             displayAsks={displayAsks}
             obLoading={obLoading}
             isMarketExpired={isMarketExpired}
-            outcomeMarket={marketForOrderbookOutcome}
+            isUpDownMarket={isUpDownMarket}
+            sidebarUserBidPrices={sidebarUserBidPrices}
             sidebarUserAskPrices={sidebarUserAskPrices}
             selectedMarket={selectedMarket}
             orderOutcome={orderOutcome}
             positions={positions}
+            outcomeMarket={marketForOrderbookOutcome}
             setOrderSide={setOrderSide}
             setOrderPrice={setOrderPrice}
             setOrderAmount={setOrderAmount}

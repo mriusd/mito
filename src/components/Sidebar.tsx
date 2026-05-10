@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { useAccount } from 'wagmi';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
@@ -270,8 +270,18 @@ export function Sidebar() {
     setTradeTickNow(Date.now());
   }, [selectedMarket?.conditionId, liveTradesSource]);
   const setOnchainGridPositions = useAppStore((s) => s.setOnchainGridPositions);
-  const [displayBids, setDisplayBids] = useState(bids);
-  const [displayAsks, setDisplayAsks] = useState(asks);
+  const obStaleBookRef = useRef<{ bids: typeof bids; asks: typeof asks }>({ bids: [], asks: [] });
+  useLayoutEffect(() => {
+    obStaleBookRef.current = { bids: [], asks: [] };
+  }, [obTokenId]);
+  useLayoutEffect(() => {
+    if (!obLoading) {
+      obStaleBookRef.current = { bids, asks };
+    }
+  }, [obLoading, bids, asks]);
+  const displayBids = obLoading ? obStaleBookRef.current.bids : bids;
+  const displayAsks = obLoading ? obStaleBookRef.current.asks : asks;
+
   const [onchainSidebarPositions, setOnchainSidebarPositions] = useState<Array<{
     tokenId: string;
     size: number;
@@ -333,13 +343,6 @@ export function Sidebar() {
     // Default to collapsed on shorter screens.
     return window.innerHeight >= 1000;
   });
-  useEffect(() => {
-    if (!obLoading) {
-      setDisplayBids(bids);
-      setDisplayAsks(asks);
-    }
-  }, [obLoading, bids, asks]);
-
   /** Book imbalance in 5–95¢ depth (same formula as legacy Sidebar “Book” bar). */
   const orderbookBookImbalance = useMemo(() => {
     const bidTotal = displayBids.reduce((s, l) => {

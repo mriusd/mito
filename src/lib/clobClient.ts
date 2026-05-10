@@ -12,11 +12,12 @@ import {
   type SignedOrder,
 } from '@polymarket/clob-client-v2';
 import { API_BASE, vitePolyBuilderCode } from './env';
-import { getWalletClient } from '@wagmi/core';
+import { getConnection } from '@wagmi/core';
 import { wagmiAdapter } from './wallet';
 import { signingDialog } from '../components/SigningDialog';
 import { useAppStore } from '../stores/appStore';
 import { getStoredPrivateKey } from '../components/PrivateKeyImportDialog';
+import { polygon } from 'viem/chains';
 
 const CLOB_URL = 'https://clob.polymarket.com';
 
@@ -132,12 +133,36 @@ export async function getEthersSigner(): Promise<ethers.Signer> {
       return new ethers.Wallet(pk, provider);
     }
   }
-  const walletClient = await getWalletClient(wagmiAdapter.wagmiConfig);
-  if (!walletClient) throw new Error('No wallet connected');
-  const { account, chain, transport } = walletClient;
-  const network = { chainId: chain.id, name: chain.name, ensAddress: undefined };
-  const provider = new ethers.providers.Web3Provider(transport, network);
-  return provider.getSigner(account.address);
+  const conn = getConnection(wagmiAdapter.wagmiConfig);
+  if (conn.status !== 'connected' || !conn.connector || !conn.address) {
+    throw new Error('No wallet connected');
+  }
+  const chainId = conn.chainId;
+  if (chainId != null && chainId !== polygon.id) {
+    throw new Error(`Switch wallet to Polygon (chain ${polygon.id}) for merges and trading`);
+  }
+
+  let eip1193: unknown;
+  try {
+    eip1193 = await conn.connector.getProvider?.({ chainId: polygon.id });
+  } catch {
+    eip1193 = undefined;
+  }
+  if (!eip1193 || typeof (eip1193 as { request?: unknown }).request !== 'function') {
+    try {
+      eip1193 = await conn.connector.getProvider?.();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const ext = eip1193 as ethers.providers.ExternalProvider | null;
+  if (!ext || typeof (ext as { request?: unknown }).request !== 'function') {
+    throw new Error('Wallet EIP-1193 provider unavailable — reconnect wallet');
+  }
+
+  const ethersProvider = new ethers.providers.Web3Provider(ext, 'any');
+  return ethersProvider.getSigner(conn.address);
 }
 
 function builderConfig():

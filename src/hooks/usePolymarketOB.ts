@@ -24,8 +24,22 @@ interface BookState {
 }
 
 const WS_URL = 'wss://ws-subscriptions-clob.polymarket.com/ws/market';
-// Shared local book maps — kept outside React state for perf,
-// flushed to React state via flushBook.
+// Shared local book maps — kept outside React state for perf; React book state is RAF-coalesced on price deltas.
+function scheduleRaf(cb: () => void, slot: { current: number | null }): void {
+  if (slot.current !== null) return;
+  slot.current = requestAnimationFrame(() => {
+    slot.current = null;
+    cb();
+  });
+}
+
+function cancelRaf(slot: { current: number | null }): void {
+  if (slot.current !== null) {
+    cancelAnimationFrame(slot.current);
+    slot.current = null;
+  }
+}
+
 let localBids: Map<string, string> = new Map();
 let localAsks: Map<string, string> = new Map();
 let localTrades: LiveTrade[] = [];
@@ -52,8 +66,12 @@ export function usePolymarketOB(tokenId: string | null) {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const snapshotLoaded = useRef(false);
+  const bookRafSlot = useRef<number | null>(null);
+  const tradesRafSlot = useRef<number | null>(null);
 
   const cleanup = useCallback(() => {
+    cancelRaf(bookRafSlot);
+    cancelRaf(tradesRafSlot);
     if (pingTimer.current) {
       clearInterval(pingTimer.current);
       pingTimer.current = null;
@@ -155,6 +173,7 @@ export function usePolymarketOB(tokenId: string | null) {
             }
             snapshotLoaded.current = true;
             setLoading(false);
+            cancelRaf(bookRafSlot);
             setBook(sortedBook(localBids, localAsks));
             break;
           }
@@ -173,7 +192,11 @@ export function usePolymarketOB(tokenId: string | null) {
               }
               changed = true;
             }
-            if (changed) setBook(sortedBook(localBids, localAsks));
+            if (changed) {
+              scheduleRaf(() => {
+                setBook(sortedBook(localBids, localAsks));
+              }, bookRafSlot);
+            }
             break;
           }
 
@@ -186,7 +209,9 @@ export function usePolymarketOB(tokenId: string | null) {
               timestamp: parseInt(msg.timestamp) || Date.now(),
             };
             localTrades = [trade, ...localTrades].slice(0, MAX_TRADES);
-            setTrades([...localTrades]);
+            scheduleRaf(() => {
+              setTrades([...localTrades]);
+            }, tradesRafSlot);
             break;
           }
         }
@@ -212,12 +237,16 @@ export function usePolymarketOB(tokenId: string | null) {
       localTrades = [];
       snapshotLoaded.current = false;
       setLoading(false);
+      cancelRaf(bookRafSlot);
+      cancelRaf(tradesRafSlot);
       setBook({ bids: [], asks: [] });
       setTrades([]);
       return;
     }
 
     // Clear old book immediately so stale OB doesn't show while loading
+    cancelRaf(bookRafSlot);
+    cancelRaf(tradesRafSlot);
     setBook({ bids: [], asks: [] });
     connect();
 

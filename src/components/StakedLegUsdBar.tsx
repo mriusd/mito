@@ -15,6 +15,7 @@ export function StakedLegUsdBar({
   barMode = 'grossLegTotals',
   /** Sidebar: pulse Y or N segment when |tilt| ≥ 20%. */
   flashExtremeTilt = false,
+  compactLegUsdFooter = false,
 }: {
   sumYUsd: number;
   sumNUsd: number;
@@ -26,6 +27,7 @@ export function StakedLegUsdBar({
   /** grossLegTotals: market Σ|usd_yes| vs Σ|usd_no|. cohortSurplusHalves: Σ max(0,net) vs Σ max(0,−net) in active toxic tab. */
   barMode?: StakedLegBarMode;
   flashExtremeTilt?: boolean;
+  compactLegUsdFooter?: boolean;
 }) {
   const total = sumYUsd + sumNUsd;
   if (total <= 1e-9) return null;
@@ -66,16 +68,39 @@ export function StakedLegUsdBar({
         ? `(ΣY − ΣN) / (ΣY + ΣN) tilt: ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}% · |ΣY−ΣN| $${fmtUsd(netAbs)}`
         : `(Σ splits YES − Σ splits NO)/(Σ splits): ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}%; center $${fmtUsd(total)} = Σ|per-wallet inv×px net| in cohort—not header Staked.`;
     const leftLbl = compactLabel ?? 'Stake';
+    const yFoot =
+      barMode === 'grossLegTotals' ? `Σ|YES| $${fmtUsd(sumYUsd)}` : `Y surplus $${fmtUsd(sumYUsd)}`;
+    const nFoot =
+      barMode === 'grossLegTotals' ? `Σ|NO| $${fmtUsd(sumNUsd)}` : `N surplus $${fmtUsd(sumNUsd)}`;
     return (
-      <div className={`flex items-center gap-1 min-w-0 ${dense ? '' : ''}`}>
-        <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate" title={tip}>
-          {leftLbl}
-        </span>
-        <div className="flex-1 min-w-0">{bar}</div>
-        <span className={`text-[8px] font-bold w-[28px] shrink-0 tabular-nums text-right ${leanColor}`} title={leanTitle}>
-          {leanPct > 0 ? '+' : ''}
-          {leanPct.toFixed(0)}%
-        </span>
+      <div className="min-w-0 space-y-0.5">
+        <div className={`flex items-center gap-1 min-w-0 ${dense ? '' : ''}`}>
+          <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate" title={tip}>
+            {leftLbl}
+          </span>
+          <div className="flex-1 min-w-0">{bar}</div>
+          <span className={`text-[8px] font-bold w-[28px] shrink-0 tabular-nums text-right ${leanColor}`} title={leanTitle}>
+            {leanPct > 0 ? '+' : ''}
+            {leanPct.toFixed(0)}%
+          </span>
+        </div>
+        {compactLegUsdFooter ? (
+          <div className="flex gap-1 min-w-0 items-baseline">
+            <span className="w-[38px] shrink-0" aria-hidden />
+            <div
+              className="flex flex-1 justify-between gap-2 min-w-0 text-[8px] tabular-nums leading-tight"
+              title={`${yFoot} · ${nFoot}`}
+            >
+              <span className="text-green-400 font-medium truncate">
+                Y ${fmtUsd(sumYUsd)}
+              </span>
+              <span className="text-red-400 font-medium truncate text-right">
+                N ${fmtUsd(sumNUsd)}
+              </span>
+            </div>
+            <span className="w-[28px] shrink-0" aria-hidden />
+          </div>
+        ) : null}
       </div>
     );
   }

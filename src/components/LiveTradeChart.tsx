@@ -56,8 +56,6 @@ export function LiveTradeChart({
 }: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
-  /** Candle openTime (ms) → stake tilt 0–100 (/api/market-staked-klines), aligns with stake pill Σ|Y| vs Σ|N|. */
-  const stake01ByOpenTimeRef = useRef<Map<number, number>>(new Map());
   const chainlinkCandleMapRef = useRef<Map<number, Candle>>(new Map());
   const lastTradeCountRef = useRef(0);
   const [ready, setReady] = useState(false);
@@ -67,7 +65,6 @@ export function LiveTradeChart({
   const resolvedDefaultInterval = defaultIntervalOverride || defaultInterval(intervalContext);
   const [interval, setInterval_] = useState(() => resolvedDefaultInterval);
   const [wsTick, setWsTick] = useState(0);
-  const [stakeTick, setStakeTick] = useState(0);
   const [chainlinkTick, setChainlinkTick] = useState(0);
 
   // Reset default interval when market changes
@@ -80,7 +77,6 @@ export function LiveTradeChart({
   // Reset candle map + fetch klines from Go backend + subscribe to WS (reconnect + tab visibility)
   useEffect(() => {
     candleMapRef.current = new Map();
-    stake01ByOpenTimeRef.current = new Map();
     lastTradeCountRef.current = 0;
     setReady(false);
 
@@ -132,29 +128,7 @@ export function LiveTradeChart({
           if (!cancelled) setReady(true);
         });
 
-    const loadStakeSeries = () =>
-      fetch(
-        `${API_BASE}/api/market-staked-klines?symbol=${encodeURIComponent(tokenId)}&interval=${interval}&startTime=${st}&endTime=${et}&limit=900`,
-      )
-        .then((r) => r.json())
-        .then((rows: unknown) => {
-          if (cancelled) return;
-          const m = stake01ByOpenTimeRef.current;
-          m.clear();
-          if (Array.isArray(rows)) {
-            for (const row of rows) {
-              if (Array.isArray(row) && row.length >= 2) {
-                m.set(Number(row[0]), Number(row[1]));
-              }
-            }
-          }
-          setStakeTick((n) => n + 1);
-        })
-        .catch(() => {
-          if (!cancelled) setStakeTick((n) => n + 1);
-        });
-
-    void Promise.all([loadKlines(), loadStakeSeries()]);
+    void loadKlines();
 
     const clearPing = () => {
       if (pingIv != null) {
@@ -207,7 +181,7 @@ export function LiveTradeChart({
           }
         }, 30_000);
         if (wasReconnect) {
-          void Promise.all([loadKlines(), loadStakeSeries()]).then(() => {
+          void loadKlines().then(() => {
             if (!cancelled) setWsTick((n) => n + 1);
           });
         }
@@ -264,7 +238,7 @@ export function LiveTradeChart({
         clearTimeout(reconnectTimeout);
         reconnectTimeout = null;
       }
-      void Promise.all([loadKlines(), loadStakeSeries()]).then(() => {
+      void loadKlines().then(() => {
         if (!cancelled) setWsTick((n) => n + 1);
       });
       connectWs();
@@ -480,29 +454,6 @@ export function LiveTradeChart({
       ctx.fillRect(cx - candleW / 2, bodyTop, candleW, bodyH);
     }
 
-    if (hidePriceLines) {
-      const stakeMap = stake01ByOpenTimeRef.current;
-      ctx.strokeStyle = 'rgba(250,204,21,0.9)';
-      ctx.lineWidth = 1.25;
-      ctx.setLineDash([3, 3]);
-      ctx.beginPath();
-      let stakeStarted = false;
-      for (const c of candles) {
-        const sv = stakeMap.get(c.time);
-        if (sv === undefined || !Number.isFinite(sv)) continue;
-        const sx = toX(c.time + candleMs / 2);
-        const sy = toY(Math.max(0, Math.min(100, sv)));
-        if (!stakeStarted) {
-          ctx.moveTo(sx, sy);
-          stakeStarted = true;
-        } else {
-          ctx.lineTo(sx, sy);
-        }
-      }
-      if (stakeStarted) ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
     const lastPrice = candles[candles.length - 1].c;
     const lastY = toY(lastPrice);
     if (!hidePriceLines) {
@@ -606,7 +557,7 @@ export function LiveTradeChart({
       const d = new Date(t);
       ctx.fillText(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`, toX(t), timeLabelY);
     }
-  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, stakeTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines]);
+  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines]);
 
   useEffect(() => {
     draw();

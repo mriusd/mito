@@ -72,6 +72,8 @@ export function Header({ onRefresh }: HeaderProps) {
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
   const [showOrderDialog, setShowOrderDialog] = useState(true);
+  const disableMarketPriceWarning = useAppStore((s) => s.disableMarketPriceWarning);
+  const setDisableMarketPriceWarning = useAppStore((s) => s.setDisableMarketPriceWarning);
   const [isNarrowScreen, setIsNarrowScreen] = useState(() => window.innerWidth < 1200);
 
   // Close add menu / settings on click outside
@@ -382,6 +384,15 @@ export function Header({ onRefresh }: HeaderProps) {
                   className="accent-blue-500"
                 />
                 <span className="text-xs text-gray-300">Show place order dialog</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer mt-2">
+                <input
+                  type="checkbox"
+                  checked={disableMarketPriceWarning}
+                  onChange={(e) => setDisableMarketPriceWarning(e.target.checked)}
+                  className="accent-blue-500"
+                />
+                <span className="text-xs text-gray-300">Disable market price warning</span>
               </label>
               <div className="mt-2 pt-2 border-t border-gray-700 space-y-1">
                 <a

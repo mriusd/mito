@@ -42,7 +42,8 @@ function PnlDrilldownGlobal() {
 function App() {
   const loading = useAppStore((s) => s.loading);
   const backendConnected = useAppStore((s) => s.backendConnected);
-  const marketLookup = useAppStore((s) => s.marketLookup);
+  /** Bumps when backend refresh fills marketLookup — deep-link effect reads lookup via getState(), not this subscription. */
+  const marketLookupEpoch = useAppStore((s) => s.lastUpdated);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const sidebarOutcome = useAppStore((s) => s.sidebarOutcome);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
@@ -75,11 +76,11 @@ function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  // Apply URL deep-link once it can be resolved from marketLookup.
+  // Apply URL deep-link once it can be resolved from marketLookup (read from store inside effect to avoid subscribing to full map).
   useEffect(() => {
     if (!pendingLink) return;
 
-    // marketLookup is tokenId -> market, so dedupe by market.id
+    const marketLookup = useAppStore.getState().marketLookup;
     const byId = new Map<string, (typeof selectedMarket)>();
     for (const m of Object.values(marketLookup)) byId.set(m.id, m);
     const m = byId.get(pendingLink.marketId);
@@ -89,7 +90,7 @@ function App() {
     if (sidebarOutcome !== pendingLink.side) setSidebarOutcome(pendingLink.side);
     setSidebarOpen(true);
     setPendingLink(null);
-  }, [pendingLink, marketLookup, selectedMarket, sidebarOutcome, setSelectedMarket, setSidebarOutcome, setSidebarOpen]);
+  }, [pendingLink, marketLookupEpoch, selectedMarket, sidebarOutcome, setSelectedMarket, setSidebarOutcome, setSidebarOpen]);
 
   // selected market -> URL sync
   useEffect(() => {

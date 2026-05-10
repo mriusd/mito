@@ -40,7 +40,6 @@ export function useSignalsAndArbs() {
   const useLivePrice = useAppStore((s) => s.useLivePrice);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const vwapCorrection = useAppStore((s) => s.vwapCorrection);
-  const orders = useAppStore((s) => s.orders);
   const arbMatchMult = useAppStore((s) => s.arbMatchMult);
   const signalMakerMode = useAppStore((s) => s.signalMakerMode);
   const setSignals = useAppStore((s) => s.setSignals);
@@ -49,6 +48,7 @@ export function useSignalsAndArbs() {
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Orders: read via getState() inside computeAll; omitting from deps avoids debounce thrash on order ticks.
   useEffect(() => {
     // Debounce: recompute 200ms after last dependency change
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -56,8 +56,8 @@ export function useSignalsAndArbs() {
       computeAll().catch(e => console.error('[signals] computeAll error:', e));
     }, 200);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aboveMarkets, priceOnMarkets, weeklyHitMarkets, priceData, vwapData, volatilityData, volMultiplier, manualPriceSlots, activeRangeSlot, useLivePrice, bsTimeOffsetHours, vwapCorrection, orders, arbMatchMult, signalMakerMode]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- orders via getState() in computeAll()
+  }, [aboveMarkets, priceOnMarkets, weeklyHitMarkets, priceData, vwapData, volatilityData, volMultiplier, manualPriceSlots, activeRangeSlot, useLivePrice, bsTimeOffsetHours, vwapCorrection, arbMatchMult, signalMakerMode]);
 
   function getAssetPrice(symbol: AssetSymbol): number {
     const slot = manualPriceSlots[symbol]?.[activeRangeSlot[symbol]];
@@ -68,6 +68,7 @@ export function useSignalsAndArbs() {
   async function computeAll() {
     const signals: Signal[] = [];
     const now = Date.now();
+    const orders = useAppStore.getState().orders;
 
     // Build order lookup for skip-own-order detection
     const ordersByToken: Record<string, typeof orders> = {};

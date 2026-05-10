@@ -30,6 +30,8 @@ interface AppState {
   bsTimeOffsetHours: number;
   showPast: boolean;
   dailyBudget: string;
+  /** When true, skip sidebar dialog when a limit price would cross the book (instant execution). */
+  disableMarketPriceWarning: boolean;
 
   // Market data from API
   aboveMarkets: Record<string, Market[]>;
@@ -106,6 +108,7 @@ interface AppState {
   setBsTimeOffsetHours: (v: number) => void;
   setShowPast: (v: boolean) => void;
   setDailyBudget: (v: string) => void;
+  setDisableMarketPriceWarning: (v: boolean) => void;
   setArbMatchMult: (v: number) => void;
   setSignalMakerMode: (v: boolean) => void;
   setSignalPriceMode: (v: string) => void;
@@ -325,6 +328,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Default unchecked for new users; honor saved preference afterwards.
   showPast: localStorage.getItem('polymarket-show-past') === 'true',
   dailyBudget: localStorage.getItem('polymarket-daily-budget') || '',
+  disableMarketPriceWarning: localStorage.getItem('polymarket-disable-market-price-warning') === 'true',
 
   aboveMarkets: {},
   priceOnMarkets: {},
@@ -465,6 +469,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   setDailyBudget: (v) => {
     localStorage.setItem('polymarket-daily-budget', v);
     set({ dailyBudget: v });
+  },
+  setDisableMarketPriceWarning: (v) => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('polymarket-disable-market-price-warning', v ? 'true' : 'false');
+    }
+    set({ disableMarketPriceWarning: v });
   },
   setArbMatchMult: (v) => {
     localStorage.setItem('polymarket-arb-match-mult', String(v));

@@ -40,12 +40,13 @@ import { usePolymarketOB } from '../hooks/usePolymarketOB';
 import { useOnchainTradesWS, type WSTrade } from '../hooks/useOnchainTradesWS';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
-import { LiveTradeChart } from './LiveTradeChart';
-import { ChainlinkChart } from './ChainlinkChart';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { ToxicFlowDialog } from './ToxicFlowDialog';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
 import { MergePositionsDialog } from './MergePositionsDialog';
+import { SidebarChartsRow } from './SidebarChartsRow';
+import { SidebarLiveOrderbookSection } from './SidebarLiveOrderbookSection';
+import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import { ArrowRight, ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
 import type { AssetSymbol } from '../types';
 
@@ -324,6 +325,9 @@ export function Sidebar() {
   const [displayLiveTrades, setDisplayLiveTrades] = useState(onchainLiveTrades);
 
   const requestCrossingConfirm = useCallback((bestPriceCents: number) => {
+    if (useAppStore.getState().disableMarketPriceWarning) {
+      return Promise.resolve(true);
+    }
     return new Promise<boolean>((resolve) => {
       crossingConfirmResolver.current = resolve;
       setCrossingConfirmMessage(`Current best price is ${bestPriceCents.toFixed(1)}¢, your order will be instantly executed`);
@@ -345,6 +349,8 @@ export function Sidebar() {
     // Default to collapsed on shorter screens.
     return window.innerHeight >= 1000;
   });
+  const toggleLiveOrderbookExpanded = useCallback(() => setLiveOrderbookExpanded((v) => !v), []);
+  const toggleLiveTradesExpanded = useCallback(() => setLiveTradesExpanded((v) => !v), []);
   /** Book imbalance in 5–95¢ depth (same formula as legacy Sidebar “Book” bar). */
   const orderbookBookImbalance = useMemo(() => {
     const bidTotal = displayBids.reduce((s, l) => {
@@ -1585,46 +1591,18 @@ export function Sidebar() {
 
       {selectedMarket && (
         <>
-          <div className="sidebar-chart-row">
-            {/* Chainlink price chart (asset candles for all markets) */}
-            {(() => {
-              const chartAsset = isUpDownMarket ? upDownAsset : extractAssetFromMarket(selectedMarket);
-              if (!chartAsset) return null;
-              return (
-                <ChainlinkChart
-                  asset={chartAsset}
-                  intervalContext={upDownIntervalContext}
-                  targetPrice={isUpDownMarket ? upDownTargetPrice : undefined}
-                  chainlinkCandles={isUpDownMarket && upDownSpotUsesChainlink}
-                />
-              );
-            })()}
-
-            {/* Price History Chart (or Live Trade Chart for Up or Down) */}
-            {isUpDownMarket ? (
-              <LiveTradeChart
-                trades={displayLiveTrades}
-                isNo={orderOutcome === 'NO'}
-                tokenId={selectedMarket.clobTokenIds?.[0] || ''}
-                startTime={upDownStartTime}
-                endTime={selectedMarket.endDate ? new Date(selectedMarket.endDate).getTime() : undefined}
-                intervalContext={upDownIntervalContext}
-                defaultIntervalOverride={upDownKlineDefaultInterval}
-                chainlinkAsset={upDownAsset || undefined}
-                targetPrice={upDownTargetPrice}
-                hidePriceLines
-              />
-            ) : (
-              <LiveTradeChart
-                trades={displayLiveTrades}
-                isNo={orderOutcome === 'NO'}
-                tokenId={selectedMarket.clobTokenIds?.[0] || ''}
-                endTime={selectedMarket.endDate ? new Date(selectedMarket.endDate).getTime() : undefined}
-                defaultIntervalOverride="5m"
-                hidePriceLines
-              />
-            )}
-          </div>
+          <SidebarChartsRow
+            selectedMarket={selectedMarket}
+            isUpDownMarket={isUpDownMarket}
+            upDownAsset={upDownAsset}
+            upDownIntervalContext={upDownIntervalContext}
+            upDownTargetPrice={upDownTargetPrice}
+            upDownSpotUsesChainlink={upDownSpotUsesChainlink}
+            displayLiveTrades={displayLiveTrades}
+            orderOutcome={orderOutcome}
+            upDownStartTime={upDownStartTime}
+            upDownKlineDefaultInterval={upDownKlineDefaultInterval}
+          />
 
 
           {/* Target, math probability, current spot — Up/Down and all strike-based markets */}
@@ -1913,197 +1891,36 @@ export function Sidebar() {
           </div>
 
           {/* Live Orderbook + Trades */}
-          <div className="sidebar-section flex flex-col min-h-0 overflow-hidden" style={{ height: orderbookSectionHeight, minHeight: orderbookSectionHeight, maxHeight: orderbookSectionHeight }}>
-            <div className="text-xs text-gray-400 mb-2 flex w-full min-w-0 items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setLiveOrderbookExpanded(v => !v)}
-                className="shrink-0 rounded p-0.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition"
-                title={liveOrderbookExpanded ? 'Collapse' : 'Expand'}
-              >
-                {liveOrderbookExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              </button>
-              <span className="shrink-0">Live Orderbook</span>
-              <span
-                className="inline-flex items-center rounded px-1 py-0.5 text-[9px] font-bold leading-none border border-[#2d57ff] bg-[#2f5cff]"
-                title="This orderbook data comes from Polymarket's live market feed."
-              >
-                <img
-                  src="/polymarket-favicon.ico"
-                  alt="Polymarket"
-                  className="h-3 w-3 rounded-[2px]"
-                  style={{ filter: 'brightness(0) invert(1)' }}
-                />
-              </span>
-            </div>
-            {liveOrderbookExpanded && (
-              <div className="flex flex-col flex-1 min-h-0 overflow-y-auto" style={{ minHeight: 120 }}>
-                <div
-                  className="shrink-0 mb-1.5 px-0.5"
-                  title={`Book imbalance: ${(orderbookBookImbalance * 100).toFixed(1)}% (5–95¢ depth)`}
-                >
-                  <div className="h-[5px] bg-gray-700 rounded-full overflow-hidden flex w-full">
-                    <div
-                      className="bg-emerald-500/70 h-full transition-all"
-                      style={{ width: `${Math.max(2, Math.min(98, 50 + orderbookBookImbalance * 50))}%` }}
-                    />
-                    <div className="bg-amber-500/70 h-full transition-all flex-1" />
-                  </div>
-                </div>
-                <div className="relative grid grid-cols-2 gap-2 flex-1 min-h-0">
-                <div>
-                  <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-500 mb-1">
-                    <span>Bid</span><span className="text-right">Size</span>
-                  </div>
-                  <div className="space-y-0.5">
-                    {(() => {
-                      let cumul = 0;
-                      const cumuls = displayBids.map((b) => { cumul += parseFloat(b.size) || 0; return cumul; });
-                      const maxCumul = cumuls.length > 0 ? cumuls[cumuls.length - 1] : 1;
-                      return displayBids.map((bid, i) => {
-                        const bp = (parseFloat(bid.price) * 100).toFixed(1);
-                        const hl = sidebarUserBidPrices.has(bp) ? 'bg-blue-900/50 font-bold' : '';
-                        const depthPct = maxCumul > 0 ? (cumuls[i] / maxCumul) * 100 : 0;
-                        return (
-                          <div
-                            key={i}
-                            className={`relative grid grid-cols-2 gap-1 text-[11px] px-1 hover:bg-green-900/30 cursor-pointer ${hl}`}
-                            onClick={() => {
-                              setOrderSide('SELL');
-                              setOrderPrice(bp.replace(/\.0$/, ''));
-                              const tokenId = selectedMarket?.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
-                              const pos = positions.find((p) => p.asset === tokenId && p.size > 0);
-                              if (pos) setOrderAmount(String(Math.floor(pos.size * 100) / 100));
-                              else setOrderAmount('');
-                            }}
-                          >
-                            <div className="absolute inset-y-0 right-0 bg-green-500/10 pointer-events-none" style={{ width: `${depthPct}%` }} />
-                            <span className="relative live-ob-bid">{bp}¢</span>
-                            <span className="relative text-right text-gray-400">{parseFloat(bid.size).toFixed(0)}</span>
-                          </div>
-                        );
-                      });
-                    })()}
-                  </div>
-                </div>
-                <div>
-                  <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-500 mb-1">
-                    <span>Ask</span><span className="text-right">Size</span>
-                  </div>
-                  <div className="space-y-0.5">
-                    {(() => {
-                      let cumul = 0;
-                      const cumuls = displayAsks.map((a) => { cumul += parseFloat(a.size) || 0; return cumul; });
-                      const maxCumul = cumuls.length > 0 ? cumuls[cumuls.length - 1] : 1;
-                      return displayAsks.map((ask, i) => {
-                        const ap = (parseFloat(ask.price) * 100).toFixed(1);
-                        const hl = sidebarUserAskPrices.has(ap) ? 'bg-orange-900/50 font-bold' : '';
-                        const cumulativeAskSize = cumuls[i];
-                        const depthPct = maxCumul > 0 ? (cumulativeAskSize / maxCumul) * 100 : 0;
-                        return (
-                          <div
-                            key={i}
-                            className={`relative grid grid-cols-2 gap-1 text-[11px] px-1 hover:bg-red-900/30 cursor-pointer ${hl}`}
-                            onClick={() => {
-                              setOrderSide('BUY');
-                              setOrderPrice(ap.replace(/\.0$/, ''));
-                              setOrderAmount(cumulativeAskSize.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'));
-                            }}
-                          >
-                            <div className="absolute inset-y-0 left-0 bg-red-500/10 pointer-events-none" style={{ width: `${depthPct}%` }} />
-                            <span className="relative live-ob-ask">{ap}¢</span>
-                            <span className="relative text-right text-gray-400">{parseFloat(ask.size).toFixed(0)}</span>
-                          </div>
-                        );
-                      });
-                    })()}
-                  </div>
-                </div>
-                {(obLoading || (isMarketExpired && isUpDownMarket)) && (
-                  <div className="absolute inset-0 z-10 bg-gray-900/55 backdrop-blur-[1px] flex items-center justify-center pointer-events-none px-2">
-                    <div className={`text-[10px] text-center leading-tight ${isMarketExpired ? 'text-red-400' : 'text-gray-300'}`}>
-                      {isMarketExpired ? 'Market Expired' : 'Loading orderbook...'}
-                    </div>
-                  </div>
-                )}
-                </div>
-              </div>
-            )}
-          </div>
+          <SidebarLiveOrderbookSection
+            orderbookSectionHeight={orderbookSectionHeight}
+            liveOrderbookExpanded={liveOrderbookExpanded}
+            onToggleLiveOrderbookExpanded={toggleLiveOrderbookExpanded}
+            orderbookBookImbalance={orderbookBookImbalance}
+            displayBids={displayBids}
+            displayAsks={displayAsks}
+            obLoading={obLoading}
+            isMarketExpired={isMarketExpired}
+            isUpDownMarket={isUpDownMarket}
+            sidebarUserBidPrices={sidebarUserBidPrices}
+            sidebarUserAskPrices={sidebarUserAskPrices}
+            selectedMarket={selectedMarket}
+            orderOutcome={orderOutcome}
+            positions={positions}
+            setOrderSide={setOrderSide}
+            setOrderPrice={setOrderPrice}
+            setOrderAmount={setOrderAmount}
+          />
 
-          {/* Live Trades */}
-          <div className={`sidebar-section live-trades-section ${liveTradesExpanded ? 'expanded' : ''} ${liveTradesExpanded && !liveOrderbookExpanded ? 'boosted' : ''} flex flex-col min-h-0 overflow-hidden flex-shrink-0`} style={{ height: liveTradesSectionHeight, minHeight: liveTradesSectionHeight, maxHeight: liveTradesSectionHeight }}>
-            <div className="text-xs text-gray-400 mb-2 flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setLiveTradesExpanded(v => !v)}
-                className="shrink-0 rounded p-0.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition"
-                title={liveTradesExpanded ? 'Collapse' : 'Expand'}
-              >
-                {liveTradesExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              </button>
-              <span>Live Trades</span>
-            </div>
-            {liveTradesExpanded && (
-              <>
-                <div className="grid grid-cols-5 gap-1 text-[10px] text-gray-500 mb-1">
-                  <span>Price</span><span className="text-right">Side</span><span className="text-right">Size</span><span className="text-right">USD</span><span className="text-right">Time</span>
-                </div>
-                <div className="relative space-y-0.5 overflow-y-auto flex-1 min-h-0" style={{ minHeight: 90 }}>
-                  {displayLiveTrades.map((t, i) => {
-                    const tp = (parseFloat(t.price) * 100).toFixed(1);
-                    const isBuy = t.side === 'BUY';
-                    const makerLower = (t.maker || '').toLowerCase();
-                    const takerLower = (t.taker || '').toLowerCase();
-                    const isMine =
-                      liveTradesSource === 'onchain' &&
-                      !!myOnchainWalletLower &&
-                      (makerLower === myOnchainWalletLower || takerLower === myOnchainWalletLower);
-                    const rawTs = Number(t.timestamp);
-                    const ts = Number.isFinite(rawTs) ? Math.min(rawTs, tradeTickNow) : tradeTickNow;
-                    const agoSec = Math.max(0, Math.floor((tradeTickNow - ts) / 1000));
-                    const agoStr = agoSec < 60 ? `${agoSec}s` : agoSec < 3600 ? `${Math.floor(agoSec / 60)}m` : agoSec < 86400 ? `${Math.floor(agoSec / 3600)}h` : `${Math.floor(agoSec / 86400)}d`;
-                    const usdValue = (parseFloat(t.price) * parseFloat(t.size)).toFixed(2);
-                    return (
-                      <div
-                        key={`${t.txHash || ''}-${t.logIndex ?? i}-${t.timestamp}-${t.side}-${t.size}`}
-                        className={`grid grid-cols-5 gap-1 text-[11px] px-1 rounded-sm ${
-                          isMine ? 'bg-blue-900/35 ring-1 ring-blue-500/60 shadow-[0_0_8px_rgba(59,130,246,0.25)]' : ''
-                        }`}
-                      >
-                        <span className={`inline-flex items-center gap-1 ${isBuy ? 'text-green-400' : 'text-red-400'}`}>
-                          {tp}¢
-                          {isMine && (
-                            <span className="inline-flex items-center rounded bg-blue-500/30 px-1 py-[1px] text-[8px] font-bold leading-none text-blue-200">
-                              ME
-                            </span>
-                          )}
-                          {liveTradesSource === 'onchain' && t.txHash && (
-                            <a
-                              href={`https://polygonscan.com/tx/${t.txHash}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              title="View transaction on Polygonscan"
-                              className="text-gray-400 hover:text-blue-300"
-                            >
-                              <ExternalLink size={11} />
-                            </a>
-                          )}
-                        </span>
-                        <span className={`text-right text-[9px] ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? 'Buy' : 'Sell'}</span>
-                        <span className="text-right text-gray-400">{parseFloat(t.size).toFixed(0)}</span>
-                        <span className="text-right text-gray-400">{usdValue}</span>
-                        <span className="text-right text-gray-500">{agoStr}</span>
-                      </div>
-                    );
-                  })}
-                  {displayLiveTrades.length === 0 && (
-                    <div className="text-[10px] text-gray-600 px-1">Waiting...</div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
+          <SidebarLiveTradesSection
+            liveTradesExpanded={liveTradesExpanded}
+            onToggleLiveTradesExpanded={toggleLiveTradesExpanded}
+            liveTradesSectionHeight={liveTradesSectionHeight}
+            liveOrderbookExpanded={liveOrderbookExpanded}
+            displayLiveTrades={displayLiveTrades}
+            tradeTickNow={tradeTickNow}
+            liveTradesSource={liveTradesSource}
+            myOnchainWalletLower={myOnchainWalletLower}
+          />
 
           {/* Order Form */}
           <div className="sidebar-section">

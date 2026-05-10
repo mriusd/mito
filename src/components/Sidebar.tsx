@@ -506,8 +506,8 @@ export function Sidebar() {
       const size = tradeFilledSizeShares(trade);
       if (!Number.isFinite(rawPrice) || !Number.isFinite(size)) continue;
       const cost = rawPrice * size;
-      if (trade.side === 'SELL') totalSellCost += cost;
-      else if (trade.side === 'BUY') totalBuyCost += cost;
+      if (trade.side === 'SELL' || trade.side === 'MERGE') totalSellCost += cost;
+      else if (trade.side === 'BUY' || trade.side === 'SPLIT') totalBuyCost += cost;
     }
     return totalSellCost - totalBuyCost;
   }, [myTradesDisplay]);
@@ -2700,7 +2700,11 @@ export function Sidebar() {
                   const side = isClaim ? 'CLAIM' : trade.side;
                   const cost = Number.isFinite(rawPrice) && Number.isFinite(size) ? rawPrice * size : 0;
                   const signedCost =
-                    side === 'BUY' ? -cost : side === 'SELL' ? cost : 0;
+                    side === 'BUY' || side === 'SPLIT'
+                      ? -cost
+                      : side === 'SELL' || side === 'MERGE'
+                        ? cost
+                        : 0;
                   const tradeFee = parseFloat(trade.fee || '0');
                   const dirTone =
                     side === 'BUY'
@@ -2719,9 +2723,9 @@ export function Sidebar() {
                       <td className="py-0.5 text-right text-yellow-400/80">{tradeFee > 0 ? `$${tradeFee.toFixed(2)}` : '-'}</td>
                       <td
                         className={`py-0.5 text-right ${
-                          side === 'BUY'
+                          side === 'BUY' || side === 'SPLIT'
                             ? 'text-rose-400'
-                            : side === 'SELL'
+                            : side === 'SELL' || side === 'MERGE'
                               ? 'text-emerald-400'
                               : 'text-gray-300'
                         }`}

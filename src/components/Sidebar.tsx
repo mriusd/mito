@@ -46,7 +46,7 @@ import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { ToxicFlowDialog } from './ToxicFlowDialog';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
 import { MergePositionsDialog } from './MergePositionsDialog';
-import { ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
+import { ArrowRight, ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
 import type { AssetSymbol } from '../types';
 
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
@@ -1678,10 +1678,11 @@ export function Sidebar() {
                         {row.countdown === 'Expired' && row.mode === 'updown' && liveUpDownSameTfMarket ? (
                           <button
                             type="button"
-                            className="text-[10px] font-semibold px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-black leading-none shrink-0"
+                            className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded bg-green-600 hover:bg-green-500 text-black leading-none shrink-0"
                             onClick={() => setSelectedMarket(liveUpDownSameTfMarket)}
                           >
-                            &gt; Live Market
+                            <ArrowRight size={12} strokeWidth={2.5} className="shrink-0" aria-hidden />
+                            live
                           </button>
                         ) : null}
                       </div>

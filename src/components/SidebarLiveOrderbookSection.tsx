@@ -1,5 +1,6 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { resolvedBinaryOutcomeLabel } from '../utils/format';
 import type { Market, Position } from '../types';
 
 type OBLevel = { price: string; size: string };
@@ -19,6 +20,8 @@ export type SidebarLiveOrderbookSectionProps = {
   selectedMarket: Market | null;
   orderOutcome: 'YES' | 'NO';
   positions: Position[];
+  /** Merged with `marketLookup` YES row so `outcomePrices` is fresh for resolution. */
+  outcomeMarket: Market | null;
   setOrderSide: (s: 'BUY' | 'SELL') => void;
   setOrderPrice: (p: string) => void;
   setOrderAmount: (a: string) => void;
@@ -40,10 +43,25 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
     selectedMarket,
     orderOutcome,
     positions,
+    outcomeMarket,
     setOrderSide,
     setOrderPrice,
     setOrderAmount,
   } = props;
+
+  const resolvedOutcomeLabel = useMemo(
+    () => resolvedBinaryOutcomeLabel(outcomeMarket, isUpDownMarket),
+    [outcomeMarket, isUpDownMarket],
+  );
+
+  const overlayPrimary = resolvedOutcomeLabel
+    ? { text: `Outcome: ${resolvedOutcomeLabel}`, className: 'text-emerald-400 font-bold' }
+    : isMarketExpired
+      ? { text: 'Market expired', className: 'text-red-400' }
+      : obLoading
+        ? { text: 'Loading orderbook...', className: 'text-gray-300' }
+        : null;
+  const showOrderbookOverlay = overlayPrimary != null;
 
   return (
     <div
@@ -169,10 +187,10 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                 })()}
               </div>
             </div>
-            {(obLoading || (isMarketExpired && isUpDownMarket)) && (
+            {showOrderbookOverlay && (
               <div className="absolute inset-0 z-10 bg-gray-900/55 backdrop-blur-[1px] flex items-center justify-center pointer-events-none px-2">
-                <div className={`text-[10px] text-center leading-tight ${isMarketExpired ? 'text-red-400' : 'text-gray-300'}`}>
-                  {isMarketExpired ? 'Market Expired' : 'Loading orderbook...'}
+                <div className={`text-[10px] text-center leading-tight ${overlayPrimary?.className ?? 'text-gray-300'}`}>
+                  {overlayPrimary?.text}
                 </div>
               </div>
             )}

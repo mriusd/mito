@@ -54,6 +54,34 @@ export function pickLiveUpDownMarketInTfBucket(marketsForTf: Market[] | undefine
   return futures[0];
 }
 
+/** Parsed from Gamma `outcomePrices` when a binary market is resolved (winning side is 1, loser 0). */
+export function resolvedBinaryOutcomeLabel(
+  market: Pick<Market, 'question' | 'eventSlug' | 'outcomePrices' | 'closed'> | null | undefined,
+  isUpDownMarket: boolean,
+): string | null {
+  if (!market) return null;
+  const raw = market.outcomePrices as unknown;
+  let yesPrice: number | null = null;
+  let noPrice: number | null = null;
+  if (Array.isArray(raw) && raw.length >= 2) {
+    yesPrice = Number(raw[0]);
+    noPrice = Number(raw[1]);
+  } else if (typeof raw === 'string' && raw.trim()) {
+    const cleaned = raw.replace(/^\[/, '').replace(/\]$/, '');
+    const parts = cleaned.split(',').map((s) => Number(String(s).trim()));
+    if (parts.length >= 2) {
+      yesPrice = parts[0];
+      noPrice = parts[1];
+    }
+  }
+  if (yesPrice == null || noPrice == null || !Number.isFinite(yesPrice) || !Number.isFinite(noPrice)) return null;
+  const posLabel = isUpDownMarket ? 'UP' : 'YES';
+  const negLabel = isUpDownMarket ? 'DOWN' : 'NO';
+  if (yesPrice > noPrice) return posLabel;
+  if (noPrice > yesPrice) return negLabel;
+  return null;
+}
+
 /**
  * Gamma / chart-WS volume in USDC (YES token row). Prefers `marketLookup` when `live.id === market.id`
  * so nested `upOrDownMarkets` refs stay in sync with `bidAskBatch` patches.

@@ -410,6 +410,17 @@ export function Sidebar() {
       (!!selectedMarket.endDate &&
         Number.isFinite(new Date(selectedMarket.endDate).getTime()) &&
         new Date(selectedMarket.endDate).getTime() <= Date.now()));
+  const marketForOrderbookOutcome = useMemo((): Market | null => {
+    if (!selectedMarket) return null;
+    const t0 = selectedMarket.clobTokenIds?.[0];
+    const row = t0 ? marketLookup[t0] : undefined;
+    if (!row) return selectedMarket;
+    return {
+      ...selectedMarket,
+      outcomePrices: row.outcomePrices ?? selectedMarket.outcomePrices,
+      closed: row.closed ?? selectedMarket.closed,
+    };
+  }, [selectedMarket, marketLookup]);
   const myPositions = useMemo(() => {
     if (liveTradesSource !== 'onchain') {
       return positions.filter((p) => outcomeTokenBelongsToSelectedMarket(String(p.asset || '').trim(), selectedMarket, marketLookup));
@@ -1900,8 +1911,7 @@ export function Sidebar() {
             displayAsks={displayAsks}
             obLoading={obLoading}
             isMarketExpired={isMarketExpired}
-            isUpDownMarket={isUpDownMarket}
-            sidebarUserBidPrices={sidebarUserBidPrices}
+            outcomeMarket={marketForOrderbookOutcome}
             sidebarUserAskPrices={sidebarUserAskPrices}
             selectedMarket={selectedMarket}
             orderOutcome={orderOutcome}

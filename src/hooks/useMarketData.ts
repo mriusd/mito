@@ -31,7 +31,6 @@ function mergeWsFields(fresh: Record<string, Market>, prev: Record<string, Marke
 }
 
 export function useMarketData() {
-  const store = useAppStore();
   const refreshingRef = useRef(false);
 
   const refreshData = useCallback(async () => {
@@ -47,7 +46,7 @@ export function useMarketData() {
 
       if (isWebMode) {
         // Web mode: only market/smart-order data from backend; wallet data comes from useWalletData
-        store.setMarketData({
+        useAppStore.getState().setMarketData({
           aboveMarkets: data.aboveMarkets || {},
           priceOnMarkets: data.priceOnMarkets || {},
           weeklyHitMarkets: data.weeklyHitMarkets || {},
@@ -60,7 +59,7 @@ export function useMarketData() {
         });
       } else {
         // App/desktop mode: all data from backend cache
-        store.setMarketData({
+        useAppStore.getState().setMarketData({
           aboveMarkets: data.aboveMarkets || {},
           priceOnMarkets: data.priceOnMarkets || {},
           weeklyHitMarkets: data.weeklyHitMarkets || {},
@@ -77,12 +76,12 @@ export function useMarketData() {
           marketLookup: lookup,
         });
       }
-      store.setBackendConnected(true);
-      store.setLoading(false);
+      useAppStore.getState().setBackendConnected(true);
+      useAppStore.getState().setLoading(false);
     } catch (err) {
       console.error('Failed to fetch markets:', err);
-      store.setBackendConnected(false);
-      store.setLoading(false);
+      useAppStore.getState().setBackendConnected(false);
+      useAppStore.getState().setLoading(false);
     } finally {
       refreshingRef.current = false;
     }

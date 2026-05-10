@@ -256,8 +256,6 @@ function WalletScoresLedgerSummaryGrid({
   const ls = s.losses ?? 0;
   const fl = s.flat ?? 0;
   const pnl = s.pnl ?? 0;
-  const pm = s.pm ?? 0;
-  const lm = s.lm ?? 0;
   const tradedVol = (s.usdcIn ?? 0) + (s.usdcOut ?? 0);
   const wrRaw = typeof s.winRate === 'number' && Number.isFinite(s.winRate) ? s.winRate : 0;
   const wrFrac = wrRaw > 1 ? wrRaw / 100 : wrRaw;
@@ -278,13 +276,6 @@ function WalletScoresLedgerSummaryGrid({
       {fmtIntEn(ls)}
       {'\\'}
       {fmtIntEn(fl)}
-    </>
-  );
-  const plCount = (
-    <>
-      {fmtIntEn(pm)}
-      {'\\'}
-      {fmtIntEn(lm)}
     </>
   );
   return (
@@ -345,12 +336,6 @@ function WalletScoresLedgerSummaryGrid({
           valueClassName={`font-bold ${rPnlToneClass(s.cashFlow ?? 0)}`}
         />
       ) : null}
-      <LedgerSummaryField
-        rowClass={row}
-        label={'Profit\\Loss Count'}
-        help="Number of markets with positive total PnL (profit) versus negative (loss), from wallet_scores_ledger pm and lm."
-        value={plCount}
-      />
       <LedgerSummaryField
         rowClass={row}
         label="Profit Rate %"

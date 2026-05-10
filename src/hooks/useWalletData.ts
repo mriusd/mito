@@ -16,7 +16,6 @@ export function useWalletData() {
   const signingMode = useAppStore((s) => s.signingMode);
   const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
   const setPkAddress = useAppStore((s) => s.setPkAddress);
-  const store = useAppStore();
   const fetchingRef = useRef(false);
   const [proxyWallet, setProxyWallet] = useState<string | null>(null);
   const credsCheckedRef = useRef(false);
@@ -87,7 +86,7 @@ export function useWalletData() {
         }
       }
 
-      store.setMarketData({
+      useAppStore.getState().setMarketData({
         positions,
         orders,
         trades,

@@ -20,10 +20,15 @@ export function upDownMarketUsesChainlinkSpot(market: { eventSlug?: string; ques
   return false;
 }
 
-/** Bucket key for `upOrDownMarkets[asset][tf]` derived from Gamma slug/question. */
-export function upDownTimeframeKeyFromMarket(market: { eventSlug?: string; question?: string }): '5m' | '15m' | '1h' | '4h' | '24h' | null {
-  const combined = `${market.eventSlug || ''} ${market.question || ''}`;
-  if (!(combined.match(/up\s+or\s+down/i) || combined.match(/updown/i))) return null;
+/** Bucket key for `upOrDownMarkets[asset][tf]` derived from Gamma slug/question (must match Sidebar `isUpDownMarket`). */
+export function upDownTimeframeKeyFromMarket(
+  market: { eventSlug?: string; question?: string; groupItemTitle?: string },
+): '5m' | '15m' | '1h' | '4h' | '24h' | null {
+  const combined =
+    `${market.eventSlug || ''} ${market.question || ''} ${market.groupItemTitle || ''}`
+      .replace(/\s+/g, ' ')
+      .trim();
+  if (!/up\s+or\s+down|updown|up-or-down/i.test(combined)) return null;
   if (combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i)) return '5m';
   if (combined.match(/updown-15m/i) || combined.match(/\b15[- ]?min/i)) return '15m';
   if (combined.match(/updown-4h/i) || combined.match(/\b4[- ]?h/i)) return '4h';
@@ -31,17 +36,22 @@ export function upDownTimeframeKeyFromMarket(market: { eventSlug?: string; quest
   return '1h';
 }
 
-/** Soonest-ending open market in a timeframe bucket (matches HUD current-window pick). */
+/** Soonest-ending row in TF bucket with endDate still in the future; prefers Gamma `closed === false`. */
 export function pickLiveUpDownMarketInTfBucket(marketsForTf: Market[] | undefined, nowMs: number = Date.now()): Market | null {
   if (!marketsForTf?.length) return null;
-  const sorted = marketsForTf
-    .filter((m) => !m.closed)
-    .sort((a, b) => {
-      const ta = a.endDate ? new Date(a.endDate).getTime() : Infinity;
-      const tb = b.endDate ? new Date(b.endDate).getTime() : Infinity;
-      return ta - tb;
-    });
-  return sorted.find((m) => m.endDate && new Date(m.endDate).getTime() > nowMs) ?? null;
+  const futures = marketsForTf.filter((m) => {
+    if (!m.endDate) return false;
+    const t = new Date(m.endDate).getTime();
+    return Number.isFinite(t) && t > nowMs;
+  });
+  if (futures.length === 0) return null;
+  futures.sort((a, b) => {
+    const ca = a.closed ? 1 : 0;
+    const cb = b.closed ? 1 : 0;
+    if (ca !== cb) return ca - cb;
+    return new Date(a.endDate!).getTime() - new Date(b.endDate!).getTime();
+  });
+  return futures[0];
 }
 
 /**

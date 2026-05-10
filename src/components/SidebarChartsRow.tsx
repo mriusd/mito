@@ -47,7 +47,7 @@ function chartsRowInner({
           trades={displayLiveTrades}
           isNo={orderOutcome === 'NO'}
           tokenId={selectedMarket.clobTokenIds?.[0] || ''}
-          startTime={upDownStartTime}
+          startTime={upDownStartTime ?? undefined}
           endTime={selectedMarket.endDate ? new Date(selectedMarket.endDate).getTime() : undefined}
           intervalContext={upDownIntervalContext}
           defaultIntervalOverride={upDownKlineDefaultInterval}

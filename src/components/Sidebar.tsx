@@ -398,13 +398,12 @@ export function Sidebar() {
     localStorage.setItem('polymarket-order-amount', orderAmount);
   }, [orderAmount]);
 
-  const isMarketExpired = useMemo(() => {
-    if (!selectedMarket) return false;
-    if (selectedMarket.closed) return true;
-    if (!selectedMarket.endDate) return false;
-    const endMs = new Date(selectedMarket.endDate).getTime();
-    return Number.isFinite(endMs) && endMs <= Date.now();
-  }, [selectedMarket]);
+  const isMarketExpired =
+    !!selectedMarket &&
+    (Boolean(selectedMarket.closed) ||
+      (!!selectedMarket.endDate &&
+        Number.isFinite(new Date(selectedMarket.endDate).getTime()) &&
+        new Date(selectedMarket.endDate).getTime() <= Date.now()));
   const myPositions = useMemo(() => {
     if (liveTradesSource !== 'onchain') {
       return positions.filter((p) => outcomeTokenBelongsToSelectedMarket(String(p.asset || '').trim(), selectedMarket, marketLookup));
@@ -521,6 +520,7 @@ export function Sidebar() {
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
+  const lastUpdated = useAppStore((s) => s.lastUpdated);
 
   const selectedMarketIsHit = useMemo(
     () => isMarketInWeeklyHitMarkets(selectedMarket?.id, weeklyHitMarkets),
@@ -555,6 +555,8 @@ export function Sidebar() {
   const prevPriceRef = useRef<number>(0);
   const [upDownCountdown, setUpDownCountdown] = useState('');
   const [upDownRemaining, setUpDownRemaining] = useState(Infinity);
+  /** Countdown stops calling setState after "Expired"; pulse keeps re-reading `upOrDownMarkets` until next window arrives. */
+  const [expiredLivePickPulse, setExpiredLivePickPulse] = useState(0);
 
   // Chainlink spot only for 5m/15m Up/Down; 1h/4h/24h use Binance in UI
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(selectedMarket!) : null;
@@ -601,7 +603,7 @@ export function Sidebar() {
     const live = pickLiveUpDownMarketInTfBucket(upOrDownMarkets[upDownAsset]?.[tf]);
     if (!live || live.id === selectedMarket.id) return null;
     return live;
-  }, [isUpDownMarket, selectedMarket, isMarketExpired, upDownAsset, upOrDownMarkets]);
+  }, [isUpDownMarket, selectedMarket, isMarketExpired, upDownAsset, upOrDownMarkets, lastUpdated, expiredLivePickPulse]);
 
   // Target price: use priceToBeat from Gamma API (set by backend), fallback to crypto-price API
   // Look up fresh priceToBeat from marketLookup (refreshes every 30s) since selectedMarket is a stale snapshot
@@ -677,6 +679,12 @@ export function Sidebar() {
     const iv = setInterval(tick, 1000);
     return () => clearInterval(iv);
   }, [selectedMarket?.endDate]);
+
+  useEffect(() => {
+    if (upDownCountdown !== 'Expired' || !isUpDownMarket) return;
+    const id = window.setInterval(() => setExpiredLivePickPulse((n) => n + 1), 1500);
+    return () => clearInterval(id);
+  }, [upDownCountdown, isUpDownMarket]);
 
   useEffect(() => {
     prevPriceRef.current = 0;
@@ -1670,10 +1678,10 @@ export function Sidebar() {
                         {row.countdown === 'Expired' && row.mode === 'updown' && liveUpDownSameTfMarket ? (
                           <button
                             type="button"
-                            className="text-[10px] font-semibold px-2 py-0.5 rounded bg-teal-600 hover:bg-teal-500 text-white leading-none shrink-0"
+                            className="text-[10px] font-semibold px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-black leading-none shrink-0"
                             onClick={() => setSelectedMarket(liveUpDownSameTfMarket)}
                           >
-                            Go to Live Market
+                            &gt; Live Market
                           </button>
                         ) : null}
                       </div>

@@ -29,6 +29,18 @@ Notes for `polybot-react`: what shipped, tradeoffs, and backlog ideas.
   - `onTopOfBookDigestBump()` only when first ask / last bid / loading flag signature changes — `summaryPriceDecimal` and Math vs market strip use `topOfBookDigest` instead of depending on full book arrays every RAF.
   - Polymarket tape still bubbled with `onPolymarketTrades` → `polymarketTape` state so `displayLiveTrades` merge behaves as before (**parent still rerenders on poly tape updates** when source is Polymarket — next step: isolate tape).
 
+### Header portfolio + wallet dialog (`Header.tsx`, `lib/portfolioMetrics.ts`)
+
+- **Before:** `cashBalance` + `positions` selectors — any new `positions[]` reference forced Header re-render even when computed Val/Cash unchanged.
+- **After:** Single `useAppStore(useShallow(...))` returns `{ cashBalance, totalVal }` (total = `portfolioPositionsValueUsd(positions) + cash`). Header re-renders only when `cashBalance` or `totalVal` change (not when `positions` is replaced with an equivalent-value array). Shared helper **`portfolioPositionsValueUsd`**.
+- **Wallet Summary:** `WalletInfoDialog` via **`React.lazy`** + **`Suspense`**; mounts only when open and `tradingWallet` is set; **hover/focus** on the button warms the async chunk (`ToxicFlowDialog` module — now split off main bundle, see below).
+
+### Toxic / Holders dialog chunk (`Sidebar.tsx` + Header lazy)
+
+- **Before:** Sidebar statically imported **`ToxicFlowDialog`**, so the module stayed in the main Rollup chunk even if Holders + Wallet Summary were never opened.
+- **After:** **`ToxicFlowDialogLazy`** in Sidebar mounts only when **`toxicDialogOpen`** with a **`conditionId`**; Holders button **hover/focus** preload. **`ToxicFlowDialog-*.js`** emitted separately (~69 kB min); main **`index-*.js`** shrinks (~3.56 MB → ~3.49 MB in a local build).
+- **Tradeoff:** Wallet Summary + Holders dialogs unmount when closed → in-dialog ephemeral UI resets on reopen.
+
 ### UX / settings
 
 - **Header:** “Disable market price warning” — persisted; skips crossing-book confirm when limit would execute like market.
@@ -46,18 +58,17 @@ Notes for `polybot-react`: what shipped, tradeoffs, and backlog ideas.
 ### High impact (architecture)
 
 1. **On-chain sidebar tape** (`useOnchainTradesWS` + `displayLiveTrades`) — Reduce parent `Sidebar` churn when only the tape updates (move hook + memo list, or ref + subtree).
-2. **Header portfolio line** — Derived `positionsValueUsd` + `cashBalance` scalars vs full `positions[]` subscription.
 
 ### Medium impact (React / Zustand)
 
 1. **Selector granularity** — Replace broad `useAppStore((s) => s.X)` wherever children only need primitives; use shallow compare (`useShallow`) for small object bundles.
-2. **List virtualization** — Orderbook lists and live trades can use windowing (`react-window` / virtue) when depth or tape length grows.
-3. **Stable props for memo children** — Audit `SidebarChartsRow` / forms: inline objects/functions still break memo; move callbacks to `useCallback` + memoized prop objects where profiling shows hotspots.
+2. **List virtualization** — Orderbook lists and live trades can use windowing (`react-window` / virtuoso) when depth or tape length grows.
+3. **Stable props for memo children** — Audit `SidebarChartsRow` / forms: inline objects/functions still break memo; `useCallback` + memoized prop objects where profiling shows hotspots.
 
 ### Lower impact / polish
 
-1. **Route-level code splitting** — Lazy heavy dialogs (`ToxicFlowDialog`, merge, signing) if not already dynamic.
-2. `**React.Profiler` + Web Vitals** — Baseline before/after for sidebar open + market select + WS flood.
+1. **More route-/feature-level splitting** — e.g. lazy `MergePositionsDialog`, signing flows, heavy panels — where static imports dominate.
+2. **React Profiler + Web Vitals** — Baseline before/after for sidebar open + market select + WS flood.
 3. **Web Worker for `computeAll`** (signals) — If main-thread jank remains; watch serialization cost vs debounce.
 4. **Document store update paths** — Short ADR on what updates `marketLookup` vs `lastUpdated` so future features don’t reintroduce root subscriptions.
 

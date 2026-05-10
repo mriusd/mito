@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { useAccount } from 'wagmi';
 import { RefreshCw, Clock, Settings, Plus, Github, Send } from 'lucide-react';
 import logoSvg from '../assets/logo.svg';
 import { HelpTooltip } from './HelpTooltip';
-import { WalletInfoDialog } from './ToxicFlowDialog';
+import { useShallow } from 'zustand/react/shallow';
+import { portfolioPositionsValueUsd } from '../lib/portfolioMetrics';
 import { WalletButton } from './WalletButton';
 import { useAppStore } from '../stores/appStore';
 import { useTradingWalletAddress } from '../hooks/useTradingWalletAddress';
@@ -14,6 +15,14 @@ import { PrivateKeyImportDialog, getStoredPrivateKey } from './PrivateKeyImportD
 import { useSyncHeadWS } from '../hooks/useSyncHeadWS';
 
 const IS_DEV = import.meta.env.DEV;
+
+const WalletInfoDialogLazy = lazy(() =>
+  import('./ToxicFlowDialog').then((m) => ({ default: m.WalletInfoDialog }))
+);
+
+function preloadWalletSummaryDialog() {
+  void import('./ToxicFlowDialog');
+}
 
 /** UI: lastProcessed − tip from /ws/sync-head (negative = chain head ahead of KV). */
 function blockLagToneClass(behindBlocks: number): string {
@@ -53,8 +62,13 @@ export function Header({ onRefresh }: HeaderProps) {
   const setVwapCorrection = useAppStore((s) => s.setVwapCorrection);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const setBsTimeOffsetHours = useAppStore((s) => s.setBsTimeOffsetHours);
-  const cashBalance = useAppStore((s) => s.cashBalance);
-  const positions = useAppStore((s) => s.positions);
+  const { cashBalance, totalVal } = useAppStore(
+    useShallow((s) => {
+      const cashBalance = s.cashBalance;
+      const totalVal = portfolioPositionsValueUsd(s.positions) + cashBalance;
+      return { cashBalance, totalVal };
+    })
+  );
   const layouts = useAppStore((s) => s.layouts);
   const setPanels = useAppStore((s) => s.setPanels);
   const setLayouts = useAppStore((s) => s.setLayouts);
@@ -118,14 +132,6 @@ export function Header({ onRefresh }: HeaderProps) {
     [addPanel, layouts, setLayouts]
   );
 
-
-  const positionsValue = positions.reduce((sum, p) => {
-    if (p.currentValue != null && Number.isFinite(p.currentValue)) return sum + p.currentValue;
-    const size = p.size || 0;
-    const price = p.curPrice || 0;
-    return sum + size * price;
-  }, 0);
-  const totalVal = positionsValue + cashBalance;
 
   // Local state for VWAP inputs to avoid clamping mid-type
   const [vwapCandlesLocal, setVwapCandlesLocal] = useState(String(vwapCandles));
@@ -463,6 +469,8 @@ export function Header({ onRefresh }: HeaderProps) {
         <button
           type="button"
           disabled={!selectedMarket?.conditionId?.trim() || !tradingWallet}
+          onMouseEnter={preloadWalletSummaryDialog}
+          onFocus={preloadWalletSummaryDialog}
           onClick={() => setWalletSummaryDialogOpen(true)}
           className="shrink-0 rounded border border-cyan-600/50 bg-cyan-950/35 px-2 h-[28px] text-[10px] font-semibold text-cyan-200 hover:bg-cyan-900/40 disabled:opacity-40 disabled:pointer-events-none whitespace-nowrap"
           title={
@@ -483,12 +491,16 @@ export function Header({ onRefresh }: HeaderProps) {
         <WalletButton />
       </div>
 
-      <WalletInfoDialog
-        open={walletSummaryDialogOpen}
-        wallet={tradingWallet}
-        initialMarketId={selectedMarket?.conditionId?.trim() || ''}
-        onClose={() => setWalletSummaryDialogOpen(false)}
-      />
+      {walletSummaryDialogOpen && tradingWallet && (
+        <Suspense fallback={null}>
+          <WalletInfoDialogLazy
+            open
+            wallet={tradingWallet}
+            initialMarketId={selectedMarket?.conditionId?.trim() || ''}
+            onClose={() => setWalletSummaryDialogOpen(false)}
+          />
+        </Suspense>
+      )}
     </header>
   );
 }

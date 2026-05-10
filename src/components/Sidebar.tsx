@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
 import { useAccount } from 'wagmi';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
@@ -41,7 +41,6 @@ import { useOnchainTradesWS, type WSTrade } from '../hooks/useOnchainTradesWS';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
-import { ToxicFlowDialog } from './ToxicFlowDialog';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
 import { MergePositionsDialog } from './MergePositionsDialog';
 import { SidebarChartsRow } from './SidebarChartsRow';
@@ -50,6 +49,13 @@ import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import { ArrowRight, ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
 import type { AssetSymbol, Market } from '../types';
 
+const ToxicFlowDialogLazy = lazy(() =>
+  import('./ToxicFlowDialog').then((m) => ({ default: m.ToxicFlowDialog }))
+);
+
+function preloadToxicFlowDialog() {
+  void import('./ToxicFlowDialog');
+}
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
 /** FAK buy: pay up to this per share to lift asks. */
@@ -1420,13 +1426,17 @@ export function Sidebar() {
       outcomePairLabel={isUpDownMarket ? 'UP / DOWN' : 'YES / NO'}
       onSubmit={handleMergeSubmit}
     />
-    <ToxicFlowDialog
-      open={toxicDialogOpen}
-      marketId={selectedMarket?.conditionId || ''}
-      marketName={marketName}
-      yesTokenId={selectedMarket?.clobTokenIds?.[0] || ''}
-      onClose={() => setToxicDialogOpen(false)}
-    />
+    {toxicDialogOpen && !!selectedMarket?.conditionId?.trim() && (
+      <Suspense fallback={null}>
+        <ToxicFlowDialogLazy
+          open
+          marketId={selectedMarket?.conditionId || ''}
+          marketName={marketName}
+          yesTokenId={selectedMarket?.clobTokenIds?.[0] || ''}
+          onClose={() => setToxicDialogOpen(false)}
+        />
+      </Suspense>
+    )}
     {isMobileSheet && sidebarOpen && (
       <button
         type="button"
@@ -1808,6 +1818,8 @@ export function Sidebar() {
               <button
                 type="button"
                 onClick={() => setToxicDialogOpen(true)}
+                onMouseEnter={preloadToxicFlowDialog}
+                onFocus={preloadToxicFlowDialog}
                 onPointerDown={(e) => e.stopPropagation()}
                 className="rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left hover:bg-yellow-500/20 transition-colors min-w-0"
                 title="Holders Analysis"

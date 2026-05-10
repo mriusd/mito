@@ -193,6 +193,21 @@ function stakedNetUsdTableCell(signed: number): ReactNode {
   );
 }
 
+/** Wallet info dialog — Latest Markets Traded: USD only, leading minus (no Y/N suffix). */
+function walletMarketsStakedUsdCell(signed: number): ReactNode {
+  if (!Number.isFinite(signed)) return '–';
+  const mag = fmtUsd2En(Math.abs(signed));
+  if (Math.abs(signed) <= STAKED_NET_EPS) {
+    return <span className="tabular-nums font-bold text-gray-500">−$0.00</span>;
+  }
+  return (
+    <span className="tabular-nums font-bold text-gray-300">
+      −$
+      {mag}
+    </span>
+  );
+}
+
 function fmtSignedShares1En(v: number): string {
   if (!Number.isFinite(v)) return '–';
   if (Math.abs(v) < 1e-9) return (0).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -1161,8 +1176,8 @@ export function WalletInfoDialog({
                     <th className="text-right whitespace-nowrap">Net</th>
                     <th className="text-right whitespace-nowrap" title="price_yes">Px Y</th>
                     <th className="text-right whitespace-nowrap" title="price_no">Px N</th>
-                    <th className="text-right whitespace-nowrap" title="(−inv_y×px_y) − (−inv_n×px_n); green Y / red N">
-                      Staked Net
+                    <th className="text-right whitespace-nowrap" title="(inv_n×px_n − inv_y×px_y); shown as −|USD|">
+                      Staked
                     </th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">Fee</th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.payout">Payout</th>
@@ -1240,8 +1255,8 @@ export function WalletInfoDialog({
                       </td>
                       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceYes)}</td>
                       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceNo)}</td>
-                      <td className="text-right tabular-nums whitespace-nowrap" title="(inv_y×px_y) − (inv_n×px_n)">
-                        {stakedNetUsdTableCell(rowStakedNetSigned)}
+                      <td className="text-right tabular-nums whitespace-nowrap" title="inv_n×px_n − inv_y×px_y (USD)">
+                        {walletMarketsStakedUsdCell(rowStakedNetSigned)}
                       </td>
                       <td
                         className={`text-right tabular-nums font-medium whitespace-nowrap ${rowFee === 0 ? 'text-gray-400' : 'text-red-400'}`}

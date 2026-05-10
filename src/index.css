@@ -82,6 +82,18 @@ html, body, #root {
   animation: updown-math-flash 0.55s ease-in-out infinite;
 }
 
+/* Sidebar MiniBar / Staked: pulse one segment when |tilt| ≥ 20% */
+@keyframes sidebar-bar-seg-flash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.38; }
+}
+.sidebar-bar-seg-flash-left {
+  animation: sidebar-bar-seg-flash 0.55s ease-in-out infinite;
+}
+.sidebar-bar-seg-flash-right {
+  animation: sidebar-bar-seg-flash 0.55s ease-in-out infinite;
+}
+
 input[type="number"].no-spin::-webkit-outer-spin-button,
 input[type="number"].no-spin::-webkit-inner-spin-button {
   -webkit-appearance: none;

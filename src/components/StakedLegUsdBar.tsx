@@ -13,6 +13,8 @@ export function StakedLegUsdBar({
   compact,
   compactLabel,
   barMode = 'grossLegTotals',
+  /** Sidebar: pulse Y or N segment when |tilt| ≥ 20%. */
+  flashExtremeTilt = false,
 }: {
   sumYUsd: number;
   sumNUsd: number;
@@ -23,6 +25,7 @@ export function StakedLegUsdBar({
   compactLabel?: string;
   /** grossLegTotals: market Σ|usd_yes| vs Σ|usd_no|. cohortSurplusHalves: Σ max(0,net) vs Σ max(0,−net) in active toxic tab. */
   barMode?: StakedLegBarMode;
+  flashExtremeTilt?: boolean;
 }) {
   const total = sumYUsd + sumNUsd;
   if (total <= 1e-9) return null;
@@ -31,6 +34,9 @@ export function StakedLegUsdBar({
   /** Signed tilt: gross mode ≈ (ΣY−ΣN)/(ΣY+ΣN); cohort surplus mode → ±100% when one-sided. */
   const lean = (sumYUsd - sumNUsd) / total;
   const netAbs = Math.abs(sumYUsd - sumNUsd);
+  const FLASH_TILT = 0.2;
+  const flashY = flashExtremeTilt && Number.isFinite(lean) && lean >= FLASH_TILT;
+  const flashN = flashExtremeTilt && Number.isFinite(lean) && lean <= -FLASH_TILT;
   const tip =
     barMode === 'grossLegTotals'
       ? `YES leg ${pctY.toFixed(1)}% ($${fmtUsd(sumYUsd)}) · NO leg ${pctN.toFixed(1)}% ($${fmtUsd(sumNUsd)}) · Σ legs $${fmtUsd(total)} · Staked pill |ΣY−ΣN| $${fmtUsd(netAbs)}`
@@ -41,8 +47,14 @@ export function StakedLegUsdBar({
       className={`${compact ? 'h-[5px]' : 'h-2'} bg-gray-700 rounded-full overflow-hidden flex w-full`}
       title={tip}
     >
-      <div className="bg-emerald-500/80 h-full shrink-0 transition-all" style={{ width: `${pctY}%` }} />
-      <div className="bg-red-500/80 h-full shrink-0 transition-all" style={{ width: `${pctN}%` }} />
+      <div
+        className={`bg-emerald-500/80 h-full shrink-0 transition-all${flashY ? ' sidebar-bar-seg-flash-left' : ''}`}
+        style={{ width: `${pctY}%` }}
+      />
+      <div
+        className={`bg-red-500/80 h-full shrink-0 transition-all${flashN ? ' sidebar-bar-seg-flash-right' : ''}`}
+        style={{ width: `${pctN}%` }}
+      />
     </div>
   );
 

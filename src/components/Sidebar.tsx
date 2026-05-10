@@ -36,7 +36,7 @@ import {
 import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarkets } from '../utils/bsMath';
 import { API_BASE } from '../lib/env';
 import { fetchUpDownTargetFromCrypto, upDownCryptoTimeframe } from '../lib/upDownTargetFromCrypto';
-import { usePolymarketOB } from '../hooks/usePolymarketOB';
+import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { useOnchainTradesWS, type WSTrade } from '../hooks/useOnchainTradesWS';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
@@ -45,7 +45,7 @@ import { ToxicFlowDialog } from './ToxicFlowDialog';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
 import { MergePositionsDialog } from './MergePositionsDialog';
 import { SidebarChartsRow } from './SidebarChartsRow';
-import { SidebarLiveOrderbookSection } from './SidebarLiveOrderbookSection';
+import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import { ArrowRight, ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
 import type { AssetSymbol, Market } from '../types';
@@ -262,7 +262,16 @@ export function Sidebar() {
     if (!sidebarOpen || !selectedMarket?.clobTokenIds) return null;
     return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 0 : 1] || null;
   }, [sidebarOpen, selectedMarket, orderOutcome]);
-  const { bids, asks, trades: polymarketLiveTrades, loading: obLoading } = usePolymarketOB(obTokenId);
+  const sidebarBookRef = useRef<SidebarPolymarketBookSnapshot | null>(null);
+  /** Recomputed summary / spot-strip when Host reports top-of-book change (not every depth tick). */
+  const [topOfBookDigest, setTopOfBookDigest] = useState(0);
+  const bumpTopOfBookDigest = useCallback(() => {
+    setTopOfBookDigest((n) => n + 1);
+  }, []);
+  const [polymarketTape, setPolymarketTape] = useState<LiveTrade[]>([]);
+  const onPolymarketTradesFromHost = useCallback((t: LiveTrade[]) => {
+    setPolymarketTape(t);
+  }, []);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   /** On-chain WS + REST prefetch: must not depend on sidebarOpen or tables stay empty after refresh until sidebar opens. */
   const onchainHookTokenId = useMemo(() => {
@@ -273,17 +282,6 @@ export function Sidebar() {
     setTradeTickNow(Date.now());
   }, [selectedMarket?.conditionId, liveTradesSource]);
   const setOnchainGridPositions = useAppStore((s) => s.setOnchainGridPositions);
-  const obStaleBookRef = useRef<{ bids: typeof bids; asks: typeof asks }>({ bids: [], asks: [] });
-  useLayoutEffect(() => {
-    obStaleBookRef.current = { bids: [], asks: [] };
-  }, [obTokenId]);
-  useLayoutEffect(() => {
-    if (!obLoading) {
-      obStaleBookRef.current = { bids, asks };
-    }
-  }, [obLoading, bids, asks]);
-  const displayBids = obLoading ? obStaleBookRef.current.bids : bids;
-  const displayAsks = obLoading ? obStaleBookRef.current.asks : asks;
 
   const [onchainSidebarPositions, setOnchainSidebarPositions] = useState<Array<{
     tokenId: string;
@@ -351,28 +349,13 @@ export function Sidebar() {
   });
   const toggleLiveOrderbookExpanded = useCallback(() => setLiveOrderbookExpanded((v) => !v), []);
   const toggleLiveTradesExpanded = useCallback(() => setLiveTradesExpanded((v) => !v), []);
-  /** Book imbalance in 5–95¢ depth (same formula as legacy Sidebar “Book” bar). */
-  const orderbookBookImbalance = useMemo(() => {
-    const bidTotal = displayBids.reduce((s, l) => {
-      const pCents = parseFloat(l.price) * 100;
-      if (!Number.isFinite(pCents) || pCents < 5 || pCents > 95) return s;
-      return s + parseFloat(l.size);
-    }, 0);
-    const askTotal = displayAsks.reduce((s, l) => {
-      const pCents = parseFloat(l.price) * 100;
-      if (!Number.isFinite(pCents) || pCents < 5 || pCents > 95) return s;
-      return s + parseFloat(l.size);
-    }, 0);
-    const bookDenom = bidTotal + askTotal;
-    return bookDenom > 0 ? (bidTotal - askTotal) / bookDenom : 0;
-  }, [displayBids, displayAsks]);
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_CUSTOM_BUTTONS_KEY, JSON.stringify(customButtons));
   }, [customButtons]);
   useEffect(() => {
-    setDisplayLiveTrades(liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketLiveTrades);
-  }, [liveTradesSource, onchainLiveTrades, polymarketLiveTrades]);
+    setDisplayLiveTrades(liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketTape);
+  }, [liveTradesSource, onchainLiveTrades, polymarketTape]);
   // Sync WS-pushed wallet positions/trades into sidebar state
   useEffect(() => {
     if (liveTradesSource !== 'onchain') return;
@@ -861,14 +844,15 @@ export function Sidebar() {
   const summaryPriceDecimal = useMemo(() => {
     if (orderKind === 'market') {
       if (orderSide === 'BUY') {
+        const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
         return displayAsks.length > 0 ? parseFloat(displayAsks[0].price) : MARKET_AGGRESSIVE_BUY;
       }
+      const displayBids = sidebarBookRef.current?.displayBids ?? [];
       const bestBid = displayBids.length > 0 ? displayBids[displayBids.length - 1] : null;
       return bestBid ? parseFloat(bestBid.price) : MARKET_AGGRESSIVE_SELL;
     }
     return (parseFloat(orderPrice) || 0) / 100;
-  }, [orderKind, orderSide, orderPrice, displayBids, displayAsks]);
-
+  }, [orderKind, orderSide, orderPrice, topOfBookDigest]);
   const cost = useMemo(() => {
     const a = parseFloat(orderAmount);
     if (!a) return 0;
@@ -951,8 +935,8 @@ export function Sidebar() {
       side: 'BUY' | 'SELL';
       size: number;
       orderInfo: string;
-      bids: typeof displayBids;
-      asks: typeof displayAsks;
+      bids: SidebarPolymarketBookSnapshot['displayBids'];
+      asks: SidebarPolymarketBookSnapshot['displayAsks'];
       afterSuccess?: () => void;
     }) => {
       const { tokenId, side, size, orderInfo, bids, asks, afterSuccess } = args;
@@ -994,7 +978,10 @@ export function Sidebar() {
     if (!selectedMarket) return;
     const tokenId = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1];
     if (!tokenId) return;
+    const displayBids = sidebarBookRef.current?.displayBids ?? [];
+    const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
     const size = parseFloat(orderAmount);
+
     if (!size) return;
 
     const isMarket = orderKind === 'market';
@@ -1096,7 +1083,10 @@ export function Sidebar() {
 
   const handleCustomButtonClick = async (btn: CustomSidebarButton) => {
     if (!selectedMarket) return;
+    const displayBids = sidebarBookRef.current?.displayBids ?? [];
+    const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
     const tokenId = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1];
+
     if (!tokenId) return;
 
     let size = parseFloat(orderAmount);
@@ -1177,7 +1167,10 @@ export function Sidebar() {
   };
 
   const handleReplaceOrder = async (orderId: string, newPriceCents: number, tokenId: string, side: 'BUY' | 'SELL', size: number) => {
+    const displayBids = sidebarBookRef.current?.displayBids ?? [];
+    const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
     const newPrice = newPriceCents / 100;
+
     if (!newPrice || newPrice <= 0 || newPrice >= 1 || !size) { setEditingOrderId(null); return; }
     const bestBidCents = displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
     const bestAskCents = displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
@@ -1283,6 +1276,8 @@ export function Sidebar() {
       const tid = String(tokenId || '').trim();
       const size = Math.floor(rawSize * 100) / 100;
       if (!tid || !selectedMarket || !size || size <= 0) return;
+      const displayBids = sidebarBookRef.current?.displayBids ?? [];
+      const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
       const sidebarBookToken = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
       const sameBook = tid === sidebarBookToken;
       const bestBid = marketLookup[tid]?.bestBid;
@@ -1328,8 +1323,6 @@ export function Sidebar() {
       selectedMarket,
       orderOutcome,
       marketLookup,
-      displayBids,
-      displayAsks,
       isUpDownMarket,
       marketName,
       liveTradesSource,
@@ -1644,7 +1637,8 @@ export function Sidebar() {
                     title: 'Binance spot',
                   };
 
-            const bestAsk = asks.length > 0 ? parseFloat(asks[0].price) * 100 : null;
+            const obAsks = sidebarBookRef.current?.displayAsks ?? [];
+            const bestAsk = obAsks.length > 0 ? parseFloat(obAsks[0].price) * 100 : null;
             let bsColor = 'text-yellow-400';
             if (bestAsk !== null && row.mathCents !== null) {
               if (bestAsk < row.mathCents * 0.95) bsColor = 'text-green-400';
@@ -1843,18 +1837,26 @@ export function Sidebar() {
               const noWRcv = liveShareStats?.winBiasConvictionSharesNo ?? 0;
               const sms = liveShareStats?.provenSMS ?? 0;
 
-              const MiniBar = ({ label, value, leftColor, rightColor, tooltip }: { label: string; value: number; leftColor: string; rightColor: string; tooltip?: string }) => (
+              const FLASH_TILT = 0.2;
+              const MiniBar = ({ label, value, leftColor, rightColor, tooltip }: { label: string; value: number; leftColor: string; rightColor: string; tooltip?: string }) => {
+                const flashLeft = Number.isFinite(value) && value >= FLASH_TILT;
+                const flashRight = Number.isFinite(value) && value <= -FLASH_TILT;
+                return (
                 <div className="flex items-center gap-1 min-w-0" title={tooltip}>
                   <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate">{label}</span>
                   <div className="h-[5px] bg-gray-700 rounded-full overflow-hidden flex flex-1 min-w-0">
-                    <div className={`${leftColor} h-full transition-all`} style={{ width: `${barFor(value)}%` }} />
-                    <div className={`${rightColor} h-full transition-all flex-1`} />
+                    <div
+                      className={`${leftColor} h-full transition-all${flashLeft ? ' sidebar-bar-seg-flash-left' : ''}`}
+                      style={{ width: `${barFor(value)}%` }}
+                    />
+                    <div className={`${rightColor} h-full transition-all flex-1${flashRight ? ' sidebar-bar-seg-flash-right' : ''}`} />
                   </div>
                   <span className={`text-[8px] font-bold w-[28px] shrink-0 text-right ${colorFor(value)}`}>
                     {(value * 100) > 0 ? '+' : ''}{(value * 100).toFixed(0)}%
                   </span>
                 </div>
-              );
+                );
+              };
 
               return (
                 <div className="mt-1 space-y-0.5">
@@ -1871,6 +1873,7 @@ export function Sidebar() {
                       dense
                       compactLabel="Stake"
                       barMode="grossLegTotals"
+                      flashExtremeTilt
                     />
                   ) : null}
                   {(() => {
@@ -1891,6 +1894,7 @@ export function Sidebar() {
                           dense
                           compactLabel="Top"
                           barMode="cohortSurplusHalves"
+                          flashExtremeTilt
                         />
                       );
                     }
@@ -1902,14 +1906,14 @@ export function Sidebar() {
           </div>
 
           {/* Live Orderbook + Trades */}
-          <SidebarLiveOrderbookSection
+          <SidebarPolymarketOBHost
+            obTokenId={obTokenId}
+            sidebarBookRef={sidebarBookRef}
+            onTopOfBookDigestBump={bumpTopOfBookDigest}
+            onPolymarketTrades={onPolymarketTradesFromHost}
             orderbookSectionHeight={orderbookSectionHeight}
             liveOrderbookExpanded={liveOrderbookExpanded}
             onToggleLiveOrderbookExpanded={toggleLiveOrderbookExpanded}
-            orderbookBookImbalance={orderbookBookImbalance}
-            displayBids={displayBids}
-            displayAsks={displayAsks}
-            obLoading={obLoading}
             isMarketExpired={isMarketExpired}
             isUpDownMarket={isUpDownMarket}
             sidebarUserBidPrices={sidebarUserBidPrices}

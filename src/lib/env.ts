@@ -11,6 +11,14 @@ export const isFeDev = (import.meta.env.VITE_FE_ENV || import.meta.env.VITE_ENV)
 export const API_BASE = isProd ? 'https://data.mito.trade' : '';
 export const WS_BASE = isProd ? 'wss://data.mito.trade' : `ws://${window.location.hostname}:3099`;
 
+/** Polygon JSON-RPC for private-key merges / CLOB. Default avoids eth_chainId browser failures; override if blocked. */
+export const POLYGON_JSONRPC_URL =
+  (typeof import.meta.env.VITE_POLYGON_RPC_URL === 'string' && import.meta.env.VITE_POLYGON_RPC_URL.trim()) ||
+  'https://polygon-bor.publicnode.com';
+
+/** Ethers.Networkish for Polygon mainnet — use with StaticJsonRpcProvider (no live chain probe). */
+export const POLYGON_ETHERS_NETWORK = { chainId: 137, name: 'matic' } as const;
+
 /** CLOB v2 builder attribution: `bytes32` from polymarket.com/settings → Builder (optional). */
 export function vitePolyBuilderCode(): string | undefined {
   const raw = String(import.meta.env.VITE_POLY_BUILDER_CODE || '').trim();

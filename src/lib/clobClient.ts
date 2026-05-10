@@ -11,7 +11,7 @@ import {
   type ApiKeyCreds,
   type SignedOrder,
 } from '@polymarket/clob-client-v2';
-import { API_BASE, vitePolyBuilderCode } from './env';
+import { API_BASE, POLYGON_ETHERS_NETWORK, POLYGON_JSONRPC_URL, vitePolyBuilderCode } from './env';
 import { getConnection } from '@wagmi/core';
 import { wagmiAdapter } from './wallet';
 import { signingDialog } from '../components/SigningDialog';
@@ -129,7 +129,9 @@ export async function getEthersSigner(): Promise<ethers.Signer> {
   if (signingMode === 'privateKey') {
     const pk = getStoredPrivateKey();
     if (pk) {
-      const provider = new ethers.providers.JsonRpcProvider('https://polygon-rpc.com', 137);
+      // JsonRpcProvider probes eth_chainId (detectNetwork) — often fails in browser (CORS / flaky RPC) → NO_NETWORK.
+      // StaticJsonRpcProvider trusts chain 137 and only uses RPC for transactions.
+      const provider = new ethers.providers.StaticJsonRpcProvider(POLYGON_JSONRPC_URL, POLYGON_ETHERS_NETWORK);
       return new ethers.Wallet(pk, provider);
     }
   }

@@ -48,11 +48,11 @@ export function StakedLegUsdBar({
       title={tip}
     >
       <div
-        className={`bg-emerald-500/80 h-full shrink-0 transition-all${flashY ? ' sidebar-bar-seg-flash-left' : ''}`}
+        className={`bg-emerald-500/80 h-full shrink-0 transition-[width] duration-150 ease-out${flashY ? ' sidebar-bar-seg-flash-left' : ''}`}
         style={{ width: `${pctY}%` }}
       />
       <div
-        className={`bg-red-500/80 h-full shrink-0 transition-all${flashN ? ' sidebar-bar-seg-flash-right' : ''}`}
+        className={`bg-red-500/80 h-full shrink-0 transition-[width] duration-150 ease-out${flashN ? ' sidebar-bar-seg-flash-right' : ''}`}
         style={{ width: `${pctN}%` }}
       />
     </div>

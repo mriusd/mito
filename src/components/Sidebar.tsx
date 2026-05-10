@@ -42,6 +42,7 @@ import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
+import { SidebarBiasMiniBar } from './SidebarBiasMiniBar';
 import { MergePositionsDialog } from './MergePositionsDialog';
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
@@ -1832,8 +1833,6 @@ export function Sidebar() {
             {(() => {
               const posLabel = isUpDownMarket ? 'UP' : 'YES';
               const negLabel = isUpDownMarket ? 'DOWN' : 'NO';
-              const colorFor = (v: number) => v > 0.01 ? 'text-green-400' : v < -0.01 ? 'text-red-400' : 'text-gray-500';
-              const barFor = (v: number) => Math.max(2, Math.min(98, 50 + v * 50));
 
               const wb = liveShareStats?.winnerBias ?? 0;
               const yesWR = liveShareStats?.winnerBiasYesWR ?? 0;
@@ -1849,34 +1848,13 @@ export function Sidebar() {
               const noWRcv = liveShareStats?.winBiasConvictionSharesNo ?? 0;
               const sms = liveShareStats?.provenSMS ?? 0;
 
-              const FLASH_TILT = 0.2;
-              const MiniBar = ({ label, value, leftColor, rightColor, tooltip }: { label: string; value: number; leftColor: string; rightColor: string; tooltip?: string }) => {
-                const flashLeft = Number.isFinite(value) && value >= FLASH_TILT;
-                const flashRight = Number.isFinite(value) && value <= -FLASH_TILT;
-                return (
-                <div className="flex items-center gap-1 min-w-0" title={tooltip}>
-                  <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate">{label}</span>
-                  <div className="h-[5px] bg-gray-700 rounded-full overflow-hidden flex flex-1 min-w-0">
-                    <div
-                      className={`${leftColor} h-full transition-all${flashLeft ? ' sidebar-bar-seg-flash-left' : ''}`}
-                      style={{ width: `${barFor(value)}%` }}
-                    />
-                    <div className={`${rightColor} h-full transition-all flex-1${flashRight ? ' sidebar-bar-seg-flash-right' : ''}`} />
-                  </div>
-                  <span className={`text-[8px] font-bold w-[28px] shrink-0 text-right ${colorFor(value)}`}>
-                    {(value * 100) > 0 ? '+' : ''}{(value * 100).toFixed(0)}%
-                  </span>
-                </div>
-                );
-              };
-
               return (
                 <div className="mt-1 space-y-0.5">
-                  <MiniBar label="Win$" value={wb} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={`Winner Bias (USDC): ${posLabel} WR ${(yesWR * 100).toFixed(0)}% / ${negLabel} WR ${(noWR * 100).toFixed(0)}%`} />
-                  <MiniBar label="WinS" value={wbs} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={`Winner Bias (Shares): ${posLabel} WR ${(yesWRs * 100).toFixed(0)}% / ${negLabel} WR ${(noWRs * 100).toFixed(0)}%`} />
-                  <MiniBar label="Cv$" value={wbcvUsd} leftColor="bg-emerald-400/75" rightColor="bg-orange-400/75" tooltip={`Winner Bias Conviction (USDC): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcvUsd * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcvUsd * 100).toFixed(0)}%`} />
-                  <MiniBar label="CvS" value={wbcv} leftColor="bg-teal-400/75" rightColor="bg-rose-400/75" tooltip={`Winner Bias Conviction (shares): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcv * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcv * 100).toFixed(0)}%`} />
-                  <MiniBar label="Smart" value={sms} leftColor="bg-yellow-400/75" rightColor="bg-purple-400/75" tooltip={`Smart Money: proven wallets (≥60% WR, ≥10 mkts, PNL>0) with ≥$2k in this market — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
+                  <SidebarBiasMiniBar label="Win$" value={wb} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={`Winner Bias (USDC): ${posLabel} WR ${(yesWR * 100).toFixed(0)}% / ${negLabel} WR ${(noWR * 100).toFixed(0)}%`} />
+                  <SidebarBiasMiniBar label="WinS" value={wbs} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={`Winner Bias (Shares): ${posLabel} WR ${(yesWRs * 100).toFixed(0)}% / ${negLabel} WR ${(noWRs * 100).toFixed(0)}%`} />
+                  <SidebarBiasMiniBar label="Cv$" value={wbcvUsd} leftColor="bg-emerald-400/75" rightColor="bg-orange-400/75" tooltip={`Winner Bias Conviction (USDC): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcvUsd * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcvUsd * 100).toFixed(0)}%`} />
+                  <SidebarBiasMiniBar label="CvS" value={wbcv} leftColor="bg-teal-400/75" rightColor="bg-rose-400/75" tooltip={`Winner Bias Conviction (shares): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcv * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcv * 100).toFixed(0)}%`} />
+                  <SidebarBiasMiniBar label="Smart" value={sms} leftColor="bg-yellow-400/75" rightColor="bg-purple-400/75" tooltip={`Smart Money: proven wallets (≥60% WR, ≥10 mkts, PNL>0) with ≥$2k in this market — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
                   {sidebarStakedLegs ? (
                     <StakedLegUsdBar
                       sumYUsd={sidebarStakedLegs.stakedUsdYesLeg}

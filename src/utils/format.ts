@@ -425,6 +425,54 @@ export function extractAssetFromMarket(market: Market): AssetName | '' {
 }
 
 /**
+ * When the selected market is expired/closed: Up/Down → soonest live row in the same asset+TF bucket;
+ * otherwise → same eventSlug + groupItemTitle (strike row) with next endDate after the current slice.
+ */
+export function pickNextMarketOnExpiry(
+  selected: Market | null,
+  nowMs: number,
+  upOrDownMarkets: Record<string, Record<string, Market[]>>,
+  marketLookup: Record<string, Market>,
+): Market | null {
+  if (!selected?.endDate) return null;
+  const endMs = new Date(selected.endDate).getTime();
+  const ended =
+    Boolean(selected.closed) || (Number.isFinite(endMs) && endMs <= nowMs);
+  if (!ended) return null;
+
+  const isUpDown = !!(
+    selected.question?.match(/up\s+or\s+down/i) ||
+    selected.eventSlug?.match(/up-or-down|updown/i)
+  );
+  if (isUpDown) {
+    const asset = extractAssetFromMarket(selected);
+    const tf = upDownTimeframeKeyFromMarket(selected);
+    if (!asset || !tf) return null;
+    const live = pickLiveUpDownMarketInTfBucket(upOrDownMarkets[asset]?.[tf], nowMs);
+    if (live && live.id !== selected.id) return live;
+    return null;
+  }
+
+  const slug = (selected.eventSlug || '').trim();
+  const strike = (selected.groupItemTitle || '').trim();
+  if (!slug || !strike) return null;
+  const seen = new Set<string>();
+  const candidates: Market[] = [];
+  for (const m of Object.values(marketLookup)) {
+    if (!m.endDate || m.closed) continue;
+    const t = new Date(m.endDate).getTime();
+    if (!Number.isFinite(t) || t <= nowMs || t <= endMs) continue;
+    if ((m.eventSlug || '').trim() !== slug) continue;
+    if ((m.groupItemTitle || '').trim() !== strike) continue;
+    if (seen.has(m.id)) continue;
+    seen.add(m.id);
+    candidates.push(m);
+  }
+  candidates.sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime());
+  return candidates[0] ?? null;
+}
+
+/**
  * Weekly/monthly hit markets from Gamma often put only the strike in groupItemTitle (e.g. "$84,000")
  * with no ↑/↓. Direction comes from the question ("reach $X" vs "dip to $X").
  * Shared with signals computation and Smart Money panel display.

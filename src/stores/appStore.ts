@@ -32,6 +32,8 @@ interface AppState {
   dailyBudget: string;
   /** When true, skip sidebar dialog when a limit price would cross the book (instant execution). */
   disableMarketPriceWarning: boolean;
+  /** When true, sidebar selection jumps to the next live row when the current market expires (Up/Down TF bucket or same slug+strike). */
+  autoSwitchNextMarketOnExpiry: boolean;
 
   // Market data from API
   aboveMarkets: Record<string, Market[]>;
@@ -111,6 +113,7 @@ interface AppState {
   setShowPast: (v: boolean) => void;
   setDailyBudget: (v: string) => void;
   setDisableMarketPriceWarning: (v: boolean) => void;
+  setAutoSwitchNextMarketOnExpiry: (v: boolean) => void;
   setArbMatchMult: (v: number) => void;
   setSignalMakerMode: (v: boolean) => void;
   setSignalPriceMode: (v: string) => void;
@@ -331,6 +334,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   showPast: localStorage.getItem('polymarket-show-past') === 'true',
   dailyBudget: localStorage.getItem('polymarket-daily-budget') || '',
   disableMarketPriceWarning: localStorage.getItem('polymarket-disable-market-price-warning') === 'true',
+  autoSwitchNextMarketOnExpiry: localStorage.getItem('polymarket-auto-switch-next-on-expiry') === 'true',
 
   aboveMarkets: {},
   priceOnMarkets: {},
@@ -478,6 +482,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       localStorage.setItem('polymarket-disable-market-price-warning', v ? 'true' : 'false');
     }
     set({ disableMarketPriceWarning: v });
+  },
+  setAutoSwitchNextMarketOnExpiry: (v) => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('polymarket-auto-switch-next-on-expiry', v ? 'true' : 'false');
+    }
+    set({ autoSwitchNextMarketOnExpiry: v });
   },
   setArbMatchMult: (v) => {
     localStorage.setItem('polymarket-arb-match-mult', String(v));

@@ -88,6 +88,8 @@ export function Header({ onRefresh }: HeaderProps) {
   const [showOrderDialog, setShowOrderDialog] = useState(true);
   const disableMarketPriceWarning = useAppStore((s) => s.disableMarketPriceWarning);
   const setDisableMarketPriceWarning = useAppStore((s) => s.setDisableMarketPriceWarning);
+  const autoSwitchNextMarketOnExpiry = useAppStore((s) => s.autoSwitchNextMarketOnExpiry);
+  const setAutoSwitchNextMarketOnExpiry = useAppStore((s) => s.setAutoSwitchNextMarketOnExpiry);
   const [isNarrowScreen, setIsNarrowScreen] = useState(() => window.innerWidth < 1200);
 
   // Close add menu / settings on click outside
@@ -399,6 +401,15 @@ export function Header({ onRefresh }: HeaderProps) {
                   className="accent-blue-500"
                 />
                 <span className="text-xs text-gray-300">Disable market price warning</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer mt-2">
+                <input
+                  type="checkbox"
+                  checked={autoSwitchNextMarketOnExpiry}
+                  onChange={(e) => setAutoSwitchNextMarketOnExpiry(e.target.checked)}
+                  className="accent-blue-500"
+                />
+                <span className="text-xs text-gray-300">Auto-switch to next market on expiry</span>
               </label>
               <div className="mt-2 pt-2 border-t border-gray-700 space-y-1">
                 <a

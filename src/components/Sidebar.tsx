@@ -28,6 +28,7 @@ import {
   getTradeClobTokenId,
   outcomeTokenBelongsToSelectedMarket,
   pickLiveUpDownMarketInTfBucket,
+  pickNextMarketOnExpiry,
   shortenMarketName,
   tradeMatchesSelectedMarket,
   upDownMarketUsesChainlinkSpot,
@@ -136,6 +137,7 @@ export function Sidebar() {
   const trades = useAppStore((s) => s.trades);
   const marketLookupEpoch = useAppStore((s) => s.marketLookupEpoch);
   const marketLookup = useMemo(() => useAppStore.getState().marketLookup, [marketLookupEpoch]);
+  const autoSwitchNextMarketOnExpiry = useAppStore((s) => s.autoSwitchNextMarketOnExpiry);
 
   const liveOrderbookVolumeDisplay = useMemo(() => {
     if (!selectedMarket?.clobTokenIds?.[0]) return null;
@@ -624,6 +626,21 @@ export function Sidebar() {
     if (!live || live.id === selectedMarket.id) return null;
     return live;
   }, [isUpDownMarket, selectedMarket, isMarketExpired, upDownAsset, upOrDownMarkets, lastUpdated, expiredLivePickPulse]);
+
+  useEffect(() => {
+    if (!autoSwitchNextMarketOnExpiry || !selectedMarket || !isMarketExpired) return;
+    const lookup = useAppStore.getState().marketLookup;
+    const next = pickNextMarketOnExpiry(selectedMarket, Date.now(), upOrDownMarkets, lookup);
+    if (next) setSelectedMarket(next);
+  }, [
+    autoSwitchNextMarketOnExpiry,
+    isMarketExpired,
+    selectedMarket,
+    upOrDownMarkets,
+    lastUpdated,
+    marketLookupEpoch,
+    setSelectedMarket,
+  ]);
 
   // Target price: use priceToBeat from Gamma API (set by backend), fallback to crypto-price API
   // Look up fresh priceToBeat from marketLookup (refreshes every 30s) since selectedMarket is a stale snapshot

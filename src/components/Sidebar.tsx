@@ -1921,7 +1921,6 @@ export function Sidebar() {
                           compactLabel="Top"
                           barMode="cohortSurplusHalves"
                           flashExtremeTilt
-                          compactLegUsdFooter
                         />
                       );
                     }

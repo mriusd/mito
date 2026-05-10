@@ -2,11 +2,29 @@ import { useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { AssetSymbol } from '../types';
 
+const TICKER_SYMBOLS: AssetSymbol[] = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT'];
+
 export function useBinanceWS() {
-  const setPriceData = useAppStore((s) => s.setPriceData);
+  const setBinanceTickerBatch = useAppStore((s) => s.setBinanceTickerBatch);
   const wsRef = useRef<WebSocket | null>(null);
+  const pendingRef = useRef<Partial<Record<AssetSymbol, number>>>({});
+  const flushRafRef = useRef<number | null>(null);
 
   useEffect(() => {
+    function flushTickerBatch() {
+      flushRafRef.current = null;
+      const snapshot = pendingRef.current;
+      const keys = Object.keys(snapshot);
+      pendingRef.current = {};
+      if (keys.length === 0) return;
+      setBinanceTickerBatch(snapshot);
+    }
+
+    function scheduleFlush() {
+      if (flushRafRef.current != null) return;
+      flushRafRef.current = requestAnimationFrame(() => flushTickerBatch());
+    }
+
     function connect() {
       const streams = ['btcusdt@ticker', 'ethusdt@ticker', 'solusdt@ticker', 'xrpusdt@ticker'];
       const wsUrl = `wss://stream.binance.com:9443/stream?streams=${streams.join('/')}`;
@@ -15,11 +33,12 @@ export function useBinanceWS() {
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        if (data.data?.s) {
-          const symbol = data.data.s as AssetSymbol;
-          const price = parseFloat(data.data.c);
-          setPriceData(symbol, price);
-        }
+        if (!data.data?.s) return;
+        const symbol = data.data.s as AssetSymbol;
+        const price = parseFloat(data.data.c);
+        if (!Number.isFinite(price)) return;
+        pendingRef.current[symbol] = price;
+        scheduleFlush();
       };
 
       ws.onclose = () => {
@@ -31,26 +50,36 @@ export function useBinanceWS() {
       };
     }
 
-    // Fetch initial prices
     fetch('https://api.binance.com/api/v3/ticker/price')
       .then((r) => r.json())
       .then((data) => {
-        const symbols: AssetSymbol[] = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT'];
-        for (const item of data) {
-          if (symbols.includes(item.symbol as AssetSymbol)) {
-            setPriceData(item.symbol as AssetSymbol, parseFloat(item.price));
-          }
+        const patch: Partial<Record<AssetSymbol, number>> = {};
+        for (const item of data as { symbol?: string; price?: string }[]) {
+          if (!item.symbol || !TICKER_SYMBOLS.includes(item.symbol as AssetSymbol)) continue;
+          const p = parseFloat(item.price || '');
+          if (!Number.isFinite(p)) continue;
+          patch[item.symbol as AssetSymbol] = p;
         }
+        setBinanceTickerBatch(patch);
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error('binance ticker init:', err);
+      });
 
     connect();
 
     return () => {
+      if (flushRafRef.current != null) {
+        cancelAnimationFrame(flushRafRef.current);
+        flushRafRef.current = null;
+      }
+      const tail = pendingRef.current;
+      pendingRef.current = {};
+      if (Object.keys(tail).length > 0) setBinanceTickerBatch(tail);
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
     };
-  }, [setPriceData]);
+  }, [setBinanceTickerBatch]);
 }

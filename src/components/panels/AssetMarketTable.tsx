@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { formatPrice, assetToSymbol, formatDateShort, getPositionClobTokenId, normalizeClobTokenId, formatPriceShort, formatThousandsAsK } from '../../utils/format';
 import { saveRange } from '../../api';
@@ -10,6 +10,7 @@ import type { AssetName, Market } from '../../types';
 import { gammaImpliedNoBestBid, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMath';
 import { MarketCellMidRow } from './MarketCellMidRow';
+import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 
 function StrikeRangeIndicator({ markets, livePrice, asset }: { markets: Market[]; livePrice: number; asset: AssetName }) {
   if (livePrice <= 0 || markets.length === 0) return null;
@@ -110,8 +111,7 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   const priceOnMarkets = useAppStore((s) => s.priceOnMarkets);
   const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
-  const _bidAskLookup = useAppStore((s) => s.marketLookup);
-  useAppStore((s) => s.bidAskTick); // subscribe to bid/ask updates for re-renders
+
   const priceData = useAppStore((s) => s.priceData);
   const vwapData = useAppStore((s) => s.vwapData);
   const volatilityData = useAppStore((s) => s.volatilityData);
@@ -232,6 +232,61 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   const aboveMarketsForAsset = aboveMarkets[asset] || [];
   const priceOnMarketsForAsset = priceOnMarkets[asset] || [];
   const weeklyHitMarketsForAsset = weeklyHitMarkets[asset] || [];
+
+  const gridClobTokenIds = useMemo(() => {
+    const set = new Set<string>();
+    const addMarket = (m: Market) => {
+      for (const t of m.clobTokenIds || []) if (t) set.add(String(t));
+    };
+    for (const m of aboveMarketsForAsset) addMarket(m);
+    for (const m of priceOnMarketsForAsset) addMarket(m);
+    for (const m of weeklyHitMarketsForAsset) addMarket(m);
+    const udm = upOrDownMarkets[asset];
+    if (udm) {
+      for (const mkts of Object.values(udm)) {
+        for (const m of mkts || []) addMarket(m);
+      }
+    }
+    if (signalsOnGrid) {
+      for (const sig of signals) {
+        for (const t of sig.market.clobTokenIds || []) if (t) set.add(String(t));
+      }
+    }
+    for (const o of orders) {
+      const tid = o.asset_id || o.token_id;
+      if (tid) set.add(String(tid));
+    }
+    for (const t of selectedMarket?.clobTokenIds || []) if (t) set.add(String(t));
+    if (liveTradesSource === 'onchain') {
+      for (const p of onchainGridPositions) {
+        const k = normalizeClobTokenId(p.tokenId);
+        if (k && Math.abs(p.size) > 1e-9) set.add(k);
+      }
+    } else {
+      for (const pos of positions) {
+        const tid = normalizeClobTokenId(getPositionClobTokenId(pos));
+        const sz = pos.size || 0;
+        if (tid && sz > 0) set.add(tid);
+      }
+    }
+    return [...set];
+  }, [
+    aboveMarketsForAsset,
+    priceOnMarketsForAsset,
+    weeklyHitMarketsForAsset,
+    upOrDownMarkets,
+    asset,
+    signalsOnGrid,
+    signals,
+    orders,
+    selectedMarket?.id,
+    selectedMarket?.clobTokenIds,
+    liveTradesSource,
+    onchainGridPositions,
+    positions,
+  ]);
+
+  const _bidAskLookup = useMarketLookupSubset(gridClobTokenIds);
 
   const priceShortAsset = asset === 'ETH' ? 'ETH' : undefined;
 

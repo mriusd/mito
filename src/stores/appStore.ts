@@ -93,6 +93,8 @@ interface AppState {
 
   // Actions
   setPriceData: (symbol: AssetSymbol, price: number) => void;
+  /** Merge Binance ticker prices once per animation frame (skips noop price). */
+  setBinanceTickerBatch: (patch: Partial<Record<AssetSymbol, number>>) => void;
   setVwapData: (symbol: AssetSymbol, price: number) => void;
   setVolatilityData: (symbol: AssetSymbol, vol: number) => void;
   setManualPriceSlot: (symbol: AssetSymbol, slot: number, range: PriceRange | null) => void;
@@ -130,8 +132,6 @@ interface AppState {
   addPanel: (panel: PanelConfig) => void;
   removePanel: (id: string) => void;
 
-  // Live bid/ask updates from WS
-  bidAskTick: number;
   updateBidAsk: (assetId: string, bestBid: number, bestAsk: number) => void;
 
   // Derived
@@ -387,6 +387,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   setPriceData: (symbol, price) => set((s) => ({
     priceData: { ...s.priceData, [symbol]: { price } },
   })),
+  setBinanceTickerBatch: (patch) => set((s) => {
+    let nextPd = s.priceData;
+    let bumped = false;
+    for (const k of Object.keys(patch) as AssetSymbol[]) {
+      const p = patch[k];
+      if (typeof p !== 'number' || !Number.isFinite(p)) continue;
+      const cur = s.priceData[k]?.price;
+      if (cur === p) continue;
+      if (nextPd === s.priceData) nextPd = { ...s.priceData };
+      nextPd[k] = { price: p };
+      bumped = true;
+    }
+    if (!bumped) return {};
+    return { priceData: nextPd };
+  }),
   setVwapData: (symbol, price) => set((s) => ({
     vwapData: { ...s.vwapData, [symbol]: { price, ts: Date.now() } },
   })),
@@ -467,7 +482,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     localStorage.setItem('polymarket-signals-on-grid', v ? 'true' : 'false');
     set({ signalsOnGrid: v });
   },
-  bidAskTick: 0,
   setMarketData: (data) => set(data),
   setLoading: (v) => set({ loading: v }),
   setBackendConnected: (v) => set({ backendConnected: v }),
@@ -513,7 +527,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const updated = { ...entry, bestBid, bestAsk };
     return {
       marketLookup: { ...s.marketLookup, [assetId]: updated },
-      bidAskTick: s.bidAskTick + 1,
     };
   }),
   getAssetPrice: (symbol) => {

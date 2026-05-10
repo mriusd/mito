@@ -6,6 +6,8 @@ import type { AssetName, Market } from '../../types';
 import { ASSET_COLORS } from '../../types';
 import { API_BASE, WS_BASE } from '../../lib/env';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
+import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
+
 import { assetToSymbol, formatPrice } from '../../utils/format';
 
 const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
@@ -719,10 +721,21 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   }, [rbsTfEnabled, visibleRbsTimeframes]);
 
   const priceData = useAppStore((s) => s.priceData);
-  useAppStore((s) => s.bidAskTick);
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
-  const marketLookup = useAppStore((s) => s.marketLookup);
+  const chartClobTokenIds = useMemo(() => {
+    const set = new Set<string>();
+    const udm = upOrDownMarkets[asset];
+    if (udm) {
+      for (const mkts of Object.values(udm)) {
+        for (const m of mkts || []) {
+          for (const t of m.clobTokenIds || []) if (t) set.add(String(t));
+        }
+      }
+    }
+    return [...set];
+  }, [asset, upOrDownMarkets]);
+  const marketLookup = useMarketLookupSubset(chartClobTokenIds);
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const sym = assetToSymbol(asset);

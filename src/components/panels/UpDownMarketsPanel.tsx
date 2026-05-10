@@ -9,6 +9,7 @@ import { getMarketProbability } from '../../utils/bsMath';
 import { formatPolymarketVolumeK, getPolymarketVolumeUsd, getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
 function formatCountdown(ms: number): string {
@@ -159,8 +160,6 @@ export function UpDownMarketsPanel() {
   };
 
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
-  const _bidAskLookup = useAppStore((s) => s.marketLookup);
-  useAppStore((s) => s.bidAskTick);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
@@ -170,6 +169,35 @@ export function UpDownMarketsPanel() {
   const onchainGridPositions = useAppStore((s) => s.onchainGridPositions);
   const orders = useAppStore((s) => s.orders);
   const progOrderMap = useAppStore((s) => s.progOrderMap);
+  const updownGridClobTokenIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const udm of Object.values(upOrDownMarkets)) {
+      if (!udm) continue;
+      for (const mkts of Object.values(udm)) {
+        for (const m of mkts || []) {
+          for (const t of m.clobTokenIds || []) if (t) set.add(String(t));
+        }
+      }
+    }
+    if (liveTradesSource === 'onchain') {
+      for (const p of onchainGridPositions) {
+        const k = normalizeClobTokenId(p.tokenId);
+        if (k && Math.abs(p.size) > 1e-9) set.add(k);
+      }
+    } else {
+      for (const pos of positions) {
+        const k = normalizeClobTokenId(getPositionClobTokenId(pos));
+        if (k && (pos.size || 0) > 0) set.add(k);
+      }
+    }
+    for (const ord of orders) {
+      if (progOrderMap[ord.id]) continue;
+      const tid = ord.asset_id || ord.token_id || '';
+      if (tid) set.add(tid);
+    }
+    return [...set];
+  }, [upOrDownMarkets, liveTradesSource, onchainGridPositions, positions, orders, progOrderMap]);
+  const _bidAskLookup = useMarketLookupSubset(updownGridClobTokenIds);
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);

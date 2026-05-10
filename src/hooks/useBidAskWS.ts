@@ -176,7 +176,7 @@ export function useBidAskWS() {
           bumped = true;
         }
         if (!bumped) return {};
-        return { marketLookup: merged, bidAskTick: state.bidAskTick + 1 };
+        return { marketLookup: merged };
       });
     }
 

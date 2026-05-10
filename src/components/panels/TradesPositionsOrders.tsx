@@ -11,6 +11,7 @@ import {
   type OnchainClaimRow,
 } from '../../api';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import type { Position, Trade } from '../../types';
 import { showToast } from '../../utils/toast';
 import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, getPositionClobTokenId, extractAssetFromMarket, formatPriceShort, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
@@ -81,8 +82,6 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
   const positions = useAppStore((s) => s.positions);
   const orders = useAppStore((s) => s.orders);
   const trades = useAppStore((s) => s.trades);
-  const marketLookup = useAppStore((s) => s.marketLookup);
-  const bidAskTick = useAppStore((s) => s.bidAskTick);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const makerAddress = useAppStore((s) => s.makerAddress);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
@@ -111,6 +110,23 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
     }
     return Array.from(s).sort().join(',');
   }, [positions, orders, trades]);
+
+  const tpoClobIds = useMemo(() => {
+    const set = new Set<string>();
+    if (polymarketTokenKey) {
+      for (const tid of polymarketTokenKey.split(',')) {
+        const t = tid.trim();
+        if (t) set.add(t);
+      }
+    }
+    for (const r of onchainPosRows) {
+      if (r.tokenId) set.add(String(r.tokenId));
+    }
+    for (const t of selectedMarket?.clobTokenIds || []) if (t) set.add(String(t));
+    return [...set];
+  }, [polymarketTokenKey, onchainPosRows, selectedMarket?.id, selectedMarket?.clobTokenIds]);
+
+  const marketLookup = useMarketLookupSubset(tpoClobIds);
 
   useEffect(() => {
     if (liveTradesSource !== 'onchain' || !makerAddress) {
@@ -210,7 +226,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
         ...(r.marketId ? { market: r.marketId } : {}),
       };
     });
-  }, [onchainPosRows, marketLookup, bidAskTick]);
+  }, [onchainPosRows, marketLookup]);
 
   const onchainTradesAsPM = useMemo((): Trade[] => {
     return onchainTrRows.map((t, i) => {

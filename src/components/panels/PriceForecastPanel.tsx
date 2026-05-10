@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useEffect, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import type { AssetSymbol, Market } from '../../types';
+import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import { HelpTooltip } from '../HelpTooltip';
 
 const PRICE_FORECAST_HELP =
@@ -958,12 +959,28 @@ export function PriceForecastPanel() {
   const aboveMarkets = useAppStore((s) => s.aboveMarkets);
   const priceOnMarkets = useAppStore((s) => s.priceOnMarkets);
   const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
-  const marketLookup = useAppStore((s) => s.marketLookup);
-  const bidAskTick = useAppStore((s) => s.bidAskTick);
   const priceData = useAppStore((s) => s.priceData);
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
+
+  const forecastClobTokenIds = useMemo(() => {
+    const set = new Set<string>();
+    const addMkts = (mkts: Market[] | undefined) => {
+      for (const m of mkts || []) {
+        for (const t of m.clobTokenIds || []) if (t) set.add(String(t));
+      }
+    };
+    for (const a of ASSETS) {
+      addMkts(aboveMarkets[a]);
+      addMkts(priceOnMarkets[a]);
+      addMkts(weeklyHitMarkets[a]);
+      const udm = upOrDownMarkets[a];
+      if (udm) for (const row of Object.values(udm)) addMkts(row || []);
+    }
+    return [...set];
+  }, [upOrDownMarkets, aboveMarkets, priceOnMarkets, weeklyHitMarkets]);
+  const marketLookup = useMarketLookupSubset(forecastClobTokenIds);
 
   // Tick counter to force re-compute every N seconds without Date.now() in deps
   const [tick, setTick] = useState(0);
@@ -989,7 +1006,7 @@ export function PriceForecastPanel() {
     }
     return { byAsset: out, nowMs: now };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [upOrDownMarkets, aboveMarkets, priceOnMarkets, weeklyHitMarkets, marketLookup, priceData, volatilityData, volMultiplier, bsTimeOffsetHours, bidAskTick, tick]);
+  }, [upOrDownMarkets, aboveMarkets, priceOnMarkets, weeklyHitMarkets, marketLookup, priceData, volatilityData, volMultiplier, bsTimeOffsetHours, tick]);
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 h-full">

@@ -1450,9 +1450,20 @@ export function Sidebar() {
               )}
             </div>
             {upDownCountdown && (
-              <span className={`text-xs font-bold flex-shrink-0 flex items-center gap-0.5 ${upDownCountdown === 'Expired' ? 'text-red-400' : upDownRemaining < 60000 ? 'text-red-400' : upDownRemaining < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>
-                <Clock size={12} /> {upDownCountdown}
-              </span>
+              <div className="flex-shrink-0 flex flex-wrap items-center justify-end gap-1">
+                <span className={`text-xs font-bold inline-flex items-center gap-0.5 ${upDownCountdown === 'Expired' ? 'text-red-400' : upDownRemaining < 60000 ? 'text-red-400' : upDownRemaining < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>
+                  <Clock size={12} /> {upDownCountdown}
+                </span>
+                {upDownCountdown === 'Expired' && isUpDownMarket && liveUpDownSameTfMarket ? (
+                  <button
+                    type="button"
+                    className="text-[10px] font-semibold px-2 py-0.5 rounded bg-teal-600 hover:bg-teal-500 text-white leading-none shrink-0"
+                    onClick={() => setSelectedMarket(liveUpDownSameTfMarket)}
+                  >
+                    Go to Live Market
+                  </button>
+                ) : null}
+              </div>
             )}
           </div>
           <div className="text-[10px] text-gray-200 leading-tight mt-0.5 break-words w-full">
@@ -2000,31 +2011,10 @@ export function Sidebar() {
                   </div>
                 </div>
                 {(obLoading || (isMarketExpired && isUpDownMarket)) && (
-                  <div
-                    className={`absolute inset-0 z-10 bg-gray-900/55 backdrop-blur-[1px] flex flex-col gap-2 items-center justify-center px-2 py-3 ${
-                      isMarketExpired && isUpDownMarket ? 'pointer-events-auto' : 'pointer-events-none'
-                    }`}
-                  >
-                    {isMarketExpired && isUpDownMarket ? (
-                      <>
-                        <div className="text-[10px] text-red-400 font-medium text-center leading-tight">
-                          Market Expired
-                        </div>
-                        {liveUpDownSameTfMarket ? (
-                          <button
-                            type="button"
-                            className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-teal-600 hover:bg-teal-500 text-white shadow-sm"
-                            onClick={() => setSelectedMarket(liveUpDownSameTfMarket)}
-                          >
-                            Go to Live Market
-                          </button>
-                        ) : null}
-                      </>
-                    ) : (
-                      <div className={`text-[10px] ${isMarketExpired ? 'text-red-400' : 'text-gray-300'}`}>
-                        {isMarketExpired ? 'Market Expired' : 'Loading orderbook...'}
-                      </div>
-                    )}
+                  <div className="absolute inset-0 z-10 bg-gray-900/55 backdrop-blur-[1px] flex items-center justify-center pointer-events-none px-2">
+                    <div className={`text-[10px] text-center leading-tight ${isMarketExpired ? 'text-red-400' : 'text-gray-300'}`}>
+                      {isMarketExpired ? 'Market Expired' : 'Loading orderbook...'}
+                    </div>
                   </div>
                 )}
                 </div>

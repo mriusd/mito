@@ -20,6 +20,30 @@ export function upDownMarketUsesChainlinkSpot(market: { eventSlug?: string; ques
   return false;
 }
 
+/** Bucket key for `upOrDownMarkets[asset][tf]` derived from Gamma slug/question. */
+export function upDownTimeframeKeyFromMarket(market: { eventSlug?: string; question?: string }): '5m' | '15m' | '1h' | '4h' | '24h' | null {
+  const combined = `${market.eventSlug || ''} ${market.question || ''}`;
+  if (!(combined.match(/up\s+or\s+down/i) || combined.match(/updown/i))) return null;
+  if (combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i)) return '5m';
+  if (combined.match(/updown-15m/i) || combined.match(/\b15[- ]?min/i)) return '15m';
+  if (combined.match(/updown-4h/i) || combined.match(/\b4[- ]?h/i)) return '4h';
+  if (combined.match(/up-or-down-on-/i) || combined.match(/\b24[- ]?h/i)) return '24h';
+  return '1h';
+}
+
+/** Soonest-ending open market in a timeframe bucket (matches HUD current-window pick). */
+export function pickLiveUpDownMarketInTfBucket(marketsForTf: Market[] | undefined, nowMs: number = Date.now()): Market | null {
+  if (!marketsForTf?.length) return null;
+  const sorted = marketsForTf
+    .filter((m) => !m.closed)
+    .sort((a, b) => {
+      const ta = a.endDate ? new Date(a.endDate).getTime() : Infinity;
+      const tb = b.endDate ? new Date(b.endDate).getTime() : Infinity;
+      return ta - tb;
+    });
+  return sorted.find((m) => m.endDate && new Date(m.endDate).getTime() > nowMs) ?? null;
+}
+
 /**
  * Gamma / chart-WS volume in USDC (YES token row). Prefers `marketLookup` when `live.id === market.id`
  * so nested `upOrDownMarkets` refs stay in sync with `bidAskBatch` patches.

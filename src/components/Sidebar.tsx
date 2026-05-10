@@ -27,9 +27,11 @@ import {
   getTokenOutcome,
   getTradeClobTokenId,
   outcomeTokenBelongsToSelectedMarket,
+  pickLiveUpDownMarketInTfBucket,
   shortenMarketName,
   tradeMatchesSelectedMarket,
   upDownMarketUsesChainlinkSpot,
+  upDownTimeframeKeyFromMarket,
 } from '../utils/format';
 import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarkets } from '../utils/bsMath';
 import { API_BASE } from '../lib/env';
@@ -518,6 +520,7 @@ export function Sidebar() {
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
+  const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
 
   const selectedMarketIsHit = useMemo(
     () => isMarketInWeeklyHitMarkets(selectedMarket?.id, weeklyHitMarkets),
@@ -590,6 +593,15 @@ export function Sidebar() {
     else if (combined.match(/up-or-down-on-/i) || combined.match(/\b24[- ]?h/i)) intervalMs = 24 * 60 * 60 * 1000;
     return endMs - intervalMs;
   }, [isUpDownMarket, selectedMarket?.endDate, selectedMarket?.eventSlug, selectedMarket?.question]);
+
+  const liveUpDownSameTfMarket = useMemo(() => {
+    if (!isUpDownMarket || !selectedMarket || !isMarketExpired || !upDownAsset) return null;
+    const tf = upDownTimeframeKeyFromMarket(selectedMarket);
+    if (!tf) return null;
+    const live = pickLiveUpDownMarketInTfBucket(upOrDownMarkets[upDownAsset]?.[tf]);
+    if (!live || live.id === selectedMarket.id) return null;
+    return live;
+  }, [isUpDownMarket, selectedMarket, isMarketExpired, upDownAsset, upOrDownMarkets]);
 
   // Target price: use priceToBeat from Gamma API (set by backend), fallback to crypto-price API
   // Look up fresh priceToBeat from marketLookup (refreshes every 30s) since selectedMarket is a stale snapshot
@@ -1987,11 +1999,32 @@ export function Sidebar() {
                     })()}
                   </div>
                 </div>
-                {obLoading && (
-                  <div className="absolute inset-0 z-10 bg-gray-900/55 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
-                    <div className={`text-[10px] ${isMarketExpired ? 'text-red-400' : 'text-gray-300'}`}>
-                      {isMarketExpired ? 'Market Expired' : 'Loading orderbook...'}
-                    </div>
+                {(obLoading || (isMarketExpired && isUpDownMarket)) && (
+                  <div
+                    className={`absolute inset-0 z-10 bg-gray-900/55 backdrop-blur-[1px] flex flex-col gap-2 items-center justify-center px-2 py-3 ${
+                      isMarketExpired && isUpDownMarket ? 'pointer-events-auto' : 'pointer-events-none'
+                    }`}
+                  >
+                    {isMarketExpired && isUpDownMarket ? (
+                      <>
+                        <div className="text-[10px] text-red-400 font-medium text-center leading-tight">
+                          Market Expired
+                        </div>
+                        {liveUpDownSameTfMarket ? (
+                          <button
+                            type="button"
+                            className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-teal-600 hover:bg-teal-500 text-white shadow-sm"
+                            onClick={() => setSelectedMarket(liveUpDownSameTfMarket)}
+                          >
+                            Go to Live Market
+                          </button>
+                        ) : null}
+                      </>
+                    ) : (
+                      <div className={`text-[10px] ${isMarketExpired ? 'text-red-400' : 'text-gray-300'}`}>
+                        {isMarketExpired ? 'Market Expired' : 'Loading orderbook...'}
+                      </div>
+                    )}
                   </div>
                 )}
                 </div>

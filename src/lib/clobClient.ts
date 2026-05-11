@@ -12,6 +12,7 @@ import {
   type SignedOrder,
 } from '@polymarket/clob-client-v2';
 import { API_BASE, POLYGON_ETHERS_NETWORK, POLYGON_JSONRPC_URL, vitePolyBuilderCode } from './env';
+import { inferPolymarketClobSignatureType, resolvePolymarketMakerAddress } from './polymarketTradingMaker';
 import { getConnection } from '@wagmi/core';
 import { wagmiAdapter } from './wallet';
 import { signingDialog } from '../components/SigningDialog';
@@ -29,12 +30,15 @@ interface PolyReplacePayload {
   signer: ethers.Signer;
   creds: StoredCreds;
   proxyWallet: string;
+  signatureType: SignatureTypeV2;
 }
 
 const STORAGE_KEY = 'polymarket-api-creds';
 let cachedAddress: string | null = null;
 let cachedCreds: StoredCreds | null = null;
 let cachedProxyWallet: string | null = null;
+let cachedInferKey: string | null = null;
+let cachedInferSigType: SignatureTypeV2 | null = null;
 
 try {
   const stored = localStorage.getItem(STORAGE_KEY);
@@ -69,6 +73,8 @@ export function clearCachedCreds() {
   cachedCreds = null;
   cachedAddress = null;
   cachedProxyWallet = null;
+  cachedInferKey = null;
+  cachedInferSigType = null;
   localStorage.removeItem(STORAGE_KEY);
 }
 
@@ -94,7 +100,8 @@ export async function sendCredsToBackend(): Promise<boolean> {
   const address = (await signer.getAddress()).toLowerCase();
   const resp = await fetch(`${API_BASE}/api/polyproxy/gamma/users?address=${address}`);
   const users = await resp.json();
-  const proxyWallet = (users?.[0]?.proxyWallet || address).toLowerCase();
+  const gammaPw = users?.[0]?.proxyWallet != null ? String(users[0].proxyWallet) : null;
+  const proxyWallet = resolvePolymarketMakerAddress(address, gammaPw);
   await ensureCreds(signer, proxyWallet);
   const sendResp = await fetch('/api/auth/creds', {
     method: 'POST',
@@ -201,18 +208,34 @@ async function ensureCreds(signer: ethers.Signer, proxyWallet: string): Promise<
   cachedAddress = addr;
   cachedCreds = creds;
   cachedProxyWallet = proxyWallet.toLowerCase();
+  cachedInferKey = null;
+  cachedInferSigType = null;
   persistCreds();
   return creds;
 }
 
-function makeTradingClient(signer: ethers.Signer, proxyWallet: string, creds: StoredCreds): ClobClient {
+async function tradingSignatureType(eoa: string, maker: string): Promise<SignatureTypeV2> {
+  const k = `${eoa.toLowerCase()}:${maker.toLowerCase()}`;
+  if (cachedInferKey === k && cachedInferSigType !== null) return cachedInferSigType;
+  const t = await inferPolymarketClobSignatureType(eoa, maker, POLYGON_JSONRPC_URL);
+  cachedInferKey = k;
+  cachedInferSigType = t;
+  return t;
+}
+
+function makeTradingClient(
+  signer: ethers.Signer,
+  tradingMakerAddress: string,
+  creds: StoredCreds,
+  signatureType: SignatureTypeV2,
+): ClobClient {
   return new ClobClient({
     host: CLOB_URL,
     chain: Chain.POLYGON,
     signer: signer as any,
     creds,
-    signatureType: SignatureTypeV2.POLY_GNOSIS_SAFE,
-    funderAddress: proxyWallet,
+    signatureType,
+    funderAddress: tradingMakerAddress.toLowerCase(),
     builderConfig: builderConfig(),
   });
 }
@@ -263,7 +286,9 @@ export async function fetchOpenOrdersDirect(proxyWallet: string): Promise<any[]>
   if (!cachedCreds || !cachedAddress || cachedProxyWallet !== proxyWallet.toLowerCase()) return [];
   try {
     const signer = await getEthersSigner();
-    const client = makeTradingClient(signer, proxyWallet, cachedCreds);
+    const eoa = (await signer.getAddress()).toLowerCase();
+    const sig = await tradingSignatureType(eoa, proxyWallet);
+    const client = makeTradingClient(signer, proxyWallet, cachedCreds!, sig);
     const data = await client.getOpenOrders();
     return Array.isArray(data) ? data : [];
   } catch (err) {
@@ -291,7 +316,9 @@ export async function placeOrderDirect(params: {
   try {
     const signer = await getEthersSigner();
     const creds = await ensureCreds(signer, params.proxyWallet);
-    const client = makeTradingClient(signer, params.proxyWallet, creds);
+    const eoa = (await signer.getAddress()).toLowerCase();
+    const sig = await tradingSignatureType(eoa, params.proxyWallet);
+    const client = makeTradingClient(signer, params.proxyWallet, creds, sig);
     sd.setStep('auth', 'done');
 
     sd.setStep('sign', 'active');
@@ -364,7 +391,9 @@ export async function signOrderOnly(params: {
   try {
     const signer = await getEthersSigner();
     const creds = await ensureCreds(signer, params.proxyWallet);
-    const client = makeTradingClient(signer, params.proxyWallet, creds);
+    const eoa = (await signer.getAddress()).toLowerCase();
+    const sig = await tradingSignatureType(eoa, params.proxyWallet);
+    const client = makeTradingClient(signer, params.proxyWallet, creds, sig);
 
     const [tickSizeData, negRiskData] = await Promise.all([
       fetch(`${CLOB_URL}/tick-size?token_id=${params.tokenId}`).then((r) => r.json()),
@@ -388,7 +417,7 @@ export async function signOrderOnly(params: {
 
     return {
       success: true,
-      signedPayload: { order, orderType, signer, creds, proxyWallet: params.proxyWallet },
+      signedPayload: { order, orderType, signer, creds, proxyWallet: params.proxyWallet, signatureType: sig },
     };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -399,8 +428,8 @@ export async function submitSignedOrderDirect(
   signedPayload: PolyReplacePayload,
 ): Promise<{ success: boolean; orderID?: string; error?: string }> {
   try {
-    const { order, orderType, signer, creds, proxyWallet } = signedPayload;
-    const client = makeTradingClient(signer, proxyWallet, creds);
+    const { order, orderType, signer, creds, proxyWallet, signatureType } = signedPayload;
+    const client = makeTradingClient(signer, proxyWallet, creds, signatureType);
     const res = await client.postOrder(order, orderType);
     const parsed = parsePostOrder(res);
     if (parsed.error) return { success: false, error: parsed.error };
@@ -417,7 +446,9 @@ export async function cancelOrderDirect(
   try {
     const signer = await getEthersSigner();
     const creds = await ensureCreds(signer, proxyWallet);
-    const client = makeTradingClient(signer, proxyWallet, creds);
+    const eoa = (await signer.getAddress()).toLowerCase();
+    const sig = await tradingSignatureType(eoa, proxyWallet);
+    const client = makeTradingClient(signer, proxyWallet, creds, sig);
     const data = (await client.cancelOrder({ orderID: orderId })) as Record<string, unknown>;
 
     if (data.error || data.errorMsg) {

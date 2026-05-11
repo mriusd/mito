@@ -4,11 +4,12 @@ import { ethers } from 'ethers';
 import { useAppStore } from '../stores/appStore';
 import { fetchProxyWallet, fetchWalletPositions, fetchWalletActivity, fetchWalletBalance } from '../api/polymarket';
 import { fetchOpenOrdersDirect, setWalletRefreshFn, hasCredsForWallet, ensureCredsForWallet } from '../lib/clobClient';
+import { resolvePolymarketMakerAddress } from '../lib/polymarketTradingMaker';
 import { showSignatureExplainer } from '../components/SignatureExplainerDialog';
 import { isWebMode } from '../lib/env';
 import { getStoredPrivateKey } from '../components/PrivateKeyImportDialog';
 
-// Web mode only: resolve the Polymarket Safe proxy wallet for the connected EOA,
+// Web mode only: Gamma → trading maker address; WalletConnect signer + RPC infer Safe vs deposit (POLY_1271) at order time.
 // then fetch positions, orders, trades, balance from Polymarket directly.
 // In app mode this hook is a no-op.
 export function useWalletData() {
@@ -45,9 +46,15 @@ export function useWalletData() {
       return;
     }
     (async () => {
-      const pw = await fetchProxyWallet(effectiveEoa);
-      console.log(`[useWalletData] EOA ${effectiveEoa} → proxy wallet ${pw}`);
-      setProxyWallet(pw);
+      try {
+        const pw = await fetchProxyWallet(effectiveEoa);
+        const maker = resolvePolymarketMakerAddress(effectiveEoa, pw);
+        console.log(`[useWalletData] EOA ${effectiveEoa} → trading maker ${maker}`);
+        setProxyWallet(maker);
+      } catch (e) {
+        console.error('[useWalletData] resolve trading maker failed:', e);
+        setProxyWallet(null);
+      }
     })();
   }, [effectiveConnected, effectiveEoa]);
 

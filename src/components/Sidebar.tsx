@@ -13,6 +13,7 @@ import {
   type MarketStakedLegsResponse,
 } from '../api';
 import { fetchProxyWallet } from '../api/polymarket';
+import { resolvePolymarketMakerAddress } from '../lib/polymarketTradingMaker';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { executeMergePositions } from '../lib/mergePositions';
 import { showToast } from '../utils/toast';
@@ -322,7 +323,14 @@ export function Sidebar() {
   useEffect(() => {
     if (!effectiveSidebarEoa) { setProxyWallet(null); return; }
     let cancelled = false;
-    fetchProxyWallet(effectiveSidebarEoa).then((pw) => { if (!cancelled) setProxyWallet(pw); });
+    fetchProxyWallet(effectiveSidebarEoa).then((pw) => {
+      if (cancelled) return;
+      try {
+        setProxyWallet(resolvePolymarketMakerAddress(effectiveSidebarEoa, pw));
+      } catch {
+        setProxyWallet(null);
+      }
+    });
     return () => { cancelled = true; };
   }, [effectiveSidebarEoa]);
 
@@ -1891,9 +1899,6 @@ export function Sidebar() {
                 : 0;
               const yesWR = liveShareStats?.winnerBiasYesWR ?? 0;
               const noWR = liveShareStats?.winnerBiasNoWR ?? 0;
-              const wbs = liveShareStats?.winBiasShares ?? 0;
-              const yesWRs = liveShareStats?.winBiasSharesYes ?? 0;
-              const noWRs = liveShareStats?.winBiasSharesNo ?? 0;
               const cyTop = liveShareStats?.stakedTopHoldersCohortYesUsd;
               const cnTop = liveShareStats?.stakedTopHoldersCohortNoUsd;
               const hasTopCohortUsd =
@@ -1909,9 +1914,6 @@ export function Sidebar() {
                   : 0;
               const yesWRcvUsd = liveShareStats?.winnerBiasConvictionYesWR ?? 0;
               const noWRcvUsd = liveShareStats?.winnerBiasConvictionNoWR ?? 0;
-              const wbcv = liveShareStats?.winBiasConvictionShares ?? 0;
-              const yesWRcv = liveShareStats?.winBiasConvictionSharesYes ?? 0;
-              const noWRcv = liveShareStats?.winBiasConvictionSharesNo ?? 0;
               const sms = liveShareStats?.provenSMS ?? 0;
 
               const winUsdTip = `Staked USD tilt (Σ|YES leg| vs Σ|NO leg|, inv×px) — same as Stake row. WR in market (all wallets): ${posLabel} ${(yesWR * 100).toFixed(0)}% / ${negLabel} ${(noWR * 100).toFixed(0)}%.`;
@@ -1922,9 +1924,7 @@ export function Sidebar() {
               return (
                 <div className="mt-1 space-y-0.5">
                   <SidebarBiasMiniBar label="Win$" value={wb} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={winUsdTip} />
-                  <SidebarBiasMiniBar label="WinS" value={wbs} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={`Winner Bias (Shares): ${posLabel} WR ${(yesWRs * 100).toFixed(0)}% / ${negLabel} WR ${(noWRs * 100).toFixed(0)}%`} />
                   <SidebarBiasMiniBar label="Cv$" value={wbcvUsd} leftColor="bg-emerald-400/75" rightColor="bg-orange-400/75" tooltip={cvUsdTip} />
-                  <SidebarBiasMiniBar label="CvS" value={wbcv} leftColor="bg-teal-400/75" rightColor="bg-rose-400/75" tooltip={`Winner Bias Conviction (shares): |net|/trade vol ≥99.9% wallets only — ${posLabel} WR ${(yesWRcv * 100).toFixed(0)}% / ${negLabel} WR ${(noWRcv * 100).toFixed(0)}%`} />
                   <SidebarBiasMiniBar label="Smart" value={sms} leftColor="bg-lime-500/75" rightColor="bg-red-600/75" tooltip={`Smart Money: proven wallets (≥60% WR, ≥10 mkts, PNL>0) with ≥$2k in this market — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
                   {sidebarStakedLegs ? (
                     <StakedLegUsdBar

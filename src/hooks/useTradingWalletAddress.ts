@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
 import { fetchProxyWallet } from '../api/polymarket';
+import { resolvePolymarketMakerAddress } from '../lib/polymarketTradingMaker';
 import { useAppStore } from '../stores/appStore';
 
 /** Lowercase maker → proxy → EOA for wallet dialogs (same resolution as Sidebar on-chain key). */
@@ -19,7 +20,12 @@ export function useTradingWalletAddress(): string {
       return;
     }
     void fetchProxyWallet(effectiveEoa).then((pw) => {
-      if (!cancelled) setProxyWallet(pw);
+      if (cancelled) return;
+      try {
+        setProxyWallet(resolvePolymarketMakerAddress(effectiveEoa, pw));
+      } catch {
+        setProxyWallet(null);
+      }
     });
     return () => {
       cancelled = true;

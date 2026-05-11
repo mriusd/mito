@@ -28,3 +28,18 @@ export function vitePolyBuilderCode(): string | undefined {
   return h.toLowerCase();
 }
 
+/** 0 EOA | 1 proxy | 2 gnosis safe | 3 deposit EIP-1271 — matches mitobot POLYMARKET_SIGNATURE_TYPE */
+export function vitePolymarketSignatureType(): 0 | 1 | 2 | 3 | undefined {
+  const raw = String(import.meta.env.VITE_POLYMARKET_SIGNATURE_TYPE ?? '').trim();
+  if (!raw) return undefined;
+  const n = Number(raw);
+  if (n === 0 || n === 1 || n === 2 || n === 3) return n;
+  return undefined;
+}
+
+/** Deposit wallet / Safe override — matches mitobot POLYMARKET_FUNDER */
+export function vitePolymarketFunder(): string | undefined {
+  const raw = String(import.meta.env.VITE_POLYMARKET_FUNDER ?? '').trim();
+  if (!raw || !/^0x[0-9a-fA-F]{40}$/.test(raw)) return undefined;
+  return raw.toLowerCase();
+}

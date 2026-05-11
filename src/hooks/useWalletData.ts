@@ -27,7 +27,7 @@ export function useWalletData() {
     const pk = getStoredPrivateKey();
     if (!pk) return null;
     try {
-      return new ethers.Wallet(pk).address;
+      return new ethers.Wallet(pk).address.toLowerCase();
     } catch { return null; }
   }, [signingMode]);
 
@@ -47,9 +47,10 @@ export function useWalletData() {
     }
     (async () => {
       try {
-        const pw = await fetchProxyWallet(effectiveEoa);
-        const maker = resolvePolymarketMakerAddress(effectiveEoa, pw);
-        console.log(`[useWalletData] EOA ${effectiveEoa} → trading maker ${maker}`);
+        const eoaLc = typeof effectiveEoa === 'string' ? effectiveEoa.trim().toLowerCase() : '';
+        const pw = await fetchProxyWallet(eoaLc);
+        const maker = resolvePolymarketMakerAddress(eoaLc, pw);
+        console.log(`[useWalletData] EOA ${eoaLc} → trading maker ${maker}`);
         setProxyWallet(maker);
       } catch (e) {
         console.error('[useWalletData] resolve trading maker failed:', e);
@@ -108,11 +109,18 @@ export function useWalletData() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proxyWallet]);
 
+  /** Re-run L2 cred gate when signer EOA changes — avoid stale API keys from another wallet. */
+  useEffect(() => {
+    credsCheckedRef.current = false;
+  }, [signingMode, effectiveEoa, proxyWallet]);
+
   // Auto-derive API creds if not available
   useEffect(() => {
-    if (!isWebMode || !proxyWallet || credsCheckedRef.current) return;
+    if (!isWebMode || !effectiveEoa || !proxyWallet || credsCheckedRef.current) return;
+    const eoaNorm = typeof effectiveEoa === 'string' ? effectiveEoa.trim().toLowerCase() : '';
+    if (!eoaNorm) return;
     credsCheckedRef.current = true;
-    if (!hasCredsForWallet(proxyWallet)) {
+    if (!hasCredsForWallet(proxyWallet, eoaNorm)) {
       if (signingMode === 'privateKey' && pkEoa) {
         // PK mode: sign silently in the background, no dialog needed
         console.log('[useWalletData] PK mode — deriving API creds silently...');
@@ -136,7 +144,7 @@ export function useWalletData() {
         });
       }
     }
-  }, [proxyWallet, fetchAll, signingMode, pkEoa]);
+  }, [effectiveEoa, proxyWallet, fetchAll, signingMode, pkEoa]);
 
   // Fetch once proxy wallet is resolved
   useEffect(() => {

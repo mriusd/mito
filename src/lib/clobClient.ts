@@ -78,8 +78,20 @@ export function clearCachedCreds() {
   localStorage.removeItem(STORAGE_KEY);
 }
 
-export function hasCredsForWallet(proxyWallet: string): boolean {
-  return !!cachedCreds && !!cachedAddress && cachedProxyWallet === proxyWallet.toLowerCase();
+/** Cached L2 creds are scoped to BOTH signing EOA and Polymarket maker — mismatch caused "signer … API KEY" rejects. */
+function credBundleMatches(makerWallet: string, signerEoa: string): boolean {
+  const eoa = signerEoa.trim().toLowerCase();
+  return (
+    !!cachedCreds &&
+    !!cachedAddress &&
+    !!eoa &&
+    cachedProxyWallet === makerWallet.trim().toLowerCase() &&
+    cachedAddress === eoa
+  );
+}
+
+export function hasCredsForWallet(makerWallet: string, signerEoa: string): boolean {
+  return credBundleMatches(makerWallet, signerEoa);
 }
 
 export async function ensureCredsForWallet(proxyWallet: string): Promise<void> {
@@ -283,10 +295,10 @@ function adjustedSellSizeFromBalanceError(errMsg: string, currentSize: number): 
 }
 
 export async function fetchOpenOrdersDirect(proxyWallet: string): Promise<any[]> {
-  if (!cachedCreds || !cachedAddress || cachedProxyWallet !== proxyWallet.toLowerCase()) return [];
   try {
     const signer = await getEthersSigner();
     const eoa = (await signer.getAddress()).toLowerCase();
+    if (!credBundleMatches(proxyWallet, eoa)) return [];
     const sig = await tradingSignatureType(eoa, proxyWallet);
     const client = makeTradingClient(signer, proxyWallet, cachedCreds!, sig);
     const data = await client.getOpenOrders();
@@ -308,15 +320,17 @@ export async function placeOrderDirect(params: {
   orderInfo?: string;
   orderType?: 'GTC' | 'GTD' | 'FAK' | 'FOK';
 }): Promise<{ success: boolean; orderID?: string; error?: string }> {
-  const needsAuth = !cachedCreds || cachedProxyWallet !== params.proxyWallet.toLowerCase();
   const sd = params.skipDialog
     ? { open: () => {}, setStep: (() => {}) as typeof signingDialog.setStep, close: () => {} }
     : signingDialog;
-  sd.open(needsAuth, { orderInfo: params.orderInfo });
   try {
     const signer = await getEthersSigner();
+    const eoaPrecheck = (await signer.getAddress()).toLowerCase();
+    const needsAuth = !credBundleMatches(params.proxyWallet, eoaPrecheck);
+    sd.open(needsAuth, { orderInfo: params.orderInfo });
+
     const creds = await ensureCreds(signer, params.proxyWallet);
-    const eoa = (await signer.getAddress()).toLowerCase();
+    const eoa = eoaPrecheck;
     const sig = await tradingSignatureType(eoa, params.proxyWallet);
     const client = makeTradingClient(signer, params.proxyWallet, creds, sig);
     sd.setStep('auth', 'done');

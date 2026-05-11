@@ -193,10 +193,11 @@ function stakedNetUsdTableCell(signed: number): ReactNode {
   );
 }
 
-/** wallet_market_positions.usdc_in for Latest Markets Traded table */
+/** wallet_market_positions.usdc_in for Latest Markets Traded — cash spent (shown as −USDC, red). */
 function walletMarketUsdcInCell(usdcIn: number): ReactNode {
-  if (!Number.isFinite(usdcIn) || usdcIn < 0) return '–';
-  return <span className="tabular-nums font-semibold text-gray-200">${fmtUsd2En(usdcIn)}</span>;
+  if (!Number.isFinite(usdcIn) || usdcIn < 0) return <span className="text-gray-400">–</span>;
+  const mag = fmtUsd2En(usdcIn);
+  return <span className="tabular-nums font-semibold text-red-400">−${mag}</span>;
 }
 
 function fmtSignedShares1En(v: number): string {
@@ -1168,8 +1169,8 @@ export function WalletInfoDialog({
                     <th className="text-right whitespace-nowrap" title="price_yes">Px Y</th>
                     <th className="text-right whitespace-nowrap" title="price_no">Px N</th>
                     <th
-                      className="text-right whitespace-nowrap font-semibold text-gray-200 py-1"
-                      title="wallet_market_positions.usdc_in — USDC spent into this market (ledger BUY notion)"
+                      className="text-right whitespace-nowrap font-semibold text-red-300 py-1"
+                      title="wallet_market_positions.usdc_in — USDC spent into this market (shown as −USDC)"
                     >
                       Staked
                     </th>

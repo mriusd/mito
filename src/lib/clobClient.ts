@@ -48,7 +48,7 @@ interface PolyReplacePayload {
 
 const LEGACY_STORAGE_KEY = 'polymarket-api-creds-v2';
 function storageKeyForEoa(eoa: string): string {
-  return `polymarket-api-creds-eoa:${eoa.trim().toLowerCase()}`;
+  return `polymarket-api-creds-v3:${eoa.trim().toLowerCase()}`;
 }
 
 function migrateLegacyCredsOnce(): void {
@@ -80,21 +80,7 @@ function migrateLegacyCredsOnce(): void {
   }
 }
 
-/** CLOB stores API keys under the L1 `ClobAuth.address` string; checksummed vs lowercase breaks POST /order (400 signer vs API key). */
-function lowerAddressSignerForClobClient(signer: ethers.Signer): ethers.Signer {
-  return new Proxy(signer as object, {
-    get(_target, prop, receiver) {
-      if (prop === 'getAddress') {
-        return async () => {
-          const a = await signer.getAddress();
-          return typeof a === 'string' ? a.trim().toLowerCase() : a;
-        };
-      }
-      const v = Reflect.get(signer, prop, receiver);
-      return typeof v === 'function' ? (v as (...args: unknown[]) => unknown).bind(signer) : v;
-    },
-  }) as ethers.Signer;
-}
+
 let cachedAddress: string | null = null;
 let cachedCreds: StoredCreds | null = null;
 let cachedProxyWallet: string | null = null;
@@ -290,11 +276,18 @@ function builderConfig():
 }
 
 async function deriveOrCreateApiKey(signer: ethers.Signer): Promise<StoredCreds> {
-  const w = lowerAddressSignerForClobClient(signer);
+  const rawAddr = await signer.getAddress();
+  const chk = ethers.utils.getAddress(rawAddr);
+  polyClobLog({
+    event: 'deriveApiKeySigner',
+    fromWallet: String(rawAddr),
+    checksum: chk,
+    match: chk.toLowerCase() === rawAddr.trim().toLowerCase(),
+  });
   const l1 = new ClobClient({
     host: CLOB_URL,
     chain: Chain.POLYGON,
-    signer: w as any,
+    signer: signer as any,
   });
   try {
     const d = await l1.deriveApiKey();
@@ -305,29 +298,19 @@ async function deriveOrCreateApiKey(signer: ethers.Signer): Promise<StoredCreds>
   return l1.createApiKey();
 }
 
-/** New L2 row on Polymarket (L1 sign). Use after server rejects cached key as not owned by this signer. */
-async function mintL2ApiCredentials(signer: ethers.Signer): Promise<StoredCreds> {
-  const w = lowerAddressSignerForClobClient(signer);
-  const l1 = new ClobClient({
-    host: CLOB_URL,
-    chain: Chain.POLYGON,
-    signer: w as any,
-  });
-  return l1.createApiKey();
-}
-
-async function wipeAndMintNewApiCreds(signer: ethers.Signer, proxyLc: string): Promise<StoredCreds> {
+/** Discard cached L2 secrets and align with server via derive (preferred) — never call create-only; server returns 400 if key exists. */
+async function wipeStaleCredsAndReDeriveApi(signer: ethers.Signer, proxyLc: string): Promise<StoredCreds> {
   const addr = (await signer.getAddress()).toLowerCase();
-  polyClobLog({ event: 'wipeStaleCredsMintNew', eoa: addr, maker: proxyLc });
+  polyClobLog({ event: 'wipeStaleCredsReDerive', eoa: addr, maker: proxyLc });
   obliterateStoredCredsForEoa(addr);
-  const creds = await mintL2ApiCredentials(signer);
+  const creds = await deriveOrCreateApiKey(signer);
   cachedAddress = addr;
   cachedCreds = creds;
   cachedProxyWallet = proxyLc;
   cachedInferKey = null;
   cachedInferSigType = null;
   persistCreds();
-  polyClobLog({ event: 'mintedApiCreds', eoa: addr, maker: proxyLc, apiKey: apiKeyBrief(creds) });
+  polyClobLog({ event: 'reDerivedApiCreds', eoa: addr, maker: proxyLc, apiKey: apiKeyBrief(creds) });
   return creds;
 }
 
@@ -387,11 +370,10 @@ function makeTradingClient(
   creds: StoredCreds,
   signatureType: SignatureTypeV2,
 ): ClobClient {
-  const w = lowerAddressSignerForClobClient(signer);
   return new ClobClient({
     host: CLOB_URL,
     chain: Chain.POLYGON,
-    signer: w as any,
+    signer: signer as any,
     creds,
     signatureType,
     funderAddress: tradingMakerAddress.toLowerCase(),
@@ -490,6 +472,15 @@ export async function placeOrderDirect(params: {
     const eoa = eoaPrecheck;
     const makerLc = params.proxyWallet.trim().toLowerCase();
     let sig = await tradingSignatureType(eoa, params.proxyWallet);
+    const sigLabels = ['EOA', 'POLY_PROXY', 'POLY_GNOSIS_SAFE', 'POLY_1271'] as const;
+    polyClobLog({
+      event: 'placeOrderClobReady',
+      eoa,
+      maker: makerLc,
+      sigType: sig,
+      sigTypeLabel: sigLabels[sig as number] ?? String(sig),
+      apiKey: apiKeyBrief(creds),
+    });
     let client = makeTradingClient(signer, params.proxyWallet, creds, sig);
     sd.setStep('auth', 'done');
 
@@ -546,7 +537,7 @@ export async function placeOrderDirect(params: {
           err: parsed.error,
           hadApiKey: apiKeyBrief(creds),
         });
-        creds = await wipeAndMintNewApiCreds(signer, makerLc);
+        creds = await wipeStaleCredsAndReDeriveApi(signer, makerLc);
         client = makeTradingClient(signer, params.proxyWallet, creds, sig);
         signed = await client.createOrder(userOrder, { tickSize, negRisk });
         res = await client.postOrder(signed, orderTypeEnum);
@@ -637,7 +628,7 @@ export async function submitSignedOrderDirect(
         err: parsed.error,
         hadApiKey: apiKeyBrief(creds),
       });
-      creds = await wipeAndMintNewApiCreds(signer, makerLc);
+      creds = await wipeStaleCredsAndReDeriveApi(signer, makerLc);
       client = makeTradingClient(signer, proxyWallet, creds, signatureType);
       res = await client.postOrder(order, orderType);
       parsed = parsePostOrder(res);

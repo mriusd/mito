@@ -285,11 +285,13 @@ export function Sidebar() {
     if (!Number.isFinite(y) || !Number.isFinite(n)) return null;
     return y + n;
   }, [sidebarStakedLegs]);
-  const STAKED_PILL_WARN_USD = 20_000;
-  const stakedPillLow =
-    typeof marketStakedGrossUsd === 'number' && Number.isFinite(marketStakedGrossUsd)
-      ? marketStakedGrossUsd < STAKED_PILL_WARN_USD
-      : false;
+  /** Gross Σ|legs| USD: red <15k, yellow 15k–30k, green >30k */
+  const stakedPillTier = useMemo((): 'muted' | 'low' | 'mid' | 'high' => {
+    if (typeof marketStakedGrossUsd !== 'number' || !Number.isFinite(marketStakedGrossUsd)) return 'muted';
+    if (marketStakedGrossUsd < 15_000) return 'low';
+    if (marketStakedGrossUsd <= 30_000) return 'mid';
+    return 'high';
+  }, [marketStakedGrossUsd]);
   const [crossingConfirmOpen, setCrossingConfirmOpen] = useState(false);
   const [crossingConfirmMessage, setCrossingConfirmMessage] = useState('');
   const crossingConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
@@ -1875,21 +1877,37 @@ export function Sidebar() {
               </div>
               <div
                 className={`rounded px-1.5 py-1 min-w-0 border ${
-                  stakedPillLow
+                  stakedPillTier === 'low'
                     ? 'border-red-700/65 bg-red-950/35'
-                    : 'border-emerald-800/60 bg-emerald-950/30'
+                    : stakedPillTier === 'mid'
+                      ? 'border-amber-600/55 bg-amber-950/35'
+                      : stakedPillTier === 'high'
+                        ? 'border-emerald-800/60 bg-emerald-950/30'
+                        : 'border-gray-700/70 bg-gray-900/50'
                 }`}
               >
                 <div
                   className={`text-[8px] uppercase tracking-wide truncate ${
-                    stakedPillLow ? 'text-red-400/90' : 'text-emerald-500/90'
+                    stakedPillTier === 'low'
+                      ? 'text-red-400/90'
+                      : stakedPillTier === 'mid'
+                        ? 'text-amber-400/90'
+                        : stakedPillTier === 'high'
+                          ? 'text-emerald-500/90'
+                          : 'text-gray-500'
                   }`}
                 >
                   Staked
                 </div>
                 <div
                   className={`tabular-nums font-bold truncate ${
-                    stakedPillLow ? 'text-red-300' : 'text-emerald-300'
+                    stakedPillTier === 'low'
+                      ? 'text-red-300'
+                      : stakedPillTier === 'mid'
+                        ? 'text-amber-200'
+                        : stakedPillTier === 'high'
+                          ? 'text-emerald-300'
+                          : 'text-gray-200'
                   }`}
                   title={`Market net staked imbalance: |Σ|YES-leg USD| − Σ|NO-leg USD|| (wallet_market_positions). Gross staked Σ|legs|: $${typeof marketStakedGrossUsd === 'number' && Number.isFinite(marketStakedGrossUsd) ? marketStakedGrossUsd.toFixed(0) : '—'}`}
                 >

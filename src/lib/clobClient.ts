@@ -33,7 +33,39 @@ interface PolyReplacePayload {
   signatureType: SignatureTypeV2;
 }
 
-const STORAGE_KEY = 'polymarket-api-creds-v2';
+const LEGACY_STORAGE_KEY = 'polymarket-api-creds-v2';
+function storageKeyForEoa(eoa: string): string {
+  return `polymarket-api-creds-eoa:${eoa.trim().toLowerCase()}`;
+}
+
+function migrateLegacyCredsOnce(): void {
+  try {
+    const stored = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!stored) return;
+    const parsed = JSON.parse(stored);
+    const eoa = String(parsed.address || '').trim().toLowerCase();
+    if (!eoa || !parsed.key || !parsed.secret || !parsed.passphrase) {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(
+      storageKeyForEoa(eoa),
+      JSON.stringify({
+        key: parsed.key,
+        secret: parsed.secret,
+        passphrase: parsed.passphrase,
+        proxyWallet: String(parsed.proxyWallet || '').trim().toLowerCase(),
+      }),
+    );
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {
+    try {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+}
 
 /** CLOB stores API keys under the L1 `ClobAuth.address` string; checksummed vs lowercase breaks POST /order (400 signer vs API key). */
 function lowerAddressSignerForClobClient(signer: ethers.Signer): ethers.Signer {
@@ -56,29 +88,36 @@ let cachedProxyWallet: string | null = null;
 let cachedInferKey: string | null = null;
 let cachedInferSigType: SignatureTypeV2 | null = null;
 
-try {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored) {
-    const parsed = JSON.parse(stored);
-    if (parsed.key && parsed.secret && parsed.passphrase && parsed.address && parsed.proxyWallet) {
-      cachedCreds = { key: parsed.key, secret: parsed.secret, passphrase: parsed.passphrase };
-      cachedAddress = String(parsed.address).trim().toLowerCase();
-      cachedProxyWallet = String(parsed.proxyWallet).trim().toLowerCase();
-    }
+function loadStoredCredsForBundle(eoa: string, proxyWalletLc: string): boolean {
+  migrateLegacyCredsOnce();
+  const raw = localStorage.getItem(storageKeyForEoa(eoa));
+  if (!raw) return false;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed?.key || !parsed?.secret || !parsed?.passphrase) return false;
+    const pw = String(parsed.proxyWallet || '').trim().toLowerCase();
+    if (pw !== proxyWalletLc) return false;
+    cachedCreds = {
+      key: String(parsed.key),
+      secret: String(parsed.secret),
+      passphrase: String(parsed.passphrase),
+    };
+    cachedAddress = eoa.trim().toLowerCase();
+    cachedProxyWallet = pw;
+    return true;
+  } catch {
+    return false;
   }
-} catch {
-  /* ignore */
 }
 
 function persistCreds() {
   if (cachedCreds && cachedAddress && cachedProxyWallet) {
     localStorage.setItem(
-      STORAGE_KEY,
+      storageKeyForEoa(cachedAddress),
       JSON.stringify({
         key: cachedCreds.key,
         secret: cachedCreds.secret,
         passphrase: cachedCreds.passphrase,
-        address: cachedAddress,
         proxyWallet: cachedProxyWallet,
       }),
     );
@@ -86,12 +125,31 @@ function persistCreds() {
 }
 
 export function clearCachedCreds() {
+  try {
+    if (cachedAddress) localStorage.removeItem(storageKeyForEoa(cachedAddress));
+  } catch {
+    /* ignore */
+  }
   cachedCreds = null;
   cachedAddress = null;
   cachedProxyWallet = null;
   cachedInferKey = null;
   cachedInferSigType = null;
-  localStorage.removeItem(STORAGE_KEY);
+}
+
+function invalidateMemoryIfBundle(proxyWalletLc: string, eoaLc: string) {
+  if (credBundleMatches(proxyWalletLc, eoaLc)) {
+    cachedCreds = null;
+    cachedAddress = null;
+    cachedProxyWallet = null;
+    cachedInferKey = null;
+    cachedInferSigType = null;
+    try {
+      localStorage.removeItem(storageKeyForEoa(eoaLc));
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 /** Cached L2 creds are scoped to BOTH signing EOA and Polymarket maker — mismatch caused "signer … API KEY" rejects. */
@@ -107,7 +165,11 @@ function credBundleMatches(makerWallet: string, signerEoa: string): boolean {
 }
 
 export function hasCredsForWallet(makerWallet: string, signerEoa: string): boolean {
-  return credBundleMatches(makerWallet, signerEoa);
+  const maker = makerWallet.trim().toLowerCase();
+  const eoa = signerEoa.trim().toLowerCase();
+  if (!eoa) return false;
+  if (credBundleMatches(makerWallet, signerEoa)) return true;
+  return loadStoredCredsForBundle(eoa, maker);
 }
 
 export async function ensureCredsForWallet(proxyWallet: string): Promise<void> {
@@ -228,19 +290,37 @@ async function deriveOrCreateApiKey(signer: ethers.Signer): Promise<StoredCreds>
   return l1.createApiKey();
 }
 
+const deriveInflight = new Map<string, Promise<StoredCreds>>();
+
 async function ensureCreds(signer: ethers.Signer, proxyWallet: string): Promise<StoredCreds> {
   const addr = (await signer.getAddress()).toLowerCase();
-  if (cachedCreds && cachedAddress === addr && cachedProxyWallet === proxyWallet.toLowerCase()) {
-    return cachedCreds;
+  const proxyLc = proxyWallet.trim().toLowerCase();
+  const inflightKey = `${addr}:${proxyLc}`;
+  const running = deriveInflight.get(inflightKey);
+  if (running) return running;
+
+  const work = (async (): Promise<StoredCreds> => {
+    migrateLegacyCredsOnce();
+    const memOk = cachedCreds && cachedAddress === addr && cachedProxyWallet === proxyLc;
+    const diskOk = memOk ? true : loadStoredCredsForBundle(addr, proxyLc);
+    if (memOk || diskOk) return cachedCreds!;
+
+    const creds = await deriveOrCreateApiKey(signer);
+    cachedAddress = addr;
+    cachedCreds = creds;
+    cachedProxyWallet = proxyLc;
+    cachedInferKey = null;
+    cachedInferSigType = null;
+    persistCreds();
+    return creds;
+  })();
+
+  deriveInflight.set(inflightKey, work);
+  try {
+    return await work;
+  } finally {
+    if (deriveInflight.get(inflightKey) === work) deriveInflight.delete(inflightKey);
   }
-  const creds = await deriveOrCreateApiKey(signer);
-  cachedAddress = addr;
-  cachedCreds = creds;
-  cachedProxyWallet = proxyWallet.toLowerCase();
-  cachedInferKey = null;
-  cachedInferSigType = null;
-  persistCreds();
-  return creds;
 }
 
 async function tradingSignatureType(eoa: string, maker: string): Promise<SignatureTypeV2> {
@@ -319,7 +399,14 @@ export async function fetchOpenOrdersDirect(proxyWallet: string): Promise<any[]>
     if (!credBundleMatches(proxyWallet, eoa)) return [];
     const sig = await tradingSignatureType(eoa, proxyWallet);
     const client = makeTradingClient(signer, proxyWallet, cachedCreds!, sig);
-    const data = await client.getOpenOrders();
+    let data: unknown;
+    try {
+      data = await client.getOpenOrders();
+    } catch (e: unknown) {
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      if (status === 401) invalidateMemoryIfBundle(proxyWallet.trim().toLowerCase(), eoa);
+      throw e;
+    }
     return Array.isArray(data) ? data : [];
   } catch (err) {
     console.warn('[clobClient] fetchOpenOrders error:', err);
@@ -460,12 +547,13 @@ export async function submitSignedOrderDirect(
   signedPayload: PolyReplacePayload,
 ): Promise<{ success: boolean; orderID?: string; error?: string }> {
   try {
-    const { order, orderType, signer, creds, proxyWallet, signatureType } = signedPayload;
+    const { order, orderType, signer, proxyWallet, signatureType } = signedPayload;
     const addr = (await signer.getAddress()).toLowerCase();
     const ord = order as { signer?: string };
     if (typeof ord.signer === 'string' && ord.signer.trim().toLowerCase() !== addr) {
       return { success: false, error: 'Order signer does not match the active wallet.' };
     }
+    const creds = await ensureCreds(signer, proxyWallet);
     const client = makeTradingClient(signer, proxyWallet, creds, signatureType);
     const res = await client.postOrder(order, orderType);
     const parsed = parsePostOrder(res);

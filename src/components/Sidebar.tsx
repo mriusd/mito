@@ -278,6 +278,18 @@ export function Sidebar() {
     if (!Number.isFinite(net)) return null;
     return formatPolymarketVolumeK(net);
   }, [sidebarStakedLegs]);
+  const marketStakedGrossUsd = useMemo(() => {
+    if (!sidebarStakedLegs) return null;
+    const y = sidebarStakedLegs.stakedUsdYesLeg;
+    const n = sidebarStakedLegs.stakedUsdNoLeg;
+    if (!Number.isFinite(y) || !Number.isFinite(n)) return null;
+    return y + n;
+  }, [sidebarStakedLegs]);
+  const STAKED_PILL_WARN_USD = 20_000;
+  const stakedPillLow =
+    typeof marketStakedGrossUsd === 'number' && Number.isFinite(marketStakedGrossUsd)
+      ? marketStakedGrossUsd < STAKED_PILL_WARN_USD
+      : false;
   const [crossingConfirmOpen, setCrossingConfirmOpen] = useState(false);
   const [crossingConfirmMessage, setCrossingConfirmMessage] = useState('');
   const crossingConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
@@ -1861,11 +1873,25 @@ export function Sidebar() {
                     : '--'}
                 </div>
               </div>
-              <div className="rounded border border-emerald-800/60 bg-emerald-950/30 px-1.5 py-1 min-w-0">
-                <div className="text-[8px] uppercase tracking-wide text-emerald-500/90 truncate">Staked</div>
+              <div
+                className={`rounded px-1.5 py-1 min-w-0 border ${
+                  stakedPillLow
+                    ? 'border-red-700/65 bg-red-950/35'
+                    : 'border-emerald-800/60 bg-emerald-950/30'
+                }`}
+              >
                 <div
-                  className="tabular-nums font-bold text-emerald-300 truncate"
-                  title="Market net staked imbalance: |Σ|YES-leg USD| − Σ|NO-leg USD|| (wallet_market_positions)"
+                  className={`text-[8px] uppercase tracking-wide truncate ${
+                    stakedPillLow ? 'text-red-400/90' : 'text-emerald-500/90'
+                  }`}
+                >
+                  Staked
+                </div>
+                <div
+                  className={`tabular-nums font-bold truncate ${
+                    stakedPillLow ? 'text-red-300' : 'text-emerald-300'
+                  }`}
+                  title={`Market net staked imbalance: |Σ|YES-leg USD| − Σ|NO-leg USD|| (wallet_market_positions). Gross staked Σ|legs|: $${typeof marketStakedGrossUsd === 'number' && Number.isFinite(marketStakedGrossUsd) ? marketStakedGrossUsd.toFixed(0) : '—'}`}
                 >
                   {marketStakedNetKDisplay ? `$${marketStakedNetKDisplay}` : '--'}
                 </div>

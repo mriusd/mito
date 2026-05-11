@@ -519,6 +519,8 @@ export async function fetchWalletPositions(params: {
   active_only?: boolean;
   /** When true, rows from `wallet_market_positions` (ledger). */
   ledger?: boolean;
+  /** Backend sort: `end_date_desc` = newest expiry first (surfaces far-future markets under limit vs default chain_updated). */
+  order?: 'end_date_desc';
 }): Promise<{
   positions: WalletPosition[];
   count: number;
@@ -534,6 +536,7 @@ export async function fetchWalletPositions(params: {
   if (params.limit) qs.set('limit', String(params.limit));
   if (params.active_only) qs.set('active_only', '1');
   if (params.ledger) qs.set('ledger', '1');
+  if (params.order) qs.set('order', params.order);
   const resp = await fetch(`${BASE}/api/wallet-positions?${qs.toString()}`);
   if (!resp.ok) throw new Error('Failed to fetch wallet positions');
   return resp.json();

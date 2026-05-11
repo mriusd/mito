@@ -979,7 +979,7 @@ export function WalletInfoDialog({
       const pref = prefRaw.toLowerCase();
       const [s, p] = await Promise.all([
         fetchWalletSummary(wallet),
-        fetchWalletPositions({ wallet, limit: 100, ledger: true }),
+        fetchWalletPositions({ wallet, limit: 1000, ledger: true, order: 'end_date_desc' }),
       ]);
       setSummary(s);
       const byId = buildMarketByIdRecord(useAppStore.getState().marketLookup);

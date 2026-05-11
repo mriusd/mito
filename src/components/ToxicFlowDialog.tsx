@@ -193,19 +193,10 @@ function stakedNetUsdTableCell(signed: number): ReactNode {
   );
 }
 
-/** Wallet info dialog — Latest Markets Traded: USD only, leading minus (no Y/N suffix). */
-function walletMarketsStakedUsdCell(signed: number): ReactNode {
-  if (!Number.isFinite(signed)) return '–';
-  const mag = fmtUsd2En(Math.abs(signed));
-  if (Math.abs(signed) <= STAKED_NET_EPS) {
-    return <span className="tabular-nums font-bold text-red-400/80">−$0.00</span>;
-  }
-  return (
-    <span className="tabular-nums font-bold text-red-400">
-      −$
-      {mag}
-    </span>
-  );
+/** wallet_market_positions.usdc_in for Latest Markets Traded table */
+function walletMarketUsdcInCell(usdcIn: number): ReactNode {
+  if (!Number.isFinite(usdcIn) || usdcIn < 0) return '–';
+  return <span className="tabular-nums font-semibold text-gray-200">${fmtUsd2En(usdcIn)}</span>;
 }
 
 function fmtSignedShares1En(v: number): string {
@@ -1176,7 +1167,10 @@ export function WalletInfoDialog({
                     <th className="text-right whitespace-nowrap">Net</th>
                     <th className="text-right whitespace-nowrap" title="price_yes">Px Y</th>
                     <th className="text-right whitespace-nowrap" title="price_no">Px N</th>
-                    <th className="text-right whitespace-nowrap text-red-300 font-bold" title="(inv_n×px_n − inv_y×px_y); shown as −|USD|">
+                    <th
+                      className="text-right whitespace-nowrap font-semibold text-gray-200 py-1"
+                      title="wallet_market_positions.usdc_in — USDC spent into this market (ledger BUY notion)"
+                    >
                       Staked
                     </th>
                     <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">Fee</th>
@@ -1217,7 +1211,6 @@ export function WalletInfoDialog({
                             {netMagStr} N
                           </span>
                         );
-                      const rowStakedNetSigned = walletStakeNetSignedUsd(m);
                       const rowUsdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
                       const rowUsdcOut = typeof m.usdcOut === 'number' && Number.isFinite(m.usdcOut) ? m.usdcOut : 0;
                       const rowFee = typeof m.feeTotal === 'number' && Number.isFinite(m.feeTotal) ? m.feeTotal : 0;
@@ -1255,8 +1248,8 @@ export function WalletInfoDialog({
                       </td>
                       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceYes)}</td>
                       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceNo)}</td>
-                      <td className="text-right tabular-nums whitespace-nowrap bg-red-900/15" title="inv_n×px_n − inv_y×px_y (USD)">
-                        {walletMarketsStakedUsdCell(rowStakedNetSigned)}
+                      <td className="text-right tabular-nums whitespace-nowrap" title="usdc_in">
+                        {walletMarketUsdcInCell(rowUsdcIn)}
                       </td>
                       <td
                         className={`text-right tabular-nums font-medium whitespace-nowrap ${rowFee === 0 ? 'text-gray-400' : 'text-red-400'}`}

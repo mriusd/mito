@@ -268,16 +268,19 @@ export function Sidebar() {
     () => mergeMarketStakedLegsResponse(liveStakedLegUsd, marketStakedLegs),
     [liveStakedLegUsd, marketStakedLegs],
   );
-  const marketStakedNetKDisplay = useMemo(() => {
+  const marketStakedNetUsdAbs = useMemo(() => {
     if (!sidebarStakedLegs) return null;
-    let net =
+    const net =
       typeof sidebarStakedLegs.stakedSumAbsSignedNetUsd === 'number' &&
       Number.isFinite(sidebarStakedLegs.stakedSumAbsSignedNetUsd)
         ? sidebarStakedLegs.stakedSumAbsSignedNetUsd
         : Math.abs(sidebarStakedLegs.stakedUsdYesLeg - sidebarStakedLegs.stakedUsdNoLeg);
-    if (!Number.isFinite(net)) return null;
-    return formatPolymarketVolumeK(net);
+    return Number.isFinite(net) ? net : null;
   }, [sidebarStakedLegs]);
+  const marketStakedNetKDisplay = useMemo(() => {
+    if (marketStakedNetUsdAbs == null) return null;
+    return formatPolymarketVolumeK(marketStakedNetUsdAbs);
+  }, [marketStakedNetUsdAbs]);
   const marketStakedGrossUsd = useMemo(() => {
     if (!sidebarStakedLegs) return null;
     const y = sidebarStakedLegs.stakedUsdYesLeg;
@@ -285,13 +288,13 @@ export function Sidebar() {
     if (!Number.isFinite(y) || !Number.isFinite(n)) return null;
     return y + n;
   }, [sidebarStakedLegs]);
-  /** Gross Σ|legs| USD: red <15k, yellow 15k–30k, green >30k */
+  /** Same USD basis as pill number (|net staked|, not Σ legs): <15k red, 15k–30k yellow, >30k green */
   const stakedPillTier = useMemo((): 'muted' | 'low' | 'mid' | 'high' => {
-    if (typeof marketStakedGrossUsd !== 'number' || !Number.isFinite(marketStakedGrossUsd)) return 'muted';
-    if (marketStakedGrossUsd < 15_000) return 'low';
-    if (marketStakedGrossUsd <= 30_000) return 'mid';
+    if (typeof marketStakedNetUsdAbs !== 'number' || !Number.isFinite(marketStakedNetUsdAbs)) return 'muted';
+    if (marketStakedNetUsdAbs < 15_000) return 'low';
+    if (marketStakedNetUsdAbs <= 30_000) return 'mid';
     return 'high';
-  }, [marketStakedGrossUsd]);
+  }, [marketStakedNetUsdAbs]);
   const [crossingConfirmOpen, setCrossingConfirmOpen] = useState(false);
   const [crossingConfirmMessage, setCrossingConfirmMessage] = useState('');
   const crossingConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
@@ -1909,7 +1912,7 @@ export function Sidebar() {
                           ? 'text-emerald-300'
                           : 'text-gray-200'
                   }`}
-                  title={`Market net staked imbalance: |Σ|YES-leg USD| − Σ|NO-leg USD|| (wallet_market_positions). Gross staked Σ|legs|: $${typeof marketStakedGrossUsd === 'number' && Number.isFinite(marketStakedGrossUsd) ? marketStakedGrossUsd.toFixed(0) : '—'}`}
+                  title={`Net staked (pill value): |Σ|YES leg| − Σ|NO leg|| USD ≈ $${typeof marketStakedNetUsdAbs === 'number' && Number.isFinite(marketStakedNetUsdAbs) ? marketStakedNetUsdAbs.toFixed(0) : '—'}. Σ|legs| gross USD: $${typeof marketStakedGrossUsd === 'number' && Number.isFinite(marketStakedGrossUsd) ? marketStakedGrossUsd.toFixed(0) : '—'}`}
                 >
                   {marketStakedNetKDisplay ? `$${marketStakedNetKDisplay}` : '--'}
                 </div>

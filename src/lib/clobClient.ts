@@ -33,7 +33,23 @@ interface PolyReplacePayload {
   signatureType: SignatureTypeV2;
 }
 
-const STORAGE_KEY = 'polymarket-api-creds';
+const STORAGE_KEY = 'polymarket-api-creds-v2';
+
+/** CLOB stores API keys under the L1 `ClobAuth.address` string; checksummed vs lowercase breaks POST /order (400 signer vs API key). */
+function lowerAddressSignerForClobClient(signer: ethers.Signer): ethers.Signer {
+  return new Proxy(signer as object, {
+    get(_target, prop, receiver) {
+      if (prop === 'getAddress') {
+        return async () => {
+          const a = await signer.getAddress();
+          return typeof a === 'string' ? a.trim().toLowerCase() : a;
+        };
+      }
+      const v = Reflect.get(signer, prop, receiver);
+      return typeof v === 'function' ? (v as (...args: unknown[]) => unknown).bind(signer) : v;
+    },
+  }) as ethers.Signer;
+}
 let cachedAddress: string | null = null;
 let cachedCreds: StoredCreds | null = null;
 let cachedProxyWallet: string | null = null;
@@ -197,10 +213,11 @@ function builderConfig():
 }
 
 async function deriveOrCreateApiKey(signer: ethers.Signer): Promise<StoredCreds> {
+  const w = lowerAddressSignerForClobClient(signer);
   const l1 = new ClobClient({
     host: CLOB_URL,
     chain: Chain.POLYGON,
-    signer: signer as any,
+    signer: w as any,
   });
   try {
     const d = await l1.deriveApiKey();
@@ -241,10 +258,11 @@ function makeTradingClient(
   creds: StoredCreds,
   signatureType: SignatureTypeV2,
 ): ClobClient {
+  const w = lowerAddressSignerForClobClient(signer);
   return new ClobClient({
     host: CLOB_URL,
     chain: Chain.POLYGON,
-    signer: signer as any,
+    signer: w as any,
     creds,
     signatureType,
     funderAddress: tradingMakerAddress.toLowerCase(),

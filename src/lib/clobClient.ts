@@ -86,6 +86,8 @@ let cachedCreds: StoredCreds | null = null;
 let cachedProxyWallet: string | null = null;
 let cachedInferKey: string | null = null;
 let cachedInferSigType: SignatureTypeV2 | null = null;
+/** Last signing channel — wipe L2/infer memory only when the EOA changes; PK ↔ wallet same address keeps cached API creds. */
+let lastSigningChannel: { mode: 'wallet' | 'privateKey'; addr: string } | null = null;
 
 function loadStoredCredsForBundle(eoa: string, proxyWalletLc: string): boolean {
   migrateLegacyCredsOnce();
@@ -131,6 +133,8 @@ export function clearCachedCreds() {
   cachedProxyWallet = null;
   cachedInferKey = null;
   cachedInferSigType = null;
+  lastSigningChannel = null;
+  deriveInflight.clear();
 }
 
 /** Drop LS + in-memory creds for this EOA — safe when server rejects stale/mismatched bundle. */
@@ -230,7 +234,9 @@ export async function getEthersSigner(): Promise<ethers.Signer> {
       // JsonRpcProvider probes eth_chainId (detectNetwork) — often fails in browser (CORS / flaky RPC) → NO_NETWORK.
       // StaticJsonRpcProvider trusts chain 137 and only uses RPC for transactions.
       const provider = new ethers.providers.StaticJsonRpcProvider(POLYGON_JSONRPC_URL, POLYGON_ETHERS_NETWORK);
-      return new ethers.Wallet(pk, provider);
+      const w = new ethers.Wallet(pk, provider);
+      await noteActiveSigningChannel(w);
+      return w;
     }
   }
   const conn = getConnection(wagmiAdapter.wagmiConfig);
@@ -262,7 +268,9 @@ export async function getEthersSigner(): Promise<ethers.Signer> {
   }
 
   const ethersProvider = new ethers.providers.Web3Provider(ext, 'any');
-  return ethersProvider.getSigner(conn.address);
+  const s = ethersProvider.getSigner(conn.address);
+  await noteActiveSigningChannel(s);
+  return s;
 }
 
 function builderConfig():
@@ -316,7 +324,37 @@ async function wipeStaleCredsAndReDeriveApi(signer: ethers.Signer, proxyLc: stri
 
 const deriveInflight = new Map<string, Promise<StoredCreds>>();
 
+async function noteActiveSigningChannel(signer: ethers.Signer): Promise<void> {
+  const mode = useAppStore.getState().signingMode;
+  const addr = (await signer.getAddress()).toLowerCase();
+  if (lastSigningChannel === null) {
+    lastSigningChannel = { mode, addr };
+    return;
+  }
+  if (lastSigningChannel.mode === mode && lastSigningChannel.addr === addr) return;
+
+  const prev = lastSigningChannel;
+  lastSigningChannel = { mode, addr };
+  const addrChanged = prev.addr !== addr;
+  polyClobLog({
+    event: 'signingChannelBumped',
+    addrChanged,
+    from: `${prev.mode}:${prev.addr}`,
+    to: `${mode}:${addr}`,
+  });
+
+  deriveInflight.clear();
+  if (addrChanged) {
+    cachedCreds = null;
+    cachedAddress = null;
+    cachedProxyWallet = null;
+    cachedInferKey = null;
+    cachedInferSigType = null;
+  }
+}
+
 async function ensureCreds(signer: ethers.Signer, proxyWallet: string): Promise<StoredCreds> {
+  await noteActiveSigningChannel(signer);
   const addr = (await signer.getAddress()).toLowerCase();
   const proxyLc = proxyWallet.trim().toLowerCase();
   const inflightKey = `${addr}:${proxyLc}`;
@@ -598,7 +636,7 @@ export async function fetchOpenOrdersDirect(proxyWallet: string): Promise<any[]>
   try {
     const signer = await getEthersSigner();
     const eoa = (await signer.getAddress()).toLowerCase();
-    if (!credBundleMatches(proxyWallet, eoa)) return [];
+    if (!hasCredsForWallet(proxyWallet, eoa)) return [];
     const sig = await tradingSignatureType(eoa, proxyWallet);
     const client = makeTradingClient(signer, proxyWallet, cachedCreds!, sig);
     let data: unknown;
@@ -636,7 +674,7 @@ export async function placeOrderDirect(params: {
   try {
     const signer = await getEthersSigner();
     const eoaPrecheck = (await signer.getAddress()).toLowerCase();
-    const needsAuth = !credBundleMatches(params.proxyWallet, eoaPrecheck);
+    const needsAuth = !hasCredsForWallet(params.proxyWallet, eoaPrecheck);
     sd.open(needsAuth, { orderInfo: params.orderInfo });
 
     let creds = await ensureCreds(signer, params.proxyWallet);

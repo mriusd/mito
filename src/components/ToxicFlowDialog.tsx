@@ -249,14 +249,16 @@ function WalletScoresLedgerSummaryGrid({
   dense,
   narrowSummary,
   hideNetCash,
+  hideTotalMarkets,
 }: {
   s: WalletSummary;
   dense?: boolean;
   narrowSummary?: boolean;
   /** e.g. wallet info dialog — omit ledger cash_flow aggregate row. */
   hideNetCash?: boolean;
+  /** e.g. wallet info dialog Summary column — omit total markets row. */
+  hideTotalMarkets?: boolean;
 }) {
-  const tm = s.totalMarkets ?? 0;
   const rm = s.resolvedMarkets ?? 0;
   const tt = s.totalTrades ?? 0;
   const wn = s.wins ?? 0;
@@ -302,12 +304,14 @@ function WalletScoresLedgerSummaryGrid({
         value={<>${volStr}</>}
         valueClassName="text-yellow-400 font-medium"
       />
-      <LedgerSummaryField
-        rowClass={row}
-        label="Total Markets"
-        help="Number of distinct markets where this wallet has at least one position row in wallet_market_positions."
-        value={fmtIntEn(tm)}
-      />
+      {!hideTotalMarkets ? (
+        <LedgerSummaryField
+          rowClass={row}
+          label="Total Markets"
+          help="Number of distinct markets where this wallet has at least one position row in wallet_market_positions."
+          value={fmtIntEn(s.totalMarkets ?? 0)}
+        />
+      ) : null}
       <LedgerSummaryField
         rowClass={row}
         label="Resolved Markets"
@@ -1127,7 +1131,9 @@ export function WalletInfoDialog({
               >
                 {summary === undefined && <div className="text-gray-500">Loading...</div>}
                 {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
-                {summary && <WalletScoresLedgerSummaryGrid s={summary} narrowSummary hideNetCash />}
+                {summary && (
+                  <WalletScoresLedgerSummaryGrid s={summary} narrowSummary hideNetCash hideTotalMarkets />
+                )}
               </div>
               {wallet.trim() ? (
                 <div

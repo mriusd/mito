@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import './lib/wallet';
 import { useAppStore } from './stores/appStore';
 import { useBinanceWS } from './hooks/useBinanceWS';
@@ -68,6 +68,18 @@ function App() {
   const handleRefresh = useCallback(async () => {
     await Promise.all([refreshData(), refreshWalletData()]);
   }, [refreshData, refreshWalletData]);
+
+  const signingMode = useAppStore((s) => s.signingMode);
+  const prevSigningRef = useRef<typeof signingMode | null>(null);
+  useEffect(() => {
+    if (prevSigningRef.current === null) {
+      prevSigningRef.current = signingMode;
+      return;
+    }
+    if (prevSigningRef.current === signingMode) return;
+    prevSigningRef.current = signingMode;
+    void handleRefresh();
+  }, [signingMode, handleRefresh]);
 
   // Queue URL -> state sync when browser history changes.
   useEffect(() => {

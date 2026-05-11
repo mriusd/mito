@@ -38,26 +38,53 @@ export function useWalletData() {
   const effectiveEoa = signingMode === 'privateKey' && pkEoa ? pkEoa : address;
   const effectiveConnected = signingMode === 'privateKey' && pkEoa ? true : isConnected;
 
-  // Resolve proxy wallet when EOA connects (or changes due to PK switch)
+  // Resolve proxy wallet when EOA connects or signing channel toggles — always drop stale maker first (no wrong-user fetch).
   useEffect(() => {
     if (!isWebMode || !effectiveConnected || !effectiveEoa) {
       setProxyWallet(null);
       credsCheckedRef.current = false;
       return;
     }
+    let cancelled = false;
+    setProxyWallet(null);
     (async () => {
       try {
         const eoaLc = typeof effectiveEoa === 'string' ? effectiveEoa.trim().toLowerCase() : '';
         const pw = await fetchProxyWallet(eoaLc);
+        if (cancelled) return;
         const maker = resolvePolymarketMakerAddress(eoaLc, pw);
         console.log(`[useWalletData] EOA ${eoaLc} → trading maker ${maker}`);
         setProxyWallet(maker);
       } catch (e) {
-        console.error('[useWalletData] resolve trading maker failed:', e);
-        setProxyWallet(null);
+        if (!cancelled) {
+          console.error('[useWalletData] resolve trading maker failed:', e);
+          setProxyWallet(null);
+        }
       }
     })();
-  }, [effectiveConnected, effectiveEoa]);
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveConnected, effectiveEoa, signingMode]);
+
+  /** Clear wallet-derived slice on PK ↔ Wallet transition only (same as wiping stale rows before reload). */
+  const prevSigningForClearRef = useRef<'wallet' | 'privateKey' | null>(null);
+  useEffect(() => {
+    if (!isWebMode) return;
+    if (prevSigningForClearRef.current === null) {
+      prevSigningForClearRef.current = signingMode;
+      return;
+    }
+    if (prevSigningForClearRef.current === signingMode) return;
+    prevSigningForClearRef.current = signingMode;
+    useAppStore.getState().setMarketData({
+      positions: [],
+      orders: [],
+      trades: [],
+      cashBalance: 0,
+      makerAddress: '',
+    });
+  }, [signingMode]);
 
   const fetchAll = useCallback(async () => {
     if (!isWebMode || !proxyWallet || fetchingRef.current) return;
@@ -146,7 +173,7 @@ export function useWalletData() {
     }
   }, [effectiveEoa, proxyWallet, fetchAll, signingMode, pkEoa]);
 
-  // Fetch once proxy wallet is resolved
+  // Fetch whenever maker or signing channel changes (same proxy string skips React ref-equality otherwise).
   useEffect(() => {
     if (!isWebMode || !proxyWallet) return;
     fetchAll();

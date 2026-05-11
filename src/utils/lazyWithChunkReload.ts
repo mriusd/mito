@@ -27,14 +27,14 @@ export async function importWithChunkReload<T>(importer: () => Promise<T>): Prom
     if (!sessionStorage.getItem(STORAGE_KEY)) {
       sessionStorage.setItem(STORAGE_KEY, '1');
       window.location.reload();
-      return new Promise(() => {});
+      return new Promise(() => {}) as Promise<T>;
     }
     sessionStorage.removeItem(STORAGE_KEY);
     throw e;
   }
 }
 
-export function lazyWithChunkReload<T extends ComponentType<unknown>>(
+export function lazyWithChunkReload<T extends ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
 ): LazyExoticComponent<T> {
   return lazy(() => importWithChunkReload(factory));

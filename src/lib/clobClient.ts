@@ -414,11 +414,22 @@ function buildOrderSignerClient(
   });
 }
 
+/**
+ * For POLY_1271 orders we don't want clob-client-v2 to prompt the wallet at all — its flat EIP-712
+ * signature is thrown away and replaced with the nested ERC-7739 TypedDataSign blob. Stub
+ * `_signTypedData` / `signMessage` to return zero bytes so the wallet only prompts once (our own sign).
+ */
+const DUMMY_SIG_HEX = `0x${'0'.repeat(130)}`;
+
 function signerWithMakerAddress(signer: ethers.Signer, makerAddress: string): ethers.Signer {
   const makerChecksum = ethers.utils.getAddress(makerAddress.trim());
   return new Proxy(signer as object, {
     get(_t, prop, recv) {
       if (prop === 'getAddress') return async () => makerChecksum;
+      if (prop === '_signTypedData' || prop === 'signTypedData') {
+        return async () => DUMMY_SIG_HEX;
+      }
+      if (prop === 'signMessage') return async () => DUMMY_SIG_HEX;
       const v = Reflect.get(signer, prop, recv);
       return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(signer) : v;
     },

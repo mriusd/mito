@@ -22,6 +22,19 @@ import { polygon } from 'viem/chains';
 
 const CLOB_URL = 'https://clob.polymarket.com';
 
+function polyClobLog(payload: Record<string, unknown>) {
+  console.info('[polyClob]', payload);
+}
+
+function apiKeyBrief(creds: StoredCreds | null | undefined): string {
+  const k = creds?.key;
+  return typeof k === 'string' && k.length >= 13 ? `${k.slice(0, 8)}…${k.slice(-4)}` : String(k ?? 'none');
+}
+
+function isSignerApiKeyMismatch(errorMsg: string): boolean {
+  return /signer address has to be the address of the API KEY/i.test(errorMsg || '');
+}
+
 type StoredCreds = ApiKeyCreds;
 
 interface PolyReplacePayload {
@@ -125,11 +138,8 @@ function persistCreds() {
 }
 
 export function clearCachedCreds() {
-  try {
-    if (cachedAddress) localStorage.removeItem(storageKeyForEoa(cachedAddress));
-  } catch {
-    /* ignore */
-  }
+  const a = cachedAddress;
+  obliterateStoredCredsForEoa(a ?? '');
   cachedCreds = null;
   cachedAddress = null;
   cachedProxyWallet = null;
@@ -137,22 +147,27 @@ export function clearCachedCreds() {
   cachedInferSigType = null;
 }
 
-function invalidateMemoryIfBundle(proxyWalletLc: string, eoaLc: string) {
-  if (credBundleMatches(proxyWalletLc, eoaLc)) {
+/** Drop LS + in-memory creds for this EOA — safe when server rejects stale/mismatched bundle. */
+function obliterateStoredCredsForEoa(eoaLc: string) {
+  const lc = eoaLc.trim().toLowerCase();
+  if (!lc) return;
+  for (const k of [...deriveInflight.keys()]) {
+    if (k.startsWith(`${lc}:`)) deriveInflight.delete(k);
+  }
+  try {
+    localStorage.removeItem(storageKeyForEoa(lc));
+  } catch {
+    /* ignore */
+  }
+  if (cachedAddress?.toLowerCase() === lc) {
     cachedCreds = null;
     cachedAddress = null;
     cachedProxyWallet = null;
     cachedInferKey = null;
     cachedInferSigType = null;
-    try {
-      localStorage.removeItem(storageKeyForEoa(eoaLc));
-    } catch {
-      /* ignore */
-    }
   }
 }
 
-/** Cached L2 creds are scoped to BOTH signing EOA and Polymarket maker — mismatch caused "signer … API KEY" rejects. */
 function credBundleMatches(makerWallet: string, signerEoa: string): boolean {
   const eoa = signerEoa.trim().toLowerCase();
   return (
@@ -290,6 +305,32 @@ async function deriveOrCreateApiKey(signer: ethers.Signer): Promise<StoredCreds>
   return l1.createApiKey();
 }
 
+/** New L2 row on Polymarket (L1 sign). Use after server rejects cached key as not owned by this signer. */
+async function mintL2ApiCredentials(signer: ethers.Signer): Promise<StoredCreds> {
+  const w = lowerAddressSignerForClobClient(signer);
+  const l1 = new ClobClient({
+    host: CLOB_URL,
+    chain: Chain.POLYGON,
+    signer: w as any,
+  });
+  return l1.createApiKey();
+}
+
+async function wipeAndMintNewApiCreds(signer: ethers.Signer, proxyLc: string): Promise<StoredCreds> {
+  const addr = (await signer.getAddress()).toLowerCase();
+  polyClobLog({ event: 'wipeStaleCredsMintNew', eoa: addr, maker: proxyLc });
+  obliterateStoredCredsForEoa(addr);
+  const creds = await mintL2ApiCredentials(signer);
+  cachedAddress = addr;
+  cachedCreds = creds;
+  cachedProxyWallet = proxyLc;
+  cachedInferKey = null;
+  cachedInferSigType = null;
+  persistCreds();
+  polyClobLog({ event: 'mintedApiCreds', eoa: addr, maker: proxyLc, apiKey: apiKeyBrief(creds) });
+  return creds;
+}
+
 const deriveInflight = new Map<string, Promise<StoredCreds>>();
 
 async function ensureCreds(signer: ethers.Signer, proxyWallet: string): Promise<StoredCreds> {
@@ -303,7 +344,14 @@ async function ensureCreds(signer: ethers.Signer, proxyWallet: string): Promise<
     migrateLegacyCredsOnce();
     const memOk = cachedCreds && cachedAddress === addr && cachedProxyWallet === proxyLc;
     const diskOk = memOk ? true : loadStoredCredsForBundle(addr, proxyLc);
-    if (memOk || diskOk) return cachedCreds!;
+    if (memOk) {
+      polyClobLog({ event: 'ensureCreds', source: 'memory', eoa: addr, maker: proxyLc, apiKey: apiKeyBrief(cachedCreds) });
+      return cachedCreds!;
+    }
+    if (diskOk) {
+      polyClobLog({ event: 'ensureCreds', source: 'disk', eoa: addr, maker: proxyLc, apiKey: apiKeyBrief(cachedCreds) });
+      return cachedCreds!;
+    }
 
     const creds = await deriveOrCreateApiKey(signer);
     cachedAddress = addr;
@@ -312,6 +360,7 @@ async function ensureCreds(signer: ethers.Signer, proxyWallet: string): Promise<
     cachedInferKey = null;
     cachedInferSigType = null;
     persistCreds();
+    polyClobLog({ event: 'ensureCreds', source: 'derived', eoa: addr, maker: proxyLc, apiKey: apiKeyBrief(creds) });
     return creds;
   })();
 
@@ -404,7 +453,10 @@ export async function fetchOpenOrdersDirect(proxyWallet: string): Promise<any[]>
       data = await client.getOpenOrders();
     } catch (e: unknown) {
       const status = (e as { response?: { status?: number } })?.response?.status;
-      if (status === 401) invalidateMemoryIfBundle(proxyWallet.trim().toLowerCase(), eoa);
+      if (status === 401) {
+        obliterateStoredCredsForEoa(eoa);
+        polyClobLog({ event: 'openOrders401Wipe', eoa, maker: proxyWallet.trim().toLowerCase() });
+      }
       throw e;
     }
     return Array.isArray(data) ? data : [];
@@ -434,10 +486,11 @@ export async function placeOrderDirect(params: {
     const needsAuth = !credBundleMatches(params.proxyWallet, eoaPrecheck);
     sd.open(needsAuth, { orderInfo: params.orderInfo });
 
-    const creds = await ensureCreds(signer, params.proxyWallet);
+    let creds = await ensureCreds(signer, params.proxyWallet);
     const eoa = eoaPrecheck;
-    const sig = await tradingSignatureType(eoa, params.proxyWallet);
-    const client = makeTradingClient(signer, params.proxyWallet, creds, sig);
+    const makerLc = params.proxyWallet.trim().toLowerCase();
+    let sig = await tradingSignatureType(eoa, params.proxyWallet);
+    let client = makeTradingClient(signer, params.proxyWallet, creds, sig);
     sd.setStep('auth', 'done');
 
     sd.setStep('sign', 'active');
@@ -480,6 +533,22 @@ export async function placeOrderDirect(params: {
         const retryTick = await fetch(`${CLOB_URL}/tick-size?token_id=${params.tokenId}`).then((r) => r.json());
         const ts2 = toTickSize(String(retryTick.minimum_tick_size || '0.01'));
         signed = await client.createOrder(userOrder, { tickSize: ts2, negRisk });
+        res = await client.postOrder(signed, orderTypeEnum);
+        parsed = parsePostOrder(res);
+      }
+      if (parsed.error && isSignerApiKeyMismatch(parsed.error)) {
+        const ord = signed as { signer?: string };
+        polyClobLog({
+          event: 'order400SignerMismatchRetry',
+          eoa,
+          maker: makerLc,
+          orderSigner: ord.signer,
+          err: parsed.error,
+          hadApiKey: apiKeyBrief(creds),
+        });
+        creds = await wipeAndMintNewApiCreds(signer, makerLc);
+        client = makeTradingClient(signer, params.proxyWallet, creds, sig);
+        signed = await client.createOrder(userOrder, { tickSize, negRisk });
         res = await client.postOrder(signed, orderTypeEnum);
         parsed = parsePostOrder(res);
       }
@@ -553,10 +622,26 @@ export async function submitSignedOrderDirect(
     if (typeof ord.signer === 'string' && ord.signer.trim().toLowerCase() !== addr) {
       return { success: false, error: 'Order signer does not match the active wallet.' };
     }
-    const creds = await ensureCreds(signer, proxyWallet);
-    const client = makeTradingClient(signer, proxyWallet, creds, signatureType);
-    const res = await client.postOrder(order, orderType);
-    const parsed = parsePostOrder(res);
+    let creds = await ensureCreds(signer, proxyWallet);
+    let client = makeTradingClient(signer, proxyWallet, creds, signatureType);
+    let res = await client.postOrder(order, orderType);
+    let parsed = parsePostOrder(res);
+    if (parsed.error && isSignerApiKeyMismatch(parsed.error)) {
+      const makerLc = proxyWallet.trim().toLowerCase();
+      const ord = order as { signer?: string };
+      polyClobLog({
+        event: 'submit400SignerMismatchRetry',
+        eoa: addr,
+        maker: makerLc,
+        orderSigner: ord.signer,
+        err: parsed.error,
+        hadApiKey: apiKeyBrief(creds),
+      });
+      creds = await wipeAndMintNewApiCreds(signer, makerLc);
+      client = makeTradingClient(signer, proxyWallet, creds, signatureType);
+      res = await client.postOrder(order, orderType);
+      parsed = parsePostOrder(res);
+    }
     if (parsed.error) return { success: false, error: parsed.error };
     return { success: true, orderID: parsed.orderID };
   } catch (err: any) {

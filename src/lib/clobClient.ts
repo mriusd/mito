@@ -46,8 +46,8 @@ try {
     const parsed = JSON.parse(stored);
     if (parsed.key && parsed.secret && parsed.passphrase && parsed.address && parsed.proxyWallet) {
       cachedCreds = { key: parsed.key, secret: parsed.secret, passphrase: parsed.passphrase };
-      cachedAddress = parsed.address;
-      cachedProxyWallet = parsed.proxyWallet;
+      cachedAddress = String(parsed.address).trim().toLowerCase();
+      cachedProxyWallet = String(parsed.proxyWallet).trim().toLowerCase();
     }
   }
 } catch {
@@ -443,6 +443,11 @@ export async function submitSignedOrderDirect(
 ): Promise<{ success: boolean; orderID?: string; error?: string }> {
   try {
     const { order, orderType, signer, creds, proxyWallet, signatureType } = signedPayload;
+    const addr = (await signer.getAddress()).toLowerCase();
+    const ord = order as { signer?: string };
+    if (typeof ord.signer === 'string' && ord.signer.trim().toLowerCase() !== addr) {
+      return { success: false, error: 'Order signer does not match the active wallet.' };
+    }
     const client = makeTradingClient(signer, proxyWallet, creds, signatureType);
     const res = await client.postOrder(order, orderType);
     const parsed = parsePostOrder(res);

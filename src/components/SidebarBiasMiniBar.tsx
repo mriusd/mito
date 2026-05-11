@@ -1,6 +1,6 @@
 import { memo } from 'react';
 
-const FLASH_TILT = 0.2;
+const FLASH_TILT = 0.3;
 
 function barPct(v: number): number {
   return Math.max(2, Math.min(98, 50 + v * 50));

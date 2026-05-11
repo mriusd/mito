@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, Suspense } from 'react';
 import { useAccount } from 'wagmi';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
@@ -49,21 +49,22 @@ import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './S
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import { ArrowRight, ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
 import type { AssetSymbol, Market } from '../types';
+import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
 
-const ToxicFlowDialogLazy = lazy(() =>
-  import('./ToxicFlowDialog').then((m) => ({ default: m.ToxicFlowDialog }))
+const ToxicFlowDialogLazy = lazyWithChunkReload(() =>
+  import('./ToxicFlowDialog').then((m) => ({ default: m.ToxicFlowDialog })),
 );
 
 function preloadToxicFlowDialog() {
-  void import('./ToxicFlowDialog');
+  void importWithChunkReload(() => import('./ToxicFlowDialog'));
 }
 
-const MergePositionsDialogLazy = lazy(() =>
-  import('./MergePositionsDialog').then((m) => ({ default: m.MergePositionsDialog }))
+const MergePositionsDialogLazy = lazyWithChunkReload(() =>
+  import('./MergePositionsDialog').then((m) => ({ default: m.MergePositionsDialog })),
 );
 
 function preloadMergePositionsDialog() {
-  void import('./MergePositionsDialog');
+  void importWithChunkReload(() => import('./MergePositionsDialog'));
 }
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';

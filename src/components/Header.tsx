@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useAccount } from 'wagmi';
 import { RefreshCw, Clock, Settings, Plus, Github, Send } from 'lucide-react';
 import logoSvg from '../assets/logo.svg';
@@ -13,15 +13,16 @@ import { gridSizeFromDefaultLayoutMins } from '../lib/defaultLayouts';
 import type { PanelType } from '../types';
 import { PrivateKeyImportDialog, getStoredPrivateKey } from './PrivateKeyImportDialog';
 import { useSyncHeadWS } from '../hooks/useSyncHeadWS';
+import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
 
 const IS_DEV = import.meta.env.DEV;
 
-const WalletInfoDialogLazy = lazy(() =>
-  import('./ToxicFlowDialog').then((m) => ({ default: m.WalletInfoDialog }))
+const WalletInfoDialogLazy = lazyWithChunkReload(() =>
+  import('./ToxicFlowDialog').then((m) => ({ default: m.WalletInfoDialog })),
 );
 
 function preloadWalletSummaryDialog() {
-  void import('./ToxicFlowDialog');
+  void importWithChunkReload(() => import('./ToxicFlowDialog'));
 }
 
 /** UI: lastProcessed − tip from /ws/sync-head (negative = chain head ahead of KV). */

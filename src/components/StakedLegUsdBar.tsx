@@ -13,7 +13,7 @@ export function StakedLegUsdBar({
   compact,
   compactLabel,
   barMode = 'grossLegTotals',
-  /** Sidebar: pulse Y or N segment when |tilt| ≥ 20%. */
+  /** Sidebar: pulse Y or N segment when |tilt| ≥ 30%. */
   flashExtremeTilt = false,
   compactLegUsdFooter = false,
 }: {
@@ -36,7 +36,7 @@ export function StakedLegUsdBar({
   /** Signed tilt: gross mode ≈ (ΣY−ΣN)/(ΣY+ΣN); cohort surplus mode → ±100% when one-sided. */
   const lean = (sumYUsd - sumNUsd) / total;
   const netAbs = Math.abs(sumYUsd - sumNUsd);
-  const FLASH_TILT = 0.2;
+  const FLASH_TILT = 0.3;
   const flashY = flashExtremeTilt && Number.isFinite(lean) && lean >= FLASH_TILT;
   const flashN = flashExtremeTilt && Number.isFinite(lean) && lean <= -FLASH_TILT;
   const tip =

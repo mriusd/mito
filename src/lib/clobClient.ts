@@ -425,6 +425,122 @@ function signerWithMakerAddress(signer: ethers.Signer, makerAddress: string): et
   }) as ethers.Signer;
 }
 
+/** CTF Exchange V2 verifying-contract addresses (Polygon). */
+const CTF_EXCHANGE_V2 = '0xE111180000d2663C0091e4f400237545B87B996B';
+const NEG_RISK_CTF_EXCHANGE_V2 = '0xe2222d279d744050d28e00520010520000310F59';
+
+const POLY1271_ORDER_TYPE_STRING =
+  'Order(uint256 salt,address maker,address signer,uint256 tokenId,uint256 makerAmount,uint256 takerAmount,uint8 side,uint8 signatureType,uint256 timestamp,bytes32 metadata,bytes32 builder)';
+
+const POLY1271_ORDER_FIELDS = [
+  { name: 'salt', type: 'uint256' },
+  { name: 'maker', type: 'address' },
+  { name: 'signer', type: 'address' },
+  { name: 'tokenId', type: 'uint256' },
+  { name: 'makerAmount', type: 'uint256' },
+  { name: 'takerAmount', type: 'uint256' },
+  { name: 'side', type: 'uint8' },
+  { name: 'signatureType', type: 'uint8' },
+  { name: 'timestamp', type: 'uint256' },
+  { name: 'metadata', type: 'bytes32' },
+  { name: 'builder', type: 'bytes32' },
+] as const;
+
+/**
+ * Polymarket POLY_1271 deposit signature — ERC-7739 "nested TypedDataSign":
+ *   innerSig (65) || appDomainSep (32) || contentsHash (32) || orderTypeString || uint16BE(orderTypeString.length)
+ *
+ * `clob-client-v2` v1.0.2 only produces the flat 65-byte EIP-712 sig (rejected with "invalid signature" by Polymarket's
+ * 1271 deposit contract). Mirrors mitobot's `signPoly1271DepositOrder`.
+ */
+async function signPoly1271DepositOrder(
+  realSigner: ethers.Signer,
+  exchangeContract: string,
+  signed: SignedOrder,
+  chainId: number,
+): Promise<string> {
+  const orderMsg = {
+    salt: ethers.BigNumber.from(signed.salt as unknown as ethers.BigNumberish).toString(),
+    maker: ethers.utils.getAddress(signed.maker),
+    signer: ethers.utils.getAddress(signed.signer),
+    tokenId: ethers.BigNumber.from(signed.tokenId as unknown as ethers.BigNumberish).toString(),
+    makerAmount: ethers.BigNumber.from(signed.makerAmount as unknown as ethers.BigNumberish).toString(),
+    takerAmount: ethers.BigNumber.from(signed.takerAmount as unknown as ethers.BigNumberish).toString(),
+    side: signed.side === 'BUY' ? 0 : 1,
+    signatureType: Number(signed.signatureType),
+    timestamp: ethers.BigNumber.from(signed.timestamp as unknown as ethers.BigNumberish).toString(),
+    metadata: signed.metadata,
+    builder: signed.builder,
+  };
+
+  const contentsHash = ethers.utils._TypedDataEncoder.hashStruct(
+    'Order',
+    { Order: [...POLY1271_ORDER_FIELDS] },
+    orderMsg,
+  );
+
+  const appDomain = {
+    name: 'Polymarket CTF Exchange',
+    version: '2',
+    chainId,
+    verifyingContract: ethers.utils.getAddress(exchangeContract),
+  };
+  const appDomainSep = ethers.utils._TypedDataEncoder.hashDomain(appDomain);
+
+  const typedDataSignTypes = {
+    TypedDataSign: [
+      { name: 'contents', type: 'Order' },
+      { name: 'name', type: 'string' },
+      { name: 'version', type: 'string' },
+      { name: 'chainId', type: 'uint256' },
+      { name: 'verifyingContract', type: 'address' },
+      { name: 'salt', type: 'bytes32' },
+    ],
+    Order: [...POLY1271_ORDER_FIELDS],
+  };
+  const innerMessage = {
+    contents: orderMsg,
+    name: 'DepositWallet',
+    version: '1',
+    chainId,
+    verifyingContract: orderMsg.signer,
+    salt: ethers.constants.HashZero,
+  };
+  const innerSigHex = await (realSigner as unknown as {
+    _signTypedData: (
+      domain: ethers.TypedDataDomain,
+      types: Record<string, ethers.TypedDataField[]>,
+      value: Record<string, unknown>,
+    ) => Promise<string>;
+  })._signTypedData(appDomain, typedDataSignTypes, innerMessage);
+
+  const innerSig = ethers.utils.arrayify(innerSigHex);
+  const appSep = ethers.utils.arrayify(appDomainSep);
+  const contents = ethers.utils.arrayify(contentsHash);
+  const typeStr = ethers.utils.toUtf8Bytes(POLY1271_ORDER_TYPE_STRING);
+  if (typeStr.length > 0xffff) throw new Error('order type string too long');
+  const lenBE = new Uint8Array([(typeStr.length >> 8) & 0xff, typeStr.length & 0xff]);
+
+  return ethers.utils.hexlify(ethers.utils.concat([innerSig, appSep, contents, typeStr, lenBE]));
+}
+
+async function applyPoly1271DepositSignature(
+  realSigner: ethers.Signer,
+  signed: SignedOrder,
+  negRisk: boolean,
+): Promise<SignedOrder> {
+  const exchange = negRisk ? NEG_RISK_CTF_EXCHANGE_V2 : CTF_EXCHANGE_V2;
+  const sigBlob = await signPoly1271DepositOrder(realSigner, exchange, signed, 137);
+  polyClobLog({
+    event: 'poly1271NestedSig',
+    exchange,
+    signer: signed.signer,
+    maker: signed.maker,
+    sigLen: (sigBlob.length - 2) / 2,
+  });
+  return { ...signed, signature: sigBlob };
+}
+
 function toTickSize(raw: string): '0.1' | '0.01' | '0.001' | '0.0001' {
   if (raw === '0.1' || raw === '0.01' || raw === '0.001' || raw === '0.0001') return raw;
   return '0.01';
@@ -547,7 +663,14 @@ export async function placeOrderDirect(params: {
       expiration: params.expiration ?? 0,
     };
 
-    let signed = await buildClient.createOrder(userOrder, { tickSize, negRisk });
+    const buildAndSign = async (uo: typeof userOrder, ts: typeof tickSize) => {
+      const built = await buildClient.createOrder(uo, { tickSize: ts, negRisk });
+      return sig === SignatureTypeV2.POLY_1271
+        ? await applyPoly1271DepositSignature(signer, built, negRisk)
+        : built;
+    };
+
+    let signed = await buildAndSign(userOrder, tickSize);
     sd.setStep('sign', 'done');
 
     sd.setStep('submit', 'active');
@@ -560,7 +683,7 @@ export async function placeOrderDirect(params: {
         const adjustedSize = adjustedSellSizeFromBalanceError(errMsg, params.size);
         if (adjustedSize != null) {
           const u2 = { ...userOrder, size: adjustedSize };
-          signed = await buildClient.createOrder(u2, { tickSize, negRisk });
+          signed = await buildAndSign(u2, tickSize);
           res = await postClient.postOrder(signed, orderTypeEnum);
           parsed = parsePostOrder(res);
         }
@@ -568,7 +691,7 @@ export async function placeOrderDirect(params: {
       if (parsed.error && (parsed.error.includes('invalid tick size') || errMsg.includes('invalid tick size'))) {
         const retryTick = await fetch(`${CLOB_URL}/tick-size?token_id=${params.tokenId}`).then((r) => r.json());
         const ts2 = toTickSize(String(retryTick.minimum_tick_size || '0.01'));
-        signed = await buildClient.createOrder(userOrder, { tickSize: ts2, negRisk });
+        signed = await buildAndSign(userOrder, ts2);
         res = await postClient.postOrder(signed, orderTypeEnum);
         parsed = parsePostOrder(res);
       }
@@ -585,7 +708,7 @@ export async function placeOrderDirect(params: {
         creds = await wipeStaleCredsAndReDeriveApi(signer, makerLc);
         postClient = makeTradingClient(signer, params.proxyWallet, creds, sig);
         buildClient = buildOrderSignerClient(signer, params.proxyWallet, creds, sig);
-        signed = await buildClient.createOrder(userOrder, { tickSize, negRisk });
+        signed = await buildAndSign(userOrder, tickSize);
         res = await postClient.postOrder(signed, orderTypeEnum);
         parsed = parsePostOrder(res);
       }
@@ -629,7 +752,7 @@ export async function signOrderOnly(params: {
     const useGTD = !!(params.expiration && params.expiration > 0);
     const orderType = useGTD ? OrderType.GTD : OrderType.GTC;
 
-    const order = await buildClient.createOrder(
+    const built = await buildClient.createOrder(
       {
         tokenID: params.tokenId,
         price: params.price,
@@ -639,6 +762,10 @@ export async function signOrderOnly(params: {
       },
       { tickSize, negRisk },
     );
+    const order =
+      sig === SignatureTypeV2.POLY_1271
+        ? await applyPoly1271DepositSignature(signer, built, negRisk)
+        : built;
 
     return {
       success: true,

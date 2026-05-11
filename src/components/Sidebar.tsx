@@ -138,6 +138,9 @@ export function Sidebar() {
   const marketLookupEpoch = useAppStore((s) => s.marketLookupEpoch);
   const marketLookup = useMemo(() => useAppStore.getState().marketLookup, [marketLookupEpoch]);
   const autoSwitchNextMarketOnExpiry = useAppStore((s) => s.autoSwitchNextMarketOnExpiry);
+  /** Edge-detect expiry on the same sidebar selection — skip when user navigates to an already-expired market. */
+  const autoSwitchPrevSelectedIdRef = useRef<string | null>(null);
+  const autoSwitchPrevExpiredRef = useRef(false);
 
   const liveOrderbookVolumeDisplay = useMemo(() => {
     if (!selectedMarket?.clobTokenIds?.[0]) return null;
@@ -628,7 +631,21 @@ export function Sidebar() {
   }, [isUpDownMarket, selectedMarket, isMarketExpired, upDownAsset, upOrDownMarkets, lastUpdated, expiredLivePickPulse]);
 
   useEffect(() => {
-    if (!autoSwitchNextMarketOnExpiry || !selectedMarket || !isMarketExpired) return;
+    if (!selectedMarket) {
+      autoSwitchPrevSelectedIdRef.current = null;
+      autoSwitchPrevExpiredRef.current = false;
+      return;
+    }
+    const id = selectedMarket.id;
+    if (id !== autoSwitchPrevSelectedIdRef.current) {
+      autoSwitchPrevSelectedIdRef.current = id;
+      autoSwitchPrevExpiredRef.current = isMarketExpired;
+      return;
+    }
+    const transitionedToExpired = !autoSwitchPrevExpiredRef.current && isMarketExpired;
+    autoSwitchPrevExpiredRef.current = isMarketExpired;
+
+    if (!autoSwitchNextMarketOnExpiry || !transitionedToExpired) return;
     const lookup = useAppStore.getState().marketLookup;
     const next = pickNextMarketOnExpiry(selectedMarket, Date.now(), upOrDownMarkets, lookup);
     if (next) setSelectedMarket(next);

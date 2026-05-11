@@ -364,20 +364,21 @@ async function tradingSignatureType(eoa: string, maker: string): Promise<Signatu
   return t;
 }
 
+/**
+ * Trading client (HMAC headers + posting + cancel + open-orders) — uses the REAL EOA signer
+ * so `POLY_ADDRESS` matches the API key's owner on the server. Never used for `createOrder`
+ * on POLY_1271 — `buildOrderSignerClient` wraps the signer for that path.
+ */
 function makeTradingClient(
   signer: ethers.Signer,
   tradingMakerAddress: string,
   creds: StoredCreds,
   signatureType: SignatureTypeV2,
 ): ClobClient {
-  const clientSigner =
-    signatureType === SignatureTypeV2.POLY_1271
-      ? signerWithMakerAddress(signer, tradingMakerAddress)
-      : signer;
   return new ClobClient({
     host: CLOB_URL,
     chain: Chain.POLYGON,
-    signer: clientSigner as any,
+    signer: signer as any,
     creds,
     signatureType,
     funderAddress: tradingMakerAddress.toLowerCase(),
@@ -386,10 +387,33 @@ function makeTradingClient(
 }
 
 /**
- * Polymarket POLY_1271 deposit orders: `order.signer` MUST be the deposit/maker (1271 contract), not the EOA.
- * clob-client-v2 v1.0.2 sets `order.signer = await signer.getAddress()`. Override `getAddress` while delegating
- * `_signTypedData` to the real EOA so the EIP-712 signature still recovers to the deposit owner.
+ * Order-builder client. POLY_1271 deposit orders: `order.signer` MUST be the deposit/maker (1271 contract),
+ * not the EOA — clob-client-v2 v1.0.2 enforces `order.signer === await signer.getAddress()`. Wrap so `getAddress`
+ * returns the maker; `_signTypedData` delegates to the real EOA so the EIP-712 sig still recovers to the deposit owner.
+ *
+ * For other signature types this is a no-op (just returns a `makeTradingClient`).
  */
+function buildOrderSignerClient(
+  signer: ethers.Signer,
+  tradingMakerAddress: string,
+  creds: StoredCreds,
+  signatureType: SignatureTypeV2,
+): ClobClient {
+  if (signatureType !== SignatureTypeV2.POLY_1271) {
+    return makeTradingClient(signer, tradingMakerAddress, creds, signatureType);
+  }
+  const wrapped = signerWithMakerAddress(signer, tradingMakerAddress);
+  return new ClobClient({
+    host: CLOB_URL,
+    chain: Chain.POLYGON,
+    signer: wrapped as any,
+    creds,
+    signatureType,
+    funderAddress: tradingMakerAddress.toLowerCase(),
+    builderConfig: builderConfig(),
+  });
+}
+
 function signerWithMakerAddress(signer: ethers.Signer, makerAddress: string): ethers.Signer {
   const makerChecksum = ethers.utils.getAddress(makerAddress.trim());
   return new Proxy(signer as object, {
@@ -501,7 +525,8 @@ export async function placeOrderDirect(params: {
       sigTypeLabel: sigLabels[sig as number] ?? String(sig),
       apiKey: apiKeyBrief(creds),
     });
-    let client = makeTradingClient(signer, params.proxyWallet, creds, sig);
+    let postClient = makeTradingClient(signer, params.proxyWallet, creds, sig);
+    let buildClient = buildOrderSignerClient(signer, params.proxyWallet, creds, sig);
     sd.setStep('auth', 'done');
 
     sd.setStep('sign', 'active');
@@ -522,11 +547,11 @@ export async function placeOrderDirect(params: {
       expiration: params.expiration ?? 0,
     };
 
-    let signed = await client.createOrder(userOrder, { tickSize, negRisk });
+    let signed = await buildClient.createOrder(userOrder, { tickSize, negRisk });
     sd.setStep('sign', 'done');
 
     sd.setStep('submit', 'active');
-    let res = await client.postOrder(signed, orderTypeEnum);
+    let res = await postClient.postOrder(signed, orderTypeEnum);
     let parsed = parsePostOrder(res);
 
     if (parsed.error) {
@@ -535,16 +560,16 @@ export async function placeOrderDirect(params: {
         const adjustedSize = adjustedSellSizeFromBalanceError(errMsg, params.size);
         if (adjustedSize != null) {
           const u2 = { ...userOrder, size: adjustedSize };
-          signed = await client.createOrder(u2, { tickSize, negRisk });
-          res = await client.postOrder(signed, orderTypeEnum);
+          signed = await buildClient.createOrder(u2, { tickSize, negRisk });
+          res = await postClient.postOrder(signed, orderTypeEnum);
           parsed = parsePostOrder(res);
         }
       }
       if (parsed.error && (parsed.error.includes('invalid tick size') || errMsg.includes('invalid tick size'))) {
         const retryTick = await fetch(`${CLOB_URL}/tick-size?token_id=${params.tokenId}`).then((r) => r.json());
         const ts2 = toTickSize(String(retryTick.minimum_tick_size || '0.01'));
-        signed = await client.createOrder(userOrder, { tickSize: ts2, negRisk });
-        res = await client.postOrder(signed, orderTypeEnum);
+        signed = await buildClient.createOrder(userOrder, { tickSize: ts2, negRisk });
+        res = await postClient.postOrder(signed, orderTypeEnum);
         parsed = parsePostOrder(res);
       }
       if (parsed.error && isSignerApiKeyMismatch(parsed.error)) {
@@ -558,9 +583,10 @@ export async function placeOrderDirect(params: {
           hadApiKey: apiKeyBrief(creds),
         });
         creds = await wipeStaleCredsAndReDeriveApi(signer, makerLc);
-        client = makeTradingClient(signer, params.proxyWallet, creds, sig);
-        signed = await client.createOrder(userOrder, { tickSize, negRisk });
-        res = await client.postOrder(signed, orderTypeEnum);
+        postClient = makeTradingClient(signer, params.proxyWallet, creds, sig);
+        buildClient = buildOrderSignerClient(signer, params.proxyWallet, creds, sig);
+        signed = await buildClient.createOrder(userOrder, { tickSize, negRisk });
+        res = await postClient.postOrder(signed, orderTypeEnum);
         parsed = parsePostOrder(res);
       }
       if (parsed.error) {
@@ -592,7 +618,7 @@ export async function signOrderOnly(params: {
     const creds = await ensureCreds(signer, params.proxyWallet);
     const eoa = (await signer.getAddress()).toLowerCase();
     const sig = await tradingSignatureType(eoa, params.proxyWallet);
-    const client = makeTradingClient(signer, params.proxyWallet, creds, sig);
+    const buildClient = buildOrderSignerClient(signer, params.proxyWallet, creds, sig);
 
     const [tickSizeData, negRiskData] = await Promise.all([
       fetch(`${CLOB_URL}/tick-size?token_id=${params.tokenId}`).then((r) => r.json()),
@@ -603,7 +629,7 @@ export async function signOrderOnly(params: {
     const useGTD = !!(params.expiration && params.expiration > 0);
     const orderType = useGTD ? OrderType.GTD : OrderType.GTC;
 
-    const order = await client.createOrder(
+    const order = await buildClient.createOrder(
       {
         tokenID: params.tokenId,
         price: params.price,
@@ -630,7 +656,9 @@ export async function submitSignedOrderDirect(
     const { order, orderType, signer, proxyWallet, signatureType } = signedPayload;
     const addr = (await signer.getAddress()).toLowerCase();
     const ord = order as { signer?: string };
-    if (typeof ord.signer === 'string' && ord.signer.trim().toLowerCase() !== addr) {
+    const expectedSigner =
+      signatureType === SignatureTypeV2.POLY_1271 ? proxyWallet.trim().toLowerCase() : addr;
+    if (typeof ord.signer === 'string' && ord.signer.trim().toLowerCase() !== expectedSigner) {
       return { success: false, error: 'Order signer does not match the active wallet.' };
     }
     let creds = await ensureCreds(signer, proxyWallet);

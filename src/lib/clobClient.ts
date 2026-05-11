@@ -370,15 +370,35 @@ function makeTradingClient(
   creds: StoredCreds,
   signatureType: SignatureTypeV2,
 ): ClobClient {
+  const clientSigner =
+    signatureType === SignatureTypeV2.POLY_1271
+      ? signerWithMakerAddress(signer, tradingMakerAddress)
+      : signer;
   return new ClobClient({
     host: CLOB_URL,
     chain: Chain.POLYGON,
-    signer: signer as any,
+    signer: clientSigner as any,
     creds,
     signatureType,
     funderAddress: tradingMakerAddress.toLowerCase(),
     builderConfig: builderConfig(),
   });
+}
+
+/**
+ * Polymarket POLY_1271 deposit orders: `order.signer` MUST be the deposit/maker (1271 contract), not the EOA.
+ * clob-client-v2 v1.0.2 sets `order.signer = await signer.getAddress()`. Override `getAddress` while delegating
+ * `_signTypedData` to the real EOA so the EIP-712 signature still recovers to the deposit owner.
+ */
+function signerWithMakerAddress(signer: ethers.Signer, makerAddress: string): ethers.Signer {
+  const makerChecksum = ethers.utils.getAddress(makerAddress.trim());
+  return new Proxy(signer as object, {
+    get(_t, prop, recv) {
+      if (prop === 'getAddress') return async () => makerChecksum;
+      const v = Reflect.get(signer, prop, recv);
+      return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(signer) : v;
+    },
+  }) as ethers.Signer;
 }
 
 function toTickSize(raw: string): '0.1' | '0.01' | '0.001' | '0.0001' {

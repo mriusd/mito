@@ -18,6 +18,8 @@ export function useWalletData() {
   const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
   const setPkAddress = useAppStore((s) => s.setPkAddress);
   const fetchingRef = useRef(false);
+  /** Drop stale HTTP results when user switches PK↔wallet before requests finish (else PK rows overwrite after clear). */
+  const latestProxyWalletRef = useRef<string | null>(null);
   const [proxyWallet, setProxyWallet] = useState<string | null>(null);
   const credsCheckedRef = useRef(false);
 
@@ -38,14 +40,22 @@ export function useWalletData() {
   const effectiveEoa = signingMode === 'privateKey' && pkEoa ? pkEoa : address;
   const effectiveConnected = signingMode === 'privateKey' && pkEoa ? true : isConnected;
 
+  useEffect(() => {
+    latestProxyWalletRef.current = proxyWallet;
+  }, [proxyWallet]);
+
   /** Clear maker before paint so cred checks never see (new EOA + old proxy) — fixes spurious wallet sign on PK↔wallet when addresses differ. */
   useLayoutEffect(() => {
     if (!isWebMode) return;
     if (!effectiveConnected || !effectiveEoa) {
       setProxyWallet(null);
+      latestProxyWalletRef.current = null;
+      fetchingRef.current = false;
       return;
     }
     setProxyWallet(null);
+    latestProxyWalletRef.current = null;
+    fetchingRef.current = false;
   }, [isWebMode, effectiveConnected, effectiveEoa, signingMode]);
 
   // Resolve proxy wallet when EOA connects or signing channel toggles — always drop stale maker first (no wrong-user fetch).
@@ -86,6 +96,7 @@ export function useWalletData() {
     }
     if (prevSigningForClearRef.current === signingMode) return;
     prevSigningForClearRef.current = signingMode;
+    fetchingRef.current = false;
     useAppStore.getState().setMarketData({
       positions: [],
       orders: [],
@@ -96,15 +107,19 @@ export function useWalletData() {
   }, [signingMode]);
 
   const fetchAll = useCallback(async () => {
-    if (!isWebMode || !proxyWallet || fetchingRef.current) return;
+    if (!isWebMode || !proxyWallet) return;
+    if (fetchingRef.current) return;
+    const makerLocked = proxyWallet;
     fetchingRef.current = true;
     try {
       const [positions, trades, orders, balance] = await Promise.all([
-        fetchWalletPositions(proxyWallet),
-        fetchWalletActivity(proxyWallet, 100),
-        fetchOpenOrdersDirect(proxyWallet),
-        fetchWalletBalance(proxyWallet),
+        fetchWalletPositions(makerLocked),
+        fetchWalletActivity(makerLocked, 100),
+        fetchOpenOrdersDirect(makerLocked),
+        fetchWalletBalance(makerLocked),
       ]);
+
+      if (latestProxyWalletRef.current !== makerLocked) return;
 
       // Fix missing avgPrice: compute from trades when API returns 0
       for (const pos of positions) {
@@ -130,12 +145,14 @@ export function useWalletData() {
         }
       }
 
+      if (latestProxyWalletRef.current !== makerLocked) return;
+
       useAppStore.getState().setMarketData({
         positions,
         orders,
         trades,
         cashBalance: balance,
-        makerAddress: proxyWallet,
+        makerAddress: makerLocked,
       });
     } catch (err) {
       console.warn('[useWalletData] Failed to fetch wallet data:', err);

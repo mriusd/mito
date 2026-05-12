@@ -54,30 +54,14 @@ type BidAskWsItem = Record<string, unknown> & {
   volume?: number;
 };
 
-function mergeWsItemOntoMarket(seed: Market | undefined, item: BidAskWsItem): Market {
+function mergeWsItemOntoMarket(seed: Market, item: BidAskWsItem): Market {
   const bestBid = item.bestBid ?? 0;
   const bestAsk = item.bestAsk ?? 0;
-  let next: Market;
-  if (seed) {
-    next = {
-      ...seed,
-      bestBid,
-      bestAsk,
-    };
-  } else {
-    if (typeof item.assetId !== 'string') {
-      throw new Error('useBidAskWS: mergeWsItemOntoMarket requires assetId when seed is missing');
-    }
-    const id = item.assetId;
-    next = {
-      id,
-      clobTokenIds: [id],
-      question: '',
-      endDate: '',
-      bestBid,
-      bestAsk,
-    } as Market;
-  }
+  const next: Market = {
+    ...seed,
+    bestBid,
+    bestAsk,
+  };
   for (const key of BIDASK_EQ_KEYS) {
     if (key === 'bestBid' || key === 'bestAsk') continue;
     const v = item[key as string];
@@ -140,7 +124,9 @@ export function useBidAskWS() {
       for (const item of items) {
         if (!item.assetId) continue;
         const id = item.assetId;
+        /** Skip unknown assetIds — adding stubs grew marketLookup unbounded across the session and pumped re-renders for non-existent markets. */
         const seed = pending[id] ?? lookup[id];
+        if (!seed) continue;
         const next = mergeWsItemOntoMarket(seed, item);
         if (bidAskWsRowEqual(lookup[id], next)) {
           delete pending[id];

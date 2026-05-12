@@ -530,7 +530,8 @@ export function DraggableCanvas() {
       <div ref={containerRef} className="flex-1 min-h-0 overflow-auto relative min-w-0">
       {(containerWidth <= 0 || rowHeight <= 0) ? (
         <div className="flex h-[min(240px,40vh)] items-center justify-center text-gray-500 text-xs">Loading layout…</div>
-      ) : <GridLayout
+      ) : (
+      <GridLayout
         className="layout"
         width={containerWidth}
         layout={gridLayout}

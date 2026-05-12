@@ -24,14 +24,17 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined
-          if (id.includes('ethers') || id.includes('@polymarket')) return 'vendor-clob'
+          // Keep ethers + @polymarket in the same chunk as wagmi/viem. Splitting them as `vendor-clob`
+          // created circular chunks (wallet ↔ clob) → runtime "Cannot access before initialization" / black screen.
           if (
             id.includes('@reown') ||
             id.includes('node_modules/wagmi') ||
             id.includes('/wagmi/') ||
             id.includes('node_modules/viem') ||
             id.includes('/viem/') ||
-            id.includes('@base-org')
+            id.includes('@base-org') ||
+            id.includes('ethers') ||
+            id.includes('@polymarket')
           ) {
             return 'vendor-wallet'
           }

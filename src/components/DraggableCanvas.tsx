@@ -276,14 +276,19 @@ export function DraggableCanvas() {
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
     const measure = () => {
       const rect = el.getBoundingClientRect();
       const availableH = window.innerHeight - rect.top;
-      setContainerWidth(rect.width);
+      let w = rect.width;
+      // Flex children can report 0 width until after layout; avoid never mounting the grid (black canvas).
+      if (!(w > 0)) {
+        w = Math.max(320, window.innerWidth - 312);
+      }
+      setContainerWidth(w);
       setRowHeight(Math.max(1, availableH / TOTAL_ROWS));
     };
 
@@ -291,7 +296,14 @@ export function DraggableCanvas() {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     window.addEventListener('resize', measure);
+    let rafOuter = 0;
+    let rafInner = 0;
+    rafOuter = requestAnimationFrame(() => {
+      rafInner = requestAnimationFrame(measure);
+    });
     return () => {
+      cancelAnimationFrame(rafOuter);
+      cancelAnimationFrame(rafInner);
       ro.disconnect();
       window.removeEventListener('resize', measure);
     };
@@ -515,8 +527,10 @@ export function DraggableCanvas() {
           </div>
         </div>
       )}
-      <div ref={containerRef} className="flex-1 min-h-0 overflow-auto relative">
-      {(containerWidth === 0 || rowHeight === 0) ? null : <GridLayout
+      <div ref={containerRef} className="flex-1 min-h-0 overflow-auto relative min-w-0">
+      {(containerWidth <= 0 || rowHeight <= 0) ? (
+        <div className="flex h-[min(240px,40vh)] items-center justify-center text-gray-500 text-xs">Loading layout…</div>
+      ) : <GridLayout
         className="layout"
         width={containerWidth}
         layout={gridLayout}
@@ -568,7 +582,8 @@ export function DraggableCanvas() {
             <Suspense fallback={null}>{renderPanel(panel)}</Suspense>
           </div>
         ))}
-      </GridLayout>}
+      </GridLayout>
+      )}
       </div>
     </div>
   );

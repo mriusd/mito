@@ -32,6 +32,7 @@ import {
   pickNextMarketOnExpiry,
   shortenMarketName,
   tradeMatchesSelectedMarket,
+  hitStrikeMetaForBs,
   upDownMarketUsesChainlinkSpot,
   upDownTimeframeKeyFromMarket,
 } from '../utils/format';
@@ -182,6 +183,125 @@ const SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY = 'polybot-sidebar-notify-staked-min-usd
 const SIDEBAR_NOTIFY_SOUND_FREQ_KEY = 'polybot-sidebar-notify-sound-freq';
 const SIDEBAR_NOTIFY_RING_TIME_S_KEY = 'polybot-sidebar-notify-ring-time-s';
 const SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-sound-max-price-cents';
+const SIDEBAR_NOTIFY_TILT_MKT_UPDOWN_KEY = 'polybot-sidebar-notify-tilt-mkt-updown';
+const SIDEBAR_NOTIFY_TILT_MKT_HIT_KEY = 'polybot-sidebar-notify-tilt-mkt-hit';
+const SIDEBAR_NOTIFY_TILT_MKT_ABOVE_KEY = 'polybot-sidebar-notify-tilt-mkt-above';
+const SIDEBAR_NOTIFY_TILT_MKT_BETWEEN_KEY = 'polybot-sidebar-notify-tilt-mkt-between';
+const SIDEBAR_NOTIFY_TILT_UD_5M_KEY = 'polybot-sidebar-notify-tilt-ud-5m';
+const SIDEBAR_NOTIFY_TILT_UD_15M_KEY = 'polybot-sidebar-notify-tilt-ud-15m';
+const SIDEBAR_NOTIFY_TILT_UD_1H_KEY = 'polybot-sidebar-notify-tilt-ud-1h';
+const SIDEBAR_NOTIFY_TILT_UD_4H_KEY = 'polybot-sidebar-notify-tilt-ud-4h';
+
+type NotifyTiltMarketFiltersPersisted = {
+  upDown: boolean;
+  hit: boolean;
+  above: boolean;
+  between: boolean;
+  ud5m: boolean;
+  ud15m: boolean;
+  ud1h: boolean;
+  ud4h: boolean;
+};
+
+function readNotifyTiltMktUpDown(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_TILT_MKT_UPDOWN_KEY);
+    if (v === null) return true;
+    return v === '1';
+  } catch {
+    return true;
+  }
+}
+function readNotifyTiltMktHit(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_TILT_MKT_HIT_KEY);
+    if (v === null) return false;
+    return v === '1';
+  } catch {
+    return false;
+  }
+}
+function readNotifyTiltMktAbove(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_TILT_MKT_ABOVE_KEY);
+    if (v === null) return false;
+    return v === '1';
+  } catch {
+    return false;
+  }
+}
+function readNotifyTiltMktBetween(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_TILT_MKT_BETWEEN_KEY);
+    if (v === null) return false;
+    return v === '1';
+  } catch {
+    return false;
+  }
+}
+function readNotifyTiltUd5m(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_TILT_UD_5M_KEY);
+    if (v === null) return true;
+    return v === '1';
+  } catch {
+    return true;
+  }
+}
+function readNotifyTiltUd15m(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_TILT_UD_15M_KEY);
+    if (v === null) return true;
+    return v === '1';
+  } catch {
+    return true;
+  }
+}
+function readNotifyTiltUd1h(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_TILT_UD_1H_KEY);
+    if (v === null) return false;
+    return v === '1';
+  } catch {
+    return false;
+  }
+}
+function readNotifyTiltUd4h(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_TILT_UD_4H_KEY);
+    if (v === null) return false;
+    return v === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Tilt sound/flash/top-cohort tilt only when the selected market matches user filters. */
+function marketMatchesNotifyTiltFilters(
+  market: Parameters<typeof hitStrikeMetaForBs>[0] | null | undefined,
+  f: NotifyTiltMarketFiltersPersisted,
+  isWeeklyListedHit: boolean,
+): boolean {
+  if (!market) return false;
+  if (!(f.upDown || f.hit || f.above || f.between)) return false;
+  const isUd = !!(market.question?.match(/up\s+or\s+down/i) || market.eventSlug?.match(/up-or-down|updown/i));
+  if (isUd && f.upDown) {
+    const tf = upDownTimeframeKeyFromMarket(market);
+    if (tf === '5m') return f.ud5m;
+    if (tf === '15m') return f.ud15m;
+    if (tf === '1h') return f.ud1h;
+    if (tf === '4h') return f.ud4h;
+    return false;
+  }
+  if (isUd) return false;
+  const isHit = isWeeklyListedHit || hitStrikeMetaForBs(market) != null;
+  const q = (market.question || '').trim();
+  const isBetween = /\bbetween\b.+\band\b/i.test(q);
+  if (isHit && f.hit) return true;
+  if (isBetween && f.between) return true;
+  if (!isHit && !isBetween && f.above) return true;
+  return false;
+}
 
 function readNotifyPlaySound(): boolean {
   try {
@@ -364,6 +484,7 @@ export function Sidebar() {
   const orders = useAppStore((s) => s.orders);
   const trades = useAppStore((s) => s.trades);
   const marketLookupEpoch = useAppStore((s) => s.marketLookupEpoch);
+  const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
   const marketLookup = useMemo(() => useAppStore.getState().marketLookup, [marketLookupEpoch]);
   const autoSwitchNextMarketOnExpiry = useAppStore((s) => s.autoSwitchNextMarketOnExpiry);
   /** Edge-detect expiry on the same sidebar selection — skip when user navigates to an already-expired market. */
@@ -412,6 +533,14 @@ export function Sidebar() {
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
   const [notifyRingTimeS, setNotifyRingTimeS] = useState(readNotifyRingTimeS);
   const [notifySoundMaxPriceCents, setNotifySoundMaxPriceCents] = useState(readNotifySoundMaxPriceCents);
+  const [notifyTiltMktUpDown, setNotifyTiltMktUpDown] = useState(readNotifyTiltMktUpDown);
+  const [notifyTiltMktHit, setNotifyTiltMktHit] = useState(readNotifyTiltMktHit);
+  const [notifyTiltMktAbove, setNotifyTiltMktAbove] = useState(readNotifyTiltMktAbove);
+  const [notifyTiltMktBetween, setNotifyTiltMktBetween] = useState(readNotifyTiltMktBetween);
+  const [notifyTiltUd5m, setNotifyTiltUd5m] = useState(readNotifyTiltUd5m);
+  const [notifyTiltUd15m, setNotifyTiltUd15m] = useState(readNotifyTiltUd15m);
+  const [notifyTiltUd1h, setNotifyTiltUd1h] = useState(readNotifyTiltUd1h);
+  const [notifyTiltUd4h, setNotifyTiltUd4h] = useState(readNotifyTiltUd4h);
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -463,6 +592,62 @@ export function Sidebar() {
       /* */
     }
   }, [notifySoundMaxPriceCents]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_TILT_MKT_UPDOWN_KEY, notifyTiltMktUpDown ? '1' : '0');
+    } catch {
+      /* */
+    }
+  }, [notifyTiltMktUpDown]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_TILT_MKT_HIT_KEY, notifyTiltMktHit ? '1' : '0');
+    } catch {
+      /* */
+    }
+  }, [notifyTiltMktHit]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_TILT_MKT_ABOVE_KEY, notifyTiltMktAbove ? '1' : '0');
+    } catch {
+      /* */
+    }
+  }, [notifyTiltMktAbove]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_TILT_MKT_BETWEEN_KEY, notifyTiltMktBetween ? '1' : '0');
+    } catch {
+      /* */
+    }
+  }, [notifyTiltMktBetween]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_TILT_UD_5M_KEY, notifyTiltUd5m ? '1' : '0');
+    } catch {
+      /* */
+    }
+  }, [notifyTiltUd5m]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_TILT_UD_15M_KEY, notifyTiltUd15m ? '1' : '0');
+    } catch {
+      /* */
+    }
+  }, [notifyTiltUd15m]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_TILT_UD_1H_KEY, notifyTiltUd1h ? '1' : '0');
+    } catch {
+      /* */
+    }
+  }, [notifyTiltUd1h]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_TILT_UD_4H_KEY, notifyTiltUd4h ? '1' : '0');
+    } catch {
+      /* */
+    }
+  }, [notifyTiltUd4h]);
 
   /** Slider 0 → 0.25×, 50 → 1×, 100 → 4× (exponential). */
   const notifySoundPitchMul = useMemo(
@@ -470,20 +655,37 @@ export function Sidebar() {
     [notifySoundFreqSlider],
   );
 
-  /** Up/Down 5m or 15m only — same slug/question heuristics as chart / target price. */
-  const isUpDown5mOr15m = useMemo(() => {
-    const m = selectedMarket;
-    if (!m) return false;
-    const isUd = !!(m.question?.match(/up\s+or\s+down/i) || m.eventSlug?.match(/up-or-down|updown/i));
-    if (!isUd) return false;
-    const combined = `${m.eventSlug || ''} ${m.question || ''}`;
-    const is5 = /updown-5m/i.test(combined) || /\b5[- ]?min/i.test(combined);
-    const is15 = /updown-15m/i.test(combined) || /\b15[- ]?min/i.test(combined);
-    return is5 || is15;
-  }, [selectedMarket]);
-  /** Same rule as Top bar + sidebar flash: |lean| ≥ user threshold (pct) — Up/Down 5m+15m only for sidebar pulse. */
+  const notifyTiltAppliesToSelectedMarket = useMemo(() => {
+    return marketMatchesNotifyTiltFilters(
+      selectedMarket,
+      {
+        upDown: notifyTiltMktUpDown,
+        hit: notifyTiltMktHit,
+        above: notifyTiltMktAbove,
+        between: notifyTiltMktBetween,
+        ud5m: notifyTiltUd5m,
+        ud15m: notifyTiltUd15m,
+        ud1h: notifyTiltUd1h,
+        ud4h: notifyTiltUd4h,
+      },
+      isMarketInWeeklyHitMarkets(selectedMarket?.id, weeklyHitMarkets),
+    );
+  }, [
+    selectedMarket,
+    weeklyHitMarkets,
+    notifyTiltMktUpDown,
+    notifyTiltMktHit,
+    notifyTiltMktAbove,
+    notifyTiltMktBetween,
+    notifyTiltUd5m,
+    notifyTiltUd15m,
+    notifyTiltUd1h,
+    notifyTiltUd4h,
+  ]);
+
+  /** Same rule as sidebar flash/sound Top cohort tilt: |lean| ≥ threshold when market passes notify filters. */
   const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {
-    if (!isUpDown5mOr15m) return null;
+    if (!notifyTiltAppliesToSelectedMarket) return null;
     const cy = liveShareStats?.stakedTopHoldersCohortYesUsd;
     const cn = liveShareStats?.stakedTopHoldersCohortNoUsd;
     if (
@@ -501,7 +703,12 @@ export function Sidebar() {
     if (lean >= tiltThresholdFrac) return 'green';
     if (lean <= -tiltThresholdFrac) return 'red';
     return null;
-  }, [isUpDown5mOr15m, liveShareStats?.stakedTopHoldersCohortYesUsd, liveShareStats?.stakedTopHoldersCohortNoUsd, notifyTopThresholdPct]);
+  }, [
+    notifyTiltAppliesToSelectedMarket,
+    liveShareStats?.stakedTopHoldersCohortYesUsd,
+    liveShareStats?.stakedTopHoldersCohortNoUsd,
+    notifyTopThresholdPct,
+  ]);
 
   useEffect(() => {
     ensureTiltAudioUnlockListeners();
@@ -982,7 +1189,6 @@ export function Sidebar() {
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
-  const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
   const lastUpdated = useAppStore((s) => s.lastUpdated);
 
@@ -1953,6 +2159,86 @@ export function Sidebar() {
               </button>
             </div>
             <div className="space-y-3 text-xs text-gray-200">
+              <div className="border border-gray-600/80 rounded-md p-2 space-y-2 bg-gray-900/40">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Markets</div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyTiltMktUpDown}
+                    onChange={(e) => setNotifyTiltMktUpDown(e.target.checked)}
+                  />
+                  <span>Up or Down</span>
+                </label>
+                {notifyTiltMktUpDown ? (
+                  <div className="pl-5 flex flex-wrap gap-x-3 gap-y-1.5 border-l border-gray-600 ml-1">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded accent-amber-500"
+                        checked={notifyTiltUd5m}
+                        onChange={(e) => setNotifyTiltUd5m(e.target.checked)}
+                      />
+                      <span>5m</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded accent-amber-500"
+                        checked={notifyTiltUd15m}
+                        onChange={(e) => setNotifyTiltUd15m(e.target.checked)}
+                      />
+                      <span>15m</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded accent-amber-500"
+                        checked={notifyTiltUd1h}
+                        onChange={(e) => setNotifyTiltUd1h(e.target.checked)}
+                      />
+                      <span>1h</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded accent-amber-500"
+                        checked={notifyTiltUd4h}
+                        onChange={(e) => setNotifyTiltUd4h(e.target.checked)}
+                      />
+                      <span>4h</span>
+                    </label>
+                  </div>
+                ) : null}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyTiltMktHit}
+                    onChange={(e) => setNotifyTiltMktHit(e.target.checked)}
+                  />
+                  <span>Hit</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyTiltMktAbove}
+                    onChange={(e) => setNotifyTiltMktAbove(e.target.checked)}
+                  />
+                  <span>Above</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyTiltMktBetween}
+                    onChange={(e) => setNotifyTiltMktBetween(e.target.checked)}
+                  />
+                  <span>Between</span>
+                </label>
+                <p className="text-[10px] text-gray-500 m-0">Sound and flash only for checked market types.</p>
+              </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -2564,7 +2850,9 @@ export function Sidebar() {
                       dense
                       compactLabel="Stake"
                       barMode="grossLegTotals"
-                      flashExtremeTilt
+                      flashExtremeTilt={
+                        !!(notifyTiltAppliesToSelectedMarket && notifyFlashBg && notifyStakedGatePasses)
+                      }
                     />
                   ) : null}
                   {(() => {
@@ -2585,7 +2873,9 @@ export function Sidebar() {
                           dense
                           compactLabel="Top"
                           barMode="cohortSurplusHalves"
-                          flashExtremeTilt={isUpDown5mOr15m && notifyFlashBg && notifyStakedGatePasses}
+                          flashExtremeTilt={
+                            !!(notifyTiltAppliesToSelectedMarket && notifyFlashBg && notifyStakedGatePasses)
+                          }
                           extremeFlashTiltThreshold={notifyTopThresholdPct / 100}
                         />
                       );

@@ -20,7 +20,7 @@ import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
 import {
   extractAssetFromMarket,
-  formatPolymarketVolumeKInteger,
+  formatPolymarketVolumeK,
   formatPriceShort,
   getMarketPriceCondition,
   getOrderClobTokenId,
@@ -323,7 +323,7 @@ export function Sidebar() {
   const liveOrderbookVolumeDisplay = useMemo(() => {
     if (!selectedMarket?.clobTokenIds?.[0]) return null;
     const usd = getPolymarketVolumeUsd(selectedMarket, selectedMarket.clobTokenIds[0], marketLookup);
-    return formatPolymarketVolumeKInteger(usd);
+    return formatPolymarketVolumeK(usd);
   }, [selectedMarket, marketLookup]);
   const liveShareStats = useMemo(() => {
     const tokenId = selectedMarket?.clobTokenIds?.[0];
@@ -541,7 +541,7 @@ export function Sidebar() {
 
   const marketStakedNetKDisplay = useMemo(() => {
     if (marketStakedNetUsdAbs == null) return null;
-    return formatPolymarketVolumeKInteger(marketStakedNetUsdAbs);
+    return formatPolymarketVolumeK(marketStakedNetUsdAbs);
   }, [marketStakedNetUsdAbs]);
   const marketStakedGrossUsd = useMemo(() => {
     if (!sidebarStakedLegs) return null;

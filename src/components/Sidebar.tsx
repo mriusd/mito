@@ -171,6 +171,23 @@ async function playUpdownTiltExtremeSound(kind: 'green' | 'red', pitchMul = 1, r
   }
 }
 
+/** ms between rings when Double ring is on (second strike right after first). */
+const NOTIFY_DOUBLE_RING_GAP_MS = 95;
+
+async function playTiltNotifySoundWithDoubleRing(
+  kind: 'green' | 'red',
+  pitchMul: number,
+  ringTimeS: number,
+  doubleRing: boolean,
+): Promise<void> {
+  await playUpdownTiltExtremeSound(kind, pitchMul, ringTimeS);
+  if (!doubleRing) return;
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, NOTIFY_DOUBLE_RING_GAP_MS);
+  });
+  await playUpdownTiltExtremeSound(kind, pitchMul, ringTimeS);
+}
+
 function pitchMulFromNotifyFreqSlider(slider0to100: number): number {
   const s = Math.min(100, Math.max(0, slider0to100));
   return 0.25 * 16 ** (s / 100);
@@ -183,6 +200,7 @@ const SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY = 'polybot-sidebar-notify-staked-min-usd
 const SIDEBAR_NOTIFY_SOUND_FREQ_KEY = 'polybot-sidebar-notify-sound-freq';
 const SIDEBAR_NOTIFY_RING_TIME_S_KEY = 'polybot-sidebar-notify-ring-time-s';
 const SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-sound-max-price-cents';
+const SIDEBAR_NOTIFY_DOUBLE_RING_KEY = 'polybot-sidebar-notify-double-ring';
 const SIDEBAR_NOTIFY_TILT_MKT_UPDOWN_KEY = 'polybot-sidebar-notify-tilt-mkt-updown';
 const SIDEBAR_NOTIFY_TILT_MKT_HIT_KEY = 'polybot-sidebar-notify-tilt-mkt-hit';
 const SIDEBAR_NOTIFY_TILT_MKT_ABOVE_KEY = 'polybot-sidebar-notify-tilt-mkt-above';
@@ -372,6 +390,15 @@ function readNotifySoundMaxPriceCents(): number {
     return 95;
   }
 }
+function readNotifyDoubleRing(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_DOUBLE_RING_KEY);
+    if (v === null) return true;
+    return v === '1';
+  } catch {
+    return true;
+  }
+}
 /** FAK buy: pay up to this per share to lift asks. */
 const MARKET_AGGRESSIVE_BUY = 0.99;
 /** FAK sell: accept down to this per share to hit bids. */
@@ -533,6 +560,7 @@ export function Sidebar() {
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
   const [notifyRingTimeS, setNotifyRingTimeS] = useState(readNotifyRingTimeS);
   const [notifySoundMaxPriceCents, setNotifySoundMaxPriceCents] = useState(readNotifySoundMaxPriceCents);
+  const [notifyDoubleRing, setNotifyDoubleRing] = useState(readNotifyDoubleRing);
   const [notifyTiltMktUpDown, setNotifyTiltMktUpDown] = useState(readNotifyTiltMktUpDown);
   const [notifyTiltMktHit, setNotifyTiltMktHit] = useState(readNotifyTiltMktHit);
   const [notifyTiltMktAbove, setNotifyTiltMktAbove] = useState(readNotifyTiltMktAbove);
@@ -592,6 +620,13 @@ export function Sidebar() {
       /* */
     }
   }, [notifySoundMaxPriceCents]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_DOUBLE_RING_KEY, notifyDoubleRing ? '1' : '0');
+    } catch {
+      /* */
+    }
+  }, [notifyDoubleRing]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_TILT_MKT_UPDOWN_KEY, notifyTiltMktUpDown ? '1' : '0');
@@ -876,6 +911,7 @@ export function Sidebar() {
     const mul = notifySoundPitchMul;
     const rt = notifyRingTimeS;
     const maxCents = notifySoundMaxPriceCents;
+    const doubleRing = notifyDoubleRing;
 
     const midOkForSound = (): boolean => {
       const sm = tiltSoundMarketRef.current;
@@ -919,7 +955,7 @@ export function Sidebar() {
 
     const tick = () => {
       if (!midOkForSound()) return;
-      void playUpdownTiltExtremeSound(k, mul, rt);
+      void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
     };
 
     tick();
@@ -933,6 +969,7 @@ export function Sidebar() {
     notifySoundPitchMul,
     notifyRingTimeS,
     notifySoundMaxPriceCents,
+    notifyDoubleRing,
   ]);
 
   const onPolymarketTradesFromHost = useCallback((t: LiveTrade[]) => {
@@ -2264,7 +2301,12 @@ export function Sidebar() {
                       const now = Date.now();
                       if (now - freqSliderPreviewLastMs.current < 160) return;
                       freqSliderPreviewLastMs.current = now;
-                      void playUpdownTiltExtremeSound('green', pitchMulFromNotifyFreqSlider(nv), notifyRingTimeS);
+                      void playTiltNotifySoundWithDoubleRing(
+                        'green',
+                        pitchMulFromNotifyFreqSlider(nv),
+                        notifyRingTimeS,
+                        notifyDoubleRing,
+                      );
                     }}
                     className="flex-1 min-w-0 accent-amber-500 h-2"
                     aria-label="Notification sound frequency"
@@ -2306,6 +2348,16 @@ export function Sidebar() {
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1">Mute tilt sound when selected outcome mid is above this (default 95¢).</p>
+                <label className="flex items-center gap-2 cursor-pointer mt-3">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyDoubleRing}
+                    onChange={(e) => setNotifyDoubleRing(e.target.checked)}
+                  />
+                  <span>Double ring</span>
+                </label>
+                <p className="text-[10px] text-gray-500 mt-1 m-0">Play two strikes ~{NOTIFY_DOUBLE_RING_GAP_MS}ms apart.</p>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input

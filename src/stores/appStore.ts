@@ -543,8 +543,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (data.marketCount !== undefined && data.marketCount !== s.marketCount) put('marketCount', data.marketCount);
       if (data.lastUpdated !== undefined && data.lastUpdated !== s.lastUpdated) put('lastUpdated', data.lastUpdated);
       if (data.marketLookup !== undefined) {
-        put('marketLookup', data.marketLookup);
-        bumpedMarketEpoch = true;
+        /** Skip epoch bump when lookup is reference-identical or has identical key sets + per-token reference equality — useBidAskWS reuses refs for unchanged markets, so most polls produce no real change but used to trigger a full re-render storm. */
+        const next = data.marketLookup;
+        const prev = s.marketLookup;
+        let changed = next !== prev;
+        if (changed) {
+          const prevKeys = Object.keys(prev);
+          const nextKeys = Object.keys(next);
+          if (prevKeys.length === nextKeys.length) {
+            let allSame = true;
+            for (const k of nextKeys) {
+              if (prev[k] !== next[k]) { allSame = false; break; }
+            }
+            if (allSame) changed = false;
+          }
+        }
+        if (changed) {
+          put('marketLookup', next);
+          bumpedMarketEpoch = true;
+        }
       }
 
       if (Object.keys(patch).length === 0 && !bumpedMarketEpoch) return {};

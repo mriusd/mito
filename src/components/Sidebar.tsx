@@ -93,8 +93,8 @@ function ensureTiltAudioUnlockListeners() {
   window.addEventListener('keydown', tryResume, { passive: true });
 }
 
-/** Crystalline "knife on champagne flute" — inharmonic partials + strike click; green vs red pitch sets. */
-async function playUpdownTiltExtremeSound(kind: 'green' | 'red') {
+/** Glass ping: `pitchMul` = timbre scale; `ringTimeS` = decay length (s); ref 0.5s. */
+async function playUpdownTiltExtremeSound(kind: 'green' | 'red', pitchMul = 1, ringTimeS = 0.5) {
   try {
     ensureTiltAudioUnlockListeners();
     const ACtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -104,13 +104,19 @@ async function playUpdownTiltExtremeSound(kind: 'green' | 'red') {
     await ctx.resume();
     if (ctx.state !== 'running') return;
     const t0 = ctx.currentTime;
-    const tEnd = t0 + 0.85;
 
-    const root = kind === 'green' ? 3350 : 2520;
+    const rt = Math.min(5, Math.max(0.05, ringTimeS));
+    /** Decays tuned at 0.5s reference; scale stretches ring length. */
+    const scale = rt / 0.5;
+    const partialDecayS = [0.5, 0.34, 0.2, 0.12].map((d) => d * scale);
+    const maxPartialDecay = partialDecayS[0] ?? rt;
+    const tEnd = t0 + 0.02 + maxPartialDecay;
+
+    const m = Math.min(3.15, Math.max(0.22, pitchMul));
+    const root = (kind === 'green' ? 3350 : 2520) * m;
     /** Stiff-plate-ish partial ratios (not harmonic — reads as glass/crystal). */
     const partialRatios = [1, 1.43, 2.07, 2.89];
     const partialPeaks = [0.13, 0.076, 0.042, 0.022];
-    const partialDecayS = [0.5, 0.34, 0.2, 0.12];
 
     const master = ctx.createGain();
     master.gain.setValueAtTime(1, t0);
@@ -121,9 +127,10 @@ async function playUpdownTiltExtremeSound(kind: 'green' | 'red') {
       osc.type = 'sine';
       osc.frequency.setValueAtTime(root * partialRatios[i], t0);
       const g = ctx.createGain();
+      const decay = partialDecayS[i] ?? partialDecayS[0]!;
       g.gain.setValueAtTime(0.0001, t0);
       g.gain.linearRampToValueAtTime(partialPeaks[i], t0 + 0.0025);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.004 + partialDecayS[i]);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.004 + decay);
       osc.connect(g);
       g.connect(master);
       osc.start(t0);
@@ -133,7 +140,7 @@ async function playUpdownTiltExtremeSound(kind: 'green' | 'red') {
     /** Knife-on-rim strike + thin ring (very bright, decays fast). */
     const strikeOsc = ctx.createOscillator();
     strikeOsc.type = 'triangle';
-    strikeOsc.frequency.setValueAtTime(kind === 'green' ? 7200 : 5600, t0);
+    strikeOsc.frequency.setValueAtTime((kind === 'green' ? 7200 : 5600) * m, t0);
     const strikeGain = ctx.createGain();
     strikeGain.gain.setValueAtTime(0.0001, t0);
     strikeGain.gain.linearRampToValueAtTime(0.11, t0 + 0.0012);
@@ -145,16 +152,19 @@ async function playUpdownTiltExtremeSound(kind: 'green' | 'red') {
     shimmer.type = 'sine';
     shimmer.frequency.setValueAtTime(root * 4.2, t0);
     const shimG = ctx.createGain();
+    const shimDecay = 0.09 * scale;
     shimG.gain.setValueAtTime(0.0001, t0);
     shimG.gain.linearRampToValueAtTime(0.035, t0 + 0.002);
-    shimG.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.09);
+    shimG.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.002 + shimDecay);
     shimmer.connect(shimG);
     shimG.connect(master);
 
+    const strikeStop = t0 + 0.035;
+    const shimStop = t0 + 0.004 + shimDecay + 0.02;
     strikeOsc.start(t0);
-    strikeOsc.stop(t0 + 0.035);
+    strikeOsc.stop(strikeStop);
     shimmer.start(t0);
-    shimmer.stop(t0 + 0.1);
+    shimmer.stop(shimStop);
   } catch {
     /* autoplay / no AudioContext */
   }
@@ -163,6 +173,8 @@ const SIDEBAR_NOTIFY_PLAY_SOUND_KEY = 'polybot-sidebar-notify-play-sound';
 const SIDEBAR_NOTIFY_FLASH_BG_KEY = 'polybot-sidebar-notify-flash-bg';
 const SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_KEY = 'polybot-sidebar-notify-top-threshold-pct';
 const SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY = 'polybot-sidebar-notify-staked-min-usd';
+const SIDEBAR_NOTIFY_SOUND_FREQ_KEY = 'polybot-sidebar-notify-sound-freq';
+const SIDEBAR_NOTIFY_RING_TIME_S_KEY = 'polybot-sidebar-notify-ring-time-s';
 
 function readNotifyPlaySound(): boolean {
   try {
@@ -200,6 +212,27 @@ function readNotifyStakedMinUsd(): number {
     return Math.min(1e12, n);
   } catch {
     return 0;
+  }
+}
+/** 0 = low pitch, 100 = high; persisted slider position. */
+function readNotifySoundFreqSlider(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_SOUND_FREQ_KEY);
+    const n = parseFloat(raw ?? '50');
+    if (!Number.isFinite(n)) return 50;
+    return Math.min(100, Math.max(0, Math.round(n)));
+  } catch {
+    return 50;
+  }
+}
+function readNotifyRingTimeS(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_RING_TIME_S_KEY);
+    const n = parseFloat(raw ?? '0.5');
+    if (!Number.isFinite(n)) return 0.5;
+    return Math.min(5, Math.max(0.05, Math.round(n * 100) / 100));
+  } catch {
+    return 0.5;
   }
 }
 /** FAK buy: pay up to this per share to lift asks. */
@@ -358,6 +391,8 @@ export function Sidebar() {
   const [notifyFlashBg, setNotifyFlashBg] = useState(readNotifyFlashBg);
   const [notifyTopThresholdPct, setNotifyTopThresholdPct] = useState(readNotifyTopThresholdPct);
   const [notifyStakedMinUsd, setNotifyStakedMinUsd] = useState(readNotifyStakedMinUsd);
+  const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
+  const [notifyRingTimeS, setNotifyRingTimeS] = useState(readNotifyRingTimeS);
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -388,6 +423,26 @@ export function Sidebar() {
       /* */
     }
   }, [notifyStakedMinUsd]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_SOUND_FREQ_KEY, String(notifySoundFreqSlider));
+    } catch {
+      /* */
+    }
+  }, [notifySoundFreqSlider]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_RING_TIME_S_KEY, String(notifyRingTimeS));
+    } catch {
+      /* */
+    }
+  }, [notifyRingTimeS]);
+
+  /** Slider 0 → 0.25×, 50 → 1×, 100 → 4× (exponential). */
+  const notifySoundPitchMul = useMemo(
+    () => 0.25 * 16 ** (notifySoundFreqSlider / 100),
+    [notifySoundFreqSlider],
+  );
 
   /** Up/Down 5m or 15m only — same slug/question heuristics as chart / target price. */
   const isUpDown5mOr15m = useMemo(() => {
@@ -534,10 +589,13 @@ export function Sidebar() {
   useEffect(() => {
     if (!topBarExtremeBgFlash || !notifyPlaySound || !notifyStakedGatePasses) return;
     const k = topBarExtremeBgFlash;
-    void playUpdownTiltExtremeSound(k);
-    const id = window.setInterval(() => void playUpdownTiltExtremeSound(k), TILT_EXTREME_FLASH_MS);
+    const mul = notifySoundPitchMul;
+    const rt = notifyRingTimeS;
+    void playUpdownTiltExtremeSound(k, mul, rt);
+    const repeatMs = Math.max(TILT_EXTREME_FLASH_MS, Math.ceil(rt * 1000) + 80);
+    const id = window.setInterval(() => void playUpdownTiltExtremeSound(k, mul, rt), repeatMs);
     return () => clearInterval(id);
-  }, [topBarExtremeBgFlash, notifyPlaySound, notifyStakedGatePasses]);
+  }, [topBarExtremeBgFlash, notifyPlaySound, notifyStakedGatePasses, notifySoundPitchMul, notifyRingTimeS]);
 
   const marketStakedNetKDisplay = useMemo(() => {
     if (marketStakedNetUsdAbs == null) return null;
@@ -1809,6 +1867,43 @@ export function Sidebar() {
                 />
                 <span>Play Sound</span>
               </label>
+              <div className={notifyPlaySound ? '' : 'opacity-50 pointer-events-none'}>
+                <div className="text-gray-400 mb-1">Sound frequency</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={notifySoundFreqSlider}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      setNotifySoundFreqSlider(Math.min(100, Math.max(0, Math.round(v))));
+                    }}
+                    className="flex-1 min-w-0 accent-amber-500 h-2"
+                    aria-label="Notification sound frequency"
+                  />
+                  <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifySoundFreqSlider}</span>
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">Left = much lower, right = much higher (×0.25–×4 at ends; center = normal).</p>
+                <div className="flex items-center gap-2 flex-wrap mt-3">
+                  <span className="text-gray-400 shrink-0">Ring time (s)</span>
+                  <input
+                    type="number"
+                    min={0.05}
+                    max={5}
+                    step={0.05}
+                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-20 tabular-nums no-spin"
+                    value={notifyRingTimeS}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      setNotifyRingTimeS(Math.min(5, Math.max(0.05, Math.round(v * 100) / 100)));
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">Glass ring decay length; default 0.5s.</p>
+              </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"

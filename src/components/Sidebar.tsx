@@ -913,48 +913,30 @@ export function Sidebar() {
     const maxCents = notifySoundMaxPriceCents;
     const doubleRing = notifyDoubleRing;
 
-    const midOkForSound = (): boolean => {
+    const bidOkForSound = (): boolean => {
       const sm = tiltSoundMarketRef.current;
       const oc = tiltSoundOutcomeRef.current;
       const lookup = tiltSoundLookupRef.current;
       const tid = sm?.clobTokenIds?.[oc === 'YES' ? 0 : 1];
-      let midCents: number | null = null;
+      let bidCents: number | null = null;
       if (tid) {
         const displayBids = sidebarBookRef.current?.displayBids ?? [];
-        const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
-        const bestBidCents =
-          displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
-        const bestAskCents =
-          displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
-        if (
-          bestBidCents != null &&
-          bestAskCents != null &&
-          Number.isFinite(bestBidCents) &&
-          Number.isFinite(bestAskCents)
-        ) {
-          midCents = (bestBidCents + bestAskCents) / 2;
-        } else {
+        if (displayBids.length > 0) {
+          const bb = parseFloat(displayBids[0].price) * 100;
+          if (Number.isFinite(bb)) bidCents = bb;
+        }
+        if (bidCents == null) {
           const row = lookup[tid];
-          if (row) {
-            const b =
-              typeof row.bestBid === 'number' && Number.isFinite(row.bestBid)
-                ? row.bestBid * 100
-                : null;
-            const a =
-              typeof row.bestAsk === 'number' && Number.isFinite(row.bestAsk)
-                ? row.bestAsk * 100
-                : null;
-            if (b != null && a != null) midCents = (b + a) / 2;
-            else if (b != null) midCents = b;
-            else if (a != null) midCents = a;
+          if (row && typeof row.bestBid === 'number' && Number.isFinite(row.bestBid)) {
+            bidCents = row.bestBid * 100;
           }
         }
       }
-      return !(midCents != null && midCents > maxCents);
+      return !(bidCents != null && bidCents > maxCents);
     };
 
     const tick = () => {
-      if (!midOkForSound()) return;
+      if (!bidOkForSound()) return;
       void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
     };
 
@@ -2347,7 +2329,9 @@ export function Sidebar() {
                     }}
                   />
                 </div>
-                <p className="text-[10px] text-gray-500 mt-1">Mute tilt sound when selected outcome mid is above this (default 95¢).</p>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  Mute when selected outcome best bid (live book top bid, else lookup) is above this (default 95¢).
+                </p>
                 <label className="flex items-center gap-2 cursor-pointer mt-3">
                   <input
                     type="checkbox"

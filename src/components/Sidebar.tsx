@@ -20,7 +20,6 @@ import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
 import {
   extractAssetFromMarket,
-  formatPolymarketVolumeK,
   formatPolymarketVolumeKInteger,
   formatPriceShort,
   getMarketPriceCondition,
@@ -386,11 +385,6 @@ export function Sidebar() {
     ensureTiltAudioUnlockListeners();
   }, []);
 
-  const sharesInExistenceDisplay = useMemo(() => {
-    const v = liveShareStats?.sharesInExistence;
-    if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
-    return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  }, [liveShareStats]);
   const holdersCountDisplay = useMemo(() => {
     const v = liveShareStats?.holders;
     if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
@@ -506,7 +500,7 @@ export function Sidebar() {
 
   const marketStakedNetKDisplay = useMemo(() => {
     if (marketStakedNetUsdAbs == null) return null;
-    return formatPolymarketVolumeK(marketStakedNetUsdAbs);
+    return formatPolymarketVolumeKInteger(marketStakedNetUsdAbs);
   }, [marketStakedNetUsdAbs]);
   const marketStakedGrossUsd = useMemo(() => {
     if (!sidebarStakedLegs) return null;
@@ -2183,17 +2177,16 @@ export function Sidebar() {
           })()}
 
           <div className="sidebar-section py-1">
-            <div className="flex gap-1.5 items-stretch min-w-0">
-              <div
-                className={`flex-1 min-w-0 min-h-0 rounded-md px-1 py-0.5 -mx-1${
-                  effectiveSidebarBgFlash === 'green'
-                    ? ' sidebar-stats-flash-green'
-                    : effectiveSidebarBgFlash === 'red'
-                      ? ' sidebar-stats-flash-red'
-                      : ''
-                }`}
-              >
-                <div className="grid grid-cols-4 gap-1.5 text-[10px] min-w-0">
+            <div
+              className={`min-w-0 min-h-0 rounded-md px-1 py-0.5 -mx-1${
+                effectiveSidebarBgFlash === 'green'
+                  ? ' sidebar-stats-flash-green'
+                  : effectiveSidebarBgFlash === 'red'
+                    ? ' sidebar-stats-flash-red'
+                    : ''
+              }`}
+            >
+              <div className="grid grid-cols-4 gap-1.5 text-[10px] min-w-0 items-stretch">
               <div className="rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0">
                 <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Volume</div>
                 <div
@@ -2244,23 +2237,27 @@ export function Sidebar() {
                   {marketStakedNetKDisplay ? `$${marketStakedNetKDisplay}` : '--'}
                 </div>
               </div>
-              <div className="rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0">
-                <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Shares</div>
-                <div className="tabular-nums font-bold text-gray-200 truncate" title="Shares in existence from net wallet balances: sum(abs(YES-NO))">
-                  {sharesInExistenceDisplay}
-                </div>
-              </div>
               <button
                 type="button"
                 onClick={() => setToxicDialogOpen(true)}
                 onMouseEnter={preloadToxicFlowDialog}
                 onFocus={preloadToxicFlowDialog}
                 onPointerDown={(e) => e.stopPropagation()}
-                className="rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left hover:bg-yellow-500/20 transition-colors min-w-0 block w-full"
+                className="rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left hover:bg-yellow-500/20 transition-colors min-w-0"
                 title="Holders Analysis"
               >
                 <div className="text-[8px] uppercase tracking-wide text-yellow-400 truncate">Holders</div>
                 <div className="tabular-nums font-bold text-yellow-300 truncate">{holdersCountDisplay}</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setNotifyDialogOpen(true)}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="rounded border border-gray-600 bg-gray-900/60 min-w-0 flex items-center justify-center hover:bg-gray-700/80 transition-colors"
+                title="Tilt notification settings"
+                aria-label="Tilt notification settings"
+              >
+                <Bell className="h-3.5 w-3.5 text-amber-300" strokeWidth={2} />
               </button>
             </div>
             {/* Compact bias bars */}
@@ -2339,18 +2336,7 @@ export function Sidebar() {
                 </div>
               );
             })()}
-              </div>
-              <button
-                type="button"
-                onClick={() => setNotifyDialogOpen(true)}
-                onPointerDown={(e) => e.stopPropagation()}
-                className="shrink-0 w-8 rounded border border-gray-600 bg-gray-900/60 px-1 flex flex-col items-center justify-center hover:bg-gray-700/80 transition-colors self-stretch"
-                title="Tilt notification settings"
-                aria-label="Tilt notification settings"
-              >
-                <Bell className="h-3.5 w-3.5 text-amber-300" strokeWidth={2} />
-              </button>
-            </div>
+          </div>
           </div>
 
           {/* Live Orderbook + Trades */}

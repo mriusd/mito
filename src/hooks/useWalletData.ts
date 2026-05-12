@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { useAccount } from 'wagmi';
 import { ethers } from 'ethers';
 import { useAppStore } from '../stores/appStore';
@@ -38,6 +38,16 @@ export function useWalletData() {
   const effectiveEoa = signingMode === 'privateKey' && pkEoa ? pkEoa : address;
   const effectiveConnected = signingMode === 'privateKey' && pkEoa ? true : isConnected;
 
+  /** Clear maker before paint so cred checks never see (new EOA + old proxy) — fixes spurious wallet sign on PK↔wallet when addresses differ. */
+  useLayoutEffect(() => {
+    if (!isWebMode) return;
+    if (!effectiveConnected || !effectiveEoa) {
+      setProxyWallet(null);
+      return;
+    }
+    setProxyWallet(null);
+  }, [isWebMode, effectiveConnected, effectiveEoa, signingMode]);
+
   // Resolve proxy wallet when EOA connects or signing channel toggles — always drop stale maker first (no wrong-user fetch).
   useEffect(() => {
     if (!isWebMode || !effectiveConnected || !effectiveEoa) {
@@ -46,7 +56,6 @@ export function useWalletData() {
       return;
     }
     let cancelled = false;
-    setProxyWallet(null);
     (async () => {
       try {
         const eoaLc = typeof effectiveEoa === 'string' ? effectiveEoa.trim().toLowerCase() : '';

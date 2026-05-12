@@ -13,8 +13,10 @@ export function StakedLegUsdBar({
   compact,
   compactLabel,
   barMode = 'grossLegTotals',
-  /** Sidebar: pulse Y or N segment when |tilt| ≥ 30%. */
+  /** Sidebar: pulse Y or N segment when |tilt| ≥ threshold (default 30%). */
   flashExtremeTilt = false,
+  /** Fraction 0.01–0.999; default 0.3. Used when flashExtremeTilt. */
+  extremeFlashTiltThreshold = 0.3,
   compactLegUsdFooter = false,
 }: {
   sumYUsd: number;
@@ -27,6 +29,7 @@ export function StakedLegUsdBar({
   /** grossLegTotals: market Σ|usd_yes| vs Σ|usd_no|. cohortSurplusHalves: Σ max(0,net) vs Σ max(0,−net) in active toxic tab. */
   barMode?: StakedLegBarMode;
   flashExtremeTilt?: boolean;
+  extremeFlashTiltThreshold?: number;
   compactLegUsdFooter?: boolean;
 }) {
   const total = sumYUsd + sumNUsd;
@@ -36,9 +39,12 @@ export function StakedLegUsdBar({
   /** Signed tilt: gross mode ≈ (ΣY−ΣN)/(ΣY+ΣN); cohort surplus mode → ±100% when one-sided. */
   const lean = (sumYUsd - sumNUsd) / total;
   const netAbs = Math.abs(sumYUsd - sumNUsd);
-  const FLASH_TILT = 0.3;
-  const flashY = flashExtremeTilt && Number.isFinite(lean) && lean >= FLASH_TILT;
-  const flashN = flashExtremeTilt && Number.isFinite(lean) && lean <= -FLASH_TILT;
+  const flashFrac =
+    typeof extremeFlashTiltThreshold === 'number' && Number.isFinite(extremeFlashTiltThreshold)
+      ? Math.min(0.999, Math.max(0.01, extremeFlashTiltThreshold))
+      : 0.3;
+  const flashY = flashExtremeTilt && Number.isFinite(lean) && lean >= flashFrac;
+  const flashN = flashExtremeTilt && Number.isFinite(lean) && lean <= -flashFrac;
   const tip =
     barMode === 'grossLegTotals'
       ? `YES leg ${pctY.toFixed(1)}% ($${fmtUsd(sumYUsd)}) · NO leg ${pctN.toFixed(1)}% ($${fmtUsd(sumNUsd)}) · Σ legs $${fmtUsd(total)} · Staked pill |ΣY−ΣN| $${fmtUsd(netAbs)}`

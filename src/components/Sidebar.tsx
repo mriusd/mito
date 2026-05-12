@@ -48,7 +48,7 @@ import { SidebarBiasMiniBar } from './SidebarBiasMiniBar';
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
-import { ArrowRight, ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
+import { ArrowRight, Bell, ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
 import type { AssetSymbol, Market, Position } from '../types';
 import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
 
@@ -116,6 +116,38 @@ async function playUpdownTiltExtremeSound(kind: 'green' | 'red') {
     osc.stop(t0 + 0.15);
   } catch {
     /* autoplay / no AudioContext */
+  }
+}
+const SIDEBAR_NOTIFY_PLAY_SOUND_KEY = 'polybot-sidebar-notify-play-sound';
+const SIDEBAR_NOTIFY_FLASH_BG_KEY = 'polybot-sidebar-notify-flash-bg';
+const SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_KEY = 'polybot-sidebar-notify-top-threshold-pct';
+
+function readNotifyPlaySound(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_PLAY_SOUND_KEY);
+    if (v === null) return false;
+    return v === '1';
+  } catch {
+    return false;
+  }
+}
+function readNotifyFlashBg(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_FLASH_BG_KEY);
+    if (v === null) return true;
+    return v === '1';
+  } catch {
+    return true;
+  }
+}
+function readNotifyTopThresholdPct(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_KEY);
+    const n = parseFloat(raw ?? '30');
+    if (!Number.isFinite(n)) return 30;
+    return Math.min(99, Math.max(1, Math.round(n)));
+  } catch {
+    return 30;
   }
 }
 /** FAK buy: pay up to this per share to lift asks. */
@@ -270,6 +302,33 @@ export function Sidebar() {
       stakedTopHoldersCohortNoUsd: entry.stakedTopHoldersCohortNoUsd,
     };
   }, [selectedMarket, marketLookup]);
+  const [notifyPlaySound, setNotifyPlaySound] = useState(readNotifyPlaySound);
+  const [notifyFlashBg, setNotifyFlashBg] = useState(readNotifyFlashBg);
+  const [notifyTopThresholdPct, setNotifyTopThresholdPct] = useState(readNotifyTopThresholdPct);
+  const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_PLAY_SOUND_KEY, notifyPlaySound ? '1' : '0');
+    } catch {
+      /* */
+    }
+  }, [notifyPlaySound]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_FLASH_BG_KEY, notifyFlashBg ? '1' : '0');
+    } catch {
+      /* */
+    }
+  }, [notifyFlashBg]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_KEY, String(notifyTopThresholdPct));
+    } catch {
+      /* */
+    }
+  }, [notifyTopThresholdPct]);
+
   /** Up/Down 5m or 15m only — same slug/question heuristics as chart / target price. */
   const isUpDown5mOr15m = useMemo(() => {
     const m = selectedMarket;
@@ -281,7 +340,7 @@ export function Sidebar() {
     const is15 = /updown-15m/i.test(combined) || /\b15[- ]?min/i.test(combined);
     return is5 || is15;
   }, [selectedMarket]);
-  /** Same rule as `StakedLegUsdBar` Top row (`cohortSurplusHalves`, flashExtremeTilt): |lean| ≥ 30% → sidebar bg pulse — Up/Down 5m+15m only. */
+  /** Same rule as Top bar + sidebar flash: |lean| ≥ user threshold (pct) — Up/Down 5m+15m only for sidebar pulse. */
   const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {
     if (!isUpDown5mOr15m) return null;
     const cy = liveShareStats?.stakedTopHoldersCohortYesUsd;
@@ -297,19 +356,24 @@ export function Sidebar() {
     }
     const total = cy + cn;
     const lean = (cy - cn) / total;
-    const FLASH_TILT = 0.3;
-    if (lean >= FLASH_TILT) return 'green';
-    if (lean <= -FLASH_TILT) return 'red';
+    const tiltThresholdFrac = notifyTopThresholdPct / 100;
+    if (lean >= tiltThresholdFrac) return 'green';
+    if (lean <= -tiltThresholdFrac) return 'red';
     return null;
-  }, [isUpDown5mOr15m, liveShareStats?.stakedTopHoldersCohortYesUsd, liveShareStats?.stakedTopHoldersCohortNoUsd]);
+  }, [isUpDown5mOr15m, liveShareStats?.stakedTopHoldersCohortYesUsd, liveShareStats?.stakedTopHoldersCohortNoUsd, notifyTopThresholdPct]);
+
+  const effectiveSidebarBgFlash = useMemo((): 'green' | 'red' | null => {
+    if (!notifyFlashBg) return null;
+    return topBarExtremeBgFlash;
+  }, [notifyFlashBg, topBarExtremeBgFlash]);
 
   useEffect(() => {
-    if (!topBarExtremeBgFlash) return;
+    if (!topBarExtremeBgFlash || !notifyPlaySound) return;
     const k = topBarExtremeBgFlash;
     void playUpdownTiltExtremeSound(k);
     const id = window.setInterval(() => void playUpdownTiltExtremeSound(k), TILT_EXTREME_FLASH_MS);
     return () => clearInterval(id);
-  }, [topBarExtremeBgFlash]);
+  }, [topBarExtremeBgFlash, notifyPlaySound]);
 
   useEffect(() => {
     ensureTiltAudioUnlockListeners();
@@ -1650,6 +1714,80 @@ export function Sidebar() {
         />
       </Suspense>
     )}
+    {notifyDialogOpen && typeof document !== 'undefined' &&
+      createPortal(
+        <div
+          className="fixed inset-0 z-[60200] bg-black/70 flex items-center justify-center"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setNotifyDialogOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-sm mx-4 rounded-lg border border-gray-600 bg-gray-800 p-4"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-bold text-white">Tilt notifications</div>
+              <button
+                type="button"
+                className="p-1 rounded hover:bg-gray-700 text-gray-400"
+                aria-label="Close"
+                onClick={() => setNotifyDialogOpen(false)}
+              >
+                <X className="h-4 w-4" strokeWidth={2} />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs text-gray-200">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="rounded accent-amber-500"
+                  checked={notifyPlaySound}
+                  onChange={(e) => setNotifyPlaySound(e.target.checked)}
+                />
+                <span>Play Sound</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="rounded accent-amber-500"
+                  checked={notifyFlashBg}
+                  onChange={(e) => setNotifyFlashBg(e.target.checked)}
+                />
+                <span>Flash Background</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 shrink-0">Top threshold (%)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  step={1}
+                  className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-20 tabular-nums"
+                  value={notifyTopThresholdPct}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (!Number.isFinite(v)) return;
+                    setNotifyTopThresholdPct(Math.min(99, Math.max(1, Math.round(v))));
+                  }}
+                />
+              </div>
+              <p className="text-[10px] text-gray-500">Notify when Top cohort USD tilt reaches this absolute lean (same as Top bar).</p>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-xs font-medium"
+                onClick={() => setNotifyDialogOpen(false)}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     {isMobileSheet && sidebarOpen && (
       <button
         type="button"
@@ -1660,7 +1798,11 @@ export function Sidebar() {
     )}
     <div
       className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}${
-        topBarExtremeBgFlash === 'green' ? ' sidebar-bg-flash-green' : topBarExtremeBgFlash === 'red' ? ' sidebar-bg-flash-red' : ''
+        effectiveSidebarBgFlash === 'green'
+          ? ' sidebar-bg-flash-green'
+          : effectiveSidebarBgFlash === 'red'
+            ? ' sidebar-bg-flash-red'
+            : ''
       }`}
       style={{ ['--mobile-sheet-offset' as string]: `${mobileDragOffset}px` } as React.CSSProperties}
     >
@@ -2060,18 +2202,30 @@ export function Sidebar() {
                   {sharesInExistenceDisplay}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setToxicDialogOpen(true)}
-                onMouseEnter={preloadToxicFlowDialog}
-                onFocus={preloadToxicFlowDialog}
-                onPointerDown={(e) => e.stopPropagation()}
-                className="rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left hover:bg-yellow-500/20 transition-colors min-w-0"
-                title="Holders Analysis"
-              >
-                <div className="text-[8px] uppercase tracking-wide text-yellow-400 truncate">Holders</div>
-                <div className="tabular-nums font-bold text-yellow-300 truncate">{holdersCountDisplay}</div>
-              </button>
+              <div className="flex gap-1 min-w-0 items-stretch">
+                <button
+                  type="button"
+                  onClick={() => setToxicDialogOpen(true)}
+                  onMouseEnter={preloadToxicFlowDialog}
+                  onFocus={preloadToxicFlowDialog}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="flex-1 min-w-0 rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left hover:bg-yellow-500/20 transition-colors"
+                  title="Holders Analysis"
+                >
+                  <div className="text-[8px] uppercase tracking-wide text-yellow-400 truncate">Holders</div>
+                  <div className="tabular-nums font-bold text-yellow-300 truncate">{holdersCountDisplay}</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotifyDialogOpen(true)}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="shrink-0 rounded border border-gray-600 bg-gray-900/60 px-1.5 py-1 flex flex-col items-center justify-center hover:bg-gray-700/80 transition-colors"
+                  title="Tilt notification settings"
+                  aria-label="Tilt notification settings"
+                >
+                  <Bell className="h-3.5 w-3.5 text-amber-300" strokeWidth={2} />
+                </button>
+              </div>
             </div>
             {/* Compact bias bars */}
             {(() => {
@@ -2139,7 +2293,8 @@ export function Sidebar() {
                           dense
                           compactLabel="Top"
                           barMode="cohortSurplusHalves"
-                          flashExtremeTilt={isUpDown5mOr15m}
+                          flashExtremeTilt={isUpDown5mOr15m && notifyFlashBg}
+                          extremeFlashTiltThreshold={notifyTopThresholdPct / 100}
                         />
                       );
                     }

@@ -5,6 +5,7 @@ import {
   updateProgAutoSell, updateProgLoop, updateProgAnchor, fetchArbProgs, fetchOrderbook,
 } from '../api';
 import { useAppStore } from '../stores/appStore';
+import { useMarketLookupSnapshot } from '../hooks/useMarketLookupSnapshot';
 import { showToast } from '../utils/toast';
 import { getTokenOutcome } from '../utils/format';
 import type { ProgArb, ProgLeg } from '../types';
@@ -121,7 +122,7 @@ export function EditProgDialog() {
   const initialProg = useAppStore((s) => s.editProgArb);
   const setEditProgArb = useAppStore((s) => s.setEditProgArb);
   const setProgArbs = useAppStore((s) => s.setProgArbs);
-  const marketLookup = useAppStore((s) => s.marketLookup);
+  const marketLookup = useMarketLookupSnapshot();
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);

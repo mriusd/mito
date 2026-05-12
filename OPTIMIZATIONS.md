@@ -58,13 +58,24 @@ Notes for `polybot-react`: what shipped, tradeoffs, and backlog ideas.
 - `SidebarChartsRow`: `startTime={upDownStartTime ?? undefined}` for `LiveTradeChart` prop types.
 - `Sidebar`: `Market` type import + full `SidebarLiveOrderbookSectionProps` at call site (`isUpDownMarket`, `sidebarUserBidPrices`, `outcomeMarket`).
 
+### `marketLookup` subscription churn (panels + ToxicFlow + EditProg)
+
+- **Before:** `useAppStore((s) => s.marketLookup)` in PnLPanel, OrderbookPopup, SummaryTable, SmartMoneyPanel, UpOrDownHUDPanel, ArbPositionsTable, EditProgDialog, ToxicFlowDialog (WalletInfo + Toxic) — **every** bid/ask WS flush replaced the lookup object → each panel re-rendered and retained new references (main thread + retained graph growth during long sessions).
+- **After:** Shared hook **`useMarketLookupSnapshot()`** (`marketLookupEpoch` + `getState().marketLookup` in `useMemo`) — one scalar subscription per panel; lookup read only when epoch bumps (same pattern as Sidebar since `marketLookupEpoch` work).
+- **Tradeoff:** Same as Sidebar: if lookup mutates without epoch bump (shouldn’t in current code paths), UI could lag until next WS/API refresh.
+
+### Sidebar live tape / on-chain rows (mirrored state)
+
+- **Before:** `displayLiveTrades`, `onchainSidebarPositions`, `onchainSidebarTrades` were `useState` + `useEffect` copies of hook output → extra renders and duplicate array references during tape WS flood.
+- **After:** **`useMemo`** derives from `useOnchainTradesWS` + `polymarketTape` / `liveTradesSource` with no sync effects.
+
 ---
 
 ## Suggested next optimizations
 
 ### High impact (architecture)
 
-1. **On-chain sidebar tape** (`useOnchainTradesWS` + `displayLiveTrades`) — Reduce parent `Sidebar` churn when only the tape updates (move hook + memo list, or ref + subtree).
+1. **On-chain sidebar tape** (`useOnchainTradesWS` + `displayLiveTrades`) — Partially done: Sidebar no longer mirrors hook output in extra state; optional: move hook + memo list subtree, or virtualize long tape.
 
 ### Medium impact (React / Zustand)
 
@@ -74,10 +85,9 @@ Notes for `polybot-react`: what shipped, tradeoffs, and backlog ideas.
 
 ### Lower impact / polish
 
-1. Apply **`marketLookupEpoch` + `getState().marketLookup`** (or `useMarketLookupSubset`) to **panels** that still subscribe to full `marketLookup` (`OrderbookPopup`, `PnLPanel`, `SmartMoneyPanel`, etc.).
-2. **React Profiler + Web Vitals** — Baseline before/after for sidebar open + market select + WS flood.
-3. **Web Worker for `computeAll`** (signals) — If main-thread jank remains; watch serialization cost vs debounce.
-4. **Document store update paths** — Short ADR on what updates `marketLookup` vs `lastUpdated` so future features don’t reintroduce root subscriptions.
+1. **React Profiler + Web Vitals** — Baseline before/after for sidebar open + market select + WS flood.
+2. **Web Worker for `computeAll`** (signals) — If main-thread jank remains; watch serialization cost vs debounce.
+3. **Document store update paths** — Short ADR on what updates `marketLookup` vs `lastUpdated` so future features don’t reintroduce root subscriptions.
 
 ---
 

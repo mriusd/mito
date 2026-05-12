@@ -39,7 +39,7 @@ import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarke
 import { API_BASE } from '../lib/env';
 import { fetchUpDownTargetFromCrypto, upDownCryptoTimeframe } from '../lib/upDownTargetFromCrypto';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
-import { useOnchainTradesWS, type WSTrade } from '../hooks/useOnchainTradesWS';
+import { useOnchainTradesWS } from '../hooks/useOnchainTradesWS';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
@@ -49,7 +49,7 @@ import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import { ArrowRight, ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
-import type { AssetSymbol, Market } from '../types';
+import type { AssetSymbol, Market, Position } from '../types';
 import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
 
 const ToxicFlowDialogLazy = lazyWithChunkReload(() =>
@@ -126,6 +126,49 @@ function readSidebarOrderKind(): 'limit' | 'market' {
   return 'limit';
 }
 
+function positionTokenKey(id: string): string {
+  const s = String(id || '').trim();
+  if (!s) return '';
+  try {
+    return BigInt(s).toString();
+  } catch {
+    return s;
+  }
+}
+
+/** Prefer on-chain WS sizes; drop REST row when WS shows closed; keep REST metadata when merging. */
+function mergeSidebarPositionsWsRest(
+  rest: Position[],
+  wsRows: Array<{ tokenId: string; size: number; avgPrice: number }>,
+): Position[] {
+  const wsMap = new Map<string, { tokenId: string; size: number; avgPrice: number }>();
+  for (const w of wsRows) {
+    const k = positionTokenKey(w.tokenId);
+    if (k) wsMap.set(k, w);
+  }
+  const usedWs = new Set<string>();
+  const out: Position[] = [];
+  for (const p of rest) {
+    const k = positionTokenKey(p.asset || '');
+    if (!k) continue;
+    const w = wsMap.get(k);
+    if (w) {
+      usedWs.add(k);
+      if (w.size <= 0) continue;
+      const avg = w.avgPrice > 0 ? w.avgPrice : p.avgPrice ?? 0;
+      out.push({ ...p, size: w.size, avgPrice: avg });
+      continue;
+    }
+    if ((p.size || 0) > 0 && !p.redeemable) out.push(p);
+  }
+  for (const w of wsRows) {
+    const k = positionTokenKey(w.tokenId);
+    if (!k || usedWs.has(k) || w.size <= 0) continue;
+    out.push({ asset: w.tokenId, size: w.size, avgPrice: w.avgPrice });
+  }
+  return out;
+}
+
 export function Sidebar() {
   const { isConnected: walletConnected, address: walletAddress } = useAccount();
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
@@ -178,6 +221,26 @@ export function Sidebar() {
       stakedTopHoldersCohortNoUsd: entry.stakedTopHoldersCohortNoUsd,
     };
   }, [selectedMarket, marketLookup]);
+  /** Same rule as `StakedLegUsdBar` Top row (`cohortSurplusHalves`, flashExtremeTilt): |lean| ≥ 30% → sidebar bg pulse. */
+  const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {
+    const cy = liveShareStats?.stakedTopHoldersCohortYesUsd;
+    const cn = liveShareStats?.stakedTopHoldersCohortNoUsd;
+    if (
+      typeof cy !== 'number' ||
+      !Number.isFinite(cy) ||
+      typeof cn !== 'number' ||
+      !Number.isFinite(cn) ||
+      cy + cn <= 1e-9
+    ) {
+      return null;
+    }
+    const total = cy + cn;
+    const lean = (cy - cn) / total;
+    const FLASH_TILT = 0.3;
+    if (lean >= FLASH_TILT) return 'green';
+    if (lean <= -FLASH_TILT) return 'red';
+    return null;
+  }, [liveShareStats?.stakedTopHoldersCohortYesUsd, liveShareStats?.stakedTopHoldersCohortNoUsd]);
   const sharesInExistenceDisplay = useMemo(() => {
     const v = liveShareStats?.sharesInExistence;
     if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
@@ -327,12 +390,6 @@ export function Sidebar() {
   }, [selectedMarket?.conditionId, liveTradesSource]);
   const setOnchainGridPositions = useAppStore((s) => s.setOnchainGridPositions);
 
-  const [onchainSidebarPositions, setOnchainSidebarPositions] = useState<Array<{
-    tokenId: string;
-    size: number;
-    avgPrice: number;
-  }>>([]);
-  const [onchainSidebarTrades, setOnchainSidebarTrades] = useState<WSTrade[]>([]);
   const [proxyWallet, setProxyWallet] = useState<string | null>(null);
   const pkAddress = useAppStore((s) => s.pkAddress);
   const signingMode = useAppStore((s) => s.signingMode);
@@ -351,27 +408,36 @@ export function Sidebar() {
     return () => { cancelled = true; };
   }, [effectiveSidebarEoa]);
 
-  /** Proxy must match DB condition_id / wallet key; prefer store makerAddress when Sidebar proxy resolve lags (else grid WS stays empty). */
-  const onchainWallet =
-    liveTradesSource === 'onchain'
-      ? ((proxyWallet || makerAddressForMerge || '').trim().toLowerCase() || null)
-      : null;
+  /** Trading maker (proxy): WS `subscribeWallet` for live positions whenever resolved — not only when tape is on-chain. */
+  const walletForLivePositions =
+    ((proxyWallet || makerAddressForMerge || '').trim().toLowerCase() || null);
   /** Same resolution as on-chain sidebar: proxy / maker for DB wallet keys. */
   const mergeFunderWallet = (makerAddressForMerge || proxyWallet || '').trim();
   const scopedClobPair = useMemo(() => {
-    if (liveTradesSource !== 'onchain' || !selectedMarket?.clobTokenIds?.length) return null;
+    if (!selectedMarket?.clobTokenIds?.length) return null;
     return selectedMarket.clobTokenIds.map((x) => String(x || '').trim()).filter(Boolean);
-  }, [liveTradesSource, selectedMarket?.clobTokenIds]);
+  }, [selectedMarket?.clobTokenIds]);
   const { trades: onchainLiveTrades, walletPositions: wsPositions, gridWalletPositions, walletTrades: wsTrades, refreshWallet } = useOnchainTradesWS({
     marketId:
       liveTradesSource === 'onchain' && selectedMarket?.conditionId?.trim()
         ? String(selectedMarket.conditionId).trim()
         : null,
     tokenId: liveTradesSource === 'onchain' ? onchainHookTokenId : null,
-    wallet: onchainWallet,
+    wallet: walletForLivePositions,
     scopedClobTokenIds: scopedClobPair,
   });
-  const [displayLiveTrades, setDisplayLiveTrades] = useState(onchainLiveTrades);
+  const displayLiveTrades = useMemo(
+    () => (liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketTape),
+    [liveTradesSource, onchainLiveTrades, polymarketTape],
+  );
+  const onchainSidebarPositions = useMemo(
+    () => (liveTradesSource === 'onchain' ? wsPositions : []),
+    [liveTradesSource, wsPositions],
+  );
+  const onchainSidebarTrades = useMemo(
+    () => (liveTradesSource === 'onchain' ? wsTrades : []),
+    [liveTradesSource, wsTrades],
+  );
 
   const requestCrossingConfirm = useCallback((bestPriceCents: number) => {
     if (useAppStore.getState().disableMarketPriceWarning) {
@@ -405,18 +471,9 @@ export function Sidebar() {
     localStorage.setItem(SIDEBAR_CUSTOM_BUTTONS_KEY, JSON.stringify(customButtons));
   }, [customButtons]);
   useEffect(() => {
-    setDisplayLiveTrades(liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketTape);
-  }, [liveTradesSource, onchainLiveTrades, polymarketTape]);
-  // Sync WS-pushed wallet positions/trades into sidebar state
-  useEffect(() => {
     if (liveTradesSource !== 'onchain') return;
-    setOnchainSidebarPositions(wsPositions);
     setOnchainGridPositions(gridWalletPositions.map((p) => ({ tokenId: p.tokenId, size: p.size })));
-  }, [liveTradesSource, wsPositions, gridWalletPositions, setOnchainGridPositions]);
-  useEffect(() => {
-    if (liveTradesSource !== 'onchain') return;
-    setOnchainSidebarTrades(wsTrades);
-  }, [liveTradesSource, wsTrades]);
+  }, [liveTradesSource, gridWalletPositions, setOnchainGridPositions]);
 
   useEffect(() => {
     localStorage.setItem('sidebar-live-orderbook-expanded', liveOrderbookExpanded ? 'true' : 'false');
@@ -456,12 +513,16 @@ export function Sidebar() {
     };
   }, [selectedMarket, marketLookup]);
   const myPositions = useMemo(() => {
-    if (liveTradesSource !== 'onchain') {
-      return positions.filter((p) => outcomeTokenBelongsToSelectedMarket(String(p.asset || '').trim(), selectedMarket, marketLookup));
-    }
-    return onchainSidebarPositions
+    const wsMarketRows = onchainSidebarPositions
       .filter((p) => outcomeTokenBelongsToSelectedMarket(p.tokenId, selectedMarket, marketLookup))
-      .map((p) => ({ asset: p.tokenId, size: p.size, avgPrice: p.avgPrice }));
+      .map((p) => ({ tokenId: p.tokenId, size: p.size, avgPrice: p.avgPrice }));
+    if (liveTradesSource === 'onchain') {
+      return wsMarketRows.map((p) => ({ asset: p.tokenId, size: p.size, avgPrice: p.avgPrice }));
+    }
+    const restMarket = positions.filter((p) =>
+      outcomeTokenBelongsToSelectedMarket(String(p.asset || '').trim(), selectedMarket, marketLookup),
+    );
+    return mergeSidebarPositionsWsRest(restMarket, wsMarketRows);
   }, [liveTradesSource, positions, selectedMarket, marketLookup, onchainSidebarPositions]);
 
   const mergeEligible = useMemo(() => {
@@ -526,7 +587,7 @@ export function Sidebar() {
     () => (liveTradesSource === 'onchain' ? myTrades : myTrades.slice(0, 20)),
     [liveTradesSource, myTrades],
   );
-  const myOnchainWalletLower = (onchainWallet || '').toLowerCase();
+  const myOnchainWalletLower = (walletForLivePositions || '').toLowerCase();
   const myTradesPnl = useMemo(() => {
     let totalSellCost = 0;
     let totalBuyCost = 0;
@@ -1524,7 +1585,9 @@ export function Sidebar() {
       />
     )}
     <div
-      className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}`}
+      className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}${
+        topBarExtremeBgFlash === 'green' ? ' sidebar-bg-flash-green' : topBarExtremeBgFlash === 'red' ? ' sidebar-bg-flash-red' : ''
+      }`}
       style={{ ['--mobile-sheet-offset' as string]: `${mobileDragOffset}px` } as React.CSSProperties}
     >
       <div
@@ -2453,9 +2516,7 @@ export function Sidebar() {
                 onClick={() => {
                   setPositionsRefreshing(true);
                   triggerWalletRefresh();
-                  if (liveTradesSource === 'onchain') {
-                    refreshWallet();
-                  }
+                  if (walletForLivePositions) refreshWallet();
                   setTimeout(() => setPositionsRefreshing(false), 2000);
                 }}
                 className="text-gray-500 hover:text-white transition shrink-0"

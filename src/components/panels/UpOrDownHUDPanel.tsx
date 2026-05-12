@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
+import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
 import type { AssetName, AssetSymbol, Market } from '../../types';
 import { ASSET_COLORS } from '../../types';
 import { assetToSymbol, formatPolymarketVolumeK, formatPrice, getPolymarketVolumeUsd, getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
@@ -68,7 +69,7 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
-  const marketLookup = useAppStore((s) => s.marketLookup);
+  const marketLookup = useMarketLookupSnapshot();
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);

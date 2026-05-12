@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GraduationCap } from 'lucide-react';
 import { fetchSmartMoneySignals } from '../../api';
 import { useAppStore } from '../../stores/appStore';
+import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
 import type { Market, SmartMoneySignalMarket } from '../../types';
 import { ASSET_COLORS, formatPolymarketVolumeK, formatPriceShort, getSignalTablePriceStr } from '../../utils/format';
 
@@ -32,7 +33,7 @@ function directionToOutcome(direction: string): 'YES' | 'NO' {
 }
 
 export function SmartMoneyPanel() {
-  const marketLookup = useAppStore((s) => s.marketLookup);
+  const marketLookup = useMarketLookupSnapshot();
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);

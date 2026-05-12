@@ -94,6 +94,32 @@ html, body, #root {
   animation: sidebar-bar-seg-flash 0.55s ease-in-out infinite;
 }
 
+/* Whole sidebar bg when Top cohort bar |tilt| ≥ 30% (matches StakedLegUsdBar flashExtremeTilt). */
+.sidebar-bg-flash-green {
+  animation: sidebar-bg-flash-green 0.55s ease-in-out infinite;
+}
+.sidebar-bg-flash-red {
+  animation: sidebar-bg-flash-red 0.55s ease-in-out infinite;
+}
+@keyframes sidebar-bg-flash-green {
+  0%,
+  100% {
+    background-color: #1f2937;
+  }
+  50% {
+    background-color: #14532d;
+  }
+}
+@keyframes sidebar-bg-flash-red {
+  0%,
+  100% {
+    background-color: #1f2937;
+  }
+  50% {
+    background-color: #7f1d1d;
+  }
+}
+
 input[type="number"].no-spin::-webkit-outer-spin-button,
 input[type="number"].no-spin::-webkit-inner-spin-button {
   -webkit-appearance: none;

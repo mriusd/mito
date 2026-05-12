@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../../stores/appStore';
+import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
 import { fetchArbProgs, fetchPnlDrilldownAll, cancelProgArb } from '../../api';
 import type { DrilldownProg } from '../../api';
 import { getTokenOutcome } from '../../utils/format';
@@ -58,7 +59,7 @@ function classifyProg(p: ProgArb): string {
 export function ArbPositionsTable() {
   const progArbs = useAppStore((s) => s.progArbs) as ProgArb[];
   const setProgArbs = useAppStore((s) => s.setProgArbs);
-  const marketLookup = useAppStore((s) => s.marketLookup);
+  const marketLookup = useMarketLookupSnapshot();
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);

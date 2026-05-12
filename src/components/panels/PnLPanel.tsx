@@ -1,5 +1,6 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
+import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
 import { fetchWalletPnlDaily } from '../../api';
 import type { Trade } from '../../types';
 import { getTradeClobTokenId } from '../../utils/format';
@@ -61,7 +62,7 @@ function classifyMarketType(question: string | null | undefined, eventSlug?: str
 
 export function PnLPanel() {
   const trades = useAppStore((s) => s.trades);
-  const marketLookup = useAppStore((s) => s.marketLookup);
+  const marketLookup = useMarketLookupSnapshot();
   const makerAddress = useAppStore((s) => s.makerAddress);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
 

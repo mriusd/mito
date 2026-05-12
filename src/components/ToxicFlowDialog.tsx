@@ -14,6 +14,7 @@ import type { ToxicFlowData, WalletPosition, WalletSummary, OnchainFillRow } fro
 import type { Market } from '../types';
 import { shortenUpDownMarketListCell, ASSET_COLORS, extractAssetFromMarket, assetTickerFromQuestion } from '../utils/format';
 import { useAppStore } from '../stores/appStore';
+import { useMarketLookupSnapshot } from '../hooks/useMarketLookupSnapshot';
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { HelperTooltip } from './HelperTooltip';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
@@ -954,7 +955,7 @@ export function WalletInfoDialog({
   initialMarketId?: string;
   onClose: () => void;
 }) {
-  const marketLookup = useAppStore((s) => s.marketLookup);
+  const marketLookup = useMarketLookupSnapshot();
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [markets, setMarkets] = useState<WalletPosition[]>([]);
   const [selectedMarketId, setSelectedMarketId] = useState('');
@@ -1496,7 +1497,7 @@ export function WalletInfoDialog({
 }
 
 export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClose }: ToxicFlowDialogProps) {
-  const marketLookup = useAppStore((s) => s.marketLookup);
+  const marketLookup = useMarketLookupSnapshot();
   const [marketStakedLegsRest, setMarketStakedLegsRest] = useState<MarketStakedLegsResponse | null>(null);
 
   const liveStakedLegUsd = useMemo(() => {

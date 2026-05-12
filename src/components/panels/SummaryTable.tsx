@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../stores/appStore';
+import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
 import { fetchPnlSummary } from '../../api';
 import { extractAssetFromMarket } from '../../utils/format';
 // import { RefreshCw } from 'lucide-react';
@@ -9,7 +10,7 @@ type PnlMap = Record<string, Record<string, PnlEntry>>;
 
 export function SummaryTable() {
   const positions = useAppStore((s) => s.positions);
-  const marketLookup = useAppStore((s) => s.marketLookup);
+  const marketLookup = useMarketLookupSnapshot();
   const allMarkets = useAppStore((s) => s.aboveMarkets);
   const priceOnMarkets = useAppStore((s) => s.priceOnMarkets);
   const showPast = useAppStore((s) => s.showPast);

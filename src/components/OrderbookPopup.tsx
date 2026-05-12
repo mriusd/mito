@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { fetchOrderbook } from '../api';
 import { useAppStore } from '../stores/appStore';
+import { useMarketLookupSnapshot } from '../hooks/useMarketLookupSnapshot';
 import { BsFlower } from './BsFlower';
 import { isMarketInWeeklyHitMarkets } from '../utils/bsMath';
 import { shortenMarketName } from '../utils/format';
@@ -46,7 +47,7 @@ function shortenTitle(title: string): string {
 export function OrderbookPopup() {
   const positions = useAppStore((s) => s.positions);
   const orders = useAppStore((s) => s.orders);
-  const marketLookup = useAppStore((s) => s.marketLookup);
+  const marketLookup = useMarketLookupSnapshot();
   const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 

@@ -94,11 +94,11 @@ html, body, #root {
   animation: sidebar-bar-seg-flash 0.55s ease-in-out infinite;
 }
 
-/* Whole sidebar bg when Top cohort bar |tilt| ≥ 30% (matches StakedLegUsdBar flashExtremeTilt). */
-.sidebar-bg-flash-green {
+/* Stats row + bias bars only (not full sidebar). */
+.sidebar-stats-flash-green {
   animation: sidebar-bg-flash-green 0.55s ease-in-out infinite;
 }
-.sidebar-bg-flash-red {
+.sidebar-stats-flash-red {
   animation: sidebar-bg-flash-red 0.55s ease-in-out infinite;
 }
 @keyframes sidebar-bg-flash-green {

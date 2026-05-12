@@ -109,6 +109,12 @@ export function formatPolymarketVolumeK(usd: number | null): string {
   return `${(usd / 1000).toFixed(1)}k`;
 }
 
+/** Thousands of USDC, integer k (e.g. 12k) — narrow sidebar pills. */
+export function formatPolymarketVolumeKInteger(usd: number | null): string {
+  if (usd === null || !Number.isFinite(usd)) return '—';
+  return `${Math.round(usd / 1000)}k`;
+}
+
 /** Sidebar orderbook line only: Vol. 12.3k$; Vol. — when unknown. */
 export function formatPolymarketVolumeSidebar(usd: number | null): string {
   if (usd === null || !Number.isFinite(usd)) return 'Vol. —';

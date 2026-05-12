@@ -21,6 +21,7 @@ import { signingDialog, isDialogHidden } from './SigningDialog';
 import {
   extractAssetFromMarket,
   formatPolymarketVolumeK,
+  formatPolymarketVolumeKInteger,
   formatPriceShort,
   getMarketPriceCondition,
   getOrderClobTokenId,
@@ -69,7 +70,7 @@ function preloadMergePositionsDialog() {
 }
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
-/** Match `StakedLegUsdBar` flash + `sidebar-bg-flash-*` CSS. */
+/** Match `StakedLegUsdBar` flash + `sidebar-stats-flash-*` CSS. */
 const TILT_EXTREME_FLASH_MS = 550;
 
 let tiltExtremeAudioCtx: AudioContext | null = null;
@@ -121,6 +122,7 @@ async function playUpdownTiltExtremeSound(kind: 'green' | 'red') {
 const SIDEBAR_NOTIFY_PLAY_SOUND_KEY = 'polybot-sidebar-notify-play-sound';
 const SIDEBAR_NOTIFY_FLASH_BG_KEY = 'polybot-sidebar-notify-flash-bg';
 const SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_KEY = 'polybot-sidebar-notify-top-threshold-pct';
+const SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY = 'polybot-sidebar-notify-staked-min-usd';
 
 function readNotifyPlaySound(): boolean {
   try {
@@ -148,6 +150,16 @@ function readNotifyTopThresholdPct(): number {
     return Math.min(99, Math.max(1, Math.round(n)));
   } catch {
     return 30;
+  }
+}
+function readNotifyStakedMinUsd(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY);
+    const n = parseFloat(raw ?? '0');
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.min(1e12, n);
+  } catch {
+    return 0;
   }
 }
 /** FAK buy: pay up to this per share to lift asks. */
@@ -271,7 +283,7 @@ export function Sidebar() {
   const liveOrderbookVolumeDisplay = useMemo(() => {
     if (!selectedMarket?.clobTokenIds?.[0]) return null;
     const usd = getPolymarketVolumeUsd(selectedMarket, selectedMarket.clobTokenIds[0], marketLookup);
-    return formatPolymarketVolumeK(usd);
+    return formatPolymarketVolumeKInteger(usd);
   }, [selectedMarket, marketLookup]);
   const liveShareStats = useMemo(() => {
     const tokenId = selectedMarket?.clobTokenIds?.[0];
@@ -305,6 +317,7 @@ export function Sidebar() {
   const [notifyPlaySound, setNotifyPlaySound] = useState(readNotifyPlaySound);
   const [notifyFlashBg, setNotifyFlashBg] = useState(readNotifyFlashBg);
   const [notifyTopThresholdPct, setNotifyTopThresholdPct] = useState(readNotifyTopThresholdPct);
+  const [notifyStakedMinUsd, setNotifyStakedMinUsd] = useState(readNotifyStakedMinUsd);
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -328,6 +341,13 @@ export function Sidebar() {
       /* */
     }
   }, [notifyTopThresholdPct]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY, String(notifyStakedMinUsd));
+    } catch {
+      /* */
+    }
+  }, [notifyStakedMinUsd]);
 
   /** Up/Down 5m or 15m only — same slug/question heuristics as chart / target price. */
   const isUpDown5mOr15m = useMemo(() => {
@@ -362,19 +382,6 @@ export function Sidebar() {
     return null;
   }, [isUpDown5mOr15m, liveShareStats?.stakedTopHoldersCohortYesUsd, liveShareStats?.stakedTopHoldersCohortNoUsd, notifyTopThresholdPct]);
 
-  const effectiveSidebarBgFlash = useMemo((): 'green' | 'red' | null => {
-    if (!notifyFlashBg) return null;
-    return topBarExtremeBgFlash;
-  }, [notifyFlashBg, topBarExtremeBgFlash]);
-
-  useEffect(() => {
-    if (!topBarExtremeBgFlash || !notifyPlaySound) return;
-    const k = topBarExtremeBgFlash;
-    void playUpdownTiltExtremeSound(k);
-    const id = window.setInterval(() => void playUpdownTiltExtremeSound(k), TILT_EXTREME_FLASH_MS);
-    return () => clearInterval(id);
-  }, [topBarExtremeBgFlash, notifyPlaySound]);
-
   useEffect(() => {
     ensureTiltAudioUnlockListeners();
   }, []);
@@ -382,9 +389,7 @@ export function Sidebar() {
   const sharesInExistenceDisplay = useMemo(() => {
     const v = liveShareStats?.sharesInExistence;
     if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
-    return Math.abs(v) >= 1000
-      ? v.toLocaleString(undefined, { maximumFractionDigits: 0 })
-      : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
   }, [liveShareStats]);
   const holdersCountDisplay = useMemo(() => {
     const v = liveShareStats?.holders;
@@ -478,6 +483,27 @@ export function Sidebar() {
         : Math.abs(sidebarStakedLegs.stakedUsdYesLeg - sidebarStakedLegs.stakedUsdNoLeg);
     return Number.isFinite(net) ? net : null;
   }, [sidebarStakedLegs]);
+
+  /** Tilt flash/sound only when net staked (pill) exceeds configured USD; 0 = no minimum. */
+  const notifyStakedGatePasses = useMemo(() => {
+    if (notifyStakedMinUsd <= 0) return true;
+    if (marketStakedNetUsdAbs == null || !Number.isFinite(marketStakedNetUsdAbs)) return false;
+    return marketStakedNetUsdAbs > notifyStakedMinUsd;
+  }, [notifyStakedMinUsd, marketStakedNetUsdAbs]);
+
+  const effectiveSidebarBgFlash = useMemo((): 'green' | 'red' | null => {
+    if (!notifyFlashBg || !notifyStakedGatePasses) return null;
+    return topBarExtremeBgFlash;
+  }, [notifyFlashBg, notifyStakedGatePasses, topBarExtremeBgFlash]);
+
+  useEffect(() => {
+    if (!topBarExtremeBgFlash || !notifyPlaySound || !notifyStakedGatePasses) return;
+    const k = topBarExtremeBgFlash;
+    void playUpdownTiltExtremeSound(k);
+    const id = window.setInterval(() => void playUpdownTiltExtremeSound(k), TILT_EXTREME_FLASH_MS);
+    return () => clearInterval(id);
+  }, [topBarExtremeBgFlash, notifyPlaySound, notifyStakedGatePasses]);
+
   const marketStakedNetKDisplay = useMemo(() => {
     if (marketStakedNetUsdAbs == null) return null;
     return formatPolymarketVolumeK(marketStakedNetUsdAbs);
@@ -1774,6 +1800,24 @@ export function Sidebar() {
                 />
               </div>
               <p className="text-[10px] text-gray-500">Notify when Top cohort USD tilt reaches this absolute lean (same as Top bar).</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-gray-400 shrink-0">Staked min (USDC)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={100}
+                  className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-28 tabular-nums"
+                  value={notifyStakedMinUsd}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (!Number.isFinite(v)) return;
+                    setNotifyStakedMinUsd(Math.min(1e12, Math.max(0, v)));
+                  }}
+                />
+              </div>
+              <p className="text-[10px] text-gray-500">
+                Flash/sound only when net staked (sidebar pill) is greater than this. 0 = no minimum.
+              </p>
             </div>
             <div className="mt-4 flex justify-end">
               <button
@@ -1797,13 +1841,7 @@ export function Sidebar() {
       />
     )}
     <div
-      className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}${
-        effectiveSidebarBgFlash === 'green'
-          ? ' sidebar-bg-flash-green'
-          : effectiveSidebarBgFlash === 'red'
-            ? ' sidebar-bg-flash-red'
-            : ''
-      }`}
+      className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}`}
       style={{ ['--mobile-sheet-offset' as string]: `${mobileDragOffset}px` } as React.CSSProperties}
     >
       <div
@@ -2145,7 +2183,17 @@ export function Sidebar() {
           })()}
 
           <div className="sidebar-section py-1">
-            <div className="grid grid-cols-4 gap-1.5 text-[10px] min-w-0">
+            <div className="flex gap-1.5 items-stretch min-w-0">
+              <div
+                className={`flex-1 min-w-0 min-h-0 rounded-md px-1 py-0.5 -mx-1${
+                  effectiveSidebarBgFlash === 'green'
+                    ? ' sidebar-stats-flash-green'
+                    : effectiveSidebarBgFlash === 'red'
+                      ? ' sidebar-stats-flash-red'
+                      : ''
+                }`}
+              >
+                <div className="grid grid-cols-4 gap-1.5 text-[10px] min-w-0">
               <div className="rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0">
                 <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Volume</div>
                 <div
@@ -2202,30 +2250,18 @@ export function Sidebar() {
                   {sharesInExistenceDisplay}
                 </div>
               </div>
-              <div className="flex gap-1 min-w-0 items-stretch">
-                <button
-                  type="button"
-                  onClick={() => setToxicDialogOpen(true)}
-                  onMouseEnter={preloadToxicFlowDialog}
-                  onFocus={preloadToxicFlowDialog}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  className="flex-1 min-w-0 rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left hover:bg-yellow-500/20 transition-colors"
-                  title="Holders Analysis"
-                >
-                  <div className="text-[8px] uppercase tracking-wide text-yellow-400 truncate">Holders</div>
-                  <div className="tabular-nums font-bold text-yellow-300 truncate">{holdersCountDisplay}</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNotifyDialogOpen(true)}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  className="shrink-0 rounded border border-gray-600 bg-gray-900/60 px-1.5 py-1 flex flex-col items-center justify-center hover:bg-gray-700/80 transition-colors"
-                  title="Tilt notification settings"
-                  aria-label="Tilt notification settings"
-                >
-                  <Bell className="h-3.5 w-3.5 text-amber-300" strokeWidth={2} />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setToxicDialogOpen(true)}
+                onMouseEnter={preloadToxicFlowDialog}
+                onFocus={preloadToxicFlowDialog}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left hover:bg-yellow-500/20 transition-colors min-w-0 block w-full"
+                title="Holders Analysis"
+              >
+                <div className="text-[8px] uppercase tracking-wide text-yellow-400 truncate">Holders</div>
+                <div className="tabular-nums font-bold text-yellow-300 truncate">{holdersCountDisplay}</div>
+              </button>
             </div>
             {/* Compact bias bars */}
             {(() => {
@@ -2293,7 +2329,7 @@ export function Sidebar() {
                           dense
                           compactLabel="Top"
                           barMode="cohortSurplusHalves"
-                          flashExtremeTilt={isUpDown5mOr15m && notifyFlashBg}
+                          flashExtremeTilt={isUpDown5mOr15m && notifyFlashBg && notifyStakedGatePasses}
                           extremeFlashTiltThreshold={notifyTopThresholdPct / 100}
                         />
                       );
@@ -2303,6 +2339,18 @@ export function Sidebar() {
                 </div>
               );
             })()}
+              </div>
+              <button
+                type="button"
+                onClick={() => setNotifyDialogOpen(true)}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="shrink-0 w-8 rounded border border-gray-600 bg-gray-900/60 px-1 flex flex-col items-center justify-center hover:bg-gray-700/80 transition-colors self-stretch"
+                title="Tilt notification settings"
+                aria-label="Tilt notification settings"
+              >
+                <Bell className="h-3.5 w-3.5 text-amber-300" strokeWidth={2} />
+              </button>
+            </div>
           </div>
 
           {/* Live Orderbook + Trades */}

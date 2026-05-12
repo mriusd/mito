@@ -3002,7 +3002,7 @@ export function Sidebar() {
             liveTradesSectionHeight={liveTradesSectionHeight}
             liveOrderbookExpanded={liveOrderbookExpanded}
             displayLiveTrades={displayLiveTrades}
-            tradeTickNow={tradeTickNow}
+            tradeTickBucket={Math.floor(tradeTickNow / 5000) * 5000}
             liveTradesSource={liveTradesSource}
             myOnchainWalletLower={myOnchainWalletLower}
           />

@@ -96,15 +96,27 @@ function loadStoredCredsForBundle(eoa: string, proxyWalletLc: string): boolean {
   try {
     const parsed = JSON.parse(raw);
     if (!parsed?.key || !parsed?.secret || !parsed?.passphrase) return false;
-    const pw = String(parsed.proxyWallet || '').trim().toLowerCase();
-    if (pw !== proxyWalletLc) return false;
+    const storedPw = String(parsed.proxyWallet || '').trim().toLowerCase();
+    const eoaLc = eoa.trim().toLowerCase();
+    const makerLc = proxyWalletLc.trim().toLowerCase();
+    // L2 creds are per signer EOA. Stored `proxyWallet` can disagree with freshly resolved maker
+    // (Gamma lag, null→Safe, env) — refusing load caused re-L1 sign every PK↔wallet toggle.
     cachedCreds = {
       key: String(parsed.key),
       secret: String(parsed.secret),
       passphrase: String(parsed.passphrase),
     };
-    cachedAddress = eoa.trim().toLowerCase();
-    cachedProxyWallet = pw;
+    cachedAddress = eoaLc;
+    cachedProxyWallet = makerLc;
+    if (storedPw !== makerLc) {
+      polyClobLog({
+        event: 'storedCredsProxyRealigned',
+        eoa: eoaLc,
+        stored: storedPw || '(empty)',
+        current: makerLc,
+      });
+      persistCreds();
+    }
     return true;
   } catch {
     return false;

@@ -647,6 +647,13 @@ export function Sidebar() {
     return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 0 : 1] || null;
   }, [sidebarOpen, selectedMarket, orderOutcome]);
   const sidebarBookRef = useRef<SidebarPolymarketBookSnapshot | null>(null);
+  /** Keep latest market/book lookup for tilt sound mute check — must not rerun sound interval on each book bump. */
+  const tiltSoundMarketRef = useRef(selectedMarket);
+  const tiltSoundOutcomeRef = useRef(orderOutcome);
+  const tiltSoundLookupRef = useRef(marketLookup);
+  tiltSoundMarketRef.current = selectedMarket;
+  tiltSoundOutcomeRef.current = orderOutcome;
+  tiltSoundLookupRef.current = marketLookup;
   /** Recomputed summary / spot-strip when Host reports top-of-book change (not every depth tick). */
   const [topOfBookDigest, setTopOfBookDigest] = useState(0);
   const bumpTopOfBookDigest = useCallback(() => {
@@ -658,34 +665,59 @@ export function Sidebar() {
   useEffect(() => {
     if (!topBarExtremeBgFlash || !notifyPlaySound || !notifyStakedGatePasses) return;
 
-    const tid = selectedMarket?.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1];
-    let midCents: number | null = null;
-    if (tid) {
-      const displayBids = sidebarBookRef.current?.displayBids ?? [];
-      const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
-      const bestBidCents = displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
-      const bestAskCents = displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
-      if (bestBidCents != null && bestAskCents != null && Number.isFinite(bestBidCents) && Number.isFinite(bestAskCents)) {
-        midCents = (bestBidCents + bestAskCents) / 2;
-      } else {
-        const row = marketLookup[tid];
-        if (row) {
-          const b = typeof row.bestBid === 'number' && Number.isFinite(row.bestBid) ? row.bestBid * 100 : null;
-          const a = typeof row.bestAsk === 'number' && Number.isFinite(row.bestAsk) ? row.bestAsk * 100 : null;
-          if (b != null && a != null) midCents = (b + a) / 2;
-          else if (b != null) midCents = b;
-          else if (a != null) midCents = a;
-        }
-      }
-    }
-    if (midCents != null && midCents > notifySoundMaxPriceCents) return;
-
     const k = topBarExtremeBgFlash;
     const mul = notifySoundPitchMul;
     const rt = notifyRingTimeS;
-    void playUpdownTiltExtremeSound(k, mul, rt);
+    const maxCents = notifySoundMaxPriceCents;
+
+    const midOkForSound = (): boolean => {
+      const sm = tiltSoundMarketRef.current;
+      const oc = tiltSoundOutcomeRef.current;
+      const lookup = tiltSoundLookupRef.current;
+      const tid = sm?.clobTokenIds?.[oc === 'YES' ? 0 : 1];
+      let midCents: number | null = null;
+      if (tid) {
+        const displayBids = sidebarBookRef.current?.displayBids ?? [];
+        const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
+        const bestBidCents =
+          displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
+        const bestAskCents =
+          displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
+        if (
+          bestBidCents != null &&
+          bestAskCents != null &&
+          Number.isFinite(bestBidCents) &&
+          Number.isFinite(bestAskCents)
+        ) {
+          midCents = (bestBidCents + bestAskCents) / 2;
+        } else {
+          const row = lookup[tid];
+          if (row) {
+            const b =
+              typeof row.bestBid === 'number' && Number.isFinite(row.bestBid)
+                ? row.bestBid * 100
+                : null;
+            const a =
+              typeof row.bestAsk === 'number' && Number.isFinite(row.bestAsk)
+                ? row.bestAsk * 100
+                : null;
+            if (b != null && a != null) midCents = (b + a) / 2;
+            else if (b != null) midCents = b;
+            else if (a != null) midCents = a;
+          }
+        }
+      }
+      return !(midCents != null && midCents > maxCents);
+    };
+
+    const tick = () => {
+      if (!midOkForSound()) return;
+      void playUpdownTiltExtremeSound(k, mul, rt);
+    };
+
+    tick();
     const repeatMs = Math.max(TILT_EXTREME_FLASH_MS, Math.ceil(rt * 1000) + 80);
-    const id = window.setInterval(() => void playUpdownTiltExtremeSound(k, mul, rt), repeatMs);
+    const id = window.setInterval(tick, repeatMs);
     return () => clearInterval(id);
   }, [
     topBarExtremeBgFlash,
@@ -694,11 +726,6 @@ export function Sidebar() {
     notifySoundPitchMul,
     notifyRingTimeS,
     notifySoundMaxPriceCents,
-    selectedMarket,
-    orderOutcome,
-    marketLookup,
-    marketLookupEpoch,
-    topOfBookDigest,
   ]);
 
   const onPolymarketTradesFromHost = useCallback((t: LiveTrade[]) => {

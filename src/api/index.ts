@@ -317,44 +317,81 @@ export async function fetchPriceHistory(tokenId: string, interval = 'max', fidel
  * while the other still read those YES fields as the NO book → duplicate YES/NO cells after updates.
  * YES entry: shallow clone with API bid/ask. NO entry: clone without top-level bid/ask until WS patches that token.
  */
-function addMarketToTokenLookup(lookup: Record<string, Market>, m: Market) {
+/** Cheap content signature — must include every field the UI actually reads off `marketLookup`. */
+function marketContentSig(m: Market, leg: 'YES' | 'NO'): string {
+  return [
+    leg,
+    m.id,
+    m.bestBid ?? '',
+    m.bestAsk ?? '',
+    m.closed ? 1 : 0,
+    m.endDate ?? '',
+    m.volume ?? '',
+    m.question ?? '',
+    m.groupItemTitle ?? '',
+    m.outcomePrices ?? '',
+  ].join('\x01');
+}
+
+function addMarketToTokenLookup(
+  lookup: Record<string, Market>,
+  prev: Record<string, Market> | undefined,
+  prevSigs: Record<string, string> | undefined,
+  nextSigs: Record<string, string>,
+  m: Market,
+) {
   const tokenIds = m.clobTokenIds || [];
   if (tokenIds.length === 0) return;
+  const reuseOrClone = (id: string, leg: 'YES' | 'NO', clearBidAsk: boolean) => {
+    const sig = marketContentSig(m, leg);
+    nextSigs[id] = sig;
+    if (prev && prevSigs && prevSigs[id] === sig && prev[id]) {
+      lookup[id] = prev[id];
+      return;
+    }
+    lookup[id] = clearBidAsk ? { ...m, bestBid: undefined, bestAsk: undefined } : { ...m };
+  };
   if (tokenIds.length === 1) {
-    const id = tokenIds[0];
-    if (id) lookup[id] = { ...m };
+    if (tokenIds[0]) reuseOrClone(tokenIds[0], 'YES', false);
     return;
   }
-  const yesId = tokenIds[0];
-  const noId = tokenIds[1];
-  if (yesId) lookup[yesId] = { ...m };
-  if (noId) lookup[noId] = { ...m, bestBid: undefined, bestAsk: undefined };
+  if (tokenIds[0]) reuseOrClone(tokenIds[0], 'YES', false);
+  if (tokenIds[1]) reuseOrClone(tokenIds[1], 'NO', true);
 }
+
+/** Cached per-token signatures from the previous `buildMarketLookup` call — lets us reuse Market refs when content hasn't changed (was 1k+ fresh Market objects per poll for no reason). */
+let lastSigsRef: Record<string, string> | null = null;
+let lastLookupRef: Record<string, Market> | null = null;
 
 export function buildMarketLookup(aboveMarkets: Record<string, Market[]>, priceOnMarkets: Record<string, Market[]>, weeklyHitMarkets: Record<string, Market[]> = {}, upOrDownMarkets: Record<string, Record<string, Market[]>> = {}): Record<string, Market> {
   const lookup: Record<string, Market> = {};
+  const nextSigs: Record<string, string> = {};
+  const prevSigs = lastSigsRef ?? undefined;
+  const prev = lastLookupRef ?? undefined;
   for (const assetName of Object.keys(aboveMarkets)) {
     for (const m of aboveMarkets[assetName] || []) {
-      addMarketToTokenLookup(lookup, m);
+      addMarketToTokenLookup(lookup, prev, prevSigs, nextSigs, m);
     }
   }
   for (const assetName of Object.keys(priceOnMarkets)) {
     for (const m of priceOnMarkets[assetName] || []) {
-      addMarketToTokenLookup(lookup, m);
+      addMarketToTokenLookup(lookup, prev, prevSigs, nextSigs, m);
     }
   }
   for (const assetName of Object.keys(weeklyHitMarkets)) {
     for (const m of weeklyHitMarkets[assetName] || []) {
-      addMarketToTokenLookup(lookup, m);
+      addMarketToTokenLookup(lookup, prev, prevSigs, nextSigs, m);
     }
   }
   for (const assetName of Object.keys(upOrDownMarkets)) {
     for (const tf of Object.keys(upOrDownMarkets[assetName] || {})) {
       for (const m of upOrDownMarkets[assetName][tf] || []) {
-        addMarketToTokenLookup(lookup, m);
+        addMarketToTokenLookup(lookup, prev, prevSigs, nextSigs, m);
       }
     }
   }
+  lastSigsRef = nextSigs;
+  lastLookupRef = lookup;
   return lookup;
 }
 

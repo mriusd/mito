@@ -169,12 +169,19 @@ async function playUpdownTiltExtremeSound(kind: 'green' | 'red', pitchMul = 1, r
     /* autoplay / no AudioContext */
   }
 }
+
+function pitchMulFromNotifyFreqSlider(slider0to100: number): number {
+  const s = Math.min(100, Math.max(0, slider0to100));
+  return 0.25 * 16 ** (s / 100);
+}
+
 const SIDEBAR_NOTIFY_PLAY_SOUND_KEY = 'polybot-sidebar-notify-play-sound';
 const SIDEBAR_NOTIFY_FLASH_BG_KEY = 'polybot-sidebar-notify-flash-bg';
 const SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_KEY = 'polybot-sidebar-notify-top-threshold-pct';
 const SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY = 'polybot-sidebar-notify-staked-min-usd';
 const SIDEBAR_NOTIFY_SOUND_FREQ_KEY = 'polybot-sidebar-notify-sound-freq';
 const SIDEBAR_NOTIFY_RING_TIME_S_KEY = 'polybot-sidebar-notify-ring-time-s';
+const SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-sound-max-price-cents';
 
 function readNotifyPlaySound(): boolean {
   try {
@@ -233,6 +240,16 @@ function readNotifyRingTimeS(): number {
     return Math.min(5, Math.max(0.05, Math.round(n * 100) / 100));
   } catch {
     return 0.5;
+  }
+}
+function readNotifySoundMaxPriceCents(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY);
+    const n = parseFloat(raw ?? '95');
+    if (!Number.isFinite(n)) return 95;
+    return Math.min(99, Math.max(1, Math.round(n)));
+  } catch {
+    return 95;
   }
 }
 /** FAK buy: pay up to this per share to lift asks. */
@@ -352,6 +369,7 @@ export function Sidebar() {
   /** Edge-detect expiry on the same sidebar selection — skip when user navigates to an already-expired market. */
   const autoSwitchPrevSelectedIdRef = useRef<string | null>(null);
   const autoSwitchPrevExpiredRef = useRef(false);
+  const freqSliderPreviewLastMs = useRef(0);
 
   const liveOrderbookVolumeDisplay = useMemo(() => {
     if (!selectedMarket?.clobTokenIds?.[0]) return null;
@@ -393,6 +411,7 @@ export function Sidebar() {
   const [notifyStakedMinUsd, setNotifyStakedMinUsd] = useState(readNotifyStakedMinUsd);
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
   const [notifyRingTimeS, setNotifyRingTimeS] = useState(readNotifyRingTimeS);
+  const [notifySoundMaxPriceCents, setNotifySoundMaxPriceCents] = useState(readNotifySoundMaxPriceCents);
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -437,10 +456,17 @@ export function Sidebar() {
       /* */
     }
   }, [notifyRingTimeS]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY, String(notifySoundMaxPriceCents));
+    } catch {
+      /* */
+    }
+  }, [notifySoundMaxPriceCents]);
 
   /** Slider 0 → 0.25×, 50 → 1×, 100 → 4× (exponential). */
   const notifySoundPitchMul = useMemo(
-    () => 0.25 * 16 ** (notifySoundFreqSlider / 100),
+    () => pitchMulFromNotifyFreqSlider(notifySoundFreqSlider),
     [notifySoundFreqSlider],
   );
 
@@ -483,6 +509,11 @@ export function Sidebar() {
 
   const holdersCountDisplay = useMemo(() => {
     const v = liveShareStats?.holders;
+    if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
+    return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }, [liveShareStats]);
+  const sharesInExistenceDisplay = useMemo(() => {
+    const v = liveShareStats?.sharesInExistence;
     if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
     return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
   }, [liveShareStats]);
@@ -586,22 +617,6 @@ export function Sidebar() {
     return topBarExtremeBgFlash;
   }, [notifyFlashBg, notifyStakedGatePasses, topBarExtremeBgFlash]);
 
-  const notifyBellPulse = useMemo(() => {
-    if (!topBarExtremeBgFlash || !notifyStakedGatePasses) return false;
-    return notifyFlashBg || notifyPlaySound;
-  }, [topBarExtremeBgFlash, notifyStakedGatePasses, notifyFlashBg, notifyPlaySound]);
-
-  useEffect(() => {
-    if (!topBarExtremeBgFlash || !notifyPlaySound || !notifyStakedGatePasses) return;
-    const k = topBarExtremeBgFlash;
-    const mul = notifySoundPitchMul;
-    const rt = notifyRingTimeS;
-    void playUpdownTiltExtremeSound(k, mul, rt);
-    const repeatMs = Math.max(TILT_EXTREME_FLASH_MS, Math.ceil(rt * 1000) + 80);
-    const id = window.setInterval(() => void playUpdownTiltExtremeSound(k, mul, rt), repeatMs);
-    return () => clearInterval(id);
-  }, [topBarExtremeBgFlash, notifyPlaySound, notifyStakedGatePasses, notifySoundPitchMul, notifyRingTimeS]);
-
   const marketStakedNetKDisplay = useMemo(() => {
     if (marketStakedNetUsdAbs == null) return null;
     return formatPolymarketVolumeK(marketStakedNetUsdAbs);
@@ -637,7 +652,55 @@ export function Sidebar() {
   const bumpTopOfBookDigest = useCallback(() => {
     setTopOfBookDigest((n) => n + 1);
   }, []);
+
   const [polymarketTape, setPolymarketTape] = useState<LiveTrade[]>([]);
+
+  useEffect(() => {
+    if (!topBarExtremeBgFlash || !notifyPlaySound || !notifyStakedGatePasses) return;
+
+    const tid = selectedMarket?.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1];
+    let midCents: number | null = null;
+    if (tid) {
+      const displayBids = sidebarBookRef.current?.displayBids ?? [];
+      const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
+      const bestBidCents = displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
+      const bestAskCents = displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
+      if (bestBidCents != null && bestAskCents != null && Number.isFinite(bestBidCents) && Number.isFinite(bestAskCents)) {
+        midCents = (bestBidCents + bestAskCents) / 2;
+      } else {
+        const row = marketLookup[tid];
+        if (row) {
+          const b = typeof row.bestBid === 'number' && Number.isFinite(row.bestBid) ? row.bestBid * 100 : null;
+          const a = typeof row.bestAsk === 'number' && Number.isFinite(row.bestAsk) ? row.bestAsk * 100 : null;
+          if (b != null && a != null) midCents = (b + a) / 2;
+          else if (b != null) midCents = b;
+          else if (a != null) midCents = a;
+        }
+      }
+    }
+    if (midCents != null && midCents > notifySoundMaxPriceCents) return;
+
+    const k = topBarExtremeBgFlash;
+    const mul = notifySoundPitchMul;
+    const rt = notifyRingTimeS;
+    void playUpdownTiltExtremeSound(k, mul, rt);
+    const repeatMs = Math.max(TILT_EXTREME_FLASH_MS, Math.ceil(rt * 1000) + 80);
+    const id = window.setInterval(() => void playUpdownTiltExtremeSound(k, mul, rt), repeatMs);
+    return () => clearInterval(id);
+  }, [
+    topBarExtremeBgFlash,
+    notifyPlaySound,
+    notifyStakedGatePasses,
+    notifySoundPitchMul,
+    notifyRingTimeS,
+    notifySoundMaxPriceCents,
+    selectedMarket,
+    orderOutcome,
+    marketLookup,
+    marketLookupEpoch,
+    topOfBookDigest,
+  ]);
+
   const onPolymarketTradesFromHost = useCallback((t: LiveTrade[]) => {
     setPolymarketTape(t);
   }, []);
@@ -1883,7 +1946,12 @@ export function Sidebar() {
                     onChange={(e) => {
                       const v = Number(e.target.value);
                       if (!Number.isFinite(v)) return;
-                      setNotifySoundFreqSlider(Math.min(100, Math.max(0, Math.round(v))));
+                      const nv = Math.min(100, Math.max(0, Math.round(v)));
+                      setNotifySoundFreqSlider(nv);
+                      const now = Date.now();
+                      if (now - freqSliderPreviewLastMs.current < 160) return;
+                      freqSliderPreviewLastMs.current = now;
+                      void playUpdownTiltExtremeSound('green', pitchMulFromNotifyFreqSlider(nv), notifyRingTimeS);
                     }}
                     className="flex-1 min-w-0 accent-amber-500 h-2"
                     aria-label="Notification sound frequency"
@@ -1908,6 +1976,23 @@ export function Sidebar() {
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1">Glass ring decay length; default 0.5s.</p>
+                <div className="flex items-center gap-2 flex-wrap mt-3">
+                  <span className="text-gray-400 shrink-0">Sound max (¢)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    step={1}
+                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 tabular-nums no-spin"
+                    value={notifySoundMaxPriceCents}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      setNotifySoundMaxPriceCents(Math.min(99, Math.max(1, Math.round(v))));
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">Mute tilt sound when selected outcome mid is above this (default 95¢).</p>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -1997,7 +2082,7 @@ export function Sidebar() {
       {/* Portfolio Summary */}
       {selectedMarket && (
         <div className="sidebar-section bg-gray-800/80 py-1">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 min-w-0">
             <div className="flex-1 min-w-0 truncate">
               {polymarketUrl ? (
                 <a href={polymarketUrl} target="_blank" rel="noreferrer" className={`${sidebarTitleColor} font-bold text-sm hover:underline`}>
@@ -2007,6 +2092,16 @@ export function Sidebar() {
                 <span className={`${sidebarTitleColor} font-bold text-sm`}>{marketName}</span>
               )}
             </div>
+            <button
+              type="button"
+              onClick={() => setNotifyDialogOpen(true)}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="shrink-0 rounded-sm border border-gray-600 bg-gray-900/60 p-0.5 w-[18px] min-w-[18px] flex items-center justify-center text-amber-300 hover:bg-gray-700/80 transition-colors"
+              title="Tilt notification settings"
+              aria-label="Tilt notification settings"
+            >
+              <Bell className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
+            </button>
             {upDownCountdown && (
               <span className={`text-xs font-bold flex-shrink-0 flex items-center gap-0.5 ${upDownCountdown === 'Expired' ? 'text-red-400' : upDownRemaining < 60000 ? 'text-red-400' : upDownRemaining < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>
                 <Clock size={12} /> {upDownCountdown}
@@ -2327,7 +2422,7 @@ export function Sidebar() {
                     : ''
               }`}
             >
-              <div className="grid grid-cols-4 gap-1.5 text-[10px] min-w-0 items-stretch">
+              <div className="grid grid-cols-5 gap-1.5 text-[10px] min-w-0 items-stretch">
               <div className="rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0">
                 <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Volume</div>
                 <div
@@ -2378,6 +2473,12 @@ export function Sidebar() {
                   {marketStakedNetKDisplay ? `$${marketStakedNetKDisplay}` : '--'}
                 </div>
               </div>
+              <div className="rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0">
+                <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Shares</div>
+                <div className="tabular-nums font-bold text-gray-200 truncate" title="Shares in existence from net wallet balances: sum(abs(YES-NO))">
+                  {sharesInExistenceDisplay}
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setToxicDialogOpen(true)}
@@ -2389,22 +2490,6 @@ export function Sidebar() {
               >
                 <div className="text-[8px] uppercase tracking-wide text-yellow-400 truncate">Holders</div>
                 <div className="tabular-nums font-bold text-yellow-300 truncate">{holdersCountDisplay}</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setNotifyDialogOpen(true)}
-                onPointerDown={(e) => e.stopPropagation()}
-                className={`rounded-sm border shrink-0 self-center flex items-center justify-center p-0.5 w-[18px] min-w-[18px] box-border hover:bg-gray-700/80 transition-colors ${
-                  notifyBellPulse && topBarExtremeBgFlash === 'green'
-                    ? ' sidebar-notify-bell-flash-green border-gray-600 bg-gray-900/60'
-                    : notifyBellPulse && topBarExtremeBgFlash === 'red'
-                      ? ' sidebar-notify-bell-flash-red border-gray-600 bg-gray-900/60'
-                      : 'border-gray-600 bg-gray-900/60 text-amber-300'
-                }`}
-                title="Tilt notification settings"
-                aria-label="Tilt notification settings"
-              >
-                <Bell className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
               </button>
             </div>
             {/* Compact bias bars */}

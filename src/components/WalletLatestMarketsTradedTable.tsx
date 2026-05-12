@@ -156,18 +156,23 @@ export function WalletLatestMarketsTradedTable({
   loading,
   selectedMarketId,
   onRowClick,
+  /** Wider px on every th/td (e.g. History panel). */
+  horizontalCellPadding = false,
 }: {
   markets: WalletPosition[];
   marketById: Record<string, Market>;
   loading: boolean;
   selectedMarketId?: string | null;
   onRowClick?: (marketId: string) => void;
+  horizontalCellPadding?: boolean;
 }) {
   if (loading) return <div className="text-gray-500 text-[10px]">Loading markets...</div>;
   if (markets.length === 0) return <div className="text-gray-500 text-[10px]">No markets found.</div>;
 
   return (
-    <table className="w-full text-[10px] whitespace-nowrap">
+    <table
+      className={`w-full text-[10px] whitespace-nowrap${horizontalCellPadding ? ' [&_th]:px-2.5 [&_td]:px-2.5' : ''}`}
+    >
       <thead>
         <tr className="text-gray-500 border-b border-gray-700">
           <th className="text-left py-1 whitespace-normal min-w-[10rem]">Date</th>

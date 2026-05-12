@@ -80,6 +80,7 @@ export function HistoryPanel() {
             markets={markets}
             marketById={marketById}
             loading={loading}
+            horizontalCellPadding
           />
         </div>
       </div>

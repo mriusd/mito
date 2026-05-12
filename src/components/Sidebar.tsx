@@ -70,6 +70,58 @@ function preloadMergePositionsDialog() {
 }
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
+
+const LS_ORDER_EXPIRY_UPDOWN = 'polymarket-order-expiry-updown';
+const LS_ORDER_EXPIRY_OTHER = 'polymarket-order-expiry-other';
+const LS_ORDER_EXPIRY_UNIT_UPDOWN = 'polymarket-order-expiry-unit-updown';
+const LS_ORDER_EXPIRY_UNIT_OTHER = 'polymarket-order-expiry-unit-other';
+const LS_ORDER_EXPIRY_LEGACY = 'polymarket-order-expiry';
+const LS_ORDER_EXPIRY_UNIT_LEGACY = 'polymarket-order-expiry-unit';
+const LS_ORDER_EXPIRY_MIGRATED_FLAG = 'polybot-order-expiry-two-buckets-v1';
+
+function normalizeExpiryUnit(raw: string | null): 's' | 'm' | 'h' {
+  return raw === 's' || raw === 'h' ? raw : 'm';
+}
+
+/** Seed up/down vs other buckets once from legacy single keys. */
+function ensureOrderExpiryBucketsFromLegacy(): void {
+  try {
+    if (localStorage.getItem(LS_ORDER_EXPIRY_MIGRATED_FLAG) === '1') return;
+    const leg = localStorage.getItem(LS_ORDER_EXPIRY_LEGACY);
+    const legU = localStorage.getItem(LS_ORDER_EXPIRY_UNIT_LEGACY);
+    const v = leg != null && leg !== '' ? leg : '180';
+    const u = normalizeExpiryUnit(legU);
+    if (localStorage.getItem(LS_ORDER_EXPIRY_UPDOWN) == null) localStorage.setItem(LS_ORDER_EXPIRY_UPDOWN, v);
+    if (localStorage.getItem(LS_ORDER_EXPIRY_OTHER) == null) localStorage.setItem(LS_ORDER_EXPIRY_OTHER, v);
+    if (localStorage.getItem(LS_ORDER_EXPIRY_UNIT_UPDOWN) == null) localStorage.setItem(LS_ORDER_EXPIRY_UNIT_UPDOWN, u);
+    if (localStorage.getItem(LS_ORDER_EXPIRY_UNIT_OTHER) == null) localStorage.setItem(LS_ORDER_EXPIRY_UNIT_OTHER, u);
+    localStorage.setItem(LS_ORDER_EXPIRY_MIGRATED_FLAG, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+function readOrderExpirySlot(isUpDownMarket: boolean): { value: string; unit: 's' | 'm' | 'h' } {
+  ensureOrderExpiryBucketsFromLegacy();
+  const vKey = isUpDownMarket ? LS_ORDER_EXPIRY_UPDOWN : LS_ORDER_EXPIRY_OTHER;
+  const uKey = isUpDownMarket ? LS_ORDER_EXPIRY_UNIT_UPDOWN : LS_ORDER_EXPIRY_UNIT_OTHER;
+  const value = localStorage.getItem(vKey) ?? localStorage.getItem(LS_ORDER_EXPIRY_LEGACY) ?? '180';
+  const uRaw = localStorage.getItem(uKey) ?? localStorage.getItem(LS_ORDER_EXPIRY_UNIT_LEGACY);
+  return { value, unit: normalizeExpiryUnit(uRaw) };
+}
+
+function writeOrderExpirySlot(isUpDownMarket: boolean, value: string, unit: 's' | 'm' | 'h'): void {
+  try {
+    ensureOrderExpiryBucketsFromLegacy();
+    const vKey = isUpDownMarket ? LS_ORDER_EXPIRY_UPDOWN : LS_ORDER_EXPIRY_OTHER;
+    const uKey = isUpDownMarket ? LS_ORDER_EXPIRY_UNIT_UPDOWN : LS_ORDER_EXPIRY_UNIT_OTHER;
+    localStorage.setItem(vKey, value);
+    localStorage.setItem(uKey, unit);
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Match `StakedLegUsdBar` flash + `sidebar-stats-flash-*` CSS. */
 const TILT_EXTREME_FLASH_MS = 550;
 
@@ -373,11 +425,11 @@ function readNotifySoundFreqSlider(): number {
 function readNotifyRingTimeS(): number {
   try {
     const raw = localStorage.getItem(SIDEBAR_NOTIFY_RING_TIME_S_KEY);
-    const n = parseFloat(raw ?? '0.5');
-    if (!Number.isFinite(n)) return 0.5;
+    const n = parseFloat(raw ?? '5');
+    if (!Number.isFinite(n)) return 5;
     return Math.min(5, Math.max(0.05, Math.round(n * 100) / 100));
   } catch {
-    return 0.5;
+    return 5;
   }
 }
 function readNotifySoundMaxPriceCents(): number {
@@ -783,11 +835,8 @@ export function Sidebar() {
   const [customColor, setCustomColor] = useState('#2563eb');
   const [editingCustomButtonId, setEditingCustomButtonId] = useState<string | null>(null);
   const [draggingCustomId, setDraggingCustomId] = useState<string | null>(null);
-  const [orderExpiry, setOrderExpiry] = useState(localStorage.getItem('polymarket-order-expiry') || '180');
-  const [orderExpiryUnit, setOrderExpiryUnit] = useState<'s' | 'm' | 'h'>(() => {
-    const v = localStorage.getItem('polymarket-order-expiry-unit');
-    return v === 's' || v === 'h' ? v : 'm';
-  });
+  const [orderExpiry, setOrderExpiry] = useState(() => readOrderExpirySlot(false).value);
+  const [orderExpiryUnit, setOrderExpiryUnit] = useState<'s' | 'm' | 'h'>(() => readOrderExpirySlot(false).unit);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [editingOrderPrice, setEditingOrderPrice] = useState('');
   const [cancellingOrderIds, setCancellingOrderIds] = useState<Set<string>>(new Set());
@@ -1065,9 +1114,6 @@ export function Sidebar() {
     }
   }, [orderKind]);
   useEffect(() => {
-    localStorage.setItem('polymarket-order-expiry-unit', orderExpiryUnit);
-  }, [orderExpiryUnit]);
-  useEffect(() => {
     localStorage.setItem('polymarket-order-amount', orderAmount);
   }, [orderAmount]);
 
@@ -1238,6 +1284,13 @@ export function Sidebar() {
   // Up or Down market detection and state
   const [upDownTargetPrice, setUpDownTargetPrice] = useState<number | null>(null);
   const isUpDownMarket = !!(selectedMarket?.question?.match(/up\s+or\s+down/i) || selectedMarket?.eventSlug?.match(/up-or-down|updown/i));
+
+  useEffect(() => {
+    const slot = readOrderExpirySlot(isUpDownMarket);
+    setOrderExpiry(slot.value);
+    setOrderExpiryUnit(slot.unit);
+  }, [isUpDownMarket, selectedMarket?.id]);
+
   const sidebarSpotCurrentPriceRef = useRef<HTMLDivElement>(null);
   const prevPriceRef = useRef<number>(0);
   const [upDownCountdown, setUpDownCountdown] = useState('');
@@ -2310,7 +2363,7 @@ export function Sidebar() {
                     }}
                   />
                 </div>
-                <p className="text-[10px] text-gray-500 mt-1">Glass ring decay length; default 0.5s.</p>
+                <p className="text-[10px] text-gray-500 mt-1">Glass ring decay length; default 5s (max 5).</p>
                 <div className="flex items-center gap-2 flex-wrap mt-3">
                   <span className="text-gray-400 shrink-0">Sound max (¢)</span>
                   <input
@@ -3164,8 +3217,9 @@ export function Sidebar() {
                     disabled={orderKind === 'market'}
                     title={orderKind === 'market' ? 'T-EXP applies to limit (GTD) buys only' : undefined}
                     onChange={(e) => {
-                      setOrderExpiry(e.target.value);
-                      localStorage.setItem('polymarket-order-expiry', e.target.value);
+                      const v = e.target.value;
+                      setOrderExpiry(v);
+                      writeOrderExpirySlot(isUpDownMarket, v, orderExpiryUnit);
                     }}
                     onWheel={(e) => e.preventDefault()}
                     className="bg-transparent text-left text-white text-[11px] w-full outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:cursor-not-allowed disabled:opacity-40"
@@ -3175,7 +3229,11 @@ export function Sidebar() {
                   <select
                     value={orderExpiryUnit}
                     disabled={orderKind === 'market'}
-                    onChange={(e) => setOrderExpiryUnit(e.target.value as 's' | 'm' | 'h')}
+                    onChange={(e) => {
+                      const u = e.target.value as 's' | 'm' | 'h';
+                      setOrderExpiryUnit(u);
+                      writeOrderExpirySlot(isUpDownMarket, orderExpiry, u);
+                    }}
                     className="bg-gray-800 text-gray-200 text-[10px] rounded px-1 py-0.5 outline-none border border-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
                     title="Expiration unit"
                   >

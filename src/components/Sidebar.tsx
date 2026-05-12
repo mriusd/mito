@@ -69,6 +69,33 @@ function preloadMergePositionsDialog() {
 }
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
+/** Match `StakedLegUsdBar` flash + `sidebar-bg-flash-*` CSS. */
+const TILT_EXTREME_FLASH_MS = 550;
+
+let tiltExtremeAudioCtx: AudioContext | null = null;
+function playUpdownTiltExtremeSound(kind: 'green' | 'red') {
+  try {
+    const ACtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!ACtx) return;
+    if (!tiltExtremeAudioCtx || tiltExtremeAudioCtx.state === 'closed') tiltExtremeAudioCtx = new ACtx();
+    const ctx = tiltExtremeAudioCtx;
+    void ctx.resume();
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(kind === 'green' ? 880 : 330, t0);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.065, t0 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.1);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.11);
+  } catch {
+    /* autoplay / no AudioContext */
+  }
+}
 /** FAK buy: pay up to this per share to lift asks. */
 const MARKET_AGGRESSIVE_BUY = 0.99;
 /** FAK sell: accept down to this per share to hit bids. */
@@ -221,8 +248,20 @@ export function Sidebar() {
       stakedTopHoldersCohortNoUsd: entry.stakedTopHoldersCohortNoUsd,
     };
   }, [selectedMarket, marketLookup]);
-  /** Same rule as `StakedLegUsdBar` Top row (`cohortSurplusHalves`, flashExtremeTilt): |lean| ≥ 30% → sidebar bg pulse. */
+  /** Up/Down 5m or 15m only — same slug/question heuristics as chart / target price. */
+  const isUpDown5mOr15m = useMemo(() => {
+    const m = selectedMarket;
+    if (!m) return false;
+    const isUd = !!(m.question?.match(/up\s+or\s+down/i) || m.eventSlug?.match(/up-or-down|updown/i));
+    if (!isUd) return false;
+    const combined = `${m.eventSlug || ''} ${m.question || ''}`;
+    const is5 = /updown-5m/i.test(combined) || /\b5[- ]?min/i.test(combined);
+    const is15 = /updown-15m/i.test(combined) || /\b15[- ]?min/i.test(combined);
+    return is5 || is15;
+  }, [selectedMarket]);
+  /** Same rule as `StakedLegUsdBar` Top row (`cohortSurplusHalves`, flashExtremeTilt): |lean| ≥ 30% → sidebar bg pulse — Up/Down 5m+15m only. */
   const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {
+    if (!isUpDown5mOr15m) return null;
     const cy = liveShareStats?.stakedTopHoldersCohortYesUsd;
     const cn = liveShareStats?.stakedTopHoldersCohortNoUsd;
     if (
@@ -240,7 +279,16 @@ export function Sidebar() {
     if (lean >= FLASH_TILT) return 'green';
     if (lean <= -FLASH_TILT) return 'red';
     return null;
-  }, [liveShareStats?.stakedTopHoldersCohortYesUsd, liveShareStats?.stakedTopHoldersCohortNoUsd]);
+  }, [isUpDown5mOr15m, liveShareStats?.stakedTopHoldersCohortYesUsd, liveShareStats?.stakedTopHoldersCohortNoUsd]);
+
+  useEffect(() => {
+    if (!topBarExtremeBgFlash) return;
+    const k = topBarExtremeBgFlash;
+    playUpdownTiltExtremeSound(k);
+    const id = window.setInterval(() => playUpdownTiltExtremeSound(k), TILT_EXTREME_FLASH_MS);
+    return () => clearInterval(id);
+  }, [topBarExtremeBgFlash]);
+
   const sharesInExistenceDisplay = useMemo(() => {
     const v = liveShareStats?.sharesInExistence;
     if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
@@ -2065,7 +2113,7 @@ export function Sidebar() {
                           dense
                           compactLabel="Top"
                           barMode="cohortSurplusHalves"
-                          flashExtremeTilt
+                          flashExtremeTilt={isUpDown5mOr15m}
                         />
                       );
                     }

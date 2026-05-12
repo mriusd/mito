@@ -2422,7 +2422,7 @@ export function Sidebar() {
                     : ''
               }`}
             >
-              <div className="grid grid-cols-5 gap-1.5 text-[10px] min-w-0 items-stretch">
+              <div className="grid w-full grid-cols-4 gap-1.5 text-[10px] min-w-0 items-stretch">
               <div className="rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0">
                 <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Volume</div>
                 <div

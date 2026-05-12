@@ -93,6 +93,7 @@ function ensureTiltAudioUnlockListeners() {
   window.addEventListener('keydown', tryResume, { passive: true });
 }
 
+/** Crystalline "knife on champagne flute" — inharmonic partials + strike click; green vs red pitch sets. */
 async function playUpdownTiltExtremeSound(kind: 'green' | 'red') {
   try {
     ensureTiltAudioUnlockListeners();
@@ -103,17 +104,57 @@ async function playUpdownTiltExtremeSound(kind: 'green' | 'red') {
     await ctx.resume();
     if (ctx.state !== 'running') return;
     const t0 = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(kind === 'green' ? 880 : 392, t0);
-    gain.gain.setValueAtTime(0, t0);
-    gain.gain.linearRampToValueAtTime(0.14, t0 + 0.04);
-    gain.gain.linearRampToValueAtTime(0, t0 + 0.14);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(t0);
-    osc.stop(t0 + 0.15);
+    const tEnd = t0 + 0.85;
+
+    const root = kind === 'green' ? 3350 : 2520;
+    /** Stiff-plate-ish partial ratios (not harmonic — reads as glass/crystal). */
+    const partialRatios = [1, 1.43, 2.07, 2.89];
+    const partialPeaks = [0.13, 0.076, 0.042, 0.022];
+    const partialDecayS = [0.5, 0.34, 0.2, 0.12];
+
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(1, t0);
+    master.connect(ctx.destination);
+
+    for (let i = 0; i < partialRatios.length; i++) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(root * partialRatios[i], t0);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.linearRampToValueAtTime(partialPeaks[i], t0 + 0.0025);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.004 + partialDecayS[i]);
+      osc.connect(g);
+      g.connect(master);
+      osc.start(t0);
+      osc.stop(tEnd);
+    }
+
+    /** Knife-on-rim strike + thin ring (very bright, decays fast). */
+    const strikeOsc = ctx.createOscillator();
+    strikeOsc.type = 'triangle';
+    strikeOsc.frequency.setValueAtTime(kind === 'green' ? 7200 : 5600, t0);
+    const strikeGain = ctx.createGain();
+    strikeGain.gain.setValueAtTime(0.0001, t0);
+    strikeGain.gain.linearRampToValueAtTime(0.11, t0 + 0.0012);
+    strikeGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.028);
+    strikeOsc.connect(strikeGain);
+    strikeGain.connect(master);
+
+    const shimmer = ctx.createOscillator();
+    shimmer.type = 'sine';
+    shimmer.frequency.setValueAtTime(root * 4.2, t0);
+    const shimG = ctx.createGain();
+    shimG.gain.setValueAtTime(0.0001, t0);
+    shimG.gain.linearRampToValueAtTime(0.035, t0 + 0.002);
+    shimG.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.09);
+    shimmer.connect(shimG);
+    shimG.connect(master);
+
+    strikeOsc.start(t0);
+    strikeOsc.stop(t0 + 0.035);
+    shimmer.start(t0);
+    shimmer.stop(t0 + 0.1);
   } catch {
     /* autoplay / no AudioContext */
   }

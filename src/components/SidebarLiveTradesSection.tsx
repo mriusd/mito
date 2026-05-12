@@ -25,6 +25,9 @@ function liveTradesSectionInner(props: SidebarLiveTradesSectionProps) {
     myOnchainWalletLower,
   } = props;
 
+  /** Hard render cap — each row mounts a lucide SVG anchor; 1000+ rows trashed thousands of detached SVG nodes on every market switch. */
+  const visibleTrades = displayLiveTrades.length > 150 ? displayLiveTrades.slice(0, 150) : displayLiveTrades;
+
   return (
     <div
       className={`sidebar-section live-trades-section ${liveTradesExpanded ? 'expanded' : ''} ${liveTradesExpanded && !liveOrderbookExpanded ? 'boosted' : ''} flex flex-col min-h-0 overflow-hidden flex-shrink-0`}
@@ -51,7 +54,7 @@ function liveTradesSectionInner(props: SidebarLiveTradesSectionProps) {
             <span className="text-right">Time</span>
           </div>
           <div className="relative space-y-0.5 overflow-y-auto flex-1 min-h-0" style={{ minHeight: 90 }}>
-            {displayLiveTrades.map((t, i) => {
+            {visibleTrades.map((t, i) => {
               const tp = (parseFloat(t.price) * 100).toFixed(1);
               const isBuy = t.side === 'BUY';
               const makerLower = (t.maker || '').toLowerCase();
@@ -107,7 +110,7 @@ function liveTradesSectionInner(props: SidebarLiveTradesSectionProps) {
                 </div>
               );
             })}
-            {displayLiveTrades.length === 0 && <div className="text-[10px] text-gray-600 px-1">Waiting...</div>}
+            {visibleTrades.length === 0 && <div className="text-[10px] text-gray-600 px-1">Waiting...</div>}
           </div>
         </>
       )}

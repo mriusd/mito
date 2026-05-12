@@ -3,9 +3,9 @@ import { fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
 import { API_BASE, WS_BASE } from '../lib/env';
 import type { LiveTrade } from './usePolymarketOB';
 
-/** Cap sidebar / chart tape arrays — 10k rows × several copies was ~hundreds of MB retained. */
-const MAX_TRADES = 3500;
-const WALLET_TRADES_CAP = 2500;
+/** Cap sidebar / chart tape arrays — 3500 rows × lucide-SVG anchors held hundreds of MB of detached DOM after a few market switches. */
+const MAX_TRADES = 400;
+const WALLET_TRADES_CAP = 400;
 
 interface OnchainFillRow {
   makerAmount?: number;
@@ -61,7 +61,7 @@ function sameDecimalTokenId(a: string | null | undefined, b: string | null | und
 }
 
 /** Survives market switches: seed sidebar tape from WS rows already received this session. */
-const ONCHAIN_PUBLIC_TAPE_BUFFER_CAP = 3000;
+const ONCHAIN_PUBLIC_TAPE_BUFFER_CAP = 500;
 
 type BufferedPublicTapeRow = LiveTrade & { __m: string; __tok: string };
 const onchainPublicTapeBuffer: BufferedPublicTapeRow[] = [];
@@ -366,7 +366,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       const t = tokenRef.current?.trim() || '';
       if (!m && !t) return;
       const qs = new URLSearchParams();
-      qs.set('limit', '1500');
+      qs.set('limit', '400');
       if (m) qs.set('market_id', canonicalConditionKey(m));
       if (t) qs.set('token_id', t);
       void fetch(`${API_BASE}/api/onchain-fills?${qs.toString()}`)

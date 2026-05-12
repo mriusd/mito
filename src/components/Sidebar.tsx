@@ -1206,7 +1206,8 @@ export function Sidebar() {
       }));
   }, [liveTradesSource, trades, selectedMarket, marketLookup, onchainSidebarTrades]);
   const myTradesDisplay = useMemo(
-    () => (liveTradesSource === 'onchain' ? myTrades : myTrades.slice(0, 20)),
+    /** Hard cap to ~100 rendered rows — older context not useful in sidebar and each row mounts an anchor + SVG. */
+    () => (liveTradesSource === 'onchain' ? myTrades.slice(0, 100) : myTrades.slice(0, 20)),
     [liveTradesSource, myTrades],
   );
   const myOnchainWalletLower = (walletForLivePositions || '').toLowerCase();
@@ -1657,10 +1658,7 @@ export function Sidebar() {
     if (marketEndDate) {
       const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
       if (expLeadSec <= 0) {
-        if (endTimeSec - nowSec < CLOB_MIN_EXPIRY_SEC) {
-          return { expiration: 0, invalidLead: false }; // too close to end → GTC
-        }
-        return { expiration: endTimeSec, invalidLead: false };
+        return { expiration: 0, invalidLead: false };
       }
       const expiration = endTimeSec - expLeadSec;
       const invalidLead = (endTimeSec - nowSec) <= expLeadSec;
@@ -3206,7 +3204,7 @@ export function Sidebar() {
                   <span className="relative group cursor-help">
                     <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className="text-gray-500 hover:text-gray-300"><circle cx="8" cy="8" r="7.5" fill="none" stroke="currentColor" strokeWidth="1"/><text x="8" y="12" textAnchor="middle" fontSize="11" fill="currentColor">?</text></svg>
                     <span className="absolute bottom-full left-0 mb-1 hidden group-hover:block bg-gray-900 border border-gray-600 text-gray-200 text-[9px] rounded px-2 py-1 w-40 text-left whitespace-normal z-50 leading-tight">
-                      Time before market expiration. Order expires at: market end time minus this value/unit.
+                      Time before market expiration: order expiry = market end minus this lead (GTD buys). 0 = good-til-cancelled (no time-based expiry).
                     </span>
                   </span>
                 </label>

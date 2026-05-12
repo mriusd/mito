@@ -18,8 +18,8 @@ export function useWalletData() {
   const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
   const setPkAddress = useAppStore((s) => s.setPkAddress);
   const fetchingRef = useRef(false);
-  /** Drop stale HTTP results when user switches PK↔wallet before requests finish (else PK rows overwrite after clear). */
-  const latestProxyWalletRef = useRef<string | null>(null);
+  /** Same render as `proxyWallet` — avoids useEffect lag that rejected valid fetches (empty UI until 30s poll). */
+  const currentProxyWalletRef = useRef<string | null>(null);
   const [proxyWallet, setProxyWallet] = useState<string | null>(null);
   const credsCheckedRef = useRef(false);
 
@@ -40,21 +40,17 @@ export function useWalletData() {
   const effectiveEoa = signingMode === 'privateKey' && pkEoa ? pkEoa : address;
   const effectiveConnected = signingMode === 'privateKey' && pkEoa ? true : isConnected;
 
-  useEffect(() => {
-    latestProxyWalletRef.current = proxyWallet;
-  }, [proxyWallet]);
+  currentProxyWalletRef.current = proxyWallet;
 
   /** Clear maker before paint so cred checks never see (new EOA + old proxy) — fixes spurious wallet sign on PK↔wallet when addresses differ. */
   useLayoutEffect(() => {
     if (!isWebMode) return;
     if (!effectiveConnected || !effectiveEoa) {
       setProxyWallet(null);
-      latestProxyWalletRef.current = null;
       fetchingRef.current = false;
       return;
     }
     setProxyWallet(null);
-    latestProxyWalletRef.current = null;
     fetchingRef.current = false;
   }, [isWebMode, effectiveConnected, effectiveEoa, signingMode]);
 
@@ -119,7 +115,7 @@ export function useWalletData() {
         fetchWalletBalance(makerLocked),
       ]);
 
-      if (latestProxyWalletRef.current !== makerLocked) return;
+      if (currentProxyWalletRef.current !== makerLocked) return;
 
       // Fix missing avgPrice: compute from trades when API returns 0
       for (const pos of positions) {
@@ -145,7 +141,7 @@ export function useWalletData() {
         }
       }
 
-      if (latestProxyWalletRef.current !== makerLocked) return;
+      if (currentProxyWalletRef.current !== makerLocked) return;
 
       useAppStore.getState().setMarketData({
         positions,

@@ -586,6 +586,11 @@ export function Sidebar() {
     return topBarExtremeBgFlash;
   }, [notifyFlashBg, notifyStakedGatePasses, topBarExtremeBgFlash]);
 
+  const notifyBellPulse = useMemo(() => {
+    if (!topBarExtremeBgFlash || !notifyStakedGatePasses) return false;
+    return notifyFlashBg || notifyPlaySound;
+  }, [topBarExtremeBgFlash, notifyStakedGatePasses, notifyFlashBg, notifyPlaySound]);
+
   useEffect(() => {
     if (!topBarExtremeBgFlash || !notifyPlaySound || !notifyStakedGatePasses) return;
     const k = topBarExtremeBgFlash;
@@ -2389,11 +2394,17 @@ export function Sidebar() {
                 type="button"
                 onClick={() => setNotifyDialogOpen(true)}
                 onPointerDown={(e) => e.stopPropagation()}
-                className="rounded border border-gray-600 bg-gray-900/60 min-w-0 flex items-center justify-center hover:bg-gray-700/80 transition-colors"
+                className={`rounded-sm border shrink-0 self-center flex items-center justify-center p-0.5 w-[18px] min-w-[18px] box-border hover:bg-gray-700/80 transition-colors ${
+                  notifyBellPulse && topBarExtremeBgFlash === 'green'
+                    ? ' sidebar-notify-bell-flash-green border-gray-600 bg-gray-900/60'
+                    : notifyBellPulse && topBarExtremeBgFlash === 'red'
+                      ? ' sidebar-notify-bell-flash-red border-gray-600 bg-gray-900/60'
+                      : 'border-gray-600 bg-gray-900/60 text-amber-300'
+                }`}
                 title="Tilt notification settings"
                 aria-label="Tilt notification settings"
               >
-                <Bell className="h-3.5 w-3.5 text-amber-300" strokeWidth={2} />
+                <Bell className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
               </button>
             </div>
             {/* Compact bias bars */}

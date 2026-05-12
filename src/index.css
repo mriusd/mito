@@ -120,6 +120,46 @@ html, body, #root {
   }
 }
 
+/* Bell icon column: narrow + squish/bg pulse when tilt is alerting (sound and/or flash). */
+@keyframes sidebar-notify-bell-squish-green {
+  0%,
+  100% {
+    transform: scaleX(1) scaleY(1);
+    background-color: rgba(17, 24, 39, 0.65);
+    border-color: rgb(75, 85, 99);
+    color: rgb(252, 211, 77);
+  }
+  50% {
+    transform: scaleX(0.72) scaleY(1.14);
+    background-color: rgba(6, 78, 59, 0.72);
+    border-color: rgb(52, 211, 153);
+    color: rgb(209, 250, 229);
+  }
+}
+@keyframes sidebar-notify-bell-squish-red {
+  0%,
+  100% {
+    transform: scaleX(1) scaleY(1);
+    background-color: rgba(17, 24, 39, 0.65);
+    border-color: rgb(75, 85, 99);
+    color: rgb(252, 211, 77);
+  }
+  50% {
+    transform: scaleX(0.72) scaleY(1.14);
+    background-color: rgba(127, 29, 29, 0.55);
+    border-color: rgb(248, 113, 113);
+    color: rgb(254, 226, 226);
+  }
+}
+.sidebar-notify-bell-flash-green {
+  animation: sidebar-notify-bell-squish-green 0.55s ease-in-out infinite;
+  transform-origin: center;
+}
+.sidebar-notify-bell-flash-red {
+  animation: sidebar-notify-bell-squish-red 0.55s ease-in-out infinite;
+  transform-origin: center;
+}
+
 input[type="number"].no-spin::-webkit-outer-spin-button,
 input[type="number"].no-spin::-webkit-inner-spin-button {
   -webkit-appearance: none;

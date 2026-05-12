@@ -20,9 +20,10 @@ export function useBinanceWS() {
       setBinanceTickerBatch(snapshot);
     }
 
+    /** Throttle to 4 Hz — every animation frame was triggering 50+ subscribers to re-render and accumulate fiber.alternate detached DOM. */
     function scheduleFlush() {
       if (flushRafRef.current != null) return;
-      flushRafRef.current = requestAnimationFrame(() => flushTickerBatch());
+      flushRafRef.current = window.setTimeout(() => flushTickerBatch(), 250) as unknown as number;
     }
 
     function connect() {
@@ -70,7 +71,7 @@ export function useBinanceWS() {
 
     return () => {
       if (flushRafRef.current != null) {
-        cancelAnimationFrame(flushRafRef.current);
+        clearTimeout(flushRafRef.current);
         flushRafRef.current = null;
       }
       const tail = pendingRef.current;

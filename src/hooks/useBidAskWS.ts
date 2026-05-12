@@ -113,9 +113,10 @@ export function useBidAskWS() {
       });
     }
 
+    /** 4 Hz — full-rate rAF flushes thrashed every BsFlower / price consumer at 60 Hz and accumulated detached fiber DOM. */
     function scheduleBidAskFlush() {
       if (flushRafRef.current !== null) return;
-      flushRafRef.current = requestAnimationFrame(() => flushPendingBidAsk());
+      flushRafRef.current = window.setTimeout(() => flushPendingBidAsk(), 250) as unknown as number;
     }
 
     function enqueueBidAskPatches(items: BidAskWsItem[]) {
@@ -176,7 +177,7 @@ export function useBidAskWS() {
       clearInterval(pingIv);
       clearTimeout(reconnectTimeout);
       if (flushRafRef.current !== null) {
-        cancelAnimationFrame(flushRafRef.current);
+        clearTimeout(flushRafRef.current);
         flushRafRef.current = null;
       }
       pendingPatchRef.current = {};

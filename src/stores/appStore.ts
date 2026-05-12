@@ -170,6 +170,7 @@ const PANEL_TITLES: Record<string, string> = {
   'binance-chart': 'Asset Candle Chart',
   'updown-hud': 'UpOrDown HUD',
   'signals': 'Signals', 'smart-money': 'Smart Money', 'chat': 'Chat', 'pnl': 'P&L', 'arbs': 'Hedges', 'summary': 'Summary',
+  'wallet-history': 'History',
 };
 
 // Bump this version to force-reset all users' saved layouts to fresh defaults

@@ -129,6 +129,7 @@ const PANEL_MIN_PIXELS: Record<string, { minW: number; minH: number }> = {
   'smart-money': { minW: 320, minH: 180 },
   'chat': { minW: 280, minH: 180 },
   'pnl': { minW: 300, minH: 160 },
+  'wallet-history': { minW: 360, minH: 280 },
 };
 
 function withPanelMinPixels(layout: Record<string, LayoutRect>): Record<string, LayoutRect> {

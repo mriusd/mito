@@ -19,6 +19,7 @@ import { BinanceChartPanel } from './panels/BinanceChartPanel';
 import { UpOrDownHUDPanel } from './panels/UpOrDownHUDPanel';
 import { ChatPanel } from './panels/ChatPanel';
 import { SmartMoneyPanel } from './panels/SmartMoneyPanel';
+import { HistoryPanel } from './panels/HistoryPanel';
 import type { PanelConfig, PanelType } from '../types';
 import BREAKPOINT_LAYOUTS, { HEIGHT_VARIANTS, GRID_COLS } from '../lib/defaultLayouts';
 
@@ -144,6 +145,8 @@ function renderPanel(panel: PanelConfig): React.ReactNode {
       return <UpOrDownHUDPanel panelId={panel.id} />;
     case 'chat':
       return <ChatPanel />;
+    case 'wallet-history':
+      return <HistoryPanel />;
     default:
       return <div className="text-gray-500 p-4">Unknown panel: {panel.type}</div>;
   }
@@ -286,6 +289,7 @@ export function DraggableCanvas() {
     'binance-chart': 'Asset Candle Chart',
     'updown-hud': 'UpOrDown HUD',
     'signals': 'Signals', 'smart-money': 'Smart Money', 'chat': 'Chat', 'pnl': 'P&L',
+    'wallet-history': 'History',
   };
 
   // Auto-include panels defined in the current breakpoint layout but missing from panels list

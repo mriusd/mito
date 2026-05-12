@@ -41,6 +41,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'smart-money', title: 'Smart Money' },
   { type: 'trades-positions-orders', title: 'Trades/Positions/Orders' },
   { type: 'pnl', title: 'P&L' },
+  { type: 'wallet-history', title: 'History' },
   { type: 'updown-overview', title: 'Up/Down Markets' },
   { type: 'updown-hud', title: 'UpOrDown HUD' },
   { type: 'relative-chart', title: 'Relative Chart' },

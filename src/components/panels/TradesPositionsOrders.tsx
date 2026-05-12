@@ -6,7 +6,6 @@ import {
   fetchOnchainMarketPositions,
   fetchOnchainMarketTrades,
   // fetchOnchainClaims,
-  type WalletPosition,
   type OnchainMarketPositionRow,
   type OnchainMarketTradeRow,
   type OnchainClaimRow,
@@ -17,7 +16,6 @@ import type { Position, Trade } from '../../types';
 import { showToast } from '../../utils/toast';
 import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, getPositionClobTokenId, extractAssetFromMarket, formatPriceShort, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
 import type { Market } from '../../types';
-import { WalletLatestMarketsTradedTable, buildMarketByIdRecord, sortWalletPositionsByDisplayedDateDesc } from '../WalletLatestMarketsTradedTable';
 
 const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
 
@@ -86,7 +84,6 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
   const trades = useAppStore((s) => s.trades);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const makerAddress = useAppStore((s) => s.makerAddress);
-  const marketLookupEpoch = useAppStore((s) => s.marketLookupEpoch);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
@@ -287,50 +284,6 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
     setSidebarOutcome((outcome === 'NO' ? 'NO' : 'YES') as 'YES' | 'NO');
     setSidebarOpen(true);
   }, [marketLookup, setSelectedMarket, setSidebarOutcome, setSidebarOpen]);
-
-  const [ledgerLatestMarkets, setLedgerLatestMarkets] = useState<WalletPosition[]>([]);
-  const [ledgerLatestLoading, setLedgerLatestLoading] = useState(false);
-
-  useEffect(() => {
-    const w = (makerAddress || '').trim().toLowerCase();
-    if (!w) {
-      setLedgerLatestMarkets([]);
-      setLedgerLatestLoading(false);
-      return;
-    }
-    let cancelled = false;
-    const load = async () => {
-      setLedgerLatestLoading(true);
-      try {
-        const p = await fetchWalletPositions({ wallet: w, limit: 1000, ledger: true, order: 'end_date_desc' });
-        const byId = buildMarketByIdRecord(useAppStore.getState().marketLookup);
-        const sorted = sortWalletPositionsByDisplayedDateDesc(p.positions || [], byId);
-        if (!cancelled) setLedgerLatestMarkets(sorted);
-      } catch {
-        if (!cancelled) setLedgerLatestMarkets([]);
-      } finally {
-        if (!cancelled) setLedgerLatestLoading(false);
-      }
-    };
-    void load();
-    const iv = window.setInterval(load, 90_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(iv);
-    };
-  }, [makerAddress]);
-
-  const ledgerFullLookup = useMemo(() => useAppStore.getState().marketLookup, [marketLookupEpoch]);
-
-  const handleLedgerLatestRowClick = useCallback(
-    (marketId: string) => {
-      const byId = buildMarketByIdRecord(useAppStore.getState().marketLookup);
-      const mk = byId[marketId] || byId[String(marketId || '').trim().toLowerCase()];
-      const tid = mk?.clobTokenIds?.[0];
-      if (tid) handleMarketClick(String(tid));
-    },
-    [handleMarketClick],
-  );
 
   const [tab, setTab] = useState<'trades' | 'positions' | 'orders'>(
     (localStorage.getItem(`polymarket-pos-orders-tab-${panelId}`) as 'trades' | 'positions' | 'orders') || 'trades'
@@ -677,118 +630,73 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
 
         {/* Positions */}
         {tab === 'positions' && (
-          <div className="flex flex-col flex-1 min-h-0 gap-2">
-            {onchainLoading && liveTradesSource === 'onchain' && processedPositions.length === 0 ? (
-              <div className="text-purple-300/90 text-center py-4">Loading on-chain positions…</div>
-            ) : processedPositions.length === 0 ? (
-              <div className="text-gray-500 text-center py-4 shrink-0">
-                {liveTradesSource === 'onchain' && !makerAddress
-                  ? 'Connect wallet (proxy) for on-chain positions'
-                  : liveTradesSource === 'onchain'
-                    ? 'No on-chain positions for known tokens'
-                    : 'No positions'}
-              </div>
-            ) : (
-              <div className="flex flex-col flex-1 min-h-0">
-                {/* Fixed header */}
-                <table className="w-full text-[10px] table-fixed">
-                  {posColgroup}
-                  <thead>
-                    <tr className="text-gray-500 border-b border-gray-700">
-                      <th className={`${hCls} text-left`}>Asset</th>
-                      <th className={`${hCls} text-left whitespace-nowrap`}>Date</th>
-                      <th className={`${hCls} text-left`}>Market</th>
-                      <th className={`${hCls} text-left`}>Y/N</th>
-                      <th className={`${hCls} text-right`}>Size</th>
-                      <th className={`${hCls} text-right`}>Entry</th>
-                      <th className={`${hCls} text-right`}>Cost</th>
-                      <th className={`${hCls} text-right`}>Exit</th>
-                      <th className={`${hCls} text-right`}>Val</th>
-                      <th className={`${hCls} text-right`}>PnL$</th>
-                      <th className={`${hCls} text-right`}>PnL%</th>
+          onchainLoading && liveTradesSource === 'onchain' && processedPositions.length === 0 ? (
+            <div className="text-purple-300/90 text-center py-4">Loading on-chain positions…</div>
+          ) : processedPositions.length === 0 ? (
+            <div className="text-gray-500 text-center py-4">
+              {liveTradesSource === 'onchain' && !makerAddress
+                ? 'Connect wallet (proxy) for on-chain positions'
+                : liveTradesSource === 'onchain'
+                  ? 'No on-chain positions for known tokens'
+                  : 'No positions'}
+            </div>
+          ) : (<div className="flex flex-col flex-1 min-h-0">
+            {/* Fixed header */}
+            <table className="w-full text-[10px] table-fixed">{posColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
+              <th className={`${hCls} text-left`}>Asset</th>
+              <th className={`${hCls} text-left whitespace-nowrap`}>Date</th>
+              <th className={`${hCls} text-left`}>Market</th>
+              <th className={`${hCls} text-left`}>Y/N</th>
+              <th className={`${hCls} text-right`}>Size</th>
+              <th className={`${hCls} text-right`}>Entry</th>
+              <th className={`${hCls} text-right`}>Cost</th>
+              <th className={`${hCls} text-right`}>Exit</th>
+              <th className={`${hCls} text-right`}>Val</th>
+              <th className={`${hCls} text-right`}>PnL$</th>
+              <th className={`${hCls} text-right`}>PnL%</th>
+            </tr></thead></table>
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <table className="w-full text-[10px] table-fixed">{posColgroup}<tbody>
+                {processedPositions.map((p, i) => {
+                  const dd = getDateDisplay(p.endDate);
+                  const pnlColor = p.pnl >= 0 ? 'text-green-400' : 'text-red-400';
+                  const pnlSign = p.pnl >= 0 ? '+' : '-';
+                  const exitChange = p.entryPrice > 0 ? ((p.currentPrice - p.entryPrice) / p.entryPrice) * 100 : 0;
+                  const exitColor = exitChange > 20 ? 'text-green-400' : exitChange < -20 ? 'text-red-400' : 'text-yellow-400';
+                  return (
+                    <tr key={i} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarket && selectedMarket.id === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
+                      <td className={`py-1 px-1 ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
+                      <td className={`py-1 px-1 ${dd.color}`}>{dd.label}</td>
+                      <td className={`py-1 px-1 ${assetColorMap2[p.asset] || 'text-gray-300'} truncate`}>{p.marketName}</td>
+                      <td className={`py-1 px-1 font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
+                      <td className="py-1 px-1 text-right text-gray-300">{Math.floor(p.size).toLocaleString()}</td>
+                      <td className="py-1 px-1 text-right text-gray-300">{p.entryPrice.toFixed(1)}¢</td>
+                      <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.cost).toLocaleString()}</td>
+                      <td className={`py-1 px-1 text-right ${exitColor}`}>{p.currentPrice.toFixed(1)}¢</td>
+                      <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.currentValue).toLocaleString()}</td>
+                      <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}${Math.round(Math.abs(p.pnl)).toLocaleString()}</td>
+                      <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>
                     </tr>
-                  </thead>
-                </table>
-                {/* Scrollable body */}
-                <div className="flex-1 overflow-y-auto min-h-0">
-                  <table className="w-full text-[10px] table-fixed">
-                    {posColgroup}
-                    <tbody>
-                      {processedPositions.map((p, i) => {
-                        const dd = getDateDisplay(p.endDate);
-                        const pnlColor = p.pnl >= 0 ? 'text-green-400' : 'text-red-400';
-                        const pnlSign = p.pnl >= 0 ? '+' : '-';
-                        const exitChange = p.entryPrice > 0 ? ((p.currentPrice - p.entryPrice) / p.entryPrice) * 100 : 0;
-                        const exitColor = exitChange > 20 ? 'text-green-400' : exitChange < -20 ? 'text-red-400' : 'text-yellow-400';
-                        return (
-                          <tr
-                            key={i}
-                            className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarket && selectedMarket.id === p.marketId ? 'bg-blue-900/40' : ''}`}
-                            onClick={() => p.clickable && handleMarketClick(p.tid)}
-                          >
-                            <td className={`py-1 px-1 ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
-                            <td className={`py-1 px-1 ${dd.color}`}>{dd.label}</td>
-                            <td className={`py-1 px-1 ${assetColorMap2[p.asset] || 'text-gray-300'} truncate`}>{p.marketName}</td>
-                            <td className={`py-1 px-1 font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>
-                              {p.outcome || '-'}
-                            </td>
-                            <td className="py-1 px-1 text-right text-gray-300">{Math.floor(p.size).toLocaleString()}</td>
-                            <td className="py-1 px-1 text-right text-gray-300">{p.entryPrice.toFixed(1)}¢</td>
-                            <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.cost).toLocaleString()}</td>
-                            <td className={`py-1 px-1 text-right ${exitColor}`}>{p.currentPrice.toFixed(1)}¢</td>
-                            <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.currentValue).toLocaleString()}</td>
-                            <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}${Math.round(Math.abs(p.pnl)).toLocaleString()}</td>
-                            <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                {/* Fixed footer */}
-                <table className="w-full text-[10px] table-fixed">
-                  {posColgroup}
-                  <tbody>
-                    <tr className="border-t-2 border-gray-600 font-bold">
-                      <td className="py-1 px-1 text-white">Total</td>
-                      <td className="py-1 px-1"></td>
-                      <td className="py-1 px-1"></td>
-                      <td className="py-1 px-1"></td>
-                      <td className="py-1 px-1 text-right text-white">{Math.floor(totalSize).toLocaleString()}</td>
-                      <td className="py-1 px-1 text-right text-gray-400">{avgEntry.toFixed(1)}¢</td>
-                      <td className="py-1 px-1 text-right text-white">${Math.round(totalCost).toLocaleString()}</td>
-                      <td className="py-1 px-1 text-right text-gray-400">{avgExit.toFixed(1)}¢</td>
-                      <td className="py-1 px-1 text-right text-white">${Math.round(totalValue).toLocaleString()}</td>
-                      <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}${Math.round(Math.abs(totalPnl)).toLocaleString()}</td>
-                      <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}{Math.round(Math.abs(avgPnlPct))}%</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {(makerAddress || '').trim() ? (
-              <div className="flex flex-col shrink-0 min-h-0 max-h-[min(40vh,22rem)] border-t border-gray-700 pt-2">
-                <div className="text-[10px] text-yellow-400/90 font-bold mb-1 shrink-0 flex items-center gap-1">
-                  Latest Markets Traded
-                  <span className="text-[9px] font-normal text-gray-500">(ledger)</span>
-                </div>
-                <div className="flex-1 min-h-0 overflow-auto rounded bg-gray-900/50 border border-gray-700/80 p-1.5">
-                  {ledgerLatestLoading && ledgerLatestMarkets.length === 0 ? (
-                    <div className="text-gray-500 text-center py-2 text-[10px]">Loading ledger markets…</div>
-                  ) : (
-                    <WalletLatestMarketsTradedTable
-                      markets={ledgerLatestMarkets}
-                      marketLookup={ledgerFullLookup}
-                      selectedMarketId={
-                        (selectedMarket?.conditionId || '').trim() || (selectedMarket?.id || '').trim() || undefined
-                      }
-                      onRowSelect={handleLedgerLatestRowClick}
-                    />
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </div>
+                  );
+                })}
+              </tbody></table>
+            </div>
+            {/* Fixed footer */}
+            <table className="w-full text-[10px] table-fixed">{posColgroup}<tbody>
+              <tr className="border-t-2 border-gray-600 font-bold">
+                <td className="py-1 px-1 text-white">Total</td>
+                <td className="py-1 px-1"></td><td className="py-1 px-1"></td><td className="py-1 px-1"></td>
+                <td className="py-1 px-1 text-right text-white">{Math.floor(totalSize).toLocaleString()}</td>
+                <td className="py-1 px-1 text-right text-gray-400">{avgEntry.toFixed(1)}¢</td>
+                <td className="py-1 px-1 text-right text-white">${Math.round(totalCost).toLocaleString()}</td>
+                <td className="py-1 px-1 text-right text-gray-400">{avgExit.toFixed(1)}¢</td>
+                <td className="py-1 px-1 text-right text-white">${Math.round(totalValue).toLocaleString()}</td>
+                <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}${Math.round(Math.abs(totalPnl)).toLocaleString()}</td>
+                <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}{Math.round(Math.abs(avgPnlPct))}%</td>
+              </tr>
+            </tbody></table>
+          </div>)
         )}
 
         {/* Orders */}

@@ -282,7 +282,8 @@ export type PanelType =
   | 'price-forecast'
   | 'binance-chart'
   | 'updown-hud'
-  | 'chat';
+  | 'chat'
+  | 'wallet-history';
 
 export interface PanelConfig {
   id: string;

@@ -1,9 +1,14 @@
-import { useMemo, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import type { WalletPosition } from '../api';
 import type { Market } from '../types';
-import { shortenUpDownMarketListCell, ASSET_COLORS, extractAssetFromMarket, assetTickerFromQuestion } from '../utils/format';
+import {
+  shortenUpDownMarketListCell,
+  ASSET_COLORS,
+  extractAssetFromMarket,
+  assetTickerFromQuestion,
+} from '../utils/format';
 
-/** Condition id + legacy id map for wallet dialog rows (same shape as Sidebar marketById). */
+/** Condition id + legacy id map (same shape as Sidebar marketById). */
 export function buildMarketByIdRecord(marketLookup: Record<string, Market> | null | undefined): Record<string, Market> {
   const m: Record<string, Market> = {};
   for (const mk of Object.values(marketLookup || {})) {
@@ -14,28 +19,29 @@ export function buildMarketByIdRecord(marketLookup: Record<string, Market> | nul
   return m;
 }
 
-function walletPositionListSortMs(row: WalletPosition, marketById: Record<string, Market>): number {
+/** Same basis as Wallet Info Date column: market end, row update, last trade. */
+export function walletPositionListSortMs(m: WalletPosition, marketById: Record<string, Market>): number {
   const parse = (s: string) => {
     const t = Date.parse(s);
     return Number.isNaN(t) ? 0 : t;
   };
-  const raw = (row.endDate || '').trim();
+  const raw = (m.endDate || '').trim();
   if (raw) {
     const t = parse(raw);
     if (t) return t;
   }
-  const mk = marketById[row.marketId] || marketById[String(row.marketId || '').trim().toLowerCase()];
+  const mk = marketById[m.marketId] || marketById[String(m.marketId || '').trim().toLowerCase()];
   const mkEnd = mk?.endDate != null ? String(mk.endDate).trim() : '';
   if (mkEnd) {
     const t = parse(mkEnd);
     if (t) return t;
   }
-  const lu = (row.lastUpdated || '').trim();
+  const lu = (m.lastUpdated || '').trim();
   if (lu) {
     const t = parse(lu);
     if (t) return t;
   }
-  const lt = row.lastTradeTime;
+  const lt = m.lastTradeTime;
   if (typeof lt === 'number' && Number.isFinite(lt) && lt > 0) {
     return lt < 1e12 ? lt * 1000 : lt;
   }
@@ -46,42 +52,29 @@ export function sortWalletPositionsByDisplayedDateDesc(
   rows: WalletPosition[],
   marketById: Record<string, Market>,
 ): WalletPosition[] {
-  return [...rows].sort(
-    (a, b) => walletPositionListSortMs(b, marketById) - walletPositionListSortMs(a, marketById),
-  );
+  return [...rows].sort((a, b) => walletPositionListSortMs(b, marketById) - walletPositionListSortMs(a, marketById));
 }
 
 function walletInvY(w: WalletPosition): number {
-  return typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
+  return typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : (w.netYes ?? 0);
 }
 function walletInvN(w: WalletPosition): number {
-  return typeof w.invNo === 'number' && Number.isFinite(w.invNo) ? w.invNo : w.netNo ?? 0;
+  return typeof w.invNo === 'number' && Number.isFinite(w.invNo) ? w.invNo : (w.netNo ?? 0);
 }
 function walletNet(w: WalletPosition): number {
   return walletInvY(w) - walletInvN(w);
 }
 
-function walletOutcomeLetterCell(m: WalletPosition) {
-  const oc = m.outcome;
-  if (oc !== 0 && oc !== 1) return <span className="text-gray-600">–</span>;
-  const letter = oc === 1 ? 'Y' : 'N';
-  let cls: string;
-  if (m.w === 1) cls = 'font-bold text-green-400';
-  else if (m.l === 1) cls = 'font-bold text-red-400';
-  else if (m.f === 1) cls = 'font-bold text-gray-400';
-  else cls = oc === 1 ? 'font-bold text-green-400' : 'font-bold text-red-400';
-  return <span className={cls}>{letter}</span>;
+function fmtUsd2En(absVal: number): string {
+  if (!Number.isFinite(absVal)) return '–';
+  return absVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function fmtPriceShare(p: number | undefined): string {
-  if (p == null || !Number.isFinite(p)) return '–';
-  if (Math.abs(p) < 1e-12) return '-';
-  return `${(p * 100).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}¢`;
-}
-
-function rPnlToneClass(v: number): string {
-  if (!Number.isFinite(v) || Math.abs(v) < 1e-9) return 'text-gray-400';
-  return v > 0 ? 'text-green-400' : 'text-red-400';
+function fmtUsdSignedLedger(v: number): string {
+  if (!Number.isFinite(v)) return '–';
+  const s = v >= 0 ? '+' : '−';
+  const a = Math.abs(v);
+  return `${s}$${a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function fmtRoiPercent(roi: number | undefined): { text: string; tone: string } {
@@ -102,16 +95,28 @@ function fmtWalletMarketRoiFromFlow(m: WalletPosition): { text: string; tone: st
   return fmtRoiPercent(usdcOut / denom - 1);
 }
 
-function fmtUsdSignedLedger(v: number): string {
-  if (!Number.isFinite(v)) return '–';
-  const s = v >= 0 ? '+' : '−';
-  const a = Math.abs(v);
-  return `${s}$${a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function walletOutcomeLetterCell(m: WalletPosition) {
+  const oc = m.outcome;
+  if (oc !== 0 && oc !== 1) return <span className="text-gray-600">–</span>;
+  const letter = oc === 1 ? 'Y' : 'N';
+  let cls: string;
+  if (m.w === 1) cls = 'font-bold text-green-400';
+  else if (m.l === 1) cls = 'font-bold text-red-400';
+  else if (m.f === 1) cls = 'font-bold text-gray-400';
+  else cls = oc === 1 ? 'font-bold text-green-400' : 'font-bold text-red-400';
+  return <span className={cls}>{letter}</span>;
 }
 
-function fmtUsd2En(absVal: number): string {
-  if (!Number.isFinite(absVal)) return '–';
-  return absVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** Shared by this table and ToxicFlowDialog wallet cohort tables. */
+export function fmtPriceShare(p: number | undefined): string {
+  if (p == null || !Number.isFinite(p)) return '–';
+  if (Math.abs(p) < 1e-12) return '-';
+  return `${(p * 100).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}¢`;
+}
+
+function rPnlToneClass(v: number): string {
+  if (!Number.isFinite(v) || Math.abs(v) < 1e-9) return 'text-gray-400';
+  return v > 0 ? 'text-green-400' : 'text-red-400';
 }
 
 function walletMarketUsdcInCell(usdcIn: number): ReactNode {
@@ -145,30 +150,28 @@ function marketListEndDateTimeLocale(endDate: string | null): { label: string; c
   return { label, color: isWeekend ? 'text-purple-400' : 'text-gray-300' };
 }
 
-/** Same Latest Markets table as Wallet Info dialog (ledger rollup). */
 export function WalletLatestMarketsTradedTable({
   markets,
-  marketLookup,
+  marketById,
+  loading,
   selectedMarketId,
-  onRowSelect,
+  onRowClick,
 }: {
   markets: WalletPosition[];
-  marketLookup: Record<string, Market>;
-  selectedMarketId?: string;
-  onRowSelect?: (marketId: string) => void;
+  marketById: Record<string, Market>;
+  loading: boolean;
+  selectedMarketId?: string | null;
+  onRowClick?: (marketId: string) => void;
 }) {
-  const marketById = useMemo(() => buildMarketByIdRecord(marketLookup), [marketLookup]);
-
-  if (markets.length === 0) {
-    return <div className="text-gray-500 text-[10px]">No markets found.</div>;
-  }
+  if (loading) return <div className="text-gray-500 text-[10px]">Loading markets...</div>;
+  if (markets.length === 0) return <div className="text-gray-500 text-[10px]">No markets found.</div>;
 
   return (
     <table className="w-full text-[10px] whitespace-nowrap">
       <thead>
         <tr className="text-gray-500 border-b border-gray-700">
           <th className="text-left py-1 whitespace-normal min-w-[10rem]">Date</th>
-          <th className="text-center w-5 py-1 whitespace-nowrap" title="Resolved chain side (Y/N); color = ledger win (green) / loss (red) / flat (gray)">
+          <th className="text-center w-5 py-1 whitespace-nowrap" title="Resolved outcome (Y/N); color from ledger win/loss">
             O
           </th>
           <th className="text-left whitespace-nowrap">Market</th>
@@ -181,7 +184,10 @@ export function WalletLatestMarketsTradedTable({
           <th className="text-right whitespace-nowrap" title="price_no">
             Px N
           </th>
-          <th className="text-right whitespace-nowrap font-semibold text-red-300 py-1" title="wallet_market_positions.usdc_in — USDC spent into this market (shown as −USDC)">
+          <th
+            className="text-right whitespace-nowrap font-semibold text-red-300 py-1"
+            title="wallet_market_positions.usdc_in — USDC spent (shown as −USDC)"
+          >
             Staked
           </th>
           <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">
@@ -200,7 +206,10 @@ export function WalletLatestMarketsTradedTable({
       </thead>
       <tbody>
         {markets.map((m) => {
-          const mk = marketById[m.marketId] || marketById[(m.marketId || '').toLowerCase()] || (m.question ? (m as unknown as Market) : null);
+          const mk =
+            marketById[m.marketId] ||
+            marketById[(m.marketId || '').toLowerCase()] ||
+            (m.question ? (m as unknown as Market) : undefined);
           const qFromApi = (m.question || '').trim();
           const title = qFromApi || mk?.question || mk?.groupItemTitle;
           const endRaw = (m.endDate || '').trim() || (mk?.endDate ? String(mk.endDate).trim() : '');
@@ -210,7 +219,7 @@ export function WalletLatestMarketsTradedTable({
           const titleForAsset = (title || '').trim();
           const assetForColor =
             mk && typeof mk.question === 'string'
-              ? extractAssetFromMarket(mk as Market) || assetTickerFromQuestion(titleForAsset)
+              ? extractAssetFromMarket(mk) || assetTickerFromQuestion(titleForAsset)
               : assetTickerFromQuestion(titleForAsset);
           const dd = marketListEndDateTimeLocale(endRaw || null);
           const iy = walletInvY(m);
@@ -234,11 +243,14 @@ export function WalletLatestMarketsTradedTable({
           const payoutUnresolved = wlfSum === 0;
           const hasChainOutcome = m.outcome === 0 || m.outcome === 1;
           const roiFmt = hasChainOutcome ? fmtWalletMarketRoiFromFlow(m) : { text: '–', tone: 'text-gray-500' };
+          const clickable = typeof onRowClick === 'function';
           return (
             <tr
               key={`${m.marketId}-${m.wallet}`}
-              className={`border-b border-gray-800 cursor-pointer hover:bg-gray-700/30 ${selectedMarketId === m.marketId ? 'bg-gray-700/40' : ''}`}
-              onClick={() => onRowSelect?.(m.marketId)}
+              className={`border-b border-gray-800 ${clickable ? 'cursor-pointer hover:bg-gray-700/30' : ''} ${
+                selectedMarketId === m.marketId ? 'bg-gray-700/40' : ''
+              }`}
+              onClick={clickable ? () => onRowClick!(m.marketId) : undefined}
             >
               <td className={`py-0.5 whitespace-normal min-w-[10rem] ${dd.color}`}>{dd.label}</td>
               <td className="text-center py-0.5 align-middle whitespace-nowrap">{walletOutcomeLetterCell(m)}</td>
@@ -248,9 +260,13 @@ export function WalletLatestMarketsTradedTable({
               >
                 {marketName}
               </td>
-              <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15 whitespace-nowrap">{fmtSharesDecimal1En(iy)}</td>
-              <td className="text-right tabular-nums font-bold text-red-400 bg-red-900/15 whitespace-nowrap">{fmtSharesDecimal1En(inn)}</td>
-              <td className="text-right whitespace-nowrap" title="Dominant leg: Inv Y − Inv N (unsigned size + side)">
+              <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15 whitespace-nowrap">
+                {fmtSharesDecimal1En(iy)}
+              </td>
+              <td className="text-right tabular-nums font-bold text-red-400 bg-red-900/15 whitespace-nowrap">
+                {fmtSharesDecimal1En(inn)}
+              </td>
+              <td className="text-right whitespace-nowrap" title="Inv Y − Inv N">
                 {netCol}
               </td>
               <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceYes)}</td>
@@ -258,7 +274,10 @@ export function WalletLatestMarketsTradedTable({
               <td className="text-right tabular-nums whitespace-nowrap" title="usdc_in">
                 {walletMarketUsdcInCell(rowUsdcIn)}
               </td>
-              <td className={`text-right tabular-nums font-medium whitespace-nowrap ${rowFee === 0 ? 'text-gray-400' : 'text-red-400'}`} title="fee_total">
+              <td
+                className={`text-right tabular-nums font-medium whitespace-nowrap ${rowFee === 0 ? 'text-gray-400' : 'text-red-400'}`}
+                title="fee_total"
+              >
                 {rowFee === 0 ? `$${fmtUsd2En(0)}` : `−$${fmtUsd2En(rowFee)}`}
               </td>
               <td

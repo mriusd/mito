@@ -11,13 +11,17 @@ import {
   type MarketStakedLegsResponse,
 } from '../api';
 import type { ToxicFlowData, WalletPosition, WalletSummary, OnchainFillRow } from '../api';
-import type { Market } from '../types';
 import { useAppStore } from '../stores/appStore';
 import { useMarketLookupSnapshot } from '../hooks/useMarketLookupSnapshot';
+import {
+  buildMarketByIdRecord,
+  sortWalletPositionsByDisplayedDateDesc,
+  WalletLatestMarketsTradedTable,
+  fmtPriceShare,
+} from './WalletLatestMarketsTradedTable';
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { HelperTooltip } from './HelperTooltip';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
-import { WalletLatestMarketsTradedTable, buildMarketByIdRecord, sortWalletPositionsByDisplayedDateDesc } from './WalletLatestMarketsTradedTable';
 
 interface ToxicFlowDialogProps {
   open: boolean;
@@ -114,22 +118,6 @@ function ToxicFlowStakedProgressBar({ wallets, dense }: { wallets: WalletPositio
   return <StakedLegUsdBar sumYUsd={sumYesNet} sumNUsd={sumNoNet} dense={dense} barMode="cohortSurplusHalves" />;
 }
 
-/** `(usdc_out/(usdc_in + fee)) − 1` as signed ROI decimal → %. */
-function fmtWalletMarketRoiFromFlow(m: WalletPosition): { text: string; tone: string } {
-  const usdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
-  const usdcOut = typeof m.usdcOut === 'number' && Number.isFinite(m.usdcOut) ? m.usdcOut : 0;
-  const fee = typeof m.feeTotal === 'number' && Number.isFinite(m.feeTotal) ? m.feeTotal : 0;
-  const denom = usdcIn + fee;
-  if (!(denom > 0)) return { text: '–', tone: 'text-gray-500' };
-  return fmtRoiPercent(usdcOut / denom - 1);
-}
-
-function fmtPriceShare(p: number | undefined): string {
-  if (p == null || !Number.isFinite(p)) return '–';
-  if (Math.abs(p) < 1e-12) return '-';
-  return `${(p * 100).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}¢`;
-}
-
 function rPnlToneClass(v: number): string {
   if (!Number.isFinite(v) || Math.abs(v) < 1e-9) return 'text-gray-400';
   return v > 0 ? 'text-green-400' : 'text-red-400';
@@ -180,13 +168,6 @@ function stakedNetUsdTableCell(signed: number): ReactNode {
       ${mag} N
     </span>
   );
-}
-
-function fmtSignedShares1En(v: number): string {
-  if (!Number.isFinite(v)) return '–';
-  if (Math.abs(v) < 1e-9) return (0).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  const sign = v > 0 ? '+' : '−';
-  return sign + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
 function LedgerSummaryField({
@@ -1067,19 +1048,16 @@ export function WalletInfoDialog({
           <div className="bg-gray-900 rounded p-2 min-h-0 min-w-0 flex flex-col overflow-hidden">
             <div className="text-[10px] text-gray-400 font-bold mb-1 shrink-0">Latest Markets Traded</div>
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
-            {loadingMarkets ? (
-              <div className="text-gray-500 text-[10px]">Loading markets...</div>
-            ) : (
               <WalletLatestMarketsTradedTable
                 markets={markets}
-                marketLookup={marketLookup}
+                marketById={marketById}
+                loading={loadingMarkets}
                 selectedMarketId={selectedMarketId}
-                onRowSelect={(id) => {
+                onRowClick={(id) => {
                   setSelectedMarketId(id);
                   setFillsPage(0);
                 }}
               />
-            )}
             </div>
           </div>
 

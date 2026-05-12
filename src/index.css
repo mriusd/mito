@@ -107,7 +107,7 @@ html, body, #root {
     background-color: #1f2937;
   }
   50% {
-    background-color: #14532d;
+    background-color: #1a3e32;
   }
 }
 @keyframes sidebar-bg-flash-red {
@@ -116,7 +116,7 @@ html, body, #root {
     background-color: #1f2937;
   }
   50% {
-    background-color: #7f1d1d;
+    background-color: #4f232a;
   }
 }
 

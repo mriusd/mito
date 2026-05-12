@@ -73,25 +73,47 @@ const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
 const TILT_EXTREME_FLASH_MS = 550;
 
 let tiltExtremeAudioCtx: AudioContext | null = null;
-function playUpdownTiltExtremeSound(kind: 'green' | 'red') {
+let tiltAudioUnlockListenersDone = false;
+
+/** Browsers suspend AudioContext until a user gesture; prime unlock on first tap/key. */
+function ensureTiltAudioUnlockListeners() {
+  if (tiltAudioUnlockListenersDone || typeof window === 'undefined') return;
+  tiltAudioUnlockListenersDone = true;
+  const tryResume = () => {
+    try {
+      const ACtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!ACtx) return;
+      if (!tiltExtremeAudioCtx || tiltExtremeAudioCtx.state === 'closed') tiltExtremeAudioCtx = new ACtx();
+      void tiltExtremeAudioCtx.resume();
+    } catch {
+      /* */
+    }
+  };
+  window.addEventListener('pointerdown', tryResume, { passive: true });
+  window.addEventListener('keydown', tryResume, { passive: true });
+}
+
+async function playUpdownTiltExtremeSound(kind: 'green' | 'red') {
   try {
+    ensureTiltAudioUnlockListeners();
     const ACtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!ACtx) return;
     if (!tiltExtremeAudioCtx || tiltExtremeAudioCtx.state === 'closed') tiltExtremeAudioCtx = new ACtx();
     const ctx = tiltExtremeAudioCtx;
-    void ctx.resume();
+    await ctx.resume();
+    if (ctx.state !== 'running') return;
     const t0 = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(kind === 'green' ? 880 : 330, t0);
-    gain.gain.setValueAtTime(0.0001, t0);
-    gain.gain.exponentialRampToValueAtTime(0.065, t0 + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.1);
+    osc.frequency.setValueAtTime(kind === 'green' ? 880 : 392, t0);
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(0.14, t0 + 0.04);
+    gain.gain.linearRampToValueAtTime(0, t0 + 0.14);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(t0);
-    osc.stop(t0 + 0.11);
+    osc.stop(t0 + 0.15);
   } catch {
     /* autoplay / no AudioContext */
   }
@@ -284,10 +306,14 @@ export function Sidebar() {
   useEffect(() => {
     if (!topBarExtremeBgFlash) return;
     const k = topBarExtremeBgFlash;
-    playUpdownTiltExtremeSound(k);
-    const id = window.setInterval(() => playUpdownTiltExtremeSound(k), TILT_EXTREME_FLASH_MS);
+    void playUpdownTiltExtremeSound(k);
+    const id = window.setInterval(() => void playUpdownTiltExtremeSound(k), TILT_EXTREME_FLASH_MS);
     return () => clearInterval(id);
   }, [topBarExtremeBgFlash]);
+
+  useEffect(() => {
+    ensureTiltAudioUnlockListeners();
+  }, []);
 
   const sharesInExistenceDisplay = useMemo(() => {
     const v = liveShareStats?.sharesInExistence;

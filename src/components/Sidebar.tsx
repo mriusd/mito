@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react';
 import { useAccount } from 'wagmi';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
@@ -49,7 +49,7 @@ import { SidebarBiasMiniBar } from './SidebarBiasMiniBar';
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
-import { ArrowRight, Bell, ChevronDown, ChevronRight, CirclePercent, Clock, ExternalLink, GripVertical, Pencil, Plus, UsersRound, X } from 'lucide-react';
+import { ArrowRight, Bell, CirclePercent, Clock, GripVertical, Pencil, Plus, X } from 'lucide-react';
 import type { AssetSymbol, Market, Position } from '../types';
 import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
 

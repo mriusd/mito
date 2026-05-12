@@ -71,23 +71,85 @@ Notes for `polybot-react`: what shipped, tradeoffs, and backlog ideas.
 
 ---
 
-## Suggested next optimizations
+## Frontend audit — 2026-05-12
 
-### High impact (architecture)
+Snapshot of `polybot-react` after a fresh read-through. Numbers are from the most recent `dist/` build and `wc -l` over `src/`.
 
-1. **On-chain sidebar tape** (`useOnchainTradesWS` + `displayLiveTrades`) — Partially done: Sidebar no longer mirrors hook output in extra state; optional: move hook + memo list subtree, or virtualize long tape.
+### Bundle observations
 
-### Medium impact (React / Zustand)
+- **Main chunk: `dist/assets/index-*.js` ≈ 3.56 MB minified** (next biggest non-vendor: 652 kB, 226 kB). Vite has no `build.rollupOptions.output.manualChunks` and no bundle visualizer, so vendor + app are co-mingled.
+- **Heavy `node_modules`** (uncompressed):
+  - `ethers` 10 MB (v5 — full BigNumber + provider tree), pulled by `clobClient`, `useWalletData`, `polymarketTradingMaker`, `mergePositions`.
+  - `html2canvas` 4.4 MB — **listed in `package.json` but not imported anywhere in `src/`**. Dead dep; drop it.
+  - `lighter-sdk-client` 1.7 MB (with WASM signer) — statically imported at module top of `panels/PerpBotPanel.tsx`, which is **statically** referenced from `DraggableCanvas`. Panel is dev-only (`devOnly: true` in `Header`'s add-panel menu) yet ships to every user.
+  - `@reown/appkit` 1.6 MB; `@polymarket/clob-client-v2` ~700 kB.
+- **Panel imports are all static** in `DraggableCanvas.tsx` (`renderPanel` switch). Largest offenders that almost no one has open by default: `BinanceChartPanel` 1.7k LOC, `AssetMarketTable` 1.5k LOC, `PriceForecastPanel` 1k LOC, `UpDownMarketsPanel` 789 LOC, `TradesPositionsOrders` 755 LOC, `PerpBotPanel` 693 LOC.
+- **`Sidebar.tsx` (3 830 LOC)** is statically imported by `App.tsx`. On mobile it boots `sidebarOpen=false` and on desktop it is the second-largest single component but still ships in the main chunk along with all its (eagerly imported) dependencies: `BsFlower`, `SidebarChartsRow`, `SidebarPolymarketOBHost`, `SidebarLiveTradesSection`, `usePolymarketOB`, etc.
 
-1. **Selector granularity** — Replace broad `useAppStore((s) => s.X)` wherever children only need primitives; use shallow compare (`useShallow`) for small object bundles.
-2. **List virtualization** — Orderbook lists and live trades can use windowing (`react-window` / virtuoso) when depth or tape length grows.
-3. **Stable props for memo children** — Audit `SidebarChartsRow` / forms: inline objects/functions still break memo; `useCallback` + memoized prop objects where profiling shows hotspots.
+### Store / re-render observations
 
-### Lower impact / polish
+- **`positions` / `orders` / `trades` references churn every 30 s** even when content is unchanged: `useWalletData.loadWalletData` and `useMarketData.refreshData` always call `setMarketData({ positions, orders, trades, ... })` with fresh arrays from JSON parses. Every component that does `useAppStore((s) => s.positions)` (`Sidebar`, `TradesPositionsOrders`, `AssetMarketTable`, `UpDownMarketsPanel`, `UpOrDownHUDPanel`, `SummaryTable`, plus the `portfolioPositionsValueUsd` recompute in `Header`) re-renders on every refresh tick — half the tree.
+- **`aboveMarkets` / `priceOnMarkets` / `weeklyHitMarkets` / `upOrDownMarkets`** are also replaced wholesale every 30 s with fresh top-level objects. `AssetMarketTable`, `PriceForecastPanel`, `BsFlower`, `useSignalsAndArbs`, etc. subscribe to the *whole* per-asset map → every refresh triggers a re-render even when the visible asset's bucket is byte-identical.
+- **`AssetMarketTable` recomputes heavy lookups inline** (not memoized):
+  - `signalByMarket` (foreach signals)
+  - `positionLookup`, `orderLookup` (foreach positions/orders)
+  - `buildTableData(markets)` is a function call on every render path with its own intermediate `Map`s.
+  - `parsePriceBounds`, `getNumericValue`, `deltaBgStyle` are recreated each render.
+- **Sidebar localStorage fan-out**: 13+ separate `useEffect(() => localStorage.setItem(...), [v])` blocks for tilt-notify settings. Cheap individually but noisy in diffs and inflates re-render set. A single `useLocalStorageState`/`useLocalStorageGroup` helper would collapse ~80 LOC and keep persistence in one path.
+- **`useBidAskWS.mergeWsItemOntoMarket`** is ~100 LOC of repetitive `if (typeof item.X === 'number' && Number.isFinite(item.X)) next.X = item.X` over 25+ fields — same field list already declared in `WS_FIELDS`/`BIDASK_EQ_KEYS`. Data-driven copy would shave the file in half and make adding fields a one-liner.
+- **`useSignalsAndArbs` debounced `computeAll`** still recomputes on every market-bucket reference replacement (the 30 s refresh), even when only `bestBid`/`bestAsk` changed via the (separate) bid/ask WS path. The actual signal math depends on bid/ask, not the bucket map identity → mostly redundant work behind the 200 ms debounce.
 
-1. **React Profiler + Web Vitals** — Baseline before/after for sidebar open + market select + WS flood.
-2. **Web Worker for `computeAll`** (signals) — If main-thread jank remains; watch serialization cost vs debounce.
-3. **Document store update paths** — Short ADR on what updates `marketLookup` vs `lastUpdated` so future features don’t reintroduce root subscriptions.
+### Misc
+
+- `App.tsx` reads `useAppStore.getState()` inside `keydown` handler — good. Same effect re-binds on every `selectedMarket` change; could lift the handler to a stable ref and read `getState()` for `selectedMarket` too.
+- `OrderbookPopup` already uses `useMarketLookupSnapshot()`; good.
+- `useOnchainTradesWS` already batches RAF and caps tape — good.
+- `useBinanceWS` already merges per-RAF — good.
+
+---
+
+## Suggested next optimizations (ranked)
+
+### Tier 1 — Bundle (estimated >1 MB off main chunk, low risk)
+
+1. **Drop `html2canvas`** from `package.json` — unused. ~4.4 MB off `node_modules`; whether it was tree-shaken or not, removing dead deps avoids future regressions.
+2. **Lazy-load every panel** in `DraggableCanvas.renderPanel` via `React.lazy` (use the existing `lazyWithChunkReload`). Each panel becomes its own chunk; main chunk drops by hundreds of kB. Add a small `<Suspense fallback={null}>` wrapper around `renderPanel(panel)` inside the grid item.
+   - Biggest wins: `BinanceChartPanel`, `AssetMarketTable`, `PriceForecastPanel`, `UpDownMarketsPanel`, `TradesPositionsOrders`, `PerpBotPanel` (dev-only — must not ship for non-dev users).
+3. **Gate `PerpBotPanel` on `IS_DEV`** at the import site (or lazy-load only when added). `lighter-sdk-client` is 1.7 MB with a WASM signer, dev-only feature.
+4. **Add `manualChunks` to `vite.config.ts`** so wallet/web3 deps live in their own long-cached chunks. Suggested split:
+   - `wallet`: `@reown/*`, `wagmi`, `viem`, `@base-org/account`
+   - `clob`: `@polymarket/clob-client-v2`, `ethers`
+   - `react`: `react`, `react-dom`, `react-grid-layout`, `react-resizable`
+   - `state`: `zustand`, `@tanstack/react-query`
+5. **Lazy-load `Sidebar`** + warm on hover/focus of the open-sidebar handle. On mobile the sidebar starts closed (already in code), so the 3.8k-LOC chunk + `BsFlower` + `usePolymarketOB` should not block first paint.
+6. **Add `rollup-plugin-visualizer`** (devDep) and a `npm run analyze` script. Without baseline measurement, regressions silently land.
+
+### Tier 2 — Store update hygiene (kills 30 s "everyone re-renders" wave)
+
+1. **Dedupe `positions` / `orders` / `trades` setters** before `set({...})`. Cheapest implementation: replace `setMarketData` with one that does shallow array-of-objects equality (compare lengths + per-row `id`/`asset`/`size`/`avgPrice`/`status`) and only updates the slice when something actually changed. Same for `aboveMarkets`/`priceOnMarkets`/`weeklyHitMarkets`/`upOrDownMarkets` (compare top-level keys; if all buckets are JSON-equal, keep the old reference).
+2. **Bump-and-snapshot** the slot-replaced collections (same pattern as `marketLookupEpoch`):
+   - `positionsEpoch`, `ordersEpoch`, `tradesEpoch` bump on real change; panels subscribe to the epoch and pull data via `getState()` inside `useMemo`.
+   - Cleanest place: a tiny `useStoreSlot<T>(key, epoch)` hook in `src/hooks/`.
+3. **`useSignalsAndArbs` input gate** — hash `(aboveMarkets, priceOnMarkets, weeklyHitMarkets, manualPriceSlots, …)` via length + first/last bestBid sentinel before scheduling a recompute. Use `marketLookupEpoch` as the actual reactivity trigger; bucket map identity is no longer load-bearing once Tier 2.1 lands.
+4. **`Header` portfolio value**: it already uses `useShallow`, but `portfolioPositionsValueUsd(positions)` recomputes on every `positions` identity change. If `positions` is deduped (Tier 2.1) the issue disappears; otherwise memoize per-`positionsEpoch`.
+
+### Tier 3 — Per-component renders
+
+1. **Memoize hot tables**: wrap `AssetMarketTable`, `UpDownMarketsPanel`, `UpOrDownHUDPanel`, `TradesPositionsOrders` in `React.memo` after Tier 2 lands (otherwise memo is useless — store-driven re-renders bypass it). Lift `panelId` and any other primitive props so memo can short-circuit.
+2. **`AssetMarketTable` internal memo**:
+   - `signalByMarket` → `useMemo([signals, signalsOnGrid, signalMakerMode])`
+   - `positionLookup` → `useMemo([positions, onchainGridPositions, liveTradesSource])`
+   - `orderLookup` → `useMemo([orders])`
+   - `buildTableData` result per `(markets, showPast)` pair
+3. **`useBidAskWS.mergeWsItemOntoMarket` data-driven copy**: keep field list as `[{ key, validate }]`, iterate. ~60 LOC saved, identical hot path.
+4. **Consolidate Sidebar localStorage effects** behind a `useLocalStorageState(key, initialReader, serializer)` hook — converts 13+ `useEffect` blocks into a single line per setting. Optional `?storage="localStorage"` to keep types tight.
+
+### Tier 4 — Polish
+
+1. **List virtualization** for live tape (3500-row cap, all rendered) and Up/Down event tables when long. `react-virtuoso` is the smallest mature option (~12 kB gz) and supports sticky headers needed for the grid tables.
+2. **React Profiler baseline** captured during a typical WS-flood minute on the default layout — keep a CSV under `OPTIMIZATIONS.md` for regression tracking.
+3. **Web Worker `computeAll`** in `useSignalsAndArbs` — only worth it after Tier 2.3 lands and confirms a real main-thread cost; current implementation is mostly cheap loops over a few hundred markets.
+4. **ADR**: which actions are allowed to bump `marketLookupEpoch` vs. replace `marketLookup` vs. just patch `bestBid/bestAsk`. Right now there are 3 paths and adding a 4th would silently reintroduce root-subscription churn.
 
 ---
 

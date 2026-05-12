@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, memo } from 'react';
 import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
@@ -60,7 +60,7 @@ function getCurrentAndNext(assetMarkets: Record<string, Market[]>, tf: string): 
   return { current: markets[currentIdx], next: markets[currentIdx + 1] || null };
 }
 
-export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
+function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
   const [asset, setAsset] = useState<AssetName>(() => {
     const saved = localStorage.getItem(`polybot-updown-hud-asset-${panelId}`);
     if (saved && ASSETS.includes(saved as AssetName)) return saved as AssetName;
@@ -512,4 +512,6 @@ export function UpOrDownHUDPanel({ panelId }: { panelId: string }) {
     </div>
   );
 }
+
+export const UpOrDownHUDPanel = memo(UpOrDownHUDPanelInner);
 

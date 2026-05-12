@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, Fragment } from 'react';
+import { useCallback, useEffect, useMemo, useState, Fragment, memo } from 'react';
 import type { CSSProperties } from 'react';
 import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
@@ -126,7 +126,7 @@ function deltaMidVsMathBg(yesMidProb: number | null, mathYesProb: number | null)
   };
 }
 
-export function UpDownMarketsPanel() {
+function UpDownMarketsPanelInner() {
   const [showTarget, setShowTarget] = useState(() => localStorage.getItem(SHOW_TARGET_KEY) !== 'false');
   const [showNextMarket, setShowNextMarket] = useState(() => localStorage.getItem(SHOW_NEXT_MARKET_KEY) === 'true');
   const [showVolume, setShowVolume] = useState(() => localStorage.getItem(SHOW_VOLUME_KEY) === 'true');
@@ -787,3 +787,5 @@ export function UpDownMarketsPanel() {
     </div>
   );
 }
+
+export const UpDownMarketsPanel = memo(UpDownMarketsPanelInner);

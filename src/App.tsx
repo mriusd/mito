@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import './lib/wallet';
 import { useAppStore } from './stores/appStore';
 import { useBinanceWS } from './hooks/useBinanceWS';
@@ -8,7 +8,6 @@ import { useVwapAndVolatility } from './hooks/useVwapAndVolatility';
 import { useSignalsAndArbs } from './hooks/useSignalsAndArbs';
 import { useBidAskWS } from './hooks/useBidAskWS';
 import { Header } from './components/Header';
-import { Sidebar } from './components/Sidebar';
 import { DraggableCanvas } from './components/DraggableCanvas';
 import { OrderbookPopup } from './components/OrderbookPopup';
 import { CreateProgDialog } from './components/CreateProgDialog';
@@ -17,6 +16,7 @@ import { ArbDialog } from './components/ArbDialog';
 import { PnlDrilldownDialog } from './components/PnlDrilldownDialog';
 import { SigningDialog } from './components/SigningDialog';
 import { SignatureExplainerDialog } from './components/SignatureExplainerDialog';
+import { lazyWithChunkReload } from './utils/lazyWithChunkReload';
 import {
   adjacentMarketCell,
   findMarketCellEl,
@@ -24,6 +24,25 @@ import {
   marketFromLookupById,
   shouldIgnoreGridKeyEvent,
 } from './lib/marketGridKeyboard';
+
+const SidebarLazy = lazyWithChunkReload(() =>
+  import('./components/Sidebar').then((m) => ({ default: m.Sidebar })),
+);
+
+function useMountSidebarLazyChunk(): boolean {
+  const [mount, setMount] = useState(() =>
+    typeof window !== 'undefined' && !window.matchMedia('(max-width: 767px)').matches,
+  );
+  useEffect(() => {
+    const check = () => {
+      const { sidebarOpen, selectedMarket } = useAppStore.getState();
+      if (sidebarOpen || selectedMarket) setMount(true);
+    };
+    check();
+    return useAppStore.subscribe(check);
+  }, []);
+  return mount;
+}
 
 function parseMarketLinkFromUrl(): { marketId: string; side: 'YES' | 'NO' } | null {
   const params = new URLSearchParams(window.location.search);
@@ -50,6 +69,9 @@ function App() {
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const [pendingLink, setPendingLink] = useState<{ marketId: string; side: 'YES' | 'NO' } | null>(() => parseMarketLinkFromUrl());
+  const selectedMarketRef = useRef(selectedMarket);
+  selectedMarketRef.current = selectedMarket;
+  const mountSidebarChunk = useMountSidebarLazyChunk();
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return;
@@ -129,14 +151,14 @@ function App() {
 
   // Arrow keys / WASD: move selection to adjacent grid cell (same YES/NO side).
   useEffect(() => {
-    if (!selectedMarket) return;
-
     const onKeyDown = (e: KeyboardEvent) => {
+      const sm = selectedMarketRef.current;
+      if (!sm) return;
       if (shouldIgnoreGridKeyEvent(e)) return;
       const dir = gridDirFromKey(e.key);
       if (!dir) return;
 
-      const cell = findMarketCellEl(selectedMarket.id);
+      const cell = findMarketCellEl(sm.id);
       if (!cell) return;
 
       const nextCell = adjacentMarketCell(cell, dir);
@@ -145,18 +167,18 @@ function App() {
       const nextId = nextCell.dataset.marketId;
       if (!nextId) return;
 
-      const { marketLookup, setSelectedMarket } = useAppStore.getState();
+      const { marketLookup, setSelectedMarket: sel } = useAppStore.getState();
       const nextMarket = marketFromLookupById(marketLookup, nextId);
       if (!nextMarket) return;
 
       e.preventDefault();
-      setSelectedMarket(nextMarket);
+      sel(nextMarket);
       nextCell.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedMarket]);
+  }, []);
 
   return (
     <div className="gradient-bg h-full flex flex-col text-white">
@@ -179,8 +201,12 @@ function App() {
         </div>
       </div>
 
-      {/* Right Sidebar - fixed overlay */}
-      <Sidebar />
+      {/* Right Sidebar — lazy chunk until desktop (always) or mobile (open / market selected) */}
+      {mountSidebarChunk && (
+        <Suspense fallback={null}>
+          <SidebarLazy />
+        </Suspense>
+      )}
 
       {/* Orderbook hover popup */}
       <OrderbookPopup />

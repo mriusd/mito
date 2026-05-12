@@ -40,109 +40,58 @@ export function bidAskWsRowEqual(prev: Market | undefined | null, next: Market |
   if (prev === next) return true;
   if (!prev || !next) return false;
   for (const k of BIDASK_EQ_KEYS) {
-    if ((prev as any)[k] !== (next as any)[k]) return false;
+    if (prev[k] !== next[k]) return false;
   }
   return true;
 }
 
-function mergeWsItemOntoMarket(seed: Market | undefined, item: any): Market {
+/** Partial row from `/ws/chart` bid/ask batches — keys overlap `Market`. */
+type BidAskWsItem = Record<string, unknown> & {
+  assetId?: string;
+  bestBid?: number;
+  bestAsk?: number;
+  usdcVolume?: number;
+  volume?: number;
+};
+
+function mergeWsItemOntoMarket(seed: Market | undefined, item: BidAskWsItem): Market {
   const bestBid = item.bestBid ?? 0;
   const bestAsk = item.bestAsk ?? 0;
-  const next = seed
-    ? {
-        ...seed,
-        bestBid,
-        bestAsk,
-      }
-    : ({
-        id: item.assetId,
-        clobTokenIds: [item.assetId],
-        question: '',
-        endDate: '',
-        bestBid,
-        bestAsk,
-      } as Market);
-  const v = item.usdcVolume ?? item.volume;
-  if (typeof v === 'number' && Number.isFinite(v)) {
-    next.volume = v;
+  let next: Market;
+  if (seed) {
+    next = {
+      ...seed,
+      bestBid,
+      bestAsk,
+    };
+  } else {
+    if (typeof item.assetId !== 'string') {
+      throw new Error('useBidAskWS: mergeWsItemOntoMarket requires assetId when seed is missing');
+    }
+    const id = item.assetId;
+    next = {
+      id,
+      clobTokenIds: [id],
+      question: '',
+      endDate: '',
+      bestBid,
+      bestAsk,
+    } as Market;
   }
-  if (typeof item.sharesInExistence === 'number' && Number.isFinite(item.sharesInExistence)) {
-    next.sharesInExistence = item.sharesInExistence;
+  for (const key of BIDASK_EQ_KEYS) {
+    if (key === 'bestBid' || key === 'bestAsk') continue;
+    const v = item[key as string];
+    if (key === 'liveBiasWindowMin') {
+      if (typeof v === 'number' && v > 0) next.liveBiasWindowMin = v;
+      continue;
+    }
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      (next as unknown as Record<string, unknown>)[key as string] = v;
+    }
   }
-  if (typeof item.marketNetDirection === 'number' && Number.isFinite(item.marketNetDirection)) {
-    next.marketNetDirection = item.marketNetDirection;
-  }
-  if (typeof item.holders === 'number' && Number.isFinite(item.holders)) {
-    next.holders = item.holders;
-  }
-  if (typeof item.smartMoneyBias === 'number' && Number.isFinite(item.smartMoneyBias)) {
-    next.smartMoneyBias = item.smartMoneyBias;
-  }
-  if (typeof item.provenSMS === 'number' && Number.isFinite(item.provenSMS)) {
-    next.provenSMS = item.provenSMS;
-  }
-  if (typeof item.crowdBias === 'number' && Number.isFinite(item.crowdBias)) {
-    next.crowdBias = item.crowdBias;
-  }
-  if (typeof item.liveBias === 'number' && Number.isFinite(item.liveBias)) {
-    next.liveBias = item.liveBias;
-  }
-  if (typeof item.liveBiasWindowMin === 'number' && item.liveBiasWindowMin > 0) {
-    next.liveBiasWindowMin = item.liveBiasWindowMin;
-  }
-  if (typeof item.concentration === 'number' && Number.isFinite(item.concentration)) {
-    next.concentration = item.concentration;
-  }
-  if (typeof item.winnerBias === 'number' && Number.isFinite(item.winnerBias)) {
-    next.winnerBias = item.winnerBias;
-  }
-  if (typeof item.winnerBiasYesWR === 'number' && Number.isFinite(item.winnerBiasYesWR)) {
-    next.winnerBiasYesWR = item.winnerBiasYesWR;
-  }
-  if (typeof item.winnerBiasNoWR === 'number' && Number.isFinite(item.winnerBiasNoWR)) {
-    next.winnerBiasNoWR = item.winnerBiasNoWR;
-  }
-  if (typeof item.winBiasShares === 'number' && Number.isFinite(item.winBiasShares)) {
-    next.winBiasShares = item.winBiasShares;
-  }
-  if (typeof item.winBiasSharesYes === 'number' && Number.isFinite(item.winBiasSharesYes)) {
-    next.winBiasSharesYes = item.winBiasSharesYes;
-  }
-  if (typeof item.winBiasSharesNo === 'number' && Number.isFinite(item.winBiasSharesNo)) {
-    next.winBiasSharesNo = item.winBiasSharesNo;
-  }
-  if (typeof item.winnerBiasConviction === 'number' && Number.isFinite(item.winnerBiasConviction)) {
-    next.winnerBiasConviction = item.winnerBiasConviction;
-  }
-  if (typeof item.winnerBiasConvictionYesWR === 'number' && Number.isFinite(item.winnerBiasConvictionYesWR)) {
-    next.winnerBiasConvictionYesWR = item.winnerBiasConvictionYesWR;
-  }
-  if (typeof item.winnerBiasConvictionNoWR === 'number' && Number.isFinite(item.winnerBiasConvictionNoWR)) {
-    next.winnerBiasConvictionNoWR = item.winnerBiasConvictionNoWR;
-  }
-  if (typeof item.winBiasConvictionShares === 'number' && Number.isFinite(item.winBiasConvictionShares)) {
-    next.winBiasConvictionShares = item.winBiasConvictionShares;
-  }
-  if (typeof item.winBiasConvictionSharesYes === 'number' && Number.isFinite(item.winBiasConvictionSharesYes)) {
-    next.winBiasConvictionSharesYes = item.winBiasConvictionSharesYes;
-  }
-  if (typeof item.winBiasConvictionSharesNo === 'number' && Number.isFinite(item.winBiasConvictionSharesNo)) {
-    next.winBiasConvictionSharesNo = item.winBiasConvictionSharesNo;
-  }
-  if (typeof item.stakedUsdYesLeg === 'number' && Number.isFinite(item.stakedUsdYesLeg)) {
-    next.stakedUsdYesLeg = item.stakedUsdYesLeg;
-  }
-  if (typeof item.stakedUsdNoLeg === 'number' && Number.isFinite(item.stakedUsdNoLeg)) {
-    next.stakedUsdNoLeg = item.stakedUsdNoLeg;
-  }
-  if (typeof item.stakedSumAbsSignedNetUsd === 'number' && Number.isFinite(item.stakedSumAbsSignedNetUsd)) {
-    next.stakedSumAbsSignedNetUsd = item.stakedSumAbsSignedNetUsd;
-  }
-  if (typeof item.stakedTopHoldersCohortYesUsd === 'number' && Number.isFinite(item.stakedTopHoldersCohortYesUsd)) {
-    next.stakedTopHoldersCohortYesUsd = item.stakedTopHoldersCohortYesUsd;
-  }
-  if (typeof item.stakedTopHoldersCohortNoUsd === 'number' && Number.isFinite(item.stakedTopHoldersCohortNoUsd)) {
-    next.stakedTopHoldersCohortNoUsd = item.stakedTopHoldersCohortNoUsd;
+  const vol = item.usdcVolume ?? item.volume;
+  if (typeof vol === 'number' && Number.isFinite(vol)) {
+    next.volume = vol;
   }
   return next;
 }
@@ -185,7 +134,7 @@ export function useBidAskWS() {
       flushRafRef.current = requestAnimationFrame(() => flushPendingBidAsk());
     }
 
-    function enqueueBidAskPatches(items: any[]) {
+    function enqueueBidAskPatches(items: BidAskWsItem[]) {
       const lookup = useAppStore.getState().marketLookup;
       const pending = pendingPatchRef.current;
       for (const item of items) {
@@ -216,9 +165,9 @@ export function useBidAskWS() {
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'bidAskBatch' && Array.isArray(msg.data)) {
-            enqueueBidAskPatches(msg.data);
+            enqueueBidAskPatches(msg.data as BidAskWsItem[]);
           } else if (msg.type === 'bidAskUpDown' && msg.data && typeof msg.data === 'object') {
-            enqueueBidAskPatches([msg.data]);
+            enqueueBidAskPatches([msg.data as BidAskWsItem]);
           }
         } catch {
           /* ignore */

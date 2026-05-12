@@ -132,6 +132,7 @@ export interface Trade {
   created_at?: string;
   fee?: string;
   matchTime?: string;
+  match_time?: string | number;
   status?: string;
   fill_price?: string;
   size_filled?: string;

@@ -1,29 +1,64 @@
-import { useCallback, useMemo, useRef, useEffect, useLayoutEffect, useState } from 'react';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+import { Suspense, useCallback, useMemo, useRef, useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import { ReactGridLayout as RGLGrid } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import { X } from 'lucide-react';
-import { useAppStore } from '../stores/appStore';
-import { AssetMarketTable } from './panels/AssetMarketTable';
-import { HedgesTable } from './panels/ArbsTable';
-import { SummaryTable } from './panels/SummaryTable';
-import { ArbPositionsTable } from './panels/ArbPositionsTable';
-import { SignalsTable } from './panels/SignalsTable';
-import { TradesPositionsOrders } from './panels/TradesPositionsOrders';
-import { PnLPanel } from './panels/PnLPanel';
-import { UpDownMarketsPanel } from './panels/UpDownMarketsPanel';
-import { RelativeChartPanel } from './panels/RelativeChartPanel';
-import { PerpBotPanel } from './panels/PerpBotPanel';
-import { PriceForecastPanel } from './panels/PriceForecastPanel';
-import { BinanceChartPanel } from './panels/BinanceChartPanel';
-import { UpOrDownHUDPanel } from './panels/UpOrDownHUDPanel';
-import { ChatPanel } from './panels/ChatPanel';
-import { SmartMoneyPanel } from './panels/SmartMoneyPanel';
-import { HistoryPanel } from './panels/HistoryPanel';
+import { useAppStore, type PersistedGridLayouts } from '../stores/appStore';
+import { lazyWithChunkReload } from '../utils/lazyWithChunkReload';
 import type { PanelConfig, PanelType } from '../types';
 import BREAKPOINT_LAYOUTS, { HEIGHT_VARIANTS, GRID_COLS } from '../lib/defaultLayouts';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const LazyAssetMarketTable = lazyWithChunkReload(() =>
+  import('./panels/AssetMarketTable').then((m) => ({ default: m.AssetMarketTable })),
+);
+const LazyHedgesTable = lazyWithChunkReload(() =>
+  import('./panels/ArbsTable').then((m) => ({ default: m.HedgesTable })),
+);
+const LazySummaryTable = lazyWithChunkReload(() =>
+  import('./panels/SummaryTable').then((m) => ({ default: m.SummaryTable })),
+);
+const LazyArbPositionsTable = lazyWithChunkReload(() =>
+  import('./panels/ArbPositionsTable').then((m) => ({ default: m.ArbPositionsTable })),
+);
+const LazySignalsTable = lazyWithChunkReload(() =>
+  import('./panels/SignalsTable').then((m) => ({ default: m.SignalsTable })),
+);
+const LazyTradesPositionsOrders = lazyWithChunkReload(() =>
+  import('./panels/TradesPositionsOrders').then((m) => ({ default: m.TradesPositionsOrders })),
+);
+const LazyPnLPanel = lazyWithChunkReload(() =>
+  import('./panels/PnLPanel').then((m) => ({ default: m.PnLPanel })),
+);
+const LazyUpDownMarketsPanel = lazyWithChunkReload(() =>
+  import('./panels/UpDownMarketsPanel').then((m) => ({ default: m.UpDownMarketsPanel })),
+);
+const LazyRelativeChartPanel = lazyWithChunkReload(() =>
+  import('./panels/RelativeChartPanel').then((m) => ({ default: m.RelativeChartPanel })),
+);
+const LazyPriceForecastPanel = lazyWithChunkReload(() =>
+  import('./panels/PriceForecastPanel').then((m) => ({ default: m.PriceForecastPanel })),
+);
+const LazyBinanceChartPanel = lazyWithChunkReload(() =>
+  import('./panels/BinanceChartPanel').then((m) => ({ default: m.BinanceChartPanel })),
+);
+const LazyUpOrDownHUDPanel = lazyWithChunkReload(() =>
+  import('./panels/UpOrDownHUDPanel').then((m) => ({ default: m.UpOrDownHUDPanel })),
+);
+const LazyChatPanel = lazyWithChunkReload(() =>
+  import('./panels/ChatPanel').then((m) => ({ default: m.ChatPanel })),
+);
+const LazySmartMoneyPanel = lazyWithChunkReload(() =>
+  import('./panels/SmartMoneyPanel').then((m) => ({ default: m.SmartMoneyPanel })),
+);
+const LazyHistoryPanel = lazyWithChunkReload(() =>
+  import('./panels/HistoryPanel').then((m) => ({ default: m.HistoryPanel })),
+);
+
+const IS_DEV = import.meta.env.DEV;
+const LazyPerpBotPanel = IS_DEV
+  ? lazyWithChunkReload(() => import('./panels/PerpBotPanel').then((m) => ({ default: m.PerpBotPanel })))
+  : null;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- react-grid-layout/legacy default export not fully typed
 const GridLayout = RGLGrid as any;
 
 interface LayoutItem {
@@ -60,7 +95,6 @@ function getBreakpoint(viewportWidth: number, viewportHeight?: number): string {
   return 'xxs';
 }
 const TOTAL_ROWS = 100;
-const MARGIN = 4;
 
 function getDefaultLayout(
   panels: PanelConfig[],
@@ -99,54 +133,53 @@ function getDefaultLayout(
   return layout;
 }
 
-function getDefaultLayouts(panels: PanelConfig[]): LayoutsMap {
-  const result: LayoutsMap = {};
-  for (const bp of Object.keys(BREAKPOINT_LAYOUTS)) {
-    result[bp] = getDefaultLayout(panels, bp);
-  }
-  return result;
-}
-
-function renderPanel(panel: PanelConfig): React.ReactNode {
+function renderPanel(panel: PanelConfig): ReactNode {
   switch (panel.type) {
     case 'asset-BTC':
-      return <AssetMarketTable asset="BTC" panelId={panel.id} />;
+      return <LazyAssetMarketTable asset="BTC" panelId={panel.id} />;
     case 'asset-ETH':
-      return <AssetMarketTable asset="ETH" panelId={panel.id} />;
+      return <LazyAssetMarketTable asset="ETH" panelId={panel.id} />;
     case 'asset-SOL':
-      return <AssetMarketTable asset="SOL" panelId={panel.id} />;
+      return <LazyAssetMarketTable asset="SOL" panelId={panel.id} />;
     case 'asset-XRP':
-      return <AssetMarketTable asset="XRP" panelId={panel.id} />;
+      return <LazyAssetMarketTable asset="XRP" panelId={panel.id} />;
     case 'arbs':
-      return <HedgesTable />;
+      return <LazyHedgesTable />;
     case 'summary':
-      return <SummaryTable />;
+      return <LazySummaryTable />;
     case 'arb-positions':
-      return <ArbPositionsTable />;
+      return <LazyArbPositionsTable />;
     case 'signals':
-      return <SignalsTable />;
+      return <LazySignalsTable />;
     case 'smart-money':
-      return <SmartMoneyPanel />;
+      return <LazySmartMoneyPanel />;
     case 'trades-positions-orders':
-      return <TradesPositionsOrders panelId={panel.id} />;
+      return <LazyTradesPositionsOrders panelId={panel.id} />;
     case 'pnl':
-      return <PnLPanel />;
+      return <LazyPnLPanel />;
     case 'updown-overview':
-      return <UpDownMarketsPanel />;
+      return <LazyUpDownMarketsPanel />;
     case 'relative-chart':
-      return <RelativeChartPanel />;
+      return <LazyRelativeChartPanel />;
     case 'perp-bot':
-      return <PerpBotPanel />;
+      if (!LazyPerpBotPanel) {
+        return (
+          <div className="text-gray-500 p-4 text-xs">
+            Perp Bot panel is only bundled in dev builds.
+          </div>
+        );
+      }
+      return <LazyPerpBotPanel />;
     case 'price-forecast':
-      return <PriceForecastPanel />;
+      return <LazyPriceForecastPanel />;
     case 'binance-chart':
-      return <BinanceChartPanel panelId={panel.id} initialAsset="BTC" />;
+      return <LazyBinanceChartPanel panelId={panel.id} initialAsset="BTC" />;
     case 'updown-hud':
-      return <UpOrDownHUDPanel panelId={panel.id} />;
+      return <LazyUpOrDownHUDPanel panelId={panel.id} />;
     case 'chat':
-      return <ChatPanel />;
+      return <LazyChatPanel />;
     case 'wallet-history':
-      return <HistoryPanel />;
+      return <LazyHistoryPanel />;
     default:
       return <div className="text-gray-500 p-4">Unknown panel: {panel.type}</div>;
   }
@@ -289,6 +322,7 @@ export function DraggableCanvas() {
     'binance-chart': 'Asset Candle Chart',
     'updown-hud': 'UpOrDown HUD',
     'signals': 'Signals', 'smart-money': 'Smart Money', 'chat': 'Chat', 'pnl': 'P&L',
+    'arbs': 'Hedges', 'summary': 'Summary',
     'wallet-history': 'History',
   };
 
@@ -343,14 +377,14 @@ export function DraggableCanvas() {
   );
 
   // Persist layout on actual user drag/resize — use the layout RGL passes to the callback
-  const handleUserLayoutChange = useCallback((
-    _layout: LayoutItem[], _oldItem: LayoutItem, _newItem: LayoutItem,
-    _placeholder: LayoutItem, _e: MouseEvent, _element: HTMLElement
-  ) => {
-    const normalized = _layout.map((l) => ({ ...l, minW: 1, minH: 1 }));
-    const merged: LayoutsMap = { ...(layouts || {}), [currentBreakpoint]: normalized } as LayoutsMap;
-    setLayouts(merged as any);
-  }, [setLayouts, layouts, currentBreakpoint]);
+  const handleUserLayoutChange = useCallback(
+    (layout: LayoutItem[]) => {
+      const normalized = layout.map((l) => ({ ...l, minW: 1, minH: 1 }));
+      const merged: LayoutsMap = { ...(layouts || {}), [currentBreakpoint]: normalized } as LayoutsMap;
+      setLayouts(merged as PersistedGridLayouts);
+    },
+    [setLayouts, layouts, currentBreakpoint],
+  );
 
   const disarmMobileAfterLayoutGesture = useCallback(() => {
     if (window.innerWidth >= 768) return;
@@ -374,23 +408,23 @@ export function DraggableCanvas() {
     layoutInteractingRef.current = true;
   }, []);
 
-  const handleDragStopWrapped = useCallback((
-    layout: LayoutItem[], oldItem: LayoutItem, newItem: LayoutItem,
-    placeholder: LayoutItem, e: MouseEvent, element: HTMLElement
-  ) => {
-    layoutInteractingRef.current = false;
-    disarmMobileAfterLayoutGesture();
-    handleUserLayoutChange(layout, oldItem, newItem, placeholder, e, element);
-  }, [disarmMobileAfterLayoutGesture, handleUserLayoutChange]);
+  const handleDragStopWrapped = useCallback(
+    (layout: LayoutItem[]) => {
+      layoutInteractingRef.current = false;
+      disarmMobileAfterLayoutGesture();
+      handleUserLayoutChange(layout);
+    },
+    [disarmMobileAfterLayoutGesture, handleUserLayoutChange],
+  );
 
-  const handleResizeStopWrapped = useCallback((
-    layout: LayoutItem[], oldItem: LayoutItem, newItem: LayoutItem,
-    placeholder: LayoutItem, e: MouseEvent, element: HTMLElement
-  ) => {
-    layoutInteractingRef.current = false;
-    // Resize stays available without double-tap; do not disarm mobile drag mode here.
-    handleUserLayoutChange(layout, oldItem, newItem, placeholder, e, element);
-  }, [handleUserLayoutChange]);
+  const handleResizeStopWrapped = useCallback(
+    (layout: LayoutItem[]) => {
+      layoutInteractingRef.current = false;
+      // Resize stays available without double-tap; do not disarm mobile drag mode here.
+      handleUserLayoutChange(layout);
+    },
+    [handleUserLayoutChange],
+  );
 
   const handleRemovePanel = useCallback(
     (id: string) => {
@@ -409,7 +443,7 @@ export function DraggableCanvas() {
         for (const [bp, lay] of Object.entries(layouts)) {
           newLayouts[bp] = (lay as LayoutItem[]).filter((l) => l.i !== id);
         }
-        setLayouts(newLayouts as any);
+        setLayouts(newLayouts as PersistedGridLayouts);
       }
     },
     [removePanel, layouts, setLayouts, effectivePanels, removedPanelTypes]
@@ -446,7 +480,7 @@ export function DraggableCanvas() {
                       localStorage.removeItem('polybot-removed-panels');
                       setRemovedPanelTypes(new Set());
                       setPanels(newPanels);
-                      setLayouts(null as any);
+                      setLayouts(null);
                       setShowLayoutMenu(false);
                     }}
                     className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:bg-gray-700 transition"
@@ -469,7 +503,7 @@ export function DraggableCanvas() {
                     localStorage.removeItem('polybot-removed-panels');
                     setRemovedPanelTypes(new Set());
                     setPanels(defaultPanels);
-                    setLayouts(null as any);
+                    setLayouts(null);
                     setShowLayoutMenu(false);
                   }}
                   className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-gray-700 transition"
@@ -531,7 +565,7 @@ export function DraggableCanvas() {
                 <X className="w-3 h-3" />
               )}
             </button>
-            {renderPanel(panel)}
+            <Suspense fallback={null}>{renderPanel(panel)}</Suspense>
           </div>
         ))}
       </GridLayout>}

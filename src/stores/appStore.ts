@@ -1,7 +1,14 @@
 import { create } from 'zustand';
-import type { AssetSymbol, Market, Position, Order, Trade, PriceRange, PanelConfig, PanelType, Signal, ArbOpportunity, ProgArb } from '../types';
+import type { AssetSymbol, Market, Position, Order, Trade, PriceRange, PanelConfig, Signal, ArbOpportunity, ProgArb } from '../types';
 import { SYMBOLS } from '../types';
-import BREAKPOINT_LAYOUTS from '../lib/defaultLayouts';
+import {
+  jsonStableEqual,
+  ordersEqual,
+  positionsEqual,
+  recordOfMarketArraysEqual,
+  tradesEqual,
+  upOrDownMarketsEqual,
+} from '../lib/marketDataDedupe';
 
 interface PriceData {
   price: number;
@@ -136,7 +143,7 @@ interface AppState {
   closePnlDrilldown: () => void;
   setWalletSummaryDialogOpen: (v: boolean) => void;
   setPanels: (panels: PanelConfig[]) => void;
-  setLayouts: (layouts: ReactGridLayout.Layouts) => void;
+  setLayouts: (layouts: ReactGridLayout.Layouts | null) => void;
   addPanel: (panel: PanelConfig) => void;
   removePanel: (id: string) => void;
 
@@ -162,16 +169,7 @@ declare namespace ReactGridLayout {
   }
 }
 
-// Panel type → display title for auto-migration
-const PANEL_TITLES: Record<string, string> = {
-  'asset-BTC': 'BTC', 'asset-ETH': 'ETH', 'asset-SOL': 'SOL', 'asset-XRP': 'XRP',
-  'trades-positions-orders': 'Trades/Positions/Orders', 'updown-overview': 'Up/Down Markets',
-  'relative-chart': 'Relative Chart', 'perp-bot': 'Perp Bot', 'price-forecast': 'Price Forecast',
-  'binance-chart': 'Asset Candle Chart',
-  'updown-hud': 'UpOrDown HUD',
-  'signals': 'Signals', 'smart-money': 'Smart Money', 'chat': 'Chat', 'pnl': 'P&L', 'arbs': 'Hedges', 'summary': 'Summary',
-  'wallet-history': 'History',
-};
+export type PersistedGridLayouts = ReactGridLayout.Layouts;
 
 // Bump this version to force-reset all users' saved layouts to fresh defaults
 const LAYOUT_VERSION = 7;
@@ -507,10 +505,52 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ signalsOnGrid: v });
   },
   setMarketData: (data) =>
-    set((s) => ({
-      ...data,
-      ...(data.marketLookup !== undefined ? { marketLookupEpoch: s.marketLookupEpoch + 1 } : {}),
-    })),
+    set((s) => {
+      const patch: Partial<AppState> = {};
+      let bumpedMarketEpoch = false;
+
+      const put = <K extends keyof AppState>(key: K, val: AppState[K]) => {
+        patch[key] = val;
+      };
+
+      if (data.aboveMarkets !== undefined) {
+        if (!recordOfMarketArraysEqual(data.aboveMarkets, s.aboveMarkets)) put('aboveMarkets', data.aboveMarkets);
+      }
+      if (data.priceOnMarkets !== undefined) {
+        if (!recordOfMarketArraysEqual(data.priceOnMarkets, s.priceOnMarkets)) put('priceOnMarkets', data.priceOnMarkets);
+      }
+      if (data.weeklyHitMarkets !== undefined) {
+        if (!recordOfMarketArraysEqual(data.weeklyHitMarkets, s.weeklyHitMarkets)) put('weeklyHitMarkets', data.weeklyHitMarkets);
+      }
+      if (data.upOrDownMarkets !== undefined) {
+        if (!upOrDownMarketsEqual(data.upOrDownMarkets, s.upOrDownMarkets)) put('upOrDownMarkets', data.upOrDownMarkets);
+      }
+      if (data.positions !== undefined) {
+        if (!positionsEqual(data.positions, s.positions)) put('positions', data.positions);
+      }
+      if (data.orders !== undefined) {
+        if (!ordersEqual(data.orders, s.orders)) put('orders', data.orders);
+      }
+      if (data.trades !== undefined) {
+        if (!tradesEqual(data.trades, s.trades)) put('trades', data.trades);
+      }
+      if (data.cashBalance !== undefined && data.cashBalance !== s.cashBalance) put('cashBalance', data.cashBalance);
+      if (data.makerAddress !== undefined && data.makerAddress !== s.makerAddress) put('makerAddress', data.makerAddress);
+      if (data.tokenInfo !== undefined && !jsonStableEqual(data.tokenInfo, s.tokenInfo)) put('tokenInfo', data.tokenInfo);
+      if (data.progOrderMap !== undefined && !jsonStableEqual(data.progOrderMap, s.progOrderMap)) {
+        put('progOrderMap', data.progOrderMap);
+      }
+      if (data.marketCount !== undefined && data.marketCount !== s.marketCount) put('marketCount', data.marketCount);
+      if (data.lastUpdated !== undefined && data.lastUpdated !== s.lastUpdated) put('lastUpdated', data.lastUpdated);
+      if (data.marketLookup !== undefined) {
+        put('marketLookup', data.marketLookup);
+        bumpedMarketEpoch = true;
+      }
+
+      if (Object.keys(patch).length === 0 && !bumpedMarketEpoch) return {};
+      if (bumpedMarketEpoch) patch.marketLookupEpoch = s.marketLookupEpoch + 1;
+      return patch;
+    }),
   setLoading: (v) => set({ loading: v }),
   setBackendConnected: (v) => set({ backendConnected: v }),
   setArbs: (a) => set({ arbs: a }),

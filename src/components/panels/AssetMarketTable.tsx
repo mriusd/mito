@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { formatPrice, assetToSymbol, formatDateShort, getPositionClobTokenId, normalizeClobTokenId, formatPriceShort, formatThousandsAsK } from '../../utils/format';
 import { saveRange } from '../../api';
@@ -85,7 +85,7 @@ interface AssetMarketTableProps {
 const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
 const MANUAL_VOL_KEY_PREFIX = 'polybot-manual-vol-pct-';
 
-export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTableProps) {
+function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTableProps) {
   const [asset, setAsset] = useState<AssetName>(() => {
     const saved = localStorage.getItem(`polybot-grid-asset-${panelId}`);
     if (saved && ALL_ASSETS.includes(saved as AssetName)) return saved as AssetName;
@@ -136,21 +136,22 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
   const signalMakerMode = useAppStore((s) => s.signalMakerMode);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
 
-  // Build signal lookup: marketId -> { yesDiff, noDiff } (only negative diffs)
-  const signalByMarket: Record<string, { yesDiff: string | null; noDiff: string | null }> = {};
-  if (signalsOnGrid) {
+  const signalByMarket = useMemo(() => {
+    const out: Record<string, { yesDiff: string | null; noDiff: string | null }> = {};
+    if (!signalsOnGrid) return out;
     for (const sig of signals) {
       const mid = sig.market.id;
-      if (!signalByMarket[mid]) signalByMarket[mid] = { yesDiff: null, noDiff: null };
+      if (!out[mid]) out[mid] = { yesDiff: null, noDiff: null };
       const diff = signalMakerMode ? sig.bidDiffPct : sig.diffPct;
       if (diff >= 0) continue;
       const label = signalMakerMode
         ? diff.toFixed(1) + '%'
         : diff.toFixed(0) + '%';
-      if (sig.origSide === 'YES') signalByMarket[mid].yesDiff = label;
-      else signalByMarket[mid].noDiff = label;
+      if (sig.origSide === 'YES') out[mid].yesDiff = label;
+      else out[mid].noDiff = label;
     }
-  }
+    return out;
+  }, [signals, signalsOnGrid, signalMakerMode]);
 
   const aboveContainerRef = useRef<HTMLDivElement>(null);
   const priceOnContainerRef = useRef<HTMLDivElement>(null);
@@ -288,6 +289,36 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
   const _bidAskLookup = useMarketLookupSubset(gridClobTokenIds);
 
+  const positionLookup = useMemo(() => {
+    const lookup: Record<string, { size: number }> = {};
+    if (liveTradesSource === 'onchain') {
+      for (const p of onchainGridPositions) {
+        const k = normalizeClobTokenId(p.tokenId);
+        if (k && Math.abs(p.size) > 1e-9) lookup[k] = { size: Math.abs(p.size) };
+      }
+    } else {
+      for (const pos of positions) {
+        const tid = getPositionClobTokenId(pos);
+        const sz = pos.size || 0;
+        const k = normalizeClobTokenId(tid);
+        if (k && sz > 0) lookup[k] = { size: sz };
+      }
+    }
+    return lookup;
+  }, [liveTradesSource, onchainGridPositions, positions]);
+
+  const orderLookup = useMemo(() => {
+    const lookup: Record<string, typeof orders> = {};
+    for (const ord of orders) {
+      const tid = ord.asset_id || ord.token_id || '';
+      if (tid) {
+        if (!lookup[tid]) lookup[tid] = [];
+        lookup[tid].push(ord);
+      }
+    }
+    return lookup;
+  }, [orders]);
+
   const priceShortAsset = asset === 'ETH' ? 'ETH' : undefined;
 
   // Numeric value for sorting prices (handles <, >, ranges)
@@ -366,30 +397,6 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
 
     return { dates, prices, marketLookup };
   };
-
-  // Build position/order lookups by tokenId (on-chain rollups when sidebar source is ONCHAIN)
-  const positionLookup: Record<string, { size: number }> = {};
-  if (liveTradesSource === 'onchain') {
-    for (const p of onchainGridPositions) {
-      const k = normalizeClobTokenId(p.tokenId);
-      if (k && Math.abs(p.size) > 1e-9) positionLookup[k] = { size: Math.abs(p.size) };
-    }
-  } else {
-    for (const pos of positions) {
-      const tid = getPositionClobTokenId(pos);
-      const sz = pos.size || 0;
-      const k = normalizeClobTokenId(tid);
-      if (k && sz > 0) positionLookup[k] = { size: sz };
-    }
-  }
-  const orderLookup: Record<string, typeof orders> = {};
-  for (const ord of orders) {
-    const tid = ord.asset_id || ord.token_id || '';
-    if (tid) {
-      if (!orderLookup[tid]) orderLookup[tid] = [];
-      orderLookup[tid].push(ord);
-    }
-  }
 
   // Check if live price satisfies the market's price condition
   const isPriceConditionTrue = (priceStr: string, live: number) => {
@@ -1462,3 +1469,5 @@ export function AssetMarketTable({ asset: initialAsset, panelId }: AssetMarketTa
     </div>
   );
 }
+
+export const AssetMarketTable = memo(AssetMarketTableInner);

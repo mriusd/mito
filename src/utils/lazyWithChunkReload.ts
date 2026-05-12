@@ -34,6 +34,8 @@ export async function importWithChunkReload<T>(importer: () => Promise<T>): Prom
   }
 }
 
+// Memo/lazy panel exports use concrete props; `any` keeps factories assignable without widening every panel.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function lazyWithChunkReload<T extends ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
 ): LazyExoticComponent<T> {

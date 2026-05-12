@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, memo } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import {
   cancelOrder,
@@ -78,7 +78,7 @@ function getTimeLeftDisplay(endDate: string | null): { label: string; color: str
   return { label: `${d}d`, color: 'text-gray-400' };
 }
 
-export function TradesPositionsOrders({ panelId }: { panelId: string }) {
+function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const positions = useAppStore((s) => s.positions);
   const orders = useAppStore((s) => s.orders);
   const trades = useAppStore((s) => s.trades);
@@ -255,7 +255,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
         id: `claim-${c.txHash}-${i}`,
         asset_id: '',
         token_id: '',
-        side: '' as any,
+        side: '',
         price: '0',
         size: String(c.payout),
         usdcSize: c.payout,
@@ -293,9 +293,6 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
   );
   const [ordersFilter, setOrdersFilter] = useState(
     localStorage.getItem('polymarket-orders-filter') || 'ALL'
-  );
-  const [_ordersTypeFilter, _setOrdersTypeFilter] = useState(
-    localStorage.getItem('polymarket-orders-type-filter') || 'ALL'
   );
   const [assetFilter, setAssetFilter] = useState(
     localStorage.getItem('polymarket-table-asset-filter') || 'ALL'
@@ -371,7 +368,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
         if (tsNum < 1e12) tsNum = tsNum * 1000;
         endDate = new Date(tsNum).toISOString();
       }
-      let marketName = getMarketPriceCondition(null, tid, marketLookup);
+      const marketName = getMarketPriceCondition(null, tid, marketLookup);
       let mktLabel = asset ? `${asset} ${formatPriceShort(marketName, asset === 'ETH' ? 'ETH' : undefined)}` : marketName;
       let outcome = getTokenOutcome(tid, marketLookup) || '';
 
@@ -400,7 +397,7 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
       const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
       const side = isClaim ? 'CLAIM' : trade.side;
       const value = isClaim ? (trade.usdcSize || size) : (trade.usdcSize || rawPrice * size);
-      const ts = (trade as any).match_time || trade.timestamp || trade.created_at || trade.matchTime || '';
+      const ts = trade.match_time ?? trade.timestamp ?? trade.created_at ?? trade.matchTime ?? '';
       let timeMs = 0;
       if (ts) {
         let t = typeof ts === 'string' ? parseInt(ts, 10) : ts;
@@ -437,11 +434,9 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
       const market = marketLookup[tid];
       let asset = market ? extractAssetFromMarket(market) || '' : normalizeDbUnderlying(pos.underlyingAsset);
       const endDate = market?.endDate || pos.endDate || null;
-      let marketName = getMarketPriceCondition(null, tid, marketLookup);
+      const marketName = getMarketPriceCondition(null, tid, marketLookup);
       let mktLabel = asset ? `${asset} ${formatPriceShort(marketName, asset === 'ETH' ? 'ETH' : undefined)}` : marketName;
       let outcome = getTokenOutcome(tid, marketLookup) || '';
-
-      // Fallback when market not in live lookup (on-chain rollups, API snapshot fields)
       if (!market && (pos.title || pos.slug || pos.outcome || pos.outcomeIndex !== undefined || pos.underlyingAsset)) {
         if (pos.title) {
           const combined = pos.eventSlug ? `${pos.title} ${pos.eventSlug}` : pos.title;
@@ -753,3 +748,5 @@ export function TradesPositionsOrders({ panelId }: { panelId: string }) {
     </div>
   );
 }
+
+export const TradesPositionsOrders = memo(TradesPositionsOrdersInner);

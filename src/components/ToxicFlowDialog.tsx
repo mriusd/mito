@@ -851,6 +851,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
   );
 }
 
+export function WalletInfoDialog({
   open,
   wallet,
   initialMarketId,

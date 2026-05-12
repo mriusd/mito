@@ -891,10 +891,8 @@ export function Sidebar() {
   const sidebarBookRef = useRef<SidebarPolymarketBookSnapshot | null>(null);
   /** Keep latest market/book lookup for tilt sound mute check — must not rerun sound interval on each book bump. */
   const tiltSoundMarketRef = useRef(selectedMarket);
-  const tiltSoundOutcomeRef = useRef(orderOutcome);
   const tiltSoundLookupRef = useRef(marketLookup);
   tiltSoundMarketRef.current = selectedMarket;
-  tiltSoundOutcomeRef.current = orderOutcome;
   tiltSoundLookupRef.current = marketLookup;
   /** Recomputed summary / spot-strip when Host reports top-of-book change (not every depth tick). */
   const [topOfBookDigest, setTopOfBookDigest] = useState(0);
@@ -915,24 +913,24 @@ export function Sidebar() {
 
     const bidOkForSound = (): boolean => {
       const sm = tiltSoundMarketRef.current;
-      const oc = tiltSoundOutcomeRef.current;
       const lookup = tiltSoundLookupRef.current;
-      const tid = sm?.clobTokenIds?.[oc === 'YES' ? 0 : 1];
-      let bidCents: number | null = null;
+      const ids = sm?.clobTokenIds;
+      /** Green tilt = cohort YES-heavy → mute gate uses YES token WS quotes; red → NO token (not sidebar OB outcome). */
+      const tid =
+        k === 'green' ? ids?.[0] : k === 'red' ? ids?.[1] : undefined;
+      let compareCents: number | null = null;
       if (tid) {
-        const displayBids = sidebarBookRef.current?.displayBids ?? [];
-        if (displayBids.length > 0) {
-          const bb = parseFloat(displayBids[0].price) * 100;
-          if (Number.isFinite(bb)) bidCents = bb;
-        }
-        if (bidCents == null) {
-          const row = lookup[tid];
-          if (row && typeof row.bestBid === 'number' && Number.isFinite(row.bestBid)) {
-            bidCents = row.bestBid * 100;
-          }
+        const row = lookup[tid];
+        if (row) {
+          const b =
+            typeof row.bestBid === 'number' && Number.isFinite(row.bestBid) ? row.bestBid * 100 : null;
+          const a =
+            typeof row.bestAsk === 'number' && Number.isFinite(row.bestAsk) ? row.bestAsk * 100 : null;
+          if (b != null && a != null) compareCents = (b + a) / 2;
+          else if (b != null) compareCents = b;
         }
       }
-      return !(bidCents != null && bidCents > maxCents);
+      return !(compareCents != null && compareCents > maxCents);
     };
 
     const tick = () => {
@@ -2330,7 +2328,8 @@ export function Sidebar() {
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1">
-                  Mute when selected outcome best bid (live book top bid, else lookup) is above this (default 95¢).
+                  Mute when WS mid for the tilt leg (YES token if green tilt, NO if red) is above this — (bestBid+bestAsk)/2,
+                  or bestBid only if no ask (default 95¢).
                 </p>
                 <label className="flex items-center gap-2 cursor-pointer mt-3">
                   <input

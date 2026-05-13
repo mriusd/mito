@@ -3336,8 +3336,21 @@ export function Sidebar() {
                     className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-sm px-0.5"
                   >×</button>
                 </div>
-                <div className="mt-1 h-6">
-                  {orderSide === 'BUY' ? (
+                <div className="mt-1 min-h-6">
+                  {orderKind === 'limit' ? (
+                    <div className="grid grid-cols-5 gap-[2px]">
+                      {[10, 25, 50, 100, 500].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => setOrderAmount(String(n))}
+                          className="bg-gray-700 hover:bg-gray-600 rounded text-[9px] text-gray-200 h-6 font-medium tabular-nums"
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  ) : orderSide === 'BUY' ? (
                     <div className="h-full grid grid-cols-5 gap-[2px]">
                       {[
                         { value: 1, label: '1$' },
@@ -3348,6 +3361,7 @@ export function Sidebar() {
                       ].map((d) => (
                         <button
                           key={d.value}
+                          type="button"
                           onClick={() => setOrderAmountDollar(d.value)}
                           className={`bg-gray-700 hover:bg-gray-600 rounded text-[9px] h-full ${d.value === 1 ? 'text-yellow-400' : 'text-green-400'}`}
                         >
@@ -3357,12 +3371,13 @@ export function Sidebar() {
                     </div>
                   ) : (
                     <button
+                      type="button"
                       onClick={() => {
                         const tokenId = selectedMarket?.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
                         const pos = positions.find(p => p.asset === tokenId && p.size > 0);
                         if (pos) setOrderAmount(String(Math.floor(pos.size * 100) / 100));
                       }}
-                      className="bg-red-700 hover:bg-red-600 rounded text-[10px] text-white font-bold h-full w-full leading-none flex items-center justify-center"
+                      className="bg-red-700 hover:bg-red-600 rounded text-[10px] text-white font-bold h-full w-full leading-none flex items-center justify-center min-h-6"
                     >
                       MAX
                     </button>

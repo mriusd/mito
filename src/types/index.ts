@@ -31,7 +31,10 @@ export interface Market {
   bestBid?: number;
   bestAsk?: number;
   lastTradePrice?: number;
+  /** Platform / Gamma volume or merged WS field (ambiguous); prefer `wmpVolumeSum` for ledger Σ volume. */
   volume?: number;
+  /** Σ wallet_market_positions.volume for this market (YES+NO legs); set only by `/ws/chart` bidAsk batches. */
+  wmpVolumeSum?: number;
   sharesInExistence?: number;
   marketNetDirection?: number;
   holders?: number;

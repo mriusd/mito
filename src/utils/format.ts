@@ -132,6 +132,14 @@ export function getPolymarketVolumeUsd(market: Market, yesTokenId: string, looku
   return null;
 }
 
+/** Σ wallet_market_positions.volume for market (from `/ws/chart` only; no Gamma fallback). */
+export function getWmpVolumeSumUsd(_market: Market, yesTokenId: string, lookup: Record<string, Market>): number | null {
+  const live = yesTokenId ? lookup[yesTokenId] : undefined;
+  const v = live?.wmpVolumeSum;
+  if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
+  return null;
+}
+
 /** Thousands of USDC, one decimal (e.g. 12.3k). */
 export function formatPolymarketVolumeK(usd: number | null): string {
   if (usd === null || !Number.isFinite(usd)) return '—';

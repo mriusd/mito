@@ -24,7 +24,6 @@ import {
   formatPriceShort,
   getMarketPriceCondition,
   getOrderClobTokenId,
-  getPolymarketVolumeUsd,
   getTokenOutcome,
   getTradeClobTokenId,
   outcomeTokenBelongsToSelectedMarket,
@@ -32,6 +31,7 @@ import {
   pickNextMarketOnExpiry,
   resolveUpDownStrikeSync,
   shortenMarketName,
+  getWmpVolumeSumUsd,
   tradeMatchesSelectedMarket,
   hitStrikeMetaForBs,
   upDownMarketUsesChainlinkSpot,
@@ -586,7 +586,8 @@ export function Sidebar() {
 
   const liveOrderbookVolumeDisplay = useMemo(() => {
     if (!selectedMarket?.clobTokenIds?.[0]) return null;
-    const usd = getPolymarketVolumeUsd(selectedMarket, selectedMarket.clobTokenIds[0], marketLookup);
+    const usd = getWmpVolumeSumUsd(selectedMarket, selectedMarket.clobTokenIds[0], marketLookup);
+    if (usd == null || !Number.isFinite(usd)) return null;
     return formatPolymarketVolumeK(usd);
   }, [selectedMarket, marketLookup]);
   const liveShareStats = useMemo(() => {
@@ -2999,11 +3000,9 @@ export function Sidebar() {
                 <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Volume</div>
                 <div
                   className="tabular-nums font-bold text-green-400 truncate"
-                  title="Toxic Flow USDC volume (wallet_market_positions usdc_in), same source as Up/Down grid"
+                  title="Σ wallet_market_positions.volume for this market (chart WS wmpVolumeSum)"
                 >
-                  {liveOrderbookVolumeDisplay && liveOrderbookVolumeDisplay !== '--'
-                    ? `$${liveOrderbookVolumeDisplay}`
-                    : '--'}
+                  {liveOrderbookVolumeDisplay ? `$${liveOrderbookVolumeDisplay}` : '--'}
                 </div>
               </div>
               <div

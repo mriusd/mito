@@ -650,12 +650,13 @@ function WalletTable({
   label,
   totalShares,
   onOpenWallet,
-  shadeRowByStakedNet,
+  shadeRowByStakedNet = true,
 }: {
   wallets: WalletPosition[] | null;
   label: string;
   totalShares?: number;
   onOpenWallet?: (wallet: string, netShares?: number) => void;
+  /** Row background from Staked Net sign (green YES / red NO); default on for all Toxic tables. */
   shadeRowByStakedNet?: boolean;
 }) {
   const rows = wallets || [];
@@ -1948,7 +1949,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                     label="holders"
                     totalShares={data.totalShares}
                     onOpenWallet={openWalletDialog}
-                    shadeRowByStakedNet
                   />
                 )}
                 {tab === 'topYes' && (

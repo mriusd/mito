@@ -8,6 +8,7 @@ const BIDASK_EQ_KEYS: (keyof Market)[] = [
   'bestBid',
   'bestAsk',
   'volume',
+  'wmpVolumeSum',
   'sharesInExistence',
   'marketNetDirection',
   'holders',
@@ -52,6 +53,7 @@ type BidAskWsItem = Record<string, unknown> & {
   bestAsk?: number;
   usdcVolume?: number;
   volume?: number;
+  wmpVolumeSum?: number;
 };
 
 function mergeWsItemOntoMarket(seed: Market, item: BidAskWsItem): Market {

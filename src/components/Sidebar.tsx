@@ -2769,11 +2769,12 @@ export function Sidebar() {
                 </div>
                 {!row.pastExpiry && row.yesMathCents != null && (
                   (() => {
-                    const snap = sidebarBookRef.current;
-                    const bids = snap?.yesDisplayBids ?? [];
-                    const asks = snap?.yesDisplayAsks ?? [];
-                    const tb = bids.length ? parseFloat(bids[bids.length - 1].price) * 100 : NaN;
-                    const ta = asks.length ? parseFloat(asks[0].price) * 100 : NaN;
+                    const yesTid = (selectedMarket?.clobTokenIds?.[0] || '').trim();
+                    const wsRow = yesTid ? marketLookup[yesTid] : undefined;
+                    const bb = wsRow?.bestBid;
+                    const ba = wsRow?.bestAsk;
+                    const tb = bb != null && Number.isFinite(bb) ? bb * 100 : NaN;
+                    const ta = ba != null && Number.isFinite(ba) ? ba * 100 : NaN;
                     let yesMidCents: number | null = null;
                     if (Number.isFinite(tb) && Number.isFinite(ta)) yesMidCents = (tb + ta) / 2;
                     else if (Number.isFinite(tb)) yesMidCents = tb;
@@ -2791,8 +2792,8 @@ export function Sidebar() {
 
                     const tip =
                       yMidOk == null
-                        ? `Model YES ${m.toFixed(1)}¢ — no YES top-of-book yet`
-                        : `YES mid ${yMidOk.toFixed(1)}¢ vs model ${m.toFixed(1)}¢ (Δ ${delta! >= 0 ? '+' : ''}${delta!.toFixed(1)}¢)`;
+                        ? `Model YES ${m.toFixed(1)}¢ — no WS best bid/ask for YES yet`
+                        : `YES mid ${yMidOk.toFixed(1)}¢ (bid/ask WS) vs model ${m.toFixed(1)}¢ (Δ ${delta! >= 0 ? '+' : ''}${delta!.toFixed(1)}¢)`;
 
                     return (
                       <div className="mt-2 pt-1.5 border-t border-gray-800/70" title={tip}>
@@ -2801,9 +2802,9 @@ export function Sidebar() {
                             Prob
                             <HelpTooltip
                               text={
-                                'YES token bid–ask midpoint (¢), always from the YES CLOB legs — independent of the YES/NO toggle.\n\n' +
-                                  'vs model YES probability (same math as the Math column).\n\n' +
-                                  'Green is on the LEFT: wider green when YES mid trades above math; narrower (more red on the right) when below. 50|50 split when mid matches math.'
+                                'YES midpoint: average of live best bid and best ask from `/ws/chart` (YES token asset id).\n\n' +
+                                  'Not the sidebar CLOB ladder. Same readings when you toggle sidebar YES/NO.\n\n' +
+                                  'Compared to Math (model YES). Green left grows when WS mid is above math.'
                               }
                             />
                           </span>

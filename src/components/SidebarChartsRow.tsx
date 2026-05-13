@@ -16,6 +16,7 @@ export type SidebarChartsRowProps = {
   orderOutcome: 'YES' | 'NO';
   upDownStartTime: number | null | undefined;
   upDownKlineDefaultInterval: string | undefined;
+  onLeftChartVolAnnualPct?: (pct: number | null) => void;
 };
 
 function chartsRowInner({
@@ -29,6 +30,7 @@ function chartsRowInner({
   orderOutcome,
   upDownStartTime,
   upDownKlineDefaultInterval,
+  onLeftChartVolAnnualPct,
 }: SidebarChartsRowProps) {
   const chartAsset = isUpDownMarket ? upDownAsset : extractAssetFromMarket(selectedMarket);
   return (
@@ -39,6 +41,7 @@ function chartsRowInner({
           intervalContext={upDownIntervalContext}
           targetPrice={isUpDownMarket ? upDownTargetPrice : undefined}
           chainlinkCandles={isUpDownMarket && upDownSpotUsesChainlink}
+          onChartVolAnnualPct={onLeftChartVolAnnualPct}
         />
       ) : null}
 

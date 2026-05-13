@@ -1264,6 +1264,10 @@ export function Sidebar() {
   const [upDownRemaining, setUpDownRemaining] = useState(Infinity);
   /** Countdown stops calling setState after "Expired"; pulse keeps re-reading `upOrDownMarkets` until next window arrives. */
   const [expiredLivePickPulse, setExpiredLivePickPulse] = useState(0);
+  const [leftChartVolAnnualPct, setLeftChartVolAnnualPct] = useState<number | null>(null);
+  const onLeftChartVolAnnualPct = useCallback((pct: number | null) => {
+    setLeftChartVolAnnualPct(pct);
+  }, []);
 
   // Chainlink spot only for 5m/15m Up/Down; 1h/4h/24h use Binance in UI
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(selectedMarket!) : null;
@@ -1271,6 +1275,10 @@ export function Sidebar() {
     () => !!(isUpDownMarket && selectedMarket && upDownMarketUsesChainlinkSpot(selectedMarket)),
     [isUpDownMarket, selectedMarket],
   );
+  useEffect(() => {
+    setLeftChartVolAnnualPct(null);
+  }, [selectedMarket?.id]);
+
   const upDownIntervalContext = useMemo(() => {
     if (!isUpDownMarket || !selectedMarket) return undefined;
     return `${selectedMarket.eventSlug || ''} ${selectedMarket.question || ''} ${selectedMarket.groupItemTitle || ''}`.trim();
@@ -2740,6 +2748,7 @@ export function Sidebar() {
             orderOutcome={orderOutcome}
             upDownStartTime={upDownStartTime}
             upDownKlineDefaultInterval={upDownKlineDefaultInterval}
+            onLeftChartVolAnnualPct={onLeftChartVolAnnualPct}
           />
 
 
@@ -2934,6 +2943,14 @@ export function Sidebar() {
                     );
                   })()
                 )}
+                {leftChartVolAnnualPct != null ? (
+                  <div
+                    className="mt-2 pt-1.5 border-t border-gray-800/70 text-[10px] text-gray-500 text-center tabular-nums"
+                    title="Annualized σ from close log returns on the last 10 candles in the left sidebar chart"
+                  >
+                    {leftChartVolAnnualPct.toFixed(1)}% σ
+                  </div>
+                ) : null}
               </div>
             );
           })()}

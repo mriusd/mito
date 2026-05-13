@@ -3,6 +3,8 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { resolvedBinaryOutcomeLabel } from '../utils/format';
 import type { Market, Position } from '../types';
 
+import { SidebarBarMidMarker } from './SidebarBarMidMarker';
+
 type OBLevel = { price: string; size: string };
 
 export type SidebarLiveOrderbookSectionProps = {
@@ -96,12 +98,13 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
             className="shrink-0 mb-1.5 px-0.5"
             title={`Book imbalance: ${(orderbookBookImbalance * 100).toFixed(1)}% (5–95¢ depth)`}
           >
-            <div className="h-[5px] bg-gray-700 rounded-full overflow-hidden flex w-full">
+            <div className="relative h-[5px] bg-gray-700 rounded-full overflow-hidden flex w-full">
               <div
                 className="bg-emerald-500/70 h-full transition-all"
                 style={{ width: `${Math.max(2, Math.min(98, 50 + orderbookBookImbalance * 50))}%` }}
               />
               <div className="bg-amber-500/70 h-full transition-all flex-1" />
+              <SidebarBarMidMarker />
             </div>
           </div>
           <div className="relative grid grid-cols-2 gap-2 flex-1 min-h-0">

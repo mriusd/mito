@@ -46,6 +46,7 @@ import { HelpTooltip } from './HelpTooltip';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
 import { SidebarBiasMiniBar } from './SidebarBiasMiniBar';
+import { SidebarBarMidMarker } from './SidebarBarMidMarker';
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
@@ -2834,6 +2835,7 @@ export function Sidebar() {
                             className="absolute inset-y-0 rounded-r-[999px] bg-red-800/95"
                             style={{ left: `${greenLeftPct}%`, width: `${100 - greenLeftPct}%` }}
                           />
+                          <SidebarBarMidMarker />
                         </div>
                       </div>
                     );
@@ -3014,6 +3016,7 @@ export function Sidebar() {
                       dense
                       compactLabel="Stake"
                       barMode="grossLegTotals"
+                      midMarker
                       flashExtremeTilt={
                         !!(notifyTiltAppliesToSelectedMarket && notifyFlashBg && notifyStakedGatePasses)
                       }
@@ -3037,6 +3040,7 @@ export function Sidebar() {
                           dense
                           compactLabel="Top"
                           barMode="cohortSurplusHalves"
+                          midMarker
                           flashExtremeTilt={
                             !!(notifyTiltAppliesToSelectedMarket && notifyFlashBg && notifyStakedGatePasses)
                           }

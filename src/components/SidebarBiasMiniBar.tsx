@@ -1,5 +1,7 @@
 import { memo } from 'react';
 
+import { SidebarBarMidMarker } from './SidebarBarMidMarker';
+
 const FLASH_TILT = 0.3;
 
 function barPct(v: number): number {
@@ -32,7 +34,7 @@ export const SidebarBiasMiniBar = memo(function SidebarBiasMiniBar({
   return (
     <div className="flex items-center gap-1 min-w-0" title={tooltip}>
       <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate">{label}</span>
-      <div className="h-[5px] bg-gray-700 rounded-full overflow-hidden flex flex-1 min-w-0">
+      <div className="relative h-[5px] bg-gray-700 rounded-full overflow-hidden flex flex-1 min-w-0">
         <div
           className={`${leftColor} h-full min-w-0 transition-[width] duration-150 ease-out shrink-0${
             flashLeft ? ' sidebar-bar-seg-flash-left' : ''
@@ -42,6 +44,7 @@ export const SidebarBiasMiniBar = memo(function SidebarBiasMiniBar({
         <div
           className={`${rightColor} h-full flex-1 min-w-0${flashRight ? ' sidebar-bar-seg-flash-right' : ''}`}
         />
+        <SidebarBarMidMarker />
       </div>
       <span className={`text-[8px] font-bold w-[28px] shrink-0 text-right ${pctToneClass(value)}`}>
         {(value * 100) > 0 ? '+' : ''}

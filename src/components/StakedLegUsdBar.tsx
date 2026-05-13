@@ -1,5 +1,7 @@
 /** Sidebar: bar = Σ|YES leg| vs Σ|NO leg| proportions; pill |ΣY−ΣN| is separate. Toxic cohort: bar = YES-net vs NO-net surplus halves. */
 
+import { SidebarBarMidMarker } from './SidebarBarMidMarker';
+
 function fmtUsd(absVal: number): string {
   return absVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -18,6 +20,8 @@ export function StakedLegUsdBar({
   /** Fraction 0.01–0.999; default 0.3. Used when flashExtremeTilt. */
   extremeFlashTiltThreshold = 0.3,
   compactLegUsdFooter = false,
+  /** Draw 50% width tick — sidebar only unless opted in. */
+  midMarker = false,
 }: {
   sumYUsd: number;
   sumNUsd: number;
@@ -31,6 +35,7 @@ export function StakedLegUsdBar({
   flashExtremeTilt?: boolean;
   extremeFlashTiltThreshold?: number;
   compactLegUsdFooter?: boolean;
+  midMarker?: boolean;
 }) {
   const total = sumYUsd + sumNUsd;
   if (total <= 1e-9) return null;
@@ -52,7 +57,7 @@ export function StakedLegUsdBar({
 
   const bar = (
     <div
-      className={`${compact ? 'h-[5px]' : 'h-2'} bg-gray-700 rounded-full overflow-hidden flex w-full`}
+      className={`relative ${compact ? 'h-[5px]' : 'h-2'} bg-gray-700 rounded-full overflow-hidden flex w-full`}
       title={tip}
     >
       <div
@@ -63,6 +68,7 @@ export function StakedLegUsdBar({
         className={`bg-red-500/80 h-full shrink-0 transition-[width] duration-150 ease-out${flashN ? ' sidebar-bar-seg-flash-right' : ''}`}
         style={{ width: `${pctN}%` }}
       />
+      {midMarker ? <SidebarBarMidMarker /> : null}
     </div>
   );
 

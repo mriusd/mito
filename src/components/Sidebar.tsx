@@ -249,6 +249,7 @@ function pitchMulFromNotifyFreqSlider(slider0to100: number): number {
 const SIDEBAR_NOTIFY_PLAY_SOUND_KEY = 'polybot-sidebar-notify-play-sound';
 const SIDEBAR_NOTIFY_FLASH_BG_KEY = 'polybot-sidebar-notify-flash-bg';
 const SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_KEY = 'polybot-sidebar-notify-top-threshold-pct';
+const SIDEBAR_NOTIFY_BS_TILT_PCT_KEY = 'polybot-sidebar-notify-bs-tilt-pct';
 const SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY = 'polybot-sidebar-notify-staked-min-usd';
 const SIDEBAR_NOTIFY_SOUND_FREQ_KEY = 'polybot-sidebar-notify-sound-freq';
 const SIDEBAR_NOTIFY_RING_TIME_S_KEY = 'polybot-sidebar-notify-ring-time-s';
@@ -400,6 +401,16 @@ function readNotifyTopThresholdPct(): number {
     return Math.min(99, Math.max(1, Math.round(n)));
   } catch {
     return 30;
+  }
+}
+function readNotifyBsTiltPct(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_BS_TILT_PCT_KEY);
+    const n = parseFloat(raw ?? '20');
+    if (!Number.isFinite(n)) return 20;
+    return Math.min(99, Math.max(1, Math.round(n)));
+  } catch {
+    return 20;
   }
 }
 function readNotifyStakedMinUsd(): number {
@@ -609,6 +620,7 @@ export function Sidebar() {
   const [notifyPlaySound, setNotifyPlaySound] = useState(readNotifyPlaySound);
   const [notifyFlashBg, setNotifyFlashBg] = useState(readNotifyFlashBg);
   const [notifyTopThresholdPct, setNotifyTopThresholdPct] = useState(readNotifyTopThresholdPct);
+  const [notifyBsTiltPct, setNotifyBsTiltPct] = useState(readNotifyBsTiltPct);
   const [notifyStakedMinUsd, setNotifyStakedMinUsd] = useState(readNotifyStakedMinUsd);
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
   const [notifyRingTimeS, setNotifyRingTimeS] = useState(readNotifyRingTimeS);
@@ -645,6 +657,13 @@ export function Sidebar() {
       /* */
     }
   }, [notifyTopThresholdPct]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_BS_TILT_PCT_KEY, String(notifyBsTiltPct));
+    } catch {
+      /* */
+    }
+  }, [notifyBsTiltPct]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY, String(notifyStakedMinUsd));
@@ -904,11 +923,6 @@ export function Sidebar() {
     return marketStakedNetUsdAbs > notifyStakedMinUsd;
   }, [notifyStakedMinUsd, marketStakedNetUsdAbs]);
 
-  const effectiveSidebarBgFlash = useMemo((): 'green' | 'red' | null => {
-    if (!notifyFlashBg || !notifyStakedGatePasses) return null;
-    return topBarExtremeBgFlash;
-  }, [notifyFlashBg, notifyStakedGatePasses, topBarExtremeBgFlash]);
-
   const marketStakedNetKDisplay = useMemo(() => {
     if (marketStakedNetUsdAbs == null) return null;
     return formatPolymarketVolumeK(marketStakedNetUsdAbs);
@@ -951,56 +965,6 @@ export function Sidebar() {
   }, []);
 
   const [polymarketTape, setPolymarketTape] = useState<LiveTrade[]>([]);
-
-  useEffect(() => {
-    if (!topBarExtremeBgFlash || !notifyPlaySound || !notifyStakedGatePasses) return;
-
-    const k = topBarExtremeBgFlash;
-    const mul = notifySoundPitchMul;
-    const rt = notifyRingTimeS;
-    const maxCents = notifySoundMaxPriceCents;
-    const doubleRing = notifyDoubleRing;
-
-    const bidOkForSound = (): boolean => {
-      const sm = tiltSoundMarketRef.current;
-      const lookup = tiltSoundLookupRef.current;
-      const ids = sm?.clobTokenIds;
-      /** Green tilt = cohort YES-heavy → mute gate uses YES token WS quotes; red → NO token (not sidebar OB outcome). */
-      const tid =
-        k === 'green' ? ids?.[0] : k === 'red' ? ids?.[1] : undefined;
-      let compareCents: number | null = null;
-      if (tid) {
-        const row = lookup[tid];
-        if (row) {
-          const b =
-            typeof row.bestBid === 'number' && Number.isFinite(row.bestBid) ? row.bestBid * 100 : null;
-          const a =
-            typeof row.bestAsk === 'number' && Number.isFinite(row.bestAsk) ? row.bestAsk * 100 : null;
-          if (b != null && a != null) compareCents = (b + a) / 2;
-          else if (b != null) compareCents = b;
-        }
-      }
-      return !(compareCents != null && compareCents > maxCents);
-    };
-
-    const tick = () => {
-      if (!bidOkForSound()) return;
-      void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
-    };
-
-    tick();
-    const repeatMs = Math.max(TILT_EXTREME_FLASH_MS, Math.ceil(rt * 1000) + 80);
-    const id = window.setInterval(tick, repeatMs);
-    return () => clearInterval(id);
-  }, [
-    topBarExtremeBgFlash,
-    notifyPlaySound,
-    notifyStakedGatePasses,
-    notifySoundPitchMul,
-    notifyRingTimeS,
-    notifySoundMaxPriceCents,
-    notifyDoubleRing,
-  ]);
 
   const onPolymarketTradesFromHost = useCallback((t: LiveTrade[]) => {
     setPolymarketTape(t);
@@ -1603,6 +1567,93 @@ export function Sidebar() {
     selectedMarketIsHit,
     upDownCountdown,
     upDownRemaining,
+  ]);
+
+  /** YES mid (WS) minus model YES (¢) — same Δ as Prob progress bar under Target/Math/Current. */
+  const bsProbMidDeltaCents = useMemo((): number | null => {
+    const strip = sidebarSpotStrip;
+    if (!strip || strip.pastExpiry || strip.yesMathCents == null) return null;
+    const m = strip.yesMathCents;
+    const yesTid = (selectedMarket?.clobTokenIds?.[0] || '').trim();
+    const wsRow = yesTid ? marketLookup[yesTid] : undefined;
+    const bb = wsRow?.bestBid;
+    const ba = wsRow?.bestAsk;
+    const tb = bb != null && Number.isFinite(bb) ? bb * 100 : NaN;
+    const ta = ba != null && Number.isFinite(ba) ? ba * 100 : NaN;
+    let yesMidCents: number | null = null;
+    if (Number.isFinite(tb) && Number.isFinite(ta)) yesMidCents = (tb + ta) / 2;
+    else if (Number.isFinite(tb)) yesMidCents = tb;
+    else if (Number.isFinite(ta)) yesMidCents = ta;
+    const yMidOk = yesMidCents != null ? Math.min(100, Math.max(0, yesMidCents)) : null;
+    if (yMidOk == null) return null;
+    return yMidOk - m;
+  }, [sidebarSpotStrip, selectedMarket?.clobTokenIds, marketLookup, topOfBookDigest]);
+
+  /** Cohort tilt (Top bar) plus Prob-bar Δ aligned with signal: green → Δ &gt; threshold; red → Δ &lt; −threshold. */
+  const tiltNotifyExtremeAfterBsGate = useMemo((): 'green' | 'red' | null => {
+    const extreme = topBarExtremeBgFlash;
+    if (extreme === null) return null;
+    const d = bsProbMidDeltaCents;
+    if (d == null || !Number.isFinite(d)) return null;
+    const t = notifyBsTiltPct;
+    if (extreme === 'green') return d > t ? 'green' : null;
+    if (extreme === 'red') return d < -t ? 'red' : null;
+    return null;
+  }, [topBarExtremeBgFlash, bsProbMidDeltaCents, notifyBsTiltPct]);
+
+  const effectiveSidebarBgFlash = useMemo((): 'green' | 'red' | null => {
+    if (!notifyFlashBg || !notifyStakedGatePasses) return null;
+    return tiltNotifyExtremeAfterBsGate;
+  }, [notifyFlashBg, notifyStakedGatePasses, tiltNotifyExtremeAfterBsGate]);
+
+  useEffect(() => {
+    if (!tiltNotifyExtremeAfterBsGate || !notifyPlaySound || !notifyStakedGatePasses) return;
+
+    const k = tiltNotifyExtremeAfterBsGate;
+    const mul = notifySoundPitchMul;
+    const rt = notifyRingTimeS;
+    const maxCents = notifySoundMaxPriceCents;
+    const doubleRing = notifyDoubleRing;
+
+    const bidOkForSound = (): boolean => {
+      const sm = tiltSoundMarketRef.current;
+      const lookup = tiltSoundLookupRef.current;
+      const ids = sm?.clobTokenIds;
+      /** Green tilt = cohort YES-heavy → mute gate uses YES token WS quotes; red → NO token (not sidebar OB outcome). */
+      const tid =
+        k === 'green' ? ids?.[0] : k === 'red' ? ids?.[1] : undefined;
+      let compareCents: number | null = null;
+      if (tid) {
+        const row = lookup[tid];
+        if (row) {
+          const b =
+            typeof row.bestBid === 'number' && Number.isFinite(row.bestBid) ? row.bestBid * 100 : null;
+          const a =
+            typeof row.bestAsk === 'number' && Number.isFinite(row.bestAsk) ? row.bestAsk * 100 : null;
+          if (b != null && a != null) compareCents = (b + a) / 2;
+          else if (b != null) compareCents = b;
+        }
+      }
+      return !(compareCents != null && compareCents > maxCents);
+    };
+
+    const tick = () => {
+      if (!bidOkForSound()) return;
+      void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
+    };
+
+    tick();
+    const repeatMs = Math.max(TILT_EXTREME_FLASH_MS, Math.ceil(rt * 1000) + 80);
+    const id = window.setInterval(tick, repeatMs);
+    return () => clearInterval(id);
+  }, [
+    tiltNotifyExtremeAfterBsGate,
+    notifyPlaySound,
+    notifyStakedGatePasses,
+    notifySoundPitchMul,
+    notifyRingTimeS,
+    notifySoundMaxPriceCents,
+    notifyDoubleRing,
   ]);
 
   useEffect(() => {
@@ -2426,6 +2477,25 @@ export function Sidebar() {
                 />
               </div>
               <p className="text-[10px] text-gray-500">Notify when Top cohort USD tilt reaches this absolute lean (same as Top bar).</p>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 shrink-0">BS Tilt (¢)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  step={1}
+                  className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-20 tabular-nums"
+                  value={notifyBsTiltPct}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (!Number.isFinite(v)) return;
+                    setNotifyBsTiltPct(Math.min(99, Math.max(1, Math.round(v))));
+                  }}
+                />
+              </div>
+              <p className="text-[10px] text-gray-500 m-0">
+                Flash/ring only if Prob-bar Δ (YES mid − math) exceeds this toward the signal: green tilt → Δ &gt; threshold; red → Δ &lt; −threshold.
+              </p>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-gray-400 shrink-0">Staked min (USDC)</span>
                 <input

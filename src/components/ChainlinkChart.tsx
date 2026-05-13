@@ -233,7 +233,7 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
     if (!canvas) return;
 
     const allCandles = Array.from(candleMapRef.current.values()).sort((a, b) => a.time - b.time);
-    const candles = allCandles.slice(-25);
+    const candles = allCandles.slice(-10);
 
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();

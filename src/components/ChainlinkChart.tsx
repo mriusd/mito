@@ -437,7 +437,7 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
           <span className="text-gray-500">{interval}</span>
           {chartVolAnnualPct != null ? (
             <span
-              className="text-[11px] font-bold text-yellow-400 border border-yellow-400/50 rounded px-1 py-0.5 tabular-nums"
+              className="px-1.5 py-0 text-[10px] font-bold text-yellow-400 border border-yellow-400/50 rounded tabular-nums"
               title="Annualized volatility (close log returns, sample σ), from the last 10 candles shown in this chart"
             >
               σ{Math.round(chartVolAnnualPct)}%

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink, Copy, RefreshCw } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink, Copy, RefreshCw, Star } from 'lucide-react';
 import {
   fetchToxicFlow,
   fetchWalletSummary,
@@ -32,6 +32,28 @@ interface ToxicFlowDialogProps {
 }
 
 type Tab = 'topHolders' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
+
+const LS_TOXIC_FAVOURITE_WALLETS = 'polybot-toxic-flow-favourite-wallets';
+
+function readToxicFavouriteWallets(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_TOXIC_FAVOURITE_WALLETS);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.map((x) => String(x).toLowerCase()).filter(Boolean));
+  } catch {
+    return new Set();
+  }
+}
+
+function persistToxicFavouriteWallets(s: Set<string>): void {
+  try {
+    localStorage.setItem(LS_TOXIC_FAVOURITE_WALLETS, JSON.stringify([...s].sort()));
+  } catch {
+    /* ignore */
+  }
+}
 
 const TOXIC_TAB_COHORT_LABEL: Record<Tab, string> = {
   topHolders: 'Top Holders',
@@ -670,6 +692,25 @@ function WalletLink({
 function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: WalletPosition[] | null; label: string; totalShares?: number; onOpenWallet?: (wallet: string, netShares?: number) => void }) {
   const rows = wallets || [];
   const [walletSummaryMap, setWalletSummaryMap] = useState<Record<string, WalletSummary | null>>({});
+  const [favouriteWallets, setFavouriteWallets] = useState(readToxicFavouriteWallets);
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === LS_TOXIC_FAVOURITE_WALLETS || e.key === null) setFavouriteWallets(readToxicFavouriteWallets());
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+  const toggleFavouriteWallet = useCallback((addr: string) => {
+    const k = addr.trim().toLowerCase();
+    if (!k) return;
+    setFavouriteWallets((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      persistToxicFavouriteWallets(next);
+      return next;
+    });
+  }, []);
   useEffect(() => {
     let cancelled = false;
     const uniq = Array.from(new Set(rows.map((w) => (w.wallet || '').toLowerCase()).filter(Boolean)));
@@ -722,6 +763,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
         <thead>
           <tr className="text-gray-500 border-b border-gray-700">
             <th className="text-left py-1 px-1">#</th>
+            <th className="text-left px-1 w-5" aria-label="Favourite" />
             <th className="text-left px-1">Wallet</th>
             <th className="text-right px-1 bg-green-900/15" title="inv_yes">
               Inv Y
@@ -786,6 +828,26 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
                 <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
+                  <td className="align-top px-0 py-0.5">
+                    <button
+                      type="button"
+                      className="p-0.5 rounded hover:bg-gray-600/40 text-gray-500 hover:text-gray-300"
+                      title={favouriteWallets.has(wk) ? 'Remove favourite' : 'Add favourite'}
+                      aria-pressed={favouriteWallets.has(wk)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleFavouriteWallet(w.wallet);
+                      }}
+                    >
+                      <Star
+                        size={12}
+                        className={
+                          favouriteWallets.has(wk) ? 'text-yellow-400 fill-yellow-400' : 'fill-none stroke-gray-400'
+                        }
+                      />
+                    </button>
+                  </td>
                   <td className={`relative align-top px-1 py-0.5 ${showWinBar ? 'pb-2' : ''}`}>
                     <WalletLink wallet={w.wallet} netShares={signedLegNet} onOpenWallet={onOpenWallet} isSmart={isSmartGold(w)} holderRow={w} />
                     {showWinBar && <WinRateBottomBar winRate={effectiveWinRate!} className="absolute bottom-0 left-0 right-0" />}

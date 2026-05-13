@@ -176,6 +176,18 @@ function stakedNetUsdTableCell(signed: number): ReactNode {
   );
 }
 
+function walletRowClassForStakedNet(shadeRows: boolean, stakeNetSigned: number): string {
+  const border = 'border-b border-gray-800';
+  if (!shadeRows) return `${border} hover:bg-gray-700/30`;
+  if (!Number.isFinite(stakeNetSigned) || Math.abs(stakeNetSigned) <= STAKED_NET_EPS) {
+    return `${border} hover:bg-gray-700/30`;
+  }
+  if (stakeNetSigned < -STAKED_NET_EPS) {
+    return `${border} bg-green-900/25 hover:bg-green-900/40`;
+  }
+  return `${border} bg-red-900/25 hover:bg-red-900/40`;
+}
+
 function LedgerSummaryField({
   label,
   help,
@@ -633,7 +645,19 @@ function WalletLink({
   );
 }
 
-function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: WalletPosition[] | null; label: string; totalShares?: number; onOpenWallet?: (wallet: string, netShares?: number) => void }) {
+function WalletTable({
+  wallets,
+  label,
+  totalShares,
+  onOpenWallet,
+  shadeRowByStakedNet,
+}: {
+  wallets: WalletPosition[] | null;
+  label: string;
+  totalShares?: number;
+  onOpenWallet?: (wallet: string, netShares?: number) => void;
+  shadeRowByStakedNet?: boolean;
+}) {
   const rows = wallets || [];
   const [walletSummaryMap, setWalletSummaryMap] = useState<Record<string, WalletSummary | null>>({});
   const [favouriteWallets, setFavouriteWallets] = useState(readToxicFavouriteWallets);
@@ -765,7 +789,7 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               const stakeNUsd = walletStakeNUsd(w);
               const stakeNetSigned = walletStakeNetSignedUsd(w);
             return (
-              <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
+              <tr key={w.wallet} className={walletRowClassForStakedNet(!!shadeRowByStakedNet, stakeNetSigned)}>
                 <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
                   <td className="align-top px-0 py-0.5">
                     <button
@@ -1919,7 +1943,13 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                 </div>
 
                 {tab === 'topHolders' && (
-                  <WalletTable wallets={topHoldersWallets} label="holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                  <WalletTable
+                    wallets={topHoldersWallets}
+                    label="holders"
+                    totalShares={data.totalShares}
+                    onOpenWallet={openWalletDialog}
+                    shadeRowByStakedNet
+                  />
                 )}
                 {tab === 'topYes' && (
                   <WalletTable wallets={topYesWallets} label="Net Y (Staked)" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />

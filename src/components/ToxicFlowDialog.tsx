@@ -224,7 +224,7 @@ function WalletScoresLedgerSummaryGrid({
   const pnl = s.pnl ?? 0;
   const tradedVol = (s.usdcIn ?? 0) + (s.usdcOut ?? 0);
   const wrRaw = typeof s.winRate === 'number' && Number.isFinite(s.winRate) ? s.winRate : 0;
-  const wrFrac = wrRaw > 1 ? wrRaw / 100 : wrRaw;
+  const wrFrac = ledgerWinRateFracFromStored(wrRaw);
   const wrPct = wrFrac * 100;
   const prRaw = typeof s.profitRate === 'number' && Number.isFinite(s.profitRate) ? s.profitRate : 0;
   const prFrac = prRaw > 1 ? prRaw / 100 : prRaw;
@@ -429,56 +429,24 @@ function normalizeWinRate(v: number | null | undefined): number | null {
   return Math.max(0, Math.min(1, scaled));
 }
 
+/** Stored `wallet_scores_ledger.win_rate` → 0–1 fraction; matches WalletScoresLedgerSummaryGrid / Wallet Info Win Rate %. */
+function ledgerWinRateFracFromStored(wrRaw: number): number {
+  const wrFrac = wrRaw > 1 ? wrRaw / 100 : wrRaw;
+  return Math.max(0, Math.min(1, wrFrac));
+}
+
+/** Toxic-flow WR bar uses ledger only (`/api/wallet-summary` → wallet_scores_ledger), not toxic row `wallet_scores` join. */
+function ledgerSummaryWinRateFracOrNull(s: WalletSummary | null | undefined): number | null {
+  if (!s || typeof s.winRate !== 'number' || !Number.isFinite(s.winRate)) return null;
+  return ledgerWinRateFracFromStored(s.winRate);
+}
+
 /** Gold “smart” only if proven smart and this-market cash flow is not negative. */
 function isSmartGold(row: Pick<WalletPosition, 'isSmart' | 'cashFlow'>): boolean {
   if (!row.isSmart) return false;
   const c = row.cashFlow;
   const n = typeof c === 'number' && Number.isFinite(c) ? c : 0;
   return n >= -1e-6;
-}
-
-/** Holder-row stats when /api/wallet-summary has no ledger row (do not cache misses — avoids poisoned tooltip cache). */
-function rowHolderSummary(row: WalletPosition): WalletSummary | null {
-  const usdcIn = row.usdcIn || 0;
-  const usdcOut = row.usdcOut || 0;
-  const tc = row.tradeCount || 0;
-  const net = row.net || 0;
-  const wr = normalizeWinRate(row.winRate);
-  const wlt = row.winLossTotal || 0;
-  const wins = typeof row.wins === 'number' && Number.isFinite(row.wins) ? row.wins : 0;
-  const losses = typeof row.losses === 'number' && Number.isFinite(row.losses) ? row.losses : 0;
-  const flat = typeof row.flat === 'number' && Number.isFinite(row.flat) ? row.flat : 0;
-  const scoredBreakdown = wins + losses + flat;
-  const hasVol = usdcIn + usdcOut > 1e-6;
-  const hasPos = Math.abs(net) > 1e-6;
-  const hasWin = wlt > 0 && wr != null;
-  if (!hasVol && tc === 0 && !hasPos && !hasWin) return null;
-  const cashFlow =
-    typeof row.cashFlow === 'number' && Number.isFinite(row.cashFlow) ? row.cashFlow : usdcOut - usdcIn;
-  const feeT = typeof row.feeTotal === 'number' && Number.isFinite(row.feeTotal) ? row.feeTotal : 0;
-  const rP = typeof row.payout === 'number' && Number.isFinite(row.payout) ? row.payout : 0;
-  const pnlLeg = (typeof row.pnl === 'number' && Number.isFinite(row.pnl) ? row.pnl : 0) + rP;
-  const denom = usdcIn + feeT;
-  const roiEst = denom > 1e-9 ? (usdcOut + rP - usdcIn - feeT) / denom : 0;
-  return {
-    found: true,
-    wallet: (row.wallet || '').toLowerCase(),
-    totalMarkets: 0,
-    resolvedMarkets: wins + losses + flat,
-    wins,
-    losses,
-    flat,
-    winRate: wr ?? 0,
-    pnl: pnlLeg,
-    cashFlow,
-    pm: 0,
-    lm: 0,
-    profitRate: 0,
-    usdcIn,
-    usdcOut,
-    roi: Number.isFinite(roiEst) ? roiEst : 0,
-    totalTrades: typeof row.tradeCount === 'number' && Number.isFinite(row.tradeCount) ? row.tradeCount : 0,
-  };
 }
 
 /** Green segment = win rate, red = loss rate (0–1). Use as cell bottom edge or stacked under wallet. */
@@ -507,14 +475,11 @@ function WalletLink({
   netShares,
   onOpenWallet,
   isSmart,
-  holderRow,
 }: {
   wallet: string;
   netShares?: number;
   onOpenWallet?: (wallet: string, netShares?: number) => void;
   isSmart?: boolean;
-  /** Toxic-flow table row: used for tooltip when wallet-summary API misses. */
-  holderRow?: WalletPosition;
 }) {
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [show, setShow] = useState(false);
@@ -583,18 +548,12 @@ function WalletLink({
       enterTimerRef.current = null;
       setShow(true);
       const wk = wallet.toLowerCase();
-      const hit = summaryCache[wk];
-      if (
-        hit &&
-        typeof hit.cashFlow === 'number' &&
-        typeof hit.totalTrades === 'number' &&
-        typeof hit.resolvedMarkets === 'number'
-      ) {
-        setSummary(hit);
+      if (wk in summaryCache) {
+        setSummary(summaryCache[wk]);
         return;
       }
       const s = await fetchWalletSummary(wallet);
-      if (s) summaryCache[wk] = s;
+      summaryCache[wk] = s;
       setSummary(s);
     }, 300);
   };
@@ -607,29 +566,14 @@ function WalletLink({
     scheduleHide();
   };
 
-  const displaySummary = summary === null && holderRow ? rowHolderSummary(holderRow) : summary;
-  const rowOnly = displaySummary && summary === null && holderRow && displaySummary.totalMarkets === 0;
-
   const tooltipInner = (
     <>
           <div className="font-mono text-blue-400 mb-1 text-[8px]">{wallet.slice(0, 10)}...{wallet.slice(-6)}</div>
           {summary === undefined && <div className="text-gray-500">Loading...</div>}
-          {summary === null && !displaySummary && <div className="text-gray-500">No data yet</div>}
-          {displaySummary && (
-            <div className="space-y-1">
-              {rowOnly && <div className="text-gray-500 text-[8px] mb-0.5">This market (ledger row n/a)</div>}
-              {typeof netShares === 'number' && Number.isFinite(netShares) && (
-                <div className="flex justify-between gap-2 text-[8px] text-gray-300">
-                  <span className="text-gray-500">Net shares</span>
-                  <span className={`font-bold ${netShares > 0.001 ? 'text-green-400' : netShares < -0.001 ? 'text-red-400' : 'text-gray-400'}`}>
-                    {netShares > 0 ? '+' : ''}
-                    {netShares.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              <WalletScoresLedgerSummaryGrid s={displaySummary} dense />
-            </div>
-          )}
+          {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
+          {summary ? (
+            <WalletScoresLedgerSummaryGrid s={summary} narrowSummary hideNetCash hideTotalMarkets />
+          ) : null}
     </>
   );
 
@@ -639,7 +583,7 @@ function WalletLink({
     typeof document !== 'undefined' &&
     createPortal(
       <div
-        className="bg-gray-900 border border-gray-600 rounded shadow-xl p-2 min-w-[190px] max-w-[min(260px,calc(100vw-16px))] max-h-[min(320px,70vh)] overflow-y-auto text-[9px] pointer-events-auto"
+        className="bg-gray-900 border border-gray-600 rounded shadow-xl p-2 min-w-[190px] max-w-[min(15rem,calc(100vw-16px))] max-h-[min(320px,70vh)] overflow-y-auto text-[9px] pointer-events-auto"
         style={{
           position: 'fixed',
           left: tipPos.left,
@@ -710,16 +654,9 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
     (async () => {
       const pairs = await Promise.all(
         uniq.map(async (w) => {
-          const hit = summaryCache[w];
-          if (
-            hit &&
-            typeof hit.cashFlow === 'number' &&
-            typeof hit.totalTrades === 'number' &&
-            typeof hit.resolvedMarkets === 'number'
-          )
-            return [w, hit] as const;
+          if (w in summaryCache) return [w, summaryCache[w]] as const;
           const s = await fetchWalletSummary(w);
-          if (s) summaryCache[w] = s;
+          summaryCache[w] = s;
           return [w, s] as const;
         }),
       );
@@ -790,10 +727,8 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
             return rows.map((w, i) => {
               const wk = (w.wallet || '').toLowerCase();
               const sum = walletSummaryMap[wk];
-              const summaryWinLossTotal = sum ? ((sum.wins || 0) + (sum.losses || 0)) : 0;
-              const fallbackWinLossTotal = typeof w.winLossTotal === 'number' ? w.winLossTotal : 0;
-              const effectiveWinLossTotal = sum ? summaryWinLossTotal : fallbackWinLossTotal;
-              const effectiveWinRate = normalizeWinRate(sum ? sum.winRate : w.winRate);
+              const ledgerFrac = ledgerSummaryWinRateFracOrNull(sum ?? null);
+              const showWinBar = ledgerFrac != null;
             const iy = typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
             const inn = typeof w.invNo === 'number' && Number.isFinite(w.invNo) ? w.invNo : w.netNo ?? 0;
             const signedLegNet = iy - inn;
@@ -813,7 +748,6 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
               const stakeYUsd = walletStakeYUsd(w);
               const stakeNUsd = walletStakeNUsd(w);
               const stakeNetSigned = walletStakeNetSignedUsd(w);
-              const showWinBar = effectiveWinLossTotal > 0 && effectiveWinRate != null;
             return (
               <tr key={w.wallet} className="border-b border-gray-800 hover:bg-gray-700/30">
                 <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
@@ -838,8 +772,8 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
                     </button>
                   </td>
                   <td className={`relative align-top px-1 py-0.5 ${showWinBar ? 'pb-2' : ''}`}>
-                    <WalletLink wallet={w.wallet} netShares={signedLegNet} onOpenWallet={onOpenWallet} isSmart={isSmartGold(w)} holderRow={w} />
-                    {showWinBar && <WinRateBottomBar winRate={effectiveWinRate!} className="absolute bottom-0 left-0 right-0" />}
+                    <WalletLink wallet={w.wallet} netShares={signedLegNet} onOpenWallet={onOpenWallet} isSmart={isSmartGold(w)} />
+                    {showWinBar && <WinRateBottomBar winRate={ledgerFrac!} className="absolute bottom-0 left-0 right-0" />}
                   </td>
                   <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{fmtInt(iy)}</td>
                   <td className="text-right px-1 font-bold text-red-400 bg-red-900/10">{fmtInt(inn)}</td>
@@ -1426,6 +1360,46 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState('');
 
+  const redFlagWalletKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const f of data?.redFlags ?? []) {
+      const a = String(f.wallet || '').trim().toLowerCase();
+      if (a) s.add(a);
+    }
+    return [...s].sort();
+  }, [data?.redFlags]);
+
+  const [redFlagLedgerMap, setRedFlagLedgerMap] = useState<Record<string, WalletSummary | null>>({});
+
+  useEffect(() => {
+    if (!open) {
+      setRedFlagLedgerMap({});
+      return;
+    }
+    if (redFlagWalletKeys.length === 0) {
+      setRedFlagLedgerMap({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const pairs = await Promise.all(
+        redFlagWalletKeys.map(async (addr) => {
+          if (addr in summaryCache) return [addr, summaryCache[addr]] as const;
+          const sm = await fetchWalletSummary(addr);
+          summaryCache[addr] = sm;
+          return [addr, sm] as const;
+        }),
+      );
+      if (cancelled) return;
+      const next: Record<string, WalletSummary | null> = {};
+      for (const [addr, sm] of pairs) next[addr] = sm;
+      setRedFlagLedgerMap(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, redFlagWalletKeys.join('|')]);
+
   const load = useCallback(async () => {
     if (!marketId) return;
     setLoading(true);
@@ -1756,7 +1730,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                 const highFlags = rf.filter(f => f.level === 'high');
                 const medFlags = rf.filter(f => f.level === 'medium');
                 const netByWallet: Record<string, number> = {};
-                const winStatsByWallet: Record<string, { winRate: number; winLossTotal: number }> = {};
                 const smartSet = new Set<string>();
                 const addWallets = (arr?: WalletPosition[] | null) => {
                   for (const w of arr || []) {
@@ -1764,11 +1737,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                     const k = w.wallet.toLowerCase();
                     netByWallet[k] = w.net || 0;
                     if (isSmartGold(w)) smartSet.add(k);
-                    const wl = w.winLossTotal;
-                    const wr = w.winRate;
-                    if (typeof wl === 'number' && wl > 0 && typeof wr === 'number' && Number.isFinite(wr)) {
-                      winStatsByWallet[k] = { winRate: wr, winLossTotal: wl };
-                    }
                   }
                 };
                 addWallets(topHoldersWallets);
@@ -1791,8 +1759,9 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                     </div>
                     <div className="space-y-1.5">
                       {highFlags.map((f, i) => {
-                        const st = f.wallet ? winStatsByWallet[f.wallet.toLowerCase()] : undefined;
-                        const showWinBar = !!(st && st.winLossTotal > 0 && Number.isFinite(st.winRate));
+                        const wlk = f.wallet?.toLowerCase();
+                        const lf = wlk ? ledgerSummaryWinRateFracOrNull(redFlagLedgerMap[wlk] ?? null) : null;
+                        const showWinBar = lf != null;
                         return (
                           <div key={`h${i}`} className="flex items-start gap-1.5 text-[10px]">
                             <AlertTriangle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
@@ -1807,7 +1776,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                         onOpenWallet={openWalletDialog}
                                         isSmart={smartSet.has(f.wallet.toLowerCase())}
                                       />
-                                      <WinRateBottomBar winRate={st!.winRate} />
+                                      <WinRateBottomBar winRate={lf!} />
                                     </span>
                                   ) : (
                                     <WalletLink
@@ -1827,8 +1796,9 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                         );
                       })}
                       {medFlags.map((f, i) => {
-                        const st = f.wallet ? winStatsByWallet[f.wallet.toLowerCase()] : undefined;
-                        const showWinBar = !!(st && st.winLossTotal > 0 && Number.isFinite(st.winRate));
+                        const wlk = f.wallet?.toLowerCase();
+                        const lf = wlk ? ledgerSummaryWinRateFracOrNull(redFlagLedgerMap[wlk] ?? null) : null;
+                        const showWinBar = lf != null;
                         return (
                           <div key={`m${i}`} className="flex items-start gap-1.5 text-[10px]">
                             <AlertTriangle size={12} className="text-yellow-400 flex-shrink-0 mt-0.5" />
@@ -1843,7 +1813,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                         onOpenWallet={openWalletDialog}
                                         isSmart={smartSet.has(f.wallet.toLowerCase())}
                                       />
-                                      <WinRateBottomBar winRate={st!.winRate} />
+                                      <WinRateBottomBar winRate={lf!} />
                                     </span>
                                   ) : (
                                     <WalletLink

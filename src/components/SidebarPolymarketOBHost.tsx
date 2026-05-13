@@ -8,6 +8,9 @@ type OBLevel = { price: string; size: string };
 export type SidebarPolymarketBookSnapshot = {
   displayBids: OBLevel[];
   displayAsks: OBLevel[];
+  /** YES token legs only — stable when sidebar outcome toggles. */
+  yesDisplayBids: OBLevel[];
+  yesDisplayAsks: OBLevel[];
   polymarketLiveTrades: LiveTrade[];
   obLoading: boolean;
 };
@@ -54,19 +57,39 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   setOrderPrice,
   setOrderAmount,
 }: Props) {
-  const { bids, asks, trades: polymarketLiveTrades, loading: obLoading } = usePolymarketOB(obTokenId);
+  const yesTid = useMemo(() => (selectedMarket?.clobTokenIds?.[0] || '').trim() || null, [selectedMarket?.clobTokenIds]);
 
-  const obStaleBookRef = useRef<{ bids: OBLevel[]; asks: OBLevel[] }>({ bids: [], asks: [] });
+  const needSeparateOutcomeBook = !!(obTokenId && yesTid && obTokenId !== yesTid);
+
+  const yesWs = usePolymarketOB(yesTid);
+  const outcomeWs = usePolymarketOB(needSeparateOutcomeBook ? obTokenId : null);
+
+  const displayWs = needSeparateOutcomeBook ? outcomeWs : yesWs;
+  const polymarketLiveTrades = displayWs.trades;
+
+  const displayStaleBookRef = useRef<{ bids: OBLevel[]; asks: OBLevel[] }>({ bids: [], asks: [] });
   useLayoutEffect(() => {
-    obStaleBookRef.current = { bids: [], asks: [] };
+    displayStaleBookRef.current = { bids: [], asks: [] };
   }, [obTokenId]);
   useLayoutEffect(() => {
-    if (!obLoading) {
-      obStaleBookRef.current = { bids, asks };
+    if (!displayWs.loading) {
+      displayStaleBookRef.current = { bids: displayWs.bids, asks: displayWs.asks };
     }
-  }, [obLoading, bids, asks]);
-  const displayBids = obLoading ? obStaleBookRef.current.bids : bids;
-  const displayAsks = obLoading ? obStaleBookRef.current.asks : asks;
+  }, [displayWs.loading, displayWs.bids, displayWs.asks]);
+  const displayBids = displayWs.loading ? displayStaleBookRef.current.bids : displayWs.bids;
+  const displayAsks = displayWs.loading ? displayStaleBookRef.current.asks : displayWs.asks;
+
+  const yesStaleBookRef = useRef<{ bids: OBLevel[]; asks: OBLevel[] }>({ bids: [], asks: [] });
+  useLayoutEffect(() => {
+    yesStaleBookRef.current = { bids: [], asks: [] };
+  }, [yesTid]);
+  useLayoutEffect(() => {
+    if (!yesWs.loading) {
+      yesStaleBookRef.current = { bids: yesWs.bids, asks: yesWs.asks };
+    }
+  }, [yesWs.loading, yesWs.bids, yesWs.asks]);
+  const yesDisplayBids = yesWs.loading ? yesStaleBookRef.current.bids : yesWs.bids;
+  const yesDisplayAsks = yesWs.loading ? yesStaleBookRef.current.asks : yesWs.asks;
 
   const prevTopSig = useRef<string>('');
   const orderbookBookImbalance = useMemo(() => {
@@ -92,20 +115,32 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
     sidebarBookRef.current = {
       displayBids,
       displayAsks,
+      yesDisplayBids,
+      yesDisplayAsks,
       polymarketLiveTrades,
-      obLoading,
+      obLoading: displayWs.loading,
     };
-  }, [sidebarBookRef, displayBids, displayAsks, polymarketLiveTrades, obLoading]);
+  }, [sidebarBookRef, displayBids, displayAsks, yesDisplayBids, yesDisplayAsks, polymarketLiveTrades, displayWs.loading]);
 
   useLayoutEffect(() => {
     const firstAsk = displayAsks[0]?.price ?? '';
     const lastBid = displayBids.length ? displayBids[displayBids.length - 1]?.price ?? '' : '';
-    const sig = `${firstAsk}|${lastBid}|${obLoading ? 1 : 0}`;
+    const firstAskYes = yesDisplayAsks[0]?.price ?? '';
+    const lastBidYes = yesDisplayBids.length ? yesDisplayBids[yesDisplayBids.length - 1]?.price ?? '' : '';
+    const sig = `${firstAsk}|${lastBid}|${firstAskYes}|${lastBidYes}|${displayWs.loading ? 1 : 0}|${yesWs.loading ? 1 : 0}`;
     if (sig !== prevTopSig.current) {
       prevTopSig.current = sig;
       onTopOfBookDigestBump();
     }
-  }, [displayBids, displayAsks, obLoading, onTopOfBookDigestBump]);
+  }, [
+    displayBids,
+    displayAsks,
+    yesDisplayBids,
+    yesDisplayAsks,
+    displayWs.loading,
+    yesWs.loading,
+    onTopOfBookDigestBump,
+  ]);
 
   return (
     <SidebarLiveOrderbookSection
@@ -115,7 +150,7 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
       orderbookBookImbalance={orderbookBookImbalance}
       displayBids={displayBids}
       displayAsks={displayAsks}
-      obLoading={obLoading}
+      obLoading={displayWs.loading}
       isMarketExpired={isMarketExpired}
       isUpDownMarket={isUpDownMarket}
       sidebarUserBidPrices={sidebarUserBidPrices}

@@ -2769,30 +2769,29 @@ export function Sidebar() {
                 </div>
                 {!row.pastExpiry && row.yesMathCents != null && (
                   (() => {
-                    const bids = sidebarBookRef.current?.displayBids ?? [];
-                    const asks = sidebarBookRef.current?.displayAsks ?? [];
+                    const snap = sidebarBookRef.current;
+                    const bids = snap?.yesDisplayBids ?? [];
+                    const asks = snap?.yesDisplayAsks ?? [];
                     const tb = bids.length ? parseFloat(bids[bids.length - 1].price) * 100 : NaN;
                     const ta = asks.length ? parseFloat(asks[0].price) * 100 : NaN;
-                    let tokenMid: number | null = null;
-                    if (Number.isFinite(tb) && Number.isFinite(ta)) tokenMid = (tb + ta) / 2;
-                    else if (Number.isFinite(tb)) tokenMid = tb;
-                    else if (Number.isFinite(ta)) tokenMid = ta;
-                    /** YES midpoint in ¢ — NO book midpoint maps to complementary YES (~100 − mid). */
-                    const yesMidCents =
-                      tokenMid != null ? (orderOutcome === 'YES' ? tokenMid : 100 - tokenMid) : null;
-                    const yMidOk = yesMidCents != null ? Math.min(100, Math.max(0, yesMidCents)) : null;
+                    let yesMidCents: number | null = null;
+                    if (Number.isFinite(tb) && Number.isFinite(ta)) yesMidCents = (tb + ta) / 2;
+                    else if (Number.isFinite(tb)) yesMidCents = tb;
+                    else if (Number.isFinite(ta)) yesMidCents = ta;
+                    const yMidOk =
+                      yesMidCents != null ? Math.min(100, Math.max(0, yesMidCents)) : null;
 
                     const m = row.yesMathCents;
                     const delta = yMidOk != null ? yMidOk - m : null;
-                    /** Width % of LEFT (red): 50¢ when YES mid ≡ math; ↓ toward 2% red when mid ≫ math (↑ green); ↑ toward red when mid ≪ math. */
-                    const redLeftPct =
+                    /** GREEN on the left (% width): 50% when YES mid ≡ math; grows left when YES mid > math. RED fills the remainder on the right. */
+                    const greenLeftPct =
                       delta == null
                         ? 50
-                        : Math.min(97, Math.max(3, 50 - (delta / 22) * 46));
+                        : Math.min(97, Math.max(3, 50 + (delta / 22) * 46));
 
                     const tip =
                       yMidOk == null
-                        ? `Model YES ${m.toFixed(1)}¢ — no YES/NO top-of-book yet`
+                        ? `Model YES ${m.toFixed(1)}¢ — no YES top-of-book yet`
                         : `YES mid ${yMidOk.toFixed(1)}¢ vs model ${m.toFixed(1)}¢ (Δ ${delta! >= 0 ? '+' : ''}${delta!.toFixed(1)}¢)`;
 
                     return (
@@ -2802,9 +2801,9 @@ export function Sidebar() {
                             Prob
                             <HelpTooltip
                               text={
-                                'YES midpoint (bid–ask midpoint of YES token — from current book slice; when sidebar shows NO legs, midpoint is complemented to ~YES ¢).\n\n' +
-                                  'vs model YES (same math strike as Match row, σ/spot).\n\n' +
-                                  'Bar center (=50/50 red|green split) lines up when midpoint matches model. Green on the right grows when YES is priced richer than math; red on the left when cheaper.'
+                                'YES token bid–ask midpoint (¢), always from the YES CLOB legs — independent of the YES/NO toggle.\n\n' +
+                                  'vs model YES probability (same math as the Math column).\n\n' +
+                                  'Green is on the LEFT: wider green when YES mid trades above math; narrower (more red on the right) when below. 50|50 split when mid matches math.'
                               }
                             />
                           </span>
@@ -2827,12 +2826,12 @@ export function Sidebar() {
                         </div>
                         <div className="relative h-[7px] w-full rounded-full overflow-hidden bg-gray-900 ring-1 ring-gray-700/80">
                           <div
-                            className="absolute inset-y-0 left-0 bg-red-800/95"
-                            style={{ width: `${redLeftPct}%` }}
+                            className="absolute inset-y-0 left-0 rounded-l-[999px] bg-emerald-600/90"
+                            style={{ width: `${greenLeftPct}%` }}
                           />
                           <div
-                            className="absolute inset-y-0 bg-emerald-600/90"
-                            style={{ left: `${redLeftPct}%`, width: `${100 - redLeftPct}%` }}
+                            className="absolute inset-y-0 rounded-r-[999px] bg-red-800/95"
+                            style={{ left: `${greenLeftPct}%`, width: `${100 - greenLeftPct}%` }}
                           />
                         </div>
                       </div>

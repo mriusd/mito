@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { API_BASE, WS_BASE } from '../lib/env';
 
 interface Candle {
@@ -38,6 +38,28 @@ function getIntervalFromSlug(context?: string): string {
 
 const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000, '4h': 14400000, '1d': 86400000 };
 
+const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
+
+/** Annualized σ from close-to-close log returns (sample stdev), last `candles` rows. Needs ≥3 candles (2+ returns). */
+function annualizedVolPctFromCandles(candles: Candle[], barMs: number): number | null {
+  if (candles.length < 3 || !Number.isFinite(barMs) || barMs <= 0) return null;
+  const closes = candles.map((c) => c.c).filter((x) => Number.isFinite(x) && x > 0);
+  if (closes.length < 3) return null;
+  const logRet: number[] = [];
+  for (let i = 1; i < closes.length; i++) {
+    logRet.push(Math.log(closes[i] / closes[i - 1]));
+  }
+  if (logRet.length < 2) return null;
+  const n = logRet.length;
+  const mean = logRet.reduce((a, b) => a + b, 0) / n;
+  const varSample = logRet.reduce((s, x) => s + (x - mean) ** 2, 0) / (n - 1);
+  if (!Number.isFinite(varSample) || varSample < 0) return null;
+  const sdPerBar = Math.sqrt(varSample);
+  const barsPerYear = MS_PER_YEAR / barMs;
+  const ann = sdPerBar * Math.sqrt(barsPerYear);
+  return Number.isFinite(ann) ? ann * 100 : null;
+}
+
 export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkCandles = false }: ChainlinkChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
@@ -51,6 +73,12 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
   intervalRef.current = interval;
   const binanceSymbol = `${asset.toUpperCase()}USDT`;
   const binanceStreamSymbol = `${asset.toLowerCase()}usdt`;
+
+  const chartVolAnnualPct = useMemo(() => {
+    const all = Array.from(candleMapRef.current.values()).sort((a, b) => a.time - b.time);
+    const last10 = all.slice(-10);
+    return annualizedVolPctFromCandles(last10, candleMs);
+  }, [ready, tick, candleMs]);
 
   // Binance spot: REST + kline WS
   useEffect(() => {
@@ -407,6 +435,15 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
             <span className="px-0.5 rounded-sm text-[8px] font-bold bg-yellow-400 text-black leading-tight">BINANCE</span>
           )}
           <span className="text-gray-500">{interval}</span>
+          {chartVolAnnualPct != null ? (
+            <span
+              className="text-gray-500 tabular-nums"
+              title="Annualized volatility (close log returns, sample σ), from the last 10 candles shown in this chart"
+            >
+              {' · '}
+              {chartVolAnnualPct.toFixed(1)}% σ
+            </span>
+          ) : null}
         </span>
       </div>
       <canvas

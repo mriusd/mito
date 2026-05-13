@@ -397,6 +397,27 @@ export function buildMarketLookup(aboveMarkets: Record<string, Market[]>, priceO
 
 // --- Toxic Flow / On-chain API ---
 
+/** Matches GET `/api/wallet-summary` JSON minus `found` — batched onto toxic-flow cohort rows / red flags. */
+export interface WalletScoresLedgerEmbed {
+  wallet: string;
+  totalMarkets: number;
+  resolvedMarkets?: number;
+  totalTrades: number;
+  wins: number;
+  losses: number;
+  flat: number;
+  winRate: number;
+  pnl: number;
+  cashFlow: number;
+  pm: number;
+  lm: number;
+  profitRate: number;
+  usdcIn: number;
+  usdcOut: number;
+  roi?: number | null;
+  volume?: number;
+}
+
 export interface WalletPosition {
   wallet: string;
   marketId: string;
@@ -468,6 +489,8 @@ export interface WalletPosition {
   flat?: number;
   /** Proven smart wallet (≥60% WR, ≥10 markets, PNL>0). */
   isSmart?: boolean;
+  /** Full ledger row (wallet_scores_ledger), batched with toxic-flow. */
+  walletLedgerSummary?: WalletScoresLedgerEmbed | null;
   /** `wallet_market_positions.last_updated` (RFC3339) when present. */
   lastUpdated?: string;
 }
@@ -497,7 +520,14 @@ export interface ToxicFlowData {
   yesUsdcIn: number;
   noUsdcIn: number;
   // Manipulation red flags
-  redFlags?: { flag: string; detail: string; level: string; value: number; wallet?: string }[];
+  redFlags?: {
+    flag: string;
+    detail: string;
+    level: string;
+    value: number;
+    wallet?: string;
+    walletLedgerSummary?: WalletScoresLedgerEmbed | null;
+  }[];
   /** Backend: POLYGON_WSS_URL set */
   polygonWssConfigured?: boolean;
   /** All-time OrderFilled logs processed since process start */
@@ -775,8 +805,34 @@ export interface WalletSummary {
   profitRate: number;
   usdcIn: number;
   usdcOut: number;
+  /** Notional Σ usdc_in + usdc_out over positions (ledger aggregate); optional on some payloads. */
+  volume?: number;
   /** Stored decimal (e.g. 0.12 = 12%); display ×100 for %. Null until resolved-markets basis exists. */
   roi?: number | null;
+}
+
+export function walletSummaryFromLedgerEmbed(rowWallet: string, embed: WalletScoresLedgerEmbed): WalletSummary {
+  const w = (embed.wallet?.trim() || rowWallet.trim()).toLowerCase();
+  return {
+    found: true,
+    wallet: w,
+    totalMarkets: embed.totalMarkets,
+    resolvedMarkets: embed.resolvedMarkets,
+    totalTrades: embed.totalTrades,
+    wins: embed.wins,
+    losses: embed.losses,
+    flat: embed.flat,
+    winRate: embed.winRate,
+    pnl: embed.pnl,
+    cashFlow: embed.cashFlow,
+    pm: embed.pm,
+    lm: embed.lm,
+    profitRate: embed.profitRate,
+    usdcIn: embed.usdcIn,
+    usdcOut: embed.usdcOut,
+    roi: embed.roi,
+    volume: embed.volume,
+  };
 }
 
 export async function fetchWalletSummary(wallet: string): Promise<WalletSummary | null> {

@@ -54,6 +54,35 @@ export function pickLiveUpDownMarketInTfBucket(marketsForTf: Market[] | undefine
   return futures[0];
 }
 
+/**
+ * Up/Down target from Gamma `priceToBeat`: same order as UpDownMarketsPanel (row → lookup).
+ * Also reads `upOrDownMarkets` bucket by id when the selected snapshot lacks `priceToBeat` but the store row was refreshed (e.g. after auto-switch at expiry).
+ */
+export function resolveUpDownStrikeSync(
+  m: Market | null | undefined,
+  lookup: Record<string, Market>,
+  buckets: Record<string, Record<string, Market[]>>,
+): number | undefined {
+  if (!m?.clobTokenIds?.length) return undefined;
+  const tid = String(m.clobTokenIds[0]).trim();
+  const fromLookup = tid ? lookup[tid]?.priceToBeat : undefined;
+
+  const asset = extractAssetFromMarket(m);
+  const tf = upDownTimeframeKeyFromMarket(m);
+  let fromBucket: number | undefined;
+  if (asset && tf) {
+    const row = (buckets[asset]?.[tf] ?? []).find((x) => x.id === m.id);
+    const pb = row?.priceToBeat;
+    if (pb != null && Number.isFinite(pb)) fromBucket = pb;
+  }
+
+  const p =
+    m.priceToBeat ??
+    (fromLookup != null && Number.isFinite(fromLookup) ? fromLookup : undefined) ??
+    fromBucket;
+  return p != null && Number.isFinite(p) ? p : undefined;
+}
+
 /** Parsed from Gamma `outcomePrices` when a binary market is resolved (winning side is 1, loser 0). */
 export function resolvedBinaryOutcomeLabel(
   market: Pick<Market, 'question' | 'eventSlug' | 'outcomePrices' | 'closed'> | null | undefined,

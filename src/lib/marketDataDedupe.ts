@@ -17,12 +17,23 @@ function marketArraySig(arr: Market[] | undefined): string {
   return [...arr].map(marketRowSig).sort().join('\x02');
 }
 
+function marketArraysEqualByRefOrSig(a: Market[] | undefined, b: Market[] | undefined): boolean {
+  if (a === b) return true;
+  if (!a?.length && !b?.length) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return marketArraySig(a) === marketArraySig(b);
+  }
+  return true;
+}
+
 export function recordOfMarketArraysEqual(a: Record<string, Market[]>, b: Record<string, Market[]>): boolean {
+  if (a === b) return true;
   const ka = Object.keys(a).sort().join(',');
   const kb = Object.keys(b).sort().join(',');
   if (ka !== kb) return false;
   for (const k of Object.keys(a)) {
-    if (marketArraySig(a[k]) !== marketArraySig(b[k])) return false;
+    if (!marketArraysEqualByRefOrSig(a[k], b[k])) return false;
   }
   return true;
 }
@@ -31,6 +42,7 @@ export function upOrDownMarketsEqual(
   a: Record<string, Record<string, Market[]>>,
   b: Record<string, Record<string, Market[]>>,
 ): boolean {
+  if (a === b) return true;
   const ak = Object.keys(a).sort().join(',');
   const bk = Object.keys(b).sort().join(',');
   if (ak !== bk) return false;
@@ -41,7 +53,7 @@ export function upOrDownMarketsEqual(
     const tikb = Object.keys(ib).sort().join(',');
     if (tik !== tikb) return false;
     for (const tf of Object.keys(ia)) {
-      if (marketArraySig(ia[tf]) !== marketArraySig(ib[tf])) return false;
+      if (!marketArraysEqualByRefOrSig(ia[tf], ib[tf])) return false;
     }
   }
   return true;

@@ -1103,7 +1103,9 @@ export function WalletInfoDialog({
         <div className="text-[10px] shrink-0 flex flex-col">
           <div className="bg-gray-900 rounded p-2 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
-              <div className="text-gray-500 font-semibold">Summary</div>
+              <div className="text-gray-500 font-semibold">
+                Summary <span className="font-normal text-gray-600">[updated every hour]</span>
+              </div>
               <button
                 type="button"
                 className="shrink-0 p-0.5 rounded text-gray-500 hover:text-white hover:bg-gray-800 disabled:opacity-40"

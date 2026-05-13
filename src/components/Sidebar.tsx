@@ -30,6 +30,7 @@ import {
   outcomeTokenBelongsToSelectedMarket,
   pickLiveUpDownMarketInTfBucket,
   pickNextMarketOnExpiry,
+  resolveUpDownStrikeSync,
   shortenMarketName,
   tradeMatchesSelectedMarket,
   hitStrikeMetaForBs,
@@ -1340,34 +1341,50 @@ export function Sidebar() {
     setSelectedMarket,
   ]);
 
-  // Target price: use priceToBeat from Gamma API (set by backend), fallback to crypto-price API
-  // Look up fresh priceToBeat from marketLookup (refreshes every 30s) since selectedMarket is a stale snapshot
-  const livePriceToBeat = useMemo(() => {
-    if (!selectedMarket?.clobTokenIds?.[0]) return selectedMarket?.priceToBeat;
-    const fresh = marketLookup[selectedMarket.clobTokenIds[0]];
-    return fresh?.priceToBeat || selectedMarket?.priceToBeat;
-  }, [selectedMarket?.clobTokenIds, selectedMarket?.priceToBeat, marketLookup]);
+  // Target price: same resolution as Up/Down grid (market.priceToBeat → lookup → bucket row by id), plus crypto API for long TF when missing.
+  const syncUpDownStrike = useMemo(
+    () =>
+      isUpDownMarket && selectedMarket
+        ? resolveUpDownStrikeSync(selectedMarket, marketLookup, upOrDownMarkets)
+        : undefined,
+    [
+      isUpDownMarket,
+      selectedMarket,
+      selectedMarket?.id,
+      selectedMarket?.priceToBeat,
+      selectedMarket?.clobTokenIds,
+      marketLookup,
+      upOrDownMarkets,
+      lastUpdated,
+    ],
+  );
 
   useEffect(() => {
-    setUpDownTargetPrice(null);
-    if (!isUpDownMarket || !selectedMarket?.endDate) return;
-
-    // Prefer priceToBeat from backend cache (Gamma API eventMetadata)
-    if (livePriceToBeat) {
-      setUpDownTargetPrice(livePriceToBeat);
+    if (!isUpDownMarket || !selectedMarket?.endDate) {
+      setUpDownTargetPrice(null);
       return;
     }
 
     const endMs = new Date(selectedMarket.endDate).getTime();
-    if (isNaN(endMs)) return;
+    if (isNaN(endMs)) {
+      setUpDownTargetPrice(null);
+      return;
+    }
+
+    if (syncUpDownStrike != null && Number.isFinite(syncUpDownStrike)) {
+      setUpDownTargetPrice(syncUpDownStrike);
+      return;
+    }
+
+    setUpDownTargetPrice(null);
+
     const slug = selectedMarket.eventSlug || '';
     const q = selectedMarket.question || '';
     const combined = `${slug} ${q}`;
     const is5m = !!(combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i));
 
     if (is5m) {
-      // 5m markets: priceToBeat comes from backend Chainlink collector via market refresh.
-      // Nothing to fetch here — it will arrive with the next market data refresh.
+      // 5m: priceToBeat from backend Chainlink — re-runs when syncUpDownStrike / lastUpdated updates.
       return;
     }
     if (!upDownCryptoTimeframe(combined)) return;
@@ -1380,7 +1397,6 @@ export function Sidebar() {
       if (!cancelled && p != null) setUpDownTargetPrice(p);
     };
     void tick();
-    // Hourly openPrice often lags ~5m; retry briefly so target appears as soon as the API has it.
     const iv = setInterval(() => void tick(), 12_000);
     const stopIv = setTimeout(() => clearInterval(iv), 150_000);
     return () => {
@@ -1388,7 +1404,14 @@ export function Sidebar() {
       clearInterval(iv);
       clearTimeout(stopIv);
     };
-  }, [isUpDownMarket, selectedMarket?.endDate, selectedMarket?.eventSlug, selectedMarket, livePriceToBeat]);
+  }, [
+    isUpDownMarket,
+    selectedMarket?.id,
+    selectedMarket?.endDate,
+    selectedMarket?.eventSlug,
+    selectedMarket?.question,
+    syncUpDownStrike,
+  ]);
 
   // Countdown timer for market expiry (all markets)
   useEffect(() => {

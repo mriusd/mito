@@ -990,6 +990,41 @@ export function WalletInfoDialog({
   const [lgChartsSync, setLgChartsSync] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches,
   );
+  const [walletIsFavourite, setWalletIsFavourite] = useState(false);
+
+  useEffect(() => {
+    if (!open || !wallet.trim()) {
+      setWalletIsFavourite(false);
+      return;
+    }
+    const k = wallet.trim().toLowerCase();
+    setWalletIsFavourite(readToxicFavouriteWallets().has(k));
+  }, [open, wallet]);
+
+  useEffect(() => {
+    if (!open || !wallet.trim()) return;
+    const k = wallet.trim().toLowerCase();
+    const sync = () => setWalletIsFavourite(readToxicFavouriteWallets().has(k));
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY || e.key === null) sync();
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+    };
+  }, [open, wallet]);
+
+  const toggleWalletFavourite = useCallback(() => {
+    const k = wallet.trim().toLowerCase();
+    if (!k) return;
+    const next = readToxicFavouriteWallets();
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
+    persistToxicFavouriteWallets(next);
+    setWalletIsFavourite(next.has(k));
+  }, [wallet]);
 
   useLayoutEffect(() => {
     const mq = window.matchMedia('(min-width: 1024px)');
@@ -1020,6 +1055,23 @@ export function WalletInfoDialog({
         <div className="flex items-center justify-between mb-2 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-bold text-yellow-400">Wallet Info</span>
+            <button
+              type="button"
+              className={`shrink-0 p-0.5 rounded hover:bg-gray-700/70 ${walletIsFavourite ? 'text-yellow-400' : 'text-gray-500'}`}
+              title={walletIsFavourite ? 'Remove from favourites' : 'Add to favourites'}
+              aria-pressed={walletIsFavourite}
+              disabled={!wallet.trim()}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleWalletFavourite();
+              }}
+            >
+              <Star
+                size={14}
+                className={walletIsFavourite ? 'fill-yellow-400 stroke-yellow-500/90' : 'fill-none stroke-gray-400'}
+                strokeWidth={walletIsFavourite ? 1.5 : 2}
+              />
+            </button>
             <a
               href={polymarketProfileUrl}
               target="_blank"

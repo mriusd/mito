@@ -20,7 +20,7 @@ export function StakedLegUsdBar({
   /** Fraction 0.01–0.999; default 0.3. Used when flashExtremeTilt. */
   extremeFlashTiltThreshold = 0.3,
   compactLegUsdFooter = false,
-  /** Draw 50% width tick — sidebar only unless opted in. */
+  /** Draw 25% / 50% / 75% ticks — sidebar only unless opted in. */
   midMarker = false,
 }: {
   sumYUsd: number;

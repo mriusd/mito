@@ -485,6 +485,7 @@ function WalletLink({
   const [show, setShow] = useState(false);
   const [tipPos, setTipPos] = useState<WalletTipPos | null>(null);
   const anchorRef = useRef<HTMLSpanElement>(null);
+  const mousePosRef = useRef({ x: 0, y: 0 });
   const enterTimerRef = useRef<number | null>(null);
   const leaveTimerRef = useRef<number | null>(null);
 
@@ -506,18 +507,23 @@ function WalletLink({
   };
 
   const updateTipPosition = useCallback(() => {
-    const el = anchorRef.current;
-    if (!el || !show) return;
-    const r = el.getBoundingClientRect();
+    if (!show) return;
+    const { x: cx, y: cy } = mousePosRef.current;
+    const estW = 220;
     const estH = 260;
-    const margin = 6;
-    const spaceBelow = window.innerHeight - r.bottom - 12;
-    const placeAbove = spaceBelow < estH && r.top > estH + 32;
-    const minW = 200;
-    const left = Math.max(8, Math.min(r.left, window.innerWidth - minW - 16));
+    const margin = 8;
+    const gap = 14;
+    let left = cx + gap;
+    if (left + estW > window.innerWidth - margin) {
+      left = cx - estW - gap;
+    }
+    left = Math.max(margin, Math.min(left, window.innerWidth - estW - margin));
+    const spaceBelow = window.innerHeight - cy - margin;
+    const placeAbove = spaceBelow < estH && cy > estH + margin + 40;
+    const top = placeAbove ? cy - margin : cy + gap;
     setTipPos({
       left,
-      top: placeAbove ? r.top - margin : r.bottom + margin,
+      top,
       placeAbove,
     });
   }, [show]);
@@ -583,7 +589,7 @@ function WalletLink({
     typeof document !== 'undefined' &&
     createPortal(
       <div
-        className="bg-gray-900 border border-gray-600 rounded shadow-xl p-2 min-w-[190px] max-w-[min(15rem,calc(100vw-16px))] max-h-[min(320px,70vh)] overflow-y-auto text-[9px] pointer-events-auto"
+        className="bg-gray-900 border border-gray-600 rounded shadow-xl p-2 min-w-[190px] max-w-[min(15rem,calc(100vw-16px))] max-h-[min(320px,70vh)] overflow-y-auto text-[9px] pointer-events-none select-none"
         style={{
           position: 'fixed',
           left: tipPos.left,
@@ -591,8 +597,6 @@ function WalletLink({
           transform: tipPos.placeAbove ? 'translateY(-100%)' : undefined,
           zIndex: 70000,
         }}
-        onMouseEnter={clearLeaveTimer}
-        onMouseLeave={scheduleHide}
       >
         {tooltipInner}
       </div>,
@@ -600,7 +604,19 @@ function WalletLink({
     );
 
   return (
-    <span ref={anchorRef} className="relative inline-block" onMouseEnter={onEnterAnchor} onMouseLeave={onLeaveAnchor}>
+    <span
+      ref={anchorRef}
+      className="relative inline-block"
+      onMouseEnter={(e) => {
+        mousePosRef.current = { x: e.clientX, y: e.clientY };
+        onEnterAnchor();
+      }}
+      onMouseMove={(e) => {
+        mousePosRef.current = { x: e.clientX, y: e.clientY };
+        if (show) updateTipPosition();
+      }}
+      onMouseLeave={onLeaveAnchor}
+    >
       <button
         type="button"
         onClick={(e) => {

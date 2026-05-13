@@ -429,7 +429,7 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
               className="px-0.5 rounded-sm text-[8px] font-bold bg-blue-600 text-white leading-tight"
               title="Polycandles Chainlink OHLC (synthetic chainlink_*usd)"
             >
-              CHAINLINK
+              CL
             </span>
           ) : (
             <span className="px-0.5 rounded-sm text-[8px] font-bold bg-yellow-400 text-black leading-tight">BINANCE</span>
@@ -437,11 +437,10 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
           <span className="text-gray-500">{interval}</span>
           {chartVolAnnualPct != null ? (
             <span
-              className="text-yellow-400 tabular-nums font-semibold"
+              className="text-[11px] font-bold text-yellow-400 border border-yellow-400/50 rounded px-1 py-0.5 tabular-nums"
               title="Annualized volatility (close log returns, sample σ), from the last 10 candles shown in this chart"
             >
-              {' · '}
-              {Math.round(chartVolAnnualPct)}% σ
+              σ{Math.round(chartVolAnnualPct)}%
             </span>
           ) : null}
         </span>

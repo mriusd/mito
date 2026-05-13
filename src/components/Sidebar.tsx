@@ -250,6 +250,7 @@ function pitchMulFromNotifyFreqSlider(slider0to100: number): number {
 const SIDEBAR_NOTIFY_PLAY_SOUND_KEY = 'polybot-sidebar-notify-play-sound';
 const SIDEBAR_NOTIFY_FLASH_BG_KEY = 'polybot-sidebar-notify-flash-bg';
 const SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_KEY = 'polybot-sidebar-notify-top-threshold-pct';
+const SIDEBAR_NOTIFY_SMART_TILT_PCT_KEY = 'polybot-sidebar-notify-smart-tilt-pct';
 const SIDEBAR_NOTIFY_BS_TILT_PCT_KEY = 'polybot-sidebar-notify-bs-tilt-pct';
 const SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY = 'polybot-sidebar-notify-staked-min-usd';
 const SIDEBAR_NOTIFY_SOUND_FREQ_KEY = 'polybot-sidebar-notify-sound-freq';
@@ -399,7 +400,17 @@ function readNotifyTopThresholdPct(): number {
     const raw = localStorage.getItem(SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_KEY);
     const n = parseFloat(raw ?? '30');
     if (!Number.isFinite(n)) return 30;
-    return Math.min(99, Math.max(1, Math.round(n)));
+    return Math.min(99, Math.max(0, Math.round(n)));
+  } catch {
+    return 30;
+  }
+}
+function readNotifySmartTiltPct(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_SMART_TILT_PCT_KEY);
+    const n = parseFloat(raw ?? '30');
+    if (!Number.isFinite(n)) return 30;
+    return Math.min(99, Math.max(0, Math.round(n)));
   } catch {
     return 30;
   }
@@ -409,7 +420,7 @@ function readNotifyBsTiltPct(): number {
     const raw = localStorage.getItem(SIDEBAR_NOTIFY_BS_TILT_PCT_KEY);
     const n = parseFloat(raw ?? '20');
     if (!Number.isFinite(n)) return 20;
-    return Math.min(99, Math.max(1, Math.round(n)));
+    return Math.min(99, Math.max(0, Math.round(n)));
   } catch {
     return 20;
   }
@@ -622,6 +633,7 @@ export function Sidebar() {
   const [notifyPlaySound, setNotifyPlaySound] = useState(readNotifyPlaySound);
   const [notifyFlashBg, setNotifyFlashBg] = useState(readNotifyFlashBg);
   const [notifyTopThresholdPct, setNotifyTopThresholdPct] = useState(readNotifyTopThresholdPct);
+  const [notifySmartTiltPct, setNotifySmartTiltPct] = useState(readNotifySmartTiltPct);
   const [notifyBsTiltPct, setNotifyBsTiltPct] = useState(readNotifyBsTiltPct);
   const [notifyStakedMinUsd, setNotifyStakedMinUsd] = useState(readNotifyStakedMinUsd);
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
@@ -659,6 +671,13 @@ export function Sidebar() {
       /* */
     }
   }, [notifyTopThresholdPct]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_SMART_TILT_PCT_KEY, String(notifySmartTiltPct));
+    } catch {
+      /* */
+    }
+  }, [notifySmartTiltPct]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_BS_TILT_PCT_KEY, String(notifyBsTiltPct));
@@ -792,31 +811,58 @@ export function Sidebar() {
     notifyTiltUd4h,
   ]);
 
-  /** Same rule as sidebar flash/sound Top cohort tilt: |lean| ≥ threshold when market passes notify filters. */
+  /** Cohort + proven-SMS tilts: each non-zero threshold must agree on direction; 0 = skip that leg. */
   const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {
     if (!notifyTiltAppliesToSelectedMarket) return null;
+    const topPct = notifyTopThresholdPct;
+    const smartPct = notifySmartTiltPct;
+    if (!(topPct > 0 || smartPct > 0)) return null;
+
     const cy = liveShareStats?.stakedTopHoldersCohortYesUsd;
     const cn = liveShareStats?.stakedTopHoldersCohortNoUsd;
+    let lean: number | null = null;
     if (
-      typeof cy !== 'number' ||
-      !Number.isFinite(cy) ||
-      typeof cn !== 'number' ||
-      !Number.isFinite(cn) ||
-      cy + cn <= 1e-9
+      typeof cy === 'number' &&
+      Number.isFinite(cy) &&
+      typeof cn === 'number' &&
+      Number.isFinite(cn) &&
+      cy + cn > 1e-9
     ) {
-      return null;
+      lean = (cy - cn) / (cy + cn);
     }
-    const total = cy + cn;
-    const lean = (cy - cn) / total;
-    const tiltThresholdFrac = notifyTopThresholdPct / 100;
-    if (lean >= tiltThresholdFrac) return 'green';
-    if (lean <= -tiltThresholdFrac) return 'red';
+
+    const smsRaw = liveShareStats?.provenSMS;
+    const sms = typeof smsRaw === 'number' && Number.isFinite(smsRaw) ? smsRaw : null;
+
+    const topFrac = topPct / 100;
+    const smartFrac = smartPct / 100;
+
+    let greenOk = true;
+    if (topPct > 0) {
+      if (lean == null || lean < topFrac) greenOk = false;
+    }
+    if (smartPct > 0) {
+      if (sms == null || sms < smartFrac) greenOk = false;
+    }
+
+    let redOk = true;
+    if (topPct > 0) {
+      if (lean == null || lean > -topFrac) redOk = false;
+    }
+    if (smartPct > 0) {
+      if (sms == null || sms > -smartFrac) redOk = false;
+    }
+
+    if (greenOk && !redOk) return 'green';
+    if (redOk && !greenOk) return 'red';
     return null;
   }, [
     notifyTiltAppliesToSelectedMarket,
     liveShareStats?.stakedTopHoldersCohortYesUsd,
     liveShareStats?.stakedTopHoldersCohortNoUsd,
+    liveShareStats?.provenSMS,
     notifyTopThresholdPct,
+    notifySmartTiltPct,
   ]);
 
   useEffect(() => {
@@ -1613,10 +1659,11 @@ export function Sidebar() {
     return yMidOk - m;
   }, [sidebarSpotStrip, selectedMarket?.clobTokenIds, marketLookup, topOfBookDigest]);
 
-  /** Cohort tilt (Top bar) plus Prob-bar Δ aligned with signal: green → Δ &gt; threshold; red → Δ &lt; −threshold. */
+  /** Cohort tilt (Top + optional Smart) then optional BS Δ alignment. */
   const tiltNotifyExtremeAfterBsGate = useMemo((): 'green' | 'red' | null => {
     const extreme = topBarExtremeBgFlash;
     if (extreme === null) return null;
+    if (notifyBsTiltPct === 0) return extreme;
     const d = bsProbMidDeltaCents;
     if (d == null || !Number.isFinite(d)) return null;
     const t = notifyBsTiltPct;
@@ -2485,10 +2532,10 @@ export function Sidebar() {
                 <span>Flash Background</span>
               </label>
               <div className="flex items-center gap-2">
-                <span className="text-gray-400 shrink-0">Top threshold (%)</span>
+                <span className="text-gray-400 shrink-0">Top Tilt (%)</span>
                 <input
                   type="number"
-                  min={1}
+                  min={0}
                   max={99}
                   step={1}
                   className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-20 tabular-nums"
@@ -2496,16 +2543,33 @@ export function Sidebar() {
                   onChange={(e) => {
                     const v = Number(e.target.value);
                     if (!Number.isFinite(v)) return;
-                    setNotifyTopThresholdPct(Math.min(99, Math.max(1, Math.round(v))));
+                    setNotifyTopThresholdPct(Math.min(99, Math.max(0, Math.round(v))));
                   }}
                 />
               </div>
-              <p className="text-[10px] text-gray-500">Notify when Top cohort USD tilt reaches this absolute lean (same as Top bar).</p>
+              <p className="text-[10px] text-gray-500">Top cohort USD lean (same bar as sidebar Top). 0 = ignore.</p>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 shrink-0">Smart Tilt (%)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={99}
+                  step={1}
+                  className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-20 tabular-nums"
+                  value={notifySmartTiltPct}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (!Number.isFinite(v)) return;
+                    setNotifySmartTiltPct(Math.min(99, Math.max(0, Math.round(v))));
+                  }}
+                />
+              </div>
+              <p className="text-[10px] text-gray-500">Proven smart-money USD lean (Mini Smart row). 0 = ignore. At least Top or Smart must be non-zero to arm tilt.</p>
               <div className="flex items-center gap-2">
                 <span className="text-gray-400 shrink-0">BS Tilt (¢)</span>
                 <input
                   type="number"
-                  min={1}
+                  min={0}
                   max={99}
                   step={1}
                   className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-20 tabular-nums"
@@ -2513,12 +2577,12 @@ export function Sidebar() {
                   onChange={(e) => {
                     const v = Number(e.target.value);
                     if (!Number.isFinite(v)) return;
-                    setNotifyBsTiltPct(Math.min(99, Math.max(1, Math.round(v))));
+                    setNotifyBsTiltPct(Math.min(99, Math.max(0, Math.round(v))));
                   }}
                 />
               </div>
               <p className="text-[10px] text-gray-500 m-0">
-                Flash/ring only if Prob-bar Δ (YES mid − math) exceeds this toward the signal: green tilt → Δ &gt; threshold; red → Δ &lt; −threshold.
+                Prob-bar Δ (YES mid − math) versus signal. Green → Δ &gt; threshold; red → Δ &lt; −threshold. 0 = skip.
               </p>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-gray-400 shrink-0">Staked min (USDC)</span>
@@ -3134,7 +3198,12 @@ export function Sidebar() {
                           barMode="cohortSurplusHalves"
                           midMarker
                           flashExtremeTilt={
-                            !!(notifyTiltAppliesToSelectedMarket && notifyFlashBg && notifyStakedGatePasses)
+                            !!(
+                              notifyTopThresholdPct > 0 &&
+                              notifyTiltAppliesToSelectedMarket &&
+                              notifyFlashBg &&
+                              notifyStakedGatePasses
+                            )
                           }
                           extremeFlashTiltThreshold={notifyTopThresholdPct / 100}
                         />

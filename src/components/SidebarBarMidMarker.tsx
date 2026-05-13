@@ -7,9 +7,9 @@ const TICK =
 export const SidebarBarMidMarker = memo(function SidebarBarMidMarker() {
   return (
     <>
-      <span aria-hidden className={`${TICK} left-[25%] bg-white/72`} />
-      <span aria-hidden className={`${TICK} left-1/2 bg-white/92`} />
-      <span aria-hidden className={`${TICK} left-[75%] bg-white/72`} />
+      <span aria-hidden className={`${TICK} left-[25%] bg-white/90`} />
+      <span aria-hidden className={`${TICK} left-1/2 bg-white/90`} />
+      <span aria-hidden className={`${TICK} left-[75%] bg-white/90`} />
     </>
   );
 });

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useAccount } from 'wagmi';
-import { RefreshCw, Clock, Settings, Plus, Github, Send } from 'lucide-react';
+import { RefreshCw, Clock, Settings, Plus, Github, Send, Star } from 'lucide-react';
 import logoSvg from '../assets/logo.svg';
 import { HelpTooltip } from './HelpTooltip';
 import { useShallow } from 'zustand/react/shallow';
@@ -21,8 +21,16 @@ const WalletInfoDialogLazy = lazyWithChunkReload(() =>
   import('./ToxicFlowDialog').then((m) => ({ default: m.WalletInfoDialog })),
 );
 
+const FavouriteWalletsDialogLazy = lazyWithChunkReload(() =>
+  import('./FavouriteWalletsDialog').then((m) => ({ default: m.FavouriteWalletsDialog })),
+);
+
 function preloadWalletSummaryDialog() {
   void importWithChunkReload(() => import('./ToxicFlowDialog'));
+}
+
+function preloadFavouriteWalletsDialog() {
+  void importWithChunkReload(() => import('./FavouriteWalletsDialog'));
 }
 
 /** UI: lastProcessed − tip from /ws/sync-head (negative = chain head ahead of KV). */
@@ -83,6 +91,7 @@ export function Header({ onRefresh }: HeaderProps) {
   const tradingWallet = useTradingWalletAddress();
 
   const [refreshing, setRefreshing] = useState(false);
+  const [favouriteWalletsDialogOpen, setFavouriteWalletsDialogOpen] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -481,6 +490,18 @@ export function Header({ onRefresh }: HeaderProps) {
 
         <button
           type="button"
+          onClick={() => setFavouriteWalletsDialogOpen(true)}
+          onMouseEnter={preloadFavouriteWalletsDialog}
+          onFocus={preloadFavouriteWalletsDialog}
+          className="shrink-0 rounded border border-yellow-700/45 bg-yellow-950/25 px-1.5 h-[28px] flex items-center justify-center text-yellow-400 hover:bg-yellow-900/35"
+          title="Favourite wallets (Toxic flow)"
+          aria-label="Favourite wallets"
+        >
+          <Star className="w-3.5 h-3.5 fill-yellow-400 stroke-amber-600/90" strokeWidth={1} />
+        </button>
+
+        <button
+          type="button"
           disabled={!selectedMarket?.conditionId?.trim() || !tradingWallet}
           onMouseEnter={preloadWalletSummaryDialog}
           onFocus={preloadWalletSummaryDialog}
@@ -512,6 +533,12 @@ export function Header({ onRefresh }: HeaderProps) {
             initialMarketId={selectedMarket?.conditionId?.trim() || ''}
             onClose={() => setWalletSummaryDialogOpen(false)}
           />
+        </Suspense>
+      )}
+
+      {favouriteWalletsDialogOpen && (
+        <Suspense fallback={null}>
+          <FavouriteWalletsDialogLazy open onClose={() => setFavouriteWalletsDialogOpen(false)} />
         </Suspense>
       )}
     </header>

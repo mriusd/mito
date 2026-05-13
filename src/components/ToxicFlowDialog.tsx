@@ -11,6 +11,12 @@ import {
   type MarketStakedLegsResponse,
 } from '../api';
 import type { ToxicFlowData, WalletPosition, WalletSummary, OnchainFillRow } from '../api';
+import {
+  readToxicFavouriteWallets,
+  persistToxicFavouriteWallets,
+  TOXIC_FAVOURITE_WALLETS_LS_KEY,
+  TOXIC_FAVOURITES_CHANGED_EVENT,
+} from '../lib/toxicFavouriteWallets';
 import { useAppStore } from '../stores/appStore';
 import { useMarketLookupSnapshot } from '../hooks/useMarketLookupSnapshot';
 import {
@@ -32,28 +38,6 @@ interface ToxicFlowDialogProps {
 }
 
 type Tab = 'topHolders' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
-
-const LS_TOXIC_FAVOURITE_WALLETS = 'polybot-toxic-flow-favourite-wallets';
-
-function readToxicFavouriteWallets(): Set<string> {
-  try {
-    const raw = localStorage.getItem(LS_TOXIC_FAVOURITE_WALLETS);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.map((x) => String(x).toLowerCase()).filter(Boolean));
-  } catch {
-    return new Set();
-  }
-}
-
-function persistToxicFavouriteWallets(s: Set<string>): void {
-  try {
-    localStorage.setItem(LS_TOXIC_FAVOURITE_WALLETS, JSON.stringify([...s].sort()));
-  } catch {
-    /* ignore */
-  }
-}
 
 const TOXIC_TAB_COHORT_LABEL: Record<Tab, string> = {
   topHolders: 'Top Holders',
@@ -694,11 +678,16 @@ function WalletTable({ wallets, label, totalShares, onOpenWallet }: { wallets: W
   const [walletSummaryMap, setWalletSummaryMap] = useState<Record<string, WalletSummary | null>>({});
   const [favouriteWallets, setFavouriteWallets] = useState(readToxicFavouriteWallets);
   useEffect(() => {
+    const onChanged = () => setFavouriteWallets(readToxicFavouriteWallets());
     const onStorage = (e: StorageEvent) => {
-      if (e.key === LS_TOXIC_FAVOURITE_WALLETS || e.key === null) setFavouriteWallets(readToxicFavouriteWallets());
+      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY || e.key === null) onChanged();
     };
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, onChanged);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, onChanged);
+    };
   }, []);
   const toggleFavouriteWallet = useCallback((addr: string) => {
     const k = addr.trim().toLowerCase();

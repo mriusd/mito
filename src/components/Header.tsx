@@ -92,6 +92,7 @@ export function Header({ onRefresh }: HeaderProps) {
 
   const [refreshing, setRefreshing] = useState(false);
   const [favouriteWalletsDialogOpen, setFavouriteWalletsDialogOpen] = useState(false);
+  const [favouritesWalletInfoAddress, setFavouritesWalletInfoAddress] = useState<string | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -172,6 +173,10 @@ export function Header({ onRefresh }: HeaderProps) {
     syncHead != null && syncHead.chainHeadBlock > 0
       ? blockLagToneClass(syncHead.behindBlocks)
       : 'text-gray-400';
+
+  const walletForHeaderInfoDialog =
+    favouritesWalletInfoAddress ??
+    (walletSummaryDialogOpen && tradingWallet ? tradingWallet : undefined);
 
   return (
     <header className="mb-1 relative z-[220]">
@@ -505,7 +510,10 @@ export function Header({ onRefresh }: HeaderProps) {
           disabled={!selectedMarket?.conditionId?.trim() || !tradingWallet}
           onMouseEnter={preloadWalletSummaryDialog}
           onFocus={preloadWalletSummaryDialog}
-          onClick={() => setWalletSummaryDialogOpen(true)}
+          onClick={() => {
+            setFavouritesWalletInfoAddress(null);
+            setWalletSummaryDialogOpen(true);
+          }}
           className="shrink-0 rounded border border-cyan-600/50 bg-cyan-950/35 px-2 h-[28px] text-[10px] font-semibold text-cyan-200 hover:bg-cyan-900/40 disabled:opacity-40 disabled:pointer-events-none whitespace-nowrap"
           title={
             !walletConnected
@@ -525,20 +533,31 @@ export function Header({ onRefresh }: HeaderProps) {
         <WalletButton />
       </div>
 
-      {walletSummaryDialogOpen && tradingWallet && (
+      {walletForHeaderInfoDialog && (
         <Suspense fallback={null}>
           <WalletInfoDialogLazy
             open
-            wallet={tradingWallet}
+            wallet={walletForHeaderInfoDialog}
             initialMarketId={selectedMarket?.conditionId?.trim() || ''}
-            onClose={() => setWalletSummaryDialogOpen(false)}
+            onClose={() => {
+              setFavouritesWalletInfoAddress(null);
+              setWalletSummaryDialogOpen(false);
+            }}
           />
         </Suspense>
       )}
 
       {favouriteWalletsDialogOpen && (
         <Suspense fallback={null}>
-          <FavouriteWalletsDialogLazy open onClose={() => setFavouriteWalletsDialogOpen(false)} />
+          <FavouriteWalletsDialogLazy
+            open
+            onClose={() => setFavouriteWalletsDialogOpen(false)}
+            onOpenWalletInfo={(wallet) => {
+              setFavouritesWalletInfoAddress(wallet.trim().toLowerCase());
+              setWalletSummaryDialogOpen(false);
+              setFavouriteWalletsDialogOpen(false);
+            }}
+          />
         </Suspense>
       )}
     </header>

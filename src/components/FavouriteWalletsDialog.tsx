@@ -14,7 +14,15 @@ function shortenAddr(a: string): string {
   return `${t.slice(0, 6)}…${t.slice(-4)}`;
 }
 
-export function FavouriteWalletsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function FavouriteWalletsDialog({
+  open,
+  onClose,
+  onOpenWalletInfo,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onOpenWalletInfo: (wallet: string) => void;
+}) {
   const [addrs, setAddrs] = useState<string[]>([]);
 
   const refresh = useCallback(() => {
@@ -98,15 +106,18 @@ export function FavouriteWalletsDialog({ open, onClose }: { open: boolean; onClo
                     >
                       <Star size={13} className="fill-yellow-400" />
                     </button>
-                    <a
-                      href={poly}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-mono text-blue-400 hover:underline truncate min-w-0 flex-1"
-                      title={raw}
+                    <button
+                      type="button"
+                      className="font-mono text-blue-400 hover:underline truncate min-w-0 flex-1 text-left"
+                      title={`${raw} — Wallet info`}
+                      onClick={() => {
+                        const w = raw.trim().toLowerCase();
+                        if (!w) return;
+                        onOpenWalletInfo(w);
+                      }}
                     >
                       {shortenAddr(raw)}
-                    </a>
+                    </button>
                     <button
                       type="button"
                       className="p-1 rounded hover:bg-gray-600/50 text-gray-400 hover:text-white shrink-0"
@@ -116,6 +127,21 @@ export function FavouriteWalletsDialog({ open, onClose }: { open: boolean; onClo
                     >
                       <Copy size={13} />
                     </button>
+                    <a
+                      href={poly}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 inline-flex items-center justify-center rounded p-1 hover:bg-[#2f5cff]/30 border border-[#2d57ff]/50 bg-[#2f5cff]/20"
+                      title="Polymarket profile"
+                      aria-label="Open Polymarket profile"
+                    >
+                      <img
+                        src="/polymarket-favicon.ico"
+                        alt=""
+                        className="h-3.5 w-3.5 rounded-[2px] pointer-events-none"
+                        style={{ filter: 'brightness(0) invert(1)' }}
+                      />
+                    </a>
                     <a
                       href={scan}
                       target="_blank"

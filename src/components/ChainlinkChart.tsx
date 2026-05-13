@@ -16,8 +16,6 @@ interface ChainlinkChartProps {
   targetPrice?: number | null;
   /** 5m/15m Up/Down: polycandles Chainlink klines + WS; otherwise Binance spot. */
   chainlinkCandles?: boolean;
-  /** Report annualized σ% from last 10 candles for sidebar UI (caller clears on chart unmount). */
-  onChartVolAnnualPct?: (pct: number | null) => void;
 }
 
 function chainlinkKlineSymbol(asset: string): string {
@@ -62,7 +60,7 @@ function annualizedVolPctFromCandles(candles: Candle[], barMs: number): number |
   return Number.isFinite(ann) ? ann * 100 : null;
 }
 
-export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkCandles = false, onChartVolAnnualPct }: ChainlinkChartProps) {
+export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkCandles = false }: ChainlinkChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
   const wsRef = useRef<WebSocket | null>(null);
@@ -81,17 +79,6 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
     const last10 = all.slice(-10);
     return annualizedVolPctFromCandles(last10, candleMs);
   }, [ready, tick, candleMs]);
-
-  useEffect(() => {
-    onChartVolAnnualPct?.(chartVolAnnualPct);
-  }, [chartVolAnnualPct, onChartVolAnnualPct]);
-
-  useEffect(() => {
-    if (!onChartVolAnnualPct) return;
-    return () => {
-      onChartVolAnnualPct(null);
-    };
-  }, [onChartVolAnnualPct]);
 
   // Binance spot: REST + kline WS
   useEffect(() => {
@@ -436,7 +423,7 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
     <div className="sidebar-section">
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs text-gray-400 flex items-center gap-1">
-          <span style={{ color: chainlinkCandles ? '#93c5fd' : '#00d2d2' }}>◆</span> {asset}{' '}
+          {asset}{' '}
           {chainlinkCandles ? (
             <span
               className="px-0.5 rounded-sm text-[8px] font-bold bg-blue-600 text-white leading-tight"
@@ -448,6 +435,15 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
             <span className="px-0.5 rounded-sm text-[8px] font-bold bg-yellow-400 text-black leading-tight">BINANCE</span>
           )}
           <span className="text-gray-500">{interval}</span>
+          {chartVolAnnualPct != null ? (
+            <span
+              className="text-yellow-400 tabular-nums font-semibold"
+              title="Annualized volatility (close log returns, sample σ), from the last 10 candles shown in this chart"
+            >
+              {' · '}
+              {Math.round(chartVolAnnualPct)}% σ
+            </span>
+          ) : null}
         </span>
       </div>
       <canvas

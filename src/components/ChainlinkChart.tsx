@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { API_BASE, WS_BASE } from '../lib/env';
+import {
+  SIDEBAR_CHART_INTERVAL_MS,
+  annualizedVolPctFromClosePrices,
+  sidebarChartIntervalFromContext,
+} from '../lib/chartVolatility';
 
 interface Candle {
   time: number;
@@ -10,66 +15,41 @@ interface Candle {
 }
 
 interface ChainlinkChartProps {
-  asset: string;        // e.g. 'BTC', 'ETH', 'SOL', 'XRP'
+  asset: string; // e.g. 'BTC', 'ETH', 'SOL', 'XRP'
   /** Up/Down: slug + question + group title — picks candle resolution (e.g. 15m for 4h/24h). */
   intervalContext?: string;
   targetPrice?: number | null;
   /** 5m/15m Up/Down: polycandles Chainlink klines + WS; otherwise Binance spot. */
   chainlinkCandles?: boolean;
+  /** Completed candles used for σ (excluding the in-progress bar). Default 5. */
+  volatilityLookbackCandles?: number;
+  /** Latest annualized σ% from the same candle window as the chart label (or null). */
+  onAnnualizedVolPct?: (pct: number | null) => void;
 }
 
 function chainlinkKlineSymbol(asset: string): string {
   return `chainlink_${asset.toLowerCase()}usd`;
 }
 
-// Determine kline interval from Up/Down context (slug + question + group title)
-function getIntervalFromSlug(context?: string): string {
-  if (!context) return '1h';
-  const s = context.toLowerCase();
-  if (s.match(/updown-5m/) || s.match(/\b5[- ]?min\b/)) return '5m';
-  if (s.match(/updown-15m/) || s.match(/\b15[- ]?min\b/)) return '15m';
-  // Longer windows: finer default resolution for the top sidebar chart
-  if (s.match(/updown-4h/) || s.match(/\b4[- ]?h\b/)) return '15m';
-  if (s.match(/up-or-down-on-/) || s.match(/\b24[- ]?h\b/)) return '15m';
-  // 1h Up/Down (not 4h/24h): default 5m
-  if (s.match(/updown-1h/) || s.match(/(?:^|[^0-9])1[- ]?h\b/) || s.match(/\b1[- ]?hour\b/)) return '5m';
-  return '1h';
-}
-
-const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000, '4h': 14400000, '1d': 86400000 };
-
-const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
-
-/** Annualized σ from close-to-close log returns (sample stdev). Pass chronological candles only (e.g. completed bars). Needs ≥3 bars (≥2 returns). */
-function annualizedVolPctFromCandles(candles: Candle[], barMs: number): number | null {
-  if (candles.length < 3 || !Number.isFinite(barMs) || barMs <= 0) return null;
-  const closes = candles.map((c) => c.c).filter((x) => Number.isFinite(x) && x > 0);
-  if (closes.length < 3) return null;
-  const logRet: number[] = [];
-  for (let i = 1; i < closes.length; i++) {
-    logRet.push(Math.log(closes[i] / closes[i - 1]));
-  }
-  if (logRet.length < 2) return null;
-  const n = logRet.length;
-  const mean = logRet.reduce((a, b) => a + b, 0) / n;
-  const varSample = logRet.reduce((s, x) => s + (x - mean) ** 2, 0) / (n - 1);
-  if (!Number.isFinite(varSample) || varSample < 0) return null;
-  const sdPerBar = Math.sqrt(varSample);
-  const barsPerYear = MS_PER_YEAR / barMs;
-  const ann = sdPerBar * Math.sqrt(barsPerYear);
-  return Number.isFinite(ann) ? ann * 100 : null;
-}
-
-export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkCandles = false }: ChainlinkChartProps) {
+export function ChainlinkChart({
+  asset,
+  intervalContext,
+  targetPrice,
+  chainlinkCandles = false,
+  volatilityLookbackCandles = 5,
+  onAnnualizedVolPct,
+}: ChainlinkChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
   const wsRef = useRef<WebSocket | null>(null);
   const intervalRef = useRef('');
   const [ready, setReady] = useState(false);
   const [tick, setTick] = useState(0);
+  const onVolRef = useRef(onAnnualizedVolPct);
+  onVolRef.current = onAnnualizedVolPct;
 
-  const interval = getIntervalFromSlug(intervalContext);
-  const candleMs = INTERVAL_MS[interval] || 3600000;
+  const interval = sidebarChartIntervalFromContext(intervalContext);
+  const candleMs = SIDEBAR_CHART_INTERVAL_MS[interval] ?? 3600000;
   intervalRef.current = interval;
   const binanceSymbol = `${asset.toUpperCase()}USDT`;
   const binanceStreamSymbol = `${asset.toLowerCase()}usdt`;
@@ -250,6 +230,19 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
     };
   }, [chainlinkCandles, asset, interval]);
 
+  useEffect(() => {
+    const map = candleMapRef.current;
+    const allCandles = [...map.values()].sort((a, b) => a.time - b.time);
+    const bucketNow = Math.floor(Date.now() / candleMs) * candleMs;
+    const lb = Math.max(3, Math.min(500, Math.round(volatilityLookbackCandles)));
+    const closed = allCandles.filter((c) => c.time < bucketNow).slice(-lb);
+    const pct = annualizedVolPctFromClosePrices(
+      closed.map((c) => c.c),
+      candleMs,
+    );
+    onVolRef.current?.(pct);
+  }, [ready, tick, candleMs, volatilityLookbackCandles]);
+
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -392,8 +385,12 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
     // Last price label
     const lastC = candles[candles.length - 1].c;
     const bucketNow = Math.floor(Date.now() / candleMs) * candleMs;
-    const fiveClosed = allCandles.filter((c) => c.time < bucketNow).slice(-5);
-    const sigma5Pct = annualizedVolPctFromCandles(fiveClosed, candleMs);
+    const lb = Math.max(3, Math.min(500, Math.round(volatilityLookbackCandles)));
+    const closedForSigma = allCandles.filter((c) => c.time < bucketNow).slice(-lb);
+    const sigmaAnnPct = annualizedVolPctFromClosePrices(
+      closedForSigma.map((c) => c.c),
+      candleMs,
+    );
     const lastY = toY(lastC);
     const accentRgb = chainlinkCandles ? '96,165,250' : '0,210,210';
     const accentHex = chainlinkCandles ? '#93c5fd' : '#00d2d2';
@@ -411,15 +408,15 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
     ctx.textBaseline = 'middle';
     ctx.fillText('$' + lastC.toFixed(decimals), chartLeft - 2, lastY);
 
-    // σ annualized from last 5 completed candles (excludes unfinished current bar), bottom-left
-    if (sigma5Pct != null && Number.isFinite(sigma5Pct)) {
+    // σ annualized from last N completed candles (excludes unfinished current bar), bottom-left
+    if (sigmaAnnPct != null && Number.isFinite(sigmaAnnPct)) {
       ctx.font = 'bold 9px monospace';
       ctx.fillStyle = 'rgba(255, 216, 120, 0.95)';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'bottom';
-      ctx.fillText(`σ ${sigma5Pct.toFixed(1)}%`, chartLeft + 5, chartBot - 3);
+      ctx.fillText(`σ ${sigmaAnnPct.toFixed(1)}%`, chartLeft + 5, chartBot - 3);
     }
-  }, [ready, tick, targetPrice, interval, candleMs, chainlinkCandles]);
+  }, [ready, tick, targetPrice, interval, candleMs, chainlinkCandles, volatilityLookbackCandles]);
 
   useEffect(() => {
     draw();

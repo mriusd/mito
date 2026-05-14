@@ -53,6 +53,7 @@ import {
   toxicFlowStakeStripWalletLists,
   cohortSurplusLean,
 } from '../lib/toxicFlowStakeCohort';
+import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
 import {
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
   TOXIC_FAVOURITES_CHANGED_EVENT,
@@ -290,6 +291,8 @@ const SIDEBAR_NOTIFY_TILT_UD_5M_KEY = 'polybot-sidebar-notify-tilt-ud-5m';
 const SIDEBAR_NOTIFY_TILT_UD_15M_KEY = 'polybot-sidebar-notify-tilt-ud-15m';
 const SIDEBAR_NOTIFY_TILT_UD_1H_KEY = 'polybot-sidebar-notify-tilt-ud-1h';
 const SIDEBAR_NOTIFY_TILT_UD_4H_KEY = 'polybot-sidebar-notify-tilt-ud-4h';
+const SIDEBAR_NOTIFY_MAX_VOLATILITY_PCT_KEY = 'polybot-sidebar-notify-max-volatility-pct';
+const SIDEBAR_NOTIFY_VOLATILITY_CANDLES_KEY = 'polybot-sidebar-notify-volatility-candles';
 
 type NotifyTiltMarketFiltersPersisted = {
   upDown: boolean;
@@ -518,6 +521,31 @@ function readNotifyDoubleRing(): boolean {
     return true;
   }
 }
+
+/** Annualized σ% ceiling for tilt: alerts pause while chart σ is above this. 0 = off. Default 15. */
+function readNotifyMaxVolatilityPct(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_MAX_VOLATILITY_PCT_KEY);
+    const n = parseFloat(raw ?? '15');
+    if (!Number.isFinite(n) || n < 0) return 15;
+    return Math.min(500, Math.round(n));
+  } catch {
+    return 15;
+  }
+}
+
+/** Completed sidebar-chart candles for σ (excluding in-progress bar). Min 3. Default 5. */
+function readNotifyVolatilityCandles(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_VOLATILITY_CANDLES_KEY);
+    const n = parseInt(raw ?? '5', 10);
+    if (!Number.isFinite(n)) return 5;
+    return Math.min(500, Math.max(3, n));
+  } catch {
+    return 5;
+  }
+}
+
 /** FAK buy: pay up to this per share to lift asks. */
 const MARKET_AGGRESSIVE_BUY = 0.99;
 /** FAK sell: accept down to this per share to hit bids. */
@@ -726,6 +754,13 @@ export function Sidebar() {
   const [notifyTiltUd1h, setNotifyTiltUd1h] = useState(readNotifyTiltUd1h);
   const [notifyTiltUd4h, setNotifyTiltUd4h] = useState(readNotifyTiltUd4h);
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
+  const [sidebarChartAnnualVolPct, setSidebarChartAnnualVolPct] = useState<number | null>(null);
+  const [notifyMaxVolatilityPct, setNotifyMaxVolatilityPct] = useState(readNotifyMaxVolatilityPct);
+  const [notifyVolatilityCandles, setNotifyVolatilityCandles] = useState(readNotifyVolatilityCandles);
+
+  useEffect(() => {
+    setSidebarChartAnnualVolPct(null);
+  }, [selectedMarket?.id]);
 
   useEffect(() => {
     try {
@@ -860,6 +895,20 @@ export function Sidebar() {
       /* */
     }
   }, [notifyTiltUd4h]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_MAX_VOLATILITY_PCT_KEY, String(notifyMaxVolatilityPct));
+    } catch {
+      /* */
+    }
+  }, [notifyMaxVolatilityPct]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_VOLATILITY_CANDLES_KEY, String(notifyVolatilityCandles));
+    } catch {
+      /* */
+    }
+  }, [notifyVolatilityCandles]);
 
   /** Slider 0 → 0.25×, 50 → 1×, 100 → 4× (exponential). */
   const notifySoundPitchMul = useMemo(
@@ -1083,6 +1132,17 @@ export function Sidebar() {
     if (marketStakedNetUsdAbs == null || !Number.isFinite(marketStakedNetUsdAbs)) return false;
     return marketStakedNetUsdAbs > notifyStakedMinUsd;
   }, [notifyStakedMinUsd, marketStakedNetUsdAbs]);
+
+  /** Tilt pauses while chart σ is above max (annualized %). 0 = no volatility gate. */
+  const notifyVolatilityGatePasses = useMemo(() => {
+    if (notifyMaxVolatilityPct <= 0) return true;
+    if (sidebarChartAnnualVolPct == null || !Number.isFinite(sidebarChartAnnualVolPct)) return false;
+    return sidebarChartAnnualVolPct <= notifyMaxVolatilityPct;
+  }, [notifyMaxVolatilityPct, sidebarChartAnnualVolPct]);
+
+  const handleSidebarChartAnnualVolPct = useCallback((pct: number | null) => {
+    setSidebarChartAnnualVolPct(pct);
+  }, []);
 
   const marketStakedNetKDisplay = useMemo(() => {
     if (marketStakedNetUsdAbs == null) return null;
@@ -1435,6 +1495,10 @@ export function Sidebar() {
     if (!isUpDownMarket || !selectedMarket) return undefined;
     return `${selectedMarket.eventSlug || ''} ${selectedMarket.question || ''} ${selectedMarket.groupItemTitle || ''}`.trim();
   }, [isUpDownMarket, selectedMarket?.eventSlug, selectedMarket?.question, selectedMarket?.groupItemTitle]);
+  const sidebarChartKlineLabel = useMemo(
+    () => sidebarChartIntervalFromContext(isUpDownMarket ? upDownIntervalContext : undefined),
+    [isUpDownMarket, upDownIntervalContext],
+  );
   /** Default kline size for right chart; 1h (explicit or implicit) → 5m — aligned with upDownStartTime window detection. */
   const upDownKlineDefaultInterval = useMemo((): string | undefined => {
     if (!isUpDownMarket || !selectedMarket) return undefined;
@@ -1754,12 +1818,12 @@ export function Sidebar() {
 
   /** Cohort signals only (Black–Scholes Δ gate removed). */
   const effectiveSidebarBgFlash = useMemo((): 'green' | 'red' | null => {
-    if (!notifyFlashBg || !notifyStakedGatePasses) return null;
+    if (!notifyFlashBg || !notifyStakedGatePasses || !notifyVolatilityGatePasses) return null;
     return topBarExtremeBgFlash;
-  }, [notifyFlashBg, notifyStakedGatePasses, topBarExtremeBgFlash]);
+  }, [notifyFlashBg, notifyStakedGatePasses, notifyVolatilityGatePasses, topBarExtremeBgFlash]);
 
   useEffect(() => {
-    if (!topBarExtremeBgFlash || !notifyPlaySound || !notifyStakedGatePasses) return;
+    if (!topBarExtremeBgFlash || !notifyPlaySound || !notifyStakedGatePasses || !notifyVolatilityGatePasses) return;
 
     const k = topBarExtremeBgFlash;
     const mul = notifySoundPitchMul;
@@ -1802,6 +1866,7 @@ export function Sidebar() {
     topBarExtremeBgFlash,
     notifyPlaySound,
     notifyStakedGatePasses,
+    notifyVolatilityGatePasses,
     notifySoundPitchMul,
     notifyRingTimeS,
     notifySoundMaxPriceCents,
@@ -2727,6 +2792,47 @@ export function Sidebar() {
                     </div>
                   </div>
               </div>
+              <div className="border border-gray-600/80 rounded-md p-2 space-y-3 bg-gray-900/40 mt-2">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Chart volatility</div>
+                <div className="flex items-center gap-2 flex-wrap justify-between">
+                  <span className="text-gray-400 shrink-0 text-[11px]">Max volatility (%)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={500}
+                    step={1}
+                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs"
+                    value={notifyMaxVolatilityPct}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      setNotifyMaxVolatilityPct(Math.min(500, Math.max(0, Math.round(v))));
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] text-gray-500 m-0 leading-snug">
+                  Tilt flash/sound pause while sidebar chart σ (annualized) is above this. 0 = no cap. Raise if alerts rarely fire.
+                </p>
+                <div className="flex items-center gap-2 flex-wrap justify-between">
+                  <span className="text-gray-400 shrink-0 text-[11px]">Volatility candles</span>
+                  <input
+                    type="number"
+                    min={3}
+                    max={500}
+                    step={1}
+                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs"
+                    value={notifyVolatilityCandles}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      setNotifyVolatilityCandles(Math.min(500, Math.max(3, Math.round(v))));
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] text-gray-500 m-0 leading-snug">
+                  Completed candles used for σ (in-progress bar excluded). Interval follows the market (5m → 5m candles, 15m → 15m, etc.).
+                </p>
+              </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-gray-400 shrink-0">Staked min (USDC)</span>
                 <input
@@ -2964,6 +3070,8 @@ export function Sidebar() {
             orderOutcome={orderOutcome}
             upDownStartTime={upDownStartTime}
             upDownKlineDefaultInterval={upDownKlineDefaultInterval}
+            volatilityLookbackCandles={notifyVolatilityCandles}
+            onSidebarChartAnnualVolPct={handleSidebarChartAnnualVolPct}
           />
 
 
@@ -3050,6 +3158,16 @@ export function Sidebar() {
                       >
                         <CirclePercent className="h-3 w-3 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
                         <span className="tabular-nums">{row.mathCents!.toFixed(1)}</span>
+                      </div>
+                      <div className="mt-0.5 flex items-center justify-center gap-0.5">
+                        <span className="text-[9px] font-bold tabular-nums text-amber-200/95">
+                          {sidebarChartAnnualVolPct != null
+                            ? `σ ${sidebarChartAnnualVolPct.toFixed(1)}%`
+                            : 'σ —'}
+                        </span>
+                        <HelpTooltip
+                          text={`Annualized volatility from the left chart (same σ as the canvas corner). Uses the last ${notifyVolatilityCandles} completed ${sidebarChartKlineLabel} candles; the open candle is excluded. For 5m markets these are 5m candles, for 15m markets 15m candles, etc. Candle count and max volatility for tilt alerts are set in Tilt notifications.`}
+                        />
                       </div>
                     </div>
                   ) : null}
@@ -3298,7 +3416,8 @@ export function Sidebar() {
                       notifyHolderTiltPct > 0 &&
                       notifyTiltAppliesToSelectedMarket &&
                       notifyFlashBg &&
-                      notifyStakedGatePasses
+                      notifyStakedGatePasses &&
+                      notifyVolatilityGatePasses
                     }
                     extremeFlashTiltThreshold={notifyHolderTiltPct / 100}
                   />
@@ -3311,7 +3430,8 @@ export function Sidebar() {
                       notifySmartTiltPct > 0 &&
                       notifyTiltAppliesToSelectedMarket &&
                       notifyFlashBg &&
-                      notifyStakedGatePasses
+                      notifyStakedGatePasses &&
+                      notifyVolatilityGatePasses
                     }
                     extremeFlashTiltThreshold={notifySmartTiltPct / 100}
                   />
@@ -3324,7 +3444,8 @@ export function Sidebar() {
                       notifyFavouriteTiltPct > 0 &&
                       notifyTiltAppliesToSelectedMarket &&
                       notifyFlashBg &&
-                      notifyStakedGatePasses
+                      notifyStakedGatePasses &&
+                      notifyVolatilityGatePasses
                     }
                     extremeFlashTiltThreshold={notifyFavouriteTiltPct / 100}
                   />
@@ -3337,7 +3458,8 @@ export function Sidebar() {
                       notifyGreensTiltPct > 0 &&
                       notifyTiltAppliesToSelectedMarket &&
                       notifyFlashBg &&
-                      notifyStakedGatePasses
+                      notifyStakedGatePasses &&
+                      notifyVolatilityGatePasses
                     }
                     extremeFlashTiltThreshold={notifyGreensTiltPct / 100}
                   />

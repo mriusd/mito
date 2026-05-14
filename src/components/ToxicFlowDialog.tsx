@@ -59,7 +59,7 @@ import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { HelperTooltip } from './HelperTooltip';
 import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
-import { ToxicFlowStakePreview } from './ToxicFlowStakePreview';
+import { ToxicFlowStakePreview, TOXIC_TOTAL_STAKE_BAR_HELP } from './ToxicFlowStakePreview';
 import {
   STAKED_NET_EPS,
   walletInvY,
@@ -98,18 +98,14 @@ interface ToxicFlowDialogProps {
 type Tab = 'topHolders' | 'smart' | 'favourites' | 'winners' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
 
 const TOXIC_FLOW_TAB_DESCRIPTIONS: Record<Tab, string> = {
-  topHolders:
-    'Server cohort ranked by largest |net YES−NO|; this view re-sorts by staked net. Same wallet/position columns as other tabs.',
-  smart:
-    'Cohort wallets whose batched wallet_scores_ledger shows PnL > 0, win rate > 50%, and resolved markets > 10.',
-  favourites: 'Addresses you starred that appear in this market’s toxic-flow cohort.',
-  winners:
-    'Greens: cohort wallets with a batched ledger row and lifetime ledger PnL not below zero; ordered by staked net then win rate.',
-  topYes:
-    'Cohort where signed staked net leans YES (USDC YES leg vs NO); strongest YES lean first.',
-  topNo: 'Cohort where signed staked net leans NO; strongest NO lean first.',
-  topVolume: 'Cohort wallets ordered by per-wallet USDC volume on this market (ledger).',
-  topTraders: 'Cohort wallets ordered by trade / fill count on this market (ledger).',
+  topHolders: 'Wallets with biggest positions on this market.',
+  smart: 'Wallets that win most of the time.',
+  favourites: 'Wallets you marked as favorites betting here.',
+  winners: 'Wallets with profits in tracked time. Green = more YES staked than NO.',
+  topYes: 'Wallets betting strongest on YES.',
+  topNo: 'Wallets betting strongest on NO.',
+  topVolume: 'Wallets with most money traded here.',
+  topTraders: 'Wallets with most trades made here.',
 };
 
 function rPnlToneClass(v: number): string {
@@ -1898,7 +1894,15 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
               </div>
 
               <div className="flex flex-col flex-1 min-h-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 gap-2">
-                <div className="shrink-0 flex flex-wrap gap-x-2 gap-y-1.5 pb-2 border-b border-gray-700/60">
+                <div className="shrink-0 flex flex-col gap-y-2 pb-2 border-b border-gray-700/60">
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    label="Total"
+                    marketGrossLegsUsd={dialogMarketStakedLegs}
+                    wallets={[]}
+                    helpText={TOXIC_TOTAL_STAKE_BAR_HELP}
+                  />
+                  <div className="flex flex-wrap gap-x-2 gap-y-1.5">
                   <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
                     <ToxicFlowStakePreview label="Holders" wallets={topHoldersWallets} />
                   </div>
@@ -1910,6 +1914,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                   </div>
                   <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
                     <ToxicFlowStakePreview label="Greens" wallets={winnersTabWallets} />
+                  </div>
                   </div>
                 </div>
                 <div className="flex gap-1 border-b border-gray-700 pb-2 shrink-0 flex-wrap">

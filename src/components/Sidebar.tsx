@@ -46,7 +46,7 @@ import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { SidebarBarMidMarker } from './SidebarBarMidMarker';
-import { ToxicFlowStakePreview } from './ToxicFlowStakePreview';
+import { ToxicFlowStakePreview, TOXIC_TOTAL_STAKE_BAR_HELP } from './ToxicFlowStakePreview';
 import { useToxicFlowMarketStream } from '../hooks/useToxicFlowMarketStream';
 import {
   toxicCohortStakedNetSurplusHalves,
@@ -86,13 +86,11 @@ const SIDEBAR_TOXIC_EXPANDED_KEY = 'polybot-sidebar-toxic-expanded';
 
 /** Tooltips for toxic cohort strips (mirror Toxic Flow dialog tab copy). */
 const TOXIC_SIDEBAR_STRIP_HELP = {
-  holders:
-    'Server cohort ranked by largest |net YES−NO|; sorted here by staked-net magnitude. Green vs red splits use per-wallet inv×px signed net surplus halves—the same cohort bar as Toxic Flow.',
-  smart:
-    'Cohort wallets whose batched wallet_scores_ledger shows PnL > 0, win rate > 50%, and resolved markets > 10. Same bar math as Toxic Flow Smart tab.',
-  fav: 'Addresses you starred (toxic favourites) that appear in this market’s cohort. Bar = their combined staked-net surplus halves.',
-  greens:
-    'Cohort wallets with a batched ledger row and lifetime ledger PnL ≥ 0; ordered by staked net then win rate. Same cohort as Toxic Flow Greens tab.',
+  total: TOXIC_TOTAL_STAKE_BAR_HELP,
+  holders: 'Biggest wallets active on this market. Green = YES bets, red = NO bets.',
+  smart: 'Wallets with strong winning record. Only those who profit often.',
+  fav: 'Your favorite wallets betting here right now.',
+  greens: 'Wallets with profits in tracked time. Green = more dollars staked on YES, red = more on NO.',
 } as const;
 
 const LS_ORDER_EXPIRY_UPDOWN = 'polymarket-order-expiry-updown';
@@ -2640,7 +2638,7 @@ export function Sidebar() {
               <div className="border border-gray-600/80 rounded-md p-2 space-y-3 bg-gray-900/40">
                 <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Toxic cohort tilts</div>
                 <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                  Thresholds for the four Toxic cohort tilts shown in the sidebar. Alarm only when every cohort with value &gt; 0 meets it and all tilt the same side. 0 = skip that cohort.
+                  Set how far each group must tilt before alarm rings. Rings only if all active groups agree on direction. Use 0 to ignore a group.
                 </p>
                   <div className="space-y-2">
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
@@ -2661,7 +2659,7 @@ export function Sidebar() {
                         />
                       </div>
                       <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                        Largest-|net| holder cohort. Default 30. 0 = ignore.
+                        Biggest position wallets. Default 30. Set 0 to ignore.
                       </p>
                     </div>
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
@@ -2682,7 +2680,7 @@ export function Sidebar() {
                         />
                       </div>
                       <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                        Ledger smart-money cohort. Default 30. 0 = ignore.
+                        Wallets with good win record. Default 30. Set 0 to ignore.
                       </p>
                     </div>
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
@@ -2703,7 +2701,7 @@ export function Sidebar() {
                         />
                       </div>
                       <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                        Starred toxic favourites in this market. Default 0. 0 = ignore.
+                        Your favorite wallets here. Default 0. Set 0 to ignore.
                       </p>
                     </div>
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
@@ -2724,7 +2722,7 @@ export function Sidebar() {
                         />
                       </div>
                       <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                        Non-negative ledger PnL cohort (Greens in Toxic Flow). Default 30. 0 = ignore.
+                        Wallets with profits in tracked period. Green = YES lean. Default 30. Set 0 to ignore.
                       </p>
                     </div>
                   </div>
@@ -3284,6 +3282,13 @@ export function Sidebar() {
               </div>
             </div>
             <div className="mt-1 w-full min-w-0 flex flex-col gap-y-2 pb-0.5">
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.total}
+                    label="Total"
+                    marketGrossLegsUsd={sidebarStakedLegs}
+                    wallets={[]}
+                  />
                   <ToxicFlowStakePreview
                     layout="stacked"
                     helpText={TOXIC_SIDEBAR_STRIP_HELP.holders}
@@ -3968,25 +3973,26 @@ export function Sidebar() {
                       )}
                       {!isEditing && (
                         <div className="mt-0.5 flex items-center gap-0.5 flex-wrap">
-                          {[-10, -5, -2, -1, 1, 2, 5, 10].map((delta) => {
+                          {([-20, -15, -10, -5, 5, 10, 15, 20] as const).map((delta) => {
                             const newP = parseFloat((price * 100 + delta).toFixed(1));
                             if (newP < 0.1 || newP > 99.9) return null;
+                            const mag = Math.abs(delta);
                             const deltaClass =
                               delta < 0
-                                ? (Math.abs(delta) >= 10
+                                ? mag >= 20
+                                  ? 'bg-red-950/90 text-red-100 hover:bg-red-900'
+                                  : mag >= 15
                                     ? 'bg-red-950/85 text-red-200 hover:bg-red-900'
-                                    : Math.abs(delta) >= 5
+                                    : mag >= 10
                                       ? 'bg-red-900/80 text-red-200 hover:bg-red-800'
-                                      : Math.abs(delta) >= 2
-                                      ? 'bg-red-900/65 text-red-200 hover:bg-red-800/80'
-                                        : 'bg-red-900/45 text-red-300 hover:bg-red-800/70')
-                                : (delta >= 10
-                                    ? 'bg-green-900/35 text-green-300 hover:bg-green-800/60'
-                                    : delta >= 5
-                                      ? 'bg-green-900/45 text-green-300 hover:bg-green-800/70'
-                                      : delta >= 2
-                                        ? 'bg-green-900/65 text-green-200 hover:bg-green-800/80'
-                                        : 'bg-green-900/80 text-green-200 hover:bg-green-700/90');
+                                      : 'bg-red-900/65 text-red-200 hover:bg-red-800/80'
+                                : mag >= 20
+                                  ? 'bg-green-950/55 text-green-200 hover:bg-green-900/70'
+                                  : mag >= 15
+                                    ? 'bg-green-900/40 text-green-200 hover:bg-green-800/55'
+                                    : mag >= 10
+                                      ? 'bg-green-900/50 text-green-200 hover:bg-green-800/65'
+                                      : 'bg-green-900/65 text-green-200 hover:bg-green-800/80';
                             return (
                               <button
                                 key={delta}

@@ -5,22 +5,46 @@ import { HelpTooltip } from './HelpTooltip';
 import { HelpCircle } from 'lucide-react';
 import { toxicCohortStakedNetSurplusHalves } from '../lib/toxicFlowStakeCohort';
 
+/** Human copy: market-wide gross YES vs NO legs (all wallets). */
+export const TOXIC_TOTAL_STAKE_BAR_HELP =
+  'Total dollars staked on this market across all wallets. Green = more on YES, red = more on NO.';
+
 export function ToxicFlowStakePreview({
   label,
-  wallets,
+  wallets = [],
+  marketGrossLegsUsd,
   flashExtremeTilt,
   extremeFlashTiltThreshold,
   helpText,
   layout = 'inline',
 }: {
   label: string;
-  wallets: readonly WalletPosition[];
+  wallets?: readonly WalletPosition[];
+  /** Market-wide Σ|YES leg| vs Σ|NO leg| (all wallets); overrides cohort wallet math when both legs are finite. */
+  marketGrossLegsUsd?: { stakedUsdYesLeg: number; stakedUsdNoLeg: number } | null;
   flashExtremeTilt?: boolean;
   extremeFlashTiltThreshold?: number;
   helpText?: string;
   layout?: 'inline' | 'stacked';
 }) {
-  const { sumYUsd, sumNUsd } = useMemo(() => toxicCohortStakedNetSurplusHalves(wallets ?? []), [wallets]);
+  const { sumYUsd, sumNUsd, barMode } = useMemo(() => {
+    const g = marketGrossLegsUsd;
+    if (
+      g &&
+      typeof g.stakedUsdYesLeg === 'number' &&
+      Number.isFinite(g.stakedUsdYesLeg) &&
+      typeof g.stakedUsdNoLeg === 'number' &&
+      Number.isFinite(g.stakedUsdNoLeg)
+    ) {
+      return {
+        sumYUsd: g.stakedUsdYesLeg,
+        sumNUsd: g.stakedUsdNoLeg,
+        barMode: 'grossLegTotals' as const,
+      };
+    }
+    const c = toxicCohortStakedNetSurplusHalves(wallets ?? []);
+    return { sumYUsd: c.sumYUsd, sumNUsd: c.sumNUsd, barMode: 'cohortSurplusHalves' as const };
+  }, [marketGrossLegsUsd, wallets]);
   const total = sumYUsd + sumNUsd;
   const hasSplit = Number.isFinite(sumYUsd) && Number.isFinite(sumNUsd) && total > 1e-9;
 
@@ -39,7 +63,7 @@ export function ToxicFlowStakePreview({
       dense
       compactLabel={layout === 'inline' ? label : ''}
       compactOmitLeftLabel={layout === 'stacked'}
-      barMode="cohortSurplusHalves"
+      barMode={barMode}
       midMarker
       flashExtremeTilt={!!flashExtremeTilt && hasSplit}
       extremeFlashTiltThreshold={extremeFlashTiltThreshold ?? 0.3}

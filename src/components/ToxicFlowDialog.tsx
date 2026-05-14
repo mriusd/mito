@@ -1,6 +1,21 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { X, TrendingUp, TrendingDown, Users, BarChart3, AlertTriangle, Crown, ShieldAlert, UsersRound, ExternalLink, Copy, RefreshCw, Star } from 'lucide-react';
+import {
+  X,
+  TrendingUp,
+  TrendingDown,
+  Users,
+  BarChart3,
+  AlertTriangle,
+  Crown,
+  ShieldAlert,
+  UsersRound,
+  ExternalLink,
+  Copy,
+  RefreshCw,
+  Star,
+  Sparkles,
+} from 'lucide-react';
 import {
   fetchToxicFlow,
   fetchWalletSummary,
@@ -45,7 +60,7 @@ interface ToxicFlowDialogProps {
   embedded?: boolean;
 }
 
-type Tab = 'topHolders' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
+type Tab = 'topHolders' | 'smart' | 'following' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
 
 function walletInvY(w: WalletPosition): number {
   return typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
@@ -1529,6 +1544,19 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   const [tab, setTab] = useState<Tab>('topHolders');
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState('');
+  const [toxicFollowSet, setToxicFollowSet] = useState(readToxicFavouriteWallets);
+  useEffect(() => {
+    const sync = () => setToxicFollowSet(readToxicFavouriteWallets());
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY || e.key === null) sync();
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+    };
+  }, []);
 
   const redFlagLedgerMap = useMemo(() => {
     const m: Record<string, WalletSummary | null> = {};
@@ -1669,6 +1697,32 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     });
   }, [data?.topHolders]);
 
+  const smartTabWallets = useMemo(() => {
+    const arr = toxicFlowWalletUniverse(data).filter((w) => isSmartGold(w));
+    return [...arr].sort((a, b) => {
+      const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
+      if (d !== 0) return d;
+      const da = Math.abs(walletNet(a));
+      const db = Math.abs(walletNet(b));
+      if (db !== da) return db - da;
+      return (a.wallet || '').localeCompare(b.wallet || '');
+    });
+  }, [data]);
+
+  const followingTabWallets = useMemo(() => {
+    const arr = toxicFlowWalletUniverse(data).filter((w) =>
+      toxicFollowSet.has((w.wallet || '').trim().toLowerCase()),
+    );
+    return [...arr].sort((a, b) => {
+      const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
+      if (d !== 0) return d;
+      const da = Math.abs(walletNet(a));
+      const db = Math.abs(walletNet(b));
+      if (db !== da) return db - da;
+      return (a.wallet || '').localeCompare(b.wallet || '');
+    });
+  }, [data, toxicFollowSet]);
+
   if (!open) return null;
 
   const openWalletDialog = (wallet: string, _netShares?: number) => {
@@ -1678,6 +1732,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'topHolders', label: 'Top Holders', icon: <Crown size={11} /> },
+    { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
+    { key: 'following', label: 'Following', icon: <Star size={11} /> },
     { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
     { key: 'topNo', label: 'Top NO', icon: <TrendingDown size={11} /> },
     { key: 'topVolume', label: 'Top Volume', icon: <Users size={11} /> },
@@ -1976,6 +2032,22 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                     <WalletTable
                       wallets={topHoldersWallets}
                       label="holders"
+                      totalShares={data.totalShares}
+                      onOpenWallet={openWalletDialog}
+                    />
+                  )}
+                  {tab === 'smart' && (
+                    <WalletTable
+                      wallets={smartTabWallets}
+                      label="smart"
+                      totalShares={data.totalShares}
+                      onOpenWallet={openWalletDialog}
+                    />
+                  )}
+                  {tab === 'following' && (
+                    <WalletTable
+                      wallets={followingTabWallets}
+                      label="following"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
                     />

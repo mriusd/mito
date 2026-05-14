@@ -348,7 +348,7 @@ input[type="range"].vol-slider::-moz-range-thumb {
   position: fixed;
   top: 44px;
   left: 0;
-  width: 288px;
+  width: calc(288px * 1.1);
   height: calc(100vh - 44px);
   background: #1f2937;
   border-right: 1px solid #374151;

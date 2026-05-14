@@ -37,6 +37,8 @@ interface AppState {
   bsTimeOffsetHours: number;
   showPast: boolean;
   dailyBudget: string;
+  /** 0 = no cap. Default 10 USD when unset. Otherwise block orders whose notional (price × size) exceeds this USD. */
+  maxOrderSizeUsd: number;
   /** When true, skip sidebar dialog when a limit price would cross the book (instant execution). */
   disableMarketPriceWarning: boolean;
   /** When true, sidebar selection jumps to the next live row when the current market expires (Up/Down TF bucket or same slug+strike). */
@@ -119,6 +121,7 @@ interface AppState {
   setBsTimeOffsetHours: (v: number) => void;
   setShowPast: (v: boolean) => void;
   setDailyBudget: (v: string) => void;
+  setMaxOrderSizeUsd: (v: number) => void;
   setDisableMarketPriceWarning: (v: boolean) => void;
   setAutoSwitchNextMarketOnExpiry: (v: boolean) => void;
   setArbMatchMult: (v: number) => void;
@@ -332,6 +335,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Default unchecked for new users; honor saved preference afterwards.
   showPast: localStorage.getItem('polymarket-show-past') === 'true',
   dailyBudget: localStorage.getItem('polymarket-daily-budget') || '',
+  maxOrderSizeUsd: (() => {
+    const DEFAULT_MAX_ORDER_USD = 10;
+    if (typeof localStorage === 'undefined') return DEFAULT_MAX_ORDER_USD;
+    try {
+      const raw = localStorage.getItem('polymarket-max-order-size-usd');
+      if (raw == null || raw === '') return DEFAULT_MAX_ORDER_USD;
+      const v = parseFloat(String(raw).replace(/,/g, ''));
+      return Number.isFinite(v) && v >= 0 ? v : DEFAULT_MAX_ORDER_USD;
+    } catch {
+      return DEFAULT_MAX_ORDER_USD;
+    }
+  })(),
   disableMarketPriceWarning: localStorage.getItem('polymarket-disable-market-price-warning') === 'true',
   autoSwitchNextMarketOnExpiry: localStorage.getItem('polymarket-auto-switch-next-on-expiry') === 'true',
 
@@ -475,6 +490,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   setDailyBudget: (v) => {
     localStorage.setItem('polymarket-daily-budget', v);
     set({ dailyBudget: v });
+  },
+  setMaxOrderSizeUsd: (v) => {
+    const n = Math.max(0, Number.isFinite(v) ? v : 0);
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('polymarket-max-order-size-usd', String(n));
+      } catch {
+        /* quota */
+      }
+    }
+    set({ maxOrderSizeUsd: n });
   },
   setDisableMarketPriceWarning: (v) => {
     if (typeof localStorage !== 'undefined') {

@@ -481,6 +481,20 @@ const MARKET_AGGRESSIVE_BUY = 0.99;
 /** FAK sell: accept down to this per share to hit bids. */
 const MARKET_AGGRESSIVE_SELL = 0.01;
 
+/** Max-USD cap uses notional price × size (BUY and SELL). */
+function orderNotionalUsd(priceDecimal: number, size: number): number {
+  if (!Number.isFinite(priceDecimal) || !Number.isFinite(size) || size <= 0 || priceDecimal <= 0) return 0;
+  return priceDecimal * size;
+}
+
+function maxOrderUsdViolationMessage(maxUsd: number, valueUsd: number): string | null {
+  if (!Number.isFinite(maxUsd) || maxUsd <= 0) return null;
+  if (!Number.isFinite(valueUsd) || valueUsd <= maxUsd) return null;
+  const lim =
+    Number.isInteger(maxUsd) || Math.abs(maxUsd - Math.round(maxUsd)) < 1e-9 ? String(Math.round(maxUsd)) : maxUsd.toFixed(2);
+  return `Max order size ${lim} USD. To increase the limit go to settings menu in the header.`;
+}
+
 /** (ΣY − ΣN) / (ΣY + ΣN) over gross staked USD legs — same basis as Stake mini bar (`stakedUsdYesLeg` / `stakedUsdNoLeg`). */
 function stakedGrossUsdTilt(sumYesUsd: number, sumNoUsd: number): number {
   const t = sumYesUsd + sumNoUsd;
@@ -892,6 +906,7 @@ export function Sidebar() {
   const [orderSide, setOrderSide] = useState<'BUY' | 'SELL'>('BUY');
   const orderOutcome = useAppStore((s) => s.sidebarOutcome);
   const setOrderOutcome = useAppStore((s) => s.setSidebarOutcome);
+  const maxOrderSizeUsd = useAppStore((s) => s.maxOrderSizeUsd);
   const [orderPrice, setOrderPrice] = useState('');
   const [orderKind, setOrderKind] = useState<'limit' | 'market'>(() => readSidebarOrderKind());
   const [orderAmount, setOrderAmount] = useState(() => localStorage.getItem('polymarket-order-amount') || '');
@@ -1859,6 +1874,20 @@ export function Sidebar() {
         showToast('No bids in book — cannot market sell', 'error');
         return;
       }
+      const px =
+        side === 'BUY'
+          ? parseFloat(String(asks[0]?.price ?? ''))
+          : parseFloat(String(bids[bids.length - 1]?.price ?? ''));
+      if (maxOrderSizeUsd > 0 && (!Number.isFinite(px) || px <= 0)) {
+        showToast('Cannot estimate order USD for max-size check (book price missing)', 'error');
+        return;
+      }
+      const vusd = orderNotionalUsd(px, size);
+      const capMsg = maxOrderUsdViolationMessage(maxOrderSizeUsd, vusd);
+      if (capMsg) {
+        showToast(capMsg, 'error');
+        return;
+      }
       const price = side === 'BUY' ? MARKET_AGGRESSIVE_BUY : MARKET_AGGRESSIVE_SELL;
       try {
         const result = await placeOrder({
@@ -1881,7 +1910,7 @@ export function Sidebar() {
         showToast('Order failed', 'error');
       }
     },
-    [],
+    [maxOrderSizeUsd],
   );
 
   const handleSubmitOrder = async () => {
@@ -1909,6 +1938,12 @@ export function Sidebar() {
 
     const price = parseFloat(orderPrice) / 100;
     if (!price) return;
+    const limitSubmitVusd = orderNotionalUsd(price, size);
+    const limitSubmitCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, limitSubmitVusd);
+    if (limitSubmitCap) {
+      showToast(limitSubmitCap, 'error');
+      return;
+    }
     const orderPriceCents = parseFloat(orderPrice);
     const bestBidCents = displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
     const bestAskCents = displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
@@ -2019,6 +2054,13 @@ export function Sidebar() {
       }
     }
 
+    const customEarlyVusd = orderNotionalUsd(btn.priceCents / 100, size);
+    const customEarlyCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, customEarlyVusd);
+    if (customEarlyCap) {
+      showToast(customEarlyCap, 'error');
+      return;
+    }
+
     const bestBidCents = displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
     const bestAskCents = displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
     const crossesBook =
@@ -2082,6 +2124,13 @@ export function Sidebar() {
     const newPrice = newPriceCents / 100;
 
     if (!newPrice || newPrice <= 0 || newPrice >= 1 || !size) { setEditingOrderId(null); return; }
+    const replaceVusd = orderNotionalUsd(newPrice, size);
+    const replaceCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, replaceVusd);
+    if (replaceCap) {
+      showToast(replaceCap, 'error');
+      setEditingOrderId(null);
+      return;
+    }
     const bestBidCents = displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
     const bestAskCents = displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
     const crossesBook =

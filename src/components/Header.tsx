@@ -102,6 +102,8 @@ export function Header({ onRefresh }: HeaderProps) {
   const setDisableMarketPriceWarning = useAppStore((s) => s.setDisableMarketPriceWarning);
   const autoSwitchNextMarketOnExpiry = useAppStore((s) => s.autoSwitchNextMarketOnExpiry);
   const setAutoSwitchNextMarketOnExpiry = useAppStore((s) => s.setAutoSwitchNextMarketOnExpiry);
+  const maxOrderSizeUsd = useAppStore((s) => s.maxOrderSizeUsd);
+  const setMaxOrderSizeUsd = useAppStore((s) => s.setMaxOrderSizeUsd);
   const [isNarrowScreen, setIsNarrowScreen] = useState(() => window.innerWidth < 1200);
 
   // Close add menu / settings on click outside
@@ -150,10 +152,14 @@ export function Header({ onRefresh }: HeaderProps) {
   // Local state for VWAP inputs to avoid clamping mid-type
   const [vwapCandlesLocal, setVwapCandlesLocal] = useState(String(vwapCandles));
   const [vwapCorrLocal, setVwapCorrLocal] = useState(String(vwapCorrection));
+  const [maxOrderSizeUsdLocal, setMaxOrderSizeUsdLocal] = useState(() => String(useAppStore.getState().maxOrderSizeUsd));
 
   // Sync local state when store changes externally
   useEffect(() => { setVwapCandlesLocal(String(vwapCandles)); }, [vwapCandles]);
   useEffect(() => { setVwapCorrLocal(String(vwapCorrection)); }, [vwapCorrection]);
+  useEffect(() => {
+    setMaxOrderSizeUsdLocal(String(maxOrderSizeUsd));
+  }, [maxOrderSizeUsd]);
 
   const commitVwapCandles = useCallback(() => {
     const v = Math.max(5, Math.min(1440, parseInt(vwapCandlesLocal) || 60));
@@ -168,6 +174,14 @@ export function Header({ onRefresh }: HeaderProps) {
     setVwapCorrection(v);
     saveSetting('vwapCorrection', v);
   }, [vwapCorrLocal, setVwapCorrection]);
+
+  const commitMaxOrderSizeUsd = useCallback(() => {
+    const raw = maxOrderSizeUsdLocal.trim();
+    const v = raw === '' ? 0 : parseFloat(raw.replace(/,/g, ''));
+    const n = Number.isFinite(v) && v >= 0 ? v : 0;
+    setMaxOrderSizeUsd(n);
+    setMaxOrderSizeUsdLocal(String(n));
+  }, [maxOrderSizeUsdLocal, setMaxOrderSizeUsd]);
 
   const lagTone =
     syncHead != null && syncHead.chainHeadBlock > 0
@@ -443,6 +457,25 @@ export function Header({ onRefresh }: HeaderProps) {
                 />
                 <span className="text-xs text-gray-300">Auto-switch to next market on expiry</span>
               </label>
+              <div className="mt-2 pt-2 border-t border-gray-700">
+                <label className="flex items-center gap-1 mb-0.5 text-[10px] text-gray-400 font-medium">
+                  <span>Max order size (USD)</span>
+                  <HelpTooltip text="Default 10. Enter 0 for no limit. Otherwise sidebar orders cannot exceed this notional (limit price × size; market orders use top-of-book price × size)." />
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={maxOrderSizeUsdLocal}
+                  onChange={(e) => setMaxOrderSizeUsdLocal(e.target.value)}
+                  onBlur={commitMaxOrderSizeUsd}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitMaxOrderSizeUsd();
+                  }}
+                  className="w-full text-[11px] text-gray-300 bg-gray-700 border border-gray-600 rounded px-1.5 py-1 outline-none"
+                  placeholder="10"
+                  aria-label="Max order size USD"
+                />
+              </div>
               <div className="mt-2 pt-2 border-t border-gray-700 space-y-1">
                 <a
                   href="https://github.com/mriusd/mito"

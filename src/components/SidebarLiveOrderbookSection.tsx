@@ -2,6 +2,8 @@ import { memo, useMemo } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { resolvedBinaryOutcomeLabel } from '../utils/format';
 import type { Market, Position } from '../types';
+import type { SidebarObAggStep } from '../lib/sidebarOrderbookAggregate';
+import { sidebarObAggOrderPriceCents, sidebarUserPriceHitsBucket } from '../lib/sidebarOrderbookAggregate';
 
 import { SidebarBarMidMarker } from './SidebarBarMidMarker';
 
@@ -14,6 +16,8 @@ export type SidebarLiveOrderbookSectionProps = {
   orderbookBookImbalance: number;
   displayBids: OBLevel[];
   displayAsks: OBLevel[];
+  obAggStep: SidebarObAggStep;
+  onObAggStepChange: (step: SidebarObAggStep) => void;
   obLoading: boolean;
   isMarketExpired: boolean;
   isUpDownMarket: boolean;
@@ -37,6 +41,8 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
     orderbookBookImbalance,
     displayBids,
     displayAsks,
+    obAggStep,
+    onObAggStepChange,
     obLoading,
     isMarketExpired,
     isUpDownMarket,
@@ -91,6 +97,27 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
             style={{ filter: 'brightness(0) invert(1)' }}
           />
         </span>
+        <div
+          className="ml-auto shrink-0 inline-flex rounded border border-gray-600 overflow-hidden divide-x divide-gray-600 bg-gray-900/90"
+          title="Bid/ask grouping"
+        >
+          {(
+            [
+              { step: '0.1' as const, label: '0.1¢' },
+              { step: '1' as const, label: '1¢' },
+              { step: '5' as const, label: '5¢' },
+            ] as const
+          ).map(({ step, label }) => (
+            <button
+              key={step}
+              type="button"
+              onClick={() => onObAggStepChange(step)}
+              className={`px-1.5 py-0.5 text-[9px] font-semibold tabular-nums transition ${obAggStep === step ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
       {liveOrderbookExpanded && (
         <div className="flex flex-col flex-1 min-h-0 overflow-y-auto" style={{ minHeight: 120 }}>
@@ -122,16 +149,28 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                   });
                   const maxCumul = cumuls.length > 0 ? cumuls[cumuls.length - 1] : 1;
                   return displayBids.map((bid, i) => {
-                    const bp = (parseFloat(bid.price) * 100).toFixed(1);
-                    const hl = sidebarUserBidPrices.has(bp) ? 'bg-blue-900/50 font-bold' : '';
+                    const centsNum = parseFloat(bid.price) * 100;
+                    const bpDisp = obAggStep === '0.1' ? centsNum.toFixed(1) : String(Math.round(centsNum));
+                    const orderPk =
+                      obAggStep === '0.1'
+                        ? centsNum.toFixed(1).replace(/\.0$/, '')
+                        : sidebarObAggOrderPriceCents(centsNum, obAggStep === '1' ? '1' : '5');
+                    const hl =
+                      obAggStep === '0.1'
+                        ? sidebarUserBidPrices.has(centsNum.toFixed(1))
+                          ? 'bg-blue-900/50 font-bold'
+                          : ''
+                        : sidebarUserPriceHitsBucket(sidebarUserBidPrices, centsNum, obAggStep === '1' ? '1' : '5')
+                          ? 'bg-blue-900/50 font-bold'
+                          : '';
                     const depthPct = maxCumul > 0 ? (cumuls[i] / maxCumul) * 100 : 0;
                     return (
                       <div
-                        key={i}
+                        key={`${bpDisp}-${i}`}
                         className={`relative grid grid-cols-2 gap-1 text-[11px] px-1 hover:bg-green-900/30 cursor-pointer ${hl}`}
                         onClick={() => {
                           setOrderSide('SELL');
-                          setOrderPrice(bp.replace(/\.0$/, ''));
+                          setOrderPrice(orderPk);
                           const tokenId = selectedMarket?.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
                           const pos = positions.find((p) => p.asset === tokenId && p.size > 0);
                           if (pos) setOrderAmount(String(Math.floor(pos.size * 100) / 100));
@@ -142,7 +181,7 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                           className="absolute inset-y-0 right-0 bg-green-500/10 pointer-events-none"
                           style={{ width: `${depthPct}%` }}
                         />
-                        <span className="relative live-ob-bid">{bp}¢</span>
+                        <span className="relative live-ob-bid">{bpDisp}¢</span>
                         <span className="relative text-right text-gray-400">{parseFloat(bid.size).toFixed(0)}</span>
                       </div>
                     );
@@ -164,17 +203,29 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                   });
                   const maxCumul = cumuls.length > 0 ? cumuls[cumuls.length - 1] : 1;
                   return displayAsks.map((ask, i) => {
-                    const ap = (parseFloat(ask.price) * 100).toFixed(1);
-                    const hl = sidebarUserAskPrices.has(ap) ? 'bg-orange-900/50 font-bold' : '';
+                    const centsNum = parseFloat(ask.price) * 100;
+                    const apDisp = obAggStep === '0.1' ? centsNum.toFixed(1) : String(Math.round(centsNum));
+                    const orderPk =
+                      obAggStep === '0.1'
+                        ? centsNum.toFixed(1).replace(/\.0$/, '')
+                        : sidebarObAggOrderPriceCents(centsNum, obAggStep === '1' ? '1' : '5');
+                    const hl =
+                      obAggStep === '0.1'
+                        ? sidebarUserAskPrices.has(centsNum.toFixed(1))
+                          ? 'bg-orange-900/50 font-bold'
+                          : ''
+                        : sidebarUserPriceHitsBucket(sidebarUserAskPrices, centsNum, obAggStep === '1' ? '1' : '5')
+                          ? 'bg-orange-900/50 font-bold'
+                          : '';
                     const cumulativeAskSize = cumuls[i];
                     const depthPct = maxCumul > 0 ? (cumulativeAskSize / maxCumul) * 100 : 0;
                     return (
                       <div
-                        key={i}
+                        key={`${apDisp}-${i}`}
                         className={`relative grid grid-cols-2 gap-1 text-[11px] px-1 hover:bg-red-900/30 cursor-pointer ${hl}`}
                         onClick={() => {
                           setOrderSide('BUY');
-                          setOrderPrice(ap.replace(/\.0$/, ''));
+                          setOrderPrice(orderPk);
                           setOrderAmount(cumulativeAskSize.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'));
                         }}
                       >
@@ -182,7 +233,7 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                           className="absolute inset-y-0 left-0 bg-red-500/10 pointer-events-none"
                           style={{ width: `${depthPct}%` }}
                         />
-                        <span className="relative live-ob-ask">{ap}¢</span>
+                        <span className="relative live-ob-ask">{apDisp}¢</span>
                         <span className="relative text-right text-gray-400">{parseFloat(ask.size).toFixed(0)}</span>
                       </div>
                     );

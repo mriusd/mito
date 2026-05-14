@@ -1,9 +1,25 @@
-import { memo, useLayoutEffect, useMemo, useRef, useEffect } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import type { Market, Position } from '../types';
 import { usePolymarketOB, type LiveTrade } from '../hooks/usePolymarketOB';
+import type { SidebarObAggStep } from '../lib/sidebarOrderbookAggregate';
+import { sidebarObAggregateLevels } from '../lib/sidebarOrderbookAggregate';
 import { SidebarLiveOrderbookSection } from './SidebarLiveOrderbookSection';
 
 type OBLevel = { price: string; size: string };
+
+const LS_SIDEBAR_OB_AGG_STEP = 'polybot_sidebar_ob_agg_step';
+const OB_RAW_TOP_REF = 15;
+const OB_DEEP_BOOK = 380;
+
+function readSavedObAggStep(): SidebarObAggStep {
+  try {
+    const v = typeof localStorage !== 'undefined' ? localStorage.getItem(LS_SIDEBAR_OB_AGG_STEP) : null;
+    if (v === '0.1' || v === '1' || v === '5') return v;
+  } catch {
+    /* ignore */
+  }
+  return '0.1';
+}
 
 export type SidebarPolymarketBookSnapshot = {
   displayBids: OBLevel[];
@@ -54,7 +70,18 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   setOrderPrice,
   setOrderAmount,
 }: Props) {
-  const { bids, asks, trades: polymarketLiveTrades, loading: obLoading } = usePolymarketOB(obTokenId);
+  const [obAggStep, setObAggStep] = useState<SidebarObAggStep>(() => readSavedObAggStep());
+  const setObAggStepPersist = useCallback((step: SidebarObAggStep) => {
+    setObAggStep(step);
+    try {
+      localStorage.setItem(LS_SIDEBAR_OB_AGG_STEP, step);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const bookLimit = obAggStep === '0.1' ? OB_RAW_TOP_REF : OB_DEEP_BOOK;
+  const { bids, asks, trades: polymarketLiveTrades, loading: obLoading } = usePolymarketOB(obTokenId, bookLimit);
 
   const obStaleBookRef = useRef<{ bids: OBLevel[]; asks: OBLevel[] }>({ bids: [], asks: [] });
   useLayoutEffect(() => {
@@ -65,24 +92,47 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
       obStaleBookRef.current = { bids, asks };
     }
   }, [obLoading, bids, asks]);
-  const displayBids = obLoading ? obStaleBookRef.current.bids : bids;
-  const displayAsks = obLoading ? obStaleBookRef.current.asks : asks;
+
+  const snapshotBids = obLoading ? obStaleBookRef.current.bids : bids;
+  const snapshotAsks = obLoading ? obStaleBookRef.current.asks : asks;
+
+  const { viewBids, viewAsks, refSnapshotBids, refSnapshotAsks } = useMemo(() => {
+    const refBid = snapshotBids.slice(0, OB_RAW_TOP_REF);
+    const refAsk = snapshotAsks.slice(0, OB_RAW_TOP_REF);
+    if (obAggStep === '0.1') {
+      return {
+        viewBids: snapshotBids,
+        viewAsks: snapshotAsks,
+        refSnapshotBids: refBid,
+        refSnapshotAsks: refAsk,
+      };
+    }
+    const step = obAggStep === '1' ? '1' : '5';
+    const bidCap = step === '1' ? 40 : 24;
+    const askCap = step === '1' ? 40 : 24;
+    return {
+      viewBids: sidebarObAggregateLevels(snapshotBids, step, 'bid', bidCap),
+      viewAsks: sidebarObAggregateLevels(snapshotAsks, step, 'ask', askCap),
+      refSnapshotBids: refBid,
+      refSnapshotAsks: refAsk,
+    };
+  }, [snapshotBids, snapshotAsks, obAggStep]);
 
   const prevTopSig = useRef<string>('');
   const orderbookBookImbalance = useMemo(() => {
-    const bidTotal = displayBids.reduce((s, l) => {
+    const bidTotal = snapshotBids.reduce((s, l) => {
       const pCents = parseFloat(l.price) * 100;
       if (!Number.isFinite(pCents) || pCents < 5 || pCents > 95) return s;
       return s + parseFloat(l.size);
     }, 0);
-    const askTotal = displayAsks.reduce((s, l) => {
+    const askTotal = snapshotAsks.reduce((s, l) => {
       const pCents = parseFloat(l.price) * 100;
       if (!Number.isFinite(pCents) || pCents < 5 || pCents > 95) return s;
       return s + parseFloat(l.size);
     }, 0);
     const bookDenom = bidTotal + askTotal;
     return bookDenom > 0 ? (bidTotal - askTotal) / bookDenom : 0;
-  }, [displayBids, displayAsks]);
+  }, [snapshotBids, snapshotAsks]);
 
   useEffect(() => {
     onPolymarketTrades(polymarketLiveTrades);
@@ -90,22 +140,22 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
 
   useLayoutEffect(() => {
     sidebarBookRef.current = {
-      displayBids,
-      displayAsks,
+      displayBids: refSnapshotBids,
+      displayAsks: refSnapshotAsks,
       polymarketLiveTrades,
       obLoading,
     };
-  }, [sidebarBookRef, displayBids, displayAsks, polymarketLiveTrades, obLoading]);
+  }, [sidebarBookRef, refSnapshotBids, refSnapshotAsks, polymarketLiveTrades, obLoading]);
 
   useLayoutEffect(() => {
-    const firstAsk = displayAsks[0]?.price ?? '';
-    const lastBid = displayBids.length ? displayBids[displayBids.length - 1]?.price ?? '' : '';
+    const firstAsk = snapshotAsks[0]?.price ?? '';
+    const lastBid = snapshotBids.length ? snapshotBids[snapshotBids.length - 1]?.price ?? '' : '';
     const sig = `${firstAsk}|${lastBid}|${obLoading ? 1 : 0}`;
     if (sig !== prevTopSig.current) {
       prevTopSig.current = sig;
       onTopOfBookDigestBump();
     }
-  }, [displayBids, displayAsks, obLoading, onTopOfBookDigestBump]);
+  }, [snapshotBids, snapshotAsks, obLoading, onTopOfBookDigestBump]);
 
   return (
     <SidebarLiveOrderbookSection
@@ -113,8 +163,10 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
       liveOrderbookExpanded={liveOrderbookExpanded}
       onToggleLiveOrderbookExpanded={onToggleLiveOrderbookExpanded}
       orderbookBookImbalance={orderbookBookImbalance}
-      displayBids={displayBids}
-      displayAsks={displayAsks}
+      displayBids={viewBids}
+      displayAsks={viewAsks}
+      obAggStep={obAggStep}
+      onObAggStepChange={setObAggStepPersist}
       obLoading={obLoading}
       isMarketExpired={isMarketExpired}
       isUpDownMarket={isUpDownMarket}

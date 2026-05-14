@@ -511,6 +511,8 @@ function WalletLink({
   isSmart,
   ledgerEmbed,
   ledgerGold,
+  positivePnl,
+  negativePnl,
 }: {
   wallet: string;
   netShares?: number;
@@ -519,6 +521,8 @@ function WalletLink({
   /** Toxic-flow batched ledger: set (even `null`) to skip `/api/wallet-summary` hover fetch. */
   ledgerEmbed?: WalletScoresLedgerEmbed | null;
   ledgerGold?: boolean;
+  positivePnl?: boolean;
+  negativePnl?: boolean;
 }) {
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [show, setShow] = useState(false);
@@ -647,15 +651,26 @@ function WalletLink({
       document.body,
     );
 
-  const addrClass = ledgerGold ? 'text-amber-400' : isSmart ? 'text-yellow-400' : 'text-blue-400';
-  const btnTitle =
-    ledgerGold && isSmart
-      ? 'Ledger win rate >60% (≥10 resolved); proven smart wallet'
-      : ledgerGold
-        ? 'Ledger win rate >60% with ≥10 resolved markets'
-        : isSmart
-          ? 'Proven smart wallet'
-          : undefined;
+  const addrClass = ledgerGold
+    ? 'text-amber-400'
+    : isSmart
+      ? 'text-yellow-400'
+      : positivePnl
+        ? 'text-green-400'
+        : negativePnl
+          ? 'text-red-400'
+          : 'text-blue-400';
+  const btnTitle = (() => {
+    const parts: string[] = [];
+    if (ledgerGold && isSmart) parts.push('Ledger win rate >60% (≥10 resolved); proven smart wallet');
+    else {
+      if (ledgerGold) parts.push('Ledger win rate >60% with ≥10 resolved markets');
+      if (isSmart) parts.push('Proven smart wallet');
+    }
+    if (positivePnl) parts.push('Positive PnL (this market)');
+    if (negativePnl) parts.push('Negative PnL (this market)');
+    return parts.length ? parts.join(' · ') : undefined;
+  })();
 
   return (
     <span
@@ -835,6 +850,8 @@ function WalletTable({
                       isSmart={isSmartGold(w)}
                       ledgerEmbed={w.walletLedgerSummary}
                       ledgerGold={ledgerGoldFromEmbed(w.walletLedgerSummary)}
+                      positivePnl={typeof w.pnl === 'number' && Number.isFinite(w.pnl) && w.pnl > 0}
+                      negativePnl={typeof w.pnl === 'number' && Number.isFinite(w.pnl) && w.pnl < 0}
                     />
                     {showWinBar && <WinRateBottomBar winRate={ledgerFrac!} className="absolute bottom-0 left-0 right-0" />}
                   </td>
@@ -1509,6 +1526,17 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     return topHoldersWallets;
   }, [data, topHoldersWallets]);
 
+  const walletMarketPnlByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!data) return m;
+    for (const w of toxicFlowWalletUniverse(data)) {
+      const k = (w.wallet || '').trim().toLowerCase();
+      if (!k || typeof w.pnl !== 'number' || !Number.isFinite(w.pnl)) continue;
+      m.set(k, w.pnl);
+    }
+    return m;
+  }, [data]);
+
   if (!open) return null;
 
   const openWalletDialog = (wallet: string, _netShares?: number) => {
@@ -1846,6 +1874,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                         isSmart={smartSet.has(f.wallet.toLowerCase())}
                                         ledgerEmbed={f.walletLedgerSummary}
                                         ledgerGold={ledgerGoldFromEmbed(f.walletLedgerSummary)}
+                                        positivePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) > 0}
+                                        negativePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) < 0}
                                       />
                                       <WinRateBottomBar winRate={lf!} />
                                     </span>
@@ -1857,6 +1887,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                       isSmart={smartSet.has(f.wallet.toLowerCase())}
                                       ledgerEmbed={f.walletLedgerSummary}
                                       ledgerGold={ledgerGoldFromEmbed(f.walletLedgerSummary)}
+                                      positivePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) > 0}
+                                      negativePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) < 0}
                                     />
                                   )}{' '}
                                   {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
@@ -1887,6 +1919,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                         isSmart={smartSet.has(f.wallet.toLowerCase())}
                                         ledgerEmbed={f.walletLedgerSummary}
                                         ledgerGold={ledgerGoldFromEmbed(f.walletLedgerSummary)}
+                                        positivePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) > 0}
+                                        negativePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) < 0}
                                       />
                                       <WinRateBottomBar winRate={lf!} />
                                     </span>
@@ -1898,6 +1932,8 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                       isSmart={smartSet.has(f.wallet.toLowerCase())}
                                       ledgerEmbed={f.walletLedgerSummary}
                                       ledgerGold={ledgerGoldFromEmbed(f.walletLedgerSummary)}
+                                      positivePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) > 0}
+                                      negativePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) < 0}
                                     />
                                   )}{' '}
                                   {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}

@@ -1,4 +1,14 @@
-import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect, type ReactNode } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+  useLayoutEffect,
+  forwardRef,
+  useImperativeHandle,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -61,7 +71,7 @@ interface ToxicFlowDialogProps {
   embedded?: boolean;
 }
 
-type Tab = 'topHolders' | 'smart' | 'following' | 'winners' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
+type Tab = 'topHolders' | 'smart' | 'favourites' | 'winners' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
 
 function walletInvY(w: WalletPosition): number {
   return typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
@@ -571,22 +581,35 @@ const TOXIC_WALLET_TIP_OPEN = 'polybot:toxic-wallet-tip-open';
 
 type WalletTipPos = { left: number; top: number; placeAbove: boolean };
 
-function WalletLink({
-  wallet,
-  netShares,
-  onOpenWallet,
-  isSmart,
-  ledgerEmbed,
-  ledgerGold,
-}: {
-  wallet: string;
-  netShares?: number;
-  onOpenWallet?: (wallet: string, netShares?: number) => void;
-  isSmart?: boolean;
-  /** Toxic-flow batched ledger: set (even `null`) to skip `/api/wallet-summary` hover fetch. */
-  ledgerEmbed?: WalletScoresLedgerEmbed | null;
-  ledgerGold?: boolean;
-}) {
+/** Imperative hooks from `<tr>` so tooltip opens on row hover, not only the address cell. */
+type WalletLinkHoverHandle = {
+  rowEnter: (e: React.MouseEvent) => void;
+  rowMove: (e: React.MouseEvent) => void;
+  rowLeave: () => void;
+};
+
+const WalletLink = forwardRef<
+  WalletLinkHoverHandle,
+  {
+    wallet: string;
+    netShares?: number;
+    onOpenWallet?: (wallet: string, netShares?: number) => void;
+    isSmart?: boolean;
+    /** Toxic-flow batched ledger: set (even `null`) to skip `/api/wallet-summary` hover fetch. */
+    ledgerEmbed?: WalletScoresLedgerEmbed | null;
+    ledgerGold?: boolean;
+  }
+>(function WalletLink(
+  {
+    wallet,
+    netShares,
+    onOpenWallet,
+    isSmart,
+    ledgerEmbed,
+    ledgerGold,
+  },
+  ref,
+) {
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [show, setShow] = useState(false);
   const [tipPos, setTipPos] = useState<WalletTipPos | null>(null);
@@ -641,7 +664,7 @@ function WalletLink({
     };
   }, [clearLeaveTimer]);
 
-  const scheduleHide = () => {
+  const scheduleHide = useCallback(() => {
     clearLeaveTimer();
     leaveTimerRef.current = window.setTimeout(() => {
       leaveTimerRef.current = null;
@@ -649,7 +672,7 @@ function WalletLink({
       setSummary(undefined);
       setTipPos(null);
     }, 220);
-  };
+  }, [clearLeaveTimer]);
 
   const updateTipPosition = useCallback(() => {
     if (!show) return;
@@ -693,37 +716,59 @@ function WalletLink({
     };
   }, [show, updateTipPosition]);
 
-  const onEnterAnchor = () => {
-    walletNormRef.current = wallet.toLowerCase();
-    window.dispatchEvent(new CustomEvent(TOXIC_WALLET_TIP_OPEN, { detail: { wallet: walletNormRef.current } }));
-    clearLeaveTimer();
-    if (ledgerEmbed !== undefined) {
-      setShow(true);
-      setSummary(ledgerEmbed === null ? null : walletSummaryFromLedgerEmbed(wallet, ledgerEmbed));
-      return;
-    }
-    enterTimerRef.current = window.setTimeout(async () => {
-      enterTimerRef.current = null;
-      const wkForFetch = walletNormRef.current;
-      setShow(true);
-      if (wkForFetch in summaryCache) {
-        setSummary(summaryCache[wkForFetch]);
+  const runEnter = useCallback(
+    (e?: React.MouseEvent) => {
+      if (e) mousePosRef.current = { x: e.clientX, y: e.clientY };
+      walletNormRef.current = wallet.toLowerCase();
+      window.dispatchEvent(new CustomEvent(TOXIC_WALLET_TIP_OPEN, { detail: { wallet: walletNormRef.current } }));
+      clearLeaveTimer();
+      if (ledgerEmbed !== undefined) {
+        setShow(true);
+        setSummary(ledgerEmbed === null ? null : walletSummaryFromLedgerEmbed(wallet, ledgerEmbed));
         return;
       }
-      const s = await fetchWalletSummary(wallet);
-      if (walletNormRef.current !== wkForFetch) return;
-      summaryCache[wkForFetch] = s;
-      setSummary(s);
-    }, 300);
-  };
+      enterTimerRef.current = window.setTimeout(async () => {
+        enterTimerRef.current = null;
+        const wkForFetch = walletNormRef.current;
+        setShow(true);
+        if (wkForFetch in summaryCache) {
+          setSummary(summaryCache[wkForFetch]);
+          return;
+        }
+        const s = await fetchWalletSummary(wallet);
+        if (walletNormRef.current !== wkForFetch) return;
+        summaryCache[wkForFetch] = s;
+        setSummary(s);
+      }, 300);
+    },
+    [wallet, ledgerEmbed, clearLeaveTimer],
+  );
 
-  const onLeaveAnchor = () => {
+  const runLeave = useCallback(() => {
     if (enterTimerRef.current) {
       clearTimeout(enterTimerRef.current);
       enterTimerRef.current = null;
     }
     scheduleHide();
-  };
+  }, [scheduleHide]);
+
+  const runMove = useCallback(
+    (e: React.MouseEvent) => {
+      mousePosRef.current = { x: e.clientX, y: e.clientY };
+      if (show) updateTipPosition();
+    },
+    [show, updateTipPosition],
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      rowEnter: (e: React.MouseEvent) => runEnter(e),
+      rowMove: runMove,
+      rowLeave: runLeave,
+    }),
+    [runEnter, runMove, runLeave],
+  );
 
   const lifetimeHue = lifetimeLedgerPnlHue(ledgerEmbed, summary);
   const ledgerAbsent = walletScoresLedgerRowAbsent(ledgerEmbed, summary);
@@ -790,15 +835,9 @@ function WalletLink({
     <span
       ref={anchorRef}
       className="relative inline-block"
-      onMouseEnter={(e) => {
-        mousePosRef.current = { x: e.clientX, y: e.clientY };
-        onEnterAnchor();
-      }}
-      onMouseMove={(e) => {
-        mousePosRef.current = { x: e.clientX, y: e.clientY };
-        if (show) updateTipPosition();
-      }}
-      onMouseLeave={onLeaveAnchor}
+      onMouseEnter={(e) => runEnter(e)}
+      onMouseMove={runMove}
+      onMouseLeave={runLeave}
     >
       <button
         type="button"
@@ -813,6 +852,137 @@ function WalletLink({
       </button>
       {portalTooltip}
     </span>
+  );
+});
+
+function WalletTableBodyRow({
+  rank,
+  w,
+  shadeRowByStakedNet,
+  favouriteActive,
+  toggleFavouriteWallet,
+  onOpenWallet,
+  sharesPct,
+  cumSharesPct,
+}: {
+  rank: number;
+  w: WalletPosition;
+  shadeRowByStakedNet: boolean;
+  favouriteActive: boolean;
+  toggleFavouriteWallet: (addr: string) => void;
+  onOpenWallet?: (wallet: string, netShares?: number) => void;
+  sharesPct: number;
+  cumSharesPct: number;
+}) {
+  const hoverRef = useRef<WalletLinkHoverHandle>(null);
+  const sum = toxicRowWalletLedgerSummary(w);
+  const ledgerFrac = ledgerSummaryWinRateFracOrNull(sum === undefined ? null : sum);
+  const showWinBar = ledgerFrac != null;
+  const iy = typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
+  const inn = typeof w.invNo === 'number' && Number.isFinite(w.invNo) ? w.invNo : w.netNo ?? 0;
+  const signedLegNet = iy - inn;
+  const grossLeg = Math.abs(iy) + Math.abs(inn);
+  const bias =
+    typeof w.inventoryBias === 'number' && Number.isFinite(w.inventoryBias)
+      ? w.inventoryBias
+      : grossLeg > 0
+        ? Math.abs(signedLegNet) / grossLeg
+        : 0;
+  const biasColor = bias > 0.5 ? 'text-yellow-400' : bias > 0.3 ? 'text-orange-400' : 'text-gray-400';
+  const nYColor = iy > 0.001 ? 'text-green-400' : iy < -0.001 ? 'text-red-400' : 'text-gray-500';
+  const netYNColor =
+    signedLegNet < -0.001 ? 'text-red-400' : signedLegNet > 0.001 ? 'text-green-400' : 'text-gray-500';
+  const stakeYUsd = walletStakeYUsd(w);
+  const stakeNUsd = walletStakeNUsd(w);
+  const stakeNetSigned = walletStakeNetSignedUsd(w);
+
+  const fmtInt = (v: number) => Math.round(v).toLocaleString('en-US');
+  const fmtUsdSigned = (v: number) => {
+    if (!Number.isFinite(v)) return '–';
+    const rounded = Math.round(Math.abs(v));
+    const s = v >= 0 ? '+' : '−';
+    return `${s}$${rounded.toLocaleString('en-US')}`;
+  };
+
+  return (
+    <tr
+      className={walletRowClassForStakedNet(shadeRowByStakedNet, stakeNetSigned)}
+      onMouseEnter={(e) => hoverRef.current?.rowEnter(e)}
+      onMouseMove={(e) => hoverRef.current?.rowMove(e)}
+      onMouseLeave={() => hoverRef.current?.rowLeave()}
+    >
+      <td className="py-0.5 px-1 text-gray-600">{rank}</td>
+      <td className="align-top px-0 py-0.5">
+        <button
+          type="button"
+          className="p-0.5 rounded hover:bg-gray-600/40 text-gray-500 hover:text-gray-300"
+          title={favouriteActive ? 'Remove favourite' : 'Add favourite'}
+          aria-pressed={favouriteActive}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleFavouriteWallet(w.wallet);
+          }}
+        >
+          <Star
+            size={12}
+            className={favouriteActive ? 'text-yellow-400 fill-yellow-400' : 'fill-none stroke-gray-400'}
+          />
+        </button>
+      </td>
+      <td className="relative align-top px-1 py-0.5 pb-2">
+        <WalletLink
+          ref={hoverRef}
+          wallet={w.wallet}
+          netShares={signedLegNet}
+          onOpenWallet={onOpenWallet}
+          isSmart={isSmartGold(w)}
+          ledgerEmbed={w.walletLedgerSummary}
+          ledgerGold={ledgerGoldFromEmbed(w.walletLedgerSummary)}
+        />
+        {showWinBar ? (
+          <WinRateBottomBar winRate={ledgerFrac!} className="absolute bottom-0 left-0 right-0" />
+        ) : (
+          <div
+            className="pointer-events-none absolute bottom-0 left-0 right-0 h-0.5 min-w-[40px] overflow-hidden rounded-[1px] bg-gray-700/90"
+            aria-hidden
+            title="No ledger win rate (wallet_scores_ledger)"
+          />
+        )}
+      </td>
+      <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{fmtInt(iy)}</td>
+      <td className="text-right px-1 font-bold text-red-400 bg-red-900/10">{fmtInt(inn)}</td>
+      <td className={`text-right px-1 font-bold ${netYNColor}`}>{fmtInt(signedLegNet)}</td>
+      <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceYes)}</td>
+      <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceNo)}</td>
+      <td className="text-right px-1 text-gray-400">
+        {typeof w.tradeCount === 'number' && Number.isFinite(w.tradeCount)
+          ? Math.round(w.tradeCount).toLocaleString('en-US')
+          : '–'}
+      </td>
+      <td className="text-right px-1 font-medium tabular-nums text-red-400">
+        {Number.isFinite(stakeYUsd) ? fmtUsdSigned(-stakeYUsd) : '–'}
+      </td>
+      <td className="text-right px-1 font-medium tabular-nums text-red-400">
+        {Number.isFinite(stakeNUsd) ? fmtUsdSigned(-stakeNUsd) : '–'}
+      </td>
+      <td className="text-right px-1 whitespace-nowrap" title="Staked Y − Staked N (column display); Y / N suffix">
+        {stakedNetUsdTableCell(stakeNetSigned)}
+      </td>
+      <td className="text-right px-1 text-cyan-300">
+        {sharesPct > 0
+          ? `${sharesPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
+          : '-'}
+      </td>
+      <td className="text-right px-1 text-cyan-200/70">
+        {cumSharesPct > 0
+          ? `${cumSharesPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
+          : '-'}
+      </td>
+      <td className={`text-right px-1 ${biasColor}`}>
+        {`${(bias * 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}%`}
+      </td>
+    </tr>
   );
 }
 
@@ -863,15 +1033,6 @@ function WalletTable({
     );
   }
 
-  const fmtInt = (v: number) => Math.round(v).toLocaleString('en-US');
-  const fmtSignedInt = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString('en-US')}`;
-  const fmtUsdSigned = (v: number) => {
-    if (!Number.isFinite(v)) return '–';
-    const rounded = Math.round(Math.abs(v));
-    const s = v >= 0 ? '+' : '−';
-    return `${s}$${rounded.toLocaleString('en-US')}`;
-  };
-
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden w-full min-w-0">
       <div className="min-h-0 flex-1 overflow-auto w-full min-w-0 overscroll-contain">
@@ -916,96 +1077,25 @@ function WalletTable({
             let cumSharesPct = 0;
             return rows.map((w, i) => {
               const wk = (w.wallet || '').toLowerCase();
-              const sum = toxicRowWalletLedgerSummary(w);
-              const ledgerFrac = ledgerSummaryWinRateFracOrNull(sum === undefined ? null : sum);
-              const showWinBar = ledgerFrac != null;
-            const iy = typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
-            const inn = typeof w.invNo === 'number' && Number.isFinite(w.invNo) ? w.invNo : w.netNo ?? 0;
-            const signedLegNet = iy - inn;
-            const grossLeg = Math.abs(iy) + Math.abs(inn);
-            const bias =
-              typeof w.inventoryBias === 'number' && Number.isFinite(w.inventoryBias)
-                ? w.inventoryBias
-                : grossLeg > 0
-                  ? Math.abs(signedLegNet) / grossLeg
-                  : 0;
-            const biasColor = bias > 0.5 ? 'text-yellow-400' : bias > 0.3 ? 'text-orange-400' : 'text-gray-400';
-              const sharesPct = totalShares && totalShares > 0 ? (Math.abs(signedLegNet) / totalShares) * 100 : 0;
+              const iy = typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
+              const inn = typeof w.invNo === 'number' && Number.isFinite(w.invNo) ? w.invNo : w.netNo ?? 0;
+              const signedLegNet = iy - inn;
+              const sharesPct =
+                totalShares && totalShares > 0 ? (Math.abs(signedLegNet) / totalShares) * 100 : 0;
               cumSharesPct += sharesPct;
-            const nYColor = iy > 0.001 ? 'text-green-400' : iy < -0.001 ? 'text-red-400' : 'text-gray-500';
-            const netYNColor =
-              signedLegNet < -0.001 ? 'text-red-400' : signedLegNet > 0.001 ? 'text-green-400' : 'text-gray-500';
-              const stakeYUsd = walletStakeYUsd(w);
-              const stakeNUsd = walletStakeNUsd(w);
-              const stakeNetSigned = walletStakeNetSignedUsd(w);
-            return (
-              <tr key={w.wallet} className={walletRowClassForStakedNet(!!shadeRowByStakedNet, stakeNetSigned)}>
-                <td className="py-0.5 px-1 text-gray-600">{i + 1}</td>
-                  <td className="align-top px-0 py-0.5">
-                    <button
-                      type="button"
-                      className="p-0.5 rounded hover:bg-gray-600/40 text-gray-500 hover:text-gray-300"
-                      title={favouriteWallets.has(wk) ? 'Remove favourite' : 'Add favourite'}
-                      aria-pressed={favouriteWallets.has(wk)}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggleFavouriteWallet(w.wallet);
-                      }}
-                    >
-                      <Star
-                        size={12}
-                        className={
-                          favouriteWallets.has(wk) ? 'text-yellow-400 fill-yellow-400' : 'fill-none stroke-gray-400'
-                        }
-                      />
-                    </button>
-                  </td>
-                  <td className={`relative align-top px-1 py-0.5 ${showWinBar ? 'pb-2' : ''}`}>
-                    <WalletLink
-                      wallet={w.wallet}
-                      netShares={signedLegNet}
-                      onOpenWallet={onOpenWallet}
-                      isSmart={isSmartGold(w)}
-                      ledgerEmbed={w.walletLedgerSummary}
-                      ledgerGold={ledgerGoldFromEmbed(w.walletLedgerSummary)}
-                    />
-                    {showWinBar && <WinRateBottomBar winRate={ledgerFrac!} className="absolute bottom-0 left-0 right-0" />}
-                  </td>
-                  <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{fmtInt(iy)}</td>
-                  <td className="text-right px-1 font-bold text-red-400 bg-red-900/10">{fmtInt(inn)}</td>
-                  <td className={`text-right px-1 font-bold ${netYNColor}`}>{fmtInt(signedLegNet)}</td>
-                  <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceYes)}</td>
-                  <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceNo)}</td>
-                <td className="text-right px-1 text-gray-400">
-                  {typeof w.tradeCount === 'number' && Number.isFinite(w.tradeCount)
-                    ? Math.round(w.tradeCount).toLocaleString('en-US')
-                    : '–'}
-                </td>
-                  <td className="text-right px-1 font-medium tabular-nums text-red-400">
-                    {Number.isFinite(stakeYUsd) ? fmtUsdSigned(-stakeYUsd) : '–'}
-                  </td>
-                  <td className="text-right px-1 font-medium tabular-nums text-red-400">
-                    {Number.isFinite(stakeNUsd) ? fmtUsdSigned(-stakeNUsd) : '–'}
-                  </td>
-                  <td className="text-right px-1 whitespace-nowrap" title="Staked Y − Staked N (column display); Y / N suffix">
-                    {stakedNetUsdTableCell(stakeNetSigned)}
-                  </td>
-                  <td className="text-right px-1 text-cyan-300">
-                    {sharesPct > 0
-                      ? `${sharesPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
-                      : '-'}
-                  </td>
-                  <td className="text-right px-1 text-cyan-200/70">
-                    {cumSharesPct > 0
-                      ? `${cumSharesPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
-                      : '-'}
-                  </td>
-                <td className={`text-right px-1 ${biasColor}`}>
-                  {`${(bias * 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}%`}
-                </td>
-              </tr>
-            );
+              return (
+                <WalletTableBodyRow
+                  key={w.wallet}
+                  rank={i + 1}
+                  w={w}
+                  shadeRowByStakedNet={!!shadeRowByStakedNet}
+                  favouriteActive={favouriteWallets.has(wk)}
+                  toggleFavouriteWallet={toggleFavouriteWallet}
+                  onOpenWallet={onOpenWallet}
+                  sharesPct={sharesPct}
+                  cumSharesPct={cumSharesPct}
+                />
+              );
             });
           })()}
         </tbody>
@@ -1599,7 +1689,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
 
   useEffect(() => {
     if (open) {
-      setTab('topHolders');
       void load();
     } else {
       setData(null);
@@ -1724,7 +1813,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     });
   }, [data]);
 
-  const followingTabWallets = useMemo(() => {
+  const favouritesTabWallets = useMemo(() => {
     const arr = toxicFlowWalletUniverse(data).filter((w) =>
       toxicFollowSet.has((w.wallet || '').trim().toLowerCase()),
     );
@@ -1765,7 +1854,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'topHolders', label: 'Top Holders', icon: <Crown size={11} /> },
     { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
-    { key: 'following', label: 'Following', icon: <Star size={11} /> },
+    { key: 'favourites', label: 'Favourites', icon: <Star size={11} /> },
     { key: 'winners', label: 'Winners', icon: <Trophy size={11} /> },
     { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
     { key: 'topNo', label: 'Top NO', icon: <TrendingDown size={11} /> },
@@ -2077,10 +2166,10 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                       onOpenWallet={openWalletDialog}
                     />
                   )}
-                  {tab === 'following' && (
+                  {tab === 'favourites' && (
                     <WalletTable
-                      wallets={followingTabWallets}
-                      label="following"
+                      wallets={favouritesTabWallets}
+                      label="favourites"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
                     />

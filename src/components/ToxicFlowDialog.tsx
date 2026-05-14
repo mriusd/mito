@@ -461,12 +461,14 @@ function ledgerSummaryWinRateFracOrNull(s: WalletSummary | null | undefined): nu
   return ledgerWinRateFracFromStored(s.winRate);
 }
 
-/** Gold address: ledger win rate > 60% and ≥10 resolved markets (wallet_scores_ledger). */
+/** Gold (amber): ledger WR > 60%, ≥10 resolved markets, aggregate ledger PnL > 0 (`wallet_scores_ledger`). */
 function ledgerGoldFromEmbed(embed: WalletScoresLedgerEmbed | null | undefined): boolean {
   if (embed == null) return false;
   if ((embed.resolvedMarkets ?? 0) < 10) return false;
   if (typeof embed.winRate !== 'number' || !Number.isFinite(embed.winRate)) return false;
-  return ledgerWinRateFracFromStored(embed.winRate) > 0.6;
+  if (ledgerWinRateFracFromStored(embed.winRate) <= 0.6) return false;
+  const pnl = embed.pnl;
+  return typeof pnl === 'number' && Number.isFinite(pnl) && pnl > 0;
 }
 
 function toxicRowWalletLedgerSummary(row: WalletPosition): WalletSummary | null | undefined {
@@ -662,9 +664,9 @@ function WalletLink({
           : 'text-blue-400';
   const btnTitle = (() => {
     const parts: string[] = [];
-    if (ledgerGold && isSmart) parts.push('Ledger win rate >60% (≥10 resolved); proven smart wallet');
+    if (ledgerGold && isSmart) parts.push('Ledger WR >60%, ≥10 resolved, ledger PnL >0; proven smart wallet');
     else {
-      if (ledgerGold) parts.push('Ledger win rate >60% with ≥10 resolved markets');
+      if (ledgerGold) parts.push('Ledger WR >60%, ≥10 resolved markets, ledger PnL >0');
       if (isSmart) parts.push('Proven smart wallet');
     }
     if (positivePnl) parts.push('Positive PnL (this market)');

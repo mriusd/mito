@@ -653,24 +653,24 @@ function WalletLink({
       document.body,
     );
 
-  const addrClass = ledgerGold
-    ? 'text-amber-400'
-    : isSmart
-      ? 'text-yellow-400'
-      : positivePnl
-        ? 'text-green-400'
-        : negativePnl
-          ? 'text-red-400'
+  const addrClass = positivePnl
+    ? 'text-green-400'
+    : negativePnl
+      ? 'text-red-400'
+      : ledgerGold
+        ? 'text-amber-400'
+        : isSmart
+          ? 'text-yellow-400'
           : 'text-blue-400';
   const btnTitle = (() => {
     const parts: string[] = [];
+    if (positivePnl) parts.push('Positive PnL (this market)');
+    if (negativePnl) parts.push('Negative PnL (this market)');
     if (ledgerGold && isSmart) parts.push('Ledger WR >60%, ≥10 resolved, ledger PnL >0; proven smart wallet');
     else {
       if (ledgerGold) parts.push('Ledger WR >60%, ≥10 resolved markets, ledger PnL >0');
       if (isSmart) parts.push('Proven smart wallet');
     }
-    if (positivePnl) parts.push('Positive PnL (this market)');
-    if (negativePnl) parts.push('Negative PnL (this market)');
     return parts.length ? parts.join(' · ') : undefined;
   })();
 

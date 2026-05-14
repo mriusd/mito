@@ -32,7 +32,6 @@ import {
 } from './WalletLatestMarketsTradedTable';
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { HelperTooltip } from './HelperTooltip';
-import { StakedLegUsdBar } from './StakedLegUsdBar';
 import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
 
 interface ToxicFlowDialogProps {
@@ -46,14 +45,6 @@ interface ToxicFlowDialogProps {
 }
 
 type Tab = 'topHolders' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
-
-const TOXIC_TAB_COHORT_LABEL: Record<Tab, string> = {
-  topHolders: 'Top Holders',
-  topYes: 'Top YES',
-  topNo: 'Top NO',
-  topVolume: 'Top Volume',
-  topTraders: 'Top Traders',
-};
 
 function walletInvY(w: WalletPosition): number {
   return typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
@@ -117,19 +108,6 @@ function stakeSortKeyDesc(w: WalletPosition, leg: 'y' | 'n' | 'tot' | 'net'): nu
   }
   const v = leg === 'y' ? walletStakeYUsd(w) : leg === 'n' ? walletStakeNUsd(w) : walletStakeTotalUsd(w);
   return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
-}
-
-/** Σ surplus on display net: favors Y (−inv×py net < 0) vs favors N (> 0) — aligns with table Staked Net Y/N coloring. */
-function ToxicFlowStakedProgressBar({ wallets, dense }: { wallets: WalletPosition[]; dense?: boolean }) {
-  let sumYesNet = 0;
-  let sumNoNet = 0;
-  for (const w of wallets) {
-    const net = walletStakeNetSignedUsd(w);
-    if (!Number.isFinite(net)) continue;
-    if (net < -STAKED_NET_EPS) sumYesNet += -net;
-    else if (net > STAKED_NET_EPS) sumNoNet += net;
-  }
-  return <StakedLegUsdBar sumYUsd={sumYesNet} sumNUsd={sumNoNet} dense={dense} barMode="cohortSurplusHalves" />;
 }
 
 function rPnlToneClass(v: number): string {
@@ -461,7 +439,7 @@ function ledgerSummaryWinRateFracOrNull(s: WalletSummary | null | undefined): nu
   return ledgerWinRateFracFromStored(s.winRate);
 }
 
-/** Aggregate `wallet_scores_ledger.pnl` sign when row market `pnl` alone does not encode green/red here. Row `positivePnl` / `negativePnl` wins if either is set. */
+/** Aggregate `wallet_scores_ledger.pnl` sign from embed. Address color: no row blue; then green/red by this sign when non-null; then gold / smart fallbacks when sign is neutral. */
 function ledgerAggregatePnlSign(embed: WalletScoresLedgerEmbed | null | undefined): 'pos' | 'neg' | null {
   if (embed == null) return null;
   const p = embed.pnl;
@@ -471,9 +449,30 @@ function ledgerAggregatePnlSign(embed: WalletScoresLedgerEmbed | null | undefine
   return null;
 }
 
-/** No `wallet_scores_ledger` snapshot on row (`walletLedgerSummary` null or omitted). */
-function wslLedgerRowMissing(embed: WalletScoresLedgerEmbed | null | undefined): boolean {
-  return embed == null;
+  const p = s.pnl;
+  if (typeof p !== 'number' || !Number.isFinite(p)) return null;
+  if (p > 0) return 'pos';
+  if (p < 0) return 'neg';
+  return null;
+}
+
+/** Lifetime wallet_scores_ledger hue: cohort embed when present; else fetched summary when `ledgerEmbed === undefined`. */
+function lifetimeLedgerPnlHue(
+  ledgerEmbed: WalletScoresLedgerEmbed | null | undefined,
+  summary: WalletSummary | null | undefined,
+): 'pos' | 'neg' | null {
+  if (ledgerEmbed !== undefined && ledgerEmbed !== null) return ledgerAggregatePnlSign(ledgerEmbed);
+  if (summary !== undefined && summary !== null) return lifetimePnlHueFromSummary(summary);
+  return null;
+}
+
+function walletScoresLedgerRowAbsent(
+  ledgerEmbed: WalletScoresLedgerEmbed | null | undefined,
+  summary: WalletSummary | null | undefined,
+): boolean {
+  if (ledgerEmbed === null) return true;
+  if (ledgerEmbed === undefined && summary === null) return true;
+  return false;
 }
 
 /** Gold (amber): ledger WR > 60%, ≥10 resolved markets, aggregate ledger PnL > 0 (`wallet_scores_ledger`). */
@@ -531,8 +530,6 @@ function WalletLink({
   isSmart,
   ledgerEmbed,
   ledgerGold,
-  positivePnl,
-  negativePnl,
 }: {
   wallet: string;
   netShares?: number;
@@ -541,8 +538,6 @@ function WalletLink({
   /** Toxic-flow batched ledger: set (even `null`) to skip `/api/wallet-summary` hover fetch. */
   ledgerEmbed?: WalletScoresLedgerEmbed | null;
   ledgerGold?: boolean;
-  positivePnl?: boolean;
-  negativePnl?: boolean;
 }) {
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [show, setShow] = useState(false);
@@ -682,46 +677,32 @@ function WalletLink({
     scheduleHide();
   };
 
-  const ledgerPnlHue = ledgerAggregatePnlSign(ledgerEmbed);
-  const addrClass = positivePnl
-    ? 'text-green-400'
-    : negativePnl
-      ? 'text-red-400'
-      : ledgerGold
-        ? 'text-amber-400'
-        : isSmart
-          ? 'text-yellow-400'
-          : !positivePnl && !negativePnl && ledgerPnlHue === 'pos'
-            ? 'text-green-400'
-            : !positivePnl && !negativePnl && ledgerPnlHue === 'neg'
-              ? 'text-red-400'
-              : wslLedgerRowMissing(ledgerEmbed)
-                ? 'text-blue-400'
-                : 'text-zinc-400';
+  const lifetimeHue = lifetimeLedgerPnlHue(ledgerEmbed, summary);
+  const ledgerAbsent = walletScoresLedgerRowAbsent(ledgerEmbed, summary);
+
+  const addrClass = ledgerAbsent
+    ? 'text-blue-400'
+    : lifetimeHue === 'pos'
+      ? 'text-green-400'
+      : lifetimeHue === 'neg'
+        ? 'text-red-400'
+        : ledgerGold
+          ? 'text-amber-400'
+          : isSmart
+            ? 'text-yellow-400'
+            : 'text-zinc-400';
   const btnTitle = (() => {
     const parts: string[] = [];
-    if (positivePnl) parts.push('Positive PnL (this market)');
-    if (negativePnl) parts.push('Negative PnL (this market)');
-    if (!positivePnl && !negativePnl && !ledgerGold && !isSmart && ledgerPnlHue === 'pos') {
-      parts.push('Positive ledger aggregate PnL');
-    }
-    if (!positivePnl && !negativePnl && !ledgerGold && !isSmart && ledgerPnlHue === 'neg') {
-      parts.push('Negative ledger aggregate PnL');
+    if (ledgerAbsent) parts.push('No wallet_scores_ledger row');
+    else {
+      if (lifetimeHue === 'pos') parts.push('Lifetime ledger PnL > 0 (wallet_scores_ledger)');
+      else if (lifetimeHue === 'neg') parts.push('Lifetime ledger PnL < 0');
+      else parts.push('Lifetime ledger PnL flat (~0)');
     }
     if (ledgerGold && isSmart) parts.push('Ledger WR >60%, ≥10 resolved, ledger PnL >0; proven smart wallet');
     else {
       if (ledgerGold) parts.push('Ledger WR >60%, ≥10 resolved markets, ledger PnL >0');
       if (isSmart) parts.push('Proven smart wallet');
-    }
-    if (wslLedgerRowMissing(ledgerEmbed)) parts.push('No wallet_scores_ledger row');
-    else if (
-      !positivePnl &&
-      !negativePnl &&
-      ledgerPnlHue == null &&
-      !ledgerGold &&
-      !isSmart
-    ) {
-      parts.push('Ledger present (neutral hue)');
     }
     return parts.length ? parts.join(' · ') : undefined;
   })();
@@ -940,8 +921,6 @@ function WalletTable({
                       isSmart={isSmartGold(w)}
                       ledgerEmbed={w.walletLedgerSummary}
                       ledgerGold={ledgerGoldFromEmbed(w.walletLedgerSummary)}
-                      positivePnl={typeof w.pnl === 'number' && Number.isFinite(w.pnl) && w.pnl > 0}
-                      negativePnl={typeof w.pnl === 'number' && Number.isFinite(w.pnl) && w.pnl < 0}
                     />
                     {showWinBar && <WinRateBottomBar winRate={ledgerFrac!} className="absolute bottom-0 left-0 right-0" />}
                   </td>
@@ -1613,23 +1592,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     });
   }, [data?.topHolders]);
 
-  /** Staked bar always aggregates Top Holders cohort regardless of active tab. */
-  const walletsForStakedBar = useMemo((): WalletPosition[] => {
-    if (!data) return [];
-    return topHoldersWallets;
-  }, [data, topHoldersWallets]);
-
-  const walletMarketPnlByKey = useMemo(() => {
-    const m = new Map<string, number>();
-    if (!data) return m;
-    for (const w of toxicFlowWalletUniverse(data)) {
-      const k = (w.wallet || '').trim().toLowerCase();
-      if (!k || typeof w.pnl !== 'number' || !Number.isFinite(w.pnl)) continue;
-      m.set(k, w.pnl);
-    }
-    return m;
-  }, [data]);
-
   if (!open) return null;
 
   const openWalletDialog = (wallet: string, _netShares?: number) => {
@@ -1744,177 +1706,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                 </div>
               </div>
 
-              {/* Informed Trader Bias */}
-              <div className="bg-gray-900 rounded p-3">
-                <div className="text-[10px] text-gray-500 mb-2 font-bold">Informed Trader Bias</div>
-                {(() => {
-                  const thb = data.topHoldersBias || 0;
-                  const wb = data.whaleBias || 0;
-                  const isUpDownMarket = /up\s+or\s+down|updown|up-or-down/i.test(marketName || '');
-                  const isUpDown1hOr4h = isUpDownMarket && /\b1[- ]?h\b|updown-4h|\b4[- ]?h\b/i.test(marketName || '');
-                  const posLabel = isUpDownMarket ? 'UP' : 'YES';
-                  const negLabel = isUpDownMarket ? 'DOWN' : 'NO';
-                  const biasLabel = (v: number) => v > 0.01 ? posLabel : v < -0.01 ? negLabel : 'FLAT';
-                  const biasColor = (v: number) => v > 0.01 ? 'text-green-400' : v < -0.01 ? 'text-red-400' : 'text-gray-500';
-                  const barFor = (v: number) => Math.max(2, Math.min(98, 50 + v * 50));
-                  const proven = (data as any).provenSMS || 0;
-                  const crowd = (data as any).crowdBias || 0;
-                  const provenPct = proven * 100;
-                  const crowdPct = crowd * 100;
-                  const yesTotal = (data.yesUsdcIn || 0) + (data.noUsdcIn || 0);
-                  const yesPct = yesTotal > 0 ? (data.yesUsdcIn / yesTotal) * 100 : 50;
-                  return (
-                    <div className="space-y-2.5">
-                      {/* Proven Smart Money */}
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[9px] text-gray-500">Smart Money (proven wallets)</span>
-                          <span className={`text-[11px] font-bold ${biasColor(proven)}`}>
-                            {biasLabel(proven)} <span className="text-[9px] font-normal">({provenPct > 0 ? '+' : ''}{provenPct.toFixed(1)}%)</span>
-                          </span>
-                        </div>
-                        <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
-                          <div className="bg-yellow-400/75 h-full transition-all" style={{ width: `${barFor(proven)}%` }} />
-                          <div className="bg-purple-400/75 h-full transition-all flex-1" />
-                        </div>
-                      </div>
-
-                      {/* Crowd Bias */}
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[9px] text-gray-500">Crowd (all wallets)</span>
-                          <span className={`text-[11px] font-bold ${biasColor(crowd)}`}>
-                            {biasLabel(crowd)} <span className="text-[9px] font-normal">({crowdPct > 0 ? '+' : ''}{crowdPct.toFixed(1)}%)</span>
-                          </span>
-                        </div>
-                        <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
-                          <div className="bg-blue-500/70 h-full transition-all" style={{ width: `${barFor(crowd)}%` }} />
-                          <div className="bg-orange-500/70 h-full transition-all flex-1" />
-                        </div>
-                      </div>
-
-                      {/* Staked Y vs N — rows in the active below table tab */}
-                      <div title="Splits each Top Holder signed Staked Net (inv×px) into YES vs NO surplus halves; the number above the bar is sum of absolute per-wallet nets in this cohort—not capped by headline Staked.">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[9px] text-gray-500">Staked Net USD (Top Holders)</span>
-                          <span className="text-[8px] text-gray-600">{TOXIC_TAB_COHORT_LABEL.topHolders}</span>
-                        </div>
-                        <ToxicFlowStakedProgressBar wallets={walletsForStakedBar} dense />
-                      </div>
-
-                      {/* Top 10 Holders Bias */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-[9px] text-gray-500">Top 10 Holders Direction</span>
-                        <span className={`text-[11px] font-bold ${biasColor(thb)}`}>
-                          {biasLabel(thb)} <span className="text-[9px] font-normal">({thb > 0 ? '+' : ''}{thb.toFixed(1)} shares)</span>
-                        </span>
-                      </div>
-
-                      {/* Whale Bias */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-[9px] text-gray-500">Whale Bias ({data.whaleCount || 0} above-median wallets)</span>
-                        <span className={`text-[11px] font-bold ${biasColor(wb)}`}>
-                          {biasLabel(wb)} <span className="text-[9px] font-normal">({wb > 0 ? '+' : ''}{wb.toFixed(1)} shares)</span>
-                        </span>
-                      </div>
-
-                      {/* Winner Bias (USDC & Shares) — from backend via WS, same source as sidebar */}
-                      {(() => {
-                        const live = yesTokenId ? marketLookup[yesTokenId] : undefined;
-                        const wbUsdc = typeof live?.winnerBias === 'number' && Number.isFinite(live.winnerBias) ? live.winnerBias : null;
-                        const yesWR = typeof live?.winnerBiasYesWR === 'number' ? live.winnerBiasYesWR : null;
-                        const noWR = typeof live?.winnerBiasNoWR === 'number' ? live.winnerBiasNoWR : null;
-                        const wbShares = typeof live?.winBiasShares === 'number' && Number.isFinite(live.winBiasShares) ? live.winBiasShares : null;
-                        const yesWRs = typeof live?.winBiasSharesYes === 'number' ? live.winBiasSharesYes : null;
-                        const noWRs = typeof live?.winBiasSharesNo === 'number' ? live.winBiasSharesNo : null;
-                        const wbCvUsdc = typeof live?.winnerBiasConviction === 'number' && Number.isFinite(live.winnerBiasConviction) ? live.winnerBiasConviction : null;
-                        const yesWRcv = typeof live?.winnerBiasConvictionYesWR === 'number' ? live.winnerBiasConvictionYesWR : null;
-                        const noWRcv = typeof live?.winnerBiasConvictionNoWR === 'number' ? live.winnerBiasConvictionNoWR : null;
-                        const wbCvSh = typeof live?.winBiasConvictionShares === 'number' && Number.isFinite(live.winBiasConvictionShares) ? live.winBiasConvictionShares : null;
-                        const yesWRcvs = typeof live?.winBiasConvictionSharesYes === 'number' ? live.winBiasConvictionSharesYes : null;
-                        const noWRcvs = typeof live?.winBiasConvictionSharesNo === 'number' ? live.winBiasConvictionSharesNo : null;
-
-                        const renderBar = (label: string, bias: number | null, yesWr: number | null, noWr: number | null) => {
-                          if (bias == null) return null;
-                          const barPct = Math.max(2, Math.min(98, 50 + bias * 50));
-                          const side = bias > 0.01 ? posLabel : bias < -0.01 ? negLabel : 'EVEN';
-                          const color = bias > 0.01 ? 'text-cyan-300' : bias < -0.01 ? 'text-pink-300' : 'text-gray-500';
-                          return (
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-[9px] text-gray-500">{label}</span>
-                                <span className={`text-[11px] font-bold ${color}`}>{side}</span>
-                              </div>
-                              <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
-                                <div className="bg-cyan-400/75 h-full transition-all" style={{ width: `${barPct}%` }} />
-                                <div className="bg-pink-400/75 h-full transition-all flex-1" />
-                              </div>
-                              <div className="flex justify-between mt-0.5 text-[9px] text-gray-500">
-                                {yesWr != null && <span>{posLabel} WR: <span className={yesWr >= 0.5 ? 'text-cyan-300' : 'text-pink-300'}>{(yesWr * 100).toFixed(0)}%</span></span>}
-                                {noWr != null && <span>{negLabel} WR: <span className={noWr >= 0.5 ? 'text-cyan-300' : 'text-pink-300'}>{(noWr * 100).toFixed(0)}%</span></span>}
-                              </div>
-                            </div>
-                          );
-                        };
-
-                        return (
-                          <div>
-                            <p className="text-[8px] text-gray-500 leading-snug mb-1.5">
-                              Compares <span className="text-gray-400">historical win rate</span> (top 30% of USDC or shares on each side).
-                              Table <span className="text-gray-400">staked</span> columns are this market only — they often diverge from all-time win rate.
-                            </p>
-                            {renderBar('Winner Bias (top 30% USDC)', wbUsdc, yesWR, noWR)}
-                            {renderBar('Winner Bias (top 30% Shares)', wbShares, yesWRs, noWRs)}
-                            {renderBar('Winner Bias Conviction (USDC)', wbCvUsdc, yesWRcv, noWRcv)}
-                            {renderBar('Winner Bias Conviction (Shares)', wbCvSh, yesWRcvs, noWRcvs)}
-                          </div>
-                        );
-                      })()}
-
-                      {/* YES vs NO wallet breakdown */}
-                      <div className="border-t border-gray-700/70 pt-2">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[9px] text-gray-500">Wallet Split</span>
-                          <span className="text-[9px] text-gray-400">
-                            <span className="text-green-400 font-bold">{data.yesWallets || 0}</span> YES
-                            {' / '}
-                            <span className="text-red-400 font-bold">{data.noWallets || 0}</span> NO
-                  </span>
-                </div>
-                        <div className="h-2.5 bg-gray-700 rounded-full overflow-hidden flex">
-                          <div className="bg-green-500/60 h-full transition-all" style={{ width: `${yesPct}%` }} />
-                          <div className="bg-red-500/60 h-full transition-all flex-1" />
-                        </div>
-                        <div className="flex justify-between mt-0.5 text-[9px] text-gray-500">
-                          <span>YES ${(data.yesUsdcIn || 0).toFixed(2)}</span>
-                          <span>NO ${(data.noUsdcIn || 0).toFixed(2)}</span>
-                        </div>
-                      </div>
-
-                      {/* YES/NO token volume */}
-                      <div className="border-t border-gray-700/70 pt-2">
-                        <div className="h-2.5 bg-gray-700 rounded-full overflow-hidden flex">
-                  {(() => {
-                    const total = data.totalYesVol + data.totalNoVol;
-                            const yp = total > 0 ? (data.totalYesVol / total) * 100 : 50;
-                    return (
-                      <>
-                                <div className="bg-green-500/60 h-full transition-all" style={{ width: `${yp}%` }} />
-                                <div className="bg-red-500/60 h-full transition-all flex-1" />
-                      </>
-                    );
-                  })()}
-                </div>
-                        <div className="flex justify-between mt-0.5 text-[9px] text-gray-500">
-                  <span>YES vol: {data.totalYesVol.toFixed(1)}</span>
-                  <span>NO vol: {data.totalNoVol.toFixed(1)}</span>
-                </div>
-              </div>
-                    </div>
-                  );
-                })()}
-              </div>
-
               {/* Manipulation Red Flags */}
               {(() => {
                 const rf = data.redFlags ?? [];
@@ -1968,8 +1759,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                         isSmart={smartSet.has(f.wallet.toLowerCase())}
                                         ledgerEmbed={f.walletLedgerSummary}
                                         ledgerGold={ledgerGoldFromEmbed(f.walletLedgerSummary)}
-                                        positivePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) > 0}
-                                        negativePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) < 0}
                                       />
                                       <WinRateBottomBar winRate={lf!} />
                                     </span>
@@ -1981,8 +1770,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                       isSmart={smartSet.has(f.wallet.toLowerCase())}
                                       ledgerEmbed={f.walletLedgerSummary}
                                       ledgerGold={ledgerGoldFromEmbed(f.walletLedgerSummary)}
-                                      positivePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) > 0}
-                                      negativePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) < 0}
                                     />
                                   )}{' '}
                                   {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
@@ -2013,8 +1800,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                         isSmart={smartSet.has(f.wallet.toLowerCase())}
                                         ledgerEmbed={f.walletLedgerSummary}
                                         ledgerGold={ledgerGoldFromEmbed(f.walletLedgerSummary)}
-                                        positivePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) > 0}
-                                        negativePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) < 0}
                                       />
                                       <WinRateBottomBar winRate={lf!} />
                                     </span>
@@ -2026,8 +1811,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                                       isSmart={smartSet.has(f.wallet.toLowerCase())}
                                       ledgerEmbed={f.walletLedgerSummary}
                                       ledgerGold={ledgerGoldFromEmbed(f.walletLedgerSummary)}
-                                      positivePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) > 0}
-                                      negativePnl={(walletMarketPnlByKey.get(f.wallet.toLowerCase()) ?? 0) < 0}
                                     />
                                   )}{' '}
                                   {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}

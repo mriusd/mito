@@ -45,9 +45,19 @@ import { useOnchainTradesWS } from '../hooks/useOnchainTradesWS';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
-import { StakedLegUsdBar } from './StakedLegUsdBar';
-import { SidebarBiasMiniBar } from './SidebarBiasMiniBar';
 import { SidebarBarMidMarker } from './SidebarBarMidMarker';
+import { ToxicFlowStakePreview } from './ToxicFlowStakePreview';
+import { useToxicFlowMarketStream } from '../hooks/useToxicFlowMarketStream';
+import {
+  toxicCohortStakedNetSurplusHalves,
+  toxicFlowStakeStripWalletLists,
+  cohortSurplusLean,
+} from '../lib/toxicFlowStakeCohort';
+import {
+  TOXIC_FAVOURITE_WALLETS_LS_KEY,
+  TOXIC_FAVOURITES_CHANGED_EVENT,
+  readToxicFavouriteWallets,
+} from '../lib/toxicFavouriteWallets';
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
@@ -125,7 +135,7 @@ function writeOrderExpirySlot(isUpDownMarket: boolean, value: string, unit: 's' 
   }
 }
 
-/** Match `StakedLegUsdBar` flash + `sidebar-stats-flash-*` CSS. */
+/** Match `ToxicFlowStakePreview` / `StakedLegUsdBar` flash + `sidebar-stats-flash-*` CSS. */
 const TILT_EXTREME_FLASH_MS = 550;
 
 let tiltExtremeAudioCtx: AudioContext | null = null;
@@ -521,13 +531,6 @@ function orderCrossesBookFromWsLookup(
   };
 }
 
-/** (ΣY − ΣN) / (ΣY + ΣN) over gross staked USD legs — same basis as Stake mini bar (`stakedUsdYesLeg` / `stakedUsdNoLeg`). */
-function stakedGrossUsdTilt(sumYesUsd: number, sumNoUsd: number): number {
-  const t = sumYesUsd + sumNoUsd;
-  if (!Number.isFinite(sumYesUsd) || !Number.isFinite(sumNoUsd) || t <= 1e-9) return 0;
-  return (sumYesUsd - sumNoUsd) / t;
-}
-
 /** Polymarket rows may include `size_filled`; on-chain mapped trades only have `size`. */
 function tradeFilledSizeShares(trade: { size: string; size_filled?: string }): number {
   return parseFloat(trade.size_filled ?? trade.size);
@@ -852,28 +855,75 @@ export function Sidebar() {
     notifyTiltUd4h,
   ]);
 
-  /** Cohort + proven-SMS tilts: each non-zero threshold must agree on direction; 0 = skip that leg. */
+  const toxicFlowMarketId = useMemo(
+    () => ((selectedMarket?.conditionId ?? selectedMarket?.id) || '').trim(),
+    [selectedMarket?.conditionId, selectedMarket?.id],
+  );
+  const toxicFlowData = useToxicFlowMarketStream(toxicFlowMarketId, Boolean(toxicFlowMarketId));
+
+  const [toxicFavSet, setToxicFavSet] = useState(readToxicFavouriteWallets);
+  useEffect(() => {
+    const sync = () => setToxicFavSet(readToxicFavouriteWallets());
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY) sync();
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+    };
+  }, []);
+
+  const toxicStripModel = useMemo(() => {
+    const lists = toxicFlowStakeStripWalletLists(toxicFlowData, toxicFavSet);
+    if (!lists) return { lists: null, bars: null };
+    return {
+      lists,
+      bars: {
+        holders: toxicCohortStakedNetSurplusHalves(lists.holders),
+        smart: toxicCohortStakedNetSurplusHalves(lists.smart),
+        favourites: toxicCohortStakedNetSurplusHalves(lists.favourites),
+        pnlPlus: toxicCohortStakedNetSurplusHalves(lists.pnlPlus),
+      },
+    };
+  }, [toxicFlowData, toxicFavSet]);
+
+  /** Cohort + smart tilts: each non-zero threshold must agree on direction; 0 = skip that leg. */
   const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {
     if (!notifyTiltAppliesToSelectedMarket) return null;
     const topPct = notifyTopThresholdPct;
     const smartPct = notifySmartTiltPct;
     if (!(topPct > 0 || smartPct > 0)) return null;
 
+    const hb = toxicStripModel.bars?.holders;
+    let lean =
+      hb && hb.sumYUsd + hb.sumNUsd > 1e-9 ? cohortSurplusLean(hb.sumYUsd, hb.sumNUsd) : null;
+
     const cy = liveShareStats?.stakedTopHoldersCohortYesUsd;
     const cn = liveShareStats?.stakedTopHoldersCohortNoUsd;
-    let lean: number | null = null;
-    if (
-      typeof cy === 'number' &&
-      Number.isFinite(cy) &&
-      typeof cn === 'number' &&
-      Number.isFinite(cn) &&
-      cy + cn > 1e-9
-    ) {
-      lean = (cy - cn) / (cy + cn);
+    if (lean == null) {
+      if (
+        typeof cy === 'number' &&
+        Number.isFinite(cy) &&
+        typeof cn === 'number' &&
+        Number.isFinite(cn) &&
+        cy + cn > 1e-9
+      ) {
+        lean = cohortSurplusLean(cy, cn);
+      }
     }
 
+    const smBar = toxicStripModel.bars?.smart;
+    let sms =
+      smBar && smBar.sumYUsd + smBar.sumNUsd > 1e-9
+        ? cohortSurplusLean(smBar.sumYUsd, smBar.sumNUsd)
+        : null;
+
     const smsRaw = liveShareStats?.provenSMS;
-    const sms = typeof smsRaw === 'number' && Number.isFinite(smsRaw) ? smsRaw : null;
+    if (sms == null) {
+      sms = typeof smsRaw === 'number' && Number.isFinite(smsRaw) ? smsRaw : null;
+    }
 
     const topFrac = topPct / 100;
     const smartFrac = smartPct / 100;
@@ -899,6 +949,7 @@ export function Sidebar() {
     return null;
   }, [
     notifyTiltAppliesToSelectedMarket,
+    toxicStripModel,
     liveShareStats?.stakedTopHoldersCohortYesUsd,
     liveShareStats?.stakedTopHoldersCohortNoUsd,
     liveShareStats?.provenSMS,
@@ -3216,93 +3267,44 @@ export function Sidebar() {
                 <div className="tabular-nums font-bold text-yellow-300 truncate">{holdersCountDisplay}</div>
               </div>
             </div>
-            {/* Compact bias bars */}
-            {(() => {
-              const posLabel = isUpDownMarket ? 'UP' : 'YES';
-              const negLabel = isUpDownMarket ? 'DOWN' : 'NO';
-
-              const wb = sidebarStakedLegs
-                ? stakedGrossUsdTilt(sidebarStakedLegs.stakedUsdYesLeg, sidebarStakedLegs.stakedUsdNoLeg)
-                : 0;
-              const yesWR = liveShareStats?.winnerBiasYesWR ?? 0;
-              const noWR = liveShareStats?.winnerBiasNoWR ?? 0;
-              const cyTop = liveShareStats?.stakedTopHoldersCohortYesUsd;
-              const cnTop = liveShareStats?.stakedTopHoldersCohortNoUsd;
-              const hasTopCohortUsd =
-                typeof cyTop === 'number' &&
-                Number.isFinite(cyTop) &&
-                typeof cnTop === 'number' &&
-                Number.isFinite(cnTop) &&
-                cyTop + cnTop > 1e-9;
-              const wbcvUsd = hasTopCohortUsd
-                ? stakedGrossUsdTilt(cyTop, cnTop)
-                : sidebarStakedLegs
-                  ? stakedGrossUsdTilt(sidebarStakedLegs.stakedUsdYesLeg, sidebarStakedLegs.stakedUsdNoLeg)
-                  : 0;
-              const yesWRcvUsd = liveShareStats?.winnerBiasConvictionYesWR ?? 0;
-              const noWRcvUsd = liveShareStats?.winnerBiasConvictionNoWR ?? 0;
-              const sms = liveShareStats?.provenSMS ?? 0;
-
-              const winUsdTip = `Staked USD tilt (Σ|YES leg| vs Σ|NO leg|, inv×px) — same as Stake row. WR in market (all wallets): ${posLabel} ${(yesWR * 100).toFixed(0)}% / ${negLabel} ${(noWR * 100).toFixed(0)}%.`;
-              const cvUsdTip = hasTopCohortUsd
-                ? `Staked USD tilt for Top-|net| cohort (inv×px surplus halves) — same basis as Top bar. Conviction wallets (|net|/vol≥99.9%): ${posLabel} ${(yesWRcvUsd * 100).toFixed(0)}% / ${negLabel} ${(noWRcvUsd * 100).toFixed(0)}% WR.`
-                : `Staked USD tilt from all-wallet legs (Top cohort USD N/A). Conviction wallets (|net|/vol≥99.9%): ${posLabel} ${(yesWRcvUsd * 100).toFixed(0)}% / ${negLabel} ${(noWRcvUsd * 100).toFixed(0)}% WR.`;
-
-              return (
-                <div className="mt-1 space-y-0.5">
-                  <SidebarBiasMiniBar label="Win$" value={wb} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={winUsdTip} />
-                  <SidebarBiasMiniBar label="Cv$" value={wbcvUsd} leftColor="bg-emerald-400/75" rightColor="bg-orange-400/75" tooltip={cvUsdTip} />
-                  <SidebarBiasMiniBar label="Smart" value={sms} leftColor="bg-lime-500/75" rightColor="bg-red-600/75" tooltip={`Smart Money: proven wallets (>50% WR, ≥10 mkts, PNL>0) — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
-                  {sidebarStakedLegs ? (
-                    <StakedLegUsdBar
-                      sumYUsd={sidebarStakedLegs.stakedUsdYesLeg}
-                      sumNUsd={sidebarStakedLegs.stakedUsdNoLeg}
-                      compact
-                      dense
-                      compactLabel="Stake"
-                      barMode="grossLegTotals"
-                      midMarker
+            <div className="shrink-0 flex flex-wrap gap-x-2 gap-y-1.5 mt-1 pb-0.5">
+              {toxicStripModel.lists ? (
+                <>
+                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
+                    <ToxicFlowStakePreview
+                      label="Holders"
+                      wallets={toxicStripModel.lists.holders}
                       flashExtremeTilt={
-                        !!(notifyTiltAppliesToSelectedMarket && notifyFlashBg && notifyStakedGatePasses)
+                        notifyTopThresholdPct > 0 &&
+                        notifyTiltAppliesToSelectedMarket &&
+                        notifyFlashBg &&
+                        notifyStakedGatePasses
                       }
+                      extremeFlashTiltThreshold={notifyTopThresholdPct / 100}
                     />
-                  ) : null}
-                  {(() => {
-                    const cy = liveShareStats?.stakedTopHoldersCohortYesUsd;
-                    const cn = liveShareStats?.stakedTopHoldersCohortNoUsd;
-                    if (
-                      typeof cy === 'number' &&
-                      Number.isFinite(cy) &&
-                      typeof cn === 'number' &&
-                      Number.isFinite(cn) &&
-                      cy + cn > 1e-9
-                    ) {
-                      return (
-                        <StakedLegUsdBar
-                          sumYUsd={cy}
-                          sumNUsd={cn}
-                          compact
-                          dense
-                          compactLabel="Top"
-                          barMode="cohortSurplusHalves"
-                          midMarker
-                          flashExtremeTilt={
-                            !!(
-                              notifyTopThresholdPct > 0 &&
-                              notifyTiltAppliesToSelectedMarket &&
-                              notifyFlashBg &&
-                              notifyStakedGatePasses
-                            )
-                          }
-                          extremeFlashTiltThreshold={notifyTopThresholdPct / 100}
-                        />
-                      );
-                    }
-                    return null;
-                  })()}
-                </div>
-              );
-            })()}
+                  </div>
+                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
+                    <ToxicFlowStakePreview
+                      label="Smart"
+                      wallets={toxicStripModel.lists.smart}
+                      flashExtremeTilt={
+                        notifySmartTiltPct > 0 &&
+                        notifyTiltAppliesToSelectedMarket &&
+                        notifyFlashBg &&
+                        notifyStakedGatePasses
+                      }
+                      extremeFlashTiltThreshold={notifySmartTiltPct / 100}
+                    />
+                  </div>
+                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
+                    <ToxicFlowStakePreview label="Fav" wallets={toxicStripModel.lists.favourites} />
+                  </div>
+                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
+                    <ToxicFlowStakePreview label="PnL+" wallets={toxicStripModel.lists.pnlPlus} />
+                  </div>
+                </>
+              ) : null}
+            </div>
           </div>
           </div>
 

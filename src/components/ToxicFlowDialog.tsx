@@ -59,6 +59,31 @@ import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { HelperTooltip } from './HelperTooltip';
 import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
+import { ToxicFlowStakePreview } from './ToxicFlowStakePreview';
+import {
+  STAKED_NET_EPS,
+  walletInvY,
+  walletInvN,
+  walletNet,
+  walletStakeYUsd,
+  walletStakeNUsd,
+  walletStakeTotalUsd,
+  walletStakeNetSignedUsd,
+  walletStakeNetAbsUsd,
+  toxicCohortStakedNetSurplusHalves,
+  stakedNetSortKeyDesc,
+  stakedNetSortKeyAsc,
+  stakeSortKeyDesc,
+  toxicFlowWalletUniverse,
+  normalizeWinRate,
+  ledgerWinRateFracFromStored,
+  ledgerSummaryWinRateFracOrNull,
+  toxicRowMatchesSmartLedgerDefinition,
+  toxicRowWalletLedgerSummary,
+  toxicRowMissingWalletScoresLedgerEmbed,
+  toxicRowLedgerLifetimePnlNegative,
+  toxicRowSortWinRateFrac,
+} from '../lib/toxicFlowStakeCohort';
 
 interface ToxicFlowDialogProps {
   open: boolean;
@@ -86,83 +111,6 @@ const TOXIC_FLOW_TAB_DESCRIPTIONS: Record<Tab, string> = {
   topVolume: 'Cohort wallets ordered by per-wallet USDC volume on this market (ledger).',
   topTraders: 'Cohort wallets ordered by trade / fill count on this market (ledger).',
 };
-
-function walletInvY(w: WalletPosition): number {
-  return typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
-}
-function walletInvN(w: WalletPosition): number {
-  return typeof w.invNo === 'number' && Number.isFinite(w.invNo) ? w.invNo : w.netNo ?? 0;
-}
-/** Net = Inv Y − Inv N (matches holders table). */
-function walletNet(w: WalletPosition): number {
-  return walletInvY(w) - walletInvN(w);
-}
-
-function walletStakeYUsd(w: WalletPosition): number {
-  const iy = walletInvY(w);
-  const py = typeof w.priceYes === 'number' && Number.isFinite(w.priceYes) ? w.priceYes : NaN;
-  return Number.isFinite(py) ? iy * py : NaN;
-}
-function walletStakeNUsd(w: WalletPosition): number {
-  const inn = walletInvN(w);
-  const pn = typeof w.priceNo === 'number' && Number.isFinite(w.priceNo) ? w.priceNo : NaN;
-  return Number.isFinite(pn) ? inn * pn : NaN;
-}
-function walletStakeTotalUsd(w: WalletPosition): number {
-  const sy = walletStakeYUsd(w);
-  const sn = walletStakeNUsd(w);
-  if (!(Number.isFinite(sy) || Number.isFinite(sn))) return NaN;
-  return (Number.isFinite(sy) ? sy : 0) + (Number.isFinite(sn) ? sn : 0);
-}
-/** Ledger/display basis: (−inv_y×px_y) − (−inv_n×px_n) = inv_n×px_n − inv_y×px_y — matches Staked Y / Staked N columns (both shown as −(inv×px)). Σ|·| matches backend polycandles. */
-function walletStakeNetSignedUsd(w: WalletPosition): number {
-  const sy = walletStakeYUsd(w);
-  const sn = walletStakeNUsd(w);
-  if (!(Number.isFinite(sy) || Number.isFinite(sn))) return NaN;
-  const y = Number.isFinite(sy) ? sy : 0;
-  const n = Number.isFinite(sn) ? sn : 0;
-  return n - y;
-}
-/** |walletStakeNetSignedUsd| — for sorting by magnitude. */
-function walletStakeNetAbsUsd(w: WalletPosition): number {
-  const s = walletStakeNetSignedUsd(w);
-  return Number.isFinite(s) ? Math.abs(s) : NaN;
-}
-
-/** Staked-net cohort bar: Σ max(0, −signed_net) YES-lean vs Σ max(0, signed_net) NO-lean (same as `cohortSurplusHalves` bar). Signed net = `walletStakeNetSignedUsd`. */
-function toxicCohortStakedNetSurplusHalves(wallets: readonly WalletPosition[]): { sumYUsd: number; sumNUsd: number } {
-  let sumYUsd = 0;
-  let sumNUsd = 0;
-  for (const w of wallets) {
-    const s = walletStakeNetSignedUsd(w);
-    if (!Number.isFinite(s)) continue;
-    if (s <= 0) sumYUsd += Math.max(0, -s);
-    else sumNUsd += Math.max(0, s);
-  }
-  return { sumYUsd, sumNUsd };
-}
-
-/** Epsilon for treating signed staked-net as flat (table + cohort bar). */
-const STAKED_NET_EPS = 1e-6;
-
-function stakedNetSortKeyDesc(w: WalletPosition): number {
-  const v = walletStakeNetSignedUsd(w);
-  return Number.isFinite(v) ? -v : Number.NEGATIVE_INFINITY;
-}
-
-function stakedNetSortKeyAsc(w: WalletPosition): number {
-  const v = walletStakeNetSignedUsd(w);
-  return Number.isFinite(v) ? v : Number.POSITIVE_INFINITY;
-}
-
-function stakeSortKeyDesc(w: WalletPosition, leg: 'y' | 'n' | 'tot' | 'net'): number {
-  if (leg === 'net') {
-    const v = walletStakeNetAbsUsd(w);
-    return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
-  }
-  const v = leg === 'y' ? walletStakeYUsd(w) : leg === 'n' ? walletStakeNUsd(w) : walletStakeTotalUsd(w);
-  return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
-}
 
 function rPnlToneClass(v: number): string {
   if (!Number.isFinite(v) || Math.abs(v) < 1e-9) return 'text-gray-400';
@@ -374,28 +322,6 @@ function WalletScoresLedgerSummaryGrid({
   );
 }
 
-function dedupeWalletsByAddress(list: WalletPosition[]): WalletPosition[] {
-  const m = new Map<string, WalletPosition>();
-  for (const w of list) {
-    const k = (w.wallet || '').trim().toLowerCase();
-    if (!k) continue;
-    if (!m.has(k)) m.set(k, w);
-  }
-  return [...m.values()];
-}
-
-/** Deduped union of Toxic cohort rows — same wallet often appears on only one API list; Top YES/NO need full set for Staked Net sorts. */
-function toxicFlowWalletUniverse(data: ToxicFlowData | null | undefined): WalletPosition[] {
-  if (!data) return [];
-  return dedupeWalletsByAddress([
-    ...(data.topHolders ?? []),
-    ...(data.topYes ?? []),
-    ...(data.topNo ?? []),
-    ...(data.topVolume ?? []),
-    ...(data.topTraders ?? []),
-  ]);
-}
-
 function getResolvedDisplay(market: any, row?: WalletPosition): { label: string; color: string } {
   const isUpDown = /up\s+or\s+down|updown|up-or-down/i.test(`${market?.question || ''} ${market?.eventSlug || ''}`);
   const yesLabel = isUpDown ? 'UP' : 'YES';
@@ -474,25 +400,6 @@ function fillOutcomeDisplay(f: OnchainFillRow, mk: any): { text: string; tone: '
   return { text: '-', tone: 'muted' };
 }
 
-function normalizeWinRate(v: number | null | undefined): number | null {
-  if (v == null || !Number.isFinite(v)) return null;
-  // Accept either 0..1 or 0..100 from backend variants.
-  const scaled = v > 1 ? v / 100 : v;
-  return Math.max(0, Math.min(1, scaled));
-}
-
-/** Stored `wallet_scores_ledger.win_rate` → 0–1 fraction; matches WalletScoresLedgerSummaryGrid / Wallet Info Win Rate %. */
-function ledgerWinRateFracFromStored(wrRaw: number): number {
-  const wrFrac = wrRaw > 1 ? wrRaw / 100 : wrRaw;
-  return Math.max(0, Math.min(1, wrFrac));
-}
-
-/** Toxic-flow WR bar uses ledger only (`/api/wallet-summary` → wallet_scores_ledger), not toxic row `wallet_scores` join. */
-function ledgerSummaryWinRateFracOrNull(s: WalletSummary | null | undefined): number | null {
-  if (!s || typeof s.winRate !== 'number' || !Number.isFinite(s.winRate)) return null;
-  return ledgerWinRateFracFromStored(s.winRate);
-}
-
 /** Aggregate `wallet_scores_ledger.pnl` sign from embed. Address color: no row blue; then green/red by this sign when non-null; then gold / smart fallbacks when sign is neutral. */
 function ledgerAggregatePnlSign(embed: WalletScoresLedgerEmbed | null | undefined): 'pos' | 'neg' | null {
   if (embed == null) return null;
@@ -538,50 +445,6 @@ function ledgerGoldFromEmbed(embed: WalletScoresLedgerEmbed | null | undefined):
   if (ledgerWinRateFracFromStored(embed.winRate) <= 0.5) return false;
   const pnl = embed.pnl;
   return typeof pnl === 'number' && Number.isFinite(pnl) && pnl > 0;
-}
-
-/** Smart tab: batched ledger embed only; PnL > 0, WR > 50%, resolved markets > 10. */
-function toxicRowMatchesSmartLedgerDefinition(w: WalletPosition): boolean {
-  const embed = w.walletLedgerSummary;
-  if (embed == null) return false;
-  if ((embed.resolvedMarkets ?? 0) <= 10) return false;
-  if (typeof embed.winRate !== 'number' || !Number.isFinite(embed.winRate)) return false;
-  if (ledgerWinRateFracFromStored(embed.winRate) <= 0.5) return false;
-  const pnl = embed.pnl;
-  return typeof pnl === 'number' && Number.isFinite(pnl) && pnl > 0;
-}
-
-function toxicRowWalletLedgerSummary(row: WalletPosition): WalletSummary | null | undefined {
-  if (row.walletLedgerSummary === undefined) return undefined;
-  if (row.walletLedgerSummary === null) return null;
-  return walletSummaryFromLedgerEmbed(row.wallet, row.walletLedgerSummary);
-}
-
-/** No batched ledger row (`null`) or embed omitted (`undefined`) — wallet shows blue until fetched elsewhere. */
-function toxicRowMissingWalletScoresLedgerEmbed(w: WalletPosition): boolean {
-  return w.walletLedgerSummary == null;
-}
-
-/** Batched `wallet_scores_ledger.pnl` on toxic row — negative lifetime ledger PnL. */
-function toxicRowLedgerLifetimePnlNegative(w: WalletPosition): boolean {
-  const emb = w.walletLedgerSummary;
-  if (emb == null || emb === undefined) return false;
-  const p = emb.pnl;
-  return typeof p === 'number' && Number.isFinite(p) && p < 0;
-}
-
-/** Ledger WR first (matches Toxic WR bar); else wallet_scores join; else embed win_rate when ledger unset. */
-function toxicRowSortWinRateFrac(w: WalletPosition): number | null {
-  const ledgerSum = toxicRowWalletLedgerSummary(w);
-  if (ledgerSum !== undefined && ledgerSum !== null) {
-    const f = ledgerSummaryWinRateFracOrNull(ledgerSum);
-    if (f != null) return f;
-  }
-  const fromJoin = typeof w.winRate === 'number' && Number.isFinite(w.winRate) ? w.winRate : undefined;
-  if (fromJoin != null) return normalizeWinRate(fromJoin);
-  const emb = w.walletLedgerSummary;
-  if (emb && typeof emb.winRate === 'number' && Number.isFinite(emb.winRate)) return normalizeWinRate(emb.winRate);
-  return null;
 }
 
 /** Gold “smart” only if proven smart and this-market cash flow is not negative. */
@@ -1017,32 +880,6 @@ function WalletTableBodyRow({
         {`${(bias * 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}%`}
       </td>
     </tr>
-  );
-}
-
-function ToxicFlowStakePreview({ label, wallets }: { label: string; wallets: readonly WalletPosition[] }) {
-  const { sumYUsd, sumNUsd } = useMemo(() => toxicCohortStakedNetSurplusHalves(wallets ?? []), [wallets]);
-  const total = sumYUsd + sumNUsd;
-  return (
-    <div className="min-w-0 space-y-0.5">
-      {total <= 1e-9 ? (
-        <>
-          <div className="text-[8px] text-gray-500 truncate" title={label}>
-            {label}
-          </div>
-          <div className="h-[5px] rounded-full bg-gray-800/90" title="No staked net in cohort" />
-        </>
-      ) : (
-        <StakedLegUsdBar
-          sumYUsd={sumYUsd}
-          sumNUsd={sumNUsd}
-          compact
-          dense
-          compactLabel={label}
-          barMode="cohortSurplusHalves"
-        />
-      )}
-    </div>
   );
 }
 

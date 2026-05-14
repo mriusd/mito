@@ -71,6 +71,21 @@ interface ToxicFlowDialogProps {
 
 type Tab = 'topHolders' | 'smart' | 'favourites' | 'winners' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
 
+const TOXIC_FLOW_TAB_DESCRIPTIONS: Record<Tab, string> = {
+  topHolders:
+    'Server cohort ranked by largest |net YES−NO|; this view re-sorts by staked net. Same wallet/position columns as other tabs.',
+  smart:
+    'Cohort wallets whose batched wallet_scores_ledger shows PnL > 0, win rate > 50%, and resolved markets > 10.',
+  favourites: 'Addresses you starred that appear in this market’s toxic-flow cohort.',
+  winners:
+    'Cohort wallets with a batched ledger row and lifetime ledger PnL not below zero; ordered by staked net then win rate.',
+  topYes:
+    'Cohort where signed staked net leans YES (USDC YES leg vs NO); strongest YES lean first.',
+  topNo: 'Cohort where signed staked net leans NO; strongest NO lean first.',
+  topVolume: 'Cohort wallets ordered by per-wallet USDC volume on this market (ledger).',
+  topTraders: 'Cohort wallets ordered by trade / fill count on this market (ledger).',
+};
+
 function walletInvY(w: WalletPosition): number {
   return typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
 }
@@ -779,17 +794,16 @@ const WalletLink = forwardRef<
   const lifetimeHue = lifetimeLedgerPnlHue(ledgerEmbed, summary);
   const ledgerAbsent = walletScoresLedgerRowAbsent(ledgerEmbed, summary);
 
+  const smartGoldAddr = !ledgerAbsent && (ledgerGold || isSmart);
   const addrClass = ledgerAbsent
     ? 'text-blue-400'
-    : lifetimeHue === 'pos'
-      ? 'text-green-400'
-      : lifetimeHue === 'neg'
-        ? 'text-red-400'
-        : ledgerGold
-          ? 'text-amber-400'
-          : isSmart
-            ? 'text-yellow-400'
-            : 'text-zinc-400';
+    : smartGoldAddr
+      ? 'text-amber-400'
+      : lifetimeHue === 'pos'
+        ? 'text-green-400'
+        : lifetimeHue === 'neg'
+          ? 'text-red-400'
+          : 'text-zinc-400';
   const btnTitle = (() => {
     const parts: string[] = [];
     if (ledgerAbsent) parts.push('No wallet_scores_ledger row');
@@ -2007,6 +2021,9 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                     </button>
                   ))}
                 </div>
+                <p className="text-[10px] text-gray-500 leading-snug shrink-0 px-0.5 border-b border-gray-700/80 pb-2">
+                  {TOXIC_FLOW_TAB_DESCRIPTIONS[tab]}
+                </p>
 
                 <div className="flex flex-col flex-1 min-h-0 overflow-hidden min-w-0">
                   {tab === 'topHolders' && (

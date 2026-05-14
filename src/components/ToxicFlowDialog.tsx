@@ -15,10 +15,8 @@ import {
   TrendingUp,
   TrendingDown,
   Users,
-  BarChart3,
   AlertTriangle,
   Crown,
-  ShieldAlert,
   UsersRound,
   ExternalLink,
   Copy,
@@ -199,22 +197,6 @@ function walletRowClassForStakedNet(shadeRows: boolean, stakeNetSigned: number):
     return `${border} bg-green-900/25 hover:bg-green-900/40`;
   }
   return `${border} bg-red-900/25 hover:bg-red-900/40`;
-}
-
-/** Staked Net USD (inv_n×px_n − inv_y×px_y); negative ⇒ YES-heavy, positive ⇒ NO-heavy — cohort table parity. */
-function manipulationStakedUsdExposureSide(w: WalletPosition | undefined): 'yes' | 'no' | null {
-  if (!w) return null;
-  const s = walletStakeNetSignedUsd(w);
-  if (!Number.isFinite(s)) return null;
-  if (s < -STAKED_NET_EPS) return 'yes';
-  if (s > STAKED_NET_EPS) return 'no';
-  return null;
-}
-
-function manipulationSignalsRowToneClass(side: 'yes' | 'no' | null): string {
-  if (side === 'yes') return 'rounded-md px-2 -mx-0.5 border border-green-800/55 bg-green-950/35';
-  if (side === 'no') return 'rounded-md px-2 -mx-0.5 border border-red-800/55 bg-red-950/35';
-  return '';
 }
 
 function LedgerSummaryField({
@@ -519,12 +501,12 @@ function walletScoresLedgerRowAbsent(
   return false;
 }
 
-/** Gold (amber): ledger WR > 60%, ≥10 resolved markets, aggregate ledger PnL > 0 (`wallet_scores_ledger`). */
+/** Gold (amber): ledger WR > 50%, ≥10 resolved markets, aggregate ledger PnL > 0 (`wallet_scores_ledger`). */
 function ledgerGoldFromEmbed(embed: WalletScoresLedgerEmbed | null | undefined): boolean {
   if (embed == null) return false;
   if ((embed.resolvedMarkets ?? 0) < 10) return false;
   if (typeof embed.winRate !== 'number' || !Number.isFinite(embed.winRate)) return false;
-  if (ledgerWinRateFracFromStored(embed.winRate) <= 0.6) return false;
+  if (ledgerWinRateFracFromStored(embed.winRate) <= 0.5) return false;
   const pnl = embed.pnl;
   return typeof pnl === 'number' && Number.isFinite(pnl) && pnl > 0;
 }
@@ -533,6 +515,11 @@ function toxicRowWalletLedgerSummary(row: WalletPosition): WalletSummary | null 
   if (row.walletLedgerSummary === undefined) return undefined;
   if (row.walletLedgerSummary === null) return null;
   return walletSummaryFromLedgerEmbed(row.wallet, row.walletLedgerSummary);
+}
+
+/** No batched ledger row (`null`) or embed omitted (`undefined`) — wallet shows blue until fetched elsewhere. */
+function toxicRowMissingWalletScoresLedgerEmbed(w: WalletPosition): boolean {
+  return w.walletLedgerSummary == null;
 }
 
 /** Batched `wallet_scores_ledger.pnl` on toxic row — negative lifetime ledger PnL. */
@@ -800,9 +787,9 @@ const WalletLink = forwardRef<
       else if (lifetimeHue === 'neg') parts.push('Lifetime ledger PnL < 0');
       else parts.push('Lifetime ledger PnL flat (~0)');
     }
-    if (ledgerGold && isSmart) parts.push('Ledger WR >60%, ≥10 resolved, ledger PnL >0; proven smart wallet');
+    if (ledgerGold && isSmart) parts.push('Ledger WR >50%, ≥10 resolved, ledger PnL >0; proven smart wallet');
     else {
-      if (ledgerGold) parts.push('Ledger WR >60%, ≥10 resolved markets, ledger PnL >0');
+      if (ledgerGold) parts.push('Ledger WR >50%, ≥10 resolved markets, ledger PnL >0');
       if (isSmart) parts.push('Proven smart wallet');
     }
     return parts.length ? parts.join(' · ') : undefined;
@@ -1671,16 +1658,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     };
   }, []);
 
-  const redFlagLedgerMap = useMemo(() => {
-    const m: Record<string, WalletSummary | null> = {};
-    for (const f of data?.redFlags ?? []) {
-      const k = String(f.wallet || '').trim().toLowerCase();
-      if (!k || f.walletLedgerSummary === undefined) continue;
-      m[k] = f.walletLedgerSummary === null ? null : walletSummaryFromLedgerEmbed(f.wallet!, f.walletLedgerSummary);
-    }
-    return m;
-  }, [data?.redFlags]);
-
   const load = useCallback(async () => {
     if (!marketId) return;
     setLoading(true);
@@ -1836,7 +1813,9 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   }, [data, toxicFollowSet]);
 
   const winnersTabWallets = useMemo(() => {
-    const arr = toxicFlowWalletUniverse(data).filter((w) => !toxicRowLedgerLifetimePnlNegative(w));
+    const arr = toxicFlowWalletUniverse(data).filter(
+      (w) => !toxicRowMissingWalletScoresLedgerEmbed(w) && !toxicRowLedgerLifetimePnlNegative(w),
+    );
     return [...arr].sort((a, b) => {
       const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
       if (d !== 0) return d;
@@ -1863,7 +1842,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     { key: 'topHolders', label: 'Top Holders', icon: <Crown size={11} /> },
     { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
     { key: 'favourites', label: 'Favourites', icon: <Star size={11} /> },
-    { key: 'winners', label: 'Winners', icon: <Trophy size={11} /> },
+    { key: 'winners', label: 'Pofiters', icon: <Trophy size={11} /> },
     { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
     { key: 'topNo', label: 'Top NO', icon: <TrendingDown size={11} /> },
     { key: 'topVolume', label: 'Top Volume', icon: <Users size={11} /> },
@@ -1969,175 +1948,36 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                 </div>
               </div>
 
-              {/* Manipulation Red Flags */}
-              {(() => {
-                const rf = data.redFlags ?? [];
-                const highFlags = rf.filter(f => f.level === 'high');
-                const medFlags = rf.filter(f => f.level === 'medium');
-                const netByWallet: Record<string, number> = {};
-                const smartSet = new Set<string>();
-                const addWallets = (arr?: WalletPosition[] | null) => {
-                  for (const w of arr || []) {
-                    if (!w?.wallet) continue;
-                    const k = w.wallet.toLowerCase();
-                    netByWallet[k] = w.net || 0;
-                    if (isSmartGold(w)) smartSet.add(k);
-                  }
-                };
-                addWallets(topHoldersWallets);
-                addWallets(topYesWallets);
-                addWallets(topNoWallets);
-                addWallets(data.topVolume);
-                addWallets(data.topTraders);
-                const rowByWallet: Record<string, WalletPosition> = {};
-                for (const w of toxicFlowWalletUniverse(data)) {
-                  const k = (w.wallet || '').trim().toLowerCase();
-                  if (k && !rowByWallet[k]) rowByWallet[k] = w;
-                }
-                const hasConcentration = data.concentration > 0.5;
-                const totalFlags = highFlags.length + medFlags.length + (hasConcentration ? 1 : 0);
-
-                return (
-                  <div className={`rounded p-3 ${highFlags.length > 0 ? 'bg-red-950/40 border border-red-800/40' : 'bg-gray-900'}`}>
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <ShieldAlert size={12} className={highFlags.length > 0 ? 'text-red-400' : 'text-gray-500'} />
-                      <span className={`text-[10px] font-bold ${highFlags.length > 0 ? 'text-red-400' : 'text-gray-500'}`}>
-                        Manipulation Signals
-                        {totalFlags > 0 && <span className="ml-1 text-[9px] rounded bg-red-500/30 px-1 py-0.5">{totalFlags} active</span>}
-                      </span>
-                    </div>
-                    <div className="space-y-1.5">
-                      {highFlags.map((f, i) => {
-                        const wlk = f.wallet?.toLowerCase();
-                        const lf = wlk ? ledgerSummaryWinRateFracOrNull(redFlagLedgerMap[wlk] ?? null) : null;
-                        const showWinBar = lf != null;
-                        const exp = wlk ? manipulationStakedUsdExposureSide(rowByWallet[wlk]) : null;
-                        const rowToneCls = manipulationSignalsRowToneClass(exp);
-                        return (
-                          <div key={`h${i}`} className={`flex items-start gap-1.5 text-[10px] ${rowToneCls}`}>
-                            <AlertTriangle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
-                            <span className="text-gray-200">
-                              {f.wallet ? (
-                                <>
-                                  {showWinBar ? (
-                                    <span className="inline-flex flex-col gap-0.5 align-baseline mr-0.5">
-                                      <WalletLink
-                                        wallet={f.wallet}
-                                        netShares={netByWallet[f.wallet.toLowerCase()]}
-                                        onOpenWallet={openWalletDialog}
-                                        isSmart={smartSet.has(f.wallet.toLowerCase())}
-                                        ledgerEmbed={f.walletLedgerSummary}
-                                        ledgerGold={ledgerGoldFromEmbed(f.walletLedgerSummary)}
-                                      />
-                                      <WinRateBottomBar winRate={lf!} />
-                                    </span>
-                                  ) : (
-                                    <WalletLink
-                                      wallet={f.wallet}
-                                      netShares={netByWallet[f.wallet.toLowerCase()]}
-                                      onOpenWallet={openWalletDialog}
-                                      isSmart={smartSet.has(f.wallet.toLowerCase())}
-                                      ledgerEmbed={f.walletLedgerSummary}
-                                      ledgerGold={ledgerGoldFromEmbed(f.walletLedgerSummary)}
-                                    />
-                                  )}{' '}
-                                  {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
-                                </>
-                              ) : (
-                                f.detail
-                              )}
-                            </span>
-                          </div>
-                        );
-                      })}
-                      {medFlags.map((f, i) => {
-                        const wlk = f.wallet?.toLowerCase();
-                        const lf = wlk ? ledgerSummaryWinRateFracOrNull(redFlagLedgerMap[wlk] ?? null) : null;
-                        const showWinBar = lf != null;
-                        const exp = wlk ? manipulationStakedUsdExposureSide(rowByWallet[wlk]) : null;
-                        const rowToneCls = manipulationSignalsRowToneClass(exp);
-                        return (
-                          <div key={`m${i}`} className={`flex items-start gap-1.5 text-[10px] ${rowToneCls}`}>
-                            <AlertTriangle size={12} className="text-yellow-400 flex-shrink-0 mt-0.5" />
-                            <span className="text-gray-300">
-                              {f.wallet ? (
-                                <>
-                                  {showWinBar ? (
-                                    <span className="inline-flex flex-col gap-0.5 align-baseline mr-0.5">
-                                      <WalletLink
-                                        wallet={f.wallet}
-                                        netShares={netByWallet[f.wallet.toLowerCase()]}
-                                        onOpenWallet={openWalletDialog}
-                                        isSmart={smartSet.has(f.wallet.toLowerCase())}
-                                        ledgerEmbed={f.walletLedgerSummary}
-                                        ledgerGold={ledgerGoldFromEmbed(f.walletLedgerSummary)}
-                                      />
-                                      <WinRateBottomBar winRate={lf!} />
-                                    </span>
-                                  ) : (
-                                    <WalletLink
-                                      wallet={f.wallet}
-                                      netShares={netByWallet[f.wallet.toLowerCase()]}
-                                      onOpenWallet={openWalletDialog}
-                                      isSmart={smartSet.has(f.wallet.toLowerCase())}
-                                      ledgerEmbed={f.walletLedgerSummary}
-                                      ledgerGold={ledgerGoldFromEmbed(f.walletLedgerSummary)}
-                                    />
-                                  )}{' '}
-                                  {f.detail.replace(/^0x[a-fA-F0-9]{4}\u2026[a-fA-F0-9]{4}\s*/, '')}
-                                </>
-                              ) : (
-                                f.detail
-                              )}
-                            </span>
-                          </div>
-                        );
-                      })}
-                      {hasConcentration && (
-                        <div className="flex items-start gap-1.5 text-[10px]">
-                          <AlertTriangle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
-                          <span className="text-gray-200">Top 5 wallets control {(data.concentration * 100).toFixed(0)}% of volume — potential whale manipulation</span>
-                    </div>
+              {data.totalWallets === 0 && (
+                <div className="rounded p-3 bg-gray-900 space-y-1.5 text-[10px] text-gray-500">
+                  {data.polygonWssConfigured === false && (
+                    <p className="text-amber-400/95">
+                      On-chain collection is off: polycandles needs <span className="font-mono">POLYGON_WSS_URL</span> (Polygon JSON-RPC WebSocket). Check server logs and{' '}
+                      <span className="font-mono">/api/onchain-status</span>.
+                    </p>
                   )}
-                  {data.totalWallets === 0 && (
-                        <div className="space-y-1.5 text-[10px] text-gray-500">
-                          {data.polygonWssConfigured === false && (
-                            <p className="text-amber-400/95">
-                              On-chain collection is off: polycandles needs <span className="font-mono">POLYGON_WSS_URL</span> (Polygon JSON-RPC WebSocket). Check server logs and{' '}
-                              <span className="font-mono">/api/onchain-status</span>.
-                            </p>
-                          )}
-                          {data.polygonWssConfigured === true && (data.orderFilledEventsProcessed ?? 0) === 0 && (
-                            <p>
-                              Polygon WSS is configured but no <span className="font-mono">OrderFilled</span> events have been processed yet — verify the endpoint, subscription, and that trading is happening on tracked contracts.
-                            </p>
-                          )}
-                          {data.polygonWssConfigured === true &&
-                            (data.orderFilledEventsProcessed ?? 0) > 0 &&
-                            (data.walletMarketTradesForMarket ?? 0) === 0 && (
-                            <p>
-                              Events are ingesting globally, but no ledger trades are linked to this market in <span className="font-mono">wallet_fill_ledger</span> yet. Wait for the next Gamma sync (token map refreshes after each refresh), or confirm this market&apos;s CLOB token IDs are in the DB.
-                            </p>
-                          )}
-                          {(data.walletMarketTradesForMarket ?? 0) > 0 && (
-                            <p className="text-gray-400">
-                              {data.walletMarketTradesForMarket} trade(s) rolled up for this market; wallet rollups only appear after fills are matched to token IDs. If tables stay empty, check <span className="font-mono">wallet_market_positions</span> and server logs.
-                            </p>
-                          )}
-                          <p>
-                            Holders aggregates <span className="font-mono">wallet_market_positions</span> (ledger) for this market (not the CLOB orderbook). Data persists across restarts and backfills missed blocks automatically.
-                          </p>
-                    </div>
+                  {data.polygonWssConfigured === true && (data.orderFilledEventsProcessed ?? 0) === 0 && (
+                    <p>
+                      Polygon WSS is configured but no <span className="font-mono">OrderFilled</span> events have been processed yet — verify the endpoint, subscription, and that trading is happening on tracked contracts.
+                    </p>
                   )}
-                      {data.totalWallets > 0 && totalFlags === 0 && (
-                    <div className="flex items-center gap-1.5 text-[10px]">
-                          <span className="text-green-400">No manipulation signals detected.</span>
-                    </div>
+                  {data.polygonWssConfigured === true &&
+                    (data.orderFilledEventsProcessed ?? 0) > 0 &&
+                    (data.walletMarketTradesForMarket ?? 0) === 0 && (
+                    <p>
+                      Events are ingesting globally, but no ledger trades are linked to this market in <span className="font-mono">wallet_fill_ledger</span> yet. Wait for the next Gamma sync (token map refreshes after each refresh), or confirm this market&apos;s CLOB token IDs are in the DB.
+                    </p>
                   )}
+                  {(data.walletMarketTradesForMarket ?? 0) > 0 && (
+                    <p className="text-gray-400">
+                      {data.walletMarketTradesForMarket} trade(s) rolled up for this market; wallet rollups only appear after fills are matched to token IDs. If tables stay empty, check <span className="font-mono">wallet_market_positions</span> and server logs.
+                    </p>
+                  )}
+                  <p>
+                    Holders aggregates <span className="font-mono">wallet_market_positions</span> (ledger) for this market (not the CLOB orderbook). Data persists across restarts and backfills missed blocks automatically.
+                  </p>
                 </div>
-              </div>
-                );
-              })()}
+              )}
               </div>
 
               <div className="flex flex-col flex-1 min-h-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 gap-2">
@@ -2185,7 +2025,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                   {tab === 'winners' && (
                     <WalletTable
                       wallets={winnersTabWallets}
-                      label="winners"
+                      label="pofiters"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
                     />

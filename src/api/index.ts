@@ -487,7 +487,7 @@ export interface WalletPosition {
   wins?: number;
   losses?: number;
   flat?: number;
-  /** Proven smart wallet (≥60% WR, ≥10 markets, PNL>0). */
+  /** Proven smart wallet (>50% WR, ≥10 markets, PNL>0). */
   isSmart?: boolean;
   /** Full ledger row (wallet_scores_ledger), batched with toxic-flow. */
   walletLedgerSummary?: WalletScoresLedgerEmbed | null;

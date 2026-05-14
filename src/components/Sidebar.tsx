@@ -3181,7 +3181,7 @@ export function Sidebar() {
                 <div className="mt-1 space-y-0.5">
                   <SidebarBiasMiniBar label="Win$" value={wb} leftColor="bg-cyan-400/75" rightColor="bg-pink-400/75" tooltip={winUsdTip} />
                   <SidebarBiasMiniBar label="Cv$" value={wbcvUsd} leftColor="bg-emerald-400/75" rightColor="bg-orange-400/75" tooltip={cvUsdTip} />
-                  <SidebarBiasMiniBar label="Smart" value={sms} leftColor="bg-lime-500/75" rightColor="bg-red-600/75" tooltip={`Smart Money: proven wallets (≥60% WR, ≥10 mkts, PNL>0) — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
+                  <SidebarBiasMiniBar label="Smart" value={sms} leftColor="bg-lime-500/75" rightColor="bg-red-600/75" tooltip={`Smart Money: proven wallets (>50% WR, ≥10 mkts, PNL>0) — ${sms > 0 ? posLabel : negLabel} leaning ${(Math.abs(sms) * 100).toFixed(0)}%`} />
                   {sidebarStakedLegs ? (
                     <StakedLegUsdBar
                       sumYUsd={sidebarStakedLegs.stakedUsdYesLeg}

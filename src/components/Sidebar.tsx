@@ -495,6 +495,32 @@ function maxOrderUsdViolationMessage(maxUsd: number, valueUsd: number): string |
   return `Max order size ${lim} USD. To increase the limit go to settings menu in the header.`;
 }
 
+/** Market-crossing check for `tokenId` using `marketLookup` best bid/ask (WS-updated), not the rendered ladder. */
+function orderCrossesBookFromWsLookup(
+  lookup: Record<string, Market>,
+  tokenId: string,
+  side: 'BUY' | 'SELL',
+  orderPriceCents: number,
+): { crosses: boolean; bestCounterpartyCents: number | null } {
+  const row = lookup[String(tokenId || '').trim()];
+  const bestBidDec = typeof row?.bestBid === 'number' && Number.isFinite(row.bestBid) ? row.bestBid : null;
+  const bestAskDec = typeof row?.bestAsk === 'number' && Number.isFinite(row.bestAsk) ? row.bestAsk : null;
+  const bestBidCents = bestBidDec != null && bestBidDec > 0 ? bestBidDec * 100 : null;
+  const bestAskCents = bestAskDec != null && bestAskDec > 0 ? bestAskDec * 100 : null;
+  if (side === 'BUY') {
+    if (bestAskCents == null) return { crosses: false, bestCounterpartyCents: null };
+    return {
+      crosses: orderPriceCents >= bestAskCents,
+      bestCounterpartyCents: bestAskCents,
+    };
+  }
+  if (bestBidCents == null) return { crosses: false, bestCounterpartyCents: null };
+  return {
+    crosses: orderPriceCents <= bestBidCents,
+    bestCounterpartyCents: bestBidCents,
+  };
+}
+
 /** (ΣY − ΣN) / (ΣY + ΣN) over gross staked USD legs — same basis as Stake mini bar (`stakedUsdYesLeg` / `stakedUsdNoLeg`). */
 function stakedGrossUsdTilt(sumYesUsd: number, sumNoUsd: number): number {
   const t = sumYesUsd + sumNoUsd;
@@ -1945,14 +1971,14 @@ export function Sidebar() {
       return;
     }
     const orderPriceCents = parseFloat(orderPrice);
-    const bestBidCents = displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
-    const bestAskCents = displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
-    const crossesBook =
-      (orderSide === 'SELL' && bestBidCents !== null && orderPriceCents <= bestBidCents) ||
-      (orderSide === 'BUY' && bestAskCents !== null && orderPriceCents >= bestAskCents);
+    const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
+      marketLookup,
+      tokenId,
+      orderSide,
+      orderPriceCents,
+    );
     if (crossesBook) {
-      const bestPrice = orderSide === 'SELL' ? bestBidCents : bestAskCents;
-      const confirmed = await requestCrossingConfirm(bestPrice ?? 0);
+      const confirmed = await requestCrossingConfirm(bestCounterpartyCents ?? 0);
       if (!confirmed) return;
     }
 
@@ -2028,8 +2054,6 @@ export function Sidebar() {
 
   const handleCustomButtonClick = async (btn: CustomSidebarButton) => {
     if (!selectedMarket) return;
-    const displayBids = sidebarBookRef.current?.displayBids ?? [];
-    const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
     const tokenId = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1];
 
     if (!tokenId) return;
@@ -2061,14 +2085,14 @@ export function Sidebar() {
       return;
     }
 
-    const bestBidCents = displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
-    const bestAskCents = displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
-    const crossesBook =
-      (btn.side === 'SELL' && bestBidCents !== null && btn.priceCents <= bestBidCents) ||
-      (btn.side === 'BUY' && bestAskCents !== null && btn.priceCents >= bestAskCents);
+    const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
+      marketLookup,
+      tokenId,
+      btn.side,
+      btn.priceCents,
+    );
     if (crossesBook) {
-      const bestPrice = btn.side === 'SELL' ? bestBidCents : bestAskCents;
-      const confirmed = await requestCrossingConfirm(bestPrice ?? 0);
+      const confirmed = await requestCrossingConfirm(bestCounterpartyCents ?? 0);
       if (!confirmed) return;
     }
 
@@ -2119,8 +2143,6 @@ export function Sidebar() {
   };
 
   const handleReplaceOrder = async (orderId: string, newPriceCents: number, tokenId: string, side: 'BUY' | 'SELL', size: number) => {
-    const displayBids = sidebarBookRef.current?.displayBids ?? [];
-    const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
     const newPrice = newPriceCents / 100;
 
     if (!newPrice || newPrice <= 0 || newPrice >= 1 || !size) { setEditingOrderId(null); return; }
@@ -2131,14 +2153,14 @@ export function Sidebar() {
       setEditingOrderId(null);
       return;
     }
-    const bestBidCents = displayBids.length > 0 ? parseFloat(displayBids[0].price) * 100 : null;
-    const bestAskCents = displayAsks.length > 0 ? parseFloat(displayAsks[0].price) * 100 : null;
-    const crossesBook =
-      (side === 'SELL' && bestBidCents !== null && newPriceCents <= bestBidCents) ||
-      (side === 'BUY' && bestAskCents !== null && newPriceCents >= bestAskCents);
+    const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
+      marketLookup,
+      tokenId,
+      side,
+      newPriceCents,
+    );
     if (crossesBook) {
-      const bestPrice = side === 'SELL' ? bestBidCents : bestAskCents;
-      const confirmed = await requestCrossingConfirm(bestPrice ?? 0);
+      const confirmed = await requestCrossingConfirm(bestCounterpartyCents ?? 0);
       if (!confirmed) {
         setEditingOrderId(null);
         return;
@@ -3955,18 +3977,6 @@ export function Sidebar() {
                             step={1}
                             value={Math.round(parseFloat(editingOrderPrice) || 0)}
                             onChange={(e) => setEditingOrderPrice(e.target.value)}
-                            onMouseUp={() => {
-                              const newP = parseFloat(editingOrderPrice);
-                              if (newP && newP !== parseFloat((price * 100).toFixed(1))) {
-                                handleReplaceOrder(order.id, newP, order.asset_id || order.token_id || '', order.side as 'BUY' | 'SELL', remainingSize);
-                              }
-                            }}
-                            onTouchEnd={() => {
-                              const newP = parseFloat(editingOrderPrice);
-                              if (newP && newP !== parseFloat((price * 100).toFixed(1))) {
-                                handleReplaceOrder(order.id, newP, order.asset_id || order.token_id || '', order.side as 'BUY' | 'SELL', remainingSize);
-                              }
-                            }}
                             className="flex-1 h-1 accent-blue-500 cursor-pointer"
                           />
                           <span className="text-[9px] text-gray-500 w-5">99</span>

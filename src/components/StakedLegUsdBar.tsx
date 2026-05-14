@@ -40,25 +40,40 @@ export function StakedLegUsdBar({
   midMarker?: boolean;
   compactOmitLeftLabel?: boolean;
 }) {
-  const total = sumYUsd + sumNUsd;
-  if (total <= 1e-9) return null;
-  const pctY = (sumYUsd / total) * 100;
-  const pctN = (sumNUsd / total) * 100;
+  const finiteY = typeof sumYUsd === 'number' && Number.isFinite(sumYUsd);
+  const finiteN = typeof sumNUsd === 'number' && Number.isFinite(sumNUsd);
+  const hasValues = finiteY && finiteN;
+  const total = hasValues ? sumYUsd + sumNUsd : 0;
+  /** No colored split — missing inputs or negligible total. */
+  const neutralBar = !hasValues || total <= 1e-9;
+  const displayTotal = neutralBar ? 0 : total;
+  const pctY = neutralBar ? 0 : (sumYUsd / displayTotal) * 100;
+  const pctN = neutralBar ? 0 : (sumNUsd / displayTotal) * 100;
   /** Signed tilt: gross mode ≈ (ΣY−ΣN)/(ΣY+ΣN); cohort surplus mode → ±100% when one-sided. */
-  const lean = (sumYUsd - sumNUsd) / total;
-  const netAbs = Math.abs(sumYUsd - sumNUsd);
+  const lean = neutralBar ? 0 : (sumYUsd - sumNUsd) / displayTotal;
+  const netAbs = neutralBar ? 0 : Math.abs(sumYUsd - sumNUsd);
   const flashFrac =
     typeof extremeFlashTiltThreshold === 'number' && Number.isFinite(extremeFlashTiltThreshold)
       ? Math.min(0.999, Math.max(0.01, extremeFlashTiltThreshold))
       : 0.3;
-  const flashY = flashExtremeTilt && Number.isFinite(lean) && lean >= flashFrac;
-  const flashN = flashExtremeTilt && Number.isFinite(lean) && lean <= -flashFrac;
-  const tip =
-    barMode === 'grossLegTotals'
-      ? `YES leg ${pctY.toFixed(1)}% ($${fmtUsd(sumYUsd)}) · NO leg ${pctN.toFixed(1)}% ($${fmtUsd(sumNUsd)}) · Σ legs $${fmtUsd(total)} · Staked pill |ΣY−ΣN| $${fmtUsd(netAbs)}`
-      : `Splits per wallet inv×px: Σ max(0, signed net) greenside + Σ max(0, −signed) redside equals Σ|net| for this cohort only ($${fmtUsd(total)}). Header Staked is ‖Σ ‖Y-leg‖ − Σ ‖N-leg‖‖ over all wallets—different pooling; neither caps the other.`;
+  const flashY = !neutralBar && flashExtremeTilt && Number.isFinite(lean) && lean >= flashFrac;
+  const flashN = !neutralBar && flashExtremeTilt && Number.isFinite(lean) && lean <= -flashFrac;
+  const tip = neutralBar
+    ? barMode === 'grossLegTotals'
+      ? 'No gross leg totals to chart'
+      : 'No cohort staked-net split to chart'
+    : barMode === 'grossLegTotals'
+      ? `YES leg ${pctY.toFixed(1)}% ($${fmtUsd(sumYUsd)}) · NO leg ${pctN.toFixed(1)}% ($${fmtUsd(sumNUsd)}) · Σ legs $${fmtUsd(displayTotal)} · Staked pill |ΣY−ΣN| $${fmtUsd(netAbs)}`
+      : `Splits per wallet inv×px: Σ max(0, signed net) greenside + Σ max(0, −signed) redside equals Σ|net| for this cohort only ($${fmtUsd(displayTotal)}). Header Staked is ‖Σ ‖Y-leg‖ − Σ ‖N-leg‖‖ over all wallets—different pooling; neither caps the other.`;
 
-  const bar = (
+  const bar = neutralBar ? (
+    <div
+      className={`relative ${compact ? 'h-[5px]' : 'h-2'} rounded-full overflow-hidden flex w-full bg-gray-600/90`}
+      title={tip}
+    >
+      {midMarker ? <SidebarBarMidMarker /> : null}
+    </div>
+  ) : (
     <div
       className={`relative ${compact ? 'h-[5px]' : 'h-2'} bg-gray-700 rounded-full overflow-hidden flex w-full`}
       title={tip}
@@ -77,16 +92,29 @@ export function StakedLegUsdBar({
 
   if (compact) {
     const leanPct = lean * 100;
-    const leanColor = lean > 0.01 ? 'text-green-400' : lean < -0.01 ? 'text-red-400' : 'text-gray-500';
+    const leanColor = neutralBar
+      ? 'text-gray-500'
+      : lean > 0.01
+        ? 'text-green-400'
+        : lean < -0.01
+          ? 'text-red-400'
+          : 'text-gray-500';
     const leanTitle =
-      barMode === 'grossLegTotals'
+      neutralBar ? 'No split'
+      : barMode === 'grossLegTotals'
         ? `(ΣY − ΣN) / (ΣY + ΣN) tilt: ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}% · |ΣY−ΣN| $${fmtUsd(netAbs)}`
-        : `(Σ splits YES − Σ splits NO)/(Σ splits): ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}%; center $${fmtUsd(total)} = Σ|per-wallet inv×px net| in cohort—not header Staked.`;
+        : `(Σ splits YES − Σ splits NO)/(Σ splits): ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}%; center $${fmtUsd(displayTotal)} = Σ|per-wallet inv×px net| in cohort—not header Staked.`;
     const leftLbl = compactLabel ?? 'Stake';
     const yFoot =
-      barMode === 'grossLegTotals' ? `Σ|YES| $${fmtUsd(sumYUsd)}` : `Y surplus $${fmtUsd(sumYUsd)}`;
+      neutralBar ? '—'
+      : barMode === 'grossLegTotals'
+        ? `Σ|YES| $${fmtUsd(sumYUsd)}`
+        : `Y surplus $${fmtUsd(sumYUsd)}`;
     const nFoot =
-      barMode === 'grossLegTotals' ? `Σ|NO| $${fmtUsd(sumNUsd)}` : `N surplus $${fmtUsd(sumNUsd)}`;
+      neutralBar ? '—'
+      : barMode === 'grossLegTotals'
+        ? `Σ|NO| $${fmtUsd(sumNUsd)}`
+        : `N surplus $${fmtUsd(sumNUsd)}`;
     return (
       <div className="min-w-0 space-y-0.5">
         <div className={`flex items-center gap-1 min-w-0 ${dense ? '' : ''}`}>
@@ -97,8 +125,12 @@ export function StakedLegUsdBar({
           )}
           <div className="flex-1 min-w-0">{bar}</div>
           <span className={`text-[8px] font-bold w-[28px] shrink-0 tabular-nums text-right ${leanColor}`} title={leanTitle}>
-            {leanPct > 0 ? '+' : ''}
-            {leanPct.toFixed(0)}%
+            {neutralBar ? '—' : (
+              <>
+                {leanPct > 0 ? '+' : ''}
+                {leanPct.toFixed(0)}%
+              </>
+            )}
           </span>
         </div>
         {compactLegUsdFooter ? (
@@ -108,11 +140,11 @@ export function StakedLegUsdBar({
               className="flex flex-1 justify-between gap-2 min-w-0 text-[8px] tabular-nums leading-tight"
               title={`${yFoot} · ${nFoot}`}
             >
-              <span className="text-green-400 font-medium truncate">
-                Y ${fmtUsd(sumYUsd)}
+              <span className={`font-medium truncate ${neutralBar ? 'text-gray-500' : 'text-green-400'}`}>
+                {neutralBar ? '—' : `Y $${fmtUsd(sumYUsd)}`}
               </span>
-              <span className="text-red-400 font-medium truncate text-right">
-                N ${fmtUsd(sumNUsd)}
+              <span className={`font-medium truncate text-right ${neutralBar ? 'text-gray-500' : 'text-red-400'}`}>
+                {neutralBar ? '—' : `N $${fmtUsd(sumNUsd)}`}
               </span>
             </div>
             <span className="w-[28px] shrink-0" aria-hidden />
@@ -122,21 +154,32 @@ export function StakedLegUsdBar({
     );
   }
 
-  const yLbl = barMode === 'grossLegTotals' ? `Y $${fmtUsd(sumYUsd)}` : `Y net $${fmtUsd(sumYUsd)}`;
-  const nLbl = barMode === 'grossLegTotals' ? `N $${fmtUsd(sumNUsd)}` : `N net $${fmtUsd(sumNUsd)}`;
-  const midTitle =
-    barMode === 'grossLegTotals' ? `Σ legs $${fmtUsd(total)} · |ΣY−ΣN| $${fmtUsd(netAbs)}` : `Σᵢ|inv×px netᵢ| = $${fmtUsd(total)} (Top Holders only)`;
+  const yLbl =
+    neutralBar ? '—' : barMode === 'grossLegTotals' ? `Y $${fmtUsd(sumYUsd)}` : `Y net $${fmtUsd(sumYUsd)}`;
+  const nLbl =
+    neutralBar ? '—' : barMode === 'grossLegTotals' ? `N $${fmtUsd(sumNUsd)}` : `N net $${fmtUsd(sumNUsd)}`;
+  const midTitle = neutralBar
+    ? tip
+    : barMode === 'grossLegTotals'
+      ? `Σ legs $${fmtUsd(displayTotal)} · |ΣY−ΣN| $${fmtUsd(netAbs)}`
+      : `Σᵢ|inv×px netᵢ| = $${fmtUsd(displayTotal)} (Top Holders only)`;
 
   return (
     <div className={dense ? 'shrink-0' : 'mb-2 shrink-0'}>
       <div className="flex justify-between items-center gap-1 text-[9px] text-gray-500 mb-0.5 px-0.5">
-        <span className="text-green-400 tabular-nums font-medium" title={barMode === 'grossLegTotals' ? 'Σ|YES leg|' : 'Σ max(0, per-wallet net)'}>
+        <span
+          className={`tabular-nums font-medium ${neutralBar ? 'text-gray-500' : 'text-green-400'}`}
+          title={neutralBar ? tip : barMode === 'grossLegTotals' ? 'Σ|YES leg|' : 'Σ max(0, per-wallet net)'}
+        >
           {yLbl}
         </span>
-        <span className="text-gray-400 tabular-nums font-medium px-1" title={midTitle}>
-          ${fmtUsd(total)}
+        <span className={`tabular-nums font-medium px-1 ${neutralBar ? 'text-gray-500' : 'text-gray-400'}`} title={midTitle}>
+          {neutralBar ? '—' : `$${fmtUsd(displayTotal)}`}
         </span>
-        <span className="text-red-400 tabular-nums font-medium" title={barMode === 'grossLegTotals' ? 'Σ|NO leg|' : 'Σ max(0, −per-wallet net)'}>
+        <span
+          className={`tabular-nums font-medium ${neutralBar ? 'text-gray-500' : 'text-red-400'}`}
+          title={neutralBar ? tip : barMode === 'grossLegTotals' ? 'Σ|NO leg|' : 'Σ max(0, −per-wallet net)'}
+        >
           {nLbl}
         </span>
       </div>

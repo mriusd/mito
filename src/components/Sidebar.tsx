@@ -271,9 +271,12 @@ function pitchMulFromNotifyFreqSlider(slider0to100: number): number {
 
 const SIDEBAR_NOTIFY_PLAY_SOUND_KEY = 'polybot-sidebar-notify-play-sound';
 const SIDEBAR_NOTIFY_FLASH_BG_KEY = 'polybot-sidebar-notify-flash-bg';
-const SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_KEY = 'polybot-sidebar-notify-top-threshold-pct';
+/** Legacy TOP tilt — migrated into holder tilt on read. */
+const SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_LEGACY_KEY = 'polybot-sidebar-notify-top-threshold-pct';
+const SIDEBAR_NOTIFY_HOLDER_TILT_PCT_KEY = 'polybot-sidebar-notify-holder-tilt-pct';
 const SIDEBAR_NOTIFY_SMART_TILT_PCT_KEY = 'polybot-sidebar-notify-smart-tilt-pct';
-const SIDEBAR_NOTIFY_BS_TILT_PCT_KEY = 'polybot-sidebar-notify-bs-tilt-pct';
+const SIDEBAR_NOTIFY_FAVOURITE_TILT_PCT_KEY = 'polybot-sidebar-notify-favourite-tilt-pct';
+const SIDEBAR_NOTIFY_PROFIT_TILT_PCT_KEY = 'polybot-sidebar-notify-profit-tilt-pct';
 const SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY = 'polybot-sidebar-notify-staked-min-usd';
 const SIDEBAR_NOTIFY_SOUND_FREQ_KEY = 'polybot-sidebar-notify-sound-freq';
 const SIDEBAR_NOTIFY_RING_TIME_S_KEY = 'polybot-sidebar-notify-ring-time-s';
@@ -417,12 +420,17 @@ function readNotifyFlashBg(): boolean {
     return true;
   }
 }
-function readNotifyTopThresholdPct(): number {
+function readNotifyHolderTiltPct(): number {
   try {
-    const raw = localStorage.getItem(SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_KEY);
-    const n = parseFloat(raw ?? '30');
-    if (!Number.isFinite(n)) return 30;
-    return Math.min(99, Math.max(0, Math.round(n)));
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_HOLDER_TILT_PCT_KEY);
+    if (raw != null && raw !== '') {
+      const n = parseFloat(raw);
+      if (Number.isFinite(n)) return Math.min(99, Math.max(0, Math.round(n)));
+    }
+    const legacy = localStorage.getItem(SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_LEGACY_KEY);
+    const n = parseFloat(legacy ?? '');
+    if (Number.isFinite(n)) return Math.min(99, Math.max(0, Math.round(n)));
+    return 30;
   } catch {
     return 30;
   }
@@ -437,14 +445,24 @@ function readNotifySmartTiltPct(): number {
     return 30;
   }
 }
-function readNotifyBsTiltPct(): number {
+function readNotifyFavouriteTiltPct(): number {
   try {
-    const raw = localStorage.getItem(SIDEBAR_NOTIFY_BS_TILT_PCT_KEY);
-    const n = parseFloat(raw ?? '20');
-    if (!Number.isFinite(n)) return 20;
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_FAVOURITE_TILT_PCT_KEY);
+    const n = parseFloat(raw ?? '0');
+    if (!Number.isFinite(n)) return 0;
     return Math.min(99, Math.max(0, Math.round(n)));
   } catch {
-    return 20;
+    return 0;
+  }
+}
+function readNotifyProfiterTiltPct(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_PROFIT_TILT_PCT_KEY);
+    const n = parseFloat(raw ?? '30');
+    if (!Number.isFinite(n)) return 30;
+    return Math.min(99, Math.max(0, Math.round(n)));
+  } catch {
+    return 30;
   }
 }
 function readNotifyStakedMinUsd(): number {
@@ -687,9 +705,10 @@ export function Sidebar() {
   }, [selectedMarket, marketLookup]);
   const [notifyPlaySound, setNotifyPlaySound] = useState(readNotifyPlaySound);
   const [notifyFlashBg, setNotifyFlashBg] = useState(readNotifyFlashBg);
-  const [notifyTopThresholdPct, setNotifyTopThresholdPct] = useState(readNotifyTopThresholdPct);
+  const [notifyHolderTiltPct, setNotifyHolderTiltPct] = useState(readNotifyHolderTiltPct);
   const [notifySmartTiltPct, setNotifySmartTiltPct] = useState(readNotifySmartTiltPct);
-  const [notifyBsTiltPct, setNotifyBsTiltPct] = useState(readNotifyBsTiltPct);
+  const [notifyFavouriteTiltPct, setNotifyFavouriteTiltPct] = useState(readNotifyFavouriteTiltPct);
+  const [notifyProfiterTiltPct, setNotifyProfiterTiltPct] = useState(readNotifyProfiterTiltPct);
   const [notifyStakedMinUsd, setNotifyStakedMinUsd] = useState(readNotifyStakedMinUsd);
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
   const [notifyRingTimeS, setNotifyRingTimeS] = useState(readNotifyRingTimeS);
@@ -721,11 +740,11 @@ export function Sidebar() {
   }, [notifyFlashBg]);
   useEffect(() => {
     try {
-      localStorage.setItem(SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_KEY, String(notifyTopThresholdPct));
+      localStorage.setItem(SIDEBAR_NOTIFY_HOLDER_TILT_PCT_KEY, String(notifyHolderTiltPct));
     } catch {
       /* */
     }
-  }, [notifyTopThresholdPct]);
+  }, [notifyHolderTiltPct]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_SMART_TILT_PCT_KEY, String(notifySmartTiltPct));
@@ -735,11 +754,18 @@ export function Sidebar() {
   }, [notifySmartTiltPct]);
   useEffect(() => {
     try {
-      localStorage.setItem(SIDEBAR_NOTIFY_BS_TILT_PCT_KEY, String(notifyBsTiltPct));
+      localStorage.setItem(SIDEBAR_NOTIFY_FAVOURITE_TILT_PCT_KEY, String(notifyFavouriteTiltPct));
     } catch {
       /* */
     }
-  }, [notifyBsTiltPct]);
+  }, [notifyFavouriteTiltPct]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_PROFIT_TILT_PCT_KEY, String(notifyProfiterTiltPct));
+    } catch {
+      /* */
+    }
+  }, [notifyProfiterTiltPct]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY, String(notifyStakedMinUsd));
@@ -900,72 +926,39 @@ export function Sidebar() {
     };
   }, [toxicFlowData, toxicFavSet]);
 
-  /** Cohort + smart tilts: each non-zero threshold must agree on direction; 0 = skip that leg. */
+  /** Active cohort thresholds (Toxic strip bars): every non-zero pct must agree on direction vs its lean. */
   const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {
     if (!notifyTiltAppliesToSelectedMarket) return null;
-    const topPct = notifyTopThresholdPct;
-    const smartPct = notifySmartTiltPct;
-    if (!(topPct > 0 || smartPct > 0)) return null;
-
-    const hb = toxicStripModel.bars?.holders;
-    let lean =
-      hb && hb.sumYUsd + hb.sumNUsd > 1e-9 ? cohortSurplusLean(hb.sumYUsd, hb.sumNUsd) : null;
-
-    const cy = liveShareStats?.stakedTopHoldersCohortYesUsd;
-    const cn = liveShareStats?.stakedTopHoldersCohortNoUsd;
-    if (lean == null) {
-      if (
-        typeof cy === 'number' &&
-        Number.isFinite(cy) &&
-        typeof cn === 'number' &&
-        Number.isFinite(cn) &&
-        cy + cn > 1e-9
-      ) {
-        lean = cohortSurplusLean(cy, cn);
-      }
-    }
-
-    const smBar = toxicStripModel.bars?.smart;
-    let sms =
-      smBar && smBar.sumYUsd + smBar.sumNUsd > 1e-9
-        ? cohortSurplusLean(smBar.sumYUsd, smBar.sumNUsd)
-        : null;
-
-    const smsRaw = liveShareStats?.provenSMS;
-    if (sms == null) {
-      sms = typeof smsRaw === 'number' && Number.isFinite(smsRaw) ? smsRaw : null;
-    }
-
-    const topFrac = topPct / 100;
-    const smartFrac = smartPct / 100;
+    const bars = toxicStripModel.bars;
+    const barLean = (bar: { sumYUsd: number; sumNUsd: number } | undefined): number | null => {
+      if (!bar || !(bar.sumYUsd + bar.sumNUsd > 1e-9)) return null;
+      return cohortSurplusLean(bar.sumYUsd, bar.sumNUsd);
+    };
+    const legs = [
+      { pct: notifyHolderTiltPct, lean: barLean(bars?.holders) },
+      { pct: notifySmartTiltPct, lean: barLean(bars?.smart) },
+      { pct: notifyFavouriteTiltPct, lean: barLean(bars?.favourites) },
+      { pct: notifyProfiterTiltPct, lean: barLean(bars?.pnlPlus) },
+    ].filter((x) => x.pct > 0);
+    if (legs.length === 0) return null;
 
     let greenOk = true;
-    if (topPct > 0) {
-      if (lean == null || lean < topFrac) greenOk = false;
-    }
-    if (smartPct > 0) {
-      if (sms == null || sms < smartFrac) greenOk = false;
-    }
-
     let redOk = true;
-    if (topPct > 0) {
-      if (lean == null || lean > -topFrac) redOk = false;
+    for (const { pct, lean } of legs) {
+      const frac = pct / 100;
+      if (lean == null || lean < frac) greenOk = false;
+      if (lean == null || lean > -frac) redOk = false;
     }
-    if (smartPct > 0) {
-      if (sms == null || sms > -smartFrac) redOk = false;
-    }
-
     if (greenOk && !redOk) return 'green';
     if (redOk && !greenOk) return 'red';
     return null;
   }, [
     notifyTiltAppliesToSelectedMarket,
     toxicStripModel,
-    liveShareStats?.stakedTopHoldersCohortYesUsd,
-    liveShareStats?.stakedTopHoldersCohortNoUsd,
-    liveShareStats?.provenSMS,
-    notifyTopThresholdPct,
+    notifyHolderTiltPct,
     notifySmartTiltPct,
+    notifyFavouriteTiltPct,
+    notifyProfiterTiltPct,
   ]);
 
   useEffect(() => {
@@ -1756,48 +1749,16 @@ export function Sidebar() {
     upDownRemaining,
   ]);
 
-  /** YES mid (WS) minus model YES (¢) — same Δ as Prob progress bar under Target/Math/Current. */
-  const bsProbMidDeltaCents = useMemo((): number | null => {
-    const strip = sidebarSpotStrip;
-    if (!strip || strip.pastExpiry || strip.yesMathCents == null) return null;
-    const m = strip.yesMathCents;
-    const yesTid = (selectedMarket?.clobTokenIds?.[0] || '').trim();
-    const wsRow = yesTid ? marketLookup[yesTid] : undefined;
-    const bb = wsRow?.bestBid;
-    const ba = wsRow?.bestAsk;
-    const tb = bb != null && Number.isFinite(bb) ? bb * 100 : NaN;
-    const ta = ba != null && Number.isFinite(ba) ? ba * 100 : NaN;
-    let yesMidCents: number | null = null;
-    if (Number.isFinite(tb) && Number.isFinite(ta)) yesMidCents = (tb + ta) / 2;
-    else if (Number.isFinite(tb)) yesMidCents = tb;
-    else if (Number.isFinite(ta)) yesMidCents = ta;
-    const yMidOk = yesMidCents != null ? Math.min(100, Math.max(0, yesMidCents)) : null;
-    if (yMidOk == null) return null;
-    return yMidOk - m;
-  }, [sidebarSpotStrip, selectedMarket?.clobTokenIds, marketLookup, topOfBookDigest]);
-
-  /** Cohort tilt (Top + optional Smart) then optional BS Δ alignment. */
-  const tiltNotifyExtremeAfterBsGate = useMemo((): 'green' | 'red' | null => {
-    const extreme = topBarExtremeBgFlash;
-    if (extreme === null) return null;
-    if (notifyBsTiltPct === 0) return extreme;
-    const d = bsProbMidDeltaCents;
-    if (d == null || !Number.isFinite(d)) return null;
-    const t = notifyBsTiltPct;
-    if (extreme === 'green') return d > t ? 'green' : null;
-    if (extreme === 'red') return d < -t ? 'red' : null;
-    return null;
-  }, [topBarExtremeBgFlash, bsProbMidDeltaCents, notifyBsTiltPct]);
-
+  /** Cohort signals only (Black–Scholes Δ gate removed). */
   const effectiveSidebarBgFlash = useMemo((): 'green' | 'red' | null => {
     if (!notifyFlashBg || !notifyStakedGatePasses) return null;
-    return tiltNotifyExtremeAfterBsGate;
-  }, [notifyFlashBg, notifyStakedGatePasses, tiltNotifyExtremeAfterBsGate]);
+    return topBarExtremeBgFlash;
+  }, [notifyFlashBg, notifyStakedGatePasses, topBarExtremeBgFlash]);
 
   useEffect(() => {
-    if (!tiltNotifyExtremeAfterBsGate || !notifyPlaySound || !notifyStakedGatePasses) return;
+    if (!topBarExtremeBgFlash || !notifyPlaySound || !notifyStakedGatePasses) return;
 
-    const k = tiltNotifyExtremeAfterBsGate;
+    const k = topBarExtremeBgFlash;
     const mul = notifySoundPitchMul;
     const rt = notifyRingTimeS;
     const maxCents = notifySoundMaxPriceCents;
@@ -1835,7 +1796,7 @@ export function Sidebar() {
     const id = window.setInterval(tick, repeatMs);
     return () => clearInterval(id);
   }, [
-    tiltNotifyExtremeAfterBsGate,
+    topBarExtremeBgFlash,
     notifyPlaySound,
     notifyStakedGatePasses,
     notifySoundPitchMul,
@@ -2480,7 +2441,7 @@ export function Sidebar() {
           }}
         >
           <div
-            className="w-full max-w-sm mx-4 rounded-lg border border-gray-600 bg-gray-800 p-4"
+            className="w-full max-w-md mx-4 rounded-lg border border-gray-600 bg-gray-800 p-4 max-h-[90vh] overflow-y-auto"
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
@@ -2671,59 +2632,127 @@ export function Sidebar() {
                 />
                 <span>Flash Background</span>
               </label>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400 shrink-0">Top Tilt (%)</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={99}
-                  step={1}
-                  className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-20 tabular-nums"
-                  value={notifyTopThresholdPct}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (!Number.isFinite(v)) return;
-                    setNotifyTopThresholdPct(Math.min(99, Math.max(0, Math.round(v))));
-                  }}
-                />
+              <div className="border border-gray-600/80 rounded-md p-2 space-y-3 bg-gray-900/40">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Toxic cohort tilts</div>
+                <p className="text-[10px] text-gray-500 m-0 leading-snug">
+                  Same surplus-half bars as the sidebar. Alarm only when every cohort with threshold &gt; 0 meets it and all point the same side. 0 = skip that cohort.
+                </p>
+                {!toxicStripModel.lists ? (
+                  <p className="text-[10px] text-gray-500 m-0 leading-snug">
+                    Toxic Flow snapshot not loaded — neutral bars below.
+                  </p>
+                ) : null}
+                  <div className="space-y-2">
+                    <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-[11px] font-medium text-gray-300 shrink-0">Holder Tilt (%)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={99}
+                          step={1}
+                          className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs"
+                          value={notifyHolderTiltPct}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (!Number.isFinite(v)) return;
+                            setNotifyHolderTiltPct(Math.min(99, Math.max(0, Math.round(v))));
+                          }}
+                        />
+                      </div>
+                      <ToxicFlowStakePreview
+                        layout="stacked"
+                        helpText={TOXIC_SIDEBAR_STRIP_HELP.holders}
+                        label="Holders"
+                        wallets={toxicStripModel.lists?.holders ?? []}
+                      />
+                      <p className="text-[10px] text-gray-500 m-0 leading-snug">
+                        Largest-|net| holder cohort. Default threshold 30. 0 = ignore.
+                      </p>
+                    </div>
+                    <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-[11px] font-medium text-gray-300 shrink-0">Smart Tilt (%)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={99}
+                          step={1}
+                          className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs"
+                          value={notifySmartTiltPct}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (!Number.isFinite(v)) return;
+                            setNotifySmartTiltPct(Math.min(99, Math.max(0, Math.round(v))));
+                          }}
+                        />
+                      </div>
+                      <ToxicFlowStakePreview
+                        layout="stacked"
+                        helpText={TOXIC_SIDEBAR_STRIP_HELP.smart}
+                        label="Smart"
+                        wallets={toxicStripModel.lists?.smart ?? []}
+                      />
+                      <p className="text-[10px] text-gray-500 m-0 leading-snug">
+                        Ledger “smart money” cohort. Default 30. 0 = ignore.
+                      </p>
+                    </div>
+                    <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-[11px] font-medium text-gray-300 shrink-0">Favourite Tilt (%)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={99}
+                          step={1}
+                          className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs"
+                          value={notifyFavouriteTiltPct}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (!Number.isFinite(v)) return;
+                            setNotifyFavouriteTiltPct(Math.min(99, Math.max(0, Math.round(v))));
+                          }}
+                        />
+                      </div>
+                      <ToxicFlowStakePreview
+                        layout="stacked"
+                        helpText={TOXIC_SIDEBAR_STRIP_HELP.fav}
+                        label="Fav"
+                        wallets={toxicStripModel.lists?.favourites ?? []}
+                      />
+                      <p className="text-[10px] text-gray-500 m-0 leading-snug">
+                        Starred toxic favourites in this market. Default 0. 0 = ignore.
+                      </p>
+                    </div>
+                    <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-[11px] font-medium text-gray-300 shrink-0">Profiter Tilt (%)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={99}
+                          step={1}
+                          className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs"
+                          value={notifyProfiterTiltPct}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (!Number.isFinite(v)) return;
+                            setNotifyProfiterTiltPct(Math.min(99, Math.max(0, Math.round(v))));
+                          }}
+                        />
+                      </div>
+                      <ToxicFlowStakePreview
+                        layout="stacked"
+                        helpText={TOXIC_SIDEBAR_STRIP_HELP.pnlPlus}
+                        label="PnL+"
+                        wallets={toxicStripModel.lists?.pnlPlus ?? []}
+                      />
+                      <p className="text-[10px] text-gray-500 m-0 leading-snug">
+                        Non-negative ledger PnL cohort (PnL+). Default 30. 0 = ignore.
+                      </p>
+                    </div>
+                  </div>
               </div>
-              <p className="text-[10px] text-gray-500">Top cohort USD lean (same bar as sidebar Top). 0 = ignore.</p>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400 shrink-0">Smart Tilt (%)</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={99}
-                  step={1}
-                  className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-20 tabular-nums"
-                  value={notifySmartTiltPct}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (!Number.isFinite(v)) return;
-                    setNotifySmartTiltPct(Math.min(99, Math.max(0, Math.round(v))));
-                  }}
-                />
-              </div>
-              <p className="text-[10px] text-gray-500">Proven smart-money USD lean (Mini Smart row). 0 = ignore. At least Top or Smart must be non-zero to arm tilt.</p>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400 shrink-0">BS Tilt (¢)</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={99}
-                  step={1}
-                  className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-20 tabular-nums"
-                  value={notifyBsTiltPct}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (!Number.isFinite(v)) return;
-                    setNotifyBsTiltPct(Math.min(99, Math.max(0, Math.round(v))));
-                  }}
-                />
-              </div>
-              <p className="text-[10px] text-gray-500 m-0">
-                Prob-bar Δ (YES mid − math) versus signal. Green → Δ &gt; threshold; red → Δ &lt; −threshold. 0 = skip.
-              </p>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-gray-400 shrink-0">Staked min (USDC)</span>
                 <input
@@ -3279,26 +3308,24 @@ export function Sidebar() {
               </div>
             </div>
             <div className="mt-1 w-full min-w-0 flex flex-col gap-y-2 pb-0.5">
-              {toxicStripModel.lists ? (
-                <>
                   <ToxicFlowStakePreview
                     layout="stacked"
                     helpText={TOXIC_SIDEBAR_STRIP_HELP.holders}
                     label="Holders"
-                    wallets={toxicStripModel.lists.holders}
+                    wallets={toxicStripModel.lists?.holders ?? []}
                     flashExtremeTilt={
-                      notifyTopThresholdPct > 0 &&
+                      notifyHolderTiltPct > 0 &&
                       notifyTiltAppliesToSelectedMarket &&
                       notifyFlashBg &&
                       notifyStakedGatePasses
                     }
-                    extremeFlashTiltThreshold={notifyTopThresholdPct / 100}
+                    extremeFlashTiltThreshold={notifyHolderTiltPct / 100}
                   />
                   <ToxicFlowStakePreview
                     layout="stacked"
                     helpText={TOXIC_SIDEBAR_STRIP_HELP.smart}
                     label="Smart"
-                    wallets={toxicStripModel.lists.smart}
+                    wallets={toxicStripModel.lists?.smart ?? []}
                     flashExtremeTilt={
                       notifySmartTiltPct > 0 &&
                       notifyTiltAppliesToSelectedMarket &&
@@ -3311,16 +3338,28 @@ export function Sidebar() {
                     layout="stacked"
                     helpText={TOXIC_SIDEBAR_STRIP_HELP.fav}
                     label="Fav"
-                    wallets={toxicStripModel.lists.favourites}
+                    wallets={toxicStripModel.lists?.favourites ?? []}
+                    flashExtremeTilt={
+                      notifyFavouriteTiltPct > 0 &&
+                      notifyTiltAppliesToSelectedMarket &&
+                      notifyFlashBg &&
+                      notifyStakedGatePasses
+                    }
+                    extremeFlashTiltThreshold={notifyFavouriteTiltPct / 100}
                   />
                   <ToxicFlowStakePreview
                     layout="stacked"
                     helpText={TOXIC_SIDEBAR_STRIP_HELP.pnlPlus}
                     label="PnL+"
-                    wallets={toxicStripModel.lists.pnlPlus}
+                    wallets={toxicStripModel.lists?.pnlPlus ?? []}
+                    flashExtremeTilt={
+                      notifyProfiterTiltPct > 0 &&
+                      notifyTiltAppliesToSelectedMarket &&
+                      notifyFlashBg &&
+                      notifyStakedGatePasses
+                    }
+                    extremeFlashTiltThreshold={notifyProfiterTiltPct / 100}
                   />
-                </>
-              ) : null}
             </div>
           </div>
           </div>

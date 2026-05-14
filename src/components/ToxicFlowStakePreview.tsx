@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import type { WalletPosition } from '../api';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
-import { SidebarBarMidMarker } from './SidebarBarMidMarker';
 import { HelpTooltip } from './HelpTooltip';
 import { HelpCircle } from 'lucide-react';
 import { toxicCohortStakedNetSurplusHalves } from '../lib/toxicFlowStakeCohort';
@@ -23,6 +22,7 @@ export function ToxicFlowStakePreview({
 }) {
   const { sumYUsd, sumNUsd } = useMemo(() => toxicCohortStakedNetSurplusHalves(wallets ?? []), [wallets]);
   const total = sumYUsd + sumNUsd;
+  const hasSplit = Number.isFinite(sumYUsd) && Number.isFinite(sumNUsd) && total > 1e-9;
 
   const helpIcon =
     layout === 'stacked' && helpText != null && helpText !== '' ? (
@@ -31,61 +31,32 @@ export function ToxicFlowStakePreview({
       </HelpTooltip>
     ) : null;
 
+  const innerBar = (
+    <StakedLegUsdBar
+      sumYUsd={hasSplit ? sumYUsd : 0}
+      sumNUsd={hasSplit ? sumNUsd : 0}
+      compact
+      dense
+      compactLabel={layout === 'inline' ? label : ''}
+      compactOmitLeftLabel={layout === 'stacked'}
+      barMode="cohortSurplusHalves"
+      midMarker
+      flashExtremeTilt={!!flashExtremeTilt && hasSplit}
+      extremeFlashTiltThreshold={extremeFlashTiltThreshold ?? 0.3}
+    />
+  );
+
   if (layout === 'stacked') {
     return (
-      <div className="w-full min-w-0 space-y-1">
-        <div className="flex items-center gap-1 min-w-0">
-          <span className="text-[8px] uppercase tracking-wide text-gray-500 truncate" title={label}>
-            {label}
-          </span>
+      <div className="w-full min-w-0 flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-0.5 w-[54px] min-w-[54px]" title={label}>
+          <span className="text-[8px] uppercase tracking-wide text-gray-500 truncate min-w-0">{label}</span>
           {helpIcon}
         </div>
-        {total <= 1e-9 ? (
-          <div className="relative h-[5px] rounded-full bg-gray-800/90 overflow-hidden w-full" title="No staked net in cohort">
-            <SidebarBarMidMarker />
-          </div>
-        ) : (
-          <StakedLegUsdBar
-            sumYUsd={sumYUsd}
-            sumNUsd={sumNUsd}
-            compact
-            dense
-            compactLabel={label}
-            compactOmitLeftLabel
-            barMode="cohortSurplusHalves"
-            midMarker
-            flashExtremeTilt={!!flashExtremeTilt}
-            extremeFlashTiltThreshold={extremeFlashTiltThreshold ?? 0.3}
-          />
-        )}
+        <div className="flex-1 min-w-0">{innerBar}</div>
       </div>
     );
   }
 
-  return (
-    <div className="min-w-0 space-y-0.5">
-      {total <= 1e-9 ? (
-        <>
-          <div className="text-[8px] text-gray-500 truncate" title={label}>
-            {label}
-          </div>
-          <div className="relative h-[5px] rounded-full bg-gray-800/90 overflow-hidden" title="No staked net in cohort">
-            <SidebarBarMidMarker />
-          </div>
-        </>
-      ) : (
-        <StakedLegUsdBar
-          sumYUsd={sumYUsd}
-          sumNUsd={sumNUsd}
-          compact
-          dense
-          compactLabel={label}
-          barMode="cohortSurplusHalves"
-          midMarker
-          flashExtremeTilt={!!flashExtremeTilt}
-          extremeFlashTiltThreshold={extremeFlashTiltThreshold ?? 0.3}
-        />
-      )}
-    </div>
-  );
+  return <div className="min-w-0 space-y-0.5">{innerBar}</div>;
 }

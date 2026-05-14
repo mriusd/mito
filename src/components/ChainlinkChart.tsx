@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { API_BASE, WS_BASE } from '../lib/env';
 
 interface Candle {
@@ -40,7 +40,7 @@ const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 
 
 const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
 
-/** Annualized σ from close-to-close log returns (sample stdev), last `candles` rows. Needs ≥3 candles (2+ returns). */
+/** Annualized σ from close-to-close log returns (sample stdev). Pass chronological candles only (e.g. completed bars). Needs ≥3 bars (≥2 returns). */
 function annualizedVolPctFromCandles(candles: Candle[], barMs: number): number | null {
   if (candles.length < 3 || !Number.isFinite(barMs) || barMs <= 0) return null;
   const closes = candles.map((c) => c.c).filter((x) => Number.isFinite(x) && x > 0);
@@ -73,12 +73,6 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
   intervalRef.current = interval;
   const binanceSymbol = `${asset.toUpperCase()}USDT`;
   const binanceStreamSymbol = `${asset.toLowerCase()}usdt`;
-
-  const chartVolAnnualPct = useMemo(() => {
-    const all = Array.from(candleMapRef.current.values()).sort((a, b) => a.time - b.time);
-    const last10 = all.slice(-10);
-    return annualizedVolPctFromCandles(last10, candleMs);
-  }, [ready, tick, candleMs]);
 
   // Binance spot: REST + kline WS
   useEffect(() => {
@@ -397,6 +391,9 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
 
     // Last price label
     const lastC = candles[candles.length - 1].c;
+    const bucketNow = Math.floor(Date.now() / candleMs) * candleMs;
+    const fiveClosed = allCandles.filter((c) => c.time < bucketNow).slice(-5);
+    const sigma5Pct = annualizedVolPctFromCandles(fiveClosed, candleMs);
     const lastY = toY(lastC);
     const accentRgb = chainlinkCandles ? '96,165,250' : '0,210,210';
     const accentHex = chainlinkCandles ? '#93c5fd' : '#00d2d2';
@@ -413,6 +410,15 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     ctx.fillText('$' + lastC.toFixed(decimals), chartLeft - 2, lastY);
+
+    // σ annualized from last 5 completed candles (excludes unfinished current bar), bottom-left
+    if (sigma5Pct != null && Number.isFinite(sigma5Pct)) {
+      ctx.font = 'bold 9px monospace';
+      ctx.fillStyle = 'rgba(255, 216, 120, 0.95)';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(`σ ${sigma5Pct.toFixed(1)}%`, chartLeft + 5, chartBot - 3);
+    }
   }, [ready, tick, targetPrice, interval, candleMs, chainlinkCandles]);
 
   useEffect(() => {
@@ -426,23 +432,15 @@ export function ChainlinkChart({ asset, intervalContext, targetPrice, chainlinkC
           {asset}{' '}
           {chainlinkCandles ? (
             <span
-              className="px-0.5 rounded-sm text-[8px] font-bold bg-blue-600 text-white leading-tight"
+              className="px-0.5 rounded-sm text-[7px] font-bold bg-blue-600 text-white leading-tight"
               title="Polycandles Chainlink OHLC (synthetic chainlink_*usd)"
             >
-              CL
+              CHAINLINK
             </span>
           ) : (
             <span className="px-0.5 rounded-sm text-[8px] font-bold bg-yellow-400 text-black leading-tight">BINANCE</span>
           )}
           <span className="text-gray-500">{interval}</span>
-          {chartVolAnnualPct != null ? (
-            <span
-              className="px-1.5 py-0 text-[10px] font-bold text-yellow-400 border border-yellow-400/50 rounded tabular-nums"
-              title="Annualized volatility (close log returns, sample σ), from the last 10 candles shown in this chart"
-            >
-              σ{Math.round(chartVolAnnualPct)}%
-            </span>
-          ) : null}
         </span>
       </div>
       <canvas

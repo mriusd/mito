@@ -3120,7 +3120,7 @@ export function Sidebar() {
             const currentBadge =
               row.mode === 'updown'
                 ? {
-                    label: row.currentSource === 'chainlink' ? 'CHAINLINK' : 'BINANCE',
+                    label: row.currentSource === 'chainlink' ? 'CL' : 'BINANCE',
                     className: row.currentSource === 'chainlink' ? 'bg-blue-600 text-white' : 'bg-yellow-400 text-black',
                     title:
                       row.currentSource === 'chainlink'
@@ -3186,33 +3186,33 @@ export function Sidebar() {
                   </div>
 
                   {/* Row 2 — primary values */}
-                  <div className="flex items-center justify-start min-h-[17px] min-w-0">
-                    <span className="text-xs font-bold tabular-nums text-white truncate max-w-full">
+                  <div className="flex items-center justify-start min-h-[16px] min-w-0">
+                    <span className="text-[11px] font-bold tabular-nums text-white truncate max-w-full">
                       {row.targetDisplay}
                     </span>
                   </div>
-                  <div className="flex items-center justify-center min-h-[17px] min-w-0 text-xs font-bold tabular-nums px-px">
+                  <div className="flex items-center justify-center min-h-[16px] min-w-0 text-[11px] font-bold tabular-nums px-px">
                     {row.pastExpiry ? (
-                      <span className="text-gray-500 tabular-nums text-xs" title="Time machine ahead of expiration">
+                      <span className="text-gray-500 tabular-nums text-[11px]" title="Time machine ahead of expiration">
                         &gt;⏱
                       </span>
                     ) : row.mathCents !== null ? (
                       <button
                         type="button"
-                        className={`inline-flex max-w-full items-center justify-center gap-0.5 whitespace-nowrap rounded-none border-0 bg-transparent p-0 text-xs font-bold font-sans tabular-nums shadow-none outline-none ring-0 ${bsColor} cursor-pointer hover:underline focus-visible:ring-1 focus-visible:ring-amber-500/60`}
+                        className={`inline-flex max-w-full items-center justify-center gap-0.5 whitespace-nowrap rounded-none border-0 bg-transparent p-0 text-[11px] font-bold font-sans tabular-nums shadow-none outline-none ring-0 ${bsColor} cursor-pointer hover:underline focus-visible:ring-1 focus-visible:ring-amber-500/60`}
                         onClick={() => setOrderPrice(row.mathCents!.toFixed(1))}
                       >
-                        <CirclePercent className="h-3 w-3 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
+                        <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
                         <span>{row.mathCents.toFixed(1)}</span>
                       </button>
                     ) : (
-                      <span className="text-gray-600 text-xs">—</span>
+                      <span className="text-gray-600 text-[11px]">—</span>
                     )}
                   </div>
-                  <div className="flex items-center justify-end min-h-[17px] min-w-0">
+                  <div className="flex items-center justify-end min-h-[16px] min-w-0">
                     <span
                       ref={sidebarSpotCurrentPriceRef}
-                      className="text-xs font-bold tabular-nums text-white truncate max-w-full whitespace-nowrap"
+                      className="text-[11px] font-bold tabular-nums text-white truncate max-w-full whitespace-nowrap"
                     >
                       {row.currentPrice
                         ? `$${row.currentPrice.toLocaleString(undefined, { minimumFractionDigits: row.priceDec, maximumFractionDigits: row.priceDec })}`

@@ -360,7 +360,7 @@ input[type="range"].vol-slider::-moz-range-thumb {
   background-color: rgba(59, 130, 246, 0.12) !important;
 }
 
-/* Toxic sidebar: collapsed expand strip — two faint gray pulses on full strip every 5s (not the border). */
+/* Toxic sidebar: collapsed expand strip — two faint gray pulses on full strip every 10s (not the border). */
 @keyframes sidebar-expand-handle-idle-flash {
   0%,
   74%,
@@ -368,13 +368,13 @@ input[type="range"].vol-slider::-moz-range-thumb {
     background-color: transparent;
   }
   77% {
-    background-color: rgba(156, 163, 175, 0.2);
+    background-color: rgba(156, 163, 175, 0.1);
   }
   79% {
     background-color: transparent;
   }
   82% {
-    background-color: rgba(156, 163, 175, 0.2);
+    background-color: rgba(156, 163, 175, 0.1);
   }
   84% {
     background-color: transparent;
@@ -382,7 +382,7 @@ input[type="range"].vol-slider::-moz-range-thumb {
 }
 
 .sidebar-expand-handle-idle-flash {
-  animation: sidebar-expand-handle-idle-flash 5s ease-in-out infinite;
+  animation: sidebar-expand-handle-idle-flash 10s ease-in-out infinite;
 }
 
 .right-sidebar {

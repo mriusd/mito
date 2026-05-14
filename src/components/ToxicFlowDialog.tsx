@@ -535,6 +535,14 @@ function toxicRowWalletLedgerSummary(row: WalletPosition): WalletSummary | null 
   return walletSummaryFromLedgerEmbed(row.wallet, row.walletLedgerSummary);
 }
 
+/** Batched `wallet_scores_ledger.pnl` on toxic row — negative lifetime ledger PnL. */
+function toxicRowLedgerLifetimePnlNegative(w: WalletPosition): boolean {
+  const emb = w.walletLedgerSummary;
+  if (emb == null || emb === undefined) return false;
+  const p = emb.pnl;
+  return typeof p === 'number' && Number.isFinite(p) && p < 0;
+}
+
 /** Ledger WR first (matches Toxic WR bar); else wallet_scores join; else embed win_rate when ledger unset. */
 function toxicRowSortWinRateFrac(w: WalletPosition): number | null {
   const ledgerSum = toxicRowWalletLedgerSummary(w);
@@ -1828,15 +1836,15 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   }, [data, toxicFollowSet]);
 
   const winnersTabWallets = useMemo(() => {
-    const arr = toxicFlowWalletUniverse(data);
+    const arr = toxicFlowWalletUniverse(data).filter((w) => !toxicRowLedgerLifetimePnlNegative(w));
     return [...arr].sort((a, b) => {
+      const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
+      if (d !== 0) return d;
       const fa = toxicRowSortWinRateFrac(a);
       const fb = toxicRowSortWinRateFrac(b);
       if (fa != null && fb != null && fb !== fa) return fb - fa;
       if (fa != null && fb == null) return -1;
       if (fa == null && fb != null) return 1;
-      const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
-      if (d !== 0) return d;
       const da = Math.abs(walletNet(a));
       const db = Math.abs(walletNet(b));
       if (db !== da) return db - da;

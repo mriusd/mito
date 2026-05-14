@@ -129,15 +129,15 @@ function walletStakeNetAbsUsd(w: WalletPosition): number {
   return Number.isFinite(s) ? Math.abs(s) : NaN;
 }
 
-/** Σ|inv_y×px_y| and Σ|inv_n×px_n| over displayed rows — same gross basis as sidebar Stake (`grossLegTotals`). */
-function toxicCohortStakedGrossLegTotals(wallets: readonly WalletPosition[]): { sumYUsd: number; sumNUsd: number } {
+/** Staked-net cohort bar: Σ max(0, −signed_net) YES-lean vs Σ max(0, signed_net) NO-lean (same as `cohortSurplusHalves` bar). Signed net = `walletStakeNetSignedUsd`. */
+function toxicCohortStakedNetSurplusHalves(wallets: readonly WalletPosition[]): { sumYUsd: number; sumNUsd: number } {
   let sumYUsd = 0;
   let sumNUsd = 0;
   for (const w of wallets) {
-    const sy = walletStakeYUsd(w);
-    const sn = walletStakeNUsd(w);
-    if (Number.isFinite(sy)) sumYUsd += Math.abs(sy);
-    if (Number.isFinite(sn)) sumNUsd += Math.abs(sn);
+    const s = walletStakeNetSignedUsd(w);
+    if (!Number.isFinite(s)) continue;
+    if (s <= 0) sumYUsd += Math.max(0, -s);
+    else sumNUsd += Math.max(0, s);
   }
   return { sumYUsd, sumNUsd };
 }
@@ -1060,7 +1060,7 @@ function WalletTable({
     });
   }, []);
   const { sumYUsd: cohortSumYUsd, sumNUsd: cohortSumNUsd } = useMemo(
-    () => toxicCohortStakedGrossLegTotals(rows),
+    () => toxicCohortStakedNetSurplusHalves(rows),
     [rows],
   );
   if (rows.length === 0) {
@@ -1080,7 +1080,7 @@ function WalletTable({
           compact
           dense
           compactLabel="Stake"
-          barMode="grossLegTotals"
+          barMode="cohortSurplusHalves"
           midMarker
         />
       </div>

@@ -58,6 +58,7 @@ import {
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { HelperTooltip } from './HelperTooltip';
 import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
+import { StakedLegUsdBar } from './StakedLegUsdBar';
 
 interface ToxicFlowDialogProps {
   open: boolean;
@@ -126,6 +127,19 @@ function walletStakeNetSignedUsd(w: WalletPosition): number {
 function walletStakeNetAbsUsd(w: WalletPosition): number {
   const s = walletStakeNetSignedUsd(w);
   return Number.isFinite(s) ? Math.abs(s) : NaN;
+}
+
+/** Σ|inv_y×px_y| and Σ|inv_n×px_n| over displayed rows — same gross basis as sidebar Stake (`grossLegTotals`). */
+function toxicCohortStakedGrossLegTotals(wallets: readonly WalletPosition[]): { sumYUsd: number; sumNUsd: number } {
+  let sumYUsd = 0;
+  let sumNUsd = 0;
+  for (const w of wallets) {
+    const sy = walletStakeYUsd(w);
+    const sn = walletStakeNUsd(w);
+    if (Number.isFinite(sy)) sumYUsd += Math.abs(sy);
+    if (Number.isFinite(sn)) sumNUsd += Math.abs(sn);
+  }
+  return { sumYUsd, sumNUsd };
 }
 
 /** Epsilon for treating signed staked-net as flat (table + cohort bar). */
@@ -1045,6 +1059,10 @@ function WalletTable({
       return next;
     });
   }, []);
+  const { sumYUsd: cohortSumYUsd, sumNUsd: cohortSumNUsd } = useMemo(
+    () => toxicCohortStakedGrossLegTotals(rows),
+    [rows],
+  );
   if (rows.length === 0) {
     return (
       <div className="flex flex-1 min-h-0 flex-col items-center justify-center text-gray-500 text-[10px] py-3">
@@ -1055,6 +1073,17 @@ function WalletTable({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden w-full min-w-0">
+      <div className="shrink-0 px-0.5 pt-0.5 pb-1 border-b border-gray-800/90 bg-gray-950 z-[2]">
+        <StakedLegUsdBar
+          sumYUsd={cohortSumYUsd}
+          sumNUsd={cohortSumNUsd}
+          compact
+          dense
+          compactLabel="Stake"
+          barMode="grossLegTotals"
+          midMarker
+        />
+      </div>
       <div className="min-h-0 flex-1 overflow-auto w-full min-w-0 overscroll-contain">
       <table className="w-full whitespace-nowrap text-[10px]">
         <thead className="sticky top-0 z-[1] bg-gray-950">

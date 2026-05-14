@@ -911,6 +911,7 @@ export function Sidebar() {
   const [cancellingOrderIds, setCancellingOrderIds] = useState<Set<string>>(new Set());
   const [closingPositionTokens, setClosingPositionTokens] = useState<Set<string>>(new Set());
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
+  const [toxicSidebarExpanded, setToxicSidebarExpanded] = useState(() => {
     try {
       return localStorage.getItem(SIDEBAR_TOXIC_EXPANDED_KEY) === 'true';
     } catch {

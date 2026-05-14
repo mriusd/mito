@@ -35,6 +35,8 @@ interface ToxicFlowDialogProps {
   marketName: string;
   yesTokenId?: string;
   onClose: () => void;
+  /** Sidebar expanded panel — no modal overlay, fills flex parent */
+  embedded?: boolean;
 }
 
 type Tab = 'topHolders' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
@@ -1365,7 +1367,7 @@ export function WalletInfoDialog({
   );
 }
 
-export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClose }: ToxicFlowDialogProps) {
+export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClose, embedded = false }: ToxicFlowDialogProps) {
   const marketLookup = useMarketLookupSnapshot();
   const [marketStakedLegsRest, setMarketStakedLegsRest] = useState<MarketStakedLegsResponse | null>(null);
 
@@ -1517,28 +1519,45 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     { key: 'topTraders', label: 'Top Traders', icon: <AlertTriangle size={11} /> },
   ];
 
+  const rootClass = embedded
+    ? 'flex flex-col flex-1 min-h-0 min-w-0 h-full w-full overflow-hidden bg-gray-900'
+    : 'fixed inset-0 bg-black/60 z-[49999] flex items-center justify-center';
+  const cardClass = embedded
+    ? 'bg-gray-800 flex flex-col flex-1 min-h-0 min-w-0 p-3 border-0 border-gray-700/50 w-full rounded-none shadow-none overflow-hidden'
+    : 'bg-gray-800 rounded-lg p-4 max-w-4xl w-full mx-4 shadow-xl border border-gray-700 flex flex-col min-h-0';
+  const cardStyle: React.CSSProperties = embedded ? { maxHeight: '100%', minHeight: 0 } : { maxHeight: '85vh' };
+
   return (
     <div
-      className="fixed inset-0 bg-black/60 z-[49999] flex items-center justify-center"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      className={rootClass}
+      {...(!embedded
+        ? {
+            onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => {
+              if (e.target === e.currentTarget) onClose();
+            },
+          }
+        : {})}
     >
-      <div className="bg-gray-800 rounded-lg p-4 max-w-4xl w-full mx-4 shadow-xl border border-gray-700" style={{ maxHeight: '85vh' }}>
+      <div className={cardClass} style={cardStyle}>
         {/* Header */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <UsersRound size={16} className="text-yellow-400 shrink-0" />
             <span className="text-sm font-bold text-yellow-400 shrink-0">Holders</span>
             <span className="text-xs text-gray-400 truncate">{marketName}</span>
           </div>
           <div className="flex items-center shrink-0">
-            <button type="button" onClick={onClose} className="text-gray-500 hover:text-white p-0.5" aria-label="Close">
+            <button type="button" onClick={onClose} className="text-gray-500 hover:text-white p-0.5" aria-label={embedded ? 'Close panel' : 'Close'}>
               <X size={16} />
             </button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="overflow-y-auto" style={{ maxHeight: 'calc(85vh - 120px)' }}>
+        <div
+          className={embedded ? 'flex flex-col flex-1 min-h-0 overflow-y-auto overflow-x-hidden' : 'overflow-y-auto'}
+          style={embedded ? undefined : { maxHeight: 'calc(85vh - 120px)' }}
+        >
           {loading && <div className="text-gray-500 text-center py-8">Loading on-chain data...</div>}
           {error && <div className="text-red-400 text-center py-8">Error: {error}</div>}
 

@@ -461,6 +461,16 @@ function ledgerSummaryWinRateFracOrNull(s: WalletSummary | null | undefined): nu
   return ledgerWinRateFracFromStored(s.winRate);
 }
 
+/** Aggregate `wallet_scores_ledger.pnl` sign when row market `pnl` alone does not encode green/red here. Row `positivePnl` / `negativePnl` wins if either is set. */
+function ledgerAggregatePnlSign(embed: WalletScoresLedgerEmbed | null | undefined): 'pos' | 'neg' | null {
+  if (embed == null) return null;
+  const p = embed.pnl;
+  if (typeof p !== 'number' || !Number.isFinite(p)) return null;
+  if (p > 0) return 'pos';
+  if (p < 0) return 'neg';
+  return null;
+}
+
 /** No `wallet_scores_ledger` snapshot on row (`walletLedgerSummary` null or omitted). */
 function wslLedgerRowMissing(embed: WalletScoresLedgerEmbed | null | undefined): boolean {
   return embed == null;
@@ -672,6 +682,7 @@ function WalletLink({
     scheduleHide();
   };
 
+  const ledgerPnlHue = ledgerAggregatePnlSign(ledgerEmbed);
   const addrClass = positivePnl
     ? 'text-green-400'
     : negativePnl
@@ -680,20 +691,38 @@ function WalletLink({
         ? 'text-amber-400'
         : isSmart
           ? 'text-yellow-400'
-          : wslLedgerRowMissing(ledgerEmbed)
-            ? 'text-blue-400'
-            : 'text-zinc-400';
+          : !positivePnl && !negativePnl && ledgerPnlHue === 'pos'
+            ? 'text-green-400'
+            : !positivePnl && !negativePnl && ledgerPnlHue === 'neg'
+              ? 'text-red-400'
+              : wslLedgerRowMissing(ledgerEmbed)
+                ? 'text-blue-400'
+                : 'text-zinc-400';
   const btnTitle = (() => {
     const parts: string[] = [];
     if (positivePnl) parts.push('Positive PnL (this market)');
     if (negativePnl) parts.push('Negative PnL (this market)');
+    if (!positivePnl && !negativePnl && !ledgerGold && !isSmart && ledgerPnlHue === 'pos') {
+      parts.push('Positive ledger aggregate PnL');
+    }
+    if (!positivePnl && !negativePnl && !ledgerGold && !isSmart && ledgerPnlHue === 'neg') {
+      parts.push('Negative ledger aggregate PnL');
+    }
     if (ledgerGold && isSmart) parts.push('Ledger WR >60%, ≥10 resolved, ledger PnL >0; proven smart wallet');
     else {
       if (ledgerGold) parts.push('Ledger WR >60%, ≥10 resolved markets, ledger PnL >0');
       if (isSmart) parts.push('Proven smart wallet');
     }
     if (wslLedgerRowMissing(ledgerEmbed)) parts.push('No wallet_scores_ledger row');
-    else if (!positivePnl && !negativePnl && !ledgerGold && !isSmart) parts.push('Ledger present (neutral hue)');
+    else if (
+      !positivePnl &&
+      !negativePnl &&
+      ledgerPnlHue == null &&
+      !ledgerGold &&
+      !isSmart
+    ) {
+      parts.push('Ledger present (neutral hue)');
+    }
     return parts.length ? parts.join(' · ') : undefined;
   })();
 

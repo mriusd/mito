@@ -3247,7 +3247,7 @@ export function Sidebar() {
                     )}
                   </div>
                   <div className="flex items-center justify-center min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none px-px">
-                    {!row.pastExpiry && row.mathCents !== null ? (
+                    {!row.pastExpiry ? (
                       <span className="inline-flex items-center gap-1 whitespace-nowrap">
                         <span
                           className={

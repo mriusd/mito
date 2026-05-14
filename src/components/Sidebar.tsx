@@ -84,6 +84,17 @@ const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
 const SIDEBAR_TOXIC_EXPANDED_KEY = 'polybot-sidebar-toxic-expanded';
 
+/** Tooltips for toxic cohort strips (mirror Toxic Flow dialog tab copy). */
+const TOXIC_SIDEBAR_STRIP_HELP = {
+  holders:
+    'Server cohort ranked by largest |net YES−NO|; sorted here by staked-net magnitude. Green vs red splits use per-wallet inv×px signed net surplus halves—the same cohort bar as Toxic Flow.',
+  smart:
+    'Cohort wallets whose batched wallet_scores_ledger shows PnL > 0, win rate > 50%, and resolved markets > 10. Same bar math as Toxic Flow Smart tab.',
+  fav: 'Addresses you starred (toxic favourites) that appear in this market’s cohort. Bar = their combined staked-net surplus halves.',
+  pnlPlus:
+    'Cohort wallets with a batched ledger row and lifetime ledger PnL ≥ 0; ordered by staked net then win rate. Same cohort as Toxic Flow PnL+.',
+} as const;
+
 const LS_ORDER_EXPIRY_UPDOWN = 'polymarket-order-expiry-updown';
 const LS_ORDER_EXPIRY_OTHER = 'polymarket-order-expiry-other';
 const LS_ORDER_EXPIRY_UNIT_UPDOWN = 'polymarket-order-expiry-unit-updown';
@@ -3267,41 +3278,47 @@ export function Sidebar() {
                 <div className="tabular-nums font-bold text-yellow-300 truncate">{holdersCountDisplay}</div>
               </div>
             </div>
-            <div className="shrink-0 flex flex-wrap gap-x-2 gap-y-1.5 mt-1 pb-0.5">
+            <div className="mt-1 w-full min-w-0 flex flex-col gap-y-2 pb-0.5">
               {toxicStripModel.lists ? (
                 <>
-                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
-                    <ToxicFlowStakePreview
-                      label="Holders"
-                      wallets={toxicStripModel.lists.holders}
-                      flashExtremeTilt={
-                        notifyTopThresholdPct > 0 &&
-                        notifyTiltAppliesToSelectedMarket &&
-                        notifyFlashBg &&
-                        notifyStakedGatePasses
-                      }
-                      extremeFlashTiltThreshold={notifyTopThresholdPct / 100}
-                    />
-                  </div>
-                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
-                    <ToxicFlowStakePreview
-                      label="Smart"
-                      wallets={toxicStripModel.lists.smart}
-                      flashExtremeTilt={
-                        notifySmartTiltPct > 0 &&
-                        notifyTiltAppliesToSelectedMarket &&
-                        notifyFlashBg &&
-                        notifyStakedGatePasses
-                      }
-                      extremeFlashTiltThreshold={notifySmartTiltPct / 100}
-                    />
-                  </div>
-                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
-                    <ToxicFlowStakePreview label="Fav" wallets={toxicStripModel.lists.favourites} />
-                  </div>
-                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
-                    <ToxicFlowStakePreview label="PnL+" wallets={toxicStripModel.lists.pnlPlus} />
-                  </div>
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.holders}
+                    label="Holders"
+                    wallets={toxicStripModel.lists.holders}
+                    flashExtremeTilt={
+                      notifyTopThresholdPct > 0 &&
+                      notifyTiltAppliesToSelectedMarket &&
+                      notifyFlashBg &&
+                      notifyStakedGatePasses
+                    }
+                    extremeFlashTiltThreshold={notifyTopThresholdPct / 100}
+                  />
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.smart}
+                    label="Smart"
+                    wallets={toxicStripModel.lists.smart}
+                    flashExtremeTilt={
+                      notifySmartTiltPct > 0 &&
+                      notifyTiltAppliesToSelectedMarket &&
+                      notifyFlashBg &&
+                      notifyStakedGatePasses
+                    }
+                    extremeFlashTiltThreshold={notifySmartTiltPct / 100}
+                  />
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.fav}
+                    label="Fav"
+                    wallets={toxicStripModel.lists.favourites}
+                  />
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.pnlPlus}
+                    label="PnL+"
+                    wallets={toxicStripModel.lists.pnlPlus}
+                  />
                 </>
               ) : null}
             </div>

@@ -22,6 +22,8 @@ export function StakedLegUsdBar({
   compactLegUsdFooter = false,
   /** Draw 25% / 50% / 75% ticks — sidebar only unless opted in. */
   midMarker = false,
+  /** When compact, skip the fixed left label column (external label row). */
+  compactOmitLeftLabel = false,
 }: {
   sumYUsd: number;
   sumNUsd: number;
@@ -36,6 +38,7 @@ export function StakedLegUsdBar({
   extremeFlashTiltThreshold?: number;
   compactLegUsdFooter?: boolean;
   midMarker?: boolean;
+  compactOmitLeftLabel?: boolean;
 }) {
   const total = sumYUsd + sumNUsd;
   if (total <= 1e-9) return null;
@@ -87,9 +90,11 @@ export function StakedLegUsdBar({
     return (
       <div className="min-w-0 space-y-0.5">
         <div className={`flex items-center gap-1 min-w-0 ${dense ? '' : ''}`}>
-          <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate" title={tip}>
-            {leftLbl}
-          </span>
+          {compactOmitLeftLabel ? null : (
+            <span className="text-[8px] text-gray-500 w-[38px] shrink-0 truncate" title={tip}>
+              {leftLbl}
+            </span>
+          )}
           <div className="flex-1 min-w-0">{bar}</div>
           <span className={`text-[8px] font-bold w-[28px] shrink-0 tabular-nums text-right ${leanColor}`} title={leanTitle}>
             {leanPct > 0 ? '+' : ''}
@@ -98,7 +103,7 @@ export function StakedLegUsdBar({
         </div>
         {compactLegUsdFooter ? (
           <div className="flex gap-1 min-w-0 items-baseline">
-            <span className="w-[38px] shrink-0" aria-hidden />
+            {compactOmitLeftLabel ? null : <span className="w-[38px] shrink-0" aria-hidden />}
             <div
               className="flex flex-1 justify-between gap-2 min-w-0 text-[8px] tabular-nums leading-tight"
               title={`${yFoot} · ${nFoot}`}

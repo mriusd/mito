@@ -511,6 +511,17 @@ function ledgerGoldFromEmbed(embed: WalletScoresLedgerEmbed | null | undefined):
   return typeof pnl === 'number' && Number.isFinite(pnl) && pnl > 0;
 }
 
+/** Smart tab: batched ledger embed only; PnL > 0, WR > 50%, resolved markets > 10. */
+function toxicRowMatchesSmartLedgerDefinition(w: WalletPosition): boolean {
+  const embed = w.walletLedgerSummary;
+  if (embed == null) return false;
+  if ((embed.resolvedMarkets ?? 0) <= 10) return false;
+  if (typeof embed.winRate !== 'number' || !Number.isFinite(embed.winRate)) return false;
+  if (ledgerWinRateFracFromStored(embed.winRate) <= 0.5) return false;
+  const pnl = embed.pnl;
+  return typeof pnl === 'number' && Number.isFinite(pnl) && pnl > 0;
+}
+
 function toxicRowWalletLedgerSummary(row: WalletPosition): WalletSummary | null | undefined {
   if (row.walletLedgerSummary === undefined) return undefined;
   if (row.walletLedgerSummary === null) return null;
@@ -1787,7 +1798,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   }, [data?.topHolders]);
 
   const smartTabWallets = useMemo(() => {
-    const arr = toxicFlowWalletUniverse(data).filter((w) => isSmartGold(w));
+    const arr = toxicFlowWalletUniverse(data).filter((w) => toxicRowMatchesSmartLedgerDefinition(w));
     return [...arr].sort((a, b) => {
       const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
       if (d !== 0) return d;

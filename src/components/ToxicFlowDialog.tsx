@@ -22,6 +22,7 @@ import {
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
   TOXIC_FAVOURITES_CHANGED_EVENT,
 } from '../lib/toxicFavouriteWallets';
+import { WS_BASE } from '../lib/env';
 import { useAppStore } from '../stores/appStore';
 import { useMarketLookupSnapshot } from '../hooks/useMarketLookupSnapshot';
 import {
@@ -172,6 +173,22 @@ function walletRowClassForStakedNet(shadeRows: boolean, stakeNetSigned: number):
     return `${border} bg-green-900/25 hover:bg-green-900/40`;
   }
   return `${border} bg-red-900/25 hover:bg-red-900/40`;
+}
+
+/** Staked Net USD (inv_n×px_n − inv_y×px_y); negative ⇒ YES-heavy, positive ⇒ NO-heavy — cohort table parity. */
+function manipulationStakedUsdExposureSide(w: WalletPosition | undefined): 'yes' | 'no' | null {
+  if (!w) return null;
+  const s = walletStakeNetSignedUsd(w);
+  if (!Number.isFinite(s)) return null;
+  if (s < -STAKED_NET_EPS) return 'yes';
+  if (s > STAKED_NET_EPS) return 'no';
+  return null;
+}
+
+function manipulationSignalsRowToneClass(side: 'yes' | 'no' | null): string {
+  if (side === 'yes') return 'rounded-md px-2 -mx-0.5 border border-green-800/55 bg-green-950/35';
+  if (side === 'no') return 'rounded-md px-2 -mx-0.5 border border-red-800/55 bg-red-950/35';
+  return '';
 }
 
 function LedgerSummaryField({
@@ -1540,19 +1557,78 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
   useEffect(() => {
     if (open) {
       setTab('topHolders');
-      load();
-      // Auto-refresh every 5s while open
-      const iv = setInterval(async () => {
-        try {
-          const d = await fetchToxicFlow(marketId);
-          setData(d);
-        } catch { /* silent refresh failure */ }
-      }, 5000);
-      return () => clearInterval(iv);
+      void load();
     } else {
       setData(null);
     }
-  }, [open, load, marketId]);
+  }, [open, load]);
+
+  /** Initial load is HTTP; ongoing updates from /ws/toxic-flow (server ~1 Hz). */
+  useEffect(() => {
+    if (!open || !marketId.trim()) return;
+
+    let cancelled = false;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let attempt = 0;
+
+    let pingIv: ReturnType<typeof setInterval> | undefined;
+
+    const connect = () => {
+      if (cancelled) return;
+      const url = `${WS_BASE}/ws/toxic-flow?market_id=${encodeURIComponent(marketId.trim())}`;
+      ws = new WebSocket(url);
+      ws.onopen = () => {
+        attempt = 0;
+        if (pingIv != null) window.clearInterval(pingIv);
+        pingIv = window.setInterval(() => {
+          if (ws?.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 25_000);
+      };
+      ws.onmessage = (ev) => {
+        if (cancelled) return;
+        try {
+          const msg = JSON.parse(String(ev.data)) as { type?: string; data?: ToxicFlowData };
+          if (msg.type === 'toxicFlow' && msg.data && typeof msg.data === 'object') {
+            setData(msg.data);
+          }
+        } catch {
+          /* ignore */
+        }
+      };
+      ws.onclose = () => {
+        if (cancelled) return;
+        const delay = Math.min(30_000, 800 * Math.pow(2, Math.min(attempt, 8)));
+        attempt += 1;
+        reconnectTimer = window.setTimeout(connect, delay);
+      };
+      ws.onerror = () => {
+        try {
+          ws?.close();
+        } catch {
+          /* ignore */
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (pingIv != null) window.clearInterval(pingIv);
+      if (reconnectTimer != null) window.clearTimeout(reconnectTimer);
+      if (ws != null) {
+        ws.onclose = null;
+        try {
+          ws.close();
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+  }, [open, marketId]);
 
   const topYesWallets = useMemo(() => {
     const arr = toxicFlowWalletUniverse(data).filter((w) => {
@@ -1727,6 +1803,11 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                 addWallets(topNoWallets);
                 addWallets(data.topVolume);
                 addWallets(data.topTraders);
+                const rowByWallet: Record<string, WalletPosition> = {};
+                for (const w of toxicFlowWalletUniverse(data)) {
+                  const k = (w.wallet || '').trim().toLowerCase();
+                  if (k && !rowByWallet[k]) rowByWallet[k] = w;
+                }
                 const hasConcentration = data.concentration > 0.5;
                 const totalFlags = highFlags.length + medFlags.length + (hasConcentration ? 1 : 0);
 
@@ -1744,8 +1825,10 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                         const wlk = f.wallet?.toLowerCase();
                         const lf = wlk ? ledgerSummaryWinRateFracOrNull(redFlagLedgerMap[wlk] ?? null) : null;
                         const showWinBar = lf != null;
+                        const exp = wlk ? manipulationStakedUsdExposureSide(rowByWallet[wlk]) : null;
+                        const rowToneCls = manipulationSignalsRowToneClass(exp);
                         return (
-                          <div key={`h${i}`} className="flex items-start gap-1.5 text-[10px]">
+                          <div key={`h${i}`} className={`flex items-start gap-1.5 text-[10px] ${rowToneCls}`}>
                             <AlertTriangle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
                             <span className="text-gray-200">
                               {f.wallet ? (
@@ -1785,8 +1868,10 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                         const wlk = f.wallet?.toLowerCase();
                         const lf = wlk ? ledgerSummaryWinRateFracOrNull(redFlagLedgerMap[wlk] ?? null) : null;
                         const showWinBar = lf != null;
+                        const exp = wlk ? manipulationStakedUsdExposureSide(rowByWallet[wlk]) : null;
+                        const rowToneCls = manipulationSignalsRowToneClass(exp);
                         return (
-                          <div key={`m${i}`} className="flex items-start gap-1.5 text-[10px]">
+                          <div key={`m${i}`} className={`flex items-start gap-1.5 text-[10px] ${rowToneCls}`}>
                             <AlertTriangle size={12} className="text-yellow-400 flex-shrink-0 mt-0.5" />
                             <span className="text-gray-300">
                               {f.wallet ? (

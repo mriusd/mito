@@ -911,8 +911,6 @@ export function Sidebar() {
   const [cancellingOrderIds, setCancellingOrderIds] = useState<Set<string>>(new Set());
   const [closingPositionTokens, setClosingPositionTokens] = useState<Set<string>>(new Set());
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
-  const [toxicDialogOpen, setToxicDialogOpen] = useState(false);
-  const [toxicSidebarExpanded, setToxicSidebarExpanded] = useState(() => {
     try {
       return localStorage.getItem(SIDEBAR_TOXIC_EXPANDED_KEY) === 'true';
     } catch {
@@ -2339,18 +2337,6 @@ export function Sidebar() {
         />
       </Suspense>
     )}
-    {toxicDialogOpen && !!selectedMarket?.conditionId?.trim() && (
-      <Suspense fallback={null}>
-        <ToxicFlowDialogLazy
-          open
-          marketId={selectedMarket?.conditionId || ''}
-          marketName={marketName}
-          yesTokenId={selectedMarket?.clobTokenIds?.[0] || ''}
-          onClose={() => setToxicDialogOpen(false)}
-        />
-      </Suspense>
-    )}
-    {notifyDialogOpen && typeof document !== 'undefined' &&
       createPortal(
         <div
           className="fixed inset-0 z-[60200] bg-black/70 flex items-center justify-center"
@@ -3149,18 +3135,13 @@ export function Sidebar() {
                   {sharesInExistenceDisplay}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setToxicDialogOpen(true)}
-                onMouseEnter={preloadToxicFlowDialog}
-                onFocus={preloadToxicFlowDialog}
-                onPointerDown={(e) => e.stopPropagation()}
-                className="min-w-0 w-full rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left hover:bg-yellow-500/20 transition-colors"
-                title="Holders Analysis"
+              <div
+                className="min-w-0 w-full rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left"
+                title="Holders count (open via sidebar expand chevron)"
               >
                 <div className="text-[8px] uppercase tracking-wide text-yellow-400 truncate">Holders</div>
                 <div className="tabular-nums font-bold text-yellow-300 truncate">{holdersCountDisplay}</div>
-              </button>
+              </div>
             </div>
             {/* Compact bias bars */}
             {(() => {

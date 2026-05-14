@@ -1020,12 +1020,39 @@ function WalletTableBodyRow({
   );
 }
 
+function ToxicFlowStakePreview({ label, wallets }: { label: string; wallets: readonly WalletPosition[] }) {
+  const { sumYUsd, sumNUsd } = useMemo(() => toxicCohortStakedNetSurplusHalves(wallets ?? []), [wallets]);
+  const total = sumYUsd + sumNUsd;
+  return (
+    <div className="min-w-0 space-y-0.5">
+      {total <= 1e-9 ? (
+        <>
+          <div className="text-[8px] text-gray-500 truncate" title={label}>
+            {label}
+          </div>
+          <div className="h-[5px] rounded-full bg-gray-800/90" title="No staked net in cohort" />
+        </>
+      ) : (
+        <StakedLegUsdBar
+          sumYUsd={sumYUsd}
+          sumNUsd={sumNUsd}
+          compact
+          dense
+          compactLabel={label}
+          barMode="cohortSurplusHalves"
+        />
+      )}
+    </div>
+  );
+}
+
 function WalletTable({
   wallets,
   label,
   totalShares,
   onOpenWallet,
   shadeRowByStakedNet = true,
+  showCohortStakeBar = true,
 }: {
   wallets: WalletPosition[] | null;
   label: string;
@@ -1033,6 +1060,8 @@ function WalletTable({
   onOpenWallet?: (wallet: string, netShares?: number) => void;
   /** Row background from Staked Net sign (green YES / red NO); default on for all Toxic tables. */
   shadeRowByStakedNet?: boolean;
+  /** When false, no bar above table (stake shown in tab strip for those tabs). */
+  showCohortStakeBar?: boolean;
 }) {
   const rows = wallets || [];
   const [favouriteWallets, setFavouriteWallets] = useState(readToxicFavouriteWallets);
@@ -1073,17 +1102,19 @@ function WalletTable({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden w-full min-w-0">
-      <div className="shrink-0 px-0.5 pt-0.5 pb-1 border-b border-gray-800/90 bg-gray-950 z-[2]">
-        <StakedLegUsdBar
-          sumYUsd={cohortSumYUsd}
-          sumNUsd={cohortSumNUsd}
-          compact
-          dense
-          compactLabel="Stake"
-          barMode="cohortSurplusHalves"
-          midMarker
-        />
-      </div>
+      {showCohortStakeBar ? (
+        <div className="shrink-0 px-0.5 pt-0.5 pb-1 border-b border-gray-800/90 bg-gray-950 z-[2]">
+          <StakedLegUsdBar
+            sumYUsd={cohortSumYUsd}
+            sumNUsd={cohortSumNUsd}
+            compact
+            dense
+            compactLabel="Stake"
+            barMode="cohortSurplusHalves"
+            midMarker
+          />
+        </div>
+      ) : null}
       <div className="min-h-0 flex-1 overflow-auto w-full min-w-0 overscroll-contain">
       <table className="w-full whitespace-nowrap text-[10px]">
         <thead className="sticky top-0 z-[1] bg-gray-950">
@@ -2035,6 +2066,26 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
               </div>
 
               <div className="flex flex-col flex-1 min-h-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 gap-2">
+                <div className="shrink-0 flex flex-wrap gap-x-2 gap-y-1.5 pb-2 border-b border-gray-700/60">
+                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
+                    <ToxicFlowStakePreview label="Holders" wallets={topHoldersWallets} />
+                  </div>
+                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
+                    <ToxicFlowStakePreview label="Smart" wallets={smartTabWallets} />
+                  </div>
+                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
+                    <ToxicFlowStakePreview label="Fav" wallets={favouritesTabWallets} />
+                  </div>
+                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
+                    <ToxicFlowStakePreview label="PnL+" wallets={winnersTabWallets} />
+                  </div>
+                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
+                    <ToxicFlowStakePreview label="Vol" wallets={data.topVolume ?? []} />
+                  </div>
+                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
+                    <ToxicFlowStakePreview label="Traders" wallets={data.topTraders ?? []} />
+                  </div>
+                </div>
                 <div className="flex gap-1 border-b border-gray-700 pb-2 shrink-0 flex-wrap">
                   {tabs.map((t) => (
                     <button
@@ -2061,6 +2112,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                       label="holders"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
+                      showCohortStakeBar={false}
                     />
                   )}
                   {tab === 'smart' && (
@@ -2069,6 +2121,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                       label="smart"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
+                      showCohortStakeBar={false}
                     />
                   )}
                   {tab === 'favourites' && (
@@ -2077,6 +2130,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                       label="favourites"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
+                      showCohortStakeBar={false}
                     />
                   )}
                   {tab === 'winners' && (
@@ -2085,6 +2139,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                       label="pofiters"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
+                      showCohortStakeBar={false}
                     />
                   )}
                   {tab === 'topYes' && (
@@ -2094,10 +2149,22 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                     <WalletTable wallets={topNoWallets} label="Net N (Staked)" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                   )}
                   {tab === 'topVolume' && (
-                    <WalletTable wallets={data.topVolume} label="volume" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                    <WalletTable
+                      wallets={data.topVolume}
+                      label="volume"
+                      totalShares={data.totalShares}
+                      onOpenWallet={openWalletDialog}
+                      showCohortStakeBar={false}
+                    />
                   )}
                   {tab === 'topTraders' && (
-                    <WalletTable wallets={data.topTraders} label="traders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                    <WalletTable
+                      wallets={data.topTraders}
+                      label="traders"
+                      totalShares={data.totalShares}
+                      onOpenWallet={openWalletDialog}
+                      showCohortStakeBar={false}
+                    />
                   )}
                 </div>
               </div>

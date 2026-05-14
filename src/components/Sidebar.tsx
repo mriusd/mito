@@ -757,6 +757,26 @@ export function Sidebar() {
   const [sidebarChartAnnualVolPct, setSidebarChartAnnualVolPct] = useState<number | null>(null);
   const [notifyMaxVolatilityPct, setNotifyMaxVolatilityPct] = useState(readNotifyMaxVolatilityPct);
   const [notifyVolatilityCandles, setNotifyVolatilityCandles] = useState(readNotifyVolatilityCandles);
+  const [notifyVolatilityCandlesDraft, setNotifyVolatilityCandlesDraft] = useState(() =>
+    String(readNotifyVolatilityCandles()),
+  );
+
+  useEffect(() => {
+    if (!notifyDialogOpen) return;
+    setNotifyVolatilityCandlesDraft(String(notifyVolatilityCandles));
+  }, [notifyDialogOpen, notifyVolatilityCandles]);
+
+  const closeNotifyDialog = useCallback(() => {
+    const raw = notifyVolatilityCandlesDraft.trim();
+    let nextCandles = notifyVolatilityCandles;
+    if (raw !== '') {
+      const v = parseInt(raw, 10);
+      if (Number.isFinite(v)) nextCandles = Math.min(500, Math.max(3, v));
+    }
+    setNotifyVolatilityCandles(nextCandles);
+    setNotifyVolatilityCandlesDraft(String(nextCandles));
+    setNotifyDialogOpen(false);
+  }, [notifyVolatilityCandlesDraft, notifyVolatilityCandles]);
 
   useEffect(() => {
     setSidebarChartAnnualVolPct(null);
@@ -2505,7 +2525,7 @@ export function Sidebar() {
         <div
           className="fixed inset-0 z-[60200] bg-black/70 flex items-center justify-center"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setNotifyDialogOpen(false);
+            if (e.target === e.currentTarget) closeNotifyDialog();
           }}
         >
           <div
@@ -2519,7 +2539,7 @@ export function Sidebar() {
                 type="button"
                 className="p-1 rounded hover:bg-gray-700 text-gray-400"
                 aria-label="Close"
-                onClick={() => setNotifyDialogOpen(false)}
+                onClick={() => closeNotifyDialog()}
               >
                 <X className="h-4 w-4" strokeWidth={2} />
               </button>
@@ -2714,7 +2734,7 @@ export function Sidebar() {
                           min={0}
                           max={99}
                           step={1}
-                          className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs"
+                          className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs no-spin"
                           value={notifyHolderTiltPct}
                           onChange={(e) => {
                             const v = Number(e.target.value);
@@ -2735,7 +2755,7 @@ export function Sidebar() {
                           min={0}
                           max={99}
                           step={1}
-                          className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs"
+                          className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs no-spin"
                           value={notifySmartTiltPct}
                           onChange={(e) => {
                             const v = Number(e.target.value);
@@ -2756,7 +2776,7 @@ export function Sidebar() {
                           min={0}
                           max={99}
                           step={1}
-                          className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs"
+                          className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs no-spin"
                           value={notifyFavouriteTiltPct}
                           onChange={(e) => {
                             const v = Number(e.target.value);
@@ -2777,7 +2797,7 @@ export function Sidebar() {
                           min={0}
                           max={99}
                           step={1}
-                          className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs"
+                          className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs no-spin"
                           value={notifyGreensTiltPct}
                           onChange={(e) => {
                             const v = Number(e.target.value);
@@ -2801,7 +2821,7 @@ export function Sidebar() {
                     min={0}
                     max={500}
                     step={1}
-                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs"
+                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs no-spin"
                     value={notifyMaxVolatilityPct}
                     onChange={(e) => {
                       const v = Number(e.target.value);
@@ -2816,16 +2836,28 @@ export function Sidebar() {
                 <div className="flex items-center gap-2 flex-wrap justify-between">
                   <span className="text-gray-400 shrink-0 text-[11px]">Volatility candles</span>
                   <input
-                    type="number"
-                    min={3}
-                    max={500}
-                    step={1}
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    spellCheck={false}
                     className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs"
-                    value={notifyVolatilityCandles}
+                    value={notifyVolatilityCandlesDraft}
                     onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (!Number.isFinite(v)) return;
-                      setNotifyVolatilityCandles(Math.min(500, Math.max(3, Math.round(v))));
+                      setNotifyVolatilityCandlesDraft(e.target.value.replace(/\D/g, ''));
+                    }}
+                    onBlur={() => {
+                      const raw = notifyVolatilityCandlesDraft.trim();
+                      if (raw === '') {
+                        setNotifyVolatilityCandlesDraft(String(notifyVolatilityCandles));
+                        return;
+                      }
+                      const v = parseInt(raw, 10);
+                      const c = Math.min(
+                        500,
+                        Math.max(3, Number.isFinite(v) ? v : notifyVolatilityCandles),
+                      );
+                      setNotifyVolatilityCandles(c);
+                      setNotifyVolatilityCandlesDraft(String(c));
                     }}
                   />
                 </div>
@@ -2839,7 +2871,7 @@ export function Sidebar() {
                   type="number"
                   min={0}
                   step={100}
-                  className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-28 tabular-nums"
+                  className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-28 tabular-nums no-spin"
                   value={notifyStakedMinUsd}
                   onChange={(e) => {
                     const v = Number(e.target.value);
@@ -2856,7 +2888,7 @@ export function Sidebar() {
               <button
                 type="button"
                 className="px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-xs font-medium"
-                onClick={() => setNotifyDialogOpen(false)}
+                onClick={() => closeNotifyDialog()}
               >
                 Done
               </button>

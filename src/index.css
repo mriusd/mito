@@ -120,6 +120,22 @@ html, body, #root {
   }
 }
 
+/* Header sync block pill when indexer is >5 blocks behind chain tip */
+.header-sync-block-flash {
+  animation: header-sync-block-flash-kf 0.55s ease-in-out infinite;
+}
+@keyframes header-sync-block-flash-kf {
+  0%,
+  100% {
+    background-color: rgb(31 41 55 / 0.5);
+    border-color: rgb(239 68 68 / 0.35);
+  }
+  50% {
+    background-color: rgb(79 35 42 / 0.75);
+    border-color: rgb(248 113 113 / 0.75);
+  }
+}
+
 input[type="number"].no-spin::-webkit-outer-spin-button,
 input[type="number"].no-spin::-webkit-inner-spin-button {
   -webkit-appearance: none;

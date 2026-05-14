@@ -174,6 +174,14 @@ export function Header({ onRefresh }: HeaderProps) {
       ? blockLagToneClass(syncHead.behindBlocks)
       : 'text-gray-400';
 
+  const blocksBehindTip =
+    syncHead != null &&
+    syncHead.chainHeadBlock > 0 &&
+    syncHead.lastProcessedBlock > 0
+      ? syncHead.chainHeadBlock - syncHead.lastProcessedBlock
+      : 0;
+  const blockPillFlashRed = blocksBehindTip > 5;
+
   const walletForHeaderInfoDialog =
     favouritesWalletInfoAddress ??
     (walletSummaryDialogOpen && tradingWallet ? tradingWallet : undefined);
@@ -189,10 +197,18 @@ export function Header({ onRefresh }: HeaderProps) {
               href={`https://polygonscan.com/block/${syncHead.lastProcessedBlock}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center h-[28px] px-1.5 rounded bg-gray-800/50 hover:bg-gray-700/60 text-[10px] tabular-nums flex-shrink-0 max-[520px]:hidden border border-transparent hover:border-gray-600 transition"
+              className={
+                'flex items-center h-[28px] px-1.5 rounded text-[10px] tabular-nums flex-shrink-0 max-[520px]:hidden transition ' +
+                (blockPillFlashRed
+                  ? 'header-sync-block-flash border'
+                  : 'bg-gray-800/50 hover:bg-gray-700/60 border border-transparent hover:border-gray-600')
+              }
               title={
                 'KV last_processed_block number; parentheses = lastProcessed − chainTip (negative ⇒ tip ahead). ' +
-                '−1 is normal: tip moves with newHeads/logs before the block flush writes KV. Open this block on Polygonscan.'
+                '−1 is normal: tip moves with newHeads/logs before the block flush writes KV. Open this block on Polygonscan.' +
+                (blockPillFlashRed
+                  ? ` Pill flashes red when tip − last_processed > 5 (${blocksBehindTip} behind).`
+                  : '')
               }
             >
               <span className="text-gray-500 mr-1">Block</span>

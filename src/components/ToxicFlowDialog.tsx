@@ -1569,10 +1569,10 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
 
     let cancelled = false;
     let ws: WebSocket | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let reconnectTimer: number | undefined;
     let attempt = 0;
 
-    let pingIv: ReturnType<typeof setInterval> | undefined;
+    let pingIv: number | undefined;
 
     const connect = () => {
       if (cancelled) return;

@@ -24,6 +24,7 @@ import {
   marketFromLookupById,
   shouldIgnoreGridKeyEvent,
 } from './lib/marketGridKeyboard';
+import { pickLiveUpDownMarketInTfBucket } from './utils/format';
 
 const SidebarLazy = lazyWithChunkReload(() =>
   import('./components/Sidebar').then((m) => ({ default: m.Sidebar })),
@@ -69,6 +70,7 @@ function App() {
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const [pendingLink, setPendingLink] = useState<{ marketId: string; side: 'YES' | 'NO' } | null>(() => parseMarketLinkFromUrl());
+  const didApplyDefaultBtc5mMarketRef = useRef(false);
   const selectedMarketRef = useRef(selectedMarket);
   selectedMarketRef.current = selectedMarket;
   const mountSidebarChunk = useMountSidebarLazyChunk();
@@ -125,6 +127,35 @@ function App() {
     setSidebarOpen(true);
     setPendingLink(null);
   }, [pendingLink, marketLookupEpoch, selectedMarket, sidebarOutcome, setSelectedMarket, setSidebarOutcome, setSidebarOpen]);
+
+  // No ?market= and no sidebar pick yet → open on live BTC 5m Up/Down (matches HUD ladder).
+  useEffect(() => {
+    if (loading) return;
+    if (pendingLink != null) return;
+    if (didApplyDefaultBtc5mMarketRef.current) return;
+
+    let urlMarketIntent = '';
+    if (typeof window !== 'undefined') {
+      urlMarketIntent = new URLSearchParams(window.location.search).get('market') || '';
+      if (urlMarketIntent.trim()) {
+        didApplyDefaultBtc5mMarketRef.current = true;
+        return;
+      }
+    }
+
+    const st = useAppStore.getState();
+    if (st.selectedMarket != null) {
+      didApplyDefaultBtc5mMarketRef.current = true;
+      return;
+    }
+
+    const live = pickLiveUpDownMarketInTfBucket(st.upOrDownMarkets?.BTC?.['5m'], Date.now());
+    if (!live?.id) return;
+
+    didApplyDefaultBtc5mMarketRef.current = true;
+    const m = marketFromLookupById(st.marketLookup, live.id) ?? live;
+    setSelectedMarket(m);
+  }, [loading, pendingLink, marketLookupEpoch, setSelectedMarket]);
 
   // selected market -> URL sync
   useEffect(() => {

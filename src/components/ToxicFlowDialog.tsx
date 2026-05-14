@@ -166,7 +166,7 @@ function fmtUsd2En(absVal: number): string {
 
 function stakedNetUsdTableCell(signed: number): ReactNode {
   if (!Number.isFinite(signed)) return '–';
-  const mag = fmtUsd2En(Math.abs(signed));
+  const mag = Math.round(Math.abs(signed)).toLocaleString('en-US');
   if (Math.abs(signed) <= STAKED_NET_EPS) {
     return <span className="tabular-nums font-bold text-gray-500">${mag}</span>;
   }
@@ -834,9 +834,9 @@ function WalletTable({
   const fmtSignedInt = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString('en-US')}`;
   const fmtUsdSigned = (v: number) => {
     if (!Number.isFinite(v)) return '–';
-    const a = Math.abs(v);
+    const rounded = Math.round(Math.abs(v));
     const s = v >= 0 ? '+' : '−';
-    return `${s}$${a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `${s}$${rounded.toLocaleString('en-US')}`;
   };
 
   return (

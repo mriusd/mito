@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Star,
   Sparkles,
+  Trophy,
 } from 'lucide-react';
 import {
   fetchToxicFlow,
@@ -60,7 +61,7 @@ interface ToxicFlowDialogProps {
   embedded?: boolean;
 }
 
-type Tab = 'topHolders' | 'smart' | 'following' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
+type Tab = 'topHolders' | 'smart' | 'following' | 'winners' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
 
 function walletInvY(w: WalletPosition): number {
   return typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
@@ -522,6 +523,20 @@ function toxicRowWalletLedgerSummary(row: WalletPosition): WalletSummary | null 
   if (row.walletLedgerSummary === undefined) return undefined;
   if (row.walletLedgerSummary === null) return null;
   return walletSummaryFromLedgerEmbed(row.wallet, row.walletLedgerSummary);
+}
+
+/** Ledger WR first (matches Toxic WR bar); else wallet_scores join; else embed win_rate when ledger unset. */
+function toxicRowSortWinRateFrac(w: WalletPosition): number | null {
+  const ledgerSum = toxicRowWalletLedgerSummary(w);
+  if (ledgerSum !== undefined && ledgerSum !== null) {
+    const f = ledgerSummaryWinRateFracOrNull(ledgerSum);
+    if (f != null) return f;
+  }
+  const fromJoin = typeof w.winRate === 'number' && Number.isFinite(w.winRate) ? w.winRate : undefined;
+  if (fromJoin != null) return normalizeWinRate(fromJoin);
+  const emb = w.walletLedgerSummary;
+  if (emb && typeof emb.winRate === 'number' && Number.isFinite(emb.winRate)) return normalizeWinRate(emb.winRate);
+  return null;
 }
 
 /** Gold “smart” only if proven smart and this-market cash flow is not negative. */
@@ -1723,6 +1738,23 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     });
   }, [data, toxicFollowSet]);
 
+  const winnersTabWallets = useMemo(() => {
+    const arr = toxicFlowWalletUniverse(data);
+    return [...arr].sort((a, b) => {
+      const fa = toxicRowSortWinRateFrac(a);
+      const fb = toxicRowSortWinRateFrac(b);
+      if (fa != null && fb != null && fb !== fa) return fb - fa;
+      if (fa != null && fb == null) return -1;
+      if (fa == null && fb != null) return 1;
+      const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
+      if (d !== 0) return d;
+      const da = Math.abs(walletNet(a));
+      const db = Math.abs(walletNet(b));
+      if (db !== da) return db - da;
+      return (a.wallet || '').localeCompare(b.wallet || '');
+    });
+  }, [data]);
+
   if (!open) return null;
 
   const openWalletDialog = (wallet: string, _netShares?: number) => {
@@ -1734,6 +1766,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     { key: 'topHolders', label: 'Top Holders', icon: <Crown size={11} /> },
     { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
     { key: 'following', label: 'Following', icon: <Star size={11} /> },
+    { key: 'winners', label: 'Winners', icon: <Trophy size={11} /> },
     { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
     { key: 'topNo', label: 'Top NO', icon: <TrendingDown size={11} /> },
     { key: 'topVolume', label: 'Top Volume', icon: <Users size={11} /> },
@@ -2048,6 +2081,14 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                     <WalletTable
                       wallets={followingTabWallets}
                       label="following"
+                      totalShares={data.totalShares}
+                      onOpenWallet={openWalletDialog}
+                    />
+                  )}
+                  {tab === 'winners' && (
+                    <WalletTable
+                      wallets={winnersTabWallets}
+                      label="winners"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
                     />

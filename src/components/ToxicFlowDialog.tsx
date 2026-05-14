@@ -160,6 +160,29 @@ function stakedNetUsdTableCell(signed: number): ReactNode {
   );
 }
 
+/** Inv Y − Inv N in shares: |net| + Y/N suffix (no leading minus), same layout idea as Staked Net. */
+const SHARE_INV_NET_EPS = 0.001;
+
+function inventoryNetSharesTableCell(signed: number): ReactNode {
+  if (!Number.isFinite(signed)) return '–';
+  const mag = Math.round(Math.abs(signed)).toLocaleString('en-US');
+  if (Math.abs(signed) <= SHARE_INV_NET_EPS) {
+    return <span className="tabular-nums font-bold text-gray-500">{mag}</span>;
+  }
+  if (signed > SHARE_INV_NET_EPS) {
+    return (
+      <span className="tabular-nums font-bold text-green-400">
+        {mag} Y
+      </span>
+    );
+  }
+  return (
+    <span className="tabular-nums font-bold text-red-400">
+      {mag} N
+    </span>
+  );
+}
+
 function walletRowClassForStakedNet(shadeRows: boolean, stakeNetSigned: number): string {
   const border = 'border-b border-gray-800';
   if (!shadeRows) return `${border} hover:bg-gray-700/30`;
@@ -783,8 +806,6 @@ function WalletTableBodyRow({
         : 0;
   const biasColor = bias > 0.5 ? 'text-yellow-400' : bias > 0.3 ? 'text-orange-400' : 'text-gray-400';
   const nYColor = iy > 0.001 ? 'text-green-400' : iy < -0.001 ? 'text-red-400' : 'text-gray-500';
-  const netYNColor =
-    signedLegNet < -0.001 ? 'text-red-400' : signedLegNet > 0.001 ? 'text-green-400' : 'text-gray-500';
   const stakeYUsd = walletStakeYUsd(w);
   const stakeNUsd = walletStakeNUsd(w);
   const stakeNetSigned = walletStakeNetSignedUsd(w);
@@ -845,7 +866,9 @@ function WalletTableBodyRow({
       </td>
       <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{fmtInt(iy)}</td>
       <td className="text-right px-1 font-bold text-red-400 bg-red-900/10">{fmtInt(inn)}</td>
-      <td className={`text-right px-1 font-bold ${netYNColor}`}>{fmtInt(signedLegNet)}</td>
+      <td className="text-right px-1 whitespace-nowrap tabular-nums" title="inv_yes − inv_no (|net| Y / N)">
+        {inventoryNetSharesTableCell(signedLegNet)}
+      </td>
       <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceYes)}</td>
       <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceNo)}</td>
       <td className="text-right px-1 text-gray-400">
@@ -956,7 +979,7 @@ function WalletTable({
             <th className="text-right px-1 bg-red-900/15 text-red-300" title="inv_no">
               Inv N
             </th>
-            <th className="text-right px-1" title="inv_yes − inv_no">
+            <th className="text-right px-1" title="inv_yes − inv_no (shares); magnitude + Y / N, no leading minus">
               Net
             </th>
             <th className="text-right px-1 text-gray-400" title="price_yes">

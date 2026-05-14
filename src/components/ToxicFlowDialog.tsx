@@ -449,6 +449,7 @@ function ledgerAggregatePnlSign(embed: WalletScoresLedgerEmbed | null | undefine
   return null;
 }
 
+function lifetimePnlHueFromSummary(s: WalletSummary): 'pos' | 'neg' | null {
   const p = s.pnl;
   if (typeof p !== 'number' || !Number.isFinite(p)) return null;
   if (p > 0) return 'pos';

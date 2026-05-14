@@ -91,8 +91,8 @@ const TOXIC_SIDEBAR_STRIP_HELP = {
   smart:
     'Cohort wallets whose batched wallet_scores_ledger shows PnL > 0, win rate > 50%, and resolved markets > 10. Same bar math as Toxic Flow Smart tab.',
   fav: 'Addresses you starred (toxic favourites) that appear in this market’s cohort. Bar = their combined staked-net surplus halves.',
-  pnlPlus:
-    'Cohort wallets with a batched ledger row and lifetime ledger PnL ≥ 0; ordered by staked net then win rate. Same cohort as Toxic Flow PnL+.',
+  greens:
+    'Cohort wallets with a batched ledger row and lifetime ledger PnL ≥ 0; ordered by staked net then win rate. Same cohort as Toxic Flow Greens tab.',
 } as const;
 
 const LS_ORDER_EXPIRY_UPDOWN = 'polymarket-order-expiry-updown';
@@ -276,7 +276,9 @@ const SIDEBAR_NOTIFY_TOP_THRESHOLD_PCT_LEGACY_KEY = 'polybot-sidebar-notify-top-
 const SIDEBAR_NOTIFY_HOLDER_TILT_PCT_KEY = 'polybot-sidebar-notify-holder-tilt-pct';
 const SIDEBAR_NOTIFY_SMART_TILT_PCT_KEY = 'polybot-sidebar-notify-smart-tilt-pct';
 const SIDEBAR_NOTIFY_FAVOURITE_TILT_PCT_KEY = 'polybot-sidebar-notify-favourite-tilt-pct';
-const SIDEBAR_NOTIFY_PROFIT_TILT_PCT_KEY = 'polybot-sidebar-notify-profit-tilt-pct';
+const SIDEBAR_NOTIFY_GREENS_TILT_PCT_KEY = 'polybot-sidebar-notify-greens-tilt-pct';
+/** Legacy cohort tilt key (Profiter / PnL+). */
+const SIDEBAR_NOTIFY_PROFIT_TILT_PCT_LEGACY_KEY = 'polybot-sidebar-notify-profit-tilt-pct';
 const SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY = 'polybot-sidebar-notify-staked-min-usd';
 const SIDEBAR_NOTIFY_SOUND_FREQ_KEY = 'polybot-sidebar-notify-sound-freq';
 const SIDEBAR_NOTIFY_RING_TIME_S_KEY = 'polybot-sidebar-notify-ring-time-s';
@@ -455,9 +457,12 @@ function readNotifyFavouriteTiltPct(): number {
     return 0;
   }
 }
-function readNotifyProfiterTiltPct(): number {
+function readNotifyGreensTiltPct(): number {
   try {
-    const raw = localStorage.getItem(SIDEBAR_NOTIFY_PROFIT_TILT_PCT_KEY);
+    let raw = localStorage.getItem(SIDEBAR_NOTIFY_GREENS_TILT_PCT_KEY);
+    if (raw == null || raw === '') {
+      raw = localStorage.getItem(SIDEBAR_NOTIFY_PROFIT_TILT_PCT_LEGACY_KEY);
+    }
     const n = parseFloat(raw ?? '30');
     if (!Number.isFinite(n)) return 30;
     return Math.min(99, Math.max(0, Math.round(n)));
@@ -708,7 +713,7 @@ export function Sidebar() {
   const [notifyHolderTiltPct, setNotifyHolderTiltPct] = useState(readNotifyHolderTiltPct);
   const [notifySmartTiltPct, setNotifySmartTiltPct] = useState(readNotifySmartTiltPct);
   const [notifyFavouriteTiltPct, setNotifyFavouriteTiltPct] = useState(readNotifyFavouriteTiltPct);
-  const [notifyProfiterTiltPct, setNotifyProfiterTiltPct] = useState(readNotifyProfiterTiltPct);
+  const [notifyGreensTiltPct, setNotifyGreensTiltPct] = useState(readNotifyGreensTiltPct);
   const [notifyStakedMinUsd, setNotifyStakedMinUsd] = useState(readNotifyStakedMinUsd);
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
   const [notifyRingTimeS, setNotifyRingTimeS] = useState(readNotifyRingTimeS);
@@ -761,11 +766,11 @@ export function Sidebar() {
   }, [notifyFavouriteTiltPct]);
   useEffect(() => {
     try {
-      localStorage.setItem(SIDEBAR_NOTIFY_PROFIT_TILT_PCT_KEY, String(notifyProfiterTiltPct));
+      localStorage.setItem(SIDEBAR_NOTIFY_GREENS_TILT_PCT_KEY, String(notifyGreensTiltPct));
     } catch {
       /* */
     }
-  }, [notifyProfiterTiltPct]);
+  }, [notifyGreensTiltPct]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY, String(notifyStakedMinUsd));
@@ -938,7 +943,7 @@ export function Sidebar() {
       { pct: notifyHolderTiltPct, lean: barLean(bars?.holders) },
       { pct: notifySmartTiltPct, lean: barLean(bars?.smart) },
       { pct: notifyFavouriteTiltPct, lean: barLean(bars?.favourites) },
-      { pct: notifyProfiterTiltPct, lean: barLean(bars?.pnlPlus) },
+      { pct: notifyGreensTiltPct, lean: barLean(bars?.pnlPlus) },
     ].filter((x) => x.pct > 0);
     if (legs.length === 0) return null;
 
@@ -958,7 +963,7 @@ export function Sidebar() {
     notifyHolderTiltPct,
     notifySmartTiltPct,
     notifyFavouriteTiltPct,
-    notifyProfiterTiltPct,
+    notifyGreensTiltPct,
   ]);
 
   useEffect(() => {
@@ -2635,13 +2640,8 @@ export function Sidebar() {
               <div className="border border-gray-600/80 rounded-md p-2 space-y-3 bg-gray-900/40">
                 <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Toxic cohort tilts</div>
                 <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                  Same surplus-half bars as the sidebar. Alarm only when every cohort with threshold &gt; 0 meets it and all point the same side. 0 = skip that cohort.
+                  Thresholds for the four Toxic cohort tilts shown in the sidebar. Alarm only when every cohort with value &gt; 0 meets it and all tilt the same side. 0 = skip that cohort.
                 </p>
-                {!toxicStripModel.lists ? (
-                  <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                    Toxic Flow snapshot not loaded — neutral bars below.
-                  </p>
-                ) : null}
                   <div className="space-y-2">
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -2660,14 +2660,8 @@ export function Sidebar() {
                           }}
                         />
                       </div>
-                      <ToxicFlowStakePreview
-                        layout="stacked"
-                        helpText={TOXIC_SIDEBAR_STRIP_HELP.holders}
-                        label="Holders"
-                        wallets={toxicStripModel.lists?.holders ?? []}
-                      />
                       <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                        Largest-|net| holder cohort. Default threshold 30. 0 = ignore.
+                        Largest-|net| holder cohort. Default 30. 0 = ignore.
                       </p>
                     </div>
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
@@ -2687,14 +2681,8 @@ export function Sidebar() {
                           }}
                         />
                       </div>
-                      <ToxicFlowStakePreview
-                        layout="stacked"
-                        helpText={TOXIC_SIDEBAR_STRIP_HELP.smart}
-                        label="Smart"
-                        wallets={toxicStripModel.lists?.smart ?? []}
-                      />
                       <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                        Ledger “smart money” cohort. Default 30. 0 = ignore.
+                        Ledger smart-money cohort. Default 30. 0 = ignore.
                       </p>
                     </div>
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
@@ -2714,41 +2702,29 @@ export function Sidebar() {
                           }}
                         />
                       </div>
-                      <ToxicFlowStakePreview
-                        layout="stacked"
-                        helpText={TOXIC_SIDEBAR_STRIP_HELP.fav}
-                        label="Fav"
-                        wallets={toxicStripModel.lists?.favourites ?? []}
-                      />
                       <p className="text-[10px] text-gray-500 m-0 leading-snug">
                         Starred toxic favourites in this market. Default 0. 0 = ignore.
                       </p>
                     </div>
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className="text-[11px] font-medium text-gray-300 shrink-0">Profiter Tilt (%)</span>
+                        <span className="text-[11px] font-medium text-gray-300 shrink-0">Greens Tilt (%)</span>
                         <input
                           type="number"
                           min={0}
                           max={99}
                           step={1}
                           className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs"
-                          value={notifyProfiterTiltPct}
+                          value={notifyGreensTiltPct}
                           onChange={(e) => {
                             const v = Number(e.target.value);
                             if (!Number.isFinite(v)) return;
-                            setNotifyProfiterTiltPct(Math.min(99, Math.max(0, Math.round(v))));
+                            setNotifyGreensTiltPct(Math.min(99, Math.max(0, Math.round(v))));
                           }}
                         />
                       </div>
-                      <ToxicFlowStakePreview
-                        layout="stacked"
-                        helpText={TOXIC_SIDEBAR_STRIP_HELP.pnlPlus}
-                        label="PnL+"
-                        wallets={toxicStripModel.lists?.pnlPlus ?? []}
-                      />
                       <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                        Non-negative ledger PnL cohort (PnL+). Default 30. 0 = ignore.
+                        Non-negative ledger PnL cohort (Greens in Toxic Flow). Default 30. 0 = ignore.
                       </p>
                     </div>
                   </div>
@@ -3349,16 +3325,16 @@ export function Sidebar() {
                   />
                   <ToxicFlowStakePreview
                     layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.pnlPlus}
-                    label="PnL+"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.greens}
+                    label="Greens"
                     wallets={toxicStripModel.lists?.pnlPlus ?? []}
                     flashExtremeTilt={
-                      notifyProfiterTiltPct > 0 &&
+                      notifyGreensTiltPct > 0 &&
                       notifyTiltAppliesToSelectedMarket &&
                       notifyFlashBg &&
                       notifyStakedGatePasses
                     }
-                    extremeFlashTiltThreshold={notifyProfiterTiltPct / 100}
+                    extremeFlashTiltThreshold={notifyGreensTiltPct / 100}
                   />
             </div>
           </div>

@@ -104,7 +104,7 @@ const TOXIC_FLOW_TAB_DESCRIPTIONS: Record<Tab, string> = {
     'Cohort wallets whose batched wallet_scores_ledger shows PnL > 0, win rate > 50%, and resolved markets > 10.',
   favourites: 'Addresses you starred that appear in this market’s toxic-flow cohort.',
   winners:
-    'Cohort wallets with a batched ledger row and lifetime ledger PnL not below zero; ordered by staked net then win rate.',
+    'Greens: cohort wallets with a batched ledger row and lifetime ledger PnL not below zero; ordered by staked net then win rate.',
   topYes:
     'Cohort where signed staked net leans YES (USDC YES leg vs NO); strongest YES lean first.',
   topNo: 'Cohort where signed staked net leans NO; strongest NO lean first.',
@@ -1759,7 +1759,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     { key: 'topHolders', label: 'Top Holders', icon: <Crown size={11} /> },
     { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
     { key: 'favourites', label: 'Favourites', icon: <Star size={11} /> },
-    { key: 'winners', label: 'Pofiters', icon: <Trophy size={11} /> },
+    { key: 'winners', label: 'Greens', icon: <Trophy size={11} /> },
     { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
     { key: 'topNo', label: 'Top NO', icon: <TrendingDown size={11} /> },
     { key: 'topVolume', label: 'Top Volume', icon: <Users size={11} /> },
@@ -1909,7 +1909,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                     <ToxicFlowStakePreview label="Fav" wallets={favouritesTabWallets} />
                   </div>
                   <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
-                    <ToxicFlowStakePreview label="PnL+" wallets={winnersTabWallets} />
+                    <ToxicFlowStakePreview label="Greens" wallets={winnersTabWallets} />
                   </div>
                 </div>
                 <div className="flex gap-1 border-b border-gray-700 pb-2 shrink-0 flex-wrap">
@@ -1942,7 +1942,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                     <WalletTable wallets={favouritesTabWallets} label="favourites" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                   )}
                   {tab === 'winners' && (
-                    <WalletTable wallets={winnersTabWallets} label="pofiters" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                    <WalletTable wallets={winnersTabWallets} label="greens" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                   )}
                   {tab === 'topYes' && (
                     <WalletTable wallets={topYesWallets} label="Net Y (Staked)" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />

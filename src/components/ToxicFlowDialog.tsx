@@ -1146,7 +1146,7 @@ export function WalletInfoDialog({
 
   if (!open) return null;
   const polymarketProfileUrl = `https://polymarket.com/profile/${wallet.trim().toLowerCase()}`;
-  return (
+  const dialog = (
     <div className="fixed inset-0 bg-black/60 z-[60010] flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div
         className="bg-gray-800 rounded-lg p-3 w-full mx-4 shadow-xl border border-gray-700 max-w-[min(98vw,93.6rem)] max-h-[88vh] min-h-[50vh] flex flex-col overflow-hidden"
@@ -1462,6 +1462,8 @@ export function WalletInfoDialog({
       </div>
     </div>
   );
+  if (typeof document === 'undefined') return null;
+  return createPortal(dialog, document.body);
 }
 
 export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClose, embedded = false }: ToxicFlowDialogProps) {

@@ -912,14 +912,6 @@ export function Sidebar() {
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
   const [toxicDialogOpen, setToxicDialogOpen] = useState(false);
   const [toxicSidebarExpanded, setToxicSidebarExpanded] = useState(false);
-  const toxicExpandedMarketIdentity = useAppStore((s) => {
-    const m = s.selectedMarket;
-    if (!m) return '';
-    const cid = String(m.conditionId ?? '').trim();
-    const id = String(m.id ?? '').trim();
-    const tok = Array.isArray(m.clobTokenIds) ? m.clobTokenIds.map((x) => String(x).trim()).join('|') : '';
-    return `${cid}\0${id}\0${tok}`;
-  });
   const [marketStakedLegs, setMarketStakedLegs] = useState<MarketStakedLegsResponse | null>(null);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   useEffect(() => {
@@ -927,7 +919,7 @@ export function Sidebar() {
   }, [selectedMarket?.id]);
   useEffect(() => {
     setToxicSidebarExpanded(false);
-  }, [toxicExpandedMarketIdentity]);
+  }, [selectedMarket?.id]);
   useEffect(() => {
     const mid = ((selectedMarket?.conditionId ?? selectedMarket?.id) || '').trim();
     if (!mid) {
@@ -1389,10 +1381,7 @@ export function Sidebar() {
     if (!autoSwitchNextMarketOnExpiry || !transitionedToExpired) return;
     const lookup = useAppStore.getState().marketLookup;
     const next = pickNextMarketOnExpiry(selectedMarket, Date.now(), upOrDownMarkets, lookup);
-    if (next) {
-      setToxicSidebarExpanded(false);
-      setSelectedMarket(next);
-    }
+    if (next) setSelectedMarket(next);
   }, [
     autoSwitchNextMarketOnExpiry,
     isMarketExpired,
@@ -2665,7 +2654,7 @@ export function Sidebar() {
             : 'flex-1 min-h-0 overflow-y-auto'
         }
       >
-        <div className={toxicSidebarExpanded && !isMobileSheet ? 'w-[calc(288px*1.1)] shrink-0 overflow-y-auto min-h-0' : ''}>
+        <div className={toxicSidebarExpanded && !isMobileSheet ? 'w-72 shrink-0 overflow-y-auto min-h-0' : ''}>
       {/* Portfolio Summary */}
       {selectedMarket && (
         <div className="sidebar-section bg-gray-800/80 py-1">

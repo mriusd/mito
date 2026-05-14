@@ -461,6 +461,11 @@ function ledgerSummaryWinRateFracOrNull(s: WalletSummary | null | undefined): nu
   return ledgerWinRateFracFromStored(s.winRate);
 }
 
+/** No `wallet_scores_ledger` snapshot on row (`walletLedgerSummary` null or omitted). */
+function wslLedgerRowMissing(embed: WalletScoresLedgerEmbed | null | undefined): boolean {
+  return embed == null;
+}
+
 /** Gold (amber): ledger WR > 60%, ≥10 resolved markets, aggregate ledger PnL > 0 (`wallet_scores_ledger`). */
 function ledgerGoldFromEmbed(embed: WalletScoresLedgerEmbed | null | undefined): boolean {
   if (embed == null) return false;
@@ -504,6 +509,9 @@ function WinRateBottomBar({ winRate, className }: { winRate: number; className?:
 // Wallet hover tooltip — fetches summary on hover, caches results
 const summaryCache: Record<string, WalletSummary | null> = {};
 
+/** One toxic-flow wallet tooltip at a time: opening a new one broadcasts so other instances unmount their portal. */
+const TOXIC_WALLET_TIP_OPEN = 'polybot:toxic-wallet-tip-open';
+
 type WalletTipPos = { left: number; top: number; placeAbove: boolean };
 
 function WalletLink({
@@ -531,15 +539,54 @@ function WalletLink({
   const [tipPos, setTipPos] = useState<WalletTipPos | null>(null);
   const anchorRef = useRef<HTMLSpanElement>(null);
   const mousePosRef = useRef({ x: 0, y: 0 });
+  const walletNormRef = useRef(wallet.toLowerCase());
+  walletNormRef.current = wallet.toLowerCase();
   const enterTimerRef = useRef<number | null>(null);
   const leaveTimerRef = useRef<number | null>(null);
 
-  const clearLeaveTimer = () => {
+  const clearLeaveTimer = useCallback(() => {
     if (leaveTimerRef.current) {
       clearTimeout(leaveTimerRef.current);
       leaveTimerRef.current = null;
     }
-  };
+  }, []);
+
+  const hardCloseTooltip = useCallback(() => {
+    clearLeaveTimer();
+    if (enterTimerRef.current) {
+      clearTimeout(enterTimerRef.current);
+      enterTimerRef.current = null;
+    }
+    setShow(false);
+    setSummary(undefined);
+    setTipPos(null);
+  }, [clearLeaveTimer]);
+
+  useEffect(() => {
+    hardCloseTooltip();
+  }, [wallet, hardCloseTooltip]);
+
+  useEffect(() => {
+    const onPeerOpen = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ wallet: string }>).detail;
+      const openW = typeof detail?.wallet === 'string' ? detail.wallet.toLowerCase() : '';
+      if (openW !== '' && openW !== walletNormRef.current) {
+        hardCloseTooltip();
+      }
+    };
+    window.addEventListener(TOXIC_WALLET_TIP_OPEN, onPeerOpen);
+    return () => window.removeEventListener(TOXIC_WALLET_TIP_OPEN, onPeerOpen);
+  }, [hardCloseTooltip]);
+
+  useEffect(() => {
+    return () => {
+      if (enterTimerRef.current) {
+        clearTimeout(enterTimerRef.current);
+        enterTimerRef.current = null;
+      }
+      clearLeaveTimer();
+    };
+  }, [clearLeaveTimer]);
 
   const scheduleHide = () => {
     clearLeaveTimer();
@@ -594,6 +641,8 @@ function WalletLink({
   }, [show, updateTipPosition]);
 
   const onEnterAnchor = () => {
+    walletNormRef.current = wallet.toLowerCase();
+    window.dispatchEvent(new CustomEvent(TOXIC_WALLET_TIP_OPEN, { detail: { wallet: walletNormRef.current } }));
     clearLeaveTimer();
     if (ledgerEmbed !== undefined) {
       setShow(true);
@@ -602,14 +651,15 @@ function WalletLink({
     }
     enterTimerRef.current = window.setTimeout(async () => {
       enterTimerRef.current = null;
+      const wkForFetch = walletNormRef.current;
       setShow(true);
-      const wk = wallet.toLowerCase();
-      if (wk in summaryCache) {
-        setSummary(summaryCache[wk]);
+      if (wkForFetch in summaryCache) {
+        setSummary(summaryCache[wkForFetch]);
         return;
       }
       const s = await fetchWalletSummary(wallet);
-      summaryCache[wk] = s;
+      if (walletNormRef.current !== wkForFetch) return;
+      summaryCache[wkForFetch] = s;
       setSummary(s);
     }, 300);
   };
@@ -622,9 +672,34 @@ function WalletLink({
     scheduleHide();
   };
 
+  const addrClass = positivePnl
+    ? 'text-green-400'
+    : negativePnl
+      ? 'text-red-400'
+      : ledgerGold
+        ? 'text-amber-400'
+        : isSmart
+          ? 'text-yellow-400'
+          : wslLedgerRowMissing(ledgerEmbed)
+            ? 'text-blue-400'
+            : 'text-zinc-400';
+  const btnTitle = (() => {
+    const parts: string[] = [];
+    if (positivePnl) parts.push('Positive PnL (this market)');
+    if (negativePnl) parts.push('Negative PnL (this market)');
+    if (ledgerGold && isSmart) parts.push('Ledger WR >60%, ≥10 resolved, ledger PnL >0; proven smart wallet');
+    else {
+      if (ledgerGold) parts.push('Ledger WR >60%, ≥10 resolved markets, ledger PnL >0');
+      if (isSmart) parts.push('Proven smart wallet');
+    }
+    if (wslLedgerRowMissing(ledgerEmbed)) parts.push('No wallet_scores_ledger row');
+    else if (!positivePnl && !negativePnl && !ledgerGold && !isSmart) parts.push('Ledger present (neutral hue)');
+    return parts.length ? parts.join(' · ') : undefined;
+  })();
+
   const tooltipInner = (
     <>
-          <div className="font-mono text-blue-400 mb-1 text-[8px]">{wallet.slice(0, 10)}...{wallet.slice(-6)}</div>
+          <div className={`font-mono mb-1 text-[8px] ${addrClass}`}>{wallet.slice(0, 10)}...{wallet.slice(-6)}</div>
           {summary === undefined && <div className="text-gray-500">Loading...</div>}
           {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
           {summary ? (
@@ -652,27 +727,6 @@ function WalletLink({
       </div>,
       document.body,
     );
-
-  const addrClass = positivePnl
-    ? 'text-green-400'
-    : negativePnl
-      ? 'text-red-400'
-      : ledgerGold
-        ? 'text-amber-400'
-        : isSmart
-          ? 'text-yellow-400'
-          : 'text-blue-400';
-  const btnTitle = (() => {
-    const parts: string[] = [];
-    if (positivePnl) parts.push('Positive PnL (this market)');
-    if (negativePnl) parts.push('Negative PnL (this market)');
-    if (ledgerGold && isSmart) parts.push('Ledger WR >60%, ≥10 resolved, ledger PnL >0; proven smart wallet');
-    else {
-      if (ledgerGold) parts.push('Ledger WR >60%, ≥10 resolved markets, ledger PnL >0');
-      if (isSmart) parts.push('Proven smart wallet');
-    }
-    return parts.length ? parts.join(' · ') : undefined;
-  })();
 
   return (
     <span

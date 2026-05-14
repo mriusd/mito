@@ -365,6 +365,21 @@ input[type="range"].vol-slider::-moz-range-thumb {
 .right-sidebar.mobile-dragging {
   transition: none;
 }
+
+@media (min-width: 768px) {
+  .right-sidebar.sidebar-toxic-expanded {
+    display: flex;
+    flex-direction: column;
+    width: min(960px, calc(100vw - 12px));
+    max-width: min(960px, calc(100vw - 12px));
+    overflow: hidden;
+    transition:
+      transform 0.3s ease,
+      width 0.25s ease,
+      max-width 0.25s ease;
+  }
+}
+
 .sidebar-mobile-overlay {
   display: none;
 }

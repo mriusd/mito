@@ -51,7 +51,7 @@ import { SidebarBarMidMarker } from './SidebarBarMidMarker';
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
-import { ArrowRight, Bell, CirclePercent, Clock, GripVertical, Pencil, Plus, X } from 'lucide-react';
+import { ArrowRight, Bell, ChevronLeft, ChevronRight, CirclePercent, Clock, GripVertical, Pencil, Plus, X } from 'lucide-react';
 import type { AssetSymbol, Market, Position } from '../types';
 import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
 
@@ -911,10 +911,14 @@ export function Sidebar() {
   const [closingPositionTokens, setClosingPositionTokens] = useState<Set<string>>(new Set());
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
   const [toxicDialogOpen, setToxicDialogOpen] = useState(false);
+  const [toxicSidebarExpanded, setToxicSidebarExpanded] = useState(false);
   const [marketStakedLegs, setMarketStakedLegs] = useState<MarketStakedLegsResponse | null>(null);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   useEffect(() => {
     setMergeDialogOpen(false);
+  }, [selectedMarket?.id]);
+  useEffect(() => {
+    setToxicSidebarExpanded(false);
   }, [selectedMarket?.id]);
   useEffect(() => {
     const mid = ((selectedMarket?.conditionId ?? selectedMarket?.id) || '').trim();
@@ -2625,7 +2629,7 @@ export function Sidebar() {
       />
     )}
     <div
-      className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}`}
+      className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}${toxicSidebarExpanded && !isMobileSheet ? ' sidebar-toxic-expanded' : ''}`}
       style={{ ['--mobile-sheet-offset' as string]: `${mobileDragOffset}px` } as React.CSSProperties}
     >
       <div
@@ -2643,6 +2647,14 @@ export function Sidebar() {
       >
         <div className="mobile-sidebar-drag-handle" />
       </div>
+      <div
+        className={
+          toxicSidebarExpanded && !isMobileSheet
+            ? 'flex flex-1 min-h-0 w-full min-w-0 flex-row overflow-hidden'
+            : 'flex-1 min-h-0 overflow-y-auto'
+        }
+      >
+        <div className={toxicSidebarExpanded && !isMobileSheet ? 'w-72 shrink-0 overflow-y-auto min-h-0' : ''}>
       {/* Portfolio Summary */}
       {selectedMarket && (
         <div className="sidebar-section bg-gray-800/80 py-1">
@@ -3114,18 +3126,34 @@ export function Sidebar() {
                   {sharesInExistenceDisplay}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setToxicDialogOpen(true)}
-                onMouseEnter={preloadToxicFlowDialog}
-                onFocus={preloadToxicFlowDialog}
-                onPointerDown={(e) => e.stopPropagation()}
-                className="rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left hover:bg-yellow-500/20 transition-colors min-w-0"
-                title="Holders Analysis"
-              >
-                <div className="text-[8px] uppercase tracking-wide text-yellow-400 truncate">Holders</div>
-                <div className="tabular-nums font-bold text-yellow-300 truncate">{holdersCountDisplay}</div>
-              </button>
+              <div className="flex gap-0.5 min-w-0 items-stretch">
+                <button
+                  type="button"
+                  onClick={() => setToxicDialogOpen(true)}
+                  onMouseEnter={preloadToxicFlowDialog}
+                  onFocus={preloadToxicFlowDialog}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="flex-1 min-w-0 rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left hover:bg-yellow-500/20 transition-colors"
+                  title="Holders Analysis"
+                >
+                  <div className="text-[8px] uppercase tracking-wide text-yellow-400 truncate">Holders</div>
+                  <div className="tabular-nums font-bold text-yellow-300 truncate">{holdersCountDisplay}</div>
+                </button>
+                <button
+                  type="button"
+                  className="hidden md:flex w-5 shrink-0 items-center justify-center self-stretch rounded border border-yellow-500/40 bg-yellow-950/40 text-yellow-400/90 hover:bg-yellow-500/15 transition-colors"
+                  title={toxicSidebarExpanded ? 'Collapse holders panel' : 'Expand holders panel in sidebar'}
+                  aria-expanded={toxicSidebarExpanded}
+                  aria-label={toxicSidebarExpanded ? 'Collapse holders panel' : 'Expand holders panel'}
+                  onClick={() => {
+                    preloadToxicFlowDialog();
+                    setToxicSidebarExpanded((v) => !v);
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  {toxicSidebarExpanded ? <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2} /> : <ChevronRight className="h-3.5 w-3.5" strokeWidth={2} />}
+                </button>
+              </div>
             </div>
             {/* Compact bias bars */}
             {(() => {
@@ -4029,6 +4057,22 @@ export function Sidebar() {
           </div>
         </>
       )}
+        </div>
+        {toxicSidebarExpanded && !isMobileSheet && selectedMarket && (selectedMarket.conditionId || '').trim() ? (
+          <div className="flex flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden bg-gray-900">
+            <Suspense fallback={<div className="p-2 text-[10px] text-gray-500">Loading holders…</div>}>
+              <ToxicFlowDialogLazy
+                embedded
+                open
+                marketId={selectedMarket.conditionId || ''}
+                marketName={marketName}
+                yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
+                onClose={() => setToxicSidebarExpanded(false)}
+              />
+            </Suspense>
+          </div>
+        ) : null}
+      </div>
       {customDialogOpen && typeof document !== 'undefined' && createPortal((
         <div className="fixed inset-0 z-[60000] bg-black/70 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) setCustomDialogOpen(false); }}>
           <div className="w-full max-w-sm mx-4 rounded-lg border border-gray-600 bg-gray-800 p-4">

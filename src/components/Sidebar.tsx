@@ -2338,6 +2338,7 @@ export function Sidebar() {
         />
       </Suspense>
     )}
+    {notifyDialogOpen && typeof document !== 'undefined' &&
       createPortal(
         <div
           className="fixed inset-0 z-[60200] bg-black/70 flex items-center justify-center"

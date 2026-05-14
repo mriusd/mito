@@ -1727,8 +1727,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                 addWallets(data.topVolume);
                 addWallets(data.topTraders);
                 const hasConcentration = data.concentration > 0.5;
-                const hasTopHolderBias = Math.abs(data.topHoldersBias || 0) > 50;
-                const totalFlags = highFlags.length + medFlags.length + (hasConcentration ? 1 : 0) + (hasTopHolderBias ? 1 : 0);
+                const totalFlags = highFlags.length + medFlags.length + (hasConcentration ? 1 : 0);
 
                 return (
                   <div className={`rounded p-3 ${highFlags.length > 0 ? 'bg-red-950/40 border border-red-800/40' : 'bg-gray-900'}`}>
@@ -1826,12 +1825,6 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
                         <div className="flex items-start gap-1.5 text-[10px]">
                           <AlertTriangle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
                           <span className="text-gray-200">Top 5 wallets control {(data.concentration * 100).toFixed(0)}% of volume — potential whale manipulation</span>
-                    </div>
-                  )}
-                      {hasTopHolderBias && (
-                        <div className="flex items-start gap-1.5 text-[10px]">
-                          <AlertTriangle size={12} className="text-yellow-400 flex-shrink-0 mt-0.5" />
-                          <span className="text-gray-300">Top 10 holders have {Math.abs(data.topHoldersBias).toFixed(0)} net {data.topHoldersBias > 0 ? 'YES' : 'NO'} shares — informed players positioned {data.topHoldersBias > 0 ? 'YES' : 'NO'}</span>
                     </div>
                   )}
                   {data.totalWallets === 0 && (

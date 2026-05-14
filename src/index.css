@@ -370,8 +370,8 @@ input[type="range"].vol-slider::-moz-range-thumb {
   .right-sidebar.sidebar-toxic-expanded {
     display: flex;
     flex-direction: column;
-    width: min(960px, calc(100vw - 12px));
-    max-width: min(960px, calc(100vw - 12px));
+    width: min(1056px, calc(100vw - 12px));
+    max-width: min(1056px, calc(100vw - 12px));
     overflow: hidden;
     transition:
       transform 0.3s ease,

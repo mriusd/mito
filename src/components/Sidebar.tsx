@@ -3145,38 +3145,53 @@ export function Sidebar() {
 
             return (
               <div className="sidebar-section py-1 px-3">
-                <div className="grid grid-cols-3 gap-x-2 gap-y-1.5 items-center">
-                  {/* Row 1 — labels (uniform) */}
-                  <div className="text-left text-[10px] leading-tight text-gray-500">Target</div>
-                  <div className="text-center text-[10px] leading-tight text-gray-500 min-w-0">
+                <div
+                  className="grid gap-x-2 gap-y-2 items-center w-full"
+                  style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(5.75rem, 1fr) minmax(0, 1fr)' }}
+                >
+                  {/* Row 1 — labels (same cap height / font) */}
+                  <div className="flex items-center min-h-[18px] text-left text-[10px] font-medium leading-none text-gray-500">
+                    Target
+                  </div>
+                  <div className="flex items-center justify-center gap-0.5 min-h-[18px] text-[10px] font-medium leading-none text-gray-500 min-w-0">
                     {row.pastExpiry ? (
-                      <span className="inline-flex items-center justify-center gap-0.5">
-                        <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
-                        Math
-                      </span>
+                      <>
+                        <CirclePercent className="h-[10px] w-[10px] shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
+                        <span>Math</span>
+                      </>
                     ) : row.mathCents !== null ? (
-                      <span className="inline-flex items-center justify-center gap-0.5">
-                        <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
-                        Math
-                        <HelpTooltip text={mathTooltip} />
-                      </span>
+                      <>
+                        <CirclePercent className="h-[10px] w-[10px] shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
+                        <span>Math</span>
+                        <HelpTooltip
+                          text={mathTooltip}
+                          openOnHover
+                          wrapClassName="inline-flex shrink-0 items-center leading-none"
+                        >
+                          <span className="flex size-[11px] shrink-0 cursor-help items-center justify-center rounded-full border border-gray-500 text-[8px] font-bold leading-none text-gray-400 hover:border-gray-300 hover:text-gray-200">
+                            ?
+                          </span>
+                        </HelpTooltip>
+                      </>
                     ) : null}
                   </div>
-                  <div className="text-right text-[10px] leading-tight text-gray-500 flex items-center justify-end gap-1 flex-wrap">
-                    <span>Current</span>
+                  <div className="flex items-center justify-end gap-1 min-h-[18px] flex-nowrap text-[10px] font-medium leading-none text-gray-500 min-w-0">
+                    <span className="shrink-0">Current</span>
                     <span
-                      className={`px-0.5 rounded-sm text-[10px] font-bold leading-tight ${currentBadge.className}`}
+                      className={`shrink-0 px-0.5 rounded-sm text-[10px] font-bold leading-none py-px ${currentBadge.className}`}
                       title={currentBadge.title}
                     >
                       {currentBadge.label}
                     </span>
                   </div>
 
-                  {/* Row 2 — primary values (uniform) */}
-                  <div className="text-left text-sm font-bold text-white tabular-nums min-w-0 truncate">
-                    {row.targetDisplay}
+                  {/* Row 2 — primary values (explicit text-sm everywhere; kill UA button shrink) */}
+                  <div className="flex items-center justify-start min-h-[22px] min-w-0">
+                    <span className="text-sm font-bold tabular-nums text-white truncate max-w-full">
+                      {row.targetDisplay}
+                    </span>
                   </div>
-                  <div className="text-center text-sm font-bold min-w-0">
+                  <div className="flex items-center justify-center min-h-[22px] min-w-0 text-sm font-bold tabular-nums">
                     {row.pastExpiry ? (
                       <span className="text-gray-500 tabular-nums" title="Time machine ahead of expiration">
                         &gt;⏱
@@ -3184,41 +3199,43 @@ export function Sidebar() {
                     ) : row.mathCents !== null ? (
                       <button
                         type="button"
-                        className={`inline-flex items-center justify-center gap-1 max-w-full min-w-0 text-sm font-bold tabular-nums ${bsColor} cursor-pointer hover:underline`}
+                        className={`inline-flex max-w-full items-center justify-center gap-1 whitespace-nowrap rounded-none border-0 bg-transparent p-0 text-sm font-bold font-sans tabular-nums shadow-none outline-none ring-0 ${bsColor} cursor-pointer hover:underline focus-visible:ring-1 focus-visible:ring-amber-500/60`}
                         onClick={() => setOrderPrice(row.mathCents!.toFixed(1))}
                       >
-                        <CirclePercent className="h-3.5 w-3.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
-                        <span className="tabular-nums truncate">{row.mathCents.toFixed(1)}</span>
+                        <CirclePercent className="h-[14px] w-[14px] shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
+                        <span>{row.mathCents.toFixed(1)}</span>
                       </button>
                     ) : (
-                      <span className="text-gray-600 font-bold">—</span>
+                      <span className="text-gray-600">—</span>
                     )}
                   </div>
-                  <div
-                    ref={sidebarSpotCurrentPriceRef}
-                    className="text-right text-sm font-bold text-white tabular-nums min-w-0 truncate"
-                  >
-                    {row.currentPrice
-                      ? `$${row.currentPrice.toLocaleString(undefined, { minimumFractionDigits: row.priceDec, maximumFractionDigits: row.priceDec })}`
-                      : '...'}
+                  <div className="flex items-center justify-end min-h-[22px] min-w-0">
+                    <span
+                      ref={sidebarSpotCurrentPriceRef}
+                      className="text-sm font-bold tabular-nums text-white truncate max-w-full whitespace-nowrap"
+                    >
+                      {row.currentPrice
+                        ? `$${row.currentPrice.toLocaleString(undefined, { minimumFractionDigits: row.priceDec, maximumFractionDigits: row.priceDec })}`
+                        : '...'}
+                    </span>
                   </div>
 
-                  {/* Row 3 — secondary (uniform) */}
-                  <div className="text-left text-xs font-bold min-w-0 leading-tight">
+                  {/* Row 3 — secondary (single-line cells, same text-xs) */}
+                  <div className="flex items-center justify-start min-h-[18px] min-w-0 text-xs font-bold tabular-nums leading-none">
                     {row.countdown ? (
-                      <div className="flex flex-wrap items-center gap-1">
+                      <div className="flex items-center gap-1 min-w-0 whitespace-nowrap">
                         <span
-                          className={`tabular-nums ${row.countdown === 'Expired' ? 'text-red-400' : row.remaining < 60000 ? 'text-red-400' : row.remaining > 300000 ? 'text-green-400' : 'text-yellow-400'}`}
+                          className={`shrink-0 ${row.countdown === 'Expired' ? 'text-red-400' : row.remaining < 60000 ? 'text-red-400' : row.remaining > 300000 ? 'text-green-400' : 'text-yellow-400'}`}
                         >
                           {row.countdown}
                         </span>
                         {row.countdown === 'Expired' && row.mode === 'updown' && liveUpDownSameTfMarket ? (
                           <button
                             type="button"
-                            className="inline-flex items-center gap-0.5 text-xs font-semibold px-2 py-0.5 rounded bg-green-600 hover:bg-green-500 text-black leading-none shrink-0"
+                            className="inline-flex shrink-0 items-center gap-0.5 rounded bg-green-600 px-2 py-px text-[10px] font-semibold leading-none text-black hover:bg-green-500"
                             onClick={() => setSelectedMarket(liveUpDownSameTfMarket)}
                           >
-                            <ArrowRight size={12} strokeWidth={2.5} className="shrink-0" aria-hidden />
+                            <ArrowRight size={11} strokeWidth={2.5} className="shrink-0" aria-hidden />
                             live
                           </button>
                         ) : null}
@@ -3229,17 +3246,17 @@ export function Sidebar() {
                       </span>
                     )}
                   </div>
-                  <div className="text-center text-xs font-bold min-w-0 leading-tight">
+                  <div className="flex items-center justify-center min-h-[18px] min-w-0 text-xs font-bold tabular-nums leading-none">
                     {!row.pastExpiry && row.mathCents !== null ? (
-                      <span className="inline-flex items-center justify-center gap-0.5 flex-wrap">
+                      <span className="inline-flex items-center gap-0.5 whitespace-nowrap">
                         <span
-                          className={`tabular-nums ${
+                          className={
                             sidebarChartAnnualVolPct == null
                               ? 'text-gray-600'
                               : notifyMaxVolatilityPct > 0 && sidebarChartAnnualVolPct > notifyMaxVolatilityPct
                                 ? 'text-red-400'
                                 : 'text-amber-200/95'
-                          }`}
+                          }
                         >
                           {sidebarChartAnnualVolPct != null
                             ? `σ ${sidebarChartAnnualVolPct.toFixed(1)}%`
@@ -3247,7 +3264,13 @@ export function Sidebar() {
                         </span>
                         <HelpTooltip
                           text={`Annualized volatility from the left chart (same σ as the canvas corner). Uses the last ${notifyVolatilityCandles} completed ${sidebarChartKlineLabel} candles; the open candle is excluded. For 5m markets these are 5m candles, for 15m markets 15m candles, etc. Candle count and max volatility for tilt alerts are set in Tilt notifications.`}
-                        />
+                          openOnHover
+                          wrapClassName="inline-flex shrink-0 items-center leading-none"
+                        >
+                          <span className="flex size-[12px] shrink-0 cursor-help items-center justify-center rounded-full border border-gray-500 text-[9px] font-bold leading-none text-gray-400 hover:border-gray-300 hover:text-gray-200">
+                            ?
+                          </span>
+                        </HelpTooltip>
                       </span>
                     ) : (
                       <span className="text-transparent select-none" aria-hidden>
@@ -3255,17 +3278,15 @@ export function Sidebar() {
                       </span>
                     )}
                   </div>
-                  <div className="text-right text-xs font-bold min-w-0 leading-tight tabular-nums">
+                  <div className="flex items-center justify-end min-h-[18px] min-w-0 text-xs font-bold tabular-nums leading-none">
                     {row.diff && row.currentPrice > 0 ? (
-                      <span className={`inline-flex flex-wrap items-center justify-end gap-0.5 ${row.diff.isUp ? 'text-green-400' : 'text-red-400'}`}>
-                        <span>
-                          {row.diff.isUp ? '↑' : '↓'}
-                          {row.diff.abs.toLocaleString(undefined, { minimumFractionDigits: row.priceDec, maximumFractionDigits: row.priceDec })}
-                        </span>
-                        <span>
-                          ({row.diff.pct >= 0 ? '+' : ''}
-                          {row.diff.pct.toFixed(2)}%)
-                        </span>
+                      <span
+                        className={`inline-flex whitespace-nowrap ${row.diff.isUp ? 'text-green-400' : 'text-red-400'}`}
+                      >
+                        {row.diff.isUp ? '↑' : '↓'}
+                        {row.diff.abs.toLocaleString(undefined, { minimumFractionDigits: row.priceDec, maximumFractionDigits: row.priceDec })}{' '}
+                        ({row.diff.pct >= 0 ? '+' : ''}
+                        {row.diff.pct.toFixed(2)}%)
                       </span>
                     ) : (
                       <span className="text-transparent select-none" aria-hidden>

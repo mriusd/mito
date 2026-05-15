@@ -60,7 +60,6 @@ import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { HelperTooltip } from './HelperTooltip';
 import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
-import { ToxicFlowStakePreview, TOXIC_TOTAL_STAKE_BAR_HELP } from './ToxicFlowStakePreview';
 import {
   STAKED_NET_EPS,
   walletInvY,
@@ -76,16 +75,13 @@ import {
   stakedNetSortKeyAsc,
   stakeSortKeyDesc,
   toxicFlowWalletUniverse,
-  normalizeWinRate,
   ledgerWinRateFracFromStored,
-  ledgerSummaryWinRateFracOrNull,
   toxicRowMatchesSmartLedgerDefinition,
-  toxicRowWalletLedgerSummary,
   toxicRowMissingWalletScoresLedgerEmbed,
   toxicRowLedgerLifetimePnlNegative,
   toxicRowSortWinRateFrac,
-  toxicFlowStakeStripWalletLists,
   toxicRowResolvedStatsLow,
+  toxicFlowStakeStripWalletLists,
 } from '../lib/toxicFlowStakeCohort';
 
 interface ToxicFlowDialogProps {
@@ -490,36 +486,6 @@ function isSmartGold(row: Pick<WalletPosition, 'isSmart' | 'cashFlow'>): boolean
   return n >= -1e-6;
 }
 
-/** Green segment = win rate, red = loss rate (0–1). Use as cell bottom edge or stacked under wallet. */
-function WinRateBottomBar({ winRate, className }: { winRate: number; className?: string }) {
-  const w = normalizeWinRate(winRate) ?? 0;
-  const pctWin = w * 100;
-  const pctLoss = (1 - w) * 100;
-  return (
-    <div
-      className={`flex h-0.5 w-full min-w-[40px] overflow-hidden rounded-[1px] ${className ?? ''}`}
-      title={`Win ${pctWin.toFixed(0)}% · loss ${pctLoss.toFixed(0)}%`}
-    >
-      <div className="h-full shrink-0 bg-emerald-500" style={{ width: `${pctWin}%` }} />
-      <div className="h-full shrink-0 bg-red-600" style={{ width: `${pctLoss}%` }} />
-    </div>
-  );
-}
-
-/** Gray fill toward 10 resolved markets (`wallet_scores_ledger.resolved_markets`). */
-function ResolvedMarketsToward10Bar({ resolvedMarkets, className }: { resolvedMarkets: number; className?: string }) {
-  const rm = Math.max(0, resolvedMarkets);
-  const pct = Math.min(100, (rm / 10) * 100);
-  return (
-    <div
-      className={`flex h-0.5 w-full min-w-[40px] overflow-hidden rounded-[1px] bg-gray-700/90 ${className ?? ''}`}
-      title={`Fresh · ${rm} / 10 resolved markets (ledger)`}
-    >
-      <div className="h-full shrink-0 bg-gray-400/95" style={{ width: `${pct}%` }} />
-    </div>
-  );
-}
-
 // Wallet hover tooltip — fetches summary on hover, caches results
 const summaryCache: Record<string, WalletSummary | null> = {};
 
@@ -830,12 +796,6 @@ function WalletTableBodyRow({
   cumSharesPct: number;
 }) {
   const hoverRef = useRef<WalletLinkHoverHandle>(null);
-  const sum = toxicRowWalletLedgerSummary(w);
-  const ledgerFrac = ledgerSummaryWinRateFracOrNull(sum === undefined ? null : sum);
-  const emb = w.walletLedgerSummary;
-  const resolvedStatsLow = toxicRowResolvedStatsLow(emb);
-  const resolvedRmForBar = emb === undefined ? 0 : emb === null ? 0 : emb.resolvedMarkets ?? 0;
-  const showWinBar = !resolvedStatsLow && ledgerFrac != null;
   const iy = typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
   const inn = typeof w.invNo === 'number' && Number.isFinite(w.invNo) ? w.invNo : w.netNo ?? 0;
   const signedLegNet = iy - inn;
@@ -886,7 +846,7 @@ function WalletTableBodyRow({
           />
         </button>
       </td>
-      <td className="relative align-top px-1 py-0.5 pb-2">
+      <td className="align-top px-1 py-0.5">
         <WalletLink
           ref={hoverRef}
           wallet={w.wallet}
@@ -896,17 +856,6 @@ function WalletTableBodyRow({
           ledgerEmbed={w.walletLedgerSummary}
           ledgerGold={ledgerGoldFromEmbed(w.walletLedgerSummary)}
         />
-        {resolvedStatsLow ? (
-          <ResolvedMarketsToward10Bar resolvedMarkets={resolvedRmForBar} className="absolute bottom-0 left-0 right-0" />
-        ) : showWinBar ? (
-          <WinRateBottomBar winRate={ledgerFrac!} className="absolute bottom-0 left-0 right-0" />
-        ) : (
-          <div
-            className="pointer-events-none absolute bottom-0 left-0 right-0 h-0.5 min-w-[40px] overflow-hidden rounded-[1px] bg-gray-700/90"
-            aria-hidden
-            title="No ledger win rate (wallet_scores_ledger)"
-          />
-        )}
       </td>
       <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{fmtInt(iy)}</td>
       <td className="text-right px-1 font-bold text-red-400 bg-red-900/10">{fmtInt(inn)}</td>
@@ -1989,35 +1938,6 @@ export function ToxicFlowDialog({
               </div>
 
               <div className="flex flex-col flex-1 min-h-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 gap-2">
-                <div className="shrink-0 flex flex-col gap-y-2 pb-2 border-b border-gray-700/60">
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    label="Total"
-                    marketGrossLegsUsd={dialogMarketStakedLegs}
-                    wallets={[]}
-                    helpText={TOXIC_TOTAL_STAKE_BAR_HELP}
-                  />
-                  <div className="flex flex-wrap gap-x-2 gap-y-1.5">
-                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
-                    <ToxicFlowStakePreview label="Holders" wallets={topHoldersWallets} />
-                  </div>
-                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
-                    <ToxicFlowStakePreview label="Smart" wallets={smartTabWallets} />
-                  </div>
-                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
-                    <ToxicFlowStakePreview label="Top20" wallets={stripWalletLists?.top20 ?? []} />
-                  </div>
-                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
-                    <ToxicFlowStakePreview label="Fav" wallets={favouritesTabWallets} />
-                  </div>
-                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
-                    <ToxicFlowStakePreview label="Greens" wallets={winnersTabWallets} />
-                  </div>
-                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
-                    <ToxicFlowStakePreview label="Fresh" wallets={stripWalletLists?.fresh ?? []} />
-                  </div>
-                  </div>
-                </div>
                 <div className="flex gap-1 border-b border-gray-700 pb-2 shrink-0 flex-wrap">
                   {tabs.map((t) => (
                     <button

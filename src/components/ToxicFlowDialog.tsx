@@ -93,6 +93,11 @@ interface ToxicFlowDialogProps {
   onClose: () => void;
   /** In-sidebar panel: no modal backdrop; fills parent flex column. */
   embedded?: boolean;
+  /**
+   * When `embedded`, pass Sidebar `useToxicFlowMarketStream` — avoids a second `/ws/toxic-flow` + duplicate
+   * 1–2k wallet row graphs retained in closures (MessageEvent / Function churn in heap snapshots).
+   */
+  streamData?: ToxicFlowData | null;
 }
 
 type Tab = 'topHolders' | 'smart' | 'favourites' | 'winners' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
@@ -1520,7 +1525,15 @@ export function WalletInfoDialog({
   return createPortal(dialog, document.body);
 }
 
-export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClose, embedded = false }: ToxicFlowDialogProps) {
+export function ToxicFlowDialog({
+  open,
+  marketId,
+  marketName,
+  yesTokenId,
+  onClose,
+  embedded = false,
+  streamData = undefined,
+}: ToxicFlowDialogProps) {
   const marketLookup = useMarketLookupSnapshot();
   const [marketStakedLegsRest, setMarketStakedLegsRest] = useState<MarketStakedLegsResponse | null>(null);
 
@@ -1574,9 +1587,15 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
     return Number.isFinite(n) ? n : null;
   }, [dialogMarketStakedLegs]);
 
-  const [data, setData] = useState<ToxicFlowData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [internalData, setInternalData] = useState<ToxicFlowData | null>(null);
+  const [internalLoading, setInternalLoading] = useState(false);
+  const [internalError, setInternalError] = useState('');
+  const data = embedded ? (streamData ?? null) : internalData;
+  const midTrim = (marketId || '').trim();
+  const loading = embedded
+    ? Boolean(open && midTrim && streamData === null)
+    : internalLoading;
+  const error = embedded ? '' : internalError;
   const [tab, setTab] = useState<Tab>('topHolders');
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState('');
@@ -1596,28 +1615,30 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
 
   const load = useCallback(async () => {
     if (!marketId) return;
-    setLoading(true);
-    setError('');
+    setInternalLoading(true);
+    setInternalError('');
     try {
       const d = await fetchToxicFlow(marketId);
-      setData(d);
+      setInternalData(d);
     } catch (e: unknown) {
-      setError((e as Error).message || 'Failed to load');
+      setInternalError((e as Error).message || 'Failed to load');
     } finally {
-      setLoading(false);
+      setInternalLoading(false);
     }
   }, [marketId]);
 
   useEffect(() => {
+    if (embedded) return;
     if (open) {
       void load();
     } else {
-      setData(null);
+      setInternalData(null);
     }
-  }, [open, load]);
+  }, [embedded, open, load]);
 
-  /** Initial load is HTTP; ongoing updates from /ws/toxic-flow (server ~1 Hz). */
+  /** Initial load is HTTP; ongoing updates from /ws/toxic-flow (server ~1 Hz). Skipped when `embedded` (Sidebar owns the stream). */
   useEffect(() => {
+    if (embedded) return;
     if (!open || !marketId.trim()) return;
 
     let cancelled = false;
@@ -1645,7 +1666,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
         try {
           const msg = JSON.parse(String(ev.data)) as { type?: string; data?: ToxicFlowData };
           if (msg.type === 'toxicFlow' && msg.data && typeof msg.data === 'object') {
-            setData(msg.data);
+            setInternalData(msg.data);
           }
         } catch {
           /* ignore */
@@ -1681,7 +1702,7 @@ export function ToxicFlowDialog({ open, marketId, marketName, yesTokenId, onClos
         }
       }
     };
-  }, [open, marketId]);
+  }, [embedded, open, marketId]);
 
   const topYesWallets = useMemo(() => {
     const arr = toxicFlowWalletUniverse(data).filter((w) => {

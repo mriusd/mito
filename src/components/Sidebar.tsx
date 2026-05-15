@@ -3533,20 +3533,6 @@ export function Sidebar() {
                   />
                   <ToxicFlowStakePreview
                     layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.fav}
-                    label="Fav"
-                    wallets={toxicStripModel.lists?.favourites ?? []}
-                    flashExtremeTilt={
-                      notifyFavouriteTiltPct > 0 &&
-                      notifyTiltAppliesToSelectedMarket &&
-                      notifyFlashBg &&
-                      notifyStakedGatePasses &&
-                      notifyVolatilityGatePasses
-                    }
-                    extremeFlashTiltThreshold={notifyFavouriteTiltPct / 100}
-                  />
-                  <ToxicFlowStakePreview
-                    layout="stacked"
                     helpText={TOXIC_SIDEBAR_STRIP_HELP.greens}
                     label="Greens"
                     wallets={toxicStripModel.lists?.pnlPlus ?? []}
@@ -3558,6 +3544,20 @@ export function Sidebar() {
                       notifyVolatilityGatePasses
                     }
                     extremeFlashTiltThreshold={notifyGreensTiltPct / 100}
+                  />
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.fav}
+                    label="Fav"
+                    wallets={toxicStripModel.lists?.favourites ?? []}
+                    flashExtremeTilt={
+                      notifyFavouriteTiltPct > 0 &&
+                      notifyTiltAppliesToSelectedMarket &&
+                      notifyFlashBg &&
+                      notifyStakedGatePasses &&
+                      notifyVolatilityGatePasses
+                    }
+                    extremeFlashTiltThreshold={notifyFavouriteTiltPct / 100}
                   />
             </div>
           </div>
@@ -4394,6 +4394,7 @@ export function Sidebar() {
                 marketId={selectedMarket.conditionId || ''}
                 marketName={marketName}
                 yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
+                streamData={toxicFlowData}
                 onClose={() => setToxicSidebarExpanded(false)}
               />
             </Suspense>

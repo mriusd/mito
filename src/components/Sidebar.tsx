@@ -90,7 +90,7 @@ const TOXIC_SIDEBAR_STRIP_HELP = {
   total: TOXIC_TOTAL_STAKE_BAR_HELP,
   holders: 'Biggest wallets active on this market. Green = YES bets, red = NO bets.',
   smart: 'Wallets with strong winning record. Only those who profit often.',
-  top20: 'Wallets with the most money traded on this market (same list as Top Volume tab).',
+  top20: 'Top 20 position holders on this market (by |staked net|, same ordering as Holders).',
   fav: 'Your favorite wallets betting here right now.',
   greens: 'Wallets with profits in tracked time. Green = more dollars staked on YES, red = more on NO.',
 } as const;

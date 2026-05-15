@@ -190,7 +190,7 @@ export function toxicFlowStakeStripWalletLists(
 ): {
   holders: WalletPosition[];
   smart: WalletPosition[];
-  /** Top volume wallets for this market (same bucket as Top Volume tab; typically ~20 rows). */
+  /** Top 20 holders by |staked net| (subset of Holders strip, same sort). */
   top20: WalletPosition[];
   favourites: WalletPosition[];
   pnlPlus: WalletPosition[];
@@ -198,9 +198,9 @@ export function toxicFlowStakeStripWalletLists(
   if (!data) return null;
 
   const holdersSorted = [...(data.topHolders ?? [])].sort(sortStakeNetMagThenWalletNet);
+  const top20Sorted = holdersSorted.slice(0, 20);
   const universe = toxicFlowWalletUniverse(data);
   const smartSorted = [...universe.filter(toxicRowMatchesSmartLedgerDefinition)].sort(sortStakeNetMagThenWalletNet);
-  const top20Sorted = [...(data.topVolume ?? [])].sort(sortStakeNetMagThenWalletNet);
   const favouritesSorted = [
     ...universe.filter((w) => favouriteSet.has((w.wallet || '').trim().toLowerCase())),
   ].sort(sortStakeNetMagThenWalletNet);
@@ -226,7 +226,7 @@ export function toxicFlowStakeStripWalletLists(
   };
 }
 
-/** Same cohort strips as ToxicFlowDialog / Sidebar (holders / smart / top volume / favourites / greens). */
+/** Same cohort strips as ToxicFlowDialog / Sidebar (holders / smart / top 20 holders / favourites / greens). */
 export function buildToxicFlowStakeStripBars(
   data: ToxicFlowData | null,
   favouriteSet: ReadonlySet<string>,

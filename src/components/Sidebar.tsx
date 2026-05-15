@@ -3014,7 +3014,7 @@ export function Sidebar() {
       />
     )}
     <div
-      className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}${canShowEmbeddedToxic ? ' sidebar-toxic-wide' : ''}${sidebarToxicEffective ? ' sidebar-toxic-expanded' : ''}`}
+      className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}${canShowEmbeddedToxic && !sidebarToxicEffective ? ' sidebar-toxic-collapsed' : ''}${sidebarToxicEffective ? ' sidebar-toxic-expanded' : ''}`}
       style={{ ['--mobile-sheet-offset' as string]: `${mobileDragOffset}px` } as React.CSSProperties}
     >
       <div
@@ -3043,7 +3043,7 @@ export function Sidebar() {
           className={
             isMobileSheet
               ? 'min-h-0 min-w-0'
-              : sidebarToxicEffective
+              : canShowEmbeddedToxic
                 ? 'w-72 shrink-0 min-h-0 overflow-y-auto min-w-0'
                 : 'min-h-0 min-w-0 flex-1 overflow-y-auto'
           }

@@ -408,20 +408,28 @@ input[type="range"].vol-slider::-moz-range-thumb {
 }
 
 @media (min-width: 768px) {
-  /** Match expanded holders width so collapse does not shrink the sidebar */
-  .right-sidebar.sidebar-toxic-wide {
-    width: min(1056px, calc(100vw - 12px));
-    max-width: min(1056px, calc(100vw - 12px));
+  /**
+   * Left column is always w-72 when embedded toxic is available; shell must fit 288px + expand handle.
+   */
+  .right-sidebar.sidebar-toxic-collapsed {
+    width: calc(18rem + 1.5rem);
+    max-width: calc(18rem + 1.5rem);
     transition:
       transform 0.3s ease,
       width 0.25s ease,
       max-width 0.25s ease;
   }
 
-  .right-sidebar.sidebar-toxic-wide.sidebar-toxic-expanded {
+  .right-sidebar.sidebar-toxic-expanded {
     display: flex;
     flex-direction: column;
+    width: min(1056px, calc(100vw - 12px));
+    max-width: min(1056px, calc(100vw - 12px));
     overflow: hidden;
+    transition:
+      transform 0.3s ease,
+      width 0.25s ease,
+      max-width 0.25s ease;
   }
 }
 

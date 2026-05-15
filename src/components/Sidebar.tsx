@@ -84,8 +84,20 @@ function preloadMergePositionsDialog() {
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
 const SIDEBAR_TOXIC_EXPANDED_KEY = 'polybot-sidebar-toxic-expanded';
-/** Quick limit buttons (¢) below cost/payout — buy row / sell row. */
-const SIDEBAR_QUICK_LIMIT_GRID_CENTS: readonly number[] = [5, 10, 15, 20, 25];
+/** Quick limit buttons (¢) below cost/payout — one row buy / one row sell, 5–95 step 5. */
+const SIDEBAR_QUICK_LIMIT_GRID_CENTS: readonly number[] = Array.from({ length: 19 }, (_, i) => 5 + i * 5);
+
+function sidebarQuickBuyBg(i: number, n: number): string {
+  const t = n <= 1 ? 0 : i / (n - 1);
+  const l = 56 - t * 32;
+  return `hsl(152 58% ${l}%)`;
+}
+
+function sidebarQuickSellBg(i: number, n: number): string {
+  const t = n <= 1 ? 0 : i / (n - 1);
+  const l = 56 - t * 32;
+  return `hsl(358 58% ${l}%)`;
+}
 
 /** Bar segment pulse when cohort/gross lean ≥ this fraction (default 30% each side). */
 const SIDEBAR_TOXIC_STRIP_FLASH_FRAC = 0.3;
@@ -3923,32 +3935,40 @@ export function Sidebar() {
               </div>
             </div>
 
-            <div className="mb-3 flex flex-col gap-1.5">
-              <div className="grid grid-cols-5 gap-1">
-                {SIDEBAR_QUICK_LIMIT_GRID_CENTS.map((c) => (
+            <div className="mb-2 flex flex-col gap-1">
+              <div
+                className="grid w-full min-w-0 gap-px"
+                style={{ gridTemplateColumns: `repeat(${SIDEBAR_QUICK_LIMIT_GRID_CENTS.length}, minmax(0, 1fr))` }}
+              >
+                {SIDEBAR_QUICK_LIMIT_GRID_CENTS.map((c, i) => (
                   <button
                     key={`quick-buy-${c}`}
                     type="button"
-                    title={`Limit BUY @ ${c}¢ using amount field`}
+                    title={`Limit BUY @ ${c}¢ (amount field)`}
                     disabled={!walletConnected || !selectedMarket || orderKind === 'market' || isMarketExpired}
                     onClick={() => void submitQuickGridLimitOrder('BUY', c)}
-                    className="h-8 rounded-md bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:pointer-events-none text-[11px] font-bold text-white tabular-nums"
+                    style={{ backgroundColor: sidebarQuickBuyBg(i, SIDEBAR_QUICK_LIMIT_GRID_CENTS.length) }}
+                    className="h-5 min-w-0 rounded-[2px] text-[7px] font-bold text-white tabular-nums leading-none py-0 px-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
                   >
-                    {c}¢
+                    {c}
                   </button>
                 ))}
               </div>
-              <div className="grid grid-cols-5 gap-1">
-                {SIDEBAR_QUICK_LIMIT_GRID_CENTS.map((c) => (
+              <div
+                className="grid w-full min-w-0 gap-px"
+                style={{ gridTemplateColumns: `repeat(${SIDEBAR_QUICK_LIMIT_GRID_CENTS.length}, minmax(0, 1fr))` }}
+              >
+                {SIDEBAR_QUICK_LIMIT_GRID_CENTS.map((c, i) => (
                   <button
                     key={`quick-sell-${c}`}
                     type="button"
-                    title={`Limit SELL @ ${c}¢ using amount field`}
+                    title={`Limit SELL @ ${c}¢ (amount field)`}
                     disabled={!walletConnected || !selectedMarket || orderKind === 'market' || isMarketExpired}
                     onClick={() => void submitQuickGridLimitOrder('SELL', c)}
-                    className="h-8 rounded-md bg-rose-700 hover:bg-rose-600 disabled:opacity-40 disabled:pointer-events-none text-[11px] font-bold text-white tabular-nums"
+                    style={{ backgroundColor: sidebarQuickSellBg(i, SIDEBAR_QUICK_LIMIT_GRID_CENTS.length) }}
+                    className="h-5 min-w-0 rounded-[2px] text-[7px] font-bold text-white tabular-nums leading-none py-0 px-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
                   >
-                    {c}¢
+                    {c}
                   </button>
                 ))}
               </div>

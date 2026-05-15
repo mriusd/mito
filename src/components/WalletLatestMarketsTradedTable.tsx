@@ -125,14 +125,9 @@ function walletMarketUsdcInCell(usdcIn: number): ReactNode {
   return <span className="tabular-nums font-semibold text-red-400">−${mag}</span>;
 }
 
-function fmtSharesMag1En(v: number): string {
+function fmtSharesIntEn(v: number): string {
   if (!Number.isFinite(v)) return '–';
-  return Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-}
-
-function fmtSharesDecimal1En(v: number): string {
-  if (!Number.isFinite(v)) return '–';
-  return Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return Math.round(Math.abs(v)).toLocaleString('en-US');
 }
 
 function marketListEndDateTimeLocale(endDate: string | null): { label: string; color: string } {
@@ -230,7 +225,7 @@ export function WalletLatestMarketsTradedTable({
           const iy = walletInvY(m);
           const inn = walletInvN(m);
           const netLeg = walletNet(m);
-          const netMagStr = fmtSharesMag1En(netLeg);
+          const netMagStr = fmtSharesIntEn(netLeg);
           const netCol =
             Math.abs(netLeg) < 0.001 ? (
               <span className="text-gray-400">–</span>
@@ -266,10 +261,10 @@ export function WalletLatestMarketsTradedTable({
                 {marketName}
               </td>
               <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15 whitespace-nowrap">
-                {fmtSharesDecimal1En(iy)}
+                {fmtSharesIntEn(iy)}
               </td>
               <td className="text-right tabular-nums font-bold text-red-400 bg-red-900/15 whitespace-nowrap">
-                {fmtSharesDecimal1En(inn)}
+                {fmtSharesIntEn(inn)}
               </td>
               <td className="text-right whitespace-nowrap" title="Inv Y − Inv N">
                 {netCol}

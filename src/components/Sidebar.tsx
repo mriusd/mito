@@ -84,6 +84,8 @@ function preloadMergePositionsDialog() {
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
 const SIDEBAR_TOXIC_EXPANDED_KEY = 'polybot-sidebar-toxic-expanded';
+/** Quick limit buttons (¢) below cost/payout — buy row / sell row. */
+const SIDEBAR_QUICK_LIMIT_GRID_CENTS: readonly number[] = [5, 10, 15, 20, 25];
 
 /** Bar segment pulse when cohort/gross lean ≥ this fraction (default 30% each side). */
 const SIDEBAR_TOXIC_STRIP_FLASH_FRAC = 0.3;
@@ -2133,6 +2135,79 @@ export function Sidebar() {
     }
   };
 
+  const submitQuickGridLimitOrder = async (side: 'BUY' | 'SELL', priceCents: number) => {
+    if (!selectedMarket) return;
+    if (orderKind === 'market') {
+      showToast('Set order type to Limit to use quick price buttons', 'error');
+      return;
+    }
+    if (isMarketExpired) {
+      showToast('Market expired', 'error');
+      return;
+    }
+    const tokenId = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1];
+    if (!tokenId) return;
+    const size = parseFloat(orderAmount);
+    if (!size || size <= 0) {
+      showToast('Enter amount (shares)', 'error');
+      return;
+    }
+    if (!Number.isFinite(priceCents) || priceCents < 1 || priceCents > 99) return;
+
+    const price = priceCents / 100;
+    const limitSubmitVusd = orderNotionalUsd(price, size);
+    const limitSubmitCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, limitSubmitVusd);
+    if (limitSubmitCap) {
+      showToast(limitSubmitCap, 'error');
+      return;
+    }
+    const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
+      marketLookup,
+      tokenId,
+      side,
+      priceCents,
+    );
+    if (crossesBook) {
+      const confirmed = await requestCrossingConfirm(bestCounterpartyCents ?? 0);
+      if (!confirmed) return;
+    }
+
+    let expiration: number | undefined;
+    if (side === 'SELL') {
+      expiration = 0;
+    } else {
+      const exp = computeLimitExpiration(selectedMarket.endDate);
+      expiration = exp.expiration;
+      if (exp.invalidLead) {
+        showToast('Lead time to expiration already passed for this market', 'error');
+        return;
+      }
+    }
+
+    setOrderSide(side);
+    setOrderPrice(String(priceCents));
+
+    const orderInfo = `${side} ${size} ${orderOutcome} for ${marketName} @ ${priceCents}¢`;
+    try {
+      const result = await placeOrder({
+        tokenId,
+        side,
+        price,
+        size,
+        expiration,
+        orderInfo,
+      });
+      if (result.success) {
+        showToast('Order placed', 'success');
+        triggerWalletRefresh();
+      } else {
+        showToast(result.error || 'Order failed', 'error');
+      }
+    } catch {
+      showToast('Order failed', 'error');
+    }
+  };
+
   const handleCreateCustomButton = () => {
     const priceCents = parseFloat(customPrice);
     const label = customLabel.trim();
@@ -3845,6 +3920,37 @@ export function Sidebar() {
                   <span className="text-red-400 font-bold text-[13px]">{orderSide === 'SELL' ? '' : `$${cost.toFixed(2)}`}</span>
                   <span className="text-green-400 font-bold text-[13px]">${payout.toFixed(2)}</span>
                 </div>
+              </div>
+            </div>
+
+            <div className="mb-3 flex flex-col gap-1.5">
+              <div className="grid grid-cols-5 gap-1">
+                {SIDEBAR_QUICK_LIMIT_GRID_CENTS.map((c) => (
+                  <button
+                    key={`quick-buy-${c}`}
+                    type="button"
+                    title={`Limit BUY @ ${c}¢ using amount field`}
+                    disabled={!walletConnected || !selectedMarket || orderKind === 'market' || isMarketExpired}
+                    onClick={() => void submitQuickGridLimitOrder('BUY', c)}
+                    className="h-8 rounded-md bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:pointer-events-none text-[11px] font-bold text-white tabular-nums"
+                  >
+                    {c}¢
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-5 gap-1">
+                {SIDEBAR_QUICK_LIMIT_GRID_CENTS.map((c) => (
+                  <button
+                    key={`quick-sell-${c}`}
+                    type="button"
+                    title={`Limit SELL @ ${c}¢ using amount field`}
+                    disabled={!walletConnected || !selectedMarket || orderKind === 'market' || isMarketExpired}
+                    onClick={() => void submitQuickGridLimitOrder('SELL', c)}
+                    className="h-8 rounded-md bg-rose-700 hover:bg-rose-600 disabled:opacity-40 disabled:pointer-events-none text-[11px] font-bold text-white tabular-nums"
+                  >
+                    {c}¢
+                  </button>
+                ))}
               </div>
             </div>
 

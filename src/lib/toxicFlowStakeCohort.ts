@@ -190,6 +190,8 @@ export function toxicFlowStakeStripWalletLists(
 ): {
   holders: WalletPosition[];
   smart: WalletPosition[];
+  /** Top volume wallets for this market (same bucket as Top Volume tab; typically ~20 rows). */
+  top20: WalletPosition[];
   favourites: WalletPosition[];
   pnlPlus: WalletPosition[];
 } | null {
@@ -198,6 +200,7 @@ export function toxicFlowStakeStripWalletLists(
   const holdersSorted = [...(data.topHolders ?? [])].sort(sortStakeNetMagThenWalletNet);
   const universe = toxicFlowWalletUniverse(data);
   const smartSorted = [...universe.filter(toxicRowMatchesSmartLedgerDefinition)].sort(sortStakeNetMagThenWalletNet);
+  const top20Sorted = [...(data.topVolume ?? [])].sort(sortStakeNetMagThenWalletNet);
   const favouritesSorted = [
     ...universe.filter((w) => favouriteSet.has((w.wallet || '').trim().toLowerCase())),
   ].sort(sortStakeNetMagThenWalletNet);
@@ -217,18 +220,20 @@ export function toxicFlowStakeStripWalletLists(
   return {
     holders: holdersSorted,
     smart: smartSorted,
+    top20: top20Sorted,
     favourites: favouritesSorted,
     pnlPlus: winnersSorted,
   };
 }
 
-/** Same four cohort strips as ToxicFlowDialog tab row (holders / smart / favourites / winners). */
+/** Same cohort strips as ToxicFlowDialog / Sidebar (holders / smart / top volume / favourites / greens). */
 export function buildToxicFlowStakeStripBars(
   data: ToxicFlowData | null,
   favouriteSet: ReadonlySet<string>,
 ): {
   holders: { sumYUsd: number; sumNUsd: number };
   smart: { sumYUsd: number; sumNUsd: number };
+  top20: { sumYUsd: number; sumNUsd: number };
   favourites: { sumYUsd: number; sumNUsd: number };
   pnlPlus: { sumYUsd: number; sumNUsd: number };
 } | null {
@@ -237,6 +242,7 @@ export function buildToxicFlowStakeStripBars(
   return {
     holders: toxicCohortStakedNetSurplusHalves(lists.holders),
     smart: toxicCohortStakedNetSurplusHalves(lists.smart),
+    top20: toxicCohortStakedNetSurplusHalves(lists.top20),
     favourites: toxicCohortStakedNetSurplusHalves(lists.favourites),
     pnlPlus: toxicCohortStakedNetSurplusHalves(lists.pnlPlus),
   };

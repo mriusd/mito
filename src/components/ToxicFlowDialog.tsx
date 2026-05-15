@@ -84,6 +84,7 @@ import {
   toxicRowMissingWalletScoresLedgerEmbed,
   toxicRowLedgerLifetimePnlNegative,
   toxicRowSortWinRateFrac,
+  toxicFlowStakeStripWalletLists,
 } from '../lib/toxicFlowStakeCohort';
 
 interface ToxicFlowDialogProps {
@@ -1796,6 +1797,11 @@ export function ToxicFlowDialog({
     });
   }, [data]);
 
+  const stripWalletLists = useMemo(
+    () => (data ? toxicFlowStakeStripWalletLists(data, toxicFollowSet) : null),
+    [data, toxicFollowSet],
+  );
+
   if (!open) return null;
 
   const openWalletDialog = (wallet: string, _netShares?: number) => {
@@ -1960,6 +1966,9 @@ export function ToxicFlowDialog({
                   </div>
                   <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
                     <ToxicFlowStakePreview label="Smart" wallets={smartTabWallets} />
+                  </div>
+                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
+                    <ToxicFlowStakePreview label="Top20" wallets={stripWalletLists?.top20 ?? []} />
                   </div>
                   <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
                     <ToxicFlowStakePreview label="Fav" wallets={favouritesTabWallets} />

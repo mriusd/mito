@@ -90,6 +90,7 @@ const TOXIC_SIDEBAR_STRIP_HELP = {
   total: TOXIC_TOTAL_STAKE_BAR_HELP,
   holders: 'Biggest wallets active on this market. Green = YES bets, red = NO bets.',
   smart: 'Wallets with strong winning record. Only those who profit often.',
+  top20: 'Wallets with the most money traded on this market (same list as Top Volume tab).',
   fav: 'Your favorite wallets betting here right now.',
   greens: 'Wallets with profits in tracked time. Green = more dollars staked on YES, red = more on NO.',
 } as const;
@@ -992,6 +993,7 @@ export function Sidebar() {
       bars: {
         holders: toxicCohortStakedNetSurplusHalves(lists.holders),
         smart: toxicCohortStakedNetSurplusHalves(lists.smart),
+        top20: toxicCohortStakedNetSurplusHalves(lists.top20),
         favourites: toxicCohortStakedNetSurplusHalves(lists.favourites),
         pnlPlus: toxicCohortStakedNetSurplusHalves(lists.pnlPlus),
       },
@@ -3547,6 +3549,12 @@ export function Sidebar() {
                       notifyVolatilityGatePasses
                     }
                     extremeFlashTiltThreshold={notifyGreensTiltPct / 100}
+                  />
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.top20}
+                    label="Top20"
+                    wallets={toxicStripModel.lists?.top20 ?? []}
                   />
                   <ToxicFlowStakePreview
                     layout="stacked"

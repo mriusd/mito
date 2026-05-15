@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react';
-import { fetchToxicFlow, type ToxicFlowData } from '../api';
+import { useEffect, useRef, useState } from 'react';
+import { fetchToxicFlow, toxicFlowPayloadEqual, type ToxicFlowData } from '../api';
 import { WS_BASE } from '../lib/env';
 
 /** HTTP snapshot + `/ws/toxic-flow` increments (same payload shape as ToxicFlowDialog when open). */
 export function useToxicFlowMarketStream(marketId: string | undefined | null, enabled = true): ToxicFlowData | null {
   const mid = typeof marketId === 'string' ? marketId.trim() : '';
   const [data, setData] = useState<ToxicFlowData | null>(null);
+  const dataRef = useRef<ToxicFlowData | null>(null);
 
   useEffect(() => {
     if (!enabled || !mid) {
+      dataRef.current = null;
       setData(null);
       return;
     }
@@ -17,9 +19,15 @@ export function useToxicFlowMarketStream(marketId: string | undefined | null, en
     (async () => {
       try {
         const d = await fetchToxicFlow(mid);
-        if (!cancelled) setData(d);
+        if (!cancelled) {
+          dataRef.current = d;
+          setData(d);
+        }
       } catch {
-        if (!cancelled) setData(null);
+        if (!cancelled) {
+          dataRef.current = null;
+          setData(null);
+        }
       }
     })();
     return () => {
@@ -54,7 +62,11 @@ export function useToxicFlowMarketStream(marketId: string | undefined | null, en
         try {
           const msg = JSON.parse(String(ev.data)) as { type?: string; data?: ToxicFlowData };
           if (msg.type === 'toxicFlow' && msg.data && typeof msg.data === 'object') {
-            setData(msg.data);
+            const next = msg.data;
+            const prev = dataRef.current;
+            if (prev && toxicFlowPayloadEqual(prev, next)) return;
+            dataRef.current = next;
+            setData(next);
           }
         } catch {
           /* ignore */

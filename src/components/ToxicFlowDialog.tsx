@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import {
   fetchToxicFlow,
+  toxicFlowPayloadEqual,
   fetchWalletSummary,
   fetchWalletPositions,
   fetchOnchainFills,
@@ -1588,6 +1589,7 @@ export function ToxicFlowDialog({
   }, [dialogMarketStakedLegs]);
 
   const [internalData, setInternalData] = useState<ToxicFlowData | null>(null);
+  const internalDataRef = useRef<ToxicFlowData | null>(null);
   const [internalLoading, setInternalLoading] = useState(false);
   const [internalError, setInternalError] = useState('');
   const data = embedded ? (streamData ?? null) : internalData;
@@ -1619,6 +1621,7 @@ export function ToxicFlowDialog({
     setInternalError('');
     try {
       const d = await fetchToxicFlow(marketId);
+      internalDataRef.current = d;
       setInternalData(d);
     } catch (e: unknown) {
       setInternalError((e as Error).message || 'Failed to load');
@@ -1632,6 +1635,7 @@ export function ToxicFlowDialog({
     if (open) {
       void load();
     } else {
+      internalDataRef.current = null;
       setInternalData(null);
     }
   }, [embedded, open, load]);
@@ -1666,7 +1670,11 @@ export function ToxicFlowDialog({
         try {
           const msg = JSON.parse(String(ev.data)) as { type?: string; data?: ToxicFlowData };
           if (msg.type === 'toxicFlow' && msg.data && typeof msg.data === 'object') {
-            setInternalData(msg.data);
+            const next = msg.data;
+            const prev = internalDataRef.current;
+            if (prev && toxicFlowPayloadEqual(prev, next)) return;
+            internalDataRef.current = next;
+            setInternalData(next);
           }
         } catch {
           /* ignore */

@@ -536,6 +536,70 @@ export interface ToxicFlowData {
   walletMarketTradesForMarket?: number;
 }
 
+/** Skip React `setState` when `/ws/toxic-flow` pushes a fresh JSON object graph but no meaningful change (cuts allocation waves + fiber churn every tick). */
+export function toxicFlowPayloadEqual(a: ToxicFlowData, b: ToxicFlowData): boolean {
+  if (a === b) return true;
+  if (
+    a.marketId !== b.marketId ||
+    a.totalTrades !== b.totalTrades ||
+    a.totalWallets !== b.totalWallets ||
+    a.walletMarketTradesForMarket !== b.walletMarketTradesForMarket ||
+    a.orderFilledEventsProcessed !== b.orderFilledEventsProcessed ||
+    a.totalShares !== b.totalShares ||
+    a.totalUsdcIn !== b.totalUsdcIn ||
+    a.totalUsdcOut !== b.totalUsdcOut ||
+    a.concentration !== b.concentration ||
+    a.smartMoneyBias !== b.smartMoneyBias ||
+    a.topHoldersBias !== b.topHoldersBias ||
+    a.whaleBias !== b.whaleBias ||
+    a.whaleCount !== b.whaleCount ||
+    a.yesWallets !== b.yesWallets ||
+    a.noWallets !== b.noWallets ||
+    a.yesUsdcIn !== b.yesUsdcIn ||
+    a.noUsdcIn !== b.noUsdcIn ||
+    a.totalYesVol !== b.totalYesVol ||
+    a.totalNoVol !== b.totalNoVol ||
+    a.polygonWssConfigured !== b.polygonWssConfigured
+  ) {
+    return false;
+  }
+  const rowSig = (w: WalletPosition) =>
+    [
+      w.wallet,
+      w.net,
+      w.tradeCount,
+      w.lastTradeTime,
+      w.invYes ?? '',
+      w.invNo ?? '',
+      w.isSmart ? 1 : 0,
+      w.walletLedgerSummary?.totalTrades ?? '',
+      w.walletLedgerSummary?.pnl ?? '',
+    ].join('\x00');
+  const listEq = (xa: WalletPosition[], xb: WalletPosition[]) => {
+    if (xa.length !== xb.length) return false;
+    for (let i = 0; i < xa.length; i++) {
+      if (rowSig(xa[i]) !== rowSig(xb[i])) return false;
+    }
+    return true;
+  };
+  if (!listEq(a.topHolders, b.topHolders)) return false;
+  if (!listEq(a.topYes, b.topYes)) return false;
+  if (!listEq(a.topNo, b.topNo)) return false;
+  if (!listEq(a.topVolume, b.topVolume)) return false;
+  if (!listEq(a.topTraders, b.topTraders)) return false;
+  const ra = a.redFlags;
+  const rb = b.redFlags;
+  if ((ra?.length ?? 0) !== (rb?.length ?? 0)) return false;
+  if (ra?.length) {
+    for (let i = 0; i < ra.length; i++) {
+      const f = ra[i];
+      const g = rb![i];
+      if (f.flag !== g.flag || f.value !== g.value || f.wallet !== g.wallet) return false;
+    }
+  }
+  return true;
+}
+
 export async function fetchToxicFlow(marketId: string): Promise<ToxicFlowData> {
   const resp = await fetch(`${BASE}/api/toxic-flow?market_id=${encodeURIComponent(marketId)}`);
   if (!resp.ok) throw new Error('Failed to fetch toxic flow');

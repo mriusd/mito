@@ -15,7 +15,6 @@ import {
   TrendingUp,
   TrendingDown,
   Users,
-  AlertTriangle,
   Crown,
   UsersRound,
   ExternalLink,
@@ -109,22 +108,20 @@ type Tab =
   | 'smart'
   | 'favourites'
   | 'winners'
-  | 'unknown'
+  | 'fresh'
   | 'topYes'
   | 'topNo'
-  | 'topVolume'
-  | 'topTraders';
+  | 'topVolume';
 
 const TOXIC_FLOW_TAB_DESCRIPTIONS: Record<Tab, string> = {
   topHolders: 'Wallets with biggest positions on this market.',
   smart: 'Wallets that win most of the time.',
   favourites: 'Wallets you marked as favorites betting here.',
   winners: 'Wallets with profits in tracked time. Green = more YES staked than NO.',
-  unknown: 'Wallets with no ledger row or fewer than 10 resolved markets — stats not proven yet.',
+  fresh: 'Wallets with no ledger row or fewer than 10 resolved markets — not enough history to grade.',
   topYes: 'Wallets betting strongest on YES.',
   topNo: 'Wallets betting strongest on NO.',
   topVolume: 'Wallets with most money traded here.',
-  topTraders: 'Wallets with most trades made here.',
 };
 
 function rPnlToneClass(v: number): string {
@@ -516,7 +513,7 @@ function ResolvedMarketsToward10Bar({ resolvedMarkets, className }: { resolvedMa
   return (
     <div
       className={`flex h-0.5 w-full min-w-[40px] overflow-hidden rounded-[1px] bg-gray-700/90 ${className ?? ''}`}
-      title={`Resolved markets (ledger): ${rm} / 10`}
+      title={`Fresh · ${rm} / 10 resolved markets (ledger)`}
     >
       <div className="h-full shrink-0 bg-gray-400/95" style={{ width: `${pct}%` }} />
     </div>
@@ -1854,11 +1851,10 @@ export function ToxicFlowDialog({
     { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
     { key: 'favourites', label: 'Favourites', icon: <Star size={11} /> },
     { key: 'winners', label: 'Greens', icon: <Trophy size={11} /> },
-    { key: 'unknown', label: 'Unknown', icon: <CircleHelp size={11} /> },
+    { key: 'fresh', label: 'Fresh', icon: <CircleHelp size={11} /> },
     { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
     { key: 'topNo', label: 'Top NO', icon: <TrendingDown size={11} /> },
     { key: 'topVolume', label: 'Top Volume', icon: <Users size={11} /> },
-    { key: 'topTraders', label: 'Top Traders', icon: <AlertTriangle size={11} /> },
   ];
 
   const rootClass = embedded
@@ -2018,7 +2014,7 @@ export function ToxicFlowDialog({
                     <ToxicFlowStakePreview label="Greens" wallets={winnersTabWallets} />
                   </div>
                   <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
-                    <ToxicFlowStakePreview label="Unknown" wallets={stripWalletLists?.unknown ?? []} />
+                    <ToxicFlowStakePreview label="Fresh" wallets={stripWalletLists?.fresh ?? []} />
                   </div>
                   </div>
                 </div>
@@ -2054,8 +2050,8 @@ export function ToxicFlowDialog({
                   {tab === 'winners' && (
                     <WalletTable wallets={winnersTabWallets} label="greens" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                   )}
-                  {tab === 'unknown' && (
-                    <WalletTable wallets={stripWalletLists?.unknown ?? []} label="unknown" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                  {tab === 'fresh' && (
+                    <WalletTable wallets={stripWalletLists?.fresh ?? []} label="fresh" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                   )}
                   {tab === 'topYes' && (
                     <WalletTable wallets={topYesWallets} label="Net Y (Staked)" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
@@ -2065,9 +2061,6 @@ export function ToxicFlowDialog({
                   )}
                   {tab === 'topVolume' && (
                     <WalletTable wallets={data.topVolume} label="volume" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
-                  )}
-                  {tab === 'topTraders' && (
-                    <WalletTable wallets={data.topTraders} label="traders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                   )}
                 </div>
               </div>

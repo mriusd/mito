@@ -142,8 +142,8 @@ export function toxicRowResolvedStatsLow(
   return (embed.resolvedMarkets ?? 0) < 10;
 }
 
-/** Unknown tab: same cohort as other strips, wallets with batched ledger row missing or &lt;10 resolved markets. */
-export function toxicRowMatchesUnknownTab(w: WalletPosition): boolean {
+/** Fresh cohort: batched ledger missing or &lt;10 resolved markets. */
+export function toxicRowMatchesFreshTab(w: WalletPosition): boolean {
   return toxicRowResolvedStatsLow(w.walletLedgerSummary);
 }
 
@@ -208,14 +208,14 @@ export function toxicFlowStakeStripWalletLists(
   top20: WalletPosition[];
   favourites: WalletPosition[];
   pnlPlus: WalletPosition[];
-  unknown: WalletPosition[];
+  fresh: WalletPosition[];
 } | null {
   if (!data) return null;
 
   const holdersSorted = [...(data.topHolders ?? [])].sort(sortStakeNetMagThenWalletNet);
   const top20Sorted = holdersSorted.slice(0, 20);
   const universe = toxicFlowWalletUniverse(data);
-  const unknownSorted = [...universe.filter(toxicRowMatchesUnknownTab)].sort(sortStakeNetMagThenWalletNet);
+  const freshSorted = [...universe.filter(toxicRowMatchesFreshTab)].sort(sortStakeNetMagThenWalletNet);
   const smartSorted = [...universe.filter(toxicRowMatchesSmartLedgerDefinition)].sort(sortStakeNetMagThenWalletNet);
   const favouritesSorted = [
     ...universe.filter((w) => favouriteSet.has((w.wallet || '').trim().toLowerCase())),
@@ -239,11 +239,11 @@ export function toxicFlowStakeStripWalletLists(
     top20: top20Sorted,
     favourites: favouritesSorted,
     pnlPlus: winnersSorted,
-    unknown: unknownSorted,
+    fresh: freshSorted,
   };
 }
 
-/** Same cohort strips as ToxicFlowDialog / Sidebar (holders / smart / top 20 holders / favourites / greens). */
+/** Same cohort strips as ToxicFlowDialog / Sidebar (holders / smart / top 20 / favourites / greens / fresh). */
 export function buildToxicFlowStakeStripBars(
   data: ToxicFlowData | null,
   favouriteSet: ReadonlySet<string>,
@@ -253,7 +253,7 @@ export function buildToxicFlowStakeStripBars(
   top20: { sumYUsd: number; sumNUsd: number };
   favourites: { sumYUsd: number; sumNUsd: number };
   pnlPlus: { sumYUsd: number; sumNUsd: number };
-  unknown: { sumYUsd: number; sumNUsd: number };
+  fresh: { sumYUsd: number; sumNUsd: number };
 } | null {
   const lists = toxicFlowStakeStripWalletLists(data, favouriteSet);
   if (!lists) return null;
@@ -263,6 +263,6 @@ export function buildToxicFlowStakeStripBars(
     top20: toxicCohortStakedNetSurplusHalves(lists.top20),
     favourites: toxicCohortStakedNetSurplusHalves(lists.favourites),
     pnlPlus: toxicCohortStakedNetSurplusHalves(lists.pnlPlus),
-    unknown: toxicCohortStakedNetSurplusHalves(lists.unknown),
+    fresh: toxicCohortStakedNetSurplusHalves(lists.fresh),
   };
 }

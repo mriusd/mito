@@ -365,7 +365,7 @@ export function LiveTradeChart({
       return;
     }
 
-    const chartLeft = 30;
+    const chartLeft = 36;
     const chartRight = W - 4;
     const chartTop = 4;
     /** hh:mm sits in bottom band — 0¢ is drawn flush above it */
@@ -388,21 +388,20 @@ export function LiveTradeChart({
     const toX = (t: number) => chartLeft + ((t - minT) / rangeT) * (chartRight - chartLeft);
     const toY = (p: number) => chartBot - ((p - minP) / (maxP - minP)) * (chartBot - chartTop);
 
-    // Grid lines + price labels
+    // Grid lines + price labels (every 10¢ on 0–100¢ axis)
     ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.lineWidth = 1;
     ctx.font = '9px monospace';
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    for (let i = 0; i <= 3; i++) {
-      const p = minP + (maxP - minP) * (i / 3);
-      const y = toY(p);
+    for (let cents = 0; cents <= 100; cents += 10) {
+      const y = toY(cents);
       ctx.beginPath();
       ctx.moveTo(chartLeft, y);
       ctx.lineTo(chartRight, y);
       ctx.stroke();
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
-      ctx.fillText(p.toFixed(1) + '¢', chartLeft - 2, y);
+      ctx.fillText(`${cents}¢`, chartLeft - 2, y);
     }
 
     /** Time labels sit below chartBot in bottom band (drawn last for z-order) */

@@ -87,17 +87,21 @@ const SIDEBAR_TOXIC_EXPANDED_KEY = 'polybot-sidebar-toxic-expanded';
 /** Quick limit buttons (¢) below cost/payout — one row buy / one row sell: 5, then +10 through 95. */
 const SIDEBAR_QUICK_LIMIT_GRID_CENTS: readonly number[] = Array.from({ length: 10 }, (_, i) => 5 + i * 10);
 
-/** Buy row: emerald-style green; left lighter → right darker (dark overall). */
+/** Buy row: emerald-style green; left starts darker, right unchanged (~10% L). */
 function sidebarQuickBuyBg(i: number, n: number): string {
   const t = n <= 1 ? 0 : i / (n - 1);
-  const l = 40 - t * 30;
+  const lStart = 28;
+  const lEnd = 10;
+  const l = lStart - t * (lStart - lEnd);
   return `hsl(158 70% ${l}%)`;
 }
 
-/** Sell row: rose/red; left lighter → right darker (dark overall). */
+/** Sell row: rose/red; left starts darker, right unchanged (~10% L). */
 function sidebarQuickSellBg(i: number, n: number): string {
   const t = n <= 1 ? 0 : i / (n - 1);
-  const l = 40 - t * 30;
+  const lStart = 28;
+  const lEnd = 10;
+  const l = lStart - t * (lStart - lEnd);
   return `hsl(351 78% ${l}%)`;
 }
 
@@ -3954,7 +3958,7 @@ export function Sidebar() {
                       WebkitTextStroke: '1px #000',
                       paintOrder: 'stroke fill',
                     }}
-                    className="min-h-0 h-[17px] min-w-0 rounded-[1px] text-[11px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
+                    className="min-h-0 h-[15px] min-w-0 rounded-[1px] text-[13px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
                   >
                     {c}
                   </button>
@@ -3976,7 +3980,7 @@ export function Sidebar() {
                       WebkitTextStroke: '1px #000',
                       paintOrder: 'stroke fill',
                     }}
-                    className="min-h-0 h-[17px] min-w-0 rounded-[1px] text-[11px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
+                    className="min-h-0 h-[15px] min-w-0 rounded-[1px] text-[13px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
                   >
                     {c}
                   </button>

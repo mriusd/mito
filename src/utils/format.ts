@@ -36,22 +36,35 @@ export function upDownTimeframeKeyFromMarket(
   return '1h';
 }
 
-/** Soonest-ending row in TF bucket with endDate still in the future; prefers Gamma `closed === false`. */
-export function pickLiveUpDownMarketInTfBucket(marketsForTf: Market[] | undefined, nowMs: number = Date.now()): Market | null {
-  if (!marketsForTf?.length) return null;
+/** All TF-bucket rows with end strictly after `nowMs`; open before closed, then by end ascending. Deduped by market id. */
+export function listFutureUpDownMarketsInTfBucket(marketsForTf: Market[] | undefined, nowMs: number = Date.now()): Market[] {
+  if (!marketsForTf?.length) return [];
   const futures = marketsForTf.filter((m) => {
     if (!m.endDate) return false;
     const t = new Date(m.endDate).getTime();
     return Number.isFinite(t) && t > nowMs;
   });
-  if (futures.length === 0) return null;
+  if (futures.length === 0) return [];
   futures.sort((a, b) => {
     const ca = a.closed ? 1 : 0;
     const cb = b.closed ? 1 : 0;
     if (ca !== cb) return ca - cb;
     return new Date(a.endDate!).getTime() - new Date(b.endDate!).getTime();
   });
-  return futures[0];
+  const seen = new Set<string>();
+  const out: Market[] = [];
+  for (const m of futures) {
+    if (seen.has(m.id)) continue;
+    seen.add(m.id);
+    out.push(m);
+  }
+  return out;
+}
+
+/** Soonest-ending row in TF bucket with endDate still in the future; prefers Gamma `closed === false`. */
+export function pickLiveUpDownMarketInTfBucket(marketsForTf: Market[] | undefined, nowMs: number = Date.now()): Market | null {
+  const list = listFutureUpDownMarketsInTfBucket(marketsForTf, nowMs);
+  return list.length ? list[0]! : null;
 }
 
 /**

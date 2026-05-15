@@ -27,6 +27,7 @@ import {
   getTokenOutcome,
   getTradeClobTokenId,
   outcomeTokenBelongsToSelectedMarket,
+  listFutureUpDownMarketsInTfBucket,
   pickLiveUpDownMarketInTfBucket,
   pickNextMarketOnExpiry,
   resolveUpDownStrikeSync,
@@ -62,7 +63,19 @@ import {
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
-import { ArrowRight, Bell, ChevronLeft, ChevronRight, CirclePercent, Clock, GripVertical, Pencil, Plus, X } from 'lucide-react';
+import {
+  ArrowRight,
+  Bell,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CirclePercent,
+  Clock,
+  GripVertical,
+  Pencil,
+  Plus,
+  X,
+} from 'lucide-react';
 import type { AssetSymbol, Market, Position } from '../types';
 import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
 
@@ -1527,6 +1540,7 @@ export function Sidebar() {
   }, [isUpDownMarket, selectedMarket?.id]);
 
   const sidebarSpotCurrentPriceRef = useRef<HTMLDivElement>(null);
+  const moreUpDownDetailsRef = useRef<HTMLDetailsElement>(null);
   const prevPriceRef = useRef<number>(0);
   const [upDownCountdown, setUpDownCountdown] = useState('');
   const [upDownRemaining, setUpDownRemaining] = useState(Infinity);
@@ -1765,6 +1779,10 @@ export function Sidebar() {
             })()
           : null;
 
+      const udTf = upDownTimeframeKeyFromMarket(selectedMarket);
+      const futureUpDownSameTf =
+        udTf != null ? listFutureUpDownMarketsInTfBucket(upOrDownMarkets[asset]?.[udTf], Date.now()) : [];
+
       return {
         mode: 'updown' as const,
         targetDisplay:
@@ -1780,6 +1798,7 @@ export function Sidebar() {
         currentPrice,
         currentSource,
         diff,
+        futureUpDownSameTf,
       };
     }
 
@@ -1846,6 +1865,7 @@ export function Sidebar() {
       currentSource,
       diff,
       hitModel: selectedMarketIsHit,
+      futureUpDownSameTf: [] as Market[],
     };
   }, [
     selectedMarket,
@@ -1862,6 +1882,7 @@ export function Sidebar() {
     selectedMarketIsHit,
     upDownCountdown,
     upDownRemaining,
+    upOrDownMarkets,
   ]);
 
   /** Cohort signals only (Black–Scholes Δ gate removed). */
@@ -3346,6 +3367,43 @@ export function Sidebar() {
                             <ArrowRight size={10} strokeWidth={2.5} className="shrink-0" aria-hidden />
                             live
                           </button>
+                        ) : null}
+                        {row.mode === 'updown' && row.futureUpDownSameTf.length > 1 ? (
+                          <details ref={moreUpDownDetailsRef} className="relative shrink-0">
+                            <summary className="inline-flex shrink-0 cursor-pointer select-none list-none items-center gap-0.5 rounded border border-gray-600 bg-gray-900/90 px-1 py-px text-[9px] font-semibold leading-none text-gray-300 [&::-webkit-details-marker]:hidden hover:border-gray-500">
+                              More
+                              <ChevronDown size={10} strokeWidth={2} className="shrink-0 opacity-70" aria-hidden />
+                            </summary>
+                            <ul
+                              className="absolute left-0 top-full z-[200] mt-0.5 max-h-[40vh] min-w-[3.75rem] overflow-y-auto rounded border border-gray-600 bg-neutral-950 py-0.5 shadow-lg"
+                              role="menu"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {row.futureUpDownSameTf.map((m) => (
+                                <li key={m.id}>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className={`w-full px-1.5 py-1 text-left text-[10px] font-semibold tabular-nums hover:bg-neutral-800 ${
+                                      m.id === selectedMarket?.id ? 'text-amber-300' : 'text-gray-100'
+                                    }`}
+                                    title={m.endDate}
+                                    onClick={() => {
+                                      setSelectedMarket(m);
+                                      const dr = moreUpDownDetailsRef.current;
+                                      if (dr) dr.open = false;
+                                    }}
+                                  >
+                                    {new Date(m.endDate).toLocaleTimeString(undefined, {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: false,
+                                    })}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
                         ) : null}
                       </div>
                     ) : (

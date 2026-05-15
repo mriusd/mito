@@ -116,7 +116,6 @@ const TOXIC_SIDEBAR_STRIP_HELP = {
   top20: 'Top 20 position holders on this market (by |staked net|, same ordering as Holders).',
   fav: 'Your favorite wallets betting here right now.',
   greens: 'Wallets with profits in tracked time. Green = more dollars staked on YES, red = more on NO.',
-  fresh: 'No ledger row or fewer than 10 resolved markets (fresh / limited history).',
 } as const;
 
 const LS_ORDER_EXPIRY_UPDOWN = 'polymarket-order-expiry-updown';
@@ -1020,7 +1019,6 @@ export function Sidebar() {
         top20: toxicCohortStakedNetSurplusHalves(lists.top20),
         favourites: toxicCohortStakedNetSurplusHalves(lists.favourites),
         pnlPlus: toxicCohortStakedNetSurplusHalves(lists.pnlPlus),
-        fresh: toxicCohortStakedNetSurplusHalves(lists.fresh),
       },
     };
   }, [toxicFlowData, toxicFavSet]);
@@ -2209,9 +2207,6 @@ export function Sidebar() {
         return;
       }
     }
-
-    setOrderSide(side);
-    setOrderPrice(String(priceCents));
 
     const orderInfo = `${side} ${size} ${orderOutcome} for ${marketName} @ ${priceCents}¢`;
     try {
@@ -3639,14 +3634,6 @@ export function Sidebar() {
                     helpText={TOXIC_SIDEBAR_STRIP_HELP.greens}
                     label="Greens"
                     wallets={toxicStripModel.lists?.pnlPlus ?? []}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.fresh}
-                    label="Fresh"
-                    wallets={toxicStripModel.lists?.fresh ?? []}
                     flashExtremeTilt
                     extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
                   />

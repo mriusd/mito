@@ -84,8 +84,8 @@ function preloadMergePositionsDialog() {
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
 const SIDEBAR_TOXIC_EXPANDED_KEY = 'polybot-sidebar-toxic-expanded';
-/** Quick limit buttons (¢) below cost/payout — one row buy / one row sell, 5–95 step 5. */
-const SIDEBAR_QUICK_LIMIT_GRID_CENTS: readonly number[] = Array.from({ length: 19 }, (_, i) => 5 + i * 5);
+/** Quick limit buttons (¢) below cost/payout — one row buy / one row sell: 5, then +10 through 95. */
+const SIDEBAR_QUICK_LIMIT_GRID_CENTS: readonly number[] = Array.from({ length: 10 }, (_, i) => 5 + i * 10);
 
 function sidebarQuickBuyBg(i: number, n: number): string {
   const t = n <= 1 ? 0 : i / (n - 1);
@@ -3947,7 +3947,11 @@ export function Sidebar() {
                     title={`Limit BUY @ ${c}¢ (amount field)`}
                     disabled={!walletConnected || !selectedMarket || orderKind === 'market' || isMarketExpired}
                     onClick={() => void submitQuickGridLimitOrder('BUY', c)}
-                    style={{ backgroundColor: sidebarQuickBuyBg(i, SIDEBAR_QUICK_LIMIT_GRID_CENTS.length) }}
+                    style={{
+                      backgroundColor: sidebarQuickBuyBg(i, SIDEBAR_QUICK_LIMIT_GRID_CENTS.length),
+                      WebkitTextStroke: '0.5px #000',
+                      paintOrder: 'stroke fill',
+                    }}
                     className="h-5 min-w-0 rounded-[2px] text-[7px] font-bold text-white tabular-nums leading-none py-0 px-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
                   >
                     {c}
@@ -3965,7 +3969,11 @@ export function Sidebar() {
                     title={`Limit SELL @ ${c}¢ (amount field)`}
                     disabled={!walletConnected || !selectedMarket || orderKind === 'market' || isMarketExpired}
                     onClick={() => void submitQuickGridLimitOrder('SELL', c)}
-                    style={{ backgroundColor: sidebarQuickSellBg(i, SIDEBAR_QUICK_LIMIT_GRID_CENTS.length) }}
+                    style={{
+                      backgroundColor: sidebarQuickSellBg(i, SIDEBAR_QUICK_LIMIT_GRID_CENTS.length),
+                      WebkitTextStroke: '0.5px #000',
+                      paintOrder: 'stroke fill',
+                    }}
                     className="h-5 min-w-0 rounded-[2px] text-[7px] font-bold text-white tabular-nums leading-none py-0 px-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
                   >
                     {c}

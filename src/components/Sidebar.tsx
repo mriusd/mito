@@ -116,6 +116,7 @@ const TOXIC_SIDEBAR_STRIP_HELP = {
   top20: 'Top 20 position holders on this market (by |staked net|, same ordering as Holders).',
   fav: 'Your favorite wallets betting here right now.',
   greens: 'Wallets with profits in tracked time. Green = more dollars staked on YES, red = more on NO.',
+  unknown: 'No ledger row or fewer than 10 resolved markets (unknown / unproven stats).',
 } as const;
 
 const LS_ORDER_EXPIRY_UPDOWN = 'polymarket-order-expiry-updown';
@@ -1019,6 +1020,7 @@ export function Sidebar() {
         top20: toxicCohortStakedNetSurplusHalves(lists.top20),
         favourites: toxicCohortStakedNetSurplusHalves(lists.favourites),
         pnlPlus: toxicCohortStakedNetSurplusHalves(lists.pnlPlus),
+        unknown: toxicCohortStakedNetSurplusHalves(lists.unknown),
       },
     };
   }, [toxicFlowData, toxicFavSet]);
@@ -2043,15 +2045,17 @@ export function Sidebar() {
         side === 'BUY'
           ? parseFloat(String(asks[0]?.price ?? ''))
           : parseFloat(String(bids[bids.length - 1]?.price ?? ''));
-      if (maxOrderSizeUsd > 0 && (!Number.isFinite(px) || px <= 0)) {
-        showToast('Cannot estimate order USD for max-size check (book price missing)', 'error');
-        return;
-      }
-      const vusd = orderNotionalUsd(px, size);
-      const capMsg = maxOrderUsdViolationMessage(maxOrderSizeUsd, vusd);
-      if (capMsg) {
-        showToast(capMsg, 'error');
-        return;
+      if (side === 'BUY') {
+        if (maxOrderSizeUsd > 0 && (!Number.isFinite(px) || px <= 0)) {
+          showToast('Cannot estimate order USD for max-size check (book price missing)', 'error');
+          return;
+        }
+        const vusd = orderNotionalUsd(px, size);
+        const capMsg = maxOrderUsdViolationMessage(maxOrderSizeUsd, vusd);
+        if (capMsg) {
+          showToast(capMsg, 'error');
+          return;
+        }
       }
       const price = side === 'BUY' ? MARKET_AGGRESSIVE_BUY : MARKET_AGGRESSIVE_SELL;
       try {
@@ -2103,11 +2107,13 @@ export function Sidebar() {
 
     const price = parseFloat(orderPrice) / 100;
     if (!price) return;
-    const limitSubmitVusd = orderNotionalUsd(price, size);
-    const limitSubmitCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, limitSubmitVusd);
-    if (limitSubmitCap) {
-      showToast(limitSubmitCap, 'error');
-      return;
+    if (orderSide === 'BUY') {
+      const limitSubmitVusd = orderNotionalUsd(price, size);
+      const limitSubmitCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, limitSubmitVusd);
+      if (limitSubmitCap) {
+        showToast(limitSubmitCap, 'error');
+        return;
+      }
     }
     const orderPriceCents = parseFloat(orderPrice);
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
@@ -2173,11 +2179,13 @@ export function Sidebar() {
     if (!Number.isFinite(priceCents) || priceCents < 1 || priceCents > 99) return;
 
     const price = priceCents / 100;
-    const limitSubmitVusd = orderNotionalUsd(price, size);
-    const limitSubmitCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, limitSubmitVusd);
-    if (limitSubmitCap) {
-      showToast(limitSubmitCap, 'error');
-      return;
+    if (side === 'BUY') {
+      const limitSubmitVusd = orderNotionalUsd(price, size);
+      const limitSubmitCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, limitSubmitVusd);
+      if (limitSubmitCap) {
+        showToast(limitSubmitCap, 'error');
+        return;
+      }
     }
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
       marketLookup,
@@ -2290,11 +2298,13 @@ export function Sidebar() {
       }
     }
 
-    const customEarlyVusd = orderNotionalUsd(btn.priceCents / 100, size);
-    const customEarlyCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, customEarlyVusd);
-    if (customEarlyCap) {
-      showToast(customEarlyCap, 'error');
-      return;
+    if (btn.side === 'BUY') {
+      const customEarlyVusd = orderNotionalUsd(btn.priceCents / 100, size);
+      const customEarlyCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, customEarlyVusd);
+      if (customEarlyCap) {
+        showToast(customEarlyCap, 'error');
+        return;
+      }
     }
 
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
@@ -2358,12 +2368,14 @@ export function Sidebar() {
     const newPrice = newPriceCents / 100;
 
     if (!newPrice || newPrice <= 0 || newPrice >= 1 || !size) { setEditingOrderId(null); return; }
-    const replaceVusd = orderNotionalUsd(newPrice, size);
-    const replaceCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, replaceVusd);
-    if (replaceCap) {
-      showToast(replaceCap, 'error');
-      setEditingOrderId(null);
-      return;
+    if (side === 'BUY') {
+      const replaceVusd = orderNotionalUsd(newPrice, size);
+      const replaceCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, replaceVusd);
+      if (replaceCap) {
+        showToast(replaceCap, 'error');
+        setEditingOrderId(null);
+        return;
+      }
     }
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
       marketLookup,
@@ -3632,6 +3644,14 @@ export function Sidebar() {
                   />
                   <ToxicFlowStakePreview
                     layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.unknown}
+                    label="Unknown"
+                    wallets={toxicStripModel.lists?.unknown ?? []}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
+                  />
+                  <ToxicFlowStakePreview
+                    layout="stacked"
                     helpText={TOXIC_SIDEBAR_STRIP_HELP.top20}
                     label="Top20"
                     wallets={toxicStripModel.lists?.top20 ?? []}
@@ -3958,7 +3978,7 @@ export function Sidebar() {
                       WebkitTextStroke: '1px #000',
                       paintOrder: 'stroke fill',
                     }}
-                    className="min-h-0 h-[15px] min-w-0 rounded-md text-[12px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
+                    className="min-h-0 h-[15px] min-w-0 rounded text-[12px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
                   >
                     {c}
                   </button>
@@ -3980,7 +4000,7 @@ export function Sidebar() {
                       WebkitTextStroke: '1px #000',
                       paintOrder: 'stroke fill',
                     }}
-                    className="min-h-0 h-[15px] min-w-0 rounded-md text-[12px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
+                    className="min-h-0 h-[15px] min-w-0 rounded text-[12px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
                   >
                     {c}
                   </button>

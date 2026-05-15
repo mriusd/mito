@@ -24,6 +24,7 @@ import {
   Star,
   Sparkles,
   Trophy,
+  CircleHelp,
 } from 'lucide-react';
 import {
   fetchToxicFlow,
@@ -85,6 +86,7 @@ import {
   toxicRowLedgerLifetimePnlNegative,
   toxicRowSortWinRateFrac,
   toxicFlowStakeStripWalletLists,
+  toxicRowResolvedStatsLow,
 } from '../lib/toxicFlowStakeCohort';
 
 interface ToxicFlowDialogProps {
@@ -102,13 +104,23 @@ interface ToxicFlowDialogProps {
   streamData?: ToxicFlowData | null;
 }
 
-type Tab = 'topHolders' | 'smart' | 'favourites' | 'winners' | 'topYes' | 'topNo' | 'topVolume' | 'topTraders';
+type Tab =
+  | 'topHolders'
+  | 'smart'
+  | 'favourites'
+  | 'winners'
+  | 'unknown'
+  | 'topYes'
+  | 'topNo'
+  | 'topVolume'
+  | 'topTraders';
 
 const TOXIC_FLOW_TAB_DESCRIPTIONS: Record<Tab, string> = {
   topHolders: 'Wallets with biggest positions on this market.',
   smart: 'Wallets that win most of the time.',
   favourites: 'Wallets you marked as favorites betting here.',
   winners: 'Wallets with profits in tracked time. Green = more YES staked than NO.',
+  unknown: 'Wallets with no ledger row or fewer than 10 resolved markets — stats not proven yet.',
   topYes: 'Wallets betting strongest on YES.',
   topNo: 'Wallets betting strongest on NO.',
   topVolume: 'Wallets with most money traded here.',
@@ -497,6 +509,20 @@ function WinRateBottomBar({ winRate, className }: { winRate: number; className?:
   );
 }
 
+/** Gray fill toward 10 resolved markets (`wallet_scores_ledger.resolved_markets`). */
+function ResolvedMarketsToward10Bar({ resolvedMarkets, className }: { resolvedMarkets: number; className?: string }) {
+  const rm = Math.max(0, resolvedMarkets);
+  const pct = Math.min(100, (rm / 10) * 100);
+  return (
+    <div
+      className={`flex h-0.5 w-full min-w-[40px] overflow-hidden rounded-[1px] bg-gray-700/90 ${className ?? ''}`}
+      title={`Resolved markets (ledger): ${rm} / 10`}
+    >
+      <div className="h-full shrink-0 bg-gray-400/95" style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
 // Wallet hover tooltip — fetches summary on hover, caches results
 const summaryCache: Record<string, WalletSummary | null> = {};
 
@@ -697,8 +723,16 @@ const WalletLink = forwardRef<
   const lifetimeHue = lifetimeLedgerPnlHue(ledgerEmbed, summary);
   const ledgerAbsent = walletScoresLedgerRowAbsent(ledgerEmbed, summary);
 
-  const smartGoldAddr = !ledgerAbsent && (ledgerGold || isSmart);
-  const addrClass = ledgerAbsent
+  const resolvedLowEmbed = toxicRowResolvedStatsLow(ledgerEmbed);
+  const resolvedLowSummary =
+    ledgerEmbed === undefined &&
+    summary !== undefined &&
+    summary !== null &&
+    (summary.resolvedMarkets ?? 0) < 10;
+  const resolvedStatsLow = resolvedLowEmbed || resolvedLowSummary;
+
+  const smartGoldAddr = !ledgerAbsent && !resolvedStatsLow && (ledgerGold || isSmart);
+  const addrClass = resolvedStatsLow || ledgerAbsent
     ? 'text-blue-400'
     : smartGoldAddr
       ? 'text-amber-400'
@@ -709,8 +743,9 @@ const WalletLink = forwardRef<
           : 'text-zinc-400';
   const btnTitle = (() => {
     const parts: string[] = [];
+    if (resolvedStatsLow && !ledgerAbsent) parts.push('Fewer than 10 resolved markets (wallet_scores_ledger)');
     if (ledgerAbsent) parts.push('No wallet_scores_ledger row');
-    else {
+    if (!ledgerAbsent && !resolvedStatsLow) {
       if (lifetimeHue === 'pos') parts.push('Lifetime ledger PnL > 0 (wallet_scores_ledger)');
       else if (lifetimeHue === 'neg') parts.push('Lifetime ledger PnL < 0');
       else parts.push('Lifetime ledger PnL flat (~0)');
@@ -800,7 +835,10 @@ function WalletTableBodyRow({
   const hoverRef = useRef<WalletLinkHoverHandle>(null);
   const sum = toxicRowWalletLedgerSummary(w);
   const ledgerFrac = ledgerSummaryWinRateFracOrNull(sum === undefined ? null : sum);
-  const showWinBar = ledgerFrac != null;
+  const emb = w.walletLedgerSummary;
+  const resolvedStatsLow = toxicRowResolvedStatsLow(emb);
+  const resolvedRmForBar = emb === undefined ? 0 : emb === null ? 0 : emb.resolvedMarkets ?? 0;
+  const showWinBar = !resolvedStatsLow && ledgerFrac != null;
   const iy = typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
   const inn = typeof w.invNo === 'number' && Number.isFinite(w.invNo) ? w.invNo : w.netNo ?? 0;
   const signedLegNet = iy - inn;
@@ -861,7 +899,9 @@ function WalletTableBodyRow({
           ledgerEmbed={w.walletLedgerSummary}
           ledgerGold={ledgerGoldFromEmbed(w.walletLedgerSummary)}
         />
-        {showWinBar ? (
+        {resolvedStatsLow ? (
+          <ResolvedMarketsToward10Bar resolvedMarkets={resolvedRmForBar} className="absolute bottom-0 left-0 right-0" />
+        ) : showWinBar ? (
           <WinRateBottomBar winRate={ledgerFrac!} className="absolute bottom-0 left-0 right-0" />
         ) : (
           <div
@@ -1814,6 +1854,7 @@ export function ToxicFlowDialog({
     { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
     { key: 'favourites', label: 'Favourites', icon: <Star size={11} /> },
     { key: 'winners', label: 'Greens', icon: <Trophy size={11} /> },
+    { key: 'unknown', label: 'Unknown', icon: <CircleHelp size={11} /> },
     { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
     { key: 'topNo', label: 'Top NO', icon: <TrendingDown size={11} /> },
     { key: 'topVolume', label: 'Top Volume', icon: <Users size={11} /> },
@@ -1976,6 +2017,9 @@ export function ToxicFlowDialog({
                   <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
                     <ToxicFlowStakePreview label="Greens" wallets={winnersTabWallets} />
                   </div>
+                  <div className="min-w-[100px] max-w-[200px] flex-[1_1_120px] min-h-0">
+                    <ToxicFlowStakePreview label="Unknown" wallets={stripWalletLists?.unknown ?? []} />
+                  </div>
                   </div>
                 </div>
                 <div className="flex gap-1 border-b border-gray-700 pb-2 shrink-0 flex-wrap">
@@ -2009,6 +2053,9 @@ export function ToxicFlowDialog({
                   )}
                   {tab === 'winners' && (
                     <WalletTable wallets={winnersTabWallets} label="greens" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                  )}
+                  {tab === 'unknown' && (
+                    <WalletTable wallets={stripWalletLists?.unknown ?? []} label="unknown" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                   )}
                   {tab === 'topYes' && (
                     <WalletTable wallets={topYesWallets} label="Net Y (Staked)" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />

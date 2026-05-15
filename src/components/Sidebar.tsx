@@ -85,6 +85,9 @@ const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
 const SIDEBAR_TOXIC_EXPANDED_KEY = 'polybot-sidebar-toxic-expanded';
 
+/** Bar segment pulse when cohort/gross lean ≥ this fraction (default 30% each side). */
+const SIDEBAR_TOXIC_STRIP_FLASH_FRAC = 0.3;
+
 /** Tooltips for toxic cohort strips (mirror Toxic Flow dialog tab copy). */
 const TOXIC_SIDEBAR_STRIP_HELP = {
   total: TOXIC_TOTAL_STAKE_BAR_HELP,
@@ -3507,68 +3510,48 @@ export function Sidebar() {
                     label="Total"
                     marketGrossLegsUsd={sidebarStakedLegs}
                     wallets={[]}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
                   />
                   <ToxicFlowStakePreview
                     layout="stacked"
                     helpText={TOXIC_SIDEBAR_STRIP_HELP.holders}
                     label="Holders"
                     wallets={toxicStripModel.lists?.holders ?? []}
-                    flashExtremeTilt={
-                      notifyHolderTiltPct > 0 &&
-                      notifyTiltAppliesToSelectedMarket &&
-                      notifyFlashBg &&
-                      notifyStakedGatePasses &&
-                      notifyVolatilityGatePasses
-                    }
-                    extremeFlashTiltThreshold={notifyHolderTiltPct / 100}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
                   />
                   <ToxicFlowStakePreview
                     layout="stacked"
                     helpText={TOXIC_SIDEBAR_STRIP_HELP.smart}
                     label="Smart"
                     wallets={toxicStripModel.lists?.smart ?? []}
-                    flashExtremeTilt={
-                      notifySmartTiltPct > 0 &&
-                      notifyTiltAppliesToSelectedMarket &&
-                      notifyFlashBg &&
-                      notifyStakedGatePasses &&
-                      notifyVolatilityGatePasses
-                    }
-                    extremeFlashTiltThreshold={notifySmartTiltPct / 100}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
                   />
                   <ToxicFlowStakePreview
                     layout="stacked"
                     helpText={TOXIC_SIDEBAR_STRIP_HELP.greens}
                     label="Greens"
                     wallets={toxicStripModel.lists?.pnlPlus ?? []}
-                    flashExtremeTilt={
-                      notifyGreensTiltPct > 0 &&
-                      notifyTiltAppliesToSelectedMarket &&
-                      notifyFlashBg &&
-                      notifyStakedGatePasses &&
-                      notifyVolatilityGatePasses
-                    }
-                    extremeFlashTiltThreshold={notifyGreensTiltPct / 100}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
                   />
                   <ToxicFlowStakePreview
                     layout="stacked"
                     helpText={TOXIC_SIDEBAR_STRIP_HELP.top20}
                     label="Top20"
                     wallets={toxicStripModel.lists?.top20 ?? []}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
                   />
                   <ToxicFlowStakePreview
                     layout="stacked"
                     helpText={TOXIC_SIDEBAR_STRIP_HELP.fav}
                     label="Fav"
                     wallets={toxicStripModel.lists?.favourites ?? []}
-                    flashExtremeTilt={
-                      notifyFavouriteTiltPct > 0 &&
-                      notifyTiltAppliesToSelectedMarket &&
-                      notifyFlashBg &&
-                      notifyStakedGatePasses &&
-                      notifyVolatilityGatePasses
-                    }
-                    extremeFlashTiltThreshold={notifyFavouriteTiltPct / 100}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
                   />
             </div>
           </div>

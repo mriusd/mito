@@ -3958,7 +3958,7 @@ export function Sidebar() {
                       WebkitTextStroke: '1px #000',
                       paintOrder: 'stroke fill',
                     }}
-                    className="min-h-0 h-[15px] min-w-0 rounded-[1px] text-[13px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
+                    className="min-h-0 h-[15px] min-w-0 rounded-md text-[12px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
                   >
                     {c}
                   </button>
@@ -3980,7 +3980,7 @@ export function Sidebar() {
                       WebkitTextStroke: '1px #000',
                       paintOrder: 'stroke fill',
                     }}
-                    className="min-h-0 h-[15px] min-w-0 rounded-[1px] text-[13px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
+                    className="min-h-0 h-[15px] min-w-0 rounded-md text-[12px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
                   >
                     {c}
                   </button>

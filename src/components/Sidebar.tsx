@@ -87,17 +87,17 @@ const SIDEBAR_TOXIC_EXPANDED_KEY = 'polybot-sidebar-toxic-expanded';
 /** Quick limit buttons (¢) below cost/payout — one row buy / one row sell: 5, then +10 through 95. */
 const SIDEBAR_QUICK_LIMIT_GRID_CENTS: readonly number[] = Array.from({ length: 10 }, (_, i) => 5 + i * 10);
 
-/** Buy row: emerald-style green (matches BUY tab); left lighter → right darker. */
+/** Buy row: emerald-style green; left lighter → right darker (dark overall). */
 function sidebarQuickBuyBg(i: number, n: number): string {
   const t = n <= 1 ? 0 : i / (n - 1);
-  const l = 54 - t * 34;
+  const l = 40 - t * 30;
   return `hsl(158 70% ${l}%)`;
 }
 
-/** Sell row: rose/red (matches SELL tab); left lighter → right darker. */
+/** Sell row: rose/red; left lighter → right darker (dark overall). */
 function sidebarQuickSellBg(i: number, n: number): string {
   const t = n <= 1 ? 0 : i / (n - 1);
-  const l = 54 - t * 34;
+  const l = 40 - t * 30;
   return `hsl(351 78% ${l}%)`;
 }
 
@@ -3939,7 +3939,7 @@ export function Sidebar() {
 
             <div className="mb-2 flex flex-col gap-0.5">
               <div
-                className="grid w-full min-w-0 gap-0"
+                className="grid w-full min-w-0 gap-px"
                 style={{ gridTemplateColumns: `repeat(${SIDEBAR_QUICK_LIMIT_GRID_CENTS.length}, minmax(0, 1fr))` }}
               >
                 {SIDEBAR_QUICK_LIMIT_GRID_CENTS.map((c, i) => (
@@ -3951,17 +3951,17 @@ export function Sidebar() {
                     onClick={() => void submitQuickGridLimitOrder('BUY', c)}
                     style={{
                       backgroundColor: sidebarQuickBuyBg(i, SIDEBAR_QUICK_LIMIT_GRID_CENTS.length),
-                      WebkitTextStroke: '0.45px #000',
+                      WebkitTextStroke: '1px #000',
                       paintOrder: 'stroke fill',
                     }}
-                    className="min-h-0 h-5 min-w-0 rounded-[2px] text-[9px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
+                    className="min-h-0 h-[17px] min-w-0 rounded-[1px] text-[11px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
                   >
                     {c}
                   </button>
                 ))}
               </div>
               <div
-                className="grid w-full min-w-0 gap-0"
+                className="grid w-full min-w-0 gap-px"
                 style={{ gridTemplateColumns: `repeat(${SIDEBAR_QUICK_LIMIT_GRID_CENTS.length}, minmax(0, 1fr))` }}
               >
                 {SIDEBAR_QUICK_LIMIT_GRID_CENTS.map((c, i) => (
@@ -3973,10 +3973,10 @@ export function Sidebar() {
                     onClick={() => void submitQuickGridLimitOrder('SELL', c)}
                     style={{
                       backgroundColor: sidebarQuickSellBg(i, SIDEBAR_QUICK_LIMIT_GRID_CENTS.length),
-                      WebkitTextStroke: '0.45px #000',
+                      WebkitTextStroke: '1px #000',
                       paintOrder: 'stroke fill',
                     }}
-                    className="min-h-0 h-5 min-w-0 rounded-[2px] text-[9px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
+                    className="min-h-0 h-[17px] min-w-0 rounded-[1px] text-[11px] font-bold text-white tabular-nums leading-none p-0 m-0 hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
                   >
                     {c}
                   </button>

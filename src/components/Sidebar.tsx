@@ -3014,7 +3014,7 @@ export function Sidebar() {
       />
     )}
     <div
-      className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}${sidebarToxicEffective ? ' sidebar-toxic-expanded' : ''}`}
+      className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}${canShowEmbeddedToxic ? ' sidebar-toxic-wide' : ''}${sidebarToxicEffective ? ' sidebar-toxic-expanded' : ''}`}
       style={{ ['--mobile-sheet-offset' as string]: `${mobileDragOffset}px` } as React.CSSProperties}
     >
       <div

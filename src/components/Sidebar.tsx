@@ -1095,6 +1095,9 @@ export function Sidebar() {
       /* ignore */
     }
   }, [toxicSidebarExpanded]);
+  const closeToxicSidebarPanel = useCallback(() => {
+    setToxicSidebarExpanded(false);
+  }, []);
   useEffect(() => {
     setMergeDialogOpen(false);
   }, [selectedMarket?.id]);
@@ -4395,7 +4398,7 @@ export function Sidebar() {
                 marketName={marketName}
                 yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
                 streamData={toxicFlowData}
-                onClose={() => setToxicSidebarExpanded(false)}
+                onClose={closeToxicSidebarPanel}
               />
             </Suspense>
           </div>

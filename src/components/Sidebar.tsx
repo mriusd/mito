@@ -1933,11 +1933,12 @@ export function Sidebar() {
 
   useEffect(() => {
     const cohortTiltAlarm = topBarExtremeBgFlash;
-    const whaleOnlyAlarm =
-      notifyTiltAppliesToSelectedMarket && notifyWhaleRing && notifyWhalePresent && cohortTiltAlarm == null;
 
     const cohortNeedsSound = cohortTiltAlarm != null && notifyPlaySound;
-    const whaleNeedsSound = whaleOnlyAlarm;
+    const whaleEligible =
+      notifyTiltAppliesToSelectedMarket && notifyWhaleRing && notifyWhalePresent;
+    /** Play whale ring whenever eligible and cohort tilt is not actively sounding (Tilt Ring off suppresses cohort, not whales). */
+    const whaleNeedsSound = whaleEligible && !cohortNeedsSound;
 
     if ((!cohortNeedsSound && !whaleNeedsSound) || !notifyStakedGatePasses || !notifyVolatilityGatePasses) return;
 
@@ -1946,7 +1947,6 @@ export function Sidebar() {
     const rt = notifyRingTimeS;
     const maxCents = notifySoundMaxPriceCents;
     const doubleRing = notifyDoubleRing;
-    const whaleTripleEachTick = whaleNeedsSound;
 
     const bidOkForSound = (): boolean => {
       const sm = tiltSoundMarketRef.current;
@@ -1972,8 +1972,8 @@ export function Sidebar() {
 
     const tick = () => {
       if (!bidOkForSound()) return;
-      if (whaleTripleEachTick) void playTiltNotifySoundStrikes(k, mul, rt, 3);
-      else if (cohortNeedsSound) void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
+      if (cohortNeedsSound) void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
+      else void playTiltNotifySoundStrikes(k, mul, rt, 3);
     };
 
     tick();

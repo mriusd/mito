@@ -53,6 +53,8 @@ import {
   toxicCohortStakedNetSurplusHalves,
   toxicFlowStakeStripWalletLists,
   cohortSurplusLean,
+  toxicFlowWalletUniverse,
+  walletStakeNetAbsUsd,
 } from '../lib/toxicFlowStakeCohort';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
 import {
@@ -284,8 +286,25 @@ async function playUpdownTiltExtremeSound(kind: 'green' | 'red', pitchMul = 1, r
   }
 }
 
-/** ms between rings when Double ring is on (second strike right after first). */
-const NOTIFY_DOUBLE_RING_GAP_MS = 95;
+/** ms between successive strikes inside one notification burst (double / triple ring). */
+const NOTIFY_MULTI_RING_GAP_MS = 95;
+
+async function playTiltNotifySoundStrikes(
+  kind: 'green' | 'red',
+  pitchMul: number,
+  ringTimeS: number,
+  strikes: number,
+): Promise<void> {
+  const n = Math.max(1, Math.min(16, Math.trunc(strikes)));
+  for (let i = 0; i < n; i++) {
+    if (i > 0) {
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, NOTIFY_MULTI_RING_GAP_MS);
+      });
+    }
+    await playUpdownTiltExtremeSound(kind, pitchMul, ringTimeS);
+  }
+}
 
 async function playTiltNotifySoundWithDoubleRing(
   kind: 'green' | 'red',
@@ -293,12 +312,7 @@ async function playTiltNotifySoundWithDoubleRing(
   ringTimeS: number,
   doubleRing: boolean,
 ): Promise<void> {
-  await playUpdownTiltExtremeSound(kind, pitchMul, ringTimeS);
-  if (!doubleRing) return;
-  await new Promise<void>((resolve) => {
-    window.setTimeout(resolve, NOTIFY_DOUBLE_RING_GAP_MS);
-  });
-  await playUpdownTiltExtremeSound(kind, pitchMul, ringTimeS);
+  await playTiltNotifySoundStrikes(kind, pitchMul, ringTimeS, doubleRing ? 2 : 1);
 }
 
 function pitchMulFromNotifyFreqSlider(slider0to100: number): number {
@@ -321,6 +335,7 @@ const SIDEBAR_NOTIFY_SOUND_FREQ_KEY = 'polybot-sidebar-notify-sound-freq';
 const SIDEBAR_NOTIFY_RING_TIME_S_KEY = 'polybot-sidebar-notify-ring-time-s';
 const SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-sound-max-price-cents';
 const SIDEBAR_NOTIFY_DOUBLE_RING_KEY = 'polybot-sidebar-notify-double-ring';
+const SIDEBAR_NOTIFY_WHALE_RING_KEY = 'polybot-sidebar-notify-whale-ring';
 const SIDEBAR_NOTIFY_TILT_MKT_UPDOWN_KEY = 'polybot-sidebar-notify-tilt-mkt-updown';
 const SIDEBAR_NOTIFY_TILT_MKT_HIT_KEY = 'polybot-sidebar-notify-tilt-mkt-hit';
 const SIDEBAR_NOTIFY_TILT_MKT_ABOVE_KEY = 'polybot-sidebar-notify-tilt-mkt-above';
@@ -559,6 +574,15 @@ function readNotifyDoubleRing(): boolean {
     return true;
   }
 }
+function readNotifyWhaleRing(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_WHALE_RING_KEY);
+    if (v === null) return false;
+    return v === '1';
+  } catch {
+    return false;
+  }
+}
 
 /** Annualized σ% ceiling for tilt: alerts pause while chart σ is above this. 0 = off. Default 15. */
 function readNotifyMaxVolatilityPct(): number {
@@ -780,6 +804,7 @@ export function Sidebar() {
   const [notifyGreensTiltPct, setNotifyGreensTiltPct] = useState(readNotifyGreensTiltPct);
   const [notifyStakedMinUsd, setNotifyStakedMinUsd] = useState(readNotifyStakedMinUsd);
   const [notifyWhaleAmountUsd, setNotifyWhaleAmountUsd] = useState(readTiltWhaleAmountUsd);
+  const [notifyWhaleRing, setNotifyWhaleRing] = useState(readNotifyWhaleRing);
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
   const [notifyRingTimeS, setNotifyRingTimeS] = useState(readNotifyRingTimeS);
   const [notifySoundMaxPriceCents, setNotifySoundMaxPriceCents] = useState(readNotifySoundMaxPriceCents);
@@ -873,6 +898,13 @@ export function Sidebar() {
   useEffect(() => {
     persistTiltWhaleAmountUsd(notifyWhaleAmountUsd);
   }, [notifyWhaleAmountUsd]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_WHALE_RING_KEY, notifyWhaleRing ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [notifyWhaleRing]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_SOUND_FREQ_KEY, String(notifySoundFreqSlider));
@@ -1040,6 +1072,16 @@ export function Sidebar() {
       },
     };
   }, [toxicFlowData, toxicFavSet]);
+
+  const notifyWhalePresent = useMemo(() => {
+    if (!toxicFlowData) return false;
+    const floor = notifyWhaleAmountUsd;
+    for (const w of toxicFlowWalletUniverse(toxicFlowData)) {
+      const m = walletStakeNetAbsUsd(w);
+      if (Number.isFinite(m) && m >= floor) return true;
+    }
+    return false;
+  }, [toxicFlowData, notifyWhaleAmountUsd]);
 
   /** Active cohort thresholds (Toxic strip bars): every non-zero pct must agree on direction vs its lean. */
   const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {
@@ -1890,13 +1932,19 @@ export function Sidebar() {
   }, [notifyFlashBg, notifyStakedGatePasses, notifyVolatilityGatePasses, topBarExtremeBgFlash]);
 
   useEffect(() => {
-    if (!topBarExtremeBgFlash || !notifyPlaySound || !notifyStakedGatePasses || !notifyVolatilityGatePasses) return;
+    const cohortTiltAlarm = topBarExtremeBgFlash;
+    const whaleOnlyAlarm =
+      notifyTiltAppliesToSelectedMarket && notifyWhaleRing && notifyWhalePresent && cohortTiltAlarm == null;
+    const tiltOrWhaleSound = cohortTiltAlarm != null || whaleOnlyAlarm;
 
-    const k = topBarExtremeBgFlash;
+    if (!tiltOrWhaleSound || !notifyPlaySound || !notifyStakedGatePasses || !notifyVolatilityGatePasses) return;
+
+    const k = cohortTiltAlarm ?? 'green';
     const mul = notifySoundPitchMul;
     const rt = notifyRingTimeS;
     const maxCents = notifySoundMaxPriceCents;
     const doubleRing = notifyDoubleRing;
+    const whaleTripleEachTick = whaleOnlyAlarm;
 
     const bidOkForSound = (): boolean => {
       const sm = tiltSoundMarketRef.current;
@@ -1922,7 +1970,11 @@ export function Sidebar() {
 
     const tick = () => {
       if (!bidOkForSound()) return;
-      void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
+      if (whaleTripleEachTick) {
+        void playTiltNotifySoundStrikes(k, mul, rt, 3);
+      } else {
+        void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
+      }
     };
 
     tick();
@@ -1931,6 +1983,9 @@ export function Sidebar() {
     return () => clearInterval(id);
   }, [
     topBarExtremeBgFlash,
+    notifyTiltAppliesToSelectedMarket,
+    notifyWhaleRing,
+    notifyWhalePresent,
     notifyPlaySound,
     notifyStakedGatePasses,
     notifyVolatilityGatePasses,
@@ -2862,7 +2917,7 @@ export function Sidebar() {
                   />
                   <span>Double ring</span>
                 </label>
-                <p className="text-[10px] text-gray-500 mt-1 m-0">Play two strikes ~{NOTIFY_DOUBLE_RING_GAP_MS}ms apart.</p>
+                <p className="text-[10px] text-gray-500 mt-1 m-0">Play two strikes ~{NOTIFY_MULTI_RING_GAP_MS}ms apart.</p>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -3053,6 +3108,18 @@ export function Sidebar() {
               </div>
               <p className="text-[10px] text-gray-500 mt-1 m-0">
                 Wallets with |Staked Net| USD ≥ this amount are treated as whales. Used by the Toxic Flow “Whales” tab.
+              </p>
+              <label className="flex items-center gap-2 cursor-pointer mt-2">
+                <input
+                  type="checkbox"
+                  className="rounded accent-amber-500"
+                  checked={notifyWhaleRing}
+                  onChange={(e) => setNotifyWhaleRing(e.target.checked)}
+                />
+                <span>Whale ring</span>
+              </label>
+              <p className="text-[10px] text-gray-500 mt-1 m-0 leading-snug">
+                Each repeat fires three strikes ~{NOTIFY_MULTI_RING_GAP_MS}ms apart. Cohort tilt alarms still follow Double ring below.
               </p>
             </div>
             <div className="mt-4 flex justify-end">

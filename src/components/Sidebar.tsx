@@ -1971,7 +1971,7 @@ export function Sidebar() {
     };
 
     const tick = () => {
-      if (!bidOkForSound()) return;
+      if (cohortNeedsSound && !bidOkForSound()) return;
       if (cohortNeedsSound) void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
       else void playTiltNotifySoundStrikes(k, mul, rt, 3);
     };
@@ -2860,7 +2860,7 @@ export function Sidebar() {
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1">
-                  Mute when WS mid for the checked leg — YES token for green cohort tilt or whale-only ring; NO token for red cohort tilt — (bestBid+bestAsk)/2, or bestBid only if no ask (default 95¢).
+                  Mute when WS mid for Tilt ring bursts only — YES token when green cohort tilt, NO token when red cohort tilt — (bestBid+bestAsk)/2, or bestBid only if no ask. Whale Ring ignores this gate.
                 </p>
                 <label className="flex items-center gap-2 cursor-pointer mt-3">
                   <input

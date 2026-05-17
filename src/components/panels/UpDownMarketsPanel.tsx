@@ -90,8 +90,6 @@ const TARGET_STRIKE_DECIMALS: Record<(typeof ASSETS)[number], number> = {
 /** Math % badge: gray when rounded P(Up) is within this many points of 50 (i.e. 50 ± 1 → 49–51). */
 const MATH_PROB_NEUTRAL_BAND = 1;
 
-/** Peer “strong vs average” highlight when ≥ this % above peer mid (no UI; former panel % input). */
-const DEFAULT_PEER_HIGHLIGHT_REL_PCT = 10;
 const MATH_VS_BID_NEUTRAL_PCT = 5;
 
 /**
@@ -185,9 +183,10 @@ function UpDownMarketsPanelInner() {
     });
   };
 
-  const visibleAssets = useMemo(() => [...ASSETS].filter((a) => assetVisible[a]), [assetVisible]);
-
-  const peerHighlightFactor = 1 - DEFAULT_PEER_HIGHLIGHT_REL_PCT / 100;
+  const visibleAssets = useMemo(
+    (): (typeof ASSETS)[number][] => ASSETS.filter((a) => assetVisible[a]),
+    [assetVisible],
+  );
 
   const setShowTargetColumn = (on: boolean) => {
     setShowTarget(on);
@@ -481,34 +480,6 @@ function UpDownMarketsPanelInner() {
           </thead>
           <tbody>
             {TIMEFRAMES.map((tf) => {
-              // Pre-compute YES mid and P(NO)=1−P(YES) for peer highlights (same YES mid drives both columns)
-              const yesMidByAsset: Record<string, number> = {};
-              const noProbByAsset: Record<string, number> = {};
-              for (const a of visibleAssets) {
-                const m = getCurrentAndFutureMarkets(a, tf, nextMarketsCount).current;
-                if (m) {
-                  const yT = m.clobTokenIds?.[0];
-                  const gamma = { bestBid: m.bestBid, bestAsk: m.bestAsk };
-                  const y = outcomeMidOrOneSideProb(yT, _bidAskLookup, gamma);
-                  if (y != null) {
-                    yesMidByAsset[a] = y;
-                    noProbByAsset[a] = 1 - y;
-                  }
-                }
-              }
-              const otherYesMids = (asset: string) => {
-                const vals = visibleAssets
-                  .filter((a) => a !== asset && yesMidByAsset[a] !== undefined)
-                  .map((a) => yesMidByAsset[a]);
-                return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
-              };
-              const otherNoProb = (asset: string) => {
-                const vals = visibleAssets
-                  .filter((a) => a !== asset && noProbByAsset[a] !== undefined)
-                  .map((a) => noProbByAsset[a]);
-                return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
-              };
-
               const duration = TF_DURATIONS_MS[tf] || 0;
               const firstMarket = visibleAssets
                 .map((a) => getCurrentAndFutureMarkets(a, tf, nextMarketsCount).current)
@@ -675,12 +646,6 @@ function UpDownMarketsPanelInner() {
                   const noProbStr = noProb != null ? (noProb * 100).toFixed(1) : '-';
                   const quoteDeltaBg = deltaMidVsMathBg(yesMidProb, mathYesProb);
                   const isSelected = selectedMarket?.id === market.id;
-                  const avgNoProb = otherNoProb(asset);
-                  const isNoProbStrong =
-                    noProb != null && avgNoProb > 0 && noProb >= avgNoProb / peerHighlightFactor;
-                  const avgYesMid = otherYesMids(asset);
-                  const isYesMidStrong =
-                    yesMidProb != null && avgYesMid > 0 && yesMidProb >= avgYesMid / peerHighlightFactor;
                   const provenSMS = yesTokenId ? (_bidAskLookup[yesTokenId]?.provenSMS ?? 0) : 0;
                   const smartMoneyBarPct = Math.max(2, Math.min(98, 50 + provenSMS * 50));
                   const concRaw =
@@ -723,13 +688,13 @@ function UpDownMarketsPanelInner() {
                         className="text-[10px] text-gray-400"
                         left={
                           <span
-                            className={`cursor-pointer hover:underline ${isYesMidStrong ? 'bg-green-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-green-400'}`}
+                            className="cursor-pointer hover:underline text-green-400"
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
                           >{yesMidStr}</span>
                         }
                         right={
                           <span
-                            className={`cursor-pointer hover:underline ${isNoProbStrong ? 'bg-red-700 text-white font-extrabold rounded px-0.5 text-[11px]' : 'text-red-400'}`}
+                            className="cursor-pointer hover:underline text-red-400"
                             onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
                           >{noProbStr}</span>
                         }

@@ -4,6 +4,7 @@ import {
   useCallback,
   useRef,
   useMemo,
+  useSyncExternalStore,
   useLayoutEffect,
   forwardRef,
   useImperativeHandle,
@@ -14,7 +15,6 @@ import {
   X,
   TrendingUp,
   TrendingDown,
-  Users,
   Crown,
   UsersRound,
   ExternalLink,
@@ -91,9 +91,23 @@ import {
 } from '../lib/toxicFlowStakeCohort';
 import {
   readTiltWhaleAmountUsd,
+  DEFAULT_TILT_WHALE_AMOUNT_USD,
   TILT_WHALE_AMOUNT_USD_CHANGED_EVENT,
   TILT_WHALE_AMOUNT_USD_LS_KEY,
 } from '../lib/tiltWhaleAmountUsd';
+
+function subscribeTiltWhaleAmountUsd(listener: () => void): () => void {
+  const onCustom = () => listener();
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === TILT_WHALE_AMOUNT_USD_LS_KEY || e.key === null) listener();
+  };
+  window.addEventListener(TILT_WHALE_AMOUNT_USD_CHANGED_EVENT, onCustom);
+  window.addEventListener('storage', onStorage);
+  return () => {
+    window.removeEventListener(TILT_WHALE_AMOUNT_USD_CHANGED_EVENT, onCustom);
+    window.removeEventListener('storage', onStorage);
+  };
+}
 
 interface ToxicFlowDialogProps {
   open: boolean;
@@ -118,8 +132,7 @@ type Tab =
   | 'winners'
   | 'fresh'
   | 'topYes'
-  | 'topNo'
-  | 'topVolume';
+  | 'topNo';
 
 const TOXIC_FLOW_TAB_DESCRIPTIONS: Record<Tab, string> = {
   topHolders: 'Wallets with biggest positions on this market.',
@@ -130,11 +143,7 @@ const TOXIC_FLOW_TAB_DESCRIPTIONS: Record<Tab, string> = {
   fresh: 'Wallets with no ledger row or fewer than 10 resolved markets — not enough history to grade.',
   topYes: 'Wallets betting strongest on YES.',
   topNo: 'Wallets betting strongest on NO.',
-  topVolume: 'Wallets with most money traded here.',
 };
-
-/** Toxic wallet rows: pulse background when |Staked Net| (USD) is at least this amount. */
-const TOXIC_TABLE_ROW_HIGH_STAKE_NET_ABS_USD = 5000;
 
 function rPnlToneClass(v: number): string {
   if (!Number.isFinite(v) || Math.abs(v) < 1e-9) return 'text-gray-400';
@@ -798,6 +807,7 @@ function WalletTableBodyRow({
   shadeRowByStakedNet,
   favouriteActive,
   bellActive,
+  tiltWhaleAmountUsd,
   toggleFavouriteWallet,
   toggleBellWallet,
   onOpenWallet,
@@ -809,6 +819,8 @@ function WalletTableBodyRow({
   shadeRowByStakedNet: boolean;
   favouriteActive: boolean;
   bellActive: boolean;
+  /** Row flash when |Staked Net| USD ≥ this (Tilt notifications “Whale amount”). */
+  tiltWhaleAmountUsd: number;
   toggleFavouriteWallet: (addr: string) => void;
   toggleBellWallet: (addr: string) => void;
   onOpenWallet?: (wallet: string, netShares?: number) => void;
@@ -832,12 +844,12 @@ function WalletTableBodyRow({
   const stakeNUsd = walletStakeNUsd(w);
   const stakeNetSigned = walletStakeNetSignedUsd(w);
   const stakeNetAbsUsd = walletStakeNetAbsUsd(w);
-  const highStakedNetFlash =
-    Number.isFinite(stakeNetAbsUsd) && stakeNetAbsUsd >= TOXIC_TABLE_ROW_HIGH_STAKE_NET_ABS_USD;
+  const tiltWhaleRowFlash =
+    Number.isFinite(stakeNetAbsUsd) && stakeNetAbsUsd >= tiltWhaleAmountUsd;
   let rowPulseClass = '';
-  if (bellActive && highStakedNetFlash) rowPulseClass = ' toxic-flow-bell-high-stake-combo-row-flash';
+  if (bellActive && tiltWhaleRowFlash) rowPulseClass = ' toxic-flow-bell-high-stake-combo-row-flash';
   else if (bellActive) rowPulseClass = ' toxic-flow-bell-row-flash';
-  else if (highStakedNetFlash) rowPulseClass = ' toxic-flow-high-stake-net-row-flash';
+  else if (tiltWhaleRowFlash) rowPulseClass = ' toxic-flow-high-stake-net-row-flash';
 
   const fmtInt = (v: number) => Math.round(v).toLocaleString('en-US');
   const fmtUsdSigned = (v: number) => {
@@ -951,6 +963,11 @@ function WalletTable({
   /** Row background from Staked Net sign (green YES / red NO); default on for all Toxic tables. */
   shadeRowByStakedNet?: boolean;
 }) {
+  const tiltWhaleAmountUsd = useSyncExternalStore(
+    subscribeTiltWhaleAmountUsd,
+    readTiltWhaleAmountUsd,
+    () => DEFAULT_TILT_WHALE_AMOUNT_USD,
+  );
   const rows = wallets || [];
   const [favouriteWallets, setFavouriteWallets] = useState(readToxicFavouriteWallets);
   const [bellWallets, setBellWallets] = useState(readToxicBellWallets);
@@ -1075,6 +1092,7 @@ function WalletTable({
                   bellActive={bellWallets.has(wk)}
                   toggleFavouriteWallet={toggleFavouriteWallet}
                   toggleBellWallet={toggleBellWallet}
+                  tiltWhaleAmountUsd={tiltWhaleAmountUsd}
                   onOpenWallet={onOpenWallet}
                   sharesPct={sharesPct}
                   cumSharesPct={cumSharesPct}
@@ -1895,7 +1913,6 @@ export function ToxicFlowDialog({
     { key: 'fresh', label: 'Fresh', icon: <CircleHelp size={11} /> },
     { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
     { key: 'topNo', label: 'Top NO', icon: <TrendingDown size={11} /> },
-    { key: 'topVolume', label: 'Top Volume', icon: <Users size={11} /> },
   ];
 
   const rootClass = embedded
@@ -2051,31 +2068,68 @@ export function ToxicFlowDialog({
 
                 <div className="flex flex-col flex-1 min-h-0 overflow-hidden min-w-0">
                   {tab === 'topHolders' && (
-                    <WalletTable wallets={topHoldersWallets} label="holders" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                    <WalletTable
+                      wallets={topHoldersWallets}
+                      label="holders"
+                      totalShares={data.totalShares}
+                      onOpenWallet={openWalletDialog}
+                    />
                   )}
                   {tab === 'smart' && (
-                    <WalletTable wallets={smartTabWallets} label="smart" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                    <WalletTable
+                      wallets={smartTabWallets}
+                      label="smart"
+                      totalShares={data.totalShares}
+                      onOpenWallet={openWalletDialog}
+                    />
                   )}
                   {tab === 'favourites' && (
-                    <WalletTable wallets={favouritesTabWallets} label="favourites" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                    <WalletTable
+                      wallets={favouritesTabWallets}
+                      label="favourites"
+                      totalShares={data.totalShares}
+                      onOpenWallet={openWalletDialog}
+                    />
                   )}
                   {tab === 'whales' && (
-                    <WalletTable wallets={whalesTabWallets} label="whales" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                    <WalletTable
+                      wallets={whalesTabWallets}
+                      label="whales"
+                      totalShares={data.totalShares}
+                      onOpenWallet={openWalletDialog}
+                    />
                   )}
                   {tab === 'winners' && (
-                    <WalletTable wallets={winnersTabWallets} label="greens" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                    <WalletTable
+                      wallets={winnersTabWallets}
+                      label="greens"
+                      totalShares={data.totalShares}
+                      onOpenWallet={openWalletDialog}
+                    />
                   )}
                   {tab === 'fresh' && (
-                    <WalletTable wallets={stripWalletLists?.fresh ?? []} label="fresh" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                    <WalletTable
+                      wallets={stripWalletLists?.fresh ?? []}
+                      label="fresh"
+                      totalShares={data.totalShares}
+                      onOpenWallet={openWalletDialog}
+                    />
                   )}
                   {tab === 'topYes' && (
-                    <WalletTable wallets={topYesWallets} label="Net Y (Staked)" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                    <WalletTable
+                      wallets={topYesWallets}
+                      label="Net Y (Staked)"
+                      totalShares={data.totalShares}
+                      onOpenWallet={openWalletDialog}
+                    />
                   )}
                   {tab === 'topNo' && (
-                    <WalletTable wallets={topNoWallets} label="Net N (Staked)" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
-                  )}
-                  {tab === 'topVolume' && (
-                    <WalletTable wallets={data.topVolume} label="volume" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                    <WalletTable
+                      wallets={topNoWallets}
+                      label="Net N (Staked)"
+                      totalShares={data.totalShares}
+                      onOpenWallet={openWalletDialog}
+                    />
                   )}
                 </div>
               </div>

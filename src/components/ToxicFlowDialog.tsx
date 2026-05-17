@@ -25,6 +25,7 @@ import {
   Sparkles,
   Trophy,
   CircleHelp,
+  Fish,
 } from 'lucide-react';
 import {
   fetchToxicFlow,
@@ -88,6 +89,11 @@ import {
   toxicRowResolvedStatsLow,
   toxicFlowStakeStripWalletLists,
 } from '../lib/toxicFlowStakeCohort';
+import {
+  readTiltWhaleAmountUsd,
+  TILT_WHALE_AMOUNT_USD_CHANGED_EVENT,
+  TILT_WHALE_AMOUNT_USD_LS_KEY,
+} from '../lib/tiltWhaleAmountUsd';
 
 interface ToxicFlowDialogProps {
   open: boolean;
@@ -108,6 +114,7 @@ type Tab =
   | 'topHolders'
   | 'smart'
   | 'favourites'
+  | 'whales'
   | 'winners'
   | 'fresh'
   | 'topYes'
@@ -118,6 +125,7 @@ const TOXIC_FLOW_TAB_DESCRIPTIONS: Record<Tab, string> = {
   topHolders: 'Wallets with biggest positions on this market.',
   smart: 'Wallets that win most of the time.',
   favourites: 'Wallets you marked as favorites betting here.',
+  whales: 'Wallets with |Staked Net| USD ≥ Whale amount set in Tilt notifications (sidebar bell).',
   winners: 'Wallets with profits in tracked time. Green = more YES staked than NO.',
   fresh: 'Wallets with no ledger row or fewer than 10 resolved markets — not enough history to grade.',
   topYes: 'Wallets betting strongest on YES.',
@@ -1654,6 +1662,20 @@ export function ToxicFlowDialog({
     };
   }, []);
 
+  const [tiltWhaleAmountUsd, setTiltWhaleAmountUsd] = useState(readTiltWhaleAmountUsd);
+  useEffect(() => {
+    const sync = () => setTiltWhaleAmountUsd(readTiltWhaleAmountUsd());
+    window.addEventListener(TILT_WHALE_AMOUNT_USD_CHANGED_EVENT, sync);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === TILT_WHALE_AMOUNT_USD_LS_KEY || e.key === null) sync();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(TILT_WHALE_AMOUNT_USD_CHANGED_EVENT, sync);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
   const load = useCallback(async () => {
     if (!marketId) return;
     setInternalLoading(true);
@@ -1816,6 +1838,23 @@ export function ToxicFlowDialog({
     });
   }, [data, toxicFollowSet]);
 
+  const whalesTabWallets = useMemo(() => {
+    const floor = tiltWhaleAmountUsd;
+    const arr = toxicFlowWalletUniverse(data).filter((w) => {
+      const absUsd = walletStakeNetAbsUsd(w);
+      return Number.isFinite(absUsd) && absUsd >= floor;
+    });
+    return [...arr].sort((a, b) => {
+      const va = walletStakeNetAbsUsd(a);
+      const vb = walletStakeNetAbsUsd(b);
+      const d = vb - va;
+      if (d !== 0) return d;
+      const dn = walletNet(b) - walletNet(a);
+      if (dn !== 0) return dn;
+      return (a.wallet || '').localeCompare(b.wallet || '');
+    });
+  }, [data, tiltWhaleAmountUsd]);
+
   const winnersTabWallets = useMemo(() => {
     const arr = toxicFlowWalletUniverse(data).filter(
       (w) => !toxicRowMissingWalletScoresLedgerEmbed(w) && !toxicRowLedgerLifetimePnlNegative(w),
@@ -1851,6 +1890,7 @@ export function ToxicFlowDialog({
     { key: 'topHolders', label: 'Top Holders', icon: <Crown size={11} /> },
     { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
     { key: 'favourites', label: 'Favourites', icon: <Star size={11} /> },
+    { key: 'whales', label: 'Whales', icon: <Fish size={11} /> },
     { key: 'winners', label: 'Greens', icon: <Trophy size={11} /> },
     { key: 'fresh', label: 'Fresh', icon: <CircleHelp size={11} /> },
     { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
@@ -2018,6 +2058,9 @@ export function ToxicFlowDialog({
                   )}
                   {tab === 'favourites' && (
                     <WalletTable wallets={favouritesTabWallets} label="favourites" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
+                  )}
+                  {tab === 'whales' && (
+                    <WalletTable wallets={whalesTabWallets} label="whales" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />
                   )}
                   {tab === 'winners' && (
                     <WalletTable wallets={winnersTabWallets} label="greens" totalShares={data.totalShares} onOpenWallet={openWalletDialog} />

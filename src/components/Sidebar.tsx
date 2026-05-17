@@ -60,6 +60,7 @@ import {
   TOXIC_FAVOURITES_CHANGED_EVENT,
   readToxicFavouriteWallets,
 } from '../lib/toxicFavouriteWallets';
+import { persistTiltWhaleAmountUsd, readTiltWhaleAmountUsd } from '../lib/tiltWhaleAmountUsd';
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
@@ -778,6 +779,7 @@ export function Sidebar() {
   const [notifyFavouriteTiltPct, setNotifyFavouriteTiltPct] = useState(readNotifyFavouriteTiltPct);
   const [notifyGreensTiltPct, setNotifyGreensTiltPct] = useState(readNotifyGreensTiltPct);
   const [notifyStakedMinUsd, setNotifyStakedMinUsd] = useState(readNotifyStakedMinUsd);
+  const [notifyWhaleAmountUsd, setNotifyWhaleAmountUsd] = useState(readTiltWhaleAmountUsd);
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
   const [notifyRingTimeS, setNotifyRingTimeS] = useState(readNotifyRingTimeS);
   const [notifySoundMaxPriceCents, setNotifySoundMaxPriceCents] = useState(readNotifySoundMaxPriceCents);
@@ -868,6 +870,9 @@ export function Sidebar() {
       /* */
     }
   }, [notifyStakedMinUsd]);
+  useEffect(() => {
+    persistTiltWhaleAmountUsd(notifyWhaleAmountUsd);
+  }, [notifyWhaleAmountUsd]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_SOUND_FREQ_KEY, String(notifySoundFreqSlider));
@@ -3030,6 +3035,24 @@ export function Sidebar() {
               </div>
               <p className="text-[10px] text-gray-500">
                 Flash/sound only when net staked (sidebar pill) is greater than this. 0 = no minimum.
+              </p>
+              <div className="flex items-center gap-2 flex-wrap mt-3">
+                <span className="text-gray-400 shrink-0">Whale amount (USDC)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={500}
+                  className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-28 tabular-nums no-spin"
+                  value={notifyWhaleAmountUsd}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (!Number.isFinite(v)) return;
+                    setNotifyWhaleAmountUsd(Math.min(1e12, Math.max(0, v)));
+                  }}
+                />
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1 m-0">
+                Wallets with |Staked Net| USD ≥ this amount are treated as whales. Used by the Toxic Flow “Whales” tab.
               </p>
             </div>
             <div className="mt-4 flex justify-end">

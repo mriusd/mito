@@ -75,9 +75,9 @@ function expiryProgress(nowMs: number, endMs: number, durationMs: number): numbe
 
 const EXPIRY_BAR_BG = 'rgba(6, 182, 212, 0.6)';
 
-const THRESHOLD_KEY = 'updown-cheap-threshold';
+const NEXT_MARKETS_COUNT_KEY = 'updown-next-markets-count';
+const ASSET_VISIBILITY_KEY = 'updown-panel-asset-visibility';
 const SHOW_TARGET_KEY = 'updown-show-target';
-const SHOW_NEXT_MARKET_KEY = 'updown-show-next-market';
 const SHOW_VOLUME_KEY = 'updown-show-volume';
 
 const TARGET_STRIKE_DECIMALS: Record<(typeof ASSETS)[number], number> = {
@@ -90,7 +90,8 @@ const TARGET_STRIKE_DECIMALS: Record<(typeof ASSETS)[number], number> = {
 /** Math % badge: gray when rounded P(Up) is within this many points of 50 (i.e. 50 ± 1 → 49–51). */
 const MATH_PROB_NEUTRAL_BAND = 1;
 
-/** Minus (neutral) triangle when |YES bid% − math%| ≤ this (percentage points). */
+/** Peer “strong vs average” highlight when ≥ this % above peer mid (no UI; former panel % input). */
+const DEFAULT_PEER_HIGHLIGHT_REL_PCT = 10;
 const MATH_VS_BID_NEUTRAL_PCT = 5;
 
 /**
@@ -126,33 +127,71 @@ function deltaMidVsMathBg(yesMidProb: number | null, mathYesProb: number | null)
   };
 }
 
+type AssetVisibility = Record<(typeof ASSETS)[number], boolean>;
+
+function allAssetsVisible(): AssetVisibility {
+  return { BTC: true, ETH: true, SOL: true, XRP: true };
+}
+
+function readAssetVisibility(): AssetVisibility {
+  try {
+    const raw = localStorage.getItem(ASSET_VISIBILITY_KEY);
+    if (!raw) return allAssetsVisible();
+    const o = JSON.parse(raw) as Partial<AssetVisibility>;
+    const out = allAssetsVisible();
+    for (const a of ASSETS) {
+      if (o[a] === false) out[a] = false;
+    }
+    if (!ASSETS.some((a) => out[a])) return allAssetsVisible();
+    return out;
+  } catch {
+    return allAssetsVisible();
+  }
+}
+
+function persistAssetVisibility(v: AssetVisibility) {
+  try {
+    localStorage.setItem(ASSET_VISIBILITY_KEY, JSON.stringify(v));
+  } catch {
+    /* ignore */
+  }
+}
+
 function UpDownMarketsPanelInner() {
   const [showTarget, setShowTarget] = useState(() => localStorage.getItem(SHOW_TARGET_KEY) !== 'false');
-  const [showNextMarket, setShowNextMarket] = useState(() => localStorage.getItem(SHOW_NEXT_MARKET_KEY) === 'true');
   const [showVolume, setShowVolume] = useState(() => localStorage.getItem(SHOW_VOLUME_KEY) === 'true');
+  const [nextMarketsCountStr, setNextMarketsCountStr] = useState<string>(
+    () => localStorage.getItem(NEXT_MARKETS_COUNT_KEY) ?? '1',
+  );
+  const [assetVisible, setAssetVisible] = useState<AssetVisibility>(() => readAssetVisibility());
 
-  const [thresholdStr, setThresholdStr] = useState<string>(() => {
-    const saved = localStorage.getItem(THRESHOLD_KEY);
-    return saved ?? '10';
-  });
-  const threshold = parseFloat(thresholdStr) || 0;
-  const thresholdFactor = 1 - threshold / 100;
+  const nextMarketsCount = Math.max(1, Math.min(20, Math.trunc(Number.parseInt(nextMarketsCountStr, 10)) || 1));
 
-  const handleThresholdChange = (val: string) => {
-    setThresholdStr(val);
-    const n = parseFloat(val);
-    if (!isNaN(n) && n >= 0 && n <= 100) {
-      localStorage.setItem(THRESHOLD_KEY, String(n));
+  const handleNextMarketsCountChange = (val: string) => {
+    setNextMarketsCountStr(val);
+    const n = Number.parseInt(val, 10);
+    if (Number.isFinite(n) && n >= 1 && n <= 20) {
+      localStorage.setItem(NEXT_MARKETS_COUNT_KEY, String(n));
     }
   };
+
+  const toggleAssetVisible = (asset: (typeof ASSETS)[number]) => {
+    setAssetVisible((prev) => {
+      const flipped = !prev[asset];
+      const next = { ...prev, [asset]: flipped };
+      if (!ASSETS.some((a) => next[a])) return prev;
+      persistAssetVisibility(next);
+      return next;
+    });
+  };
+
+  const visibleAssets = useMemo(() => [...ASSETS].filter((a) => assetVisible[a]), [assetVisible]);
+
+  const peerHighlightFactor = 1 - DEFAULT_PEER_HIGHLIGHT_REL_PCT / 100;
 
   const setShowTargetColumn = (on: boolean) => {
     setShowTarget(on);
     localStorage.setItem(SHOW_TARGET_KEY, on ? 'true' : 'false');
-  };
-  const setShowNextMarketColumn = (on: boolean) => {
-    setShowNextMarket(on);
-    localStorage.setItem(SHOW_NEXT_MARKET_KEY, on ? 'true' : 'false');
   };
   const setShowVolumeColumn = (on: boolean) => {
     setShowVolume(on);
@@ -248,28 +287,47 @@ function UpDownMarketsPanelInner() {
     return () => window.clearInterval(id);
   }, []);
 
-  // For each asset+timeframe, find the current and next market
-  const getCurrentAndNextMarket = (asset: string, tf: string): { current: Market | null; next: Market | null } => {
-    const assetData = upOrDownMarkets[asset] || {};
-    const markets = (assetData[tf] || [])
+  const getSortedOpenMarkets = (asset: string, tf: string): Market[] =>
+    ((upOrDownMarkets[asset] || {})[tf] || [])
       .filter((m: Market) => !m.closed)
       .sort((a: Market, b: Market) => {
         const ta = a.endDate ? new Date(a.endDate).getTime() : Infinity;
         const tb = b.endDate ? new Date(b.endDate).getTime() : Infinity;
         return ta - tb;
       });
+
+  const getCurrentAndFutureMarkets = (
+    asset: string,
+    tf: string,
+    nFuture: number,
+  ): { current: Market | null; futures: Market[] } => {
+    const markets = getSortedOpenMarkets(asset, tf);
     const currentIdx = markets.findIndex((m: Market) => m.endDate && new Date(m.endDate).getTime() > now);
-    if (currentIdx === -1) return { current: null, next: null };
-    return { current: markets[currentIdx], next: markets[currentIdx + 1] || null };
+    if (currentIdx === -1) return { current: null, futures: [] };
+    const current = markets[currentIdx];
+    const futures = markets.slice(currentIdx + 1, currentIdx + 1 + nFuture);
+    return { current, futures };
   };
 
   /** Timeframe rows whose current window ends at the same instant as another row (2+ timeframes). */
-  const timeframesWithSharedExpiry = (() => {
+  const timeframesWithSharedExpiry = useMemo(() => {
+    const currentLaneMarket = (asset: string, tf: string): Market | null => {
+      const markets = ((upOrDownMarkets[asset] || {})[tf] || [])
+        .filter((m: Market) => !m.closed)
+        .sort((a: Market, b: Market) => {
+          const ta = a.endDate ? new Date(a.endDate).getTime() : Infinity;
+          const tb = b.endDate ? new Date(b.endDate).getTime() : Infinity;
+          return ta - tb;
+        });
+      const currentIdx = markets.findIndex((m: Market) => m.endDate && new Date(m.endDate).getTime() > now);
+      if (currentIdx === -1) return null;
+      return markets[currentIdx];
+    };
     const endMsByTf: Partial<Record<(typeof TIMEFRAMES)[number], number>> = {};
     for (const tf of TIMEFRAMES) {
       let endMs = 0;
-      for (const a of ASSETS) {
-        const m = getCurrentAndNextMarket(a, tf).current;
+      for (const a of visibleAssets) {
+        const m = currentLaneMarket(a, tf);
         if (m?.endDate) {
           endMs = new Date(m.endDate).getTime();
           break;
@@ -286,10 +344,12 @@ function UpDownMarketsPanelInner() {
     }
     const dup = new Set<string>();
     for (const list of byEnd.values()) {
-      if (list.length >= 2) list.forEach(t => dup.add(t));
+      if (list.length >= 2) list.forEach((t) => dup.add(t));
     }
     return dup;
-  })();
+  }, [visibleAssets, upOrDownMarkets, now]);
+
+  const colsPerAsset = (showTarget ? 1 : 0) + 1 + nextMarketsCount + (showVolume ? 1 : 0);
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
@@ -297,18 +357,36 @@ function UpDownMarketsPanelInner() {
         <h3 className="text-sm font-bold text-yellow-400">Up or Down Markets</h3>
         <div className="ml-auto flex items-center gap-3 cursor-default flex-wrap">
           <div className="flex items-center gap-1">
+            <span className="text-[10px] text-gray-400 whitespace-nowrap">Next markets</span>
             <input
               type="number"
-              min={0}
-              max={100}
-              value={thresholdStr}
-              onChange={(e) => handleThresholdChange(e.target.value)}
-              className="w-10 bg-gray-700 text-white text-[10px] text-center rounded px-0.5 py-0.5 border border-gray-600 focus:outline-none focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              min={1}
+              max={20}
+              value={nextMarketsCountStr}
+              onChange={(e) => handleNextMarketsCountChange(e.target.value)}
+              className="w-9 bg-gray-700 text-white text-[10px] text-center rounded px-0.5 py-0.5 border border-gray-600 focus:outline-none focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
             />
-            <span className="text-[10px] text-gray-400">%</span>
-            <HelpTooltip text="Left: YES mid in ¢. Right: implied NO probability in ¢ as 100 − YES mid (complementary to the same YES quote). Highlights vs peer averages." />
+            <HelpTooltip text="How many upcoming windows to show after Current (nearest first). 1–20." />
+          </div>
+          <div className="flex items-center gap-2">
+            {ASSETS.map((asset) => (
+              <label
+                key={asset}
+                className="flex items-center gap-0.5 cursor-default text-[10px] select-none"
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="checkbox"
+                  checked={assetVisible[asset]}
+                  onChange={() => toggleAssetVisible(asset)}
+                  className="accent-blue-500 rounded"
+                />
+                <span className={`font-bold ${ASSET_COLORS[asset] || 'text-white'}`}>{asset}</span>
+              </label>
+            ))}
           </div>
           <label
             className="flex items-center gap-1 cursor-default text-[10px] text-gray-300 select-none"
@@ -330,19 +408,6 @@ function UpDownMarketsPanelInner() {
           >
             <input
               type="checkbox"
-              checked={showNextMarket}
-              onChange={(e) => setShowNextMarketColumn(e.target.checked)}
-              className="accent-blue-500 rounded"
-            />
-            <span>Next Market</span>
-          </label>
-          <label
-            className="flex items-center gap-1 cursor-default text-[10px] text-gray-300 select-none"
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <input
-              type="checkbox"
               checked={showVolume}
               onChange={(e) => setShowVolumeColumn(e.target.checked)}
               className="accent-blue-500 rounded"
@@ -352,14 +417,17 @@ function UpDownMarketsPanelInner() {
         </div>
       </div>
       <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+        {visibleAssets.length === 0 ? (
+          <div className="text-center text-[10px] text-gray-500 py-8">Select at least one asset (BTC, ETH, SOL, XRP).</div>
+        ) : (
         <table className="w-full border-collapse text-xs">
           <thead className="sticky top-0 z-10 bg-gray-900">
             <tr>
               <th className="px-2 py-1 text-center text-gray-400 font-bold border-b border-r border-gray-700 bg-gray-900" rowSpan={2} />
-              {ASSETS.map((asset) => (
+              {visibleAssets.map((asset) => (
                 <th
                   key={asset}
-                  colSpan={(showTarget ? 1 : 0) + 1 + (showNextMarket ? 1 : 0) + (showVolume ? 1 : 0)}
+                  colSpan={colsPerAsset}
                   className={`px-2 py-1 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900 font-bold ${ASSET_COLORS[asset] || 'text-white'}`}
                   style={assetBorderStyle(asset, { L: true, R: true })}
                 >
@@ -368,7 +436,7 @@ function UpDownMarketsPanelInner() {
               ))}
             </tr>
             <tr>
-              {ASSETS.map((asset) => (
+              {visibleAssets.map((asset) => (
                 <Fragment key={asset}>
                   {showTarget && (
                     <th
@@ -384,14 +452,18 @@ function UpDownMarketsPanelInner() {
                   >
                     Current
                   </th>
-                  {showNextMarket && (
+                  {Array.from({ length: nextMarketsCount }, (_, i) => (
                     <th
+                      key={`${asset}-next-h-${i}`}
                       className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/70 text-[9px] text-gray-400 font-semibold"
-                      style={assetBorderStyle(asset, showVolume ? {} : { R: true })}
+                      style={assetBorderStyle(
+                        asset,
+                        i < nextMarketsCount - 1 ? {} : showVolume ? {} : { R: true },
+                      )}
                     >
-                      Next
+                      Next {i + 1}
                     </th>
-                  )}
+                  ))}
                   {showVolume && (
                     <th
                       className="px-1 py-0.5 text-right border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-sky-300 font-semibold"
@@ -412,8 +484,8 @@ function UpDownMarketsPanelInner() {
               // Pre-compute YES mid and P(NO)=1−P(YES) for peer highlights (same YES mid drives both columns)
               const yesMidByAsset: Record<string, number> = {};
               const noProbByAsset: Record<string, number> = {};
-              for (const a of ASSETS) {
-                const m = getCurrentAndNextMarket(a, tf).current;
+              for (const a of visibleAssets) {
+                const m = getCurrentAndFutureMarkets(a, tf, nextMarketsCount).current;
                 if (m) {
                   const yT = m.clobTokenIds?.[0];
                   const gamma = { bestBid: m.bestBid, bestAsk: m.bestAsk };
@@ -425,16 +497,22 @@ function UpDownMarketsPanelInner() {
                 }
               }
               const otherYesMids = (asset: string) => {
-                const vals = ASSETS.filter(a => a !== asset && yesMidByAsset[a] !== undefined).map(a => yesMidByAsset[a]);
+                const vals = visibleAssets
+                  .filter((a) => a !== asset && yesMidByAsset[a] !== undefined)
+                  .map((a) => yesMidByAsset[a]);
                 return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
               };
               const otherNoProb = (asset: string) => {
-                const vals = ASSETS.filter(a => a !== asset && noProbByAsset[a] !== undefined).map(a => noProbByAsset[a]);
+                const vals = visibleAssets
+                  .filter((a) => a !== asset && noProbByAsset[a] !== undefined)
+                  .map((a) => noProbByAsset[a]);
                 return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
               };
 
               const duration = TF_DURATIONS_MS[tf] || 0;
-              const firstMarket = ASSETS.map(a => getCurrentAndNextMarket(a, tf).current).find(m => m !== null);
+              const firstMarket = visibleAssets
+                .map((a) => getCurrentAndFutureMarkets(a, tf, nextMarketsCount).current)
+                .find((m) => m !== null);
               const endMs = firstMarket?.endDate ? new Date(firstMarket.endDate).getTime() : 0;
               const tfProgress = expiryProgress(now, endMs, duration);
               const tfProgressPct = (tfProgress * 100).toFixed(1);
@@ -460,13 +538,17 @@ function UpDownMarketsPanelInner() {
                     />
                   )}
                 </td>
-                {ASSETS.map((asset) => {
-                  const { current: market, next: nextMarket } = getCurrentAndNextMarket(asset, tf);
+                {visibleAssets.map((asset) => {
+                  const { current: market, futures } = getCurrentAndFutureMarkets(asset, tf, nextMarketsCount);
+                  const futuresSlots = Array.from(
+                    { length: nextMarketsCount },
+                    (_, i) => futures[i] ?? null,
+                  );
                   if (!market) {
                     return (
                       <td
                         key={asset}
-                        colSpan={(showTarget ? 1 : 0) + 1 + (showNextMarket ? 1 : 0) + (showVolume ? 1 : 0)}
+                        colSpan={colsPerAsset}
                         className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 text-gray-600 ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
                         style={assetBorderStyle(asset, { L: true, R: true, B: isLastTfRow })}
                       >
@@ -595,10 +677,10 @@ function UpDownMarketsPanelInner() {
                   const isSelected = selectedMarket?.id === market.id;
                   const avgNoProb = otherNoProb(asset);
                   const isNoProbStrong =
-                    noProb != null && avgNoProb > 0 && noProb >= avgNoProb / thresholdFactor;
+                    noProb != null && avgNoProb > 0 && noProb >= avgNoProb / peerHighlightFactor;
                   const avgYesMid = otherYesMids(asset);
                   const isYesMidStrong =
-                    yesMidProb != null && avgYesMid > 0 && yesMidProb >= avgYesMid / thresholdFactor;
+                    yesMidProb != null && avgYesMid > 0 && yesMidProb >= avgYesMid / peerHighlightFactor;
                   const provenSMS = yesTokenId ? (_bidAskLookup[yesTokenId]?.provenSMS ?? 0) : 0;
                   const smartMoneyBarPct = Math.max(2, Math.min(98, 50 + provenSMS * 50));
                   const concRaw =
@@ -711,13 +793,22 @@ function UpDownMarketsPanelInner() {
                     </td>
                   );
 
-                  const nextCell = (() => {
+                  const futureCells = futuresSlots.map((nextMarket, slotIdx) => {
+                    const isLastSlot = slotIdx === nextMarketsCount - 1;
+                    const env = assetBorderStyle(
+                      asset,
+                      isLastSlot
+                        ? showVolume
+                          ? { B: isLastTfRow }
+                          : { R: true, B: isLastTfRow }
+                        : { B: isLastTfRow },
+                    );
                     if (!nextMarket) {
                       return (
                         <td
-                          key={`${asset}-next`}
+                          key={`${asset}-next-${slotIdx}`}
                           className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-gray-600 text-[10px] whitespace-nowrap ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
-                          style={assetBorderStyle(asset, showVolume ? { B: isLastTfRow } : { R: true, B: isLastTfRow })}
+                          style={env}
                         >
                           -
                         </td>
@@ -730,18 +821,21 @@ function UpDownMarketsPanelInner() {
                     const nextNoProb = nextYesMid != null ? 1 - nextYesMid : null;
                     return (
                       <td
-                        key={`${asset}-next`}
+                        key={`${asset}-next-${slotIdx}`}
                         className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap cursor-pointer hover:brightness-125 relative ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
-                        style={assetBorderStyle(asset, showVolume ? { B: isLastTfRow } : { R: true, B: isLastTfRow })}
+                        style={env}
                         onClick={() => handleCellClick(nextMarket)}
-                        title="Next market in this lane"
+                        title={`Next market +${slotIdx + 1} in this lane`}
                       >
                         <MarketCellMidRow
                           className="text-gray-400"
                           left={
                             <span
                               className="text-green-400 cursor-pointer hover:underline"
-                              onClick={(e) => { e.stopPropagation(); handleCellClick(nextMarket, 'YES'); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCellClick(nextMarket, 'YES');
+                              }}
                             >
                               {nextYesMid != null ? (nextYesMid * 100).toFixed(1) : '-'}
                             </span>
@@ -749,7 +843,10 @@ function UpDownMarketsPanelInner() {
                           right={
                             <span
                               className="text-red-400 cursor-pointer hover:underline"
-                              onClick={(e) => { e.stopPropagation(); handleCellClick(nextMarket, 'NO'); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCellClick(nextMarket, 'NO');
+                              }}
                             >
                               {nextNoProb != null ? (nextNoProb * 100).toFixed(1) : '-'}
                             </span>
@@ -767,13 +864,13 @@ function UpDownMarketsPanelInner() {
                         })()}
                       </td>
                     );
-                  })();
+                  });
 
                   return (
                     <Fragment key={asset}>
                       {targetCell}
                       {quoteCell}
-                      {showNextMarket && nextCell}
+                      {futureCells}
                       {showVolume && volumeCell}
                     </Fragment>
                   );
@@ -783,6 +880,7 @@ function UpDownMarketsPanelInner() {
             })}
           </tbody>
         </table>
+        )}
       </div>
     </div>
   );

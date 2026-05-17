@@ -125,6 +125,9 @@ const TOXIC_FLOW_TAB_DESCRIPTIONS: Record<Tab, string> = {
   topVolume: 'Wallets with most money traded here.',
 };
 
+/** Toxic wallet rows: pulse background when |Staked Net| (USD) is at least this amount. */
+const TOXIC_TABLE_ROW_HIGH_STAKE_NET_ABS_USD = 5000;
+
 function rPnlToneClass(v: number): string {
   if (!Number.isFinite(v) || Math.abs(v) < 1e-9) return 'text-gray-400';
   return v > 0 ? 'text-green-400' : 'text-red-400';
@@ -820,6 +823,13 @@ function WalletTableBodyRow({
   const stakeYUsd = walletStakeYUsd(w);
   const stakeNUsd = walletStakeNUsd(w);
   const stakeNetSigned = walletStakeNetSignedUsd(w);
+  const stakeNetAbsUsd = walletStakeNetAbsUsd(w);
+  const highStakedNetFlash =
+    Number.isFinite(stakeNetAbsUsd) && stakeNetAbsUsd >= TOXIC_TABLE_ROW_HIGH_STAKE_NET_ABS_USD;
+  let rowPulseClass = '';
+  if (bellActive && highStakedNetFlash) rowPulseClass = ' toxic-flow-bell-high-stake-combo-row-flash';
+  else if (bellActive) rowPulseClass = ' toxic-flow-bell-row-flash';
+  else if (highStakedNetFlash) rowPulseClass = ' toxic-flow-high-stake-net-row-flash';
 
   const fmtInt = (v: number) => Math.round(v).toLocaleString('en-US');
   const fmtUsdSigned = (v: number) => {
@@ -831,7 +841,7 @@ function WalletTableBodyRow({
 
   return (
     <tr
-      className={`${walletRowClassForStakedNet(shadeRowByStakedNet, stakeNetSigned)}${bellActive ? ' toxic-flow-bell-row-flash' : ''}`}
+      className={`${walletRowClassForStakedNet(shadeRowByStakedNet, stakeNetSigned)}${rowPulseClass}`}
       onMouseEnter={(e) => hoverRef.current?.rowEnter(e)}
       onMouseMove={(e) => hoverRef.current?.rowMove(e)}
       onMouseLeave={() => hoverRef.current?.rowLeave()}

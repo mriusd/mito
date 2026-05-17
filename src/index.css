@@ -95,6 +95,37 @@ html, body, #root {
   animation: toxic-flow-bell-row-flash 1.35s ease-in-out infinite;
 }
 
+/* Toxic Flow |Staked Net| >= $5k — blue-ish row pulse (either side of book). */
+@keyframes toxic-flow-high-stake-net-bg-flash {
+  0%,
+  100% {
+    box-shadow: inset 0 0 42px rgb(59 130 246 / 0);
+  }
+  50% {
+    box-shadow: inset 0 0 52px rgb(59 130 246 / 0.22);
+  }
+}
+.toxic-flow-high-stake-net-row-flash {
+  animation: toxic-flow-high-stake-net-bg-flash 1.35s ease-in-out infinite;
+}
+
+@keyframes toxic-flow-bell-high-stake-combo-row-flash {
+  0%,
+  100% {
+    box-shadow:
+      inset 3px 0 0 rgb(251 191 36 / 0),
+      inset 0 0 42px rgb(59 130 246 / 0);
+  }
+  50% {
+    box-shadow:
+      inset 3px 0 0 rgb(251 191 36 / 0.85),
+      inset 0 0 54px rgb(59 130 246 / 0.2);
+  }
+}
+.toxic-flow-bell-high-stake-combo-row-flash {
+  animation: toxic-flow-bell-high-stake-combo-row-flash 1.35s ease-in-out infinite;
+}
+
 /* Up/Down HUD: winner-bias bar when >75% turquoise or >75% pink */
 .updown-winner-bias-bar-flash {
   animation: updown-math-flash 0.55s ease-in-out infinite;

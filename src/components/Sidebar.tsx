@@ -1935,16 +1935,18 @@ export function Sidebar() {
     const cohortTiltAlarm = topBarExtremeBgFlash;
     const whaleOnlyAlarm =
       notifyTiltAppliesToSelectedMarket && notifyWhaleRing && notifyWhalePresent && cohortTiltAlarm == null;
-    const tiltOrWhaleSound = cohortTiltAlarm != null || whaleOnlyAlarm;
 
-    if (!tiltOrWhaleSound || !notifyPlaySound || !notifyStakedGatePasses || !notifyVolatilityGatePasses) return;
+    const cohortNeedsSound = cohortTiltAlarm != null && notifyPlaySound;
+    const whaleNeedsSound = whaleOnlyAlarm;
+
+    if ((!cohortNeedsSound && !whaleNeedsSound) || !notifyStakedGatePasses || !notifyVolatilityGatePasses) return;
 
     const k = cohortTiltAlarm ?? 'green';
     const mul = notifySoundPitchMul;
     const rt = notifyRingTimeS;
     const maxCents = notifySoundMaxPriceCents;
     const doubleRing = notifyDoubleRing;
-    const whaleTripleEachTick = whaleOnlyAlarm;
+    const whaleTripleEachTick = whaleNeedsSound;
 
     const bidOkForSound = (): boolean => {
       const sm = tiltSoundMarketRef.current;
@@ -1970,11 +1972,8 @@ export function Sidebar() {
 
     const tick = () => {
       if (!bidOkForSound()) return;
-      if (whaleTripleEachTick) {
-        void playTiltNotifySoundStrikes(k, mul, rt, 3);
-      } else {
-        void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
-      }
+      if (whaleTripleEachTick) void playTiltNotifySoundStrikes(k, mul, rt, 3);
+      else if (cohortNeedsSound) void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
     };
 
     tick();
@@ -2753,6 +2752,109 @@ export function Sidebar() {
               </button>
             </div>
             <div className="space-y-3 text-xs text-gray-200">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="rounded accent-amber-500"
+                  checked={notifyPlaySound}
+                  onChange={(e) => setNotifyPlaySound(e.target.checked)}
+                />
+                <span>Tilt Ring</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="rounded accent-amber-500"
+                  checked={notifyWhaleRing}
+                  onChange={(e) => setNotifyWhaleRing(e.target.checked)}
+                />
+                <span>Whale Ring</span>
+              </label>
+              <p className="text-[10px] text-gray-500 m-0 leading-snug">
+                Whale Ring repeats while any Toxic Flow whale is on this market (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring. Cohort tilt bursts still obey Double Ring only.
+              </p>
+              <div
+                className={
+                  notifyPlaySound || notifyWhaleRing
+                    ? 'transition-opacity'
+                    : 'opacity-35 blur-[2.5px] pointer-events-none select-none transition-opacity'
+                }
+              >
+                <div className="text-gray-400 mb-1">Sound frequency</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={notifySoundFreqSlider}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      const nv = Math.min(100, Math.max(0, Math.round(v)));
+                      setNotifySoundFreqSlider(nv);
+                      const now = Date.now();
+                      if (now - freqSliderPreviewLastMs.current < 160) return;
+                      freqSliderPreviewLastMs.current = now;
+                      void playTiltNotifySoundWithDoubleRing(
+                        'green',
+                        pitchMulFromNotifyFreqSlider(nv),
+                        notifyRingTimeS,
+                        notifyDoubleRing,
+                      );
+                    }}
+                    className="flex-1 min-w-0 accent-amber-500 h-2"
+                    aria-label="Notification sound frequency"
+                  />
+                  <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifySoundFreqSlider}</span>
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">Left = much lower, right = much higher (×0.25–×4 at ends; center = normal).</p>
+                <div className="flex items-center gap-2 flex-wrap mt-3">
+                  <span className="text-gray-400 shrink-0">Ring time (s)</span>
+                  <input
+                    type="number"
+                    min={0.05}
+                    max={5}
+                    step={0.05}
+                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-20 tabular-nums no-spin"
+                    value={notifyRingTimeS}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      setNotifyRingTimeS(Math.min(5, Math.max(0.05, Math.round(v * 100) / 100)));
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">Glass ring decay length; default 5s (max 5).</p>
+                <div className="flex items-center gap-2 flex-wrap mt-3">
+                  <span className="text-gray-400 shrink-0">Sound max (¢)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    step={1}
+                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 tabular-nums no-spin"
+                    value={notifySoundMaxPriceCents}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      setNotifySoundMaxPriceCents(Math.min(99, Math.max(1, Math.round(v))));
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  Mute when WS mid for the checked leg — YES token for green cohort tilt or whale-only ring; NO token for red cohort tilt — (bestBid+bestAsk)/2, or bestBid only if no ask (default 95¢).
+                </p>
+                <label className="flex items-center gap-2 cursor-pointer mt-3">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyDoubleRing}
+                    onChange={(e) => setNotifyDoubleRing(e.target.checked)}
+                  />
+                  <span>Double ring</span>
+                </label>
+                <p className="text-[10px] text-gray-500 mt-1 m-0">Tilt bursts: play two strikes ~{NOTIFY_MULTI_RING_GAP_MS}ms apart.</p>
+              </div>
               <div className="border border-gray-600/80 rounded-md p-2 space-y-2 bg-gray-900/40">
                 <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Markets</div>
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -2832,92 +2934,6 @@ export function Sidebar() {
                   <span>Between</span>
                 </label>
                 <p className="text-[10px] text-gray-500 m-0">Sound and flash only for checked market types.</p>
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="rounded accent-amber-500"
-                  checked={notifyPlaySound}
-                  onChange={(e) => setNotifyPlaySound(e.target.checked)}
-                />
-                <span>Play Sound</span>
-              </label>
-              <div className={notifyPlaySound ? '' : 'opacity-50 pointer-events-none'}>
-                <div className="text-gray-400 mb-1">Sound frequency</div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={notifySoundFreqSlider}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (!Number.isFinite(v)) return;
-                      const nv = Math.min(100, Math.max(0, Math.round(v)));
-                      setNotifySoundFreqSlider(nv);
-                      const now = Date.now();
-                      if (now - freqSliderPreviewLastMs.current < 160) return;
-                      freqSliderPreviewLastMs.current = now;
-                      void playTiltNotifySoundWithDoubleRing(
-                        'green',
-                        pitchMulFromNotifyFreqSlider(nv),
-                        notifyRingTimeS,
-                        notifyDoubleRing,
-                      );
-                    }}
-                    className="flex-1 min-w-0 accent-amber-500 h-2"
-                    aria-label="Notification sound frequency"
-                  />
-                  <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifySoundFreqSlider}</span>
-                </div>
-                <p className="text-[10px] text-gray-500 mt-1">Left = much lower, right = much higher (×0.25–×4 at ends; center = normal).</p>
-                <div className="flex items-center gap-2 flex-wrap mt-3">
-                  <span className="text-gray-400 shrink-0">Ring time (s)</span>
-                  <input
-                    type="number"
-                    min={0.05}
-                    max={5}
-                    step={0.05}
-                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-20 tabular-nums no-spin"
-                    value={notifyRingTimeS}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (!Number.isFinite(v)) return;
-                      setNotifyRingTimeS(Math.min(5, Math.max(0.05, Math.round(v * 100) / 100)));
-                    }}
-                  />
-                </div>
-                <p className="text-[10px] text-gray-500 mt-1">Glass ring decay length; default 5s (max 5).</p>
-                <div className="flex items-center gap-2 flex-wrap mt-3">
-                  <span className="text-gray-400 shrink-0">Sound max (¢)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={99}
-                    step={1}
-                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 tabular-nums no-spin"
-                    value={notifySoundMaxPriceCents}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (!Number.isFinite(v)) return;
-                      setNotifySoundMaxPriceCents(Math.min(99, Math.max(1, Math.round(v))));
-                    }}
-                  />
-                </div>
-                <p className="text-[10px] text-gray-500 mt-1">
-                  Mute when WS mid for the tilt leg (YES token if green tilt, NO if red) is above this — (bestBid+bestAsk)/2,
-                  or bestBid only if no ask (default 95¢).
-                </p>
-                <label className="flex items-center gap-2 cursor-pointer mt-3">
-                  <input
-                    type="checkbox"
-                    className="rounded accent-amber-500"
-                    checked={notifyDoubleRing}
-                    onChange={(e) => setNotifyDoubleRing(e.target.checked)}
-                  />
-                  <span>Double ring</span>
-                </label>
-                <p className="text-[10px] text-gray-500 mt-1 m-0">Play two strikes ~{NOTIFY_MULTI_RING_GAP_MS}ms apart.</p>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -3108,18 +3124,6 @@ export function Sidebar() {
               </div>
               <p className="text-[10px] text-gray-500 mt-1 m-0">
                 Wallets with |Staked Net| USD ≥ this amount are treated as whales. Used by the Toxic Flow “Whales” tab.
-              </p>
-              <label className="flex items-center gap-2 cursor-pointer mt-2">
-                <input
-                  type="checkbox"
-                  className="rounded accent-amber-500"
-                  checked={notifyWhaleRing}
-                  onChange={(e) => setNotifyWhaleRing(e.target.checked)}
-                />
-                <span>Whale ring</span>
-              </label>
-              <p className="text-[10px] text-gray-500 mt-1 m-0 leading-snug">
-                Each repeat fires three strikes ~{NOTIFY_MULTI_RING_GAP_MS}ms apart. Cohort tilt alarms still follow Double ring below.
               </p>
             </div>
             <div className="mt-4 flex justify-end">

@@ -1540,7 +1540,7 @@ export function Sidebar() {
   }, [isUpDownMarket, selectedMarket?.id]);
 
   const sidebarSpotCurrentPriceRef = useRef<HTMLDivElement>(null);
-  const moreUpDownDetailsRef = useRef<HTMLDetailsElement>(null);
+  const upDownEndPickerDetailsRef = useRef<HTMLDetailsElement>(null);
   const prevPriceRef = useRef<number>(0);
   const [upDownCountdown, setUpDownCountdown] = useState('');
   const [upDownRemaining, setUpDownRemaining] = useState(Infinity);
@@ -1779,10 +1779,6 @@ export function Sidebar() {
             })()
           : null;
 
-      const udTf = upDownTimeframeKeyFromMarket(selectedMarket);
-      const futureUpDownSameTf =
-        udTf != null ? listFutureUpDownMarketsInTfBucket(upOrDownMarkets[asset]?.[udTf], Date.now()) : [];
-
       return {
         mode: 'updown' as const,
         targetDisplay:
@@ -1798,7 +1794,6 @@ export function Sidebar() {
         currentPrice,
         currentSource,
         diff,
-        futureUpDownSameTf,
       };
     }
 
@@ -1865,7 +1860,6 @@ export function Sidebar() {
       currentSource,
       diff,
       hitModel: selectedMarketIsHit,
-      futureUpDownSameTf: [] as Market[],
     };
   }, [
     selectedMarket,
@@ -1882,7 +1876,6 @@ export function Sidebar() {
     selectedMarketIsHit,
     upDownCountdown,
     upDownRemaining,
-    upOrDownMarkets,
   ]);
 
   /** Cohort signals only (Black–Scholes Δ gate removed). */
@@ -2038,6 +2031,32 @@ export function Sidebar() {
   const marketName = selectedMarket
     ? shortenMarketName(selectedMarket.question || selectedMarket.groupItemTitle, undefined, undefined, selectedMarket.eventSlug)
     : '';
+
+  const sidebarUpDownEndSwitch = useMemo(() => {
+    if (!isUpDownMarket || !selectedMarket?.endDate) return null;
+    const endMs = new Date(selectedMarket.endDate).getTime();
+    if (!Number.isFinite(endMs)) return null;
+    const asset = extractAssetFromMarket(selectedMarket);
+    if (!asset) return null;
+    const tf = upDownTimeframeKeyFromMarket(selectedMarket);
+    if (!tf) return null;
+    const futureList = listFutureUpDownMarketsInTfBucket(upOrDownMarkets[asset]?.[tf], Date.now());
+    const visibleEndLabel = new Date(selectedMarket.endDate).toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    return { futureList, visibleEndLabel, endIso: selectedMarket.endDate };
+  }, [
+    isUpDownMarket,
+    selectedMarket,
+    selectedMarket?.id,
+    selectedMarket?.endDate,
+    upOrDownMarkets,
+    lastUpdated,
+    expiredLivePickPulse,
+    upDownCountdown,
+  ]);
 
   /** Market FAK path shared by type dropdown Market and close-position ✕. */
   const submitSidebarMarketFak = useCallback(
@@ -3082,6 +3101,51 @@ export function Sidebar() {
                 <span className={`${sidebarTitleColor} font-bold text-sm`}>{marketName}</span>
               )}
             </div>
+            {sidebarUpDownEndSwitch && sidebarUpDownEndSwitch.futureList.length > 1 ? (
+              <details ref={upDownEndPickerDetailsRef} className="relative shrink-0">
+                <summary className={`inline-flex cursor-pointer select-none list-none items-center gap-0.5 rounded border border-gray-600/80 bg-gray-900/70 px-1 py-0.5 tabular-nums text-[11px] font-bold ${sidebarTitleColor} [&::-webkit-details-marker]:hidden hover:border-gray-500`}>
+                  {sidebarUpDownEndSwitch.visibleEndLabel}
+                  <ChevronDown className="size-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
+                </summary>
+                <ul
+                  className="absolute right-0 top-full z-[200] mt-0.5 max-h-[50vh] min-w-[5.5rem] overflow-y-auto rounded border border-gray-600 bg-neutral-950 py-0.5 text-left shadow-lg"
+                  role="menu"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  {sidebarUpDownEndSwitch.futureList.map((m) => (
+                    <li key={m.id}>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={`w-full whitespace-nowrap px-2 py-1 text-left text-[11px] font-semibold tabular-nums hover:bg-neutral-800 ${
+                          m.id === selectedMarket?.id ? 'text-amber-300' : 'text-gray-100'
+                        }`}
+                        title={m.endDate}
+                        onClick={() => {
+                          setSelectedMarket(m);
+                          const dr = upDownEndPickerDetailsRef.current;
+                          if (dr) dr.open = false;
+                        }}
+                      >
+                        {new Date(m.endDate).toLocaleTimeString(undefined, {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: false,
+                        })}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : sidebarUpDownEndSwitch ? (
+              <span
+                className="shrink-0 tabular-nums text-[11px] font-bold text-gray-400"
+                title={sidebarUpDownEndSwitch.endIso}
+              >
+                {sidebarUpDownEndSwitch.visibleEndLabel}
+              </span>
+            ) : null}
             <button
               type="button"
               onClick={() => setNotifyDialogOpen(true)}
@@ -3367,43 +3431,6 @@ export function Sidebar() {
                             <ArrowRight size={10} strokeWidth={2.5} className="shrink-0" aria-hidden />
                             live
                           </button>
-                        ) : null}
-                        {row.mode === 'updown' && row.futureUpDownSameTf.length > 1 ? (
-                          <details ref={moreUpDownDetailsRef} className="relative shrink-0">
-                            <summary className="inline-flex shrink-0 cursor-pointer select-none list-none items-center gap-0.5 rounded border border-gray-600 bg-gray-900/90 px-1 py-px text-[9px] font-semibold leading-none text-gray-300 [&::-webkit-details-marker]:hidden hover:border-gray-500">
-                              More
-                              <ChevronDown size={10} strokeWidth={2} className="shrink-0 opacity-70" aria-hidden />
-                            </summary>
-                            <ul
-                              className="absolute left-0 top-full z-[200] mt-0.5 max-h-[40vh] min-w-[3.75rem] overflow-y-auto rounded border border-gray-600 bg-neutral-950 py-0.5 shadow-lg"
-                              role="menu"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {row.futureUpDownSameTf.map((m) => (
-                                <li key={m.id}>
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    className={`w-full px-1.5 py-1 text-left text-[10px] font-semibold tabular-nums hover:bg-neutral-800 ${
-                                      m.id === selectedMarket?.id ? 'text-amber-300' : 'text-gray-100'
-                                    }`}
-                                    title={m.endDate}
-                                    onClick={() => {
-                                      setSelectedMarket(m);
-                                      const dr = moreUpDownDetailsRef.current;
-                                      if (dr) dr.open = false;
-                                    }}
-                                  >
-                                    {new Date(m.endDate).toLocaleTimeString(undefined, {
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                      hour12: false,
-                                    })}
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          </details>
                         ) : null}
                       </div>
                     ) : (

@@ -54,6 +54,7 @@ import {
   toxicFlowStakeStripWalletLists,
   cohortSurplusLean,
   toxicFlowWalletUniverse,
+  walletNet,
   walletStakeNetAbsUsd,
 } from '../lib/toxicFlowStakeCohort';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
@@ -132,6 +133,8 @@ const TOXIC_SIDEBAR_STRIP_HELP = {
   top20: 'Top 20 position holders on this market (by |staked net|, same ordering as Holders).',
   fav: 'Your favorite wallets betting here right now.',
   greens: 'Wallets with profits in tracked time. Green = more dollars staked on YES, red = more on NO.',
+  whales:
+    'Wallets with |Staked Net| USD ≥ Whale amount (Tilt bell). Same cohort as Toxic Flow Whales tab. Bar pulse = cohort lean ≥ sidebar strip threshold.',
 } as const;
 
 const LS_ORDER_EXPIRY_UPDOWN = 'polymarket-order-expiry-updown';
@@ -1072,6 +1075,25 @@ export function Sidebar() {
       },
     };
   }, [toxicFlowData, toxicFavSet]);
+
+  /** Same wallets + ordering as Toxic Flow dialog Whales tab (floor = Tilt whale USD). */
+  const toxicStripWhaleWallets = useMemo(() => {
+    if (!toxicFlowData) return [];
+    const floor = notifyWhaleAmountUsd;
+    const arr = toxicFlowWalletUniverse(toxicFlowData).filter((w) => {
+      const absUsd = walletStakeNetAbsUsd(w);
+      return Number.isFinite(absUsd) && absUsd >= floor;
+    });
+    return [...arr].sort((a, b) => {
+      const va = walletStakeNetAbsUsd(a);
+      const vb = walletStakeNetAbsUsd(b);
+      const d = vb - va;
+      if (d !== 0) return d;
+      const dn = walletNet(b) - walletNet(a);
+      if (dn !== 0) return dn;
+      return (a.wallet || '').localeCompare(b.wallet || '');
+    });
+  }, [toxicFlowData, notifyWhaleAmountUsd]);
 
   const notifyWhalePresent = useMemo(() => {
     if (!toxicFlowData) return false;
@@ -3821,6 +3843,14 @@ export function Sidebar() {
                     helpText={TOXIC_SIDEBAR_STRIP_HELP.top20}
                     label="Top20"
                     wallets={toxicStripModel.lists?.top20 ?? []}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
+                  />
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.whales}
+                    label="Whales"
+                    wallets={toxicStripWhaleWallets}
                     flashExtremeTilt
                     extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
                   />

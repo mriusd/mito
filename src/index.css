@@ -77,6 +77,24 @@ html, body, #root {
   animation: updown-math-flash 0.55s ease-in-out infinite;
 }
 
+/* Toxic Flow dialog: wallets marked with bell pulse when row is on current market */
+@keyframes toxic-flow-bell-row-flash {
+  0%,
+  100% {
+    box-shadow:
+      inset 3px 0 0 rgb(251 191 36 / 0),
+      inset 0 1px 0 0 rgb(251 191 36 / 0);
+  }
+  50% {
+    box-shadow:
+      inset 3px 0 0 rgb(251 191 36 / 0.9),
+      inset 0 0 24px -6px rgb(251 191 36 / 0.12);
+  }
+}
+.toxic-flow-bell-row-flash {
+  animation: toxic-flow-bell-row-flash 1.35s ease-in-out infinite;
+}
+
 /* Up/Down HUD: winner-bias bar when >75% turquoise or >75% pink */
 .updown-winner-bias-bar-flash {
   animation: updown-math-flash 0.55s ease-in-out infinite;

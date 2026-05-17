@@ -21,6 +21,7 @@ import {
   Copy,
   RefreshCw,
   Star,
+  Bell,
   Sparkles,
   Trophy,
   CircleHelp,
@@ -44,8 +45,12 @@ import {
 import {
   readToxicFavouriteWallets,
   persistToxicFavouriteWallets,
+  readToxicBellWallets,
+  persistToxicBellWallets,
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
   TOXIC_FAVOURITES_CHANGED_EVENT,
+  TOXIC_BELL_WALLETS_LS_KEY,
+  TOXIC_BELLS_CHANGED_EVENT,
 } from '../lib/toxicFavouriteWallets';
 import { WS_BASE } from '../lib/env';
 import { useAppStore } from '../stores/appStore';
@@ -781,7 +786,9 @@ function WalletTableBodyRow({
   w,
   shadeRowByStakedNet,
   favouriteActive,
+  bellActive,
   toggleFavouriteWallet,
+  toggleBellWallet,
   onOpenWallet,
   sharesPct,
   cumSharesPct,
@@ -790,7 +797,9 @@ function WalletTableBodyRow({
   w: WalletPosition;
   shadeRowByStakedNet: boolean;
   favouriteActive: boolean;
+  bellActive: boolean;
   toggleFavouriteWallet: (addr: string) => void;
+  toggleBellWallet: (addr: string) => void;
   onOpenWallet?: (wallet: string, netShares?: number) => void;
   sharesPct: number;
   cumSharesPct: number;
@@ -822,13 +831,14 @@ function WalletTableBodyRow({
 
   return (
     <tr
-      className={walletRowClassForStakedNet(shadeRowByStakedNet, stakeNetSigned)}
+      className={`${walletRowClassForStakedNet(shadeRowByStakedNet, stakeNetSigned)}${bellActive ? ' toxic-flow-bell-row-flash' : ''}`}
       onMouseEnter={(e) => hoverRef.current?.rowEnter(e)}
       onMouseMove={(e) => hoverRef.current?.rowMove(e)}
       onMouseLeave={() => hoverRef.current?.rowLeave()}
     >
       <td className="py-0.5 px-1 text-gray-600">{rank}</td>
       <td className="align-top px-0 py-0.5">
+        <span className="inline-flex shrink-0 items-start gap-0.5 align-top">
         <button
           type="button"
           className="p-0.5 rounded hover:bg-gray-600/40 text-gray-500 hover:text-gray-300"
@@ -845,6 +855,20 @@ function WalletTableBodyRow({
             className={favouriteActive ? 'text-yellow-400 fill-yellow-400' : 'fill-none stroke-gray-400'}
           />
         </button>
+        <button
+          type="button"
+          className="p-0.5 rounded hover:bg-gray-600/40 text-gray-500 hover:text-amber-200/90"
+          title={bellActive ? 'Stop highlighting this wallet on Toxic tables' : 'Flash row when wallet is on this market'}
+          aria-pressed={bellActive}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleBellWallet(w.wallet);
+          }}
+        >
+          <Bell size={11} strokeWidth={2} className={bellActive ? 'text-amber-400 fill-amber-400/25' : 'stroke-gray-400 fill-none'} />
+        </button>
+        </span>
       </td>
       <td className="align-top px-1 py-0.5">
         <WalletLink
@@ -911,16 +935,21 @@ function WalletTable({
 }) {
   const rows = wallets || [];
   const [favouriteWallets, setFavouriteWallets] = useState(readToxicFavouriteWallets);
+  const [bellWallets, setBellWallets] = useState(readToxicBellWallets);
   useEffect(() => {
-    const onChanged = () => setFavouriteWallets(readToxicFavouriteWallets());
+    const onFav = () => setFavouriteWallets(readToxicFavouriteWallets());
+    const onBell = () => setBellWallets(readToxicBellWallets());
     const onStorage = (e: StorageEvent) => {
-      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY || e.key === null) onChanged();
+      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY || e.key === null) onFav();
+      if (e.key === TOXIC_BELL_WALLETS_LS_KEY || e.key === null) onBell();
     };
     window.addEventListener('storage', onStorage);
-    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, onChanged);
+    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, onFav);
+    window.addEventListener(TOXIC_BELLS_CHANGED_EVENT, onBell);
     return () => {
       window.removeEventListener('storage', onStorage);
-      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, onChanged);
+      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, onFav);
+      window.removeEventListener(TOXIC_BELLS_CHANGED_EVENT, onBell);
     };
   }, []);
   const toggleFavouriteWallet = useCallback((addr: string) => {
@@ -931,6 +960,17 @@ function WalletTable({
       if (next.has(k)) next.delete(k);
       else next.add(k);
       persistToxicFavouriteWallets(next);
+      return next;
+    });
+  }, []);
+  const toggleBellWallet = useCallback((addr: string) => {
+    const k = addr.trim().toLowerCase();
+    if (!k) return;
+    setBellWallets((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      persistToxicBellWallets(next);
       return next;
     });
   }, []);
@@ -964,7 +1004,7 @@ function WalletTable({
         <thead className="sticky top-0 z-[1] bg-gray-950">
           <tr className="text-gray-500 border-b border-gray-700">
             <th className="text-left py-1 px-1">#</th>
-            <th className="text-left px-1 w-5" aria-label="Favourite" />
+            <th className="text-left py-1 px-0.5 w-[2rem]" aria-label="Favourite and highlight" />
             <th className="text-left px-1">Wallet</th>
             <th className="text-right px-1 bg-green-900/15" title="inv_yes">
               Inv Y
@@ -1014,7 +1054,9 @@ function WalletTable({
                   w={w}
                   shadeRowByStakedNet={!!shadeRowByStakedNet}
                   favouriteActive={favouriteWallets.has(wk)}
+                  bellActive={bellWallets.has(wk)}
                   toggleFavouriteWallet={toggleFavouriteWallet}
+                  toggleBellWallet={toggleBellWallet}
                   onOpenWallet={onOpenWallet}
                   sharesPct={sharesPct}
                   cumSharesPct={cumSharesPct}

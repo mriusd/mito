@@ -1957,12 +1957,13 @@ export function Sidebar() {
     const cohortTiltAlarm = topBarExtremeBgFlash;
 
     const cohortNeedsSound = cohortTiltAlarm != null && notifyPlaySound;
-    const whaleEligible =
-      notifyTiltAppliesToSelectedMarket && notifyWhaleRing && notifyWhalePresent;
+    /** Whale Ring: any selected market with ≥1 whale at floor — not gated by Tilt market-type filters (see dialog copy). */
+    const whaleEligible = notifyWhaleRing && notifyWhalePresent;
     /** Play whale ring whenever eligible and cohort tilt is not actively sounding (Tilt Ring off suppresses cohort, not whales). */
     const whaleNeedsSound = whaleEligible && !cohortNeedsSound;
 
-    if ((!cohortNeedsSound && !whaleNeedsSound) || !notifyStakedGatePasses || !notifyVolatilityGatePasses) return;
+    if (!cohortNeedsSound && !whaleNeedsSound) return;
+    if (cohortNeedsSound && (!notifyStakedGatePasses || !notifyVolatilityGatePasses)) return;
 
     const k = cohortTiltAlarm ?? 'green';
     const mul = notifySoundPitchMul;
@@ -2004,7 +2005,6 @@ export function Sidebar() {
     return () => clearInterval(id);
   }, [
     topBarExtremeBgFlash,
-    notifyTiltAppliesToSelectedMarket,
     notifyWhaleRing,
     notifyWhalePresent,
     notifyPlaySound,
@@ -2811,7 +2811,7 @@ export function Sidebar() {
                 Wallets with |Staked Net| USD ≥ this amount are treated as whales. Used by the Toxic Flow “Whales” tab.
               </p>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Whale Ring repeats while any Toxic Flow whale is on this market (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring. Cohort tilt bursts still obey Double Ring only.
+                Whale Ring repeats while any Toxic Flow whale is on this market (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, minimum staked, or volatility cap. Cohort tilt bursts still obey those gates plus Double Ring.
               </p>
               <div
                 className={

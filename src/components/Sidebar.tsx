@@ -2688,6 +2688,12 @@ export function Sidebar() {
     !isMobileSheet && !!selectedMarket && (selectedMarket.conditionId || '').trim().length > 0;
   const sidebarToxicEffective = toxicSidebarExpanded && canShowEmbeddedToxic;
 
+  const expandSidebarToxicFlowPanel = useCallback(() => {
+    if (!canShowEmbeddedToxic) return;
+    preloadToxicFlowDialog();
+    setToxicSidebarExpanded(true);
+  }, [canShowEmbeddedToxic]);
+
   const startMobileDrag = (clientY: number) => {
     if (!isMobileSheet || !sidebarOpen) return;
     mobileDragStartYRef.current = clientY;
@@ -3742,17 +3748,29 @@ export function Sidebar() {
               }`}
             >
               <div className="grid w-full grid-cols-4 gap-1.5 text-[10px] min-w-0 items-stretch">
-              <div className="rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0">
+              <button
+                type="button"
+                className={`rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${
+                  canShowEmbeddedToxic ? 'cursor-pointer hover:bg-gray-800/65 active:bg-gray-800/90' : 'cursor-default'
+                }`}
+                title={
+                  canShowEmbeddedToxic
+                    ? 'Σ wallet_market_positions.volume (chart WS). Click to expand Toxic Flow holders panel.'
+                    : 'Σ wallet_market_positions.volume for this market (chart WS wmpVolumeSum)'
+                }
+                onClick={expandSidebarToxicFlowPanel}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
                 <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Volume</div>
-                <div
-                  className="tabular-nums font-bold text-green-400 truncate"
-                  title="Σ wallet_market_positions.volume for this market (chart WS wmpVolumeSum)"
-                >
+                <div className="tabular-nums font-bold text-green-400 truncate">
                   {liveOrderbookVolumeDisplay ? `$${liveOrderbookVolumeDisplay}` : '--'}
                 </div>
-              </div>
-              <div
-                className={`rounded px-1.5 py-1 min-w-0 border ${
+              </button>
+              <button
+                type="button"
+                className={`rounded px-1.5 py-1 min-w-0 border text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${
+                  canShowEmbeddedToxic ? 'cursor-pointer hover:brightness-110 active:brightness-125' : 'cursor-default'
+                } ${
                   stakedPillTier === 'low'
                     ? 'border-red-700/65 bg-red-950/35'
                     : stakedPillTier === 'mid'
@@ -3761,6 +3779,13 @@ export function Sidebar() {
                         ? 'border-emerald-800/60 bg-emerald-950/30'
                         : 'border-gray-700/70 bg-gray-900/50'
                 }`}
+                title={
+                  canShowEmbeddedToxic
+                    ? `Net staked: |Σ|YES leg| − Σ|NO leg|| USD ≈ $${typeof marketStakedNetUsdAbs === 'number' && Number.isFinite(marketStakedNetUsdAbs) ? marketStakedNetUsdAbs.toFixed(0) : '—'}. Σ|legs| gross $${typeof marketStakedGrossUsd === 'number' && Number.isFinite(marketStakedGrossUsd) ? marketStakedGrossUsd.toFixed(0) : '—'}. Click to expand Toxic Flow.`
+                    : `Net staked (pill value): |Σ|YES leg| − Σ|NO leg|| USD ≈ $${typeof marketStakedNetUsdAbs === 'number' && Number.isFinite(marketStakedNetUsdAbs) ? marketStakedNetUsdAbs.toFixed(0) : '—'}. Σ|legs| gross USD: $${typeof marketStakedGrossUsd === 'number' && Number.isFinite(marketStakedGrossUsd) ? marketStakedGrossUsd.toFixed(0) : '—'}`
+                }
+                onClick={expandSidebarToxicFlowPanel}
+                onPointerDown={(e) => e.stopPropagation()}
               >
                 <div
                   className={`text-[8px] uppercase tracking-wide truncate ${
@@ -3785,24 +3810,42 @@ export function Sidebar() {
                           ? 'text-emerald-300'
                           : 'text-gray-200'
                   }`}
-                  title={`Net staked (pill value): |Σ|YES leg| − Σ|NO leg|| USD ≈ $${typeof marketStakedNetUsdAbs === 'number' && Number.isFinite(marketStakedNetUsdAbs) ? marketStakedNetUsdAbs.toFixed(0) : '—'}. Σ|legs| gross USD: $${typeof marketStakedGrossUsd === 'number' && Number.isFinite(marketStakedGrossUsd) ? marketStakedGrossUsd.toFixed(0) : '—'}`}
                 >
                   {marketStakedNetKDisplay ? `$${marketStakedNetKDisplay}` : '--'}
                 </div>
-              </div>
-              <div className="rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0">
+              </button>
+              <button
+                type="button"
+                className={`rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${
+                  canShowEmbeddedToxic ? 'cursor-pointer hover:bg-gray-800/65 active:bg-gray-800/90' : 'cursor-default'
+                }`}
+                title={
+                  canShowEmbeddedToxic
+                    ? 'Shares in existence from net balances. Click to expand Toxic Flow holders panel.'
+                    : 'Shares in existence from net wallet balances: sum(abs(YES-NO))'
+                }
+                onClick={expandSidebarToxicFlowPanel}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
                 <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Shares</div>
-                <div className="tabular-nums font-bold text-gray-200 truncate" title="Shares in existence from net wallet balances: sum(abs(YES-NO))">
-                  {sharesInExistenceDisplay}
-                </div>
-              </div>
-              <div
-                className="min-w-0 w-full rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left"
-                title="Holders count (open via sidebar expand chevron)"
+                <div className="tabular-nums font-bold text-gray-200 truncate">{sharesInExistenceDisplay}</div>
+              </button>
+              <button
+                type="button"
+                className={`min-w-0 w-full rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-amber-500/70 ${
+                  canShowEmbeddedToxic ? 'cursor-pointer hover:bg-yellow-900/35 active:bg-yellow-900/50' : 'cursor-default'
+                }`}
+                title={
+                  canShowEmbeddedToxic
+                    ? 'Holders count. Click to expand Toxic Flow holders panel.'
+                    : 'Holders count (desktop: expand sidebar chevron for Toxic Flow)'
+                }
+                onClick={expandSidebarToxicFlowPanel}
+                onPointerDown={(e) => e.stopPropagation()}
               >
                 <div className="text-[8px] uppercase tracking-wide text-yellow-400 truncate">Holders</div>
                 <div className="tabular-nums font-bold text-yellow-300 truncate">{holdersCountDisplay}</div>
-              </div>
+              </button>
             </div>
             <div className="mt-1 w-full min-w-0 flex flex-col gap-y-2 pb-0.5">
                   <ToxicFlowStakePreview

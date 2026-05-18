@@ -16,6 +16,8 @@ const WalletInfoDialogLazy = lazyWithChunkReload(() =>
   import('../ToxicFlowDialog').then((m) => ({ default: m.WalletInfoDialog })),
 );
 
+const HISTORY_PANEL_REFRESH_MS = 60_000;
+
 export function HistoryPanel() {
   const tradingWallet = useTradingWalletAddress();
   const makerAddress = useAppStore((s) => s.makerAddress);
@@ -28,13 +30,14 @@ export function HistoryPanel() {
 
   const marketById = useMemo(() => buildMarketByIdRecord(marketLookup), [marketLookup]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { showLoading?: boolean }) => {
+    const showLoading = options?.showLoading !== false;
     const w = tradingWallet.trim();
     if (!w) {
       setMarkets([]);
       return;
     }
-    setLoading(true);
+    if (showLoading) setLoading(true);
     try {
       const byId = buildMarketByIdRecord(useAppStore.getState().marketLookup);
       const p = await fetchWalletPositions({ wallet: w, limit: 1000, ledger: true, order: 'end_date_desc' });
@@ -43,13 +46,22 @@ export function HistoryPanel() {
     } catch {
       setMarkets([]);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [tradingWallet]);
 
   useEffect(() => {
     void load();
   }, [load, refreshBump]);
+
+  useEffect(() => {
+    const w = tradingWallet.trim();
+    if (!w) return;
+    const id = window.setInterval(() => {
+      void load({ showLoading: false });
+    }, HISTORY_PANEL_REFRESH_MS);
+    return () => window.clearInterval(id);
+  }, [tradingWallet, load]);
 
   const displayWallet = (makerAddress || tradingWallet || '').trim();
 

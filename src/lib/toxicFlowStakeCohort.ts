@@ -105,6 +105,149 @@ export function dedupeWalletsByAddress(list: WalletPosition[]): WalletPosition[]
   return [...m.values()];
 }
 
+function toxicFlowRowSig(w: WalletPosition): string {
+  const emb = w.walletLedgerSummary;
+  return [
+    w.wallet,
+    w.net,
+    w.netYes ?? '',
+    w.netNo ?? '',
+    w.invYes ?? '',
+    w.invNo ?? '',
+    w.tradeCount,
+    w.priceYes ?? '',
+    w.priceNo ?? '',
+    w.isSmart ? 1 : 0,
+    emb?.totalTrades ?? '',
+    emb?.pnl ?? '',
+    emb?.winRate ?? '',
+  ].join('\x00');
+}
+
+function toxicFlowListEqual(a: WalletPosition[], b: WalletPosition[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (toxicFlowRowSig(a[i]) !== toxicFlowRowSig(b[i])) return false;
+  }
+  return true;
+}
+
+/** Skip React updates when WS re-parses the same cohort (avoids 7× Map + sort alloc per tick). */
+export function toxicFlowPayloadEqual(a: ToxicFlowData, b: ToxicFlowData): boolean {
+  if (a === b) return true;
+  if (
+    a.marketId !== b.marketId ||
+    a.totalTrades !== b.totalTrades ||
+    a.totalWallets !== b.totalWallets ||
+    a.walletMarketTradesForMarket !== b.walletMarketTradesForMarket ||
+    a.orderFilledEventsProcessed !== b.orderFilledEventsProcessed ||
+    a.totalShares !== b.totalShares ||
+    a.totalUsdcIn !== b.totalUsdcIn ||
+    a.totalUsdcOut !== b.totalUsdcOut ||
+    a.concentration !== b.concentration ||
+    a.smartMoneyBias !== b.smartMoneyBias ||
+    a.topHoldersBias !== b.topHoldersBias ||
+    a.whaleBias !== b.whaleBias ||
+    a.whaleCount !== b.whaleCount ||
+    a.yesWallets !== b.yesWallets ||
+    a.noWallets !== b.noWallets ||
+    a.yesUsdcIn !== b.yesUsdcIn ||
+    a.noUsdcIn !== b.noUsdcIn ||
+    a.totalYesVol !== b.totalYesVol ||
+    a.totalNoVol !== b.totalNoVol ||
+    a.polygonWssConfigured !== b.polygonWssConfigured
+  ) {
+    return false;
+  }
+  if (!toxicFlowListEqual(a.topHolders ?? [], b.topHolders ?? [])) return false;
+  if (!toxicFlowListEqual(a.topYes ?? [], b.topYes ?? [])) return false;
+  if (!toxicFlowListEqual(a.topNo ?? [], b.topNo ?? [])) return false;
+  if (!toxicFlowListEqual(a.topVolume ?? [], b.topVolume ?? [])) return false;
+  if (!toxicFlowListEqual(a.topTraders ?? [], b.topTraders ?? [])) return false;
+  const ra = a.redFlags;
+  const rb = b.redFlags;
+  if ((ra?.length ?? 0) !== (rb?.length ?? 0)) return false;
+  if (ra?.length) {
+    for (let i = 0; i < ra.length; i++) {
+      const f = ra[i];
+      const g = rb![i];
+      if (f.flag !== g.flag || f.value !== g.value || f.wallet !== g.wallet) return false;
+    }
+  }
+  return true;
+}
+
+export type ToxicFlowTabWalletViews = {
+  topYes: WalletPosition[];
+  topNo: WalletPosition[];
+  topHolders: WalletPosition[];
+  smart: WalletPosition[];
+  favourites: WalletPosition[];
+  whales: WalletPosition[];
+  winners: WalletPosition[];
+  stripLists: NonNullable<ReturnType<typeof toxicFlowStakeStripWalletLists>>;
+};
+
+/** One dedupe Map + one pass of tab sorts per payload (was 7+ Maps per render). */
+export function buildToxicFlowTabWalletViews(
+  data: ToxicFlowData,
+  favouriteSet: ReadonlySet<string>,
+  whaleFloorUsd: number,
+): ToxicFlowTabWalletViews {
+  const universe = toxicFlowWalletUniverse(data);
+  const topYes = [...universe.filter((w) => {
+    const stake = walletStakeNetSignedUsd(w);
+    return Number.isFinite(stake) && stake < -STAKED_NET_EPS;
+  })].sort((a, b) => {
+    const d = stakedNetSortKeyDesc(b) - stakedNetSortKeyDesc(a);
+    if (d !== 0) return d;
+    const dn = walletNet(b) - walletNet(a);
+    if (dn !== 0) return dn;
+    return (a.wallet || '').localeCompare(b.wallet || '');
+  });
+  const topNo = [...universe.filter((w) => {
+    const stake = walletStakeNetSignedUsd(w);
+    return Number.isFinite(stake) && stake > STAKED_NET_EPS;
+  })].sort((a, b) => {
+    const d = stakedNetSortKeyAsc(b) - stakedNetSortKeyAsc(a);
+    if (d !== 0) return d;
+    const dn = walletNet(a) - walletNet(b);
+    if (dn !== 0) return dn;
+    return (a.wallet || '').localeCompare(b.wallet || '');
+  });
+  const topHolders = [...(data.topHolders ?? [])].sort(sortStakeNetMagThenWalletNet);
+  const smart = [...universe.filter(toxicRowMatchesSmartLedgerDefinition)].sort(sortStakeNetMagThenWalletNet);
+  const favourites = [
+    ...universe.filter((w) => favouriteSet.has((w.wallet || '').trim().toLowerCase())),
+  ].sort(sortStakeNetMagThenWalletNet);
+  const whales = [...universe.filter((w) => {
+    const absUsd = walletStakeNetAbsUsd(w);
+    return Number.isFinite(absUsd) && absUsd >= whaleFloorUsd;
+  })].sort((a, b) => {
+    const va = walletStakeNetAbsUsd(a);
+    const vb = walletStakeNetAbsUsd(b);
+    const d = vb - va;
+    if (d !== 0) return d;
+    const dn = walletNet(b) - walletNet(a);
+    if (dn !== 0) return dn;
+    return (a.wallet || '').localeCompare(b.wallet || '');
+  });
+  const winners = [...universe.filter(
+    (w) => !toxicRowMissingWalletScoresLedgerEmbed(w) && !toxicRowLedgerLifetimePnlNegative(w),
+  )].sort((a, b) => {
+    const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
+    if (d !== 0) return d;
+    const fa = toxicRowSortWinRateFrac(a);
+    const fb = toxicRowSortWinRateFrac(b);
+    if (fa != null && fb != null && fb !== fa) return fb - fa;
+    if (fa != null && fb == null) return -1;
+    if (fa == null && fb != null) return 1;
+    return sortStakeNetMagThenWalletNet(a, b);
+  });
+  const stripLists = toxicFlowStakeStripWalletLists(data, favouriteSet, universe)!;
+  return { topYes, topNo, topHolders, smart, favourites, whales, winners, stripLists };
+}
+
 /** Deduped union of toxic cohort rows. */
 export function toxicFlowWalletUniverse(data: ToxicFlowData | null | undefined): WalletPosition[] {
   if (!data) return [];
@@ -201,6 +344,7 @@ function sortStakeNetMagThenWalletNet(a: WalletPosition, b: WalletPosition): num
 export function toxicFlowStakeStripWalletLists(
   data: ToxicFlowData | null,
   favouriteSet: ReadonlySet<string>,
+  universePrecomputed?: WalletPosition[],
 ): {
   holders: WalletPosition[];
   smart: WalletPosition[];
@@ -214,7 +358,7 @@ export function toxicFlowStakeStripWalletLists(
 
   const holdersSorted = [...(data.topHolders ?? [])].sort(sortStakeNetMagThenWalletNet);
   const top20Sorted = holdersSorted.slice(0, 20);
-  const universe = toxicFlowWalletUniverse(data);
+  const universe = universePrecomputed ?? toxicFlowWalletUniverse(data);
   const freshSorted = [...universe.filter(toxicRowMatchesFreshTab)].sort(sortStakeNetMagThenWalletNet);
   const smartSorted = [...universe.filter(toxicRowMatchesSmartLedgerDefinition)].sort(sortStakeNetMagThenWalletNet);
   const favouritesSorted = [

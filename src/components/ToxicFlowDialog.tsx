@@ -80,7 +80,8 @@ import {
   stakedNetSortKeyDesc,
   stakedNetSortKeyAsc,
   stakeSortKeyDesc,
-  toxicFlowWalletUniverse,
+  toxicFlowPayloadEqual,
+  buildToxicFlowTabWalletViews,
   ledgerWinRateFracFromStored,
   toxicRowMatchesSmartLedgerDefinition,
   toxicRowMissingWalletScoresLedgerEmbed,
@@ -1694,24 +1695,32 @@ export function ToxicFlowDialog({
   embedded = false,
   streamData = undefined,
 }: ToxicFlowDialogProps) {
-  const marketLookup = useMarketLookupSnapshot();
+  const yesTok = (yesTokenId || '').trim();
+  const stakedWyLive = useAppStore((s) => {
+    if (!yesTok) return NaN;
+    const v = s.marketLookup[yesTok]?.stakedUsdYesLeg;
+    return typeof v === 'number' && Number.isFinite(v) ? v : NaN;
+  });
+  const stakedWnLive = useAppStore((s) => {
+    if (!yesTok) return NaN;
+    const v = s.marketLookup[yesTok]?.stakedUsdNoLeg;
+    return typeof v === 'number' && Number.isFinite(v) ? v : NaN;
+  });
+  const stakedSumAbsLive = useAppStore((s) => {
+    if (!yesTok) return NaN;
+    const v = s.marketLookup[yesTok]?.stakedSumAbsSignedNetUsd;
+    return typeof v === 'number' && Number.isFinite(v) ? v : NaN;
+  });
   const [marketStakedLegsRest, setMarketStakedLegsRest] = useState<MarketStakedLegsResponse | null>(null);
 
   const liveStakedLegUsd = useMemo(() => {
-    const tokenId = (yesTokenId || '').trim();
-    if (!tokenId) return null;
-    const wy = marketLookup[tokenId]?.stakedUsdYesLeg;
-    const wn = marketLookup[tokenId]?.stakedUsdNoLeg;
-    const sumAbs = marketLookup[tokenId]?.stakedSumAbsSignedNetUsd;
-    if (typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn)) {
-      const row: MarketStakedLegsResponse = { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
-      if (typeof sumAbs === 'number' && Number.isFinite(sumAbs)) {
-        row.stakedSumAbsSignedNetUsd = sumAbs;
-      }
-      return row;
+    if (!Number.isFinite(stakedWyLive) || !Number.isFinite(stakedWnLive)) return null;
+    const row: MarketStakedLegsResponse = { stakedUsdYesLeg: stakedWyLive, stakedUsdNoLeg: stakedWnLive };
+    if (Number.isFinite(stakedSumAbsLive)) {
+      row.stakedSumAbsSignedNetUsd = stakedSumAbsLive;
     }
-    return null;
-  }, [yesTokenId, marketLookup]);
+    return row;
+  }, [stakedWyLive, stakedWnLive, stakedSumAbsLive]);
 
   useEffect(() => {
     const mid = (marketId || '').trim();
@@ -1844,6 +1853,8 @@ export function ToxicFlowDialog({
           const msg = JSON.parse(String(ev.data)) as { type?: string; data?: ToxicFlowData };
           if (msg.type === 'toxicFlow' && msg.data && typeof msg.data === 'object') {
             const next = msg.data;
+            const prev = internalDataRef.current;
+            if (prev && toxicFlowPayloadEqual(prev, next)) return;
             internalDataRef.current = next;
             setInternalData(next);
           }
@@ -1883,110 +1894,9 @@ export function ToxicFlowDialog({
     };
   }, [embedded, open, marketId]);
 
-  const topYesWallets = useMemo(() => {
-    const arr = toxicFlowWalletUniverse(data).filter((w) => {
-      const stake = walletStakeNetSignedUsd(w);
-      return Number.isFinite(stake) && stake < -STAKED_NET_EPS;
-    });
-    return [...arr].sort((a, b) => {
-      const d = stakedNetSortKeyDesc(b) - stakedNetSortKeyDesc(a);
-      if (d !== 0) return d;
-      const dn = walletNet(b) - walletNet(a);
-      if (dn !== 0) return dn;
-      return (a.wallet || '').localeCompare(b.wallet || '');
-    });
-  }, [data]);
-  const topNoWallets = useMemo(() => {
-    const arr = toxicFlowWalletUniverse(data).filter((w) => {
-      const stake = walletStakeNetSignedUsd(w);
-      return Number.isFinite(stake) && stake > STAKED_NET_EPS;
-    });
-    return [...arr].sort((a, b) => {
-      const d = stakedNetSortKeyAsc(b) - stakedNetSortKeyAsc(a);
-      if (d !== 0) return d;
-      const dn = walletNet(a) - walletNet(b);
-      if (dn !== 0) return dn;
-      return (a.wallet || '').localeCompare(b.wallet || '');
-    });
-  }, [data]);
-
-  const topHoldersWallets = useMemo(() => {
-    const arr = data?.topHolders ?? [];
-    return [...arr].sort((a, b) => {
-      const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
-      if (d !== 0) return d;
-      const da = Math.abs(walletNet(a));
-      const db = Math.abs(walletNet(b));
-      if (db !== da) return db - da;
-      return (a.wallet || '').localeCompare(b.wallet || '');
-    });
-  }, [data?.topHolders]);
-
-  const smartTabWallets = useMemo(() => {
-    const arr = toxicFlowWalletUniverse(data).filter((w) => toxicRowMatchesSmartLedgerDefinition(w));
-    return [...arr].sort((a, b) => {
-      const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
-      if (d !== 0) return d;
-      const da = Math.abs(walletNet(a));
-      const db = Math.abs(walletNet(b));
-      if (db !== da) return db - da;
-      return (a.wallet || '').localeCompare(b.wallet || '');
-    });
-  }, [data]);
-
-  const favouritesTabWallets = useMemo(() => {
-    const arr = toxicFlowWalletUniverse(data).filter((w) =>
-      toxicFollowSet.has((w.wallet || '').trim().toLowerCase()),
-    );
-    return [...arr].sort((a, b) => {
-      const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
-      if (d !== 0) return d;
-      const da = Math.abs(walletNet(a));
-      const db = Math.abs(walletNet(b));
-      if (db !== da) return db - da;
-      return (a.wallet || '').localeCompare(b.wallet || '');
-    });
-  }, [data, toxicFollowSet]);
-
-  const whalesTabWallets = useMemo(() => {
-    const floor = tiltWhaleAmountUsd;
-    const arr = toxicFlowWalletUniverse(data).filter((w) => {
-      const absUsd = walletStakeNetAbsUsd(w);
-      return Number.isFinite(absUsd) && absUsd >= floor;
-    });
-    return [...arr].sort((a, b) => {
-      const va = walletStakeNetAbsUsd(a);
-      const vb = walletStakeNetAbsUsd(b);
-      const d = vb - va;
-      if (d !== 0) return d;
-      const dn = walletNet(b) - walletNet(a);
-      if (dn !== 0) return dn;
-      return (a.wallet || '').localeCompare(b.wallet || '');
-    });
-  }, [data, tiltWhaleAmountUsd]);
-
-  const winnersTabWallets = useMemo(() => {
-    const arr = toxicFlowWalletUniverse(data).filter(
-      (w) => !toxicRowMissingWalletScoresLedgerEmbed(w) && !toxicRowLedgerLifetimePnlNegative(w),
-    );
-    return [...arr].sort((a, b) => {
-      const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
-      if (d !== 0) return d;
-      const fa = toxicRowSortWinRateFrac(a);
-      const fb = toxicRowSortWinRateFrac(b);
-      if (fa != null && fb != null && fb !== fa) return fb - fa;
-      if (fa != null && fb == null) return -1;
-      if (fa == null && fb != null) return 1;
-      const da = Math.abs(walletNet(a));
-      const db = Math.abs(walletNet(b));
-      if (db !== da) return db - da;
-      return (a.wallet || '').localeCompare(b.wallet || '');
-    });
-  }, [data]);
-
-  const stripWalletLists = useMemo(
-    () => (data ? toxicFlowStakeStripWalletLists(data, toxicFollowSet) : null),
-    [data, toxicFollowSet],
+  const tabWalletViews = useMemo(
+    () => (data ? buildToxicFlowTabWalletViews(data, toxicFollowSet, tiltWhaleAmountUsd) : null),
+    [data, toxicFollowSet, tiltWhaleAmountUsd],
   );
 
   if (!open) return null;
@@ -2161,7 +2071,7 @@ export function ToxicFlowDialog({
                 <div className="flex flex-col flex-1 min-h-0 overflow-hidden min-w-0">
                   {tab === 'topHolders' && (
                     <WalletTable
-                      wallets={topHoldersWallets}
+                      wallets={tabWalletViews?.topHolders ?? []}
                       label="holders"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
@@ -2169,7 +2079,7 @@ export function ToxicFlowDialog({
                   )}
                   {tab === 'smart' && (
                     <WalletTable
-                      wallets={smartTabWallets}
+                      wallets={tabWalletViews?.smart ?? []}
                       label="smart"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
@@ -2177,7 +2087,7 @@ export function ToxicFlowDialog({
                   )}
                   {tab === 'favourites' && (
                     <WalletTable
-                      wallets={favouritesTabWallets}
+                      wallets={tabWalletViews?.favourites ?? []}
                       label="favourites"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
@@ -2185,7 +2095,7 @@ export function ToxicFlowDialog({
                   )}
                   {tab === 'whales' && (
                     <WalletTable
-                      wallets={whalesTabWallets}
+                      wallets={tabWalletViews?.whales ?? []}
                       label="whales"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
@@ -2193,7 +2103,7 @@ export function ToxicFlowDialog({
                   )}
                   {tab === 'winners' && (
                     <WalletTable
-                      wallets={winnersTabWallets}
+                      wallets={tabWalletViews?.winners ?? []}
                       label="greens"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
@@ -2201,7 +2111,7 @@ export function ToxicFlowDialog({
                   )}
                   {tab === 'fresh' && (
                     <WalletTable
-                      wallets={stripWalletLists?.fresh ?? []}
+                      wallets={tabWalletViews?.stripLists.fresh ?? []}
                       label="fresh"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
@@ -2209,7 +2119,7 @@ export function ToxicFlowDialog({
                   )}
                   {tab === 'topYes' && (
                     <WalletTable
-                      wallets={topYesWallets}
+                      wallets={tabWalletViews?.topYes ?? []}
                       label="Net Y (Staked)"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}
@@ -2217,7 +2127,7 @@ export function ToxicFlowDialog({
                   )}
                   {tab === 'topNo' && (
                     <WalletTable
-                      wallets={topNoWallets}
+                      wallets={tabWalletViews?.topNo ?? []}
                       label="Net N (Staked)"
                       totalShares={data.totalShares}
                       onOpenWallet={openWalletDialog}

@@ -2460,8 +2460,13 @@ export function Sidebar() {
 
     let size = parseFloat(orderAmount);
     if (btn.side === 'SELL' && btn.maxSell) {
-      const pos = positions.find((p) => p.asset === tokenId && p.size > 0);
-      size = pos ? Math.floor(pos.size * 100) / 100 : 0;
+      const tidKey = positionTokenKey(tokenId);
+      const pos = tidKey
+        ? myPositions.find(
+            (p) => positionTokenKey(String(p.asset || '')) === tidKey && (p.size || 0) > 0,
+          )
+        : undefined;
+      size = pos ? Math.floor(Number(pos.size) * 100) / 100 : 0;
     }
     if (!size || size <= 0) {
       showToast(btn.side === 'SELL' && btn.maxSell ? 'No position size available for MAX sell' : 'Invalid amount', 'error');
@@ -4219,9 +4224,15 @@ export function Sidebar() {
                     <button
                       type="button"
                       onClick={() => {
-                        const tokenId = selectedMarket?.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
-                        const pos = positions.find(p => p.asset === tokenId && p.size > 0);
-                        if (pos) setOrderAmount(String(Math.floor(pos.size * 100) / 100));
+                        const tid = selectedMarket?.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
+                        const tidKey = positionTokenKey(tid);
+                        const pos = tidKey
+                          ? myPositions.find(
+                              (p) =>
+                                positionTokenKey(String(p.asset || '')) === tidKey && (p.size || 0) > 0,
+                            )
+                          : undefined;
+                        if (pos) setOrderAmount(String(Math.floor(Number(pos.size) * 100) / 100));
                       }}
                       className="bg-red-700 hover:bg-red-600 rounded text-[10px] text-white font-bold h-full w-full leading-none flex items-center justify-center min-h-6"
                     >

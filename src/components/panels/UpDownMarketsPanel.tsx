@@ -286,47 +286,54 @@ function UpDownMarketsPanelInner() {
     return () => window.clearInterval(id);
   }, []);
 
-  const getSortedOpenMarkets = (asset: string, tf: string): Market[] =>
-    ((upOrDownMarkets[asset] || {})[tf] || [])
-      .filter((m: Market) => !m.closed)
-      .sort((a: Market, b: Market) => {
-        const ta = a.endDate ? new Date(a.endDate).getTime() : Infinity;
-        const tb = b.endDate ? new Date(b.endDate).getTime() : Infinity;
-        return ta - tb;
-      });
+  const sortedOpenByAssetTf = useMemo(() => {
+    const out: Partial<Record<(typeof ASSETS)[number], Partial<Record<(typeof TIMEFRAMES)[number], Market[]>>>> = {};
+    for (const asset of visibleAssets) {
+      out[asset] = {};
+      for (const tf of TIMEFRAMES) {
+        out[asset]![tf] = ((upOrDownMarkets[asset] || {})[tf] || [])
+          .filter((m: Market) => !m.closed)
+          .sort((a: Market, b: Market) => {
+            const ta = a.endDate ? new Date(a.endDate).getTime() : Infinity;
+            const tb = b.endDate ? new Date(b.endDate).getTime() : Infinity;
+            return ta - tb;
+          });
+      }
+    }
+    return out;
+  }, [upOrDownMarkets, visibleAssets]);
 
-  const getCurrentAndFutureMarkets = (
-    asset: string,
-    tf: string,
-    nFuture: number,
-  ): { current: Market | null; futures: Market[] } => {
-    const markets = getSortedOpenMarkets(asset, tf);
-    const currentIdx = markets.findIndex((m: Market) => m.endDate && new Date(m.endDate).getTime() > now);
-    if (currentIdx === -1) return { current: null, futures: [] };
-    const current = markets[currentIdx];
-    const futures = markets.slice(currentIdx + 1, currentIdx + 1 + nFuture);
-    return { current, futures };
-  };
+  const laneByAssetTf = useMemo(() => {
+    type Lane = { current: Market | null; futures: (Market | null)[] };
+    const out: Partial<Record<(typeof ASSETS)[number], Partial<Record<(typeof TIMEFRAMES)[number], Lane>>>> = {};
+    for (const asset of visibleAssets) {
+      out[asset] = {};
+      for (const tf of TIMEFRAMES) {
+        const markets = sortedOpenByAssetTf[asset]?.[tf] ?? [];
+        const currentIdx = markets.findIndex((m) => m.endDate && new Date(m.endDate).getTime() > now);
+        if (currentIdx === -1) {
+          out[asset]![tf] = { current: null, futures: Array.from({ length: nextMarketsCount }, () => null) };
+          continue;
+        }
+        const futures: (Market | null)[] = [];
+        for (let i = 0; i < nextMarketsCount; i++) {
+          futures.push(markets[currentIdx + 1 + i] ?? null);
+        }
+        out[asset]![tf] = { current: markets[currentIdx], futures };
+      }
+    }
+    return out;
+  }, [sortedOpenByAssetTf, visibleAssets, now, nextMarketsCount]);
 
   /** Timeframe rows whose current window ends at the same instant as another row (2+ timeframes). */
   const timeframesWithSharedExpiry = useMemo(() => {
-    const currentLaneMarket = (asset: string, tf: string): Market | null => {
-      const markets = ((upOrDownMarkets[asset] || {})[tf] || [])
-        .filter((m: Market) => !m.closed)
-        .sort((a: Market, b: Market) => {
-          const ta = a.endDate ? new Date(a.endDate).getTime() : Infinity;
-          const tb = b.endDate ? new Date(b.endDate).getTime() : Infinity;
-          return ta - tb;
-        });
-      const currentIdx = markets.findIndex((m: Market) => m.endDate && new Date(m.endDate).getTime() > now);
-      if (currentIdx === -1) return null;
-      return markets[currentIdx];
-    };
     const endMsByTf: Partial<Record<(typeof TIMEFRAMES)[number], number>> = {};
     for (const tf of TIMEFRAMES) {
       let endMs = 0;
       for (const a of visibleAssets) {
-        const m = currentLaneMarket(a, tf);
+        const markets = sortedOpenByAssetTf[a]?.[tf] ?? [];
+        const currentIdx = markets.findIndex((m) => m.endDate && new Date(m.endDate).getTime() > now);
+        const m = currentIdx === -1 ? null : markets[currentIdx];
         if (m?.endDate) {
           endMs = new Date(m.endDate).getTime();
           break;
@@ -346,7 +353,7 @@ function UpDownMarketsPanelInner() {
       if (list.length >= 2) list.forEach((t) => dup.add(t));
     }
     return dup;
-  }, [visibleAssets, upOrDownMarkets, now]);
+  }, [visibleAssets, sortedOpenByAssetTf, now]);
 
   const colsPerAsset = (showTarget ? 1 : 0) + 1 + nextMarketsCount + (showVolume ? 1 : 0);
 
@@ -482,7 +489,7 @@ function UpDownMarketsPanelInner() {
             {TIMEFRAMES.map((tf) => {
               const duration = TF_DURATIONS_MS[tf] || 0;
               const firstMarket = visibleAssets
-                .map((a) => getCurrentAndFutureMarkets(a, tf, nextMarketsCount).current)
+                .map((a) => laneByAssetTf[a]?.[tf]?.current ?? null)
                 .find((m) => m !== null);
               const endMs = firstMarket?.endDate ? new Date(firstMarket.endDate).getTime() : 0;
               const tfProgress = expiryProgress(now, endMs, duration);
@@ -510,11 +517,9 @@ function UpDownMarketsPanelInner() {
                   )}
                 </td>
                 {visibleAssets.map((asset) => {
-                  const { current: market, futures } = getCurrentAndFutureMarkets(asset, tf, nextMarketsCount);
-                  const futuresSlots = Array.from(
-                    { length: nextMarketsCount },
-                    (_, i) => futures[i] ?? null,
-                  );
+                  const lane = laneByAssetTf[asset]?.[tf];
+                  const market = lane?.current ?? null;
+                  const futuresSlots = lane?.futures ?? Array.from({ length: nextMarketsCount }, () => null);
                   if (!market) {
                     return (
                       <td

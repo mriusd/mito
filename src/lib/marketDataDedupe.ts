@@ -1,30 +1,88 @@
 import type { Market, Order, Position, Trade } from '../types';
 
-function marketRowSig(m: Market): string {
-  return [
-    m.id,
-    m.bestBid ?? '',
-    m.bestAsk ?? '',
-    m.closed ? '1' : '0',
-    m.endDate ?? '',
-    m.volume ?? '',
-    m.question ?? '',
-  ].join('\x01');
+/** Gamma/static row fields — excludes WS-only live book fields (those live in `marketLookup`). */
+export function marketRowContentEqual(a: Market, b: Market): boolean {
+  if (a === b) return true;
+  if (
+    a.id !== b.id ||
+    a.conditionId !== b.conditionId ||
+    a.question !== b.question ||
+    a.eventTitle !== b.eventTitle ||
+    a.eventSlug !== b.eventSlug ||
+    a.groupItemTitle !== b.groupItemTitle ||
+    a.endDate !== b.endDate ||
+    Boolean(a.closed) !== Boolean(b.closed) ||
+    a.outcomePrices !== b.outcomePrices ||
+    a.lastTradePrice !== b.lastTradePrice ||
+    a.priceToBeat !== b.priceToBeat
+  ) {
+    return false;
+  }
+  const ca = a.clobTokenIds || [];
+  const cb = b.clobTokenIds || [];
+  if (ca.length !== cb.length) return false;
+  for (let i = 0; i < ca.length; i++) if (ca[i] !== cb[i]) return false;
+  return true;
 }
 
-function marketArraySig(arr: Market[] | undefined): string {
-  if (!arr?.length) return '';
-  return [...arr].map(marketRowSig).sort().join('\x02');
+function listsSameMarketRefs(a: readonly Market[], b: readonly Market[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
-function marketArraysEqualByRefOrSig(a: Market[] | undefined, b: Market[] | undefined): boolean {
+/** Reuse prior Market refs when Gamma/static content unchanged (poll JSON churn). */
+export function stabilizeMarketArray(prev: Market[] | undefined, next: Market[]): Market[] {
+  if (prev === next) return next;
+  if (!prev?.length) return next;
+  if (next.length === 0) return next;
+  const prevById = new Map<string, Market>();
+  for (const m of prev) prevById.set(m.id, m);
+  const out = new Array<Market>(next.length);
+  for (let i = 0; i < next.length; i++) {
+    const n = next[i];
+    const p = prevById.get(n.id);
+    out[i] = p && marketRowContentEqual(p, n) ? p : n;
+  }
+  if (listsSameMarketRefs(prev, out)) return prev;
+  if (prev.length === out.length) {
+    let sameOrder = true;
+    for (let i = 0; i < out.length; i++) {
+      if (!marketRowContentEqual(prev[i], out[i])) {
+        sameOrder = false;
+        break;
+      }
+    }
+    if (sameOrder) return prev;
+  }
+  return out;
+}
+
+function marketArraysEqualByRefOrContent(a: Market[] | undefined, b: Market[] | undefined): boolean {
   if (a === b) return true;
   if (!a?.length && !b?.length) return true;
   if (!a || !b || a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return marketArraySig(a) === marketArraySig(b);
+    if (a[i] !== b[i] && !marketRowContentEqual(a[i], b[i])) return false;
   }
   return true;
+}
+
+export function coalesceRecordOfMarketArrays(
+  prev: Record<string, Market[]>,
+  next: Record<string, Market[]>,
+): Record<string, Market[]> {
+  if (recordOfMarketArraysEqual(next, prev)) return prev;
+  const out: Record<string, Market[]> = {};
+  let anyChange = false;
+  for (const k of Object.keys(next)) {
+    const stabilized = stabilizeMarketArray(prev[k], next[k] || []);
+    out[k] = stabilized;
+    if (stabilized !== prev[k]) anyChange = true;
+  }
+  if (!anyChange && recordOfMarketArraysEqual(out, prev)) return prev;
+  return out;
 }
 
 export function recordOfMarketArraysEqual(a: Record<string, Market[]>, b: Record<string, Market[]>): boolean {
@@ -33,9 +91,39 @@ export function recordOfMarketArraysEqual(a: Record<string, Market[]>, b: Record
   const kb = Object.keys(b).sort().join(',');
   if (ka !== kb) return false;
   for (const k of Object.keys(a)) {
-    if (!marketArraysEqualByRefOrSig(a[k], b[k])) return false;
+    if (!marketArraysEqualByRefOrContent(a[k], b[k])) return false;
   }
   return true;
+}
+
+export function coalesceUpOrDownMarkets(
+  prev: Record<string, Record<string, Market[]>>,
+  next: Record<string, Record<string, Market[]>>,
+): Record<string, Record<string, Market[]>> {
+  if (upOrDownMarketsEqual(next, prev)) return prev;
+  const out: Record<string, Record<string, Market[]>> = {};
+  let changed = false;
+  for (const asset of Object.keys(next)) {
+    const prevAsset = prev[asset] || {};
+    const nextAsset = next[asset] || {};
+    let assetOut: Record<string, Market[]> | null = null;
+    for (const tf of Object.keys(nextAsset)) {
+      const stabilized = stabilizeMarketArray(prevAsset[tf], nextAsset[tf] || []);
+      if (stabilized !== nextAsset[tf]) {
+        if (!assetOut) assetOut = { ...nextAsset };
+        assetOut[tf] = stabilized;
+        changed = true;
+      } else if (stabilized !== prevAsset[tf]) {
+        if (!assetOut) assetOut = { ...nextAsset };
+        assetOut[tf] = stabilized;
+        changed = true;
+      }
+    }
+    out[asset] = assetOut ?? nextAsset;
+    if (assetOut) changed = true;
+  }
+  if (!changed && upOrDownMarketsEqual(out, prev)) return prev;
+  return out;
 }
 
 export function upOrDownMarketsEqual(
@@ -53,7 +141,7 @@ export function upOrDownMarketsEqual(
     const tikb = Object.keys(ib).sort().join(',');
     if (tik !== tikb) return false;
     for (const tf of Object.keys(ia)) {
-      if (!marketArraysEqualByRefOrSig(ia[tf], ib[tf])) return false;
+      if (!marketArraysEqualByRefOrContent(ia[tf], ib[tf])) return false;
     }
   }
   return true;

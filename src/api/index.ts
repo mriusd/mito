@@ -359,11 +359,15 @@ function addMarketToTokenLookup(
 }
 
 /** Reuse prior lookup entry refs when market row content unchanged. */
-let lastLookupRef: Record<string, Market> | null = null;
-
-export function buildMarketLookup(aboveMarkets: Record<string, Market[]>, priceOnMarkets: Record<string, Market[]>, weeklyHitMarkets: Record<string, Market[]> = {}, upOrDownMarkets: Record<string, Record<string, Market[]>> = {}): Record<string, Market> {
+export function buildMarketLookup(
+  aboveMarkets: Record<string, Market[]>,
+  priceOnMarkets: Record<string, Market[]>,
+  weeklyHitMarkets: Record<string, Market[]> = {},
+  upOrDownMarkets: Record<string, Record<string, Market[]>> = {},
+  prevLookup?: Record<string, Market>,
+): Record<string, Market> {
   const lookup: Record<string, Market> = {};
-  const prev = lastLookupRef ?? undefined;
+  const prev = prevLookup;
   for (const assetName of Object.keys(aboveMarkets)) {
     for (const m of aboveMarkets[assetName] || []) {
       addMarketToTokenLookup(lookup, prev, m);
@@ -386,7 +390,6 @@ export function buildMarketLookup(aboveMarkets: Record<string, Market[]>, priceO
       }
     }
   }
-  lastLookupRef = lookup;
   return lookup;
 }
 

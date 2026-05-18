@@ -8,7 +8,7 @@ import type { AssetSymbol } from '../../types';
 import { getMarketProbability } from '../../utils/bsMath';
 import { formatPolymarketVolumeK, getPolymarketVolumeUsd, getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
-import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { noOutcomeBidAsk, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
@@ -784,17 +784,27 @@ function UpDownMarketsPanelInner() {
                     const nextGammaYes = { bestBid: nextMarket.bestBid, bestAsk: nextMarket.bestAsk };
                     const nextYesMid = outcomeMidOrOneSideProb(nextYesTokenId, _bidAskLookup, nextGammaYes);
                     const nextNoProb = nextYesMid != null ? 1 - nextYesMid : null;
-                    const { bestBid: nextBestBid, bestAsk: nextBestAsk } = getLiveBidAsk(nextMarket);
+                    const nextNoTokenId = nextTokenIds[1] || '';
+                    const { bestBid: nextBestBid } = getLiveBidAsk(nextMarket);
                     const nextBidHi =
                       nextBestBid != null && Number.isFinite(nextBestBid) && nextBestBid >= 0.6;
-                    const nextAskHi =
-                      nextBestAsk != null && Number.isFinite(nextBestAsk) && nextBestAsk >= 0.6;
+                    const { bestBid: nextNoBid, bestAsk: nextNoAsk } = noOutcomeBidAsk(
+                      nextYesTokenId,
+                      nextNoTokenId,
+                      _bidAskLookup,
+                      nextGammaYes,
+                    );
+                    const nextNoHi =
+                      (nextNoBid != null && Number.isFinite(nextNoBid) && nextNoBid >= 0.6) ||
+                      (nextNoAsk != null && Number.isFinite(nextNoAsk) && nextNoAsk >= 0.6);
                     const nextHiPillBase =
                       'inline-flex min-h-[1.125rem] items-center justify-center rounded border px-0.5 text-[10px] font-extrabold tabular-nums text-white shrink-0';
+                    const isNextSelected = selectedMarket?.id === nextMarket.id;
                     return (
                       <td
                         key={`${asset}-next-${slotIdx}`}
-                        className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap cursor-pointer hover:brightness-125 relative ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+                        data-market-id={nextMarket.id}
+                        className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap cursor-pointer hover:brightness-125 relative ${isNextSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
                         style={env}
                         onClick={() => handleCellClick(nextMarket)}
                         title={`Next market +${slotIdx + 1} in this lane`}
@@ -824,13 +834,24 @@ function UpDownMarketsPanelInner() {
                           right={
                             <span
                               className={
-                                nextAskHi
+                                nextNoHi
                                   ? `${nextHiPillBase} updown-triangle-badge-flash cursor-pointer hover:brightness-110 bg-red-900/65 border-red-600/45`
                                   : 'text-red-400 cursor-pointer hover:underline'
                               }
                               title={
-                                nextAskHi && nextBestAsk != null
-                                  ? `YES best ask ≥ 60¢ (${(nextBestAsk * 100).toFixed(1)}¢)`
+                                nextNoHi
+                                  ? [
+                                      nextNoBid != null &&
+                                        Number.isFinite(nextNoBid) &&
+                                        nextNoBid >= 0.6 &&
+                                        `NO best bid ≥ 60¢ (${(nextNoBid * 100).toFixed(1)}¢)`,
+                                      nextNoAsk != null &&
+                                        Number.isFinite(nextNoAsk) &&
+                                        nextNoAsk >= 0.6 &&
+                                        `NO best ask ≥ 60¢ (${(nextNoAsk * 100).toFixed(1)}¢)`,
+                                    ]
+                                      .filter((s): s is string => typeof s === 'string')
+                                      .join(' · ') || undefined
                                   : undefined
                               }
                               onClick={(e) => {

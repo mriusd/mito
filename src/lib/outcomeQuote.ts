@@ -36,6 +36,28 @@ export function outcomeMidOrOneSideProb(
 }
 
 /**
+ * NO outcome best bid/ask: live NO token when quoted; else complete-market implied from YES
+ * (noBid ≈ 1 − yesAsk, noAsk ≈ 1 − yesBid) with same WS vs Gamma rules as `outcomeMidOrOneSideProb`.
+ */
+export function noOutcomeBidAsk(
+  yesTokenId: string | undefined,
+  noTokenId: string | undefined,
+  lookup: Record<string, Market>,
+  gammaYes?: { bestBid?: number; bestAsk?: number }
+): { bestBid?: number; bestAsk?: number } {
+  const yesLive = yesTokenId ? lookup[yesTokenId] : undefined;
+  const yesBid = pickSide(yesLive?.bestBid, gammaYes?.bestBid);
+  const yesAsk = pickSide(yesLive?.bestAsk, gammaYes?.bestAsk);
+  const impliedNoBid = hasQuoteSide(yesAsk) ? 1 - yesAsk! : undefined;
+  const impliedNoAsk = hasQuoteSide(yesBid) ? 1 - yesBid! : undefined;
+
+  const noLive = noTokenId ? lookup[noTokenId] : undefined;
+  const noBid = pickSide(noLive?.bestBid, impliedNoBid);
+  const noAsk = pickSide(noLive?.bestAsk, impliedNoAsk);
+  return { bestBid: noBid, bestAsk: noAsk };
+}
+
+/**
  * Approximate NO-token best bid from YES Gamma book when NO token not quoted (complete-market bound: 1 − yesAsk).
  */
 export function gammaImpliedNoBestBid(gammaYesBook: { bestAsk?: number }): { bestBid: number } | undefined {

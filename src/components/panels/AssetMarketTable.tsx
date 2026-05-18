@@ -6,11 +6,13 @@ import { showToast } from '../../utils/toast';
 import { PriceTicks } from '../PriceTicks';
 import { RangeEditDialog } from '../RangeEditDialog';
 import { HelpTooltip } from '../HelpTooltip';
-import type { AssetName, Market } from '../../types';
-import { gammaImpliedNoBestBid, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
-import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMath';
-import { MarketCellMidRow } from './MarketCellMidRow';
+import type { AssetName, Market, Order } from '../../types';
+import { GridMarketCell } from './GridMarketCell';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
+
+const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
+const MANUAL_VOL_KEY_PREFIX = 'polybot-manual-vol-pct-';
+const EMPTY_ORDERS: Order[] = [];
 
 function StrikeRangeIndicator({ markets, livePrice, asset }: { markets: Market[]; livePrice: number; asset: AssetName }) {
   if (livePrice <= 0 || markets.length === 0) return null;
@@ -81,9 +83,6 @@ interface AssetMarketTableProps {
   asset: AssetName;
   panelId: string;
 }
-
-const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
-const MANUAL_VOL_KEY_PREFIX = 'polybot-manual-vol-pct-';
 
 function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTableProps) {
   const [asset, setAsset] = useState<AssetName>(() => {
@@ -234,60 +233,20 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   const priceOnMarketsForAsset = priceOnMarkets[asset] || [];
   const weeklyHitMarketsForAsset = weeklyHitMarkets[asset] || [];
 
-  const gridClobTokenIds = useMemo(() => {
+  const upDownTokenIds = useMemo(() => {
     const set = new Set<string>();
-    const addMarket = (m: Market) => {
-      for (const t of m.clobTokenIds || []) if (t) set.add(String(t));
-    };
-    for (const m of aboveMarketsForAsset) addMarket(m);
-    for (const m of priceOnMarketsForAsset) addMarket(m);
-    for (const m of weeklyHitMarketsForAsset) addMarket(m);
     const udm = upOrDownMarkets[asset];
     if (udm) {
       for (const mkts of Object.values(udm)) {
-        for (const m of mkts || []) addMarket(m);
-      }
-    }
-    if (signalsOnGrid) {
-      for (const sig of signals) {
-        for (const t of sig.market.clobTokenIds || []) if (t) set.add(String(t));
-      }
-    }
-    for (const o of orders) {
-      const tid = o.asset_id || o.token_id;
-      if (tid) set.add(String(tid));
-    }
-    for (const t of selectedMarket?.clobTokenIds || []) if (t) set.add(String(t));
-    if (liveTradesSource === 'onchain') {
-      for (const p of onchainGridPositions) {
-        const k = normalizeClobTokenId(p.tokenId);
-        if (k && Math.abs(p.size) > 1e-9) set.add(k);
-      }
-    } else {
-      for (const pos of positions) {
-        const tid = normalizeClobTokenId(getPositionClobTokenId(pos));
-        const sz = pos.size || 0;
-        if (tid && sz > 0) set.add(tid);
+        for (const m of mkts || []) {
+          const t = m.clobTokenIds?.[0];
+          if (t) set.add(String(t));
+        }
       }
     }
     return [...set];
-  }, [
-    aboveMarketsForAsset,
-    priceOnMarketsForAsset,
-    weeklyHitMarketsForAsset,
-    upOrDownMarkets,
-    asset,
-    signalsOnGrid,
-    signals,
-    orders,
-    selectedMarket?.id,
-    selectedMarket?.clobTokenIds,
-    liveTradesSource,
-    onchainGridPositions,
-    positions,
-  ]);
-
-  const _bidAskLookup = useMarketLookupSubset(gridClobTokenIds);
+  }, [upOrDownMarkets, asset]);
+  const upDownLookup = useMarketLookupSubset(upDownTokenIds);
 
   const positionLookup = useMemo(() => {
     const lookup: Record<string, { size: number }> = {};
@@ -420,34 +379,6 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
     const threshold = parseFloat(cleaned);
     if (!isNaN(threshold)) return live >= threshold;
     return false;
-  };
-
-  const deltaBgStyle = (
-    priceStr: string,
-    yesMidProb: number | null,
-    endDate: string,
-    isHit = false,
-  ): React.CSSProperties => {
-    if (yesMidProb == null || livePrice <= 0 || !endDate) return {};
-    const cleaned = priceStr
-      .replace(/\$/g, '').replace(/,/g, '')
-      .replace(/↑/g, '>').replace(/↓/g, '<')
-      .trim();
-    const ps = (cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-'))
-      ? cleaned : '>' + cleaned;
-    const mathProb = isHit
-      ? getHitMarketProbability(ps, livePrice, endDate, adjVol, bsTimeOffsetHours)
-      : getMarketProbability(ps, livePrice, endDate, adjVol, bsTimeOffsetHours);
-    if (mathProb == null || !Number.isFinite(mathProb)) return {};
-    const spreadPp = Math.abs(yesMidProb - mathProb) * 100;
-    const alpha = Math.min(0.4, spreadPp * 0.035);
-    if (alpha < 0.02) return {};
-    const green = yesMidProb > mathProb;
-    return {
-      backgroundColor: green
-        ? `rgba(34, 197, 94, ${alpha.toFixed(3)})`
-        : `rgba(239, 68, 68, ${alpha.toFixed(3)})`,
-    };
   };
 
   const renderWeeklyHitTable = () => {
@@ -599,151 +530,33 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                   const tokenIds = market.clobTokenIds || [];
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
-                  const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
-                  const gammaNo = gammaImpliedNoBestBid(gammaYes);
-                  const yesBidProb = outcomeBestBidProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noBidProb = outcomeBestBidProb(noTokenId, _bidAskLookup, gammaNo);
-                  const yesBidStr = yesBidProb != null ? (yesBidProb * 100).toFixed(1) : '-';
-                  const noBidStr = noBidProb != null ? (noBidProb * 100).toFixed(1) : '-';
-                  const hitDeltaBg = deltaBgStyle(priceStr, yesMidProb, ev.endDate, true);
-                  const isSelected = selectedMarket?.id === market.id;
-
+                  const sig = signalByMarket[market.id];
                   const yesPos = yesTokenId ? positionLookup[normalizeClobTokenId(yesTokenId)] : undefined;
                   const noPos = noTokenId ? positionLookup[normalizeClobTokenId(noTokenId)] : undefined;
-                  const yesOrders = orderLookup[yesTokenId] || [];
-                  const noOrders = orderLookup[noTokenId] || [];
-                  const yesBuyOrders = yesOrders.filter((o) => o.side === 'BUY');
-                  const noBuyOrders = noOrders.filter((o) => o.side === 'BUY');
-                  const yesSellOrders = yesOrders.filter((o) => o.side === 'SELL');
-                  const noSellOrders = noOrders.filter((o) => o.side === 'SELL');
-                  const wbUsdc =
-                    typeof _bidAskLookup[yesTokenId]?.winnerBias === 'number' &&
-                    Number.isFinite(_bidAskLookup[yesTokenId]?.winnerBias)
-                      ? _bidAskLookup[yesTokenId]!.winnerBias!
-                      : 0;
-                  const smsRaw = _bidAskLookup[yesTokenId]?.provenSMS ?? 0;
-                  const smsPct = Math.max(2, Math.min(98, 50 + smsRaw * 50));
-                  const concRaw =
-                    typeof _bidAskLookup[yesTokenId]?.concentration === 'number' &&
-                    Number.isFinite(_bidAskLookup[yesTokenId]?.concentration)
-                      ? _bidAskLookup[yesTokenId]!.concentration!
-                      : 0;
-                  const concPct = Math.max(0, Math.min(100, concRaw * 100));
-                  const cR = Math.round(Math.min(255, concRaw * 2 * 255));
-                  const cG = Math.round(Math.min(255, (1 - concRaw) * 2 * 255));
-                  const concColor = `rgb(${cR}, ${cG}, 0)`;
-                  const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
 
                   return (
-                    <td
+                    <GridMarketCell
                       key={ev.slug}
-                      data-market-id={market.id}
-                      className={`market-cell px-0.5 py-1 text-center ${rowBorder} whitespace-nowrap border border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''} ${evEnded ? 'opacity-50 bg-gray-700/30' : ''}`}
-                      style={{ minWidth: 68, ...hitDeltaBg }}
-                      onClick={() => handleCellClick(market)}
-                    >
-                      {/* Signal diff overlays */}
-                      {signalsOnGrid && signalByMarket[market.id] && (
-                        <>
-                          {signalByMarket[market.id].yesDiff && (
-                            <div className="absolute top-0 left-0 text-[7px] font-bold leading-none px-[2px] text-black bg-green-400 rounded-br-sm z-10">{signalByMarket[market.id].yesDiff}</div>
-                          )}
-                          {signalByMarket[market.id].noDiff && (
-                            <div className="absolute top-0 right-0 text-[7px] font-bold leading-none px-[2px] text-black bg-green-400 rounded-bl-sm z-10">{signalByMarket[market.id].noDiff}</div>
-                          )}
-                        </>
-                      )}
-                      {/* YES best bid | NO best bid */}
-                      <MarketCellMidRow
-                        className="text-[10px] text-gray-400"
-                        left={
-                          <span
-                            className="ob-trigger text-green-400 cursor-pointer hover:underline"
-                            data-token-id={yesTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES bid)`}
-                            data-asset={asset}
-                            data-strike={market.groupItemTitle || ''}
-                            data-end-date={ev.endDate || ''}
-                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                          >{yesBidStr}</span>
-                        }
-                        right={
-                          <span
-                            className="ob-trigger text-red-400 cursor-pointer hover:underline"
-                            data-token-id={noTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (NO bid)`}
-                            data-asset={asset}
-                            data-strike={market.groupItemTitle || ''}
-                            data-end-date={ev.endDate || ''}
-                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                          >{noBidStr}</span>
-                        }
-                      />
-
-                      {/* Position indicators */}
-                      {(yesPos || noPos) && (
-                        <div className="mt-0.5 text-[9px] border-t border-gray-600/50 pt-0.5">
-                          {yesPos && (
-                            <div className="text-green-300 text-center bg-yellow-500/40 px-1 rounded font-bold">
-                              {fmtSz(yesPos.size)}
-                            </div>
-                          )}
-                          {noPos && (
-                            <div className="text-red-300 text-center bg-yellow-500/40 px-1 rounded font-bold">
-                              {fmtSz(noPos.size)}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Order badges */}
-                      {yesBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 left-0 z-[5] bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
-                          {(Math.max(...yesBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
-                        </div>
-                      )}
-                      {yesSellOrders.length > 0 && (
-                        <div className={`absolute ${yesBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 z-[5] bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`} style={{ color: '#78350f' }}>
-                          {(Math.min(...yesSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
-                        </div>
-                      )}
-                      {noBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 right-0 z-[5] bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
-                          {(Math.max(...noBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
-                        </div>
-                      )}
-                      {noSellOrders.length > 0 && (
-                        <div className={`absolute ${noBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 z-[5] bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>
-                          {(Math.min(...noSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
-                        </div>
-                      )}
-                      {/* Concentration — left vertical bar, grows upward */}
-                      <div
-                        className="absolute left-0 bottom-0 w-[2px] pointer-events-none z-0 bg-gray-800/80 overflow-hidden"
-                        style={{ height: '100%' }}
-                        title={`Concentration (top wallets): ${concPct.toFixed(0)}%`}
-                      >
-                        <div
-                          className="absolute bottom-0 left-0 w-full transition-all"
-                          style={{ height: `${concPct}%`, backgroundColor: concColor }}
-                        />
-                      </div>
-                      <div
-                        className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
-                        title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
-                      >
-                        <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
-                        <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
-                      </div>
-                      <div
-                        className="absolute bottom-[2px] left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
-                        title={`Smart Money (proven wallets): ${(smsRaw * 100).toFixed(0)}%`}
-                      >
-                        <div className="bg-yellow-400/75 h-full shrink-0 transition-[width]" style={{ width: `${smsPct}%` }} />
-                        <div className="bg-purple-400/75 h-full flex-1 min-w-0" />
-                      </div>
-                    </td>
+                      market={market}
+                      asset={asset}
+                      endDate={ev.endDate}
+                      deltaPriceStr={priceStr}
+                      isHit
+                      isPast={!!evEnded}
+                      variant="hit"
+                      signalsOnGrid={signalsOnGrid}
+                      yesDiff={sig?.yesDiff}
+                      noDiff={sig?.noDiff}
+                      isSelected={selectedMarket?.id === market.id}
+                      livePrice={livePrice}
+                      adjVol={adjVol}
+                      bsTimeOffsetHours={bsTimeOffsetHours}
+                      yesPosSize={yesPos?.size}
+                      noPosSize={noPos?.size}
+                      yesOrders={orderLookup[yesTokenId] ?? EMPTY_ORDERS}
+                      noOrders={orderLookup[noTokenId] ?? EMPTY_ORDERS}
+                      onCellClick={handleCellClick}
+                    />
                   );
                 })}
               </tr>
@@ -821,7 +634,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                   {(() => {
                     for (const m of rows[tf]) {
                       if (!m) continue;
-                      const p = m.priceToBeat ?? _bidAskLookup[m.clobTokenIds?.[0] || '']?.priceToBeat;
+                      const p = m.priceToBeat ?? upDownLookup[m.clobTokenIds?.[0] || '']?.priceToBeat;
                       if (p != null) return p.toLocaleString(undefined, { maximumFractionDigits: asset === 'BTC' ? 0 : 2 });
                     }
                     return '-';
@@ -835,129 +648,33 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                   const tokenIds = market.clobTokenIds || [];
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
-                  const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
-                  const gammaNo = gammaImpliedNoBestBid(gammaYes);
-                  const yesBidProb = outcomeBestBidProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noBidProb = outcomeBestBidProb(noTokenId, _bidAskLookup, gammaNo);
-                  const yesBidStr = yesBidProb != null ? (yesBidProb * 100).toFixed(1) : '-';
-                  const noBidStr = noBidProb != null ? (noBidProb * 100).toFixed(1) : '-';
                   const isPast = showPast && colIdx === 0;
-                  const ptb = market.priceToBeat ?? _bidAskLookup[yesTokenId]?.priceToBeat;
-                  const udDeltaBg = (!isPast && ptb != null)
-                    ? deltaBgStyle('>' + ptb, yesMidProb, market.endDate)
-                    : {};
-                  const isSelected = selectedMarket?.id === market.id;
-
+                  const ptb = market.priceToBeat ?? upDownLookup[yesTokenId]?.priceToBeat;
                   const yesPos = yesTokenId ? positionLookup[normalizeClobTokenId(yesTokenId)] : undefined;
                   const noPos = noTokenId ? positionLookup[normalizeClobTokenId(noTokenId)] : undefined;
-                  const yesOrders = orderLookup[yesTokenId] || [];
-                  const noOrders = orderLookup[noTokenId] || [];
-                  const yesBuyOrders = yesOrders.filter((o) => o.side === 'BUY');
-                  const noBuyOrders = noOrders.filter((o) => o.side === 'BUY');
-                  const wbUsdc =
-                    typeof _bidAskLookup[yesTokenId]?.winnerBias === 'number' &&
-                    Number.isFinite(_bidAskLookup[yesTokenId]?.winnerBias)
-                      ? _bidAskLookup[yesTokenId]!.winnerBias!
-                      : 0;
-                  const smsRaw = _bidAskLookup[yesTokenId]?.provenSMS ?? 0;
-                  const smsPct = Math.max(2, Math.min(98, 50 + smsRaw * 50));
-                  const concRaw =
-                    typeof _bidAskLookup[yesTokenId]?.concentration === 'number' &&
-                    Number.isFinite(_bidAskLookup[yesTokenId]?.concentration)
-                      ? _bidAskLookup[yesTokenId]!.concentration!
-                      : 0;
-                  const concPct = Math.max(0, Math.min(100, concRaw * 100));
-                  const cR = Math.round(Math.min(255, concRaw * 2 * 255));
-                  const cG = Math.round(Math.min(255, (1 - concRaw) * 2 * 255));
-                  const concColor = `rgb(${cR}, ${cG}, 0)`;
-                  const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
-
-                  const fmtSz = (sz: number) => {
-                    const v = Math.floor(sz);
-                    return v >= 1000 ? (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : v.toLocaleString();
-                  };
 
                   return (
-                    <td
+                    <GridMarketCell
                       key={colIdx}
-                      data-market-id={market.id}
-                      className={`market-cell px-0.5 py-1 text-center border-b border-gray-700/50 ${isPast ? 'opacity-50 bg-gray-700/30' : ''} whitespace-nowrap border border-gray-400 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''}`}
-                      style={{ minWidth: 60, ...udDeltaBg }}
-                      onClick={() => handleCellClick(market)}
-                    >
-                      {/* YES best bid | NO best bid */}
-                      <MarketCellMidRow
-                        className="text-[10px] text-gray-400"
-                        left={
-                          <span
-                            className="ob-trigger text-green-400 cursor-pointer hover:underline"
-                            data-token-id={yesTokenId}
-                            data-market-title={`${market.question || ''} (YES bid)`}
-                            data-asset={asset}
-                            data-strike={market.groupItemTitle || ''}
-                            data-end-date={market.endDate || ''}
-                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                          >{yesBidStr}</span>
-                        }
-                        right={
-                          <span
-                            className="ob-trigger text-red-400 cursor-pointer hover:underline"
-                            data-token-id={noTokenId}
-                            data-market-title={`${market.question || ''} (NO bid)`}
-                            data-asset={asset}
-                            data-strike={market.groupItemTitle || ''}
-                            data-end-date={market.endDate || ''}
-                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                          >{noBidStr}</span>
-                        }
-                      />
-
-                      {/* Position indicators */}
-                      {(yesPos || noPos) && (
-                        <div className="mt-0.5 text-[9px] border-t border-gray-600/50 pt-0.5">
-                          {yesPos && <div className="text-green-300 text-center">{fmtSz(yesPos.size)}</div>}
-                          {noPos && <div className="text-red-300 text-center">{fmtSz(noPos.size)}</div>}
-                        </div>
-                      )}
-
-                      {/* Order badges */}
-                      {yesBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 left-0 z-[5] bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
-                          {(Math.max(...yesBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
-                        </div>
-                      )}
-                      {noBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 right-0 z-[5] bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
-                          {(Math.max(...noBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
-                        </div>
-                      )}
-                      {/* Concentration — left vertical bar, grows upward */}
-                      <div
-                        className="absolute left-0 bottom-0 w-[2px] pointer-events-none z-0 bg-gray-800/80 overflow-hidden"
-                        style={{ height: '100%' }}
-                        title={`Concentration (top wallets): ${concPct.toFixed(0)}%`}
-                      >
-                        <div
-                          className="absolute bottom-0 left-0 w-full transition-all"
-                          style={{ height: `${concPct}%`, backgroundColor: concColor }}
-                        />
-                      </div>
-                      <div
-                        className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
-                        title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
-                      >
-                        <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
-                        <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
-                      </div>
-                      <div
-                        className="absolute bottom-[2px] left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
-                        title={`Smart Money (proven wallets): ${(smsRaw * 100).toFixed(0)}%`}
-                      >
-                        <div className="bg-yellow-400/75 h-full shrink-0 transition-[width]" style={{ width: `${smsPct}%` }} />
-                        <div className="bg-purple-400/75 h-full flex-1 min-w-0" />
-                      </div>
-                    </td>
+                      market={market}
+                      asset={asset}
+                      endDate={market.endDate || ''}
+                      deltaPriceStr={ptb != null ? '>' + ptb : ''}
+                      isPast={isPast}
+                      skipDeltaBg={isPast || ptb == null}
+                      variant="updown"
+                      minWidth={60}
+                      signalsOnGrid={false}
+                      isSelected={selectedMarket?.id === market.id}
+                      livePrice={livePrice}
+                      adjVol={adjVol}
+                      bsTimeOffsetHours={bsTimeOffsetHours}
+                      yesPosSize={yesPos?.size}
+                      noPosSize={noPos?.size}
+                      yesOrders={orderLookup[yesTokenId] ?? EMPTY_ORDERS}
+                      noOrders={orderLookup[noTokenId] ?? EMPTY_ORDERS}
+                      onCellClick={handleCellClick}
+                    />
                   );
                 })}
               </tr>
@@ -1084,173 +801,36 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                   const tokenIds = market.clobTokenIds || [];
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
-
-                  const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
-                  const gammaNo = gammaImpliedNoBestBid(gammaYes);
-                  const yesBidProb = outcomeBestBidProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noBidProb = outcomeBestBidProb(noTokenId, _bidAskLookup, gammaNo);
-                  const yesBidStr = yesBidProb != null ? (yesBidProb * 100).toFixed(1) : '-';
-                  const noBidStr = noBidProb != null ? (noBidProb * 100).toFixed(1) : '-';
-
-                  const gridDeltaBg = !isClosed ? deltaBgStyle(priceStr, yesMidProb, d.endDate) : {};
-                  const bgColor = isClosed ? 'bg-gray-700/30' : '';
-
                   const conditionMet = isPriceConditionTrue(priceStr, livePrice);
-                  const borderClass = 'border border-gray-700';
-
-                  // Positions
                   const yesPos = yesTokenId ? positionLookup[normalizeClobTokenId(yesTokenId)] : undefined;
                   const noPos = noTokenId ? positionLookup[normalizeClobTokenId(noTokenId)] : undefined;
-                  const yesWinning = conditionMet;
-                  const noWinning = !conditionMet && livePrice > 0;
-
-                  // Orders
-                  const yesOrders = orderLookup[yesTokenId] || [];
-                  const noOrders = orderLookup[noTokenId] || [];
-                  const yesBuyOrders = yesOrders.filter((o) => o.side === 'BUY');
-                  const noBuyOrders = noOrders.filter((o) => o.side === 'BUY');
-                  const yesSellOrders = yesOrders.filter((o) => o.side === 'SELL');
-                  const noSellOrders = noOrders.filter((o) => o.side === 'SELL');
-                  const wbUsdc =
-                    typeof _bidAskLookup[yesTokenId]?.winnerBias === 'number' &&
-                    Number.isFinite(_bidAskLookup[yesTokenId]?.winnerBias)
-                      ? _bidAskLookup[yesTokenId]!.winnerBias!
-                      : 0;
-                  const smsRaw = _bidAskLookup[yesTokenId]?.provenSMS ?? 0;
-                  const smsPct = Math.max(2, Math.min(98, 50 + smsRaw * 50));
-                  const concRaw =
-                    typeof _bidAskLookup[yesTokenId]?.concentration === 'number' &&
-                    Number.isFinite(_bidAskLookup[yesTokenId]?.concentration)
-                      ? _bidAskLookup[yesTokenId]!.concentration!
-                      : 0;
-                  const concPct = Math.max(0, Math.min(100, concRaw * 100));
-                  const cR = Math.round(Math.min(255, concRaw * 2 * 255));
-                  const cG = Math.round(Math.min(255, (1 - concRaw) * 2 * 255));
-                  const concColor = `rgb(${cR}, ${cG}, 0)`;
-                  const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
-
-                  // Format size (1000+ => 1.2k)
-                  const fmtSz = (sz: number) => {
-                    const v = Math.floor(sz);
-                    return v >= 1000 ? (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : v.toLocaleString();
-                  };
-
-                  const isSelected = selectedMarket?.id === market.id;
-                  const isColHighlighted = false;
+                  const sig = signalByMarket[market.id];
 
                   return (
-                    <td
+                    <GridMarketCell
                       key={d.slug}
-                      data-market-id={market.id}
-                      className={`market-cell px-0.5 py-0.5 text-center border-b border-gray-700/50 ${bgColor} ${isClosed ? 'opacity-50' : ''} whitespace-nowrap ${borderClass} relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''} ${isColHighlighted && !isSelected ? 'date-column-highlighted' : ''}`}
-                      style={{
-                        ...(isWeekend && !isSelected && !isColHighlighted ? { boxShadow: 'inset 0 0 0 100px rgba(147, 51, 234, 0.08)' } : {}),
-                        ...gridDeltaBg,
-                      }}
-                      onClick={() => handleCellClick(market)}
-                    >
-                      {/* Signal diff overlays (top corners) */}
-                      {signalsOnGrid && signalByMarket[market.id] && (
-                        <>
-                          {signalByMarket[market.id].yesDiff && (
-                            <div className="absolute top-0 left-0 text-[7px] font-bold leading-none px-[2px] text-black bg-green-400 rounded-br-sm z-10">{signalByMarket[market.id].yesDiff}</div>
-                          )}
-                          {signalByMarket[market.id].noDiff && (
-                            <div className="absolute top-0 right-0 text-[7px] font-bold leading-none px-[2px] text-black bg-green-400 rounded-bl-sm z-10">{signalByMarket[market.id].noDiff}</div>
-                          )}
-                        </>
-                      )}
-                      {/* YES best bid | NO best bid */}
-                      <MarketCellMidRow
-                        className="text-[10px] text-gray-400"
-                        left={
-                          <span
-                            className="ob-trigger text-green-400 cursor-pointer hover:underline"
-                            data-token-id={yesTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (YES bid)`}
-                            data-asset={asset}
-                            data-strike={market.groupItemTitle || ''}
-                            data-end-date={d.endDate || ''}
-                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                          >{yesBidStr}</span>
-                        }
-                        right={
-                          <span
-                            className="ob-trigger text-red-400 cursor-pointer hover:underline"
-                            data-token-id={noTokenId}
-                            data-market-title={`${market.question || market.groupItemTitle || ''} (NO bid)`}
-                            data-asset={asset}
-                            data-strike={market.groupItemTitle || ''}
-                            data-end-date={d.endDate || ''}
-                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                          >{noBidStr}</span>
-                        }
-                      />
-
-                      {/* Position indicators */}
-                      {(yesPos || noPos) && (
-                        <div className="mt-0.5 text-[9px] border-t border-gray-600/50 pt-0.5">
-                          {yesPos && (
-                            <div className={`text-green-300 text-center ${yesWinning ? 'bg-green-500/40 px-1 rounded font-bold' : (livePrice > 0 ? 'bg-red-500/40 px-1 rounded' : '')}`}>
-                              {fmtSz(yesPos.size)}
-                            </div>
-                          )}
-                          {noPos && (
-                            <div className={`text-red-300 text-center ${noWinning ? 'bg-green-500/40 px-1 rounded font-bold' : (livePrice > 0 ? 'bg-red-500/40 px-1 rounded' : '')}`}>
-                              {fmtSz(noPos.size)}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Order badges - YES bottom-left, NO bottom-right */}
-                      {yesBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 left-0 z-[5] bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
-                          {(Math.max(...yesBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
-                        </div>
-                      )}
-                      {yesSellOrders.length > 0 && (
-                        <div className={`absolute ${yesBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 z-[5] bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`} style={{ color: '#78350f' }}>
-                          {(Math.min(...yesSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
-                        </div>
-                      )}
-                      {noBuyOrders.length > 0 && (
-                        <div className="absolute bottom-0 right-0 z-[5] bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
-                          {(Math.max(...noBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
-                        </div>
-                      )}
-                      {noSellOrders.length > 0 && (
-                        <div className={`absolute ${noBuyOrders.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 z-[5] bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>
-                          {(Math.min(...noSellOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
-                        </div>
-                      )}
-                      {/* Concentration — left vertical bar, grows upward */}
-                      <div
-                        className="absolute left-0 bottom-0 w-[2px] pointer-events-none z-0 bg-gray-800/80 overflow-hidden"
-                        style={{ height: '100%' }}
-                        title={`Concentration (top wallets): ${concPct.toFixed(0)}%`}
-                      >
-                        <div
-                          className="absolute bottom-0 left-0 w-full transition-all"
-                          style={{ height: `${concPct}%`, backgroundColor: concColor }}
-                        />
-                      </div>
-                      <div
-                        className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
-                        title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
-                      >
-                        <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
-                        <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
-                      </div>
-                      <div
-                        className="absolute bottom-[2px] left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
-                        title={`Smart Money (proven wallets): ${(smsRaw * 100).toFixed(0)}%`}
-                      >
-                        <div className="bg-yellow-400/75 h-full shrink-0 transition-[width]" style={{ width: `${smsPct}%` }} />
-                        <div className="bg-purple-400/75 h-full flex-1 min-w-0" />
-                      </div>
-                    </td>
+                      market={market}
+                      asset={asset}
+                      endDate={d.endDate}
+                      deltaPriceStr={priceStr}
+                      isClosed={!!isClosed}
+                      isWeekend={isWeekend}
+                      yesWinning={conditionMet}
+                      noWinning={!conditionMet && livePrice > 0}
+                      variant={tableType === 'above' ? 'above' : 'between'}
+                      signalsOnGrid={signalsOnGrid}
+                      yesDiff={sig?.yesDiff}
+                      noDiff={sig?.noDiff}
+                      isSelected={selectedMarket?.id === market.id}
+                      livePrice={livePrice}
+                      adjVol={adjVol}
+                      bsTimeOffsetHours={bsTimeOffsetHours}
+                      yesPosSize={yesPos?.size}
+                      noPosSize={noPos?.size}
+                      yesOrders={orderLookup[yesTokenId] ?? EMPTY_ORDERS}
+                      noOrders={orderLookup[noTokenId] ?? EMPTY_ORDERS}
+                      onCellClick={handleCellClick}
+                    />
                   );
                   })}
                 </tr>

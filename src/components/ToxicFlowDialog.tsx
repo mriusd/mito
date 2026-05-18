@@ -81,6 +81,8 @@ import {
   stakedNetSortKeyAsc,
   stakeSortKeyDesc,
   toxicFlowPayloadEqual,
+  coalesceToxicFlowPayload,
+  clearToxicFlowTabWalletViewsCache,
   buildToxicFlowTabWalletViews,
   ledgerWinRateFracFromStored,
   toxicRowMatchesSmartLedgerDefinition,
@@ -1803,8 +1805,9 @@ export function ToxicFlowDialog({
     setInternalError('');
     try {
       const d = await fetchToxicFlow(marketId);
-      internalDataRef.current = d;
-      setInternalData(d);
+      const merged = coalesceToxicFlowPayload(internalDataRef.current, d);
+      internalDataRef.current = merged;
+      setInternalData(merged);
     } catch (e: unknown) {
       setInternalError((e as Error).message || 'Failed to load');
     } finally {
@@ -1854,9 +1857,10 @@ export function ToxicFlowDialog({
           if (msg.type === 'toxicFlow' && msg.data && typeof msg.data === 'object') {
             const next = msg.data;
             const prev = internalDataRef.current;
-            if (prev && toxicFlowPayloadEqual(prev, next)) return;
-            internalDataRef.current = next;
-            setInternalData(next);
+            const merged = coalesceToxicFlowPayload(prev, next);
+            if (prev && toxicFlowPayloadEqual(prev, merged)) return;
+            internalDataRef.current = merged;
+            setInternalData(merged);
           }
         } catch {
           /* ignore */

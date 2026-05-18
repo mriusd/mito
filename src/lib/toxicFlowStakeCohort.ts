@@ -105,29 +105,124 @@ export function dedupeWalletsByAddress(list: WalletPosition[]): WalletPosition[]
   return [...m.values()];
 }
 
-function toxicFlowRowSig(w: WalletPosition): string {
-  const emb = w.walletLedgerSummary;
-  return [
-    w.wallet,
-    w.net,
-    w.netYes ?? '',
-    w.netNo ?? '',
-    w.invYes ?? '',
-    w.invNo ?? '',
-    w.tradeCount,
-    w.priceYes ?? '',
-    w.priceNo ?? '',
-    w.isSmart ? 1 : 0,
-    emb?.totalTrades ?? '',
-    emb?.pnl ?? '',
-    emb?.winRate ?? '',
-  ].join('\x00');
+function walletPositionRowEqual(a: WalletPosition, b: WalletPosition): boolean {
+  if (a === b) return true;
+  const ea = a.walletLedgerSummary;
+  const eb = b.walletLedgerSummary;
+  return (
+    a.wallet === b.wallet &&
+    a.net === b.net &&
+    a.netSide === b.netSide &&
+    (a.netYes ?? null) === (b.netYes ?? null) &&
+    (a.netNo ?? null) === (b.netNo ?? null) &&
+    (a.invYes ?? null) === (b.invYes ?? null) &&
+    (a.invNo ?? null) === (b.invNo ?? null) &&
+    a.tradeCount === b.tradeCount &&
+    (a.priceYes ?? null) === (b.priceYes ?? null) &&
+    (a.priceNo ?? null) === (b.priceNo ?? null) &&
+    Boolean(a.isSmart) === Boolean(b.isSmart) &&
+    (ea?.totalTrades ?? null) === (eb?.totalTrades ?? null) &&
+    (ea?.pnl ?? null) === (eb?.pnl ?? null) &&
+    (ea?.winRate ?? null) === (eb?.winRate ?? null) &&
+    (ea?.resolvedMarkets ?? null) === (eb?.resolvedMarkets ?? null)
+  );
+}
+
+function stabilizeWalletList(prev: WalletPosition[], next: WalletPosition[]): WalletPosition[] {
+  if (prev === next) return prev;
+  if (next.length === 0) return next;
+  const prevByWallet = new Map<string, WalletPosition>();
+  for (const w of prev) prevByWallet.set((w.wallet || '').trim().toLowerCase(), w);
+  const out = new Array<WalletPosition>(next.length);
+  let allPrevRefs = prev.length === next.length;
+  for (let i = 0; i < next.length; i++) {
+    const n = next[i];
+    const p = prevByWallet.get((n.wallet || '').trim().toLowerCase());
+    if (p && walletPositionRowEqual(p, n)) out[i] = p;
+    else {
+      out[i] = n;
+      allPrevRefs = false;
+    }
+  }
+  if (allPrevRefs && prev.length === next.length) {
+    let ixMatch = true;
+    for (let i = 0; i < prev.length; i++) {
+      if (prev[i] !== out[i]) {
+        ixMatch = false;
+        break;
+      }
+    }
+    if (ixMatch) return prev;
+  }
+  if (prev.length === out.length) {
+    let sameContent = true;
+    for (let i = 0; i < out.length; i++) {
+      if (!walletPositionRowEqual(prev[i], out[i])) {
+        sameContent = false;
+        break;
+      }
+    }
+    if (sameContent) return prev;
+  }
+  return out;
+}
+
+/** WS JSON → reuse prior list + row refs when row fields unchanged (stops Array× climb). */
+export function coalesceToxicFlowPayload(prev: ToxicFlowData | null, next: ToxicFlowData): ToxicFlowData {
+  if (!prev) return next;
+  if (toxicFlowPayloadEqual(prev, next)) return prev;
+  return {
+    ...next,
+    topHolders: stabilizeWalletList(prev.topHolders ?? [], next.topHolders ?? []),
+    topYes: stabilizeWalletList(prev.topYes ?? [], next.topYes ?? []),
+    topNo: stabilizeWalletList(prev.topNo ?? [], next.topNo ?? []),
+    topVolume: stabilizeWalletList(prev.topVolume ?? [], next.topVolume ?? []),
+    topTraders: stabilizeWalletList(prev.topTraders ?? [], next.topTraders ?? []),
+  };
+}
+
+function listsSameRefs(a: readonly WalletPosition[], b: readonly WalletPosition[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+function sortedListReuse(
+  prev: WalletPosition[] | undefined,
+  src: readonly WalletPosition[],
+  cmp: (a: WalletPosition, b: WalletPosition) => number,
+): WalletPosition[] {
+  if (src.length === 0) return src as WalletPosition[];
+  const sorted = src.length === 1 ? [src[0]] : [...src].sort(cmp);
+  if (prev && listsSameRefs(prev, sorted)) return prev;
+  return sorted;
+}
+
+function filteredSortedReuse(
+  prev: WalletPosition[] | undefined,
+  src: readonly WalletPosition[],
+  pred: (w: WalletPosition) => boolean,
+  cmp: (a: WalletPosition, b: WalletPosition) => number,
+): WalletPosition[] {
+  const filtered: WalletPosition[] = [];
+  for (const w of src) {
+    if (pred(w)) filtered.push(w);
+  }
+  return sortedListReuse(prev, filtered, cmp);
+}
+
+function sliceReuse(prev: WalletPosition[] | undefined, src: WalletPosition[], start: number, end: number): WalletPosition[] {
+  const slice = src.slice(start, end);
+  if (prev && listsSameRefs(prev, slice)) return prev;
+  return slice;
 }
 
 function toxicFlowListEqual(a: WalletPosition[], b: WalletPosition[]): boolean {
+  if (a === b) return true;
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
-    if (toxicFlowRowSig(a[i]) !== toxicFlowRowSig(b[i])) return false;
+    if (!walletPositionRowEqual(a[i], b[i])) return false;
   }
   return true;
 }
@@ -188,64 +283,99 @@ export type ToxicFlowTabWalletViews = {
   stripLists: NonNullable<ReturnType<typeof toxicFlowStakeStripWalletLists>>;
 };
 
+let lastTabWalletViews: ToxicFlowTabWalletViews | null = null;
+
+export function clearToxicFlowTabWalletViewsCache(): void {
+  lastTabWalletViews = null;
+}
+
 /** One dedupe Map + one pass of tab sorts per payload (was 7+ Maps per render). */
 export function buildToxicFlowTabWalletViews(
   data: ToxicFlowData,
   favouriteSet: ReadonlySet<string>,
   whaleFloorUsd: number,
 ): ToxicFlowTabWalletViews {
+  const prev = lastTabWalletViews;
   const universe = toxicFlowWalletUniverse(data);
-  const topYes = [...universe.filter((w) => {
-    const stake = walletStakeNetSignedUsd(w);
-    return Number.isFinite(stake) && stake < -STAKED_NET_EPS;
-  })].sort((a, b) => {
-    const d = stakedNetSortKeyDesc(b) - stakedNetSortKeyDesc(a);
-    if (d !== 0) return d;
-    const dn = walletNet(b) - walletNet(a);
-    if (dn !== 0) return dn;
-    return (a.wallet || '').localeCompare(b.wallet || '');
-  });
-  const topNo = [...universe.filter((w) => {
-    const stake = walletStakeNetSignedUsd(w);
-    return Number.isFinite(stake) && stake > STAKED_NET_EPS;
-  })].sort((a, b) => {
-    const d = stakedNetSortKeyAsc(b) - stakedNetSortKeyAsc(a);
-    if (d !== 0) return d;
-    const dn = walletNet(a) - walletNet(b);
-    if (dn !== 0) return dn;
-    return (a.wallet || '').localeCompare(b.wallet || '');
-  });
-  const topHolders = [...(data.topHolders ?? [])].sort(sortStakeNetMagThenWalletNet);
-  const smart = [...universe.filter(toxicRowMatchesSmartLedgerDefinition)].sort(sortStakeNetMagThenWalletNet);
-  const favourites = [
-    ...universe.filter((w) => favouriteSet.has((w.wallet || '').trim().toLowerCase())),
-  ].sort(sortStakeNetMagThenWalletNet);
-  const whales = [...universe.filter((w) => {
-    const absUsd = walletStakeNetAbsUsd(w);
-    return Number.isFinite(absUsd) && absUsd >= whaleFloorUsd;
-  })].sort((a, b) => {
-    const va = walletStakeNetAbsUsd(a);
-    const vb = walletStakeNetAbsUsd(b);
-    const d = vb - va;
-    if (d !== 0) return d;
-    const dn = walletNet(b) - walletNet(a);
-    if (dn !== 0) return dn;
-    return (a.wallet || '').localeCompare(b.wallet || '');
-  });
-  const winners = [...universe.filter(
+  const topYes = filteredSortedReuse(
+    prev?.topYes,
+    universe,
+    (w) => {
+      const stake = walletStakeNetSignedUsd(w);
+      return Number.isFinite(stake) && stake < -STAKED_NET_EPS;
+    },
+    (a, b) => {
+      const d = stakedNetSortKeyDesc(b) - stakedNetSortKeyDesc(a);
+      if (d !== 0) return d;
+      const dn = walletNet(b) - walletNet(a);
+      if (dn !== 0) return dn;
+      return (a.wallet || '').localeCompare(b.wallet || '');
+    },
+  );
+  const topNo = filteredSortedReuse(
+    prev?.topNo,
+    universe,
+    (w) => {
+      const stake = walletStakeNetSignedUsd(w);
+      return Number.isFinite(stake) && stake > STAKED_NET_EPS;
+    },
+    (a, b) => {
+      const d = stakedNetSortKeyAsc(b) - stakedNetSortKeyAsc(a);
+      if (d !== 0) return d;
+      const dn = walletNet(a) - walletNet(b);
+      if (dn !== 0) return dn;
+      return (a.wallet || '').localeCompare(b.wallet || '');
+    },
+  );
+  const topHolders = sortedListReuse(prev?.topHolders, data.topHolders ?? [], sortStakeNetMagThenWalletNet);
+  const smart = filteredSortedReuse(
+    prev?.smart,
+    universe,
+    toxicRowMatchesSmartLedgerDefinition,
+    sortStakeNetMagThenWalletNet,
+  );
+  const favourites = filteredSortedReuse(
+    prev?.favourites,
+    universe,
+    (w) => favouriteSet.has((w.wallet || '').trim().toLowerCase()),
+    sortStakeNetMagThenWalletNet,
+  );
+  const whales = filteredSortedReuse(
+    prev?.whales,
+    universe,
+    (w) => {
+      const absUsd = walletStakeNetAbsUsd(w);
+      return Number.isFinite(absUsd) && absUsd >= whaleFloorUsd;
+    },
+    (a, b) => {
+      const va = walletStakeNetAbsUsd(a);
+      const vb = walletStakeNetAbsUsd(b);
+      const d = vb - va;
+      if (d !== 0) return d;
+      const dn = walletNet(b) - walletNet(a);
+      if (dn !== 0) return dn;
+      return (a.wallet || '').localeCompare(b.wallet || '');
+    },
+  );
+  const winners = filteredSortedReuse(
+    prev?.winners,
+    universe,
     (w) => !toxicRowMissingWalletScoresLedgerEmbed(w) && !toxicRowLedgerLifetimePnlNegative(w),
-  )].sort((a, b) => {
-    const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
-    if (d !== 0) return d;
-    const fa = toxicRowSortWinRateFrac(a);
-    const fb = toxicRowSortWinRateFrac(b);
-    if (fa != null && fb != null && fb !== fa) return fb - fa;
-    if (fa != null && fb == null) return -1;
-    if (fa == null && fb != null) return 1;
-    return sortStakeNetMagThenWalletNet(a, b);
-  });
-  const stripLists = toxicFlowStakeStripWalletLists(data, favouriteSet, universe)!;
-  return { topYes, topNo, topHolders, smart, favourites, whales, winners, stripLists };
+    (a, b) => {
+      const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
+      if (d !== 0) return d;
+      const fa = toxicRowSortWinRateFrac(a);
+      const fb = toxicRowSortWinRateFrac(b);
+      if (fa != null && fb != null && fb !== fa) return fb - fa;
+      if (fa != null && fb == null) return -1;
+      if (fa == null && fb != null) return 1;
+      return sortStakeNetMagThenWalletNet(a, b);
+    },
+  );
+  const stripLists = toxicFlowStakeStripWalletLists(data, favouriteSet, universe, prev?.stripLists ?? undefined)!;
+  const views = { topYes, topNo, topHolders, smart, favourites, whales, winners, stripLists };
+  lastTabWalletViews = views;
+  return views;
 }
 
 /** Deduped union of toxic cohort rows. */
@@ -345,6 +475,14 @@ export function toxicFlowStakeStripWalletLists(
   data: ToxicFlowData | null,
   favouriteSet: ReadonlySet<string>,
   universePrecomputed?: WalletPosition[],
+  prev?: {
+    holders: WalletPosition[];
+    smart: WalletPosition[];
+    top20: WalletPosition[];
+    favourites: WalletPosition[];
+    pnlPlus: WalletPosition[];
+    fresh: WalletPosition[];
+  },
 ): {
   holders: WalletPosition[];
   smart: WalletPosition[];
@@ -356,26 +494,37 @@ export function toxicFlowStakeStripWalletLists(
 } | null {
   if (!data) return null;
 
-  const holdersSorted = [...(data.topHolders ?? [])].sort(sortStakeNetMagThenWalletNet);
-  const top20Sorted = holdersSorted.slice(0, 20);
+  const holdersSorted = sortedListReuse(prev?.holders, data.topHolders ?? [], sortStakeNetMagThenWalletNet);
+  const top20Sorted = sliceReuse(prev?.top20, holdersSorted, 0, 20);
   const universe = universePrecomputed ?? toxicFlowWalletUniverse(data);
-  const freshSorted = [...universe.filter(toxicRowMatchesFreshTab)].sort(sortStakeNetMagThenWalletNet);
-  const smartSorted = [...universe.filter(toxicRowMatchesSmartLedgerDefinition)].sort(sortStakeNetMagThenWalletNet);
-  const favouritesSorted = [
-    ...universe.filter((w) => favouriteSet.has((w.wallet || '').trim().toLowerCase())),
-  ].sort(sortStakeNetMagThenWalletNet);
-  const winnersSorted = [
-    ...universe.filter((w) => !toxicRowMissingWalletScoresLedgerEmbed(w) && !toxicRowLedgerLifetimePnlNegative(w)),
-  ].sort((a, b) => {
-    const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
-    if (d !== 0) return d;
-    const fa = toxicRowSortWinRateFrac(a);
-    const fb = toxicRowSortWinRateFrac(b);
-    if (fa != null && fb != null && fb !== fa) return fb - fa;
-    if (fa != null && fb == null) return -1;
-    if (fa == null && fb != null) return 1;
-    return sortStakeNetMagThenWalletNet(a, b);
-  });
+  const freshSorted = filteredSortedReuse(prev?.fresh, universe, toxicRowMatchesFreshTab, sortStakeNetMagThenWalletNet);
+  const smartSorted = filteredSortedReuse(
+    prev?.smart,
+    universe,
+    toxicRowMatchesSmartLedgerDefinition,
+    sortStakeNetMagThenWalletNet,
+  );
+  const favouritesSorted = filteredSortedReuse(
+    prev?.favourites,
+    universe,
+    (w) => favouriteSet.has((w.wallet || '').trim().toLowerCase()),
+    sortStakeNetMagThenWalletNet,
+  );
+  const winnersSorted = filteredSortedReuse(
+    prev?.pnlPlus,
+    universe,
+    (w) => !toxicRowMissingWalletScoresLedgerEmbed(w) && !toxicRowLedgerLifetimePnlNegative(w),
+    (a, b) => {
+      const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
+      if (d !== 0) return d;
+      const fa = toxicRowSortWinRateFrac(a);
+      const fb = toxicRowSortWinRateFrac(b);
+      if (fa != null && fb != null && fb !== fa) return fb - fa;
+      if (fa != null && fb == null) return -1;
+      if (fa == null && fb != null) return 1;
+      return sortStakeNetMagThenWalletNet(a, b);
+    },
+  );
 
   return {
     holders: holdersSorted,

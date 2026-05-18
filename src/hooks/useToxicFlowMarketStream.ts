@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchToxicFlow, type ToxicFlowData } from '../api';
-import { toxicFlowPayloadEqual } from '../lib/toxicFlowStakeCohort';
+import { toxicFlowPayloadEqual, coalesceToxicFlowPayload, clearToxicFlowTabWalletViewsCache } from '../lib/toxicFlowStakeCohort';
 import { WS_BASE } from '../lib/env';
 
 /** HTTP snapshot + `/ws/toxic-flow` increments (same payload shape as ToxicFlowDialog when open). */
@@ -13,6 +13,7 @@ export function useToxicFlowMarketStream(marketId: string | undefined | null, en
     if (!enabled || !mid) {
       dataRef.current = null;
       setData(null);
+      clearToxicFlowTabWalletViewsCache();
       return;
     }
 
@@ -21,8 +22,9 @@ export function useToxicFlowMarketStream(marketId: string | undefined | null, en
       try {
         const d = await fetchToxicFlow(mid);
         if (!cancelled) {
-          dataRef.current = d;
-          setData(d);
+          const merged = coalesceToxicFlowPayload(dataRef.current, d);
+          dataRef.current = merged;
+          setData(merged);
         }
       } catch {
         if (!cancelled) {
@@ -38,6 +40,7 @@ export function useToxicFlowMarketStream(marketId: string | undefined | null, en
 
   useEffect(() => {
     if (!enabled || !mid) return;
+    clearToxicFlowTabWalletViewsCache();
 
     let cancelled = false;
     let ws: WebSocket | null = null;
@@ -65,9 +68,10 @@ export function useToxicFlowMarketStream(marketId: string | undefined | null, en
           if (msg.type === 'toxicFlow' && msg.data && typeof msg.data === 'object') {
             const next = msg.data;
             const prev = dataRef.current;
-            if (prev && toxicFlowPayloadEqual(prev, next)) return;
-            dataRef.current = next;
-            setData(next);
+            const merged = coalesceToxicFlowPayload(prev, next);
+            if (prev && toxicFlowPayloadEqual(prev, merged)) return;
+            dataRef.current = merged;
+            setData(merged);
           }
         } catch {
           /* ignore */

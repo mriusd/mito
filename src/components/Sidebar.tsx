@@ -51,10 +51,9 @@ import { SidebarBarMidMarker } from './SidebarBarMidMarker';
 import { ToxicFlowStakePreview, TOXIC_TOTAL_STAKE_BAR_HELP } from './ToxicFlowStakePreview';
 import { useToxicFlowMarketStream } from '../hooks/useToxicFlowMarketStream';
 import {
+  buildToxicFlowTabWalletViews,
   toxicCohortStakedNetSurplusHalves,
-  toxicFlowStakeStripWalletLists,
   cohortSurplusLean,
-  toxicFlowWalletUniverse,
   walletInvY,
   walletInvN,
   walletNet,
@@ -1113,8 +1112,13 @@ export function Sidebar() {
     };
   }, []);
 
+  const toxicTabViews = useMemo(
+    () => (toxicFlowData ? buildToxicFlowTabWalletViews(toxicFlowData, toxicFavSet, notifyWhaleAmountUsd) : null),
+    [toxicFlowData, toxicFavSet, notifyWhaleAmountUsd],
+  );
+
   const toxicStripModel = useMemo(() => {
-    const lists = toxicFlowStakeStripWalletLists(toxicFlowData, toxicFavSet);
+    const lists = toxicTabViews?.stripLists ?? null;
     if (!lists) return { lists: null, bars: null };
     return {
       lists,
@@ -1126,41 +1130,22 @@ export function Sidebar() {
         pnlPlus: toxicCohortStakedNetSurplusHalves(lists.pnlPlus),
       },
     };
-  }, [toxicFlowData, toxicFavSet]);
+  }, [toxicTabViews]);
 
   /** Same wallets + ordering as Toxic Flow dialog Whales tab (floor = Tilt whale USD). */
-  const toxicStripWhaleWallets = useMemo(() => {
-    if (!toxicFlowData) return [];
-    const floor = notifyWhaleAmountUsd;
-    const arr = toxicFlowWalletUniverse(toxicFlowData).filter((w) => {
-      const absUsd = walletStakeNetAbsUsd(w);
-      return Number.isFinite(absUsd) && absUsd >= floor;
-    });
-    return [...arr].sort((a, b) => {
-      const va = walletStakeNetAbsUsd(a);
-      const vb = walletStakeNetAbsUsd(b);
-      const d = vb - va;
-      if (d !== 0) return d;
-      const dn = walletNet(b) - walletNet(a);
-      if (dn !== 0) return dn;
-      return (a.wallet || '').localeCompare(b.wallet || '');
-    });
-  }, [toxicFlowData, notifyWhaleAmountUsd]);
+  const toxicStripWhaleWallets = toxicTabViews?.whales ?? [];
 
   /** True when ≥1 toxic-flow whale (|Staked Net| ≥ floor) has dominant-leg avg entry **strictly below** max Whale Price (¢). */
   const notifyWhalePassesPriceGate = useMemo(() => {
-    if (!toxicFlowData) return false;
-    const floor = notifyWhaleAmountUsd;
+    if (!toxicTabViews) return false;
     const maxPc = notifyWhaleMaxPriceCents;
-    for (const w of toxicFlowWalletUniverse(toxicFlowData)) {
-      const usd = walletStakeNetAbsUsd(w);
-      if (!Number.isFinite(usd) || usd < floor) continue;
+    for (const w of toxicTabViews.whales) {
       const pc = dominantStakedLegAvgPriceCents(w);
       if (pc == null || !Number.isFinite(pc)) continue;
       if (pc < maxPc) return true;
     }
     return false;
-  }, [toxicFlowData, notifyWhaleAmountUsd, notifyWhaleMaxPriceCents]);
+  }, [toxicTabViews, notifyWhaleMaxPriceCents]);
 
   /** Active cohort thresholds (Toxic strip bars): every non-zero pct must agree on direction vs its lean. */
   const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {

@@ -55,8 +55,12 @@ import {
   toxicFlowStakeStripWalletLists,
   cohortSurplusLean,
   toxicFlowWalletUniverse,
+  walletInvY,
+  walletInvN,
   walletNet,
   walletStakeNetAbsUsd,
+  walletStakeYUsd,
+  walletStakeNUsd,
 } from '../lib/toxicFlowStakeCohort';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
 import {
@@ -82,6 +86,7 @@ import {
   X,
 } from 'lucide-react';
 import type { AssetSymbol, Market, Position } from '../types';
+import type { WalletPosition } from '../api';
 import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
 
 const ToxicFlowDialogLazy = lazyWithChunkReload(() =>
@@ -338,6 +343,7 @@ const SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY = 'polybot-sidebar-notify-staked-min-usd
 const SIDEBAR_NOTIFY_SOUND_FREQ_KEY = 'polybot-sidebar-notify-sound-freq';
 const SIDEBAR_NOTIFY_RING_TIME_S_KEY = 'polybot-sidebar-notify-ring-time-s';
 const SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-sound-max-price-cents';
+const SIDEBAR_NOTIFY_WHALE_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-whale-max-price-cents';
 const SIDEBAR_NOTIFY_DOUBLE_RING_KEY = 'polybot-sidebar-notify-double-ring';
 const SIDEBAR_NOTIFY_WHALE_RING_KEY = 'polybot-sidebar-notify-whale-ring';
 const SIDEBAR_NOTIFY_TILT_MKT_UPDOWN_KEY = 'polybot-sidebar-notify-tilt-mkt-updown';
@@ -588,6 +594,43 @@ function readNotifyWhaleRing(): boolean {
   }
 }
 
+/** Whale Ring: dominant leg avg entry must be strictly below this (¢). Default 75. */
+function readNotifyWhaleMaxPriceCents(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_WHALE_MAX_PRICE_CENTS_KEY);
+    const n = parseFloat(raw ?? '75');
+    if (!Number.isFinite(n)) return 75;
+    return Math.min(99, Math.max(1, Math.round(n)));
+  } catch {
+    return 75;
+  }
+}
+
+/** Avg entry in ¢ on heavier staked leg (`inv × price`); inventory fallback when stake legs missing. */
+function dominantStakedLegAvgPriceCents(w: WalletPosition): number | null {
+  const sy = walletStakeYUsd(w);
+  const sn = walletStakeNUsd(w);
+  const y = Number.isFinite(sy) ? sy : 0;
+  const n = Number.isFinite(sn) ? sn : 0;
+  const py = w.priceYes;
+  const pn = w.priceNo;
+  if (y > 1e-9 || n > 1e-9) {
+    if (y >= n) {
+      return typeof py === 'number' && Number.isFinite(py) ? py * 100 : null;
+    }
+    return typeof pn === 'number' && Number.isFinite(pn) ? pn * 100 : null;
+  }
+  const iy = walletInvY(w);
+  const inn = walletInvN(w);
+  if (Math.abs(iy) >= Math.abs(inn) && Math.abs(iy) > 1e-6) {
+    return typeof py === 'number' && Number.isFinite(py) ? py * 100 : null;
+  }
+  if (Math.abs(inn) > 1e-6) {
+    return typeof pn === 'number' && Number.isFinite(pn) ? pn * 100 : null;
+  }
+  return null;
+}
+
 /** Annualized σ% ceiling for tilt: alerts pause while chart σ is above this. 0 = off. Default 15. */
 function readNotifyMaxVolatilityPct(): number {
   try {
@@ -809,6 +852,7 @@ export function Sidebar() {
   const [notifyStakedMinUsd, setNotifyStakedMinUsd] = useState(readNotifyStakedMinUsd);
   const [notifyWhaleAmountUsd, setNotifyWhaleAmountUsd] = useState(readTiltWhaleAmountUsd);
   const [notifyWhaleRing, setNotifyWhaleRing] = useState(readNotifyWhaleRing);
+  const [notifyWhaleMaxPriceCents, setNotifyWhaleMaxPriceCents] = useState(readNotifyWhaleMaxPriceCents);
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
   const [notifyRingTimeS, setNotifyRingTimeS] = useState(readNotifyRingTimeS);
   const [notifySoundMaxPriceCents, setNotifySoundMaxPriceCents] = useState(readNotifySoundMaxPriceCents);
@@ -909,6 +953,13 @@ export function Sidebar() {
       /* ignore */
     }
   }, [notifyWhaleRing]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_WHALE_MAX_PRICE_CENTS_KEY, String(notifyWhaleMaxPriceCents));
+    } catch {
+      /* ignore */
+    }
+  }, [notifyWhaleMaxPriceCents]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_SOUND_FREQ_KEY, String(notifySoundFreqSlider));
@@ -1096,15 +1147,20 @@ export function Sidebar() {
     });
   }, [toxicFlowData, notifyWhaleAmountUsd]);
 
-  const notifyWhalePresent = useMemo(() => {
+  /** True when ≥1 toxic-flow whale (|Staked Net| ≥ floor) has dominant-leg avg entry **strictly below** max Whale Price (¢). */
+  const notifyWhalePassesPriceGate = useMemo(() => {
     if (!toxicFlowData) return false;
     const floor = notifyWhaleAmountUsd;
+    const maxPc = notifyWhaleMaxPriceCents;
     for (const w of toxicFlowWalletUniverse(toxicFlowData)) {
-      const m = walletStakeNetAbsUsd(w);
-      if (Number.isFinite(m) && m >= floor) return true;
+      const usd = walletStakeNetAbsUsd(w);
+      if (!Number.isFinite(usd) || usd < floor) continue;
+      const pc = dominantStakedLegAvgPriceCents(w);
+      if (pc == null || !Number.isFinite(pc)) continue;
+      if (pc < maxPc) return true;
     }
     return false;
-  }, [toxicFlowData, notifyWhaleAmountUsd]);
+  }, [toxicFlowData, notifyWhaleAmountUsd, notifyWhaleMaxPriceCents]);
 
   /** Active cohort thresholds (Toxic strip bars): every non-zero pct must agree on direction vs its lean. */
   const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {
@@ -1958,8 +2014,8 @@ export function Sidebar() {
     const cohortTiltAlarm = topBarExtremeBgFlash;
 
     const cohortNeedsSound = cohortTiltAlarm != null && notifyPlaySound;
-    /** Whale Ring: any selected market with ≥1 whale at floor — not gated by Tilt market-type filters (see dialog copy). */
-    const whaleEligible = notifyWhaleRing && notifyWhalePresent;
+    /** Whale Ring: whale at floor whose dominant-leg avg entry is below configured max (¢). */
+    const whaleEligible = notifyWhaleRing && notifyWhalePassesPriceGate;
     /** Play whale ring whenever eligible and cohort tilt is not actively sounding (Tilt Ring off suppresses cohort, not whales). */
     const whaleNeedsSound = whaleEligible && !cohortNeedsSound;
 
@@ -2007,7 +2063,7 @@ export function Sidebar() {
   }, [
     topBarExtremeBgFlash,
     notifyWhaleRing,
-    notifyWhalePresent,
+    notifyWhalePassesPriceGate,
     notifyPlaySound,
     notifyStakedGatePasses,
     notifyVolatilityGatePasses,
@@ -2806,26 +2862,44 @@ export function Sidebar() {
                 />
                 <span>Whale Ring</span>
               </label>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-gray-400 shrink-0">Whale amount (USDC)</span>
-                <input
-                  type="number"
-                  min={0}
-                  step={500}
-                  className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-28 tabular-nums no-spin"
-                  value={notifyWhaleAmountUsd}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (!Number.isFinite(v)) return;
-                    setNotifyWhaleAmountUsd(Math.min(1e12, Math.max(0, v)));
-                  }}
-                />
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="flex items-center gap-2 shrink-0">
+                  <span className="text-gray-400 whitespace-nowrap">Whale amount (USDC)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={500}
+                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-28 tabular-nums no-spin"
+                    value={notifyWhaleAmountUsd}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      setNotifyWhaleAmountUsd(Math.min(1e12, Math.max(0, v)));
+                    }}
+                  />
+                </label>
+                <label className="flex items-center gap-2 shrink-0">
+                  <span className="text-gray-400 whitespace-nowrap">Max Whale Price (¢)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    step={1}
+                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 tabular-nums no-spin"
+                    value={notifyWhaleMaxPriceCents}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      setNotifyWhaleMaxPriceCents(Math.min(99, Math.max(1, Math.round(v))));
+                    }}
+                  />
+                </label>
               </div>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Wallets with |Staked Net| USD ≥ this amount are treated as whales. Used by the Toxic Flow “Whales” tab.
+                Wallets with |Staked Net| USD ≥ Whale amount are whales (same as Toxic Flow tab). Whale Ring fires only when at least one such wallet has avg entry on its heavier staked leg **below** Max Whale Price (ledger price_yes / price_no).
               </p>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Whale Ring repeats while any Toxic Flow whale is on this market (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, minimum staked, or volatility cap. Cohort tilt bursts still obey those gates plus Double Ring.
+                Whale Ring repeats while that condition holds (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, minimum staked, or volatility cap. Cohort tilt bursts still obey those gates plus Double Ring.
               </p>
               <div
                 className={

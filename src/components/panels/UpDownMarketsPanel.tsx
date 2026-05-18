@@ -784,6 +784,13 @@ function UpDownMarketsPanelInner() {
                     const nextGammaYes = { bestBid: nextMarket.bestBid, bestAsk: nextMarket.bestAsk };
                     const nextYesMid = outcomeMidOrOneSideProb(nextYesTokenId, _bidAskLookup, nextGammaYes);
                     const nextNoProb = nextYesMid != null ? 1 - nextYesMid : null;
+                    const { bestBid: nextBestBid, bestAsk: nextBestAsk } = getLiveBidAsk(nextMarket);
+                    const nextBidHi =
+                      nextBestBid != null && Number.isFinite(nextBestBid) && nextBestBid >= 0.6;
+                    const nextAskHi =
+                      nextBestAsk != null && Number.isFinite(nextBestAsk) && nextBestAsk >= 0.6;
+                    const nextHiPillBase =
+                      'inline-flex min-h-[1.125rem] items-center justify-center rounded border px-0.5 text-[10px] font-extrabold tabular-nums text-white shrink-0';
                     return (
                       <td
                         key={`${asset}-next-${slotIdx}`}
@@ -796,7 +803,16 @@ function UpDownMarketsPanelInner() {
                           className="text-gray-400"
                           left={
                             <span
-                              className="text-green-400 cursor-pointer hover:underline"
+                              className={
+                                nextBidHi
+                                  ? `${nextHiPillBase} cursor-pointer hover:brightness-110 bg-green-900/65 border-green-600/45`
+                                  : 'text-green-400 cursor-pointer hover:underline'
+                              }
+                              title={
+                                nextBidHi && nextBestBid != null
+                                  ? `YES best bid ≥ 60¢ (${(nextBestBid * 100).toFixed(1)}¢)`
+                                  : undefined
+                              }
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleCellClick(nextMarket, 'YES');
@@ -807,7 +823,16 @@ function UpDownMarketsPanelInner() {
                           }
                           right={
                             <span
-                              className="text-red-400 cursor-pointer hover:underline"
+                              className={
+                                nextAskHi
+                                  ? `${nextHiPillBase} cursor-pointer hover:brightness-110 bg-red-900/65 border-red-600/45`
+                                  : 'text-red-400 cursor-pointer hover:underline'
+                              }
+                              title={
+                                nextAskHi && nextBestAsk != null
+                                  ? `YES best ask ≥ 60¢ (${(nextBestAsk * 100).toFixed(1)}¢)`
+                                  : undefined
+                              }
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleCellClick(nextMarket, 'NO');

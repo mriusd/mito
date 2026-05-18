@@ -8,6 +8,9 @@ import { getTradeClobTokenId } from '../../utils/format';
 const PNL_BUCKET_KEY = 'polybot-pnl-bucket-mode';
 const PNL_MARKET_TYPE_FILTER_KEY = 'polybot-pnl-market-type-filter';
 
+/** Re-fetch `fetchWalletPnlDaily` while on-chain source (server-backed buckets). */
+const PNL_ONCHAIN_REFRESH_MS = 60_000;
+
 function getTradeTimeMs(trade: Trade): number {
   const ts = (trade as { match_time?: string }).match_time || trade.timestamp || trade.created_at || trade.matchTime || '';
   if (!ts) return 0;
@@ -157,7 +160,7 @@ export function PnLPanel() {
     };
 
     load(true);
-    const intervalId = window.setInterval(() => load(false), 10_000);
+    const intervalId = window.setInterval(() => load(false), PNL_ONCHAIN_REFRESH_MS);
 
     return () => {
       cancelled = true;

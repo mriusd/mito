@@ -805,7 +805,7 @@ function UpDownMarketsPanelInner() {
                             <span
                               className={
                                 nextBidHi
-                                  ? `${nextHiPillBase} cursor-pointer hover:brightness-110 bg-green-900/65 border-green-600/45`
+                                  ? `${nextHiPillBase} updown-triangle-badge-flash cursor-pointer hover:brightness-110 bg-green-900/65 border-green-600/45`
                                   : 'text-green-400 cursor-pointer hover:underline'
                               }
                               title={
@@ -825,7 +825,7 @@ function UpDownMarketsPanelInner() {
                             <span
                               className={
                                 nextAskHi
-                                  ? `${nextHiPillBase} cursor-pointer hover:brightness-110 bg-red-900/65 border-red-600/45`
+                                  ? `${nextHiPillBase} updown-triangle-badge-flash cursor-pointer hover:brightness-110 bg-red-900/65 border-red-600/45`
                                   : 'text-red-400 cursor-pointer hover:underline'
                               }
                               title={

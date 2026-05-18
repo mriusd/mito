@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { fetchMarkets, buildMarketLookup } from '../api';
+import { recordOfMarketArraysEqual, upOrDownMarketsEqual } from '../lib/marketDataDedupe';
 import { isWebMode } from '../lib/env';
 import type { Market } from '../types';
 
@@ -38,32 +39,44 @@ export function useMarketData() {
     refreshingRef.current = true;
     try {
       const data = await fetchMarkets();
-      const prevLookup = useAppStore.getState().marketLookup;
-      const lookup = mergeWsFields(
-        buildMarketLookup(data.aboveMarkets || {}, data.priceOnMarkets || {}, data.weeklyHitMarkets || {}, data.upOrDownMarkets || {}),
-        prevLookup,
-      );
+      const store = useAppStore.getState();
+      const prevLookup = store.marketLookup;
+      const aboveMarkets = data.aboveMarkets || {};
+      const priceOnMarkets = data.priceOnMarkets || {};
+      const weeklyHitMarkets = data.weeklyHitMarkets || {};
+      const upOrDownMarkets = data.upOrDownMarkets || {};
+      const marketArraysChanged =
+        !recordOfMarketArraysEqual(aboveMarkets, store.aboveMarkets) ||
+        !recordOfMarketArraysEqual(priceOnMarkets, store.priceOnMarkets) ||
+        !recordOfMarketArraysEqual(weeklyHitMarkets, store.weeklyHitMarkets) ||
+        !upOrDownMarketsEqual(upOrDownMarkets, store.upOrDownMarkets);
+      const lookup = marketArraysChanged
+        ? mergeWsFields(
+            buildMarketLookup(aboveMarkets, priceOnMarkets, weeklyHitMarkets, upOrDownMarkets),
+            prevLookup,
+          )
+        : prevLookup;
 
       if (isWebMode) {
         // Web mode: only market/smart-order data from backend; wallet data comes from useWalletData
         useAppStore.getState().setMarketData({
-          aboveMarkets: data.aboveMarkets || {},
-          priceOnMarkets: data.priceOnMarkets || {},
-          weeklyHitMarkets: data.weeklyHitMarkets || {},
-          upOrDownMarkets: data.upOrDownMarkets || {},
+          aboveMarkets,
+          priceOnMarkets,
+          weeklyHitMarkets,
+          upOrDownMarkets,
           tokenInfo: data.tokenInfo || {},
           progOrderMap: data.progOrderMap || {},
           marketCount: data.count || 0,
           lastUpdated: data.lastUpdated || '',
-          marketLookup: lookup,
+          ...(marketArraysChanged ? { marketLookup: lookup } : {}),
         });
       } else {
         // App/desktop mode: all data from backend cache
         useAppStore.getState().setMarketData({
-          aboveMarkets: data.aboveMarkets || {},
-          priceOnMarkets: data.priceOnMarkets || {},
-          weeklyHitMarkets: data.weeklyHitMarkets || {},
-          upOrDownMarkets: data.upOrDownMarkets || {},
+          aboveMarkets,
+          priceOnMarkets,
+          weeklyHitMarkets,
+          upOrDownMarkets,
           positions: data.positions || [],
           orders: data.orders || [],
           trades: data.trades || [],
@@ -73,7 +86,7 @@ export function useMarketData() {
           progOrderMap: data.progOrderMap || {},
           marketCount: data.count || 0,
           lastUpdated: data.lastUpdated || '',
-          marketLookup: lookup,
+          ...(marketArraysChanged ? { marketLookup: lookup } : {}),
         });
       }
       useAppStore.getState().setBackendConnected(true);

@@ -2020,7 +2020,8 @@ export function Sidebar() {
     const whaleNeedsSound = whaleEligible && !cohortNeedsSound;
 
     if (!cohortNeedsSound && !whaleNeedsSound) return;
-    if (cohortNeedsSound && (!notifyStakedGatePasses || !notifyVolatilityGatePasses)) return;
+    if ((cohortNeedsSound || whaleNeedsSound) && !notifyVolatilityGatePasses) return;
+    if (cohortNeedsSound && !notifyStakedGatePasses) return;
 
     const k = cohortTiltAlarm ?? 'green';
     const mul = notifySoundPitchMul;
@@ -2904,7 +2905,7 @@ export function Sidebar() {
                 Wallets with |Staked Net| USD ≥ Whale amount are whales (same as Toxic Flow tab). Whale Ring fires only when at least one such wallet has avg entry on its heavier staked leg **below** Max Whale Price (ledger price_yes / price_no).
               </p>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Whale Ring repeats while that condition holds (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, minimum staked, or volatility cap. Cohort tilt bursts still obey those gates plus Double Ring.
+                Whale Ring repeats while that condition holds (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, or minimum staked. If Max volatility % is &gt; 0 in this dialog, Whale Ring pauses while chart σ exceeds it (same gate as cohort tilt). Cohort tilt bursts still obey staked minimum plus Double Ring.
               </p>
               <div
                 className={
@@ -2975,7 +2976,7 @@ export function Sidebar() {
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1">
-                  Mute when WS mid for Tilt ring bursts only — YES token when green cohort tilt, NO token when red cohort tilt — (bestBid+bestAsk)/2, or bestBid only if no ask. Whale Ring ignores this gate.
+                  Mute when WS mid for Tilt ring bursts only — YES token when green cohort tilt, NO token when red cohort tilt — (bestBid+bestAsk)/2, or bestBid only if no ask. Whale Ring ignores this price mute; Max volatility % (above) still applies to whales.
                 </p>
                 <label className="flex items-center gap-2 cursor-pointer mt-3">
                   <input

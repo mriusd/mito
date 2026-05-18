@@ -61,7 +61,7 @@ export function listFutureUpDownMarketsInTfBucket(marketsForTf: Market[] | undef
   return out;
 }
 
-/** TF-bucket rows with end ≤ `nowMs` (past windows). Deduped by market id; most recently ended first. */
+/** TF-bucket rows with end ≤ `nowMs` (past windows). Deduped by market id; end time ascending (oldest first). */
 export function listPastUpDownMarketsInTfBucket(marketsForTf: Market[] | undefined, nowMs: number = Date.now()): Market[] {
   if (!marketsForTf?.length) return [];
   const past = marketsForTf.filter((m) => {
@@ -70,7 +70,7 @@ export function listPastUpDownMarketsInTfBucket(marketsForTf: Market[] | undefin
     return Number.isFinite(t) && t <= nowMs;
   });
   if (past.length === 0) return [];
-  past.sort((a, b) => new Date(b.endDate!).getTime() - new Date(a.endDate!).getTime());
+  past.sort((a, b) => new Date(a.endDate!).getTime() - new Date(b.endDate!).getTime());
   const seen = new Set<string>();
   const out: Market[] = [];
   for (const m of past) {

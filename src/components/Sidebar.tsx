@@ -2125,7 +2125,11 @@ export function Sidebar() {
     const nowMs = Date.now();
     const futureList = listFutureUpDownMarketsInTfBucket(upOrDownMarkets[asset]?.[tf], nowMs);
     const pastList = listPastUpDownMarketsInTfBucket(upOrDownMarkets[asset]?.[tf], nowMs);
-    const endPickerList = [...pastList, ...futureList];
+    const endPickerList = [...pastList, ...futureList].sort((a, b) => {
+      const ta = a.endDate ? new Date(a.endDate).getTime() : 0;
+      const tb = b.endDate ? new Date(b.endDate).getTime() : 0;
+      return ta - tb;
+    });
     const visibleEndLabel = new Date(selectedMarket.endDate).toLocaleTimeString(undefined, {
       hour: '2-digit',
       minute: '2-digit',

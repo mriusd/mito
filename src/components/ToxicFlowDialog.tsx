@@ -1,4 +1,5 @@
 import {
+  memo,
   useState,
   useEffect,
   useCallback,
@@ -219,17 +220,61 @@ function inventoryNetSharesTableCell(signed: number): ReactNode {
   );
 }
 
+/** Hot path: cached class strings (avoid per-row template-literal allocations on tick rerender). */
+const ROW_CLS_NEUTRAL = 'border-b border-gray-800 hover:bg-gray-700/30';
+const ROW_CLS_GREEN = 'border-b border-gray-800 bg-green-900/25 hover:bg-green-900/40';
+const ROW_CLS_RED = 'border-b border-gray-800 bg-red-900/25 hover:bg-red-900/40';
+
 function walletRowClassForStakedNet(shadeRows: boolean, stakeNetSigned: number): string {
-  const border = 'border-b border-gray-800';
-  if (!shadeRows) return `${border} hover:bg-gray-700/30`;
-  if (!Number.isFinite(stakeNetSigned) || Math.abs(stakeNetSigned) <= STAKED_NET_EPS) {
-    return `${border} hover:bg-gray-700/30`;
-  }
-  if (stakeNetSigned < -STAKED_NET_EPS) {
-    return `${border} bg-green-900/25 hover:bg-green-900/40`;
-  }
-  return `${border} bg-red-900/25 hover:bg-red-900/40`;
+  if (!shadeRows) return ROW_CLS_NEUTRAL;
+  if (!Number.isFinite(stakeNetSigned) || Math.abs(stakeNetSigned) <= STAKED_NET_EPS) return ROW_CLS_NEUTRAL;
+  if (stakeNetSigned < -STAKED_NET_EPS) return ROW_CLS_GREEN;
+  return ROW_CLS_RED;
 }
+
+/** Hot path: shared `Intl.NumberFormat` instances (`.toLocaleString(opts)` allocates a fresh one each call). */
+const NF_INT_EN = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+const NF_PCT_1 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+function rowFmtInt(v: number): string {
+  return NF_INT_EN.format(Math.round(v));
+}
+
+function rowFmtUsdSigned(v: number): string {
+  if (!Number.isFinite(v)) return '–';
+  const sign = v >= 0 ? '+' : '−';
+  return `${sign}$${NF_INT_EN.format(Math.round(Math.abs(v)))}`;
+}
+
+/** Pulse class lookup (ordering: bell+whale > bell > whale > none). */
+const ROW_PULSE_NONE = '';
+const ROW_PULSE_BELL = ' toxic-flow-bell-row-flash';
+const ROW_PULSE_WHALE = ' toxic-flow-high-stake-net-row-flash';
+const ROW_PULSE_BELL_WHALE = ' toxic-flow-bell-high-stake-combo-row-flash';
+
+function rowPulseClassFor(bellActive: boolean, whaleFlash: boolean): string {
+  if (bellActive && whaleFlash) return ROW_PULSE_BELL_WHALE;
+  if (bellActive) return ROW_PULSE_BELL;
+  if (whaleFlash) return ROW_PULSE_WHALE;
+  return ROW_PULSE_NONE;
+}
+
+function biasToneClass(bias: number): string {
+  if (bias > 0.5) return 'text-yellow-400';
+  if (bias > 0.3) return 'text-orange-400';
+  return 'text-gray-400';
+}
+
+function invYToneClass(iy: number): string {
+  if (iy > 0.001) return 'text-green-400';
+  if (iy < -0.001) return 'text-red-400';
+  return 'text-gray-500';
+}
+
+const STAR_CLS_ON = 'text-yellow-400 fill-yellow-400';
+const STAR_CLS_OFF = 'fill-none stroke-gray-400';
+const BELL_CLS_ON = 'text-amber-400 fill-amber-400/25';
+const BELL_CLS_OFF = 'stroke-gray-400 fill-none';
 
 function LedgerSummaryField({
   label,
@@ -800,19 +845,7 @@ const WalletLink = forwardRef<
   );
 });
 
-function WalletTableBodyRow({
-  rank,
-  w,
-  shadeRowByStakedNet,
-  favouriteActive,
-  bellActive,
-  tiltWhaleAmountUsd,
-  toggleFavouriteWallet,
-  toggleBellWallet,
-  onOpenWallet,
-  sharesPct,
-  cumSharesPct,
-}: {
+interface WalletTableBodyRowProps {
   rank: number;
   w: WalletPosition;
   shadeRowByStakedNet: boolean;
@@ -825,8 +858,42 @@ function WalletTableBodyRow({
   onOpenWallet?: (wallet: string, netShares?: number) => void;
   sharesPct: number;
   cumSharesPct: number;
-}) {
+}
+
+function WalletTableBodyRowImpl({
+  rank,
+  w,
+  shadeRowByStakedNet,
+  favouriteActive,
+  bellActive,
+  tiltWhaleAmountUsd,
+  toggleFavouriteWallet,
+  toggleBellWallet,
+  onOpenWallet,
+  sharesPct,
+  cumSharesPct,
+}: WalletTableBodyRowProps) {
   const hoverRef = useRef<WalletLinkHoverHandle>(null);
+  const onRowEnter = useCallback((e: React.MouseEvent) => hoverRef.current?.rowEnter(e), []);
+  const onRowMove = useCallback((e: React.MouseEvent) => hoverRef.current?.rowMove(e), []);
+  const onRowLeave = useCallback(() => hoverRef.current?.rowLeave(), []);
+  const onFavClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleFavouriteWallet(w.wallet);
+    },
+    [toggleFavouriteWallet, w.wallet],
+  );
+  const onBellClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleBellWallet(w.wallet);
+    },
+    [toggleBellWallet, w.wallet],
+  );
+
   const iy = typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
   const inn = typeof w.invNo === 'number' && Number.isFinite(w.invNo) ? w.invNo : w.netNo ?? 0;
   const signedLegNet = iy - inn;
@@ -837,66 +904,42 @@ function WalletTableBodyRow({
       : grossLeg > 0
         ? Math.abs(signedLegNet) / grossLeg
         : 0;
-  const biasColor = bias > 0.5 ? 'text-yellow-400' : bias > 0.3 ? 'text-orange-400' : 'text-gray-400';
-  const nYColor = iy > 0.001 ? 'text-green-400' : iy < -0.001 ? 'text-red-400' : 'text-gray-500';
   const stakeYUsd = walletStakeYUsd(w);
   const stakeNUsd = walletStakeNUsd(w);
   const stakeNetSigned = walletStakeNetSignedUsd(w);
   const stakeNetAbsUsd = walletStakeNetAbsUsd(w);
-  const tiltWhaleRowFlash =
-    Number.isFinite(stakeNetAbsUsd) && stakeNetAbsUsd >= tiltWhaleAmountUsd;
-  let rowPulseClass = '';
-  if (bellActive && tiltWhaleRowFlash) rowPulseClass = ' toxic-flow-bell-high-stake-combo-row-flash';
-  else if (bellActive) rowPulseClass = ' toxic-flow-bell-row-flash';
-  else if (tiltWhaleRowFlash) rowPulseClass = ' toxic-flow-high-stake-net-row-flash';
-
-  const fmtInt = (v: number) => Math.round(v).toLocaleString('en-US');
-  const fmtUsdSigned = (v: number) => {
-    if (!Number.isFinite(v)) return '–';
-    const rounded = Math.round(Math.abs(v));
-    const s = v >= 0 ? '+' : '−';
-    return `${s}$${rounded.toLocaleString('en-US')}`;
-  };
+  const tiltWhaleRowFlash = Number.isFinite(stakeNetAbsUsd) && stakeNetAbsUsd >= tiltWhaleAmountUsd;
+  const rowClass = walletRowClassForStakedNet(shadeRowByStakedNet, stakeNetSigned) + rowPulseClassFor(bellActive, tiltWhaleRowFlash);
+  const ledgerEmbed = w.walletLedgerSummary;
 
   return (
     <tr
-      className={`${walletRowClassForStakedNet(shadeRowByStakedNet, stakeNetSigned)}${rowPulseClass}`}
-      onMouseEnter={(e) => hoverRef.current?.rowEnter(e)}
-      onMouseMove={(e) => hoverRef.current?.rowMove(e)}
-      onMouseLeave={() => hoverRef.current?.rowLeave()}
+      className={rowClass}
+      onMouseEnter={onRowEnter}
+      onMouseMove={onRowMove}
+      onMouseLeave={onRowLeave}
     >
       <td className="py-0.5 px-1 text-gray-600">{rank}</td>
       <td className="align-top px-0 py-0.5">
         <span className="inline-flex shrink-0 items-start gap-0.5 align-top">
-        <button
-          type="button"
-          className="p-0.5 rounded hover:bg-gray-600/40 text-gray-500 hover:text-gray-300"
-          title={favouriteActive ? 'Remove favourite' : 'Add favourite'}
-          aria-pressed={favouriteActive}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            toggleFavouriteWallet(w.wallet);
-          }}
-        >
-          <Star
-            size={12}
-            className={favouriteActive ? 'text-yellow-400 fill-yellow-400' : 'fill-none stroke-gray-400'}
-          />
-        </button>
-        <button
-          type="button"
-          className="p-0.5 rounded hover:bg-gray-600/40 text-gray-500 hover:text-amber-200/90"
-          title={bellActive ? 'Stop highlighting this wallet on Toxic tables' : 'Flash row when wallet is on this market'}
-          aria-pressed={bellActive}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            toggleBellWallet(w.wallet);
-          }}
-        >
-          <Bell size={11} strokeWidth={2} className={bellActive ? 'text-amber-400 fill-amber-400/25' : 'stroke-gray-400 fill-none'} />
-        </button>
+          <button
+            type="button"
+            className="p-0.5 rounded hover:bg-gray-600/40 text-gray-500 hover:text-gray-300"
+            title={favouriteActive ? 'Remove favourite' : 'Add favourite'}
+            aria-pressed={favouriteActive}
+            onClick={onFavClick}
+          >
+            <Star size={12} className={favouriteActive ? STAR_CLS_ON : STAR_CLS_OFF} />
+          </button>
+          <button
+            type="button"
+            className="p-0.5 rounded hover:bg-gray-600/40 text-gray-500 hover:text-amber-200/90"
+            title={bellActive ? 'Stop highlighting this wallet on Toxic tables' : 'Flash row when wallet is on this market'}
+            aria-pressed={bellActive}
+            onClick={onBellClick}
+          >
+            <Bell size={11} strokeWidth={2} className={bellActive ? BELL_CLS_ON : BELL_CLS_OFF} />
+          </button>
         </span>
       </td>
       <td className="align-top px-1 py-0.5">
@@ -906,47 +949,99 @@ function WalletTableBodyRow({
           netShares={signedLegNet}
           onOpenWallet={onOpenWallet}
           isSmart={isSmartGold(w)}
-          ledgerEmbed={w.walletLedgerSummary}
-          ledgerGold={ledgerGoldFromEmbed(w.walletLedgerSummary)}
+          ledgerEmbed={ledgerEmbed}
+          ledgerGold={ledgerGoldFromEmbed(ledgerEmbed)}
         />
       </td>
-      <td className={`text-right px-1 font-bold ${nYColor} bg-green-900/10`}>{fmtInt(iy)}</td>
-      <td className="text-right px-1 font-bold text-red-400 bg-red-900/10">{fmtInt(inn)}</td>
+      <td className={`text-right px-1 font-bold ${invYToneClass(iy)} bg-green-900/10`}>{rowFmtInt(iy)}</td>
+      <td className="text-right px-1 font-bold text-red-400 bg-red-900/10">{rowFmtInt(inn)}</td>
       <td className="text-right px-1 whitespace-nowrap tabular-nums" title="inv_yes − inv_no (|net| Y / N)">
         {inventoryNetSharesTableCell(signedLegNet)}
       </td>
       <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceYes)}</td>
       <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceNo)}</td>
       <td className="text-right px-1 text-gray-400">
-        {typeof w.tradeCount === 'number' && Number.isFinite(w.tradeCount)
-          ? Math.round(w.tradeCount).toLocaleString('en-US')
-          : '–'}
+        {typeof w.tradeCount === 'number' && Number.isFinite(w.tradeCount) ? rowFmtInt(w.tradeCount) : '–'}
       </td>
       <td className="text-right px-1 font-medium tabular-nums text-red-400">
-        {Number.isFinite(stakeYUsd) ? fmtUsdSigned(-stakeYUsd) : '–'}
+        {Number.isFinite(stakeYUsd) ? rowFmtUsdSigned(-stakeYUsd) : '–'}
       </td>
       <td className="text-right px-1 font-medium tabular-nums text-red-400">
-        {Number.isFinite(stakeNUsd) ? fmtUsdSigned(-stakeNUsd) : '–'}
+        {Number.isFinite(stakeNUsd) ? rowFmtUsdSigned(-stakeNUsd) : '–'}
       </td>
       <td className="text-right px-1 whitespace-nowrap" title="Staked Y − Staked N (column display); Y / N suffix">
         {stakedNetUsdTableCell(stakeNetSigned)}
       </td>
       <td className="text-right px-1 text-cyan-300">
-        {sharesPct > 0
-          ? `${sharesPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
-          : '-'}
+        {sharesPct > 0 ? `${NF_PCT_1.format(sharesPct)}%` : '-'}
       </td>
       <td className="text-right px-1 text-cyan-200/70">
-        {cumSharesPct > 0
-          ? `${cumSharesPct.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
-          : '-'}
+        {cumSharesPct > 0 ? `${NF_PCT_1.format(cumSharesPct)}%` : '-'}
       </td>
-      <td className={`text-right px-1 ${biasColor}`}>
-        {`${(bias * 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}%`}
+      <td className={`text-right px-1 ${biasToneClass(bias)}`}>
+        {`${NF_INT_EN.format(Math.round(bias * 100))}%`}
       </td>
     </tr>
   );
 }
+
+/**
+ * Hot path optimization: skip row reconciliation when nothing the row reads has changed.
+ *
+ * `wallets` is a fresh array per WS tick, so each `w` is a fresh object. Default `memo` would
+ * always invalidate. Compare scalar fields explicitly (these are the inputs to the body cells).
+ */
+const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
+  if (
+    a.rank !== b.rank ||
+    a.shadeRowByStakedNet !== b.shadeRowByStakedNet ||
+    a.favouriteActive !== b.favouriteActive ||
+    a.bellActive !== b.bellActive ||
+    a.tiltWhaleAmountUsd !== b.tiltWhaleAmountUsd ||
+    a.sharesPct !== b.sharesPct ||
+    a.cumSharesPct !== b.cumSharesPct ||
+    a.toggleFavouriteWallet !== b.toggleFavouriteWallet ||
+    a.toggleBellWallet !== b.toggleBellWallet ||
+    a.onOpenWallet !== b.onOpenWallet
+  ) {
+    return false;
+  }
+  const wa = a.w;
+  const wb = b.w;
+  if (wa === wb) return true;
+  if (
+    wa.wallet !== wb.wallet ||
+    wa.invYes !== wb.invYes ||
+    wa.invNo !== wb.invNo ||
+    wa.netYes !== wb.netYes ||
+    wa.netNo !== wb.netNo ||
+    wa.priceYes !== wb.priceYes ||
+    wa.priceNo !== wb.priceNo ||
+    wa.usdYes !== wb.usdYes ||
+    wa.usdNo !== wb.usdNo ||
+    wa.usdcYes !== wb.usdcYes ||
+    wa.usdcNo !== wb.usdcNo ||
+    wa.tradeCount !== wb.tradeCount ||
+    wa.inventoryBias !== wb.inventoryBias ||
+    wa.isSmart !== wb.isSmart
+  ) {
+    return false;
+  }
+  const ea = wa.walletLedgerSummary;
+  const eb = wb.walletLedgerSummary;
+  if (ea === eb) return true;
+  if (ea == null || eb == null) return ea === eb;
+  return (
+    ea.totalMarkets === eb.totalMarkets &&
+    ea.resolvedMarkets === eb.resolvedMarkets &&
+    ea.totalTrades === eb.totalTrades &&
+    ea.wins === eb.wins &&
+    ea.losses === eb.losses &&
+    ea.winRate === eb.winRate &&
+    ea.pnl === eb.pnl &&
+    ea.volume === eb.volume
+  );
+});
 
 function WalletTable({
   wallets,

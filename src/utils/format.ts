@@ -61,6 +61,26 @@ export function listFutureUpDownMarketsInTfBucket(marketsForTf: Market[] | undef
   return out;
 }
 
+/** TF-bucket rows with end ≤ `nowMs` (past windows). Deduped by market id; most recently ended first. */
+export function listPastUpDownMarketsInTfBucket(marketsForTf: Market[] | undefined, nowMs: number = Date.now()): Market[] {
+  if (!marketsForTf?.length) return [];
+  const past = marketsForTf.filter((m) => {
+    if (!m.endDate) return false;
+    const t = new Date(m.endDate).getTime();
+    return Number.isFinite(t) && t <= nowMs;
+  });
+  if (past.length === 0) return [];
+  past.sort((a, b) => new Date(b.endDate!).getTime() - new Date(a.endDate!).getTime());
+  const seen = new Set<string>();
+  const out: Market[] = [];
+  for (const m of past) {
+    if (seen.has(m.id)) continue;
+    seen.add(m.id);
+    out.push(m);
+  }
+  return out;
+}
+
 /** Soonest-ending row in TF bucket with endDate still in the future; prefers Gamma `closed === false`. */
 export function pickLiveUpDownMarketInTfBucket(marketsForTf: Market[] | undefined, nowMs: number = Date.now()): Market | null {
   const list = listFutureUpDownMarketsInTfBucket(marketsForTf, nowMs);

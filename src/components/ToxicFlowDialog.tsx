@@ -748,7 +748,7 @@ const WalletLink = forwardRef<
 
   const tooltipInner = (
     <>
-          <div className={`font-mono mb-1 text-[8px] ${addrClass}`}>{wallet.slice(0, 10)}...{wallet.slice(-6)}</div>
+          <div className={`mb-1 text-[8px] ${addrClass}`}>{wallet.slice(0, 10)}...{wallet.slice(-6)}</div>
           {summary === undefined && <div className="text-gray-500">Loading...</div>}
           {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
           {summary ? (
@@ -791,7 +791,7 @@ const WalletLink = forwardRef<
           e.stopPropagation();
           onOpenWallet?.(wallet, netShares);
         }}
-        className={`${addrClass} hover:underline font-mono inline-flex items-baseline flex-wrap gap-x-0`}
+        className={`${addrClass} hover:underline inline-flex items-baseline flex-wrap gap-x-0`}
         title={btnTitle}
       >
         <span>{shortenWallet(wallet)}</span>
@@ -1300,7 +1300,7 @@ export function WalletInfoDialog({
               href={polymarketProfileUrl}
               target="_blank"
               rel="noreferrer"
-              className="text-xs text-blue-400 font-mono truncate hover:underline"
+              className="text-xs text-blue-400 truncate hover:underline"
               title="Open Polymarket profile"
             >
               {wallet}
@@ -1392,7 +1392,7 @@ export function WalletInfoDialog({
 
           <div className="bg-gray-900 rounded p-2 min-h-0 min-w-0 flex flex-col overflow-hidden">
             <div className="text-[10px] text-gray-400 font-bold mb-1 shrink-0">
-              Trades For Selected Market {selectedMarketId ? <span className="text-gray-500 font-mono">({selectedMarketId})</span> : null}
+              Trades For Selected Market {selectedMarketId ? <span className="text-gray-500">({selectedMarketId})</span> : null}
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
             {loadingFills ? (

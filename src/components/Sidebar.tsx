@@ -27,6 +27,7 @@ import {
   getTokenOutcome,
   getTradeClobTokenId,
   outcomeTokenBelongsToSelectedMarket,
+  listPastUpDownMarketsInTfBucket,
   listFutureUpDownMarketsInTfBucket,
   pickLiveUpDownMarketInTfBucket,
   pickNextMarketOnExpiry,
@@ -2121,13 +2122,16 @@ export function Sidebar() {
     if (!asset) return null;
     const tf = upDownTimeframeKeyFromMarket(selectedMarket);
     if (!tf) return null;
-    const futureList = listFutureUpDownMarketsInTfBucket(upOrDownMarkets[asset]?.[tf], Date.now());
+    const nowMs = Date.now();
+    const futureList = listFutureUpDownMarketsInTfBucket(upOrDownMarkets[asset]?.[tf], nowMs);
+    const pastList = listPastUpDownMarketsInTfBucket(upOrDownMarkets[asset]?.[tf], nowMs);
+    const endPickerList = [...pastList, ...futureList];
     const visibleEndLabel = new Date(selectedMarket.endDate).toLocaleTimeString(undefined, {
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
     });
-    return { futureList, visibleEndLabel, endIso: selectedMarket.endDate };
+    return { endPickerList, visibleEndLabel, endIso: selectedMarket.endDate };
   }, [
     isUpDownMarket,
     selectedMarket,
@@ -3223,7 +3227,7 @@ export function Sidebar() {
                 <span className={`${sidebarTitleColor} font-bold text-sm`}>{marketName}</span>
               )}
             </div>
-            {sidebarUpDownEndSwitch && sidebarUpDownEndSwitch.futureList.length > 1 ? (
+            {sidebarUpDownEndSwitch && sidebarUpDownEndSwitch.endPickerList.length > 1 ? (
               <details ref={upDownEndPickerDetailsRef} className="relative shrink-0">
                 <summary className={`inline-flex cursor-pointer select-none list-none items-center gap-0.5 rounded border border-gray-600/80 bg-gray-900/70 px-1 py-0.5 tabular-nums text-[11px] font-bold ${sidebarTitleColor} [&::-webkit-details-marker]:hidden hover:border-gray-500`}>
                   {sidebarUpDownEndSwitch.visibleEndLabel}
@@ -3235,15 +3239,18 @@ export function Sidebar() {
                   onMouseDown={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
                 >
-                  {sidebarUpDownEndSwitch.futureList.map((m) => (
+                  {sidebarUpDownEndSwitch.endPickerList.map((m) => {
+                    const endMs = m.endDate ? new Date(m.endDate).getTime() : NaN;
+                    const expired = Number.isFinite(endMs) && endMs <= Date.now();
+                    const sel = m.id === selectedMarket?.id;
+                    const tone = sel ? (expired ? 'text-amber-500/85' : 'text-amber-300') : expired ? 'text-gray-500' : 'text-gray-100';
+                    return (
                     <li key={m.id}>
                       <button
                         type="button"
                         role="menuitem"
-                        className={`w-full whitespace-nowrap px-2 py-1 text-left text-[11px] font-semibold tabular-nums hover:bg-neutral-800 ${
-                          m.id === selectedMarket?.id ? 'text-amber-300' : 'text-gray-100'
-                        }`}
-                        title={m.endDate}
+                        className={`w-full whitespace-nowrap px-2 py-1 text-left text-[11px] font-semibold tabular-nums hover:bg-neutral-800 ${tone}`}
+                        title={expired ? `${m.endDate} (ended)` : m.endDate}
                         onClick={() => {
                           setSelectedMarket(m);
                           const dr = upDownEndPickerDetailsRef.current;
@@ -3257,7 +3264,8 @@ export function Sidebar() {
                         })}
                       </button>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </details>
             ) : sidebarUpDownEndSwitch ? (

@@ -564,16 +564,40 @@ export function toxicFlowPayloadEqual(a: ToxicFlowData, b: ToxicFlowData): boole
     return false;
   }
   const rowSig = (w: WalletPosition) =>
+    /** Must cover every WalletPosition field that ToxicFlowDialog row cells derive from (otherwise WS drops updates). */
     [
       w.wallet,
       w.net,
-      w.tradeCount,
-      w.lastTradeTime,
+      w.netYes,
+      w.netNo,
       w.invYes ?? '',
       w.invNo ?? '',
+      w.priceYes ?? '',
+      w.priceNo ?? '',
+      w.usdYes ?? '',
+      w.usdNo ?? '',
+      w.usdcYes ?? '',
+      w.usdcNo ?? '',
+      w.tradeCount,
+      w.firstTradeTime,
+      w.lastTradeTime,
+      w.inventoryBias ?? '',
       w.isSmart ? 1 : 0,
-      w.walletLedgerSummary?.totalTrades ?? '',
-      w.walletLedgerSummary?.pnl ?? '',
+      (() => {
+        const e = w.walletLedgerSummary;
+        if (e === undefined) return '';
+        if (e === null) return 'ledger:null';
+        return [
+          e.totalMarkets,
+          e.resolvedMarkets ?? '',
+          e.totalTrades,
+          e.wins,
+          e.losses,
+          e.winRate,
+          e.pnl,
+          e.volume ?? '',
+        ].join('\x07');
+      })(),
     ].join('\x00');
   const listEq = (xa: WalletPosition[], xb: WalletPosition[]) => {
     if (xa.length !== xb.length) return false;

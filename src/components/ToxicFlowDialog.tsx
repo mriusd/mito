@@ -29,7 +29,6 @@ import {
 } from 'lucide-react';
 import {
   fetchToxicFlow,
-  toxicFlowPayloadEqual,
   fetchWalletSummary,
   fetchWalletPositions,
   fetchOnchainFills,
@@ -1750,8 +1749,6 @@ export function ToxicFlowDialog({
           const msg = JSON.parse(String(ev.data)) as { type?: string; data?: ToxicFlowData };
           if (msg.type === 'toxicFlow' && msg.data && typeof msg.data === 'object') {
             const next = msg.data;
-            const prev = internalDataRef.current;
-            if (prev && toxicFlowPayloadEqual(prev, next)) return;
             internalDataRef.current = next;
             setInternalData(next);
           }

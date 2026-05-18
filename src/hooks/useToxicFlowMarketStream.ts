@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchToxicFlow, toxicFlowPayloadEqual, type ToxicFlowData } from '../api';
+import { fetchToxicFlow, type ToxicFlowData } from '../api';
 import { WS_BASE } from '../lib/env';
 
 /** HTTP snapshot + `/ws/toxic-flow` increments (same payload shape as ToxicFlowDialog when open). */
@@ -63,8 +63,6 @@ export function useToxicFlowMarketStream(marketId: string | undefined | null, en
           const msg = JSON.parse(String(ev.data)) as { type?: string; data?: ToxicFlowData };
           if (msg.type === 'toxicFlow' && msg.data && typeof msg.data === 'object') {
             const next = msg.data;
-            const prev = dataRef.current;
-            if (prev && toxicFlowPayloadEqual(prev, next)) return;
             dataRef.current = next;
             setData(next);
           }

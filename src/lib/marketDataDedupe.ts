@@ -1,4 +1,4 @@
-import type { Market, Order, Position, Trade } from '../types';
+import type { Market, Order, Position, Trade, Signal } from '../types';
 
 /** Gamma/static row fields — excludes WS-only live book fields (those live in `marketLookup`). */
 export function marketRowContentEqual(a: Market, b: Market): boolean {
@@ -12,7 +12,7 @@ export function marketRowContentEqual(a: Market, b: Market): boolean {
     a.groupItemTitle !== b.groupItemTitle ||
     a.endDate !== b.endDate ||
     Boolean(a.closed) !== Boolean(b.closed) ||
-    a.outcomePrices !== b.outcomePrices ||
+    String(a.outcomePrices ?? '') !== String(b.outcomePrices ?? '') ||
     a.lastTradePrice !== b.lastTradePrice ||
     a.priceToBeat !== b.priceToBeat
   ) {
@@ -216,4 +216,26 @@ export function jsonStableEqual(a: unknown, b: unknown): boolean {
   } catch {
     return a === b;
   }
+}
+
+export function signalsEqual(a: Signal[], b: Signal[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (
+      x.market.id !== y.market.id ||
+      x.type !== y.type ||
+      x.origSide !== y.origSide ||
+      x.tableType !== y.tableType ||
+      x.diffPct !== y.diffPct ||
+      x.bidDiffPct !== y.bidDiffPct ||
+      x.price !== y.price ||
+      x.bsPrice !== y.bsPrice
+    ) {
+      return false;
+    }
+  }
+  return true;
 }

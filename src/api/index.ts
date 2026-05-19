@@ -317,22 +317,39 @@ export async function fetchPriceHistory(tokenId: string, interval = 'max', fidel
  * while the other still read those YES fields as the NO book → duplicate YES/NO cells after updates.
  * YES entry: shallow clone with API bid/ask. NO entry: clone without top-level bid/ask until WS patches that token.
  */
-/** Field compare for token lookup reuse — no giant sig string map (was ~14k strings / poll in heap). */
-function marketTokenEntryUnchanged(prev: Market, m: Market, leg: 'YES' | 'NO', clearBidAsk: boolean): boolean {
-  if (prev.id !== m.id) return false;
-  if (prev.closed !== m.closed) return false;
-  if (prev.endDate !== m.endDate) return false;
-  if (prev.volume !== m.volume) return false;
-  if (prev.question !== m.question) return false;
-  if (prev.groupItemTitle !== m.groupItemTitle) return false;
-  if (prev.outcomePrices !== m.outcomePrices) return false;
-  if (clearBidAsk) {
-    if (prev.bestBid !== undefined || prev.bestAsk !== undefined) return false;
-  } else if (prev.bestBid !== m.bestBid || prev.bestAsk !== m.bestAsk) {
-    return false;
-  }
-  void leg;
+/** Gamma/static fields only — WS bid/ask + cohort metrics live on lookup entry, not poll array row. */
+function marketGammaRowEqual(a: Market, b: Market): boolean {
+  if (a.id !== b.id || a.conditionId !== b.conditionId) return false;
+  if (a.question !== b.question || a.groupItemTitle !== b.groupItemTitle) return false;
+  if (a.eventTitle !== b.eventTitle || a.eventSlug !== b.eventSlug) return false;
+  if (a.endDate !== b.endDate || Boolean(a.closed) !== Boolean(b.closed)) return false;
+  if (String(a.outcomePrices ?? '') !== String(b.outcomePrices ?? '')) return false;
+  if (a.lastTradePrice !== b.lastTradePrice || a.priceToBeat !== b.priceToBeat) return false;
+  const ca = a.clobTokenIds || [];
+  const cb = b.clobTokenIds || [];
+  if (ca.length !== cb.length) return false;
+  for (let i = 0; i < ca.length; i++) if (ca[i] !== cb[i]) return false;
   return true;
+}
+
+const LOOKUP_WS_KEYS: (keyof Market)[] = [
+  'bestBid', 'bestAsk', 'volume', 'wmpVolumeSum', 'sharesInExistence', 'marketNetDirection',
+  'holders', 'smartMoneyBias', 'provenSMS', 'crowdBias', 'liveBias', 'liveBiasWindowMin',
+  'concentration', 'winnerBias', 'winnerBiasYesWR', 'winnerBiasNoWR',
+  'winBiasShares', 'winBiasSharesYes', 'winBiasSharesNo',
+  'winnerBiasConviction', 'winnerBiasConvictionYesWR', 'winnerBiasConvictionNoWR',
+  'winBiasConvictionShares', 'winBiasConvictionSharesYes', 'winBiasConvictionSharesNo',
+  'stakedUsdYesLeg', 'stakedUsdNoLeg', 'stakedSumAbsSignedNetUsd',
+  'stakedTopHoldersCohortYesUsd', 'stakedTopHoldersCohortNoUsd',
+];
+
+function pickLookupWsFields(old: Market): Partial<Market> {
+  const ws: Partial<Market> = {};
+  for (const k of LOOKUP_WS_KEYS) {
+    const v = old[k];
+    if (v !== undefined && v !== null) (ws as Record<string, unknown>)[k as string] = v;
+  }
+  return ws;
 }
 
 function addMarketToTokenLookup(
@@ -342,13 +359,16 @@ function addMarketToTokenLookup(
 ) {
   const tokenIds = m.clobTokenIds || [];
   if (tokenIds.length === 0) return;
-  const reuseOrClone = (id: string, leg: 'YES' | 'NO', clearBidAsk: boolean) => {
+  const reuseOrClone = (id: string, _leg: 'YES' | 'NO', clearBidAsk: boolean) => {
     const old = prev?.[id];
-    if (old && marketTokenEntryUnchanged(old, m, leg, clearBidAsk)) {
+    if (old && marketGammaRowEqual(old, m)) {
       lookup[id] = old;
       return;
     }
-    lookup[id] = clearBidAsk ? { ...m, bestBid: undefined, bestAsk: undefined } : { ...m };
+    const ws = old ? pickLookupWsFields(old) : {};
+    lookup[id] = clearBidAsk
+      ? { ...m, ...ws, bestBid: undefined, bestAsk: undefined }
+      : { ...m, ...ws };
   };
   if (tokenIds.length === 1) {
     if (tokenIds[0]) reuseOrClone(tokenIds[0], 'YES', false);
@@ -390,7 +410,14 @@ export function buildMarketLookup(
       }
     }
   }
-  return lookup;
+  if (!prev) return lookup;
+  const prevKeys = Object.keys(prev);
+  const nextKeys = Object.keys(lookup);
+  if (prevKeys.length !== nextKeys.length) return lookup;
+  for (const k of nextKeys) {
+    if (prev[k] !== lookup[k]) return lookup;
+  }
+  return prev;
 }
 
 // --- Toxic Flow / On-chain API ---

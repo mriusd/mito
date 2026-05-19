@@ -57,29 +57,48 @@ type BidAskWsItem = Record<string, unknown> & {
 };
 
 function mergeWsItemOntoMarket(seed: Market, item: BidAskWsItem): Market {
-  const bestBid = item.bestBid ?? 0;
-  const bestAsk = item.bestAsk ?? 0;
-  const next: Market = {
-    ...seed,
-    bestBid,
-    bestAsk,
-  };
+  const patch: Partial<Market> = {};
+  let changed = false;
+
+  if (item.bestBid !== undefined) {
+    const bestBid = item.bestBid ?? 0;
+    if (bestBid !== seed.bestBid) {
+      patch.bestBid = bestBid;
+      changed = true;
+    }
+  }
+  if (item.bestAsk !== undefined) {
+    const bestAsk = item.bestAsk ?? 0;
+    if (bestAsk !== seed.bestAsk) {
+      patch.bestAsk = bestAsk;
+      changed = true;
+    }
+  }
+
   for (const key of BIDASK_EQ_KEYS) {
     if (key === 'bestBid' || key === 'bestAsk') continue;
     const v = item[key as string];
     if (key === 'liveBiasWindowMin') {
-      if (typeof v === 'number' && v > 0) next.liveBiasWindowMin = v;
+      if (typeof v === 'number' && v > 0 && v !== seed.liveBiasWindowMin) {
+        patch.liveBiasWindowMin = v;
+        changed = true;
+      }
       continue;
     }
-    if (typeof v === 'number' && Number.isFinite(v)) {
-      (next as unknown as Record<string, unknown>)[key as string] = v;
+    if (typeof v === 'number' && Number.isFinite(v) && v !== seed[key]) {
+      (patch as Record<string, unknown>)[key as string] = v;
+      changed = true;
     }
   }
+
   const vol = item.usdcVolume ?? item.volume;
-  if (typeof vol === 'number' && Number.isFinite(vol)) {
-    next.volume = vol;
+  if (typeof vol === 'number' && Number.isFinite(vol) && vol !== seed.volume) {
+    patch.volume = vol;
+    changed = true;
   }
-  return next;
+
+  if (!changed) return seed;
+  return { ...seed, ...patch };
 }
 
 export function useBidAskWS() {

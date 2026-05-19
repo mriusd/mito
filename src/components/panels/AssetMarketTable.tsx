@@ -111,8 +111,8 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
 
-  const priceData = useAppStore((s) => s.priceData);
-  const vwapData = useAppStore((s) => s.vwapData);
+  const priceData = useAppStore((s) => s.priceData[symbol]?.price || 0);
+  const vwapData = useAppStore((s) => s.vwapData[symbol]?.price || 0);
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const manualPriceSlots = useAppStore((s) => s.manualPriceSlots);
@@ -189,8 +189,8 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   };
   const titleColor = colorMap[asset] || 'text-yellow-400';
 
-  const livePrice = priceData[symbol]?.price || 0;
-  const vwapPrice = vwapData[symbol]?.price || 0;
+  const livePrice = priceData;
+  const vwapPrice = vwapData;
   const autoAdjVol = (volatilityData[symbol] || 0.6) * volMultiplier;
   const [sigmaEditing, setSigmaEditing] = useState(false);
   const [manualVolPctInput, setManualVolPctInput] = useState<string>(() => {
@@ -548,9 +548,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       yesDiff={sig?.yesDiff}
                       noDiff={sig?.noDiff}
                       isSelected={selectedMarket?.id === market.id}
-                      livePrice={livePrice}
                       adjVol={adjVol}
-                      bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}
                       noPosSize={noPos?.size}
                       yesOrders={orderLookup[yesTokenId] ?? EMPTY_ORDERS}
@@ -666,9 +664,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       minWidth={60}
                       signalsOnGrid={false}
                       isSelected={selectedMarket?.id === market.id}
-                      livePrice={livePrice}
                       adjVol={adjVol}
-                      bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}
                       noPosSize={noPos?.size}
                       yesOrders={orderLookup[yesTokenId] ?? EMPTY_ORDERS}
@@ -801,7 +797,6 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                   const tokenIds = market.clobTokenIds || [];
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
-                  const conditionMet = isPriceConditionTrue(priceStr, livePrice);
                   const yesPos = yesTokenId ? positionLookup[normalizeClobTokenId(yesTokenId)] : undefined;
                   const noPos = noTokenId ? positionLookup[normalizeClobTokenId(noTokenId)] : undefined;
                   const sig = signalByMarket[market.id];
@@ -815,16 +810,12 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       deltaPriceStr={priceStr}
                       isClosed={!!isClosed}
                       isWeekend={isWeekend}
-                      yesWinning={conditionMet}
-                      noWinning={!conditionMet && livePrice > 0}
                       variant={tableType === 'above' ? 'above' : 'between'}
                       signalsOnGrid={signalsOnGrid}
                       yesDiff={sig?.yesDiff}
                       noDiff={sig?.noDiff}
                       isSelected={selectedMarket?.id === market.id}
-                      livePrice={livePrice}
                       adjVol={adjVol}
-                      bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}
                       noPosSize={noPos?.size}
                       yesOrders={orderLookup[yesTokenId] ?? EMPTY_ORDERS}

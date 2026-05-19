@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { AssetName, Market, Order } from '../../types';
 import { useAppStore } from '../../stores/appStore';
 import { gammaImpliedNoBestBid, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { assetToSymbol } from '../../utils/format';
 import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMath';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
@@ -52,17 +53,13 @@ export type GridMarketCellProps = {
   isClosed?: boolean;
   isPast?: boolean;
   isWeekend?: boolean;
-  yesWinning?: boolean;
-  noWinning?: boolean;
   minWidth?: number;
   signalsOnGrid: boolean;
   yesDiff?: string | null;
   noDiff?: string | null;
   isSelected: boolean;
   isColHighlighted?: boolean;
-  livePrice: number;
   adjVol: number;
-  bsTimeOffsetHours: number;
   yesPosSize?: number;
   noPosSize?: number;
   yesOrders: Order[];
@@ -73,6 +70,27 @@ export type GridMarketCellProps = {
   skipDeltaBg?: boolean;
 };
 
+function isPriceConditionTrue(priceStr: string, live: number): boolean {
+  if (live <= 0) return false;
+  const cleaned = priceStr.replace(/\$/g, '').replace(/,/g, '');
+  if (cleaned.startsWith('>')) {
+    const val = parseFloat(cleaned.substring(1));
+    return !isNaN(val) && live > val;
+  }
+  if (cleaned.startsWith('<')) {
+    const val = parseFloat(cleaned.substring(1));
+    return !isNaN(val) && live < val;
+  }
+  if (cleaned.includes('-')) {
+    const parts = cleaned.split('-');
+    const lo = parseFloat(parts[0]);
+    const hi = parseFloat(parts[1]);
+    return !isNaN(lo) && !isNaN(hi) && live >= lo && live <= hi;
+  }
+  const threshold = parseFloat(cleaned);
+  return !isNaN(threshold) && live >= threshold;
+}
+
 function GridMarketCellInner({
   market,
   asset,
@@ -82,17 +100,13 @@ function GridMarketCellInner({
   isClosed = false,
   isPast = false,
   isWeekend = false,
-  yesWinning = false,
-  noWinning = false,
   minWidth = 68,
   signalsOnGrid,
   yesDiff,
   noDiff,
   isSelected,
   isColHighlighted = false,
-  livePrice,
   adjVol,
-  bsTimeOffsetHours,
   yesPosSize,
   noPosSize,
   yesOrders,
@@ -104,6 +118,16 @@ function GridMarketCellInner({
   const tokenIds = market.clobTokenIds || [];
   const yesTokenId = tokenIds[0] || '';
   const noTokenId = tokenIds[1] || '';
+  const symbol = assetToSymbol(asset);
+
+  const livePrice = useAppStore((s) => s.priceData[symbol]?.price || 0);
+  const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
+  const conditionMet =
+    variant === 'above' || variant === 'between'
+      ? isPriceConditionTrue(deltaPriceStr, livePrice)
+      : false;
+  const yesWinning = conditionMet;
+  const noWinning = !conditionMet && livePrice > 0;
 
   const ws = useAppStore(
     useShallow((s) => ({

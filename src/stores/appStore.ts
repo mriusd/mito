@@ -6,6 +6,7 @@ import {
   ordersEqual,
   positionsEqual,
   recordOfMarketArraysEqual,
+  signalsEqual,
   tradesEqual,
   upOrDownMarketsEqual,
 } from '../lib/marketDataDedupe';
@@ -603,7 +604,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setBackendConnected: (v) => set({ backendConnected: v }),
   setArbs: (a) => set({ arbs: a }),
   setTriArbs: (a) => set({ triArbs: a }),
-  setSignals: (s) => set({ signals: s }),
+  setSignals: (next) => set((s) => (signalsEqual(next, s.signals) ? {} : { signals: next })),
   setProgArbs: (a) => set({ progArbs: a }),
   setSidebarOpen: (v) => set({ sidebarOpen: v }),
   setSelectedMarket: (m) => set({ selectedMarket: m }),

@@ -61,11 +61,15 @@ import {
   walletStakeYUsd,
   walletStakeNUsd,
   toxicRowLedgerLifetimePnlNegative,
+  toxicFlowWalletUniverse,
 } from '../lib/toxicFlowStakeCohort';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
 import {
+  TOXIC_BELL_WALLETS_LS_KEY,
+  TOXIC_BELLS_CHANGED_EVENT,
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
   TOXIC_FAVOURITES_CHANGED_EVENT,
+  readToxicBellWallets,
   readToxicFavouriteWallets,
 } from '../lib/toxicFavouriteWallets';
 import { persistTiltWhaleAmountUsd, readTiltWhaleAmountUsd } from '../lib/tiltWhaleAmountUsd';
@@ -347,6 +351,8 @@ const SIDEBAR_NOTIFY_WHALE_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-whale-m
 const SIDEBAR_NOTIFY_WHALE_IGNORE_NEGATIVE_PNL_KEY = 'polybot-sidebar-notify-whale-ignore-negative-pnl';
 const SIDEBAR_NOTIFY_DOUBLE_RING_KEY = 'polybot-sidebar-notify-double-ring';
 const SIDEBAR_NOTIFY_WHALE_RING_KEY = 'polybot-sidebar-notify-whale-ring';
+const SIDEBAR_NOTIFY_BELL_RING_KEY = 'polybot-sidebar-notify-bell-ring';
+const BELL_WALLET_RING_INTERVAL_MS = 10_000;
 const SIDEBAR_NOTIFY_TILT_MKT_UPDOWN_KEY = 'polybot-sidebar-notify-tilt-mkt-updown';
 const SIDEBAR_NOTIFY_TILT_MKT_HIT_KEY = 'polybot-sidebar-notify-tilt-mkt-hit';
 const SIDEBAR_NOTIFY_TILT_MKT_ABOVE_KEY = 'polybot-sidebar-notify-tilt-mkt-above';
@@ -592,6 +598,16 @@ function readNotifyWhaleRing(): boolean {
     return v === '1';
   } catch {
     return false;
+  }
+}
+
+function readNotifyBellRing(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_BELL_RING_KEY);
+    if (v === null) return true;
+    return v === '1';
+  } catch {
+    return true;
   }
 }
 
@@ -863,6 +879,7 @@ export function Sidebar() {
   const [notifyStakedMinUsd, setNotifyStakedMinUsd] = useState(readNotifyStakedMinUsd);
   const [notifyWhaleAmountUsd, setNotifyWhaleAmountUsd] = useState(readTiltWhaleAmountUsd);
   const [notifyWhaleRing, setNotifyWhaleRing] = useState(readNotifyWhaleRing);
+  const [notifyBellRing, setNotifyBellRing] = useState(readNotifyBellRing);
   const [notifyWhaleMaxPriceCents, setNotifyWhaleMaxPriceCents] = useState(readNotifyWhaleMaxPriceCents);
   const [notifyWhaleIgnoreNegativePnl, setNotifyWhaleIgnoreNegativePnl] = useState(readNotifyWhaleIgnoreNegativePnl);
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
@@ -965,6 +982,13 @@ export function Sidebar() {
       /* ignore */
     }
   }, [notifyWhaleRing]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_BELL_RING_KEY, notifyBellRing ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [notifyBellRing]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_WHALE_MAX_PRICE_CENTS_KEY, String(notifyWhaleMaxPriceCents));
@@ -1136,6 +1160,20 @@ export function Sidebar() {
     };
   }, []);
 
+  const [toxicBellSet, setToxicBellSet] = useState(readToxicBellWallets);
+  useEffect(() => {
+    const sync = () => setToxicBellSet(readToxicBellWallets());
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === TOXIC_BELL_WALLETS_LS_KEY || e.key === null) sync();
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener(TOXIC_BELLS_CHANGED_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(TOXIC_BELLS_CHANGED_EVENT, sync);
+    };
+  }, []);
+
   const toxicTabViews = useMemo(
     () => (toxicFlowData ? buildToxicFlowTabWalletViews(toxicFlowData, toxicFavSet, notifyWhaleAmountUsd) : null),
     [toxicFlowData, toxicFavSet, notifyWhaleAmountUsd],
@@ -1158,6 +1196,16 @@ export function Sidebar() {
 
   /** Same wallets + ordering as Toxic Flow dialog Whales tab (floor = Tilt whale USD). */
   const toxicStripWhaleWallets = toxicTabViews?.whales ?? [];
+
+  /** ≥1 bell-marked wallet in toxic-flow holders for this market. */
+  const hasBellWalletOnMarket = useMemo(() => {
+    if (!toxicFlowData || toxicBellSet.size === 0) return false;
+    for (const w of toxicFlowWalletUniverse(toxicFlowData)) {
+      const k = (w.wallet || '').trim().toLowerCase();
+      if (k && toxicBellSet.has(k)) return true;
+    }
+    return false;
+  }, [toxicFlowData, toxicBellSet]);
 
   /** True when ≥1 toxic-flow whale (|Staked Net| ≥ floor) has dominant-leg avg entry **strictly below** max Whale Price (¢). */
   const notifyWhalePassesPriceGate = useMemo(() => {
@@ -2071,6 +2119,30 @@ export function Sidebar() {
     notifyDoubleRing,
   ]);
 
+  /** Bell-marked toxic holder on this market → one glass ring every 10s. */
+  useEffect(() => {
+    if (!notifyBellRing || !hasBellWalletOnMarket) return;
+    if (!notifyTiltAppliesToSelectedMarket) return;
+    if (!notifyVolatilityGatePasses) return;
+
+    const mul = notifySoundPitchMul * 1.12;
+    const rt = notifyRingTimeS;
+    const tick = () => {
+      void playTiltNotifySoundStrikes('green', mul, rt, 1);
+    };
+
+    tick();
+    const id = window.setInterval(tick, BELL_WALLET_RING_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [
+    notifyBellRing,
+    hasBellWalletOnMarket,
+    notifyTiltAppliesToSelectedMarket,
+    notifyVolatilityGatePasses,
+    notifySoundPitchMul,
+    notifyRingTimeS,
+  ]);
+
   useEffect(() => {
     const p = sidebarSpotStrip?.currentPrice;
     if (!p || p <= 0 || !sidebarSpotCurrentPriceRef.current) return;
@@ -2865,6 +2937,15 @@ export function Sidebar() {
                 />
                 <span>Whale Ring</span>
               </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="rounded accent-amber-500"
+                  checked={notifyBellRing}
+                  onChange={(e) => setNotifyBellRing(e.target.checked)}
+                />
+                <span>Bell Ring</span>
+              </label>
               <div className="flex items-center gap-3 flex-wrap">
                 <label className="flex items-center gap-2 shrink-0">
                   <span className="text-gray-400 whitespace-nowrap">Whale amount (USDC)</span>
@@ -2913,9 +2994,12 @@ export function Sidebar() {
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
                 Whale Ring repeats while that condition holds (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, or minimum staked. If Max volatility % is &gt; 0 in this dialog, Whale Ring pauses while chart σ exceeds it (same gate as cohort tilt). Cohort tilt bursts still obey staked minimum plus Double Ring.
               </p>
+              <p className="text-[10px] text-gray-500 m-0 leading-snug">
+                Bell Ring: one strike every 10s while any Toxic-flow bell wallet (🔔) is a holder on this market. Uses market filters and Max volatility % gate; does not require Tilt Ring.
+              </p>
               <div
                 className={
-                  notifyPlaySound || notifyWhaleRing
+                  notifyPlaySound || notifyWhaleRing || notifyBellRing
                     ? 'transition-opacity'
                     : 'opacity-35 blur-[2.5px] pointer-events-none select-none transition-opacity'
                 }

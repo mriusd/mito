@@ -18,7 +18,22 @@ type Listener = (s: ExplainerState) => void;
 let _state: ExplainerState = { ...initialState };
 let _listeners: Listener[] = [];
 
-function notify() { _listeners.forEach(fn => fn({ ..._state })); }
+function notify() {
+  _listeners.forEach((fn) => fn({ ..._state }));
+}
+
+export function isSignatureExplainerVisible(): boolean {
+  return _state.visible;
+}
+
+/** Fires when explainer opens, closes, or changes phase. */
+export function subscribeSignatureExplainer(listener: () => void): () => void {
+  const wrapped = () => listener();
+  _listeners.push(wrapped);
+  return () => {
+    _listeners = _listeners.filter((l) => l !== wrapped);
+  };
+}
 
 function close() {
   _state = { ...initialState };

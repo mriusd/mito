@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, Suspense, useSyncExternalStore } from 'react';
 import { useAccount } from 'wagmi';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
@@ -79,6 +79,7 @@ import {
   persistSidebarHoldersExpandTipDismissed,
   readSidebarHoldersExpandTipDismissed,
 } from '../lib/sidebarHoldersExpandTip';
+import { isOnboardingBlockingUiOpen, subscribeOnboardingBlockingUi } from '../lib/onboardingBlockingUi';
 import {
   ArrowRight,
   Bell,
@@ -2777,6 +2778,11 @@ export function Sidebar() {
   const sidebarToxicEffective = toxicSidebarExpanded && canShowEmbeddedToxic;
   const toxicExpandHandleRef = useRef<HTMLButtonElement>(null);
   const [holdersExpandTipOpen, setHoldersExpandTipOpen] = useState(false);
+  const onboardingBlockingUiOpen = useSyncExternalStore(
+    subscribeOnboardingBlockingUi,
+    isOnboardingBlockingUiOpen,
+    () => false,
+  );
   const dismissHoldersExpandTip = useCallback(() => {
     persistSidebarHoldersExpandTipDismissed();
     setHoldersExpandTipOpen(false);
@@ -2791,12 +2797,22 @@ export function Sidebar() {
       setHoldersExpandTipOpen(false);
       return;
     }
+    if (onboardingBlockingUiOpen) {
+      setHoldersExpandTipOpen(false);
+      return;
+    }
     if (!sidebarOpen || !canShowEmbeddedToxic || sidebarToxicEffective) {
       setHoldersExpandTipOpen(false);
       return;
     }
     setHoldersExpandTipOpen(true);
-  }, [sidebarOpen, canShowEmbeddedToxic, sidebarToxicEffective, selectedMarket?.conditionId]);
+  }, [
+    sidebarOpen,
+    canShowEmbeddedToxic,
+    sidebarToxicEffective,
+    selectedMarket?.conditionId,
+    onboardingBlockingUiOpen,
+  ]);
 
   useEffect(() => {
     if (sidebarToxicEffective && holdersExpandTipOpen) dismissHoldersExpandTip();

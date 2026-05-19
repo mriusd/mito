@@ -175,7 +175,7 @@ declare namespace ReactGridLayout {
 export type PersistedGridLayouts = ReactGridLayout.Layouts;
 
 // Bump this version to force-reset all users' saved layouts to fresh defaults
-const LAYOUT_VERSION = 7;
+const LAYOUT_VERSION = 8;
 
 // Run version check once before any load functions
 (function checkLayoutVersion() {

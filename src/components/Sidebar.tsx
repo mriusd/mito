@@ -60,6 +60,7 @@ import {
   walletStakeNetAbsUsd,
   walletStakeYUsd,
   walletStakeNUsd,
+  toxicRowLedgerLifetimePnlNegative,
 } from '../lib/toxicFlowStakeCohort';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
 import {
@@ -343,6 +344,7 @@ const SIDEBAR_NOTIFY_SOUND_FREQ_KEY = 'polybot-sidebar-notify-sound-freq';
 const SIDEBAR_NOTIFY_RING_TIME_S_KEY = 'polybot-sidebar-notify-ring-time-s';
 const SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-sound-max-price-cents';
 const SIDEBAR_NOTIFY_WHALE_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-whale-max-price-cents';
+const SIDEBAR_NOTIFY_WHALE_IGNORE_NEGATIVE_PNL_KEY = 'polybot-sidebar-notify-whale-ignore-negative-pnl';
 const SIDEBAR_NOTIFY_DOUBLE_RING_KEY = 'polybot-sidebar-notify-double-ring';
 const SIDEBAR_NOTIFY_WHALE_RING_KEY = 'polybot-sidebar-notify-whale-ring';
 const SIDEBAR_NOTIFY_TILT_MKT_UPDOWN_KEY = 'polybot-sidebar-notify-tilt-mkt-updown';
@@ -605,6 +607,16 @@ function readNotifyWhaleMaxPriceCents(): number {
   }
 }
 
+function readNotifyWhaleIgnoreNegativePnl(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_WHALE_IGNORE_NEGATIVE_PNL_KEY);
+    if (v === null) return false;
+    return v === '1';
+  } catch {
+    return false;
+  }
+}
+
 /** Avg entry in ¢ on heavier staked leg (`inv × price`); inventory fallback when stake legs missing. */
 function dominantStakedLegAvgPriceCents(w: WalletPosition): number | null {
   const sy = walletStakeYUsd(w);
@@ -852,6 +864,7 @@ export function Sidebar() {
   const [notifyWhaleAmountUsd, setNotifyWhaleAmountUsd] = useState(readTiltWhaleAmountUsd);
   const [notifyWhaleRing, setNotifyWhaleRing] = useState(readNotifyWhaleRing);
   const [notifyWhaleMaxPriceCents, setNotifyWhaleMaxPriceCents] = useState(readNotifyWhaleMaxPriceCents);
+  const [notifyWhaleIgnoreNegativePnl, setNotifyWhaleIgnoreNegativePnl] = useState(readNotifyWhaleIgnoreNegativePnl);
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
   const [notifyRingTimeS, setNotifyRingTimeS] = useState(readNotifyRingTimeS);
   const [notifySoundMaxPriceCents, setNotifySoundMaxPriceCents] = useState(readNotifySoundMaxPriceCents);
@@ -959,6 +972,16 @@ export function Sidebar() {
       /* ignore */
     }
   }, [notifyWhaleMaxPriceCents]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        SIDEBAR_NOTIFY_WHALE_IGNORE_NEGATIVE_PNL_KEY,
+        notifyWhaleIgnoreNegativePnl ? '1' : '0',
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [notifyWhaleIgnoreNegativePnl]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_SOUND_FREQ_KEY, String(notifySoundFreqSlider));
@@ -1141,12 +1164,13 @@ export function Sidebar() {
     if (!toxicTabViews) return false;
     const maxPc = notifyWhaleMaxPriceCents;
     for (const w of toxicTabViews.whales) {
+      if (notifyWhaleIgnoreNegativePnl && toxicRowLedgerLifetimePnlNegative(w)) continue;
       const pc = dominantStakedLegAvgPriceCents(w);
       if (pc == null || !Number.isFinite(pc)) continue;
       if (pc < maxPc) return true;
     }
     return false;
-  }, [toxicTabViews, notifyWhaleMaxPriceCents]);
+  }, [toxicTabViews, notifyWhaleMaxPriceCents, notifyWhaleIgnoreNegativePnl]);
 
   /** Active cohort thresholds (Toxic strip bars): every non-zero pct must agree on direction vs its lean. */
   const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {
@@ -2051,6 +2075,7 @@ export function Sidebar() {
     topBarExtremeBgFlash,
     notifyWhaleRing,
     notifyWhalePassesPriceGate,
+    notifyWhaleIgnoreNegativePnl,
     notifyPlaySound,
     notifyStakedGatePasses,
     notifyVolatilityGatePasses,
@@ -2886,9 +2911,18 @@ export function Sidebar() {
                     }}
                   />
                 </label>
+                <label className="flex items-center gap-2 shrink-0 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyWhaleIgnoreNegativePnl}
+                    onChange={(e) => setNotifyWhaleIgnoreNegativePnl(e.target.checked)}
+                  />
+                  <span className="text-gray-400 whitespace-nowrap">Ignore negative pnl</span>
+                </label>
               </div>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Wallets with |Staked Net| USD ≥ Whale amount are whales (same as Toxic Flow tab). Whale Ring fires only when at least one such wallet has avg entry on its heavier staked leg **below** Max Whale Price (ledger price_yes / price_no).
+                Wallets with |Staked Net| USD ≥ Whale amount are whales (same as Toxic Flow tab). Whale Ring fires only when at least one such wallet has avg entry on its heavier staked leg **below** Max Whale Price (ledger price_yes / price_no). Ignore negative pnl skips whales whose batched ledger lifetime PnL is &lt; 0.
               </p>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
                 Whale Ring repeats while that condition holds (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, or minimum staked. If Max volatility % is &gt; 0 in this dialog, Whale Ring pauses while chart σ exceeds it (same gate as cohort tilt). Cohort tilt bursts still obey staked minimum plus Double Ring.

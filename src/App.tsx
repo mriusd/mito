@@ -219,7 +219,13 @@ function App() {
       </div>
 
       {/* Main content area */}
-      <div className="flex-1 min-h-0 flex ml-[288px] max-[767px]:ml-0">
+      <div
+        className={`flex-1 min-h-0 flex max-[767px]:ml-0 md:transition-[margin-left] md:duration-[250ms] md:ease-[ease] ${
+          selectedMarket?.conditionId?.trim()
+            ? 'md:ml-[calc(18rem+1.5rem)]'
+            : 'md:ml-72'
+        }`}
+      >
         {/* Canvas area */}
         <div className="flex-1 min-h-0 overflow-auto px-2 pb-2">
           {loading ? (

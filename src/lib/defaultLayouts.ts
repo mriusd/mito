@@ -34,7 +34,6 @@ const xxl: Record<string, LayoutRect> = {
   'asset-ETH':               { x: 50,  y: 0,  w: 50,  h: 50 },
   'trades-positions-orders': { x: 0,   y: 50, w: 33,  h: 50 },
   'updown-overview':         { x: 33,  y: 50, w: 33,  h: 25 },
-  'updown-hud':              { x: 33,  y: 75, w: 33,  h: 25 },
   'signals':                 { x: 33,  y: 75, w: 33,  h: 25 },
   'chat':                    { x: 66,  y: 50, w: 34,  h: 50 },
 };
@@ -48,7 +47,6 @@ const xxlTall: Record<string, LayoutRect> = {
   'pnl':                     { x: 0,   y: 50, w: 33,  h: 15 },
   'trades-positions-orders': { x: 0,   y: 65, w: 33,  h: 35 },
   'updown-overview':         { x: 33,  y: 50, w: 33,  h: 15 },
-  'updown-hud':              { x: 33,  y: 65, w: 33,  h: 35 },
   'signals':                 { x: 33,  y: 65, w: 33,  h: 35},
   'chat':                    { x: 66,  y: 50, w: 34,  h: 50 },
 };
@@ -58,7 +56,6 @@ const xl: Record<string, LayoutRect> = {
   'asset-BTC':               { x: 0,   y: 0,  w: 100, h: 50 },
   'trades-positions-orders': { x: 0,   y: 50, w: 33,  h: 50 },
   'updown-overview':         { x: 33,  y: 50, w: 33,  h: 25 },
-  'updown-hud':              { x: 66,  y: 50, w: 34,  h: 25 },
   'signals':                 { x: 33,  y: 75, w: 33,  h: 25 },
   'chat':                    { x: 66,  y: 50, w: 34,  h: 50 },
 };
@@ -68,7 +65,6 @@ const lg: Record<string, LayoutRect> = {
   'asset-BTC':               { x: 0,   y: 0,  w: 100, h: 50 },
   'trades-positions-orders': { x: 0,   y: 50, w: 50,  h: 25 },
   'updown-overview':         { x: 50,  y: 50, w: 50,  h: 25 },
-  'updown-hud':              { x: 0,   y: 75, w: 50,  h: 25 },
   'chat':                    { x: 0,   y: 75, w: 50,  h: 25 },
   'signals':                 { x: 50,  y: 75, w: 50,  h: 25 },
 };
@@ -78,7 +74,6 @@ const md: Record<string, LayoutRect> = {
   'asset-BTC':               { x: 0,   y: 0,  w: 100, h: 50 },
   'trades-positions-orders': { x: 0,   y: 50, w: 50,  h: 25 },
   'updown-overview':         { x: 50,  y: 50, w: 50,  h: 25 },
-  'updown-hud':              { x: 0,   y: 75, w: 50,  h: 25 },
   'chat':                    { x: 0,   y: 75, w: 50,  h: 25 },
   'signals':                 { x: 50,  y: 75, w: 50,  h: 25 },
 };
@@ -87,7 +82,6 @@ const md: Record<string, LayoutRect> = {
 const sm: Record<string, LayoutRect> = {
   'asset-BTC':               { x: 0, y: 0,   w: 100, h: 50 },
   'updown-overview':         { x: 0, y: 50,  w: 100, h: 25 },
-  'updown-hud':              { x: 0, y: 100, w: 100, h: 25 },
   'trades-positions-orders': { x: 0, y: 75,  w: 100, h: 20 },
   'signals':                 { x: 0, y: 75,  w: 100, h: 25 },
   'chat':                    { x: 0, y: 100,  w: 100, h: 25 },
@@ -97,7 +91,6 @@ const sm: Record<string, LayoutRect> = {
 const xs: Record<string, LayoutRect> = {
   'asset-BTC':               { x: 0, y: 0,   w: 100, h: 50 },
   'updown-overview':         { x: 0, y: 50,  w: 100, h: 25 },
-  'updown-hud':              { x: 0, y: 125, w: 100, h: 35 },
   'trades-positions-orders': { x: 0, y: 75,  w: 100, h: 25 },  
   'signals':                 { x: 0, y: 100,  w: 100, h: 25 },
   'chat':                    { x: 0, y: 125,  w: 100, h: 50 },
@@ -107,7 +100,6 @@ const xs: Record<string, LayoutRect> = {
 const xxs: Record<string, LayoutRect> = {
   'asset-BTC':               { x: 0, y: 0,   w: 100, h: 80 },
   'updown-overview':         { x: 0, y: 80,  w: 100, h: 30 },
-  'updown-hud':              { x: 0, y: 260, w: 100, h: 55 },
   'trades-positions-orders': { x: 0, y: 110,  w: 100, h: 50 },  
   'signals':                 { x: 0, y: 160,  w: 100, h: 50 },
   'chat':                    { x: 0, y: 210,  w: 100, h: 50 },

@@ -2276,29 +2276,21 @@ export function ToxicFlowDialog({
 
           {!loading && !error && data && (
             <>
-              <div className="shrink-0 flex flex-col gap-3 overflow-x-hidden overflow-y-auto min-h-0 max-h-[min(520px,46vh)] pr-0.5 toxic-flow-scroll-stable">
-              {/* Summary Cards */}
-              <div
-                className={
-                  embedded
-                    ? 'grid grid-cols-3 gap-2 min-w-0'
-                    : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 min-w-0'
-                }
-              >
-                <div className="bg-gray-900 rounded p-2 text-center">
-                  <div className="text-[10px] text-gray-500">Wallets</div>
+              <div className="shrink-0 grid grid-cols-6 gap-1.5 min-w-0 w-full mb-2">
+                <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+                  <div className="text-[10px] text-gray-500 truncate">Wallets</div>
                   <div className="text-sm font-bold text-white tabular-nums" title={String(data.totalWallets)}>
                     {formatThousandsAsK(data.totalWallets)}
                   </div>
                 </div>
-                <div className="bg-gray-900 rounded p-2 text-center">
-                  <div className="text-[10px] text-gray-500">On-chain Fills</div>
+                <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+                  <div className="text-[10px] text-gray-500 truncate">On-chain Fills</div>
                   <div className="text-sm font-bold text-white tabular-nums" title={String(data.totalTrades)}>
                     {formatThousandsAsK(data.totalTrades)}
                   </div>
                 </div>
-                <div className="bg-gray-900 rounded p-2 text-center">
-                  <div className="text-[10px] text-gray-500">USDC Volume</div>
+                <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+                  <div className="text-[10px] text-gray-500 truncate">USDC Volume</div>
                   <div
                     className="text-sm font-bold text-yellow-400 tabular-nums truncate"
                     title={`$${data.totalUsdcIn.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -2307,10 +2299,10 @@ export function ToxicFlowDialog({
                   </div>
                 </div>
                 <div
-                  className="bg-gray-900 rounded p-2 text-center"
+                  className="bg-gray-900 rounded p-1.5 text-center min-w-0"
                   title="Σ_w |inv_y×px_y − inv_n×px_n| over all wallets (same basis as per-wallet Staked Net). Old ‖Σ|YES USD| − Σ|NO USD|‖ shown only if sum field missing."
                 >
-                  <div className="text-[10px] text-gray-500">Staked</div>
+                  <div className="text-[10px] text-gray-500 truncate">Staked</div>
                   <div className="text-sm font-bold text-yellow-400 tabular-nums truncate">
                     {dialogStakedNetAbsUsd != null ? (
                       <span title={`$${dialogStakedNetAbsUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}>
@@ -2321,14 +2313,14 @@ export function ToxicFlowDialog({
                     )}
                   </div>
                 </div>
-                <div className="bg-gray-900 rounded p-2 text-center">
-                  <div className="text-[10px] text-gray-500">Concentration</div>
+                <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+                  <div className="text-[10px] text-gray-500 truncate">Concentration</div>
                   <div className={`text-sm font-bold ${data.concentration > 0.5 ? 'text-red-400' : data.concentration > 0.3 ? 'text-yellow-400' : 'text-green-400'}`}>
                     {(data.concentration * 100).toFixed(0)}%
                   </div>
                 </div>
-                <div className="bg-gray-900 rounded p-2 text-center">
-                  <div className="text-[10px] text-gray-500">Total Shares</div>
+                <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+                  <div className="text-[10px] text-gray-500 truncate">Total Shares</div>
                   <div
                     className="text-sm font-bold text-gray-200 tabular-nums truncate"
                     title={String(Math.floor(data.totalShares || 0))}
@@ -2368,7 +2360,6 @@ export function ToxicFlowDialog({
                   </p>
                 </div>
               )}
-              </div>
 
               <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 w-full">
                 {tabWalletViews && layoutMode === 'single' && (

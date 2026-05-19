@@ -16,6 +16,7 @@ import { ArbDialog } from './components/ArbDialog';
 import { PnlDrilldownDialog } from './components/PnlDrilldownDialog';
 import { SigningDialog } from './components/SigningDialog';
 import { SignatureExplainerDialog } from './components/SignatureExplainerDialog';
+import { MobileScreenNotice } from './components/MobileScreenNotice';
 import { lazyWithChunkReload } from './utils/lazyWithChunkReload';
 import {
   adjacentMarketCell,
@@ -263,6 +264,8 @@ function App() {
       {/* Signing Dialog */}
       <SigningDialog />
       <SignatureExplainerDialog />
+
+      <MobileScreenNotice />
 
       {/* Toast container */}
       <div id="toastContainer" className="toast-container" />

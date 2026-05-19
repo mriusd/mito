@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { formatPrice, assetToSymbol, formatDateShort, getPositionClobTokenId, normalizeClobTokenId, formatPriceShort, formatThousandsAsK } from '../../utils/format';
+import { formatPrice, assetToSymbol, formatDateShort, getPositionClobTokenId, normalizeClobTokenId, formatPriceShort, formatThousandsAsK, parseStrikeTokenToNumber } from '../../utils/format';
 import { saveRange } from '../../api';
 import { showToast } from '../../utils/toast';
 import { PriceTicks } from '../PriceTicks';
@@ -149,6 +149,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   const symbol = assetToSymbol(asset);
   const aboveMarketsForAsset = useAppStore((s) => s.aboveMarkets[asset] ?? EMPTY_MARKETS);
   const priceOnMarketsForAsset = useAppStore((s) => s.priceOnMarkets[asset] ?? EMPTY_MARKETS);
+  const marketsLastUpdated = useAppStore((s) => s.lastUpdated);
   const weeklyHitMarketsForAsset = useAppStore((s) => s.weeklyHitMarkets[asset] ?? EMPTY_MARKETS);
   const upOrDownMarketsForAsset = useAppStore((s) => s.upOrDownMarkets[asset] ?? EMPTY_UDM);
   const livePrice = useThrottledStorePrice(symbol, 1000);
@@ -296,26 +297,22 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
 
   const priceShortAsset = asset === 'ETH' ? 'ETH' : undefined;
 
-  // Numeric value for sorting prices (handles <, >, ranges)
+  // Numeric value for sorting prices (handles <, >, ranges, k suffix)
   const getNumericValue = (str: string) => {
-    const s = str.replace(/\$/g, '').replace(/,/g, '');
-    if (s.startsWith('<')) return parseFloat(s.substring(1)) - 0.5;
-    if (s.startsWith('>')) return parseFloat(s.substring(1)) + 1000000;
-    if (s.includes('-')) return parseFloat(s.split('-')[0]);
-    return parseFloat(s) || 0;
+    const s = str.replace(/\$/g, '').replace(/,/g, '').trim();
+    if (s.startsWith('<')) return parseStrikeTokenToNumber(s.substring(1)) - 0.5;
+    if (s.startsWith('>')) return parseStrikeTokenToNumber(s.substring(1)) + 1_000_000;
+    if (s.includes('-')) return parseStrikeTokenToNumber(s.split('-')[0]) || 0;
+    return parseStrikeTokenToNumber(s) || 0;
   };
 
   // Parse price bounds for % change calculation
   const parsePriceBounds = (str: string) => {
-    let s = str.replace(/\$/g, '').replace(/,/g, '');
+    let s = str.replace(/\$/g, '').replace(/,/g, '').trim();
     const isLt = s.startsWith('<');
     const isGt = s.startsWith('>');
     s = s.replace(/</g, '').replace(/>/g, '');
-    const parseNum = (v: string) => {
-      const m = v.match(/^([\d.]+)(k)?$/i);
-      if (m) return m[2] ? parseFloat(m[1]) * 1000 : parseFloat(m[1]);
-      return parseFloat(v) || 0;
-    };
+    const parseNum = (v: string) => parseStrikeTokenToNumber(v) || 0;
     if (s.includes('-')) {
       const parts = s.split('-');
       return { low: parseNum(parts[0]), high: parseNum(parts[1]) };
@@ -333,23 +330,26 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
     const now = Date.now();
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
 
-    // Collect unique dates by eventSlug
     const dateMap = new Map<string, DateCol>();
     const priceSet = new Set<string>();
     const marketLookup: Record<string, Market> = {};
 
     for (const m of markets) {
       const slug = m.eventSlug || '';
-      const price = m.groupItemTitle || '';
-      if (!price) continue;
+      if (!slug) continue;
       if (!dateMap.has(slug)) {
         dateMap.set(slug, { slug, endDate: m.endDate, title: m.eventTitle || '' });
       }
+    }
+
+    for (const m of markets) {
+      const slug = m.eventSlug || '';
+      const price = m.groupItemTitle || '';
+      if (!slug || !price) continue;
       priceSet.add(price);
       marketLookup[price + '_' + slug] = m;
     }
 
-    // Sort dates by endDate, filter past
     let dates = Array.from(dateMap.values())
       .filter(d => {
         const endTime = d.endDate ? new Date(d.endDate).getTime() : Infinity;
@@ -365,7 +365,6 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
       dates = dates.filter(d => !d.endDate || new Date(d.endDate).getTime() >= now);
     }
 
-    // Sort prices numerically, filter to only those with visible markets
     const prices = Array.from(priceSet)
       .filter(price => dates.some(d => marketLookup[price + '_' + d.slug]))
       .sort((a, b) => getNumericValue(a) - getNumericValue(b));
@@ -376,11 +375,11 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   type GridTableData = ReturnType<typeof buildTableData>;
   const aboveGridData = useMemo(
     () => (aboveMarketsForAsset.length > 0 ? buildTableData(aboveMarketsForAsset, showPast) : null),
-    [aboveMarketsForAsset, showPast],
+    [aboveMarketsForAsset, showPast, marketsLastUpdated],
   );
   const priceOnGridData = useMemo(
     () => (priceOnMarketsForAsset.length > 0 ? buildTableData(priceOnMarketsForAsset, showPast) : null),
-    [priceOnMarketsForAsset, showPast],
+    [priceOnMarketsForAsset, showPast, marketsLastUpdated],
   );
 
   // Check if live price satisfies the market's price condition

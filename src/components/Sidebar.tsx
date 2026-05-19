@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, Suspense, useSyncExternalStore } from 'react';
 import { useAccount } from 'wagmi';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
@@ -83,12 +83,19 @@ import {
   readNotifyBellMinStakeUsd,
   SIDEBAR_NOTIFY_BELL_MIN_STAKE_USD_KEY,
 } from '../lib/toxicBellRowRing';
+import {
+  getMarketNotifyMutedSnapshot,
+  isMarketNotifyMuted,
+  subscribeMarketNotifyMuted,
+  toggleMarketNotifyMuted,
+} from '../lib/marketNotifyMute';
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import {
   ArrowRight,
   Bell,
+  BellOff,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -97,6 +104,7 @@ import {
   GripVertical,
   Pencil,
   Plus,
+  Settings,
   X,
 } from 'lucide-react';
 import type { AssetSymbol, Market, Position } from '../types';
@@ -1041,6 +1049,15 @@ export function Sidebar() {
     () => ((selectedMarket?.conditionId ?? selectedMarket?.id) || '').trim(),
     [selectedMarket?.conditionId, selectedMarket?.id],
   );
+  const mutedMarketsKey = useSyncExternalStore(
+    subscribeMarketNotifyMuted,
+    getMarketNotifyMutedSnapshot,
+    () => '[]',
+  );
+  const isCurrentMarketMuted = useMemo(
+    () => isMarketNotifyMuted(toxicFlowMarketId),
+    [toxicFlowMarketId, mutedMarketsKey],
+  );
   const { data: toxicFlowData, refresh: refreshToxicFlow, refreshing: toxicFlowRefreshing } =
     useToxicFlowMarketStream(toxicFlowMarketId, Boolean(toxicFlowMarketId));
 
@@ -1291,6 +1308,8 @@ export function Sidebar() {
   const tiltSoundLookupRef = useRef(marketLookup);
   tiltSoundMarketRef.current = selectedMarket;
   tiltSoundLookupRef.current = marketLookup;
+  const marketNotifyMutedRef = useRef(isCurrentMarketMuted);
+  marketNotifyMutedRef.current = isCurrentMarketMuted;
 
   /** Recomputed summary / spot-strip when Host reports top-of-book change (not every depth tick). */
   const [topOfBookDigest, setTopOfBookDigest] = useState(0);
@@ -1971,6 +1990,7 @@ export function Sidebar() {
     };
 
     const tick = () => {
+      if (marketNotifyMutedRef.current) return;
       if (cohortNeedsSound && !bidOkForSound()) return;
       if (cohortNeedsSound) void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
       else void playTiltNotifySoundStrikes(k, mul, rt, 3);
@@ -3366,7 +3386,35 @@ export function Sidebar() {
               title="Tilt notification settings"
               aria-label="Tilt notification settings"
             >
-              <Bell className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
+              <Settings className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (toxicFlowMarketId) toggleMarketNotifyMuted(toxicFlowMarketId);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              disabled={!toxicFlowMarketId}
+              className={`shrink-0 rounded-sm border border-gray-600 bg-gray-900/60 p-0.5 w-[18px] min-w-[18px] flex items-center justify-center hover:bg-gray-700/80 transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+                isCurrentMarketMuted ? 'text-gray-500' : 'text-amber-300'
+              }`}
+              title={
+                isCurrentMarketMuted
+                  ? 'Unmute notifications for this market'
+                  : 'Mute notifications for this market'
+              }
+              aria-label={
+                isCurrentMarketMuted
+                  ? 'Unmute notifications for this market'
+                  : 'Mute notifications for this market'
+              }
+              aria-pressed={isCurrentMarketMuted}
+            >
+              {isCurrentMarketMuted ? (
+                <BellOff className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
+              ) : (
+                <Bell className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
+              )}
             </button>
             {upDownCountdown && (
               <span className={`text-xs font-bold flex-shrink-0 flex items-center gap-0.5 ${upDownCountdown === 'Expired' ? 'text-red-400' : upDownRemaining < 60000 ? 'text-red-400' : upDownRemaining < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>

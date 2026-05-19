@@ -63,6 +63,11 @@ import {
   subscribeNotifyBellMinStakeUsd,
   useToxicBellRowRingSound,
 } from '../lib/toxicBellRowRing';
+import {
+  getMarketNotifyMutedSnapshot,
+  isMarketNotifyMuted,
+  subscribeMarketNotifyMuted,
+} from '../lib/marketNotifyMute';
 import { InlineConfirmCancelInput } from './InlineConfirmCancelInput';
 import {
   normalizeToxicWalletTagInput,
@@ -2355,6 +2360,15 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
     getNotifyBellMinStakeUsdSnapshot,
     () => '100',
   );
+  const mutedMarketsKey = useSyncExternalStore(
+    subscribeMarketNotifyMuted,
+    getMarketNotifyMutedSnapshot,
+    () => '[]',
+  );
+  const marketNotifyMuted = useMemo(
+    () => isMarketNotifyMuted(marketId),
+    [marketId, mutedMarketsKey],
+  );
   const bellFlashingRowCount = useMemo(() => {
     const bellWallets = readToxicBellWallets();
     const floor = readNotifyBellMinStakeUsd();
@@ -2367,7 +2381,7 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
     }
     return count;
   }, [tabWalletViews, bellWalletsKey, bellMinStakeKey]);
-  useToxicBellRowRingSound(bellFlashingRowCount, open);
+  useToxicBellRowRingSound(bellFlashingRowCount, open && !marketNotifyMuted);
   return (
     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 w-full">
       {layoutMode === 'single' && (

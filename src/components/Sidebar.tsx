@@ -73,6 +73,12 @@ import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
+import { SidebarHoldersExpandTip } from './SidebarHoldersExpandTip';
+import {
+  isDesktopScreenViewport,
+  persistSidebarHoldersExpandTipDismissed,
+  readSidebarHoldersExpandTipDismissed,
+} from '../lib/sidebarHoldersExpandTip';
 import {
   ArrowRight,
   Bell,
@@ -2769,6 +2775,32 @@ export function Sidebar() {
   const canShowEmbeddedToxic =
     !isMobileSheet && !!selectedMarket && (selectedMarket.conditionId || '').trim().length > 0;
   const sidebarToxicEffective = toxicSidebarExpanded && canShowEmbeddedToxic;
+  const toxicExpandHandleRef = useRef<HTMLButtonElement>(null);
+  const [holdersExpandTipOpen, setHoldersExpandTipOpen] = useState(false);
+  const dismissHoldersExpandTip = useCallback(() => {
+    persistSidebarHoldersExpandTipDismissed();
+    setHoldersExpandTipOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (readSidebarHoldersExpandTipDismissed()) {
+      setHoldersExpandTipOpen(false);
+      return;
+    }
+    if (!isDesktopScreenViewport()) {
+      setHoldersExpandTipOpen(false);
+      return;
+    }
+    if (!sidebarOpen || !canShowEmbeddedToxic || sidebarToxicEffective) {
+      setHoldersExpandTipOpen(false);
+      return;
+    }
+    setHoldersExpandTipOpen(true);
+  }, [sidebarOpen, canShowEmbeddedToxic, sidebarToxicEffective, selectedMarket?.conditionId]);
+
+  useEffect(() => {
+    if (sidebarToxicEffective && holdersExpandTipOpen) dismissHoldersExpandTip();
+  }, [sidebarToxicEffective, holdersExpandTipOpen, dismissHoldersExpandTip]);
 
   const expandSidebarToxicFlowPanel = useCallback(() => {
     if (!canShowEmbeddedToxic) return;
@@ -4888,6 +4920,7 @@ export function Sidebar() {
           <>
           <div className="hidden md:block w-6 shrink-0" aria-hidden />
           <button
+            ref={toxicExpandHandleRef}
             type="button"
             className={`sidebar-toxic-expand-handle hidden md:flex shrink-0 w-6 flex-col justify-center items-center border-l border-gray-700/55 bg-gray-800/95 text-gray-500 hover:text-gray-400 ${sidebarToxicEffective ? '' : 'sidebar-expand-handle-idle-flash'}`}
             title={sidebarToxicEffective ? 'Collapse holders panel' : 'Expand holders panel in sidebar'}
@@ -4895,6 +4928,7 @@ export function Sidebar() {
             aria-label={sidebarToxicEffective ? 'Collapse holders panel' : 'Expand holders panel'}
             onClick={() => {
               preloadToxicFlowDialog();
+              dismissHoldersExpandTip();
               setToxicSidebarExpanded((v) => !v);
             }}
             onPointerDown={(e) => e.stopPropagation()}
@@ -4905,6 +4939,11 @@ export function Sidebar() {
               <ChevronRight className="h-4 w-4" strokeWidth={2} aria-hidden />
             )}
           </button>
+          <SidebarHoldersExpandTip
+            anchorRef={toxicExpandHandleRef}
+            open={holdersExpandTipOpen}
+            onDismiss={dismissHoldersExpandTip}
+          />
           </>
         ) : null}
         {sidebarToxicEffective && selectedMarket ? (

@@ -239,7 +239,6 @@ function stakedNetUsdTableCell(signed: number): ReactNode {
 function stakedNetUsdTableCellWithFlash(signed: number, flash: StakedNetFlashDir | null): ReactNode {
   return (
     <span className="inline-flex w-full items-center justify-end gap-0.5">
-      {stakedNetUsdTableCell(signed)}
       {flash === 'up' && (
         <span
           className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-green-600/45 bg-green-900/65 text-green-100 updown-triangle-badge-flash"
@@ -256,6 +255,7 @@ function stakedNetUsdTableCellWithFlash(signed: number, flash: StakedNetFlashDir
           <Triangle className="h-2 w-2 rotate-180 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
         </span>
       )}
+      {stakedNetUsdTableCell(signed)}
     </span>
   );
 }

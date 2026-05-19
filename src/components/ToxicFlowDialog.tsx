@@ -81,7 +81,6 @@ import {
   stakedNetSortKeyAsc,
   stakeSortKeyDesc,
   toxicFlowPayloadEqual,
-  coalesceToxicFlowPayload,
   clearToxicFlowTabWalletViewsCache,
   buildToxicFlowTabWalletViews,
   ledgerWinRateFracFromStored,
@@ -98,6 +97,11 @@ import {
   TILT_WHALE_AMOUNT_USD_CHANGED_EVENT,
   TILT_WHALE_AMOUNT_USD_LS_KEY,
 } from '../lib/tiltWhaleAmountUsd';
+import {
+  applyToxicFlowWSMessage,
+  toxicFlowFullSnapshot,
+  type ToxicFlowWSMessage,
+} from '../lib/toxicFlowWs';
 
 function subscribeTiltWhaleAmountUsd(listener: () => void): () => void {
   const onCustom = () => listener();
@@ -125,6 +129,9 @@ interface ToxicFlowDialogProps {
    * 1–2k wallet row graphs retained in closures (MessageEvent / Function churn in heap snapshots).
    */
   streamData?: ToxicFlowData | null;
+  /** Embedded panel: HTTP full refresh from parent stream hook. */
+  onRefreshStream?: () => void | Promise<void>;
+  streamRefreshing?: boolean;
 }
 
 type Tab =
@@ -1696,6 +1703,8 @@ export function ToxicFlowDialog({
   onClose,
   embedded = false,
   streamData = undefined,
+  onRefreshStream,
+  streamRefreshing = false,
 }: ToxicFlowDialogProps) {
   const yesTok = (yesTokenId || '').trim();
   const stakedWyLive = useAppStore((s) => {
@@ -1805,9 +1814,9 @@ export function ToxicFlowDialog({
     setInternalError('');
     try {
       const d = await fetchToxicFlow(marketId);
-      const merged = coalesceToxicFlowPayload(internalDataRef.current, d);
-      internalDataRef.current = merged;
-      setInternalData(merged);
+      const snap = toxicFlowFullSnapshot(d);
+      internalDataRef.current = snap;
+      setInternalData(snap);
     } catch (e: unknown) {
       setInternalError((e as Error).message || 'Failed to load');
     } finally {
@@ -1853,15 +1862,12 @@ export function ToxicFlowDialog({
       ws.onmessage = (ev) => {
         if (cancelled) return;
         try {
-          const msg = JSON.parse(String(ev.data)) as { type?: string; data?: ToxicFlowData };
-          if (msg.type === 'toxicFlow' && msg.data && typeof msg.data === 'object') {
-            const next = msg.data;
-            const prev = internalDataRef.current;
-            const merged = coalesceToxicFlowPayload(prev, next);
-            if (prev && toxicFlowPayloadEqual(prev, merged)) return;
-            internalDataRef.current = merged;
-            setInternalData(merged);
-          }
+          const msg = JSON.parse(String(ev.data)) as ToxicFlowWSMessage;
+          const next = applyToxicFlowWSMessage(internalDataRef.current, msg);
+          if (!next) return;
+          if (internalDataRef.current && toxicFlowPayloadEqual(internalDataRef.current, next)) return;
+          internalDataRef.current = next;
+          setInternalData(next);
         } catch {
           /* ignore */
         }
@@ -2053,7 +2059,7 @@ export function ToxicFlowDialog({
               </div>
 
               <div className="flex flex-col flex-1 min-h-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 gap-2">
-                <div className="flex gap-1 border-b border-gray-700 pb-2 shrink-0 flex-wrap">
+                <div className="flex gap-1 border-b border-gray-700 pb-2 shrink-0 flex-wrap items-center">
                   {tabs.map((t) => (
                     <button
                       key={t.key}
@@ -2067,6 +2073,22 @@ export function ToxicFlowDialog({
                       {t.icon} {t.label}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-40"
+                    title="Refresh full toxic flow (HTTP)"
+                    disabled={loading || internalLoading || streamRefreshing}
+                    onClick={() => {
+                      if (embedded) void onRefreshStream?.();
+                      else void load();
+                    }}
+                  >
+                    <RefreshCw
+                      size={12}
+                      className={internalLoading || streamRefreshing ? 'animate-spin' : ''}
+                    />
+                    Refresh
+                  </button>
                 </div>
                 <p className="text-[10px] text-gray-500 leading-snug shrink-0 px-0.5 border-b border-gray-700/80 pb-2">
                   {TOXIC_FLOW_TAB_DESCRIPTIONS[tab]}

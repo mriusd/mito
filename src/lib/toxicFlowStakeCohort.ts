@@ -174,10 +174,6 @@ export function coalesceToxicFlowPayload(prev: ToxicFlowData | null, next: Toxic
   return {
     ...next,
     topHolders: stabilizeWalletList(prev.topHolders ?? [], next.topHolders ?? []),
-    topYes: stabilizeWalletList(prev.topYes ?? [], next.topYes ?? []),
-    topNo: stabilizeWalletList(prev.topNo ?? [], next.topNo ?? []),
-    topVolume: stabilizeWalletList(prev.topVolume ?? [], next.topVolume ?? []),
-    topTraders: stabilizeWalletList(prev.topTraders ?? [], next.topTraders ?? []),
   };
 }
 
@@ -255,10 +251,6 @@ export function toxicFlowPayloadEqual(a: ToxicFlowData, b: ToxicFlowData): boole
     return false;
   }
   if (!toxicFlowListEqual(a.topHolders ?? [], b.topHolders ?? [])) return false;
-  if (!toxicFlowListEqual(a.topYes ?? [], b.topYes ?? [])) return false;
-  if (!toxicFlowListEqual(a.topNo ?? [], b.topNo ?? [])) return false;
-  if (!toxicFlowListEqual(a.topVolume ?? [], b.topVolume ?? [])) return false;
-  if (!toxicFlowListEqual(a.topTraders ?? [], b.topTraders ?? [])) return false;
   const ra = a.redFlags;
   const rb = b.redFlags;
   if ((ra?.length ?? 0) !== (rb?.length ?? 0)) return false;
@@ -378,16 +370,10 @@ export function buildToxicFlowTabWalletViews(
   return views;
 }
 
-/** Deduped union of toxic cohort rows. */
+/** Wallet rows available for client-derived cohort tabs (top 100 holders from API/WS). */
 export function toxicFlowWalletUniverse(data: ToxicFlowData | null | undefined): WalletPosition[] {
   if (!data) return [];
-  return dedupeWalletsByAddress([
-    ...(data.topHolders ?? []),
-    ...(data.topYes ?? []),
-    ...(data.topNo ?? []),
-    ...(data.topVolume ?? []),
-    ...(data.topTraders ?? []),
-  ]);
+  return dedupeWalletsByAddress([...(data.topHolders ?? [])]);
 }
 
 export function normalizeWinRate(v: number | null | undefined): number | null {

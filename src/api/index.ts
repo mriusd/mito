@@ -495,11 +495,8 @@ export interface WalletPosition {
 
 export interface ToxicFlowData {
   marketId: string;
+  /** Top 100 holders by |net|; YES/NO/Smart/Whale tabs are derived client-side from this list. */
   topHolders: WalletPosition[];
-  topYes: WalletPosition[];
-  topNo: WalletPosition[];
-  topVolume: WalletPosition[];
-  topTraders: WalletPosition[];
   totalYesVol: number;
   totalNoVol: number;
   totalShares: number;

@@ -1096,7 +1096,8 @@ export function Sidebar() {
     () => ((selectedMarket?.conditionId ?? selectedMarket?.id) || '').trim(),
     [selectedMarket?.conditionId, selectedMarket?.id],
   );
-  const toxicFlowData = useToxicFlowMarketStream(toxicFlowMarketId, Boolean(toxicFlowMarketId));
+  const { data: toxicFlowData, refresh: refreshToxicFlow, refreshing: toxicFlowRefreshing } =
+    useToxicFlowMarketStream(toxicFlowMarketId, Boolean(toxicFlowMarketId));
 
   const [toxicFavSet, setToxicFavSet] = useState(readToxicFavouriteWallets);
   useEffect(() => {
@@ -4871,6 +4872,8 @@ export function Sidebar() {
                 marketName={marketName}
                 yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
                 streamData={toxicFlowData}
+                onRefreshStream={refreshToxicFlow}
+                streamRefreshing={toxicFlowRefreshing}
                 onClose={closeToxicSidebarPanel}
               />
             </Suspense>

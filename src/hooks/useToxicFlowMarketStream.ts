@@ -1,13 +1,48 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchToxicFlow, type ToxicFlowData } from '../api';
-import { toxicFlowPayloadEqual, coalesceToxicFlowPayload, clearToxicFlowTabWalletViewsCache } from '../lib/toxicFlowStakeCohort';
+import { toxicFlowPayloadEqual, clearToxicFlowTabWalletViewsCache } from '../lib/toxicFlowStakeCohort';
+import { applyToxicFlowWSMessage, toxicFlowFullSnapshot, type ToxicFlowWSMessage } from '../lib/toxicFlowWs';
 import { WS_BASE } from '../lib/env';
 
-/** HTTP snapshot + `/ws/toxic-flow` increments (same payload shape as ToxicFlowDialog when open). */
-export function useToxicFlowMarketStream(marketId: string | undefined | null, enabled = true): ToxicFlowData | null {
+export type ToxicFlowMarketStream = {
+  data: ToxicFlowData | null;
+  /** Refetch full toxic-flow snapshot over HTTP (replaces local state). */
+  refresh: () => Promise<void>;
+  refreshing: boolean;
+};
+
+/** HTTP snapshot + `/ws/toxic-flow` full on subscribe, then add/update/remove deltas. */
+export function useToxicFlowMarketStream(
+  marketId: string | undefined | null,
+  enabled = true,
+): ToxicFlowMarketStream {
   const mid = typeof marketId === 'string' ? marketId.trim() : '';
   const [data, setData] = useState<ToxicFlowData | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const dataRef = useRef<ToxicFlowData | null>(null);
+
+  const applyMessage = useCallback((msg: ToxicFlowWSMessage) => {
+    const next = applyToxicFlowWSMessage(dataRef.current, msg);
+    if (!next) return;
+    if (dataRef.current && toxicFlowPayloadEqual(dataRef.current, next)) return;
+    dataRef.current = next;
+    setData(next);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    if (!mid) return;
+    setRefreshing(true);
+    try {
+      const d = await fetchToxicFlow(mid);
+      const snap = toxicFlowFullSnapshot(d);
+      dataRef.current = snap;
+      setData(snap);
+    } catch {
+      /* keep prior */
+    } finally {
+      setRefreshing(false);
+    }
+  }, [mid]);
 
   useEffect(() => {
     if (!enabled || !mid) {
@@ -22,9 +57,9 @@ export function useToxicFlowMarketStream(marketId: string | undefined | null, en
       try {
         const d = await fetchToxicFlow(mid);
         if (!cancelled) {
-          const merged = coalesceToxicFlowPayload(dataRef.current, d);
-          dataRef.current = merged;
-          setData(merged);
+          const snap = toxicFlowFullSnapshot(d);
+          dataRef.current = snap;
+          setData(snap);
         }
       } catch {
         if (!cancelled) {
@@ -64,15 +99,8 @@ export function useToxicFlowMarketStream(marketId: string | undefined | null, en
       ws.onmessage = (ev) => {
         if (cancelled) return;
         try {
-          const msg = JSON.parse(String(ev.data)) as { type?: string; data?: ToxicFlowData };
-          if (msg.type === 'toxicFlow' && msg.data && typeof msg.data === 'object') {
-            const next = msg.data;
-            const prev = dataRef.current;
-            const merged = coalesceToxicFlowPayload(prev, next);
-            if (prev && toxicFlowPayloadEqual(prev, merged)) return;
-            dataRef.current = merged;
-            setData(merged);
-          }
+          const msg = JSON.parse(String(ev.data)) as ToxicFlowWSMessage;
+          applyMessage(msg);
         } catch {
           /* ignore */
         }
@@ -107,7 +135,11 @@ export function useToxicFlowMarketStream(marketId: string | undefined | null, en
         }
       }
     };
-  }, [enabled, mid]);
+  }, [enabled, mid, applyMessage]);
 
-  return enabled && mid ? data : null;
+  return {
+    data: enabled && mid ? data : null,
+    refresh,
+    refreshing,
+  };
 }

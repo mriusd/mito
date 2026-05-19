@@ -109,6 +109,14 @@ html, body, #root {
   animation: toxic-flow-high-stake-net-bg-flash 1.35s ease-in-out infinite;
 }
 
+/* Toxic Flow: Px Y or Px N ≥ 95¢ — dim row; no whale stake flash on these rows. */
+tr.toxic-flow-row-near-resolved {
+  opacity: 0.48;
+}
+tr.toxic-flow-row-near-resolved:hover {
+  opacity: 0.62;
+}
+
 .toxic-flow-panel-resize-handle {
   position: relative;
   z-index: 2;

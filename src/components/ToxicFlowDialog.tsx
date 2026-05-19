@@ -463,9 +463,18 @@ function rowPulseClassFor(bellActive: boolean, whaleFlash: boolean): string {
   return ROW_PULSE_NONE;
 }
 
-/** Px Y / Px N: gray when share price &gt; 95¢ (resolved / near-certain). */
+/** Share price at or above 95¢ (resolved / near-certain). */
+function sharePriceAtOrAbove95Cents(p: number | undefined): boolean {
+  return p != null && Number.isFinite(p) && p >= 0.95;
+}
+
+function walletHasSharePriceAtOrAbove95Cents(w: WalletPosition): boolean {
+  return sharePriceAtOrAbove95Cents(w.priceYes) || sharePriceAtOrAbove95Cents(w.priceNo);
+}
+
+/** Px Y / Px N: gray when share price ≥ 95¢. */
 function priceSharePxClass(p: number | undefined): string {
-  if (p != null && Number.isFinite(p) && p > 0.95) return 'text-gray-500';
+  if (sharePriceAtOrAbove95Cents(p)) return 'text-gray-500';
   return 'text-yellow-400';
 }
 
@@ -1135,8 +1144,13 @@ function WalletTableBodyRowImpl({
   const stakeNUsd = walletStakeNUsd(w);
   const stakeNetSigned = walletStakeNetSignedUsd(w);
   const stakeNetAbsUsd = walletStakeNetAbsUsd(w);
-  const tiltWhaleRowFlash = Number.isFinite(stakeNetAbsUsd) && stakeNetAbsUsd >= tiltWhaleAmountUsd;
-  const rowClass = walletRowClassForStakedNet(shadeRowByStakedNet, stakeNetSigned) + rowPulseClassFor(bellActive, tiltWhaleRowFlash);
+  const rowNearResolved = walletHasSharePriceAtOrAbove95Cents(w);
+  const tiltWhaleRowFlash =
+    !rowNearResolved && Number.isFinite(stakeNetAbsUsd) && stakeNetAbsUsd >= tiltWhaleAmountUsd;
+  const rowClass =
+    walletRowClassForStakedNet(shadeRowByStakedNet, stakeNetSigned) +
+    rowPulseClassFor(bellActive, tiltWhaleRowFlash) +
+    (rowNearResolved ? ' toxic-flow-row-near-resolved' : '');
   const prevStakeNetRef = useRef<number | null>(null);
   const [stakedNetFlash, setStakedNetFlash] = useState<StakedNetFlashDir | null>(null);
   useEffect(() => {

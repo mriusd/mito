@@ -610,10 +610,10 @@ function readNotifyWhaleMaxPriceCents(): number {
 function readNotifyWhaleIgnoreNegativePnl(): boolean {
   try {
     const v = localStorage.getItem(SIDEBAR_NOTIFY_WHALE_IGNORE_NEGATIVE_PNL_KEY);
-    if (v === null) return false;
+    if (v === null) return true;
     return v === '1';
   } catch {
-    return false;
+    return true;
   }
 }
 

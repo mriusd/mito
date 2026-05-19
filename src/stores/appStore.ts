@@ -348,7 +348,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   })(),
   disableMarketPriceWarning: localStorage.getItem('polymarket-disable-market-price-warning') === 'true',
-  autoSwitchNextMarketOnExpiry: localStorage.getItem('polymarket-auto-switch-next-on-expiry') === 'true',
+  autoSwitchNextMarketOnExpiry: (() => {
+    if (typeof localStorage === 'undefined') return true;
+    const v = localStorage.getItem('polymarket-auto-switch-next-on-expiry');
+    if (v === null) return true;
+    return v === 'true';
+  })(),
 
   aboveMarkets: {},
   priceOnMarkets: {},

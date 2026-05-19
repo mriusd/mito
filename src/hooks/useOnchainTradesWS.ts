@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
 import { API_BASE, WS_BASE } from '../lib/env';
+import { onchainFillKey, walletTradeKey } from '../lib/tradeKeys';
 import type { LiveTrade } from './usePolymarketOB';
 
 /** Cap sidebar / chart tape arrays — 3500 rows × lucide-SVG anchors held hundreds of MB of detached DOM after a few market switches. */
@@ -66,14 +67,36 @@ const ONCHAIN_PUBLIC_TAPE_BUFFER_CAP = 500;
 type BufferedPublicTapeRow = LiveTrade & { __m: string; __tok: string };
 const onchainPublicTapeBuffer: BufferedPublicTapeRow[] = [];
 
-function tapeDedupeKey(t: Pick<LiveTrade, 'txHash' | 'logIndex'>): string {
-  return `${t.txHash || ''}:${t.logIndex ?? ''}`;
+function stampLiveTradeId(t: LiveTrade): LiveTrade {
+  if (t.id) return t;
+  const id = onchainFillKey(t.txHash, t.logIndex);
+  return id ? { ...t, id } : t;
+}
+
+function liveTradeDedupeKey(t: Pick<LiveTrade, 'id' | 'txHash' | 'logIndex'>): string {
+  return t.id || onchainFillKey(t.txHash, t.logIndex);
 }
 
 function prependDedupedSortedTape(prev: LiveTrade[], t: LiveTrade, cap: number): LiveTrade[] {
-  const key = tapeDedupeKey(t);
-  const deduped = key && key !== ':' ? prev.filter((x) => tapeDedupeKey(x) !== key) : prev;
-  const merged = [t, ...deduped];
+  const stamped = stampLiveTradeId(t);
+  const key = liveTradeDedupeKey(stamped);
+  if (!key) {
+    const merged = [stamped, ...prev];
+    merged.sort((a, b) => {
+      const td = (b.timestamp ?? 0) - (a.timestamp ?? 0);
+      if (td !== 0) return td;
+      return (b.logIndex ?? 0) - (a.logIndex ?? 0);
+    });
+    return merged.slice(0, cap);
+  }
+  const byKey = new Map<string, LiveTrade>();
+  byKey.set(key, stamped);
+  for (const x of prev) {
+    const k = liveTradeDedupeKey(x);
+    if (!k || k === key) continue;
+    byKey.set(k, x.id ? x : stampLiveTradeId(x));
+  }
+  const merged = Array.from(byKey.values());
   merged.sort((a, b) => {
     const td = (b.timestamp ?? 0) - (a.timestamp ?? 0);
     if (td !== 0) return td;
@@ -110,11 +133,11 @@ function filterPublicTapeBuffer(mCanon: string | null, tokenSub: string | null):
   const seen = new Set<string>();
   const deduped: LiveTrade[] = [];
   for (const t of out) {
-    const k = tapeDedupeKey(t);
-    if (!k || k === ':') continue;
+    const k = liveTradeDedupeKey(t);
+    if (!k) continue;
     if (seen.has(k)) continue;
     seen.add(k);
-    deduped.push(t);
+    deduped.push(t.id ? t : stampLiveTradeId(t));
   }
   deduped.sort((a, b) => {
     const td = (b.timestamp ?? 0) - (a.timestamp ?? 0);
@@ -127,13 +150,15 @@ function filterPublicTapeBuffer(mCanon: string | null, tokenSub: string | null):
 function mergePublicLiveTapes(apiRows: LiveTrade[], fromBuffer: LiveTrade[]): LiveTrade[] {
   const byKey = new Map<string, LiveTrade>();
   for (const t of apiRows) {
-    const k = tapeDedupeKey(t);
-    if (k && k !== ':') byKey.set(k, t);
+    const stamped = stampLiveTradeId(t);
+    const k = liveTradeDedupeKey(stamped);
+    if (k) byKey.set(k, stamped);
   }
   for (const t of fromBuffer) {
-    const k = tapeDedupeKey(t);
-    if (!k || k === ':') continue;
-    if (!byKey.has(k)) byKey.set(k, t);
+    const stamped = stampLiveTradeId(t);
+    const k = liveTradeDedupeKey(stamped);
+    if (!k || byKey.has(k)) continue;
+    byKey.set(k, stamped);
   }
   const merged = Array.from(byKey.values());
   merged.sort((a, b) => {
@@ -176,6 +201,8 @@ export interface WSPosition {
 }
 
 export interface WSTrade {
+  /** Stable dedupe key — set once at ingest. */
+  id?: string;
   tokenId: string;
   side: 'BUY' | 'SELL' | 'SPLIT' | 'MERGE';
   outcome?: string;
@@ -399,14 +426,16 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const ts = tradeTimestampMs(f, maxBlock, nowMs);
             const logIndex = Number(f.logIndex ?? 0);
             const p = Number.isFinite(price) ? price : 0;
-            mapped.push({
+            const txHash = f.txHash;
+            const li = Number.isFinite(logIndex) ? logIndex : undefined;
+            mapped.push(stampLiveTradeId({
               side,
               size: String(Number.isFinite(size) ? size : 0),
               price: String(p),
               timestamp: ts,
-              txHash: f.txHash,
-              logIndex: Number.isFinite(logIndex) ? logIndex : undefined,
-            });
+              txHash,
+              logIndex: li,
+            }));
           }
           const mForMerge = m ? canonicalConditionKey(m) : null;
           const tForMerge = t || null;
@@ -518,7 +547,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const price = Number(d.price ?? 0);
             const ts = Number(d.timestamp ?? Date.now());
             const li = Number(d.logIndex ?? 0);
-            const t: LiveTrade = {
+            const t = stampLiveTradeId({
               side,
               size: String(size),
               price: String(price),
@@ -527,7 +556,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               logIndex: Number.isFinite(li) && li >= 0 ? li : undefined,
               maker: d.maker ? String(d.maker).toLowerCase() : undefined,
               taker: d.taker ? String(d.taker).toLowerCase() : undefined,
-            };
+            });
             const marketKeyForBuf = tradeMarket
               ? canonicalConditionKey(tradeMarket)
               : mSub
@@ -571,24 +600,33 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               txHash?: string;
               logIndex?: number;
             }>)
-              .map((t) => ({
-                tokenId: String(t.tokenId || ''),
-                side: normalizeLedgerAction(t.side),
-                outcome: t.outcome ? String(t.outcome) : undefined,
-                size: Number(t.size || 0),
-                price: Number(t.price || 0),
-                fee: Number(t.fee || 0),
-                blockTime: Number(t.blockTime || 0),
-                txHash: t.txHash,
-                logIndex: Number.isFinite(Number(t.logIndex)) ? Number(t.logIndex) : undefined,
-              }))
+              .map((t) => {
+                const tokenId = String(t.tokenId || '');
+                const side = normalizeLedgerAction(t.side);
+                const logIndex = Number.isFinite(Number(t.logIndex)) ? Number(t.logIndex) : undefined;
+                const txHash = t.txHash;
+                const row: WSTrade = {
+                  tokenId,
+                  side,
+                  outcome: t.outcome ? String(t.outcome) : undefined,
+                  size: Number(t.size || 0),
+                  price: Number(t.price || 0),
+                  fee: Number(t.fee || 0),
+                  blockTime: Number(t.blockTime || 0),
+                  txHash,
+                  logIndex,
+                };
+                row.id = walletTradeKey(txHash, logIndex, normalizeClobTokenKey(tokenId), side);
+                return row;
+              })
               .filter((t) => !!t.tokenId || t.side === 'SPLIT' || t.side === 'MERGE');
-            const wKey = (t: WSTrade) =>
-              `${String(t.txHash || '')}:${t.logIndex ?? -1}:${normalizeClobTokenKey(t.tokenId || '')}:${t.side}`;
             setWalletTrades((prev) => {
               const byKey = new Map<string, WSTrade>();
-              for (const t of prev) byKey.set(wKey(t), t);
-              for (const t of raw) byKey.set(wKey(t), t);
+              for (const t of prev) {
+                const k = t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side);
+                byKey.set(k, t.id ? t : { ...t, id: k });
+              }
+              for (const t of raw) byKey.set(t.id!, t);
               return Array.from(byKey.values())
                 .sort((a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0))
                 .slice(0, WALLET_TRADES_CAP);

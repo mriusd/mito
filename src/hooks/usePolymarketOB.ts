@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { API_BASE } from '../lib/env';
+import { onchainFillKey, polymarketTradeKey } from '../lib/tradeKeys';
 
 interface OBLevel {
   price: string;
@@ -7,6 +8,8 @@ interface OBLevel {
 }
 
 export interface LiveTrade {
+  /** Stable row/dedupe key — set once at ingest. */
+  id?: string;
   price: string;
   size: string;
   side: 'BUY' | 'SELL';
@@ -111,16 +114,21 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
       .then(r => r.json())
       .then((data: { price: number; size: number; side: string; timestamp: number }[] | null) => {
         if (!data || !Array.isArray(data)) return;
-        const fetched: LiveTrade[] = data.map(t => ({
-          price: String(t.price),
-          size: String(t.size),
-          side: (t.side || 'BUY') as 'BUY' | 'SELL',
-          timestamp: t.timestamp,
-        }));
-        // Merge with any WS trades that arrived in the meantime
-        const existing = new Set(localTrades.map(t => `${t.timestamp}-${t.price}-${t.size}`));
+        const fetched: LiveTrade[] = data.map(t => {
+          const price = String(t.price);
+          const size = String(t.size);
+          return {
+            id: polymarketTradeKey(t.timestamp, price, size),
+            price,
+            size,
+            side: (t.side || 'BUY') as 'BUY' | 'SELL',
+            timestamp: t.timestamp,
+          };
+        });
+        const existing = new Set(localTrades.map(t => t.id ?? polymarketTradeKey(t.timestamp, t.price, t.size)));
         for (const t of fetched) {
-          if (!existing.has(`${t.timestamp}-${t.price}-${t.size}`)) {
+          const k = t.id ?? polymarketTradeKey(t.timestamp, t.price, t.size);
+          if (!existing.has(k)) {
             localTrades.push(t);
           }
         }
@@ -206,11 +214,15 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
 
           case 'last_trade_price': {
             if (msg.asset_id && msg.asset_id !== tid) break;
+            const price = msg.price;
+            const size = msg.size;
+            const timestamp = parseInt(msg.timestamp) || Date.now();
             const trade: LiveTrade = {
-              price: msg.price,
-              size: msg.size,
+              id: polymarketTradeKey(timestamp, price, size),
+              price,
+              size,
               side: msg.side || 'BUY',
-              timestamp: parseInt(msg.timestamp) || Date.now(),
+              timestamp,
             };
             localTrades = [trade, ...localTrades].slice(0, MAX_TRADES);
             scheduleRaf(() => {

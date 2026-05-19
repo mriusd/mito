@@ -56,6 +56,7 @@ import {
   TOXIC_BELLS_CHANGED_EVENT,
 } from '../lib/toxicFavouriteWallets';
 import { WS_BASE } from '../lib/env';
+import { toxicFlowFillKey } from '../lib/tradeKeys';
 import { useAppStore } from '../stores/appStore';
 import { useMarketLookupSnapshot } from '../hooks/useMarketLookupSnapshot';
 import {
@@ -1855,7 +1856,7 @@ export function WalletInfoDialog({
                               ? 'text-purple-400'
                               : 'text-gray-300';
                       return (
-                        <tr key={`${f.txHash}-${f.logIndex}-${String(f.tokenId || '')}`} className="border-b border-gray-800">
+                        <tr key={toxicFlowFillKey(f.txHash, f.logIndex, String(f.tokenId || ''))} className="border-b border-gray-800">
                           <td className="py-0.5">{ts}</td>
                           <td className={actionCls}>{action || '—'}</td>
                           <td className={sideCls}>{sideLabel}</td>
@@ -1883,7 +1884,7 @@ export function WalletInfoDialog({
                       const feeN = Number(f.fee ?? 0);
                       const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
                       return (
-                        <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
+                        <tr key={toxicFlowFillKey(f.txHash, f.logIndex)} className="border-b border-gray-800">
                           <td className="py-0.5">{ts}</td>
                           <td className="text-purple-400" colSpan={2}>{label}</td>
                           <td className="text-center text-amber-300 font-bold px-0">{f.isTaker === true ? 'T' : ''}</td>
@@ -1927,7 +1928,7 @@ export function WalletInfoDialog({
                     const feeN = Number(f.fee ?? 0);
                     const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
                     return (
-                      <tr key={`${f.txHash}-${f.logIndex}`} className="border-b border-gray-800">
+                      <tr key={toxicFlowFillKey(f.txHash, f.logIndex)} className="border-b border-gray-800">
                         <td className="py-0.5">{ts}</td>
                         <td className={action === 'BUY' ? 'text-green-400' : 'text-red-400'}>{action}</td>
                         <td className={sideCls}>{sideText}</td>

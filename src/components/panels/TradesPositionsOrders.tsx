@@ -11,6 +11,7 @@ import {
   type OnchainClaimRow,
 } from '../../api';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { onchainFillKey } from '../../lib/tradeKeys';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import type { Position, Trade } from '../../types';
 import { showToast } from '../../utils/toast';
@@ -229,10 +230,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   }, [onchainPosRows, marketLookup]);
 
   const onchainTradesAsPM = useMemo((): Trade[] => {
-    return onchainTrRows.map((t, i) => {
+    return onchainTrRows.map((t) => {
       const tsMs = t.blockTime > 1e12 ? t.blockTime : t.blockTime * 1000;
+      const id = onchainFillKey(t.txHash, t.logIndex);
       return {
-        id: `${t.txHash}-${t.logIndex}-${i}`,
+        id: id || `token:${t.tokenId}:${tsMs}`,
         asset_id: t.tokenId,
         token_id: t.tokenId,
         side: t.side as Trade['side'],

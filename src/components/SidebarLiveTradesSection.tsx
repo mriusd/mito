@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
+import { onchainFillKey, polymarketTradeKey } from '../lib/tradeKeys';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 
 export type SidebarLiveTradesSectionProps = {
@@ -124,7 +125,7 @@ function liveTradesSectionInner(props: SidebarLiveTradesSectionProps) {
           <div className="relative space-y-0.5 overflow-y-auto flex-1 min-h-0" style={{ minHeight: 90 }}>
             {visibleTrades.map((t, i) => (
               <LiveTradeRow
-                key={`${t.txHash || ''}-${t.logIndex ?? i}-${t.timestamp}-${t.side}-${t.size}`}
+                key={t.id ?? onchainFillKey(t.txHash, t.logIndex) ?? polymarketTradeKey(t.timestamp, t.price, t.size) ?? `row-${i}`}
                 trade={t}
                 tradeTickBucket={tradeTickBucket}
                 liveTradesSource={liveTradesSource}

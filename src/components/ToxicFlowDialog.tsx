@@ -103,10 +103,7 @@ import {
   toxicFlowFullSnapshot,
   type ToxicFlowWSMessage,
 } from '../lib/toxicFlowWs';
-import {
-  toxicFlowTableAutoAnimatePlugin,
-  TOXIC_TABLE_ROW_CLS,
-} from '../lib/toxicFlowTableAnimate';
+import { TOXIC_TABLE_ROW_CLS } from '../lib/toxicFlowTableAnimate';
 
 function subscribeTiltWhaleAmountUsd(listener: () => void): () => void {
   const onCustom = () => listener();
@@ -1083,7 +1080,10 @@ function WalletTable({
     () => DEFAULT_TILT_WHALE_AMOUNT_USD,
   );
   const rows = wallets || [];
-  const [tbodyAnimateRef] = useAutoAnimate<HTMLTableSectionElement>(toxicFlowTableAutoAnimatePlugin);
+  const [tbodyAnimateRef] = useAutoAnimate<HTMLTableSectionElement>({
+    duration: 320,
+    easing: 'ease-in-out',
+  });
   const totalStakedDenom = useMemo(() => {
     if (typeof totalStakedNetUsd === 'number' && Number.isFinite(totalStakedNetUsd) && totalStakedNetUsd > 0) {
       return totalStakedNetUsd;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, Suspense, useSyncExternalStore } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react';
 import { useAccount } from 'wagmi';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
@@ -47,35 +47,31 @@ import { useOnchainTradesWS } from '../hooks/useOnchainTradesWS';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
-import { SidebarYesMidProbBar } from './SidebarYesMidProbBar';
-import { bumpSidebarTopOfBookDigest } from '../lib/sidebarTopOfBookStore';
-import { resetSidebarPolymarketTape, setSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
-import { getSidebarToxicNotify, subscribeSidebarToxicNotify } from '../lib/sidebarToxicNotifyStore';
-import { SidebarOrderCostDisplay } from './SidebarOrderCostDisplay';
-import { SidebarToxicPanel } from './SidebarToxicPanel';
-import { SidebarToxicFlowHost } from './SidebarToxicFlowHost';
-import { SidebarToxicStrips } from './SidebarToxicStrips';
+import { SidebarBarMidMarker } from './SidebarBarMidMarker';
+import { ToxicFlowStakePreview, TOXIC_TOTAL_STAKE_BAR_HELP } from './ToxicFlowStakePreview';
+import { useToxicFlowMarketStream } from '../hooks/useToxicFlowMarketStream';
 import {
+  buildToxicFlowTabWalletViews,
+  toxicCohortStakedNetSurplusHalves,
+  cohortSurplusLean,
   walletInvY,
   walletInvN,
   walletNet,
   walletStakeNetAbsUsd,
   walletStakeYUsd,
   walletStakeNUsd,
+  toxicRowLedgerLifetimePnlNegative,
 } from '../lib/toxicFlowStakeCohort';
-import { getBidAskMarketRow } from '../lib/bidAskMarketLookup';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
+import {
+  TOXIC_FAVOURITE_WALLETS_LS_KEY,
+  TOXIC_FAVOURITES_CHANGED_EVENT,
+  readToxicFavouriteWallets,
+} from '../lib/toxicFavouriteWallets';
 import { persistTiltWhaleAmountUsd, readTiltWhaleAmountUsd } from '../lib/tiltWhaleAmountUsd';
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
-import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
-import { SidebarHoldersExpandTip } from './SidebarHoldersExpandTip';
-import {
-  isDesktopScreenViewport,
-  persistSidebarHoldersExpandTipDismissed,
-  readSidebarHoldersExpandTipDismissed,
-} from '../lib/sidebarHoldersExpandTip';
 import {
   ArrowRight,
   Bell,
@@ -92,6 +88,10 @@ import {
 import type { AssetSymbol, Market, Position } from '../types';
 import type { WalletPosition } from '../api';
 import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
+
+const ToxicFlowDialogLazy = lazyWithChunkReload(() =>
+  import('./ToxicFlowDialog').then((m) => ({ default: m.ToxicFlowDialog })),
+);
 
 function preloadToxicFlowDialog() {
   void importWithChunkReload(() => import('./ToxicFlowDialog'));
@@ -127,6 +127,21 @@ function sidebarQuickSellBg(i: number, n: number): string {
   const l = lStart - t * (lStart - lEnd);
   return `hsl(351 78% ${l}%)`;
 }
+
+/** Bar segment pulse when cohort/gross lean ≥ this fraction (default 30% each side). */
+const SIDEBAR_TOXIC_STRIP_FLASH_FRAC = 0.3;
+
+/** Tooltips for toxic cohort strips (mirror Toxic Flow dialog tab copy). */
+const TOXIC_SIDEBAR_STRIP_HELP = {
+  total: TOXIC_TOTAL_STAKE_BAR_HELP,
+  holders: 'Biggest wallets active on this market. Green = YES bets, red = NO bets.',
+  smart: 'Wallets with strong winning record. Only those who profit often.',
+  top20: 'Top 20 position holders on this market (by |staked net|, same ordering as Holders).',
+  fav: 'Your favorite wallets betting here right now.',
+  greens: 'Wallets with profits in tracked time. Green = more dollars staked on YES, red = more on NO.',
+  whales:
+    'Wallets with |Staked Net| USD ≥ Whale amount (Tilt bell). Same cohort as Toxic Flow Whales tab. Bar pulse = cohort lean ≥ sidebar strip threshold.',
+} as const;
 
 const LS_ORDER_EXPIRY_UPDOWN = 'polymarket-order-expiry-updown';
 const LS_ORDER_EXPIRY_OTHER = 'polymarket-order-expiry-other';
@@ -602,6 +617,31 @@ function readNotifyWhaleIgnoreNegativePnl(): boolean {
   }
 }
 
+/** Avg entry in ¢ on heavier staked leg (`inv × price`); inventory fallback when stake legs missing. */
+function dominantStakedLegAvgPriceCents(w: WalletPosition): number | null {
+  const sy = walletStakeYUsd(w);
+  const sn = walletStakeNUsd(w);
+  const y = Number.isFinite(sy) ? sy : 0;
+  const n = Number.isFinite(sn) ? sn : 0;
+  const py = w.priceYes;
+  const pn = w.priceNo;
+  if (y > 1e-9 || n > 1e-9) {
+    if (y >= n) {
+      return typeof py === 'number' && Number.isFinite(py) ? py * 100 : null;
+    }
+    return typeof pn === 'number' && Number.isFinite(pn) ? pn * 100 : null;
+  }
+  const iy = walletInvY(w);
+  const inn = walletInvN(w);
+  if (Math.abs(iy) >= Math.abs(inn) && Math.abs(iy) > 1e-6) {
+    return typeof py === 'number' && Number.isFinite(py) ? py * 100 : null;
+  }
+  if (Math.abs(inn) > 1e-6) {
+    return typeof pn === 'number' && Number.isFinite(pn) ? pn * 100 : null;
+  }
+  return null;
+}
+
 /** Annualized σ% ceiling for tilt: alerts pause while chart σ is above this. 0 = off. Default 15. */
 function readNotifyMaxVolatilityPct(): number {
   try {
@@ -645,13 +685,14 @@ function maxOrderUsdViolationMessage(maxUsd: number, valueUsd: number): string |
   return `Max order size ${lim} USD. To increase the limit go to settings menu in the header.`;
 }
 
-/** Market-crossing check: WS `marketLookup` best bid/ask (includes unflushed WS pending), not the rendered ladder. */
+/** Market-crossing check for `tokenId` using `marketLookup` best bid/ask (WS-updated), not the rendered ladder. */
 function orderCrossesBookFromWsLookup(
+  lookup: Record<string, Market>,
   tokenId: string,
   side: 'BUY' | 'SELL',
   orderPriceCents: number,
 ): { crosses: boolean; bestCounterpartyCents: number | null } {
-  const row = getBidAskMarketRow(tokenId);
+  const row = lookup[String(tokenId || '').trim()];
   const bestBidDec = typeof row?.bestBid === 'number' && Number.isFinite(row.bestBid) ? row.bestBid : null;
   const bestAskDec = typeof row?.bestAsk === 'number' && Number.isFinite(row.bestAsk) ? row.bestAsk : null;
   const bestBidCents = bestBidDec != null && bestBidDec > 0 ? bestBidDec * 100 : null;
@@ -1078,13 +1119,93 @@ export function Sidebar() {
     () => ((selectedMarket?.conditionId ?? selectedMarket?.id) || '').trim(),
     [selectedMarket?.conditionId, selectedMarket?.id],
   );
-  const toxicNotify = useSyncExternalStore(
-    subscribeSidebarToxicNotify,
-    getSidebarToxicNotify,
-    getSidebarToxicNotify,
+  const { data: toxicFlowData, refresh: refreshToxicFlow, refreshing: toxicFlowRefreshing } =
+    useToxicFlowMarketStream(toxicFlowMarketId, Boolean(toxicFlowMarketId));
+
+  const [toxicFavSet, setToxicFavSet] = useState(readToxicFavouriteWallets);
+  useEffect(() => {
+    const sync = () => setToxicFavSet(readToxicFavouriteWallets());
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY) sync();
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+    };
+  }, []);
+
+  const toxicTabViews = useMemo(
+    () => (toxicFlowData ? buildToxicFlowTabWalletViews(toxicFlowData, toxicFavSet, notifyWhaleAmountUsd) : null),
+    [toxicFlowData, toxicFavSet, notifyWhaleAmountUsd],
   );
-  const topBarExtremeBgFlash = toxicNotify.topBarExtremeBgFlash;
-  const notifyWhalePassesPriceGate = toxicNotify.whalePassesPriceGate;
+
+  const toxicStripModel = useMemo(() => {
+    const lists = toxicTabViews?.stripLists ?? null;
+    if (!lists) return { lists: null, bars: null };
+    return {
+      lists,
+      bars: {
+        holders: toxicCohortStakedNetSurplusHalves(lists.holders),
+        smart: toxicCohortStakedNetSurplusHalves(lists.smart),
+        top20: toxicCohortStakedNetSurplusHalves(lists.top20),
+        favourites: toxicCohortStakedNetSurplusHalves(lists.favourites),
+        pnlPlus: toxicCohortStakedNetSurplusHalves(lists.pnlPlus),
+      },
+    };
+  }, [toxicTabViews]);
+
+  /** Same wallets + ordering as Toxic Flow dialog Whales tab (floor = Tilt whale USD). */
+  const toxicStripWhaleWallets = toxicTabViews?.whales ?? [];
+
+  /** True when ≥1 toxic-flow whale (|Staked Net| ≥ floor) has dominant-leg avg entry **strictly below** max Whale Price (¢). */
+  const notifyWhalePassesPriceGate = useMemo(() => {
+    if (!toxicTabViews) return false;
+    const maxPc = notifyWhaleMaxPriceCents;
+    for (const w of toxicTabViews.whales) {
+      if (notifyWhaleIgnoreNegativePnl && toxicRowLedgerLifetimePnlNegative(w)) continue;
+      const pc = dominantStakedLegAvgPriceCents(w);
+      if (pc == null || !Number.isFinite(pc)) continue;
+      if (pc < maxPc) return true;
+    }
+    return false;
+  }, [toxicTabViews, notifyWhaleMaxPriceCents, notifyWhaleIgnoreNegativePnl]);
+
+  /** Active cohort thresholds (Toxic strip bars): every non-zero pct must agree on direction vs its lean. */
+  const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {
+    if (!notifyTiltAppliesToSelectedMarket) return null;
+    const bars = toxicStripModel.bars;
+    const barLean = (bar: { sumYUsd: number; sumNUsd: number } | undefined): number | null => {
+      if (!bar || !(bar.sumYUsd + bar.sumNUsd > 1e-9)) return null;
+      return cohortSurplusLean(bar.sumYUsd, bar.sumNUsd);
+    };
+    const legs = [
+      { pct: notifyHolderTiltPct, lean: barLean(bars?.holders) },
+      { pct: notifySmartTiltPct, lean: barLean(bars?.smart) },
+      { pct: notifyFavouriteTiltPct, lean: barLean(bars?.favourites) },
+      { pct: notifyGreensTiltPct, lean: barLean(bars?.pnlPlus) },
+    ].filter((x) => x.pct > 0);
+    if (legs.length === 0) return null;
+
+    let greenOk = true;
+    let redOk = true;
+    for (const { pct, lean } of legs) {
+      const frac = pct / 100;
+      if (lean == null || lean < frac) greenOk = false;
+      if (lean == null || lean > -frac) redOk = false;
+    }
+    if (greenOk && !redOk) return 'green';
+    if (redOk && !greenOk) return 'red';
+    return null;
+  }, [
+    notifyTiltAppliesToSelectedMarket,
+    toxicStripModel,
+    notifyHolderTiltPct,
+    notifySmartTiltPct,
+    notifyFavouriteTiltPct,
+    notifyGreensTiltPct,
+  ]);
 
   useEffect(() => {
     ensureTiltAudioUnlockListeners();
@@ -1102,7 +1223,12 @@ export function Sidebar() {
   }, [liveShareStats]);
   const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
 
-  // Tick moved to SidebarLiveTradesSection — was 1 Hz full Sidebar re-render.
+  // Tick every second so relative trade times update
+  const [tradeTickNow, setTradeTickNow] = useState(Date.now());
+  useEffect(() => {
+    const iv = setInterval(() => setTradeTickNow(Date.now()), 1000);
+    return () => clearInterval(iv);
+  }, []);
 
   const [orderSide, setOrderSide] = useState<'BUY' | 'SELL'>('BUY');
   const orderOutcome = useAppStore((s) => s.sidebarOutcome);
@@ -1251,23 +1377,25 @@ export function Sidebar() {
   tiltSoundMarketRef.current = selectedMarket;
   tiltSoundLookupRef.current = marketLookup;
   /** Recomputed summary / spot-strip when Host reports top-of-book change (not every depth tick). */
+  const [topOfBookDigest, setTopOfBookDigest] = useState(0);
   const bumpTopOfBookDigest = useCallback(() => {
-    bumpSidebarTopOfBookDigest();
+    setTopOfBookDigest((n) => n + 1);
   }, []);
+
+  const [polymarketTape, setPolymarketTape] = useState<LiveTrade[]>([]);
 
   const onPolymarketTradesFromHost = useCallback((t: LiveTrade[]) => {
-    setSidebarPolymarketTape(t);
+    setPolymarketTape(t);
   }, []);
-  useEffect(() => {
-    resetSidebarPolymarketTape();
-  }, [obTokenId]);
-
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   /** On-chain WS + REST prefetch: must not depend on sidebarOpen or tables stay empty after refresh until sidebar opens. */
   const onchainHookTokenId = useMemo(() => {
     if (liveTradesSource !== 'onchain' || !selectedMarket?.clobTokenIds?.length) return null;
     return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 0 : 1] || null;
   }, [liveTradesSource, selectedMarket, orderOutcome]);
+  useEffect(() => {
+    setTradeTickNow(Date.now());
+  }, [selectedMarket?.conditionId, liveTradesSource]);
   const setOnchainGridPositions = useAppStore((s) => s.setOnchainGridPositions);
 
   const [proxyWallet, setProxyWallet] = useState<string | null>(null);
@@ -1306,6 +1434,10 @@ export function Sidebar() {
     wallet: walletForLivePositions,
     scopedClobTokenIds: scopedClobPair,
   });
+  const displayLiveTrades = useMemo(
+    () => (liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketTape),
+    [liveTradesSource, onchainLiveTrades, polymarketTape],
+  );
   const onchainSidebarPositions = useMemo(
     () => (liveTradesSource === 'onchain' ? wsPositions : []),
     [liveTradesSource, wsPositions],
@@ -1374,20 +1506,17 @@ export function Sidebar() {
       (!!selectedMarket.endDate &&
         Number.isFinite(new Date(selectedMarket.endDate).getTime()) &&
         new Date(selectedMarket.endDate).getTime() <= Date.now()));
-  const yesTokForOutcome = selectedMarket?.clobTokenIds?.[0] ?? '';
-  const lookupOutcomePrices = useAppStore((s) =>
-    yesTokForOutcome ? s.marketLookup[yesTokForOutcome]?.outcomePrices : undefined,
-  );
-  const lookupOutcomeClosed = useAppStore((s) =>
-    yesTokForOutcome ? s.marketLookup[yesTokForOutcome]?.closed : undefined,
-  );
   const marketForOrderbookOutcome = useMemo((): Market | null => {
     if (!selectedMarket) return null;
-    const op = lookupOutcomePrices ?? selectedMarket.outcomePrices;
-    const closed = lookupOutcomeClosed ?? selectedMarket.closed;
-    if (op === selectedMarket.outcomePrices && closed === selectedMarket.closed) return selectedMarket;
-    return { ...selectedMarket, outcomePrices: op, closed };
-  }, [selectedMarket, lookupOutcomePrices, lookupOutcomeClosed]);
+    const t0 = selectedMarket.clobTokenIds?.[0];
+    const row = t0 ? marketLookup[t0] : undefined;
+    if (!row) return selectedMarket;
+    return {
+      ...selectedMarket,
+      outcomePrices: row.outcomePrices ?? selectedMarket.outcomePrices,
+      closed: row.closed ?? selectedMarket.closed,
+    };
+  }, [selectedMarket, marketLookup]);
   const myPositions = useMemo(() => {
     const wsMarketRows = onchainSidebarPositions
       .filter((p) => outcomeTokenBelongsToSelectedMarket(p.tokenId, selectedMarket, marketLookup))
@@ -1501,20 +1630,10 @@ export function Sidebar() {
     return s;
   }, [orders, selectedMarket, orderOutcome]);
 
-  // BS probability for orderbook % diff — narrow per-asset selectors (not whole priceData/vwapData maps).
-  const selectedBsSymbol = useMemo((): AssetSymbol | null => {
-    if (!selectedMarket) return null;
-    const asset = extractAssetFromMarket(selectedMarket);
-    return asset ? (`${asset}USDT` as AssetSymbol) : null;
-  }, [selectedMarket]);
-  const selectedSpotPrice = useAppStore((s) => {
-    if (!selectedBsSymbol) return 0;
-    return s.vwapData[selectedBsSymbol]?.price || s.priceData[selectedBsSymbol]?.price || 0;
-  });
-  const selectedAssetVol = useAppStore((s) => {
-    if (!selectedBsSymbol) return 0.6;
-    return s.volatilityData[selectedBsSymbol] || 0.6;
-  });
+  // Compute BS probability for orderbook % diff
+  const vwapData = useAppStore((s) => s.vwapData);
+  const priceData = useAppStore((s) => s.priceData);
+  const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
@@ -1532,9 +1651,9 @@ export function Sidebar() {
     const endDate = selectedMarket.endDate || '';
     if (!asset || !strike || !endDate) return 0;
     const sym = (asset + 'USDT') as AssetSymbol;
-    const livePrice = selectedBsSymbol === sym ? selectedSpotPrice : 0;
+    const livePrice = vwapData[sym]?.price || priceData[sym]?.price || 0;
     if (!livePrice) return 0;
-    const sigma = (selectedBsSymbol === sym ? selectedAssetVol : 0.6) * volMultiplier;
+    const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
     const cleaned = strike.replace(/^Hit\s*/i, '').replace(/[\$,]/g, '').replace(/↑/g, '>').replace(/↓/g, '<').trim();
     const ps = (cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-')) ? cleaned : '>' + cleaned;
     const probYes = selectedMarketIsHit
@@ -1543,7 +1662,7 @@ export function Sidebar() {
     if (probYes === null) return 0;
     const prob = orderOutcome === 'YES' ? probYes : 1 - probYes;
     return prob * 100;
-  }, [selectedMarket, orderOutcome, selectedBsSymbol, selectedSpotPrice, selectedAssetVol, volMultiplier, bsTimeOffsetHours, selectedMarketIsHit]);
+  }, [selectedMarket, orderOutcome, vwapData, priceData, volatilityData, volMultiplier, bsTimeOffsetHours, selectedMarketIsHit]);
 
 
   // Up or Down market detection and state
@@ -1758,7 +1877,7 @@ export function Sidebar() {
     const asset = extractAssetFromMarket(selectedMarket);
     if (!asset) return null;
     const sym = (asset + 'USDT') as AssetSymbol;
-    const sigma = (selectedBsSymbol === sym ? selectedAssetVol : 0.6) * volMultiplier;
+    const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
     const priceDec = asset.toUpperCase() === 'XRP' ? 4 : 2;
 
     const nowOffset = Date.now() + bsTimeOffsetHours * 3600000;
@@ -1769,7 +1888,7 @@ export function Sidebar() {
       const binanceSym = (asset.toUpperCase() + 'USDT') as AssetSymbol;
       const chainlinkPrice =
         upDownSpotUsesChainlink && polyPrice.price != null && polyPrice.price > 0 ? polyPrice.price : 0;
-      const binancePrice = selectedBsSymbol === binanceSym ? selectedSpotPrice : 0;
+      const binancePrice = priceData[binanceSym]?.price || 0;
       const currentPrice = upDownSpotUsesChainlink ? chainlinkPrice || binancePrice : binancePrice;
       const currentSource: 'chainlink' | 'binance' =
         upDownSpotUsesChainlink && chainlinkPrice > 0 ? 'chainlink' : 'binance';
@@ -1817,7 +1936,7 @@ export function Sidebar() {
     const strikeRaw = (selectedMarket.groupItemTitle || '').trim();
     if (!strikeRaw) return null;
 
-    const currentPrice = selectedBsSymbol === sym ? selectedSpotPrice : 0;
+    const currentPrice = priceData[sym]?.price || 0;
     const currentSource = 'binance' as const;
 
     const cleaned = strikeRaw.replace(/^Hit\s*/i, '').replace(/[\$,]/g, '').replace(/↑/g, '>').replace(/↓/g, '<').trim();
@@ -1885,9 +2004,8 @@ export function Sidebar() {
     upDownTargetPrice,
     upDownSpotUsesChainlink,
     polyPrice.price,
-    selectedSpotPrice,
-    selectedAssetVol,
-    selectedBsSymbol,
+    priceData,
+    volatilityData,
     volMultiplier,
     bsTimeOffsetHours,
     orderOutcome,
@@ -1980,6 +2098,38 @@ export function Sidebar() {
     prevPriceRef.current = p;
   }, [sidebarSpotStrip?.currentPrice]);
 
+  const summaryPriceDecimal = useMemo(() => {
+    if (orderKind === 'market') {
+      if (orderSide === 'BUY') {
+        const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
+        return displayAsks.length > 0 ? parseFloat(displayAsks[0].price) : MARKET_AGGRESSIVE_BUY;
+      }
+      const displayBids = sidebarBookRef.current?.displayBids ?? [];
+      const bestBid = displayBids.length > 0 ? displayBids[displayBids.length - 1] : null;
+      return bestBid ? parseFloat(bestBid.price) : MARKET_AGGRESSIVE_SELL;
+    }
+    return (parseFloat(orderPrice) || 0) / 100;
+  }, [orderKind, orderSide, orderPrice, topOfBookDigest]);
+  const cost = useMemo(() => {
+    const a = parseFloat(orderAmount);
+    if (!a) return 0;
+    const p = summaryPriceDecimal;
+    if (orderKind === 'limit' && (!orderPrice || !p)) return 0;
+    if (orderSide === 'BUY') return p * a;
+    return (1 - p) * a;
+  }, [orderAmount, summaryPriceDecimal, orderSide, orderKind, orderPrice]);
+
+  const payout = useMemo(() => {
+    const a = parseFloat(orderAmount);
+    if (!a) return 0;
+    if (orderSide === 'SELL') {
+      const p = summaryPriceDecimal;
+      if (orderKind === 'limit' && (!orderPrice || !p)) return 0;
+      return p * a;
+    }
+    return a;
+  }, [orderAmount, orderSide, summaryPriceDecimal, orderKind, orderPrice]);
+
   const getOrderExpiryLeadSeconds = () => {
     const n = parseFloat(orderExpiry);
     if (!Number.isFinite(n) || n < 0) return 0;
@@ -2028,23 +2178,9 @@ export function Sidebar() {
     return `${(leadMs / 86400000).toFixed(1)}d`;
   };
 
-  const marketName = useMemo(
-    () =>
-      selectedMarket
-        ? shortenMarketName(
-            selectedMarket.question || selectedMarket.groupItemTitle,
-            undefined,
-            undefined,
-            selectedMarket.eventSlug,
-          )
-        : '',
-    [
-      selectedMarket?.question,
-      selectedMarket?.groupItemTitle,
-      selectedMarket?.eventSlug,
-      selectedMarket?.id,
-    ],
-  );
+  const marketName = selectedMarket
+    ? shortenMarketName(selectedMarket.question || selectedMarket.groupItemTitle, undefined, undefined, selectedMarket.eventSlug)
+    : '';
 
   const sidebarUpDownEndSwitch = useMemo(() => {
     if (!isUpDownMarket || !selectedMarket?.endDate) return null;
@@ -2176,6 +2312,7 @@ export function Sidebar() {
     }
     const orderPriceCents = parseFloat(orderPrice);
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
+      marketLookup,
       tokenId,
       orderSide,
       orderPriceCents,
@@ -2246,6 +2383,7 @@ export function Sidebar() {
       }
     }
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
+      marketLookup,
       tokenId,
       side,
       priceCents,
@@ -2367,6 +2505,7 @@ export function Sidebar() {
     }
 
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
+      marketLookup,
       tokenId,
       btn.side,
       btn.priceCents,
@@ -2436,6 +2575,7 @@ export function Sidebar() {
       }
     }
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
+      marketLookup,
       tokenId,
       side,
       newPriceCents,
@@ -2628,37 +2768,6 @@ export function Sidebar() {
   const canShowEmbeddedToxic =
     !isMobileSheet && !!selectedMarket && (selectedMarket.conditionId || '').trim().length > 0;
   const sidebarToxicEffective = toxicSidebarExpanded && canShowEmbeddedToxic;
-  const toxicExpandHandleRef = useRef<HTMLButtonElement>(null);
-  const [holdersExpandTipOpen, setHoldersExpandTipOpen] = useState(false);
-  const dismissHoldersExpandTip = useCallback(() => {
-    persistSidebarHoldersExpandTipDismissed();
-    setHoldersExpandTipOpen(false);
-  }, []);
-
-  useEffect(() => {
-    if (readSidebarHoldersExpandTipDismissed()) {
-      setHoldersExpandTipOpen(false);
-      return;
-    }
-    if (!isDesktopScreenViewport()) {
-      setHoldersExpandTipOpen(false);
-      return;
-    }
-    if (!sidebarOpen || !canShowEmbeddedToxic || sidebarToxicEffective) {
-      setHoldersExpandTipOpen(false);
-      return;
-    }
-    setHoldersExpandTipOpen(true);
-  }, [
-    sidebarOpen,
-    canShowEmbeddedToxic,
-    sidebarToxicEffective,
-    selectedMarket?.conditionId,
-  ]);
-
-  useEffect(() => {
-    if (sidebarToxicEffective && holdersExpandTipOpen) dismissHoldersExpandTip();
-  }, [sidebarToxicEffective, holdersExpandTipOpen, dismissHoldersExpandTip]);
 
   const expandSidebarToxicFlowPanel = useCallback(() => {
     if (!canShowEmbeddedToxic) return;
@@ -3193,7 +3302,6 @@ export function Sidebar() {
       >
         <div className="mobile-sidebar-drag-handle" />
       </div>
-      <SidebarToxicFlowHost marketId={toxicFlowMarketId} />
       <div
         className={
           isMobileSheet
@@ -3417,8 +3525,7 @@ export function Sidebar() {
             upDownIntervalContext={upDownIntervalContext}
             upDownTargetPrice={upDownTargetPrice}
             upDownSpotUsesChainlink={upDownSpotUsesChainlink}
-            onchainLiveTrades={onchainLiveTrades}
-            liveTradesSource={liveTradesSource}
+            displayLiveTrades={displayLiveTrades}
             orderOutcome={orderOutcome}
             upDownStartTime={upDownStartTime}
             upDownKlineDefaultInterval={upDownKlineDefaultInterval}
@@ -3620,10 +3727,77 @@ export function Sidebar() {
                   </div>
                 </div>
                 {!row.pastExpiry && row.yesMathCents != null && (
-                  <SidebarYesMidProbBar
-                    yesTokenId={(selectedMarket?.clobTokenIds?.[0] || '').trim()}
-                    yesMathCents={row.yesMathCents}
-                  />
+                  (() => {
+                    const yesTid = (selectedMarket?.clobTokenIds?.[0] || '').trim();
+                    const wsRow = yesTid ? marketLookup[yesTid] : undefined;
+                    const bb = wsRow?.bestBid;
+                    const ba = wsRow?.bestAsk;
+                    const tb = bb != null && Number.isFinite(bb) ? bb * 100 : NaN;
+                    const ta = ba != null && Number.isFinite(ba) ? ba * 100 : NaN;
+                    let yesMidCents: number | null = null;
+                    if (Number.isFinite(tb) && Number.isFinite(ta)) yesMidCents = (tb + ta) / 2;
+                    else if (Number.isFinite(tb)) yesMidCents = tb;
+                    else if (Number.isFinite(ta)) yesMidCents = ta;
+                    const yMidOk =
+                      yesMidCents != null ? Math.min(100, Math.max(0, yesMidCents)) : null;
+
+                    const m = row.yesMathCents;
+                    const delta = yMidOk != null ? yMidOk - m : null;
+                    /** GREEN on the left (% width): 50% when YES mid ≡ math; grows left when YES mid > math. RED fills the remainder on the right. */
+                    const greenLeftPct =
+                      delta == null
+                        ? 50
+                        : Math.min(97, Math.max(3, 50 + (delta / 22) * 46));
+
+                    const tip =
+                      yMidOk == null
+                        ? `Model YES ${m.toFixed(1)}¢ — no WS best bid/ask for YES yet`
+                        : `YES mid ${yMidOk.toFixed(1)}¢ (bid/ask WS) vs model ${m.toFixed(1)}¢ (Δ ${delta! >= 0 ? '+' : ''}${delta!.toFixed(1)}¢)`;
+
+                    return (
+                      <div className="mt-2 pt-1.5 border-t border-gray-800/70" title={tip}>
+                        <div className="flex items-center justify-between gap-1 mb-0.5">
+                          <span className="flex items-center gap-0.5 text-[10px] text-gray-500">
+                            Prob
+                            <HelpTooltip
+                              text={
+                                'YES midpoint: average of live best bid and best ask from `/ws/chart` (YES token asset id).\n\n' +
+                                  'Not the sidebar CLOB ladder. Same readings when you toggle sidebar YES/NO.\n\n' +
+                                  'Compared to Math (model YES). Green left grows when WS mid is above math.'
+                              }
+                            />
+                          </span>
+                          <span className="text-[10px] text-gray-400 tabular-nums">
+                            <span className="text-gray-500">YES mid</span>{' '}
+                            {yMidOk != null ? (
+                              <span
+                                className={`font-semibold ${
+                                  delta != null ? (delta > 0.4 ? 'text-emerald-400' : delta < -0.4 ? 'text-red-400' : 'text-gray-200') : 'text-white'
+                                }`}
+                              >
+                                {yMidOk.toFixed(1)}
+                              </span>
+                            ) : (
+                              <span className="text-gray-600">–</span>
+                            )}
+                            <span className="text-gray-600 mx-0.5">/</span>
+                            <span className="text-gray-400">{m.toFixed(1)} math</span>
+                          </span>
+                        </div>
+                        <div className="relative h-[7px] w-full rounded-full overflow-hidden bg-gray-900 ring-1 ring-gray-700/80">
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-l-[999px] bg-emerald-600/90"
+                            style={{ width: `${greenLeftPct}%` }}
+                          />
+                          <div
+                            className="absolute inset-y-0 rounded-r-[999px] bg-red-800/95"
+                            style={{ left: `${greenLeftPct}%`, width: `${100 - greenLeftPct}%` }}
+                          />
+                          <SidebarBarMidMarker />
+                        </div>
+                      </div>
+                    );
+                  })()
                 )}
               </div>
             );
@@ -3786,17 +3960,63 @@ export function Sidebar() {
               </button>
             </div>
             <div className="mt-1 w-full min-w-0 flex flex-col gap-y-2 pb-0.5">
-              <SidebarToxicStrips
-                sidebarStakedLegs={sidebarStakedLegs}
-                notifyTiltAppliesToSelectedMarket={notifyTiltAppliesToSelectedMarket}
-                notifyWhaleAmountUsd={notifyWhaleAmountUsd}
-                notifyWhaleMaxPriceCents={notifyWhaleMaxPriceCents}
-                notifyWhaleIgnoreNegativePnl={notifyWhaleIgnoreNegativePnl}
-                notifyHolderTiltPct={notifyHolderTiltPct}
-                notifySmartTiltPct={notifySmartTiltPct}
-                notifyFavouriteTiltPct={notifyFavouriteTiltPct}
-                notifyGreensTiltPct={notifyGreensTiltPct}
-              />
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.total}
+                    label="Total"
+                    marketGrossLegsUsd={sidebarStakedLegs}
+                    wallets={[]}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
+                  />
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.holders}
+                    label="Holders"
+                    wallets={toxicStripModel.lists?.holders ?? []}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
+                  />
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.smart}
+                    label="Smart"
+                    wallets={toxicStripModel.lists?.smart ?? []}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
+                  />
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.greens}
+                    label="Greens"
+                    wallets={toxicStripModel.lists?.pnlPlus ?? []}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
+                  />
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.top20}
+                    label="Top20"
+                    wallets={toxicStripModel.lists?.top20 ?? []}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
+                  />
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.whales}
+                    label="Whales"
+                    wallets={toxicStripWhaleWallets}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
+                  />
+                  <ToxicFlowStakePreview
+                    layout="stacked"
+                    helpText={TOXIC_SIDEBAR_STRIP_HELP.fav}
+                    label="Fav"
+                    wallets={toxicStripModel.lists?.favourites ?? []}
+                    flashExtremeTilt
+                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
+                  />
             </div>
           </div>
           </div>
@@ -3828,7 +4048,8 @@ export function Sidebar() {
             onToggleLiveTradesExpanded={toggleLiveTradesExpanded}
             liveTradesSectionHeight={liveTradesSectionHeight}
             liveOrderbookExpanded={liveOrderbookExpanded}
-            onchainLiveTrades={onchainLiveTrades}
+            displayLiveTrades={displayLiveTrades}
+            tradeTickBucket={Math.floor(tradeTickNow / 5000) * 5000}
             liveTradesSource={liveTradesSource}
             myOnchainWalletLower={myOnchainWalletLower}
           />
@@ -4088,13 +4309,13 @@ export function Sidebar() {
                   </select>
                 </div>
               </div>
-              <SidebarOrderCostDisplay
-                sidebarBookRef={sidebarBookRef}
-                orderKind={orderKind}
-                orderSide={orderSide}
-                orderPrice={orderPrice}
-                orderAmount={orderAmount}
-              />
+              <div className="bg-gray-700/50 rounded p-2 text-[10px] flex-1 flex flex-col text-gray-400">
+                <div className="flex justify-between"><span>Cost:</span><span>Payout:</span></div>
+                <div className="flex justify-between items-baseline mt-0.5">
+                  <span className="text-red-400 font-bold text-[13px]">{orderSide === 'SELL' ? '' : `$${cost.toFixed(2)}`}</span>
+                  <span className="text-green-400 font-bold text-[13px]">${payout.toFixed(2)}</span>
+                </div>
+              </div>
             </div>
 
             <div className="mb-2 flex flex-col gap-0.5">
@@ -4289,7 +4510,6 @@ export function Sidebar() {
             <div className="flex items-center justify-between mb-2 gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-xs text-gray-400 shrink-0">My Positions</span>
-                <SidebarDataSourceBadge source={liveTradesSource} />
                 {mergeEligible.showButton && !isMarketExpired && (
                   <button
                     type="button"
@@ -4395,10 +4615,7 @@ export function Sidebar() {
               )}
             </div>
             <div className="my-3 border-t border-gray-700/70" />
-            <div className="text-xs text-gray-400 mb-2 mt-3 flex items-center gap-1">
-              <span>My Orders</span>
-              <SidebarDataSourceBadge source="polymarket" />
-            </div>
+            <div className="text-xs text-gray-400 mb-2 mt-3">My Orders</div>
             <div className="space-y-2 text-xs">
               {myOrders.length === 0 && progOrders.length === 0 ? (
                 <div className="text-gray-600">No orders</div>
@@ -4585,10 +4802,7 @@ export function Sidebar() {
           {/* My Trades */}
           <div className="sidebar-section">
             <div className="mb-2 flex items-center justify-between text-xs text-gray-400">
-              <span className="inline-flex items-center gap-1">
-                <span>My Trades</span>
-                <SidebarDataSourceBadge source={liveTradesSource} />
-              </span>
+              <span>My Trades</span>
               <span className={myTradesPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                 PnL {myTradesPnl >= 0 ? '+' : ''}${Math.abs(myTradesPnl).toFixed(2)}
               </span>
@@ -4666,7 +4880,6 @@ export function Sidebar() {
           <>
           <div className="hidden md:block w-6 shrink-0" aria-hidden />
           <button
-            ref={toxicExpandHandleRef}
             type="button"
             className={`sidebar-toxic-expand-handle hidden md:flex shrink-0 w-6 flex-col justify-center items-center border-l border-gray-700/55 bg-gray-800/95 text-gray-500 hover:text-gray-400 ${sidebarToxicEffective ? '' : 'sidebar-expand-handle-idle-flash'}`}
             title={sidebarToxicEffective ? 'Collapse holders panel' : 'Expand holders panel in sidebar'}
@@ -4674,7 +4887,6 @@ export function Sidebar() {
             aria-label={sidebarToxicEffective ? 'Collapse holders panel' : 'Expand holders panel'}
             onClick={() => {
               preloadToxicFlowDialog();
-              dismissHoldersExpandTip();
               setToxicSidebarExpanded((v) => !v);
             }}
             onPointerDown={(e) => e.stopPropagation()}
@@ -4685,22 +4897,24 @@ export function Sidebar() {
               <ChevronRight className="h-4 w-4" strokeWidth={2} aria-hidden />
             )}
           </button>
-          <SidebarHoldersExpandTip
-            anchorRef={toxicExpandHandleRef}
-            open={holdersExpandTipOpen}
-            onDismiss={dismissHoldersExpandTip}
-          />
           </>
         ) : null}
         {sidebarToxicEffective && selectedMarket ? (
-          <Suspense fallback={<div className="p-2 text-[10px] text-gray-500">Loading holders…</div>}>
-            <SidebarToxicPanel
-              marketId={selectedMarket.conditionId || ''}
-              marketName={marketName}
-              yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
-              onClose={closeToxicSidebarPanel}
-            />
-          </Suspense>
+          <div className="flex flex-1 min-h-0 min-w-0 w-full flex-col overflow-hidden bg-gray-900 toxic-flow-scroll-stable">
+            <Suspense fallback={<div className="p-2 text-[10px] text-gray-500">Loading holders…</div>}>
+              <ToxicFlowDialogLazy
+                embedded
+                open
+                marketId={selectedMarket.conditionId || ''}
+                marketName={marketName}
+                yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
+                streamData={toxicFlowData}
+                onRefreshStream={refreshToxicFlow}
+                streamRefreshing={toxicFlowRefreshing}
+                onClose={closeToxicSidebarPanel}
+              />
+            </Suspense>
+          </div>
         ) : null}
       </div>
       {customDialogOpen && typeof document !== 'undefined' && createPortal((

@@ -440,6 +440,8 @@ function inventoryNetSharesTableCell(signed: number): ReactNode {
 /** Hot path: cached class strings (avoid per-row template-literal allocations on tick rerender). */
 /** Fixed width for rank # (1–100+) so column does not grow at row 10/100 and jitter layout. */
 const TOXIC_TABLE_BODY_TD_CLS = 'box-border align-middle py-0';
+/** Fixed 23px row inner — keeps star/bell and wallet+glyph vertically centered together. */
+const TOXIC_TABLE_ROW_INNER_CLS = 'flex h-[23px] max-h-[23px] min-h-[23px] items-center';
 const TOXIC_TABLE_RANK_COL_CLS =
   'w-[1.85rem] min-w-[1.85rem] max-w-[1.85rem] box-border tabular-nums text-left shrink-0 pl-1';
 const TOXIC_TABLE_FAV_COL_CLS = 'w-[2rem] min-w-[2rem] max-w-[2rem] box-border shrink-0 px-0.5';
@@ -1082,7 +1084,7 @@ const WalletLink = forwardRef<
   return (
     <span
       ref={anchorRef}
-      className="relative inline-flex items-center"
+      className="relative flex h-full min-h-0 items-center"
       onMouseEnter={(e) => runEnter(e)}
       onMouseMove={runMove}
       onMouseLeave={runLeave}
@@ -1093,11 +1095,11 @@ const WalletLink = forwardRef<
           e.stopPropagation();
           onOpenWallet?.(wallet, netShares);
         }}
-        className={`${addrClass} hover:underline inline-flex max-w-full flex-nowrap items-center gap-1 whitespace-nowrap`}
+        className={`${addrClass} hover:underline flex h-full max-w-full flex-nowrap items-center gap-1 whitespace-nowrap leading-none`}
         title={btnTitle}
       >
-        <WalletAddressGlyph address={wallet} size={14} />
-        <span className="truncate">{shortenWallet(wallet)}</span>
+        <WalletAddressGlyph address={wallet} size={12} />
+        <span className="truncate leading-none">{shortenWallet(wallet)}</span>
       </button>
       {portalTooltip}
     </span>
@@ -1197,7 +1199,7 @@ function WalletTableBodyRowImpl({
     >
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} pr-0 text-gray-600 ${TOXIC_TABLE_RANK_COL_CLS}`}>{rank}</td>
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} ${TOXIC_TABLE_FAV_COL_CLS}`}>
-        <span className="inline-flex h-[23px] max-h-[23px] items-center gap-0.5">
+        <span className={`${TOXIC_TABLE_ROW_INNER_CLS} gap-0.5`}>
           <button
             type="button"
             className="rounded p-0 leading-none hover:bg-gray-600/40 text-gray-500 hover:text-gray-300"
@@ -1219,15 +1221,17 @@ function WalletTableBodyRowImpl({
         </span>
       </td>
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} whitespace-nowrap px-1`}>
-        <WalletLink
-          ref={hoverRef}
-          wallet={w.wallet}
-          netShares={signedLegNet}
-          onOpenWallet={onOpenWallet}
-          isSmart={isSmartGold(w)}
-          ledgerEmbed={ledgerEmbed}
-          ledgerGold={ledgerGoldFromEmbed(ledgerEmbed)}
-        />
+        <div className={TOXIC_TABLE_ROW_INNER_CLS}>
+          <WalletLink
+            ref={hoverRef}
+            wallet={w.wallet}
+            netShares={signedLegNet}
+            onOpenWallet={onOpenWallet}
+            isSmart={isSmartGold(w)}
+            ledgerEmbed={ledgerEmbed}
+            ledgerGold={ledgerGoldFromEmbed(ledgerEmbed)}
+          />
+        </div>
       </td>
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 font-bold ${invYToneClass(iy)} bg-green-900/10`}>{rowFmtInt(iy)}</td>
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 font-bold text-red-400 bg-red-900/10`}>{rowFmtInt(inn)}</td>
@@ -2039,18 +2043,8 @@ export function ToxicFlowDialog(props: ToxicFlowDialogProps) {
   return <ToxicFlowDialogInner {...props} />;
 }
 
-const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
-  open,
-  marketId,
-  marketName,
-  yesTokenId,
-  onClose,
-  embedded = false,
-  streamData = undefined,
-  onRefreshStream: _onRefreshStream,
-  streamRefreshing: _streamRefreshing = false,
-}: ToxicFlowDialogProps) {
-  const yesTok = (yesTokenId || '').trim();
+function useToxicDialogStakedNetAbsUsd(yesTokenId: string, marketId: string, open: boolean): number | null {
+  const yesTok = yesTokenId.trim();
   const stakedWyLive = useAppStore((s) => {
     if (!yesTok) return NaN;
     const v = s.marketLookup[yesTok]?.stakedUsdYesLeg;
@@ -2101,7 +2095,8 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     () => mergeMarketStakedLegsResponse(liveStakedLegUsd, marketStakedLegsRest),
     [liveStakedLegUsd, marketStakedLegsRest],
   );
-  const dialogStakedNetAbsUsd = useMemo(() => {
+
+  return useMemo(() => {
     if (!dialogMarketStakedLegs) return null;
     let n =
       typeof dialogMarketStakedLegs.stakedSumAbsSignedNetUsd === 'number' &&
@@ -2110,7 +2105,140 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
         : Math.abs(dialogMarketStakedLegs.stakedUsdYesLeg - dialogMarketStakedLegs.stakedUsdNoLeg);
     return Number.isFinite(n) ? n : null;
   }, [dialogMarketStakedLegs]);
+}
 
+const ToxicFlowStakedStatCell = memo(function ToxicFlowStakedStatCell({
+  yesTokenId,
+  marketId,
+  open,
+}: {
+  yesTokenId: string;
+  marketId: string;
+  open: boolean;
+}) {
+  const dialogStakedNetAbsUsd = useToxicDialogStakedNetAbsUsd(yesTokenId, marketId, open);
+  return (
+    <div
+      className="bg-gray-900 rounded p-1.5 text-center min-w-0"
+      title="Σ_w |inv_y×px_y − inv_n×px_n| over all wallets (same basis as per-wallet Staked Net). Old ‖Σ|YES USD| − Σ|NO USD|‖ shown only if sum field missing."
+    >
+      <div className="text-[10px] text-gray-500 truncate">Staked</div>
+      <div className="text-sm font-bold text-yellow-400 tabular-nums truncate">
+        {dialogStakedNetAbsUsd != null ? (
+          <span title={`$${dialogStakedNetAbsUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}>
+            ${formatPolymarketVolumeK(dialogStakedNetAbsUsd)}
+          </span>
+        ) : (
+          '—'
+        )}
+      </div>
+    </div>
+  );
+});
+
+const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
+  yesTokenId,
+  marketId,
+  open,
+  tabWalletViews,
+  layoutMode,
+  tab,
+  tabBottom,
+  tabThird,
+  setTab,
+  setTabBottom,
+  setTabThird,
+  openWalletDialog,
+  layoutSwitch,
+}: {
+  yesTokenId: string;
+  marketId: string;
+  open: boolean;
+  tabWalletViews: ToxicFlowTabWalletViews;
+  layoutMode: ToxicFlowLayoutMode;
+  tab: Tab;
+  tabBottom: Tab;
+  tabThird: Tab;
+  setTab: (tab: Tab) => void;
+  setTabBottom: (tab: Tab) => void;
+  setTabThird: (tab: Tab) => void;
+  openWalletDialog: (wallet: string, netShares?: number) => void;
+  layoutSwitch: ReactNode;
+}) {
+  const totalStakedNetUsd = useToxicDialogStakedNetAbsUsd(yesTokenId, marketId, open);
+  return (
+    <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 w-full">
+      {layoutMode === 'single' && (
+        <ToxicFlowTablePane
+          tab={tab}
+          onTab={setTab}
+          tabWalletViews={tabWalletViews}
+          totalStakedNetUsd={totalStakedNetUsd}
+          onOpenWallet={openWalletDialog}
+          trailing={layoutSwitch}
+        />
+      )}
+      {layoutMode === 'split' && (
+        <ToxicFlowResizableStack layoutKey="split">
+          <ToxicFlowTablePane
+            tab={tab}
+            onTab={setTab}
+            tabWalletViews={tabWalletViews}
+            totalStakedNetUsd={totalStakedNetUsd}
+            onOpenWallet={openWalletDialog}
+            trailing={layoutSwitch}
+          />
+          <ToxicFlowTablePane
+            tab={tabBottom}
+            onTab={setTabBottom}
+            tabWalletViews={tabWalletViews}
+            totalStakedNetUsd={totalStakedNetUsd}
+            onOpenWallet={openWalletDialog}
+          />
+        </ToxicFlowResizableStack>
+      )}
+      {layoutMode === 'triple' && (
+        <ToxicFlowResizableStack layoutKey="triple">
+          <ToxicFlowTablePane
+            tab={tab}
+            onTab={setTab}
+            tabWalletViews={tabWalletViews}
+            totalStakedNetUsd={totalStakedNetUsd}
+            onOpenWallet={openWalletDialog}
+            trailing={layoutSwitch}
+          />
+          <ToxicFlowTablePane
+            tab={tabBottom}
+            onTab={setTabBottom}
+            tabWalletViews={tabWalletViews}
+            totalStakedNetUsd={totalStakedNetUsd}
+            onOpenWallet={openWalletDialog}
+          />
+          <ToxicFlowTablePane
+            tab={tabThird}
+            onTab={setTabThird}
+            tabWalletViews={tabWalletViews}
+            totalStakedNetUsd={totalStakedNetUsd}
+            onOpenWallet={openWalletDialog}
+          />
+        </ToxicFlowResizableStack>
+      )}
+    </div>
+  );
+});
+
+const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
+  open,
+  marketId,
+  marketName,
+  yesTokenId,
+  onClose,
+  embedded = false,
+  streamData = undefined,
+  onRefreshStream: _onRefreshStream,
+  streamRefreshing: _streamRefreshing = false,
+}: ToxicFlowDialogProps) {
+  const yesTok = (yesTokenId || '').trim();
   const [internalData, setInternalData] = useState<ToxicFlowData | null>(null);
   const internalDataRef = useRef<ToxicFlowData | null>(null);
   const [internalLoading, setInternalLoading] = useState(false);
@@ -2346,21 +2474,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
                     ${formatPolymarketVolumeK(data.totalUsdcIn)}
                   </div>
                 </div>
-                <div
-                  className="bg-gray-900 rounded p-1.5 text-center min-w-0"
-                  title="Σ_w |inv_y×px_y − inv_n×px_n| over all wallets (same basis as per-wallet Staked Net). Old ‖Σ|YES USD| − Σ|NO USD|‖ shown only if sum field missing."
-                >
-                  <div className="text-[10px] text-gray-500 truncate">Staked</div>
-                  <div className="text-sm font-bold text-yellow-400 tabular-nums truncate">
-                    {dialogStakedNetAbsUsd != null ? (
-                      <span title={`$${dialogStakedNetAbsUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}>
-                        ${formatPolymarketVolumeK(dialogStakedNetAbsUsd)}
-                      </span>
-                    ) : (
-                      '—'
-                    )}
-                  </div>
-                </div>
+                <ToxicFlowStakedStatCell yesTokenId={yesTok} marketId={midTrim} open={open} />
                 <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
                   <div className="text-[10px] text-gray-500 truncate">Concentration</div>
                   <div className={`text-sm font-bold ${data.concentration > 0.5 ? 'text-red-400' : data.concentration > 0.3 ? 'text-yellow-400' : 'text-green-400'}`}>
@@ -2409,63 +2523,23 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
                 </div>
               )}
 
-              <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 w-full">
-                {tabWalletViews && layoutMode === 'single' && (
-                  <ToxicFlowTablePane
-                    tab={tab}
-                    onTab={setTab}
-                    tabWalletViews={tabWalletViews}
-                    totalStakedNetUsd={dialogStakedNetAbsUsd}
-                    onOpenWallet={openWalletDialog}
-                    trailing={layoutSwitch}
-                  />
-                )}
-                {tabWalletViews && layoutMode === 'split' && (
-                  <ToxicFlowResizableStack layoutKey="split">
-                    <ToxicFlowTablePane
-                      tab={tab}
-                      onTab={setTab}
-                      tabWalletViews={tabWalletViews}
-                      totalStakedNetUsd={dialogStakedNetAbsUsd}
-                      onOpenWallet={openWalletDialog}
-                      trailing={layoutSwitch}
-                    />
-                    <ToxicFlowTablePane
-                      tab={tabBottom}
-                      onTab={setTabBottom}
-                      tabWalletViews={tabWalletViews}
-                      totalStakedNetUsd={dialogStakedNetAbsUsd}
-                      onOpenWallet={openWalletDialog}
-                    />
-                  </ToxicFlowResizableStack>
-                )}
-                {tabWalletViews && layoutMode === 'triple' && (
-                  <ToxicFlowResizableStack layoutKey="triple">
-                    <ToxicFlowTablePane
-                      tab={tab}
-                      onTab={setTab}
-                      tabWalletViews={tabWalletViews}
-                      totalStakedNetUsd={dialogStakedNetAbsUsd}
-                      onOpenWallet={openWalletDialog}
-                      trailing={layoutSwitch}
-                    />
-                    <ToxicFlowTablePane
-                      tab={tabBottom}
-                      onTab={setTabBottom}
-                      tabWalletViews={tabWalletViews}
-                      totalStakedNetUsd={dialogStakedNetAbsUsd}
-                      onOpenWallet={openWalletDialog}
-                    />
-                    <ToxicFlowTablePane
-                      tab={tabThird}
-                      onTab={setTabThird}
-                      tabWalletViews={tabWalletViews}
-                      totalStakedNetUsd={dialogStakedNetAbsUsd}
-                      onOpenWallet={openWalletDialog}
-                    />
-                  </ToxicFlowResizableStack>
-                )}
-              </div>
+              {tabWalletViews ? (
+                <ToxicFlowDialogTableStack
+                  yesTokenId={yesTok}
+                  marketId={midTrim}
+                  open={open}
+                  tabWalletViews={tabWalletViews}
+                  layoutMode={layoutMode}
+                  tab={tab}
+                  tabBottom={tabBottom}
+                  tabThird={tabThird}
+                  setTab={setTab}
+                  setTabBottom={setTabBottom}
+                  setTabThird={setTabThird}
+                  openWalletDialog={openWalletDialog}
+                  layoutSwitch={layoutSwitch}
+                />
+              ) : null}
             </>
           )}
         </div>

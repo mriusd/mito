@@ -5,6 +5,7 @@ import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMat
 import { gammaImpliedNoBestBid, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
 import { useThrottledLookupPair } from '../../hooks/useThrottledLookupPair';
+import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
 const fmtSz = (sz: number) => {
@@ -60,7 +61,6 @@ export type GridMarketCellProps = {
   isSelected: boolean;
   isColHighlighted?: boolean;
   adjVol: number;
-  livePrice: number;
   bsTimeOffsetHours: number;
   yesPosSize?: number;
   noPosSize?: number;
@@ -109,7 +109,6 @@ function GridMarketCellInner({
   isSelected,
   isColHighlighted = false,
   adjVol,
-  livePrice,
   bsTimeOffsetHours,
   yesPosSize,
   noPosSize,
@@ -119,14 +118,21 @@ function GridMarketCellInner({
   variant,
   skipDeltaBg = false,
 }: GridMarketCellProps) {
+  const livePrice = useThrottledStorePrice(assetToSymbol(asset), 1000);
   const tokenIds = market.clobTokenIds || [];
   const yesTokenId = tokenIds[0] || '';
   const noTokenId = tokenIds[1] || '';
 
   const ws = useThrottledLookupPair(yesTokenId, noTokenId, 1000);
+  const ptb = market.priceToBeat ?? ws.yes?.priceToBeat;
+  const strikeStr =
+    deltaPriceStr ||
+    (ptb != null && Number.isFinite(ptb) ? '>' + ptb : '');
+  const skipDelta = skipDeltaBg || (variant === 'updown' && (isPast || ptb == null));
+
   const conditionMet =
     variant === 'above' || variant === 'between'
-      ? isPriceConditionTrue(deltaPriceStr, livePrice)
+      ? isPriceConditionTrue(strikeStr, livePrice)
       : false;
   const yesWinning = conditionMet;
   const noWinning = !conditionMet && livePrice > 0;
@@ -167,8 +173,8 @@ function GridMarketCellInner({
   const concColor = `rgb(${cR}, ${cG}, 0)`;
   const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
 
-  const gridDeltaBg = !skipDeltaBg && !isClosed && !isPast
-    ? deltaBgStyle(deltaPriceStr, yesMidProb, endDate, livePrice, adjVol, bsTimeOffsetHours, isHit)
+  const gridDeltaBg = !skipDelta && !isClosed && !isPast
+    ? deltaBgStyle(strikeStr, yesMidProb, endDate, livePrice, adjVol, bsTimeOffsetHours, isHit)
     : {};
 
   const bgColor = isClosed || isPast ? 'bg-gray-700/30' : '';
@@ -320,7 +326,6 @@ export const GridMarketCell = memo(GridMarketCellInner, (a, b) => {
     a.isSelected !== b.isSelected ||
     a.isColHighlighted !== b.isColHighlighted ||
     a.adjVol !== b.adjVol ||
-    a.livePrice !== b.livePrice ||
     a.bsTimeOffsetHours !== b.bsTimeOffsetHours ||
     a.yesPosSize !== b.yesPosSize ||
     a.noPosSize !== b.noPosSize ||

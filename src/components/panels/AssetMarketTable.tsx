@@ -8,7 +8,6 @@ import { RangeEditDialog } from '../RangeEditDialog';
 import { HelpTooltip } from '../HelpTooltip';
 import type { AssetName, Market, Order } from '../../types';
 import { GridMarketCell } from './GridMarketCell';
-import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
 
 const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
@@ -264,18 +263,6 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
     setSidebarOutcome(outcome);
     setSidebarOpen(true);
   }, [setSelectedMarket, setSidebarOpen, setSidebarOutcome]);
-
-  const upDownTokenIds = useMemo(() => {
-    const set = new Set<string>();
-    for (const mkts of Object.values(upOrDownMarketsForAsset)) {
-      for (const m of mkts || []) {
-        const t = m.clobTokenIds?.[0];
-        if (t) set.add(String(t));
-      }
-    }
-    return [...set];
-  }, [upOrDownMarketsForAsset]);
-  const upDownLookup = useMarketLookupSubset(upDownTokenIds);
 
   const positionLookup = useMemo(() => {
     const lookup: Record<string, { size: number }> = {};
@@ -588,7 +575,6 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       noDiff={sig?.noDiff}
                       isSelected={selectedMarket?.id === market.id}
                       adjVol={adjVol}
-                      livePrice={livePrice}
                       bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}
                       noPosSize={noPos?.size}
@@ -673,7 +659,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                   {(() => {
                     for (const m of rows[tf]) {
                       if (!m) continue;
-                      const p = m.priceToBeat ?? upDownLookup[m.clobTokenIds?.[0] || '']?.priceToBeat;
+                      const p = m.priceToBeat;
                       if (p != null) return p.toLocaleString(undefined, { maximumFractionDigits: asset === 'BTC' ? 0 : 2 });
                     }
                     return '-';
@@ -688,7 +674,6 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                   const yesTokenId = tokenIds[0] || '';
                   const noTokenId = tokenIds[1] || '';
                   const isPast = showPast && colIdx === 0;
-                  const ptb = market.priceToBeat ?? upDownLookup[yesTokenId]?.priceToBeat;
                   const yesPos = yesTokenId ? positionLookup[normalizeClobTokenId(yesTokenId)] : undefined;
                   const noPos = noTokenId ? positionLookup[normalizeClobTokenId(noTokenId)] : undefined;
 
@@ -698,15 +683,14 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       market={market}
                       asset={asset}
                       endDate={market.endDate || ''}
-                      deltaPriceStr={ptb != null ? '>' + ptb : ''}
+                      deltaPriceStr=""
                       isPast={isPast}
-                      skipDeltaBg={isPast || ptb == null}
+                      skipDeltaBg={isPast}
                       variant="updown"
                       minWidth={60}
                       signalsOnGrid={false}
                       isSelected={selectedMarket?.id === market.id}
                       adjVol={adjVol}
-                      livePrice={livePrice}
                       bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}
                       noPosSize={noPos?.size}
@@ -860,7 +844,6 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       noDiff={sig?.noDiff}
                       isSelected={selectedMarket?.id === market.id}
                       adjVol={adjVol}
-                      livePrice={livePrice}
                       bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}
                       noPosSize={noPos?.size}

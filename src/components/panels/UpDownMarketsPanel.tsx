@@ -6,7 +6,7 @@ import { HelpTooltip } from '../HelpTooltip';
 import type { Market } from '../../types';
 import type { AssetSymbol } from '../../types';
 import { getMarketProbability } from '../../utils/bsMath';
-import { formatPolymarketVolumeK, getPolymarketVolumeUsd, getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
+import { getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { noOutcomeBidAsk, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
@@ -78,7 +78,6 @@ const EXPIRY_BAR_BG = 'rgba(6, 182, 212, 0.6)';
 const NEXT_MARKETS_COUNT_KEY = 'updown-next-markets-count';
 const ASSET_VISIBILITY_KEY = 'updown-panel-asset-visibility';
 const SHOW_TARGET_KEY = 'updown-show-target';
-const SHOW_VOLUME_KEY = 'updown-show-volume';
 
 const TARGET_STRIKE_DECIMALS: Record<(typeof ASSETS)[number], number> = {
   BTC: 0,
@@ -157,7 +156,6 @@ function persistAssetVisibility(v: AssetVisibility) {
 
 function UpDownMarketsPanelInner() {
   const [showTarget, setShowTarget] = useState(() => localStorage.getItem(SHOW_TARGET_KEY) !== 'false');
-  const [showVolume, setShowVolume] = useState(() => localStorage.getItem(SHOW_VOLUME_KEY) === 'true');
   const [nextMarketsCountStr, setNextMarketsCountStr] = useState<string>(
     () => localStorage.getItem(NEXT_MARKETS_COUNT_KEY) ?? '1',
   );
@@ -191,10 +189,6 @@ function UpDownMarketsPanelInner() {
   const setShowTargetColumn = (on: boolean) => {
     setShowTarget(on);
     localStorage.setItem(SHOW_TARGET_KEY, on ? 'true' : 'false');
-  };
-  const setShowVolumeColumn = (on: boolean) => {
-    setShowVolume(on);
-    localStorage.setItem(SHOW_VOLUME_KEY, on ? 'true' : 'false');
   };
 
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
@@ -355,7 +349,7 @@ function UpDownMarketsPanelInner() {
     return dup;
   }, [visibleAssets, sortedOpenByAssetTf, now]);
 
-  const colsPerAsset = (showTarget ? 1 : 0) + 1 + nextMarketsCount + (showVolume ? 1 : 0);
+  const colsPerAsset = (showTarget ? 1 : 0) + 1 + nextMarketsCount;
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
@@ -407,19 +401,6 @@ function UpDownMarketsPanelInner() {
             />
             <span>Show Target</span>
           </label>
-          <label
-            className="flex items-center gap-1 cursor-default text-[10px] text-gray-300 select-none"
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <input
-              type="checkbox"
-              checked={showVolume}
-              onChange={(e) => setShowVolumeColumn(e.target.checked)}
-              className="accent-blue-500 rounded"
-            />
-            <span>Volume</span>
-          </label>
         </div>
       </div>
       <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
@@ -464,23 +445,12 @@ function UpDownMarketsPanelInner() {
                       className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/70 text-[9px] text-gray-400 font-semibold"
                       style={assetBorderStyle(
                         asset,
-                        i < nextMarketsCount - 1 ? {} : showVolume ? {} : { R: true },
+                        i < nextMarketsCount - 1 ? {} : { R: true },
                       )}
                     >
                       Next {i + 1}
                     </th>
                   ))}
-                  {showVolume && (
-                    <th
-                      className="px-1 py-0.5 text-right border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-sky-300 font-semibold"
-                      style={assetBorderStyle(asset, { R: true })}
-                    >
-                      <span className="inline-flex w-full items-center justify-end gap-0.5">
-                        Vol
-                        <HelpTooltip text="Trading volume (USDC In) from Toxic Flow aggregation (wallet_market_positions), pushed over chart WebSocket together with bid/ask updates. Shown in thousands (e.g. 12.3k)." />
-                      </span>
-                    </th>
-                  )}
                 </Fragment>
               ))}
             </tr>
@@ -642,7 +612,6 @@ function UpDownMarketsPanelInner() {
                       </div>
                     </td>
                   ) : null;
-                  const polymarketVol = getPolymarketVolumeUsd(market, yesTokenId, _bidAskLookup);
 
                   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
                   const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
@@ -752,26 +721,11 @@ function UpDownMarketsPanelInner() {
                     </td>
                   );
 
-                  const volumeCell = (
-                    <td
-                      key={`${asset}-vol`}
-                      className={`px-1 py-1 text-right border-l border-r border-solid border-gray-700 bg-gray-900/40 text-sky-300/95 font-bold tabular-nums text-[9px] whitespace-nowrap ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
-                      style={assetBorderStyle(asset, { R: true, B: isLastTfRow })}
-                      title="Toxic Flow USDC volume (wallet_market_positions usdc_in), shown in thousands"
-                    >
-                      {formatPolymarketVolumeK(polymarketVol)}
-                    </td>
-                  );
-
                   const futureCells = futuresSlots.map((nextMarket, slotIdx) => {
                     const isLastSlot = slotIdx === nextMarketsCount - 1;
                     const env = assetBorderStyle(
                       asset,
-                      isLastSlot
-                        ? showVolume
-                          ? { B: isLastTfRow }
-                          : { R: true, B: isLastTfRow }
-                        : { B: isLastTfRow },
+                      isLastSlot ? { R: true, B: isLastTfRow } : { B: isLastTfRow },
                     );
                     if (!nextMarket) {
                       return (
@@ -887,7 +841,6 @@ function UpDownMarketsPanelInner() {
                       {targetCell}
                       {quoteCell}
                       {futureCells}
-                      {showVolume && volumeCell}
                     </Fragment>
                   );
                 })}

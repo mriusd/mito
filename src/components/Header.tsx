@@ -104,8 +104,6 @@ export function Header({ onRefresh }: HeaderProps) {
   const setAutoSwitchNextMarketOnExpiry = useAppStore((s) => s.setAutoSwitchNextMarketOnExpiry);
   const maxOrderSizeUsd = useAppStore((s) => s.maxOrderSizeUsd);
   const setMaxOrderSizeUsd = useAppStore((s) => s.setMaxOrderSizeUsd);
-  const [isNarrowScreen, setIsNarrowScreen] = useState(() => window.innerWidth < 1200);
-
   // Close add menu / settings on click outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -118,12 +116,6 @@ export function Header({ onRefresh }: HeaderProps) {
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  useEffect(() => {
-    const onResize = () => setIsNarrowScreen(window.innerWidth < 1200);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   const handleAddPanel = useCallback(
@@ -236,55 +228,6 @@ export function Header({ onRefresh }: HeaderProps) {
 
         <div className="flex-1 min-w-[8px]" />
 
-        {/* B-S Time Offset Slider */}
-        <div className="max-[767px]:hidden flex items-center gap-1 bg-gray-800/50 rounded px-2 h-[28px] min-w-0 w-[min(34vw,260px)]">
-          <Clock className={`w-3.5 h-3.5 ${bsTimeOffsetHours > 0 ? 'text-yellow-400' : 'text-gray-500'}`} />
-          <span className={`text-[9px] ${bsTimeOffsetHours > 0 ? 'text-yellow-400 font-bold' : 'text-gray-500'}`}>
-            +{bsTimeOffsetHours}h
-          </span>
-          <HelpTooltip text={"Time Machine — slide to see how B-S probability values will change in the future.\n\nSince Black-Scholes probabilities depend on the time remaining until expiration, this slider lets you fast-forward by up to 72 hours. As time to expiry shrinks, probabilities shift — markets near the strike become more sensitive and move toward 0 or 100.\n\nUse this to preview how your positions and potential entries will look as expiry approaches, helping you plan trades ahead of time."} />
-          <div className="min-w-0 flex-1">
-            <input
-              type="range"
-              min="0"
-              max="72"
-              value={bsTimeOffsetHours}
-              step="1"
-              className="vol-slider w-full min-w-0"
-              onChange={(e) => setBsTimeOffsetHours(parseInt(e.target.value))}
-            />
-          </div>
-        </div>
-
-        {/* VWAP Candle Count + Correction */}
-        {!isNarrowScreen && (
-          <div className="flex items-center gap-1 bg-gray-800/50 rounded px-2 h-[28px]">
-            <span className="text-[9px] text-gray-500">VWAP</span>
-            <HelpTooltip text={"VWAP (Volume Weighted Average Price) is the average price weighted by volume over a given period.\n\nThe VWAP price is used as the underlying price when calculating Black-Scholes probabilities.\n\nThe first input sets the lookback window in minutes (how many 1-minute candles to use).\n\nThe ± correction is applied to the set price ranges to account for VWAP deviation from live price. For example, if a range is set to 600-700 but the 700 is expected to be a wick, setting ± to 0.5 will calculate the B-S probability at the range edge minus 0.5%, accounting for the fact that a short wick won't move the B-S probability significantly.\n\nTo use the live price instead of VWAP, set both values to 0."} />
-            <input
-              type="text"
-              inputMode="numeric"
-              value={vwapCandlesLocal}
-              className="text-[11px] text-gray-300 bg-gray-700 border border-gray-600 rounded px-1 w-12 outline-none text-center"
-              onChange={(e) => setVwapCandlesLocal(e.target.value)}
-              onBlur={commitVwapCandles}
-              onKeyDown={(e) => { if (e.key === 'Enter') commitVwapCandles(); }}
-            />
-            <span className="text-[9px] text-gray-500">m</span>
-            <span className="text-[9px] text-gray-500 ml-1">±</span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={vwapCorrLocal}
-              className="text-[11px] text-gray-300 bg-gray-700 border border-gray-600 rounded px-1 w-14 outline-none text-center"
-              onChange={(e) => setVwapCorrLocal(e.target.value)}
-              onBlur={commitVwapCorr}
-              onKeyDown={(e) => { if (e.key === 'Enter') commitVwapCorr(); }}
-            />
-            <span className="text-[9px] text-gray-500">%</span>
-          </div>
-        )}
-
         <button
           onClick={async () => {
             if (refreshing) return;
@@ -377,8 +320,7 @@ export function Header({ onRefresh }: HeaderProps) {
           </button>
           {showSettings && (
             <div className="absolute right-0 max-[639px]:left-0 max-[639px]:right-auto mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-2 px-3 min-w-[200px] w-[min(260px,calc(100vw-16px))] z-[260]">
-              {isNarrowScreen && (
-                <div className="mb-2 pb-2 border-b border-gray-700">
+              <div className="mb-2 pb-2 border-b border-gray-700">
                   <div className="flex items-center gap-1 mb-1">
                     <span className="text-[10px] text-gray-400 font-semibold">VWAP</span>
                     <HelpTooltip text={"VWAP (Volume Weighted Average Price) is the average price weighted by volume over a given period.\n\nThe VWAP price is used as the underlying price when calculating Black-Scholes probabilities.\n\nThe first input sets the lookback window in minutes (how many 1-minute candles to use).\n\nThe ± correction is applied to the set price ranges to account for VWAP deviation from live price. For example, if a range is set to 600-700 but the 700 is expected to be a wick, setting ± to 0.5 will calculate the B-S probability at the range edge minus 0.5%, accounting for the fact that a short wick won't move the B-S probability significantly.\n\nTo use the live price instead of VWAP, set both values to 0."} />
@@ -406,9 +348,7 @@ export function Header({ onRefresh }: HeaderProps) {
                     />
                     <span className="text-[9px] text-gray-500">%</span>
                   </div>
-                </div>
-              )}
-              <div className="mb-2 pb-2 border-b border-gray-700 min-[768px]:hidden">
+                <div className="mt-2 pt-2 border-t border-gray-700/80">
                 <div className="flex items-center gap-1 mb-1">
                   <Clock className={`w-3.5 h-3.5 ${bsTimeOffsetHours > 0 ? 'text-yellow-400' : 'text-gray-500'}`} />
                   <span className={`text-[10px] ${bsTimeOffsetHours > 0 ? 'text-yellow-400 font-bold' : 'text-gray-500'}`}>
@@ -425,6 +365,7 @@ export function Header({ onRefresh }: HeaderProps) {
                   className="vol-slider w-full"
                   onChange={(e) => setBsTimeOffsetHours(parseInt(e.target.value))}
                 />
+                </div>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input

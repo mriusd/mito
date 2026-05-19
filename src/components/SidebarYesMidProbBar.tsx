@@ -1,7 +1,7 @@
 import { memo, useSyncExternalStore } from 'react';
 import { getBidAskMarketRow, subscribeBidAskMarketLookup } from '../lib/bidAskMarketLookup';
 import type { Market } from '../types';
-import { HelpTooltip } from './HelperTooltip';
+import { HelpTooltip } from './HelpTooltip';
 import { SidebarBarMidMarker } from './SidebarBarMidMarker';
 
 function yesMidCentsFromWsRow(row: Market | undefined): number | null {

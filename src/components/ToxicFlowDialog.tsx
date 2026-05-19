@@ -1636,28 +1636,41 @@ export function WalletInfoDialog({
     () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches,
   );
   const [walletIsFavourite, setWalletIsFavourite] = useState(false);
+  const [walletBellActive, setWalletBellActive] = useState(false);
 
   useEffect(() => {
     if (!open || !wallet.trim()) {
       setWalletIsFavourite(false);
+      setWalletBellActive(false);
       return;
     }
     const k = wallet.trim().toLowerCase();
     setWalletIsFavourite(readToxicFavouriteWallets().has(k));
+    setWalletBellActive(readToxicBellWallets().has(k));
   }, [open, wallet]);
 
   useEffect(() => {
     if (!open || !wallet.trim()) return;
     const k = wallet.trim().toLowerCase();
-    const sync = () => setWalletIsFavourite(readToxicFavouriteWallets().has(k));
+    const syncFav = () => setWalletIsFavourite(readToxicFavouriteWallets().has(k));
+    const syncBell = () => setWalletBellActive(readToxicBellWallets().has(k));
     const onStorage = (e: StorageEvent) => {
-      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY || e.key === null) sync();
+      if (
+        e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY ||
+        e.key === TOXIC_BELL_WALLETS_LS_KEY ||
+        e.key === null
+      ) {
+        syncFav();
+        syncBell();
+      }
     };
     window.addEventListener('storage', onStorage);
-    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
+    window.addEventListener(TOXIC_BELLS_CHANGED_EVENT, syncBell);
     return () => {
       window.removeEventListener('storage', onStorage);
-      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
+      window.removeEventListener(TOXIC_BELLS_CHANGED_EVENT, syncBell);
     };
   }, [open, wallet]);
 
@@ -1669,6 +1682,16 @@ export function WalletInfoDialog({
     else next.add(k);
     persistToxicFavouriteWallets(next);
     setWalletIsFavourite(next.has(k));
+  }, [wallet]);
+
+  const toggleWalletBell = useCallback(() => {
+    const k = wallet.trim().toLowerCase();
+    if (!k) return;
+    const next = readToxicBellWallets();
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
+    persistToxicBellWallets(next);
+    setWalletBellActive(next.has(k));
   }, [wallet]);
 
   useLayoutEffect(() => {
@@ -1716,6 +1739,23 @@ export function WalletInfoDialog({
                 className={walletIsFavourite ? 'fill-yellow-400 stroke-yellow-500/90' : 'fill-none stroke-gray-400'}
                 strokeWidth={walletIsFavourite ? 1.5 : 2}
               />
+            </button>
+            <button
+              type="button"
+              className={`shrink-0 p-0.5 rounded hover:bg-gray-700/70 ${walletBellActive ? 'text-amber-400' : 'text-gray-500'}`}
+              title={
+                walletBellActive
+                  ? 'Stop highlighting this wallet on Toxic tables'
+                  : 'Flash row when wallet is on this market'
+              }
+              aria-pressed={walletBellActive}
+              disabled={!wallet.trim()}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleWalletBell();
+              }}
+            >
+              <Bell size={13} strokeWidth={2} className={walletBellActive ? BELL_CLS_ON : BELL_CLS_OFF} />
             </button>
             <span className="inline-flex min-w-0 max-w-full flex-nowrap items-center gap-1">
               <WalletAddressGlyph address={wallet} size={18} />

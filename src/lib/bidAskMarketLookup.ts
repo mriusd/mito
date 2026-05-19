@@ -104,6 +104,19 @@ function mergeWsItemOntoMarket(seed: Market, item: BidAskWsItem): Market {
 
 const pendingPatch: Record<string, Market> = {};
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+const bidAskLookupListeners = new Set<() => void>();
+
+/** Fires on each WS bid/ask patch (before 1 Hz store flush) — for sidebar prob bar etc. */
+export function subscribeBidAskMarketLookup(listener: () => void): () => void {
+  bidAskLookupListeners.add(listener);
+  return () => {
+    bidAskLookupListeners.delete(listener);
+  };
+}
+
+function notifyBidAskMarketLookupListeners() {
+  for (const listener of bidAskLookupListeners) listener();
+}
 
 function flushPendingBidAskToStore() {
   flushTimer = null;
@@ -154,6 +167,7 @@ export function getBidAskMarketRow(tokenId: string): Market | undefined {
 
 export function enqueueBidAskMarketPatches(items: BidAskWsItem[]) {
   const lookup = useAppStore.getState().marketLookup;
+  let touched = false;
   for (const item of items) {
     if (!item.assetId) continue;
     const id = item.assetId;
@@ -161,11 +175,16 @@ export function enqueueBidAskMarketPatches(items: BidAskWsItem[]) {
     if (!seed) continue;
     const next = mergeWsItemOntoMarket(seed, item);
     if (bidAskWsRowEqual(lookup[id], next)) {
-      delete pendingPatch[id];
+      if (pendingPatch[id]) {
+        delete pendingPatch[id];
+        touched = true;
+      }
       continue;
     }
     pendingPatch[id] = next;
+    touched = true;
   }
+  if (touched) notifyBidAskMarketLookupListeners();
   if (Object.keys(pendingPatch).length > 0) scheduleBidAskFlush();
 }
 

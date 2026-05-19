@@ -47,7 +47,7 @@ import { useOnchainTradesWS } from '../hooks/useOnchainTradesWS';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
-import { SidebarBarMidMarker } from './SidebarBarMidMarker';
+import { SidebarYesMidProbBar } from './SidebarYesMidProbBar';
 import { bumpSidebarTopOfBookDigest } from '../lib/sidebarTopOfBookStore';
 import { resetSidebarPolymarketTape, setSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import { getSidebarToxicNotify, subscribeSidebarToxicNotify } from '../lib/sidebarToxicNotifyStore';
@@ -3620,77 +3620,10 @@ export function Sidebar() {
                   </div>
                 </div>
                 {!row.pastExpiry && row.yesMathCents != null && (
-                  (() => {
-                    const yesTid = (selectedMarket?.clobTokenIds?.[0] || '').trim();
-                    const wsRow = yesTid ? marketLookup[yesTid] : undefined;
-                    const bb = wsRow?.bestBid;
-                    const ba = wsRow?.bestAsk;
-                    const tb = bb != null && Number.isFinite(bb) ? bb * 100 : NaN;
-                    const ta = ba != null && Number.isFinite(ba) ? ba * 100 : NaN;
-                    let yesMidCents: number | null = null;
-                    if (Number.isFinite(tb) && Number.isFinite(ta)) yesMidCents = (tb + ta) / 2;
-                    else if (Number.isFinite(tb)) yesMidCents = tb;
-                    else if (Number.isFinite(ta)) yesMidCents = ta;
-                    const yMidOk =
-                      yesMidCents != null ? Math.min(100, Math.max(0, yesMidCents)) : null;
-
-                    const m = row.yesMathCents;
-                    const delta = yMidOk != null ? yMidOk - m : null;
-                    /** GREEN on the left (% width): 50% when YES mid ≡ math; grows left when YES mid > math. RED fills the remainder on the right. */
-                    const greenLeftPct =
-                      delta == null
-                        ? 50
-                        : Math.min(97, Math.max(3, 50 + (delta / 22) * 46));
-
-                    const tip =
-                      yMidOk == null
-                        ? `Model YES ${m.toFixed(1)}¢ — no WS best bid/ask for YES yet`
-                        : `YES mid ${yMidOk.toFixed(1)}¢ (bid/ask WS) vs model ${m.toFixed(1)}¢ (Δ ${delta! >= 0 ? '+' : ''}${delta!.toFixed(1)}¢)`;
-
-                    return (
-                      <div className="mt-2 pt-1.5 border-t border-gray-800/70" title={tip}>
-                        <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <span className="flex items-center gap-0.5 text-[10px] text-gray-500">
-                            Prob
-                            <HelpTooltip
-                              text={
-                                'YES midpoint: average of live best bid and best ask from `/ws/chart` (YES token asset id).\n\n' +
-                                  'Not the sidebar CLOB ladder. Same readings when you toggle sidebar YES/NO.\n\n' +
-                                  'Compared to Math (model YES). Green left grows when WS mid is above math.'
-                              }
-                            />
-                          </span>
-                          <span className="text-[10px] text-gray-400 tabular-nums">
-                            <span className="text-gray-500">YES mid</span>{' '}
-                            {yMidOk != null ? (
-                              <span
-                                className={`font-semibold ${
-                                  delta != null ? (delta > 0.4 ? 'text-emerald-400' : delta < -0.4 ? 'text-red-400' : 'text-gray-200') : 'text-white'
-                                }`}
-                              >
-                                {yMidOk.toFixed(1)}
-                              </span>
-                            ) : (
-                              <span className="text-gray-600">–</span>
-                            )}
-                            <span className="text-gray-600 mx-0.5">/</span>
-                            <span className="text-gray-400">{m.toFixed(1)} math</span>
-                          </span>
-                        </div>
-                        <div className="relative h-[7px] w-full rounded-full overflow-hidden bg-gray-900 ring-1 ring-gray-700/80">
-                          <div
-                            className="absolute inset-y-0 left-0 rounded-l-[999px] bg-emerald-600/90"
-                            style={{ width: `${greenLeftPct}%` }}
-                          />
-                          <div
-                            className="absolute inset-y-0 rounded-r-[999px] bg-red-800/95"
-                            style={{ left: `${greenLeftPct}%`, width: `${100 - greenLeftPct}%` }}
-                          />
-                          <SidebarBarMidMarker />
-                        </div>
-                      </div>
-                    );
-                  })()
+                  <SidebarYesMidProbBar
+                    yesTokenId={(selectedMarket?.clobTokenIds?.[0] || '').trim()}
+                    yesMathCents={row.yesMathCents}
+                  />
                 )}
               </div>
             );

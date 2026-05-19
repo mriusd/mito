@@ -1,12 +1,15 @@
 import { memo } from 'react';
 import { lazyWithChunkReload } from '../utils/lazyWithChunkReload';
-import { useSidebarToxicFlowStream } from './SidebarToxicFlowContext';
+import {
+  refreshSidebarToxicFlow,
+  useSidebarToxicFlowData,
+  useSidebarToxicFlowRefreshing,
+} from '../lib/sidebarToxicFlowStore';
 
 const ToxicFlowDialogLazy = lazyWithChunkReload(() =>
   import('./ToxicFlowDialog').then((m) => ({ default: m.ToxicFlowDialog })),
 );
 
-/** Consumes shared toxic stream — no second WS. */
 export const SidebarToxicPanel = memo(function SidebarToxicPanel({
   marketId,
   marketName,
@@ -19,7 +22,8 @@ export const SidebarToxicPanel = memo(function SidebarToxicPanel({
   onClose: () => void;
 }) {
   const mid = marketId.trim();
-  const { data, refresh, refreshing } = useSidebarToxicFlowStream();
+  const data = useSidebarToxicFlowData();
+  const refreshing = useSidebarToxicFlowRefreshing();
   return (
     <div className="flex flex-1 min-h-0 min-w-0 w-full flex-col overflow-hidden bg-gray-900 toxic-flow-scroll-stable">
       <ToxicFlowDialogLazy
@@ -29,7 +33,7 @@ export const SidebarToxicPanel = memo(function SidebarToxicPanel({
         marketName={marketName}
         yesTokenId={yesTokenId}
         streamData={data}
-        onRefreshStream={refresh}
+        onRefreshStream={refreshSidebarToxicFlow}
         streamRefreshing={refreshing}
         onClose={onClose}
       />

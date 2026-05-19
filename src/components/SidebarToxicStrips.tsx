@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import { ToxicFlowStakePreview, TOXIC_TOTAL_STAKE_BAR_HELP } from './ToxicFlowStakePreview';
-import { useSidebarToxicFlowStream } from './SidebarToxicFlowContext';
+import { useSidebarToxicFlowData } from '../lib/sidebarToxicFlowStore';
 import {
   buildToxicFlowTabWalletViews,
   cohortSurplusLean,
@@ -50,7 +50,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   notifyFavouriteTiltPct: number;
   notifyGreensTiltPct: number;
 }) {
-  const { data: toxicFlowData } = useSidebarToxicFlowStream();
+  const toxicFlowData = useSidebarToxicFlowData();
   const [toxicFavSet, setToxicFavSet] = useState(readToxicFavouriteWallets);
   useEffect(() => {
     const sync = () => setToxicFavSet(readToxicFavouriteWallets());

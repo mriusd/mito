@@ -53,7 +53,7 @@ import { resetSidebarPolymarketTape, setSidebarPolymarketTape } from '../lib/sid
 import { getSidebarToxicNotify, subscribeSidebarToxicNotify } from '../lib/sidebarToxicNotifyStore';
 import { SidebarOrderCostDisplay } from './SidebarOrderCostDisplay';
 import { SidebarToxicPanel } from './SidebarToxicPanel';
-import { SidebarToxicFlowProvider } from './SidebarToxicFlowContext';
+import { SidebarToxicFlowHost } from './SidebarToxicFlowHost';
 import { SidebarToxicStrips } from './SidebarToxicStrips';
 import {
   walletInvY,
@@ -3197,7 +3197,7 @@ export function Sidebar() {
       >
         <div className="mobile-sidebar-drag-handle" />
       </div>
-      <SidebarToxicFlowProvider marketId={toxicFlowMarketId}>
+      <SidebarToxicFlowHost marketId={toxicFlowMarketId} />
       <div
         className={
           isMobileSheet
@@ -4774,7 +4774,6 @@ export function Sidebar() {
           </Suspense>
         ) : null}
       </div>
-      </SidebarToxicFlowProvider>
       {customDialogOpen && typeof document !== 'undefined' && createPortal((
         <div className="fixed inset-0 z-[60000] bg-black/70 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) setCustomDialogOpen(false); }}>
           <div className="w-full max-w-sm mx-4 rounded-lg border border-gray-600 bg-gray-800 p-4">

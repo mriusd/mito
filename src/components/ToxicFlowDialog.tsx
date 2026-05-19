@@ -439,8 +439,10 @@ function inventoryNetSharesTableCell(signed: number): ReactNode {
 
 /** Hot path: cached class strings (avoid per-row template-literal allocations on tick rerender). */
 /** Fixed width for rank # (1–100+) so column does not grow at row 10/100 and jitter layout. */
+const TOXIC_TABLE_BODY_TD_CLS = 'box-border align-middle py-0';
 const TOXIC_TABLE_RANK_COL_CLS =
-  'w-[1.85rem] min-w-[1.85rem] max-w-[1.85rem] box-border tabular-nums text-left shrink-0';
+  'w-[1.85rem] min-w-[1.85rem] max-w-[1.85rem] box-border tabular-nums text-left shrink-0 pl-1';
+const TOXIC_TABLE_FAV_COL_CLS = 'w-[2rem] min-w-[2rem] max-w-[2rem] box-border shrink-0 px-0.5';
 /** Fixed width for % / Cum% (e.g. 100.0%) so stake updates do not jitter column width. */
 const TOXIC_TABLE_STAKED_PCT_COL_CLS =
   'w-[3.35rem] min-w-[3.35rem] max-w-[3.35rem] box-border shrink-0 tabular-nums text-right';
@@ -1080,7 +1082,7 @@ const WalletLink = forwardRef<
   return (
     <span
       ref={anchorRef}
-      className="relative inline-block"
+      className="relative inline-flex items-center"
       onMouseEnter={(e) => runEnter(e)}
       onMouseMove={runMove}
       onMouseLeave={runLeave}
@@ -1193,12 +1195,12 @@ function WalletTableBodyRowImpl({
       onMouseMove={onRowMove}
       onMouseLeave={onRowLeave}
     >
-      <td className={`py-0.5 px-0 text-gray-600 ${TOXIC_TABLE_RANK_COL_CLS}`}>{rank}</td>
-      <td className="align-top px-0 py-0.5">
-        <span className="inline-flex shrink-0 items-start gap-0.5 align-top">
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} pr-0 text-gray-600 ${TOXIC_TABLE_RANK_COL_CLS}`}>{rank}</td>
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} ${TOXIC_TABLE_FAV_COL_CLS}`}>
+        <span className="inline-flex h-[23px] max-h-[23px] items-center gap-0.5">
           <button
             type="button"
-            className="p-0.5 rounded hover:bg-gray-600/40 text-gray-500 hover:text-gray-300"
+            className="rounded p-0 leading-none hover:bg-gray-600/40 text-gray-500 hover:text-gray-300"
             title={favouriteActive ? 'Remove favourite' : 'Add favourite'}
             aria-pressed={favouriteActive}
             onClick={onFavClick}
@@ -1207,7 +1209,7 @@ function WalletTableBodyRowImpl({
           </button>
           <button
             type="button"
-            className="p-0.5 rounded hover:bg-gray-600/40 text-gray-500 hover:text-amber-200/90"
+            className="rounded p-0 leading-none hover:bg-gray-600/40 text-gray-500 hover:text-amber-200/90"
             title={bellActive ? 'Stop highlighting this wallet on Toxic tables' : 'Flash row when wallet is on this market'}
             aria-pressed={bellActive}
             onClick={onBellClick}
@@ -1216,7 +1218,7 @@ function WalletTableBodyRowImpl({
           </button>
         </span>
       </td>
-      <td className="align-top whitespace-nowrap px-1 py-0.5">
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} whitespace-nowrap px-1`}>
         <WalletLink
           ref={hoverRef}
           wallet={w.wallet}
@@ -1227,32 +1229,32 @@ function WalletTableBodyRowImpl({
           ledgerGold={ledgerGoldFromEmbed(ledgerEmbed)}
         />
       </td>
-      <td className={`text-right px-1 font-bold ${invYToneClass(iy)} bg-green-900/10`}>{rowFmtInt(iy)}</td>
-      <td className="text-right px-1 font-bold text-red-400 bg-red-900/10">{rowFmtInt(inn)}</td>
-      <td className="text-right px-1 whitespace-nowrap tabular-nums" title="inv_yes − inv_no (|net| Y / N)">
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 font-bold ${invYToneClass(iy)} bg-green-900/10`}>{rowFmtInt(iy)}</td>
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 font-bold text-red-400 bg-red-900/10`}>{rowFmtInt(inn)}</td>
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 whitespace-nowrap tabular-nums`} title="inv_yes − inv_no (|net| Y / N)">
         {inventoryNetSharesTableCell(signedLegNet)}
       </td>
-      <td className={`text-right px-1 tabular-nums ${priceSharePxClass(w.priceYes)}`}>{fmtPriceShare(w.priceYes)}</td>
-      <td className={`text-right px-1 tabular-nums ${priceSharePxClass(w.priceNo)}`}>{fmtPriceShare(w.priceNo)}</td>
-      <td className="text-right px-1 text-gray-400">
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 tabular-nums ${priceSharePxClass(w.priceYes)}`}>{fmtPriceShare(w.priceYes)}</td>
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 tabular-nums ${priceSharePxClass(w.priceNo)}`}>{fmtPriceShare(w.priceNo)}</td>
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 text-gray-400`}>
         {typeof w.tradeCount === 'number' && Number.isFinite(w.tradeCount) ? rowFmtInt(w.tradeCount) : '–'}
       </td>
-      <td className="text-right px-1 font-medium tabular-nums text-red-400">
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 font-medium tabular-nums text-red-400`}>
         {Number.isFinite(stakeYUsd) ? rowFmtUsdSigned(-stakeYUsd) : '–'}
       </td>
-      <td className="text-right px-1 font-medium tabular-nums text-red-400">
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 font-medium tabular-nums text-red-400`}>
         {Number.isFinite(stakeNUsd) ? rowFmtUsdSigned(-stakeNUsd) : '–'}
       </td>
-      <td className="text-right px-1 whitespace-nowrap" title="Staked Y − Staked N (column display); Y / N suffix">
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 whitespace-nowrap`} title="Staked Y − Staked N (column display); Y / N suffix">
         {stakedNetUsdTableCellWithFlash(stakeNetSigned, stakedNetFlash)}
       </td>
-      <td className={`px-1 text-cyan-300 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}>
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} px-1 text-cyan-300 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}>
         {stakedPct > 0 ? `${NF_PCT_1.format(stakedPct)}%` : '-'}
       </td>
-      <td className={`px-1 text-cyan-200/70 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}>
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} px-1 text-cyan-200/70 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}>
         {cumStakedPct > 0 ? `${NF_PCT_1.format(cumStakedPct)}%` : '-'}
       </td>
-      <td className={`text-right px-1 ${biasToneClass(signedLegNet)}`}>
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 ${biasToneClass(signedLegNet)}`}>
         {`${NF_INT_EN.format(Math.round(bias * 100))}%`}
       </td>
     </tr>
@@ -1429,47 +1431,47 @@ function WalletTableInner({
       <table className="w-full min-w-full whitespace-nowrap text-[10px]">
         <thead className="sticky top-0 z-[1] bg-gray-950">
           <tr className="text-gray-500 border-b border-gray-700">
-            <th className={`py-1 px-0 ${TOXIC_TABLE_RANK_COL_CLS}`}>#</th>
-            <th className="text-left py-1 px-0.5 w-[2rem]" aria-label="Favourite and highlight" />
-            <th className="text-left px-1">Wallet</th>
-            <th className="text-right px-1 bg-green-900/15" title="inv_yes">
+            <th className={`align-middle py-1 pr-0 ${TOXIC_TABLE_RANK_COL_CLS}`}>#</th>
+            <th className={`align-middle py-1 text-left ${TOXIC_TABLE_FAV_COL_CLS}`} aria-label="Favourite and highlight" />
+            <th className="align-middle py-1 text-left px-1">Wallet</th>
+            <th className="align-middle py-1 text-right px-1 bg-green-900/15" title="inv_yes">
               Inv Y
             </th>
-            <th className="text-right px-1 bg-red-900/15 text-red-300" title="inv_no">
+            <th className="align-middle py-1 text-right px-1 bg-red-900/15 text-red-300" title="inv_no">
               Inv N
             </th>
-            <th className="text-right px-1" title="inv_yes − inv_no (shares); magnitude + Y / N, no leading minus">
+            <th className="align-middle py-1 text-right px-1" title="inv_yes − inv_no (shares); magnitude + Y / N, no leading minus">
               Net
             </th>
-            <th className="text-right px-1 text-gray-400" title="price_yes">
+            <th className="align-middle py-1 text-right px-1 text-gray-400" title="price_yes">
               Px Y
             </th>
-            <th className="text-right px-1 text-gray-400" title="price_no">
+            <th className="align-middle py-1 text-right px-1 text-gray-400" title="price_no">
               Px N
             </th>
-            <th className="text-right px-1">Trades</th>
-            <th className="text-right px-1 bg-green-900/10" title="−(inv_yes × price_yes) shown red (cost notionally)">
+            <th className="align-middle py-1 text-right px-1">Trades</th>
+            <th className="align-middle py-1 text-right px-1 bg-green-900/10" title="−(inv_yes × price_yes) shown red (cost notionally)">
               Staked Y
             </th>
-            <th className="text-right px-1 bg-red-900/10 text-red-300" title="−(inv_no × price_no) shown red (cost notionally)">
+            <th className="align-middle py-1 text-right px-1 bg-red-900/10 text-red-300" title="−(inv_no × price_no) shown red (cost notionally)">
               Staked N
             </th>
-            <th className="text-right px-1 text-gray-300" title="(−inv_y×px_y) − (−inv_n×px_n) = Staked Y − Staked N as shown; suffix Y / N; green = favors YES / red = favors NO">
+            <th className="align-middle py-1 text-right px-1 text-gray-300" title="(−inv_y×px_y) − (−inv_n×px_n) = Staked Y − Staked N as shown; suffix Y / N; green = favors YES / red = favors NO">
               Staked Net
             </th>
             <th
-              className={`px-1 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}
+              className={`align-middle py-1 px-1 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}
               title="|Staked Net| USD ÷ total market staked (Σ|signed net|)"
             >
               %
             </th>
             <th
-              className={`px-1 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}
+              className={`align-middle py-1 px-1 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}
               title="Running sum of % by table order (Staked Net / total staked)"
             >
               Cum%
             </th>
-            <th className="text-right px-1">Bias</th>
+            <th className="align-middle py-1 text-right px-1">Bias</th>
           </tr>
         </thead>
         <tbody>

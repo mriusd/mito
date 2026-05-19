@@ -2,6 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchToxicFlow, type ToxicFlowData } from '../api';
 import { toxicFlowPayloadEqual, clearToxicFlowTabWalletViewsCache } from '../lib/toxicFlowStakeCohort';
 import { applyToxicFlowWSMessage, toxicFlowFullSnapshot, type ToxicFlowWSMessage } from '../lib/toxicFlowWs';
+import {
+  registerSidebarToxicFlowRefresh,
+  resetSidebarToxicFlowStore,
+  setSidebarToxicFlowData,
+  setSidebarToxicFlowRefreshing,
+} from '../lib/sidebarToxicFlowStore';
 import { WS_BASE } from '../lib/env';
 
 export type ToxicFlowMarketStream = {
@@ -15,39 +21,62 @@ export type ToxicFlowMarketStream = {
 export function useToxicFlowMarketStream(
   marketId: string | undefined | null,
   enabled = true,
+  options?: { sidebarStore?: boolean },
 ): ToxicFlowMarketStream {
+  const sidebarStore = options?.sidebarStore === true;
   const mid = typeof marketId === 'string' ? marketId.trim() : '';
   const [data, setData] = useState<ToxicFlowData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const dataRef = useRef<ToxicFlowData | null>(null);
 
+  const commitData = useCallback(
+    (next: ToxicFlowData | null) => {
+      dataRef.current = next;
+      if (sidebarStore) {
+        setSidebarToxicFlowData(next);
+        return;
+      }
+      setData(next);
+    },
+    [sidebarStore],
+  );
+
+  const commitRefreshing = useCallback(
+    (v: boolean) => {
+      if (sidebarStore) {
+        setSidebarToxicFlowRefreshing(v);
+        return;
+      }
+      setRefreshing(v);
+    },
+    [sidebarStore],
+  );
+
   const applyMessage = useCallback((msg: ToxicFlowWSMessage) => {
     const next = applyToxicFlowWSMessage(dataRef.current, msg);
     if (!next) return;
     if (dataRef.current && toxicFlowPayloadEqual(dataRef.current, next)) return;
-    dataRef.current = next;
-    setData(next);
-  }, []);
+    commitData(next);
+  }, [commitData]);
 
   const refresh = useCallback(async () => {
     if (!mid) return;
-    setRefreshing(true);
+    commitRefreshing(true);
     try {
       const d = await fetchToxicFlow(mid);
       const snap = toxicFlowFullSnapshot(d);
-      dataRef.current = snap;
-      setData(snap);
+      commitData(snap);
     } catch {
       /* keep prior */
     } finally {
-      setRefreshing(false);
+      commitRefreshing(false);
     }
-  }, [mid]);
+  }, [mid, commitData, commitRefreshing]);
 
   useEffect(() => {
     if (!enabled || !mid) {
       dataRef.current = null;
-      setData(null);
+      commitData(null);
       clearToxicFlowTabWalletViewsCache();
       return;
     }
@@ -57,21 +86,16 @@ export function useToxicFlowMarketStream(
       try {
         const d = await fetchToxicFlow(mid);
         if (!cancelled) {
-          const snap = toxicFlowFullSnapshot(d);
-          dataRef.current = snap;
-          setData(snap);
+          commitData(toxicFlowFullSnapshot(d));
         }
       } catch {
-        if (!cancelled) {
-          dataRef.current = null;
-          setData(null);
-        }
+        if (!cancelled) commitData(null);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [enabled, mid]);
+  }, [enabled, mid, commitData]);
 
   useEffect(() => {
     if (!enabled || !mid) return;
@@ -137,9 +161,18 @@ export function useToxicFlowMarketStream(
     };
   }, [enabled, mid, applyMessage]);
 
+  useEffect(() => {
+    if (!sidebarStore) return;
+    registerSidebarToxicFlowRefresh(refresh);
+    return () => {
+      registerSidebarToxicFlowRefresh(null);
+      resetSidebarToxicFlowStore();
+    };
+  }, [sidebarStore, refresh]);
+
   return {
-    data: enabled && mid ? data : null,
+    data: sidebarStore ? null : enabled && mid ? data : null,
     refresh,
-    refreshing,
+    refreshing: sidebarStore ? false : refreshing,
   };
 }

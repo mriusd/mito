@@ -11,6 +11,7 @@ import {
   TOXIC_BELL_WALLETS_LS_KEY,
   TOXIC_BELLS_CHANGED_EVENT,
 } from '../lib/toxicFavouriteWallets';
+import { getToxicWalletTag, TOXIC_WALLET_TAGS_CHANGED_EVENT } from '../lib/toxicWalletTags';
 import { WalletAddressGlyph } from './WalletAddressGlyph';
 
 const BELL_CLS_ON = 'text-amber-400 fill-amber-400/25';
@@ -33,10 +34,12 @@ export function FavouriteWalletsDialog({
 }) {
   const [addrs, setAddrs] = useState<string[]>([]);
   const [bellWallets, setBellWallets] = useState(readToxicBellWallets);
+  const [tagRev, setTagRev] = useState(0);
 
   const refresh = useCallback(() => {
     setAddrs(listToxicFavouriteWalletsSorted());
     setBellWallets(readToxicBellWallets());
+    setTagRev((n) => n + 1);
   }, []);
 
   useEffect(() => {
@@ -56,13 +59,16 @@ export function FavouriteWalletsDialog({
     };
     const onFav = () => refresh();
     const onBell = () => refresh();
+    const onTags = () => refresh();
     window.addEventListener('storage', onStorage);
     window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, onFav);
     window.addEventListener(TOXIC_BELLS_CHANGED_EVENT, onBell);
+    window.addEventListener(TOXIC_WALLET_TAGS_CHANGED_EVENT, onTags);
     return () => {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, onFav);
       window.removeEventListener(TOXIC_BELLS_CHANGED_EVENT, onBell);
+      window.removeEventListener(TOXIC_WALLET_TAGS_CHANGED_EVENT, onTags);
     };
   }, [refresh]);
 
@@ -121,6 +127,8 @@ export function FavouriteWalletsDialog({
             <ul className="space-y-1">
               {addrs.map((raw) => {
                 const lower = raw.toLowerCase();
+                void tagRev;
+                const tag = getToxicWalletTag(raw);
                 const bellActive = bellWallets.has(lower);
                 const poly = `https://polymarket.com/profile/${lower}`;
                 const scan = `https://polygonscan.com/address/${lower}`;
@@ -153,8 +161,8 @@ export function FavouriteWalletsDialog({
                     </button>
                     <button
                       type="button"
-                      className="flex min-w-0 flex-1 items-center gap-1 text-left font-mono text-blue-400 hover:underline"
-                      title={`${raw} — Wallet info`}
+                      className="flex min-w-0 flex-1 items-center gap-1 text-left hover:underline"
+                      title={tag ? `${tag} · ${raw} — Wallet info` : `${raw} — Wallet info`}
                       onClick={() => {
                         const w = raw.trim().toLowerCase();
                         if (!w) return;
@@ -162,7 +170,12 @@ export function FavouriteWalletsDialog({
                       }}
                     >
                       <WalletAddressGlyph address={raw} size={14} />
-                      <span className="truncate">{shortenAddr(raw)}</span>
+                      <span className="flex min-w-0 flex-col leading-tight">
+                        {tag ? (
+                          <span className="truncate font-bold text-amber-200">{tag}</span>
+                        ) : null}
+                        <span className="truncate font-mono text-[10px] text-blue-400">{shortenAddr(raw)}</span>
+                      </span>
                     </button>
                     <button
                       type="button"

@@ -54,6 +54,13 @@ import {
   TOXIC_BELL_WALLETS_LS_KEY,
   TOXIC_BELLS_CHANGED_EVENT,
 } from '../lib/toxicFavouriteWallets';
+import { InlineConfirmCancelInput } from './InlineConfirmCancelInput';
+import {
+  normalizeToxicWalletTagInput,
+  removeToxicWalletTag,
+  setToxicWalletTag,
+  useToxicWalletTag,
+} from '../lib/toxicWalletTags';
 import { WS_BASE } from '../lib/env';
 import { toxicFlowFillKey } from '../lib/tradeKeys';
 import { useAppStore } from '../stores/appStore';
@@ -1014,6 +1021,9 @@ const WalletLink = forwardRef<
     [runEnter, runMove, runLeave],
   );
 
+  const walletTag = useToxicWalletTag(wallet);
+  const displayLabel = walletTag ?? shortenWallet(wallet);
+
   const lifetimeHue = lifetimeLedgerPnlHue(ledgerEmbed, summary);
   const ledgerAbsent = walletScoresLedgerRowAbsent(ledgerEmbed, summary);
 
@@ -1036,7 +1046,8 @@ const WalletLink = forwardRef<
           ? 'text-red-400'
           : 'text-zinc-400';
   const btnTitle = (() => {
-    const parts: string[] = [];
+    const parts: string[] = [wallet];
+    if (walletTag) parts.push(`tag: ${walletTag}`);
     if (resolvedStatsLow && !ledgerAbsent) parts.push('Fewer than 10 resolved markets (wallet_scores_ledger)');
     if (ledgerAbsent) parts.push('No wallet_scores_ledger row');
     if (!ledgerAbsent && !resolvedStatsLow) {
@@ -1101,7 +1112,7 @@ const WalletLink = forwardRef<
         title={btnTitle}
       >
         <WalletAddressGlyph address={wallet} size={12} />
-        <span className="truncate leading-none">{shortenWallet(wallet)}</span>
+        <span className="truncate leading-none">{displayLabel}</span>
       </button>
       {portalTooltip}
     </span>
@@ -1694,6 +1705,36 @@ export function WalletInfoDialog({
     setWalletBellActive(next.has(k));
   }, [wallet]);
 
+  const walletTag = useToxicWalletTag(wallet);
+  const [tagEditOpen, setTagEditOpen] = useState(false);
+  const [tagDraft, setTagDraft] = useState('');
+
+  useEffect(() => {
+    if (!open) {
+      setTagEditOpen(false);
+      setTagDraft('');
+      return;
+    }
+    setTagDraft(walletTag ?? '');
+  }, [open, wallet, walletTag]);
+
+  const cancelTagEdit = useCallback(() => {
+    setTagDraft(walletTag ?? '');
+    setTagEditOpen(false);
+  }, [walletTag]);
+
+  const commitTag = useCallback(() => {
+    const n = normalizeToxicWalletTagInput(tagDraft);
+    if (n) setToxicWalletTag(wallet, n);
+    else removeToxicWalletTag(wallet);
+    setTagEditOpen(false);
+  }, [wallet, tagDraft]);
+
+  const startTagEdit = useCallback(() => {
+    setTagDraft(walletTag ?? '');
+    setTagEditOpen(true);
+  }, [walletTag]);
+
   useLayoutEffect(() => {
     const mq = window.matchMedia('(min-width: 1024px)');
     const sync = () => setLgChartsSync(mq.matches);
@@ -1757,17 +1798,63 @@ export function WalletInfoDialog({
             >
               <Bell size={13} strokeWidth={2} className={walletBellActive ? BELL_CLS_ON : BELL_CLS_OFF} />
             </button>
+            <button
+              type="button"
+              className="shrink-0 rounded px-1 py-0.5 text-[10px] font-bold text-gray-400 hover:bg-gray-700/70 hover:text-amber-200 disabled:opacity-40"
+              title="Set wallet tag"
+              disabled={!wallet.trim() || tagEditOpen}
+              onClick={(e) => {
+                e.stopPropagation();
+                startTagEdit();
+              }}
+            >
+              Tag
+            </button>
             <span className="inline-flex min-w-0 max-w-full flex-nowrap items-center gap-1">
               <WalletAddressGlyph address={wallet} size={18} />
-              <a
-                href={polymarketProfileUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="min-w-0 truncate text-xs text-blue-400 hover:underline"
-                title="Open Polymarket profile"
-              >
-                {wallet}
-              </a>
+              {tagEditOpen ? (
+                <InlineConfirmCancelInput
+                  value={tagDraft}
+                  onChange={setTagDraft}
+                  onConfirm={commitTag}
+                  onCancel={cancelTagEdit}
+                  placeholder="tag"
+                  inputClassName="inline-block w-28 max-w-[12rem] bg-gray-900 border border-gray-600 rounded px-1 text-white text-xs font-sans"
+                />
+              ) : walletTag ? (
+                <>
+                  <button
+                    type="button"
+                    className="min-w-0 truncate text-xs font-bold text-amber-200 hover:underline"
+                    title={`Tag: ${walletTag} — click to edit`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startTagEdit();
+                    }}
+                  >
+                    {walletTag}
+                  </button>
+                  <a
+                    href={polymarketProfileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-w-0 truncate text-[10px] text-gray-500 hover:underline"
+                    title="Open Polymarket profile"
+                  >
+                    {shortenWallet(wallet)}
+                  </a>
+                </>
+              ) : (
+                <a
+                  href={polymarketProfileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="min-w-0 truncate text-xs text-blue-400 hover:underline"
+                  title="Open Polymarket profile"
+                >
+                  {wallet}
+                </a>
+              )}
             </span>
             <button
               type="button"

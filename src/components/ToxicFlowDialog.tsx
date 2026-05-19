@@ -69,6 +69,7 @@ import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { HelperTooltip } from './HelperTooltip';
 import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
+import { WalletAddressGlyph } from './WalletAddressGlyph';
 import {
   STAKED_NET_EPS,
   walletInvY,
@@ -291,6 +292,25 @@ const ToxicFlowTablePane = memo(function ToxicFlowTablePane({
       </div>
     </div>
   );
+}, (a, b) => {
+  if (
+    a.tab !== b.tab ||
+    a.onTab !== b.onTab ||
+    a.onOpenWallet !== b.onOpenWallet ||
+    a.trailing !== b.trailing ||
+    a.totalStakedNetUsd !== b.totalStakedNetUsd
+  ) {
+    return false;
+  }
+  if (a.tabWalletViews === b.tabWalletViews) return true;
+  const wa = toxicFlowWalletsForTab(a.tabWalletViews, a.tab).wallets;
+  const wb = toxicFlowWalletsForTab(b.tabWalletViews, b.tab).wallets;
+  if (wa === wb) return true;
+  if (wa.length !== wb.length) return false;
+  for (let i = 0; i < wa.length; i++) {
+    if (wa[i] !== wb[i]) return false;
+  }
+  return true;
 });
 
 function rPnlToneClass(v: number): string {
@@ -1071,10 +1091,11 @@ const WalletLink = forwardRef<
           e.stopPropagation();
           onOpenWallet?.(wallet, netShares);
         }}
-        className={`${addrClass} hover:underline inline-flex items-baseline flex-wrap gap-x-0`}
+        className={`${addrClass} hover:underline inline-flex max-w-full flex-nowrap items-center gap-1 whitespace-nowrap`}
         title={btnTitle}
       >
-        <span>{shortenWallet(wallet)}</span>
+        <WalletAddressGlyph address={wallet} size={14} />
+        <span className="truncate">{shortenWallet(wallet)}</span>
       </button>
       {portalTooltip}
     </span>
@@ -1195,7 +1216,7 @@ function WalletTableBodyRowImpl({
           </button>
         </span>
       </td>
-      <td className="align-top px-1 py-0.5">
+      <td className="align-top whitespace-nowrap px-1 py-0.5">
         <WalletLink
           ref={hoverRef}
           wallet={w.wallet}
@@ -1479,7 +1500,25 @@ function WalletTableInner({
   );
 }
 
-const WalletTable = memo(WalletTableInner);
+const WalletTable = memo(WalletTableInner, (a, b) => {
+  if (
+    a.label !== b.label ||
+    a.onOpenWallet !== b.onOpenWallet ||
+    a.shadeRowByStakedNet !== b.shadeRowByStakedNet ||
+    a.totalStakedNetUsd !== b.totalStakedNetUsd
+  ) {
+    return false;
+  }
+  const wa = a.wallets;
+  const wb = b.wallets;
+  if (wa === wb) return true;
+  if (wa == null || wb == null) return wa === wb;
+  if (wa.length !== wb.length) return false;
+  for (let i = 0; i < wa.length; i++) {
+    if (wa[i] !== wb[i]) return false;
+  }
+  return true;
+});
 
 export function WalletInfoDialog({
   open,
@@ -1670,15 +1709,18 @@ export function WalletInfoDialog({
                 strokeWidth={walletIsFavourite ? 1.5 : 2}
               />
             </button>
-            <a
-              href={polymarketProfileUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-blue-400 truncate hover:underline"
-              title="Open Polymarket profile"
-            >
-              {wallet}
-            </a>
+            <span className="inline-flex min-w-0 max-w-full flex-nowrap items-center gap-1">
+              <WalletAddressGlyph address={wallet} size={18} />
+              <a
+                href={polymarketProfileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="min-w-0 truncate text-xs text-blue-400 hover:underline"
+                title="Open Polymarket profile"
+              >
+                {wallet}
+              </a>
+            </span>
             <button
               type="button"
               className="text-gray-400 hover:text-white"

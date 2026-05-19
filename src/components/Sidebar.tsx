@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, Suspense, useSyncExternalStore } from 'react';
 import { useAccount } from 'wagmi';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
@@ -48,30 +48,22 @@ import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { SidebarBarMidMarker } from './SidebarBarMidMarker';
-import { ToxicFlowStakePreview, TOXIC_TOTAL_STAKE_BAR_HELP } from './ToxicFlowStakePreview';
-import { useToxicFlowMarketStream } from '../hooks/useToxicFlowMarketStream';
 import { bumpSidebarTopOfBookDigest } from '../lib/sidebarTopOfBookStore';
 import { resetSidebarPolymarketTape, setSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
+import { getSidebarToxicNotify, subscribeSidebarToxicNotify } from '../lib/sidebarToxicNotifyStore';
 import { SidebarOrderCostDisplay } from './SidebarOrderCostDisplay';
 import { SidebarToxicPanel } from './SidebarToxicPanel';
+import { SidebarToxicFlowProvider } from './SidebarToxicFlowContext';
+import { SidebarToxicStrips } from './SidebarToxicStrips';
 import {
-  buildToxicFlowTabWalletViews,
-  toxicCohortStakedNetSurplusHalves,
-  cohortSurplusLean,
   walletInvY,
   walletInvN,
   walletNet,
   walletStakeNetAbsUsd,
   walletStakeYUsd,
   walletStakeNUsd,
-  toxicRowLedgerLifetimePnlNegative,
 } from '../lib/toxicFlowStakeCohort';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
-import {
-  TOXIC_FAVOURITE_WALLETS_LS_KEY,
-  TOXIC_FAVOURITES_CHANGED_EVENT,
-  readToxicFavouriteWallets,
-} from '../lib/toxicFavouriteWallets';
 import { persistTiltWhaleAmountUsd, readTiltWhaleAmountUsd } from '../lib/tiltWhaleAmountUsd';
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
@@ -134,21 +126,6 @@ function sidebarQuickSellBg(i: number, n: number): string {
   const l = lStart - t * (lStart - lEnd);
   return `hsl(351 78% ${l}%)`;
 }
-
-/** Bar segment pulse when cohort/gross lean ≥ this fraction (default 30% each side). */
-const SIDEBAR_TOXIC_STRIP_FLASH_FRAC = 0.3;
-
-/** Tooltips for toxic cohort strips (mirror Toxic Flow dialog tab copy). */
-const TOXIC_SIDEBAR_STRIP_HELP = {
-  total: TOXIC_TOTAL_STAKE_BAR_HELP,
-  holders: 'Biggest wallets active on this market. Green = YES bets, red = NO bets.',
-  smart: 'Wallets with strong winning record. Only those who profit often.',
-  top20: 'Top 20 position holders on this market (by |staked net|, same ordering as Holders).',
-  fav: 'Your favorite wallets betting here right now.',
-  greens: 'Wallets with profits in tracked time. Green = more dollars staked on YES, red = more on NO.',
-  whales:
-    'Wallets with |Staked Net| USD ≥ Whale amount (Tilt bell). Same cohort as Toxic Flow Whales tab. Bar pulse = cohort lean ≥ sidebar strip threshold.',
-} as const;
 
 const LS_ORDER_EXPIRY_UPDOWN = 'polymarket-order-expiry-updown';
 const LS_ORDER_EXPIRY_OTHER = 'polymarket-order-expiry-other';
@@ -622,31 +599,6 @@ function readNotifyWhaleIgnoreNegativePnl(): boolean {
   } catch {
     return true;
   }
-}
-
-/** Avg entry in ¢ on heavier staked leg (`inv × price`); inventory fallback when stake legs missing. */
-function dominantStakedLegAvgPriceCents(w: WalletPosition): number | null {
-  const sy = walletStakeYUsd(w);
-  const sn = walletStakeNUsd(w);
-  const y = Number.isFinite(sy) ? sy : 0;
-  const n = Number.isFinite(sn) ? sn : 0;
-  const py = w.priceYes;
-  const pn = w.priceNo;
-  if (y > 1e-9 || n > 1e-9) {
-    if (y >= n) {
-      return typeof py === 'number' && Number.isFinite(py) ? py * 100 : null;
-    }
-    return typeof pn === 'number' && Number.isFinite(pn) ? pn * 100 : null;
-  }
-  const iy = walletInvY(w);
-  const inn = walletInvN(w);
-  if (Math.abs(iy) >= Math.abs(inn) && Math.abs(iy) > 1e-6) {
-    return typeof py === 'number' && Number.isFinite(py) ? py * 100 : null;
-  }
-  if (Math.abs(inn) > 1e-6) {
-    return typeof pn === 'number' && Number.isFinite(pn) ? pn * 100 : null;
-  }
-  return null;
 }
 
 /** Annualized σ% ceiling for tilt: alerts pause while chart σ is above this. 0 = off. Default 15. */
@@ -1126,93 +1078,13 @@ export function Sidebar() {
     () => ((selectedMarket?.conditionId ?? selectedMarket?.id) || '').trim(),
     [selectedMarket?.conditionId, selectedMarket?.id],
   );
-  const { data: toxicFlowData, refresh: refreshToxicFlow, refreshing: toxicFlowRefreshing } =
-    useToxicFlowMarketStream(toxicFlowMarketId, Boolean(toxicFlowMarketId));
-
-  const [toxicFavSet, setToxicFavSet] = useState(readToxicFavouriteWallets);
-  useEffect(() => {
-    const sync = () => setToxicFavSet(readToxicFavouriteWallets());
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY) sync();
-    };
-    window.addEventListener('storage', onStorage);
-    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
-    return () => {
-      window.removeEventListener('storage', onStorage);
-      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
-    };
-  }, []);
-
-  const toxicTabViews = useMemo(
-    () => (toxicFlowData ? buildToxicFlowTabWalletViews(toxicFlowData, toxicFavSet, notifyWhaleAmountUsd) : null),
-    [toxicFlowData, toxicFavSet, notifyWhaleAmountUsd],
+  const toxicNotify = useSyncExternalStore(
+    subscribeSidebarToxicNotify,
+    getSidebarToxicNotify,
+    getSidebarToxicNotify,
   );
-
-  const toxicStripModel = useMemo(() => {
-    const lists = toxicTabViews?.stripLists ?? null;
-    if (!lists) return { lists: null, bars: null };
-    return {
-      lists,
-      bars: {
-        holders: toxicCohortStakedNetSurplusHalves(lists.holders),
-        smart: toxicCohortStakedNetSurplusHalves(lists.smart),
-        top20: toxicCohortStakedNetSurplusHalves(lists.top20),
-        favourites: toxicCohortStakedNetSurplusHalves(lists.favourites),
-        pnlPlus: toxicCohortStakedNetSurplusHalves(lists.pnlPlus),
-      },
-    };
-  }, [toxicTabViews]);
-
-  /** Same wallets + ordering as Toxic Flow dialog Whales tab (floor = Tilt whale USD). */
-  const toxicStripWhaleWallets = toxicTabViews?.whales ?? [];
-
-  /** True when ≥1 toxic-flow whale (|Staked Net| ≥ floor) has dominant-leg avg entry **strictly below** max Whale Price (¢). */
-  const notifyWhalePassesPriceGate = useMemo(() => {
-    if (!toxicTabViews) return false;
-    const maxPc = notifyWhaleMaxPriceCents;
-    for (const w of toxicTabViews.whales) {
-      if (notifyWhaleIgnoreNegativePnl && toxicRowLedgerLifetimePnlNegative(w)) continue;
-      const pc = dominantStakedLegAvgPriceCents(w);
-      if (pc == null || !Number.isFinite(pc)) continue;
-      if (pc < maxPc) return true;
-    }
-    return false;
-  }, [toxicTabViews, notifyWhaleMaxPriceCents, notifyWhaleIgnoreNegativePnl]);
-
-  /** Active cohort thresholds (Toxic strip bars): every non-zero pct must agree on direction vs its lean. */
-  const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {
-    if (!notifyTiltAppliesToSelectedMarket) return null;
-    const bars = toxicStripModel.bars;
-    const barLean = (bar: { sumYUsd: number; sumNUsd: number } | undefined): number | null => {
-      if (!bar || !(bar.sumYUsd + bar.sumNUsd > 1e-9)) return null;
-      return cohortSurplusLean(bar.sumYUsd, bar.sumNUsd);
-    };
-    const legs = [
-      { pct: notifyHolderTiltPct, lean: barLean(bars?.holders) },
-      { pct: notifySmartTiltPct, lean: barLean(bars?.smart) },
-      { pct: notifyFavouriteTiltPct, lean: barLean(bars?.favourites) },
-      { pct: notifyGreensTiltPct, lean: barLean(bars?.pnlPlus) },
-    ].filter((x) => x.pct > 0);
-    if (legs.length === 0) return null;
-
-    let greenOk = true;
-    let redOk = true;
-    for (const { pct, lean } of legs) {
-      const frac = pct / 100;
-      if (lean == null || lean < frac) greenOk = false;
-      if (lean == null || lean > -frac) redOk = false;
-    }
-    if (greenOk && !redOk) return 'green';
-    if (redOk && !greenOk) return 'red';
-    return null;
-  }, [
-    notifyTiltAppliesToSelectedMarket,
-    toxicStripModel,
-    notifyHolderTiltPct,
-    notifySmartTiltPct,
-    notifyFavouriteTiltPct,
-    notifyGreensTiltPct,
-  ]);
+  const topBarExtremeBgFlash = toxicNotify.topBarExtremeBgFlash;
+  const notifyWhalePassesPriceGate = toxicNotify.whalePassesPriceGate;
 
   useEffect(() => {
     ensureTiltAudioUnlockListeners();
@@ -3325,6 +3197,7 @@ export function Sidebar() {
       >
         <div className="mobile-sidebar-drag-handle" />
       </div>
+      <SidebarToxicFlowProvider marketId={toxicFlowMarketId}>
       <div
         className={
           isMobileSheet
@@ -3984,63 +3857,17 @@ export function Sidebar() {
               </button>
             </div>
             <div className="mt-1 w-full min-w-0 flex flex-col gap-y-2 pb-0.5">
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.total}
-                    label="Total"
-                    marketGrossLegsUsd={sidebarStakedLegs}
-                    wallets={[]}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.holders}
-                    label="Holders"
-                    wallets={toxicStripModel.lists?.holders ?? []}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.smart}
-                    label="Smart"
-                    wallets={toxicStripModel.lists?.smart ?? []}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.greens}
-                    label="Greens"
-                    wallets={toxicStripModel.lists?.pnlPlus ?? []}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.top20}
-                    label="Top20"
-                    wallets={toxicStripModel.lists?.top20 ?? []}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.whales}
-                    label="Whales"
-                    wallets={toxicStripWhaleWallets}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.fav}
-                    label="Fav"
-                    wallets={toxicStripModel.lists?.favourites ?? []}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
+              <SidebarToxicStrips
+                sidebarStakedLegs={sidebarStakedLegs}
+                notifyTiltAppliesToSelectedMarket={notifyTiltAppliesToSelectedMarket}
+                notifyWhaleAmountUsd={notifyWhaleAmountUsd}
+                notifyWhaleMaxPriceCents={notifyWhaleMaxPriceCents}
+                notifyWhaleIgnoreNegativePnl={notifyWhaleIgnoreNegativePnl}
+                notifyHolderTiltPct={notifyHolderTiltPct}
+                notifySmartTiltPct={notifySmartTiltPct}
+                notifyFavouriteTiltPct={notifyFavouriteTiltPct}
+                notifyGreensTiltPct={notifyGreensTiltPct}
+              />
             </div>
           </div>
           </div>
@@ -4947,6 +4774,7 @@ export function Sidebar() {
           </Suspense>
         ) : null}
       </div>
+      </SidebarToxicFlowProvider>
       {customDialogOpen && typeof document !== 'undefined' && createPortal((
         <div className="fixed inset-0 z-[60000] bg-black/70 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) setCustomDialogOpen(false); }}>
           <div className="w-full max-w-sm mx-4 rounded-lg border border-gray-600 bg-gray-800 p-4">

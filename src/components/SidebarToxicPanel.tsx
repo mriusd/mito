@@ -1,12 +1,12 @@
 import { memo } from 'react';
 import { lazyWithChunkReload } from '../utils/lazyWithChunkReload';
-import { useToxicFlowMarketStream } from '../hooks/useToxicFlowMarketStream';
+import { useSidebarToxicFlowStream } from './SidebarToxicFlowContext';
 
 const ToxicFlowDialogLazy = lazyWithChunkReload(() =>
   import('./ToxicFlowDialog').then((m) => ({ default: m.ToxicFlowDialog })),
 );
 
-/** Own stream + memo shell — Sidebar OB ticks must not re-render WalletTable. */
+/** Consumes shared toxic stream — no second WS. */
 export const SidebarToxicPanel = memo(function SidebarToxicPanel({
   marketId,
   marketName,
@@ -19,7 +19,7 @@ export const SidebarToxicPanel = memo(function SidebarToxicPanel({
   onClose: () => void;
 }) {
   const mid = marketId.trim();
-  const { data, refresh, refreshing } = useToxicFlowMarketStream(mid, Boolean(mid));
+  const { data, refresh, refreshing } = useSidebarToxicFlowStream();
   return (
     <div className="flex flex-1 min-h-0 min-w-0 w-full flex-col overflow-hidden bg-gray-900 toxic-flow-scroll-stable">
       <ToxicFlowDialogLazy

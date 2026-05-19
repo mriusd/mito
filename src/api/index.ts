@@ -804,6 +804,8 @@ export interface WalletSummary {
   volume?: number;
   /** Stored decimal (e.g. 0.12 = 12%); display ×100 for %. Null until resolved-markets basis exists. */
   roi?: number | null;
+  /** `wallet_scores_ledger.last_updated` (RFC3339 UTC). */
+  lastUpdated?: string;
 }
 
 export function walletSummaryFromLedgerEmbed(rowWallet: string, embed: WalletScoresLedgerEmbed): WalletSummary {

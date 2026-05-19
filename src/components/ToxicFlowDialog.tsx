@@ -237,6 +237,9 @@ function inventoryNetSharesTableCell(signed: number): ReactNode {
 /** Fixed width for rank # (1–100+) so column does not grow at row 10/100 and jitter layout. */
 const TOXIC_TABLE_RANK_COL_CLS =
   'w-[1.85rem] min-w-[1.85rem] max-w-[1.85rem] box-border tabular-nums text-left shrink-0';
+/** Fixed width for % / Cum% (e.g. 100.0%) so stake updates do not jitter column width. */
+const TOXIC_TABLE_STAKED_PCT_COL_CLS =
+  'w-[3.35rem] min-w-[3.35rem] max-w-[3.35rem] box-border shrink-0 tabular-nums text-right';
 
 const ROW_CLS_NEUTRAL = 'border-b border-gray-800 hover:bg-gray-700/30';
 const ROW_CLS_GREEN = 'border-b border-gray-800 bg-green-900/25 hover:bg-green-900/40';
@@ -318,12 +321,19 @@ function LedgerSummaryField({
 }
 
 /** `wallet_scores_ledger` fields from /api/wallet-summary. */
+function formatWslLastUpdated(raw: string | undefined | null): string {
+  const t = Date.parse(String(raw || '').trim());
+  if (!Number.isFinite(t)) return '–';
+  return new Date(t).toLocaleString();
+}
+
 function WalletScoresLedgerSummaryGrid({
   s,
   dense,
   narrowSummary,
   hideNetCash,
   hideTotalMarkets,
+  showLastUpdated,
 }: {
   s: WalletSummary;
   dense?: boolean;
@@ -332,6 +342,8 @@ function WalletScoresLedgerSummaryGrid({
   hideNetCash?: boolean;
   /** e.g. wallet info dialog Summary column — omit total markets row. */
   hideTotalMarkets?: boolean;
+  /** Wallet info dialog — show wallet_scores_ledger.last_updated. */
+  showLastUpdated?: boolean;
 }) {
   const rm = s.resolvedMarkets ?? 0;
   const tt = s.totalTrades ?? 0;
@@ -435,6 +447,14 @@ function WalletScoresLedgerSummaryGrid({
         value={<span className={roiLedgerFmt.tone}>{roiLedgerFmt.text}</span>}
         valueClassName="font-bold"
       />
+      {showLastUpdated ? (
+        <LedgerSummaryField
+          rowClass={row}
+          label="Last updated"
+          help="When this wallet_scores_ledger row was last recomputed from wallet_market_positions."
+          value={<span className="text-gray-400 tabular-nums">{formatWslLastUpdated(s.lastUpdated)}</span>}
+        />
+      ) : null}
     </div>
   );
 }
@@ -989,10 +1009,10 @@ function WalletTableBodyRowImpl({
       <td className="text-right px-1 whitespace-nowrap" title="Staked Y − Staked N (column display); Y / N suffix">
         {stakedNetUsdTableCell(stakeNetSigned)}
       </td>
-      <td className="text-right px-1 text-cyan-300">
+      <td className={`px-1 text-cyan-300 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}>
         {stakedPct > 0 ? `${NF_PCT_1.format(stakedPct)}%` : '-'}
       </td>
-      <td className="text-right px-1 text-cyan-200/70">
+      <td className={`px-1 text-cyan-200/70 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}>
         {cumStakedPct > 0 ? `${NF_PCT_1.format(cumStakedPct)}%` : '-'}
       </td>
       <td className={`text-right px-1 ${biasToneClass(signedLegNet)}`}>
@@ -1203,13 +1223,13 @@ function WalletTable({
               Staked Net
             </th>
             <th
-              className="text-right px-1"
+              className={`px-1 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}
               title="|Staked Net| USD ÷ total market staked (Σ|signed net|)"
             >
               %
             </th>
             <th
-              className="text-right px-1"
+              className={`px-1 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}
               title="Running sum of % by table order (Staked Net / total staked)"
             >
               Cum%
@@ -1489,7 +1509,13 @@ export function WalletInfoDialog({
                 {summary === undefined && <div className="text-gray-500">Loading...</div>}
                 {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
                 {summary && (
-                  <WalletScoresLedgerSummaryGrid s={summary} narrowSummary hideNetCash hideTotalMarkets />
+                  <WalletScoresLedgerSummaryGrid
+                    s={summary}
+                    narrowSummary
+                    hideNetCash
+                    hideTotalMarkets
+                    showLastUpdated
+                  />
                 )}
               </div>
               {wallet.trim() ? (

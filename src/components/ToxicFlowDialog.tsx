@@ -48,6 +48,7 @@ import {
   readToxicFavouriteWallets,
   persistToxicFavouriteWallets,
   readToxicBellWallets,
+  getToxicBellWalletsSnapshot,
   subscribeToxicBellWallets,
   persistToxicBellWallets,
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
@@ -2339,8 +2340,13 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   layoutSwitch: ReactNode;
 }) {
   const totalStakedNetUsd = useToxicDialogStakedNetAbsUsd(yesTokenId, marketId, open);
-  const bellWallets = useSyncExternalStore(subscribeToxicBellWallets, readToxicBellWallets, () => new Set<string>());
+  const bellWalletsKey = useSyncExternalStore(
+    subscribeToxicBellWallets,
+    getToxicBellWalletsSnapshot,
+    () => '',
+  );
   const bellFlashingRowCount = useMemo(() => {
+    const bellWallets = readToxicBellWallets();
     const tabs: Tab[] =
       layoutMode === 'single'
         ? [tab]
@@ -2355,7 +2361,7 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
       }
     }
     return count;
-  }, [layoutMode, tab, tabBottom, tabThird, tabWalletViews, bellWallets]);
+  }, [layoutMode, tab, tabBottom, tabThird, tabWalletViews, bellWalletsKey]);
   useToxicBellRowRingSound(bellFlashingRowCount, open);
   return (
     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 w-full">

@@ -29,9 +29,17 @@ export function persistToxicFavouriteWallets(s: Set<string>): void {
 }
 
 /** Toxic flow tables: wallets to highlight while they appear on this market. */
+export function getToxicBellWalletsSnapshot(): string {
+  try {
+    return localStorage.getItem(TOXIC_BELL_WALLETS_LS_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 export function readToxicBellWallets(): Set<string> {
   try {
-    const raw = localStorage.getItem(TOXIC_BELL_WALLETS_LS_KEY);
+    const raw = getToxicBellWalletsSnapshot();
     if (!raw) return new Set();
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return new Set();

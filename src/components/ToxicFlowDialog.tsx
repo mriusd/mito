@@ -1788,7 +1788,6 @@ export function WalletInfoDialog({
 
   if (!open) return null;
   const polymarketProfileUrl = `https://polymarket.com/profile/${wallet.trim().toLowerCase()}`;
-  const walletTitleLabel = polymarketNick ? shortenWallet(polymarketNick) : wallet;
   const dialog = (
     <div className="fixed inset-0 bg-black/60 z-[60010] flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div
@@ -1854,39 +1853,47 @@ export function WalletInfoDialog({
                   placeholder="tag"
                   inputClassName="inline-block w-28 max-w-[12rem] bg-gray-900 border border-gray-600 rounded px-1 text-white text-xs font-sans"
                 />
-              ) : walletTag ? (
+              ) : (
                 <>
-                  <button
-                    type="button"
-                    className="min-w-0 truncate text-xs font-bold text-amber-200 hover:underline"
-                    title={`Tag: ${walletTag} — click to edit`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      startTagEdit();
-                    }}
-                  >
-                    {walletTag}
-                  </button>
+                  {walletTag ? (
+                    <button
+                      type="button"
+                      className="min-w-0 truncate text-xs font-bold text-amber-200 hover:underline"
+                      title={`Tag: ${walletTag} — click to edit`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startTagEdit();
+                      }}
+                    >
+                      {walletTag}
+                    </button>
+                  ) : null}
+                  {polymarketNick ? (
+                    <span
+                      className={`min-w-0 truncate ${walletTag ? 'text-[10px] text-gray-400' : 'text-xs text-blue-300'}`}
+                      title={`Polymarket: ${polymarketNick}`}
+                    >
+                      {shortenWallet(polymarketNick)}
+                    </span>
+                  ) : null}
                   <a
                     href={polymarketProfileUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="min-w-0 truncate text-[10px] text-gray-500 hover:underline"
-                    title="Open Polymarket profile"
+                    className={`min-w-0 truncate hover:underline ${
+                      walletTag || polymarketNick ? 'text-[10px] text-gray-500' : 'text-xs text-blue-400'
+                    }`}
+                    title={
+                      polymarketNick
+                        ? `${polymarketNick} · ${wallet}`
+                        : walletTag
+                          ? `${walletTag} · ${wallet}`
+                          : 'Open Polymarket profile'
+                    }
                   >
-                    {shortenWallet(wallet)}
+                    {walletTag || polymarketNick ? shortenWallet(wallet) : wallet}
                   </a>
                 </>
-              ) : (
-                <a
-                  href={polymarketProfileUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="min-w-0 truncate text-xs text-blue-400 hover:underline"
-                  title={polymarketNick ? `${polymarketNick} · ${wallet}` : 'Open Polymarket profile'}
-                >
-                  {walletTitleLabel}
-                </a>
               )}
             </span>
             <button

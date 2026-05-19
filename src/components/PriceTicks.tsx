@@ -1,4 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, memo } from 'react';
+import { useAppStore } from '../stores/appStore';
+import type { AssetSymbol } from '../types';
 
 interface TickMark {
   y: number;
@@ -10,12 +12,22 @@ interface TickMark {
 
 interface PriceTicksProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
-  livePrice: number;
+  /** When set, subscribes to spot price internally — parent grid avoids 4 Hz re-render. */
+  symbol?: AssetSymbol;
+  livePrice?: number;
   slot0: { low: number; high: number } | null;
   slot1: { low: number; high: number } | null;
 }
 
-export function PriceTicks({ containerRef, livePrice, slot0, slot1 }: PriceTicksProps) {
+export const PriceTicks = memo(function PriceTicks({
+  containerRef,
+  symbol,
+  livePrice: livePriceProp = 0,
+  slot0,
+  slot1,
+}: PriceTicksProps) {
+  const spotFromStore = useAppStore((s) => (symbol ? s.priceData[symbol]?.price || 0 : 0));
+  const livePrice = symbol ? spotFromStore : livePriceProp;
   const [ticks, setTicks] = useState<TickMark[]>([]);
 
   const computeTicks = useCallback(() => {
@@ -161,4 +173,4 @@ export function PriceTicks({ containerRef, livePrice, slot0, slot1 }: PriceTicks
       ))}
     </>
   );
-}
+});

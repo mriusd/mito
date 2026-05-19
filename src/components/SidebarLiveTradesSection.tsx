@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { onchainFillKey, polymarketTradeKey } from '../lib/tradeKeys';
@@ -10,8 +10,6 @@ export type SidebarLiveTradesSectionProps = {
   liveTradesSectionHeight: string;
   liveOrderbookExpanded: boolean;
   displayLiveTrades: LiveTrade[];
-  /** Quantize to 5 s buckets in the parent — passing wall-clock 1 Hz caused all 150 row memos to bust every second. */
-  tradeTickBucket: number;
   liveTradesSource: string;
   myOnchainWalletLower: string;
 };
@@ -88,10 +86,19 @@ function liveTradesSectionInner(props: SidebarLiveTradesSectionProps) {
     liveTradesSectionHeight,
     liveOrderbookExpanded,
     displayLiveTrades,
-    tradeTickBucket,
     liveTradesSource,
     myOnchainWalletLower,
   } = props;
+
+  /** Local 5 s bucket — parent 1 Hz tick re-rendered whole Sidebar + ToxicFlowDialog (381 profiler commits). */
+  const [tradeTickBucket, setTradeTickBucket] = useState(() => Math.floor(Date.now() / 5000) * 5000);
+  useEffect(() => {
+    const iv = setInterval(() => setTradeTickBucket(Math.floor(Date.now() / 5000) * 5000), 5000);
+    return () => clearInterval(iv);
+  }, []);
+  useEffect(() => {
+    setTradeTickBucket(Math.floor(Date.now() / 5000) * 5000);
+  }, [liveTradesSource]);
 
   /** Hard render cap — each row mounts a lucide SVG anchor; 1000+ rows trashed thousands of detached SVG nodes on every market switch. */
   const visibleTrades = displayLiveTrades.length > 150 ? displayLiveTrades.slice(0, 150) : displayLiveTrades;

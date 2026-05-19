@@ -10,6 +10,7 @@ import { getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { noOutcomeBidAsk, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
+import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
 function formatCountdown(ms: number): string {
@@ -230,10 +231,28 @@ function UpDownMarketsPanelInner() {
     return [...set];
   }, [upOrDownMarkets, liveTradesSource, onchainGridPositions, positions, orders, progOrderMap]);
   const _bidAskLookup = useMarketLookupSubset(updownGridClobTokenIds);
-  const volatilityData = useAppStore((s) => s.volatilityData);
+  const btcPrice = useThrottledStorePrice('BTCUSDT', 1000);
+  const ethPrice = useThrottledStorePrice('ETHUSDT', 1000);
+  const solPrice = useThrottledStorePrice('SOLUSDT', 1000);
+  const xrpPrice = useThrottledStorePrice('XRPUSDT', 1000);
+  const priceBySym = useMemo((): Partial<Record<AssetSymbol, number>> => ({
+    BTCUSDT: btcPrice > 0 ? btcPrice : undefined,
+    ETHUSDT: ethPrice > 0 ? ethPrice : undefined,
+    SOLUSDT: solPrice > 0 ? solPrice : undefined,
+    XRPUSDT: xrpPrice > 0 ? xrpPrice : undefined,
+  }), [btcPrice, ethPrice, solPrice, xrpPrice]);
+  const btcVol = useAppStore((s) => s.volatilityData.BTCUSDT ?? 0.6);
+  const ethVol = useAppStore((s) => s.volatilityData.ETHUSDT ?? 0.6);
+  const solVol = useAppStore((s) => s.volatilityData.SOLUSDT ?? 0.6);
+  const xrpVol = useAppStore((s) => s.volatilityData.XRPUSDT ?? 0.6);
+  const volBySym = useMemo((): Record<AssetSymbol, number> => ({
+    BTCUSDT: btcVol,
+    ETHUSDT: ethVol,
+    SOLUSDT: solVol,
+    XRPUSDT: xrpVol,
+  }), [btcVol, ethVol, solVol, xrpVol]);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
-  const priceData = useAppStore((s) => s.priceData);
   const chainlinkPrices = useChainlinkPricesMap();
 
   const positionTokenIds = useMemo(() => {
@@ -252,15 +271,17 @@ function UpDownMarketsPanelInner() {
     return s;
   }, [liveTradesSource, onchainGridPositions, positions]);
 
-  // Build order lookup by tokenId (exclude prog orders)
-  const orderLookup: Record<string, typeof orders> = {};
-  for (const o of orders) {
-    if (progOrderMap[o.id]) continue;
-    const tid = o.asset_id || o.token_id || '';
-    if (!tid) continue;
-    if (!orderLookup[tid]) orderLookup[tid] = [];
-    orderLookup[tid].push(o);
-  }
+  const orderLookup = useMemo(() => {
+    const lookup: Record<string, typeof orders> = {};
+    for (const o of orders) {
+      if (progOrderMap[o.id]) continue;
+      const tid = o.asset_id || o.token_id || '';
+      if (!tid) continue;
+      if (!lookup[tid]) lookup[tid] = [];
+      lookup[tid].push(o);
+    }
+    return lookup;
+  }, [orders, progOrderMap]);
 
   const getLiveBidAsk = (m: Market) => {
     const tid = m.clobTokenIds?.[0];
@@ -509,7 +530,7 @@ function UpDownMarketsPanelInner() {
                   const noTokenId = tokenIds[1] || '';
                   const sym = (asset + 'USDT') as AssetSymbol;
                   const cl = chainlinkPrices[asset];
-                  const binanceSpot = priceData[sym]?.price;
+                  const binanceSpot = priceBySym[sym];
                   const preferChainlink = tf === '5m' || tf === '15m';
                   const livePrice = preferChainlink
                     ? cl != null && cl > 0
@@ -524,7 +545,7 @@ function UpDownMarketsPanelInner() {
 
                   let mathYesProb: number | null = null;
                   if (livePrice != null && livePrice > 0 && strikeTarget !== undefined && market.endDate) {
-                    const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
+                    const sigma = volBySym[sym] * volMultiplier;
                     const bsYes = getMarketProbability('>' + strikeTarget, livePrice, market.endDate, sigma, bsTimeOffsetHours);
                     if (bsYes !== null) {
                       mathYesProb = bsYes;

@@ -1992,7 +1992,11 @@ export function WalletInfoDialog({
   return createPortal(dialog, document.body);
 }
 
-export function ToxicFlowDialog({
+export function ToxicFlowDialog(props: ToxicFlowDialogProps) {
+  return <ToxicFlowDialogInner {...props} />;
+}
+
+const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   open,
   marketId,
   marketName,
@@ -2431,4 +2435,4 @@ export function ToxicFlowDialog({
       </div>
     </div>
   );
-}
+});

@@ -2,6 +2,7 @@ import { memo, useMemo, type CSSProperties } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { AssetName, Market, Order } from '../../types';
 import { useAppStore } from '../../stores/appStore';
+import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
 import { gammaImpliedNoBestBid, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { assetToSymbol } from '../../utils/format';
 import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMath';
@@ -120,7 +121,7 @@ function GridMarketCellInner({
   const noTokenId = tokenIds[1] || '';
   const symbol = assetToSymbol(asset);
 
-  const livePrice = useAppStore((s) => s.priceData[symbol]?.price || 0);
+  const livePrice = useThrottledStorePrice(symbol, 1000);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const conditionMet =
     variant === 'above' || variant === 'between'

@@ -1230,12 +1230,7 @@ export function Sidebar() {
   }, [liveShareStats]);
   const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
 
-  // Tick every second so relative trade times update
-  const [tradeTickNow, setTradeTickNow] = useState(Date.now());
-  useEffect(() => {
-    const iv = setInterval(() => setTradeTickNow(Date.now()), 1000);
-    return () => clearInterval(iv);
-  }, []);
+  // Tick moved to SidebarLiveTradesSection — was 1 Hz full Sidebar re-render.
 
   const [orderSide, setOrderSide] = useState<'BUY' | 'SELL'>('BUY');
   const orderOutcome = useAppStore((s) => s.sidebarOutcome);
@@ -1392,7 +1387,15 @@ export function Sidebar() {
   const [polymarketTape, setPolymarketTape] = useState<LiveTrade[]>([]);
 
   const onPolymarketTradesFromHost = useCallback((t: LiveTrade[]) => {
-    setPolymarketTape(t);
+    setPolymarketTape((prev) => {
+      if (prev === t) return prev;
+      if (prev.length === t.length && prev.length > 0) {
+        const p0 = prev[0];
+        const t0 = t[0];
+        if (p0.id === t0.id && p0.timestamp === t0.timestamp && p0.size === t0.size) return prev;
+      }
+      return t;
+    });
   }, []);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   /** On-chain WS + REST prefetch: must not depend on sidebarOpen or tables stay empty after refresh until sidebar opens. */
@@ -1400,9 +1403,6 @@ export function Sidebar() {
     if (liveTradesSource !== 'onchain' || !selectedMarket?.clobTokenIds?.length) return null;
     return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 0 : 1] || null;
   }, [liveTradesSource, selectedMarket, orderOutcome]);
-  useEffect(() => {
-    setTradeTickNow(Date.now());
-  }, [selectedMarket?.conditionId, liveTradesSource]);
   const setOnchainGridPositions = useAppStore((s) => s.setOnchainGridPositions);
 
   const [proxyWallet, setProxyWallet] = useState<string | null>(null);
@@ -1513,17 +1513,20 @@ export function Sidebar() {
       (!!selectedMarket.endDate &&
         Number.isFinite(new Date(selectedMarket.endDate).getTime()) &&
         new Date(selectedMarket.endDate).getTime() <= Date.now()));
+  const yesTokForOutcome = selectedMarket?.clobTokenIds?.[0] ?? '';
+  const lookupOutcomePrices = useAppStore((s) =>
+    yesTokForOutcome ? s.marketLookup[yesTokForOutcome]?.outcomePrices : undefined,
+  );
+  const lookupOutcomeClosed = useAppStore((s) =>
+    yesTokForOutcome ? s.marketLookup[yesTokForOutcome]?.closed : undefined,
+  );
   const marketForOrderbookOutcome = useMemo((): Market | null => {
     if (!selectedMarket) return null;
-    const t0 = selectedMarket.clobTokenIds?.[0];
-    const row = t0 ? marketLookup[t0] : undefined;
-    if (!row) return selectedMarket;
-    return {
-      ...selectedMarket,
-      outcomePrices: row.outcomePrices ?? selectedMarket.outcomePrices,
-      closed: row.closed ?? selectedMarket.closed,
-    };
-  }, [selectedMarket, marketLookup]);
+    const op = lookupOutcomePrices ?? selectedMarket.outcomePrices;
+    const closed = lookupOutcomeClosed ?? selectedMarket.closed;
+    if (op === selectedMarket.outcomePrices && closed === selectedMarket.closed) return selectedMarket;
+    return { ...selectedMarket, outcomePrices: op, closed };
+  }, [selectedMarket, lookupOutcomePrices, lookupOutcomeClosed]);
   const myPositions = useMemo(() => {
     const wsMarketRows = onchainSidebarPositions
       .filter((p) => outcomeTokenBelongsToSelectedMarket(p.tokenId, selectedMarket, marketLookup))
@@ -1637,10 +1640,20 @@ export function Sidebar() {
     return s;
   }, [orders, selectedMarket, orderOutcome]);
 
-  // Compute BS probability for orderbook % diff
-  const vwapData = useAppStore((s) => s.vwapData);
-  const priceData = useAppStore((s) => s.priceData);
-  const volatilityData = useAppStore((s) => s.volatilityData);
+  // BS probability for orderbook % diff — narrow per-asset selectors (not whole priceData/vwapData maps).
+  const selectedBsSymbol = useMemo((): AssetSymbol | null => {
+    if (!selectedMarket) return null;
+    const asset = extractAssetFromMarket(selectedMarket);
+    return asset ? (`${asset}USDT` as AssetSymbol) : null;
+  }, [selectedMarket]);
+  const selectedSpotPrice = useAppStore((s) => {
+    if (!selectedBsSymbol) return 0;
+    return s.vwapData[selectedBsSymbol]?.price || s.priceData[selectedBsSymbol]?.price || 0;
+  });
+  const selectedAssetVol = useAppStore((s) => {
+    if (!selectedBsSymbol) return 0.6;
+    return s.volatilityData[selectedBsSymbol] || 0.6;
+  });
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
@@ -1658,9 +1671,9 @@ export function Sidebar() {
     const endDate = selectedMarket.endDate || '';
     if (!asset || !strike || !endDate) return 0;
     const sym = (asset + 'USDT') as AssetSymbol;
-    const livePrice = vwapData[sym]?.price || priceData[sym]?.price || 0;
+    const livePrice = selectedBsSymbol === sym ? selectedSpotPrice : 0;
     if (!livePrice) return 0;
-    const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
+    const sigma = (selectedBsSymbol === sym ? selectedAssetVol : 0.6) * volMultiplier;
     const cleaned = strike.replace(/^Hit\s*/i, '').replace(/[\$,]/g, '').replace(/↑/g, '>').replace(/↓/g, '<').trim();
     const ps = (cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-')) ? cleaned : '>' + cleaned;
     const probYes = selectedMarketIsHit
@@ -1669,7 +1682,7 @@ export function Sidebar() {
     if (probYes === null) return 0;
     const prob = orderOutcome === 'YES' ? probYes : 1 - probYes;
     return prob * 100;
-  }, [selectedMarket, orderOutcome, vwapData, priceData, volatilityData, volMultiplier, bsTimeOffsetHours, selectedMarketIsHit]);
+  }, [selectedMarket, orderOutcome, selectedBsSymbol, selectedSpotPrice, selectedAssetVol, volMultiplier, bsTimeOffsetHours, selectedMarketIsHit]);
 
 
   // Up or Down market detection and state
@@ -1884,7 +1897,7 @@ export function Sidebar() {
     const asset = extractAssetFromMarket(selectedMarket);
     if (!asset) return null;
     const sym = (asset + 'USDT') as AssetSymbol;
-    const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
+    const sigma = (selectedBsSymbol === sym ? selectedAssetVol : 0.6) * volMultiplier;
     const priceDec = asset.toUpperCase() === 'XRP' ? 4 : 2;
 
     const nowOffset = Date.now() + bsTimeOffsetHours * 3600000;
@@ -1895,7 +1908,7 @@ export function Sidebar() {
       const binanceSym = (asset.toUpperCase() + 'USDT') as AssetSymbol;
       const chainlinkPrice =
         upDownSpotUsesChainlink && polyPrice.price != null && polyPrice.price > 0 ? polyPrice.price : 0;
-      const binancePrice = priceData[binanceSym]?.price || 0;
+      const binancePrice = selectedBsSymbol === binanceSym ? selectedSpotPrice : 0;
       const currentPrice = upDownSpotUsesChainlink ? chainlinkPrice || binancePrice : binancePrice;
       const currentSource: 'chainlink' | 'binance' =
         upDownSpotUsesChainlink && chainlinkPrice > 0 ? 'chainlink' : 'binance';
@@ -1943,7 +1956,7 @@ export function Sidebar() {
     const strikeRaw = (selectedMarket.groupItemTitle || '').trim();
     if (!strikeRaw) return null;
 
-    const currentPrice = priceData[sym]?.price || 0;
+    const currentPrice = selectedBsSymbol === sym ? selectedSpotPrice : 0;
     const currentSource = 'binance' as const;
 
     const cleaned = strikeRaw.replace(/^Hit\s*/i, '').replace(/[\$,]/g, '').replace(/↑/g, '>').replace(/↓/g, '<').trim();
@@ -2011,8 +2024,9 @@ export function Sidebar() {
     upDownTargetPrice,
     upDownSpotUsesChainlink,
     polyPrice.price,
-    priceData,
-    volatilityData,
+    selectedSpotPrice,
+    selectedAssetVol,
+    selectedBsSymbol,
     volMultiplier,
     bsTimeOffsetHours,
     orderOutcome,
@@ -4087,7 +4101,6 @@ export function Sidebar() {
             liveTradesSectionHeight={liveTradesSectionHeight}
             liveOrderbookExpanded={liveOrderbookExpanded}
             displayLiveTrades={displayLiveTrades}
-            tradeTickBucket={Math.floor(tradeTickNow / 5000) * 5000}
             liveTradesSource={liveTradesSource}
             myOnchainWalletLower={myOnchainWalletLower}
           />

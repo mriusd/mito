@@ -130,7 +130,7 @@ export function useBidAskWS() {
           bumped = true;
         }
         if (!bumped) return {};
-        return { marketLookup: merged, marketLookupEpoch: state.marketLookupEpoch + 1 };
+        return { marketLookup: merged };
       });
     }
 

@@ -9,10 +9,52 @@ import { HelpTooltip } from '../HelpTooltip';
 import type { AssetName, Market, Order } from '../../types';
 import { GridMarketCell } from './GridMarketCell';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
+import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
 
 const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
 const MANUAL_VOL_KEY_PREFIX = 'polybot-manual-vol-pct-';
 const EMPTY_ORDERS: Order[] = [];
+const EMPTY_MARKETS: Market[] = [];
+const EMPTY_UDM: Record<string, Market[]> = {};
+const EMPTY_SIGNALS: import('../../types').Signal[] = [];
+
+const AssetMarketTableSpotPrice = memo(function AssetMarketTableSpotPrice({
+  asset,
+  symbol,
+}: {
+  asset: AssetName;
+  symbol: ReturnType<typeof assetToSymbol>;
+}) {
+  const livePrice = useAppStore((s) => s.priceData[symbol]?.price || 0);
+  return <span className="font-bold">{livePrice > 0 ? formatPrice(livePrice, asset) : '--'}</span>;
+});
+
+const AssetMarketTableVwapHint = memo(function AssetMarketTableVwapHint({
+  asset,
+  symbol,
+}: {
+  asset: AssetName;
+  symbol: ReturnType<typeof assetToSymbol>;
+}) {
+  const vwapPrice = useAppStore((s) => s.vwapData[symbol]?.price || 0);
+  const spotPrice = useAppStore((s) => s.priceData[symbol]?.price || 0);
+  if (vwapPrice <= 0) return null;
+  const vwapFmt =
+    formatPrice(vwapPrice, asset) +
+    ' (' +
+    (spotPrice > 0
+      ? ((spotPrice - vwapPrice) / vwapPrice * 100 >= 0 ? '+' : '') +
+        ((spotPrice - vwapPrice) / vwapPrice * 100).toFixed(1) +
+        '%'
+      : '0.0%') +
+    ')';
+  return (
+    <>
+      <span className="text-[11px] text-gray-500 font-normal">{vwapFmt}</span>
+      <HelpTooltip text={"This is the VWAP (Volume Weighted Average Price) calculated from recent candles. The percentage shows how far the live price has deviated from VWAP.\n\nVWAP is used as the underlying price for all B-S probability calculations in the dashboard. A positive % means the live price is above VWAP, negative means below.\n\nTo use the live price instead of VWAP for B-S calculations, set both VWAP inputs in the header to 0."} />
+    </>
+  );
+});
 
 function StrikeRangeIndicator({ markets, livePrice, asset }: { markets: Market[]; livePrice: number; asset: AssetName }) {
   if (livePrice <= 0 || markets.length === 0) return null;
@@ -106,32 +148,31 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   const [showAbove, setShowAbove] = useState(() => localStorage.getItem(`polybot-show-above-${panelId}`) !== 'false');
   const [showBetween, setShowBetween] = useState(() => localStorage.getItem(`polybot-show-between-${panelId}`) !== 'false');
   const symbol = assetToSymbol(asset);
-  const aboveMarkets = useAppStore((s) => s.aboveMarkets);
-  const priceOnMarkets = useAppStore((s) => s.priceOnMarkets);
-  const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
-  const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
-
-  const priceData = useAppStore((s) => s.priceData[symbol]?.price || 0);
-  const vwapData = useAppStore((s) => s.vwapData[symbol]?.price || 0);
-  const volatilityData = useAppStore((s) => s.volatilityData);
+  const aboveMarketsForAsset = useAppStore((s) => s.aboveMarkets[asset] ?? EMPTY_MARKETS);
+  const priceOnMarketsForAsset = useAppStore((s) => s.priceOnMarkets[asset] ?? EMPTY_MARKETS);
+  const weeklyHitMarketsForAsset = useAppStore((s) => s.weeklyHitMarkets[asset] ?? EMPTY_MARKETS);
+  const upOrDownMarketsForAsset = useAppStore((s) => s.upOrDownMarkets[asset] ?? EMPTY_UDM);
+  const livePrice = useThrottledStorePrice(symbol, 1000);
+  const assetVol = useAppStore((s) => s.volatilityData[symbol] ?? 0.6);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
-  const manualPriceSlots = useAppStore((s) => s.manualPriceSlots);
-  const activeRangeSlot = useAppStore((s) => s.activeRangeSlot);
+  const slot0 = useAppStore((s) => s.manualPriceSlots[symbol][0]);
+  const slot1 = useAppStore((s) => s.manualPriceSlots[symbol][1]);
+  const activeSlot = useAppStore((s) => s.activeRangeSlot[symbol]);
+  const setManualPriceSlot = useAppStore((s) => s.setManualPriceSlot);
+  const setActiveRangeSlot = useAppStore((s) => s.setActiveRangeSlot);
+  const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const showPast = useAppStore((s) => s.showPast);
   const setShowPast = useAppStore((s) => s.setShowPast);
   const positions = useAppStore((s) => s.positions);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const onchainGridPositions = useAppStore((s) => s.onchainGridPositions);
   const orders = useAppStore((s) => s.orders);
-  const setManualPriceSlot = useAppStore((s) => s.setManualPriceSlot);
-  const setActiveRangeSlot = useAppStore((s) => s.setActiveRangeSlot);
-  const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const selectedEndDate = selectedMarket?.endDate || '';
   const signalsOnGrid = useAppStore((s) => s.signalsOnGrid);
-  const signals = useAppStore((s) => s.signals);
+  const signals = useAppStore((s) => (s.signalsOnGrid ? s.signals : EMPTY_SIGNALS));
   const signalMakerMode = useAppStore((s) => s.signalMakerMode);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
 
@@ -189,9 +230,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   };
   const titleColor = colorMap[asset] || 'text-yellow-400';
 
-  const livePrice = priceData;
-  const vwapPrice = vwapData;
-  const autoAdjVol = (volatilityData[symbol] || 0.6) * volMultiplier;
+  const autoAdjVol = assetVol * volMultiplier;
   const [sigmaEditing, setSigmaEditing] = useState(false);
   const [manualVolPctInput, setManualVolPctInput] = useState<string>(() => {
     const raw = localStorage.getItem(`${MANUAL_VOL_KEY_PREFIX}${symbol}`);
@@ -219,9 +258,6 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
     setManualVolPctInput(String(clamped));
     setSigmaEditing(false);
   }, [manualVolPctInput, symbol]);
-  const activeSlot = activeRangeSlot[symbol];
-  const slot0 = manualPriceSlots[symbol][0];
-  const slot1 = manualPriceSlots[symbol][1];
 
   const handleCellClick = useCallback((market: Market, outcome: 'YES' | 'NO' = 'YES') => {
     setSelectedMarket(market);
@@ -229,23 +265,16 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
     setSidebarOpen(true);
   }, [setSelectedMarket, setSidebarOpen, setSidebarOutcome]);
 
-  const aboveMarketsForAsset = aboveMarkets[asset] || [];
-  const priceOnMarketsForAsset = priceOnMarkets[asset] || [];
-  const weeklyHitMarketsForAsset = weeklyHitMarkets[asset] || [];
-
   const upDownTokenIds = useMemo(() => {
     const set = new Set<string>();
-    const udm = upOrDownMarkets[asset];
-    if (udm) {
-      for (const mkts of Object.values(udm)) {
-        for (const m of mkts || []) {
-          const t = m.clobTokenIds?.[0];
-          if (t) set.add(String(t));
-        }
+    for (const mkts of Object.values(upOrDownMarketsForAsset)) {
+      for (const m of mkts || []) {
+        const t = m.clobTokenIds?.[0];
+        if (t) set.add(String(t));
       }
     }
     return [...set];
-  }, [upOrDownMarkets, asset]);
+  }, [upOrDownMarketsForAsset]);
   const upDownLookup = useMarketLookupSubset(upDownTokenIds);
 
   const positionLookup = useMemo(() => {
@@ -566,7 +595,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   };
 
   const renderUpOrDownTable = () => {
-    const assetData = upOrDownMarkets[asset] || {};
+    const assetData = upOrDownMarketsForAsset;
     const timeframes = ['5m', '15m', '1h', '4h', '24h'] as const;
     const colLabels = showPast ? ['Past', 'Current'] : ['Current'];
     const now = Date.now();
@@ -839,10 +868,8 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
     return `${val.low}-${val.high}`;
   };
 
-  // VWAP display
-  const vwapFmt = vwapPrice > 0
-    ? formatPrice(vwapPrice, asset) + ' (' + (livePrice > 0 ? ((livePrice - vwapPrice) / vwapPrice * 100 >= 0 ? '+' : '') + ((livePrice - vwapPrice) / vwapPrice * 100).toFixed(1) + '%' : '0.0%') + ')'
-    : '';
+  const vwapSnap = useAppStore.getState().vwapData[symbol]?.price || 0;
+  const spotSnap = useAppStore.getState().priceData[symbol]?.price || 0;
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3">
@@ -851,9 +878,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
         <h3 className={`text-sm font-bold mb-2 flex items-center gap-1 flex-wrap ${titleColor}`}>
           <span className="relative no-drag inline-flex items-center cursor-pointer select-none" onClick={() => setAssetDropdownOpen(v => !v)}>
             {asset}:{' '}
-            <span className="font-bold">
-              {livePrice > 0 ? formatPrice(livePrice, asset) : '--'}
-            </span>
+            <AssetMarketTableSpotPrice asset={asset} symbol={symbol} />
             <svg className="w-3 h-3 ml-0.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             {assetDropdownOpen && (
               <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[80px]">
@@ -867,15 +892,10 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
               </div>
             )}
           </span>
-          {vwapPrice > 0 && (
-            <>
-              <span className="text-[11px] text-gray-500 font-normal">{vwapFmt}</span>
-              <HelpTooltip text={"This is the VWAP (Volume Weighted Average Price) calculated from recent candles. The percentage shows how far the live price has deviated from VWAP.\n\nVWAP is used as the underlying price for all B-S probability calculations in the dashboard. A positive % means the live price is above VWAP, negative means below.\n\nTo use the live price instead of VWAP for B-S calculations, set both VWAP inputs in the header to 0."} />
-            </>
-          )}
+          <AssetMarketTableVwapHint asset={asset} symbol={symbol} />
           {/* Range slots */}
           {[0, 1].map((i) => {
-            const slotVal = manualPriceSlots[symbol][i];
+            const slotVal = i === 0 ? slot0 : slot1;
             const isActive = activeSlot === i;
             const colors = ['text-cyan-300', 'text-pink-400'];
             const borderColors = isActive
@@ -884,8 +904,8 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
 
             // Check if VWAP is outside range
             let outOfRange = false;
-            if (slotVal && vwapPrice > 0) {
-              outOfRange = vwapPrice <= slotVal.low || vwapPrice >= slotVal.high;
+            if (slotVal && vwapSnap > 0) {
+              outOfRange = vwapSnap <= slotVal.low || vwapSnap >= slotVal.high;
             }
 
             return (
@@ -978,9 +998,9 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
         open={rangeDialogOpen}
         asset={asset}
         slotIndex={rangeDialogSlot}
-        currentLow={manualPriceSlots[symbol][rangeDialogSlot]?.low ?? null}
-        currentHigh={manualPriceSlots[symbol][rangeDialogSlot]?.high ?? null}
-        livePrice={livePrice}
+        currentLow={(rangeDialogSlot === 0 ? slot0 : slot1)?.low ?? null}
+        currentHigh={(rangeDialogSlot === 0 ? slot0 : slot1)?.high ?? null}
+        livePrice={spotSnap}
         onConfirm={(lo, hi) => {
           setManualPriceSlot(symbol, rangeDialogSlot, { low: lo, high: hi });
           saveRange(symbol, rangeDialogSlot, lo, hi);
@@ -1016,7 +1036,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                 <div className="flex-1 min-h-0 border border-orange-500/40 rounded flex flex-col overflow-hidden" ref={hitContainerRef} style={{ position: 'relative' }}>
                   <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-orange-400 bg-gray-800/50 rounded-t py-0.5">Hit <HelpTooltip text={"Hit markets resolve YES if the asset price touches or crosses a specific price level at any point before expiry.\n\nUnlike Above markets which only check the price at expiry, Hit markets are path-dependent — they trigger as soon as the price 'hits' the target, regardless of where it ends up.\n\nHit markets come in two varieties: weekly (short-term, expiring each week) and monthly (longer-term, expiring at month end).\n\nRows show strike prices with ↑ (must go up to hit) or ↓ (must go down to hit). Columns show different expiry dates."} /></div>
                   {renderWeeklyHitTable()}
-                  <PriceTicks containerRef={hitContainerRef} livePrice={livePrice} slot0={slot0} slot1={slot1} />
+                  <PriceTicks containerRef={hitContainerRef} symbol={symbol} slot0={slot0} slot1={slot1} />
                 </div>
               )}
             </div>
@@ -1025,14 +1045,14 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
             <div className="flex-1 min-w-0 border border-emerald-500/40 rounded flex flex-col" ref={aboveContainerRef} style={{ position: 'relative' }}>
               <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-emerald-400 bg-gray-800/50 rounded-t py-0.5">Above <HelpTooltip text={"Above markets resolve YES if the asset price is above a specific strike price at the moment of expiry (noon ET).\n\nThese are the most common market type. Each row is a different strike price and each column is a different expiry date.\n\nThe YES probability increases as the live price moves further above the strike, and decreases as it falls below. At expiry, the market resolves to 100 (YES) or 0 (NO) based purely on where the price is at that moment."} /></div>
               {renderTable(aboveMarketsForAsset, 'above')}
-              <PriceTicks containerRef={aboveContainerRef} livePrice={livePrice} slot0={slot0} slot1={slot1} />
+              <PriceTicks containerRef={aboveContainerRef} symbol={symbol} slot0={slot0} slot1={slot1} />
             </div>
           )}
           {showBetween && (
             <div className="flex-1 min-w-0 border border-purple-500/40 rounded flex flex-col" ref={priceOnContainerRef} style={{ position: 'relative' }}>
               <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-purple-400 bg-gray-800/50 rounded-t py-0.5">Between <HelpTooltip text={"Between markets resolve YES if the asset price falls within a specific price range at the moment of expiry (noon ET).\n\nEach row shows a price range (e.g. 95k-100k). The market pays out if the price lands inside that range at expiry.\n\nB-S probability for these markets peaks when the price is near the center of the range and drops off toward the edges. Unlike Above markets, the max probability may not be at the range boundary — it can be in the middle."} /></div>
               {renderTable(priceOnMarketsForAsset, 'price')}
-              <PriceTicks containerRef={priceOnContainerRef} livePrice={livePrice} slot0={slot0} slot1={slot1} />
+              <PriceTicks containerRef={priceOnContainerRef} symbol={symbol} slot0={slot0} slot1={slot1} />
             </div>
           )}
         </div>

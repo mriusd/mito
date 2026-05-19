@@ -35,10 +35,10 @@ export function SidebarHoldersExpandTip({ anchorRef, open, onDismiss }: SidebarH
 
   return createPortal(
     <>
-      <div className="fixed inset-0 z-[64000] bg-black/25" aria-hidden onClick={onDismiss} />
+      <div className="pointer-events-none fixed inset-0 z-[8990] bg-black/25" aria-hidden />
       <div
         role="tooltip"
-        className="fixed z-[64001] max-w-[15.5rem] rounded-lg border border-yellow-500/50 bg-gray-800 px-3 py-2.5 shadow-xl shadow-black/50"
+        className="pointer-events-auto fixed z-[8991] max-w-[15.5rem] rounded-lg border border-yellow-500/50 bg-gray-800 px-3 py-2.5 shadow-xl shadow-black/50"
         style={{ top: pos.top, left: pos.left, transform: 'translate(-100%, -50%)' }}
       >
         <p className="text-[11px] leading-snug text-gray-200">

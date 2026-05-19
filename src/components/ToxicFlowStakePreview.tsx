@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import type { WalletPosition } from '../api';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
 import { HelpTooltip } from './HelpTooltip';
@@ -9,7 +9,16 @@ import { toxicCohortStakedNetSurplusHalves } from '../lib/toxicFlowStakeCohort';
 export const TOXIC_TOTAL_STAKE_BAR_HELP =
   'Total dollars staked on this market across all wallets. Green = more on YES, red = more on NO.';
 
-export function ToxicFlowStakePreview({
+function walletsPreviewPropEqual(a: readonly WalletPosition[], b: readonly WalletPosition[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function ToxicFlowStakePreviewInner({
   label,
   wallets = [],
   marketGrossLegsUsd,
@@ -20,7 +29,6 @@ export function ToxicFlowStakePreview({
 }: {
   label: string;
   wallets?: readonly WalletPosition[];
-  /** Market-wide Σ|YES leg| vs Σ|NO leg| (all wallets); overrides cohort wallet math when both legs are finite. */
   marketGrossLegsUsd?: { stakedUsdYesLeg: number; stakedUsdNoLeg: number } | null;
   flashExtremeTilt?: boolean;
   extremeFlashTiltThreshold?: number;
@@ -84,3 +92,22 @@ export function ToxicFlowStakePreview({
 
   return <div className="min-w-0 space-y-0.5">{innerBar}</div>;
 }
+
+export const ToxicFlowStakePreview = memo(ToxicFlowStakePreviewInner, (a, b) => {
+  if (
+    a.label !== b.label ||
+    a.flashExtremeTilt !== b.flashExtremeTilt ||
+    a.extremeFlashTiltThreshold !== b.extremeFlashTiltThreshold ||
+    a.helpText !== b.helpText ||
+    a.layout !== b.layout
+  ) {
+    return false;
+  }
+  const ga = a.marketGrossLegsUsd;
+  const gb = b.marketGrossLegsUsd;
+  if (ga !== gb) {
+    if (ga == null || gb == null) return ga === gb;
+    if (ga.stakedUsdYesLeg !== gb.stakedUsdYesLeg || ga.stakedUsdNoLeg !== gb.stakedUsdNoLeg) return false;
+  }
+  return walletsPreviewPropEqual(a.wallets ?? [], b.wallets ?? []);
+});

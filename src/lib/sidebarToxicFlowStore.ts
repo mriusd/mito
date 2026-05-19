@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { ToxicFlowData } from '../api';
 import { toxicFlowPayloadEqual } from '../lib/toxicFlowStakeCohort';
+import { clearSidebarToxicFlowTabViewsCache } from '../lib/sidebarToxicFlowTabViews';
 
 type SidebarToxicFlowSnapshot = {
   data: ToxicFlowData | null;
@@ -21,6 +22,7 @@ function notifyListeners(): void {
 export function resetSidebarToxicFlowStore(): void {
   snap = EMPTY;
   refreshImpl = null;
+  clearSidebarToxicFlowTabViewsCache();
   notifyListeners();
 }
 

@@ -146,6 +146,8 @@ interface ToxicFlowDialogProps {
    * 1–2k wallet row graphs retained in closures (MessageEvent / Function churn in heap snapshots).
    */
   streamData?: ToxicFlowData | null;
+  /** Embedded: pre-built tab views (shared with SidebarToxicStrips cache). */
+  streamTabWalletViews?: ToxicFlowTabWalletViews | null;
   /** Embedded panel: HTTP full refresh from parent stream hook. */
   onRefreshStream?: () => void | Promise<void>;
   streamRefreshing?: boolean;
@@ -2225,6 +2227,37 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
       )}
     </div>
   );
+}, (a, b) => {
+  if (
+    a.yesTokenId !== b.yesTokenId ||
+    a.marketId !== b.marketId ||
+    a.open !== b.open ||
+    a.layoutMode !== b.layoutMode ||
+    a.tab !== b.tab ||
+    a.tabBottom !== b.tabBottom ||
+    a.tabThird !== b.tabThird ||
+    a.setTab !== b.setTab ||
+    a.setTabBottom !== b.setTabBottom ||
+    a.setTabThird !== b.setTabThird ||
+    a.openWalletDialog !== b.openWalletDialog ||
+    a.layoutSwitch !== b.layoutSwitch
+  ) {
+    return false;
+  }
+  if (a.tabWalletViews === b.tabWalletViews) return true;
+  const va = a.tabWalletViews;
+  const vb = b.tabWalletViews;
+  const keys = ['topYes', 'topNo', 'topHolders', 'smart', 'favourites', 'whales', 'winners'] as const;
+  for (const k of keys) {
+    const wa = va[k];
+    const wb = vb[k];
+    if (wa === wb) continue;
+    if (wa.length !== wb.length) return false;
+    for (let i = 0; i < wa.length; i++) {
+      if (wa[i] !== wb[i]) return false;
+    }
+  }
+  return true;
 });
 
 const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
@@ -2235,6 +2268,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   onClose,
   embedded = false,
   streamData = undefined,
+  streamTabWalletViews = undefined,
   onRefreshStream: _onRefreshStream,
   streamRefreshing: _streamRefreshing = false,
 }: ToxicFlowDialogProps) {
@@ -2395,10 +2429,12 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     };
   }, [embedded, open, marketId]);
 
-  const tabWalletViews = useMemo(
+  const tabWalletViewsBuilt = useMemo(
     () => (data ? buildToxicFlowTabWalletViews(data, toxicFollowSet, tiltWhaleAmountUsd) : null),
     [data, toxicFollowSet, tiltWhaleAmountUsd],
   );
+  const tabWalletViews =
+    embedded && streamTabWalletViews !== undefined ? streamTabWalletViews : tabWalletViewsBuilt;
 
   const openWalletDialog = useCallback((wallet: string, _netShares?: number) => {
     setSelectedWallet(wallet);
@@ -2552,4 +2588,23 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
       </div>
     </div>
   );
+}, (a, b) => {
+  if (
+    a.open !== b.open ||
+    a.embedded !== b.embedded ||
+    a.marketId !== b.marketId ||
+    a.marketName !== b.marketName ||
+    a.yesTokenId !== b.yesTokenId ||
+    a.onClose !== b.onClose ||
+    a.streamRefreshing !== b.streamRefreshing ||
+    a.onRefreshStream !== b.onRefreshStream ||
+    a.streamTabWalletViews !== b.streamTabWalletViews
+  ) {
+    return false;
+  }
+  const sa = a.streamData;
+  const sb = b.streamData;
+  if (sa === sb) return true;
+  if (sa == null || sb == null) return sa === sb;
+  return toxicFlowPayloadEqual(sa, sb);
 });

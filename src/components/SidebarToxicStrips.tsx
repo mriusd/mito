@@ -1,8 +1,7 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import { ToxicFlowStakePreview, TOXIC_TOTAL_STAKE_BAR_HELP } from './ToxicFlowStakePreview';
-import { useSidebarToxicFlowData } from '../lib/sidebarToxicFlowStore';
+import { useSidebarToxicFlowTabViews } from '../lib/sidebarToxicFlowTabViews';
 import {
-  buildToxicFlowTabWalletViews,
   cohortSurplusLean,
   dominantStakedLegAvgPriceCents,
   toxicCohortStakedNetSurplusHalves,
@@ -50,7 +49,6 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   notifyFavouriteTiltPct: number;
   notifyGreensTiltPct: number;
 }) {
-  const toxicFlowData = useSidebarToxicFlowData();
   const [toxicFavSet, setToxicFavSet] = useState(readToxicFavouriteWallets);
   useEffect(() => {
     const sync = () => setToxicFavSet(readToxicFavouriteWallets());
@@ -65,10 +63,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
     };
   }, []);
 
-  const toxicTabViews = useMemo(
-    () => (toxicFlowData ? buildToxicFlowTabWalletViews(toxicFlowData, toxicFavSet, notifyWhaleAmountUsd) : null),
-    [toxicFlowData, toxicFavSet, notifyWhaleAmountUsd],
-  );
+  const toxicTabViews = useSidebarToxicFlowTabViews(toxicFavSet, notifyWhaleAmountUsd);
 
   const toxicStripModel = useMemo(() => {
     const lists = toxicTabViews?.stripLists ?? null;

@@ -11,7 +11,6 @@ import {
   useImperativeHandle,
   type ReactNode,
 } from 'react';
-import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -263,7 +262,7 @@ function ToxicFlowTabBar({
   );
 }
 
-function ToxicFlowTablePane({
+const ToxicFlowTablePane = memo(function ToxicFlowTablePane({
   tab,
   onTab,
   tabWalletViews,
@@ -292,7 +291,7 @@ function ToxicFlowTablePane({
       </div>
     </div>
   );
-}
+});
 
 function rPnlToneClass(v: number): string {
   if (!Number.isFinite(v) || Math.abs(v) < 1e-9) return 'text-gray-400';
@@ -1297,7 +1296,7 @@ const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
   );
 });
 
-function WalletTable({
+function WalletTableInner({
   wallets,
   label,
   totalStakedNetUsd,
@@ -1318,10 +1317,6 @@ function WalletTable({
     () => DEFAULT_TILT_WHALE_AMOUNT_USD,
   );
   const rows = wallets || [];
-  const [tbodyAnimateRef] = useAutoAnimate<HTMLTableSectionElement>({
-    duration: 320,
-    easing: 'ease-in-out',
-  });
   const totalStakedDenom = useMemo(() => {
     if (typeof totalStakedNetUsd === 'number' && Number.isFinite(totalStakedNetUsd) && totalStakedNetUsd > 0) {
       return totalStakedNetUsd;
@@ -1337,9 +1332,11 @@ function WalletTable({
     let cum = 0;
     return rows.map((w) => {
       const abs = walletStakeNetAbsUsd(w);
-      const pct = totalStakedDenom > 0 && Number.isFinite(abs) ? (abs / totalStakedDenom) * 100 : 0;
-      cum += pct;
-      return { stakedPct: pct, cumStakedPct: cum };
+      const pctRaw = totalStakedDenom > 0 && Number.isFinite(abs) ? (abs / totalStakedDenom) * 100 : 0;
+      const stakedPct = Math.round(pctRaw * 10) / 10;
+      cum += stakedPct;
+      const cumStakedPct = Math.round(cum * 10) / 10;
+      return { stakedPct, cumStakedPct };
     });
   }, [rows, totalStakedDenom]);
   const [favouriteWallets, setFavouriteWallets] = useState(readToxicFavouriteWallets);
@@ -1454,7 +1451,7 @@ function WalletTable({
             <th className="text-right px-1">Bias</th>
           </tr>
         </thead>
-        <tbody ref={tbodyAnimateRef}>
+        <tbody>
           {rows.map((w, i) => {
             const wk = (w.wallet || '').toLowerCase();
             const metrics = rowStakedMetrics[i] ?? { stakedPct: 0, cumStakedPct: 0 };
@@ -1481,6 +1478,8 @@ function WalletTable({
     </div>
   );
 }
+
+const WalletTable = memo(WalletTableInner);
 
 export function WalletInfoDialog({
   open,
@@ -2229,12 +2228,12 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     [data, toxicFollowSet, tiltWhaleAmountUsd],
   );
 
-  if (!open) return null;
-
-  const openWalletDialog = (wallet: string, _netShares?: number) => {
+  const openWalletDialog = useCallback((wallet: string, _netShares?: number) => {
     setSelectedWallet(wallet);
     setWalletDialogOpen(true);
-  };
+  }, []);
+
+  if (!open) return null;
 
   const layoutSwitch = <ToxicFlowLayoutSwitch mode={layoutMode} onMode={onLayoutModeChange} />;
 

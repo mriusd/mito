@@ -2199,9 +2199,23 @@ export function Sidebar() {
     return `${(leadMs / 86400000).toFixed(1)}d`;
   };
 
-  const marketName = selectedMarket
-    ? shortenMarketName(selectedMarket.question || selectedMarket.groupItemTitle, undefined, undefined, selectedMarket.eventSlug)
-    : '';
+  const marketName = useMemo(
+    () =>
+      selectedMarket
+        ? shortenMarketName(
+            selectedMarket.question || selectedMarket.groupItemTitle,
+            undefined,
+            undefined,
+            selectedMarket.eventSlug,
+          )
+        : '',
+    [
+      selectedMarket?.question,
+      selectedMarket?.groupItemTitle,
+      selectedMarket?.eventSlug,
+      selectedMarket?.id,
+    ],
+  );
 
   const sidebarUpDownEndSwitch = useMemo(() => {
     if (!isUpDownMarket || !selectedMarket?.endDate) return null;

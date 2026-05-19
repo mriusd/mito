@@ -129,3 +129,42 @@ export function useChainlinkPricesMap(): ChainlinkPricesMap {
 
   return prices;
 }
+
+/** Chainlink /ws/prices at most every `ms` — UpDownMarketsPanel was full tick × all cells. */
+export function useThrottledChainlinkPricesMap(ms = 1000): ChainlinkPricesMap {
+  const live = useChainlinkPricesMap();
+  const [prices, setPrices] = useState(live);
+
+  useEffect(() => {
+    let latest = live;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const flush = () => {
+      timer = null;
+      setPrices((prev) => {
+        if (prev === latest) return prev;
+        const pk = Object.keys(prev).sort().join(',');
+        const lk = Object.keys(latest).sort().join(',');
+        if (pk !== lk) return latest;
+        for (const k of Object.keys(latest)) {
+          if (prev[k] !== latest[k]) return latest;
+        }
+        return prev;
+      });
+    };
+
+    const schedule = () => {
+      if (timer != null) return;
+      timer = setTimeout(flush, ms);
+    };
+
+    latest = live;
+    schedule();
+
+    return () => {
+      if (timer != null) clearTimeout(timer);
+    };
+  }, [live, ms]);
+
+  return prices;
+}

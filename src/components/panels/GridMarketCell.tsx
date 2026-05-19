@@ -2,6 +2,7 @@ import { memo, useMemo, type CSSProperties } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { AssetName, Market, Order } from '../../types';
 import { useAppStore } from '../../stores/appStore';
+import { marketRowContentEqual } from '../../lib/marketDataDedupe';
 import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
 import { gammaImpliedNoBestBid, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { assetToSymbol } from '../../utils/format';
@@ -310,4 +311,42 @@ function GridMarketCellInner({
   );
 }
 
-export const GridMarketCell = memo(GridMarketCellInner);
+export const GridMarketCell = memo(GridMarketCellInner, (a, b) => {
+  if (
+    a.asset !== b.asset ||
+    a.endDate !== b.endDate ||
+    a.deltaPriceStr !== b.deltaPriceStr ||
+    a.isHit !== b.isHit ||
+    a.isClosed !== b.isClosed ||
+    a.isPast !== b.isPast ||
+    a.isWeekend !== b.isWeekend ||
+    a.minWidth !== b.minWidth ||
+    a.signalsOnGrid !== b.signalsOnGrid ||
+    a.yesDiff !== b.yesDiff ||
+    a.noDiff !== b.noDiff ||
+    a.isSelected !== b.isSelected ||
+    a.isColHighlighted !== b.isColHighlighted ||
+    a.adjVol !== b.adjVol ||
+    a.yesPosSize !== b.yesPosSize ||
+    a.noPosSize !== b.noPosSize ||
+    a.variant !== b.variant ||
+    a.skipDeltaBg !== b.skipDeltaBg ||
+    a.onCellClick !== b.onCellClick
+  ) {
+    return false;
+  }
+  if (!ordersPropEqual(a.yesOrders, b.yesOrders)) return false;
+  if (!ordersPropEqual(a.noOrders, b.noOrders)) return false;
+  return marketRowContentEqual(a.market, b.market);
+});
+
+function ordersPropEqual(a: Order[], b: Order[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const oa = a[i];
+    const ob = b[i];
+    if (oa.id !== ob.id || oa.side !== ob.side || oa.price !== ob.price || oa.size !== ob.size) return false;
+  }
+  return true;
+}

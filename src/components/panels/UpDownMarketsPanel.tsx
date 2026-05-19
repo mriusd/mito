@@ -1,17 +1,13 @@
-import { useCallback, useEffect, useMemo, useState, Fragment, memo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment, memo } from 'react';
 import type { CSSProperties } from 'react';
-import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { HelpTooltip } from '../HelpTooltip';
 import type { Market } from '../../types';
 import type { AssetSymbol } from '../../types';
-import { getMarketProbability } from '../../utils/bsMath';
 import { getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
-import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
-import { noOutcomeBidAsk, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
-import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
+import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
-import { MarketCellMidRow } from './MarketCellMidRow';
+import { UpDownAssetLaneCells } from './UpDownAssetLaneCells';
 
 function formatCountdown(ms: number): string {
   const rem = ms - Date.now();
@@ -79,51 +75,6 @@ const EXPIRY_BAR_BG = 'rgba(6, 182, 212, 0.6)';
 const NEXT_MARKETS_COUNT_KEY = 'updown-next-markets-count';
 const ASSET_VISIBILITY_KEY = 'updown-panel-asset-visibility';
 const SHOW_TARGET_KEY = 'updown-show-target';
-
-const TARGET_STRIKE_DECIMALS: Record<(typeof ASSETS)[number], number> = {
-  BTC: 0,
-  ETH: 1,
-  SOL: 2,
-  XRP: 4,
-};
-
-/** Math % badge: gray when rounded P(Up) is within this many points of 50 (i.e. 50 ± 1 → 49–51). */
-const MATH_PROB_NEUTRAL_BAND = 1;
-
-const MATH_VS_BID_NEUTRAL_PCT = 5;
-
-/**
- * Triangle flashes when YES bid is at least this far from math **relative to math**:
- * |bid − math| / math ≥ threshold (e.g. 0.30 ⇒ 30% away from math, not 30 percentage points).
- */
-const MATH_VS_BID_FLASH_REL = 0.30;
-
-function formatTargetStrikePrice(p: number | undefined | null, fractionDigits: number): string {
-  if (p == null || !Number.isFinite(p)) return '-';
-  return p.toLocaleString(undefined, {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  });
-}
-
-function strikePriceFromMarket(market: Market, tokenId: string, lookup: Record<string, Market>): number | undefined {
-  const p = market.priceToBeat ?? (tokenId ? lookup[tokenId]?.priceToBeat : undefined);
-  return p != null && Number.isFinite(p) ? p : undefined;
-}
-
-/** Same curve as AssetMarketTable: tint by (YES mid − BS math) in percentage points. */
-function deltaMidVsMathBg(yesMidProb: number | null, mathYesProb: number | null): CSSProperties {
-  if (yesMidProb == null || mathYesProb == null) return {};
-  const delta = (yesMidProb - mathYesProb) * 100;
-  const alpha = Math.min(0.55, Math.abs(delta) * 0.035);
-  if (alpha < 0.02) return {};
-  return {
-    backgroundColor:
-      delta > 0
-        ? `rgba(34, 197, 94, ${alpha.toFixed(3)})`
-        : `rgba(239, 68, 68, ${alpha.toFixed(3)})`,
-  };
-}
 
 type AssetVisibility = Record<(typeof ASSETS)[number], boolean>;
 
@@ -202,35 +153,6 @@ function UpDownMarketsPanelInner() {
   const onchainGridPositions = useAppStore((s) => s.onchainGridPositions);
   const orders = useAppStore((s) => s.orders);
   const progOrderMap = useAppStore((s) => s.progOrderMap);
-  const updownGridClobTokenIds = useMemo(() => {
-    const set = new Set<string>();
-    for (const udm of Object.values(upOrDownMarkets)) {
-      if (!udm) continue;
-      for (const mkts of Object.values(udm)) {
-        for (const m of mkts || []) {
-          for (const t of m.clobTokenIds || []) if (t) set.add(String(t));
-        }
-      }
-    }
-    if (liveTradesSource === 'onchain') {
-      for (const p of onchainGridPositions) {
-        const k = normalizeClobTokenId(p.tokenId);
-        if (k && Math.abs(p.size) > 1e-9) set.add(k);
-      }
-    } else {
-      for (const pos of positions) {
-        const k = normalizeClobTokenId(getPositionClobTokenId(pos));
-        if (k && (pos.size || 0) > 0) set.add(k);
-      }
-    }
-    for (const ord of orders) {
-      if (progOrderMap[ord.id]) continue;
-      const tid = ord.asset_id || ord.token_id || '';
-      if (tid) set.add(tid);
-    }
-    return [...set];
-  }, [upOrDownMarkets, liveTradesSource, onchainGridPositions, positions, orders, progOrderMap]);
-  const _bidAskLookup = useMarketLookupSubset(updownGridClobTokenIds);
   const btcPrice = useThrottledStorePrice('BTCUSDT', 1000);
   const ethPrice = useThrottledStorePrice('ETHUSDT', 1000);
   const solPrice = useThrottledStorePrice('SOLUSDT', 1000);
@@ -253,7 +175,7 @@ function UpDownMarketsPanelInner() {
   }), [btcVol, ethVol, solVol, xrpVol]);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
-  const chainlinkPrices = useChainlinkPricesMap();
+  const chainlinkPrices = useThrottledChainlinkPricesMap(1000);
 
   const positionTokenIds = useMemo(() => {
     const s = new Set<string>();
@@ -282,12 +204,6 @@ function UpDownMarketsPanelInner() {
     }
     return lookup;
   }, [orders, progOrderMap]);
-
-  const getLiveBidAsk = (m: Market) => {
-    const tid = m.clobTokenIds?.[0];
-    const live = tid ? _bidAskLookup[tid] : null;
-    return { bestBid: live?.bestBid ?? m.bestBid, bestAsk: live?.bestAsk ?? m.bestAsk };
-  };
 
   const handleCellClick = useCallback((market: Market, outcome: 'YES' | 'NO' = 'YES') => {
     setSelectedMarket(market);
@@ -318,23 +234,40 @@ function UpDownMarketsPanelInner() {
     return out;
   }, [upOrDownMarkets, visibleAssets]);
 
+  type UpDownLane = { current: Market | null; futures: (Market | null)[] };
+  const laneCacheRef = useRef(new Map<string, UpDownLane>());
+
   const laneByAssetTf = useMemo(() => {
-    type Lane = { current: Market | null; futures: (Market | null)[] };
-    const out: Partial<Record<(typeof ASSETS)[number], Partial<Record<(typeof TIMEFRAMES)[number], Lane>>>> = {};
+    const out: Partial<Record<(typeof ASSETS)[number], Partial<Record<(typeof TIMEFRAMES)[number], UpDownLane>>>> = {};
+    const cache = laneCacheRef.current;
     for (const asset of visibleAssets) {
       out[asset] = {};
       for (const tf of TIMEFRAMES) {
         const markets = sortedOpenByAssetTf[asset]?.[tf] ?? [];
         const currentIdx = markets.findIndex((m) => m.endDate && new Date(m.endDate).getTime() > now);
+        let raw: UpDownLane;
         if (currentIdx === -1) {
-          out[asset]![tf] = { current: null, futures: Array.from({ length: nextMarketsCount }, () => null) };
-          continue;
+          raw = { current: null, futures: Array.from({ length: nextMarketsCount }, () => null) };
+        } else {
+          const futures: (Market | null)[] = [];
+          for (let i = 0; i < nextMarketsCount; i++) {
+            futures.push(markets[currentIdx + 1 + i] ?? null);
+          }
+          raw = { current: markets[currentIdx], futures };
         }
-        const futures: (Market | null)[] = [];
-        for (let i = 0; i < nextMarketsCount; i++) {
-          futures.push(markets[currentIdx + 1 + i] ?? null);
+        const key = `${asset}\0${tf}`;
+        const prev = cache.get(key);
+        if (
+          prev &&
+          prev.current === raw.current &&
+          prev.futures.length === raw.futures.length &&
+          prev.futures.every((m, i) => m === raw.futures[i])
+        ) {
+          out[asset]![tf] = prev;
+        } else {
+          cache.set(key, raw);
+          out[asset]![tf] = raw;
         }
-        out[asset]![tf] = { current: markets[currentIdx], futures };
       }
     }
     return out;
@@ -524,345 +457,28 @@ function UpDownMarketsPanelInner() {
                     );
                   }
 
-                  const { bestBid } = getLiveBidAsk(market);
-                  const tokenIds = market.clobTokenIds || [];
-                  const yesTokenId = tokenIds[0] || '';
-                  const noTokenId = tokenIds[1] || '';
                   const sym = (asset + 'USDT') as AssetSymbol;
-                  const cl = chainlinkPrices[asset];
-                  const binanceSpot = priceBySym[sym];
-                  const preferChainlink = tf === '5m' || tf === '15m';
-                  const livePrice = preferChainlink
-                    ? cl != null && cl > 0
-                      ? cl
-                      : binanceSpot != null && binanceSpot > 0
-                        ? binanceSpot
-                        : undefined
-                    : binanceSpot != null && binanceSpot > 0
-                      ? binanceSpot
-                      : undefined;
-                  const strikeTarget = strikePriceFromMarket(market, yesTokenId, _bidAskLookup);
-
-                  let mathYesProb: number | null = null;
-                  if (livePrice != null && livePrice > 0 && strikeTarget !== undefined && market.endDate) {
-                    const sigma = volBySym[sym] * volMultiplier;
-                    const bsYes = getMarketProbability('>' + strikeTarget, livePrice, market.endDate, sigma, bsTimeOffsetHours);
-                    if (bsYes !== null) {
-                      mathYesProb = bsYes;
-                    }
-                  }
-
-                  let bidVsMath: 'bidAbove' | 'bidBelow' | 'tie' | null = null;
-                  let triangleBadgeFlash = false;
-                  if (mathYesProb !== null && bestBid != null && Number.isFinite(bestBid)) {
-                    const gapPts = Math.abs(bestBid * 100 - mathYesProb * 100);
-                    const d = bestBid - mathYesProb;
-                    if (gapPts <= MATH_VS_BID_NEUTRAL_PCT) bidVsMath = 'tie';
-                    else if (d > 0) bidVsMath = 'bidAbove';
-                    else bidVsMath = 'bidBelow';
-                    const flashDenom = Math.max(mathYesProb, 1e-9);
-                    triangleBadgeFlash = Math.abs(bestBid - mathYesProb) / flashDenom >= MATH_VS_BID_FLASH_REL;
-                  }
-                  const mathPctRounded = mathYesProb !== null ? Math.round(mathYesProb * 100) : null;
-                  const mathProbNeutral =
-                    mathPctRounded !== null &&
-                    mathPctRounded >= 50 - MATH_PROB_NEUTRAL_BAND &&
-                    mathPctRounded <= 50 + MATH_PROB_NEUTRAL_BAND;
-                  const mathBadgeColorClass =
-                    mathPctRounded === null
-                      ? 'bg-gray-800/70 text-gray-300 border border-gray-600/50'
-                      : mathProbNeutral
-                        ? 'bg-gray-800/40 text-gray-300/90 border border-gray-500/30'
-                        : mathPctRounded > 50
-                          ? 'bg-green-900/55 text-green-200 border border-green-700/40'
-                          : 'bg-red-900/55 text-red-200 border border-red-700/40';
-
-                  const targetCell = showTarget ? (
-                    <td
-                      key={`${asset}-target`}
-                      className={`px-1 py-1 align-middle border-l border-r border-solid border-gray-700 text-center text-[9px] whitespace-nowrap ${ASSET_COLORS[asset] || 'text-gray-300'} bg-gray-900/50 ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
-                      style={assetBorderStyle(asset, { L: true, B: isLastTfRow })}
-                    >
-                      <div className="flex flex-row items-center justify-center gap-1 leading-none">
-                        <span className="font-medium tabular-nums">
-                          {formatTargetStrikePrice(strikeTarget, TARGET_STRIKE_DECIMALS[asset])}
-                        </span>
-                        {mathYesProb !== null && (
-                          <div className="inline-flex items-center gap-0.5 shrink-0">
-                            <div
-                              className={`inline-flex h-4 min-w-[2.75rem] shrink-0 items-center justify-center gap-0.5 rounded px-1 text-[8px] font-bold tabular-nums ${mathBadgeColorClass}`}
-                              title={
-                                bestBid != null && Number.isFinite(bestBid)
-                                  ? `Math P(Up) — green >${50 + MATH_PROB_NEUTRAL_BAND}%, red <${50 - MATH_PROB_NEUTRAL_BAND}%, gray if ${50 - MATH_PROB_NEUTRAL_BAND}–${50 + MATH_PROB_NEUTRAL_BAND}% (YES bid ${(bestBid * 100).toFixed(1)}¢)`
-                                  : `Math P(Up) — green >${50 + MATH_PROB_NEUTRAL_BAND}%, red <${50 - MATH_PROB_NEUTRAL_BAND}%, gray if ${50 - MATH_PROB_NEUTRAL_BAND}–${50 + MATH_PROB_NEUTRAL_BAND}%. Spot: 5m/15m = Chainlink (Binance fallback); 1h/4h/24h = Binance. σ from vol settings.`
-                              }
-                            >
-                              <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
-                              <span>{(mathYesProb * 100).toFixed(0)}</span>
-                            </div>
-                            {bidVsMath !== null && (
-                              <div
-                                className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                                  bidVsMath === 'bidAbove'
-                                    ? 'bg-green-900/65 border-green-600/45 text-green-100'
-                                    : bidVsMath === 'bidBelow'
-                                      ? 'bg-red-900/65 border-red-600/45 text-red-100'
-                                      : 'bg-gray-800/40 border-gray-500/30 text-gray-300/90'
-                                } ${triangleBadgeFlash && bidVsMath !== 'tie' ? 'updown-triangle-badge-flash' : ''}`}
-                                title={
-                                  bidVsMath === 'bidAbove'
-                                    ? `YES best bid above math by ${(bestBid! * 100 - mathYesProb! * 100).toFixed(1)} pts — flashes if bid ≥ ${(MATH_VS_BID_FLASH_REL * 100).toFixed(0)}% away from math (relative to math)`
-                                    : bidVsMath === 'bidBelow'
-                                      ? `YES best bid below math by ${(mathYesProb! * 100 - bestBid! * 100).toFixed(1)} pts — flashes if bid ≥ ${(MATH_VS_BID_FLASH_REL * 100).toFixed(0)}% away from math (relative to math)`
-                                      : `Within ±${MATH_VS_BID_NEUTRAL_PCT} pts of math (gap ${(bestBid! * 100 - mathYesProb! * 100).toFixed(1)} pts)`
-                                }
-                              >
-                                {bidVsMath === 'bidAbove' && (
-                                  <Triangle className="h-2.5 w-2.5 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
-                                )}
-                                {bidVsMath === 'bidBelow' && (
-                                  <Triangle className="h-2.5 w-2.5 rotate-180 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
-                                )}
-                                {bidVsMath === 'tie' && (
-                                  <Minus className="h-2.5 w-2.5" strokeWidth={2.5} aria-hidden />
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  ) : null;
-
-                  const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
-                  const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, _bidAskLookup, gammaYes);
-                  const noProb = yesMidProb != null ? 1 - yesMidProb : null;
-                  const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
-                  const noProbStr = noProb != null ? (noProb * 100).toFixed(1) : '-';
-                  const quoteDeltaBg = deltaMidVsMathBg(yesMidProb, mathYesProb);
-                  const isSelected = selectedMarket?.id === market.id;
-                  const provenSMS = yesTokenId ? (_bidAskLookup[yesTokenId]?.provenSMS ?? 0) : 0;
-                  const smartMoneyBarPct = Math.max(2, Math.min(98, 50 + provenSMS * 50));
-                  const concRaw =
-                    typeof _bidAskLookup[yesTokenId]?.concentration === 'number' &&
-                    Number.isFinite(_bidAskLookup[yesTokenId]?.concentration)
-                      ? _bidAskLookup[yesTokenId]!.concentration!
-                      : 0;
-                  const concPct = Math.max(0, Math.min(100, concRaw * 100));
-                  const cR = Math.round(Math.min(255, concRaw * 2 * 255));
-                  const cG = Math.round(Math.min(255, (1 - concRaw) * 2 * 255));
-                  const concColor = `rgb(${cR}, ${cG}, 0)`;
-
-                  const quoteCell = (
-                    <td
-                      key={asset}
-                      data-market-id={market.id}
-                      className={`market-cell px-0.5 py-1 text-center whitespace-nowrap border-l border-r border-solid border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
-                      style={{
-                        minWidth: 60,
-                        ...quoteDeltaBg,
-                        ...assetBorderStyle(asset, showTarget
-                          ? { B: isLastTfRow }
-                          : { L: true, B: isLastTfRow }),
-                      }}
-                      onClick={() => handleCellClick(market)}
-                    >
-                      {yesTokenId && positionTokenIds.has(normalizeClobTokenId(yesTokenId)) && (
-                        <span
-                          className="absolute left-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_3px_rgba(52,211,153,0.8)]"
-                          title={liveTradesSource === 'onchain' ? 'YES position (on-chain)' : 'YES position'}
-                        />
-                      )}
-                      {noTokenId && positionTokenIds.has(normalizeClobTokenId(noTokenId)) && (
-                        <span
-                          className="absolute right-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-rose-400 shadow-[0_0_3px_rgba(251,113,133,0.8)]"
-                          title={liveTradesSource === 'onchain' ? 'NO position (on-chain)' : 'NO position'}
-                        />
-                      )}
-                      <MarketCellMidRow
-                        className="text-[10px] text-gray-400"
-                        left={
-                          <span
-                            className="cursor-pointer hover:underline text-green-400"
-                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'YES'); }}
-                          >{yesMidStr}</span>
-                        }
-                        right={
-                          <span
-                            className="cursor-pointer hover:underline text-red-400"
-                            onClick={(e) => { e.stopPropagation(); handleCellClick(market, 'NO'); }}
-                          >{noProbStr}</span>
-                        }
-                      />
-
-                      {/* Order badges - YES bottom-left, NO bottom-right */}
-                      {(() => {
-                        const yesOrders = orderLookup[yesTokenId] || [];
-                        const noOrders = orderLookup[noTokenId] || [];
-                        const yesBuy = yesOrders.filter(o => o.side === 'BUY');
-                        const yesSell = yesOrders.filter(o => o.side === 'SELL');
-                        const noBuy = noOrders.filter(o => o.side === 'BUY');
-                        const noSell = noOrders.filter(o => o.side === 'SELL');
-                        return <>
-                          {yesBuy.length > 0 && <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">{(Math.max(...yesBuy.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
-                          {yesSell.length > 0 && <div className={`absolute ${yesBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`} style={{ color: '#78350f' }}>{(Math.min(...yesSell.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
-                          {noBuy.length > 0 && <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">{(Math.max(...noBuy.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
-                          {noSell.length > 0 && <div className={`absolute ${noBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`} style={{ color: '#78350f' }}>{(Math.min(...noSell.map(o => parseFloat(o.price || '0') * 100))).toFixed(1)}</div>}
-                        </>;
-                      })()}
-                      {/* Concentration — left vertical bar, grows upward */}
-                      <div
-                        className="absolute left-0 bottom-0 w-[2px] pointer-events-none z-0 bg-gray-800/80 overflow-hidden"
-                        style={{ height: '100%' }}
-                        title={`Concentration (top wallets): ${concPct.toFixed(0)}%`}
-                      >
-                        <div
-                          className="absolute bottom-0 left-0 w-full transition-all"
-                          style={{ height: `${concPct}%`, backgroundColor: concColor }}
-                        />
-                      </div>
-                      {/* Smart Money (proven wallets) */}
-                      <div
-                        className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
-                        title={`Smart Money (proven wallets): ${(provenSMS * 100).toFixed(0)}%`}
-                      >
-                        <div className="bg-yellow-400/75 h-full shrink-0 transition-[width]" style={{ width: `${smartMoneyBarPct}%` }} />
-                        <div className="bg-purple-400/75 h-full flex-1 min-w-0" />
-                      </div>
-                      {market.endDate && duration > 0 && (() => {
-                        const mEnd = new Date(market.endDate).getTime();
-                        const p = expiryProgress(now, mEnd, duration);
-                        return (
-                          <div
-                            className="absolute bottom-[2px] left-0 z-0 h-[2px] pointer-events-none"
-                            style={{ width: `${(p * 100).toFixed(1)}%`, backgroundColor: EXPIRY_BAR_BG }}
-                          />
-                        );
-                      })()}
-                    </td>
-                  );
-
-                  const futureCells = futuresSlots.map((nextMarket, slotIdx) => {
-                    const isLastSlot = slotIdx === nextMarketsCount - 1;
-                    const env = assetBorderStyle(
-                      asset,
-                      isLastSlot ? { R: true, B: isLastTfRow } : { B: isLastTfRow },
-                    );
-                    if (!nextMarket) {
-                      return (
-                        <td
-                          key={`${asset}-next-${slotIdx}`}
-                          className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-gray-600 text-[10px] whitespace-nowrap ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
-                          style={env}
-                        >
-                          -
-                        </td>
-                      );
-                    }
-                    const nextTokenIds = nextMarket.clobTokenIds || [];
-                    const nextYesTokenId = nextTokenIds[0] || '';
-                    const nextGammaYes = { bestBid: nextMarket.bestBid, bestAsk: nextMarket.bestAsk };
-                    const nextYesMid = outcomeMidOrOneSideProb(nextYesTokenId, _bidAskLookup, nextGammaYes);
-                    const nextNoProb = nextYesMid != null ? 1 - nextYesMid : null;
-                    const nextNoTokenId = nextTokenIds[1] || '';
-                    const { bestBid: nextBestBid } = getLiveBidAsk(nextMarket);
-                    const nextBidHi =
-                      nextBestBid != null && Number.isFinite(nextBestBid) && nextBestBid >= 0.6;
-                    const { bestBid: nextNoBid, bestAsk: nextNoAsk } = noOutcomeBidAsk(
-                      nextYesTokenId,
-                      nextNoTokenId,
-                      _bidAskLookup,
-                      nextGammaYes,
-                    );
-                    const nextNoHi =
-                      (nextNoBid != null && Number.isFinite(nextNoBid) && nextNoBid >= 0.6) ||
-                      (nextNoAsk != null && Number.isFinite(nextNoAsk) && nextNoAsk >= 0.6);
-                    const nextHiPillBase =
-                      'inline-flex min-h-[1.125rem] items-center justify-center rounded border px-0.5 text-[10px] font-extrabold tabular-nums text-white shrink-0';
-                    const isNextSelected = selectedMarket?.id === nextMarket.id;
-                    return (
-                      <td
-                        key={`${asset}-next-${slotIdx}`}
-                        data-market-id={nextMarket.id}
-                        className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap cursor-pointer hover:brightness-125 relative ${isNextSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
-                        style={env}
-                        onClick={() => handleCellClick(nextMarket)}
-                        title={`Next market +${slotIdx + 1} in this lane`}
-                      >
-                        <MarketCellMidRow
-                          className="text-gray-400"
-                          left={
-                            <span
-                              className={
-                                nextBidHi
-                                  ? `${nextHiPillBase} updown-triangle-badge-flash cursor-pointer hover:brightness-110 bg-green-900/65 border-green-600/45`
-                                  : 'text-green-400 cursor-pointer hover:underline'
-                              }
-                              title={
-                                nextBidHi && nextBestBid != null
-                                  ? `YES best bid ≥ 60¢ (${(nextBestBid * 100).toFixed(1)}¢)`
-                                  : undefined
-                              }
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCellClick(nextMarket, 'YES');
-                              }}
-                            >
-                              {nextYesMid != null ? (nextYesMid * 100).toFixed(1) : '-'}
-                            </span>
-                          }
-                          right={
-                            <span
-                              className={
-                                nextNoHi
-                                  ? `${nextHiPillBase} updown-triangle-badge-flash cursor-pointer hover:brightness-110 bg-red-900/65 border-red-600/45`
-                                  : 'text-red-400 cursor-pointer hover:underline'
-                              }
-                              title={
-                                nextNoHi
-                                  ? [
-                                      nextNoBid != null &&
-                                        Number.isFinite(nextNoBid) &&
-                                        nextNoBid >= 0.6 &&
-                                        `NO best bid ≥ 60¢ (${(nextNoBid * 100).toFixed(1)}¢)`,
-                                      nextNoAsk != null &&
-                                        Number.isFinite(nextNoAsk) &&
-                                        nextNoAsk >= 0.6 &&
-                                        `NO best ask ≥ 60¢ (${(nextNoAsk * 100).toFixed(1)}¢)`,
-                                    ]
-                                      .filter((s): s is string => typeof s === 'string')
-                                      .join(' · ') || undefined
-                                  : undefined
-                              }
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCellClick(nextMarket, 'NO');
-                              }}
-                            >
-                              {nextNoProb != null ? (nextNoProb * 100).toFixed(1) : '-'}
-                            </span>
-                          }
-                        />
-                        {nextMarket.endDate && duration > 0 && (() => {
-                          const nEnd = new Date(nextMarket.endDate).getTime();
-                          const p = expiryProgress(now, nEnd, duration);
-                          return (
-                            <div
-                              className="absolute bottom-0 left-0 z-0 h-[2px] pointer-events-none"
-                              style={{ width: `${(p * 100).toFixed(1)}%`, backgroundColor: EXPIRY_BAR_BG }}
-                            />
-                          );
-                        })()}
-                      </td>
-                    );
-                  });
-
                   return (
-                    <Fragment key={asset}>
-                      {targetCell}
-                      {quoteCell}
-                      {futureCells}
-                    </Fragment>
+                    <UpDownAssetLaneCells
+                      key={asset}
+                      asset={asset}
+                      tf={tf}
+                      market={market}
+                      futuresSlots={futuresSlots}
+                      showTarget={showTarget}
+                      isLastTfRow={isLastTfRow}
+                      nextMarketsCount={nextMarketsCount}
+                      chainlinkSpot={chainlinkPrices[asset]}
+                      binanceSpot={priceBySym[sym]}
+                      vol={volBySym[sym]}
+                      volMultiplier={volMultiplier}
+                      bsTimeOffsetHours={bsTimeOffsetHours}
+                      positionTokenIds={positionTokenIds}
+                      orderLookup={orderLookup}
+                      selectedMarketId={selectedMarket?.id}
+                      onCellClick={handleCellClick}
+                      liveTradesSource={liveTradesSource}
+                    />
                   );
                 })}
               </tr>

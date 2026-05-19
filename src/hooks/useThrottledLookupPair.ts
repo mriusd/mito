@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { Market } from '../types';
 import { useAppStore } from '../stores/appStore';
-import { bidAskWsRowEqual } from './useBidAskWS';
+import { bidAskWsRowEqual } from '../lib/bidAskMarketLookup';
 
 export type LookupPair = { yes?: Market; no?: Market };
 

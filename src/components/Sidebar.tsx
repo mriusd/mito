@@ -63,6 +63,7 @@ import {
   walletStakeYUsd,
   walletStakeNUsd,
 } from '../lib/toxicFlowStakeCohort';
+import { getBidAskMarketRow } from '../lib/bidAskMarketLookup';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
 import { persistTiltWhaleAmountUsd, readTiltWhaleAmountUsd } from '../lib/tiltWhaleAmountUsd';
 import { SidebarChartsRow } from './SidebarChartsRow';
@@ -644,14 +645,13 @@ function maxOrderUsdViolationMessage(maxUsd: number, valueUsd: number): string |
   return `Max order size ${lim} USD. To increase the limit go to settings menu in the header.`;
 }
 
-/** Market-crossing check for `tokenId` using `marketLookup` best bid/ask (WS-updated), not the rendered ladder. */
+/** Market-crossing check: WS `marketLookup` best bid/ask (includes unflushed WS pending), not the rendered ladder. */
 function orderCrossesBookFromWsLookup(
-  lookup: Record<string, Market>,
   tokenId: string,
   side: 'BUY' | 'SELL',
   orderPriceCents: number,
 ): { crosses: boolean; bestCounterpartyCents: number | null } {
-  const row = lookup[String(tokenId || '').trim()];
+  const row = getBidAskMarketRow(tokenId);
   const bestBidDec = typeof row?.bestBid === 'number' && Number.isFinite(row.bestBid) ? row.bestBid : null;
   const bestAskDec = typeof row?.bestAsk === 'number' && Number.isFinite(row.bestAsk) ? row.bestAsk : null;
   const bestBidCents = bestBidDec != null && bestBidDec > 0 ? bestBidDec * 100 : null;
@@ -2176,7 +2176,6 @@ export function Sidebar() {
     }
     const orderPriceCents = parseFloat(orderPrice);
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
-      marketLookup,
       tokenId,
       orderSide,
       orderPriceCents,
@@ -2247,7 +2246,6 @@ export function Sidebar() {
       }
     }
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
-      marketLookup,
       tokenId,
       side,
       priceCents,
@@ -2369,7 +2367,6 @@ export function Sidebar() {
     }
 
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
-      marketLookup,
       tokenId,
       btn.side,
       btn.priceCents,
@@ -2439,7 +2436,6 @@ export function Sidebar() {
       }
     }
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
-      marketLookup,
       tokenId,
       side,
       newPriceCents,

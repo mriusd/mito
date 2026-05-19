@@ -11,6 +11,7 @@ import {
   useImperativeHandle,
   type ReactNode,
 } from 'react';
+import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -866,8 +867,8 @@ interface WalletTableBodyRowProps {
   toggleFavouriteWallet: (addr: string) => void;
   toggleBellWallet: (addr: string) => void;
   onOpenWallet?: (wallet: string, netShares?: number) => void;
-  sharesPct: number;
-  cumSharesPct: number;
+  stakedPct: number;
+  cumStakedPct: number;
 }
 
 function WalletTableBodyRowImpl({
@@ -880,8 +881,8 @@ function WalletTableBodyRowImpl({
   toggleFavouriteWallet,
   toggleBellWallet,
   onOpenWallet,
-  sharesPct,
-  cumSharesPct,
+  stakedPct,
+  cumStakedPct,
 }: WalletTableBodyRowProps) {
   const hoverRef = useRef<WalletLinkHoverHandle>(null);
   const onRowEnter = useCallback((e: React.MouseEvent) => hoverRef.current?.rowEnter(e), []);
@@ -983,10 +984,10 @@ function WalletTableBodyRowImpl({
         {stakedNetUsdTableCell(stakeNetSigned)}
       </td>
       <td className="text-right px-1 text-cyan-300">
-        {sharesPct > 0 ? `${NF_PCT_1.format(sharesPct)}%` : '-'}
+        {stakedPct > 0 ? `${NF_PCT_1.format(stakedPct)}%` : '-'}
       </td>
       <td className="text-right px-1 text-cyan-200/70">
-        {cumSharesPct > 0 ? `${NF_PCT_1.format(cumSharesPct)}%` : '-'}
+        {cumStakedPct > 0 ? `${NF_PCT_1.format(cumStakedPct)}%` : '-'}
       </td>
       <td className={`text-right px-1 ${biasToneClass(bias)}`}>
         {`${NF_INT_EN.format(Math.round(bias * 100))}%`}
@@ -1008,8 +1009,8 @@ const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
     a.favouriteActive !== b.favouriteActive ||
     a.bellActive !== b.bellActive ||
     a.tiltWhaleAmountUsd !== b.tiltWhaleAmountUsd ||
-    a.sharesPct !== b.sharesPct ||
-    a.cumSharesPct !== b.cumSharesPct ||
+    a.stakedPct !== b.stakedPct ||
+    a.cumStakedPct !== b.cumStakedPct ||
     a.toggleFavouriteWallet !== b.toggleFavouriteWallet ||
     a.toggleBellWallet !== b.toggleBellWallet ||
     a.onOpenWallet !== b.onOpenWallet
@@ -1056,13 +1057,14 @@ const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
 function WalletTable({
   wallets,
   label,
-  totalShares,
+  totalStakedNetUsd,
   onOpenWallet,
   shadeRowByStakedNet = true,
 }: {
   wallets: WalletPosition[] | null;
   label: string;
-  totalShares?: number;
+  /** Market Σ|staked net| USD (headline); falls back to sum of |Staked Net| in this table. */
+  totalStakedNetUsd?: number | null;
   onOpenWallet?: (wallet: string, netShares?: number) => void;
   /** Row background from Staked Net sign (green YES / red NO); default on for all Toxic tables. */
   shadeRowByStakedNet?: boolean;
@@ -1073,6 +1075,30 @@ function WalletTable({
     () => DEFAULT_TILT_WHALE_AMOUNT_USD,
   );
   const rows = wallets || [];
+  const [tbodyAnimateRef] = useAutoAnimate<HTMLTableSectionElement>({
+    duration: 320,
+    easing: 'ease-in-out',
+  });
+  const totalStakedDenom = useMemo(() => {
+    if (typeof totalStakedNetUsd === 'number' && Number.isFinite(totalStakedNetUsd) && totalStakedNetUsd > 0) {
+      return totalStakedNetUsd;
+    }
+    let sum = 0;
+    for (const w of rows) {
+      const v = walletStakeNetAbsUsd(w);
+      if (Number.isFinite(v)) sum += v;
+    }
+    return sum > 0 ? sum : 0;
+  }, [rows, totalStakedNetUsd]);
+  const rowStakedMetrics = useMemo(() => {
+    let cum = 0;
+    return rows.map((w) => {
+      const abs = walletStakeNetAbsUsd(w);
+      const pct = totalStakedDenom > 0 && Number.isFinite(abs) ? (abs / totalStakedDenom) * 100 : 0;
+      cum += pct;
+      return { stakedPct: pct, cumStakedPct: cum };
+    });
+  }, [rows, totalStakedDenom]);
   const [favouriteWallets, setFavouriteWallets] = useState(readToxicFavouriteWallets);
   const [bellWallets, setBellWallets] = useState(readToxicBellWallets);
   useEffect(() => {
@@ -1170,40 +1196,42 @@ function WalletTable({
             <th className="text-right px-1 text-gray-300" title="(−inv_y×px_y) − (−inv_n×px_n) = Staked Y − Staked N as shown; suffix Y / N; green = favors YES / red = favors NO">
               Staked Net
             </th>
-            <th className="text-right px-1">%</th>
-            <th className="text-right px-1">Cum%</th>
+            <th
+              className="text-right px-1"
+              title="|Staked Net| USD ÷ total market staked (Σ|signed net|)"
+            >
+              %
+            </th>
+            <th
+              className="text-right px-1"
+              title="Running sum of % by table order (Staked Net / total staked)"
+            >
+              Cum%
+            </th>
             <th className="text-right px-1">Bias</th>
           </tr>
         </thead>
-        <tbody>
-          {(() => {
-            let cumSharesPct = 0;
-            return rows.map((w, i) => {
-              const wk = (w.wallet || '').toLowerCase();
-              const iy = typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
-              const inn = typeof w.invNo === 'number' && Number.isFinite(w.invNo) ? w.invNo : w.netNo ?? 0;
-              const signedLegNet = iy - inn;
-              const sharesPct =
-                totalShares && totalShares > 0 ? (Math.abs(signedLegNet) / totalShares) * 100 : 0;
-              cumSharesPct += sharesPct;
-              return (
-                <WalletTableBodyRow
-                  key={w.wallet}
-                  rank={i + 1}
-                  w={w}
-                  shadeRowByStakedNet={!!shadeRowByStakedNet}
-                  favouriteActive={favouriteWallets.has(wk)}
-                  bellActive={bellWallets.has(wk)}
-                  toggleFavouriteWallet={toggleFavouriteWallet}
-                  toggleBellWallet={toggleBellWallet}
-                  tiltWhaleAmountUsd={tiltWhaleAmountUsd}
-                  onOpenWallet={onOpenWallet}
-                  sharesPct={sharesPct}
-                  cumSharesPct={cumSharesPct}
-                />
-              );
-            });
-          })()}
+        <tbody ref={tbodyAnimateRef}>
+          {rows.map((w, i) => {
+            const wk = (w.wallet || '').toLowerCase();
+            const metrics = rowStakedMetrics[i] ?? { stakedPct: 0, cumStakedPct: 0 };
+            return (
+              <WalletTableBodyRow
+                key={w.wallet}
+                rank={i + 1}
+                w={w}
+                shadeRowByStakedNet={!!shadeRowByStakedNet}
+                favouriteActive={favouriteWallets.has(wk)}
+                bellActive={bellWallets.has(wk)}
+                toggleFavouriteWallet={toggleFavouriteWallet}
+                toggleBellWallet={toggleBellWallet}
+                tiltWhaleAmountUsd={tiltWhaleAmountUsd}
+                onOpenWallet={onOpenWallet}
+                stakedPct={metrics.stakedPct}
+                cumStakedPct={metrics.cumStakedPct}
+              />
+            );
+          })}
         </tbody>
       </table>
       </div>
@@ -2105,7 +2133,7 @@ export function ToxicFlowDialog({
                     <WalletTable
                       wallets={tabWalletViews?.topHolders ?? []}
                       label="holders"
-                      totalShares={data.totalShares}
+                      totalStakedNetUsd={dialogStakedNetAbsUsd}
                       onOpenWallet={openWalletDialog}
                     />
                   )}
@@ -2113,7 +2141,7 @@ export function ToxicFlowDialog({
                     <WalletTable
                       wallets={tabWalletViews?.smart ?? []}
                       label="smart"
-                      totalShares={data.totalShares}
+                      totalStakedNetUsd={dialogStakedNetAbsUsd}
                       onOpenWallet={openWalletDialog}
                     />
                   )}
@@ -2121,7 +2149,7 @@ export function ToxicFlowDialog({
                     <WalletTable
                       wallets={tabWalletViews?.favourites ?? []}
                       label="favourites"
-                      totalShares={data.totalShares}
+                      totalStakedNetUsd={dialogStakedNetAbsUsd}
                       onOpenWallet={openWalletDialog}
                     />
                   )}
@@ -2129,7 +2157,7 @@ export function ToxicFlowDialog({
                     <WalletTable
                       wallets={tabWalletViews?.whales ?? []}
                       label="whales"
-                      totalShares={data.totalShares}
+                      totalStakedNetUsd={dialogStakedNetAbsUsd}
                       onOpenWallet={openWalletDialog}
                     />
                   )}
@@ -2137,7 +2165,7 @@ export function ToxicFlowDialog({
                     <WalletTable
                       wallets={tabWalletViews?.winners ?? []}
                       label="greens"
-                      totalShares={data.totalShares}
+                      totalStakedNetUsd={dialogStakedNetAbsUsd}
                       onOpenWallet={openWalletDialog}
                     />
                   )}
@@ -2145,7 +2173,7 @@ export function ToxicFlowDialog({
                     <WalletTable
                       wallets={tabWalletViews?.stripLists.fresh ?? []}
                       label="fresh"
-                      totalShares={data.totalShares}
+                      totalStakedNetUsd={dialogStakedNetAbsUsd}
                       onOpenWallet={openWalletDialog}
                     />
                   )}
@@ -2153,7 +2181,7 @@ export function ToxicFlowDialog({
                     <WalletTable
                       wallets={tabWalletViews?.topYes ?? []}
                       label="Net Y (Staked)"
-                      totalShares={data.totalShares}
+                      totalStakedNetUsd={dialogStakedNetAbsUsd}
                       onOpenWallet={openWalletDialog}
                     />
                   )}
@@ -2161,7 +2189,7 @@ export function ToxicFlowDialog({
                     <WalletTable
                       wallets={tabWalletViews?.topNo ?? []}
                       label="Net N (Staked)"
-                      totalShares={data.totalShares}
+                      totalStakedNetUsd={dialogStakedNetAbsUsd}
                       onOpenWallet={openWalletDialog}
                     />
                   )}

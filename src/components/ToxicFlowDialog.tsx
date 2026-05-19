@@ -112,6 +112,12 @@ import {
   persistToxicFlowLayoutMode,
   type ToxicFlowLayoutMode,
 } from '../lib/toxicFlowLayoutMode';
+import { ToxicFlowResizableStack } from './ToxicFlowResizableStack';
+import {
+  persistToxicFlowPaneTab,
+  readToxicFlowPaneTab,
+  type ToxicFlowTabId,
+} from '../lib/toxicFlowPaneTabs';
 
 function subscribeTiltWhaleAmountUsd(listener: () => void): () => void {
   const onCustom = () => listener();
@@ -144,15 +150,7 @@ interface ToxicFlowDialogProps {
   streamRefreshing?: boolean;
 }
 
-type Tab =
-  | 'topHolders'
-  | 'smart'
-  | 'favourites'
-  | 'whales'
-  | 'winners'
-  | 'fresh'
-  | 'topYes'
-  | 'topNo';
+type Tab = ToxicFlowTabId;
 
 const TOXIC_FLOW_TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'topHolders', label: 'Top Holders', icon: <Crown size={11} /> },
@@ -2066,9 +2064,21 @@ export function ToxicFlowDialog({
     setLayoutMode(mode);
     persistToxicFlowLayoutMode(mode);
   }, []);
-  const [tab, setTab] = useState<Tab>('topHolders');
-  const [tabBottom, setTabBottom] = useState<Tab>('smart');
-  const [tabThird, setTabThird] = useState<Tab>('whales');
+  const [tab, setTabState] = useState<Tab>(() => readToxicFlowPaneTab('pane1'));
+  const [tabBottom, setTabBottomState] = useState<Tab>(() => readToxicFlowPaneTab('pane2'));
+  const [tabThird, setTabThirdState] = useState<Tab>(() => readToxicFlowPaneTab('pane3'));
+  const setTab = useCallback((next: Tab) => {
+    setTabState(next);
+    persistToxicFlowPaneTab('pane1', next);
+  }, []);
+  const setTabBottom = useCallback((next: Tab) => {
+    setTabBottomState(next);
+    persistToxicFlowPaneTab('pane2', next);
+  }, []);
+  const setTabThird = useCallback((next: Tab) => {
+    setTabThirdState(next);
+    persistToxicFlowPaneTab('pane3', next);
+  }, []);
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState('');
   const [toxicFollowSet, setToxicFollowSet] = useState(readToxicFavouriteWallets);
@@ -2358,59 +2368,49 @@ export function ToxicFlowDialog({
                   />
                 )}
                 {tabWalletViews && layoutMode === 'split' && (
-                  <div className="flex flex-col flex-1 min-h-0 gap-2">
-                    <div className="flex flex-col flex-1 min-h-0 basis-1/2 overflow-hidden border-b border-gray-700/80 pb-2">
-                      <ToxicFlowTablePane
-                        tab={tab}
-                        onTab={setTab}
-                        tabWalletViews={tabWalletViews}
-                        totalStakedNetUsd={dialogStakedNetAbsUsd}
-                        onOpenWallet={openWalletDialog}
-                        trailing={layoutSwitch}
-                      />
-                    </div>
-                    <div className="flex flex-col flex-1 min-h-0 basis-1/2 overflow-hidden pt-0.5">
-                      <ToxicFlowTablePane
-                        tab={tabBottom}
-                        onTab={setTabBottom}
-                        tabWalletViews={tabWalletViews}
-                        totalStakedNetUsd={dialogStakedNetAbsUsd}
-                        onOpenWallet={openWalletDialog}
-                      />
-                    </div>
-                  </div>
+                  <ToxicFlowResizableStack layoutKey="split">
+                    <ToxicFlowTablePane
+                      tab={tab}
+                      onTab={setTab}
+                      tabWalletViews={tabWalletViews}
+                      totalStakedNetUsd={dialogStakedNetAbsUsd}
+                      onOpenWallet={openWalletDialog}
+                      trailing={layoutSwitch}
+                    />
+                    <ToxicFlowTablePane
+                      tab={tabBottom}
+                      onTab={setTabBottom}
+                      tabWalletViews={tabWalletViews}
+                      totalStakedNetUsd={dialogStakedNetAbsUsd}
+                      onOpenWallet={openWalletDialog}
+                    />
+                  </ToxicFlowResizableStack>
                 )}
                 {tabWalletViews && layoutMode === 'triple' && (
-                  <div className="flex flex-col flex-1 min-h-0 gap-1.5">
-                    <div className="flex flex-col flex-1 min-h-0 basis-1/3 overflow-hidden border-b border-gray-700/80 pb-1.5">
-                      <ToxicFlowTablePane
-                        tab={tab}
-                        onTab={setTab}
-                        tabWalletViews={tabWalletViews}
-                        totalStakedNetUsd={dialogStakedNetAbsUsd}
-                        onOpenWallet={openWalletDialog}
-                        trailing={layoutSwitch}
-                      />
-                    </div>
-                    <div className="flex flex-col flex-1 min-h-0 basis-1/3 overflow-hidden border-b border-gray-700/80 py-0.5">
-                      <ToxicFlowTablePane
-                        tab={tabBottom}
-                        onTab={setTabBottom}
-                        tabWalletViews={tabWalletViews}
-                        totalStakedNetUsd={dialogStakedNetAbsUsd}
-                        onOpenWallet={openWalletDialog}
-                      />
-                    </div>
-                    <div className="flex flex-col flex-1 min-h-0 basis-1/3 overflow-hidden pt-0.5">
-                      <ToxicFlowTablePane
-                        tab={tabThird}
-                        onTab={setTabThird}
-                        tabWalletViews={tabWalletViews}
-                        totalStakedNetUsd={dialogStakedNetAbsUsd}
-                        onOpenWallet={openWalletDialog}
-                      />
-                    </div>
-                  </div>
+                  <ToxicFlowResizableStack layoutKey="triple">
+                    <ToxicFlowTablePane
+                      tab={tab}
+                      onTab={setTab}
+                      tabWalletViews={tabWalletViews}
+                      totalStakedNetUsd={dialogStakedNetAbsUsd}
+                      onOpenWallet={openWalletDialog}
+                      trailing={layoutSwitch}
+                    />
+                    <ToxicFlowTablePane
+                      tab={tabBottom}
+                      onTab={setTabBottom}
+                      tabWalletViews={tabWalletViews}
+                      totalStakedNetUsd={dialogStakedNetAbsUsd}
+                      onOpenWallet={openWalletDialog}
+                    />
+                    <ToxicFlowTablePane
+                      tab={tabThird}
+                      onTab={setTabThird}
+                      tabWalletViews={tabWalletViews}
+                      totalStakedNetUsd={dialogStakedNetAbsUsd}
+                      onOpenWallet={openWalletDialog}
+                    />
+                  </ToxicFlowResizableStack>
                 )}
               </div>
             </>

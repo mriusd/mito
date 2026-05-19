@@ -4877,9 +4877,11 @@ export function Sidebar() {
       )}
         </div>
         {!isMobileSheet && selectedMarket ? (
+          <>
+          <div className="hidden md:block w-6 shrink-0" aria-hidden />
           <button
             type="button"
-            className={`hidden md:flex shrink-0 w-6 flex-col justify-center items-center self-stretch border-l border-gray-700/55 bg-transparent text-gray-500 hover:text-gray-400 ${sidebarToxicEffective ? '' : 'sidebar-expand-handle-idle-flash'}`}
+            className={`sidebar-toxic-expand-handle hidden md:flex shrink-0 w-6 flex-col justify-center items-center border-l border-gray-700/55 bg-gray-800/95 text-gray-500 hover:text-gray-400 ${sidebarToxicEffective ? '' : 'sidebar-expand-handle-idle-flash'}`}
             title={sidebarToxicEffective ? 'Collapse holders panel' : 'Expand holders panel in sidebar'}
             aria-expanded={toxicSidebarExpanded}
             aria-label={sidebarToxicEffective ? 'Collapse holders panel' : 'Expand holders panel'}
@@ -4895,6 +4897,7 @@ export function Sidebar() {
               <ChevronRight className="h-4 w-4" strokeWidth={2} aria-hidden />
             )}
           </button>
+          </>
         ) : null}
         {sidebarToxicEffective && selectedMarket ? (
           <div className="flex flex-1 min-h-0 min-w-0 w-full flex-col overflow-hidden bg-gray-900 toxic-flow-scroll-stable">

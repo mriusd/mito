@@ -275,9 +275,9 @@ function rowPulseClassFor(bellActive: boolean, whaleFlash: boolean): string {
   return ROW_PULSE_NONE;
 }
 
-function biasToneClass(bias: number): string {
-  if (bias > 0.5) return 'text-yellow-400';
-  if (bias > 0.3) return 'text-orange-400';
+function biasToneClass(signedLegNet: number): string {
+  if (signedLegNet > STAKED_NET_EPS) return 'text-green-400';
+  if (signedLegNet < -STAKED_NET_EPS) return 'text-red-400';
   return 'text-gray-400';
 }
 
@@ -994,7 +994,7 @@ function WalletTableBodyRowImpl({
       <td className="text-right px-1 text-cyan-200/70">
         {cumStakedPct > 0 ? `${NF_PCT_1.format(cumStakedPct)}%` : '-'}
       </td>
-      <td className={`text-right px-1 ${biasToneClass(bias)}`}>
+      <td className={`text-right px-1 ${biasToneClass(signedLegNet)}`}>
         {`${NF_INT_EN.format(Math.round(bias * 100))}%`}
       </td>
     </tr>

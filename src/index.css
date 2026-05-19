@@ -466,12 +466,29 @@ input[type="range"].vol-slider::-moz-range-thumb {
    * Left column is always w-72 when embedded toxic is available; shell must fit 288px + expand handle.
    */
   .right-sidebar.sidebar-toxic-collapsed {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     width: calc(18rem + 1.5rem);
     max-width: calc(18rem + 1.5rem);
     transition:
       transform 0.3s ease,
       width 0.25s ease,
       max-width 0.25s ease;
+  }
+
+  /** Toxic expand strip: viewport vertical center (not stretch with scrollable column height). */
+  .right-sidebar.open .sidebar-toxic-expand-handle {
+    position: fixed;
+    top: calc(44px + (100vh - 44px) * 0.5);
+    left: 18rem;
+    z-index: 110;
+    transform: translateY(-50%);
+    align-self: auto;
+    height: auto;
+    min-height: 2.75rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
   }
 
   .right-sidebar.sidebar-toxic-expanded {

@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 export const TOXIC_WALLET_TAGS_LS_KEY = 'polybot-toxic-wallet-tags';
 
@@ -87,8 +87,10 @@ export function subscribeToxicWalletTags(listener: () => void): () => void {
 }
 
 export function useToxicWalletTag(wallet: string): string | null {
-  const tags = useSyncExternalStore(subscribeToxicWalletTags, readToxicWalletTags, readToxicWalletTags);
   const k = walletKey(wallet);
-  if (!k) return null;
-  return tags[k] ?? null;
+  const getSnapshot = useCallback((): string | null => {
+    if (!k) return null;
+    return readToxicWalletTags()[k] ?? null;
+  }, [k]);
+  return useSyncExternalStore(subscribeToxicWalletTags, getSnapshot, getSnapshot);
 }

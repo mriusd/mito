@@ -5,14 +5,26 @@ export const TOXIC_FLOW_COHORT_KEYS = ['topHolders'] as const;
 
 export type ToxicFlowCohortKey = (typeof TOXIC_FLOW_COHORT_KEYS)[number];
 
-export type ToxicFlowWSAction = 'full' | 'add' | 'update' | 'remove';
+export type ToxicFlowWSAction = 'full' | 'delta' | 'add' | 'update' | 'remove';
 
-/** Partial cohort patch keyed like ToxicFlowData cohort arrays. */
+type ToxicFlowCohortAddUpdate = Partial<Record<ToxicFlowCohortKey, WalletPosition[]>>;
+type ToxicFlowCohortRemove = Partial<Record<ToxicFlowCohortKey, string[]>>;
+
+/** Partial cohort patch keyed like ToxicFlowData cohort arrays (legacy per-action frames). */
 export type ToxicFlowPatchBody = {
   marketId?: string;
-  /** Market-level scalar / redFlags patch (update action only). */
+  /** Market-level scalar / redFlags patch. */
   market?: Partial<ToxicFlowData>;
 } & Partial<Record<ToxicFlowCohortKey, WalletPosition[] | string[]>>;
+
+/** Batched add / update / remove in one WS frame (`action: delta`). */
+export type ToxicFlowDeltaBody = {
+  marketId?: string;
+  market?: Partial<ToxicFlowData>;
+  add?: ToxicFlowCohortAddUpdate;
+  update?: ToxicFlowCohortAddUpdate;
+  remove?: ToxicFlowCohortRemove;
+};
 
 export type ToxicFlowWSMessage = {
   type?: string;
@@ -94,6 +106,18 @@ export function applyToxicFlowWSMessage(
   if (!prev) return prev;
   const mid = (body.marketId || (body as ToxicFlowData).marketId || '').trim();
   if (mid && prev.marketId && mid !== prev.marketId) return prev;
+
+  if (action === 'delta') {
+    const delta = body as ToxicFlowDeltaBody;
+    let next = prev;
+    if (delta.remove) next = applyCohortPatch(next, delta.remove, 'remove');
+    if (delta.update) next = applyCohortPatch(next, delta.update, 'update');
+    if (delta.add) next = applyCohortPatch(next, delta.add, 'add');
+    if (delta.market && typeof delta.market === 'object') {
+      next = { ...next, ...delta.market };
+    }
+    return coalesceToxicFlowPayload(prev, next);
+  }
 
   let next: ToxicFlowData;
   switch (action) {

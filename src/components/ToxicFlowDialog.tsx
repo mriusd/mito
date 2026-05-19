@@ -232,6 +232,10 @@ function inventoryNetSharesTableCell(signed: number): ReactNode {
 }
 
 /** Hot path: cached class strings (avoid per-row template-literal allocations on tick rerender). */
+/** Fixed width for rank # (1–100+) so column does not grow at row 10/100 and jitter layout. */
+const TOXIC_TABLE_RANK_COL_CLS =
+  'w-[1.85rem] min-w-[1.85rem] max-w-[1.85rem] box-border tabular-nums text-right shrink-0';
+
 const ROW_CLS_NEUTRAL = 'border-b border-gray-800 hover:bg-gray-700/30';
 const ROW_CLS_GREEN = 'border-b border-gray-800 bg-green-900/25 hover:bg-green-900/40';
 const ROW_CLS_RED = 'border-b border-gray-800 bg-red-900/25 hover:bg-red-900/40';
@@ -930,7 +934,7 @@ function WalletTableBodyRowImpl({
       onMouseMove={onRowMove}
       onMouseLeave={onRowLeave}
     >
-      <td className="py-0.5 px-1 text-gray-600">{rank}</td>
+      <td className={`py-0.5 px-0 text-gray-600 ${TOXIC_TABLE_RANK_COL_CLS}`}>{rank}</td>
       <td className="align-top px-0 py-0.5">
         <span className="inline-flex shrink-0 items-start gap-0.5 align-top">
           <button
@@ -1168,7 +1172,7 @@ function WalletTable({
       <table className="w-full min-w-full whitespace-nowrap text-[10px]">
         <thead className="sticky top-0 z-[1] bg-gray-950">
           <tr className="text-gray-500 border-b border-gray-700">
-            <th className="text-left py-1 px-1">#</th>
+            <th className={`py-1 px-0 ${TOXIC_TABLE_RANK_COL_CLS}`}>#</th>
             <th className="text-left py-1 px-0.5 w-[2rem]" aria-label="Favourite and highlight" />
             <th className="text-left px-1">Wallet</th>
             <th className="text-right px-1 bg-green-900/15" title="inv_yes">

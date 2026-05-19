@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
+import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 
 export type SidebarLiveTradesSectionProps = {
   liveTradesExpanded: boolean;
@@ -109,6 +110,7 @@ function liveTradesSectionInner(props: SidebarLiveTradesSectionProps) {
           {liveTradesExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </button>
         <span>Live Trades</span>
+        <SidebarDataSourceBadge source={liveTradesSource === 'onchain' ? 'onchain' : 'polymarket'} />
       </div>
       {liveTradesExpanded && (
         <>

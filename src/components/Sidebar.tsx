@@ -72,6 +72,7 @@ import { persistTiltWhaleAmountUsd, readTiltWhaleAmountUsd } from '../lib/tiltWh
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
+import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 import {
   ArrowRight,
   Bell,
@@ -4510,6 +4511,7 @@ export function Sidebar() {
             <div className="flex items-center justify-between mb-2 gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-xs text-gray-400 shrink-0">My Positions</span>
+                <SidebarDataSourceBadge source={liveTradesSource} />
                 {mergeEligible.showButton && !isMarketExpired && (
                   <button
                     type="button"
@@ -4615,7 +4617,10 @@ export function Sidebar() {
               )}
             </div>
             <div className="my-3 border-t border-gray-700/70" />
-            <div className="text-xs text-gray-400 mb-2 mt-3">My Orders</div>
+            <div className="text-xs text-gray-400 mb-2 mt-3 flex items-center gap-1">
+              <span>My Orders</span>
+              <SidebarDataSourceBadge source="polymarket" />
+            </div>
             <div className="space-y-2 text-xs">
               {myOrders.length === 0 && progOrders.length === 0 ? (
                 <div className="text-gray-600">No orders</div>
@@ -4802,7 +4807,10 @@ export function Sidebar() {
           {/* My Trades */}
           <div className="sidebar-section">
             <div className="mb-2 flex items-center justify-between text-xs text-gray-400">
-              <span>My Trades</span>
+              <span className="inline-flex items-center gap-1">
+                <span>My Trades</span>
+                <SidebarDataSourceBadge source={liveTradesSource} />
+              </span>
               <span className={myTradesPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                 PnL {myTradesPnl >= 0 ? '+' : ''}${Math.abs(myTradesPnl).toFixed(2)}
               </span>

@@ -279,6 +279,12 @@ function rowPulseClassFor(bellActive: boolean, whaleFlash: boolean): string {
   return ROW_PULSE_NONE;
 }
 
+/** Px Y / Px N: gray when share price &gt; 95¢ (resolved / near-certain). */
+function priceSharePxClass(p: number | undefined): string {
+  if (p != null && Number.isFinite(p) && p > 0.95) return 'text-gray-500';
+  return 'text-yellow-400';
+}
+
 function biasToneClass(signedLegNet: number): string {
   if (signedLegNet > STAKED_NET_EPS) return 'text-green-400';
   if (signedLegNet < -STAKED_NET_EPS) return 'text-red-400';
@@ -995,8 +1001,8 @@ function WalletTableBodyRowImpl({
       <td className="text-right px-1 whitespace-nowrap tabular-nums" title="inv_yes − inv_no (|net| Y / N)">
         {inventoryNetSharesTableCell(signedLegNet)}
       </td>
-      <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceYes)}</td>
-      <td className="text-right px-1 text-gray-300">{fmtPriceShare(w.priceNo)}</td>
+      <td className={`text-right px-1 tabular-nums ${priceSharePxClass(w.priceYes)}`}>{fmtPriceShare(w.priceYes)}</td>
+      <td className={`text-right px-1 tabular-nums ${priceSharePxClass(w.priceNo)}`}>{fmtPriceShare(w.priceNo)}</td>
       <td className="text-right px-1 text-gray-400">
         {typeof w.tradeCount === 'number' && Number.isFinite(w.tradeCount) ? rowFmtInt(w.tradeCount) : '–'}
       </td>

@@ -16,7 +16,7 @@ const WalletInfoDialogLazy = lazyWithChunkReload(() =>
   import('../ToxicFlowDialog').then((m) => ({ default: m.WalletInfoDialog })),
 );
 
-const HISTORY_PANEL_REFRESH_MS = 60_000;
+const HISTORY_PANEL_REFRESH_MS = 30_000;
 
 export function HistoryPanel() {
   const tradingWallet = useTradingWalletAddress();

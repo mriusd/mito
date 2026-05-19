@@ -9,7 +9,7 @@ const PNL_BUCKET_KEY = 'polybot-pnl-bucket-mode';
 const PNL_MARKET_TYPE_FILTER_KEY = 'polybot-pnl-market-type-filter';
 
 /** Re-fetch `fetchWalletPnlDaily` while on-chain source (server-backed buckets). */
-const PNL_ONCHAIN_REFRESH_MS = 60_000;
+const PNL_ONCHAIN_REFRESH_MS = 30_000;
 
 function getTradeTimeMs(trade: Trade): number {
   const ts = (trade as { match_time?: string }).match_time || trade.timestamp || trade.created_at || trade.matchTime || '';

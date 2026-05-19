@@ -234,7 +234,7 @@ function inventoryNetSharesTableCell(signed: number): ReactNode {
 /** Hot path: cached class strings (avoid per-row template-literal allocations on tick rerender). */
 /** Fixed width for rank # (1–100+) so column does not grow at row 10/100 and jitter layout. */
 const TOXIC_TABLE_RANK_COL_CLS =
-  'w-[1.85rem] min-w-[1.85rem] max-w-[1.85rem] box-border tabular-nums text-right shrink-0';
+  'w-[1.85rem] min-w-[1.85rem] max-w-[1.85rem] box-border tabular-nums text-left shrink-0';
 
 const ROW_CLS_NEUTRAL = 'border-b border-gray-800 hover:bg-gray-700/30';
 const ROW_CLS_GREEN = 'border-b border-gray-800 bg-green-900/25 hover:bg-green-900/40';

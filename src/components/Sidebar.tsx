@@ -1441,6 +1441,22 @@ export function Sidebar() {
   const tiltSoundLookupRef = useRef(marketLookup);
   tiltSoundMarketRef.current = selectedMarket;
   tiltSoundLookupRef.current = marketLookup;
+
+  const bellRingGateRef = useRef({
+    enabled: false,
+    eligible: false,
+    volOk: true,
+    mul: 1,
+    rt: 0.5,
+  });
+  bellRingGateRef.current = {
+    enabled: notifyBellRing,
+    eligible: hasBellWalletOnMarket,
+    volOk: notifyVolatilityGatePasses,
+    mul: notifySoundPitchMul * 1.12,
+    rt: notifyRingTimeS,
+  };
+  const bellRingWasActiveRef = useRef(false);
   /** Recomputed summary / spot-strip when Host reports top-of-book change (not every depth tick). */
   const [topOfBookDigest, setTopOfBookDigest] = useState(0);
   const bumpTopOfBookDigest = useCallback(() => {
@@ -2143,32 +2159,27 @@ export function Sidebar() {
     notifyDoubleRing,
   ]);
 
-  /** Bell-marked toxic holder on this market → one glass ring every 10s (not per wallet). */
+  /** Bell-marked toxic holder → one glass ring every 10s (stable interval; no market-filter gate). */
   useEffect(() => {
-    if (!notifyBellRing || !hasBellWalletOnMarket) return;
-    if (!notifyTiltAppliesToSelectedMarket) return;
-    if (!notifyVolatilityGatePasses) return;
-
-    const mul = notifySoundPitchMul * 1.12;
-    const rt = notifyRingTimeS;
-    const tryRing = () => {
+    ensureTiltAudioUnlockListeners();
+    const id = window.setInterval(() => {
+      const g = bellRingGateRef.current;
+      const active = g.enabled && g.eligible && g.volOk;
+      if (!active) {
+        bellRingWasActiveRef.current = false;
+        return;
+      }
+      if (!bellRingWasActiveRef.current) {
+        bellRingWasActiveRef.current = true;
+        bellWalletRingLastMs = 0;
+      }
       const now = Date.now();
       if (now - bellWalletRingLastMs < BELL_WALLET_RING_INTERVAL_MS - 50) return;
       bellWalletRingLastMs = now;
-      void playTiltNotifySoundStrikes('green', mul, rt, 1);
-    };
-
-    tryRing();
-    const id = window.setInterval(tryRing, BELL_WALLET_RING_INTERVAL_MS);
+      void playTiltNotifySoundStrikes('green', g.mul, g.rt, 1);
+    }, 1000);
     return () => clearInterval(id);
-  }, [
-    notifyBellRing,
-    hasBellWalletOnMarket,
-    notifyTiltAppliesToSelectedMarket,
-    notifyVolatilityGatePasses,
-    notifySoundPitchMul,
-    notifyRingTimeS,
-  ]);
+  }, []);
 
   useEffect(() => {
     const p = sidebarSpotStrip?.currentPrice;
@@ -3037,7 +3048,7 @@ export function Sidebar() {
                 Whale Ring repeats while that condition holds (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, or minimum staked. If Max volatility % is &gt; 0 in this dialog, Whale Ring pauses while chart σ exceeds it (same gate as cohort tilt). Cohort tilt bursts still obey staked minimum plus Double Ring.
               </p>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Bell Ring: one strike every 10s (not per wallet) while any 🔔 holder has |Staked Net| ≥ Min Bell stake on this market. Uses market filters and Max volatility % gate; does not require Tilt Ring. 0 = any stake.
+                Bell Ring: one strike every 10s (not per wallet) while any 🔔 holder has |Staked Net| ≥ Min Bell stake on this market. No market-type filters. Max volatility % (if set) still applies. Does not require Tilt Ring. 0 = any stake.
               </p>
               <div
                 className={

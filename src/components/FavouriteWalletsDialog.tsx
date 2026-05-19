@@ -11,6 +11,7 @@ import {
   TOXIC_BELL_WALLETS_LS_KEY,
   TOXIC_BELLS_CHANGED_EVENT,
 } from '../lib/toxicFavouriteWallets';
+import { primeTiltAudioContextFromUserGesture } from '../lib/tiltNotifySound';
 import { getToxicWalletTag, TOXIC_WALLET_TAGS_CHANGED_EVENT } from '../lib/toxicWalletTags';
 import { WalletAddressGlyph } from './WalletAddressGlyph';
 
@@ -83,6 +84,7 @@ export function FavouriteWalletsDialog({
   const toggleBellWallet = (addr: string) => {
     const k = addr.trim().toLowerCase();
     if (!k) return;
+    primeTiltAudioContextFromUserGesture();
     setBellWallets((prev) => {
       const next = new Set(prev);
       if (next.has(k)) next.delete(k);

@@ -41,6 +41,19 @@ export function readToxicBellWallets(): Set<string> {
   }
 }
 
+export function subscribeToxicBellWallets(listener: () => void): () => void {
+  const onBell = () => listener();
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === TOXIC_BELL_WALLETS_LS_KEY || e.key === null) onBell();
+  };
+  window.addEventListener('storage', onStorage);
+  window.addEventListener(TOXIC_BELLS_CHANGED_EVENT, onBell);
+  return () => {
+    window.removeEventListener('storage', onStorage);
+    window.removeEventListener(TOXIC_BELLS_CHANGED_EVENT, onBell);
+  };
+}
+
 export function persistToxicBellWallets(s: Set<string>): void {
   try {
     localStorage.setItem(TOXIC_BELL_WALLETS_LS_KEY, JSON.stringify([...s].sort()));

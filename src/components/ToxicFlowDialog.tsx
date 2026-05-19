@@ -48,12 +48,15 @@ import {
   readToxicFavouriteWallets,
   persistToxicFavouriteWallets,
   readToxicBellWallets,
+  subscribeToxicBellWallets,
   persistToxicBellWallets,
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
   TOXIC_FAVOURITES_CHANGED_EVENT,
   TOXIC_BELL_WALLETS_LS_KEY,
   TOXIC_BELLS_CHANGED_EVENT,
 } from '../lib/toxicFavouriteWallets';
+import { primeTiltAudioContextFromUserGesture } from '../lib/tiltNotifySound';
+import { useToxicBellRowRingSound } from '../lib/toxicBellRowRing';
 import { InlineConfirmCancelInput } from './InlineConfirmCancelInput';
 import {
   normalizeToxicWalletTagInput,
@@ -1433,6 +1436,7 @@ function WalletTableInner({
   const toggleBellWallet = useCallback((addr: string) => {
     const k = addr.trim().toLowerCase();
     if (!k) return;
+    primeTiltAudioContextFromUserGesture();
     setBellWallets((prev) => {
       const next = new Set(prev);
       if (next.has(k)) next.delete(k);
@@ -2335,6 +2339,24 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   layoutSwitch: ReactNode;
 }) {
   const totalStakedNetUsd = useToxicDialogStakedNetAbsUsd(yesTokenId, marketId, open);
+  const bellWallets = useSyncExternalStore(subscribeToxicBellWallets, readToxicBellWallets, () => new Set<string>());
+  const bellFlashingRowCount = useMemo(() => {
+    const tabs: Tab[] =
+      layoutMode === 'single'
+        ? [tab]
+        : layoutMode === 'split'
+          ? [tab, tabBottom]
+          : [tab, tabBottom, tabThird];
+    let count = 0;
+    for (const t of tabs) {
+      for (const w of toxicFlowWalletsForTab(tabWalletViews, t).wallets) {
+        const k = (w.wallet || '').trim().toLowerCase();
+        if (k && bellWallets.has(k)) count += 1;
+      }
+    }
+    return count;
+  }, [layoutMode, tab, tabBottom, tabThird, tabWalletViews, bellWallets]);
+  useToxicBellRowRingSound(bellFlashingRowCount, open);
   return (
     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 w-full">
       {layoutMode === 'single' && (

@@ -12,7 +12,8 @@ import {
 export function buildMarketByIdRecord(marketLookup: Record<string, Market> | null | undefined): Record<string, Market> {
   const m: Record<string, Market> = {};
   for (const mk of Object.values(marketLookup || {})) {
-    if (mk?.id && !m[mk.id]) m[mk.id] = mk;
+    if (!mk) continue;
+    if (mk.id && !m[mk.id]) m[mk.id] = mk;
     const cid = (mk.conditionId || '').trim().toLowerCase();
     if (cid && !m[cid]) m[cid] = mk;
   }
@@ -52,7 +53,9 @@ export function sortWalletPositionsByDisplayedDateDesc(
   rows: WalletPosition[],
   marketById: Record<string, Market>,
 ): WalletPosition[] {
-  return [...rows].sort((a, b) => walletPositionListSortMs(b, marketById) - walletPositionListSortMs(a, marketById));
+  return rows.filter((r): r is WalletPosition => r != null && Boolean(String(r.marketId || '').trim())).sort(
+    (a, b) => walletPositionListSortMs(b, marketById) - walletPositionListSortMs(a, marketById),
+  );
 }
 
 function walletInvY(w: WalletPosition): number {
@@ -205,7 +208,7 @@ export function WalletLatestMarketsTradedTable({
         </tr>
       </thead>
       <tbody>
-        {markets.map((m) => {
+        {markets.filter((m) => m != null && String(m.marketId || '').trim()).map((m) => {
           const mk =
             marketById[m.marketId] ||
             marketById[(m.marketId || '').toLowerCase()] ||

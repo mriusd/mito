@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
-import { X, Star, ExternalLink, Copy } from 'lucide-react';
+import { X, Star, Bell, ExternalLink, Copy } from 'lucide-react';
 import {
   listToxicFavouriteWalletsSorted,
   readToxicFavouriteWallets,
   persistToxicFavouriteWallets,
+  readToxicBellWallets,
+  persistToxicBellWallets,
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
   TOXIC_FAVOURITES_CHANGED_EVENT,
+  TOXIC_BELL_WALLETS_LS_KEY,
+  TOXIC_BELLS_CHANGED_EVENT,
 } from '../lib/toxicFavouriteWallets';
+import { WalletAddressGlyph } from './WalletAddressGlyph';
+
+const BELL_CLS_ON = 'text-amber-400 fill-amber-400/25';
+const BELL_CLS_OFF = 'stroke-gray-400 fill-none';
 
 function shortenAddr(a: string): string {
   const t = a.trim();
@@ -24,9 +32,11 @@ export function FavouriteWalletsDialog({
   onOpenWalletInfo: (wallet: string) => void;
 }) {
   const [addrs, setAddrs] = useState<string[]>([]);
+  const [bellWallets, setBellWallets] = useState(readToxicBellWallets);
 
   const refresh = useCallback(() => {
     setAddrs(listToxicFavouriteWalletsSorted());
+    setBellWallets(readToxicBellWallets());
   }, []);
 
   useEffect(() => {
@@ -36,14 +46,23 @@ export function FavouriteWalletsDialog({
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY || e.key === null) refresh();
+      if (
+        e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY ||
+        e.key === TOXIC_BELL_WALLETS_LS_KEY ||
+        e.key === null
+      ) {
+        refresh();
+      }
     };
-    const onLocal = () => refresh();
+    const onFav = () => refresh();
+    const onBell = () => refresh();
     window.addEventListener('storage', onStorage);
-    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, onLocal);
+    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, onFav);
+    window.addEventListener(TOXIC_BELLS_CHANGED_EVENT, onBell);
     return () => {
       window.removeEventListener('storage', onStorage);
-      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, onLocal);
+      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, onFav);
+      window.removeEventListener(TOXIC_BELLS_CHANGED_EVENT, onBell);
     };
   }, [refresh]);
 
@@ -53,6 +72,18 @@ export function FavouriteWalletsDialog({
     const next = readToxicFavouriteWallets();
     next.delete(k);
     persistToxicFavouriteWallets(next);
+  };
+
+  const toggleBellWallet = (addr: string) => {
+    const k = addr.trim().toLowerCase();
+    if (!k) return;
+    setBellWallets((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      persistToxicBellWallets(next);
+      return next;
+    });
   };
 
   if (!open) return null;
@@ -90,6 +121,7 @@ export function FavouriteWalletsDialog({
             <ul className="space-y-1">
               {addrs.map((raw) => {
                 const lower = raw.toLowerCase();
+                const bellActive = bellWallets.has(lower);
                 const poly = `https://polymarket.com/profile/${lower}`;
                 const scan = `https://polygonscan.com/address/${lower}`;
                 return (
@@ -99,16 +131,29 @@ export function FavouriteWalletsDialog({
                   >
                     <button
                       type="button"
-                      className="p-0.5 rounded hover:bg-gray-600/50 text-yellow-400 shrink-0"
+                      className="rounded p-0 leading-none hover:bg-gray-600/40 text-yellow-400 shrink-0"
                       title="Remove from favourites"
                       aria-label="Remove from favourites"
                       onClick={() => removeFav(raw)}
                     >
-                      <Star size={13} className="fill-yellow-400" />
+                      <Star size={12} className="fill-yellow-400 stroke-yellow-500/90" strokeWidth={1.5} />
                     </button>
                     <button
                       type="button"
-                      className="font-mono text-blue-400 hover:underline truncate min-w-0 flex-1 text-left"
+                      className="rounded p-0 leading-none hover:bg-gray-600/40 text-gray-500 hover:text-amber-200/90 shrink-0"
+                      title={
+                        bellActive
+                          ? 'Stop highlighting this wallet on Toxic tables'
+                          : 'Flash row when wallet is on this market'
+                      }
+                      aria-pressed={bellActive}
+                      onClick={() => toggleBellWallet(raw)}
+                    >
+                      <Bell size={11} strokeWidth={2} className={bellActive ? BELL_CLS_ON : BELL_CLS_OFF} />
+                    </button>
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center gap-1 text-left font-mono text-blue-400 hover:underline"
                       title={`${raw} — Wallet info`}
                       onClick={() => {
                         const w = raw.trim().toLowerCase();
@@ -116,7 +161,8 @@ export function FavouriteWalletsDialog({
                         onOpenWalletInfo(w);
                       }}
                     >
-                      {shortenAddr(raw)}
+                      <WalletAddressGlyph address={raw} size={14} />
+                      <span className="truncate">{shortenAddr(raw)}</span>
                     </button>
                     <button
                       type="button"

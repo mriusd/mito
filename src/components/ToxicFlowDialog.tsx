@@ -28,6 +28,7 @@ import {
   Trophy,
   CircleHelp,
   Fish,
+  Triangle,
 } from 'lucide-react';
 import {
   fetchToxicFlow,
@@ -190,6 +191,31 @@ function fmtUsd2En(absVal: number): string {
   return absVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** Ignore sub-dollar staked-net ticks when flashing triangles. */
+const STAKED_NET_FLASH_MIN_USD = 1;
+
+const STAKED_NET_FLASH_MS = 2000;
+
+type StakedNetFlashDir = 'up' | 'down';
+
+function stakedNetDominantSide(signed: number): 'yes' | 'no' | 'flat' {
+  if (signed < -STAKED_NET_EPS) return 'yes';
+  if (signed > STAKED_NET_EPS) return 'no';
+  return 'flat';
+}
+
+function stakedNetDeltaFlashDir(prev: number, next: number): StakedNetFlashDir | null {
+  if (!Number.isFinite(prev) || !Number.isFinite(next)) return null;
+  const prevSide = stakedNetDominantSide(prev);
+  const nextSide = stakedNetDominantSide(next);
+  if (prevSide === 'flat' || nextSide === 'flat' || prevSide !== nextSide) return null;
+  const prevMag = Math.abs(prev);
+  const nextMag = Math.abs(next);
+  if (nextMag > prevMag + STAKED_NET_FLASH_MIN_USD) return 'up';
+  if (nextMag < prevMag - STAKED_NET_FLASH_MIN_USD) return 'down';
+  return null;
+}
+
 function stakedNetUsdTableCell(signed: number): ReactNode {
   if (!Number.isFinite(signed)) return '–';
   const mag = Math.round(Math.abs(signed)).toLocaleString('en-US');
@@ -206,6 +232,30 @@ function stakedNetUsdTableCell(signed: number): ReactNode {
   return (
     <span className="tabular-nums font-bold text-red-400">
       ${mag} N
+    </span>
+  );
+}
+
+function stakedNetUsdTableCellWithFlash(signed: number, flash: StakedNetFlashDir | null): ReactNode {
+  return (
+    <span className="inline-flex w-full items-center justify-end gap-0.5">
+      {stakedNetUsdTableCell(signed)}
+      {flash === 'up' && (
+        <span
+          className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-green-600/45 bg-green-900/65 text-green-100 updown-triangle-badge-flash"
+          title="Staked net increased on same side (Y or N)"
+        >
+          <Triangle className="h-2 w-2 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
+        </span>
+      )}
+      {flash === 'down' && (
+        <span
+          className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-red-600/45 bg-red-900/65 text-red-100 updown-triangle-badge-flash"
+          title="Staked net decreased on same side (Y or N)"
+        >
+          <Triangle className="h-2 w-2 rotate-180 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
+        </span>
+      )}
     </span>
   );
 }
@@ -953,6 +1003,18 @@ function WalletTableBodyRowImpl({
   const stakeNetAbsUsd = walletStakeNetAbsUsd(w);
   const tiltWhaleRowFlash = Number.isFinite(stakeNetAbsUsd) && stakeNetAbsUsd >= tiltWhaleAmountUsd;
   const rowClass = walletRowClassForStakedNet(shadeRowByStakedNet, stakeNetSigned) + rowPulseClassFor(bellActive, tiltWhaleRowFlash);
+  const prevStakeNetRef = useRef<number | null>(null);
+  const [stakedNetFlash, setStakedNetFlash] = useState<StakedNetFlashDir | null>(null);
+  useEffect(() => {
+    const prev = prevStakeNetRef.current;
+    prevStakeNetRef.current = stakeNetSigned;
+    if (prev === null || !Number.isFinite(stakeNetSigned)) return;
+    const dir = stakedNetDeltaFlashDir(prev, stakeNetSigned);
+    if (!dir) return;
+    setStakedNetFlash(dir);
+    const t = window.setTimeout(() => setStakedNetFlash(null), STAKED_NET_FLASH_MS);
+    return () => window.clearTimeout(t);
+  }, [stakeNetSigned]);
   const ledgerEmbed = w.walletLedgerSummary;
 
   return (
@@ -1013,7 +1075,7 @@ function WalletTableBodyRowImpl({
         {Number.isFinite(stakeNUsd) ? rowFmtUsdSigned(-stakeNUsd) : '–'}
       </td>
       <td className="text-right px-1 whitespace-nowrap" title="Staked Y − Staked N (column display); Y / N suffix">
-        {stakedNetUsdTableCell(stakeNetSigned)}
+        {stakedNetUsdTableCellWithFlash(stakeNetSigned, stakedNetFlash)}
       </td>
       <td className={`px-1 text-cyan-300 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}>
         {stakedPct > 0 ? `${NF_PCT_1.format(stakedPct)}%` : '-'}

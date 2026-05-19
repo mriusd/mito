@@ -63,6 +63,7 @@ import {
   WalletLatestMarketsTradedTable,
   fmtPriceShare,
 } from './WalletLatestMarketsTradedTable';
+import { exportWalletFillsCsv, exportWalletMarketsCsv } from '../lib/walletInfoCsvExport';
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { HelperTooltip } from './HelperTooltip';
 import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
@@ -1512,7 +1513,17 @@ export function WalletInfoDialog({
           style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(16rem, 36rem)' }}
         >
           <div className="bg-gray-900 rounded p-2 min-h-0 min-w-0 flex flex-col overflow-hidden">
-            <div className="text-[10px] text-gray-400 font-bold mb-1 shrink-0">Latest Markets Traded</div>
+            <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
+              <div className="text-[10px] text-gray-400 font-bold">Latest Markets Traded</div>
+              <button
+                type="button"
+                className="text-[10px] text-blue-400 hover:underline shrink-0 disabled:opacity-40 disabled:pointer-events-none"
+                disabled={loadingMarkets || markets.length === 0}
+                onClick={() => exportWalletMarketsCsv(wallet, markets, marketLookup)}
+              >
+                Export CSV
+              </button>
+            </div>
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
               <WalletLatestMarketsTradedTable
                 markets={markets}
@@ -1528,8 +1539,18 @@ export function WalletInfoDialog({
           </div>
 
           <div className="bg-gray-900 rounded p-2 min-h-0 min-w-0 flex flex-col overflow-hidden">
-            <div className="text-[10px] text-gray-400 font-bold mb-1 shrink-0">
-              Trades For Selected Market {selectedMarketId ? <span className="text-gray-500">({selectedMarketId})</span> : null}
+            <div className="flex items-center justify-between gap-2 mb-1 shrink-0 min-w-0">
+              <div className="text-[10px] text-gray-400 font-bold min-w-0 truncate">
+                Trades For Selected Market {selectedMarketId ? <span className="text-gray-500">({selectedMarketId})</span> : null}
+              </div>
+              <button
+                type="button"
+                className="text-[10px] text-blue-400 hover:underline shrink-0 disabled:opacity-40 disabled:pointer-events-none"
+                disabled={loadingFills || fills.length === 0 || !selectedMarketId}
+                onClick={() => exportWalletFillsCsv(wallet, fills, marketLookup, selectedMarketId)}
+              >
+                Export CSV
+              </button>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
             {loadingFills ? (

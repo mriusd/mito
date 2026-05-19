@@ -2829,7 +2829,7 @@ export function Sidebar() {
                 Whale Ring repeats while that condition holds (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, or minimum staked. If Max volatility % is &gt; 0 in this dialog, Whale Ring pauses while chart σ exceeds it (same gate as cohort tilt). Cohort tilt bursts still obey staked minimum plus Double Ring.
               </p>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Bell Ring: one strike per flashing 🔔 row every 1.35s (synced to row pulse). Requires Bell Ring on and Toxic Flow panel open. Does not require Tilt Ring.
+                Bell Ring: one strike per flashing 🔔 row in Top Holders every 1.35s (synced to row pulse). Other panes flash only, no extra rings. Requires Bell Ring on and Toxic Flow panel open.
               </p>
               <div
                 className={

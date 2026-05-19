@@ -2347,21 +2347,13 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   );
   const bellFlashingRowCount = useMemo(() => {
     const bellWallets = readToxicBellWallets();
-    const tabs: Tab[] =
-      layoutMode === 'single'
-        ? [tab]
-        : layoutMode === 'split'
-          ? [tab, tabBottom]
-          : [tab, tabBottom, tabThird];
     let count = 0;
-    for (const t of tabs) {
-      for (const w of toxicFlowWalletsForTab(tabWalletViews, t).wallets) {
-        const k = (w.wallet || '').trim().toLowerCase();
-        if (k && bellWallets.has(k)) count += 1;
-      }
+    for (const w of toxicFlowWalletsForTab(tabWalletViews, 'topHolders').wallets) {
+      const k = (w.wallet || '').trim().toLowerCase();
+      if (k && bellWallets.has(k)) count += 1;
     }
     return count;
-  }, [layoutMode, tab, tabBottom, tabThird, tabWalletViews, bellWalletsKey]);
+  }, [tabWalletViews, bellWalletsKey]);
   useToxicBellRowRingSound(bellFlashingRowCount, open);
   return (
     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 w-full">

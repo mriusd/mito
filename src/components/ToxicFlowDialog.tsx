@@ -1138,8 +1138,8 @@ function WalletTable({
           midMarker
         />
       </div>
-      <div className="min-h-0 flex-1 overflow-auto w-full min-w-0 overscroll-contain">
-      <table className="w-full whitespace-nowrap text-[10px]">
+      <div className="min-h-0 flex-1 overflow-auto w-full min-w-0 overscroll-contain toxic-flow-scroll-stable">
+      <table className="w-full min-w-full whitespace-nowrap text-[10px]">
         <thead className="sticky top-0 z-[1] bg-gray-950">
           <tr className="text-gray-500 border-b border-gray-700">
             <th className="text-left py-1 px-1">#</th>
@@ -1970,9 +1970,15 @@ export function ToxicFlowDialog({
 
           {!loading && !error && data && (
             <>
-              <div className="shrink-0 flex flex-col gap-3 overflow-x-hidden overflow-y-auto min-h-0 max-h-[min(520px,46vh)] pr-0.5">
+              <div className="shrink-0 flex flex-col gap-3 overflow-x-hidden overflow-y-auto min-h-0 max-h-[min(520px,46vh)] pr-0.5 toxic-flow-scroll-stable">
               {/* Summary Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              <div
+                className={
+                  embedded
+                    ? 'grid grid-cols-3 gap-2 min-w-0'
+                    : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 min-w-0'
+                }
+              >
                 <div className="bg-gray-900 rounded p-2 text-center">
                   <div className="text-[10px] text-gray-500">Wallets</div>
                   <div className="text-sm font-bold text-white tabular-nums" title={String(data.totalWallets)}>
@@ -2058,8 +2064,8 @@ export function ToxicFlowDialog({
               )}
               </div>
 
-              <div className="flex flex-col flex-1 min-h-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 gap-2">
-                <div className="flex gap-1 border-b border-gray-700 pb-2 shrink-0 flex-wrap items-center">
+              <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 gap-2 w-full">
+                <div className="flex gap-1 border-b border-gray-700 pb-2 shrink-0 flex-nowrap items-center min-w-0 w-full overflow-x-auto toxic-flow-scroll-stable">
                   {tabs.map((t) => (
                     <button
                       key={t.key}

@@ -4863,7 +4863,7 @@ export function Sidebar() {
           </button>
         ) : null}
         {sidebarToxicEffective && selectedMarket ? (
-          <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-gray-900">
+          <div className="flex flex-1 min-h-0 min-w-0 w-full flex-col overflow-hidden bg-gray-900 toxic-flow-scroll-stable">
             <Suspense fallback={<div className="p-2 text-[10px] text-gray-500">Loading holders…</div>}>
               <ToxicFlowDialogLazy
                 embedded

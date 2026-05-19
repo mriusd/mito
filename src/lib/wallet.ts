@@ -13,6 +13,8 @@ export const appKit = createAppKit({
   adapters: [wagmiAdapter],
   projectId,
   networks: [polygon],
+  defaultNetwork: polygon,
+  allowUnsupportedChain: true,
   metadata: {
     name: 'Mito Dashboard',
     description: 'Polymarket trading dashboard',

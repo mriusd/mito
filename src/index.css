@@ -434,6 +434,11 @@ input[type="range"].vol-slider::-moz-range-thumb {
   animation: sidebar-expand-handle-idle-flash 10s ease-in-out infinite;
 }
 
+/** Reserve scrollbar space so toxic-flow tables/panels don’t shrink ~15px when rows update. */
+.toxic-flow-scroll-stable {
+  scrollbar-gutter: stable;
+}
+
 .right-sidebar {
   position: fixed;
   top: 44px;
@@ -475,6 +480,7 @@ input[type="range"].vol-slider::-moz-range-thumb {
     width: min(1056px, calc(100vw - 12px));
     max-width: min(1056px, calc(100vw - 12px));
     overflow: hidden;
+    scrollbar-gutter: stable;
     transition:
       transform 0.3s ease,
       width 0.25s ease,

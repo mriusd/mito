@@ -1223,13 +1223,6 @@ export function Sidebar() {
   }, [liveShareStats]);
   const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
 
-  // Tick every second so relative trade times update
-  const [tradeTickNow, setTradeTickNow] = useState(Date.now());
-  useEffect(() => {
-    const iv = setInterval(() => setTradeTickNow(Date.now()), 1000);
-    return () => clearInterval(iv);
-  }, []);
-
   const [orderSide, setOrderSide] = useState<'BUY' | 'SELL'>('BUY');
   const orderOutcome = useAppStore((s) => s.sidebarOutcome);
   const setOrderOutcome = useAppStore((s) => s.setSidebarOutcome);
@@ -1393,9 +1386,6 @@ export function Sidebar() {
     if (liveTradesSource !== 'onchain' || !selectedMarket?.clobTokenIds?.length) return null;
     return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 0 : 1] || null;
   }, [liveTradesSource, selectedMarket, orderOutcome]);
-  useEffect(() => {
-    setTradeTickNow(Date.now());
-  }, [selectedMarket?.conditionId, liveTradesSource]);
   const setOnchainGridPositions = useAppStore((s) => s.setOnchainGridPositions);
 
   const [proxyWallet, setProxyWallet] = useState<string | null>(null);
@@ -1434,10 +1424,6 @@ export function Sidebar() {
     wallet: walletForLivePositions,
     scopedClobTokenIds: scopedClobPair,
   });
-  const displayLiveTrades = useMemo(
-    () => (liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketTape),
-    [liveTradesSource, onchainLiveTrades, polymarketTape],
-  );
   const onchainSidebarPositions = useMemo(
     () => (liveTradesSource === 'onchain' ? wsPositions : []),
     [liveTradesSource, wsPositions],
@@ -3525,7 +3511,8 @@ export function Sidebar() {
             upDownIntervalContext={upDownIntervalContext}
             upDownTargetPrice={upDownTargetPrice}
             upDownSpotUsesChainlink={upDownSpotUsesChainlink}
-            displayLiveTrades={displayLiveTrades}
+            onchainLiveTrades={onchainLiveTrades}
+            liveTradesSource={liveTradesSource}
             orderOutcome={orderOutcome}
             upDownStartTime={upDownStartTime}
             upDownKlineDefaultInterval={upDownKlineDefaultInterval}
@@ -4048,8 +4035,7 @@ export function Sidebar() {
             onToggleLiveTradesExpanded={toggleLiveTradesExpanded}
             liveTradesSectionHeight={liveTradesSectionHeight}
             liveOrderbookExpanded={liveOrderbookExpanded}
-            displayLiveTrades={displayLiveTrades}
-            tradeTickBucket={Math.floor(tradeTickNow / 5000) * 5000}
+            onchainLiveTrades={onchainLiveTrades}
             liveTradesSource={liveTradesSource}
             myOnchainWalletLower={myOnchainWalletLower}
           />

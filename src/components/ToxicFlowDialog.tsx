@@ -57,7 +57,12 @@ import {
   TOXIC_BELLS_CHANGED_EVENT,
 } from '../lib/toxicFavouriteWallets';
 import { primeTiltAudioContextFromUserGesture } from '../lib/tiltNotifySound';
-import { useToxicBellRowRingSound } from '../lib/toxicBellRowRing';
+import {
+  getNotifyBellMinStakeUsdSnapshot,
+  readNotifyBellMinStakeUsd,
+  subscribeNotifyBellMinStakeUsd,
+  useToxicBellRowRingSound,
+} from '../lib/toxicBellRowRing';
 import { InlineConfirmCancelInput } from './InlineConfirmCancelInput';
 import {
   normalizeToxicWalletTagInput,
@@ -2345,15 +2350,23 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
     getToxicBellWalletsSnapshot,
     () => '',
   );
+  const bellMinStakeKey = useSyncExternalStore(
+    subscribeNotifyBellMinStakeUsd,
+    getNotifyBellMinStakeUsdSnapshot,
+    () => '100',
+  );
   const bellFlashingRowCount = useMemo(() => {
     const bellWallets = readToxicBellWallets();
+    const floor = readNotifyBellMinStakeUsd();
     let count = 0;
     for (const w of toxicFlowWalletsForTab(tabWalletViews, 'topHolders').wallets) {
       const k = (w.wallet || '').trim().toLowerCase();
-      if (k && bellWallets.has(k)) count += 1;
+      if (!k || !bellWallets.has(k)) continue;
+      if (floor > 0 && walletStakeNetAbsUsd(w) < floor) continue;
+      count += 1;
     }
     return count;
-  }, [tabWalletViews, bellWalletsKey]);
+  }, [tabWalletViews, bellWalletsKey, bellMinStakeKey]);
   useToxicBellRowRingSound(bellFlashingRowCount, open);
   return (
     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 w-full">

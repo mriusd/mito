@@ -75,7 +75,14 @@ import {
   playTiltNotifySoundStrikes,
   playTiltNotifySoundWithDoubleRing,
   primeTiltAudioContextFromUserGesture,
+  readNotifySoundVolumeSlider,
+  SIDEBAR_NOTIFY_SOUND_VOLUME_KEY,
 } from '../lib/tiltNotifySound';
+import {
+  NOTIFY_BELL_MIN_STAKE_CHANGED_EVENT,
+  readNotifyBellMinStakeUsd,
+  SIDEBAR_NOTIFY_BELL_MIN_STAKE_USD_KEY,
+} from '../lib/toxicBellRowRing';
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
@@ -754,9 +761,11 @@ export function Sidebar() {
   const [notifyWhaleAmountUsd, setNotifyWhaleAmountUsd] = useState(readTiltWhaleAmountUsd);
   const [notifyWhaleRing, setNotifyWhaleRing] = useState(readNotifyWhaleRing);
   const [notifyBellRing, setNotifyBellRing] = useState(readNotifyBellRing);
+  const [notifyBellMinStakeUsd, setNotifyBellMinStakeUsd] = useState(readNotifyBellMinStakeUsd);
   const [notifyWhaleMaxPriceCents, setNotifyWhaleMaxPriceCents] = useState(readNotifyWhaleMaxPriceCents);
   const [notifyWhaleIgnoreNegativePnl, setNotifyWhaleIgnoreNegativePnl] = useState(readNotifyWhaleIgnoreNegativePnl);
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
+  const [notifySoundVolumeSlider, setNotifySoundVolumeSlider] = useState(readNotifySoundVolumeSlider);
   const [notifyRingTimeS, setNotifyRingTimeS] = useState(readNotifyRingTimeS);
   const [notifySoundMaxPriceCents, setNotifySoundMaxPriceCents] = useState(readNotifySoundMaxPriceCents);
   const [notifyDoubleRing, setNotifyDoubleRing] = useState(readNotifyDoubleRing);
@@ -865,6 +874,14 @@ export function Sidebar() {
   }, [notifyBellRing]);
   useEffect(() => {
     try {
+      localStorage.setItem(SIDEBAR_NOTIFY_BELL_MIN_STAKE_USD_KEY, String(notifyBellMinStakeUsd));
+    } catch {
+      /* ignore */
+    }
+    window.dispatchEvent(new Event(NOTIFY_BELL_MIN_STAKE_CHANGED_EVENT));
+  }, [notifyBellMinStakeUsd]);
+  useEffect(() => {
+    try {
       localStorage.setItem(SIDEBAR_NOTIFY_WHALE_MAX_PRICE_CENTS_KEY, String(notifyWhaleMaxPriceCents));
     } catch {
       /* ignore */
@@ -887,6 +904,13 @@ export function Sidebar() {
       /* */
     }
   }, [notifySoundFreqSlider]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_SOUND_VOLUME_KEY, String(notifySoundVolumeSlider));
+    } catch {
+      /* ignore */
+    }
+  }, [notifySoundVolumeSlider]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_RING_TIME_S_KEY, String(notifyRingTimeS));
@@ -2755,6 +2779,39 @@ export function Sidebar() {
                 />
                 <span>Tilt Ring</span>
               </label>
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyBellRing}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setNotifyBellRing(on);
+                      if (on) {
+                        primeTiltAudioContextFromUserGesture();
+                        void playTiltNotifySoundStrikes('green', notifySoundPitchMul * 1.12, notifyRingTimeS, 1);
+                      }
+                    }}
+                  />
+                  <span>Bell Ring</span>
+                </label>
+                <label className="flex items-center gap-2 shrink-0">
+                  <span className="text-gray-400 whitespace-nowrap">Min usd stake</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={50}
+                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-28 tabular-nums no-spin"
+                    value={notifyBellMinStakeUsd}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      setNotifyBellMinStakeUsd(Math.min(1e12, Math.max(0, v)));
+                    }}
+                  />
+                </label>
+              </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -2763,22 +2820,6 @@ export function Sidebar() {
                   onChange={(e) => setNotifyWhaleRing(e.target.checked)}
                 />
                 <span>Whale Ring</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="rounded accent-amber-500"
-                  checked={notifyBellRing}
-                  onChange={(e) => {
-                    const on = e.target.checked;
-                    setNotifyBellRing(on);
-                    if (on) {
-                      primeTiltAudioContextFromUserGesture();
-                      void playTiltNotifySoundStrikes('green', notifySoundPitchMul * 1.12, notifyRingTimeS, 1);
-                    }
-                  }}
-                />
-                <span>Bell Ring</span>
               </label>
               <div className="flex items-center gap-3 flex-wrap">
                 <label className="flex items-center gap-2 shrink-0">
@@ -2829,7 +2870,7 @@ export function Sidebar() {
                 Whale Ring repeats while that condition holds (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, or minimum staked. If Max volatility % is &gt; 0 in this dialog, Whale Ring pauses while chart σ exceeds it (same gate as cohort tilt). Cohort tilt bursts still obey staked minimum plus Double Ring.
               </p>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Bell Ring: one strike per flashing 🔔 row in Top Holders every 1.35s (synced to row pulse). Other panes flash only, no extra rings. Requires Bell Ring on and Toxic Flow panel open.
+                Bell Ring: one strike per flashing 🔔 row in Top Holders every 1.35s when |Staked Net| ≥ Min usd stake (default 100). Row flash ignores stake; sound does not. 0 = any stake.
               </p>
               <div
                 className={
@@ -2838,7 +2879,7 @@ export function Sidebar() {
                     : 'opacity-35 blur-[2.5px] pointer-events-none select-none transition-opacity'
                 }
               >
-                <div className="text-gray-400 mb-1">Sound frequency</div>
+                <div className="text-gray-400 mb-1">Sound pitch</div>
                 <div className="flex items-center gap-2">
                   <input
                     type="range"
@@ -2861,11 +2902,44 @@ export function Sidebar() {
                       );
                     }}
                     className="flex-1 min-w-0 accent-amber-500 h-2"
-                    aria-label="Notification sound frequency"
+                    aria-label="Notification sound pitch"
                   />
                   <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifySoundFreqSlider}</span>
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1">Left = much lower, right = much higher (×0.25–×4 at ends; center = normal).</p>
+                <div className="text-gray-400 mb-1 mt-3">Sound Volume</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={notifySoundVolumeSlider}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      const nv = Math.min(100, Math.max(0, Math.round(v)));
+                      setNotifySoundVolumeSlider(nv);
+                      try {
+                        localStorage.setItem(SIDEBAR_NOTIFY_SOUND_VOLUME_KEY, String(nv));
+                      } catch {
+                        /* ignore */
+                      }
+                      const now = Date.now();
+                      if (now - freqSliderPreviewLastMs.current < 160) return;
+                      freqSliderPreviewLastMs.current = now;
+                      void playTiltNotifySoundWithDoubleRing(
+                        'green',
+                        notifySoundPitchMul,
+                        notifyRingTimeS,
+                        notifyDoubleRing,
+                      );
+                    }}
+                    className="flex-1 min-w-0 accent-amber-500 h-2"
+                    aria-label="Notification sound volume"
+                  />
+                  <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifySoundVolumeSlider}</span>
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">0 = mute, 100 = full volume.</p>
                 <div className="flex items-center gap-2 flex-wrap mt-3">
                   <span className="text-gray-400 shrink-0">Ring time (s)</span>
                   <input

@@ -32,6 +32,23 @@ export function primeTiltAudioContextFromUserGesture(): void {
 }
 
 /** Glass ping: `pitchMul` = timbre scale; `ringTimeS` = decay length (s); ref 0.5s. */
+export const SIDEBAR_NOTIFY_SOUND_VOLUME_KEY = 'polybot-sidebar-notify-sound-volume';
+
+export function readNotifySoundVolumeSlider(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_SOUND_VOLUME_KEY);
+    const n = parseFloat(raw ?? '100');
+    if (!Number.isFinite(n)) return 100;
+    return Math.min(100, Math.max(0, Math.round(n)));
+  } catch {
+    return 100;
+  }
+}
+
+function readNotifySoundVolumeMul(): number {
+  return readNotifySoundVolumeSlider() / 100;
+}
+
 async function playUpdownTiltExtremeSound(kind: 'green' | 'red', pitchMul = 1, ringTimeS = 0.5) {
   try {
     ensureTiltAudioUnlockListeners();
@@ -43,6 +60,8 @@ async function playUpdownTiltExtremeSound(kind: 'green' | 'red', pitchMul = 1, r
     const ctx = tiltExtremeAudioCtx;
     await ctx.resume();
     if (ctx.state !== 'running') return;
+    const volumeMul = readNotifySoundVolumeMul();
+    if (volumeMul <= 0) return;
     const t0 = ctx.currentTime;
 
     const rt = Math.min(5, Math.max(0.05, ringTimeS));
@@ -59,7 +78,7 @@ async function playUpdownTiltExtremeSound(kind: 'green' | 'red', pitchMul = 1, r
     const partialPeaks = [0.13, 0.076, 0.042, 0.022];
 
     const master = ctx.createGain();
-    master.gain.setValueAtTime(1, t0);
+    master.gain.setValueAtTime(volumeMul, t0);
     master.connect(ctx.destination);
 
     for (let i = 0; i < partialRatios.length; i++) {

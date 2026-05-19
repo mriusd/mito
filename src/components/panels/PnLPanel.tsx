@@ -1,7 +1,9 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
 import { fetchWalletPnlDaily } from '../../api';
+import { triggerWalletRefresh } from '../../lib/clobClient';
 import type { Trade } from '../../types';
 import { getTradeClobTokenId } from '../../utils/format';
 
@@ -70,6 +72,7 @@ export function PnLPanel() {
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
 
   const [calendarBump, setCalendarBump] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   useEffect(() => {
     const id = window.setInterval(() => setCalendarBump((b) => b + 1), 5 * 60 * 1000);
     return () => window.clearInterval(id);
@@ -131,6 +134,60 @@ export function PnLPanel() {
     });
   }, []);
 
+  const loadOnchainPnl = useCallback(
+    async (showPending: boolean) => {
+      const w = makerAddress?.trim();
+      if (!w || liveTradesSource !== 'onchain') return;
+      if (showPending) {
+        setOnchainByDate('pending');
+        setRefreshing(true);
+      }
+      try {
+        const res = await fetchWalletPnlDaily({
+          wallet: w,
+          from: dateWindow.fromStr,
+          to: dateWindow.toStr,
+          bucket: bucketMode,
+          updown: marketTypeFilter.updown,
+          hit: marketTypeFilter.hit,
+          above: marketTypeFilter.above,
+          between: marketTypeFilter.between,
+        });
+        setOnchainByDate(res.byDate || {});
+      } catch {
+        if (showPending) setOnchainByDate('inactive');
+      } finally {
+        if (showPending) setRefreshing(false);
+      }
+    },
+    [
+      makerAddress,
+      liveTradesSource,
+      dateWindow.fromStr,
+      dateWindow.toStr,
+      bucketMode,
+      marketTypeFilter.updown,
+      marketTypeFilter.hit,
+      marketTypeFilter.above,
+      marketTypeFilter.between,
+    ],
+  );
+
+  const handleRefresh = useCallback(async () => {
+    const w = makerAddress?.trim();
+    if (!w) return;
+    setRefreshing(true);
+    try {
+      if (liveTradesSource === 'onchain') {
+        await loadOnchainPnl(true);
+      } else {
+        triggerWalletRefresh();
+      }
+    } finally {
+      if (liveTradesSource !== 'onchain') setRefreshing(false);
+    }
+  }, [makerAddress, liveTradesSource, loadOnchainPnl]);
+
   useEffect(() => {
     const w = makerAddress?.trim();
     if (!w || liveTradesSource !== 'onchain') {
@@ -140,23 +197,8 @@ export function PnLPanel() {
     let cancelled = false;
 
     const load = (showPending: boolean) => {
-      if (showPending) setOnchainByDate('pending');
-      void fetchWalletPnlDaily({
-        wallet: w,
-        from: dateWindow.fromStr,
-        to: dateWindow.toStr,
-        bucket: bucketMode,
-        updown: marketTypeFilter.updown,
-        hit: marketTypeFilter.hit,
-        above: marketTypeFilter.above,
-        between: marketTypeFilter.between,
-      })
-        .then((res) => {
-          if (!cancelled) setOnchainByDate(res.byDate || {});
-        })
-        .catch(() => {
-          if (!cancelled && showPending) setOnchainByDate('inactive');
-        });
+      if (cancelled) return;
+      void loadOnchainPnl(showPending);
     };
 
     load(true);
@@ -166,17 +208,7 @@ export function PnLPanel() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [
-    makerAddress,
-    liveTradesSource,
-    dateWindow.fromStr,
-    dateWindow.toStr,
-    bucketMode,
-    marketTypeFilter.updown,
-    marketTypeFilter.hit,
-    marketTypeFilter.above,
-    marketTypeFilter.between,
-  ]);
+  }, [makerAddress, liveTradesSource, loadOnchainPnl]);
 
   const { dates, dataByDate } = useMemo(() => {
     const { dates, dateSet } = dateWindow;
@@ -253,7 +285,22 @@ export function PnLPanel() {
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
       <div className="panel-header flex items-center justify-between gap-2 mb-2 cursor-grab flex-wrap">
         <div className="flex flex-col gap-0.5 min-w-0">
-          <h3 className="text-sm font-bold text-yellow-400">P&L</h3>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-sm font-bold text-yellow-400">P&L</h3>
+            <button
+              type="button"
+              className="shrink-0 p-0.5 rounded text-gray-500 hover:text-white hover:bg-gray-700 disabled:opacity-40"
+              title="Refresh P&L"
+              aria-label="Refresh P&L"
+              disabled={!makerAddress?.trim() || refreshing}
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleRefresh();
+              }}
+            >
+              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+          </div>
           {makerAddress?.trim() && liveTradesSource === 'onchain' && typeof onchainByDate === 'object' && (
             <span className="text-[8px] text-cyan-400/90 font-medium">On-chain fills</span>
           )}

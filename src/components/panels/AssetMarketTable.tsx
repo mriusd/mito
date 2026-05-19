@@ -342,7 +342,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   interface DateCol { slug: string; endDate: string; title: string }
 
   // Build table data — keyed by eventSlug like original
-  const buildTableData = (markets: Market[]) => {
+  const buildTableData = (markets: Market[], includePast: boolean) => {
     const now = Date.now();
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
 
@@ -374,7 +374,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
         return ta - tb;
       });
 
-    if (!showPast) {
+    if (!includePast) {
       dates = dates.filter(d => !d.endDate || new Date(d.endDate).getTime() >= now);
     }
 
@@ -385,6 +385,16 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
 
     return { dates, prices, marketLookup };
   };
+
+  type GridTableData = ReturnType<typeof buildTableData>;
+  const aboveGridData = useMemo(
+    () => (aboveMarketsForAsset.length > 0 ? buildTableData(aboveMarketsForAsset, showPast) : null),
+    [aboveMarketsForAsset, showPast],
+  );
+  const priceOnGridData = useMemo(
+    () => (priceOnMarketsForAsset.length > 0 ? buildTableData(priceOnMarketsForAsset, showPast) : null),
+    [priceOnMarketsForAsset, showPast],
+  );
 
   // Check if live price satisfies the market's price condition
   const isPriceConditionTrue = (priceStr: string, live: number) => {
@@ -578,6 +588,8 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       noDiff={sig?.noDiff}
                       isSelected={selectedMarket?.id === market.id}
                       adjVol={adjVol}
+                      livePrice={livePrice}
+                      bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}
                       noPosSize={noPos?.size}
                       yesOrders={orderLookup[yesTokenId] ?? EMPTY_ORDERS}
@@ -694,6 +706,8 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       signalsOnGrid={false}
                       isSelected={selectedMarket?.id === market.id}
                       adjVol={adjVol}
+                      livePrice={livePrice}
+                      bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}
                       noPosSize={noPos?.size}
                       yesOrders={orderLookup[yesTokenId] ?? EMPTY_ORDERS}
@@ -711,12 +725,13 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
     );
   };
 
-  const renderTable = (markets: Market[], tableType: string) => {
+  const renderTable = (markets: Market[], tableType: string, cached?: GridTableData | null) => {
     if (markets.length === 0) {
       return <div className="text-gray-500 text-center py-2 text-xs">No markets</div>;
     }
 
-    const { dates, prices, marketLookup } = buildTableData(markets);
+    const built = cached ?? buildTableData(markets, showPast);
+    const { dates, prices, marketLookup } = built;
 
     if (dates.length === 0 || prices.length === 0) {
       return <div className="text-gray-500 text-center py-2 text-xs">No active markets</div>;
@@ -845,6 +860,8 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       noDiff={sig?.noDiff}
                       isSelected={selectedMarket?.id === market.id}
                       adjVol={adjVol}
+                      livePrice={livePrice}
+                      bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}
                       noPosSize={noPos?.size}
                       yesOrders={orderLookup[yesTokenId] ?? EMPTY_ORDERS}
@@ -1044,14 +1061,14 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
           {showAbove && (
             <div className="flex-1 min-w-0 border border-emerald-500/40 rounded flex flex-col" ref={aboveContainerRef} style={{ position: 'relative' }}>
               <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-emerald-400 bg-gray-800/50 rounded-t py-0.5">Above <HelpTooltip text={"Above markets resolve YES if the asset price is above a specific strike price at the moment of expiry (noon ET).\n\nThese are the most common market type. Each row is a different strike price and each column is a different expiry date.\n\nThe YES probability increases as the live price moves further above the strike, and decreases as it falls below. At expiry, the market resolves to 100 (YES) or 0 (NO) based purely on where the price is at that moment."} /></div>
-              {renderTable(aboveMarketsForAsset, 'above')}
+              {renderTable(aboveMarketsForAsset, 'above', aboveGridData)}
               <PriceTicks containerRef={aboveContainerRef} symbol={symbol} slot0={slot0} slot1={slot1} />
             </div>
           )}
           {showBetween && (
             <div className="flex-1 min-w-0 border border-purple-500/40 rounded flex flex-col" ref={priceOnContainerRef} style={{ position: 'relative' }}>
               <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-purple-400 bg-gray-800/50 rounded-t py-0.5">Between <HelpTooltip text={"Between markets resolve YES if the asset price falls within a specific price range at the moment of expiry (noon ET).\n\nEach row shows a price range (e.g. 95k-100k). The market pays out if the price lands inside that range at expiry.\n\nB-S probability for these markets peaks when the price is near the center of the range and drops off toward the edges. Unlike Above markets, the max probability may not be at the range boundary — it can be in the middle."} /></div>
-              {renderTable(priceOnMarketsForAsset, 'price')}
+              {renderTable(priceOnMarketsForAsset, 'price', priceOnGridData)}
               <PriceTicks containerRef={priceOnContainerRef} symbol={symbol} slot0={slot0} slot1={slot1} />
             </div>
           )}

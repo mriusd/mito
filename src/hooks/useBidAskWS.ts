@@ -134,10 +134,10 @@ export function useBidAskWS() {
       });
     }
 
-    /** 4 Hz — full-rate rAF flushes thrashed every BsFlower / price consumer at 60 Hz and accumulated detached fiber DOM. */
+    /** 1 Hz — 4 Hz × N grid cells thrashed AssetMarketTable (1576 profiler commits). */
     function scheduleBidAskFlush() {
       if (flushRafRef.current !== null) return;
-      flushRafRef.current = window.setTimeout(() => flushPendingBidAsk(), 250) as unknown as number;
+      flushRafRef.current = window.setTimeout(() => flushPendingBidAsk(), 1000) as unknown as number;
     }
 
     function enqueueBidAskPatches(items: BidAskWsItem[]) {

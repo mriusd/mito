@@ -1,12 +1,10 @@
 import { memo, useMemo, type CSSProperties } from 'react';
-import { useShallow } from 'zustand/react/shallow';
 import type { AssetName, Market, Order } from '../../types';
-import { useAppStore } from '../../stores/appStore';
-import { marketRowContentEqual } from '../../lib/marketDataDedupe';
-import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
-import { gammaImpliedNoBestBid, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { assetToSymbol } from '../../utils/format';
 import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMath';
+import { gammaImpliedNoBestBid, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { marketRowContentEqual } from '../../lib/marketDataDedupe';
+import { useThrottledLookupPair } from '../../hooks/useThrottledLookupPair';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
 const fmtSz = (sz: number) => {
@@ -62,6 +60,8 @@ export type GridMarketCellProps = {
   isSelected: boolean;
   isColHighlighted?: boolean;
   adjVol: number;
+  livePrice: number;
+  bsTimeOffsetHours: number;
   yesPosSize?: number;
   noPosSize?: number;
   yesOrders: Order[];
@@ -109,6 +109,8 @@ function GridMarketCellInner({
   isSelected,
   isColHighlighted = false,
   adjVol,
+  livePrice,
+  bsTimeOffsetHours,
   yesPosSize,
   noPosSize,
   yesOrders,
@@ -120,23 +122,14 @@ function GridMarketCellInner({
   const tokenIds = market.clobTokenIds || [];
   const yesTokenId = tokenIds[0] || '';
   const noTokenId = tokenIds[1] || '';
-  const symbol = assetToSymbol(asset);
 
-  const livePrice = useThrottledStorePrice(symbol, 1000);
-  const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
+  const ws = useThrottledLookupPair(yesTokenId, noTokenId, 1000);
   const conditionMet =
     variant === 'above' || variant === 'between'
       ? isPriceConditionTrue(deltaPriceStr, livePrice)
       : false;
   const yesWinning = conditionMet;
   const noWinning = !conditionMet && livePrice > 0;
-
-  const ws = useAppStore(
-    useShallow((s) => ({
-      yes: yesTokenId ? s.marketLookup[yesTokenId] : undefined,
-      no: noTokenId ? s.marketLookup[noTokenId] : undefined,
-    })),
-  );
 
   const cellLookup = useMemo(() => {
     const o: Record<string, Market> = {};
@@ -327,6 +320,8 @@ export const GridMarketCell = memo(GridMarketCellInner, (a, b) => {
     a.isSelected !== b.isSelected ||
     a.isColHighlighted !== b.isColHighlighted ||
     a.adjVol !== b.adjVol ||
+    a.livePrice !== b.livePrice ||
+    a.bsTimeOffsetHours !== b.bsTimeOffsetHours ||
     a.yesPosSize !== b.yesPosSize ||
     a.noPosSize !== b.noPosSize ||
     a.variant !== b.variant ||

@@ -86,6 +86,7 @@ import {
   toxicFlowPayloadEqual,
   clearToxicFlowTabWalletViewsCache,
   buildToxicFlowTabWalletViews,
+  type ToxicFlowTabWalletViews,
   ledgerWinRateFracFromStored,
   toxicRowMatchesSmartLedgerDefinition,
   toxicRowMissingWalletScoresLedgerEmbed,
@@ -148,16 +149,138 @@ type Tab =
   | 'topYes'
   | 'topNo';
 
-const TOXIC_FLOW_TAB_DESCRIPTIONS: Record<Tab, string> = {
-  topHolders: 'Wallets with biggest positions on this market.',
-  smart: 'Wallets that win most of the time.',
-  favourites: 'Wallets you marked as favorites betting here.',
-  whales: 'Wallets with |Staked Net| USD ≥ Whale amount set in Tilt notifications (sidebar bell).',
-  winners: 'Wallets with profits in tracked time. Green = more YES staked than NO.',
-  fresh: 'Wallets with no ledger row or fewer than 10 resolved markets — not enough history to grade.',
-  topYes: 'Wallets betting strongest on YES.',
-  topNo: 'Wallets betting strongest on NO.',
-};
+type ToxicFlowLayoutMode = 'single' | 'split';
+
+const TOXIC_FLOW_TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  { key: 'topHolders', label: 'Top Holders', icon: <Crown size={11} /> },
+  { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
+  { key: 'favourites', label: 'Favourites', icon: <Star size={11} /> },
+  { key: 'whales', label: 'Whales', icon: <Fish size={11} /> },
+  { key: 'winners', label: 'Greens', icon: <Trophy size={11} /> },
+  { key: 'fresh', label: 'Fresh', icon: <CircleHelp size={11} /> },
+  { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
+  { key: 'topNo', label: 'Top NO', icon: <TrendingDown size={11} /> },
+];
+
+function toxicFlowWalletsForTab(
+  views: ToxicFlowTabWalletViews,
+  tab: Tab,
+): { wallets: WalletPosition[]; label: string } {
+  switch (tab) {
+    case 'topHolders':
+      return { wallets: views.topHolders, label: 'holders' };
+    case 'smart':
+      return { wallets: views.smart, label: 'smart' };
+    case 'favourites':
+      return { wallets: views.favourites, label: 'favourites' };
+    case 'whales':
+      return { wallets: views.whales, label: 'whales' };
+    case 'winners':
+      return { wallets: views.winners, label: 'greens' };
+    case 'fresh':
+      return { wallets: views.stripLists.fresh, label: 'fresh' };
+    case 'topYes':
+      return { wallets: views.topYes, label: 'Net Y (Staked)' };
+    case 'topNo':
+      return { wallets: views.topNo, label: 'Net N (Staked)' };
+  }
+}
+
+function ToxicFlowLayoutSwitch({
+  mode,
+  onMode,
+}: {
+  mode: ToxicFlowLayoutMode;
+  onMode: (mode: ToxicFlowLayoutMode) => void;
+}) {
+  return (
+    <div
+      className="ml-auto shrink-0 inline-flex rounded border border-gray-600 overflow-hidden divide-x divide-gray-600 bg-gray-900/90"
+      role="group"
+      aria-label="Table layout"
+    >
+      <button
+        type="button"
+        className={`px-2 py-0.5 text-[9px] font-bold transition ${
+          mode === 'single' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-200'
+        }`}
+        title="Single table"
+        onClick={() => onMode('single')}
+      >
+        1
+      </button>
+      <button
+        type="button"
+        className={`px-2 py-0.5 text-[9px] font-bold transition ${
+          mode === 'split' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-200'
+        }`}
+        title="Two tables stacked (50% height each)"
+        onClick={() => onMode('split')}
+      >
+        2
+      </button>
+    </div>
+  );
+}
+
+function ToxicFlowTabBar({
+  tab,
+  onTab,
+  trailing,
+}: {
+  tab: Tab;
+  onTab: (tab: Tab) => void;
+  trailing?: ReactNode;
+}) {
+  return (
+    <div className="flex gap-1 border-b border-gray-700 pb-2 shrink-0 flex-nowrap items-center min-w-0 w-full overflow-x-auto toxic-flow-scroll-stable">
+      {TOXIC_FLOW_TABS.map((t) => (
+        <button
+          key={t.key}
+          type="button"
+          onClick={() => onTab(t.key)}
+          className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-colors shrink-0 ${
+            tab === t.key ? 'bg-yellow-400/20 text-yellow-400' : 'text-gray-400 hover:text-white hover:bg-gray-700'
+          }`}
+        >
+          {t.icon} {t.label}
+        </button>
+      ))}
+      {trailing}
+    </div>
+  );
+}
+
+function ToxicFlowTablePane({
+  tab,
+  onTab,
+  tabWalletViews,
+  totalStakedNetUsd,
+  onOpenWallet,
+  trailing,
+}: {
+  tab: Tab;
+  onTab: (tab: Tab) => void;
+  tabWalletViews: ToxicFlowTabWalletViews;
+  totalStakedNetUsd: number | null;
+  onOpenWallet: (wallet: string, netShares?: number) => void;
+  trailing?: ReactNode;
+}) {
+  const { wallets, label } = toxicFlowWalletsForTab(tabWalletViews, tab);
+  return (
+    <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden gap-2">
+      <ToxicFlowTabBar tab={tab} onTab={onTab} trailing={trailing} />
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden min-w-0">
+        <WalletTable
+          wallets={wallets}
+          label={label}
+          totalStakedNetUsd={totalStakedNetUsd}
+          onOpenWallet={onOpenWallet}
+        />
+      </div>
+    </div>
+  );
+}
 
 function rPnlToneClass(v: number): string {
   if (!Number.isFinite(v) || Math.abs(v) < 1e-9) return 'text-gray-400';
@@ -1851,8 +1974,8 @@ export function ToxicFlowDialog({
   onClose,
   embedded = false,
   streamData = undefined,
-  onRefreshStream,
-  streamRefreshing = false,
+  onRefreshStream: _onRefreshStream,
+  streamRefreshing: _streamRefreshing = false,
 }: ToxicFlowDialogProps) {
   const yesTok = (yesTokenId || '').trim();
   const stakedWyLive = useAppStore((s) => {
@@ -1925,7 +2048,9 @@ export function ToxicFlowDialog({
     ? Boolean(open && midTrim && streamData === null)
     : internalLoading;
   const error = embedded ? '' : internalError;
+  const [layoutMode, setLayoutMode] = useState<ToxicFlowLayoutMode>('single');
   const [tab, setTab] = useState<Tab>('topHolders');
+  const [tabBottom, setTabBottom] = useState<Tab>('smart');
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState('');
   const [toxicFollowSet, setToxicFollowSet] = useState(readToxicFavouriteWallets);
@@ -2064,16 +2189,7 @@ export function ToxicFlowDialog({
     setWalletDialogOpen(true);
   };
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: 'topHolders', label: 'Top Holders', icon: <Crown size={11} /> },
-    { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
-    { key: 'favourites', label: 'Favourites', icon: <Star size={11} /> },
-    { key: 'whales', label: 'Whales', icon: <Fish size={11} /> },
-    { key: 'winners', label: 'Greens', icon: <Trophy size={11} /> },
-    { key: 'fresh', label: 'Fresh', icon: <CircleHelp size={11} /> },
-    { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
-    { key: 'topNo', label: 'Top NO', icon: <TrendingDown size={11} /> },
-  ];
+  const layoutSwitch = <ToxicFlowLayoutSwitch mode={layoutMode} onMode={setLayoutMode} />;
 
   const rootClass = embedded
     ? 'flex flex-col flex-1 min-h-0 min-w-0 h-full w-full overflow-hidden bg-gray-900'
@@ -2212,108 +2328,40 @@ export function ToxicFlowDialog({
               )}
               </div>
 
-              <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 gap-2 w-full">
-                <div className="flex gap-1 border-b border-gray-700 pb-2 shrink-0 flex-nowrap items-center min-w-0 w-full overflow-x-auto toxic-flow-scroll-stable">
-                  {tabs.map((t) => (
-                    <button
-                      key={t.key}
-                      onClick={() => setTab(t.key)}
-                      className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-colors ${
-                        tab === t.key
-                          ? 'bg-yellow-400/20 text-yellow-400'
-                          : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                      }`}
-                    >
-                      {t.icon} {t.label}
-                    </button>
+              <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 w-full">
+                {tabWalletViews &&
+                  (layoutMode === 'single' ? (
+                    <ToxicFlowTablePane
+                      tab={tab}
+                      onTab={setTab}
+                      tabWalletViews={tabWalletViews}
+                      totalStakedNetUsd={dialogStakedNetAbsUsd}
+                      onOpenWallet={openWalletDialog}
+                      trailing={layoutSwitch}
+                    />
+                  ) : (
+                    <div className="flex flex-col flex-1 min-h-0 gap-2">
+                      <div className="flex flex-col flex-1 min-h-0 basis-1/2 overflow-hidden border-b border-gray-700/80 pb-2">
+                        <ToxicFlowTablePane
+                          tab={tab}
+                          onTab={setTab}
+                          tabWalletViews={tabWalletViews}
+                          totalStakedNetUsd={dialogStakedNetAbsUsd}
+                          onOpenWallet={openWalletDialog}
+                          trailing={layoutSwitch}
+                        />
+                      </div>
+                      <div className="flex flex-col flex-1 min-h-0 basis-1/2 overflow-hidden pt-0.5">
+                        <ToxicFlowTablePane
+                          tab={tabBottom}
+                          onTab={setTabBottom}
+                          tabWalletViews={tabWalletViews}
+                          totalStakedNetUsd={dialogStakedNetAbsUsd}
+                          onOpenWallet={openWalletDialog}
+                        />
+                      </div>
+                    </div>
                   ))}
-                  <button
-                    type="button"
-                    className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-40"
-                    title="Refresh full toxic flow (HTTP)"
-                    disabled={loading || internalLoading || streamRefreshing}
-                    onClick={() => {
-                      if (embedded) void onRefreshStream?.();
-                      else void load();
-                    }}
-                  >
-                    <RefreshCw
-                      size={12}
-                      className={internalLoading || streamRefreshing ? 'animate-spin' : ''}
-                    />
-                    Refresh
-                  </button>
-                </div>
-                <p className="text-[10px] text-gray-500 leading-snug shrink-0 px-0.5 border-b border-gray-700/80 pb-2">
-                  {TOXIC_FLOW_TAB_DESCRIPTIONS[tab]}
-                </p>
-
-                <div className="flex flex-col flex-1 min-h-0 overflow-hidden min-w-0">
-                  {tab === 'topHolders' && (
-                    <WalletTable
-                      wallets={tabWalletViews?.topHolders ?? []}
-                      label="holders"
-                      totalStakedNetUsd={dialogStakedNetAbsUsd}
-                      onOpenWallet={openWalletDialog}
-                    />
-                  )}
-                  {tab === 'smart' && (
-                    <WalletTable
-                      wallets={tabWalletViews?.smart ?? []}
-                      label="smart"
-                      totalStakedNetUsd={dialogStakedNetAbsUsd}
-                      onOpenWallet={openWalletDialog}
-                    />
-                  )}
-                  {tab === 'favourites' && (
-                    <WalletTable
-                      wallets={tabWalletViews?.favourites ?? []}
-                      label="favourites"
-                      totalStakedNetUsd={dialogStakedNetAbsUsd}
-                      onOpenWallet={openWalletDialog}
-                    />
-                  )}
-                  {tab === 'whales' && (
-                    <WalletTable
-                      wallets={tabWalletViews?.whales ?? []}
-                      label="whales"
-                      totalStakedNetUsd={dialogStakedNetAbsUsd}
-                      onOpenWallet={openWalletDialog}
-                    />
-                  )}
-                  {tab === 'winners' && (
-                    <WalletTable
-                      wallets={tabWalletViews?.winners ?? []}
-                      label="greens"
-                      totalStakedNetUsd={dialogStakedNetAbsUsd}
-                      onOpenWallet={openWalletDialog}
-                    />
-                  )}
-                  {tab === 'fresh' && (
-                    <WalletTable
-                      wallets={tabWalletViews?.stripLists.fresh ?? []}
-                      label="fresh"
-                      totalStakedNetUsd={dialogStakedNetAbsUsd}
-                      onOpenWallet={openWalletDialog}
-                    />
-                  )}
-                  {tab === 'topYes' && (
-                    <WalletTable
-                      wallets={tabWalletViews?.topYes ?? []}
-                      label="Net Y (Staked)"
-                      totalStakedNetUsd={dialogStakedNetAbsUsd}
-                      onOpenWallet={openWalletDialog}
-                    />
-                  )}
-                  {tab === 'topNo' && (
-                    <WalletTable
-                      wallets={tabWalletViews?.topNo ?? []}
-                      label="Net N (Staked)"
-                      totalStakedNetUsd={dialogStakedNetAbsUsd}
-                      onOpenWallet={openWalletDialog}
-                    />
-                  )}
-                </div>
               </div>
             </>
           )}

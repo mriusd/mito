@@ -120,11 +120,14 @@ function notifyBidAskMarketLookupListeners() {
 
 function flushPendingBidAskToStore() {
   flushTimer = null;
-  const snapshot = pendingPatch;
-  const ids = Object.keys(snapshot);
+  const ids = Object.keys(pendingPatch);
   if (ids.length === 0) return;
 
-  for (const id of ids) delete pendingPatch[id];
+  const snapshot: Record<string, Market> = {};
+  for (const id of ids) {
+    snapshot[id] = pendingPatch[id]!;
+    delete pendingPatch[id];
+  }
 
   useAppStore.setState((state) => {
     const lookup = state.marketLookup;

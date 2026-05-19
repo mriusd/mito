@@ -375,7 +375,7 @@ function WalletScoresLedgerSummaryGrid({
   );
   return (
     <div
-      className={`grid grid-cols-1 gap-y-0.5 ${dense ? 'max-w-[min(100vw-24px,320px)]' : narrowSummary ? 'max-w-[15rem]' : ''}`}
+      className={`grid grid-cols-1 gap-y-0.5 ${dense ? 'max-w-[min(100vw-24px,320px)]' : narrowSummary ? 'max-w-[22.5rem]' : ''}`}
     >
       <LedgerSummaryField
         rowClass={row}
@@ -1504,7 +1504,7 @@ export function WalletInfoDialog({
             <div className="mt-1 flex flex-col lg:flex-row gap-3 items-stretch min-w-0 min-h-0">
               <div
                 ref={summaryLeftRef}
-                className="shrink-0 w-full lg:w-[min(11rem,calc(100%/6))] lg:max-w-[11rem] flex flex-col"
+                className="shrink-0 w-full lg:w-[min(16.5rem,calc(100%/4))] lg:max-w-[16.5rem] flex flex-col"
               >
                 {summary === undefined && <div className="text-gray-500">Loading...</div>}
                 {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}

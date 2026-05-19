@@ -54,6 +54,31 @@ export function walletStakeNetAbsUsd(w: WalletPosition): number {
   return Number.isFinite(s) ? Math.abs(s) : NaN;
 }
 
+/** Avg entry in ¢ on heavier staked leg; inventory fallback when stake legs missing. */
+export function dominantStakedLegAvgPriceCents(w: WalletPosition): number | null {
+  const sy = walletStakeYUsd(w);
+  const sn = walletStakeNUsd(w);
+  const y = Number.isFinite(sy) ? sy : 0;
+  const n = Number.isFinite(sn) ? sn : 0;
+  const py = w.priceYes;
+  const pn = w.priceNo;
+  if (y > 1e-9 || n > 1e-9) {
+    if (y >= n) {
+      return typeof py === 'number' && Number.isFinite(py) ? py * 100 : null;
+    }
+    return typeof pn === 'number' && Number.isFinite(pn) ? pn * 100 : null;
+  }
+  const iy = walletInvY(w);
+  const inn = walletInvN(w);
+  if (Math.abs(iy) >= Math.abs(inn) && Math.abs(iy) > 1e-6) {
+    return typeof py === 'number' && Number.isFinite(py) ? py * 100 : null;
+  }
+  if (Math.abs(inn) > 1e-6) {
+    return typeof pn === 'number' && Number.isFinite(pn) ? pn * 100 : null;
+  }
+  return null;
+}
+
 /** Staked-net cohort bar: Σ max(0, −signed_net) YES vs Σ max(0, signed_net) NO — `cohortSurplusHalves` mode. */
 export function toxicCohortStakedNetSurplusHalves(wallets: readonly WalletPosition[]): {
   sumYUsd: number;

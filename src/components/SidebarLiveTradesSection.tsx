@@ -1,7 +1,8 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { onchainFillKey, polymarketTradeKey } from '../lib/tradeKeys';
+import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 
 export type SidebarLiveTradesSectionProps = {
@@ -9,7 +10,7 @@ export type SidebarLiveTradesSectionProps = {
   onToggleLiveTradesExpanded: () => void;
   liveTradesSectionHeight: string;
   liveOrderbookExpanded: boolean;
-  displayLiveTrades: LiveTrade[];
+  onchainLiveTrades: LiveTrade[];
   liveTradesSource: string;
   myOnchainWalletLower: string;
 };
@@ -85,10 +86,16 @@ function liveTradesSectionInner(props: SidebarLiveTradesSectionProps) {
     onToggleLiveTradesExpanded,
     liveTradesSectionHeight,
     liveOrderbookExpanded,
-    displayLiveTrades,
+    onchainLiveTrades,
     liveTradesSource,
     myOnchainWalletLower,
   } = props;
+
+  const polymarketTape = useSidebarPolymarketTape();
+  const displayLiveTrades = useMemo(
+    () => (liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketTape),
+    [liveTradesSource, onchainLiveTrades, polymarketTape],
+  );
 
   /** Local 5 s bucket — parent 1 Hz tick re-rendered whole Sidebar + ToxicFlowDialog (381 profiler commits). */
   const [tradeTickBucket, setTradeTickBucket] = useState(() => Math.floor(Date.now() / 5000) * 5000);

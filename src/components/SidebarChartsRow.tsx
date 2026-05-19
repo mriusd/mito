@@ -1,8 +1,9 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { extractAssetFromMarket } from '../utils/format';
 import { ChainlinkChart } from './ChainlinkChart';
 import { LiveTradeChart } from './LiveTradeChart';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
+import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import type { Market } from '../types';
 
 export type SidebarChartsRowProps = {
@@ -12,7 +13,8 @@ export type SidebarChartsRowProps = {
   upDownIntervalContext: string | undefined;
   upDownTargetPrice: number | null;
   upDownSpotUsesChainlink: boolean;
-  displayLiveTrades: LiveTrade[];
+  onchainLiveTrades: LiveTrade[];
+  liveTradesSource: string;
   orderOutcome: 'YES' | 'NO';
   upDownStartTime: number | null | undefined;
   upDownKlineDefaultInterval: string | undefined;
@@ -27,13 +29,19 @@ function chartsRowInner({
   upDownIntervalContext,
   upDownTargetPrice,
   upDownSpotUsesChainlink,
-  displayLiveTrades,
+  onchainLiveTrades,
+  liveTradesSource,
   orderOutcome,
   upDownStartTime,
   upDownKlineDefaultInterval,
   volatilityLookbackCandles,
   onSidebarChartAnnualVolPct,
 }: SidebarChartsRowProps) {
+  const polymarketTape = useSidebarPolymarketTape();
+  const displayLiveTrades = useMemo(
+    () => (liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketTape),
+    [liveTradesSource, onchainLiveTrades, polymarketTape],
+  );
   const chartAsset = isUpDownMarket ? upDownAsset : extractAssetFromMarket(selectedMarket);
   return (
     <div className="sidebar-chart-row">

@@ -50,6 +50,10 @@ import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { SidebarBarMidMarker } from './SidebarBarMidMarker';
 import { ToxicFlowStakePreview, TOXIC_TOTAL_STAKE_BAR_HELP } from './ToxicFlowStakePreview';
 import { useToxicFlowMarketStream } from '../hooks/useToxicFlowMarketStream';
+import { bumpSidebarTopOfBookDigest } from '../lib/sidebarTopOfBookStore';
+import { resetSidebarPolymarketTape, setSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
+import { SidebarOrderCostDisplay } from './SidebarOrderCostDisplay';
+import { SidebarToxicPanel } from './SidebarToxicPanel';
 import {
   buildToxicFlowTabWalletViews,
   toxicCohortStakedNetSurplusHalves,
@@ -95,10 +99,6 @@ import {
 import type { AssetSymbol, Market, Position } from '../types';
 import type { WalletPosition } from '../api';
 import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
-
-const ToxicFlowDialogLazy = lazyWithChunkReload(() =>
-  import('./ToxicFlowDialog').then((m) => ({ default: m.ToxicFlowDialog })),
-);
 
 function preloadToxicFlowDialog() {
   void importWithChunkReload(() => import('./ToxicFlowDialog'));
@@ -1379,24 +1379,17 @@ export function Sidebar() {
   tiltSoundMarketRef.current = selectedMarket;
   tiltSoundLookupRef.current = marketLookup;
   /** Recomputed summary / spot-strip when Host reports top-of-book change (not every depth tick). */
-  const [topOfBookDigest, setTopOfBookDigest] = useState(0);
   const bumpTopOfBookDigest = useCallback(() => {
-    setTopOfBookDigest((n) => n + 1);
+    bumpSidebarTopOfBookDigest();
   }, []);
-
-  const [polymarketTape, setPolymarketTape] = useState<LiveTrade[]>([]);
 
   const onPolymarketTradesFromHost = useCallback((t: LiveTrade[]) => {
-    setPolymarketTape((prev) => {
-      if (prev === t) return prev;
-      if (prev.length === t.length && prev.length > 0) {
-        const p0 = prev[0];
-        const t0 = t[0];
-        if (p0.id === t0.id && p0.timestamp === t0.timestamp && p0.size === t0.size) return prev;
-      }
-      return t;
-    });
+    setSidebarPolymarketTape(t);
   }, []);
+  useEffect(() => {
+    resetSidebarPolymarketTape();
+  }, [obTokenId]);
+
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   /** On-chain WS + REST prefetch: must not depend on sidebarOpen or tables stay empty after refresh until sidebar opens. */
   const onchainHookTokenId = useMemo(() => {
@@ -1441,10 +1434,6 @@ export function Sidebar() {
     wallet: walletForLivePositions,
     scopedClobTokenIds: scopedClobPair,
   });
-  const displayLiveTrades = useMemo(
-    () => (liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketTape),
-    [liveTradesSource, onchainLiveTrades, polymarketTape],
-  );
   const onchainSidebarPositions = useMemo(
     () => (liveTradesSource === 'onchain' ? wsPositions : []),
     [liveTradesSource, wsPositions],
@@ -2118,38 +2107,6 @@ export function Sidebar() {
     }
     prevPriceRef.current = p;
   }, [sidebarSpotStrip?.currentPrice]);
-
-  const summaryPriceDecimal = useMemo(() => {
-    if (orderKind === 'market') {
-      if (orderSide === 'BUY') {
-        const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
-        return displayAsks.length > 0 ? parseFloat(displayAsks[0].price) : MARKET_AGGRESSIVE_BUY;
-      }
-      const displayBids = sidebarBookRef.current?.displayBids ?? [];
-      const bestBid = displayBids.length > 0 ? displayBids[displayBids.length - 1] : null;
-      return bestBid ? parseFloat(bestBid.price) : MARKET_AGGRESSIVE_SELL;
-    }
-    return (parseFloat(orderPrice) || 0) / 100;
-  }, [orderKind, orderSide, orderPrice, topOfBookDigest]);
-  const cost = useMemo(() => {
-    const a = parseFloat(orderAmount);
-    if (!a) return 0;
-    const p = summaryPriceDecimal;
-    if (orderKind === 'limit' && (!orderPrice || !p)) return 0;
-    if (orderSide === 'BUY') return p * a;
-    return (1 - p) * a;
-  }, [orderAmount, summaryPriceDecimal, orderSide, orderKind, orderPrice]);
-
-  const payout = useMemo(() => {
-    const a = parseFloat(orderAmount);
-    if (!a) return 0;
-    if (orderSide === 'SELL') {
-      const p = summaryPriceDecimal;
-      if (orderKind === 'limit' && (!orderPrice || !p)) return 0;
-      return p * a;
-    }
-    return a;
-  }, [orderAmount, orderSide, summaryPriceDecimal, orderKind, orderPrice]);
 
   const getOrderExpiryLeadSeconds = () => {
     const n = parseFloat(orderExpiry);
@@ -3591,7 +3548,8 @@ export function Sidebar() {
             upDownIntervalContext={upDownIntervalContext}
             upDownTargetPrice={upDownTargetPrice}
             upDownSpotUsesChainlink={upDownSpotUsesChainlink}
-            displayLiveTrades={displayLiveTrades}
+            onchainLiveTrades={onchainLiveTrades}
+            liveTradesSource={liveTradesSource}
             orderOutcome={orderOutcome}
             upDownStartTime={upDownStartTime}
             upDownKlineDefaultInterval={upDownKlineDefaultInterval}
@@ -4114,7 +4072,7 @@ export function Sidebar() {
             onToggleLiveTradesExpanded={toggleLiveTradesExpanded}
             liveTradesSectionHeight={liveTradesSectionHeight}
             liveOrderbookExpanded={liveOrderbookExpanded}
-            displayLiveTrades={displayLiveTrades}
+            onchainLiveTrades={onchainLiveTrades}
             liveTradesSource={liveTradesSource}
             myOnchainWalletLower={myOnchainWalletLower}
           />
@@ -4374,13 +4332,13 @@ export function Sidebar() {
                   </select>
                 </div>
               </div>
-              <div className="bg-gray-700/50 rounded p-2 text-[10px] flex-1 flex flex-col text-gray-400">
-                <div className="flex justify-between"><span>Cost:</span><span>Payout:</span></div>
-                <div className="flex justify-between items-baseline mt-0.5">
-                  <span className="text-red-400 font-bold text-[13px]">{orderSide === 'SELL' ? '' : `$${cost.toFixed(2)}`}</span>
-                  <span className="text-green-400 font-bold text-[13px]">${payout.toFixed(2)}</span>
-                </div>
-              </div>
+              <SidebarOrderCostDisplay
+                sidebarBookRef={sidebarBookRef}
+                orderKind={orderKind}
+                orderSide={orderSide}
+                orderPrice={orderPrice}
+                orderAmount={orderAmount}
+              />
             </div>
 
             <div className="mb-2 flex flex-col gap-0.5">
@@ -4979,21 +4937,14 @@ export function Sidebar() {
           </>
         ) : null}
         {sidebarToxicEffective && selectedMarket ? (
-          <div className="flex flex-1 min-h-0 min-w-0 w-full flex-col overflow-hidden bg-gray-900 toxic-flow-scroll-stable">
-            <Suspense fallback={<div className="p-2 text-[10px] text-gray-500">Loading holders…</div>}>
-              <ToxicFlowDialogLazy
-                embedded
-                open
-                marketId={selectedMarket.conditionId || ''}
-                marketName={marketName}
-                yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
-                streamData={toxicFlowData}
-                onRefreshStream={refreshToxicFlow}
-                streamRefreshing={toxicFlowRefreshing}
-                onClose={closeToxicSidebarPanel}
-              />
-            </Suspense>
-          </div>
+          <Suspense fallback={<div className="p-2 text-[10px] text-gray-500">Loading holders…</div>}>
+            <SidebarToxicPanel
+              marketId={selectedMarket.conditionId || ''}
+              marketName={marketName}
+              yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
+              onClose={closeToxicSidebarPanel}
+            />
+          </Suspense>
         ) : null}
       </div>
       {customDialogOpen && typeof document !== 'undefined' && createPortal((

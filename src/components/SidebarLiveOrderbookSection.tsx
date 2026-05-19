@@ -6,6 +6,7 @@ import type { SidebarObAggStep } from '../lib/sidebarOrderbookAggregate';
 import { sidebarObAggOrderPriceCents, sidebarUserPriceHitsBucket } from '../lib/sidebarOrderbookAggregate';
 
 import { SidebarBarMidMarker } from './SidebarBarMidMarker';
+import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 
 type OBLevel = { price: string; size: string };
 
@@ -86,17 +87,7 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
           {liveOrderbookExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </button>
         <span className="shrink-0">Live Orderbook</span>
-        <span
-          className="inline-flex items-center rounded px-1 py-0.5 text-[9px] font-bold leading-none border border-[#2d57ff] bg-[#2f5cff]"
-          title="This orderbook data comes from Polymarket's live market feed."
-        >
-          <img
-            src="/polymarket-favicon.ico"
-            alt="Polymarket"
-            className="h-3 w-3 rounded-[2px]"
-            style={{ filter: 'brightness(0) invert(1)' }}
-          />
-        </span>
+        <SidebarDataSourceBadge source="polymarket" />
         <div
           className="ml-auto shrink-0 inline-flex rounded border border-gray-600 overflow-hidden divide-x divide-gray-600 bg-gray-900/90"
           title="Bid/ask grouping"

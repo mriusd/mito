@@ -1,3 +1,5 @@
+const SIDEBAR_SOURCE_ICON_CLS = 'h-2 w-2 rounded-[1px] object-contain';
+
 type SidebarDataSourceBadgeProps = {
   source: 'onchain' | 'polymarket';
 };
@@ -18,7 +20,7 @@ export function SidebarDataSourceBadge({ source }: SidebarDataSourceBadgeProps) 
       <img
         src={onchain ? '/polygon-logo.svg' : '/polymarket-favicon.ico'}
         alt={onchain ? 'Polygon' : 'Polymarket'}
-        className="h-2 w-2 rounded-[1px] object-contain"
+        className={SIDEBAR_SOURCE_ICON_CLS}
         style={onchain ? undefined : { filter: 'brightness(0) invert(1)' }}
       />
     </span>

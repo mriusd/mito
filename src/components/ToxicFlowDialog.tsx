@@ -722,6 +722,26 @@ function getResolvedDisplay(market: any, row?: WalletPosition): { label: string;
   return { label: 'Resolved', color: 'text-gray-400' };
 }
 
+function polymarketNicknameTrim(n?: string | null): string {
+  return (n ?? '').trim();
+}
+
+function polymarketNicknameFromEmbed(embed?: WalletScoresLedgerEmbed | null): string {
+  return polymarketNicknameTrim(embed?.polymarketNickname);
+}
+
+/** User tag → Polymarket nickname → shortened address. */
+function toxicWalletDisplayLabel(
+  wallet: string,
+  opts: { tag?: string | null; ledgerEmbed?: WalletScoresLedgerEmbed | null; nickname?: string },
+): string {
+  const tag = polymarketNicknameTrim(opts.tag);
+  if (tag) return tag;
+  const nick = polymarketNicknameTrim(opts.nickname) || polymarketNicknameFromEmbed(opts.ledgerEmbed);
+  if (nick) return shortenWallet(nick);
+  return shortenWallet(wallet);
+}
+
 function shortenWallet(w: string): string {
   if (w.length <= 12) return w;
   return w.slice(0, 6) + '…' + w.slice(-4);
@@ -1022,7 +1042,8 @@ const WalletLink = forwardRef<
   );
 
   const walletTag = useToxicWalletTag(wallet);
-  const displayLabel = walletTag ?? shortenWallet(wallet);
+  const polymarketNick = polymarketNicknameFromEmbed(ledgerEmbed);
+  const displayLabel = toxicWalletDisplayLabel(wallet, { tag: walletTag, ledgerEmbed });
 
   const lifetimeHue = lifetimeLedgerPnlHue(ledgerEmbed, summary);
   const ledgerAbsent = walletScoresLedgerRowAbsent(ledgerEmbed, summary);
@@ -1047,6 +1068,7 @@ const WalletLink = forwardRef<
           : 'text-zinc-400';
   const btnTitle = (() => {
     const parts: string[] = [wallet];
+    if (polymarketNick) parts.push(`Polymarket: ${polymarketNick}`);
     if (walletTag) parts.push(`tag: ${walletTag}`);
     if (resolvedStatsLow && !ledgerAbsent) parts.push('Fewer than 10 resolved markets (wallet_scores_ledger)');
     if (ledgerAbsent) parts.push('No wallet_scores_ledger row');
@@ -1754,8 +1776,19 @@ export function WalletInfoDialog({
     return () => ro.disconnect();
   }, [open, summary, wallet, lgChartsSync, dailySnapshotsRefresh]);
 
+  const polymarketNick = useMemo(() => {
+    const fromSummary = polymarketNicknameTrim(summary?.polymarketNickname);
+    if (fromSummary) return fromSummary;
+    for (const row of markets) {
+      const n = polymarketNicknameFromEmbed(row.walletLedgerSummary);
+      if (n) return n;
+    }
+    return '';
+  }, [summary, markets]);
+
   if (!open) return null;
   const polymarketProfileUrl = `https://polymarket.com/profile/${wallet.trim().toLowerCase()}`;
+  const walletTitleLabel = polymarketNick ? shortenWallet(polymarketNick) : wallet;
   const dialog = (
     <div className="fixed inset-0 bg-black/60 z-[60010] flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div
@@ -1850,9 +1883,9 @@ export function WalletInfoDialog({
                   target="_blank"
                   rel="noreferrer"
                   className="min-w-0 truncate text-xs text-blue-400 hover:underline"
-                  title="Open Polymarket profile"
+                  title={polymarketNick ? `${polymarketNick} · ${wallet}` : 'Open Polymarket profile'}
                 >
-                  {wallet}
+                  {walletTitleLabel}
                 </a>
               )}
             </span>

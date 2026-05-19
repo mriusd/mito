@@ -441,6 +441,8 @@ export interface WalletScoresLedgerEmbed {
   usdcOut: number;
   roi?: number | null;
   volume?: number;
+  /** Polymarket public profile name from `wallet_scores_ledger.polymarket_nickname`. */
+  polymarketNickname?: string;
 }
 
 export interface WalletPosition {
@@ -833,6 +835,7 @@ export interface WalletSummary {
   roi?: number | null;
   /** `wallet_scores_ledger.last_updated` (RFC3339 UTC). */
   lastUpdated?: string;
+  polymarketNickname?: string;
 }
 
 export function walletSummaryFromLedgerEmbed(rowWallet: string, embed: WalletScoresLedgerEmbed): WalletSummary {
@@ -856,6 +859,7 @@ export function walletSummaryFromLedgerEmbed(rowWallet: string, embed: WalletSco
     usdcOut: embed.usdcOut,
     roi: embed.roi,
     volume: embed.volume,
+    polymarketNickname: (embed.polymarketNickname ?? '').trim() || undefined,
   };
 }
 

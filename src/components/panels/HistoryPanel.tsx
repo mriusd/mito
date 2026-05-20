@@ -103,7 +103,9 @@ export function HistoryPanel() {
       </div>
       <div className="panel-body text-[10px] flex-1 min-h-0 flex flex-col overflow-hidden">
         <div className="text-[10px] text-gray-500 mb-1 shrink-0">Latest Markets Traded</div>
-        <div className="flex-1 min-h-0 overflow-auto rounded border border-gray-700/80 bg-gray-900/50 p-1.5">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded border border-gray-700/80 bg-gray-900/50">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto p-1.5">
+          <div className="min-h-full">
           <WalletLatestMarketsTradedTable
             markets={markets}
             marketById={marketById}
@@ -112,6 +114,8 @@ export function HistoryPanel() {
             selectedMarketId={walletInfoOpen ? walletInfoMarketId : undefined}
             onRowClick={displayWallet ? onHistoryRowClick : undefined}
           />
+          </div>
+          </div>
         </div>
       </div>
       {walletInfoOpen && displayWallet ? (

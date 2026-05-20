@@ -61,6 +61,7 @@ import {
   walletStakeYUsd,
   walletStakeNUsd,
   toxicRowLedgerLifetimePnlNegative,
+  toxicRowWalletIsXMarked,
 } from '../lib/toxicFlowStakeCohort';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
 import {
@@ -68,6 +69,11 @@ import {
   TOXIC_FAVOURITES_CHANGED_EVENT,
   readToxicFavouriteWallets,
 } from '../lib/toxicFavouriteWallets';
+import {
+  readToxicXWallets,
+  TOXIC_X_CHANGED_EVENT,
+  TOXIC_X_WALLETS_LS_KEY,
+} from '../lib/toxicXWallets';
 import { persistTiltWhaleAmountUsd, readTiltWhaleAmountUsd } from '../lib/tiltWhaleAmountUsd';
 import {
   ensureTiltAudioUnlockListeners,
@@ -1081,16 +1087,21 @@ export function Sidebar() {
     useToxicFlowMarketStream(toxicFlowMarketId, Boolean(toxicFlowMarketId));
 
   const [toxicFavSet, setToxicFavSet] = useState(readToxicFavouriteWallets);
+  const [toxicXSet, setToxicXSet] = useState(readToxicXWallets);
   useEffect(() => {
-    const sync = () => setToxicFavSet(readToxicFavouriteWallets());
+    const syncFav = () => setToxicFavSet(readToxicFavouriteWallets());
+    const syncX = () => setToxicXSet(readToxicXWallets());
     const onStorage = (e: StorageEvent) => {
-      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY) sync();
+      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY) syncFav();
+      if (e.key === TOXIC_X_WALLETS_LS_KEY) syncX();
     };
     window.addEventListener('storage', onStorage);
-    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
+    window.addEventListener(TOXIC_X_CHANGED_EVENT, syncX);
     return () => {
       window.removeEventListener('storage', onStorage);
-      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
+      window.removeEventListener(TOXIC_X_CHANGED_EVENT, syncX);
     };
   }, []);
 
@@ -1122,13 +1133,14 @@ export function Sidebar() {
     if (!toxicTabViews) return false;
     const maxPc = notifyWhaleMaxPriceCents;
     for (const w of toxicTabViews.whales) {
+      if (toxicRowWalletIsXMarked(w, toxicXSet)) continue;
       if (notifyWhaleIgnoreNegativePnl && toxicRowLedgerLifetimePnlNegative(w)) continue;
       const pc = dominantStakedLegAvgPriceCents(w);
       if (pc == null || !Number.isFinite(pc)) continue;
       if (pc < maxPc) return true;
     }
     return false;
-  }, [toxicTabViews, notifyWhaleMaxPriceCents, notifyWhaleIgnoreNegativePnl]);
+  }, [toxicTabViews, notifyWhaleMaxPriceCents, notifyWhaleIgnoreNegativePnl, toxicXSet]);
 
   /** Active cohort thresholds (Toxic strip bars): every non-zero pct must agree on direction vs its lean. */
   const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {

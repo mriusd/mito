@@ -2095,9 +2095,9 @@ export function WalletInfoPanel({
 
         <div
           className="grid gap-2 flex-1 min-h-0 overflow-hidden"
-          style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(16rem, 36rem)' }}
+          style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(16rem, 36rem)', gridTemplateRows: 'minmax(0, 1fr)' }}
         >
-          <div className="bg-gray-900 rounded p-2 min-h-0 min-w-0 flex flex-col overflow-hidden">
+          <div className="bg-gray-900 rounded p-2 min-h-0 h-full min-w-0 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
               <div className="text-[10px] text-gray-400 font-bold">Latest Markets Traded</div>
               <button
@@ -2110,6 +2110,7 @@ export function WalletInfoPanel({
               </button>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
+              <div className="min-h-full">
               <WalletLatestMarketsTradedTable
                 markets={markets}
                 marketById={marketById}
@@ -2119,10 +2120,11 @@ export function WalletInfoPanel({
                   setSelectedMarketId(id);
                 }}
               />
+              </div>
             </div>
           </div>
 
-          <div className="bg-gray-900 rounded p-2 min-h-0 min-w-0 flex flex-col overflow-hidden">
+          <div className="bg-gray-900 rounded p-2 min-h-0 h-full min-w-0 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between gap-2 mb-1 shrink-0 min-w-0">
               <div className="text-[10px] text-gray-400 font-bold min-w-0 truncate">
                 Trades For Selected Market {selectedMarketId ? <span className="text-gray-500">({selectedMarketId})</span> : null}
@@ -3023,9 +3025,9 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
           )}
           </div>
           {isWide2400 && inlineWalletSlot ? (
-            <div className="toxic-inline-wallet-panel min-h-0 min-w-0 overflow-hidden">
+            <div className="toxic-inline-wallet-panel flex flex-col min-h-0 h-full overflow-hidden">
               {selectedWallet ? (
-                <div className="h-full w-[84rem] border-l border-gray-700/80 pl-2">
+                <div className="flex flex-col min-h-0 h-full w-[84rem] border-l border-gray-700/80 pl-2">
                   <WalletInfoPanel
                     variant="inline"
                     open

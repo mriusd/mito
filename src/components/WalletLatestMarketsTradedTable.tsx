@@ -164,49 +164,64 @@ export function WalletLatestMarketsTradedTable({
   onRowClick?: (marketId: string) => void;
   horizontalCellPadding?: boolean;
 }) {
-  if (loading) return <div className="text-gray-500 text-[10px]">Loading markets...</div>;
-  if (markets.length === 0) return <div className="text-gray-500 text-[10px]">No markets found.</div>;
+  const cellPad = horizontalCellPadding ? ' [&_th]:px-2.5 [&_td]:px-2.5' : '';
+  const thead = (
+    <thead>
+      <tr className="text-gray-500 border-b border-gray-700">
+        <th className="text-left py-1 whitespace-normal min-w-[10rem]">Date</th>
+        <th className="text-center w-5 py-1 whitespace-nowrap" title="Resolved outcome (Y/N); color from ledger win/loss">
+          O
+        </th>
+        <th className="text-left whitespace-nowrap">Market</th>
+        <th className="text-right bg-green-900/15 text-green-300 font-bold py-1 whitespace-nowrap">Net Y</th>
+        <th className="text-right bg-red-900/15 text-red-300 font-bold py-1 whitespace-nowrap">Net N</th>
+        <th className="text-right whitespace-nowrap">Net</th>
+        <th className="text-right whitespace-nowrap" title="price_yes">
+          Px Y
+        </th>
+        <th className="text-right whitespace-nowrap" title="price_no">
+          Px N
+        </th>
+        <th
+          className="text-right whitespace-nowrap font-semibold text-red-300 py-1"
+          title="wallet_market_positions.usdc_in — USDC spent (shown as −USDC)"
+        >
+          Staked
+        </th>
+        <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">
+          Fee
+        </th>
+        <th className="text-right whitespace-nowrap" title="wallet_market_positions.payout">
+          Payout
+        </th>
+        <th className="text-right whitespace-nowrap" title="usdc_out − usdc_in − fee">
+          PnL
+        </th>
+        <th className="text-right whitespace-nowrap" title="(usdc_out/(usdc_in+fee)) − 1">
+          ROI
+        </th>
+      </tr>
+    </thead>
+  );
+
+  if (loading || markets.length === 0) {
+    return (
+      <div className="flex min-h-full flex-col">
+        <table className={`w-full text-[10px] whitespace-nowrap shrink-0${cellPad}`}>
+          {thead}
+        </table>
+        <div className="flex flex-1 min-h-0 items-center justify-center text-gray-500 text-[10px]">
+          {loading ? 'Loading markets...' : 'No markets found.'}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <table
-      className={`w-full text-[10px] whitespace-nowrap${horizontalCellPadding ? ' [&_th]:px-2.5 [&_td]:px-2.5' : ''}`}
+      className={`w-full text-[10px] whitespace-nowrap${cellPad}`}
     >
-      <thead>
-        <tr className="text-gray-500 border-b border-gray-700">
-          <th className="text-left py-1 whitespace-normal min-w-[10rem]">Date</th>
-          <th className="text-center w-5 py-1 whitespace-nowrap" title="Resolved outcome (Y/N); color from ledger win/loss">
-            O
-          </th>
-          <th className="text-left whitespace-nowrap">Market</th>
-          <th className="text-right bg-green-900/15 text-green-300 font-bold py-1 whitespace-nowrap">Net Y</th>
-          <th className="text-right bg-red-900/15 text-red-300 font-bold py-1 whitespace-nowrap">Net N</th>
-          <th className="text-right whitespace-nowrap">Net</th>
-          <th className="text-right whitespace-nowrap" title="price_yes">
-            Px Y
-          </th>
-          <th className="text-right whitespace-nowrap" title="price_no">
-            Px N
-          </th>
-          <th
-            className="text-right whitespace-nowrap font-semibold text-red-300 py-1"
-            title="wallet_market_positions.usdc_in — USDC spent (shown as −USDC)"
-          >
-            Staked
-          </th>
-          <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">
-            Fee
-          </th>
-          <th className="text-right whitespace-nowrap" title="wallet_market_positions.payout">
-            Payout
-          </th>
-          <th className="text-right whitespace-nowrap" title="usdc_out − usdc_in − fee">
-            PnL
-          </th>
-          <th className="text-right whitespace-nowrap" title="(usdc_out/(usdc_in+fee)) − 1">
-            ROI
-          </th>
-        </tr>
-      </thead>
+      {thead}
       <tbody>
         {markets.filter((m) => m != null && String(m.marketId || '').trim()).map((m) => {
           const mk =

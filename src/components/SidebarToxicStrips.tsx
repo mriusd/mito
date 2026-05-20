@@ -6,12 +6,18 @@ import {
   dominantStakedLegAvgPriceCents,
   toxicCohortStakedNetSurplusHalves,
   toxicRowLedgerLifetimePnlNegative,
+  toxicRowWalletIsXMarked,
 } from '../lib/toxicFlowStakeCohort';
 import {
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
   TOXIC_FAVOURITES_CHANGED_EVENT,
   readToxicFavouriteWallets,
 } from '../lib/toxicFavouriteWallets';
+import {
+  readToxicXWallets,
+  TOXIC_X_CHANGED_EVENT,
+  TOXIC_X_WALLETS_LS_KEY,
+} from '../lib/toxicXWallets';
 import { setSidebarToxicNotify, resetSidebarToxicNotify } from '../lib/sidebarToxicNotifyStore';
 import type { MarketStakedLegsResponse } from '../api';
 
@@ -50,16 +56,21 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   notifyGreensTiltPct: number;
 }) {
   const [toxicFavSet, setToxicFavSet] = useState(readToxicFavouriteWallets);
+  const [toxicXSet, setToxicXSet] = useState(readToxicXWallets);
   useEffect(() => {
-    const sync = () => setToxicFavSet(readToxicFavouriteWallets());
+    const syncFav = () => setToxicFavSet(readToxicFavouriteWallets());
+    const syncX = () => setToxicXSet(readToxicXWallets());
     const onStorage = (e: StorageEvent) => {
-      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY) sync();
+      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY) syncFav();
+      if (e.key === TOXIC_X_WALLETS_LS_KEY) syncX();
     };
     window.addEventListener('storage', onStorage);
-    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
+    window.addEventListener(TOXIC_X_CHANGED_EVENT, syncX);
     return () => {
       window.removeEventListener('storage', onStorage);
-      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
+      window.removeEventListener(TOXIC_X_CHANGED_EVENT, syncX);
     };
   }, []);
 
@@ -90,6 +101,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
 
     let whalePassesPriceGate = false;
     for (const w of toxicTabViews.whales) {
+      if (toxicRowWalletIsXMarked(w, toxicXSet)) continue;
       if (notifyWhaleIgnoreNegativePnl && toxicRowLedgerLifetimePnlNegative(w)) continue;
       const pc = dominantStakedLegAvgPriceCents(w);
       if (pc == null || !Number.isFinite(pc)) continue;
@@ -132,6 +144,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
     notifyTiltAppliesToSelectedMarket,
     notifyWhaleMaxPriceCents,
     notifyWhaleIgnoreNegativePnl,
+    toxicXSet,
     notifyHolderTiltPct,
     notifySmartTiltPct,
     notifyFavouriteTiltPct,

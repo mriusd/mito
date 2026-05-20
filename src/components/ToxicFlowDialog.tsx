@@ -33,7 +33,6 @@ import {
   fetchToxicFlow,
   fetchWalletSummary,
   fetchWalletPositions,
-  fetchOnchainFills,
   fetchMarketStakedLegs,
   mergeMarketStakedLegsResponse,
   walletSummaryFromLedgerEmbed,
@@ -85,6 +84,7 @@ import { WS_BASE } from '../lib/env';
 import { toxicFlowFillKey } from '../lib/tradeKeys';
 import { useAppStore } from '../stores/appStore';
 import { useMarketLookupSnapshot } from '../hooks/useMarketLookupSnapshot';
+import { useWalletMarketTradesWS, type WSTrade } from '../hooks/useOnchainTradesWS';
 import {
   buildMarketByIdRecord,
   sortWalletPositionsByDisplayedDateDesc,
@@ -177,9 +177,12 @@ interface ToxicFlowDialogProps {
   /** Embedded panel: HTTP full refresh from parent stream hook. */
   onRefreshStream?: () => void | Promise<void>;
   streamRefreshing?: boolean;
-  /** Embedded sidebar: parent widens toxic panel when inline wallet info is open (≥2400px). */
-  onInlineWalletPanelChange?: (open: boolean) => void;
+  /** Embedded sidebar: sync parent width with inline wallet panel slide (≥2400px). */
+  onInlineWalletExtraWidthChange?: (width: string) => void;
 }
+
+const TOXIC_INLINE_WALLET_WIDTH = '84rem';
+const TOXIC_INLINE_WALLET_MS = 250;
 
 type Tab = ToxicFlowTabId;
 
@@ -787,6 +790,25 @@ function isUpDownFromFill(mk: any, f: OnchainFillRow): boolean {
 /** API `side` varies (Yes/No/YES/empty). Infer YES/NO (or UP/DOWN) from `tokenId` vs market clob ids when missing. */
 function isLedgerFillRow(f: OnchainFillRow): boolean {
   return f.fillSource === 'wallet_fill_ledger';
+}
+
+function wsTradeToFillRow(t: WSTrade, wallet: string, marketId: string): OnchainFillRow {
+  return {
+    txHash: t.txHash || '',
+    logIndex: t.logIndex ?? 0,
+    blockNumber: 0,
+    blockTime: t.blockTime,
+    fillSource: 'wallet_fill_ledger',
+    wallet,
+    action: t.side,
+    size: t.size,
+    price: t.price,
+    fee: t.fee,
+    tokenId: t.tokenId,
+    side: t.outcome,
+    marketId,
+    isTaker: t.isTaker,
+  };
 }
 
 function fillOutcomeDisplay(f: OnchainFillRow, mk: any): { text: string; tone: 'yes' | 'no' | 'muted' } {
@@ -1629,19 +1651,24 @@ export function WalletInfoPanel({
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [markets, setMarkets] = useState<WalletPosition[]>([]);
   const [selectedMarketId, setSelectedMarketId] = useState('');
-  const [fills, setFills] = useState<OnchainFillRow[]>([]);
   const [loadingMarkets, setLoadingMarkets] = useState(false);
-  const [loadingFills, setLoadingFills] = useState(false);
-  const [fillsTotal, setFillsTotal] = useState(0);
-  const [fillsPage, setFillsPage] = useState(0);
   const [fillsRefreshToken, setFillsRefreshToken] = useState(0);
   const [dailySnapshotsRefresh, setDailySnapshotsRefresh] = useState(0);
   const [profileNickname, setProfileNickname] = useState('');
-  const fillsPageSize = 200;
+  const {
+    trades: wsMarketTrades,
+    total: fillsTotal,
+    loading: loadingFills,
+    refresh: refreshMarketTradesWS,
+  } = useWalletMarketTradesWS(wallet, selectedMarketId, open && !!wallet && !!selectedMarketId);
+  const fills = useMemo(
+    () => wsMarketTrades.map((t) => wsTradeToFillRow(t, wallet, selectedMarketId)),
+    [wsMarketTrades, wallet, selectedMarketId],
+  );
   const marketById = useMemo(() => buildMarketByIdRecord(marketLookup), [marketLookup]);
 
   const loadMarketsAndSelect = useCallback(
-    async (preserveSelected: string | null, resetFillsPage: boolean) => {
+    async (preserveSelected: string | null) => {
       if (!wallet) return '';
       const prefRaw = (initialMarketId || '').trim();
       const pref = prefRaw.toLowerCase();
@@ -1663,7 +1690,6 @@ export function WalletInfoPanel({
       }
       if (!pick && sorted.length > 0) pick = sorted[0].marketId;
       setSelectedMarketId(pick);
-      if (resetFillsPage) setFillsPage(0);
       return pick;
     },
     [wallet, initialMarketId],
@@ -1674,15 +1700,12 @@ export function WalletInfoPanel({
     setSummary(undefined);
     setMarkets([]);
     setSelectedMarketId('');
-    setFills([]);
-    setFillsTotal(0);
-    setFillsPage(0);
     setFillsRefreshToken(0);
     setDailySnapshotsRefresh(0);
     setLoadingMarkets(true);
     (async () => {
       try {
-        await loadMarketsAndSelect(null, false);
+        await loadMarketsAndSelect(null);
       } finally {
         setLoadingMarkets(false);
       }
@@ -1707,28 +1730,19 @@ export function WalletInfoPanel({
     if (!open || !wallet) return;
     setLoadingMarkets(true);
     try {
-      await loadMarketsAndSelect(selectedMarketId, true);
+      await loadMarketsAndSelect(selectedMarketId);
+      refreshMarketTradesWS();
       setFillsRefreshToken((n) => n + 1);
       setDailySnapshotsRefresh((n) => n + 1);
     } finally {
       setLoadingMarkets(false);
     }
-  }, [open, wallet, selectedMarketId, loadMarketsAndSelect]);
+  }, [open, wallet, selectedMarketId, loadMarketsAndSelect, refreshMarketTradesWS]);
 
   useEffect(() => {
     if (!open || !wallet || !selectedMarketId) return;
-    setLoadingFills(true);
-    setFills([]);
-    (async () => {
-      try {
-        const res = await fetchOnchainFills({ wallet, market_id: selectedMarketId, limit: fillsPageSize, offset: fillsPage * fillsPageSize });
-        setFills(res.fills || []);
-        setFillsTotal(res.total || 0);
-      } finally {
-        setLoadingFills(false);
-      }
-    })();
-  }, [open, wallet, selectedMarketId, fillsPage, fillsRefreshToken]);
+    refreshMarketTradesWS();
+  }, [open, wallet, selectedMarketId, fillsRefreshToken, refreshMarketTradesWS]);
 
   const summaryLeftRef = useRef<HTMLDivElement>(null);
   const [summaryLeftH, setSummaryLeftH] = useState(0);
@@ -2103,7 +2117,6 @@ export function WalletInfoPanel({
                 selectedMarketId={selectedMarketId}
                 onRowClick={(id) => {
                   setSelectedMarketId(id);
-                  setFillsPage(0);
                 }}
               />
             </div>
@@ -2285,29 +2298,10 @@ export function WalletInfoPanel({
               </table>
             )}
             </div>
-            <div className="mt-2 flex items-center justify-between text-[10px] text-gray-400 shrink-0 pt-1 border-t border-gray-800">
+            <div className="mt-2 text-[10px] text-gray-400 shrink-0 pt-1 border-t border-gray-800">
               <span>
-                Page {fmtIntEn(fillsPage + 1)} / {fmtIntEn(Math.max(1, Math.ceil(fillsTotal / fillsPageSize)))} (
-                {fmtIntEn(fillsTotal)} trades)
+                {fmtIntEn(fills.length)} shown · {fmtIntEn(fillsTotal)} total (live WS)
               </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className="px-2 py-0.5 rounded bg-gray-700 disabled:opacity-40"
-                  disabled={fillsPage <= 0 || loadingFills}
-                  onClick={() => setFillsPage((p) => Math.max(0, p - 1))}
-                >
-                  Prev
-                </button>
-                <button
-                  type="button"
-                  className="px-2 py-0.5 rounded bg-gray-700 disabled:opacity-40"
-                  disabled={loadingFills || ((fillsPage + 1) * fillsPageSize >= fillsTotal)}
-                  onClick={() => setFillsPage((p) => p + 1)}
-                >
-                  Next
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -2627,7 +2621,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   streamTabWalletViews = undefined,
   onRefreshStream: _onRefreshStream,
   streamRefreshing: _streamRefreshing = false,
-  onInlineWalletPanelChange,
+  onInlineWalletExtraWidthChange,
 }: ToxicFlowDialogProps) {
   const yesTok = (yesTokenId || '').trim();
   const [internalData, setInternalData] = useState<ToxicFlowData | null>(null);
@@ -2663,17 +2657,37 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState('');
   const isWide2400 = useMinWidth2400();
-  const inlineWalletOpen = isWide2400 && walletDialogOpen && selectedWallet.trim().length > 0;
-  const closeWalletPanel = useCallback(() => {
+  const isWide2400Ref = useRef(isWide2400);
+  isWide2400Ref.current = isWide2400;
+  const [inlineWalletSlot, setInlineWalletSlot] = useState(false);
+  const [inlineWalletWidth, setInlineWalletWidth] = useState('0px');
+  const walletOpenAnimRef = useRef(false);
+  const inlineWalletSlotRef = useRef(inlineWalletSlot);
+  inlineWalletSlotRef.current = inlineWalletSlot;
+  const inlineWalletWidthRef = useRef(inlineWalletWidth);
+  inlineWalletWidthRef.current = inlineWalletWidth;
+
+  useLayoutEffect(() => {
+    if (!embedded) return;
+    onInlineWalletExtraWidthChange?.(inlineWalletWidth);
+  }, [embedded, inlineWalletWidth, onInlineWalletExtraWidthChange]);
+
+  useLayoutEffect(() => {
+    if (!walletOpenAnimRef.current || inlineWalletWidth !== '0px') return;
+    walletOpenAnimRef.current = false;
+    const id = requestAnimationFrame(() => {
+      setInlineWalletWidth(TOXIC_INLINE_WALLET_WIDTH);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [inlineWalletSlot, inlineWalletWidth]);
+
+  useEffect(() => {
+    if (open) return;
     setWalletDialogOpen(false);
     setSelectedWallet('');
-  }, []);
-  useEffect(() => {
-    onInlineWalletPanelChange?.(inlineWalletOpen);
-  }, [inlineWalletOpen, onInlineWalletPanelChange]);
-  useEffect(() => {
-    if (!open) closeWalletPanel();
-  }, [open, closeWalletPanel]);
+    setInlineWalletSlot(false);
+    setInlineWalletWidth('0px');
+  }, [open]);
   const [toxicFollowSet, setToxicFollowSet] = useState(readToxicFavouriteWallets);
   useEffect(() => {
     const sync = () => setToxicFollowSet(readToxicFavouriteWallets());
@@ -2806,9 +2820,51 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     embedded && streamTabWalletViews !== undefined ? streamTabWalletViews : tabWalletViewsBuilt;
 
   const openWalletDialog = useCallback((wallet: string, _netShares?: number) => {
-    setSelectedWallet(wallet);
+    const w = wallet.trim();
+    if (!w) return;
+    setSelectedWallet(w);
     setWalletDialogOpen(true);
+    if (!isWide2400Ref.current) return;
+    if (inlineWalletSlotRef.current && inlineWalletWidthRef.current !== '0px') {
+      walletOpenAnimRef.current = false;
+      if (inlineWalletWidthRef.current !== TOXIC_INLINE_WALLET_WIDTH) {
+        setInlineWalletWidth(TOXIC_INLINE_WALLET_WIDTH);
+      }
+      return;
+    }
+    walletOpenAnimRef.current = true;
+    setInlineWalletSlot(true);
+    setInlineWalletWidth('0px');
   }, []);
+
+  const closeWalletPanel = useCallback(() => {
+    setWalletDialogOpen(false);
+    if (isWide2400Ref.current && inlineWalletSlot) {
+      setInlineWalletWidth('0px');
+      return;
+    }
+    setSelectedWallet('');
+    setInlineWalletSlot(false);
+    setInlineWalletWidth('0px');
+  }, [inlineWalletSlot]);
+
+  const onInlineWalletPanelTransitionEnd = useCallback(
+    (e: React.TransitionEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget || e.propertyName !== 'grid-template-columns') return;
+      if (inlineWalletWidth !== '0px') return;
+      setInlineWalletSlot(false);
+      setSelectedWallet('');
+    },
+    [inlineWalletWidth],
+  );
+
+  const showInlineWalletModal = walletDialogOpen && !isWide2400;
+  const toxicBodyGridStyle: React.CSSProperties | undefined = isWide2400
+    ? {
+        gridTemplateColumns: `minmax(0, 1fr) ${inlineWalletWidth}`,
+        transition: `grid-template-columns ${TOXIC_INLINE_WALLET_MS}ms ease`,
+      }
+    : undefined;
 
   if (!open) return null;
 
@@ -2819,12 +2875,23 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     : 'fixed inset-0 bg-black/60 z-[49999] flex items-center justify-center';
   const cardClass = embedded
     ? 'bg-gray-800 flex flex-col flex-1 min-h-0 min-w-0 p-3 border-0 border-gray-700/50 w-full rounded-none shadow-none'
-    : inlineWalletOpen
-      ? 'bg-gray-800 rounded-lg p-4 w-full mx-4 shadow-xl border border-gray-700 flex flex-col min-h-0 max-w-[min(98vw,calc(93.6rem+42rem))]'
+    : inlineWalletSlot
+      ? 'bg-gray-800 rounded-lg p-4 w-full mx-4 shadow-xl border border-gray-700 flex flex-col min-h-0'
       : 'bg-gray-800 rounded-lg p-4 max-w-4xl w-full mx-4 shadow-xl border border-gray-700 flex flex-col min-h-0';
   const cardStyle: React.CSSProperties = embedded
     ? { maxHeight: '100%', minHeight: 0 }
-    : { maxHeight: '85vh', height: '85vh', minHeight: 0 };
+    : {
+        maxHeight: '85vh',
+        height: '85vh',
+        minHeight: 0,
+        ...(isWide2400
+          ? {
+              width: `min(98vw, calc(56rem + ${inlineWalletWidth}))`,
+              maxWidth: `min(98vw, calc(56rem + ${inlineWalletWidth}))`,
+              transition: `width ${TOXIC_INLINE_WALLET_MS}ms ease, max-width ${TOXIC_INLINE_WALLET_MS}ms ease`,
+            }
+          : {}),
+      };
 
   return (
     <div
@@ -2853,7 +2920,11 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
         </div>
 
         {/* Body: flex so cohort tables consume remaining height; table body scrolls */}
-        <div className={`flex flex-1 min-h-0 overflow-hidden ${inlineWalletOpen ? 'flex-row gap-2' : 'flex-col'}`}>
+        <div
+          className={`flex-1 min-h-0 overflow-hidden ${isWide2400 ? 'grid' : inlineWalletSlot ? 'flex flex-row' : 'flex flex-col'}`}
+          style={toxicBodyGridStyle}
+          onTransitionEnd={isWide2400 ? onInlineWalletPanelTransitionEnd : undefined}
+        >
           <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
           {loading && <div className="text-gray-500 text-center py-8 shrink-0">Loading on-chain data...</div>}
           {error && <div className="text-red-400 text-center py-8 shrink-0">Error: {error}</div>}
@@ -2951,19 +3022,23 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
             </>
           )}
           </div>
-          {inlineWalletOpen ? (
-            <div className="flex flex-col min-h-0 shrink-0 w-[84rem] max-w-[84rem] border-l border-gray-700/80 pl-2 overflow-hidden">
-              <WalletInfoPanel
-                variant="inline"
-                open
-                wallet={selectedWallet}
-                initialMarketId={marketId}
-                onClose={closeWalletPanel}
-              />
+          {isWide2400 && inlineWalletSlot ? (
+            <div className="toxic-inline-wallet-panel min-h-0 min-w-0 overflow-hidden">
+              {selectedWallet ? (
+                <div className="h-full w-[84rem] border-l border-gray-700/80 pl-2">
+                  <WalletInfoPanel
+                    variant="inline"
+                    open
+                    wallet={selectedWallet}
+                    initialMarketId={marketId}
+                    onClose={closeWalletPanel}
+                  />
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
-        {!inlineWalletOpen ? (
+        {showInlineWalletModal ? (
           <WalletInfoDialog
             open={walletDialogOpen}
             wallet={selectedWallet}
@@ -2984,7 +3059,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     a.onClose !== b.onClose ||
     a.streamRefreshing !== b.streamRefreshing ||
     a.onRefreshStream !== b.onRefreshStream ||
-    a.onInlineWalletPanelChange !== b.onInlineWalletPanelChange ||
+    a.onInlineWalletExtraWidthChange !== b.onInlineWalletExtraWidthChange ||
     a.streamTabWalletViews !== b.streamTabWalletViews
   ) {
     return false;

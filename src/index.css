@@ -532,8 +532,8 @@ input[type="range"].vol-slider::-moz-range-thumb {
   .right-sidebar.sidebar-toxic-expanded {
     display: flex;
     flex-direction: column;
-    width: min(1162px, calc(100vw - 12px));
-    max-width: min(1162px, calc(100vw - 12px));
+    width: min(calc(1162px + var(--toxic-wallet-extra-width, 0px)), calc(100vw - 12px));
+    max-width: min(calc(1162px + var(--toxic-wallet-extra-width, 0px)), calc(100vw - 12px));
     overflow: hidden;
     scrollbar-gutter: stable;
     transition:
@@ -541,13 +541,10 @@ input[type="range"].vol-slider::-moz-range-thumb {
       width 0.25s ease,
       max-width 0.25s ease;
   }
+}
 
-  @media (min-width: 2400px) {
-    .right-sidebar.sidebar-toxic-expanded.sidebar-toxic-wallet-inline {
-      width: min(calc(1162px + 84rem), calc(100vw - 12px));
-      max-width: min(calc(1162px + 84rem), calc(100vw - 12px));
-    }
-  }
+.toxic-inline-wallet-panel {
+  overflow: hidden;
 }
 
 .sidebar-mobile-overlay {

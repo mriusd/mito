@@ -1211,7 +1211,7 @@ export function Sidebar() {
       return false;
     }
   });
-  const [toxicInlineWalletOpen, setToxicInlineWalletOpen] = useState(false);
+  const [toxicWalletExtraWidth, setToxicWalletExtraWidth] = useState('0px');
   const [marketStakedLegs, setMarketStakedLegs] = useState<MarketStakedLegsResponse | null>(null);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   useEffect(() => {
@@ -1223,7 +1223,7 @@ export function Sidebar() {
   }, [toxicSidebarExpanded]);
   const closeToxicSidebarPanel = useCallback(() => {
     setToxicSidebarExpanded(false);
-    setToxicInlineWalletOpen(false);
+    setToxicWalletExtraWidth('0px');
   }, []);
   useEffect(() => {
     setMergeDialogOpen(false);
@@ -2725,6 +2725,10 @@ export function Sidebar() {
     !isMobileSheet && !!selectedMarket && (selectedMarket.conditionId || '').trim().length > 0;
   const sidebarToxicEffective = toxicSidebarExpanded && canShowEmbeddedToxic;
 
+  useEffect(() => {
+    if (!sidebarToxicEffective) setToxicWalletExtraWidth('0px');
+  }, [sidebarToxicEffective]);
+
   const expandSidebarToxicFlowPanel = useCallback(() => {
     if (!canShowEmbeddedToxic) return;
     preloadToxicFlowDialog();
@@ -3320,8 +3324,13 @@ export function Sidebar() {
       />
     )}
     <div
-      className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}${canShowEmbeddedToxic && !sidebarToxicEffective ? ' sidebar-toxic-collapsed' : ''}${sidebarToxicEffective ? ' sidebar-toxic-expanded' : ''}${toxicInlineWalletOpen ? ' sidebar-toxic-wallet-inline' : ''}`}
-      style={{ ['--mobile-sheet-offset' as string]: `${mobileDragOffset}px` } as React.CSSProperties}
+      className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}${canShowEmbeddedToxic && !sidebarToxicEffective ? ' sidebar-toxic-collapsed' : ''}${sidebarToxicEffective ? ' sidebar-toxic-expanded' : ''}`}
+      style={
+        {
+          ['--mobile-sheet-offset' as string]: `${mobileDragOffset}px`,
+          ['--toxic-wallet-extra-width' as string]: toxicWalletExtraWidth,
+        } as React.CSSProperties
+      }
     >
       <div
         className="mobile-sidebar-drag-zone no-drag"
@@ -4976,7 +4985,7 @@ export function Sidebar() {
                 onRefreshStream={refreshToxicFlow}
                 streamRefreshing={toxicFlowRefreshing}
                 onClose={closeToxicSidebarPanel}
-                onInlineWalletPanelChange={setToxicInlineWalletOpen}
+                onInlineWalletExtraWidthChange={setToxicWalletExtraWidth}
               />
             </Suspense>
           </div>

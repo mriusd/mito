@@ -622,14 +622,130 @@ function tradeFilledSizeShares(trade: { size: string; size_filled?: string }): n
   return parseFloat(trade.size_filled ?? trade.size);
 }
 
+type CustomSidebarOrderOutcome = 'YES' | 'NO' | 'AUTO';
+
+type CustomSidebarPriceMode = 'FIXED' | 'BS_MINUS_C' | 'BS_PLUS_C' | 'BS_MINUS_PCT' | 'BS_PLUS_PCT';
+
+type CustomSidebarOrderSpec = {
+  side: 'BUY' | 'SELL';
+  priceMode: CustomSidebarPriceMode;
+  /** Fixed ¢, or BS offset (¢ or percentage points). */
+  priceValue: number;
+  maxSell: boolean;
+  /** AUTO = use sidebar Place Order YES/NO toggle. */
+  outcome: CustomSidebarOrderOutcome;
+};
+
 type CustomSidebarButton = {
   id: string;
-  side: 'BUY' | 'SELL';
-  priceCents: number;
-  maxSell: boolean;
   label: string;
   color: string;
+  orders: CustomSidebarOrderSpec[];
 };
+
+type CustomOrderDraft = {
+  side: 'BUY' | 'SELL';
+  priceMode: CustomSidebarPriceMode;
+  price: string;
+  maxSell: boolean;
+  outcome: CustomSidebarOrderOutcome;
+};
+
+const DEFAULT_CUSTOM_ORDER_DRAFT = (): CustomOrderDraft => ({
+  side: 'BUY',
+  priceMode: 'FIXED',
+  price: '',
+  maxSell: false,
+  outcome: 'AUTO',
+});
+
+function normalizeCustomSidebarPriceMode(raw: unknown): CustomSidebarPriceMode {
+  const s = String(raw || 'FIXED').toUpperCase();
+  if (s === 'BS_MINUS_C') return 'BS_MINUS_C';
+  if (s === 'BS_PLUS_C') return 'BS_PLUS_C';
+  if (s === 'BS_MINUS_PCT') return 'BS_MINUS_PCT';
+  if (s === 'BS_PLUS_PCT') return 'BS_PLUS_PCT';
+  return 'FIXED';
+}
+
+function customOrderPriceInputSuffix(mode: CustomSidebarPriceMode): string {
+  return mode === 'BS_MINUS_PCT' || mode === 'BS_PLUS_PCT' ? '%' : '¢';
+}
+
+function customOrderPriceLabel(spec: CustomSidebarOrderSpec): string {
+  switch (spec.priceMode) {
+    case 'BS_MINUS_C':
+      return `BS-${spec.priceValue}¢`;
+    case 'BS_PLUS_C':
+      return `BS+${spec.priceValue}¢`;
+    case 'BS_MINUS_PCT':
+      return `BS-${spec.priceValue}%`;
+    case 'BS_PLUS_PCT':
+      return `BS+${spec.priceValue}%`;
+    default:
+      return `${spec.priceValue}¢`;
+  }
+}
+
+function resolveCustomOrderPriceCents(spec: CustomSidebarOrderSpec, mathProbCents: number | null): number | null {
+  const v = spec.priceValue;
+  if (spec.priceMode === 'FIXED') {
+    if (!Number.isFinite(v) || v <= 0 || v >= 100) return null;
+    return v;
+  }
+  if (mathProbCents == null || !Number.isFinite(mathProbCents)) return null;
+  let cents: number;
+  switch (spec.priceMode) {
+    case 'BS_MINUS_C':
+      cents = mathProbCents - v;
+      break;
+    case 'BS_PLUS_C':
+      cents = mathProbCents + v;
+      break;
+    case 'BS_MINUS_PCT':
+      cents = mathProbCents - v;
+      break;
+    case 'BS_PLUS_PCT':
+      cents = mathProbCents + v;
+      break;
+    default:
+      return null;
+  }
+  if (!Number.isFinite(cents) || cents <= 0 || cents >= 100) return null;
+  return Math.round(cents * 10) / 10;
+}
+
+function normalizeCustomSidebarOrderSpec(raw: unknown): CustomSidebarOrderSpec | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const side = o.side === 'SELL' ? 'SELL' : o.side === 'BUY' ? 'BUY' : null;
+  if (!side) return null;
+  const priceMode = normalizeCustomSidebarPriceMode(o.priceMode);
+  const priceValue =
+    Number.isFinite(Number(o.priceValue)) ? Number(o.priceValue) : Number(o.priceCents);
+  if (!Number.isFinite(priceValue)) return null;
+  if (priceMode === 'FIXED' && (priceValue <= 0 || priceValue >= 100)) return null;
+  if (priceMode !== 'FIXED' && priceValue < 0) return null;
+  const outcomeRaw = String(o.outcome || 'AUTO').toUpperCase();
+  const outcome: CustomSidebarOrderOutcome =
+    outcomeRaw === 'YES' ? 'YES' : outcomeRaw === 'NO' ? 'NO' : 'AUTO';
+  return {
+    side,
+    priceMode,
+    priceValue,
+    maxSell: side === 'SELL' ? !!o.maxSell : false,
+    outcome,
+  };
+}
+
+function customButtonTitle(btn: CustomSidebarButton, orderAmount: string): string {
+  return btn.orders
+    .map((o) => {
+      const outLabel = o.outcome === 'AUTO' ? '↔' : o.outcome;
+      return `${o.side} ${o.maxSell ? 'MAX' : orderAmount || '?'} ${outLabel} @ ${customOrderPriceLabel(o)}`;
+    })
+    .join(' + ');
+}
 
 function readCustomSidebarButtons(): CustomSidebarButton[] {
   try {
@@ -638,15 +754,40 @@ function readCustomSidebarButtons(): CustomSidebarButton[] {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed
-      .filter((b) => b && (b.side === 'BUY' || b.side === 'SELL'))
-      .map((b) => ({
-        id: String(b.id || `${Date.now()}-${Math.random()}`),
-        side: b.side as 'BUY' | 'SELL',
-        priceCents: Number(b.priceCents) || 0,
-        maxSell: !!b.maxSell,
-        label: String(b.label || '?').slice(0, 3),
-        color: String(b.color || '#2563eb'),
-      }));
+      .map((b) => {
+        if (!b || typeof b !== 'object') return null;
+        const label = String(b.label || '?').slice(0, 3);
+        if (!label) return null;
+        const base = {
+          id: String(b.id || `${Date.now()}-${Math.random()}`),
+          label,
+          color: String(b.color || '#2563eb'),
+        };
+        if (Array.isArray(b.orders) && b.orders.length > 0) {
+          const orders = (b.orders as unknown[])
+            .map(normalizeCustomSidebarOrderSpec)
+            .filter((o): o is CustomSidebarOrderSpec => o != null)
+            .slice(0, 2);
+          if (orders.length === 0) return null;
+          return { ...base, orders };
+        }
+        if (b.side !== 'BUY' && b.side !== 'SELL') return null;
+        const priceCents = Number(b.priceCents);
+        if (!Number.isFinite(priceCents) || priceCents <= 0 || priceCents >= 100) return null;
+        return {
+          ...base,
+          orders: [
+            {
+              side: b.side as 'BUY' | 'SELL',
+              priceMode: 'FIXED' as const,
+              priceValue: priceCents,
+              maxSell: !!b.maxSell,
+              outcome: 'AUTO' as const,
+            },
+          ],
+        };
+      })
+      .filter((b): b is CustomSidebarButton => b != null);
   } catch {
     return [];
   }
@@ -1206,9 +1347,7 @@ export function Sidebar() {
   const [orderAmount, setOrderAmount] = useState(() => localStorage.getItem('polymarket-order-amount') || '');
   const [customButtons, setCustomButtons] = useState<CustomSidebarButton[]>(() => readCustomSidebarButtons());
   const [customDialogOpen, setCustomDialogOpen] = useState(false);
-  const [customSide, setCustomSide] = useState<'BUY' | 'SELL'>('BUY');
-  const [customPrice, setCustomPrice] = useState('');
-  const [customSellMax, setCustomSellMax] = useState(false);
+  const [customOrderDrafts, setCustomOrderDrafts] = useState<CustomOrderDraft[]>(() => [DEFAULT_CUSTOM_ORDER_DRAFT()]);
   const [customLabel, setCustomLabel] = useState('');
   const [customColor, setCustomColor] = useState('#2563eb');
   const [editingCustomButtonId, setEditingCustomButtonId] = useState<string | null>(null);
@@ -1976,6 +2115,58 @@ export function Sidebar() {
     upDownRemaining,
   ]);
 
+  const getMathProbCentsForOutcome = useCallback(
+    (outcome: 'YES' | 'NO'): number | null => {
+      if (!selectedMarket?.endDate) return null;
+      const endDate = selectedMarket.endDate;
+      const asset = extractAssetFromMarket(selectedMarket);
+      if (!asset) return null;
+      const sym = (asset + 'USDT') as AssetSymbol;
+      const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
+      const nowOffset = Date.now() + bsTimeOffsetHours * 3600000;
+      const expiryMs = new Date(endDate).getTime();
+      const pastExpiry = bsTimeOffsetHours > 0 && nowOffset >= expiryMs;
+      if (pastExpiry) return null;
+
+      if (isUpDownMarket) {
+        const binanceSym = (asset.toUpperCase() + 'USDT') as AssetSymbol;
+        const chainlinkPrice =
+          upDownSpotUsesChainlink && polyPrice.price != null && polyPrice.price > 0 ? polyPrice.price : 0;
+        const binancePrice = priceData[binanceSym]?.price || 0;
+        const currentPrice = upDownSpotUsesChainlink ? chainlinkPrice || binancePrice : binancePrice;
+        if (!upDownTargetPrice || !currentPrice) return null;
+        const probUp = getMarketProbability('>' + upDownTargetPrice, currentPrice, endDate, sigma, bsTimeOffsetHours);
+        if (probUp === null) return null;
+        return (outcome === 'YES' ? probUp : 1 - probUp) * 100;
+      }
+
+      const strikeRaw = (selectedMarket.groupItemTitle || '').trim();
+      if (!strikeRaw) return null;
+      const currentPrice = priceData[sym]?.price || vwapData[sym]?.price || 0;
+      if (!currentPrice) return null;
+      const cleaned = strikeRaw.replace(/^Hit\s*/i, '').replace(/[\$,]/g, '').replace(/↑/g, '>').replace(/↓/g, '<').trim();
+      const ps = cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-') ? cleaned : '>' + cleaned;
+      const probYes = selectedMarketIsHit
+        ? getHitMarketProbability(ps, currentPrice, endDate, sigma, bsTimeOffsetHours)
+        : getMarketProbability(ps, currentPrice, endDate, sigma, bsTimeOffsetHours);
+      if (probYes === null) return null;
+      return (outcome === 'YES' ? probYes : 1 - probYes) * 100;
+    },
+    [
+      selectedMarket,
+      isUpDownMarket,
+      upDownTargetPrice,
+      upDownSpotUsesChainlink,
+      polyPrice.price,
+      priceData,
+      vwapData,
+      volatilityData,
+      volMultiplier,
+      bsTimeOffsetHours,
+      selectedMarketIsHit,
+    ],
+  );
+
   /** Cohort signals only (Black–Scholes Δ gate removed). */
   const effectiveSidebarBgFlash = useMemo((): 'green' | 'red' | null => {
     if (!notifyFlashBg || !notifyStakedGatePasses || !notifyVolatilityGatePasses) return null;
@@ -2396,19 +2587,44 @@ export function Sidebar() {
   };
 
   const handleCreateCustomButton = () => {
-    const priceCents = parseFloat(customPrice);
     const label = customLabel.trim();
     if (!label) { showToast('Enter button label (1-3 chars)', 'error'); return; }
-    if (!Number.isFinite(priceCents) || priceCents <= 0 || priceCents >= 100) { showToast('Invalid price', 'error'); return; }
     if (label.length < 1 || label.length > 3) { showToast('Button label must be 1-3 characters', 'error'); return; }
+
+    const orders: CustomSidebarOrderSpec[] = [];
+    for (const draft of customOrderDrafts) {
+      const priceValue = parseFloat(draft.price);
+      if (!Number.isFinite(priceValue)) {
+        showToast('Invalid price in one of the orders', 'error');
+        return;
+      }
+      if (draft.priceMode === 'FIXED') {
+        if (priceValue <= 0 || priceValue >= 100) {
+          showToast('Fixed price must be between 0.1 and 99.9¢', 'error');
+          return;
+        }
+      } else if (priceValue < 0) {
+        showToast('BS offset cannot be negative', 'error');
+        return;
+      }
+      orders.push({
+        side: draft.side,
+        priceMode: draft.priceMode,
+        priceValue,
+        maxSell: draft.side === 'SELL' ? draft.maxSell : false,
+        outcome: draft.outcome,
+      });
+    }
+    if (orders.length === 0) {
+      showToast('Add at least one order', 'error');
+      return;
+    }
 
     const next: CustomSidebarButton = {
       id: editingCustomButtonId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      side: customSide,
-      priceCents,
-      maxSell: customSide === 'SELL' ? customSellMax : false,
       label,
       color: customColor,
+      orders,
     };
     if (editingCustomButtonId) {
       setCustomButtons((prev) => prev.map((b) => (b.id === editingCustomButtonId ? next : b)));
@@ -2419,15 +2635,41 @@ export function Sidebar() {
     setCustomDialogOpen(false);
   };
 
+  const openCustomDialogForCreate = () => {
+    setEditingCustomButtonId(null);
+    setCustomOrderDrafts([DEFAULT_CUSTOM_ORDER_DRAFT()]);
+    setCustomLabel('');
+    setCustomColor('#2563eb');
+    setCustomDialogOpen(true);
+  };
+
+  const updateCustomOrderDraft = (index: number, patch: Partial<CustomOrderDraft>) => {
+    setCustomOrderDrafts((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  };
+
+  const handleAddCustomOrderDraft = () => {
+    setCustomOrderDrafts((prev) => (prev.length >= 2 ? prev : [...prev, DEFAULT_CUSTOM_ORDER_DRAFT()]));
+  };
+
+  const handleRemoveCustomOrderDraft = (index: number) => {
+    setCustomOrderDrafts((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+  };
+
   const handleRemoveCustomButton = (id: string) => {
     setCustomButtons((prev) => prev.filter((b) => b.id !== id));
   };
 
   const handleEditCustomButton = (btn: CustomSidebarButton) => {
     setEditingCustomButtonId(btn.id);
-    setCustomSide(btn.side);
-    setCustomPrice(String(btn.priceCents));
-    setCustomSellMax(!!btn.maxSell);
+    setCustomOrderDrafts(
+      btn.orders.map((o) => ({
+        side: o.side,
+        priceMode: o.priceMode,
+        price: String(o.priceValue),
+        maxSell: !!o.maxSell,
+        outcome: o.outcome,
+      })),
+    );
     setCustomLabel(btn.label);
     setCustomColor(btn.color);
     setCustomDialogOpen(true);
@@ -2435,69 +2677,91 @@ export function Sidebar() {
 
   const handleCustomButtonClick = async (btn: CustomSidebarButton) => {
     if (!selectedMarket) return;
-    const tokenId = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1];
 
-    if (!tokenId) return;
-
-    let size = parseFloat(orderAmount);
-    if (btn.side === 'SELL' && btn.maxSell) {
-      const tidKey = positionTokenKey(tokenId);
-      const pos = tidKey
-        ? myPositions.find(
-            (p) => positionTokenKey(String(p.asset || '')) === tidKey && (p.size || 0) > 0,
-          )
-        : undefined;
-      size = pos ? Math.floor(Number(pos.size) * 100) / 100 : 0;
-    }
-    if (!size || size <= 0) {
-      showToast(btn.side === 'SELL' && btn.maxSell ? 'No position size available for MAX sell' : 'Invalid amount', 'error');
-      return;
-    }
-
-    let expiration = 0;
-    if (btn.side === 'BUY') {
-      const exp = computeLimitExpiration(selectedMarket.endDate);
-      expiration = exp.expiration;
-      if (exp.invalidLead) {
-        showToast('Lead time to expiration already passed for this market', 'error');
+    let placed = 0;
+    for (const spec of btn.orders) {
+      const resolvedOutcome: 'YES' | 'NO' = spec.outcome === 'AUTO' ? orderOutcome : spec.outcome;
+      const mathProbCents = getMathProbCentsForOutcome(resolvedOutcome);
+      const priceCents = resolveCustomOrderPriceCents(spec, mathProbCents);
+      if (priceCents == null) {
+        showToast(
+          spec.priceMode === 'FIXED' ? 'Invalid custom order price' : 'Cannot resolve BS price (math prob unavailable)',
+          'error',
+        );
         return;
       }
-    }
-
-    if (btn.side === 'BUY') {
-      const customEarlyVusd = orderNotionalUsd(btn.priceCents / 100, size);
-      const customEarlyCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, customEarlyVusd);
-      if (customEarlyCap) {
-        showToast(customEarlyCap, 'error');
+      const tokenId = selectedMarket.clobTokenIds?.[resolvedOutcome === 'YES' ? 0 : 1];
+      if (!tokenId) {
+        showToast('Missing token for custom order', 'error');
         return;
       }
+
+      let size = parseFloat(orderAmount);
+      if (spec.side === 'SELL' && spec.maxSell) {
+        const tidKey = positionTokenKey(tokenId);
+        const pos = tidKey
+          ? myPositions.find(
+              (p) => positionTokenKey(String(p.asset || '')) === tidKey && (p.size || 0) > 0,
+            )
+          : undefined;
+        size = pos ? Math.floor(Number(pos.size) * 100) / 100 : 0;
+      }
+      if (!size || size <= 0) {
+        showToast(
+          spec.side === 'SELL' && spec.maxSell ? 'No position size available for MAX sell' : 'Invalid amount',
+          'error',
+        );
+        return;
+      }
+
+      let expiration = 0;
+      if (spec.side === 'BUY') {
+        const exp = computeLimitExpiration(selectedMarket.endDate);
+        expiration = exp.expiration;
+        if (exp.invalidLead) {
+          showToast('Lead time to expiration already passed for this market', 'error');
+          return;
+        }
+      }
+
+      if (spec.side === 'BUY') {
+        const customEarlyVusd = orderNotionalUsd(priceCents / 100, size);
+        const customEarlyCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, customEarlyVusd);
+        if (customEarlyCap) {
+          showToast(customEarlyCap, 'error');
+          return;
+        }
+      }
+
+      const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
+        marketLookup,
+        tokenId,
+        spec.side,
+        priceCents,
+      );
+      if (crossesBook) {
+        const confirmed = await requestCrossingConfirm(bestCounterpartyCents ?? 0);
+        if (!confirmed) return;
+      }
+
+      const result = await placeOrder({
+        tokenId,
+        side: spec.side,
+        price: priceCents / 100,
+        size,
+        expiration,
+        orderInfo: `${spec.side} ${size} ${resolvedOutcome} for ${marketName} @ ${priceCents}¢`,
+      });
+      if (!result.success) {
+        showToast(result.error || 'Custom order failed', 'error');
+        if (placed > 0) triggerWalletRefresh();
+        return;
+      }
+      placed += 1;
     }
 
-    const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
-      marketLookup,
-      tokenId,
-      btn.side,
-      btn.priceCents,
-    );
-    if (crossesBook) {
-      const confirmed = await requestCrossingConfirm(bestCounterpartyCents ?? 0);
-      if (!confirmed) return;
-    }
-
-    const result = await placeOrder({
-      tokenId,
-      side: btn.side,
-      price: btn.priceCents / 100,
-      size,
-      expiration,
-      orderInfo: `${btn.side} ${size} ${orderOutcome} for ${marketName} @ ${btn.priceCents}¢`,
-    });
-    if (result.success) {
-      showToast('Custom order placed', 'success');
-      triggerWalletRefresh();
-    } else {
-      showToast(result.error || 'Custom order failed', 'error');
-    }
+    showToast(placed > 1 ? `${placed} custom orders placed` : 'Custom order placed', 'success');
+    triggerWalletRefresh();
   };
 
   const reorderCustomButtons = (fromId: string, toId: string) => {
@@ -4552,7 +4816,7 @@ export function Sidebar() {
                         onDragEnd={() => setDraggingCustomId(null)}
                         className="relative group w-7 h-4 rounded text-[11px] font-extrabold leading-none transition text-white"
                         style={{ backgroundColor: btn.color, textShadow: '-1px 0 #000, 0 1px #000, 1px 0 #000, 0 -1px #000' }}
-                        title={`${btn.side} ${btn.maxSell ? 'MAX' : (orderAmount || '?')} @ ${btn.priceCents}¢`}
+                        title={customButtonTitle(btn, orderAmount)}
                       >
                         {btn.label}
                         <span
@@ -4580,7 +4844,7 @@ export function Sidebar() {
                     ))}
                     <button
                       type="button"
-                      onClick={() => setCustomDialogOpen(true)}
+                      onClick={openCustomDialogForCreate}
                       className="w-7 h-4 rounded text-[9px] font-bold leading-none transition bg-gray-700 hover:bg-gray-600 text-gray-200 flex items-center justify-center"
                       title="Create Custom Button"
                     >
@@ -4603,7 +4867,7 @@ export function Sidebar() {
                         onDragEnd={() => setDraggingCustomId(null)}
                         className="relative group w-9 py-2 text-[16px] rounded-lg font-extrabold transition text-white"
                         style={{ backgroundColor: btn.color, textShadow: '-1px 0 #000, 0 1px #000, 1px 0 #000, 0 -1px #000' }}
-                        title={`${btn.side} ${btn.maxSell ? 'MAX' : (orderAmount || '?')} @ ${btn.priceCents}¢`}
+                        title={customButtonTitle(btn, orderAmount)}
                       >
                         {btn.label}
                         <span
@@ -4631,7 +4895,7 @@ export function Sidebar() {
                     ))}
                     <button
                       type="button"
-                      onClick={() => setCustomDialogOpen(true)}
+                      onClick={openCustomDialogForCreate}
                       className="w-9 py-2 rounded-lg font-bold text-sm transition bg-gray-700 hover:bg-gray-600 text-gray-200 flex items-center justify-center"
                       title="Create Custom Button"
                     >
@@ -5061,33 +5325,106 @@ export function Sidebar() {
       </div>
       {customDialogOpen && typeof document !== 'undefined' && createPortal((
         <div className="fixed inset-0 z-[60000] bg-black/70 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) setCustomDialogOpen(false); }}>
-          <div className="w-full max-w-sm mx-4 rounded-lg border border-gray-600 bg-gray-800 p-4">
+          <div className="w-full max-w-md mx-4 rounded-lg border border-gray-600 bg-gray-800 p-4 max-h-[90vh] overflow-y-auto">
             <div className="text-sm font-bold text-white mb-3">{editingCustomButtonId ? 'Edit Custom Button' : 'Create Custom Button'}</div>
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400 w-16">Side</span>
-                <select value={customSide} onChange={(e) => setCustomSide(e.target.value as 'BUY' | 'SELL')} className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white flex-1">
-                  <option value="BUY">BUY</option>
-                  <option value="SELL">SELL</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400 w-16">Price ¢</span>
-                <input value={customPrice} onChange={(e) => setCustomPrice(e.target.value)} type="number" min="0.1" max="99.9" step="0.1" className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white flex-1" />
-              </div>
-              {customSide === 'SELL' && (
-                <label className="flex items-center gap-2 ml-[4.5rem] text-gray-300">
-                  <input type="checkbox" checked={customSellMax} onChange={(e) => setCustomSellMax(e.target.checked)} className="rounded accent-red-500" />
-                  <span>Max</span>
-                </label>
-              )}
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400 w-16">Label</span>
+            <div className="space-y-3 text-xs">
+              {customOrderDrafts.map((draft, index) => (
+                <div key={index} className="rounded border border-gray-600/80 bg-gray-900/50 p-2 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-300 font-semibold">Order {index + 1}</span>
+                    {customOrderDrafts.length > 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCustomOrderDraft(index)}
+                        className="text-[10px] text-rose-400 hover:text-rose-300"
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-400 w-16 shrink-0">Side</span>
+                    <select
+                      value={draft.side}
+                      onChange={(e) => updateCustomOrderDraft(index, { side: e.target.value as 'BUY' | 'SELL' })}
+                      className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white flex-1"
+                    >
+                      <option value="BUY">BUY</option>
+                      <option value="SELL">SELL</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-400 w-16 shrink-0">Direction</span>
+                    <select
+                      value={draft.outcome}
+                      onChange={(e) =>
+                        updateCustomOrderDraft(index, { outcome: e.target.value as CustomSidebarOrderOutcome })
+                      }
+                      className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white flex-1"
+                    >
+                      <option value="AUTO">—</option>
+                      <option value="YES">YES</option>
+                      <option value="NO">NO</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-400 w-16 shrink-0">Price</span>
+                    <select
+                      value={draft.priceMode}
+                      onChange={(e) =>
+                        updateCustomOrderDraft(index, { priceMode: e.target.value as CustomSidebarPriceMode })
+                      }
+                      className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white min-w-0 flex-[1.2]"
+                    >
+                      <option value="FIXED">Fixed Price</option>
+                      <option value="BS_MINUS_C">BS-¢</option>
+                      <option value="BS_PLUS_C">BS+¢</option>
+                      <option value="BS_MINUS_PCT">BS-%</option>
+                      <option value="BS_PLUS_PCT">BS+%</option>
+                    </select>
+                    <input
+                      value={draft.price}
+                      onChange={(e) => updateCustomOrderDraft(index, { price: e.target.value })}
+                      type="number"
+                      min="0"
+                      max={draft.priceMode === 'FIXED' ? '99.9' : undefined}
+                      step="0.1"
+                      className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 tabular-nums"
+                    />
+                    <span className="text-gray-400 w-3 shrink-0 text-center">{customOrderPriceInputSuffix(draft.priceMode)}</span>
+                  </div>
+                  {draft.side === 'SELL' && (
+                    <label className="flex items-center gap-2 ml-[4.5rem] text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={draft.maxSell}
+                        onChange={(e) => updateCustomOrderDraft(index, { maxSell: e.target.checked })}
+                        className="rounded accent-red-500"
+                      />
+                      <span>Max</span>
+                    </label>
+                  )}
+                </div>
+              ))}
+              {customOrderDrafts.length < 2 ? (
+                <button
+                  type="button"
+                  onClick={handleAddCustomOrderDraft}
+                  className="w-full rounded border border-dashed border-gray-600 px-2 py-1.5 text-gray-300 hover:bg-gray-700/40"
+                >
+                  Add order
+                </button>
+              ) : null}
+              <p className="text-[10px] text-gray-500 leading-snug">
+                Direction — uses YES/NO from Place Order box. BS modes use mathematical probability for that direction at click time.
+              </p>
+              <div className="flex items-center gap-2 pt-1 border-t border-gray-700/80">
+                <span className="text-gray-400 w-16 shrink-0">Label</span>
                 <input value={customLabel} onChange={(e) => setCustomLabel(e.target.value.slice(0, 3))} maxLength={3} className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 text-center font-bold" />
                 <span className="text-gray-500 text-[10px]">1-3 chars</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-gray-400 w-16">Color</span>
+                <span className="text-gray-400 w-16 shrink-0">Color</span>
                 <input value={customColor} onChange={(e) => setCustomColor(e.target.value)} type="color" className="w-10 h-8 bg-transparent border border-gray-600 rounded cursor-pointer" />
               </div>
             </div>

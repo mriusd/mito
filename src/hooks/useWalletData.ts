@@ -220,7 +220,14 @@ export function useWalletData() {
     };
   }, [proxyWallet, fetchAll, fetchOrdersOnly]);
 
-  // Poll every 90s as WS backstop
+  // Orders HTTP backstop every 30s (WS is primary)
+  useEffect(() => {
+    if (!isWebMode || !proxyWallet) return;
+    const interval = setInterval(fetchOrdersOnly, 30000);
+    return () => clearInterval(interval);
+  }, [proxyWallet, fetchOrdersOnly]);
+
+  // Full wallet poll every 90s as WS / order-poll backstop
   useEffect(() => {
     if (!isWebMode || !proxyWallet) return;
     const interval = setInterval(fetchAll, 90000);

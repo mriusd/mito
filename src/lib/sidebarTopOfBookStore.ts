@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from 'react';
+
 /** Bump when sidebar OB top-of-book changes — ref store avoids full Sidebar re-render. */
 let digest = 0;
 const listeners = new Set<() => void>();
@@ -14,4 +16,12 @@ export function subscribeSidebarTopOfBookDigest(onStoreChange: () => void): () =
 
 export function getSidebarTopOfBookDigest(): number {
   return digest;
+}
+
+export function useSidebarTopOfBookDigest(): number {
+  return useSyncExternalStore(
+    subscribeSidebarTopOfBookDigest,
+    getSidebarTopOfBookDigest,
+    getSidebarTopOfBookDigest,
+  );
 }

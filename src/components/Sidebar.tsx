@@ -110,6 +110,8 @@ import {
 } from '../lib/marketNotifyMute';
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
+import { SidebarOrderCostDisplay } from './SidebarOrderCostDisplay';
+import { SidebarSpotStripMathButton } from './SidebarSpotStripMathButton';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import { SidebarYesMidProbBar } from './SidebarYesMidProbBar';
 import { SidebarPositionListItem } from './SidebarPositionListItem';
@@ -1509,17 +1511,6 @@ export function Sidebar() {
   const marketNotifyMutedRef = useRef(isCurrentMarketMuted);
   marketNotifyMutedRef.current = isCurrentMarketMuted;
 
-  /** Recomputed summary / spot-strip when Host reports top-of-book change (not every depth tick). */
-  const [topOfBookDigest, setTopOfBookDigest] = useState(0);
-  const bumpTopOfBookDigest = useCallback(() => {
-    setTopOfBookDigest((n) => n + 1);
-  }, []);
-
-  const [polymarketTape, setPolymarketTape] = useState<LiveTrade[]>([]);
-
-  const onPolymarketTradesFromHost = useCallback((t: LiveTrade[]) => {
-    setPolymarketTape(t);
-  }, []);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   /** On-chain WS + REST prefetch: must not depend on sidebarOpen or tables stay empty after refresh until sidebar opens. */
   const onchainHookTokenId = useMemo(() => {
@@ -2235,37 +2226,9 @@ export function Sidebar() {
     prevPriceRef.current = p;
   }, [sidebarSpotStrip?.currentPrice]);
 
-  const summaryPriceDecimal = useMemo(() => {
-    if (orderKind === 'market') {
-      if (orderSide === 'BUY') {
-        const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
-        return displayAsks.length > 0 ? parseFloat(displayAsks[0].price) : MARKET_AGGRESSIVE_BUY;
-      }
-      const displayBids = sidebarBookRef.current?.displayBids ?? [];
-      const bestBid = displayBids.length > 0 ? displayBids[displayBids.length - 1] : null;
-      return bestBid ? parseFloat(bestBid.price) : MARKET_AGGRESSIVE_SELL;
-    }
-    return (parseFloat(orderPrice) || 0) / 100;
-  }, [orderKind, orderSide, orderPrice, topOfBookDigest]);
-  const cost = useMemo(() => {
-    const a = parseFloat(orderAmount);
-    if (!a) return 0;
-    const p = summaryPriceDecimal;
-    if (orderKind === 'limit' && (!orderPrice || !p)) return 0;
-    if (orderSide === 'BUY') return p * a;
-    return (1 - p) * a;
-  }, [orderAmount, summaryPriceDecimal, orderSide, orderKind, orderPrice]);
-
-  const payout = useMemo(() => {
-    const a = parseFloat(orderAmount);
-    if (!a) return 0;
-    if (orderSide === 'SELL') {
-      const p = summaryPriceDecimal;
-      if (orderKind === 'limit' && (!orderPrice || !p)) return 0;
-      return p * a;
-    }
-    return a;
-  }, [orderAmount, orderSide, summaryPriceDecimal, orderKind, orderPrice]);
+  const setOrderPriceFromMath = useCallback((cents: string) => {
+    setOrderPrice(cents);
+  }, []);
 
   const getOrderExpiryLeadSeconds = () => {
     const n = parseFloat(orderExpiry);
@@ -3942,14 +3905,6 @@ export function Sidebar() {
                     title: 'Binance spot',
                   };
 
-            const obAsks = sidebarBookRef.current?.displayAsks ?? [];
-            const bestAsk = obAsks.length > 0 ? parseFloat(obAsks[0].price) * 100 : null;
-            let bsColor = 'text-yellow-400';
-            if (bestAsk !== null && row.mathCents !== null) {
-              if (bestAsk < row.mathCents * 0.95) bsColor = 'text-green-400';
-              else if (bestAsk > row.mathCents * 1.05) bsColor = 'text-red-400';
-            }
-
             return (
               <div className="sidebar-section py-1 px-3">
                       <div
@@ -4004,14 +3959,11 @@ export function Sidebar() {
                         &gt;⏱
                       </span>
                     ) : row.mathCents !== null ? (
-                      <button
-                        type="button"
-                        className={`inline-flex max-w-full items-center justify-center gap-0.5 whitespace-nowrap rounded-none border-0 bg-transparent p-0 text-[11px] font-bold font-sans tabular-nums shadow-none outline-none ring-0 ${bsColor} cursor-pointer hover:underline focus-visible:ring-1 focus-visible:ring-amber-500/60`}
-                        onClick={() => setOrderPrice(row.mathCents!.toFixed(1))}
-                      >
-                        <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
-                        <span>{row.mathCents.toFixed(1)}</span>
-                      </button>
+                      <SidebarSpotStripMathButton
+                        mathCents={row.mathCents}
+                        sidebarBookRef={sidebarBookRef}
+                        onPickPrice={setOrderPriceFromMath}
+                      />
                     ) : (
                       <span className="text-gray-600 text-[11px]">—</span>
                     )}
@@ -4338,8 +4290,6 @@ export function Sidebar() {
           <SidebarPolymarketOBHost
             obTokenId={obTokenId}
             sidebarBookRef={sidebarBookRef}
-            onTopOfBookDigestBump={bumpTopOfBookDigest}
-            onPolymarketTrades={onPolymarketTradesFromHost}
             orderbookSectionHeight={orderbookSectionHeight}
             liveOrderbookExpanded={liveOrderbookExpanded}
             onToggleLiveOrderbookExpanded={toggleLiveOrderbookExpanded}
@@ -4621,13 +4571,13 @@ export function Sidebar() {
                   </select>
                 </div>
               </div>
-              <div className="bg-gray-700/50 rounded p-2 text-[10px] flex-1 flex flex-col text-gray-400">
-                <div className="flex justify-between"><span>Cost:</span><span>Payout:</span></div>
-                <div className="flex justify-between items-baseline mt-0.5">
-                  <span className="text-red-400 font-bold text-[13px]">{orderSide === 'SELL' ? '' : `$${cost.toFixed(2)}`}</span>
-                  <span className="text-green-400 font-bold text-[13px]">${payout.toFixed(2)}</span>
-                </div>
-              </div>
+              <SidebarOrderCostDisplay
+                sidebarBookRef={sidebarBookRef}
+                orderKind={orderKind}
+                orderSide={orderSide}
+                orderPrice={orderPrice}
+                orderAmount={orderAmount}
+              />
             </div>
 
             <div className="mb-2 flex flex-col gap-0.5">

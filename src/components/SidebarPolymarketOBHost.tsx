@@ -3,6 +3,8 @@ import type { Market, Position } from '../types';
 import { usePolymarketOB, type LiveTrade } from '../hooks/usePolymarketOB';
 import type { SidebarObAggStep } from '../lib/sidebarOrderbookAggregate';
 import { sidebarObAggregateLevels } from '../lib/sidebarOrderbookAggregate';
+import { bumpSidebarTopOfBookDigest } from '../lib/sidebarTopOfBookStore';
+import { setSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import { SidebarLiveOrderbookSection } from './SidebarLiveOrderbookSection';
 
 type OBLevel = { price: string; size: string };
@@ -31,9 +33,6 @@ export type SidebarPolymarketBookSnapshot = {
 type Props = {
   obTokenId: string | null;
   sidebarBookRef: React.MutableRefObject<SidebarPolymarketBookSnapshot | null>;
-  /** Bump parent state when top-of-book (summary / strip) inputs change — not on every intra-book RAF. */
-  onTopOfBookDigestBump: () => void;
-  onPolymarketTrades: (trades: LiveTrade[]) => void;
   orderbookSectionHeight: string;
   liveOrderbookExpanded: boolean;
   onToggleLiveOrderbookExpanded: () => void;
@@ -53,8 +52,6 @@ type Props = {
 export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   obTokenId,
   sidebarBookRef,
-  onTopOfBookDigestBump,
-  onPolymarketTrades,
   orderbookSectionHeight,
   liveOrderbookExpanded,
   onToggleLiveOrderbookExpanded,
@@ -135,8 +132,8 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   }, [snapshotBids, snapshotAsks]);
 
   useEffect(() => {
-    onPolymarketTrades(polymarketLiveTrades);
-  }, [polymarketLiveTrades, onPolymarketTrades]);
+    setSidebarPolymarketTape(polymarketLiveTrades);
+  }, [polymarketLiveTrades]);
 
   useLayoutEffect(() => {
     sidebarBookRef.current = {
@@ -153,9 +150,9 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
     const sig = `${firstAsk}|${lastBid}|${obLoading ? 1 : 0}`;
     if (sig !== prevTopSig.current) {
       prevTopSig.current = sig;
-      onTopOfBookDigestBump();
+      bumpSidebarTopOfBookDigest();
     }
-  }, [snapshotBids, snapshotAsks, obLoading, onTopOfBookDigestBump]);
+  }, [snapshotBids, snapshotAsks, obLoading]);
 
   return (
     <SidebarLiveOrderbookSection

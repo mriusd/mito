@@ -103,8 +103,6 @@ import {
   walletInvY,
   walletInvN,
   walletNet,
-  walletStakeYUsd,
-  walletStakeNUsd,
   walletStakeTotalUsd,
   walletStakeNetSignedUsd,
   walletStakeNetAbsUsd,
@@ -496,12 +494,6 @@ const NF_PCT_1 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maxi
 
 function rowFmtInt(v: number): string {
   return NF_INT_EN.format(Math.round(v));
-}
-
-function rowFmtUsdSigned(v: number): string {
-  if (!Number.isFinite(v)) return '–';
-  const sign = v >= 0 ? '+' : '−';
-  return `${sign}$${NF_INT_EN.format(Math.round(Math.abs(v)))}`;
 }
 
 /** Pulse class lookup (ordering: bell+whale > bell > whale > none). */
@@ -1235,8 +1227,6 @@ function WalletTableBodyRowImpl({
       : grossLeg > 0
         ? Math.abs(signedLegNet) / grossLeg
         : 0;
-  const stakeYUsd = walletStakeYUsd(w);
-  const stakeNUsd = walletStakeNUsd(w);
   const stakeNetSigned = walletStakeNetSignedUsd(w);
   const stakeNetAbsUsd = walletStakeNetAbsUsd(w);
   const rowNearResolved = walletHasSharePriceAtOrAbove95Cents(w);
@@ -1321,12 +1311,6 @@ function WalletTableBodyRowImpl({
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 tabular-nums ${priceSharePxClass(w.priceNo)}`}>{fmtPriceShare(w.priceNo)}</td>
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 text-gray-400`}>
         {typeof w.tradeCount === 'number' && Number.isFinite(w.tradeCount) ? rowFmtInt(w.tradeCount) : '–'}
-      </td>
-      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 font-medium tabular-nums text-red-400`}>
-        {Number.isFinite(stakeYUsd) ? rowFmtUsdSigned(-stakeYUsd) : '–'}
-      </td>
-      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 font-medium tabular-nums text-red-400`}>
-        {Number.isFinite(stakeNUsd) ? rowFmtUsdSigned(-stakeNUsd) : '–'}
       </td>
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 whitespace-nowrap`} title="Staked Y − Staked N (column display); Y / N suffix">
         {stakedNetUsdTableCellWithFlash(stakeNetSigned, stakedNetFlash)}
@@ -1552,24 +1536,18 @@ function WalletTableInner({
               Px N
             </th>
             <th className="align-middle py-1 text-right px-1">Trades</th>
-            <th className="align-middle py-1 text-right px-1 bg-green-900/10" title="−(inv_yes × price_yes) shown red (cost notionally)">
-              Staked Y
-            </th>
-            <th className="align-middle py-1 text-right px-1 bg-red-900/10 text-red-300" title="−(inv_no × price_no) shown red (cost notionally)">
-              Staked N
-            </th>
             <th className="align-middle py-1 text-right px-1 text-gray-300" title="(−inv_y×px_y) − (−inv_n×px_n) = Staked Y − Staked N as shown; suffix Y / N; green = favors YES / red = favors NO">
-              Staked Net
+              Staked
             </th>
             <th
               className={`align-middle py-1 px-1 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}
-              title="|Staked Net| USD ÷ total market staked (Σ|signed net|)"
+              title="|Staked| USD ÷ total market staked (Σ|signed net|)"
             >
               %
             </th>
             <th
               className={`align-middle py-1 px-1 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}
-              title="Running sum of % by table order (Staked Net / total staked)"
+              title="Running sum of % by table order (Staked / total staked)"
             >
               Cum%
             </th>
@@ -2417,7 +2395,7 @@ const ToxicFlowStakedStatCell = memo(function ToxicFlowStakedStatCell({
   return (
     <div
       className="bg-gray-900 rounded p-1.5 text-center min-w-0"
-      title="Σ_w |inv_y×px_y − inv_n×px_n| over all wallets (same basis as per-wallet Staked Net). Old ‖Σ|YES USD| − Σ|NO USD|‖ shown only if sum field missing."
+      title="Σ_w |inv_y×px_y − inv_n×px_n| over all wallets (same basis as per-wallet Staked). Old ‖Σ|YES USD| − Σ|NO USD|‖ shown only if sum field missing."
     >
       <div className="text-[10px] text-gray-500 truncate">Staked</div>
       <div className="text-sm font-bold text-yellow-400 tabular-nums truncate">

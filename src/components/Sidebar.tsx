@@ -2781,13 +2781,13 @@ export function Sidebar() {
       <Suspense fallback={null}>
         <MergePositionsDialogLazy
           open
-          onClose={() => setMergeDialogOpen(false)}
-          maxShares={mergeEligible.maxMerge}
-          conditionId={mergeEligible.conditionId}
-          title={fullMarketName || marketName}
-          outcomePairLabel={isUpDownMarket ? 'UP / DOWN' : 'YES / NO'}
-          onSubmit={handleMergeSubmit}
-        />
+      onClose={() => setMergeDialogOpen(false)}
+      maxShares={mergeEligible.maxMerge}
+      conditionId={mergeEligible.conditionId}
+      title={fullMarketName || marketName}
+      outcomePairLabel={isUpDownMarket ? 'UP / DOWN' : 'YES / NO'}
+      onSubmit={handleMergeSubmit}
+    />
       </Suspense>
     )}
     {notifyDialogOpen && typeof document !== 'undefined' &&
@@ -3635,21 +3635,21 @@ export function Sidebar() {
 
             return (
               <div className="sidebar-section py-1 px-3">
-                <div
+                      <div
                   className="grid gap-x-3 gap-y-1.5 items-center w-full"
                   style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(6rem, 1fr) minmax(0, 1fr)' }}
-                >
+                      >
                   {/* Row 1 — labels */}
                   <div className="flex items-center min-h-[15px] text-left text-[9px] font-medium leading-none text-gray-500">
                     Target
-                  </div>
+                      </div>
                   <div className="flex items-center justify-center gap-1 min-h-[15px] text-[9px] font-medium leading-none text-gray-500 min-w-0 px-px">
-                    {row.pastExpiry ? (
+                  {row.pastExpiry ? (
                       <>
                         <CirclePercent className="h-[9px] w-[9px] shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
                         <span className="shrink-0">Math</span>
                       </>
-                    ) : row.mathCents !== null ? (
+                  ) : row.mathCents !== null ? (
                       <>
                         <CirclePercent className="h-[9px] w-[9px] shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
                         <span className="shrink-0">Math</span>
@@ -3663,17 +3663,17 @@ export function Sidebar() {
                           </span>
                         </HelpTooltip>
                       </>
-                    ) : null}
+                  ) : null}
                   </div>
                   <div className="flex items-center justify-end gap-1.5 min-h-[15px] flex-nowrap text-[9px] font-medium leading-none text-gray-500 min-w-0">
                     <span className="shrink-0">Current</span>
-                    <span
+                      <span
                       className={`shrink-0 px-0.5 rounded-sm text-[9px] font-bold leading-none py-px ${currentBadge.className}`}
-                      title={currentBadge.title}
-                    >
-                      {currentBadge.label}
-                    </span>
-                  </div>
+                        title={currentBadge.title}
+                      >
+                        {currentBadge.label}
+                      </span>
+                    </div>
 
                   {/* Row 2 — primary values */}
                   <div className="flex items-center justify-start min-h-[16px] min-w-0">
@@ -3708,7 +3708,7 @@ export function Sidebar() {
                         ? `$${row.currentPrice.toLocaleString(undefined, { minimumFractionDigits: row.priceDec, maximumFractionDigits: row.priceDec })}`
                         : '...'}
                     </span>
-                  </div>
+                    </div>
 
                   {/* Row 3 — secondary */}
                   <div className="flex items-center justify-start min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
@@ -3787,7 +3787,7 @@ export function Sidebar() {
                         —
                       </span>
                     )}
-                  </div>
+                      </div>
                 </div>
                 {!row.pastExpiry && row.yesMathCents != null && (
                   (() => {
@@ -3846,7 +3846,7 @@ export function Sidebar() {
                             <span className="text-gray-600 mx-0.5">/</span>
                             <span className="text-gray-400">{m.toFixed(1)} math</span>
                           </span>
-                        </div>
+                  </div>
                         <div className="relative h-[7px] w-full rounded-full overflow-hidden bg-gray-900 ring-1 ring-gray-700/80">
                           <div
                             className="absolute inset-y-0 left-0 rounded-l-[999px] bg-emerald-600/90"
@@ -3857,7 +3857,7 @@ export function Sidebar() {
                             style={{ left: `${greenLeftPct}%`, width: `${100 - greenLeftPct}%` }}
                           />
                           <SidebarBarMidMarker />
-                        </div>
+                </div>
                       </div>
                     );
                   })()
@@ -3939,7 +3939,7 @@ export function Sidebar() {
                 <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Volume</div>
                 <div className="tabular-nums font-bold text-green-400 truncate">
                   {liveOrderbookVolumeDisplay ? `$${liveOrderbookVolumeDisplay}` : '--'}
-                </div>
+            </div>
               </button>
               <button
                 type="button"
@@ -3974,7 +3974,7 @@ export function Sidebar() {
                   }`}
                 >
                   Staked
-                </div>
+                  </div>
                 <div
                   className={`tabular-nums font-bold truncate ${
                     stakedPillTier === 'low'
@@ -3987,7 +3987,7 @@ export function Sidebar() {
                   }`}
                 >
                   {marketStakedNetKDisplay ? `$${marketStakedNetKDisplay}` : '--'}
-                </div>
+                          </div>
               </button>
               <button
                 type="button"
@@ -4021,7 +4021,7 @@ export function Sidebar() {
                 <div className="text-[8px] uppercase tracking-wide text-yellow-400 truncate">Holders</div>
                 <div className="tabular-nums font-bold text-yellow-300 truncate">{holdersCountDisplay}</div>
               </button>
-            </div>
+                      </div>
             <div className="mt-1 w-full min-w-0 flex flex-col gap-y-2 pb-0.5">
                   <ToxicFlowStakePreview
                     layout="stacked"
@@ -4080,7 +4080,7 @@ export function Sidebar() {
                     flashExtremeTilt
                     extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
                   />
-            </div>
+                </div>
           </div>
           </div>
 

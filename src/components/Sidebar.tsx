@@ -1532,7 +1532,11 @@ export function Sidebar() {
   const signingMode = useAppStore((s) => s.signingMode);
   const effectiveSidebarEoa = signingMode === 'privateKey' && pkAddress ? pkAddress : walletAddress;
   useEffect(() => {
-    if (!effectiveSidebarEoa) { setProxyWallet(null); return; }
+    if (!effectiveSidebarEoa) {
+      setProxyWallet(null);
+      return;
+    }
+    setProxyWallet(null);
     let cancelled = false;
     fetchProxyWallet(effectiveSidebarEoa).then((pw) => {
       if (cancelled) return;

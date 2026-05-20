@@ -319,6 +319,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   useEffect(() => {
     const w = (wallet || '').trim().toLowerCase();
     const ids = (scopedClobTokenIds || []).map((x) => String(x || '').trim()).filter(Boolean);
+    setWalletPositions([]);
+    setWalletTrades([]);
     if (!w || ids.length === 0) return;
     const serial = ++prefetchSerialRef.current;
     let cancelled = false;
@@ -393,15 +395,16 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
 
   useEffect(() => {
     walletRef.current = wallet;
+    setWalletPositions([]);
+    setWalletTrades([]);
+    setGridWalletPositions([]);
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    if (wallet) {
-      ws.send(JSON.stringify({ type: 'subscribeWallet', wallet }));
+    const w = (wallet || '').trim().toLowerCase();
+    if (w) {
+      ws.send(JSON.stringify({ type: 'subscribeWallet', wallet: w }));
     } else {
       ws.send(JSON.stringify({ type: 'unsubscribeWallet' }));
-      setWalletPositions([]);
-      setWalletTrades([]);
-      setGridWalletPositions([]);
     }
   }, [wallet]);
 
@@ -679,17 +682,15 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const raw = (msg.data as Array<Record<string, unknown>>)
               .map((t) => mapRawWSTrade(t as Parameters<typeof mapRawWSTrade>[0]))
               .filter((t): t is WSTrade => t != null);
-            setWalletTrades((prev) => {
-              const byKey = new Map<string, WSTrade>();
-              for (const t of prev) {
-                const k = t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side);
-                byKey.set(k, t.id ? t : { ...t, id: k });
-              }
-              for (const t of raw) byKey.set(t.id!, t);
-              return Array.from(byKey.values())
+            setWalletTrades(
+              raw
+                .map((t) => {
+                  const k = t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side);
+                  return t.id ? t : { ...t, id: k };
+                })
                 .sort((a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0))
-                .slice(0, WALLET_TRADES_CAP);
-            });
+                .slice(0, WALLET_TRADES_CAP),
+            );
           } else if (msg.type === 'walletMarketTrades' && Array.isArray(msg.data)) {
             const w = String(msg.wallet || '').trim().toLowerCase();
             const m = canonicalConditionKey(String(msg.marketId || ''));

@@ -79,12 +79,23 @@ import { persistTiltWhaleAmountUsd, readTiltWhaleAmountUsd } from '../lib/tiltWh
 import {
   ensureTiltAudioUnlockListeners,
   NOTIFY_MULTI_RING_GAP_MS,
+  pitchMulFromNotifyFreqSlider,
   playTiltNotifySoundStrikes,
   playTiltNotifySoundWithDoubleRing,
+  playTradeNotifySound,
   primeTiltAudioContextFromUserGesture,
+  readNotifyRingTimeS,
+  readNotifySoundFreqSlider,
   readNotifySoundVolumeSlider,
+  readTradeSoundFreqSlider,
+  readTradeSoundVolumeSlider,
+  SIDEBAR_NOTIFY_RING_TIME_S_KEY,
+  SIDEBAR_NOTIFY_SOUND_FREQ_KEY,
   SIDEBAR_NOTIFY_SOUND_VOLUME_KEY,
+  SIDEBAR_TRADE_SOUND_FREQ_KEY,
+  SIDEBAR_TRADE_SOUND_VOLUME_KEY,
 } from '../lib/tiltNotifySound';
+import { mySidebarTradeRowKey, useMyTradeRowRingSound } from '../lib/myTradeRowRing';
 import {
   NOTIFY_BELL_MIN_STAKE_CHANGED_EVENT,
   readNotifyBellMinStakeUsd,
@@ -226,11 +237,6 @@ function writeOrderExpirySlot(isUpDownMarket: boolean, value: string, unit: 's' 
 /** Match `ToxicFlowStakePreview` / `StakedLegUsdBar` flash + `sidebar-stats-flash-*` CSS. */
 const TILT_EXTREME_FLASH_MS = 550;
 
-function pitchMulFromNotifyFreqSlider(slider0to100: number): number {
-  const s = Math.min(100, Math.max(0, slider0to100));
-  return 0.25 * 16 ** (s / 100);
-}
-
 const SIDEBAR_NOTIFY_PLAY_SOUND_KEY = 'polybot-sidebar-notify-play-sound';
 const SIDEBAR_NOTIFY_FLASH_BG_KEY = 'polybot-sidebar-notify-flash-bg';
 /** Legacy TOP tilt — migrated into holder tilt on read. */
@@ -242,8 +248,6 @@ const SIDEBAR_NOTIFY_GREENS_TILT_PCT_KEY = 'polybot-sidebar-notify-greens-tilt-p
 /** Legacy cohort tilt key (Profiter / PnL+). */
 const SIDEBAR_NOTIFY_PROFIT_TILT_PCT_LEGACY_KEY = 'polybot-sidebar-notify-profit-tilt-pct';
 const SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY = 'polybot-sidebar-notify-staked-min-usd';
-const SIDEBAR_NOTIFY_SOUND_FREQ_KEY = 'polybot-sidebar-notify-sound-freq';
-const SIDEBAR_NOTIFY_RING_TIME_S_KEY = 'polybot-sidebar-notify-ring-time-s';
 const SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-sound-max-price-cents';
 const SIDEBAR_NOTIFY_WHALE_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-whale-max-price-cents';
 const SIDEBAR_NOTIFY_WHALE_IGNORE_NEGATIVE_PNL_KEY = 'polybot-sidebar-notify-whale-ignore-negative-pnl';
@@ -447,27 +451,6 @@ function readNotifyStakedMinUsd(): number {
     return Math.min(1e12, n);
   } catch {
     return 0;
-  }
-}
-/** 0 = low pitch, 100 = high; persisted slider position. */
-function readNotifySoundFreqSlider(): number {
-  try {
-    const raw = localStorage.getItem(SIDEBAR_NOTIFY_SOUND_FREQ_KEY);
-    const n = parseFloat(raw ?? '50');
-    if (!Number.isFinite(n)) return 50;
-    return Math.min(100, Math.max(0, Math.round(n)));
-  } catch {
-    return 50;
-  }
-}
-function readNotifyRingTimeS(): number {
-  try {
-    const raw = localStorage.getItem(SIDEBAR_NOTIFY_RING_TIME_S_KEY);
-    const n = parseFloat(raw ?? '5');
-    if (!Number.isFinite(n)) return 5;
-    return Math.min(5, Math.max(0.05, Math.round(n * 100) / 100));
-  } catch {
-    return 5;
   }
 }
 function readNotifySoundMaxPriceCents(): number {
@@ -793,6 +776,8 @@ export function Sidebar() {
   const [notifyWhaleIgnoreNegativePnl, setNotifyWhaleIgnoreNegativePnl] = useState(readNotifyWhaleIgnoreNegativePnl);
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
   const [notifySoundVolumeSlider, setNotifySoundVolumeSlider] = useState(readNotifySoundVolumeSlider);
+  const [notifyTradeSoundFreqSlider, setNotifyTradeSoundFreqSlider] = useState(readTradeSoundFreqSlider);
+  const [notifyTradeSoundVolumeSlider, setNotifyTradeSoundVolumeSlider] = useState(readTradeSoundVolumeSlider);
   const [notifyRingTimeS, setNotifyRingTimeS] = useState(readNotifyRingTimeS);
   const [notifySoundMaxPriceCents, setNotifySoundMaxPriceCents] = useState(readNotifySoundMaxPriceCents);
   const [notifyDoubleRing, setNotifyDoubleRing] = useState(readNotifyDoubleRing);
@@ -947,6 +932,20 @@ export function Sidebar() {
   }, [notifySoundVolumeSlider]);
   useEffect(() => {
     try {
+      localStorage.setItem(SIDEBAR_TRADE_SOUND_FREQ_KEY, String(notifyTradeSoundFreqSlider));
+    } catch {
+      /* */
+    }
+  }, [notifyTradeSoundFreqSlider]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_TRADE_SOUND_VOLUME_KEY, String(notifyTradeSoundVolumeSlider));
+    } catch {
+      /* */
+    }
+  }, [notifyTradeSoundVolumeSlider]);
+  useEffect(() => {
+    try {
       localStorage.setItem(SIDEBAR_NOTIFY_RING_TIME_S_KEY, String(notifyRingTimeS));
     } catch {
       /* */
@@ -1041,6 +1040,10 @@ export function Sidebar() {
   const notifySoundPitchMul = useMemo(
     () => pitchMulFromNotifyFreqSlider(notifySoundFreqSlider),
     [notifySoundFreqSlider],
+  );
+  const notifyTradeSoundPitchMul = useMemo(
+    () => pitchMulFromNotifyFreqSlider(notifyTradeSoundFreqSlider),
+    [notifyTradeSoundFreqSlider],
   );
 
   const notifyTiltAppliesToSelectedMarket = useMemo(() => {
@@ -1546,6 +1549,8 @@ export function Sidebar() {
         size: String(f.size),
         fee: String(f.fee || 0),
         timestamp: f.blockTime > 0 ? f.blockTime * 1000 : Date.now(),
+        txHash: f.txHash,
+        logIndex: f.logIndex,
         created_at: '',
         matchTime: '',
       }));
@@ -1569,6 +1574,11 @@ export function Sidebar() {
     }
     return totalSellCost - totalBuyCost;
   }, [myTradesDisplay]);
+  const myTradeScopeKey =
+    selectedMarket?.conditionId || selectedMarket?.id
+      ? `${selectedMarket?.conditionId || selectedMarket?.id}|${myOnchainWalletLower}|${liveTradesSource}`
+      : null;
+  const myTradeFlashKeys = useMyTradeRowRingSound(myTradesDisplay, myTradeScopeKey, !!selectedMarket);
 
   const { sidebarUserBidPrices, sidebarUserAskPrices } = useMemo(() => {
     const yesToken = selectedMarket?.clobTokenIds?.[0] || '';
@@ -2944,67 +2954,120 @@ export function Sidebar() {
                     : 'opacity-35 blur-[2.5px] pointer-events-none select-none transition-opacity'
                 }
               >
-                <div className="text-gray-400 mb-1">Sound pitch</div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={notifySoundFreqSlider}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (!Number.isFinite(v)) return;
-                      const nv = Math.min(100, Math.max(0, Math.round(v)));
-                      setNotifySoundFreqSlider(nv);
-                      const now = Date.now();
-                      if (now - freqSliderPreviewLastMs.current < 160) return;
-                      freqSliderPreviewLastMs.current = now;
-                      void playTiltNotifySoundWithDoubleRing(
-                        'green',
-                        pitchMulFromNotifyFreqSlider(nv),
-                        notifyRingTimeS,
-                        notifyDoubleRing,
-                      );
-                    }}
-                    className="flex-1 min-w-0 accent-amber-500 h-2"
-                    aria-label="Notification sound pitch"
-                  />
-                  <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifySoundFreqSlider}</span>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
+                  <div className="min-w-0">
+                    <div className="text-gray-400 mb-1">Trade sound pitch</div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={notifyTradeSoundFreqSlider}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (!Number.isFinite(v)) return;
+                          const nv = Math.min(100, Math.max(0, Math.round(v)));
+                          setNotifyTradeSoundFreqSlider(nv);
+                          const now = Date.now();
+                          if (now - freqSliderPreviewLastMs.current < 160) return;
+                          freqSliderPreviewLastMs.current = now;
+                          void playTradeNotifySound('green', pitchMulFromNotifyFreqSlider(nv), notifyRingTimeS);
+                        }}
+                        className="flex-1 min-w-0 accent-amber-500 h-2"
+                        aria-label="Trade sound pitch"
+                      />
+                      <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifyTradeSoundFreqSlider}</span>
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-gray-400 mb-1">Trade sound volume</div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={notifyTradeSoundVolumeSlider}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (!Number.isFinite(v)) return;
+                          const nv = Math.min(100, Math.max(0, Math.round(v)));
+                          setNotifyTradeSoundVolumeSlider(nv);
+                          try {
+                            localStorage.setItem(SIDEBAR_TRADE_SOUND_VOLUME_KEY, String(nv));
+                          } catch {
+                            /* */
+                          }
+                          const now = Date.now();
+                          if (now - freqSliderPreviewLastMs.current < 160) return;
+                          freqSliderPreviewLastMs.current = now;
+                          void playTradeNotifySound('green', notifyTradeSoundPitchMul, notifyRingTimeS);
+                        }}
+                        className="flex-1 min-w-0 accent-amber-500 h-2"
+                        aria-label="Trade sound volume"
+                      />
+                      <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifyTradeSoundVolumeSlider}</span>
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-gray-400 mb-1">Notification sound pitch</div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={notifySoundFreqSlider}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (!Number.isFinite(v)) return;
+                          const nv = Math.min(100, Math.max(0, Math.round(v)));
+                          setNotifySoundFreqSlider(nv);
+                          const now = Date.now();
+                          if (now - freqSliderPreviewLastMs.current < 160) return;
+                          freqSliderPreviewLastMs.current = now;
+                          void playTiltNotifySoundWithDoubleRing(
+                            'green',
+                            pitchMulFromNotifyFreqSlider(nv),
+                            notifyRingTimeS,
+                            notifyDoubleRing,
+                          );
+                        }}
+                        className="flex-1 min-w-0 accent-amber-500 h-2"
+                        aria-label="Notification sound pitch"
+                      />
+                      <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifySoundFreqSlider}</span>
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-gray-400 mb-1">Notification sound volume</div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={notifySoundVolumeSlider}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (!Number.isFinite(v)) return;
+                          const nv = Math.min(100, Math.max(0, Math.round(v)));
+                          setNotifySoundVolumeSlider(nv);
+                          const now = Date.now();
+                          if (now - freqSliderPreviewLastMs.current < 160) return;
+                          freqSliderPreviewLastMs.current = now;
+                          void playTiltNotifySoundWithDoubleRing(
+                            'green',
+                            notifySoundPitchMul,
+                            notifyRingTimeS,
+                            notifyDoubleRing,
+                          );
+                        }}
+                        className="flex-1 min-w-0 accent-amber-500 h-2"
+                        aria-label="Notification sound volume"
+                      />
+                      <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifySoundVolumeSlider}</span>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-[10px] text-gray-500 mt-1">Left = much lower, right = much higher (×0.25–×4 at ends; center = normal).</p>
-                <div className="text-gray-400 mb-1 mt-3">Sound Volume</div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={notifySoundVolumeSlider}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (!Number.isFinite(v)) return;
-                      const nv = Math.min(100, Math.max(0, Math.round(v)));
-                      setNotifySoundVolumeSlider(nv);
-                      try {
-                        localStorage.setItem(SIDEBAR_NOTIFY_SOUND_VOLUME_KEY, String(nv));
-                      } catch {
-                        /* ignore */
-                      }
-                      const now = Date.now();
-                      if (now - freqSliderPreviewLastMs.current < 160) return;
-                      freqSliderPreviewLastMs.current = now;
-                      void playTiltNotifySoundWithDoubleRing(
-                        'green',
-                        notifySoundPitchMul,
-                        notifyRingTimeS,
-                        notifyDoubleRing,
-                      );
-                    }}
-                    className="flex-1 min-w-0 accent-amber-500 h-2"
-                    aria-label="Notification sound volume"
-                  />
-                  <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifySoundVolumeSlider}</span>
-                </div>
-                <p className="text-[10px] text-gray-500 mt-1">0 = mute, 100 = full volume.</p>
+                <p className="text-[10px] text-gray-500 mt-1">Left = much lower, right = much higher (×0.25–×4 at ends; center = normal). 0 volume = mute.</p>
                 <div className="flex items-center gap-2 flex-wrap mt-3">
                   <span className="text-gray-400 shrink-0">Ring time (s)</span>
                   <input
@@ -4900,6 +4963,8 @@ export function Sidebar() {
                   </thead>
                   <tbody>
                 {myTradesDisplay.map((trade, i) => {
+                  const rowKey = mySidebarTradeRowKey(trade) || `my-trade-${i}`;
+                  const isFlashing = myTradeFlashKeys.has(rowKey);
                   const tid = getTradeClobTokenId(trade) || String(trade.asset_id || trade.token_id || '').trim();
                   const outcome = getTokenOutcome(tid, marketLookup);
                   const sideLabel = isUpDownMarket ? (outcome === 'YES' ? 'UP' : 'DOWN') : outcome;
@@ -4924,7 +4989,7 @@ export function Sidebar() {
                           ? 'text-purple-400'
                           : 'text-rose-400';
                   return (
-                    <tr key={i} className="text-gray-300">
+                    <tr key={rowKey} className={`text-gray-300${isFlashing ? ' my-trade-row-flash' : ''}`}>
                       <td className={`py-0.5 ${dirTone}`}>{side || '-'}</td>
                       <td className={outcome === 'YES' ? 'py-0.5 text-emerald-400' : 'py-0.5 text-rose-400'}>{sideLabel}</td>
                       <td className="py-0.5 text-right">{Number.isFinite(size) ? size.toFixed(2) : '-'}</td>

@@ -3,6 +3,62 @@
 /** ms between successive strikes inside one notification burst (double / triple ring). */
 export const NOTIFY_MULTI_RING_GAP_MS = 95;
 
+export const SIDEBAR_NOTIFY_SOUND_FREQ_KEY = 'polybot-sidebar-notify-sound-freq';
+export const SIDEBAR_TRADE_SOUND_FREQ_KEY = 'polybot-sidebar-trade-sound-freq';
+export const SIDEBAR_NOTIFY_RING_TIME_S_KEY = 'polybot-sidebar-notify-ring-time-s';
+
+/** Slider 0 → 0.25×, 50 → 1×, 100 → 4× (exponential). */
+export function pitchMulFromNotifyFreqSlider(slider0to100: number): number {
+  const s = Math.min(100, Math.max(0, slider0to100));
+  return 0.25 * 16 ** (s / 100);
+}
+
+export function readNotifySoundFreqSlider(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_SOUND_FREQ_KEY);
+    const n = parseFloat(raw ?? '50');
+    if (!Number.isFinite(n)) return 50;
+    return Math.min(100, Math.max(0, Math.round(n)));
+  } catch {
+    return 50;
+  }
+}
+
+export function readTradeSoundFreqSlider(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_TRADE_SOUND_FREQ_KEY);
+    const n = parseFloat(raw ?? '20');
+    if (!Number.isFinite(n)) return 20;
+    return Math.min(100, Math.max(0, Math.round(n)));
+  } catch {
+    return 20;
+  }
+}
+
+export const SIDEBAR_TRADE_SOUND_VOLUME_KEY = 'polybot-sidebar-trade-sound-volume';
+
+export function readTradeSoundVolumeSlider(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_TRADE_SOUND_VOLUME_KEY);
+    const n = parseFloat(raw ?? '100');
+    if (!Number.isFinite(n)) return 100;
+    return Math.min(100, Math.max(0, Math.round(n)));
+  } catch {
+    return 100;
+  }
+}
+
+export function readNotifyRingTimeS(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_RING_TIME_S_KEY);
+    const n = parseFloat(raw ?? '5');
+    if (!Number.isFinite(n)) return 5;
+    return Math.min(5, Math.max(0.05, Math.round(n * 100) / 100));
+  } catch {
+    return 5;
+  }
+}
+
 let tiltExtremeAudioCtx: AudioContext | null = null;
 let tiltAudioUnlockListenersDone = false;
 
@@ -49,7 +105,12 @@ function readNotifySoundVolumeMul(): number {
   return readNotifySoundVolumeSlider() / 100;
 }
 
-async function playUpdownTiltExtremeSound(kind: 'green' | 'red', pitchMul = 1, ringTimeS = 0.5) {
+async function playUpdownTiltExtremeSound(
+  kind: 'green' | 'red',
+  pitchMul = 1,
+  ringTimeS = 0.5,
+  volumeMul = readNotifySoundVolumeMul(),
+) {
   try {
     ensureTiltAudioUnlockListeners();
     const ACtx =
@@ -60,7 +121,6 @@ async function playUpdownTiltExtremeSound(kind: 'green' | 'red', pitchMul = 1, r
     const ctx = tiltExtremeAudioCtx;
     await ctx.resume();
     if (ctx.state !== 'running') return;
-    const volumeMul = readNotifySoundVolumeMul();
     if (volumeMul <= 0) return;
     const t0 = ctx.currentTime;
 
@@ -153,4 +213,13 @@ export async function playTiltNotifySoundWithDoubleRing(
   doubleRing: boolean,
 ): Promise<void> {
   await playTiltNotifySoundStrikes(kind, pitchMul, ringTimeS, doubleRing ? 2 : 1);
+}
+
+export async function playTradeNotifySound(
+  kind: 'green' | 'red',
+  pitchMul: number,
+  ringTimeS: number,
+): Promise<void> {
+  const volumeMul = readTradeSoundVolumeSlider() / 100;
+  await playUpdownTiltExtremeSound(kind, pitchMul, ringTimeS, volumeMul);
 }

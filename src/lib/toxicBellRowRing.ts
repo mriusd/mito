@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react';
 import {
   ensureTiltAudioUnlockListeners,
+  pitchMulFromNotifyFreqSlider,
   playTiltNotifySoundStrikes,
+  readNotifyRingTimeS,
+  readNotifySoundFreqSlider,
 } from './tiltNotifySound';
 
 /** Must match `.toxic-flow-bell-row-flash` animation duration in index.css. */
@@ -10,13 +13,6 @@ export const TOXIC_BELL_ROW_FLASH_MS = 1350;
 const SIDEBAR_NOTIFY_BELL_RING_KEY = 'polybot-sidebar-notify-bell-ring';
 export const SIDEBAR_NOTIFY_BELL_MIN_STAKE_USD_KEY = 'polybot-sidebar-notify-bell-min-stake-usd';
 export const NOTIFY_BELL_MIN_STAKE_CHANGED_EVENT = 'polybot-sidebar-notify-bell-min-stake-changed';
-const SIDEBAR_NOTIFY_SOUND_FREQ_KEY = 'polybot-sidebar-notify-sound-freq';
-const SIDEBAR_NOTIFY_RING_TIME_S_KEY = 'polybot-sidebar-notify-ring-time-s';
-
-function pitchMulFromNotifyFreqSlider(slider0to100: number): number {
-  const s = Math.min(100, Math.max(0, slider0to100));
-  return 0.25 * 16 ** (s / 100);
-}
 
 export function readNotifyBellRingEnabled(): boolean {
   try {
@@ -59,28 +55,6 @@ export function subscribeNotifyBellMinStakeUsd(listener: () => void): () => void
     window.removeEventListener('storage', onStorage);
     window.removeEventListener(NOTIFY_BELL_MIN_STAKE_CHANGED_EVENT, onChange);
   };
-}
-
-function readNotifySoundFreqSlider(): number {
-  try {
-    const raw = localStorage.getItem(SIDEBAR_NOTIFY_SOUND_FREQ_KEY);
-    const n = parseFloat(raw ?? '50');
-    if (!Number.isFinite(n)) return 50;
-    return Math.min(100, Math.max(0, n));
-  } catch {
-    return 50;
-  }
-}
-
-function readNotifyRingTimeS(): number {
-  try {
-    const raw = localStorage.getItem(SIDEBAR_NOTIFY_RING_TIME_S_KEY);
-    const n = parseFloat(raw ?? '0.5');
-    if (!Number.isFinite(n) || n <= 0) return 0.5;
-    return Math.min(5, n);
-  } catch {
-    return 0.5;
-  }
 }
 
 /** One strike per flashing bell row, aligned to row flash peak (~50% of 1.35s cycle). */

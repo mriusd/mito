@@ -95,6 +95,23 @@ html, body, #root {
   animation: toxic-flow-bell-row-flash 1.35s ease-in-out infinite;
 }
 
+@keyframes my-trade-row-flash {
+  0%,
+  100% {
+    box-shadow:
+      inset 3px 0 0 rgb(251 191 36 / 0),
+      inset 0 1px 0 0 rgb(251 191 36 / 0);
+  }
+  50% {
+    box-shadow:
+      inset 3px 0 0 rgb(251 191 36 / 0.9),
+      inset 0 0 24px -6px rgb(251 191 36 / 0.12);
+  }
+}
+.my-trade-row-flash {
+  animation: my-trade-row-flash 1.35s ease-in-out infinite;
+}
+
 /* Toxic Flow |Staked Net| >= $5k — blue-ish row pulse (either side of book). */
 @keyframes toxic-flow-high-stake-net-bg-flash {
   0%,

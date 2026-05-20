@@ -70,3 +70,50 @@ export function sidebarUserPriceHitsBucket(sidePrices: Set<string>, bucketCents:
   }
   return false;
 }
+
+type OrderLike = {
+  asset_id?: string;
+  token_id?: string;
+  side?: string;
+  price?: string;
+};
+
+function addHighlightCents(set: Set<string>, cents: number) {
+  if (!Number.isFinite(cents)) return;
+  set.add(cents.toFixed(1));
+}
+
+/**
+ * User order prices to highlight on sidebar OB for the viewed outcome.
+ * Same-outcome orders map directly; opposite-outcome orders map via 100−p (YES bid 65 → NO ask 35).
+ */
+export function buildSidebarUserOrderHighlightSets(
+  orders: OrderLike[],
+  yesTokenId: string,
+  noTokenId: string,
+  viewOutcome: 'YES' | 'NO',
+): { bidPrices: Set<string>; askPrices: Set<string> } {
+  const bidPrices = new Set<string>();
+  const askPrices = new Set<string>();
+  const viewToken = viewOutcome === 'YES' ? yesTokenId : noTokenId;
+  const oppToken = viewOutcome === 'YES' ? noTokenId : yesTokenId;
+  if (!viewToken) return { bidPrices, askPrices };
+
+  for (const o of orders) {
+    const oid = o.asset_id || o.token_id || '';
+    const p = parseFloat(String(o.price ?? ''));
+    if (!Number.isFinite(p)) continue;
+    const cents = p * 100;
+    const side = String(o.side || '').toUpperCase();
+
+    if (oid === viewToken) {
+      if (side === 'BUY') addHighlightCents(bidPrices, cents);
+      else if (side === 'SELL') addHighlightCents(askPrices, cents);
+    } else if (oppToken && oid === oppToken) {
+      const comp = 100 - cents;
+      if (side === 'BUY') addHighlightCents(askPrices, comp);
+      else if (side === 'SELL') addHighlightCents(bidPrices, comp);
+    }
+  }
+  return { bidPrices, askPrices };
+}

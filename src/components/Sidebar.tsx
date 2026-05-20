@@ -16,6 +16,7 @@ import { fetchProxyWallet } from '../api/polymarket';
 import { resolvePolymarketMakerAddress } from '../lib/polymarketTradingMaker';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { executeMergePositions } from '../lib/mergePositions';
+import { buildSidebarUserOrderHighlightSets } from '../lib/sidebarOrderbookAggregate';
 import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
 import {
@@ -1569,27 +1570,17 @@ export function Sidebar() {
     return totalSellCost - totalBuyCost;
   }, [myTradesDisplay]);
 
-  // Build set of user order prices for sidebar OB highlighting
-  const sidebarUserBidPrices = useMemo(() => {
-    const s = new Set<string>();
-    const tokenId = selectedMarket?.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
-    if (!tokenId) return s;
-    for (const o of orders) {
-      const oid = o.asset_id || o.token_id || '';
-      if (oid === tokenId && o.side === 'BUY') s.add((parseFloat(o.price) * 100).toFixed(1));
-    }
-    return s;
-  }, [orders, selectedMarket, orderOutcome]);
-  const sidebarUserAskPrices = useMemo(() => {
-    const s = new Set<string>();
-    const tokenId = selectedMarket?.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
-    if (!tokenId) return s;
-    for (const o of orders) {
-      const oid = o.asset_id || o.token_id || '';
-      if (oid === tokenId && o.side === 'SELL') s.add((parseFloat(o.price) * 100).toFixed(1));
-    }
-    return s;
-  }, [orders, selectedMarket, orderOutcome]);
+  const { sidebarUserBidPrices, sidebarUserAskPrices } = useMemo(() => {
+    const yesToken = selectedMarket?.clobTokenIds?.[0] || '';
+    const noToken = selectedMarket?.clobTokenIds?.[1] || '';
+    const { bidPrices, askPrices } = buildSidebarUserOrderHighlightSets(
+      orders,
+      yesToken,
+      noToken,
+      orderOutcome,
+    );
+    return { sidebarUserBidPrices: bidPrices, sidebarUserAskPrices: askPrices };
+  }, [orders, selectedMarket?.clobTokenIds, orderOutcome]);
 
   // Compute BS probability for orderbook % diff
   const vwapData = useAppStore((s) => s.vwapData);

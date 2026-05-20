@@ -722,10 +722,18 @@ function resolveCustomOrderPriceCents(spec: CustomSidebarOrderSpec, mathProbCent
   return Math.round(cents * 10) / 10;
 }
 
-/** BS modes: YES uses bs_yes (¢); NO uses 100 − bs_yes. */
-function bsMathProbCentsForOutcome(bsYesCents: number | null | undefined, outcome: 'YES' | 'NO'): number | null {
-  if (bsYesCents == null || !Number.isFinite(bsYesCents)) return null;
-  return outcome === 'YES' ? bsYesCents : 100 - bsYesCents;
+/** BS offsets apply to bs_yes; YES uses that value, NO uses 100 − that value. */
+function resolveBsAnchoredCustomOrderPriceCents(
+  spec: CustomSidebarOrderSpec,
+  bsYesCents: number | null | undefined,
+  outcome: 'YES' | 'NO',
+): number | null {
+  if (spec.priceMode === 'FIXED') return resolveCustomOrderPriceCents(spec, null);
+  const yesAnchored = resolveCustomOrderPriceCents(spec, bsYesCents ?? null);
+  if (yesAnchored == null) return null;
+  const cents = outcome === 'YES' ? yesAnchored : 100 - yesAnchored;
+  if (!Number.isFinite(cents) || cents <= 0 || cents >= 100) return null;
+  return Math.round(cents * 10) / 10;
 }
 
 function normalizeCustomSidebarOrderSpec(raw: unknown): CustomSidebarOrderSpec | null {
@@ -2646,8 +2654,11 @@ export function Sidebar() {
     let placed = 0;
     for (const spec of btn.orders) {
       const resolvedOutcome: 'YES' | 'NO' = spec.outcome === 'AUTO' ? orderOutcome : spec.outcome;
-      const mathProbCents = bsMathProbCentsForOutcome(sidebarSpotStrip?.yesMathCents, resolvedOutcome);
-      const priceCents = resolveCustomOrderPriceCents(spec, mathProbCents);
+      const priceCents = resolveBsAnchoredCustomOrderPriceCents(
+        spec,
+        sidebarSpotStrip?.yesMathCents,
+        resolvedOutcome,
+      );
       if (priceCents == null) {
         showToast(
           spec.priceMode === 'FIXED' ? 'Invalid custom order price' : 'Cannot resolve BS price (math prob unavailable)',
@@ -5381,7 +5392,7 @@ export function Sidebar() {
                 </button>
               ) : null}
               <p className="text-[10px] text-gray-500 leading-snug">
-                Direction — uses YES/NO from Place Order box. BS modes use mathematical probability for that direction at click time.
+                Direction — uses YES/NO from Place Order box. BS ± applies to sidebar YES math prob; NO price = 100 − that.
               </p>
               <div className="flex items-center gap-2 pt-1 border-t border-gray-700/80">
                 <span className="text-gray-400 w-16 shrink-0">Label</span>

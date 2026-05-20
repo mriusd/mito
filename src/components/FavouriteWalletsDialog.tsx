@@ -6,7 +6,9 @@ import {
   persistToxicFavouriteWallets,
   readToxicBellWallets,
   persistToxicBellWallets,
+  getToxicFavouriteNickname,
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
+  TOXIC_FAVOURITE_NICKNAMES_LS_KEY,
   TOXIC_FAVOURITES_CHANGED_EVENT,
   TOXIC_BELL_WALLETS_LS_KEY,
   TOXIC_BELLS_CHANGED_EVENT,
@@ -53,6 +55,7 @@ export function FavouriteWalletsDialog({
     const onStorage = (e: StorageEvent) => {
       if (
         e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY ||
+        e.key === TOXIC_FAVOURITE_NICKNAMES_LS_KEY ||
         e.key === TOXIC_BELL_WALLETS_LS_KEY ||
         e.key === null
       ) {
@@ -132,9 +135,15 @@ export function FavouriteWalletsDialog({
                 const lower = raw.toLowerCase();
                 void tagRev;
                 const tag = getToxicWalletTag(raw);
+                const nickname = tag ? '' : getToxicFavouriteNickname(raw);
                 const bellActive = bellWallets.has(lower);
                 const poly = polymarketSiteUrl(`profile/${lower}`);
                 const scan = `https://polygonscan.com/address/${lower}`;
+                const infoTitle = tag
+                  ? `${tag} · ${raw} — Wallet info`
+                  : nickname
+                    ? `${nickname} · ${raw} — Wallet info`
+                    : `${raw} — Wallet info`;
                 return (
                   <li
                     key={lower}
@@ -165,7 +174,7 @@ export function FavouriteWalletsDialog({
                     <button
                       type="button"
                       className="flex min-w-0 flex-1 items-center gap-1 text-left hover:underline"
-                      title={tag ? `${tag} · ${raw} — Wallet info` : `${raw} — Wallet info`}
+                      title={infoTitle}
                       onClick={() => {
                         const w = raw.trim().toLowerCase();
                         if (!w) return;
@@ -176,6 +185,8 @@ export function FavouriteWalletsDialog({
                       <span className="flex min-w-0 flex-col leading-tight">
                         {tag ? (
                           <span className="truncate font-bold text-amber-200">{tag}</span>
+                        ) : nickname ? (
+                          <span className="truncate font-bold text-emerald-300">{nickname}</span>
                         ) : null}
                         <span className="truncate font-mono text-[10px] text-blue-400">{shortenAddr(raw)}</span>
                       </span>

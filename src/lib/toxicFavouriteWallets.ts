@@ -1,5 +1,7 @@
 export const TOXIC_FAVOURITE_WALLETS_LS_KEY = 'polybot-toxic-flow-favourite-wallets';
 
+export const TOXIC_FAVOURITE_NICKNAMES_LS_KEY = 'polybot-toxic-flow-favourite-nicknames';
+
 export const TOXIC_BELL_WALLETS_LS_KEY = 'polybot-toxic-flow-bell-wallets';
 
 export const TOXIC_FAVOURITES_CHANGED_EVENT = 'polybot-toxic-favourites-changed';
@@ -73,4 +75,63 @@ export function persistToxicBellWallets(s: Set<string>): void {
 
 export function listToxicFavouriteWalletsSorted(): string[] {
   return [...readToxicFavouriteWallets()].sort();
+}
+
+/** Lowercased address → Polymarket display name captured from Toxic flow rows. */
+export function readToxicFavouriteNicknames(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(TOXIC_FAVOURITE_NICKNAMES_LS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      const key = String(k).trim().toLowerCase();
+      const nick = String(v ?? '').trim();
+      if (key && nick) out[key] = nick;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function getToxicFavouriteNickname(wallet: string): string {
+  const k = wallet.trim().toLowerCase();
+  if (!k) return '';
+  return readToxicFavouriteNicknames()[k] ?? '';
+}
+
+export function setToxicFavouriteNickname(wallet: string, nickname: string): void {
+  const k = wallet.trim().toLowerCase();
+  const nick = nickname.trim();
+  if (!k || !nick) return;
+  const map = readToxicFavouriteNicknames();
+  if (map[k] === nick) return;
+  map[k] = nick;
+  try {
+    localStorage.setItem(TOXIC_FAVOURITE_NICKNAMES_LS_KEY, JSON.stringify(map));
+  } catch {
+    return;
+  }
+  window.dispatchEvent(new Event(TOXIC_FAVOURITES_CHANGED_EVENT));
+}
+
+type ToxicFavouriteNicknameRow = {
+  wallet?: string;
+  walletLedgerSummary?: { polymarketNickname?: string | null } | null;
+};
+
+/** When a starred wallet appears in Toxic flow, persist Polymarket nickname for the header favourites list. */
+export function recordToxicFavouriteNicknamesFromRows(
+  rows: ToxicFavouriteNicknameRow[],
+  favouriteSet: Set<string>,
+): void {
+  if (favouriteSet.size === 0 || rows.length === 0) return;
+  for (const row of rows) {
+    const k = (row.wallet ?? '').trim().toLowerCase();
+    if (!k || !favouriteSet.has(k)) continue;
+    const nick = (row.walletLedgerSummary?.polymarketNickname ?? '').trim();
+    if (nick) setToxicFavouriteNickname(k, nick);
+  }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useAccount } from 'wagmi';
 import { fetchProxyWallet } from '../api/polymarket';
 import { resolvePolymarketMakerAddress } from '../lib/polymarketTradingMaker';
@@ -7,30 +7,40 @@ import { useAppStore } from '../stores/appStore';
 /** Lowercase maker → proxy → EOA for wallet dialogs (same resolution as Sidebar on-chain key). */
 export function useTradingWalletAddress(): string {
   const { address: walletAddress } = useAccount();
-  const makerAddress = useAppStore((s) => s.makerAddress);
   const pkAddress = useAppStore((s) => s.pkAddress);
   const signingMode = useAppStore((s) => s.signingMode);
-  const effectiveEoa = signingMode === 'privateKey' && pkAddress ? pkAddress : walletAddress ?? undefined;
+  const effectiveEoa = (signingMode === 'privateKey' && pkAddress ? pkAddress : walletAddress ?? undefined)
+    ?.trim()
+    .toLowerCase() || '';
+  const channelKey = effectiveEoa ? `${signingMode}|${effectiveEoa}` : '';
 
-  const [proxyWallet, setProxyWallet] = useState<string | null>(null);
+  const channelKeyRef = useRef('');
+  const [makerAddress, setMakerAddress] = useState('');
+
+  useLayoutEffect(() => {
+    if (channelKeyRef.current === channelKey) return;
+    channelKeyRef.current = channelKey;
+    setMakerAddress('');
+  }, [channelKey]);
+
   useEffect(() => {
     let cancelled = false;
     if (!effectiveEoa) {
-      setProxyWallet(null);
+      setMakerAddress('');
       return;
     }
     void fetchProxyWallet(effectiveEoa).then((pw) => {
-      if (cancelled) return;
+      if (cancelled || channelKeyRef.current !== channelKey) return;
       try {
-        setProxyWallet(resolvePolymarketMakerAddress(effectiveEoa, pw));
+        setMakerAddress(resolvePolymarketMakerAddress(effectiveEoa, pw).trim().toLowerCase());
       } catch {
-        setProxyWallet(null);
+        if (!cancelled && channelKeyRef.current === channelKey) setMakerAddress('');
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [effectiveEoa]);
+  }, [effectiveEoa, channelKey]);
 
-  return (makerAddress || proxyWallet || walletAddress || '').trim().toLowerCase();
+  return makerAddress;
 }

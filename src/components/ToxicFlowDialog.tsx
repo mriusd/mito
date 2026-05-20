@@ -50,6 +50,8 @@ import {
   getToxicBellWalletsSnapshot,
   subscribeToxicBellWallets,
   persistToxicBellWallets,
+  recordToxicFavouriteNicknamesFromRows,
+  setToxicFavouriteNickname,
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
   TOXIC_FAVOURITES_CHANGED_EVENT,
   TOXIC_BELL_WALLETS_LS_KEY,
@@ -1193,7 +1195,7 @@ interface WalletTableBodyRowProps {
   xActive: boolean;
   /** Row flash when |Staked Net| USD ≥ this (Tilt notifications “Whale amount”). */
   tiltWhaleAmountUsd: number;
-  toggleFavouriteWallet: (addr: string) => void;
+  toggleFavouriteWallet: (addr: string, nickname?: string) => void;
   toggleBellWallet: (addr: string) => void;
   toggleXWallet: (addr: string) => void;
   onOpenWallet?: (wallet: string, netShares?: number) => void;
@@ -1224,9 +1226,9 @@ function WalletTableBodyRowImpl({
     (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      toggleFavouriteWallet(w.wallet);
+      toggleFavouriteWallet(w.wallet, polymarketNicknameFromEmbed(w.walletLedgerSummary) || undefined);
     },
-    [toggleFavouriteWallet, w.wallet],
+    [toggleFavouriteWallet, w.wallet, w.walletLedgerSummary],
   );
   const onBellClick = useCallback(
     (e: React.MouseEvent) => {
@@ -1482,17 +1484,25 @@ function WalletTableInner({
       window.removeEventListener(TOXIC_X_CHANGED_EVENT, onX);
     };
   }, []);
-  const toggleFavouriteWallet = useCallback((addr: string) => {
+  const toggleFavouriteWallet = useCallback((addr: string, nickname?: string) => {
     const k = addr.trim().toLowerCase();
     if (!k) return;
     setFavouriteWallets((prev) => {
       const next = new Set(prev);
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
+      const adding = !next.has(k);
+      if (adding) next.add(k);
+      else next.delete(k);
       persistToxicFavouriteWallets(next);
+      if (adding) {
+        const nick = (nickname ?? '').trim();
+        if (nick) setToxicFavouriteNickname(k, nick);
+      }
       return next;
     });
   }, []);
+  useEffect(() => {
+    recordToxicFavouriteNicknamesFromRows(rows, favouriteWallets);
+  }, [rows, favouriteWallets]);
   const toggleBellWallet = useCallback((addr: string) => {
     const k = addr.trim().toLowerCase();
     if (!k) return;
@@ -1801,8 +1811,9 @@ export function WalletInfoPanel({
     const k = wallet.trim().toLowerCase();
     if (!k) return;
     const next = readToxicFavouriteWallets();
-    if (next.has(k)) next.delete(k);
-    else next.add(k);
+    const adding = !next.has(k);
+    if (adding) next.add(k);
+    else next.delete(k);
     persistToxicFavouriteWallets(next);
     setWalletIsFavourite(next.has(k));
   }, [wallet]);
@@ -1887,6 +1898,14 @@ export function WalletInfoPanel({
     }
     return '';
   }, [summary, profileNickname, markets]);
+
+  useEffect(() => {
+    if (!open || !walletIsFavourite) return;
+    const k = wallet.trim().toLowerCase();
+    if (!k) return;
+    recordToxicFavouriteNicknamesFromRows(markets, new Set([k]));
+    if (polymarketNick) setToxicFavouriteNickname(k, polymarketNick);
+  }, [open, wallet, walletIsFavourite, polymarketNick, markets]);
 
   if (!open) return null;
   const polymarketProfileUrl = polymarketSiteUrl(`profile/${wallet.trim().toLowerCase()}`);

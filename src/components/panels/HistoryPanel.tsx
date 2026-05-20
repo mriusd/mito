@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { fetchWalletPositions } from '../../api';
 import type { WalletPosition } from '../../api';
@@ -20,19 +20,29 @@ const HISTORY_PANEL_REFRESH_MS = 30_000;
 
 export function HistoryPanel() {
   const tradingWallet = useTradingWalletAddress();
-  const makerAddress = useAppStore((s) => s.makerAddress);
   const marketLookup = useMarketLookupSnapshot();
   const [markets, setMarkets] = useState<WalletPosition[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshBump, setRefreshBump] = useState(0);
   const [walletInfoOpen, setWalletInfoOpen] = useState(false);
   const [walletInfoMarketId, setWalletInfoMarketId] = useState('');
+  const loadEpochRef = useRef(0);
+  const tradingWalletKey = tradingWallet.trim().toLowerCase();
 
   const marketById = useMemo(() => buildMarketByIdRecord(marketLookup), [marketLookup]);
 
+  useLayoutEffect(() => {
+    loadEpochRef.current += 1;
+    setMarkets([]);
+    setLoading(Boolean(tradingWalletKey));
+    setWalletInfoOpen(false);
+    setWalletInfoMarketId('');
+  }, [tradingWalletKey]);
+
   const load = useCallback(async (options?: { showLoading?: boolean }) => {
     const showLoading = options?.showLoading !== false;
-    const w = tradingWallet.trim();
+    const w = tradingWalletKey;
+    const epochAtStart = loadEpochRef.current;
     if (!w) {
       setMarkets([]);
       return;
@@ -41,29 +51,30 @@ export function HistoryPanel() {
     try {
       const byId = buildMarketByIdRecord(useAppStore.getState().marketLookup);
       const p = await fetchWalletPositions({ wallet: w, limit: 1000, ledger: true, order: 'end_date_desc' });
+      if (epochAtStart !== loadEpochRef.current) return;
       const sorted = sortWalletPositionsByDisplayedDateDesc(p.positions || [], byId);
       setMarkets(sorted);
     } catch {
+      if (epochAtStart !== loadEpochRef.current) return;
       setMarkets([]);
     } finally {
-      if (showLoading) setLoading(false);
+      if (showLoading && epochAtStart === loadEpochRef.current) setLoading(false);
     }
-  }, [tradingWallet]);
+  }, [tradingWalletKey]);
 
   useEffect(() => {
     void load();
   }, [load, refreshBump]);
 
   useEffect(() => {
-    const w = tradingWallet.trim();
-    if (!w) return;
+    if (!tradingWalletKey) return;
     const id = window.setInterval(() => {
       void load({ showLoading: false });
     }, HISTORY_PANEL_REFRESH_MS);
     return () => window.clearInterval(id);
-  }, [tradingWallet, load]);
+  }, [tradingWalletKey, load]);
 
-  const displayWallet = (makerAddress || tradingWallet || '').trim();
+  const displayWallet = tradingWalletKey;
 
   const onHistoryRowClick = useCallback(
     (marketId: string) => {
@@ -91,7 +102,7 @@ export function HistoryPanel() {
             className="shrink-0 p-1 rounded text-gray-500 hover:text-white hover:bg-gray-700 disabled:opacity-40"
             title="Refresh"
             aria-label="Refresh wallet markets"
-            disabled={!tradingWallet.trim() || loading}
+            disabled={!tradingWalletKey || loading}
             onClick={(e) => {
               e.stopPropagation();
               setRefreshBump((b) => b + 1);

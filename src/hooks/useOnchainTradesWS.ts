@@ -682,12 +682,14 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const raw = (msg.data as Array<Record<string, unknown>>)
               .map((t) => mapRawWSTrade(t as Parameters<typeof mapRawWSTrade>[0]))
               .filter((t): t is WSTrade => t != null);
+            const byKey = new Map<string, WSTrade>();
+            for (const t of raw) {
+              const k = t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side);
+              const row = t.id ? t : { ...t, id: k };
+              byKey.set(k, row);
+            }
             setWalletTrades(
-              raw
-                .map((t) => {
-                  const k = t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side);
-                  return t.id ? t : { ...t, id: k };
-                })
+              Array.from(byKey.values())
                 .sort((a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0))
                 .slice(0, WALLET_TRADES_CAP),
             );

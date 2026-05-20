@@ -97,16 +97,27 @@ export function useWalletData() {
   /** Clear maker before paint so cred checks never see (new EOA + old proxy) — fixes spurious wallet sign on PK↔wallet when addresses differ. */
   useLayoutEffect(() => {
     if (!isWebMode) return;
+    const clearWalletSlice = () => {
+      useAppStore.getState().setMarketData({
+        positions: [],
+        orders: [],
+        trades: [],
+        cashBalance: 0,
+        makerAddress: '',
+      });
+    };
     if (!effectiveConnected || !effectiveEoa) {
       walletChannelKeyRef.current = '';
       walletLoadEpochRef.current += 1;
       setProxyWallet(null);
+      clearWalletSlice();
       return;
     }
     const key = `${signingMode}|${String(effectiveEoa).trim().toLowerCase()}`;
     if (walletChannelKeyRef.current !== key) {
       walletChannelKeyRef.current = key;
       walletLoadEpochRef.current += 1;
+      clearWalletSlice();
     }
     setProxyWallet(null);
   }, [isWebMode, effectiveConnected, effectiveEoa, signingMode]);

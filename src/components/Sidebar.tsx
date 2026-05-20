@@ -111,6 +111,9 @@ import {
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
+import { SidebarYesMidProbBar } from './SidebarYesMidProbBar';
+import { SidebarPositionListItem } from './SidebarPositionListItem';
+import { getBidAskMarketRow } from '../lib/bidAskMarketLookup';
 import {
   ArrowRight,
   Bell,
@@ -592,14 +595,13 @@ function maxOrderUsdViolationMessage(maxUsd: number, valueUsd: number): string |
   return `Max order size ${lim} USD. To increase the limit go to settings menu in the header.`;
 }
 
-/** Market-crossing check for `tokenId` using `marketLookup` best bid/ask (WS-updated), not the rendered ladder. */
+/** Market-crossing check using live WS best bid/ask (pending patch), not throttled grid store. */
 function orderCrossesBookFromWsLookup(
-  lookup: Record<string, Market>,
   tokenId: string,
   side: 'BUY' | 'SELL',
   orderPriceCents: number,
 ): { crosses: boolean; bestCounterpartyCents: number | null } {
-  const row = lookup[String(tokenId || '').trim()];
+  const row = getBidAskMarketRow(String(tokenId || '').trim());
   const bestBidDec = typeof row?.bestBid === 'number' && Number.isFinite(row.bestBid) ? row.bestBid : null;
   const bestAskDec = typeof row?.bestAsk === 'number' && Number.isFinite(row.bestAsk) ? row.bestAsk : null;
   const bestBidCents = bestBidDec != null && bestBidDec > 0 ? bestBidDec * 100 : null;
@@ -1503,9 +1505,7 @@ export function Sidebar() {
   const sidebarBookRef = useRef<SidebarPolymarketBookSnapshot | null>(null);
   /** Keep latest market/book lookup for tilt sound mute check — must not rerun sound interval on each book bump. */
   const tiltSoundMarketRef = useRef(selectedMarket);
-  const tiltSoundLookupRef = useRef(marketLookup);
   tiltSoundMarketRef.current = selectedMarket;
-  tiltSoundLookupRef.current = marketLookup;
   const marketNotifyMutedRef = useRef(isCurrentMarketMuted);
   marketNotifyMutedRef.current = isCurrentMarketMuted;
 
@@ -2172,14 +2172,13 @@ export function Sidebar() {
 
     const bidOkForSound = (): boolean => {
       const sm = tiltSoundMarketRef.current;
-      const lookup = tiltSoundLookupRef.current;
       const ids = sm?.clobTokenIds;
       /** Green tilt = cohort YES-heavy → mute gate uses YES token WS quotes; red → NO token (not sidebar OB outcome). */
       const tid =
         k === 'green' ? ids?.[0] : k === 'red' ? ids?.[1] : undefined;
       let compareCents: number | null = null;
       if (tid) {
-        const row = lookup[tid];
+        const row = getBidAskMarketRow(tid);
         if (row) {
           const b =
             typeof row.bestBid === 'number' && Number.isFinite(row.bestBid) ? row.bestBid * 100 : null;
@@ -2450,7 +2449,6 @@ export function Sidebar() {
     }
     const orderPriceCents = parseFloat(orderPrice);
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
-      marketLookup,
       tokenId,
       orderSide,
       orderPriceCents,
@@ -2521,7 +2519,6 @@ export function Sidebar() {
       }
     }
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
-      marketLookup,
       tokenId,
       side,
       priceCents,
@@ -2715,7 +2712,6 @@ export function Sidebar() {
       }
 
       const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
-        marketLookup,
         tokenId,
         spec.side,
         priceCents,
@@ -2789,7 +2785,6 @@ export function Sidebar() {
       }
     }
     const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
-      marketLookup,
       tokenId,
       side,
       newPriceCents,
@@ -2896,7 +2891,7 @@ export function Sidebar() {
       const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
       const sidebarBookToken = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
       const sameBook = tid === sidebarBookToken;
-      const bestBid = marketLookup[tid]?.bestBid;
+      const bestBid = getBidAskMarketRow(tid)?.bestBid;
       const hasBidsFromLookup = typeof bestBid === 'number' && Number.isFinite(bestBid) && bestBid > 0;
       const bids =
         sameBook && displayBids.length > 0
@@ -2904,7 +2899,7 @@ export function Sidebar() {
           : !sameBook && hasBidsFromLookup
             ? [{ price: String(bestBid), size: '1' }]
             : [];
-      const bestAsk = marketLookup[tid]?.bestAsk;
+      const bestAsk = getBidAskMarketRow(tid)?.bestAsk;
       const hasAsksFromLookup = typeof bestAsk === 'number' && Number.isFinite(bestAsk) && bestAsk > 0;
       const asks =
         sameBook && displayAsks.length > 0
@@ -4112,77 +4107,10 @@ export function Sidebar() {
                       </div>
                 </div>
                 {!row.pastExpiry && row.yesMathCents != null && (
-                  (() => {
-                    const yesTid = (selectedMarket?.clobTokenIds?.[0] || '').trim();
-                    const wsRow = yesTid ? marketLookup[yesTid] : undefined;
-                    const bb = wsRow?.bestBid;
-                    const ba = wsRow?.bestAsk;
-                    const tb = bb != null && Number.isFinite(bb) ? bb * 100 : NaN;
-                    const ta = ba != null && Number.isFinite(ba) ? ba * 100 : NaN;
-                    let yesMidCents: number | null = null;
-                    if (Number.isFinite(tb) && Number.isFinite(ta)) yesMidCents = (tb + ta) / 2;
-                    else if (Number.isFinite(tb)) yesMidCents = tb;
-                    else if (Number.isFinite(ta)) yesMidCents = ta;
-                    const yMidOk =
-                      yesMidCents != null ? Math.min(100, Math.max(0, yesMidCents)) : null;
-
-                    const m = row.yesMathCents;
-                    const delta = yMidOk != null ? yMidOk - m : null;
-                    /** GREEN on the left (% width): 50% when YES mid ≡ math; grows left when YES mid > math. RED fills the remainder on the right. */
-                    const greenLeftPct =
-                      delta == null
-                        ? 50
-                        : Math.min(97, Math.max(3, 50 + (delta / 22) * 46));
-
-                    const tip =
-                      yMidOk == null
-                        ? `Model YES ${m.toFixed(1)}¢ — no WS best bid/ask for YES yet`
-                        : `YES mid ${yMidOk.toFixed(1)}¢ (bid/ask WS) vs model ${m.toFixed(1)}¢ (Δ ${delta! >= 0 ? '+' : ''}${delta!.toFixed(1)}¢)`;
-
-                    return (
-                      <div className="mt-2 pt-1.5 border-t border-gray-800/70" title={tip}>
-                        <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <span className="flex items-center gap-0.5 text-[10px] text-gray-500">
-                            Prob
-                            <HelpTooltip
-                              text={
-                                'YES midpoint: average of live best bid and best ask from `/ws/chart` (YES token asset id).\n\n' +
-                                  'Not the sidebar CLOB ladder. Same readings when you toggle sidebar YES/NO.\n\n' +
-                                  'Compared to Math (model YES). Green left grows when WS mid is above math.'
-                              }
-                            />
-                          </span>
-                          <span className="text-[10px] text-gray-400 tabular-nums">
-                            <span className="text-gray-500">YES mid</span>{' '}
-                            {yMidOk != null ? (
-                              <span
-                                className={`font-semibold ${
-                                  delta != null ? (delta > 0.4 ? 'text-emerald-400' : delta < -0.4 ? 'text-red-400' : 'text-gray-200') : 'text-white'
-                                }`}
-                              >
-                                {yMidOk.toFixed(1)}
-                              </span>
-                            ) : (
-                              <span className="text-gray-600">–</span>
-                            )}
-                            <span className="text-gray-600 mx-0.5">/</span>
-                            <span className="text-gray-400">{m.toFixed(1)} math</span>
-                          </span>
-                  </div>
-                        <div className="relative h-[7px] w-full rounded-full overflow-hidden bg-gray-900 ring-1 ring-gray-700/80">
-                          <div
-                            className="absolute inset-y-0 left-0 rounded-l-[999px] bg-emerald-600/90"
-                            style={{ width: `${greenLeftPct}%` }}
-                          />
-                          <div
-                            className="absolute inset-y-0 rounded-r-[999px] bg-red-800/95"
-                            style={{ left: `${greenLeftPct}%`, width: `${100 - greenLeftPct}%` }}
-                          />
-                          <SidebarBarMidMarker />
-                </div>
-                      </div>
-                    );
-                  })()
+                  <SidebarYesMidProbBar
+                    yesTokenId={selectedMarket?.clobTokenIds?.[0] || ''}
+                    yesMathCents={row.yesMathCents}
+                  />
                 )}
               </div>
             );
@@ -4937,63 +4865,21 @@ export function Sidebar() {
                   const outcomeColor = outcome === 'YES' ? 'text-green-400' : 'text-red-400';
                   const size = pos.size || 0;
                   const avg = pos.avgPrice || 0;
-                  const cost = size * avg;
-                  // Mark each position to its own token's live bid (same outcome token),
-                  // not the currently viewed opposite-side orderbook.
-                  const tokenId = pos.asset || '';
-                  const tokenLive = tokenId ? marketLookup[tokenId] : undefined;
-                  const tokenBestBid = tokenLive?.bestBid;
-                  const currentPrice =
-                    typeof tokenBestBid === 'number' && Number.isFinite(tokenBestBid) && tokenBestBid > 0
-                      ? tokenBestBid
-                      : 0;
-                  const currentValue = size * currentPrice;
-                  const pnl = currentValue - cost;
-                  const pnlPct = cost > 0 ? (pnl / cost) * 100 : 0;
-                  const pnlColor = pnl >= 0 ? 'text-green-400' : 'text-red-400';
-                  const pnlSign = pnl >= 0 ? '+' : '';
-                  const posTok = String(tokenId || '').trim();
+                  const posTok = String(pos.asset || '').trim();
                   const closing = closingPositionTokens.has(posTok);
                   return (
-                    <div key={posTok || i} className="bg-gray-700/30 rounded px-1.5 py-0.5 text-[12px] min-w-0">
-                      <div className="flex justify-between items-start gap-1">
-                        <div
-                          className="min-w-0 flex-1 text-gray-300 leading-tight break-words"
-                          style={{
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          <span className={`${outcomeColor} font-medium`}>{outcomeLabel}</span>
-                          <span
-                            className="cursor-pointer hover:underline"
-                            onClick={() => setOrderAmount((Math.floor(size * 100) / 100).toString())}
-                            title="Net contracts held for this outcome (after sells; fills may report slightly different share amounts vs order size due to fees/rounding). Click to use as order amount."
-                          >
-                            {' '}{Math.floor(size * 100) / 100}
-                          </span>
-                          <span className="text-gray-500"> @ </span>
-                          <span className="text-yellow-400">{(avg * 100).toFixed(1)}¢</span>
-                          <span className="text-gray-400"> ${currentValue.toFixed(2)}\${cost.toFixed(2)}</span>
-                        </div>
-                        {!isMarketExpired && (
-                          <button
-                            type="button"
-                            onClick={() => !closing && handleClosePosition(posTok, size)}
-                            disabled={closing}
-                            className="w-4 h-4 shrink-0 rounded-sm flex items-center justify-center bg-red-600 hover:bg-red-500 disabled:bg-red-600/50"
-                            title="Market sell entire position (FAK)"
-                          >
-                            {closing ? <span className="cancel-spinner" /> : <span className="text-black text-[10px] font-bold leading-none">✕</span>}
-                          </button>
-                        )}
-                      </div>
-                      <div className={`${pnlColor} w-full leading-tight`}>
-                        {pnlSign}${Math.abs(Math.round(pnl))} ({pnlSign}{Math.round(pnlPct)}%)
-                      </div>
-                    </div>
+                    <SidebarPositionListItem
+                      key={posTok || i}
+                      tokenId={posTok}
+                      size={size}
+                      avg={avg}
+                      outcomeLabel={outcomeLabel}
+                      outcomeColor={outcomeColor}
+                      isMarketExpired={isMarketExpired}
+                      closing={closing}
+                      onSetOrderAmount={setOrderAmount}
+                      onClose={() => handleClosePosition(posTok, size)}
+                    />
                   );
                 })
               )}

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { Market } from '../types';
 import { useAppStore } from '../stores/appStore';
-import { bidAskWsRowEqual } from '../lib/bidAskMarketLookup';
+import { bidAskWsRowEqual, GRID_BID_ASK_THROTTLE_MS } from '../lib/bidAskMarketLookup';
 
 export type LookupPair = { yes?: Market; no?: Market };
 
@@ -10,7 +10,7 @@ export type LookupPair = { yes?: Market; no?: Market };
 export function useThrottledLookupPair(
   yesTokenId: string,
   noTokenId: string,
-  ms = 1000,
+  ms = GRID_BID_ASK_THROTTLE_MS,
 ): LookupPair {
   const live = useAppStore(
     useShallow((s): LookupPair => {

@@ -7,7 +7,7 @@ import { getMarketProbability } from '../../utils/bsMath';
 import { normalizeClobTokenId } from '../../utils/format';
 import { noOutcomeBidAsk, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
-import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
+import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLookupSubset';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
 const ASSET_COLORS: Record<string, string> = {
@@ -248,7 +248,7 @@ function UpDownAssetLaneCellsInner({
     return [...ids];
   }, [yesTokenId, noTokenId, futuresSlots]);
 
-  const bidAskLookup = useMarketLookupSubset(lookupTokenIds);
+  const bidAskLookup = useThrottledMarketLookupSubset(lookupTokenIds);
 
   const getLiveBidAsk = (m: Market) => {
     const tid = m.clobTokenIds?.[0];

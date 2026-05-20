@@ -1,8 +1,9 @@
 import type { Market } from '../types';
 import { useAppStore } from '../stores/appStore';
 
-/** Max delay before flushing non–order-critical lookup fields to the store (grid/UI). */
-export const BID_ASK_LOOKUP_FLUSH_MS = 1000;
+/** Grid store flush for bid/ask + lookup fields — sidebar uses `getBidAskMarketRow` (unthrottled). */
+export const BID_ASK_LOOKUP_FLUSH_MS = 2000;
+export const GRID_BID_ASK_THROTTLE_MS = BID_ASK_LOOKUP_FLUSH_MS;
 
 /** Fields bid/ask WS batches can materially change vs prior store row — cheap equality gate. */
 const BIDASK_EQ_KEYS: (keyof Market)[] = [
@@ -38,10 +39,22 @@ const BIDASK_EQ_KEYS: (keyof Market)[] = [
   'stakedTopHoldersCohortNoUsd',
 ];
 
+const NON_BIDASK_EQ_KEYS = BIDASK_EQ_KEYS.filter((k) => k !== 'bestBid' && k !== 'bestAsk');
+
 export function bidAskWsRowEqual(prev: Market | undefined | null, next: Market | undefined | null): boolean {
   if (prev === next) return true;
   if (!prev || !next) return false;
   for (const k of BIDASK_EQ_KEYS) {
+    if (prev[k] !== next[k]) return false;
+  }
+  return true;
+}
+
+/** Holders/volume/staked/etc. — epoch bump only when these change (not bid/ask alone). */
+export function nonBidAskMarketRowEqual(prev: Market | undefined | null, next: Market | undefined | null): boolean {
+  if (prev === next) return true;
+  if (!prev || !next) return false;
+  for (const k of NON_BIDASK_EQ_KEYS) {
     if (prev[k] !== next[k]) return false;
   }
   return true;
@@ -133,6 +146,7 @@ function flushPendingBidAskToStore() {
     const lookup = state.marketLookup;
     let merged = lookup;
     let bumped = false;
+    let bumpedNonBidAsk = false;
     for (const id of ids) {
       const next = snapshot[id];
       const baseline = lookup[id];
@@ -140,9 +154,13 @@ function flushPendingBidAskToStore() {
       if (merged === lookup) merged = { ...lookup };
       merged[id] = next;
       bumped = true;
+      if (!nonBidAskMarketRowEqual(baseline, next)) bumpedNonBidAsk = true;
     }
     if (!bumped) return {};
-    return { marketLookup: merged, marketLookupEpoch: state.marketLookupEpoch + 1 };
+    if (bumpedNonBidAsk) {
+      return { marketLookup: merged, marketLookupEpoch: state.marketLookupEpoch + 1 };
+    }
+    return { marketLookup: merged };
   });
 }
 

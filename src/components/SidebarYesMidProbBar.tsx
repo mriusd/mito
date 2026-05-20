@@ -48,7 +48,7 @@ export const SidebarYesMidProbBar = memo(function SidebarYesMidProbBar({
           <HelpTooltip
             text={
               'YES midpoint: average of live best bid and best ask from `/ws/chart` (YES token asset id).\n\n' +
-              'Not the sidebar CLOB ladder. Updates on each WS tick (not the 1s marketLookup throttle).\n\n' +
+              'Not the sidebar CLOB ladder. Updates on each WS tick (not the 2s grid marketLookup throttle).\n\n' +
               'Compared to Math (model YES). Green left grows when WS mid is above math.'
             }
           />

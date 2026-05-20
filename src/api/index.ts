@@ -1,6 +1,6 @@
 import type { MarketsResponse, Market, Position, SmartMoneySignalsResponse } from '../types';
 import { isWebMode, API_BASE } from '../lib/env';
-import { placeOrderDirect, cancelOrderDirect, signOrderOnly, submitSignedOrderDirect } from '../lib/clobClient';
+import { placeOrderDirect, cancelOrderDirect, cancelOrdersDirect, signOrderOnly, submitSignedOrderDirect } from '../lib/clobClient';
 import { useAppStore } from '../stores/appStore';
 
 const BASE = API_BASE;
@@ -76,6 +76,22 @@ export async function cancelOrder(orderId: string): Promise<{ success: boolean; 
     body: JSON.stringify({ orderId }),
   });
   return resp.json();
+}
+
+export async function cancelOrders(orderIds: string[]): Promise<{ success: boolean; error?: string; cancelled?: number }> {
+  const ids = orderIds.map((id) => id.trim()).filter(Boolean);
+  if (ids.length === 0) return { success: true, cancelled: 0 };
+  if (isWebMode) {
+    const proxyWallet = useAppStore.getState().makerAddress;
+    if (!proxyWallet) return { success: false, error: 'Wallet not connected' };
+    return cancelOrdersDirect(ids, proxyWallet);
+  }
+  const results = await Promise.all(ids.map((id) => cancelOrder(id)));
+  const cancelled = results.filter((r) => r.success).length;
+  if (cancelled === 0) {
+    return { success: false, error: results.find((r) => r.error)?.error || 'Cancel failed', cancelled: 0 };
+  }
+  return { success: true, cancelled };
 }
 
 // Sign an order (wallet popup) without submitting — for replace flow

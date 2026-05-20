@@ -8,6 +8,7 @@ import {
   mergeMarketStakedLegsResponse,
   placeOrder,
   cancelOrder,
+  cancelOrders,
   signOrder,
   submitSignedOrder,
   type MarketStakedLegsResponse,
@@ -115,6 +116,7 @@ import { SidebarSpotStripMathButton } from './SidebarSpotStripMathButton';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import { SidebarYesMidProbBar } from './SidebarYesMidProbBar';
 import { SidebarPositionListItem } from './SidebarPositionListItem';
+import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 import { getBidAskMarketRow } from '../lib/bidAskMarketLookup';
 import {
   ArrowRight,
@@ -1383,6 +1385,7 @@ export function Sidebar() {
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [editingOrderPrice, setEditingOrderPrice] = useState('');
   const [cancellingOrderIds, setCancellingOrderIds] = useState<Set<string>>(new Set());
+  const [cancellingAllOrders, setCancellingAllOrders] = useState(false);
   const [closingPositionTokens, setClosingPositionTokens] = useState<Set<string>>(new Set());
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
   const [toxicSidebarExpanded, setToxicSidebarExpanded] = useState(() => {
@@ -2731,6 +2734,36 @@ export function Sidebar() {
       showToast('Cancel failed', 'error');
     } finally {
       setCancellingOrderIds(prev => { const s = new Set(prev); s.delete(orderId); return s; });
+    }
+  };
+
+  const handleCancelAllOrders = async () => {
+    const ids = [...myOrders, ...progOrders].map((o) => o.id).filter(Boolean);
+    if (ids.length === 0 || cancellingAllOrders) return;
+    setCancellingAllOrders(true);
+    setCancellingOrderIds((prev) => {
+      const s = new Set(prev);
+      for (const id of ids) s.add(id);
+      return s;
+    });
+    try {
+      const result = await cancelOrders(ids);
+      if (result.success) {
+        const n = result.cancelled ?? ids.length;
+        showToast(n > 1 ? `${n} orders cancelled` : 'Order cancelled', 'success');
+        triggerWalletRefresh();
+      } else {
+        showToast(result.error || 'Cancel all failed', 'error');
+      }
+    } catch {
+      showToast('Cancel all failed', 'error');
+    } finally {
+      setCancellingAllOrders(false);
+      setCancellingOrderIds((prev) => {
+        const s = new Set(prev);
+        for (const id of ids) s.delete(id);
+        return s;
+      });
     }
   };
 
@@ -4772,6 +4805,7 @@ export function Sidebar() {
             <div className="flex items-center justify-between mb-2 gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-xs text-gray-400 shrink-0">My Positions</span>
+                <SidebarDataSourceBadge source={liveTradesSource === 'onchain' ? 'onchain' : 'polymarket'} />
                 {mergeEligible.showButton && !isMarketExpired && (
                   <button
                     type="button"
@@ -4835,7 +4869,26 @@ export function Sidebar() {
               )}
             </div>
             <div className="my-3 border-t border-gray-700/70" />
-            <div className="text-xs text-gray-400 mb-2 mt-3">My Orders</div>
+            <div className="flex items-center gap-1.5 mb-2 mt-3">
+              <span className="text-xs text-gray-400">My Orders</span>
+              <SidebarDataSourceBadge source="polymarket" />
+              {(myOrders.length > 0 || progOrders.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => !cancellingAllOrders && handleCancelAllOrders()}
+                  disabled={cancellingAllOrders}
+                  className="w-4 h-4 rounded-sm flex items-center justify-center flex-shrink-0 bg-red-600 hover:bg-red-500 disabled:bg-red-600/50"
+                  title="Cancel all orders"
+                  aria-label="Cancel all orders"
+                >
+                  {cancellingAllOrders ? (
+                    <span className="cancel-spinner" />
+                  ) : (
+                    <span className="text-black text-[10px] font-bold leading-none">✕</span>
+                  )}
+                </button>
+              )}
+            </div>
             <div className="space-y-2 text-xs">
               {myOrders.length === 0 && progOrders.length === 0 ? (
                 <div className="text-gray-600">No orders</div>
@@ -5022,7 +5075,10 @@ export function Sidebar() {
           {/* My Trades */}
           <div className="sidebar-section">
             <div className="mb-2 flex items-center justify-between text-xs text-gray-400">
-              <span>My Trades</span>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span>My Trades</span>
+                <SidebarDataSourceBadge source={liveTradesSource === 'onchain' ? 'onchain' : 'polymarket'} />
+              </div>
               <span className={myTradesPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                 PnL {myTradesPnl >= 0 ? '+' : ''}${Math.abs(myTradesPnl).toFixed(2)}
               </span>

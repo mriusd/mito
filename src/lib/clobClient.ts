@@ -963,3 +963,48 @@ export async function cancelOrderDirect(
     return { success: false, error: err.message };
   }
 }
+
+export async function cancelOrdersDirect(
+  orderIds: string[],
+  proxyWallet: string,
+): Promise<{ success: boolean; error?: string; cancelled?: number }> {
+  const ids = orderIds.map((id) => id.trim()).filter(Boolean);
+  if (ids.length === 0) return { success: true, cancelled: 0 };
+  try {
+    const signer = await getEthersSigner();
+    const creds = await ensureCreds(signer, proxyWallet);
+    const eoa = (await signer.getAddress()).toLowerCase();
+    const sig = await tradingSignatureType(eoa, proxyWallet);
+    const client = makeTradingClient(signer, proxyWallet, creds, sig);
+    const data = (await client.cancelOrders(ids)) as Record<string, unknown>;
+
+    if (data.error || data.errorMsg) {
+      return { success: false, error: String(data.error || data.errorMsg) };
+    }
+
+    const canceledRaw = data.canceled;
+    const notCanceledRaw = data.not_canceled;
+    const canceled: string[] = Array.isArray(canceledRaw) ? canceledRaw.map((x) => String(x)) : [];
+    const notCanceled: Record<string, string> =
+      notCanceledRaw && typeof notCanceledRaw === 'object' && !Array.isArray(notCanceledRaw)
+        ? (notCanceledRaw as Record<string, string>)
+        : {};
+
+    if (canceled.length === 0 && Object.keys(notCanceled).length > 0) {
+      const firstReason = Object.values(notCanceled)[0];
+      return { success: false, error: String(firstReason || 'Cancel failed'), cancelled: 0 };
+    }
+
+    if (canceled.length === 0 && Object.keys(notCanceled).length === 0) {
+      return {
+        success: false,
+        error: 'Unexpected cancel response; orders may have executed.',
+        cancelled: 0,
+      };
+    }
+
+    return { success: true, cancelled: canceled.length };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}

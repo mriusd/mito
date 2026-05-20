@@ -56,6 +56,12 @@ import {
   TOXIC_BELL_WALLETS_LS_KEY,
   TOXIC_BELLS_CHANGED_EVENT,
 } from '../lib/toxicFavouriteWallets';
+import {
+  readToxicXWallets,
+  persistToxicXWallets,
+  TOXIC_X_WALLETS_LS_KEY,
+  TOXIC_X_CHANGED_EVENT,
+} from '../lib/toxicXWallets';
 import { primeTiltAudioContextFromUserGesture } from '../lib/tiltNotifySound';
 import {
   getNotifyBellMinStakeUsdSnapshot,
@@ -468,7 +474,7 @@ const TOXIC_TABLE_BODY_TD_CLS = 'box-border align-middle py-0';
 const TOXIC_TABLE_ROW_INNER_CLS = 'flex h-[23px] max-h-[23px] min-h-[23px] items-center';
 const TOXIC_TABLE_RANK_COL_CLS =
   'w-[1.85rem] min-w-[1.85rem] max-w-[1.85rem] box-border tabular-nums text-left shrink-0 pl-1';
-const TOXIC_TABLE_FAV_COL_CLS = 'w-[2rem] min-w-[2rem] max-w-[2rem] box-border shrink-0 px-0.5';
+const TOXIC_TABLE_FAV_COL_CLS = 'w-[2.85rem] min-w-[2.85rem] max-w-[2.85rem] box-border shrink-0 px-0.5';
 /** Fixed width for % / Cum% (e.g. 100.0%) so stake updates do not jitter column width. */
 const TOXIC_TABLE_STAKED_PCT_COL_CLS =
   'w-[3.35rem] min-w-[3.35rem] max-w-[3.35rem] box-border shrink-0 tabular-nums text-right';
@@ -542,6 +548,8 @@ const STAR_CLS_ON = 'text-yellow-400 fill-yellow-400';
 const STAR_CLS_OFF = 'fill-none stroke-gray-400';
 const BELL_CLS_ON = 'text-amber-400 fill-amber-400/25';
 const BELL_CLS_OFF = 'stroke-gray-400 fill-none';
+const X_CLS_ON = 'text-red-500 fill-red-500/20 stroke-red-500';
+const X_CLS_OFF = 'stroke-gray-400 fill-none';
 
 function LedgerSummaryField({
   label,
@@ -1162,10 +1170,12 @@ interface WalletTableBodyRowProps {
   shadeRowByStakedNet: boolean;
   favouriteActive: boolean;
   bellActive: boolean;
+  xActive: boolean;
   /** Row flash when |Staked Net| USD ≥ this (Tilt notifications “Whale amount”). */
   tiltWhaleAmountUsd: number;
   toggleFavouriteWallet: (addr: string) => void;
   toggleBellWallet: (addr: string) => void;
+  toggleXWallet: (addr: string) => void;
   onOpenWallet?: (wallet: string, netShares?: number) => void;
   stakedPct: number;
   cumStakedPct: number;
@@ -1177,9 +1187,11 @@ function WalletTableBodyRowImpl({
   shadeRowByStakedNet,
   favouriteActive,
   bellActive,
+  xActive,
   tiltWhaleAmountUsd,
   toggleFavouriteWallet,
   toggleBellWallet,
+  toggleXWallet,
   onOpenWallet,
   stakedPct,
   cumStakedPct,
@@ -1203,6 +1215,14 @@ function WalletTableBodyRowImpl({
       toggleBellWallet(w.wallet);
     },
     [toggleBellWallet, w.wallet],
+  );
+  const onXClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleXWallet(w.wallet);
+    },
+    [toggleXWallet, w.wallet],
   );
 
   const iy = typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
@@ -1268,6 +1288,15 @@ function WalletTableBodyRowImpl({
           >
             <Bell size={11} strokeWidth={2} className={bellActive ? BELL_CLS_ON : BELL_CLS_OFF} />
           </button>
+          <button
+            type="button"
+            className="rounded p-0 leading-none hover:bg-gray-600/40 text-gray-500 hover:text-red-400/90"
+            title={xActive ? 'Clear X mark' : 'Mark wallet with X'}
+            aria-pressed={xActive}
+            onClick={onXClick}
+          >
+            <X size={11} strokeWidth={2} className={xActive ? X_CLS_ON : X_CLS_OFF} />
+          </button>
         </span>
       </td>
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} whitespace-nowrap px-1`}>
@@ -1327,11 +1356,13 @@ const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
     a.shadeRowByStakedNet !== b.shadeRowByStakedNet ||
     a.favouriteActive !== b.favouriteActive ||
     a.bellActive !== b.bellActive ||
+    a.xActive !== b.xActive ||
     a.tiltWhaleAmountUsd !== b.tiltWhaleAmountUsd ||
     a.stakedPct !== b.stakedPct ||
     a.cumStakedPct !== b.cumStakedPct ||
     a.toggleFavouriteWallet !== b.toggleFavouriteWallet ||
     a.toggleBellWallet !== b.toggleBellWallet ||
+    a.toggleXWallet !== b.toggleXWallet ||
     a.onOpenWallet !== b.onOpenWallet
   ) {
     return false;
@@ -1418,20 +1449,25 @@ function WalletTableInner({
   }, [rows, totalStakedDenom]);
   const [favouriteWallets, setFavouriteWallets] = useState(readToxicFavouriteWallets);
   const [bellWallets, setBellWallets] = useState(readToxicBellWallets);
+  const [xWallets, setXWallets] = useState(readToxicXWallets);
   useEffect(() => {
     const onFav = () => setFavouriteWallets(readToxicFavouriteWallets());
     const onBell = () => setBellWallets(readToxicBellWallets());
+    const onX = () => setXWallets(readToxicXWallets());
     const onStorage = (e: StorageEvent) => {
       if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY || e.key === null) onFav();
       if (e.key === TOXIC_BELL_WALLETS_LS_KEY || e.key === null) onBell();
+      if (e.key === TOXIC_X_WALLETS_LS_KEY || e.key === null) onX();
     };
     window.addEventListener('storage', onStorage);
     window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, onFav);
     window.addEventListener(TOXIC_BELLS_CHANGED_EVENT, onBell);
+    window.addEventListener(TOXIC_X_CHANGED_EVENT, onX);
     return () => {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, onFav);
       window.removeEventListener(TOXIC_BELLS_CHANGED_EVENT, onBell);
+      window.removeEventListener(TOXIC_X_CHANGED_EVENT, onX);
     };
   }, []);
   const toggleFavouriteWallet = useCallback((addr: string) => {
@@ -1454,6 +1490,17 @@ function WalletTableInner({
       if (next.has(k)) next.delete(k);
       else next.add(k);
       persistToxicBellWallets(next);
+      return next;
+    });
+  }, []);
+  const toggleXWallet = useCallback((addr: string) => {
+    const k = addr.trim().toLowerCase();
+    if (!k) return;
+    setXWallets((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      persistToxicXWallets(next);
       return next;
     });
   }, []);
@@ -1487,7 +1534,7 @@ function WalletTableInner({
         <thead className="sticky top-0 z-[1] bg-gray-950">
           <tr className="text-gray-500 border-b border-gray-700">
             <th className={`align-middle py-1 pr-0 ${TOXIC_TABLE_RANK_COL_CLS}`}>#</th>
-            <th className={`align-middle py-1 text-left ${TOXIC_TABLE_FAV_COL_CLS}`} aria-label="Favourite and highlight" />
+            <th className={`align-middle py-1 text-left ${TOXIC_TABLE_FAV_COL_CLS}`} aria-label="Favourite, bell, and X mark" />
             <th className="align-middle py-1 text-left px-1">Wallet</th>
             <th className="align-middle py-1 text-right px-1 bg-green-900/15" title="inv_yes">
               Inv Y
@@ -1541,8 +1588,10 @@ function WalletTableInner({
                 shadeRowByStakedNet={!!shadeRowByStakedNet}
                 favouriteActive={favouriteWallets.has(wk)}
                 bellActive={bellWallets.has(wk)}
+                xActive={xWallets.has(wk)}
                 toggleFavouriteWallet={toggleFavouriteWallet}
                 toggleBellWallet={toggleBellWallet}
+                toggleXWallet={toggleXWallet}
                 tiltWhaleAmountUsd={tiltWhaleAmountUsd}
                 onOpenWallet={onOpenWallet}
                 stakedPct={metrics.stakedPct}
@@ -1701,16 +1750,19 @@ export function WalletInfoDialog({
   );
   const [walletIsFavourite, setWalletIsFavourite] = useState(false);
   const [walletBellActive, setWalletBellActive] = useState(false);
+  const [walletXActive, setWalletXActive] = useState(false);
 
   useEffect(() => {
     if (!open || !wallet.trim()) {
       setWalletIsFavourite(false);
       setWalletBellActive(false);
+      setWalletXActive(false);
       return;
     }
     const k = wallet.trim().toLowerCase();
     setWalletIsFavourite(readToxicFavouriteWallets().has(k));
     setWalletBellActive(readToxicBellWallets().has(k));
+    setWalletXActive(readToxicXWallets().has(k));
   }, [open, wallet]);
 
   useEffect(() => {
@@ -1718,23 +1770,28 @@ export function WalletInfoDialog({
     const k = wallet.trim().toLowerCase();
     const syncFav = () => setWalletIsFavourite(readToxicFavouriteWallets().has(k));
     const syncBell = () => setWalletBellActive(readToxicBellWallets().has(k));
+    const syncX = () => setWalletXActive(readToxicXWallets().has(k));
     const onStorage = (e: StorageEvent) => {
       if (
         e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY ||
         e.key === TOXIC_BELL_WALLETS_LS_KEY ||
+        e.key === TOXIC_X_WALLETS_LS_KEY ||
         e.key === null
       ) {
         syncFav();
         syncBell();
+        syncX();
       }
     };
     window.addEventListener('storage', onStorage);
     window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
     window.addEventListener(TOXIC_BELLS_CHANGED_EVENT, syncBell);
+    window.addEventListener(TOXIC_X_CHANGED_EVENT, syncX);
     return () => {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
       window.removeEventListener(TOXIC_BELLS_CHANGED_EVENT, syncBell);
+      window.removeEventListener(TOXIC_X_CHANGED_EVENT, syncX);
     };
   }, [open, wallet]);
 
@@ -1756,6 +1813,16 @@ export function WalletInfoDialog({
     else next.add(k);
     persistToxicBellWallets(next);
     setWalletBellActive(next.has(k));
+  }, [wallet]);
+
+  const toggleWalletX = useCallback(() => {
+    const k = wallet.trim().toLowerCase();
+    if (!k) return;
+    const next = readToxicXWallets();
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
+    persistToxicXWallets(next);
+    setWalletXActive(next.has(k));
   }, [wallet]);
 
   const walletTag = useToxicWalletTag(wallet);
@@ -1863,6 +1930,19 @@ export function WalletInfoDialog({
               }}
             >
               <Bell size={13} strokeWidth={2} className={walletBellActive ? BELL_CLS_ON : BELL_CLS_OFF} />
+            </button>
+            <button
+              type="button"
+              className={`shrink-0 p-0.5 rounded hover:bg-gray-700/70 ${walletXActive ? 'text-red-500' : 'text-gray-500'}`}
+              title={walletXActive ? 'Clear X mark' : 'Mark wallet with X'}
+              aria-pressed={walletXActive}
+              disabled={!wallet.trim()}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleWalletX();
+              }}
+            >
+              <X size={13} strokeWidth={2} className={walletXActive ? X_CLS_ON : X_CLS_OFF} />
             </button>
             <button
               type="button"

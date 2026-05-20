@@ -242,6 +242,7 @@ const SIDEBAR_NOTIFY_WHALE_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-whale-m
 const SIDEBAR_NOTIFY_WHALE_IGNORE_NEGATIVE_PNL_KEY = 'polybot-sidebar-notify-whale-ignore-negative-pnl';
 const SIDEBAR_NOTIFY_DOUBLE_RING_KEY = 'polybot-sidebar-notify-double-ring';
 const SIDEBAR_NOTIFY_WHALE_RING_KEY = 'polybot-sidebar-notify-whale-ring';
+const SIDEBAR_NOTIFY_WHALE_RING_MUTABLE_KEY = 'polybot-sidebar-notify-whale-ring-mutable';
 const SIDEBAR_NOTIFY_BELL_RING_KEY = 'polybot-sidebar-notify-bell-ring';
 const SIDEBAR_NOTIFY_TILT_MKT_UPDOWN_KEY = 'polybot-sidebar-notify-tilt-mkt-updown';
 const SIDEBAR_NOTIFY_TILT_MKT_HIT_KEY = 'polybot-sidebar-notify-tilt-mkt-hit';
@@ -484,6 +485,16 @@ function readNotifyDoubleRing(): boolean {
 function readNotifyWhaleRing(): boolean {
   try {
     const v = localStorage.getItem(SIDEBAR_NOTIFY_WHALE_RING_KEY);
+    if (v === null) return false;
+    return v === '1';
+  } catch {
+    return false;
+  }
+}
+
+function readNotifyWhaleRingMutable(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_WHALE_RING_MUTABLE_KEY);
     if (v === null) return false;
     return v === '1';
   } catch {
@@ -768,6 +779,7 @@ export function Sidebar() {
   const [notifyStakedMinUsd, setNotifyStakedMinUsd] = useState(readNotifyStakedMinUsd);
   const [notifyWhaleAmountUsd, setNotifyWhaleAmountUsd] = useState(readTiltWhaleAmountUsd);
   const [notifyWhaleRing, setNotifyWhaleRing] = useState(readNotifyWhaleRing);
+  const [notifyWhaleRingMutable, setNotifyWhaleRingMutable] = useState(readNotifyWhaleRingMutable);
   const [notifyBellRing, setNotifyBellRing] = useState(readNotifyBellRing);
   const [notifyBellMinStakeUsd, setNotifyBellMinStakeUsd] = useState(readNotifyBellMinStakeUsd);
   const [notifyWhaleMaxPriceCents, setNotifyWhaleMaxPriceCents] = useState(readNotifyWhaleMaxPriceCents);
@@ -873,6 +885,13 @@ export function Sidebar() {
       /* ignore */
     }
   }, [notifyWhaleRing]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_WHALE_RING_MUTABLE_KEY, notifyWhaleRingMutable ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [notifyWhaleRingMutable]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_BELL_RING_KEY, notifyBellRing ? '1' : '0');
@@ -1990,10 +2009,15 @@ export function Sidebar() {
     };
 
     const tick = () => {
-      if (marketNotifyMutedRef.current) return;
-      if (cohortNeedsSound && !bidOkForSound()) return;
-      if (cohortNeedsSound) void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
-      else void playTiltNotifySoundStrikes(k, mul, rt, 3);
+      const muted = marketNotifyMutedRef.current;
+      if (cohortNeedsSound) {
+        if (muted) return;
+        if (!bidOkForSound()) return;
+        void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
+      } else if (whaleNeedsSound) {
+        if (muted && notifyWhaleRingMutable) return;
+        void playTiltNotifySoundStrikes(k, mul, rt, 3);
+      }
     };
 
     tick();
@@ -2003,6 +2027,7 @@ export function Sidebar() {
   }, [
     topBarExtremeBgFlash,
     notifyWhaleRing,
+    notifyWhaleRingMutable,
     notifyWhalePassesPriceGate,
     notifyWhaleIgnoreNegativePnl,
     notifyPlaySound,
@@ -2832,15 +2857,26 @@ export function Sidebar() {
                   />
                 </label>
               </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="rounded accent-amber-500"
-                  checked={notifyWhaleRing}
-                  onChange={(e) => setNotifyWhaleRing(e.target.checked)}
-                />
-                <span>Whale Ring</span>
-              </label>
+              <div className="flex items-center gap-4 flex-wrap">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyWhaleRing}
+                    onChange={(e) => setNotifyWhaleRing(e.target.checked)}
+                  />
+                  <span>Whale Ring</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyWhaleRingMutable}
+                    onChange={(e) => setNotifyWhaleRingMutable(e.target.checked)}
+                  />
+                  <span>Mutable</span>
+                </label>
+              </div>
               <div className="flex items-center gap-3 flex-wrap">
                 <label className="flex items-center gap-2 shrink-0">
                   <span className="text-gray-400 whitespace-nowrap">Whale amount (USDC)</span>
@@ -2887,7 +2923,7 @@ export function Sidebar() {
                 Wallets with |Staked Net| USD ≥ Whale amount are whales (same as Toxic Flow tab). Whale Ring fires only when at least one such wallet has avg entry on its heavier staked leg **below** Max Whale Price (ledger price_yes / price_no). Ignore negative pnl skips whales whose batched ledger lifetime PnL is &lt; 0.
               </p>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Whale Ring repeats while that condition holds (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, or minimum staked. If Max volatility % is &gt; 0 in this dialog, Whale Ring pauses while chart σ exceeds it (same gate as cohort tilt). Cohort tilt bursts still obey staked minimum plus Double Ring.
+                Whale Ring repeats while that condition holds (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, or minimum staked. If Max volatility % is &gt; 0 in this dialog, Whale Ring pauses while chart σ exceeds it (same gate as cohort tilt). Cohort tilt bursts still obey staked minimum plus Double Ring. Mutable off (default): per-market mute does not silence Whale Ring. Mutable on: market mute also silences whales.
               </p>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
                 Bell Ring: one strike per flashing 🔔 row in Top Holders every 1.35s when |Staked Net| ≥ Min usd stake (default 100). Row flash ignores stake; sound does not. 0 = any stake.

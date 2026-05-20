@@ -4,8 +4,15 @@ import { formatPriceShort, ASSET_COLORS } from '../utils/format';
 import { createProgArb } from '../api';
 import type { AssetSymbol } from '../types';
 
+import type { ArbOpportunity } from '../types';
+
 export function ArbDialog() {
   const arb = useAppStore((s) => s.arbDialogArb);
+  if (!arb) return null;
+  return <ArbDialogBody arb={arb} />;
+}
+
+function ArbDialogBody({ arb }: { arb: ArbOpportunity }) {
   const setArbDialogArb = useAppStore((s) => s.setArbDialogArb);
   const priceData = useAppStore((s) => s.priceData);
   const volatilityData = useAppStore((s) => s.volatilityData);
@@ -25,7 +32,6 @@ export function ArbDialog() {
 
   // Derived arb info
   const info = useMemo(() => {
-    if (!arb) return null;
     const assetParts = arb.asset.split('/');
     const yesAsset = assetParts[0] || '';
     const noAsset = assetParts[1] || assetParts[0] || '';
@@ -194,8 +200,6 @@ export function ArbDialog() {
   const handleClose = useCallback(() => {
     setArbDialogArb(null);
   }, [setArbDialogArb]);
-
-  if (!arb || !info) return null;
 
   const yCol = ASSET_COLORS[info.yesAsset as keyof typeof ASSET_COLORS] || '';
   const nCol = ASSET_COLORS[info.noAsset as keyof typeof ASSET_COLORS] || '';

@@ -150,7 +150,6 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   const symbol = assetToSymbol(asset);
   const aboveMarketsForAsset = useAppStore((s) => s.aboveMarkets[asset] ?? EMPTY_MARKETS);
   const priceOnMarketsForAsset = useAppStore((s) => s.priceOnMarkets[asset] ?? EMPTY_MARKETS);
-  const marketsLastUpdated = useAppStore((s) => s.lastUpdated);
   const weeklyHitMarketsForAsset = useAppStore((s) => s.weeklyHitMarkets[asset] ?? EMPTY_MARKETS);
   const upOrDownMarketsForAsset = useAppStore((s) => s.upOrDownMarkets[asset] ?? EMPTY_UDM);
   const livePrice = useThrottledStorePrice(symbol, 1000);
@@ -164,14 +163,19 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const showPast = useAppStore((s) => s.showPast);
   const setShowPast = useAppStore((s) => s.setShowPast);
+  const [pastFilterTick, setPastFilterTick] = useState(0);
+  useEffect(() => {
+    if (showPast) return;
+    const id = window.setInterval(() => setPastFilterTick((n) => n + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, [showPast]);
   const positions = useAppStore((s) => s.positions);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const onchainGridPositions = useAppStore((s) => s.onchainGridPositions);
   const orders = useAppStore((s) => s.orders);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
-  const selectedMarket = useAppStore((s) => s.selectedMarket);
-  const selectedEndDate = selectedMarket?.endDate || '';
+  const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
   const signalsOnGrid = useAppStore((s) => s.signalsOnGrid);
   const signals = useAppStore((s) => (s.signalsOnGrid ? s.signals : EMPTY_SIGNALS));
   const signalMakerMode = useAppStore((s) => s.signalMakerMode);
@@ -376,11 +380,11 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   type GridTableData = ReturnType<typeof buildTableData>;
   const aboveGridData = useMemo(
     () => (aboveMarketsForAsset.length > 0 ? buildTableData(aboveMarketsForAsset, showPast) : null),
-    [aboveMarketsForAsset, showPast, marketsLastUpdated],
+    [aboveMarketsForAsset, showPast, pastFilterTick],
   );
   const priceOnGridData = useMemo(
     () => (priceOnMarketsForAsset.length > 0 ? buildTableData(priceOnMarketsForAsset, showPast) : null),
-    [priceOnMarketsForAsset, showPast, marketsLastUpdated],
+    [priceOnMarketsForAsset, showPast, pastFilterTick],
   );
 
   // Check if live price satisfies the market's price condition
@@ -573,7 +577,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       signalsOnGrid={signalsOnGrid}
                       yesDiff={sig?.yesDiff}
                       noDiff={sig?.noDiff}
-                      isSelected={selectedMarket?.id === market.id}
+                      isSelected={selectedMarketId === market.id}
                       adjVol={adjVol}
                       bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}
@@ -689,7 +693,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       variant="updown"
                       minWidth={60}
                       signalsOnGrid={false}
-                      isSelected={selectedMarket?.id === market.id}
+                      isSelected={selectedMarketId === market.id}
                       adjVol={adjVol}
                       bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}
@@ -842,7 +846,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       signalsOnGrid={signalsOnGrid}
                       yesDiff={sig?.yesDiff}
                       noDiff={sig?.noDiff}
-                      isSelected={selectedMarket?.id === market.id}
+                      isSelected={selectedMarketId === market.id}
                       adjVol={adjVol}
                       bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}

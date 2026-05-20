@@ -5,7 +5,6 @@ import { useAppStore } from '../stores/appStore';
 import { appKit } from '../lib/wallet';
 import {
   fetchMarketStakedLegs,
-  mergeMarketStakedLegsResponse,
   placeOrder,
   cancelOrder,
   cancelOrders,
@@ -36,7 +35,6 @@ import {
   pickNextMarketOnExpiry,
   resolveUpDownStrikeSync,
   shortenMarketName,
-  getWmpVolumeSumUsd,
   tradeMatchesSelectedMarket,
   hitStrikeMetaForBs,
   upDownMarketUsesChainlinkSpot,
@@ -112,7 +110,9 @@ import {
 import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarOrderCostDisplay } from './SidebarOrderCostDisplay';
+import { SidebarMarketStatsCells, SidebarNotifyStakedGateSync } from './SidebarMarketStatsCells';
 import { SidebarSpotStripMathButton } from './SidebarSpotStripMathButton';
+import { useSidebarNotifyStakedGatePasses } from '../lib/sidebarNotifyStakedGateStore';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import { SidebarYesMidProbBar } from './SidebarYesMidProbBar';
 import { SidebarPositionListItem } from './SidebarPositionListItem';
@@ -894,41 +894,6 @@ export function Sidebar() {
   const autoSwitchPrevExpiredRef = useRef(false);
   const freqSliderPreviewLastMs = useRef(0);
 
-  const liveOrderbookVolumeDisplay = useMemo(() => {
-    if (!selectedMarket?.clobTokenIds?.[0]) return null;
-    const usd = getWmpVolumeSumUsd(selectedMarket, selectedMarket.clobTokenIds[0], marketLookup);
-    if (usd == null || !Number.isFinite(usd)) return null;
-    return formatPolymarketVolumeK(usd);
-  }, [selectedMarket, marketLookup]);
-  const liveShareStats = useMemo(() => {
-    const tokenId = selectedMarket?.clobTokenIds?.[0];
-    if (!tokenId) return null;
-    const entry = marketLookup[tokenId];
-    if (!entry) return null;
-    return {
-      sharesInExistence: entry.sharesInExistence,
-      marketNetDirection: entry.marketNetDirection,
-      holders: entry.holders,
-      smartMoneyBias: entry.smartMoneyBias,
-      provenSMS: entry.provenSMS,
-      crowdBias: entry.crowdBias,
-      liveBias: entry.liveBias,
-      liveBiasWindowMin: entry.liveBiasWindowMin,
-      concentration: entry.concentration,
-      winnerBiasYesWR: entry.winnerBiasYesWR,
-      winnerBiasNoWR: entry.winnerBiasNoWR,
-      winBiasShares: entry.winBiasShares,
-      winBiasSharesYes: entry.winBiasSharesYes,
-      winBiasSharesNo: entry.winBiasSharesNo,
-      winnerBiasConvictionYesWR: entry.winnerBiasConvictionYesWR,
-      winnerBiasConvictionNoWR: entry.winnerBiasConvictionNoWR,
-      winBiasConvictionShares: entry.winBiasConvictionShares,
-      winBiasConvictionSharesYes: entry.winBiasConvictionSharesYes,
-      winBiasConvictionSharesNo: entry.winBiasConvictionSharesNo,
-      stakedTopHoldersCohortYesUsd: entry.stakedTopHoldersCohortYesUsd,
-      stakedTopHoldersCohortNoUsd: entry.stakedTopHoldersCohortNoUsd,
-    };
-  }, [selectedMarket, marketLookup]);
   const [notifyPlaySound, setNotifyPlaySound] = useState(readNotifyPlaySound);
   const [notifyFlashBg, setNotifyFlashBg] = useState(readNotifyFlashBg);
   const [notifyHolderTiltPct, setNotifyHolderTiltPct] = useState(readNotifyHolderTiltPct);
@@ -1354,16 +1319,6 @@ export function Sidebar() {
     ensureTiltAudioUnlockListeners();
   }, []);
 
-  const holdersCountDisplay = useMemo(() => {
-    const v = liveShareStats?.holders;
-    if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
-    return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  }, [liveShareStats]);
-  const sharesInExistenceDisplay = useMemo(() => {
-    const v = liveShareStats?.sharesInExistence;
-    if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
-    return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  }, [liveShareStats]);
   const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
 
   const [orderSide, setOrderSide] = useState<'BUY' | 'SELL'>('BUY');
@@ -1431,41 +1386,8 @@ export function Sidebar() {
       cancelled = true;
     };
   }, [selectedMarket?.conditionId, selectedMarket?.id]);
-  const liveStakedLegUsd = useMemo(() => {
-    const tokenId = selectedMarket?.clobTokenIds?.[0];
-    if (!tokenId) return null;
-    const wy = marketLookup[tokenId]?.stakedUsdYesLeg;
-    const wn = marketLookup[tokenId]?.stakedUsdNoLeg;
-    const sumAbs = marketLookup[tokenId]?.stakedSumAbsSignedNetUsd;
-    if (typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn)) {
-      const row: MarketStakedLegsResponse = { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
-      if (typeof sumAbs === 'number' && Number.isFinite(sumAbs)) {
-        row.stakedSumAbsSignedNetUsd = sumAbs;
-      }
-      return row;
-    }
-    return null;
-  }, [selectedMarket, marketLookup]);
-  const sidebarStakedLegs = useMemo(
-    () => mergeMarketStakedLegsResponse(liveStakedLegUsd, marketStakedLegs),
-    [liveStakedLegUsd, marketStakedLegs],
-  );
-  const marketStakedNetUsdAbs = useMemo(() => {
-    if (!sidebarStakedLegs) return null;
-    const net =
-      typeof sidebarStakedLegs.stakedSumAbsSignedNetUsd === 'number' &&
-      Number.isFinite(sidebarStakedLegs.stakedSumAbsSignedNetUsd)
-        ? sidebarStakedLegs.stakedSumAbsSignedNetUsd
-        : Math.abs(sidebarStakedLegs.stakedUsdYesLeg - sidebarStakedLegs.stakedUsdNoLeg);
-    return Number.isFinite(net) ? net : null;
-  }, [sidebarStakedLegs]);
-
-  /** Tilt flash/sound only when net staked (pill) exceeds configured USD; 0 = no minimum. */
-  const notifyStakedGatePasses = useMemo(() => {
-    if (notifyStakedMinUsd <= 0) return true;
-    if (marketStakedNetUsdAbs == null || !Number.isFinite(marketStakedNetUsdAbs)) return false;
-    return marketStakedNetUsdAbs > notifyStakedMinUsd;
-  }, [notifyStakedMinUsd, marketStakedNetUsdAbs]);
+  const sidebarStakedLegs = marketStakedLegs;
+  const notifyStakedGatePasses = useSidebarNotifyStakedGatePasses();
 
   /** Tilt pauses while chart σ is above max (annualized %). 0 = no volatility gate. */
   const notifyVolatilityGatePasses = useMemo(() => {
@@ -1478,24 +1400,6 @@ export function Sidebar() {
     setSidebarChartAnnualVolPct(pct);
   }, []);
 
-  const marketStakedNetKDisplay = useMemo(() => {
-    if (marketStakedNetUsdAbs == null) return null;
-    return formatPolymarketVolumeK(marketStakedNetUsdAbs);
-  }, [marketStakedNetUsdAbs]);
-  const marketStakedGrossUsd = useMemo(() => {
-    if (!sidebarStakedLegs) return null;
-    const y = sidebarStakedLegs.stakedUsdYesLeg;
-    const n = sidebarStakedLegs.stakedUsdNoLeg;
-    if (!Number.isFinite(y) || !Number.isFinite(n)) return null;
-    return y + n;
-  }, [sidebarStakedLegs]);
-  /** Same USD basis as pill number (|net staked|, not Σ legs): <15k red, 15k–30k yellow, >30k green */
-  const stakedPillTier = useMemo((): 'muted' | 'low' | 'mid' | 'high' => {
-    if (typeof marketStakedNetUsdAbs !== 'number' || !Number.isFinite(marketStakedNetUsdAbs)) return 'muted';
-    if (marketStakedNetUsdAbs < 15_000) return 'low';
-    if (marketStakedNetUsdAbs <= 30_000) return 'mid';
-    return 'high';
-  }, [marketStakedNetUsdAbs]);
   const [crossingConfirmOpen, setCrossingConfirmOpen] = useState(false);
   const [crossingConfirmMessage, setCrossingConfirmMessage] = useState('');
   const crossingConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
@@ -3893,6 +3797,11 @@ export function Sidebar() {
 
       {selectedMarket && (
         <>
+          <SidebarNotifyStakedGateSync
+            yesTokenId={selectedMarket.clobTokenIds?.[0] ?? ''}
+            marketStakedLegs={marketStakedLegs}
+            notifyStakedMinUsd={notifyStakedMinUsd}
+          />
           <SidebarChartsRow
             selectedMarket={selectedMarket}
             isUpDownMarket={isUpDownMarket}
@@ -4158,104 +4067,11 @@ export function Sidebar() {
               }`}
             >
               <div className="grid w-full grid-cols-4 gap-1.5 text-[10px] min-w-0 items-stretch">
-              <button
-                type="button"
-                className={`rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${
-                  canShowEmbeddedToxic ? 'cursor-pointer hover:bg-gray-800/65 active:bg-gray-800/90' : 'cursor-default'
-                }`}
-                title={
-                  canShowEmbeddedToxic
-                    ? 'Σ wallet_market_positions.volume (chart WS). Click to expand Toxic Flow holders panel.'
-                    : 'Σ wallet_market_positions.volume for this market (chart WS wmpVolumeSum)'
-                }
-                onClick={expandSidebarToxicFlowPanel}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Volume</div>
-                <div className="tabular-nums font-bold text-green-400 truncate">
-                  {liveOrderbookVolumeDisplay ? `$${liveOrderbookVolumeDisplay}` : '--'}
-            </div>
-              </button>
-              <button
-                type="button"
-                className={`rounded px-1.5 py-1 min-w-0 border text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${
-                  canShowEmbeddedToxic ? 'cursor-pointer hover:brightness-110 active:brightness-125' : 'cursor-default'
-                } ${
-                  stakedPillTier === 'low'
-                    ? 'border-red-700/65 bg-red-950/35'
-                    : stakedPillTier === 'mid'
-                      ? 'border-amber-600/55 bg-amber-950/35'
-                      : stakedPillTier === 'high'
-                        ? 'border-emerald-800/60 bg-emerald-950/30'
-                        : 'border-gray-700/70 bg-gray-900/50'
-                }`}
-                title={
-                  canShowEmbeddedToxic
-                    ? `Net staked: |Σ|YES leg| − Σ|NO leg|| USD ≈ $${typeof marketStakedNetUsdAbs === 'number' && Number.isFinite(marketStakedNetUsdAbs) ? marketStakedNetUsdAbs.toFixed(0) : '—'}. Σ|legs| gross $${typeof marketStakedGrossUsd === 'number' && Number.isFinite(marketStakedGrossUsd) ? marketStakedGrossUsd.toFixed(0) : '—'}. Click to expand Toxic Flow.`
-                    : `Net staked (pill value): |Σ|YES leg| − Σ|NO leg|| USD ≈ $${typeof marketStakedNetUsdAbs === 'number' && Number.isFinite(marketStakedNetUsdAbs) ? marketStakedNetUsdAbs.toFixed(0) : '—'}. Σ|legs| gross USD: $${typeof marketStakedGrossUsd === 'number' && Number.isFinite(marketStakedGrossUsd) ? marketStakedGrossUsd.toFixed(0) : '—'}`
-                }
-                onClick={expandSidebarToxicFlowPanel}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <div
-                  className={`text-[8px] uppercase tracking-wide truncate ${
-                    stakedPillTier === 'low'
-                      ? 'text-red-400/90'
-                      : stakedPillTier === 'mid'
-                        ? 'text-amber-400/90'
-                        : stakedPillTier === 'high'
-                          ? 'text-emerald-500/90'
-                          : 'text-gray-500'
-                  }`}
-                >
-                  Staked
-                  </div>
-                <div
-                  className={`tabular-nums font-bold truncate ${
-                    stakedPillTier === 'low'
-                      ? 'text-red-300'
-                      : stakedPillTier === 'mid'
-                        ? 'text-amber-200'
-                        : stakedPillTier === 'high'
-                          ? 'text-emerald-300'
-                          : 'text-gray-200'
-                  }`}
-                >
-                  {marketStakedNetKDisplay ? `$${marketStakedNetKDisplay}` : '--'}
-                          </div>
-              </button>
-              <button
-                type="button"
-                className={`rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${
-                  canShowEmbeddedToxic ? 'cursor-pointer hover:bg-gray-800/65 active:bg-gray-800/90' : 'cursor-default'
-                }`}
-                title={
-                  canShowEmbeddedToxic
-                    ? 'Shares in existence from net balances. Click to expand Toxic Flow holders panel.'
-                    : 'Shares in existence from net wallet balances: sum(abs(YES-NO))'
-                }
-                onClick={expandSidebarToxicFlowPanel}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Shares</div>
-                <div className="tabular-nums font-bold text-gray-200 truncate">{sharesInExistenceDisplay}</div>
-              </button>
-              <button
-                type="button"
-                className={`min-w-0 w-full rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-amber-500/70 ${
-                  canShowEmbeddedToxic ? 'cursor-pointer hover:bg-yellow-900/35 active:bg-yellow-900/50' : 'cursor-default'
-                }`}
-                title={
-                  canShowEmbeddedToxic
-                    ? 'Holders count. Click to expand Toxic Flow holders panel.'
-                    : 'Holders count (desktop: expand sidebar chevron for Toxic Flow)'
-                }
-                onClick={expandSidebarToxicFlowPanel}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <div className="text-[8px] uppercase tracking-wide text-yellow-400 truncate">Holders</div>
-                <div className="tabular-nums font-bold text-yellow-300 truncate">{holdersCountDisplay}</div>
-              </button>
+              <SidebarMarketStatsCells
+                yesTokenId={selectedMarket?.clobTokenIds?.[0] ?? ''}
+                canShowEmbeddedToxic={canShowEmbeddedToxic}
+                onExpandToxic={expandSidebarToxicFlowPanel}
+              />
                       </div>
             <div className="mt-1 w-full min-w-0 flex flex-col gap-y-2 pb-0.5">
                   <ToxicFlowStakePreview

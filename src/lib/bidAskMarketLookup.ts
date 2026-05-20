@@ -146,7 +146,6 @@ function flushPendingBidAskToStore() {
     const lookup = state.marketLookup;
     let merged = lookup;
     let bumped = false;
-    let bumpedNonBidAsk = false;
     for (const id of ids) {
       const next = snapshot[id];
       const baseline = lookup[id];
@@ -154,12 +153,8 @@ function flushPendingBidAskToStore() {
       if (merged === lookup) merged = { ...lookup };
       merged[id] = next;
       bumped = true;
-      if (!nonBidAskMarketRowEqual(baseline, next)) bumpedNonBidAsk = true;
     }
     if (!bumped) return {};
-    if (bumpedNonBidAsk) {
-      return { marketLookup: merged, marketLookupEpoch: state.marketLookupEpoch + 1 };
-    }
     return { marketLookup: merged };
   });
 }

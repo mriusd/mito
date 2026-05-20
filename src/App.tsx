@@ -63,17 +63,20 @@ function PnlDrilldownGlobal() {
 function App() {
   const loading = useAppStore((s) => s.loading);
   const backendConnected = useAppStore((s) => s.backendConnected);
-  /** Bumps when backend refresh fills marketLookup — deep-link effect reads lookup via getState(), not this subscription. */
-  const marketLookupEpoch = useAppStore((s) => s.lastUpdated);
-  const selectedMarket = useAppStore((s) => s.selectedMarket);
+  const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
+  const selectedMarketConditionId = useAppStore((s) => s.selectedMarket?.conditionId?.trim() ?? '');
   const sidebarOutcome = useAppStore((s) => s.sidebarOutcome);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const [pendingLink, setPendingLink] = useState<{ marketId: string; side: 'YES' | 'NO' } | null>(() => parseMarketLinkFromUrl());
   const didApplyDefaultBtc5mMarketRef = useRef(false);
-  const selectedMarketRef = useRef(selectedMarket);
-  selectedMarketRef.current = selectedMarket;
+  const selectedMarketRef = useRef(useAppStore.getState().selectedMarket);
+  useEffect(() => {
+    return useAppStore.subscribe((state) => {
+      selectedMarketRef.current = state.selectedMarket;
+    });
+  }, []);
   const mountSidebarChunk = useMountSidebarLazyChunk();
 
   useLayoutEffect(() => {
@@ -117,17 +120,26 @@ function App() {
   useEffect(() => {
     if (!pendingLink) return;
 
-    const marketLookup = useAppStore.getState().marketLookup;
-    const byId = new Map<string, (typeof selectedMarket)>();
-    for (const m of Object.values(marketLookup)) byId.set(m.id, m);
-    const m = byId.get(pendingLink.marketId);
-    if (!m) return;
+    const tryApply = () => {
+      const st = useAppStore.getState();
+      const marketLookup = st.marketLookup;
+      const byId = new Map<string, (typeof st.selectedMarket)>();
+      for (const m of Object.values(marketLookup)) byId.set(m.id, m);
+      const m = byId.get(pendingLink.marketId);
+      if (!m) return;
 
-    if (!selectedMarket || selectedMarket.id !== m.id) setSelectedMarket(m);
-    if (sidebarOutcome !== pendingLink.side) setSidebarOutcome(pendingLink.side);
-    setSidebarOpen(true);
-    setPendingLink(null);
-  }, [pendingLink, marketLookupEpoch, selectedMarket, sidebarOutcome, setSelectedMarket, setSidebarOutcome, setSidebarOpen]);
+      if (!st.selectedMarket || st.selectedMarket.id !== m.id) setSelectedMarket(m);
+      if (st.sidebarOutcome !== pendingLink.side) setSidebarOutcome(pendingLink.side);
+      setSidebarOpen(true);
+      setPendingLink(null);
+    };
+
+    tryApply();
+    return useAppStore.subscribe((state, prev) => {
+      if (state.lastUpdated === prev.lastUpdated) return;
+      tryApply();
+    });
+  }, [pendingLink, setSelectedMarket, setSidebarOutcome, setSidebarOpen]);
 
   // No ?market= and no sidebar pick yet → open on live BTC 5m Up/Down (matches HUD ladder).
   useEffect(() => {
@@ -135,34 +147,42 @@ function App() {
     if (pendingLink != null) return;
     if (didApplyDefaultBtc5mMarketRef.current) return;
 
-    let urlMarketIntent = '';
-    if (typeof window !== 'undefined') {
-      urlMarketIntent = new URLSearchParams(window.location.search).get('market') || '';
-      if (urlMarketIntent.trim()) {
+    const tryDefault = () => {
+      let urlMarketIntent = '';
+      if (typeof window !== 'undefined') {
+        urlMarketIntent = new URLSearchParams(window.location.search).get('market') || '';
+        if (urlMarketIntent.trim()) {
+          didApplyDefaultBtc5mMarketRef.current = true;
+          return;
+        }
+      }
+
+      const st = useAppStore.getState();
+      if (st.selectedMarket != null) {
         didApplyDefaultBtc5mMarketRef.current = true;
         return;
       }
-    }
 
-    const st = useAppStore.getState();
-    if (st.selectedMarket != null) {
+      const live = pickLiveUpDownMarketInTfBucket(st.upOrDownMarkets?.BTC?.['5m'], Date.now());
+      if (!live?.id) return;
+
       didApplyDefaultBtc5mMarketRef.current = true;
-      return;
-    }
+      const m = marketFromLookupById(st.marketLookup, live.id) ?? live;
+      setSelectedMarket(m);
+    };
 
-    const live = pickLiveUpDownMarketInTfBucket(st.upOrDownMarkets?.BTC?.['5m'], Date.now());
-    if (!live?.id) return;
-
-    didApplyDefaultBtc5mMarketRef.current = true;
-    const m = marketFromLookupById(st.marketLookup, live.id) ?? live;
-    setSelectedMarket(m);
-  }, [loading, pendingLink, marketLookupEpoch, setSelectedMarket]);
+    tryDefault();
+    return useAppStore.subscribe((state, prev) => {
+      if (state.lastUpdated === prev.lastUpdated) return;
+      tryDefault();
+    });
+  }, [loading, pendingLink, setSelectedMarket]);
 
   // selected market -> URL sync
   useEffect(() => {
     const url = new URL(window.location.href);
     const params = url.searchParams;
-    const desiredMarket = selectedMarket?.id || '';
+    const desiredMarket = selectedMarketId;
     const desiredSide = sidebarOutcome.toLowerCase();
 
     if (!desiredMarket) {
@@ -179,7 +199,7 @@ function App() {
 
     const next = `${url.pathname}${params.toString() ? `?${params.toString()}` : ''}${url.hash}`;
     window.history.replaceState(null, '', next);
-  }, [selectedMarket, sidebarOutcome]);
+  }, [selectedMarketId, sidebarOutcome]);
 
   // Arrow keys / WASD: move selection to adjacent grid cell (same YES/NO side).
   useEffect(() => {
@@ -222,7 +242,7 @@ function App() {
       {/* Main content area */}
       <div
         className={`flex-1 min-h-0 flex max-[767px]:ml-0 md:transition-[margin-left] md:duration-[250ms] md:ease-[ease] ${
-          selectedMarket?.conditionId?.trim()
+          selectedMarketConditionId
             ? 'md:ml-[calc(18rem+1.5rem)]'
             : 'md:ml-72'
         }`}

@@ -622,6 +622,13 @@ function tradeFilledSizeShares(trade: { size: string; size_filled?: string }): n
   return parseFloat(trade.size_filled ?? trade.size);
 }
 
+/** Polymarket positions API default sizeThreshold — sub-threshold shares are dust. */
+const SIDEBAR_POSITION_DUST_SIZE = 0.01;
+
+function isSidebarDustPosition(size: number): boolean {
+  return !Number.isFinite(size) || size < SIDEBAR_POSITION_DUST_SIZE;
+}
+
 type CustomSidebarOrderOutcome = 'YES' | 'NO' | 'AUTO';
 
 type CustomSidebarPriceMode = 'FIXED' | 'BS_MINUS_C' | 'BS_PLUS_C' | 'BS_MINUS_PCT' | 'BS_PLUS_PCT';
@@ -713,6 +720,12 @@ function resolveCustomOrderPriceCents(spec: CustomSidebarOrderSpec, mathProbCent
   }
   if (!Number.isFinite(cents) || cents <= 0 || cents >= 100) return null;
   return Math.round(cents * 10) / 10;
+}
+
+/** BS modes: YES uses bs_yes (¢); NO uses 100 − bs_yes. */
+function bsMathProbCentsForOutcome(bsYesCents: number | null | undefined, outcome: 'YES' | 'NO'): number | null {
+  if (bsYesCents == null || !Number.isFinite(bsYesCents)) return null;
+  return outcome === 'YES' ? bsYesCents : 100 - bsYesCents;
 }
 
 function normalizeCustomSidebarOrderSpec(raw: unknown): CustomSidebarOrderSpec | null {
@@ -1633,6 +1646,10 @@ export function Sidebar() {
     );
     return mergeSidebarPositionsWsRest(restMarket, wsMarketRows);
   }, [liveTradesSource, positions, selectedMarket, marketLookup, onchainSidebarPositions]);
+  const myPositionsDisplay = useMemo(
+    () => myPositions.filter((p) => !isSidebarDustPosition(p.size || 0)),
+    [myPositions],
+  );
 
   const mergeEligible = useMemo(() => {
     if (!selectedMarket?.clobTokenIds || selectedMarket.clobTokenIds.length < 2) {
@@ -2114,58 +2131,6 @@ export function Sidebar() {
     upDownCountdown,
     upDownRemaining,
   ]);
-
-  const getMathProbCentsForOutcome = useCallback(
-    (outcome: 'YES' | 'NO'): number | null => {
-      if (!selectedMarket?.endDate) return null;
-      const endDate = selectedMarket.endDate;
-      const asset = extractAssetFromMarket(selectedMarket);
-      if (!asset) return null;
-      const sym = (asset + 'USDT') as AssetSymbol;
-      const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
-      const nowOffset = Date.now() + bsTimeOffsetHours * 3600000;
-      const expiryMs = new Date(endDate).getTime();
-      const pastExpiry = bsTimeOffsetHours > 0 && nowOffset >= expiryMs;
-      if (pastExpiry) return null;
-
-      if (isUpDownMarket) {
-        const binanceSym = (asset.toUpperCase() + 'USDT') as AssetSymbol;
-        const chainlinkPrice =
-          upDownSpotUsesChainlink && polyPrice.price != null && polyPrice.price > 0 ? polyPrice.price : 0;
-        const binancePrice = priceData[binanceSym]?.price || 0;
-        const currentPrice = upDownSpotUsesChainlink ? chainlinkPrice || binancePrice : binancePrice;
-        if (!upDownTargetPrice || !currentPrice) return null;
-        const probUp = getMarketProbability('>' + upDownTargetPrice, currentPrice, endDate, sigma, bsTimeOffsetHours);
-        if (probUp === null) return null;
-        return (outcome === 'YES' ? probUp : 1 - probUp) * 100;
-      }
-
-      const strikeRaw = (selectedMarket.groupItemTitle || '').trim();
-      if (!strikeRaw) return null;
-      const currentPrice = priceData[sym]?.price || vwapData[sym]?.price || 0;
-      if (!currentPrice) return null;
-      const cleaned = strikeRaw.replace(/^Hit\s*/i, '').replace(/[\$,]/g, '').replace(/↑/g, '>').replace(/↓/g, '<').trim();
-      const ps = cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-') ? cleaned : '>' + cleaned;
-      const probYes = selectedMarketIsHit
-        ? getHitMarketProbability(ps, currentPrice, endDate, sigma, bsTimeOffsetHours)
-        : getMarketProbability(ps, currentPrice, endDate, sigma, bsTimeOffsetHours);
-      if (probYes === null) return null;
-      return (outcome === 'YES' ? probYes : 1 - probYes) * 100;
-    },
-    [
-      selectedMarket,
-      isUpDownMarket,
-      upDownTargetPrice,
-      upDownSpotUsesChainlink,
-      polyPrice.price,
-      priceData,
-      vwapData,
-      volatilityData,
-      volMultiplier,
-      bsTimeOffsetHours,
-      selectedMarketIsHit,
-    ],
-  );
 
   /** Cohort signals only (Black–Scholes Δ gate removed). */
   const effectiveSidebarBgFlash = useMemo((): 'green' | 'red' | null => {
@@ -2681,7 +2646,7 @@ export function Sidebar() {
     let placed = 0;
     for (const spec of btn.orders) {
       const resolvedOutcome: 'YES' | 'NO' = spec.outcome === 'AUTO' ? orderOutcome : spec.outcome;
-      const mathProbCents = getMathProbCentsForOutcome(resolvedOutcome);
+      const mathProbCents = bsMathProbCentsForOutcome(sidebarSpotStrip?.yesMathCents, resolvedOutcome);
       const priceCents = resolveCustomOrderPriceCents(spec, mathProbCents);
       if (priceCents == null) {
         showToast(
@@ -4947,10 +4912,10 @@ export function Sidebar() {
               </button>
             </div>
             <div className="space-y-1 text-xs">
-              {myPositions.length === 0 ? (
+              {myPositionsDisplay.length === 0 ? (
                 <div className="text-gray-600">No positions</div>
               ) : (
-                myPositions.map((pos, i) => {
+                myPositionsDisplay.map((pos, i) => {
                   const outcome = getTokenOutcome(pos.asset || '', marketLookup);
                   const outcomeLabel = isUpDownMarket ? (outcome === 'YES' ? 'UP' : 'DOWN') : outcome;
                   const outcomeColor = outcome === 'YES' ? 'text-green-400' : 'text-red-400';

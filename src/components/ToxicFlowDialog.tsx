@@ -85,7 +85,6 @@ import {
 import { WS_BASE } from '../lib/env';
 import { toxicFlowFillKey } from '../lib/tradeKeys';
 import { useAppStore } from '../stores/appStore';
-import { useMarketLookupSnapshot } from '../hooks/useMarketLookupSnapshot';
 import { useWalletMarketTradesWS, type WSTrade } from '../hooks/useOnchainTradesWS';
 import {
   buildMarketByIdRecord,
@@ -1644,7 +1643,7 @@ const WalletTable = memo(WalletTableInner, (a, b) => {
 
 export type WalletInfoPanelVariant = 'modal' | 'inline';
 
-export function WalletInfoPanel({
+const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   open,
   wallet,
   initialMarketId,
@@ -1658,7 +1657,7 @@ export function WalletInfoPanel({
   onClose: () => void;
   variant?: WalletInfoPanelVariant;
 }) {
-  const marketLookup = useMarketLookupSnapshot();
+  const [marketById, setMarketById] = useState<Record<string, import('../types').Market>>({});
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [markets, setMarkets] = useState<WalletPosition[]>([]);
   const [selectedMarketId, setSelectedMarketId] = useState('');
@@ -1676,7 +1675,6 @@ export function WalletInfoPanel({
     () => wsMarketTrades.map((t) => wsTradeToFillRow(t, wallet, selectedMarketId)),
     [wsMarketTrades, wallet, selectedMarketId],
   );
-  const marketById = useMemo(() => buildMarketByIdRecord(marketLookup), [marketLookup]);
 
   const loadMarketsAndSelect = useCallback(
     async (preserveSelected: string | null) => {
@@ -1689,6 +1687,7 @@ export function WalletInfoPanel({
       ]);
       setSummary(s);
       const byId = buildMarketByIdRecord(useAppStore.getState().marketLookup);
+      setMarketById(byId);
       const sorted = sortWalletPositionsByDisplayedDateDesc(p.positions || [], byId);
       setMarkets(sorted);
       let pick = '';
@@ -1754,6 +1753,10 @@ export function WalletInfoPanel({
     if (!open || !wallet || !selectedMarketId) return;
     refreshMarketTradesWS();
   }, [open, wallet, selectedMarketId, fillsRefreshToken, refreshMarketTradesWS]);
+
+  const onMarketRowClick = useCallback((id: string) => {
+    setSelectedMarketId(id);
+  }, []);
 
   const summaryLeftRef = useRef<HTMLDivElement>(null);
   const [summaryLeftH, setSummaryLeftH] = useState(0);
@@ -2124,7 +2127,7 @@ export function WalletInfoPanel({
                 type="button"
                 className="text-[10px] text-blue-400 hover:underline shrink-0 disabled:opacity-40 disabled:pointer-events-none"
                 disabled={loadingMarkets || markets.length === 0}
-                onClick={() => exportWalletMarketsCsv(wallet, markets, marketLookup)}
+                onClick={() => exportWalletMarketsCsv(wallet, markets, useAppStore.getState().marketLookup)}
               >
                 Export CSV
               </button>
@@ -2136,9 +2139,7 @@ export function WalletInfoPanel({
                 marketById={marketById}
                 loading={loadingMarkets}
                 selectedMarketId={selectedMarketId}
-                onRowClick={(id) => {
-                  setSelectedMarketId(id);
-                }}
+                onRowClick={onMarketRowClick}
               />
               </div>
             </div>
@@ -2153,7 +2154,7 @@ export function WalletInfoPanel({
                 type="button"
                 className="text-[10px] text-blue-400 hover:underline shrink-0 disabled:opacity-40 disabled:pointer-events-none"
                 disabled={loadingFills || fills.length === 0 || !selectedMarketId}
-                onClick={() => exportWalletFillsCsv(wallet, fills, marketLookup, selectedMarketId)}
+                onClick={() => exportWalletFillsCsv(wallet, fills, useAppStore.getState().marketLookup, selectedMarketId)}
               >
                 Export CSV
               </button>
@@ -2350,7 +2351,31 @@ export function WalletInfoPanel({
       </div>
     </div>
   );
+});
+
+export function WalletInfoPanel(props: {
+  open: boolean;
+  wallet: string;
+  initialMarketId?: string;
+  onClose: () => void;
+  variant?: WalletInfoPanelVariant;
+}) {
+  return <WalletInfoPanelInner {...props} />;
 }
+
+const InlineWalletInfoPanelHost = memo(function InlineWalletInfoPanelHost({
+  wallet,
+  initialMarketId,
+  onClose,
+}: {
+  wallet: string;
+  initialMarketId: string;
+  onClose: () => void;
+}) {
+  return (
+    <WalletInfoPanelInner variant="inline" open wallet={wallet} initialMarketId={initialMarketId} onClose={onClose} />
+  );
+}, (a, b) => a.wallet === b.wallet && a.initialMarketId === b.initialMarketId && a.onClose === b.onClose);
 
 export function WalletInfoDialog({
   open,
@@ -3007,9 +3032,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   const inlineWalletPanel = inlineSplit && selectedWallet ? (
     <div className="toxic-inline-wallet-panel flex flex-col min-h-0 h-full overflow-hidden">
       <div className="flex flex-col min-h-0 h-full w-[84rem] border-l border-gray-700/80 pl-2">
-        <WalletInfoPanel
-          variant="inline"
-          open
+        <InlineWalletInfoPanelHost
           wallet={selectedWallet}
           initialMarketId={marketId}
           onClose={closeWalletPanel}

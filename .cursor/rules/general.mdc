@@ -1,0 +1,6 @@
+---
+alwaysApply: true
+---
+
+
+# Market gid bid ask updates can be throttled, but sidebar best bid/ask must be in real time or thottled very little

@@ -5181,6 +5181,7 @@ export function Sidebar() {
                 marketName={marketName}
                 yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
                 streamData={toxicFlowData}
+                streamTabWalletViews={toxicTabViews}
                 onRefreshStream={refreshToxicFlow}
                 streamRefreshing={toxicFlowRefreshing}
                 onClose={closeToxicSidebarPanel}

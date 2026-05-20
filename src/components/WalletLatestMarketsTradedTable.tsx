@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import type { WalletPosition } from '../api';
 import type { Market } from '../types';
 import {
@@ -148,7 +148,126 @@ function marketListEndDateTimeLocale(endDate: string | null): { label: string; c
   return { label, color: isWeekend ? 'text-purple-400' : 'text-gray-300' };
 }
 
-export function WalletLatestMarketsTradedTable({
+function walletMarketsRowsEqual(a: WalletPosition[], b: WalletPosition[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function walletMarketByIdEqual(a: Record<string, Market>, b: Record<string, Market>): boolean {
+  if (a === b) return true;
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  for (const k of ka) {
+    if (a[k] !== b[k]) return false;
+  }
+  return true;
+}
+
+const WalletLatestMarketsTradedRow = memo(function WalletLatestMarketsTradedRow({
+  m,
+  mk,
+  selected,
+  onRowClick,
+}: {
+  m: WalletPosition;
+  mk: Market | undefined;
+  selected: boolean;
+  onRowClick?: (marketId: string) => void;
+}) {
+  const qFromApi = (m.question || '').trim();
+  const title = qFromApi || mk?.question || mk?.groupItemTitle;
+  const endRaw = (m.endDate || '').trim() || (mk?.endDate ? String(mk.endDate).trim() : '');
+  const marketName = title
+    ? shortenUpDownMarketListCell(title, m.eventSlug || mk?.eventSlug || null, endRaw || null)
+    : `${m.marketAsset || '-'} ${m.marketTimeframe || ''}`;
+  const titleForAsset = (title || '').trim();
+  const assetForColor =
+    mk && typeof mk.question === 'string'
+      ? extractAssetFromMarket(mk) || assetTickerFromQuestion(titleForAsset)
+      : assetTickerFromQuestion(titleForAsset);
+  const dd = marketListEndDateTimeLocale(endRaw || null);
+  const iy = walletInvY(m);
+  const inn = walletInvN(m);
+  const netLeg = walletNet(m);
+  const netMagStr = fmtSharesIntEn(netLeg);
+  const netCol =
+    Math.abs(netLeg) < 0.001 ? (
+      <span className="text-gray-400">–</span>
+    ) : netLeg > 0 ? (
+      <span className="tabular-nums whitespace-nowrap font-bold text-green-400">{netMagStr} Y</span>
+    ) : (
+      <span className="tabular-nums whitespace-nowrap font-bold text-red-400">{netMagStr} N</span>
+    );
+  const rowUsdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
+  const rowUsdcOut = typeof m.usdcOut === 'number' && Number.isFinite(m.usdcOut) ? m.usdcOut : 0;
+  const rowFee = typeof m.feeTotal === 'number' && Number.isFinite(m.feeTotal) ? m.feeTotal : 0;
+  const rowPnlFlow = rowUsdcOut - rowUsdcIn - rowFee;
+  const rowPayout = typeof m.payout === 'number' && Number.isFinite(m.payout) ? m.payout : 0;
+  const wlfSum = (m.w ?? 0) + (m.l ?? 0) + (m.f ?? 0);
+  const payoutUnresolved = wlfSum === 0;
+  const hasChainOutcome = m.outcome === 0 || m.outcome === 1;
+  const roiFmt = hasChainOutcome ? fmtWalletMarketRoiFromFlow(m) : { text: '–', tone: 'text-gray-500' };
+  const clickable = typeof onRowClick === 'function';
+
+  return (
+    <tr
+      className={`border-b border-gray-800 ${clickable ? 'cursor-pointer hover:bg-gray-700/30' : ''} ${
+        selected ? 'bg-gray-700/40' : ''
+      }`}
+      onClick={clickable ? () => onRowClick!(m.marketId) : undefined}
+    >
+      <td className={`py-0.5 whitespace-normal min-w-[10rem] ${dd.color}`}>{dd.label}</td>
+      <td className="text-center py-0.5 align-middle whitespace-nowrap">{walletOutcomeLetterCell(m)}</td>
+      <td
+        className={`py-0.5 whitespace-nowrap font-bold ${ASSET_COLORS[assetForColor] || 'text-gray-200'}`}
+        title={titleForAsset || undefined}
+      >
+        {marketName}
+      </td>
+      <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15 whitespace-nowrap">
+        {fmtSharesIntEn(iy)}
+      </td>
+      <td className="text-right tabular-nums font-bold text-red-400 bg-red-900/15 whitespace-nowrap">
+        {fmtSharesIntEn(inn)}
+      </td>
+      <td className="text-right whitespace-nowrap" title="Inv Y − Inv N">
+        {netCol}
+      </td>
+      <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceYes)}</td>
+      <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceNo)}</td>
+      <td className="text-right tabular-nums whitespace-nowrap" title="usdc_in">
+        {walletMarketUsdcInCell(rowUsdcIn)}
+      </td>
+      <td
+        className={`text-right tabular-nums font-medium whitespace-nowrap ${rowFee === 0 ? 'text-gray-400' : 'text-red-400'}`}
+        title="fee_total"
+      >
+        {rowFee === 0 ? `$${fmtUsd2En(0)}` : `−$${fmtUsd2En(rowFee)}`}
+      </td>
+      <td
+        className={`text-right tabular-nums font-bold whitespace-nowrap ${payoutUnresolved ? 'text-gray-500' : rPnlToneClass(rowPayout)}`}
+        title={payoutUnresolved ? 'Market not scored (W/L/F all zero)' : 'payout'}
+      >
+        {payoutUnresolved ? '-' : fmtUsdSignedLedger(rowPayout)}
+      </td>
+      <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(rowPnlFlow)}`} title="usdc_out − usdc_in − fee">
+        {fmtUsdSignedLedger(rowPnlFlow)}
+      </td>
+      <td
+        className={`text-right tabular-nums font-bold whitespace-nowrap ${roiFmt.tone}`}
+        title={hasChainOutcome ? '(usdc_out/(usdc_in+fee)) − 1' : 'ROI after market outcome is known'}
+      >
+        {roiFmt.text}
+      </td>
+    </tr>
+  );
+});
+
+export const WalletLatestMarketsTradedTable = memo(function WalletLatestMarketsTradedTable({
   markets,
   marketById,
   loading,
@@ -228,95 +347,23 @@ export function WalletLatestMarketsTradedTable({
             marketById[m.marketId] ||
             marketById[(m.marketId || '').toLowerCase()] ||
             (m.question ? (m as unknown as Market) : undefined);
-          const qFromApi = (m.question || '').trim();
-          const title = qFromApi || mk?.question || mk?.groupItemTitle;
-          const endRaw = (m.endDate || '').trim() || (mk?.endDate ? String(mk.endDate).trim() : '');
-          const marketName = title
-            ? shortenUpDownMarketListCell(title, m.eventSlug || mk?.eventSlug || null, endRaw || null)
-            : `${m.marketAsset || '-'} ${m.marketTimeframe || ''}`;
-          const titleForAsset = (title || '').trim();
-          const assetForColor =
-            mk && typeof mk.question === 'string'
-              ? extractAssetFromMarket(mk) || assetTickerFromQuestion(titleForAsset)
-              : assetTickerFromQuestion(titleForAsset);
-          const dd = marketListEndDateTimeLocale(endRaw || null);
-          const iy = walletInvY(m);
-          const inn = walletInvN(m);
-          const netLeg = walletNet(m);
-          const netMagStr = fmtSharesIntEn(netLeg);
-          const netCol =
-            Math.abs(netLeg) < 0.001 ? (
-              <span className="text-gray-400">–</span>
-            ) : netLeg > 0 ? (
-              <span className="tabular-nums whitespace-nowrap font-bold text-green-400">{netMagStr} Y</span>
-            ) : (
-              <span className="tabular-nums whitespace-nowrap font-bold text-red-400">{netMagStr} N</span>
-            );
-          const rowUsdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
-          const rowUsdcOut = typeof m.usdcOut === 'number' && Number.isFinite(m.usdcOut) ? m.usdcOut : 0;
-          const rowFee = typeof m.feeTotal === 'number' && Number.isFinite(m.feeTotal) ? m.feeTotal : 0;
-          const rowPnlFlow = rowUsdcOut - rowUsdcIn - rowFee;
-          const rowPayout = typeof m.payout === 'number' && Number.isFinite(m.payout) ? m.payout : 0;
-          const wlfSum = (m.w ?? 0) + (m.l ?? 0) + (m.f ?? 0);
-          const payoutUnresolved = wlfSum === 0;
-          const hasChainOutcome = m.outcome === 0 || m.outcome === 1;
-          const roiFmt = hasChainOutcome ? fmtWalletMarketRoiFromFlow(m) : { text: '–', tone: 'text-gray-500' };
-          const clickable = typeof onRowClick === 'function';
           return (
-            <tr
+            <WalletLatestMarketsTradedRow
               key={`${m.marketId}-${m.wallet}`}
-              className={`border-b border-gray-800 ${clickable ? 'cursor-pointer hover:bg-gray-700/30' : ''} ${
-                selectedMarketId === m.marketId ? 'bg-gray-700/40' : ''
-              }`}
-              onClick={clickable ? () => onRowClick!(m.marketId) : undefined}
-            >
-              <td className={`py-0.5 whitespace-normal min-w-[10rem] ${dd.color}`}>{dd.label}</td>
-              <td className="text-center py-0.5 align-middle whitespace-nowrap">{walletOutcomeLetterCell(m)}</td>
-              <td
-                className={`py-0.5 whitespace-nowrap font-bold ${ASSET_COLORS[assetForColor] || 'text-gray-200'}`}
-                title={titleForAsset || undefined}
-              >
-                {marketName}
-              </td>
-              <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15 whitespace-nowrap">
-                {fmtSharesIntEn(iy)}
-              </td>
-              <td className="text-right tabular-nums font-bold text-red-400 bg-red-900/15 whitespace-nowrap">
-                {fmtSharesIntEn(inn)}
-              </td>
-              <td className="text-right whitespace-nowrap" title="Inv Y − Inv N">
-                {netCol}
-              </td>
-              <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceYes)}</td>
-              <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceNo)}</td>
-              <td className="text-right tabular-nums whitespace-nowrap" title="usdc_in">
-                {walletMarketUsdcInCell(rowUsdcIn)}
-              </td>
-              <td
-                className={`text-right tabular-nums font-medium whitespace-nowrap ${rowFee === 0 ? 'text-gray-400' : 'text-red-400'}`}
-                title="fee_total"
-              >
-                {rowFee === 0 ? `$${fmtUsd2En(0)}` : `−$${fmtUsd2En(rowFee)}`}
-              </td>
-              <td
-                className={`text-right tabular-nums font-bold whitespace-nowrap ${payoutUnresolved ? 'text-gray-500' : rPnlToneClass(rowPayout)}`}
-                title={payoutUnresolved ? 'Market not scored (W/L/F all zero)' : 'payout'}
-              >
-                {payoutUnresolved ? '-' : fmtUsdSignedLedger(rowPayout)}
-              </td>
-              <td className={`text-right tabular-nums font-bold whitespace-nowrap ${rPnlToneClass(rowPnlFlow)}`} title="usdc_out − usdc_in − fee">
-                {fmtUsdSignedLedger(rowPnlFlow)}
-              </td>
-              <td
-                className={`text-right tabular-nums font-bold whitespace-nowrap ${roiFmt.tone}`}
-                title={hasChainOutcome ? '(usdc_out/(usdc_in+fee)) − 1' : 'ROI after market outcome is known'}
-              >
-                {roiFmt.text}
-              </td>
-            </tr>
+              m={m}
+              mk={mk}
+              selected={selectedMarketId === m.marketId}
+              onRowClick={onRowClick}
+            />
           );
         })}
       </tbody>
     </table>
   );
-}
+}, (a, b) =>
+  a.loading === b.loading &&
+  a.selectedMarketId === b.selectedMarketId &&
+  a.onRowClick === b.onRowClick &&
+  a.horizontalCellPadding === b.horizontalCellPadding &&
+  walletMarketsRowsEqual(a.markets, b.markets) &&
+  walletMarketByIdEqual(a.marketById, b.marketById));

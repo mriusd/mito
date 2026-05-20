@@ -1708,7 +1708,7 @@ export function Sidebar() {
       const size = tradeFilledSizeShares(trade);
       if (!Number.isFinite(rawPrice) || !Number.isFinite(size)) continue;
       const cost = rawPrice * size;
-      if (trade.side === 'SELL' || trade.side === 'MERGE') totalSellCost += cost;
+      if (trade.side === 'SELL' || trade.side === 'MERGE' || trade.side === 'REDEEM') totalSellCost += cost;
       else if (trade.side === 'BUY' || trade.side === 'SPLIT') totalBuyCost += cost;
     }
     return totalSellCost - totalBuyCost;
@@ -5240,14 +5240,14 @@ export function Sidebar() {
                   const signedCost =
                     side === 'BUY' || side === 'SPLIT'
                       ? -cost
-                      : side === 'SELL' || side === 'MERGE'
+                      : side === 'SELL' || side === 'MERGE' || side === 'REDEEM'
                         ? cost
                         : 0;
                   const tradeFee = parseFloat(trade.fee || '0');
                   const dirTone =
                     side === 'BUY'
                       ? 'text-emerald-400'
-                      : side === 'CLAIM'
+                      : side === 'CLAIM' || side === 'REDEEM'
                         ? 'text-blue-400'
                         : side === 'SPLIT' || side === 'MERGE'
                           ? 'text-purple-400'
@@ -5263,7 +5263,7 @@ export function Sidebar() {
                         className={`py-0.5 text-right ${
                           side === 'BUY' || side === 'SPLIT'
                             ? 'text-rose-400'
-                            : side === 'SELL' || side === 'MERGE'
+                            : side === 'SELL' || side === 'MERGE' || side === 'REDEEM'
                               ? 'text-emerald-400'
                               : 'text-gray-300'
                         }`}

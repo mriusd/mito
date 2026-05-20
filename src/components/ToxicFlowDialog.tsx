@@ -2197,7 +2197,9 @@ export function WalletInfoPanel({
                             ? 'text-red-400'
                             : actionU === 'SPLIT' || actionU === 'MERGE'
                               ? 'text-purple-400'
-                              : 'text-gray-300';
+                              : actionU === 'REDEEM'
+                                ? 'text-blue-400'
+                                : 'text-gray-300';
                       return (
                         <tr key={toxicFlowFillKey(f.txHash, f.logIndex, String(f.tokenId || ''))} className="border-b border-gray-800">
                           <td className="py-0.5">{ts}</td>

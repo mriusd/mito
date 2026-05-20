@@ -204,7 +204,7 @@ export interface WSTrade {
   /** Stable dedupe key — set once at ingest. */
   id?: string;
   tokenId: string;
-  side: 'BUY' | 'SELL' | 'SPLIT' | 'MERGE';
+  side: 'BUY' | 'SELL' | 'SPLIT' | 'MERGE' | 'REDEEM';
   outcome?: string;
   size: number;
   price: number;
@@ -282,11 +282,13 @@ function mapRawWSTrade(t: {
   return row;
 }
 
-function normalizeLedgerAction(s: string | undefined): 'BUY' | 'SELL' | 'SPLIT' | 'MERGE' {
-  const u = String(s || '').toUpperCase();
+function normalizeLedgerAction(s: string | undefined): WSTrade['side'] {
+  const u = String(s || '').toUpperCase().trim();
   if (u === 'SELL') return 'SELL';
   if (u === 'SPLIT') return 'SPLIT';
   if (u === 'MERGE') return 'MERGE';
+  if (u === 'REDEEM') return 'REDEEM';
+  if (u === 'BUY') return 'BUY';
   return 'BUY';
 }
 
@@ -355,7 +357,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             title: t.title,
             slug: t.slug,
             eventSlug: t.eventSlug,
-          })).filter((t) => !!t.tokenId || t.side === 'SPLIT' || t.side === 'MERGE'),
+          })).filter((t) => !!t.tokenId || t.side === 'SPLIT' || t.side === 'MERGE' || t.side === 'REDEEM'),
         );
       } catch {
         /* keep prior state */

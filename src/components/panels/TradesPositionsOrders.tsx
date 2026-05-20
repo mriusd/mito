@@ -606,7 +606,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                       <td className={`py-1 px-1 ${assetColorMap2[t.asset] || 'text-gray-300'} truncate`}>{t.marketName}</td>
                       <td className={`py-1 px-1 font-bold ${
                         t.side === 'BUY' ? 'text-green-400'
-                          : t.side === 'CLAIM' ? 'text-blue-400'
+                          : t.side === 'CLAIM' || t.side === 'REDEEM' ? 'text-blue-400'
                             : t.side === 'SPLIT' ? 'text-purple-400'
                               : t.side === 'MERGE' ? 'text-amber-400'
                                 : 'text-red-400'

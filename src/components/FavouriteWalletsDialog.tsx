@@ -13,6 +13,7 @@ import {
 } from '../lib/toxicFavouriteWallets';
 import { primeTiltAudioContextFromUserGesture } from '../lib/tiltNotifySound';
 import { getToxicWalletTag, TOXIC_WALLET_TAGS_CHANGED_EVENT } from '../lib/toxicWalletTags';
+import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { WalletAddressGlyph } from './WalletAddressGlyph';
 
 const BELL_CLS_ON = 'text-amber-400 fill-amber-400/25';
@@ -132,7 +133,7 @@ export function FavouriteWalletsDialog({
                 void tagRev;
                 const tag = getToxicWalletTag(raw);
                 const bellActive = bellWallets.has(lower);
-                const poly = `https://polymarket.com/profile/${lower}`;
+                const poly = polymarketSiteUrl(`profile/${lower}`);
                 const scan = `https://polygonscan.com/address/${lower}`;
                 return (
                   <li

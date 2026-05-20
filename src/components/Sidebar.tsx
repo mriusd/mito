@@ -14,6 +14,7 @@ import {
 } from '../api';
 import { fetchProxyWallet } from '../api/polymarket';
 import { resolvePolymarketMakerAddress } from '../lib/polymarketTradingMaker';
+import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { executeMergePositions } from '../lib/mergePositions';
 import { buildSidebarUserOrderHighlightSets } from '../lib/sidebarOrderbookAggregate';
@@ -2951,7 +2952,7 @@ export function Sidebar() {
   const sidebarAsset = selectedMarket ? extractAssetFromMarket(selectedMarket) : '';
   const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
   const sidebarTitleColor = selectedMarket ? (assetColorMap[sidebarAsset] || 'text-gray-500') : 'text-white';
-  const polymarketUrl = selectedMarket?.eventSlug ? `https://polymarket.com/event/${selectedMarket.eventSlug}?r=mito` : null;
+  const polymarketUrl = selectedMarket?.eventSlug ? polymarketSiteUrl(`event/${selectedMarket.eventSlug}`) : null;
   const sidebarSectionHeight = 'max(100px, calc((100vh - 44px) * 0.15))';
   const sidebarDoubleSectionHeight = 'max(100px, calc((100vh - 44px) * 0.30))';
   const collapsedSectionHeight = '36px';

@@ -9,6 +9,7 @@ import { HelpTooltip } from '../HelpTooltip';
 import type { AssetName, Market, Order } from '../../types';
 import { GridMarketCell } from './GridMarketCell';
 import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
+import { polymarketSiteUrl } from '../../lib/polymarketSiteUrl';
 
 const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
 const MANUAL_VOL_KEY_PREFIX = 'polybot-manual-vol-pct-';
@@ -503,7 +504,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                 return (
                   <th key={ev.slug} className={`px-0.5 py-1 border-b border-gray-700 text-[10px] bg-gray-900 ${evEnded ? 'opacity-60' : ''}`}>
                     <a
-                      href={`https://polymarket.com/event/${ev.slug}?r=mito`}
+                      href={polymarketSiteUrl(`event/${ev.slug}`)}
                       target="_blank"
                       rel="noreferrer"
                       className="block hover:bg-gray-800/50 rounded p-0.5 transition"
@@ -759,7 +760,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                     className={`px-1 py-1 text-center border-b border-gray-700 min-w-[70px] bg-gray-900 ${isEnded ? 'opacity-50' : ''} ${isWeekend ? 'bg-purple-900/20' : ''} ${isDateHighlighted ? 'date-column-highlighted' : ''}`}
                   >
                     <a
-                      href={`https://polymarket.com/event/${d.slug}?r=mito`}
+                      href={polymarketSiteUrl(`event/${d.slug}`)}
                       target="_blank"
                       rel="noreferrer"
                       className="block hover:bg-gray-800/50 rounded p-0.5 transition"

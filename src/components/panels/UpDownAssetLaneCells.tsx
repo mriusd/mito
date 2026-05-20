@@ -112,6 +112,83 @@ const UpDownExpiryBar = memo(function UpDownExpiryBar({
   );
 });
 
+function UpDownCellPositionDots({
+  yesTokenId,
+  noTokenId,
+  positionTokenIds,
+  liveTradesSource,
+}: {
+  yesTokenId: string;
+  noTokenId: string;
+  positionTokenIds: Set<string>;
+  liveTradesSource: string;
+}) {
+  const posTitle = liveTradesSource === 'onchain' ? 'position (on-chain)' : 'position';
+  return (
+    <>
+      {yesTokenId && positionTokenIds.has(normalizeClobTokenId(yesTokenId)) && (
+        <span
+          className="absolute left-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_3px_rgba(52,211,153,0.8)]"
+          title={`YES ${posTitle}`}
+        />
+      )}
+      {noTokenId && positionTokenIds.has(normalizeClobTokenId(noTokenId)) && (
+        <span
+          className="absolute right-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-rose-400 shadow-[0_0_3px_rgba(251,113,133,0.8)]"
+          title={`NO ${posTitle}`}
+        />
+      )}
+    </>
+  );
+}
+
+function UpDownCellOrderBadges({
+  yesTokenId,
+  noTokenId,
+  orderLookup,
+}: {
+  yesTokenId: string;
+  noTokenId: string;
+  orderLookup: Record<string, Order[]>;
+}) {
+  const yesOrders = orderLookup[yesTokenId] || [];
+  const noOrders = orderLookup[noTokenId] || [];
+  const yesBuy = yesOrders.filter((o) => o.side === 'BUY');
+  const yesSell = yesOrders.filter((o) => o.side === 'SELL');
+  const noBuy = noOrders.filter((o) => o.side === 'BUY');
+  const noSell = noOrders.filter((o) => o.side === 'SELL');
+  return (
+    <>
+      {yesBuy.length > 0 && (
+        <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm z-[2]">
+          {Math.max(...yesBuy.map((o) => parseFloat(o.price || '0') * 100)).toFixed(1)}
+        </div>
+      )}
+      {yesSell.length > 0 && (
+        <div
+          className={`absolute ${yesBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm z-[2]`}
+          style={{ color: '#78350f' }}
+        >
+          {Math.min(...yesSell.map((o) => parseFloat(o.price || '0') * 100)).toFixed(1)}
+        </div>
+      )}
+      {noBuy.length > 0 && (
+        <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm z-[2]">
+          {Math.max(...noBuy.map((o) => parseFloat(o.price || '0') * 100)).toFixed(1)}
+        </div>
+      )}
+      {noSell.length > 0 && (
+        <div
+          className={`absolute ${noBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm z-[2]`}
+          style={{ color: '#78350f' }}
+        >
+          {Math.min(...noSell.map((o) => parseFloat(o.price || '0') * 100)).toFixed(1)}
+        </div>
+      )}
+    </>
+  );
+}
+
 export type UpDownAssetLaneCellsProps = {
   asset: string;
   tf: string;
@@ -243,13 +320,6 @@ function UpDownAssetLaneCellsInner({
   const cG = Math.round(Math.min(255, (1 - concRaw) * 2 * 255));
   const concColor = `rgb(${cR}, ${cG}, 0)`;
 
-  const yesOrders = orderLookup[yesTokenId] || [];
-  const noOrders = orderLookup[noTokenId] || [];
-  const yesBuy = yesOrders.filter((o) => o.side === 'BUY');
-  const yesSell = yesOrders.filter((o) => o.side === 'SELL');
-  const noBuy = noOrders.filter((o) => o.side === 'BUY');
-  const noSell = noOrders.filter((o) => o.side === 'SELL');
-
   const targetCell = showTarget ? (
     <td
       key={`${asset}-target`}
@@ -305,18 +375,12 @@ function UpDownAssetLaneCellsInner({
       }}
       onClick={() => onCellClick(market)}
     >
-      {yesTokenId && positionTokenIds.has(normalizeClobTokenId(yesTokenId)) && (
-        <span
-          className="absolute left-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_3px_rgba(52,211,153,0.8)]"
-          title={liveTradesSource === 'onchain' ? 'YES position (on-chain)' : 'YES position'}
-        />
-      )}
-      {noTokenId && positionTokenIds.has(normalizeClobTokenId(noTokenId)) && (
-        <span
-          className="absolute right-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-rose-400 shadow-[0_0_3px_rgba(251,113,133,0.8)]"
-          title={liveTradesSource === 'onchain' ? 'NO position (on-chain)' : 'NO position'}
-        />
-      )}
+      <UpDownCellPositionDots
+        yesTokenId={yesTokenId}
+        noTokenId={noTokenId}
+        positionTokenIds={positionTokenIds}
+        liveTradesSource={liveTradesSource}
+      />
       <MarketCellMidRow
         className="text-[10px] text-gray-400"
         left={
@@ -330,32 +394,7 @@ function UpDownAssetLaneCellsInner({
           </span>
         }
       />
-      {yesBuy.length > 0 && (
-        <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
-          {Math.max(...yesBuy.map((o) => parseFloat(o.price || '0') * 100)).toFixed(1)}
-        </div>
-      )}
-      {yesSell.length > 0 && (
-        <div
-          className={`absolute ${yesBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm`}
-          style={{ color: '#78350f' }}
-        >
-          {Math.min(...yesSell.map((o) => parseFloat(o.price || '0') * 100)).toFixed(1)}
-        </div>
-      )}
-      {noBuy.length > 0 && (
-        <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
-          {Math.max(...noBuy.map((o) => parseFloat(o.price || '0') * 100)).toFixed(1)}
-        </div>
-      )}
-      {noSell.length > 0 && (
-        <div
-          className={`absolute ${noBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'} right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm`}
-          style={{ color: '#78350f' }}
-        >
-          {Math.min(...noSell.map((o) => parseFloat(o.price || '0') * 100)).toFixed(1)}
-        </div>
-      )}
+      <UpDownCellOrderBadges yesTokenId={yesTokenId} noTokenId={noTokenId} orderLookup={orderLookup} />
       <div className="absolute left-0 bottom-0 w-[2px] pointer-events-none z-0 bg-gray-800/80 overflow-hidden" style={{ height: '100%' }} title={`Concentration (top wallets): ${concPct.toFixed(0)}%`}>
         <div className="absolute bottom-0 left-0 w-full transition-all" style={{ height: `${concPct}%`, backgroundColor: concColor }} />
       </div>
@@ -405,6 +444,12 @@ function UpDownAssetLaneCellsInner({
         onClick={() => onCellClick(nextMarket)}
         title={`Next market +${slotIdx + 1} in this lane`}
       >
+        <UpDownCellPositionDots
+          yesTokenId={nextYesTokenId}
+          noTokenId={nextNoTokenId}
+          positionTokenIds={positionTokenIds}
+          liveTradesSource={liveTradesSource}
+        />
         <MarketCellMidRow
           className="text-gray-400"
           left={
@@ -437,6 +482,11 @@ function UpDownAssetLaneCellsInner({
               {nextNoProb != null ? (nextNoProb * 100).toFixed(1) : '-'}
             </span>
           }
+        />
+        <UpDownCellOrderBadges
+          yesTokenId={nextYesTokenId}
+          noTokenId={nextNoTokenId}
+          orderLookup={orderLookup}
         />
         {nextMarket.endDate && duration > 0 && (
           <UpDownExpiryBar endDate={nextMarket.endDate} durationMs={duration} className="absolute bottom-0 left-0 z-0 h-[2px] pointer-events-none" />

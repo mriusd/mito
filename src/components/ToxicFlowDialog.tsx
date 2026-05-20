@@ -93,6 +93,7 @@ import {
 } from './WalletLatestMarketsTradedTable';
 import { exportWalletFillsCsv, exportWalletMarketsCsv } from '../lib/walletInfoCsvExport';
 import { fetchPolymarketNickname } from '../api/polymarket';
+import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { HelperTooltip } from './HelperTooltip';
 import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
@@ -1888,7 +1889,7 @@ export function WalletInfoPanel({
   }, [summary, profileNickname, markets]);
 
   if (!open) return null;
-  const polymarketProfileUrl = `https://polymarket.com/profile/${wallet.trim().toLowerCase()}`;
+  const polymarketProfileUrl = polymarketSiteUrl(`profile/${wallet.trim().toLowerCase()}`);
   const polygonscanUrl = `https://polygonscan.com/address/${wallet.trim().toLowerCase()}`;
   const panelBody = (
     <>

@@ -646,6 +646,9 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             }
             scheduleTapeTrade(t);
           } else if (msg.type === 'walletPositions' && Array.isArray(msg.data)) {
+            const msgWallet = String(msg.wallet || '').trim().toLowerCase();
+            const mine = (walletRef.current || '').trim().toLowerCase();
+            if (msgWallet && mine && msgWallet !== mine) return;
             const raw = (msg.data as Array<{ tokenId?: string; size?: number; avgPrice?: number }>)
               .map((p) => ({
                 tokenId: String(p.tokenId || ''),
@@ -668,6 +671,9 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               .filter((p) => !!p.tokenId);
             setGridWalletPositions(raw);
           } else if (msg.type === 'walletTrades' && Array.isArray(msg.data)) {
+            const msgWallet = String(msg.wallet || '').trim().toLowerCase();
+            const mine = (walletRef.current || '').trim().toLowerCase();
+            if (msgWallet && mine && msgWallet !== mine) return;
             const raw = (msg.data as Array<Record<string, unknown>>)
               .map((t) => mapRawWSTrade(t as Parameters<typeof mapRawWSTrade>[0]))
               .filter((t): t is WSTrade => t != null);

@@ -1803,6 +1803,7 @@ export function WalletInfoDialog({
 
   if (!open) return null;
   const polymarketProfileUrl = `https://polymarket.com/profile/${wallet.trim().toLowerCase()}`;
+  const polygonscanUrl = `https://polygonscan.com/address/${wallet.trim().toLowerCase()}`;
   const dialog = (
     <div className="fixed inset-0 bg-black/60 z-[60010] flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div
@@ -1922,7 +1923,29 @@ export function WalletInfoDialog({
             >
               <Copy size={13} />
             </button>
-            <a href={polymarketProfileUrl} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white" title="Open Polymarket profile">
+            <a
+              href={polymarketProfileUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 inline-flex items-center justify-center rounded p-0.5 hover:bg-[#2f5cff]/30 border border-[#2d57ff]/50 bg-[#2f5cff]/20"
+              title="Open Polymarket profile"
+              aria-label="Open Polymarket profile"
+            >
+              <img
+                src="/polymarket-favicon.ico"
+                alt=""
+                className="h-3.5 w-3.5 rounded-[2px] pointer-events-none"
+                style={{ filter: 'brightness(0) invert(1)' }}
+              />
+            </a>
+            <a
+              href={polygonscanUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-gray-400 hover:text-cyan-300"
+              title="Open on Polygonscan"
+              aria-label="Open on Polygonscan"
+            >
               <ExternalLink size={13} />
             </a>
           </div>

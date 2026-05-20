@@ -3,7 +3,8 @@ import { useAccount } from 'wagmi';
 import { ethers } from 'ethers';
 import { useAppStore } from '../stores/appStore';
 import { fetchProxyWallet, fetchWalletPositions, fetchWalletActivity, fetchWalletBalance } from '../api/polymarket';
-import { fetchOpenOrdersDirect, setWalletRefreshFn, hasCredsForWallet, ensureCredsForWallet } from '../lib/clobClient';
+import { fetchOpenOrdersDirect, setWalletRefreshFn, setOrdersRefreshFn, hasCredsForWallet, ensureCredsForWallet, refreshOpenOrdersInStore } from '../lib/clobClient';
+import { usePolymarketUserOrdersWS } from './usePolymarketUserOrdersWS';
 import { resolvePolymarketMakerAddress } from '../lib/polymarketTradingMaker';
 import { showSignatureExplainer } from '../components/SignatureExplainerDialog';
 import { isWebMode } from '../lib/env';
@@ -200,15 +201,29 @@ export function useWalletData() {
     }
   }, [effectiveEoa, proxyWallet, fetchAll, signingMode, pkEoa]);
 
+  const fetchOrdersOnly = useCallback(() => {
+    if (!proxyWallet) return;
+    void refreshOpenOrdersInStore(proxyWallet);
+  }, [proxyWallet]);
+
+  usePolymarketUserOrdersWS(effectiveConnected ? effectiveEoa : null, proxyWallet);
+
   // Register global refresh callback so order/cancel can trigger immediate refresh
   useEffect(() => {
-    if (isWebMode && proxyWallet) setWalletRefreshFn(fetchAll);
-  }, [proxyWallet, fetchAll]);
+    if (isWebMode && proxyWallet) {
+      setWalletRefreshFn(fetchAll);
+      setOrdersRefreshFn(fetchOrdersOnly);
+    }
+    return () => {
+      setWalletRefreshFn(() => {});
+      setOrdersRefreshFn(() => {});
+    };
+  }, [proxyWallet, fetchAll, fetchOrdersOnly]);
 
-  // Poll every 30s while connected
+  // Poll every 90s as WS backstop
   useEffect(() => {
     if (!isWebMode || !proxyWallet) return;
-    const interval = setInterval(fetchAll, 30000);
+    const interval = setInterval(fetchAll, 90000);
     return () => clearInterval(interval);
   }, [proxyWallet, fetchAll]);
 

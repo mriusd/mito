@@ -189,17 +189,51 @@ export function hasCredsForWallet(makerWallet: string, signerEoa: string): boole
   return loadStoredCredsForBundle(eoa, maker);
 }
 
+/** Read persisted L2 creds for user WS (same storage as CLOB trading). */
+export function getStoredApiCredsForEoa(eoa: string): StoredCreds | null {
+  const eoaLc = eoa.trim().toLowerCase();
+  if (!eoaLc) return null;
+  if (cachedCreds && cachedAddress === eoaLc) return cachedCreds;
+  migrateLegacyCredsOnce();
+  const raw = localStorage.getItem(storageKeyForEoa(eoaLc));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed?.key || !parsed?.secret || !parsed?.passphrase) return null;
+    return {
+      key: String(parsed.key),
+      secret: String(parsed.secret),
+      passphrase: String(parsed.passphrase),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function ensureCredsForWallet(proxyWallet: string): Promise<void> {
   const signer = await getEthersSigner();
   await ensureCreds(signer, proxyWallet);
 }
 
 let _walletRefreshFn: (() => void) | null = null;
+let _ordersRefreshFn: (() => void) | null = null;
+
 export function setWalletRefreshFn(fn: () => void) {
   _walletRefreshFn = fn;
 }
+
+export function setOrdersRefreshFn(fn: () => void) {
+  _ordersRefreshFn = fn;
+}
+
 export function triggerWalletRefresh() {
+  if (_ordersRefreshFn) setTimeout(_ordersRefreshFn, 200);
   if (_walletRefreshFn) setTimeout(_walletRefreshFn, 1500);
+}
+
+export async function refreshOpenOrdersInStore(proxyWallet: string): Promise<void> {
+  const orders = await fetchOpenOrdersDirect(proxyWallet);
+  useAppStore.getState().setMarketData({ orders });
 }
 
 export async function sendCredsToBackend(): Promise<boolean> {

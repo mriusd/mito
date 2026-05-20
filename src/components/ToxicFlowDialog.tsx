@@ -476,6 +476,9 @@ const TOXIC_TABLE_FAV_COL_CLS = 'w-[2.85rem] min-w-[2.85rem] max-w-[2.85rem] box
 /** Fixed width for % / Cum% (e.g. 100.0%) so stake updates do not jitter column width. */
 const TOXIC_TABLE_STAKED_PCT_COL_CLS =
   'w-[3.35rem] min-w-[3.35rem] max-w-[3.35rem] box-border shrink-0 tabular-nums text-right';
+/** Fixed width for Staked ($mag Y/N + flash badge) so layout does not jitter on tick. */
+const TOXIC_TABLE_STAKED_COL_CLS =
+  'w-[8rem] min-w-[8rem] max-w-[8rem] box-border shrink-0 tabular-nums text-right whitespace-nowrap overflow-hidden';
 
 const ROW_CLS_NEUTRAL = 'border-b border-gray-800 hover:bg-gray-700/30';
 const ROW_CLS_GREEN = 'border-b border-gray-800 bg-green-900/25 hover:bg-green-900/40';
@@ -1312,7 +1315,7 @@ function WalletTableBodyRowImpl({
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 text-gray-400`}>
         {typeof w.tradeCount === 'number' && Number.isFinite(w.tradeCount) ? rowFmtInt(w.tradeCount) : '–'}
       </td>
-      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 whitespace-nowrap`} title="Staked Y − Staked N (column display); Y / N suffix">
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} px-1 ${TOXIC_TABLE_STAKED_COL_CLS}`} title="Staked Y − Staked N (column display); Y / N suffix">
         {stakedNetUsdTableCellWithFlash(stakeNetSigned, stakedNetFlash)}
       </td>
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} px-1 text-cyan-300 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}>
@@ -1536,7 +1539,7 @@ function WalletTableInner({
               Px N
             </th>
             <th className="align-middle py-1 text-right px-1">Trades</th>
-            <th className="align-middle py-1 text-right px-1 text-gray-300" title="(−inv_y×px_y) − (−inv_n×px_n) = Staked Y − Staked N as shown; suffix Y / N; green = favors YES / red = favors NO">
+            <th className={`align-middle py-1 px-1 text-gray-300 ${TOXIC_TABLE_STAKED_COL_CLS}`} title="(−inv_y×px_y) − (−inv_n×px_n) = Staked Y − Staked N as shown; suffix Y / N; green = favors YES / red = favors NO">
               Staked
             </th>
             <th

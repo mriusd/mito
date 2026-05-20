@@ -177,6 +177,8 @@ interface ToxicFlowDialogProps {
   /** Embedded panel: HTTP full refresh from parent stream hook. */
   onRefreshStream?: () => void | Promise<void>;
   streamRefreshing?: boolean;
+  /** Embedded sidebar: parent widens toxic panel when inline wallet info is open (≥2400px). */
+  onInlineWalletPanelChange?: (open: boolean) => void;
 }
 
 type Tab = ToxicFlowTabId;
@@ -1607,17 +1609,21 @@ const WalletTable = memo(WalletTableInner, (a, b) => {
   return true;
 });
 
-export function WalletInfoDialog({
+export type WalletInfoPanelVariant = 'modal' | 'inline';
+
+export function WalletInfoPanel({
   open,
   wallet,
   initialMarketId,
   onClose,
+  variant = 'modal',
 }: {
   open: boolean;
   wallet: string;
   /** When set (e.g. condition id), trades table opens on this market after load. */
   initialMarketId?: string;
   onClose: () => void;
+  variant?: WalletInfoPanelVariant;
 }) {
   const marketLookup = useMarketLookupSnapshot();
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
@@ -1870,11 +1876,8 @@ export function WalletInfoDialog({
   if (!open) return null;
   const polymarketProfileUrl = `https://polymarket.com/profile/${wallet.trim().toLowerCase()}`;
   const polygonscanUrl = `https://polygonscan.com/address/${wallet.trim().toLowerCase()}`;
-  const dialog = (
-    <div className="fixed inset-0 bg-black/60 z-[60010] flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div
-        className="bg-gray-800 rounded-lg p-3 w-full mx-4 shadow-xl border border-gray-700 max-w-[min(98vw,93.6rem)] max-h-[88vh] min-h-[50vh] flex flex-col overflow-hidden"
-      >
+  const panelBody = (
+    <>
         <div className="flex items-center justify-between mb-2 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-bold text-yellow-400">Wallet Info</span>
@@ -2309,12 +2312,57 @@ export function WalletInfoDialog({
           </div>
         </div>
         </div>
+    </>
+  );
 
+  if (variant === 'inline') {
+    return (
+      <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+        {panelBody}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[60010] flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div
+        className="bg-gray-800 rounded-lg p-3 w-full mx-4 shadow-xl border border-gray-700 max-w-[min(98vw,93.6rem)] max-h-[88vh] min-h-[50vh] flex flex-col overflow-hidden"
+      >
+        {panelBody}
       </div>
     </div>
   );
+}
+
+export function WalletInfoDialog({
+  open,
+  wallet,
+  initialMarketId,
+  onClose,
+}: {
+  open: boolean;
+  wallet: string;
+  initialMarketId?: string;
+  onClose: () => void;
+}) {
+  if (!open) return null;
   if (typeof document === 'undefined') return null;
-  return createPortal(dialog, document.body);
+  return createPortal(
+    <WalletInfoPanel open={open} wallet={wallet} initialMarketId={initialMarketId} onClose={onClose} variant="modal" />,
+    document.body,
+  );
+}
+
+function useMinWidth2400(): boolean {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      const mq = window.matchMedia('(min-width: 2400px)');
+      mq.addEventListener('change', onStoreChange);
+      return () => mq.removeEventListener('change', onStoreChange);
+    },
+    () => window.matchMedia('(min-width: 2400px)').matches,
+    () => false,
+  );
 }
 
 export function ToxicFlowDialog(props: ToxicFlowDialogProps) {
@@ -2579,6 +2627,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   streamTabWalletViews = undefined,
   onRefreshStream: _onRefreshStream,
   streamRefreshing: _streamRefreshing = false,
+  onInlineWalletPanelChange,
 }: ToxicFlowDialogProps) {
   const yesTok = (yesTokenId || '').trim();
   const [internalData, setInternalData] = useState<ToxicFlowData | null>(null);
@@ -2613,6 +2662,18 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   }, []);
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState('');
+  const isWide2400 = useMinWidth2400();
+  const inlineWalletOpen = isWide2400 && walletDialogOpen && selectedWallet.trim().length > 0;
+  const closeWalletPanel = useCallback(() => {
+    setWalletDialogOpen(false);
+    setSelectedWallet('');
+  }, []);
+  useEffect(() => {
+    onInlineWalletPanelChange?.(inlineWalletOpen);
+  }, [inlineWalletOpen, onInlineWalletPanelChange]);
+  useEffect(() => {
+    if (!open) closeWalletPanel();
+  }, [open, closeWalletPanel]);
   const [toxicFollowSet, setToxicFollowSet] = useState(readToxicFavouriteWallets);
   useEffect(() => {
     const sync = () => setToxicFollowSet(readToxicFavouriteWallets());
@@ -2758,7 +2819,9 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     : 'fixed inset-0 bg-black/60 z-[49999] flex items-center justify-center';
   const cardClass = embedded
     ? 'bg-gray-800 flex flex-col flex-1 min-h-0 min-w-0 p-3 border-0 border-gray-700/50 w-full rounded-none shadow-none'
-    : 'bg-gray-800 rounded-lg p-4 max-w-4xl w-full mx-4 shadow-xl border border-gray-700 flex flex-col min-h-0';
+    : inlineWalletOpen
+      ? 'bg-gray-800 rounded-lg p-4 w-full mx-4 shadow-xl border border-gray-700 flex flex-col min-h-0 max-w-[min(98vw,calc(93.6rem+42rem))]'
+      : 'bg-gray-800 rounded-lg p-4 max-w-4xl w-full mx-4 shadow-xl border border-gray-700 flex flex-col min-h-0';
   const cardStyle: React.CSSProperties = embedded
     ? { maxHeight: '100%', minHeight: 0 }
     : { maxHeight: '85vh', height: '85vh', minHeight: 0 };
@@ -2790,7 +2853,8 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
         </div>
 
         {/* Body: flex so cohort tables consume remaining height; table body scrolls */}
-        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div className={`flex flex-1 min-h-0 overflow-hidden ${inlineWalletOpen ? 'flex-row gap-2' : 'flex-col'}`}>
+          <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
           {loading && <div className="text-gray-500 text-center py-8 shrink-0">Loading on-chain data...</div>}
           {error && <div className="text-red-400 text-center py-8 shrink-0">Error: {error}</div>}
 
@@ -2886,13 +2950,27 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
               ) : null}
             </>
           )}
+          </div>
+          {inlineWalletOpen ? (
+            <div className="flex flex-col min-h-0 shrink-0 w-[84rem] max-w-[84rem] border-l border-gray-700/80 pl-2 overflow-hidden">
+              <WalletInfoPanel
+                variant="inline"
+                open
+                wallet={selectedWallet}
+                initialMarketId={marketId}
+                onClose={closeWalletPanel}
+              />
+            </div>
+          ) : null}
         </div>
-        <WalletInfoDialog
-          open={walletDialogOpen}
-          wallet={selectedWallet}
-          initialMarketId={marketId}
-          onClose={() => setWalletDialogOpen(false)}
-        />
+        {!inlineWalletOpen ? (
+          <WalletInfoDialog
+            open={walletDialogOpen}
+            wallet={selectedWallet}
+            initialMarketId={marketId}
+            onClose={closeWalletPanel}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -2906,6 +2984,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     a.onClose !== b.onClose ||
     a.streamRefreshing !== b.streamRefreshing ||
     a.onRefreshStream !== b.onRefreshStream ||
+    a.onInlineWalletPanelChange !== b.onInlineWalletPanelChange ||
     a.streamTabWalletViews !== b.streamTabWalletViews
   ) {
     return false;

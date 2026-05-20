@@ -541,6 +541,13 @@ input[type="range"].vol-slider::-moz-range-thumb {
       width 0.25s ease,
       max-width 0.25s ease;
   }
+
+  @media (min-width: 2400px) {
+    .right-sidebar.sidebar-toxic-expanded.sidebar-toxic-wallet-inline {
+      width: min(calc(1162px + 84rem), calc(100vw - 12px));
+      max-width: min(calc(1162px + 84rem), calc(100vw - 12px));
+    }
+  }
 }
 
 .sidebar-mobile-overlay {

@@ -1,44 +1,41 @@
 /**
- * Merge complementary YES+NO outcome shares back to USDC via Conditional Tokens Framework.
- * Polymarket proxy (Gnosis Safe): EIP-712 SafeTx sign + execTransaction (WalletConnect / PK).
- * Direct EOA: call CTF mergePositions.
+ * Merge complementary YES+NO outcome shares back to USDC via CTF.
+ * Polymarket proxy wallets: gasless via PM relayer (direct); builder HMAC via backend /api/builder-sign.
+ * Direct EOA: on-chain mergePositions (user pays gas).
  */
 
 import { ethers } from 'ethers';
+import { SignatureTypeV2 } from '@polymarket/clob-client-v2';
+import { RelayClient, RelayerTxType, deriveSafe } from '@polymarket/builder-relayer-client';
+import type { JsonRpcSigner } from '@ethersproject/providers';
+import { BuilderConfig } from '@polymarket/builder-relayer-client/node_modules/@polymarket/builder-signing-sdk';
 import { getEthersSigner } from './clobClient';
-import { POLYGON_ETHERS_NETWORK, POLYGON_JSONRPC_URL } from './env';
+import { API_BASE, POLYGON_ETHERS_NETWORK, POLYGON_JSONRPC_URL } from './env';
+import { inferPolymarketClobSignatureType } from './polymarketTradingMaker';
 import { signingDialog } from '../components/SigningDialog';
 
 const CTF_ADDRESS = '0x4D97DCd97eC945f40cF65F87097ACe5EA0476045';
 const USDC_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174';
+const PUSD_ADDRESS = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB';
+const CTF_COLLATERAL_ADAPTER = '0xAdA100Db00Ca00073811820692005400218FcE1f';
+const NEG_RISK_COLLATERAL_ADAPTER = '0xadA2005600Dec949baf300f4C6120000bDB6eAab';
 
 const CTF_ABI = [
   'function mergePositions(address collateralToken, bytes32 parentCollectionId, bytes32 conditionId, uint256[] partition, uint256 amount)',
 ];
 
-const SAFE_ABI = [
-  'function execTransaction(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, bytes signatures) returns (bool success)',
-  'function nonce() view returns (uint256)',
-];
-
-const SAFE_TX_TYPES = {
-  SafeTx: [
-    { name: 'to', type: 'address' },
-    { name: 'value', type: 'uint256' },
-    { name: 'data', type: 'bytes' },
-    { name: 'operation', type: 'uint8' },
-    { name: 'safeTxGas', type: 'uint256' },
-    { name: 'baseGas', type: 'uint256' },
-    { name: 'gasPrice', type: 'uint256' },
-    { name: 'gasToken', type: 'address' },
-    { name: 'refundReceiver', type: 'address' },
-    { name: 'nonce', type: 'uint256' },
-  ],
-};
-
 const PARENT_ZERO = '0x0000000000000000000000000000000000000000000000000000000000000000';
-/** YES=1, NO=2 in Polymarket CTF partition */
 const MERGE_PARTITION = [1, 2];
+
+const POLYGON_SAFE_FACTORY = '0xaacFeEa03eb1561C4e67d661e40682Bd20E3541b';
+const POLYGON_CHAIN_ID = 137;
+/** PM relayer — browser CORS allowed (localhost, data.mito.trade, polymarket.com). */
+const RELAYER_URL = 'https://relayer-v2.polymarket.com';
+const BUILDER_SIGN_URL = `${API_BASE}/api/builder-sign`.replace(/([^:]\/)\/+/g, '$1');
+
+function relayerSigner(signer: ethers.Signer): JsonRpcSigner | ethers.Wallet {
+  return signer as JsonRpcSigner | ethers.Wallet;
+}
 
 function normalizeConditionId(conditionId: string): string {
   let h = conditionId.trim().toLowerCase();
@@ -70,50 +67,49 @@ async function polygonGasOverrides(provider: ethers.providers.Provider) {
   return { maxPriorityFeePerGas: finalTip, maxFeePerGas: maxFeeFinal };
 }
 
-/** Pack one owner ECDSA signature for Gnosis Safe `execTransaction`. */
-function packSafeOwnerSignature(sigHex: string): string {
-  const { r, s, v } = ethers.utils.splitSignature(sigHex);
-  return ethers.utils.solidityPack(['bytes32', 'bytes32', 'uint8'], [r, s, v]);
+function mergeCollateralAdapter(negRisk: boolean): string {
+  return (negRisk ? NEG_RISK_COLLATERAL_ADAPTER : CTF_COLLATERAL_ADAPTER).toLowerCase();
 }
 
-async function signGnosisSafeMergeTx(
-  signer: ethers.Signer,
-  safeAddress: string,
-  to: string,
-  data: string,
-): Promise<string> {
-  const readProvider = mergeReadProvider(signer);
-  const safeRead = new ethers.Contract(safeAddress, SAFE_ABI, readProvider);
-  const nonce = await safeRead.nonce();
-  const network = await readProvider.getNetwork();
-  const chainId = network.chainId;
+function packMergeCalldata(condHex: string, amountWei: ethers.BigNumber, depositWallet: boolean): string {
+  const ctfInterface = new ethers.utils.Interface(CTF_ABI);
+  const collateral = depositWallet ? PUSD_ADDRESS : USDC_ADDRESS;
+  return ctfInterface.encodeFunctionData('mergePositions', [
+    collateral,
+    PARENT_ZERO,
+    condHex,
+    MERGE_PARTITION,
+    amountWei,
+  ]);
+}
 
-  const domain = {
-    chainId,
-    verifyingContract: ethers.utils.getAddress(safeAddress),
-  };
-  const message = {
-    to: ethers.utils.getAddress(to),
-    value: 0,
-    data,
-    operation: 0,
-    safeTxGas: 0,
-    baseGas: 0,
-    gasPrice: 0,
-    gasToken: ethers.constants.AddressZero,
-    refundReceiver: ethers.constants.AddressZero,
-    nonce,
-  };
+function formatMergeError(e: unknown): string {
+  if (e instanceof Error) {
+    const msg = e.message || String(e);
+    if (/builder signing not configured|invalid builder creds/i.test(msg)) {
+      return 'Gasless merge unavailable (builder signing not configured on server)';
+    }
+    if (/SAFE_NOT_DEPLOYED/i.test(msg)) {
+      return 'Polymarket Safe not deployed for this wallet';
+    }
+    if (/insufficient funds/i.test(msg)) {
+      return 'Insufficient MATIC for gas — reconnect wallet and retry (should use gasless relayer)';
+    }
+    if (msg.length > 280) return `${msg.slice(0, 280)}…`;
+    return msg;
+  }
+  return String(e);
+}
 
-  type TypedDataSigner = ethers.Signer & {
-    _signTypedData: (
-      domain: ethers.TypedDataDomain,
-      types: Record<string, ethers.TypedDataField[]>,
-      value: Record<string, unknown>,
-    ) => Promise<string>;
-  };
-  const sig = await (signer as TypedDataSigner)._signTypedData(domain, SAFE_TX_TYPES, message);
-  return packSafeOwnerSignature(sig);
+function relayBuilderConfig(): BuilderConfig {
+  return new BuilderConfig({
+    remoteBuilderConfig: { url: BUILDER_SIGN_URL },
+  });
+}
+
+function relayTxType(sigType: SignatureTypeV2): RelayerTxType {
+  if (sigType === SignatureTypeV2.POLY_PROXY) return RelayerTxType.PROXY;
+  return RelayerTxType.SAFE;
 }
 
 async function executeDirectCtfMerge(
@@ -128,45 +124,87 @@ async function executeDirectCtfMerge(
   return receipt.transactionHash as string;
 }
 
-async function executeSafeCtfMerge(
+async function executeGaslessDepositWalletMerge(
   signer: ethers.Signer,
   funderAddress: string,
   mergeData: string,
+  negRisk: boolean,
 ): Promise<string> {
+  const builderConfig = relayBuilderConfig();
+  if (!builderConfig.isValid()) {
+    throw new Error('Gasless merge unavailable (builder signing not configured on server)');
+  }
+  const client = new RelayClient(RELAYER_URL, POLYGON_CHAIN_ID, relayerSigner(signer), builderConfig);
+
+  const derived = (await client.deriveDepositWalletAddress()).toLowerCase();
+  const funder = funderAddress.trim().toLowerCase();
+  if (derived !== funder) {
+    throw new Error(`Deposit wallet mismatch: expected ${derived}, got ${funder}`);
+  }
+
+  const deadline = String(Math.floor(Date.now() / 1000) + 600);
+  const adapter = mergeCollateralAdapter(negRisk);
+
   signingDialog.setStep('sign', 'active');
-  const packedSig = await signGnosisSafeMergeTx(signer, funderAddress, CTF_ADDRESS, mergeData);
+  const response = await client.executeDepositWalletBatch(
+    [{ target: adapter, value: '0', data: mergeData }],
+    funderAddress,
+    deadline,
+  );
   signingDialog.setStep('sign', 'done');
 
   signingDialog.setStep('submit', 'active');
-  const safeContract = new ethers.Contract(funderAddress, SAFE_ABI, signer);
-  const gas = await polygonGasOverrides(mergeReadProvider(signer));
-  const tx = await safeContract.execTransaction(
-    CTF_ADDRESS,
-    0,
-    mergeData,
-    0,
-    0,
-    0,
-    0,
-    ethers.constants.AddressZero,
-    ethers.constants.AddressZero,
-    packedSig,
-    gas,
-  );
-  const receipt = await tx.wait();
+  const result = await response.wait();
+  if (!result?.transactionHash) {
+    throw new Error('Relayer merge failed or timed out');
+  }
   signingDialog.setStep('submit', 'done');
   signingDialog.close();
-  return receipt.transactionHash as string;
+  return result.transactionHash;
+}
+
+async function executeGaslessSafeOrProxyMerge(
+  signer: ethers.Signer,
+  funderAddress: string,
+  mergeData: string,
+  sigType: SignatureTypeV2,
+): Promise<string> {
+  const builderConfig = relayBuilderConfig();
+  if (!builderConfig.isValid()) {
+    throw new Error('Gasless merge unavailable (builder signing not configured on server)');
+  }
+  const txType = relayTxType(sigType);
+  const client = new RelayClient(RELAYER_URL, POLYGON_CHAIN_ID, relayerSigner(signer), builderConfig, txType);
+
+  if (txType === RelayerTxType.SAFE) {
+    const expected = deriveSafe(await signer.getAddress(), POLYGON_SAFE_FACTORY).toLowerCase();
+    const funder = funderAddress.trim().toLowerCase();
+    if (expected !== funder) {
+      throw new Error(`Safe wallet mismatch: expected ${expected}, got ${funder}`);
+    }
+  }
+
+  signingDialog.setStep('sign', 'active');
+  const response = await client.execute([{ to: CTF_ADDRESS, data: mergeData, value: '0' }], 'Merge positions');
+  signingDialog.setStep('sign', 'done');
+
+  signingDialog.setStep('submit', 'active');
+  const result = await response.wait();
+  if (!result?.transactionHash) {
+    throw new Error('Relayer merge failed or timed out');
+  }
+  signingDialog.setStep('submit', 'done');
+  signingDialog.close();
+  return result.transactionHash;
 }
 
 export async function executeMergePositions(params: {
   conditionId: string;
-  /** Human share count (same units as UI positions; 6 decimals on-chain) */
   amount: number;
-  /** Polymarket proxy / Safe that holds outcome tokens */
   funderAddress: string;
+  negRisk?: boolean;
 }): Promise<{ success: true; txHash: string } | { success: false; error: string }> {
-  const { conditionId, amount, funderAddress } = params;
+  const { conditionId, amount, funderAddress, negRisk = false } = params;
   if (!amount || amount <= 0) return { success: false, error: 'Amount must be positive' };
   if (!funderAddress?.trim()) return { success: false, error: 'Proxy wallet not set' };
 
@@ -179,8 +217,8 @@ export async function executeMergePositions(params: {
 
   signingDialog.open(false, {
     title: 'Merge positions',
-    signLabel: 'Sign Safe transaction',
-    submitLabel: 'Submit merge',
+    signLabel: 'Sign merge',
+    submitLabel: 'Submit via relayer',
     orderInfo: `${amount} share pairs → USDC`,
   });
 
@@ -195,15 +233,6 @@ export async function executeMergePositions(params: {
       return { success: false, error: 'Amount too small' };
     }
 
-    const ctfInterface = new ethers.utils.Interface(CTF_ABI);
-    const mergeData = ctfInterface.encodeFunctionData('mergePositions', [
-      USDC_ADDRESS,
-      PARENT_ZERO,
-      condHex,
-      MERGE_PARTITION,
-      amountWei,
-    ]);
-
     let txHash: string;
     if (funder === signerAddr) {
       signingDialog.setStep('sign', 'active');
@@ -213,12 +242,24 @@ export async function executeMergePositions(params: {
       signingDialog.setStep('submit', 'done');
       signingDialog.close();
     } else {
-      txHash = await executeSafeCtfMerge(signer, funderAddress, mergeData);
+      const sigType = await inferPolymarketClobSignatureType(signerAddr, funderAddress, POLYGON_JSONRPC_URL);
+      if (sigType === SignatureTypeV2.POLY_1271) {
+        const mergeData = packMergeCalldata(condHex, amountWei, true);
+        txHash = await executeGaslessDepositWalletMerge(signer, funderAddress, mergeData, negRisk);
+      } else if (
+        sigType === SignatureTypeV2.POLY_GNOSIS_SAFE ||
+        sigType === SignatureTypeV2.POLY_PROXY
+      ) {
+        const mergeData = packMergeCalldata(condHex, amountWei, false);
+        txHash = await executeGaslessSafeOrProxyMerge(signer, funderAddress, mergeData, sigType);
+      } else {
+        throw new Error(`Unsupported wallet type for gasless merge (${sigType})`);
+      }
     }
 
     return { success: true, txHash };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = formatMergeError(e);
     const step = signingDialog.getState().submit === 'active' ? 'submit' : 'sign';
     signingDialog.setStep(step, 'error', msg);
     return { success: false, error: msg };

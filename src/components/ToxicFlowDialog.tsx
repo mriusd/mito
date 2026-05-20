@@ -86,6 +86,7 @@ import {
   fmtPriceShare,
 } from './WalletLatestMarketsTradedTable';
 import { exportWalletFillsCsv, exportWalletMarketsCsv } from '../lib/walletInfoCsvExport';
+import { fetchPolymarketNickname } from '../api/polymarket';
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { HelperTooltip } from './HelperTooltip';
 import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
@@ -1599,6 +1600,7 @@ export function WalletInfoDialog({
   const [fillsPage, setFillsPage] = useState(0);
   const [fillsRefreshToken, setFillsRefreshToken] = useState(0);
   const [dailySnapshotsRefresh, setDailySnapshotsRefresh] = useState(0);
+  const [profileNickname, setProfileNickname] = useState('');
   const fillsPageSize = 200;
   const marketById = useMemo(() => buildMarketByIdRecord(marketLookup), [marketLookup]);
 
@@ -1650,6 +1652,20 @@ export function WalletInfoDialog({
       }
     })();
   }, [open, wallet, initialMarketId, loadMarketsAndSelect]);
+
+  useEffect(() => {
+    if (!open || !wallet.trim()) {
+      setProfileNickname('');
+      return;
+    }
+    let cancelled = false;
+    void fetchPolymarketNickname(wallet.trim()).then((nick) => {
+      if (!cancelled) setProfileNickname(nick);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, wallet]);
 
   const onRefreshMarketsAndTrades = useCallback(async () => {
     if (!open || !wallet) return;
@@ -1794,12 +1810,14 @@ export function WalletInfoDialog({
   const polymarketNick = useMemo(() => {
     const fromSummary = polymarketNicknameTrim(summary?.polymarketNickname);
     if (fromSummary) return fromSummary;
+    const fromProfile = polymarketNicknameTrim(profileNickname);
+    if (fromProfile) return fromProfile;
     for (const row of markets) {
       const n = polymarketNicknameFromEmbed(row.walletLedgerSummary);
       if (n) return n;
     }
     return '';
-  }, [summary, markets]);
+  }, [summary, profileNickname, markets]);
 
   if (!open) return null;
   const polymarketProfileUrl = `https://polymarket.com/profile/${wallet.trim().toLowerCase()}`;
@@ -1886,29 +1904,21 @@ export function WalletInfoDialog({
                   ) : null}
                   {polymarketNick ? (
                     <span
-                      className={`min-w-0 truncate ${walletTag ? 'text-[10px] text-gray-400' : 'text-xs text-blue-300'}`}
+                      className={`min-w-0 truncate ${walletTag ? 'text-[10px] text-blue-300' : 'text-xs font-medium text-blue-300'}`}
                       title={`Polymarket: ${polymarketNick}`}
                     >
                       {shortenWallet(polymarketNick)}
                     </span>
+                  ) : walletTag ? null : (
+                    <span className="min-w-0 truncate text-xs font-medium text-blue-300 font-mono" title={wallet}>
+                      {wallet}
+                    </span>
+                  )}
+                  {walletTag || polymarketNick ? (
+                    <span className="min-w-0 truncate text-[10px] text-gray-500 font-mono" title={wallet}>
+                      {shortenWallet(wallet)}
+                    </span>
                   ) : null}
-                  <a
-                    href={polymarketProfileUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={`min-w-0 truncate hover:underline ${
-                      walletTag || polymarketNick ? 'text-[10px] text-gray-500' : 'text-xs text-blue-400'
-                    }`}
-                    title={
-                      polymarketNick
-                        ? `${polymarketNick} · ${wallet}`
-                        : walletTag
-                          ? `${walletTag} · ${wallet}`
-                          : 'Open Polymarket profile'
-                    }
-                  >
-                    {walletTag || polymarketNick ? shortenWallet(wallet) : wallet}
-                  </a>
                 </>
               )}
             </span>

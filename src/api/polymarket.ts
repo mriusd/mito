@@ -3,6 +3,7 @@ import { isFeDev, API_BASE } from '../lib/env';
 
 // Cache: EOA → proxy wallet address
 const proxyWalletCache: Record<string, string> = {};
+const polymarketNicknameCache: Record<string, string> = {};
 
 // In dev mode, proxy through backend to avoid CORS; in live mode, call Polymarket directly
 function dataUrl(path: string): string {
@@ -66,6 +67,23 @@ export async function fetchProxyWallet(eoaAddress: string): Promise<string | nul
     return null;
   } catch {
     return null;
+  }
+}
+
+/** Gamma public-profile username (browser uses backend proxy). */
+export async function fetchPolymarketNickname(address: string): Promise<string> {
+  const key = address.toLowerCase();
+  if (polymarketNicknameCache[key]) return polymarketNicknameCache[key];
+  try {
+    const url = `${API_BASE}/api/polyproxy/gamma/public-profile?address=${address}`;
+    const resp = await fetch(url);
+    if (!resp.ok) return '';
+    const data = await resp.json();
+    const name = String(data.username || data.name || '').trim();
+    if (name) polymarketNicknameCache[key] = name;
+    return name;
+  } catch {
+    return '';
   }
 }
 

@@ -991,10 +991,6 @@ export function Sidebar() {
   }, []);
 
   useEffect(() => {
-    setSidebarChartAnnualVolPct(null);
-  }, [selectedMarket?.id]);
-
-  useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_PLAY_SOUND_KEY, notifyPlaySound ? '1' : '0');
     } catch {
@@ -1800,6 +1796,7 @@ export function Sidebar() {
     intervalContext: upDownIntervalContext,
     chainlinkCandles: !!(isUpDownMarket && upDownSpotUsesChainlink),
     volatilityLookbackCandles: notifyVolatilityCandles,
+    recalcKey: selectedMarket?.id ?? '',
     onAnnualizedVolPct: handleSidebarChartAnnualVolPct,
   });
   /** Default kline size for right chart; 1h (explicit or implicit) → 5m — aligned with upDownStartTime window detection. */

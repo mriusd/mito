@@ -36,8 +36,25 @@ export type UseSidebarChartVolatilityParams = {
   intervalContext?: string;
   chainlinkCandles?: boolean;
   volatilityLookbackCandles?: number;
+  /** Bump when sidebar market changes — forces σ recompute from cached klines (same asset). */
+  recalcKey?: string;
   onAnnualizedVolPct?: (pct: number | null) => void;
 };
+
+function computeAnnualizedVolFromMap(
+  map: Map<number, Candle>,
+  candleMs: number,
+  volatilityLookbackCandles: number,
+): number | null {
+  const allCandles = [...map.values()].sort((a, b) => a.time - b.time);
+  const bucketNow = Math.floor(Date.now() / candleMs) * candleMs;
+  const lb = Math.max(3, Math.min(500, Math.round(volatilityLookbackCandles)));
+  const closed = allCandles.filter((c) => c.time < bucketNow).slice(-lb);
+  return annualizedVolPctFromClosePrices(
+    closed.map((c) => c.c),
+    candleMs,
+  );
+}
 
 /** Headless sidebar σ from Binance or polycandles Chainlink klines (same window as former left chart). */
 export function useSidebarChartVolatility({
@@ -45,13 +62,18 @@ export function useSidebarChartVolatility({
   intervalContext,
   chainlinkCandles = false,
   volatilityLookbackCandles = 5,
+  recalcKey = '',
   onAnnualizedVolPct,
 }: UseSidebarChartVolatilityParams): void {
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
+  const binanceFallbackMapRef = useRef<Map<number, Candle>>(new Map());
   const wsRef = useRef<WebSocket | null>(null);
+  const binanceFallbackWsRef = useRef<WebSocket | null>(null);
   const intervalRef = useRef('');
   const [ready, setReady] = useState(false);
+  const [binanceFallbackReady, setBinanceFallbackReady] = useState(false);
   const [tick, setTick] = useState(0);
+  const [binanceFallbackTick, setBinanceFallbackTick] = useState(0);
   const onVolRef = useRef(onAnnualizedVolPct);
   onVolRef.current = onAnnualizedVolPct;
 
@@ -231,21 +253,92 @@ export function useSidebarChartVolatility({
     };
   }, [asset, chainlinkCandles, interval]);
 
+  /** Binance klines fallback when Chainlink σ cannot be computed (sparse CL history). */
+  useEffect(() => {
+    if (!asset || !chainlinkCandles) {
+      binanceFallbackMapRef.current = new Map();
+      setBinanceFallbackReady(false);
+      return;
+    }
+
+    binanceFallbackMapRef.current = new Map();
+    setBinanceFallbackReady(false);
+
+    if (binanceFallbackWsRef.current) {
+      binanceFallbackWsRef.current.close();
+      binanceFallbackWsRef.current = null;
+    }
+
+    fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=100`)
+      .then((r) => r.json())
+      .then((klines: unknown[][]) => {
+        if (!Array.isArray(klines)) {
+          setBinanceFallbackReady(true);
+          return;
+        }
+        const map = binanceFallbackMapRef.current;
+        for (const k of klines) {
+          const row = parseKlineRow(k);
+          if (row) map.set(row.time, row);
+        }
+        setBinanceFallbackReady(true);
+      })
+      .catch(() => setBinanceFallbackReady(true));
+
+    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${binanceStreamSymbol}@kline_${interval}`);
+    binanceFallbackWsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data as string) as {
+          e?: string;
+          k?: { t: number; o: string; h: string; l: string; c: string };
+        };
+        if (msg.e === 'kline' && msg.k) {
+          const k = msg.k;
+          binanceFallbackMapRef.current.set(k.t, {
+            time: k.t,
+            o: parseFloat(k.o),
+            h: parseFloat(k.h),
+            l: parseFloat(k.l),
+            c: parseFloat(k.c),
+          });
+          setBinanceFallbackTick((n) => n + 1);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+
+    ws.onclose = () => {};
+    ws.onerror = () => {};
+
+    return () => {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
+      binanceFallbackWsRef.current = null;
+    };
+  }, [asset, chainlinkCandles, binanceSymbol, binanceStreamSymbol, interval]);
+
   useEffect(() => {
     if (!asset) {
       onVolRef.current?.(null);
       return;
     }
 
-    const map = candleMapRef.current;
-    const allCandles = [...map.values()].sort((a, b) => a.time - b.time);
-    const bucketNow = Math.floor(Date.now() / candleMs) * candleMs;
-    const lb = Math.max(3, Math.min(500, Math.round(volatilityLookbackCandles)));
-    const closed = allCandles.filter((c) => c.time < bucketNow).slice(-lb);
-    const pct = annualizedVolPctFromClosePrices(
-      closed.map((c) => c.c),
-      candleMs,
-    );
+    let pct = computeAnnualizedVolFromMap(candleMapRef.current, candleMs, volatilityLookbackCandles);
+    if (pct == null && chainlinkCandles) {
+      pct = computeAnnualizedVolFromMap(binanceFallbackMapRef.current, candleMs, volatilityLookbackCandles);
+    }
     onVolRef.current?.(pct);
-  }, [asset, ready, tick, candleMs, volatilityLookbackCandles]);
+  }, [
+    asset,
+    ready,
+    tick,
+    binanceFallbackReady,
+    binanceFallbackTick,
+    candleMs,
+    volatilityLookbackCandles,
+    chainlinkCandles,
+    recalcKey,
+  ]);
 }

@@ -1690,6 +1690,8 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   open,
   wallet,
   initialMarketId,
+  focusMarketId,
+  focusMarketSeq = 0,
   onClose,
   variant = 'modal',
   onInlineMarketsListOpenChange,
@@ -1698,6 +1700,9 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   wallet: string;
   /** When set (e.g. condition id), trades table opens on this market after load. */
   initialMarketId?: string;
+  /** Toxic flow: re-click same wallet → jump to this market (see focusMarketSeq). */
+  focusMarketId?: string;
+  focusMarketSeq?: number;
   onClose: () => void;
   variant?: WalletInfoPanelVariant;
   /** Inline sidebar: notify parent when markets list expand toggles (width). */
@@ -1765,6 +1770,8 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     [wallet, initialMarketId],
   );
 
+  const prevFocusMarketSeqRef = useRef(0);
+
   useEffect(() => {
     if (!open || !wallet) return;
     setSummary(undefined);
@@ -1773,6 +1780,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     setInlineMarketsListOpen(false);
     setFillsRefreshToken(0);
     setDailySnapshotsRefresh(0);
+    prevFocusMarketSeqRef.current = 0;
     setLoadingMarkets(true);
     (async () => {
       try {
@@ -1782,6 +1790,18 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
       }
     })();
   }, [open, wallet, initialMarketId, loadMarketsAndSelect]);
+
+  useEffect(() => {
+    if (!open || !wallet || !focusMarketSeq || focusMarketSeq === prevFocusMarketSeqRef.current) return;
+    prevFocusMarketSeqRef.current = focusMarketSeq;
+    const prefRaw = (focusMarketId || initialMarketId || '').trim();
+    if (!prefRaw) return;
+    const prefLc = prefRaw.toLowerCase();
+    const hit = markets.find((row) => String(row.marketId || '').trim().toLowerCase() === prefLc);
+    setSelectedMarketId(hit ? hit.marketId : prefRaw);
+    refreshMarketTradesWS();
+    setFillsRefreshToken((n) => n + 1);
+  }, [focusMarketSeq, focusMarketId, initialMarketId, open, wallet, markets, refreshMarketTradesWS]);
 
   useEffect(() => {
     if (!isInlineWalletInfo) return;
@@ -2511,6 +2531,8 @@ export function WalletInfoPanel(props: {
   open: boolean;
   wallet: string;
   initialMarketId?: string;
+  focusMarketId?: string;
+  focusMarketSeq?: number;
   onClose: () => void;
   variant?: WalletInfoPanelVariant;
 }) {
@@ -2520,11 +2542,15 @@ export function WalletInfoPanel(props: {
 const InlineWalletInfoPanelHost = memo(function InlineWalletInfoPanelHost({
   wallet,
   initialMarketId,
+  focusMarketId,
+  focusMarketSeq,
   onClose,
   onInlineMarketsListOpenChange,
 }: {
   wallet: string;
   initialMarketId: string;
+  focusMarketId: string;
+  focusMarketSeq: number;
   onClose: () => void;
   onInlineMarketsListOpenChange?: (open: boolean) => void;
 }) {
@@ -2534,6 +2560,8 @@ const InlineWalletInfoPanelHost = memo(function InlineWalletInfoPanelHost({
       open
       wallet={wallet}
       initialMarketId={initialMarketId}
+      focusMarketId={focusMarketId}
+      focusMarketSeq={focusMarketSeq}
       onClose={onClose}
       onInlineMarketsListOpenChange={onInlineMarketsListOpenChange}
     />
@@ -2541,6 +2569,8 @@ const InlineWalletInfoPanelHost = memo(function InlineWalletInfoPanelHost({
 }, (a, b) =>
   a.wallet === b.wallet &&
   a.initialMarketId === b.initialMarketId &&
+  a.focusMarketId === b.focusMarketId &&
+  a.focusMarketSeq === b.focusMarketSeq &&
   a.onClose === b.onClose &&
   a.onInlineMarketsListOpenChange === b.onInlineMarketsListOpenChange);
 
@@ -2548,17 +2578,29 @@ export function WalletInfoDialog({
   open,
   wallet,
   initialMarketId,
+  focusMarketId,
+  focusMarketSeq,
   onClose,
 }: {
   open: boolean;
   wallet: string;
   initialMarketId?: string;
+  focusMarketId?: string;
+  focusMarketSeq?: number;
   onClose: () => void;
 }) {
   if (!open) return null;
   if (typeof document === 'undefined') return null;
   return createPortal(
-    <WalletInfoPanel open={open} wallet={wallet} initialMarketId={initialMarketId} onClose={onClose} variant="modal" />,
+    <WalletInfoPanel
+      open={open}
+      wallet={wallet}
+      initialMarketId={initialMarketId}
+      focusMarketId={focusMarketId}
+      focusMarketSeq={focusMarketSeq}
+      onClose={onClose}
+      variant="modal"
+    />,
     document.body,
   );
 }
@@ -2885,6 +2927,9 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   }, []);
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState('');
+  const [focusMarketSeq, setFocusMarketSeq] = useState(0);
+  const selectedWalletRef = useRef('');
+  const walletDialogOpenRef = useRef(false);
   const isWide1920 = useMinWidth1920();
   const isWide1920Ref = useRef(isWide1920);
   isWide1920Ref.current = isWide1920;
@@ -2895,6 +2940,8 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   inlineWalletSlotRef.current = inlineWalletSlot;
   const inlineWalletWidthRef = useRef(inlineWalletWidth);
   inlineWalletWidthRef.current = inlineWalletWidth;
+  selectedWalletRef.current = selectedWallet;
+  walletDialogOpenRef.current = walletDialogOpen;
 
   useLayoutEffect(() => {
     if (!embedded) return;
@@ -3055,8 +3102,14 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   const openWalletDialog = useCallback((wallet: string, _netShares?: number) => {
     const w = wallet.trim();
     if (!w) return;
+    const sameWalletOpen =
+      walletDialogOpenRef.current &&
+      selectedWalletRef.current.trim().toLowerCase() === w.toLowerCase();
     setSelectedWallet(w);
     setWalletDialogOpen(true);
+    if (sameWalletOpen && midTrim) {
+      setFocusMarketSeq((n) => n + 1);
+    }
     if (!isWide1920Ref.current) return;
     if (inlineWalletSlotRef.current && inlineWalletWidthRef.current !== '0px') {
       walletOpenAnimRef.current = false;
@@ -3066,7 +3119,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     walletOpenAnimRef.current = true;
     setInlineWalletSlot(true);
     setInlineWalletWidth('0px');
-  }, []);
+  }, [midTrim]);
 
   const closeWalletPanel = useCallback(() => {
     setWalletDialogOpen(false);
@@ -3222,6 +3275,8 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
         <InlineWalletInfoPanelHost
           wallet={selectedWallet}
           initialMarketId={marketId}
+          focusMarketId={midTrim}
+          focusMarketSeq={focusMarketSeq}
           onClose={closeWalletPanel}
           onInlineMarketsListOpenChange={onInlineMarketsListOpenChange}
         />
@@ -3287,6 +3342,8 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
             open={walletDialogOpen}
             wallet={selectedWallet}
             initialMarketId={marketId}
+            focusMarketId={midTrim}
+            focusMarketSeq={focusMarketSeq}
             onClose={closeWalletPanel}
           />
         ) : null}

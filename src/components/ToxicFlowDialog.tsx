@@ -590,6 +590,12 @@ function LedgerSummaryField({
   );
 }
 
+function formatWalletTradeTime(blockTime: number): string {
+  if (!blockTime) return '-';
+  const d = blockTime > 1e12 ? new Date(blockTime) : new Date(blockTime * 1000);
+  return d.toLocaleString().replaceAll('/', '\\');
+}
+
 /** `wallet_scores_ledger` fields from /api/wallet-summary. */
 function formatWslLastUpdated(raw: string | undefined | null): string {
   const t = Date.parse(String(raw || '').trim());
@@ -2320,9 +2326,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                       (mid && marketById[mid]) ||
                       {};
                     const bt = Number((f as { blockTime?: number }).blockTime ?? 0);
-                    const ts = bt > 0
-                      ? (bt > 1e12 ? new Date(bt) : new Date(bt * 1000)).toLocaleString()
-                      : '-';
+                    const ts = formatWalletTradeTime(bt);
                     if (isLedgerFillRow(f)) {
                       const sz = Number(f.size);
                       const pr = f.price;

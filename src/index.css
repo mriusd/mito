@@ -633,7 +633,7 @@ input[type="range"].vol-slider::-moz-range-thumb {
 
 .sidebar-chart-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 0;
   align-items: start;
   border-bottom: 1px solid #374151;

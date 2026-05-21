@@ -1396,10 +1396,6 @@ export function Sidebar() {
     return sidebarChartAnnualVolPct <= notifyMaxVolatilityPct;
   }, [notifyMaxVolatilityPct, sidebarChartAnnualVolPct]);
 
-  const handleSidebarChartAnnualVolPct = useCallback((pct: number | null) => {
-    setSidebarChartAnnualVolPct(pct);
-  }, []);
-
   const [crossingConfirmOpen, setCrossingConfirmOpen] = useState(false);
   const [crossingConfirmMessage, setCrossingConfirmMessage] = useState('');
   const crossingConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
@@ -3813,18 +3809,8 @@ export function Sidebar() {
           />
           <SidebarChartsRow
             selectedMarket={selectedMarket}
-            isUpDownMarket={isUpDownMarket}
-            upDownAsset={upDownAsset}
-            upDownIntervalContext={upDownIntervalContext}
-            upDownTargetPrice={upDownTargetPrice}
-            upDownSpotUsesChainlink={upDownSpotUsesChainlink}
             onchainLiveTrades={onchainLiveTrades}
             liveTradesSource={liveTradesSource}
-            orderOutcome={orderOutcome}
-            upDownStartTime={upDownStartTime}
-            upDownKlineDefaultInterval={upDownKlineDefaultInterval}
-            volatilityLookbackCandles={notifyVolatilityCandles}
-            onSidebarChartAnnualVolPct={handleSidebarChartAnnualVolPct}
           />
 
 

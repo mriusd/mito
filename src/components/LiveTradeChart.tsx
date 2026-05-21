@@ -2,6 +2,11 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { API_BASE, WS_BASE } from '../lib/env';
 import { resolveLiveTradeChartWindow } from '../lib/walletInfoChartMarket';
+import {
+  CHART_VOLUME_SPIKE_FLASH_MS,
+  detectChartVolumeSpike,
+  playChartVolumeSpikeRing,
+} from '../lib/chartVolumeSpikeAlert';
 
 interface Candle {
   time: number;
@@ -124,6 +129,9 @@ export function LiveTradeChart({
   const [wsTick, setWsTick] = useState(0);
   const [chainlinkTick, setChainlinkTick] = useState(0);
   const [hideTrades, setHideTrades] = useState(false);
+  const [volumeSpikeFlash, setVolumeSpikeFlash] = useState(false);
+  const lastVolumeSpikeBarRef = useRef<number | null>(null);
+  const volumeSpikeFlashGenRef = useRef(0);
 
   const setChartInterval = useCallback((iv: ChartInterval) => {
     setInterval_(iv);
@@ -681,6 +689,30 @@ export function LiveTradeChart({
   }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval]);
 
   useEffect(() => {
+    lastVolumeSpikeBarRef.current = null;
+    setVolumeSpikeFlash(false);
+  }, [tokenId, interval]);
+
+  useEffect(() => {
+    if (!ready || !tokenId) return;
+    const candles = [...candleMapRef.current.values()].sort((a, b) => a.time - b.time);
+    const spike = detectChartVolumeSpike(candles);
+    if (!spike) return;
+    if (lastVolumeSpikeBarRef.current === spike.barTime) return;
+    lastVolumeSpikeBarRef.current = spike.barTime;
+
+    const gen = volumeSpikeFlashGenRef.current + 1;
+    volumeSpikeFlashGenRef.current = gen;
+    setVolumeSpikeFlash(true);
+    void playChartVolumeSpikeRing();
+
+    const t = window.setTimeout(() => {
+      if (volumeSpikeFlashGenRef.current === gen) setVolumeSpikeFlash(false);
+    }, CHART_VOLUME_SPIKE_FLASH_MS);
+    return () => clearTimeout(t);
+  }, [ready, wsTick, tokenId, interval]);
+
+  useEffect(() => {
     draw();
   }, [draw]);
 
@@ -742,10 +774,15 @@ export function LiveTradeChart({
           </label>
         </div>
       ) : null}
-      <canvas
-        ref={canvasRef}
-        style={{ width: '100%', height: 110, borderRadius: 6, background: '#1a1a2e' }}
-      />
+      <div
+        className={volumeSpikeFlash ? 'live-trade-chart-volume-spike-flash' : undefined}
+        title={volumeSpikeFlash ? 'Volume spike on latest bar (≥2× prior average)' : undefined}
+      >
+        <canvas
+          ref={canvasRef}
+          style={{ width: '100%', height: 110, borderRadius: 6, background: '#1a1a2e' }}
+        />
+      </div>
     </div>
   );
 }

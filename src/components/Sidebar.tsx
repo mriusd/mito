@@ -103,6 +103,11 @@ import {
   SIDEBAR_NOTIFY_BELL_MIN_STAKE_USD_KEY,
 } from '../lib/toxicBellRowRing';
 import {
+  playChartVolumeSpikeRing,
+  readNotifyVolumeSpikeRingEnabled,
+  SIDEBAR_NOTIFY_VOLUME_SPIKE_RING_KEY,
+} from '../lib/chartVolumeSpikeAlert';
+import {
   getMarketNotifyMutedSnapshot,
   isMarketNotifyMuted,
   subscribeMarketNotifyMuted,
@@ -930,6 +935,7 @@ export function Sidebar() {
   const [notifyWhaleRing, setNotifyWhaleRing] = useState(readNotifyWhaleRing);
   const [notifyWhaleRingMutable, setNotifyWhaleRingMutable] = useState(readNotifyWhaleRingMutable);
   const [notifyBellRing, setNotifyBellRing] = useState(readNotifyBellRing);
+  const [notifyVolumeSpikeRing, setNotifyVolumeSpikeRing] = useState(readNotifyVolumeSpikeRingEnabled);
   const [notifyBellMinStakeUsd, setNotifyBellMinStakeUsd] = useState(readNotifyBellMinStakeUsd);
   const [notifyWhaleMaxPriceCents, setNotifyWhaleMaxPriceCents] = useState(readNotifyWhaleMaxPriceCents);
   const [notifyWhaleIgnoreNegativePnl, setNotifyWhaleIgnoreNegativePnl] = useState(readNotifyWhaleIgnoreNegativePnl);
@@ -1054,6 +1060,13 @@ export function Sidebar() {
       /* ignore */
     }
   }, [notifyBellRing]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_VOLUME_SPIKE_RING_KEY, notifyVolumeSpikeRing ? '1' : '0');
+    } catch {
+      /* */
+    }
+  }, [notifyVolumeSpikeRing]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_BELL_MIN_STAKE_USD_KEY, String(notifyBellMinStakeUsd));
@@ -3051,6 +3064,27 @@ export function Sidebar() {
                   />
                   <span>Bell Ring</span>
                 </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyVolumeSpikeRing}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setNotifyVolumeSpikeRing(on);
+                      try {
+                        localStorage.setItem(SIDEBAR_NOTIFY_VOLUME_SPIKE_RING_KEY, on ? '1' : '0');
+                      } catch {
+                        /* */
+                      }
+                      if (on) {
+                        primeTiltAudioContextFromUserGesture();
+                        void playChartVolumeSpikeRing();
+                      }
+                    }}
+                  />
+                  <span>Volume Spike Ring</span>
+                </label>
                 <label className="flex items-center gap-2 shrink-0">
                   <span className="text-gray-400 whitespace-nowrap">Min usd stake</span>
                   <input
@@ -3138,9 +3172,12 @@ export function Sidebar() {
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
                 Bell Ring: one strike per flashing 🔔 row in Top Holders every 1.35s when |Staked Net| ≥ Min usd stake (default 100). Row flash ignores stake; sound does not. 0 = any stake.
               </p>
+              <p className="text-[10px] text-gray-500 m-0 leading-snug">
+                Volume Spike Ring: Price YES chart flashes and rings 5× when the latest bar volume is ≥2× the average of all prior bars.
+              </p>
               <div
                 className={
-                  notifyPlaySound || notifyWhaleRing || notifyBellRing
+                  notifyPlaySound || notifyWhaleRing || notifyBellRing || notifyVolumeSpikeRing
                     ? 'transition-opacity'
                     : 'opacity-35 blur-[2.5px] pointer-events-none select-none transition-opacity'
                 }

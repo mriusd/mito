@@ -1,4 +1,4 @@
-import { memo, useMemo, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import type { Market } from '../types';
 import { extractAssetFromMarket } from '../utils/format';
@@ -42,7 +42,6 @@ export type SidebarRightLiveTradeChartProps = {
   market: Market;
   trades?: LiveTrade[];
   tradeMarkers?: ChartTradeMarker[];
-  isNo?: boolean;
   className?: string;
   chartStartTime?: number;
   chartEndTime?: number;
@@ -53,7 +52,6 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   market,
   trades = [],
   tradeMarkers,
-  isNo = false,
   className,
   chartStartTime,
   chartEndTime,
@@ -64,11 +62,29 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   const upDownIntervalContext = useMemo(() => upDownIntervalContextFromMarket(market), [market]);
   const upDownKlineDefaultInterval = useMemo(() => upDownKlineDefaultIntervalFromMarket(market), [market]);
   const upDownStartTime = useMemo(() => upDownStartTimeFromMarket(market), [market]);
-  const tokenId = market.clobTokenIds?.[0] || '';
+  const yesTokenId = market.clobTokenIds?.[0] || '';
+  const noTokenId = market.clobTokenIds?.[1] || '';
+  const [chartOutcome, setChartOutcome] = useState<'YES' | 'NO'>('YES');
+
+  useEffect(() => {
+    setChartOutcome('YES');
+  }, [market.id, yesTokenId, noTokenId]);
+
+  const tokenId = chartOutcome === 'YES' ? yesTokenId : noTokenId || yesTokenId;
   const endTime = chartEndTime ?? (market.endDate ? new Date(market.endDate).getTime() : undefined);
   const startTimeProp = chartStartTime ?? (upDownStartTime > 0 ? upDownStartTime : undefined);
+  const yesLabel = isUpDownMarket ? 'UP' : 'YES';
+  const noLabel = isUpDownMarket ? 'DOWN' : 'NO';
 
-  if (!tokenId) return null;
+  if (!yesTokenId) return null;
+
+  const outcomeToggle = {
+    value: chartOutcome,
+    onChange: setChartOutcome,
+    yesLabel,
+    noLabel,
+    noDisabled: !noTokenId,
+  };
 
   const wrap = (node: ReactNode) => (className ? <div className={className}>{node}</div> : node);
 
@@ -77,7 +93,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       <LiveTradeChart
         trades={trades}
         tradeMarkers={tradeMarkers}
-        isNo={isNo}
+        isNo={false}
         tokenId={tokenId}
         startTime={startTimeProp}
         endTime={endTime}
@@ -86,6 +102,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
         chainlinkAsset={upDownAsset || undefined}
         hidePriceLines
         intervalSelector={intervalSelector}
+        outcomeToggle={outcomeToggle}
       />,
     );
   }
@@ -94,13 +111,14 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
     <LiveTradeChart
       trades={trades}
       tradeMarkers={tradeMarkers}
-      isNo={isNo}
+      isNo={false}
       tokenId={tokenId}
       startTime={startTimeProp}
       endTime={endTime}
       defaultIntervalOverride="5m"
       hidePriceLines
       intervalSelector={intervalSelector}
+      outcomeToggle={outcomeToggle}
     />,
   );
 });

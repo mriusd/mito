@@ -68,6 +68,14 @@ interface LiveTradeChartProps {
   tradeMarkers?: ChartTradeMarker[];
   /** Resolution picker UI — sidebar right uses dropdown. */
   intervalSelector?: 'buttons' | 'dropdown';
+  /** YES/NO (or UP/DOWN) toggle beside Price title — uses native token klines per side. */
+  outcomeToggle?: {
+    value: 'YES' | 'NO';
+    onChange: (value: 'YES' | 'NO') => void;
+    yesLabel: string;
+    noLabel: string;
+    noDisabled?: boolean;
+  };
 }
 
 function defaultInterval(context?: string): string {
@@ -113,6 +121,7 @@ export function LiveTradeChart({
   hidePriceLines,
   tradeMarkers,
   intervalSelector = 'buttons',
+  outcomeToggle,
 }: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
@@ -720,8 +729,39 @@ export function LiveTradeChart({
 
   return (
     <div className="sidebar-section">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-gray-400">Price YES</span>
+      <div className="flex items-center justify-between mb-1 gap-2">
+        {outcomeToggle ? (
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-xs text-gray-400 shrink-0">Price</span>
+            <div className="inline-flex rounded border border-gray-700 bg-gray-900 p-0.5">
+              <button
+                type="button"
+                className={`px-1.5 py-0 text-[9px] font-bold rounded-sm transition ${
+                  outcomeToggle.value === 'YES'
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-gray-400 hover:text-gray-200'
+                }`}
+                onClick={() => outcomeToggle.onChange('YES')}
+              >
+                {outcomeToggle.yesLabel}
+              </button>
+              <button
+                type="button"
+                disabled={outcomeToggle.noDisabled}
+                className={`px-1.5 py-0 text-[9px] font-bold rounded-sm transition disabled:opacity-40 disabled:pointer-events-none ${
+                  outcomeToggle.value === 'NO'
+                    ? 'bg-rose-600 text-white'
+                    : 'text-gray-400 hover:text-gray-200'
+                }`}
+                onClick={() => outcomeToggle.onChange('NO')}
+              >
+                {outcomeToggle.noLabel}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <span className="text-xs text-gray-400">Price YES</span>
+        )}
         {intervalSelector === 'dropdown' ? (
           <select
             value={interval}

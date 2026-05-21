@@ -44,7 +44,7 @@ import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarke
 import { API_BASE } from '../lib/env';
 import { fetchUpDownTargetFromCrypto, upDownCryptoTimeframe } from '../lib/upDownTargetFromCrypto';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
-import { useOnchainTradesWS, useWalletMarketTradesWS } from '../hooks/useOnchainTradesWS';
+import { useOnchainTradesWS } from '../hooks/useOnchainTradesWS';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
@@ -1461,18 +1461,19 @@ export function Sidebar() {
     liveTradesSource === 'onchain' && selectedMarket?.conditionId?.trim()
       ? String(selectedMarket.conditionId).trim()
       : null;
-  const { trades: onchainLiveTrades, walletPositions: wsPositions, gridWalletPositions, refreshWallet } =
-    useOnchainTradesWS({
-      marketId: selectedConditionId,
-      tokenId: liveTradesSource === 'onchain' ? onchainHookTokenId : null,
-      wallet: walletForLivePositions,
-      scopedClobTokenIds: scopedClobPair,
-    });
-  const { trades: wsMarketTrades, refresh: refreshMarketTradesWS } = useWalletMarketTradesWS(
-    walletForLivePositions,
-    selectedConditionId,
-    liveTradesSource === 'onchain' && !!walletForLivePositions && !!selectedConditionId,
-  );
+  const {
+    trades: onchainLiveTrades,
+    walletPositions: wsPositions,
+    gridWalletPositions,
+    refreshWallet,
+    walletMarketTrades: wsMarketTrades,
+    refreshWalletMarketTrades: refreshMarketTradesWS,
+  } = useOnchainTradesWS({
+    marketId: selectedConditionId,
+    tokenId: liveTradesSource === 'onchain' ? onchainHookTokenId : null,
+    wallet: walletForLivePositions,
+    scopedClobTokenIds: scopedClobPair,
+  });
   const onchainSidebarPositions = useMemo(
     () => (liveTradesSource === 'onchain' ? wsPositions : []),
     [liveTradesSource, wsPositions],

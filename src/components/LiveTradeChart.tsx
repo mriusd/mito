@@ -473,7 +473,7 @@ export function LiveTradeChart({
         const candleCx = toX(bucketOpen + candleMs / 2);
         const tickX0 = candleCx + candleW / 2 + tickGap;
         const y = toY(Math.max(0, Math.min(100, m.priceCents)));
-        ctx.strokeStyle = m.side === 'BUY' ? '#22c55e' : '#ef4444';
+        ctx.strokeStyle = m.side === 'BUY' ? '#2563eb' : '#facc15';
         ctx.beginPath();
         ctx.moveTo(tickX0, y);
         ctx.lineTo(tickX0 + tickW, y);

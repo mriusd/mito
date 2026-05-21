@@ -44,6 +44,8 @@ export type SidebarRightLiveTradeChartProps = {
   tradeMarkers?: ChartTradeMarker[];
   isNo?: boolean;
   className?: string;
+  chartStartTime?: number;
+  chartEndTime?: number;
 };
 
 export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeChart({
@@ -52,6 +54,8 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   tradeMarkers,
   isNo = false,
   className,
+  chartStartTime,
+  chartEndTime,
 }: SidebarRightLiveTradeChartProps) {
   const isUpDownMarket = marketIsUpDown(market);
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(market) : null;
@@ -59,7 +63,8 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   const upDownKlineDefaultInterval = useMemo(() => upDownKlineDefaultIntervalFromMarket(market), [market]);
   const upDownStartTime = useMemo(() => upDownStartTimeFromMarket(market), [market]);
   const tokenId = market.clobTokenIds?.[0] || '';
-  const endTime = market.endDate ? new Date(market.endDate).getTime() : undefined;
+  const endTime = chartEndTime ?? (market.endDate ? new Date(market.endDate).getTime() : undefined);
+  const startTimeProp = chartStartTime ?? (upDownStartTime > 0 ? upDownStartTime : undefined);
 
   if (!tokenId) return null;
 
@@ -72,7 +77,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
         tradeMarkers={tradeMarkers}
         isNo={isNo}
         tokenId={tokenId}
-        startTime={upDownStartTime || undefined}
+        startTime={startTimeProp}
         endTime={endTime}
         intervalContext={upDownIntervalContext}
         defaultIntervalOverride={upDownKlineDefaultInterval}
@@ -88,6 +93,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       tradeMarkers={tradeMarkers}
       isNo={isNo}
       tokenId={tokenId}
+      startTime={startTimeProp}
       endTime={endTime}
       defaultIntervalOverride="5m"
       hidePriceLines

@@ -615,6 +615,19 @@ export async function fetchMarketStakedLegs(marketId: string): Promise<MarketSta
   return resp.json();
 }
 
+export type MarketOutcomeTokensResponse = {
+  marketId: string;
+  tokenIdYes: string;
+  tokenIdNo: string;
+};
+
+export async function fetchMarketOutcomeTokens(marketId: string): Promise<MarketOutcomeTokensResponse | null> {
+  const resp = await fetch(`${BASE}/api/market-outcome-tokens?market_id=${encodeURIComponent(marketId)}`);
+  if (resp.status === 404) return null;
+  if (!resp.ok) throw new Error(`Failed to fetch market outcome tokens: ${resp.status}`);
+  return resp.json();
+}
+
 export async function fetchWalletPositions(params: {
   market_id?: string;
   wallet?: string;

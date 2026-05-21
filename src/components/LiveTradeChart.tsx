@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { API_BASE, WS_BASE } from '../lib/env';
+import { resolveLiveTradeChartWindow } from '../lib/walletInfoChartMarket';
 
 interface Candle {
   time: number;
@@ -105,8 +106,7 @@ export function LiveTradeChart({
     let pingIv: number | null = null;
     let reconnectAttempt = 0;
 
-    const st = startTime || (Date.now() - 24 * 60 * 60 * 1000);
-    const et = endTime || (Date.now() + 60 * 60 * 1000);
+    const { startMs: st, endMs: et } = resolveLiveTradeChartWindow(tokenId, startTime, endTime);
 
     const applyKlines = (klines: any[][]) => {
       if (!Array.isArray(klines)) return;
@@ -126,29 +126,33 @@ export function LiveTradeChart({
 
     const klineQuery = `symbol=${encodeURIComponent(tokenId)}&interval=${interval}&startTime=${st}&endTime=${et}&limit=900`;
 
-    const loadKlines = () =>
-      fetch(`${API_BASE}/api/v3/klines?${klineQuery}`)
+    const loadKlines = () => {
+      const applyHistory = () =>
+        fetch(`${API_BASE}/api/v3/klines/history?${klineQuery}`)
+          .then((r) => r.json())
+          .then((hist: any[][]) => {
+            if (cancelled) return;
+            if (Array.isArray(hist) && hist.length > 0) applyKlines(hist);
+          });
+
+      return fetch(`${API_BASE}/api/v3/klines?${klineQuery}`)
         .then((r) => r.json())
         .then((klines: any[][]) => {
           if (cancelled) return;
           if (Array.isArray(klines) && klines.length > 0) {
             applyKlines(klines);
-            setReady(true);
             return;
           }
-          return fetch(`${API_BASE}/api/v3/klines/history?${klineQuery}`)
-            .then((r) => r.json())
-            .then((hist: any[][]) => {
-              if (cancelled) return;
-              if (Array.isArray(hist) && hist.length > 0) {
-                applyKlines(hist);
-              }
-              setReady(true);
-            });
+          return applyHistory();
         })
         .catch(() => {
+          if (cancelled) return;
+          return applyHistory();
+        })
+        .finally(() => {
           if (!cancelled) setReady(true);
         });
+    };
 
     void loadKlines();
 
@@ -603,7 +607,7 @@ export function LiveTradeChart({
     draw();
   }, [draw]);
 
-  if (!ready && trades.length === 0) return null;
+  if (!tokenId) return null;
 
   return (
     <div className="sidebar-section">

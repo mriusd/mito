@@ -34,7 +34,9 @@ import {
   fetchWalletSummary,
   fetchWalletPositions,
   fetchMarketStakedLegs,
+  fetchMarketOutcomeTokens,
   mergeMarketStakedLegsResponse,
+  type MarketOutcomeTokensResponse,
   walletSummaryFromLedgerEmbed,
   type MarketStakedLegsResponse,
   type ToxicFlowData,
@@ -97,6 +99,12 @@ import { fetchPolymarketNickname } from '../api/polymarket';
 import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import { SidebarRightLiveTradeChart, type ChartTradeMarker } from './SidebarRightLiveTradeChart';
+import {
+  enrichMarketByIdFromWalletPositions,
+  resolveWalletInfoChartMarket,
+  walletInfoChartMarketWithOutcomeTokens,
+  walletInfoChartTimeRange,
+} from '../lib/walletInfoChartMarket';
 import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import type { Market } from '../types';
 import { HelperTooltip } from './HelperTooltip';
@@ -1664,6 +1672,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [markets, setMarkets] = useState<WalletPosition[]>([]);
   const [selectedMarketId, setSelectedMarketId] = useState('');
+  const [chartOutcomeTokens, setChartOutcomeTokens] = useState<MarketOutcomeTokensResponse | null>(null);
   const [loadingMarkets, setLoadingMarkets] = useState(false);
   const [fillsRefreshToken, setFillsRefreshToken] = useState(0);
   const [dailySnapshotsRefresh, setDailySnapshotsRefresh] = useState(0);
@@ -1689,9 +1698,9 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
         fetchWalletPositions({ wallet, limit: 1000, ledger: true, order: 'end_date_desc' }),
       ]);
       setSummary(s);
-      const byId = buildMarketByIdRecord(useAppStore.getState().marketLookup);
+      const sorted = sortWalletPositionsByDisplayedDateDesc(p.positions || [], buildMarketByIdRecord(useAppStore.getState().marketLookup));
+      const byId = enrichMarketByIdFromWalletPositions(useAppStore.getState().marketLookup, sorted);
       setMarketById(byId);
-      const sorted = sortWalletPositionsByDisplayedDateDesc(p.positions || [], byId);
       setMarkets(sorted);
       let pick = '';
       if (preserveSelected && sorted.some((row) => row.marketId === preserveSelected)) {
@@ -1757,29 +1766,51 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     refreshMarketTradesWS();
   }, [open, wallet, selectedMarketId, fillsRefreshToken, refreshMarketTradesWS]);
 
+  useEffect(() => {
+    const mid = selectedMarketId.trim();
+    if (!open || !mid) {
+      setChartOutcomeTokens(null);
+      return;
+    }
+    let cancelled = false;
+    setChartOutcomeTokens(null);
+    void fetchMarketOutcomeTokens(mid).then((tok) => {
+      if (!cancelled) setChartOutcomeTokens(tok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, selectedMarketId]);
+
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const polymarketTape = useSidebarPolymarketTape();
   const walletInfoChartTrades = liveTradesSource === 'onchain' ? [] : polymarketTape;
 
-  const selectedMarketForChart = useMemo((): Market | null => {
-    const raw = selectedMarketId.trim();
-    if (!raw) return null;
-    const lc = raw.toLowerCase();
-    const lookup = useAppStore.getState().marketLookup;
-    const fromPanel = marketById[raw] || marketById[lc];
-    const fromStore = lookup[lc] || lookup[raw];
-    let mk: Market | null = fromPanel || fromStore || null;
-    if (!mk) return null;
-    if (mk.clobTokenIds?.[0]) return mk;
-    const pos = markets.find((row) => String(row.marketId || '').trim().toLowerCase() === lc);
-    if (!pos?.tokenIdYes) return mk.clobTokenIds?.length ? mk : null;
-    const yes = String(pos.tokenIdYes).trim();
-    const no = pos.tokenIdNo ? String(pos.tokenIdNo).trim() : '';
-    return {
-      ...mk,
-      clobTokenIds: no ? [yes, no] : [yes],
-    };
-  }, [selectedMarketId, marketById, markets]);
+  const selectedMarketMeta = useMemo(
+    () => resolveWalletInfoChartMarket(selectedMarketId, marketById, markets),
+    [selectedMarketId, marketById, markets],
+  );
+
+  const selectedMarketForChart = useMemo(
+    () =>
+      walletInfoChartMarketWithOutcomeTokens(
+        selectedMarketMeta,
+        chartOutcomeTokens?.tokenIdYes || '',
+        chartOutcomeTokens?.tokenIdNo || '',
+      ),
+    [selectedMarketMeta, chartOutcomeTokens],
+  );
+
+  const selectedWalletPosition = useMemo(() => {
+    const lc = selectedMarketId.trim().toLowerCase();
+    if (!lc) return undefined;
+    return markets.find((row) => String(row.marketId || '').trim().toLowerCase() === lc);
+  }, [selectedMarketId, markets]);
+
+  const walletInfoChartWindow = useMemo(() => {
+    if (!selectedMarketForChart?.clobTokenIds?.[0]) return null;
+    return walletInfoChartTimeRange(selectedMarketForChart, selectedWalletPosition);
+  }, [selectedMarketForChart, selectedWalletPosition]);
 
   const walletInfoFillMarkers = useMemo((): ChartTradeMarker[] => {
     const yesTok = selectedMarketForChart?.clobTokenIds?.[0]?.trim() || '';
@@ -2217,6 +2248,8 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                   market={selectedMarketForChart}
                   trades={walletInfoChartTrades}
                   tradeMarkers={walletInfoFillMarkers}
+                  chartStartTime={walletInfoChartWindow?.startTime}
+                  chartEndTime={walletInfoChartWindow?.endTime}
                 />
               </div>
             ) : null}

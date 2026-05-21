@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { Link2, Link2Off } from 'lucide-react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { API_BASE, WS_BASE } from '../lib/env';
 import { resolveLiveTradeChartWindow } from '../lib/walletInfoChartMarket';
@@ -76,6 +77,11 @@ interface LiveTradeChartProps {
     noLabel: string;
     noDisabled?: boolean;
   };
+  /** Sidebar: link chart YES/NO to order box outcome toggle. */
+  outcomeSync?: {
+    enabled: boolean;
+    onToggle: () => void;
+  };
 }
 
 function defaultInterval(context?: string): string {
@@ -122,6 +128,7 @@ export function LiveTradeChart({
   tradeMarkers,
   intervalSelector = 'buttons',
   outcomeToggle,
+  outcomeSync,
 }: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
@@ -722,13 +729,16 @@ export function LiveTradeChart({
     const gen = volumeSpikeFlashGenRef.current + 1;
     volumeSpikeFlashGenRef.current = gen;
     setVolumeSpikeFlash(true);
-    void playChartVolumeSpikeRing();
+    const endMs = endTime != null && Number.isFinite(endTime) ? endTime : null;
+    if (endMs == null || endMs > Date.now()) {
+      void playChartVolumeSpikeRing();
+    }
 
     const t = window.setTimeout(() => {
       if (volumeSpikeFlashGenRef.current === gen) setVolumeSpikeFlash(false);
     }, CHART_VOLUME_SPIKE_FLASH_MS);
     return () => clearTimeout(t);
-  }, [ready, wsTick, tokenId, interval, candleMs]);
+  }, [ready, wsTick, tokenId, interval, candleMs, endTime]);
 
   useEffect(() => {
     draw();
@@ -742,30 +752,56 @@ export function LiveTradeChart({
         {outcomeToggle ? (
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="text-xs text-gray-400 shrink-0">Price</span>
-            <div className="inline-flex rounded border border-gray-700 bg-gray-900 p-0.5">
-              <button
-                type="button"
-                className={`px-1.5 py-0 text-[9px] font-bold rounded-sm transition ${
-                  outcomeToggle.value === 'YES'
-                    ? 'bg-emerald-600 text-white'
-                    : 'text-gray-400 hover:text-gray-200'
-                }`}
-                onClick={() => outcomeToggle.onChange('YES')}
-              >
-                {outcomeToggle.yesLabel}
-              </button>
-              <button
-                type="button"
-                disabled={outcomeToggle.noDisabled}
-                className={`px-1.5 py-0 text-[9px] font-bold rounded-sm transition disabled:opacity-40 disabled:pointer-events-none ${
-                  outcomeToggle.value === 'NO'
-                    ? 'bg-rose-600 text-white'
-                    : 'text-gray-400 hover:text-gray-200'
-                }`}
-                onClick={() => outcomeToggle.onChange('NO')}
-              >
-                {outcomeToggle.noLabel}
-              </button>
+            <div className="inline-flex items-center gap-0.5">
+              <div className="inline-flex rounded border border-gray-700 bg-gray-900 p-0.5">
+                <button
+                  type="button"
+                  className={`px-1.5 py-0 text-[9px] font-bold rounded-sm transition ${
+                    outcomeToggle.value === 'YES'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-gray-400 hover:text-gray-200'
+                  }`}
+                  onClick={() => outcomeToggle.onChange('YES')}
+                >
+                  {outcomeToggle.yesLabel}
+                </button>
+                <button
+                  type="button"
+                  disabled={outcomeToggle.noDisabled}
+                  className={`px-1.5 py-0 text-[9px] font-bold rounded-sm transition disabled:opacity-40 disabled:pointer-events-none ${
+                    outcomeToggle.value === 'NO'
+                      ? 'bg-rose-600 text-white'
+                      : 'text-gray-400 hover:text-gray-200'
+                  }`}
+                  onClick={() => outcomeToggle.onChange('NO')}
+                >
+                  {outcomeToggle.noLabel}
+                </button>
+              </div>
+              {outcomeSync ? (
+                <button
+                  type="button"
+                  title={
+                    outcomeSync.enabled
+                      ? 'Synced with order YES/NO — click to unlink'
+                      : 'Sync chart with order YES/NO'
+                  }
+                  aria-pressed={outcomeSync.enabled}
+                  aria-label={outcomeSync.enabled ? 'Unsync chart from order side' : 'Sync chart to order side'}
+                  className={`shrink-0 rounded p-0 transition ${
+                    outcomeSync.enabled
+                      ? 'text-cyan-400 hover:text-cyan-300'
+                      : 'text-gray-600 hover:text-gray-400'
+                  }`}
+                  onClick={outcomeSync.onToggle}
+                >
+                  {outcomeSync.enabled ? (
+                    <Link2 className="h-3 w-3" strokeWidth={2.25} aria-hidden />
+                  ) : (
+                    <Link2Off className="h-3 w-3" strokeWidth={2.25} aria-hidden />
+                  )}
+                </button>
+              ) : null}
             </div>
           </div>
         ) : (

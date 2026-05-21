@@ -96,6 +96,7 @@ import {
   SIDEBAR_TRADE_SOUND_FREQ_KEY,
   SIDEBAR_TRADE_SOUND_VOLUME_KEY,
 } from '../lib/tiltNotifySound';
+import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
 import { mySidebarTradeRowKey, useMyTradeRowRingSound } from '../lib/myTradeRowRing';
 import {
   NOTIFY_BELL_MIN_STAKE_CHANGED_EVENT,
@@ -161,6 +162,17 @@ function preloadMergePositionsDialog() {
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_CUSTOM_BUTTONS_KEY = 'polymarket-sidebar-custom-buttons';
 const SIDEBAR_TOXIC_EXPANDED_KEY = 'polybot-sidebar-toxic-expanded';
+const SIDEBAR_CHART_OUTCOME_SYNC_KEY = 'polybot-sidebar-chart-outcome-sync';
+function readChartOutcomeSync(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_CHART_OUTCOME_SYNC_KEY);
+    if (v === '0') return false;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 /** Quick limit buttons (¢) below cost/payout — one row buy / one row sell: 5, then +10 through 95. */
 const SIDEBAR_QUICK_LIMIT_GRID_CENTS: readonly number[] = Array.from({ length: 10 }, (_, i) => 5 + i * 10);
 
@@ -936,6 +948,7 @@ export function Sidebar() {
   const [notifyWhaleRingMutable, setNotifyWhaleRingMutable] = useState(readNotifyWhaleRingMutable);
   const [notifyBellRing, setNotifyBellRing] = useState(readNotifyBellRing);
   const [notifyVolumeSpikeRing, setNotifyVolumeSpikeRing] = useState(readNotifyVolumeSpikeRingEnabled);
+  const [chartOutcomeSync, setChartOutcomeSync] = useState(readChartOutcomeSync);
   const [notifyBellMinStakeUsd, setNotifyBellMinStakeUsd] = useState(readNotifyBellMinStakeUsd);
   const [notifyWhaleMaxPriceCents, setNotifyWhaleMaxPriceCents] = useState(readNotifyWhaleMaxPriceCents);
   const [notifyWhaleIgnoreNegativePnl, setNotifyWhaleIgnoreNegativePnl] = useState(readNotifyWhaleIgnoreNegativePnl);
@@ -1067,6 +1080,13 @@ export function Sidebar() {
       /* */
     }
   }, [notifyVolumeSpikeRing]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_CHART_OUTCOME_SYNC_KEY, chartOutcomeSync ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [chartOutcomeSync]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_BELL_MIN_STAKE_USD_KEY, String(notifyBellMinStakeUsd));
@@ -1575,12 +1595,6 @@ export function Sidebar() {
     localStorage.setItem('polymarket-order-amount', orderAmount);
   }, [orderAmount]);
 
-  const isMarketExpired =
-    !!selectedMarket &&
-    (Boolean(selectedMarket.closed) ||
-      (!!selectedMarket.endDate &&
-        Number.isFinite(new Date(selectedMarket.endDate).getTime()) &&
-        new Date(selectedMarket.endDate).getTime() <= Date.now()));
   const marketForOrderbookOutcome = useMemo((): Market | null => {
     if (!selectedMarket) return null;
     const t0 = selectedMarket.clobTokenIds?.[0];
@@ -1689,7 +1703,11 @@ export function Sidebar() {
     selectedMarket?.conditionId || selectedMarket?.id
       ? `${selectedMarket?.conditionId || selectedMarket?.id}|${myOnchainWalletLower}|${liveTradesSource}`
       : null;
-  const myTradeFlashKeys = useMyTradeRowRingSound(myTradesDisplay, myTradeScopeKey, !!selectedMarket);
+  const myTradeFlashKeys = useMyTradeRowRingSound(
+    myTradesDisplay,
+    myTradeScopeKey,
+    !!selectedMarket && !marketIsExpired(selectedMarket),
+  );
 
   const { sidebarUserBidPrices, sidebarUserAskPrices } = useMemo(() => {
     const yesToken = selectedMarket?.clobTokenIds?.[0] || '';
@@ -1753,6 +1771,10 @@ export function Sidebar() {
   const prevPriceRef = useRef<number>(0);
   const [upDownCountdown, setUpDownCountdown] = useState('');
   const [upDownRemaining, setUpDownRemaining] = useState(Infinity);
+  const isMarketExpired = useMemo(
+    () => marketIsExpired(selectedMarket),
+    [selectedMarket, upDownRemaining, upDownCountdown],
+  );
   /** Countdown stops calling setState after "Expired"; pulse keeps re-reading `upOrDownMarkets` until next window arrives. */
   const [expiredLivePickPulse, setExpiredLivePickPulse] = useState(0);
 
@@ -2115,6 +2137,7 @@ export function Sidebar() {
     const whaleNeedsSound = whaleEligible && !cohortNeedsSound;
 
     if (!cohortNeedsSound && !whaleNeedsSound) return;
+    if (isMarketExpired) return;
     if ((cohortNeedsSound || whaleNeedsSound) && !notifyVolatilityGatePasses) return;
     if (cohortNeedsSound && !notifyStakedGatePasses) return;
 
@@ -2174,6 +2197,7 @@ export function Sidebar() {
     notifyRingTimeS,
     notifySoundMaxPriceCents,
     notifyDoubleRing,
+    isMarketExpired,
   ]);
 
   useEffect(() => {
@@ -3894,6 +3918,10 @@ export function Sidebar() {
             selectedMarket={selectedMarket}
             onchainLiveTrades={onchainLiveTrades}
             liveTradesSource={liveTradesSource}
+            orderOutcome={orderOutcome}
+            onOrderOutcomeChange={setOrderOutcome}
+            chartOutcomeSync={chartOutcomeSync}
+            onChartOutcomeSyncChange={setChartOutcomeSync}
           />
 
 
@@ -5142,6 +5170,7 @@ export function Sidebar() {
                 marketId={selectedMarket.conditionId || ''}
                 marketName={marketName}
                 yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
+                marketExpired={isMarketExpired}
                 streamData={toxicFlowData}
                 streamTabWalletViews={toxicTabViews}
                 onRefreshStream={refreshToxicFlow}

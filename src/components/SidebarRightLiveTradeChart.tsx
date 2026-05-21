@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import type { Market } from '../types';
 import { extractAssetFromMarket } from '../utils/format';
@@ -48,6 +48,9 @@ export type SidebarRightLiveTradeChartProps = {
   intervalSelector?: 'buttons' | 'dropdown';
   chartOutcome?: 'YES' | 'NO';
   onChartOutcomeChange?: (value: 'YES' | 'NO') => void;
+  outcomeSync?: { enabled: boolean; onToggle: () => void };
+  orderOutcome?: 'YES' | 'NO';
+  onOrderOutcomeChange?: (value: 'YES' | 'NO') => void;
 };
 
 export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeChart({
@@ -60,6 +63,9 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   intervalSelector = 'buttons',
   chartOutcome: chartOutcomeProp,
   onChartOutcomeChange,
+  outcomeSync,
+  orderOutcome,
+  onOrderOutcomeChange,
 }: SidebarRightLiveTradeChartProps) {
   const isUpDownMarket = marketIsUpDown(market);
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(market) : null;
@@ -69,8 +75,22 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   const yesTokenId = market.clobTokenIds?.[0] || '';
   const noTokenId = market.clobTokenIds?.[1] || '';
   const [internalChartOutcome, setInternalChartOutcome] = useState<'YES' | 'NO'>('YES');
-  const chartOutcome = chartOutcomeProp ?? internalChartOutcome;
-  const setChartOutcome = onChartOutcomeChange ?? setInternalChartOutcome;
+  const syncedToOrder = !!(outcomeSync?.enabled && orderOutcome != null);
+  const chartOutcome = syncedToOrder ? orderOutcome! : chartOutcomeProp ?? internalChartOutcome;
+  const setChartOutcome = useCallback(
+    (value: 'YES' | 'NO') => {
+      if (syncedToOrder) {
+        onOrderOutcomeChange?.(value);
+        return;
+      }
+      if (onChartOutcomeChange) {
+        onChartOutcomeChange(value);
+      } else {
+        setInternalChartOutcome(value);
+      }
+    },
+    [syncedToOrder, onOrderOutcomeChange, onChartOutcomeChange],
+  );
 
   useEffect(() => {
     if (chartOutcomeProp !== undefined) return;
@@ -110,6 +130,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
         hidePriceLines
         intervalSelector={intervalSelector}
         outcomeToggle={outcomeToggle}
+        outcomeSync={outcomeSync}
       />,
     );
   }
@@ -126,6 +147,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       hidePriceLines
       intervalSelector={intervalSelector}
       outcomeToggle={outcomeToggle}
+      outcomeSync={outcomeSync}
     />,
   );
 });

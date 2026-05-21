@@ -178,6 +178,7 @@ interface ToxicFlowDialogProps {
   marketId: string;
   marketName: string;
   yesTokenId?: string;
+  marketExpired?: boolean;
   onClose: () => void;
   /** In-sidebar panel: no modal backdrop; fills parent flex column. */
   embedded?: boolean;
@@ -2674,6 +2675,7 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   yesTokenId,
   marketId,
   open,
+  marketExpired = false,
   tabWalletViews,
   layoutMode,
   tab,
@@ -2688,6 +2690,7 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   yesTokenId: string;
   marketId: string;
   open: boolean;
+  marketExpired?: boolean;
   tabWalletViews: ToxicFlowTabWalletViews;
   layoutMode: ToxicFlowLayoutMode;
   tab: Tab;
@@ -2731,7 +2734,7 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
     }
     return count;
   }, [tabWalletViews, bellWalletsKey, bellMinStakeKey]);
-  useToxicBellRowRingSound(bellFlashingRowCount, open && !marketNotifyMuted);
+  useToxicBellRowRingSound(bellFlashingRowCount, open && !marketNotifyMuted && !marketExpired);
   return (
     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 w-full">
       {layoutMode === 'single' && (
@@ -2829,6 +2832,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   marketId,
   marketName,
   yesTokenId,
+  marketExpired = false,
   onClose,
   embedded = false,
   streamData = undefined,
@@ -3179,6 +3183,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
               yesTokenId={yesTok}
               marketId={midTrim}
               open={open}
+              marketExpired={marketExpired}
               tabWalletViews={tabWalletViews}
               layoutMode={layoutMode}
               tab={tab}

@@ -18,7 +18,7 @@ function upDownIntervalContextFromMarket(market: Market): string | undefined {
 function upDownKlineDefaultIntervalFromMarket(market: Market): string | undefined {
   if (!marketIsUpDown(market)) return undefined;
   const combined = `${market.eventSlug || ''} ${market.question || ''}`;
-  if (combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i)) return '1m';
+  if (combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i)) return '5s';
   if (combined.match(/updown-15m/i) || combined.match(/\b15[- ]?min/i)) return '1m';
   if (combined.match(/updown-4h/i) || combined.match(/\b4[- ]?h/i)) return '15m';
   if (combined.match(/up-or-down-on-/i) || combined.match(/\b24[- ]?h/i)) return '15m';
@@ -83,6 +83,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
         defaultIntervalOverride={upDownKlineDefaultInterval}
         chainlinkAsset={upDownAsset || undefined}
         hidePriceLines
+        fitXAxisToCandles={chartStartTime != null}
       />,
     );
   }
@@ -97,6 +98,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       endTime={endTime}
       defaultIntervalOverride="5m"
       hidePriceLines
+      fitXAxisToCandles={chartStartTime != null}
     />,
   );
 });

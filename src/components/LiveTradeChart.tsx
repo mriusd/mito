@@ -16,7 +16,28 @@ function toPrice(raw: number, isNo: boolean): number {
   return isNo ? 100 - raw : raw;
 }
 
-const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000, '4h': 14400000 };
+const INTERVAL_MS: Record<string, number> = { '5s': 5000, '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000, '4h': 14400000 };
+const CHART_INTERVALS = ['5s', '1m', '5m', '15m'] as const;
+type ChartInterval = (typeof CHART_INTERVALS)[number];
+const LIVE_TRADE_CHART_INTERVAL_LS_KEY = 'polybot-live-trade-chart-interval';
+
+function readStoredChartInterval(): ChartInterval | null {
+  try {
+    const v = localStorage.getItem(LIVE_TRADE_CHART_INTERVAL_LS_KEY);
+    if (v && (CHART_INTERVALS as readonly string[]).includes(v)) return v as ChartInterval;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function persistChartInterval(iv: ChartInterval) {
+  try {
+    localStorage.setItem(LIVE_TRADE_CHART_INTERVAL_LS_KEY, iv);
+  } catch {
+    /* ignore */
+  }
+}
 
 export type ChartTradeMarker = {
   timeMs: number;
@@ -40,6 +61,8 @@ interface LiveTradeChartProps {
   hidePriceLines?: boolean;
   /** Wallet fills — tiny buy/sell ticks to the right of candles. */
   tradeMarkers?: ChartTradeMarker[];
+  /** Fit X-axis to actual candle span (wallet info / sparse history). Chart stays full parent width. */
+  fitXAxisToCandles?: boolean;
 }
 
 function defaultInterval(context?: string): string {
@@ -63,6 +86,7 @@ export function LiveTradeChart({
   targetPrice,
   hidePriceLines,
   tradeMarkers,
+  fitXAxisToCandles,
 }: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
@@ -73,14 +97,16 @@ export function LiveTradeChart({
   const wsRef = useRef<WebSocket | null>(null);
   const chainlinkWsRef = useRef<WebSocket | null>(null);
   const resolvedDefaultInterval = defaultIntervalOverride || defaultInterval(intervalContext);
-  const [interval, setInterval_] = useState(() => resolvedDefaultInterval);
+  const [interval, setInterval_] = useState<ChartInterval>(
+    () => readStoredChartInterval() ?? (resolvedDefaultInterval as ChartInterval),
+  );
   const [wsTick, setWsTick] = useState(0);
   const [chainlinkTick, setChainlinkTick] = useState(0);
 
-  // Reset default interval when market changes
-  useEffect(() => {
-    setInterval_(defaultIntervalOverride || defaultInterval(intervalContext));
-  }, [intervalContext, defaultIntervalOverride, tokenId]);
+  const setChartInterval = useCallback((iv: ChartInterval) => {
+    setInterval_(iv);
+    persistChartInterval(iv);
+  }, []);
 
   const candleMs = INTERVAL_MS[interval] || 60000;
 
@@ -405,11 +431,14 @@ export function LiveTradeChart({
     const minP = 0;
     const maxP = 100;
 
-    // Use full market duration for X-axis if startTime/endTime provided
-    const minT = startTime || candles[0].time;
-    const maxT = endTime || (candles[candles.length - 1].time + candleMs);
+    // Use full market duration for X-axis unless fitting to sparse candle data
+    const fitData = fitXAxisToCandles && candles.length > 0;
+    const minT = fitData ? candles[0].time : startTime || candles[0].time;
+    const maxT = fitData
+      ? candles[candles.length - 1].time + candleMs
+      : endTime || candles[candles.length - 1].time + candleMs;
     const rangeT = maxT - minT || 1;
-    const totalCandles = Math.ceil(rangeT / candleMs);
+    const totalCandles = fitData ? candles.length : Math.ceil(rangeT / candleMs);
 
     const toX = (t: number) => chartLeft + ((t - minT) / rangeT) * (chartRight - chartLeft);
     const toY = (p: number) => chartBot - ((p - minP) / (maxP - minP)) * (chartBot - chartTop);
@@ -596,12 +625,17 @@ export function LiveTradeChart({
     ctx.textBaseline = 'top';
     ctx.fillStyle = 'rgba(255,255,255,0.28)';
     const labelCount = 4;
+    const fmtTime = (t: number) => {
+      const d = new Date(t);
+      const hm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+      if (interval === '5s') return `${hm}:${String(d.getSeconds()).padStart(2, '0')}`;
+      return hm;
+    };
     for (let i = 0; i <= labelCount; i++) {
       const t = minT + rangeT * (i / labelCount);
-      const d = new Date(t);
-      ctx.fillText(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`, toX(t), timeLabelY);
+      ctx.fillText(fmtTime(t), toX(t), timeLabelY);
     }
-  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers]);
+  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, fitXAxisToCandles, interval]);
 
   useEffect(() => {
     draw();
@@ -614,10 +648,10 @@ export function LiveTradeChart({
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs text-gray-400">Price</span>
         <div className="flex gap-0.5">
-          {(['1m', '5m', '15m'] as const).map((iv) => (
+          {CHART_INTERVALS.map((iv) => (
             <button
               key={iv}
-              onClick={() => setInterval_(iv)}
+              onClick={() => setChartInterval(iv)}
               className={`px-1.5 py-0 text-[10px] rounded ${interval === iv ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
             >{iv}</button>
           ))}

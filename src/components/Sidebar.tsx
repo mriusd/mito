@@ -1474,6 +1474,11 @@ export function Sidebar() {
     wallet: walletForLivePositions,
     scopedClobTokenIds: scopedClobPair,
   });
+  const refreshMyMarketTrades = useCallback(() => {
+    const w = (walletForLivePositions || '').trim().toLowerCase();
+    const m = selectedConditionId;
+    if (w && m) refreshMarketTradesWS(w, m);
+  }, [walletForLivePositions, selectedConditionId, refreshMarketTradesWS]);
   const onchainSidebarPositions = useMemo(
     () => (liveTradesSource === 'onchain' ? wsPositions : []),
     [liveTradesSource, wsPositions],
@@ -2820,7 +2825,7 @@ export function Sidebar() {
           bids,
           asks,
           afterSuccess: () => {
-            if (liveTradesSource === 'onchain') refreshMarketTradesWS();
+            if (liveTradesSource === 'onchain') refreshMyMarketTrades();
           },
         });
       } finally {
@@ -2838,7 +2843,7 @@ export function Sidebar() {
       isUpDownMarket,
       marketName,
       liveTradesSource,
-      refreshMarketTradesWS,
+      refreshMyMarketTrades,
       submitSidebarMarketFak,
     ],
   );
@@ -2928,14 +2933,14 @@ export function Sidebar() {
         triggerWalletRefresh();
         if (liveTradesSource === 'onchain') {
           refreshWallet();
-          refreshMarketTradesWS();
+          refreshMyMarketTrades();
         }
       } else {
         showToast(res.error, 'error');
       }
       return res;
     },
-    [mergeEligible.conditionId, mergeFunderWallet, liveTradesSource, refreshWallet, refreshMarketTradesWS],
+    [mergeEligible.conditionId, mergeFunderWallet, liveTradesSource, refreshWallet, refreshMyMarketTrades],
   );
 
   return (

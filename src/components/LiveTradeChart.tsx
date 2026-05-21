@@ -702,11 +702,11 @@ export function LiveTradeChart({
         <div className="mb-0.5 flex items-center gap-2.5 text-[9px] text-gray-500">
           <span className="inline-flex items-center gap-1">
             <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#2563eb]" aria-hidden />
-            buy
+            long
           </span>
           <span className="inline-flex items-center gap-1">
             <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#facc15]" aria-hidden />
-            sell
+            short
           </span>
           <label className="inline-flex items-center gap-1 cursor-pointer select-none text-gray-400 hover:text-gray-300">
             <input

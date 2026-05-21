@@ -74,6 +74,27 @@ function defaultInterval(context?: string): string {
   return '1m';
 }
 
+function fillTradeMarkerTriangle(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  tipY: number,
+  size: number,
+  direction: 'up' | 'down',
+) {
+  ctx.beginPath();
+  if (direction === 'up') {
+    ctx.moveTo(cx, tipY);
+    ctx.lineTo(cx - size, tipY + size * 1.4);
+    ctx.lineTo(cx + size, tipY + size * 1.4);
+  } else {
+    ctx.moveTo(cx, tipY);
+    ctx.lineTo(cx - size, tipY - size * 1.4);
+    ctx.lineTo(cx + size, tipY - size * 1.4);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
 export function LiveTradeChart({
   trades,
   isNo,
@@ -529,8 +550,8 @@ export function LiveTradeChart({
         else if (m.side === 'SELL' && !slot.sell) slot.sell = true;
       }
 
-      const markerR = 2;
-      const markerGap = 2;
+      const markerSize = 4;
+      const markerGap = 3;
       for (const [bucketOpen, slot] of bucketMarkers) {
         const c = candles.find((row) => row.time === bucketOpen);
         if (!c) continue;
@@ -540,15 +561,11 @@ export function LiveTradeChart({
 
         if (slot.buy) {
           ctx.fillStyle = '#2563eb';
-          ctx.beginPath();
-          ctx.arc(cx, lowY + markerGap + markerR, markerR, 0, Math.PI * 2);
-          ctx.fill();
+          fillTradeMarkerTriangle(ctx, cx, lowY + markerGap, markerSize, 'up');
         }
         if (slot.sell) {
           ctx.fillStyle = '#facc15';
-          ctx.beginPath();
-          ctx.arc(cx, highY - markerGap - markerR, markerR, 0, Math.PI * 2);
-          ctx.fill();
+          fillTradeMarkerTriangle(ctx, cx, highY - markerGap, markerSize, 'down');
         }
       }
     }
@@ -672,7 +689,7 @@ export function LiveTradeChart({
   return (
     <div className="sidebar-section">
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-gray-400">Price</span>
+        <span className="text-xs text-gray-400">Price YES</span>
         {intervalSelector === 'dropdown' ? (
           <select
             value={interval}
@@ -701,11 +718,17 @@ export function LiveTradeChart({
       {tradeMarkers != null ? (
         <div className="mb-0.5 flex items-center gap-2.5 text-[9px] text-gray-500">
           <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#2563eb]" aria-hidden />
+            <span
+              className="inline-block shrink-0 border-x-[4px] border-x-transparent border-b-[7px] border-b-[#2563eb]"
+              aria-hidden
+            />
             long
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#facc15]" aria-hidden />
+            <span
+              className="inline-block shrink-0 border-x-[4px] border-x-transparent border-t-[7px] border-t-[#facc15]"
+              aria-hidden
+            />
             short
           </span>
           <label className="inline-flex items-center gap-1 cursor-pointer select-none text-gray-400 hover:text-gray-300">

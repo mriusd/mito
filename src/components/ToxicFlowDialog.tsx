@@ -28,6 +28,8 @@ import {
   CircleHelp,
   Fish,
   Triangle,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import {
   fetchToxicFlow,
@@ -189,11 +191,12 @@ interface ToxicFlowDialogProps {
   /** Embedded panel: HTTP full refresh from parent stream hook. */
   onRefreshStream?: () => void | Promise<void>;
   streamRefreshing?: boolean;
-  /** Embedded sidebar: sync parent width with inline wallet panel slide (≥2400px). */
+  /** Embedded sidebar: sync parent width with inline wallet panel slide (≥1920px). */
   onInlineWalletExtraWidthChange?: (width: string) => void;
 }
 
 const TOXIC_INLINE_WALLET_WIDTH = '84rem';
+const TOXIC_INLINE_WALLET_WIDTH_COMPACT = '42rem';
 const TOXIC_INLINE_WALLET_MS = 250;
 
 type Tab = ToxicFlowTabId;
@@ -1659,6 +1662,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   initialMarketId,
   onClose,
   variant = 'modal',
+  onInlineMarketsListOpenChange,
 }: {
   open: boolean;
   wallet: string;
@@ -1666,6 +1670,8 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   initialMarketId?: string;
   onClose: () => void;
   variant?: WalletInfoPanelVariant;
+  /** Inline sidebar: notify parent when markets list expand toggles (width). */
+  onInlineMarketsListOpenChange?: (open: boolean) => void;
 }) {
   const [marketById, setMarketById] = useState<Record<string, import('../types').Market>>({});
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
@@ -1676,6 +1682,9 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const [fillsRefreshToken, setFillsRefreshToken] = useState(0);
   const [dailySnapshotsRefresh, setDailySnapshotsRefresh] = useState(0);
   const [profileNickname, setProfileNickname] = useState('');
+  const [inlineMarketsListOpen, setInlineMarketsListOpen] = useState(false);
+  const isInlineWalletInfo = variant === 'inline';
+  const showMarketsList = !isInlineWalletInfo || inlineMarketsListOpen;
   const {
     trades: wsMarketTrades,
     total: fillsTotal,
@@ -1721,6 +1730,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     setSummary(undefined);
     setMarkets([]);
     setSelectedMarketId('');
+    setInlineMarketsListOpen(false);
     setFillsRefreshToken(0);
     setDailySnapshotsRefresh(0);
     setLoadingMarkets(true);
@@ -1732,6 +1742,11 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
       }
     })();
   }, [open, wallet, initialMarketId, loadMarketsAndSelect]);
+
+  useEffect(() => {
+    if (!isInlineWalletInfo) return;
+    onInlineMarketsListOpenChange?.(inlineMarketsListOpen);
+  }, [isInlineWalletInfo, inlineMarketsListOpen, onInlineMarketsListOpenChange]);
 
   useEffect(() => {
     if (!open || !wallet.trim()) {
@@ -2154,10 +2169,17 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                 <RefreshCw size={12} className={loadingMarkets || loadingFills ? 'animate-spin' : ''} />
               </button>
             </div>
-            <div className="mt-1 flex flex-col lg:flex-row gap-3 items-stretch min-w-0 min-h-0">
+            <div
+              className="mt-1 flex flex-col lg:flex-row gap-3 lg:items-start items-stretch min-w-0 min-h-0"
+              style={
+                lgChartsSync && summaryLeftH > 0
+                  ? { height: summaryLeftH, maxHeight: summaryLeftH }
+                  : undefined
+              }
+            >
               <div
                 ref={summaryLeftRef}
-                className="shrink-0 w-full lg:w-[min(16.5rem,calc(100%/4))] lg:max-w-[16.5rem] flex flex-col"
+                className="shrink-0 w-full lg:w-[min(16.5rem,calc(100%/4))] lg:max-w-[16.5rem] flex flex-col lg:self-start"
               >
                 {summary === undefined && <div className="text-gray-500">Loading...</div>}
                 {summary === null && <div className="text-gray-500">No wallet_scores_ledger row</div>}
@@ -2176,7 +2198,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                   className="min-w-0 flex-1 flex flex-col min-h-0 overflow-hidden lg:border-l lg:border-gray-800 lg:pl-3"
                   style={
                     lgChartsSync && summaryLeftH > 0
-                      ? { height: summaryLeftH, maxHeight: summaryLeftH }
+                      ? { height: summaryLeftH, maxHeight: summaryLeftH, minHeight: 0 }
                       : undefined
                   }
                 >
@@ -2188,10 +2210,21 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
         </div>
 
         <div
-          className="grid gap-2 flex-1 min-h-0 overflow-hidden"
-          style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(16rem, 36rem)', gridTemplateRows: 'minmax(0, 1fr)' }}
+          className={
+            isInlineWalletInfo
+              ? 'flex flex-1 min-h-0 overflow-hidden gap-0'
+              : 'grid gap-2 flex-1 min-h-0 overflow-hidden'
+          }
+          style={
+            isInlineWalletInfo
+              ? undefined
+              : { gridTemplateColumns: 'minmax(0, 1fr) minmax(16rem, 36rem)', gridTemplateRows: 'minmax(0, 1fr)' }
+          }
         >
-          <div className="bg-gray-900 rounded p-2 min-h-0 h-full min-w-0 flex flex-col overflow-hidden">
+          {showMarketsList ? (
+          <div
+            className={`bg-gray-900 rounded p-2 min-h-0 h-full min-w-0 flex flex-col overflow-hidden${isInlineWalletInfo ? ' shrink-0 w-[min(36rem,42%)] max-w-[36rem]' : ''}`}
+          >
             <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
               <div className="text-[10px] text-gray-400 font-bold">Latest Markets Traded</div>
               <button
@@ -2215,8 +2248,26 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
               </div>
             </div>
           </div>
+          ) : null}
 
-          <div className="bg-gray-900 rounded p-2 min-h-0 h-full min-w-0 flex flex-col overflow-hidden">
+          {isInlineWalletInfo ? (
+            <button
+              type="button"
+              className={`wallet-info-markets-expand-handle shrink-0 w-6 flex flex-col justify-center items-center border-x border-gray-700/55 bg-gray-800/95 text-gray-500 hover:text-gray-400 ${inlineMarketsListOpen ? '' : 'sidebar-expand-handle-idle-flash'}`}
+              title={inlineMarketsListOpen ? 'Hide markets list' : 'Show markets list'}
+              aria-expanded={inlineMarketsListOpen}
+              aria-label={inlineMarketsListOpen ? 'Hide markets list' : 'Show markets list'}
+              onClick={() => setInlineMarketsListOpen((v) => !v)}
+            >
+              {inlineMarketsListOpen ? (
+                <ChevronLeft className="h-4 w-4" strokeWidth={2} aria-hidden />
+              ) : (
+                <ChevronRight className="h-4 w-4" strokeWidth={2} aria-hidden />
+              )}
+            </button>
+          ) : null}
+
+          <div className={`bg-gray-900 rounded p-2 min-h-0 h-full min-w-0 flex flex-col overflow-hidden${isInlineWalletInfo ? ' flex-1' : ''}`}>
             <div className="flex items-center justify-between gap-2 mb-1 shrink-0 min-w-0">
               <div className="text-[10px] text-gray-400 font-bold min-w-0 truncate">
                 Trades For Selected Market {selectedMarketId ? <span className="text-gray-500">({selectedMarketId})</span> : null}
@@ -2447,15 +2498,28 @@ const InlineWalletInfoPanelHost = memo(function InlineWalletInfoPanelHost({
   wallet,
   initialMarketId,
   onClose,
+  onInlineMarketsListOpenChange,
 }: {
   wallet: string;
   initialMarketId: string;
   onClose: () => void;
+  onInlineMarketsListOpenChange?: (open: boolean) => void;
 }) {
   return (
-    <WalletInfoPanelInner variant="inline" open wallet={wallet} initialMarketId={initialMarketId} onClose={onClose} />
+    <WalletInfoPanelInner
+      variant="inline"
+      open
+      wallet={wallet}
+      initialMarketId={initialMarketId}
+      onClose={onClose}
+      onInlineMarketsListOpenChange={onInlineMarketsListOpenChange}
+    />
   );
-}, (a, b) => a.wallet === b.wallet && a.initialMarketId === b.initialMarketId && a.onClose === b.onClose);
+}, (a, b) =>
+  a.wallet === b.wallet &&
+  a.initialMarketId === b.initialMarketId &&
+  a.onClose === b.onClose &&
+  a.onInlineMarketsListOpenChange === b.onInlineMarketsListOpenChange);
 
 export function WalletInfoDialog({
   open,
@@ -2476,14 +2540,16 @@ export function WalletInfoDialog({
   );
 }
 
-function useMinWidth2400(): boolean {
+const TOXIC_INLINE_WALLET_MIN_WIDTH_PX = 1920;
+
+function useMinWidth1920(): boolean {
   return useSyncExternalStore(
     (onStoreChange) => {
-      const mq = window.matchMedia('(min-width: 2400px)');
+      const mq = window.matchMedia(`(min-width: ${TOXIC_INLINE_WALLET_MIN_WIDTH_PX}px)`);
       mq.addEventListener('change', onStoreChange);
       return () => mq.removeEventListener('change', onStoreChange);
     },
-    () => window.matchMedia('(min-width: 2400px)').matches,
+    () => window.matchMedia(`(min-width: ${TOXIC_INLINE_WALLET_MIN_WIDTH_PX}px)`).matches,
     () => false,
   );
 }
@@ -2785,9 +2851,9 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   }, []);
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState('');
-  const isWide2400 = useMinWidth2400();
-  const isWide2400Ref = useRef(isWide2400);
-  isWide2400Ref.current = isWide2400;
+  const isWide1920 = useMinWidth1920();
+  const isWide1920Ref = useRef(isWide1920);
+  isWide1920Ref.current = isWide1920;
   const [inlineWalletSlot, setInlineWalletSlot] = useState(false);
   const [inlineWalletWidth, setInlineWalletWidth] = useState('0px');
   const walletOpenAnimRef = useRef(false);
@@ -2805,10 +2871,14 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     if (!walletOpenAnimRef.current || inlineWalletWidth !== '0px') return;
     walletOpenAnimRef.current = false;
     const id = requestAnimationFrame(() => {
-      setInlineWalletWidth(TOXIC_INLINE_WALLET_WIDTH);
+      setInlineWalletWidth(TOXIC_INLINE_WALLET_WIDTH_COMPACT);
     });
     return () => cancelAnimationFrame(id);
   }, [inlineWalletSlot, inlineWalletWidth]);
+
+  const onInlineMarketsListOpenChange = useCallback((open: boolean) => {
+    setInlineWalletWidth(open ? TOXIC_INLINE_WALLET_WIDTH : TOXIC_INLINE_WALLET_WIDTH_COMPACT);
+  }, []);
 
   useEffect(() => {
     if (open) return;
@@ -2953,12 +3023,10 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     if (!w) return;
     setSelectedWallet(w);
     setWalletDialogOpen(true);
-    if (!isWide2400Ref.current) return;
+    if (!isWide1920Ref.current) return;
     if (inlineWalletSlotRef.current && inlineWalletWidthRef.current !== '0px') {
       walletOpenAnimRef.current = false;
-      if (inlineWalletWidthRef.current !== TOXIC_INLINE_WALLET_WIDTH) {
-        setInlineWalletWidth(TOXIC_INLINE_WALLET_WIDTH);
-      }
+      setInlineWalletWidth(TOXIC_INLINE_WALLET_WIDTH_COMPACT);
       return;
     }
     walletOpenAnimRef.current = true;
@@ -2968,7 +3036,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
 
   const closeWalletPanel = useCallback(() => {
     setWalletDialogOpen(false);
-    if (isWide2400Ref.current && inlineWalletSlot) {
+    if (isWide1920Ref.current && inlineWalletSlot) {
       setInlineWalletWidth('0px');
       return;
     }
@@ -2987,15 +3055,15 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     [inlineWalletWidth],
   );
 
-  const showInlineWalletModal = walletDialogOpen && !isWide2400;
-  const toxicBodyGridStyle: React.CSSProperties | undefined = isWide2400
+  const showInlineWalletModal = walletDialogOpen && !isWide1920;
+  const toxicBodyGridStyle: React.CSSProperties | undefined = isWide1920
     ? {
         gridTemplateColumns: `minmax(0, 1fr) ${inlineWalletWidth}`,
         transition: `grid-template-columns ${TOXIC_INLINE_WALLET_MS}ms ease`,
       }
     : undefined;
 
-  const inlineSplit = isWide2400 && inlineWalletSlot;
+  const inlineSplit = isWide1920 && inlineWalletSlot;
 
   if (!open) return null;
 
@@ -3111,11 +3179,15 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
 
   const inlineWalletPanel = inlineSplit && selectedWallet ? (
     <div className="toxic-inline-wallet-panel flex flex-col min-h-0 h-full overflow-hidden">
-      <div className="flex flex-col min-h-0 h-full w-[84rem] border-l border-gray-700/80 pl-2">
+      <div
+        className="flex flex-col min-h-0 h-full border-l border-gray-700/80 pl-2 overflow-hidden"
+        style={{ width: inlineWalletWidth, maxWidth: inlineWalletWidth }}
+      >
         <InlineWalletInfoPanelHost
           wallet={selectedWallet}
           initialMarketId={marketId}
           onClose={closeWalletPanel}
+          onInlineMarketsListOpenChange={onInlineMarketsListOpenChange}
         />
       </div>
     </div>
@@ -3135,7 +3207,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
         maxHeight: '85vh',
         height: '85vh',
         minHeight: 0,
-        ...(isWide2400
+        ...(isWide1920
           ? {
               width: `min(98vw, calc(56rem + ${inlineWalletWidth}))`,
               maxWidth: `min(98vw, calc(56rem + ${inlineWalletWidth}))`,

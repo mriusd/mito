@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
 import { API_BASE, WS_BASE } from '../lib/env';
-import { onchainFillKey, walletTradeKey } from '../lib/tradeKeys';
+import { dedupeWalletTradesByLedgerLeg, onchainFillKey, walletTradeKey } from '../lib/tradeKeys';
 import type { LiveTrade } from './usePolymarketOB';
 
 /** Cap sidebar / chart tape arrays — 3500 rows × lucide-SVG anchors held hundreds of MB of detached DOM after a few market switches. */
@@ -345,21 +345,13 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             underlyingAsset: p.underlyingAsset,
           })).filter((p) => !!p.tokenId),
         );
+        const pref = (tr.trades || [])
+          .map((t) => mapRawWSTrade(t as Parameters<typeof mapRawWSTrade>[0]))
+          .filter((t): t is WSTrade => t != null);
         setWalletTrades(
-          (tr.trades || []).map((t) => ({
-            tokenId: String(t.tokenId || ''),
-            side: normalizeLedgerAction(t.side),
-            outcome: t.outcome ? String(t.outcome) : undefined,
-            size: Number(t.size || 0),
-            price: Number(t.price || 0),
-            fee: Number(t.fee || 0),
-            blockTime: Number(t.blockTime || 0),
-            txHash: t.txHash,
-            logIndex: Number.isFinite(t.logIndex) ? t.logIndex : undefined,
-            title: t.title,
-            slug: t.slug,
-            eventSlug: t.eventSlug,
-          })).filter((t) => !!t.tokenId || t.side === 'SPLIT' || t.side === 'MERGE' || t.side === 'REDEEM'),
+          dedupeWalletTradesByLedgerLeg(pref, (t) =>
+            t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side),
+          ),
         );
       } catch {
         /* keep prior state */
@@ -682,16 +674,14 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const raw = (msg.data as Array<Record<string, unknown>>)
               .map((t) => mapRawWSTrade(t as Parameters<typeof mapRawWSTrade>[0]))
               .filter((t): t is WSTrade => t != null);
-            const byKey = new Map<string, WSTrade>();
-            for (const t of raw) {
+            const stamped = raw.map((t) => {
               const k = t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side);
-              const row = t.id ? t : { ...t, id: k };
-              byKey.set(k, row);
-            }
+              return t.id ? t : { ...t, id: k };
+            });
             setWalletTrades(
-              Array.from(byKey.values())
-                .sort((a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0))
-                .slice(0, WALLET_TRADES_CAP),
+              dedupeWalletTradesByLedgerLeg(stamped, (t) =>
+                t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side),
+              ).slice(0, WALLET_TRADES_CAP),
             );
           } else if (msg.type === 'walletMarketTrades' && Array.isArray(msg.data)) {
             const w = String(msg.wallet || '').trim().toLowerCase();
@@ -866,24 +856,21 @@ export function useWalletMarketTradesWS(
     setLoading(true);
     const unsub = shared.subscribeWalletMarketTrades(wallet, marketId, {
       onSnapshot: (rows, tot) => {
-        setTrades(rows);
+        setTrades(
+          dedupeWalletTradesByLedgerLeg(rows, (t) =>
+            t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side),
+          ).slice(0, 500),
+        );
         setTotal(tot);
         setLoading(false);
       },
       onTrade: (t) => {
-        setTrades((prev) => {
-          const byKey = new Map<string, WSTrade>();
-          const k0 = t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side);
-          byKey.set(k0, t);
-          for (const x of prev) {
-            const k = x.id || walletTradeKey(x.txHash, x.logIndex, normalizeClobTokenKey(x.tokenId), x.side);
-            if (k === k0) continue;
-            byKey.set(k, x);
-          }
-          return Array.from(byKey.values())
-            .sort((a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0))
-            .slice(0, 500);
-        });
+        setTrades((prev) =>
+          dedupeWalletTradesByLedgerLeg(
+            [t, ...prev],
+            (x) => x.id || walletTradeKey(x.txHash, x.logIndex, normalizeClobTokenKey(x.tokenId), x.side),
+          ).slice(0, 500),
+        );
       },
     });
     return unsub;

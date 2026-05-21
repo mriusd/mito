@@ -19,6 +19,55 @@ export function walletTradeKey(
   return `${txHash || ''}:${logIndex ?? -1}:${tokenId}:${side}`;
 }
 
+/** SPLIT/MERGE: one row per tx+token+action+size (NR+CTF double logs). */
+export function walletTradeLedgerLegEconKey(
+  txHash: string | undefined,
+  tokenId: string,
+  side: string,
+  size: number,
+): string {
+  const act = String(side || '').toUpperCase();
+  if (act !== 'SPLIT' && act !== 'MERGE') return '';
+  const tx = String(txHash || '').trim().toLowerCase();
+  let tok = String(tokenId || '').trim();
+  if (!tok || !tx || size <= 0) return '';
+  try {
+    tok = BigInt(tok).toString();
+  } catch {
+    /* keep */
+  }
+  return `${tx}:${tok}:${act}:${size}`;
+}
+
+export function dedupeWalletTradesByLedgerLeg<T extends {
+  txHash?: string;
+  logIndex?: number;
+  tokenId: string;
+  side: string;
+  size: number;
+  blockTime?: number;
+  id?: string;
+}>(rows: T[], keyFn: (t: T) => string): T[] {
+  const best = new Map<string, T>();
+  for (const t of rows) {
+    const leg = walletTradeLedgerLegEconKey(t.txHash, t.tokenId, t.side, t.size);
+    const k = leg || keyFn(t);
+    const prev = best.get(k);
+    if (!prev) {
+      best.set(k, t);
+      continue;
+    }
+    const li = t.logIndex ?? Number.MAX_SAFE_INTEGER;
+    const pli = prev.logIndex ?? Number.MAX_SAFE_INTEGER;
+    if (li < pli) best.set(k, t);
+  }
+  return Array.from(best.values()).sort((a, b) => {
+    const tb = (b.blockTime ?? 0) - (a.blockTime ?? 0);
+    if (tb !== 0) return tb;
+    return (b.logIndex ?? 0) - (a.logIndex ?? 0);
+  });
+}
+
 export function toxicFlowFillKey(txHash?: string, logIndex?: number, tokenId?: string): string {
   const base = onchainFillKey(txHash, logIndex);
   const tok = (tokenId || '').trim();

@@ -44,7 +44,7 @@ import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarke
 import { API_BASE } from '../lib/env';
 import { fetchUpDownTargetFromCrypto, upDownCryptoTimeframe } from '../lib/upDownTargetFromCrypto';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
-import { useOnchainTradesWS } from '../hooks/useOnchainTradesWS';
+import { useOnchainTradesWS, useWalletMarketTradesWS } from '../hooks/useOnchainTradesWS';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
@@ -1457,22 +1457,25 @@ export function Sidebar() {
     if (!selectedMarket?.clobTokenIds?.length) return null;
     return selectedMarket.clobTokenIds.map((x) => String(x || '').trim()).filter(Boolean);
   }, [selectedMarket?.clobTokenIds]);
-  const { trades: onchainLiveTrades, walletPositions: wsPositions, gridWalletPositions, walletTrades: wsTrades, refreshWallet } = useOnchainTradesWS({
-    marketId:
-      liveTradesSource === 'onchain' && selectedMarket?.conditionId?.trim()
-        ? String(selectedMarket.conditionId).trim()
-        : null,
-    tokenId: liveTradesSource === 'onchain' ? onchainHookTokenId : null,
-    wallet: walletForLivePositions,
-    scopedClobTokenIds: scopedClobPair,
-  });
+  const selectedConditionId =
+    liveTradesSource === 'onchain' && selectedMarket?.conditionId?.trim()
+      ? String(selectedMarket.conditionId).trim()
+      : null;
+  const { trades: onchainLiveTrades, walletPositions: wsPositions, gridWalletPositions, refreshWallet } =
+    useOnchainTradesWS({
+      marketId: selectedConditionId,
+      tokenId: liveTradesSource === 'onchain' ? onchainHookTokenId : null,
+      wallet: walletForLivePositions,
+      scopedClobTokenIds: scopedClobPair,
+    });
+  const { trades: wsMarketTrades, refresh: refreshMarketTradesWS } = useWalletMarketTradesWS(
+    walletForLivePositions,
+    selectedConditionId,
+    liveTradesSource === 'onchain' && !!walletForLivePositions && !!selectedConditionId,
+  );
   const onchainSidebarPositions = useMemo(
     () => (liveTradesSource === 'onchain' ? wsPositions : []),
     [liveTradesSource, wsPositions],
-  );
-  const onchainSidebarTrades = useMemo(
-    () => (liveTradesSource === 'onchain' ? wsTrades : []),
-    [liveTradesSource, wsTrades],
   );
 
   const requestCrossingConfirm = useCallback((bestPriceCents: number) => {
@@ -1603,11 +1606,8 @@ export function Sidebar() {
     if (liveTradesSource !== 'onchain') {
       return trades.filter((t) => tradeMatchesSelectedMarket(t, selectedMarket, marketLookup));
     }
-    const rows = onchainSidebarTrades.filter((f) =>
-      outcomeTokenBelongsToSelectedMarket(String(f.tokenId || '').trim(), selectedMarket, marketLookup),
-    );
-    return rows
-      .sort((a, b) => b.blockTime - a.blockTime)
+    return wsMarketTrades
+      .sort((a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0))
       .map((f) => ({
         asset_id: f.tokenId,
         token_id: f.tokenId,
@@ -1621,7 +1621,7 @@ export function Sidebar() {
         created_at: '',
         matchTime: '',
       }));
-  }, [liveTradesSource, trades, selectedMarket, marketLookup, onchainSidebarTrades]);
+  }, [liveTradesSource, trades, selectedMarket, marketLookup, wsMarketTrades]);
   const myTradesDisplay = useMemo(
     /** Hard cap to ~100 rendered rows — older context not useful in sidebar and each row mounts an anchor + SVG. */
     () => (liveTradesSource === 'onchain' ? myTrades.slice(0, 100) : myTrades.slice(0, 20)),
@@ -2819,7 +2819,7 @@ export function Sidebar() {
           bids,
           asks,
           afterSuccess: () => {
-            if (liveTradesSource === 'onchain') refreshWallet();
+            if (liveTradesSource === 'onchain') refreshMarketTradesWS();
           },
         });
       } finally {
@@ -2837,7 +2837,7 @@ export function Sidebar() {
       isUpDownMarket,
       marketName,
       liveTradesSource,
-      refreshWallet,
+      refreshMarketTradesWS,
       submitSidebarMarketFak,
     ],
   );
@@ -2925,13 +2925,16 @@ export function Sidebar() {
       if (res.success) {
         showToast('Merge confirmed', 'success');
         triggerWalletRefresh();
-        if (liveTradesSource === 'onchain') refreshWallet();
+        if (liveTradesSource === 'onchain') {
+          refreshWallet();
+          refreshMarketTradesWS();
+        }
       } else {
         showToast(res.error, 'error');
       }
       return res;
     },
-    [mergeEligible.conditionId, mergeFunderWallet, liveTradesSource, refreshWallet],
+    [mergeEligible.conditionId, mergeFunderWallet, liveTradesSource, refreshWallet, refreshMarketTradesWS],
   );
 
   return (

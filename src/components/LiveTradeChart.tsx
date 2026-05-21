@@ -569,6 +569,7 @@ export function LiveTradeChart({
 
       const markerSize = 4;
       const markerGap = 3;
+      const invertTradeMarkers = outcomeToggle?.value === 'NO';
       for (const [bucketOpen, slot] of bucketMarkers) {
         const c = candles.find((row) => row.time === bucketOpen);
         if (!c) continue;
@@ -578,11 +579,19 @@ export function LiveTradeChart({
 
         if (slot.buy) {
           ctx.fillStyle = '#2563eb';
-          fillTradeMarkerTriangle(ctx, cx, lowY + markerGap, markerSize, 'up');
+          if (invertTradeMarkers) {
+            fillTradeMarkerTriangle(ctx, cx, highY - markerGap, markerSize, 'down');
+          } else {
+            fillTradeMarkerTriangle(ctx, cx, lowY + markerGap, markerSize, 'up');
+          }
         }
         if (slot.sell) {
           ctx.fillStyle = '#facc15';
-          fillTradeMarkerTriangle(ctx, cx, highY - markerGap, markerSize, 'down');
+          if (invertTradeMarkers) {
+            fillTradeMarkerTriangle(ctx, cx, lowY + markerGap, markerSize, 'up');
+          } else {
+            fillTradeMarkerTriangle(ctx, cx, highY - markerGap, markerSize, 'down');
+          }
         }
       }
     }
@@ -695,7 +704,7 @@ export function LiveTradeChart({
       const t = minT + rangeT * (i / labelCount);
       ctx.fillText(fmtTime(t), toX(t), timeLabelY);
     }
-  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval]);
+  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval, outcomeToggle?.value]);
 
   useEffect(() => {
     lastVolumeSpikeBarRef.current = null;

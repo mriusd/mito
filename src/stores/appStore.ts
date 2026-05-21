@@ -81,8 +81,11 @@ interface AppState {
   // Signing mode
   signingMode: 'wallet' | 'privateKey';
   pkAddress: string | null; // EOA address derived from imported private key
+  /** Bumped when imported PK changes — wallet hooks must not rely on signingMode alone. */
+  pkRevision: number;
   setSigningMode: (v: 'wallet' | 'privateKey') => void;
   setPkAddress: (v: string | null) => void;
+  bumpPkRevision: () => void;
 
   // Sidebar
   sidebarOpen: boolean;
@@ -385,8 +388,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   signingMode: (localStorage.getItem('polymarket-signing-mode') === 'privateKey' ? 'privateKey' : 'wallet') as 'wallet' | 'privateKey',
   pkAddress: null,
+  pkRevision: 0,
   setSigningMode: (v) => { localStorage.setItem('polymarket-signing-mode', v); set({ signingMode: v }); },
   setPkAddress: (v) => set({ pkAddress: v }),
+  bumpPkRevision: () => set((s) => ({ pkRevision: s.pkRevision + 1 })),
 
   // Mobile sheet: closed on load. Desktop rail: open. Matches CSS (max-width: 767px).
   sidebarOpen:

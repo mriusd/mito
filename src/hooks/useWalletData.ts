@@ -6,6 +6,7 @@ import { fetchProxyWallet, fetchWalletPositions, fetchWalletActivity, fetchWalle
 import { fetchOpenOrdersDirect, setWalletRefreshFn, setOrdersRefreshFn, hasCredsForWallet, ensureCredsForWallet, refreshOpenOrdersInStore } from '../lib/clobClient';
 import { usePolymarketUserOrdersWS } from './usePolymarketUserOrdersWS';
 import { resolvePolymarketMakerAddress } from '../lib/polymarketTradingMaker';
+import { clearWalletAccountSlice } from '../lib/clearWalletAccountSlice';
 import { showSignatureExplainer } from '../components/SignatureExplainerDialog';
 import { isWebMode } from '../lib/env';
 import { getStoredPrivateKey } from '../components/PrivateKeyImportDialog';
@@ -16,6 +17,7 @@ import { getStoredPrivateKey } from '../components/PrivateKeyImportDialog';
 export function useWalletData() {
   const { address, isConnected } = useAccount();
   const signingMode = useAppStore((s) => s.signingMode);
+  const pkRevision = useAppStore((s) => s.pkRevision);
   const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
   const setPkAddress = useAppStore((s) => s.setPkAddress);
   /** Bumped only on real channel change (layout) — stale in-flight loads must not write after PK↔wallet switch. */
@@ -32,7 +34,7 @@ export function useWalletData() {
     try {
       return new ethers.Wallet(pk).address.toLowerCase();
     } catch { return null; }
-  }, [signingMode]);
+  }, [signingMode, pkRevision]);
 
   // Publish pkAddress to store so other components can read it
   useEffect(() => { setPkAddress(pkEoa); }, [pkEoa, setPkAddress]);
@@ -43,7 +45,7 @@ export function useWalletData() {
 
   const loadWalletData = useCallback(
     async (makerLocked: string) => {
-      if (!isWebMode || !makerLocked.trim()) return;
+      if (!makerLocked.trim()) return;
       const epochAtStart = walletLoadEpochRef.current;
       try {
         const [positions, trades, orders, balance] = await Promise.all([
@@ -94,18 +96,8 @@ export function useWalletData() {
     [isWebMode],
   );
 
-  /** Clear maker before paint so cred checks never see (new EOA + old proxy) — fixes spurious wallet sign on PK↔wallet when addresses differ. */
   useLayoutEffect(() => {
-    if (!isWebMode) return;
-    const clearWalletSlice = () => {
-      useAppStore.getState().setMarketData({
-        positions: [],
-        orders: [],
-        trades: [],
-        cashBalance: 0,
-        makerAddress: '',
-      });
-    };
+    const clearWalletSlice = () => clearWalletAccountSlice();
     if (!effectiveConnected || !effectiveEoa) {
       walletChannelKeyRef.current = '';
       walletLoadEpochRef.current += 1;
@@ -120,11 +112,11 @@ export function useWalletData() {
       clearWalletSlice();
     }
     setProxyWallet(null);
-  }, [isWebMode, effectiveConnected, effectiveEoa, signingMode]);
+  }, [effectiveConnected, effectiveEoa, signingMode]);
 
   // Resolve proxy wallet when EOA connects or signing channel toggles — always drop stale maker first (no wrong-user fetch).
   useEffect(() => {
-    if (!isWebMode || !effectiveConnected || !effectiveEoa) {
+    if (!effectiveConnected || !effectiveEoa) {
       setProxyWallet(null);
       credsCheckedRef.current = false;
       return;
@@ -154,20 +146,13 @@ export function useWalletData() {
   /** Clear wallet-derived slice on PK ↔ Wallet transition only (same as wiping stale rows before reload). */
   const prevSigningForClearRef = useRef<'wallet' | 'privateKey' | null>(null);
   useEffect(() => {
-    if (!isWebMode) return;
     if (prevSigningForClearRef.current === null) {
       prevSigningForClearRef.current = signingMode;
       return;
     }
     if (prevSigningForClearRef.current === signingMode) return;
     prevSigningForClearRef.current = signingMode;
-    useAppStore.getState().setMarketData({
-      positions: [],
-      orders: [],
-      trades: [],
-      cashBalance: 0,
-      makerAddress: '',
-    });
+    clearWalletAccountSlice();
   }, [signingMode]);
 
   const fetchAll = useCallback(() => {

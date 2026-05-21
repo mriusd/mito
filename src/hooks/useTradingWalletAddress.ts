@@ -8,11 +8,12 @@ import { useAppStore } from '../stores/appStore';
 export function useTradingWalletAddress(): string {
   const { address: walletAddress } = useAccount();
   const pkAddress = useAppStore((s) => s.pkAddress);
+  const pkRevision = useAppStore((s) => s.pkRevision);
   const signingMode = useAppStore((s) => s.signingMode);
   const effectiveEoa = (signingMode === 'privateKey' && pkAddress ? pkAddress : walletAddress ?? undefined)
     ?.trim()
     .toLowerCase() || '';
-  const channelKey = effectiveEoa ? `${signingMode}|${effectiveEoa}` : '';
+  const channelKey = effectiveEoa ? `${signingMode}|${effectiveEoa}|${signingMode === 'privateKey' ? pkRevision : 0}` : '';
 
   const channelKeyRef = useRef('');
   const [makerAddress, setMakerAddress] = useState('');

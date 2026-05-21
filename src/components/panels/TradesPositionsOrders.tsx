@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, memo } from 'react';
+import { useState, useCallback, useEffect, useMemo, memo, useLayoutEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import {
   cancelOrder,
@@ -13,6 +13,7 @@ import {
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { onchainFillKey } from '../../lib/tradeKeys';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
+import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import type { Position, Trade } from '../../types';
 import { showToast } from '../../utils/toast';
 import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, getPositionClobTokenId, extractAssetFromMarket, formatPriceShort, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
@@ -84,7 +85,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const orders = useAppStore((s) => s.orders);
   const trades = useAppStore((s) => s.trades);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
-  const makerAddress = useAppStore((s) => s.makerAddress);
+  const makerAddress = useTradingWalletAddress();
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
@@ -94,6 +95,14 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const [onchainTrRows, setOnchainTrRows] = useState<OnchainMarketTradeRow[]>([]);
   const [onchainClaimRows, setOnchainClaimRows] = useState<OnchainClaimRow[]>([]);
   const [onchainLoading, setOnchainLoading] = useState(false);
+  const tradingWalletKey = makerAddress.trim().toLowerCase();
+
+  useLayoutEffect(() => {
+    setOnchainPosRows([]);
+    setOnchainTrRows([]);
+    setOnchainClaimRows([]);
+    setOnchainLoading(false);
+  }, [tradingWalletKey]);
 
   const polymarketTokenKey = useMemo(() => {
     const s = new Set<string>();
@@ -130,7 +139,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const marketLookup = useMarketLookupSubset(tpoClobIds);
 
   useEffect(() => {
-    if (liveTradesSource !== 'onchain' || !makerAddress) {
+    if (liveTradesSource !== 'onchain' || !tradingWalletKey) {
       setOnchainPosRows([]);
       setOnchainTrRows([]);
       setOnchainClaimRows([]);
@@ -142,7 +151,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       setOnchainLoading(true);
       try {
         const walletRes = await fetchWalletPositions({
-          wallet: makerAddress,
+          wallet: tradingWalletKey,
           limit: 500,
           active_only: true,
           ledger: true,
@@ -177,8 +186,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           return;
         }
         const [pr, tr] = await Promise.all([
-          fetchOnchainMarketPositions({ token_ids, wallet: makerAddress }),
-          fetchOnchainMarketTrades({ token_ids, wallet: makerAddress, limit: 500 }),
+          fetchOnchainMarketPositions({ token_ids, wallet: tradingWalletKey }),
+          fetchOnchainMarketTrades({ token_ids, wallet: tradingWalletKey, limit: 500 }),
           // fetchOnchainClaims({ wallet: makerAddress, limit: 200 }),
         ]);
         if (!cancelled) {
@@ -202,7 +211,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       cancelled = true;
       window.clearInterval(iv);
     };
-  }, [liveTradesSource, makerAddress, polymarketTokenKey, positions, orders, trades, selectedMarket?.id, selectedMarket?.clobTokenIds?.join('|')]);
+  }, [liveTradesSource, tradingWalletKey, polymarketTokenKey, positions, orders, trades, selectedMarket?.id, selectedMarket?.clobTokenIds?.join('|')]);
 
   const onchainPositionsAsPM = useMemo((): Position[] => {
     return onchainPosRows.map((r) => {

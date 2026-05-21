@@ -1,7 +1,8 @@
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect, useLayoutEffect } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
+import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { fetchWalletPnlDaily } from '../../api';
 import { triggerWalletRefresh } from '../../lib/clobClient';
 import type { Trade } from '../../types';
@@ -68,7 +69,7 @@ function classifyMarketType(question: string | null | undefined, eventSlug?: str
 export function PnLPanel() {
   const trades = useAppStore((s) => s.trades);
   const marketLookup = useMarketLookupSnapshot();
-  const makerAddress = useAppStore((s) => s.makerAddress);
+  const makerAddress = useTradingWalletAddress();
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
 
   const [calendarBump, setCalendarBump] = useState(0);
@@ -100,6 +101,10 @@ export function PnLPanel() {
   const [onchainByDate, setOnchainByDate] = useState<
     Record<string, { bought: number; sold: number }> | 'pending' | 'inactive'
   >('inactive');
+
+  useLayoutEffect(() => {
+    setOnchainByDate('inactive');
+  }, [makerAddress.trim().toLowerCase()]);
 
   const [bucketMode, setBucketMode] = useState<PnlBucketMode>(() => {
     const saved = localStorage.getItem(PNL_BUCKET_KEY);

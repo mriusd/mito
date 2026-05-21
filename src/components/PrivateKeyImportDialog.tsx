@@ -1,6 +1,12 @@
 import { useState } from 'react';
 
+import { useAppStore } from '../stores/appStore';
+
 const PK_STORAGE_KEY = 'polymarket-imported-pk';
+
+function notifyPkChanged(): void {
+  useAppStore.getState().bumpPkRevision();
+}
 
 export function getStoredPrivateKey(): string | null {
   return localStorage.getItem(PK_STORAGE_KEY);
@@ -8,6 +14,7 @@ export function getStoredPrivateKey(): string | null {
 
 export function clearStoredPrivateKey(): void {
   localStorage.removeItem(PK_STORAGE_KEY);
+  notifyPkChanged();
 }
 
 interface PrivateKeyImportDialogProps {
@@ -30,6 +37,7 @@ export function PrivateKeyImportDialog({ open, onDone, onCancel }: PrivateKeyImp
       return;
     }
     localStorage.setItem(PK_STORAGE_KEY, '0x' + raw.toLowerCase());
+    notifyPkChanged();
     setKeyInput('');
     setError('');
     onDone();

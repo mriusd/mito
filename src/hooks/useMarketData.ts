@@ -75,11 +75,6 @@ export function useMarketData() {
       } else {
         useAppStore.getState().setMarketData({
           ...marketPatch,
-          positions: data.positions || [],
-          orders: data.orders || [],
-          trades: data.trades || [],
-          cashBalance: data.cashBalance || 0,
-          makerAddress: data.makerAddress || '',
           tokenInfo: data.tokenInfo || {},
           progOrderMap: data.progOrderMap || {},
           marketCount: data.count || 0,

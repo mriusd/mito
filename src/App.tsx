@@ -1,4 +1,5 @@
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useAccount } from 'wagmi';
 import './lib/wallet';
 import { useAppStore } from './stores/appStore';
 import { useBinanceWS } from './hooks/useBinanceWS';
@@ -99,7 +100,10 @@ function App() {
   }, [refreshData, refreshWalletData]);
 
   const signingMode = useAppStore((s) => s.signingMode);
+  const pkRevision = useAppStore((s) => s.pkRevision);
+  const { address: walletAddress } = useAccount();
   const prevSigningRef = useRef<typeof signingMode | null>(null);
+  const prevWalletChannelRef = useRef('');
   useEffect(() => {
     if (prevSigningRef.current === null) {
       prevSigningRef.current = signingMode;
@@ -110,6 +114,20 @@ function App() {
     invalidateClobMemoryCreds();
     void handleRefresh();
   }, [signingMode, handleRefresh]);
+
+  useEffect(() => {
+    const pk = useAppStore.getState().pkAddress;
+    const eoa =
+      signingMode === 'privateKey' && pk
+        ? pk.trim().toLowerCase()
+        : (walletAddress || '').trim().toLowerCase();
+    const channel = eoa ? `${signingMode}|${eoa}|${signingMode === 'privateKey' ? pkRevision : 0}` : '';
+    if (channel === prevWalletChannelRef.current) return;
+    prevWalletChannelRef.current = channel;
+    if (!channel) return;
+    invalidateClobMemoryCreds();
+    void handleRefresh();
+  }, [signingMode, walletAddress, pkRevision, handleRefresh]);
 
   // Queue URL -> state sync when browser history changes.
   useEffect(() => {

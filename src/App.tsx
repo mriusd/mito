@@ -5,6 +5,7 @@ import { useAppStore } from './stores/appStore';
 import { useBinanceWS } from './hooks/useBinanceWS';
 import { useMarketData } from './hooks/useMarketData';
 import { invalidateClobMemoryCreds } from './lib/clobClient';
+import { clearWalletAccountSlice } from './lib/clearWalletAccountSlice';
 import { useWalletData } from './hooks/useWalletData';
 import { useVwapAndVolatility } from './hooks/useVwapAndVolatility';
 import { useSignalsAndArbs } from './hooks/useSignalsAndArbs';
@@ -125,6 +126,7 @@ function App() {
     if (channel === prevWalletChannelRef.current) return;
     prevWalletChannelRef.current = channel;
     if (!channel) return;
+    clearWalletAccountSlice();
     invalidateClobMemoryCreds();
     void handleRefresh();
   }, [signingMode, walletAddress, pkRevision, handleRefresh]);

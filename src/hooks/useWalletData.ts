@@ -11,6 +11,16 @@ import { showSignatureExplainer } from '../components/SignatureExplainerDialog';
 import { isWebMode } from '../lib/env';
 import { getStoredPrivateKey } from '../components/PrivateKeyImportDialog';
 
+function walletChannelKey(
+  signingMode: 'wallet' | 'privateKey',
+  effectiveEoa: string,
+  pkRevision: number,
+): string {
+  const eoa = effectiveEoa.trim().toLowerCase();
+  if (!eoa) return '';
+  return `${signingMode}|${eoa}|${signingMode === 'privateKey' ? pkRevision : 0}`;
+}
+
 // Web mode only: Gamma → trading maker address; WalletConnect signer + RPC infer Safe vs deposit (POLY_1271) at order time.
 // then fetch positions, orders, trades, balance from Polymarket directly.
 // In app mode this hook is a no-op.
@@ -23,8 +33,11 @@ export function useWalletData() {
   /** Bumped only on real channel change (layout) — stale in-flight loads must not write after PK↔wallet switch. */
   const walletLoadEpochRef = useRef(0);
   const walletChannelKeyRef = useRef<string>('');
+  const proxyWalletRef = useRef<string | null>(null);
   const [proxyWallet, setProxyWallet] = useState<string | null>(null);
   const credsCheckedRef = useRef(false);
+
+  proxyWalletRef.current = proxyWallet;
 
   // Derive EOA from private key when PK mode is active
   const pkEoa = useMemo(() => {
@@ -45,8 +58,10 @@ export function useWalletData() {
 
   const loadWalletData = useCallback(
     async (makerLocked: string) => {
-      if (!makerLocked.trim()) return;
+      const maker = makerLocked.trim().toLowerCase();
+      if (!maker) return;
       const epochAtStart = walletLoadEpochRef.current;
+      const channelAtStart = walletChannelKeyRef.current;
       try {
         const [positions, trades, orders, balance] = await Promise.all([
           fetchWalletPositions(makerLocked),
@@ -56,6 +71,8 @@ export function useWalletData() {
         ]);
 
         if (epochAtStart !== walletLoadEpochRef.current) return;
+        if (channelAtStart !== walletChannelKeyRef.current) return;
+        if (proxyWalletRef.current?.trim().toLowerCase() !== maker) return;
 
         // Fix missing avgPrice: compute from trades when API returns 0
         for (const pos of positions) {
@@ -81,6 +98,8 @@ export function useWalletData() {
         }
 
         if (epochAtStart !== walletLoadEpochRef.current) return;
+        if (channelAtStart !== walletChannelKeyRef.current) return;
+        if (proxyWalletRef.current?.trim().toLowerCase() !== maker) return;
 
         useAppStore.getState().setMarketData({
           positions,
@@ -93,26 +112,30 @@ export function useWalletData() {
         console.warn('[useWalletData] Failed to fetch wallet data:', err);
       }
     },
-    [isWebMode],
+    [],
   );
 
   useLayoutEffect(() => {
     const clearWalletSlice = () => clearWalletAccountSlice();
     if (!effectiveConnected || !effectiveEoa) {
-      walletChannelKeyRef.current = '';
-      walletLoadEpochRef.current += 1;
+      if (walletChannelKeyRef.current !== '') {
+        walletChannelKeyRef.current = '';
+        walletLoadEpochRef.current += 1;
+        clearWalletSlice();
+      }
+      proxyWalletRef.current = null;
       setProxyWallet(null);
-      clearWalletSlice();
       return;
     }
-    const key = `${signingMode}|${String(effectiveEoa).trim().toLowerCase()}`;
+    const key = walletChannelKey(signingMode, String(effectiveEoa), pkRevision);
     if (walletChannelKeyRef.current !== key) {
       walletChannelKeyRef.current = key;
       walletLoadEpochRef.current += 1;
       clearWalletSlice();
+      proxyWalletRef.current = null;
+      setProxyWallet(null);
     }
-    setProxyWallet(null);
-  }, [effectiveConnected, effectiveEoa, signingMode]);
+  }, [effectiveConnected, effectiveEoa, signingMode, pkRevision]);
 
   // Resolve proxy wallet when EOA connects or signing channel toggles — always drop stale maker first (no wrong-user fetch).
   useEffect(() => {
@@ -121,19 +144,23 @@ export function useWalletData() {
       credsCheckedRef.current = false;
       return;
     }
+    const channelAtStart = walletChannelKeyRef.current;
     let cancelled = false;
     (async () => {
       try {
         const eoaLc = typeof effectiveEoa === 'string' ? effectiveEoa.trim().toLowerCase() : '';
         const pw = await fetchProxyWallet(eoaLc);
         if (cancelled) return;
+        if (channelAtStart !== walletChannelKeyRef.current) return;
         const maker = resolvePolymarketMakerAddress(eoaLc, pw);
         console.log(`[useWalletData] EOA ${eoaLc} → trading maker ${maker}`);
+        proxyWalletRef.current = maker;
         setProxyWallet(maker);
         void loadWalletData(maker);
       } catch (e) {
         if (!cancelled) {
           console.error('[useWalletData] resolve trading maker failed:', e);
+          proxyWalletRef.current = null;
           setProxyWallet(null);
         }
       }
@@ -141,7 +168,7 @@ export function useWalletData() {
     return () => {
       cancelled = true;
     };
-  }, [effectiveConnected, effectiveEoa, signingMode, loadWalletData]);
+  }, [effectiveConnected, effectiveEoa, signingMode, pkRevision, loadWalletData]);
 
   /** Clear wallet-derived slice on PK ↔ Wallet transition only (same as wiping stale rows before reload). */
   const prevSigningForClearRef = useRef<'wallet' | 'privateKey' | null>(null);
@@ -156,9 +183,10 @@ export function useWalletData() {
   }, [signingMode]);
 
   const fetchAll = useCallback(() => {
-    if (!proxyWallet) return;
-    void loadWalletData(proxyWallet);
-  }, [proxyWallet, loadWalletData]);
+    const pw = proxyWalletRef.current;
+    if (!pw) return;
+    void loadWalletData(pw);
+  }, [loadWalletData]);
 
   /** Re-run L2 cred gate when signer EOA changes — avoid stale API keys from another wallet. */
   useEffect(() => {

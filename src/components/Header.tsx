@@ -68,6 +68,9 @@ interface HeaderProps {
 export function Header({ onRefresh }: HeaderProps) {
   const syncHead = useSyncHeadWS();
   const { isConnected: walletConnected } = useAccount();
+  const signingMode = useAppStore((s) => s.signingMode);
+  const pkAddress = useAppStore((s) => s.pkAddress);
+  const makerAddress = useAppStore((s) => s.makerAddress);
   const vwapCandles = useAppStore((s) => s.vwapCandles);
   const setVwapCandles = useAppStore((s) => s.setVwapCandles);
   const vwapCorrection = useAppStore((s) => s.vwapCorrection);
@@ -91,6 +94,13 @@ export function Header({ onRefresh }: HeaderProps) {
   const walletSummaryDialogOpen = useAppStore((s) => s.walletSummaryDialogOpen);
   const setWalletSummaryDialogOpen = useAppStore((s) => s.setWalletSummaryDialogOpen);
   const tradingWallet = useTradingWalletAddress();
+  const effectiveWalletConnected =
+    signingMode === 'privateKey' && pkAddress ? true : walletConnected;
+  const walletPortfolioReady =
+    !!tradingWallet &&
+    makerAddress.trim().toLowerCase() === tradingWallet.trim().toLowerCase();
+  const displayTotalVal = walletPortfolioReady ? totalVal : 0;
+  const displayCashBalance = walletPortfolioReady ? cashBalance : 0;
 
   const [refreshing, setRefreshing] = useState(false);
   const [favouriteWalletsDialogOpen, setFavouriteWalletsDialogOpen] = useState(false);
@@ -471,7 +481,7 @@ export function Header({ onRefresh }: HeaderProps) {
 
 
         {/* Portfolio Value & Cash */}
-        {walletConnected && (
+        {effectiveWalletConnected && (
           <a
             href={polymarketSiteUrl('portfolio')}
             target="_blank"
@@ -479,9 +489,9 @@ export function Header({ onRefresh }: HeaderProps) {
             className="flex items-center gap-2 bg-gray-800/50 rounded px-2 h-[28px] hover:bg-gray-700/50 cursor-pointer transition"
           >
             <span className="text-[10px] text-gray-400 max-[639px]:hidden">Val</span>
-            <span className="text-xs font-bold text-green-400 max-[639px]:hidden">${totalVal.toFixed(2)}</span>
+            <span className="text-xs font-bold text-green-400 max-[639px]:hidden">${displayTotalVal.toFixed(2)}</span>
             <span className="text-[10px] text-gray-400">Cash</span>
-            <span className="text-xs font-bold text-blue-400">${cashBalance.toFixed(2)}</span>
+            <span className="text-xs font-bold text-blue-400">${displayCashBalance.toFixed(2)}</span>
             <HelpTooltip text="Val: positions (Data API currentValue or size×price) plus Cash. Cash: pUSD + USDC.e in proxy wallet on Polygon." />
           </a>
         )}
@@ -521,7 +531,7 @@ export function Header({ onRefresh }: HeaderProps) {
           Wallet Summary
         </button>
 
-        {walletConnected && <SigningModeSwitch />}
+        {effectiveWalletConnected && <SigningModeSwitch />}
 
         <WalletButton />
       </div>

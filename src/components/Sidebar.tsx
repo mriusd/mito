@@ -65,6 +65,7 @@ import {
   toxicRowWalletIsXMarked,
 } from '../lib/toxicFlowStakeCohort';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
+import { useSidebarChartVolatility } from '../hooks/useSidebarChartVolatility';
 import {
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
   TOXIC_FAVOURITES_CHANGED_EVENT,
@@ -948,6 +949,10 @@ export function Sidebar() {
     setNotifyDialogOpen(false);
   }, [notifyVolatilityCandlesDraft, notifyVolatilityCandles]);
 
+  const handleSidebarChartAnnualVolPct = useCallback((pct: number | null) => {
+    setSidebarChartAnnualVolPct(pct);
+  }, []);
+
   useEffect(() => {
     setSidebarChartAnnualVolPct(null);
   }, [selectedMarket?.id]);
@@ -1728,6 +1733,18 @@ export function Sidebar() {
     () => sidebarChartIntervalFromContext(isUpDownMarket ? upDownIntervalContext : undefined),
     [isUpDownMarket, upDownIntervalContext],
   );
+  const sidebarChartAsset = useMemo(() => {
+    if (!selectedMarket) return null;
+    const a = isUpDownMarket ? upDownAsset : extractAssetFromMarket(selectedMarket);
+    return a || null;
+  }, [selectedMarket, isUpDownMarket, upDownAsset]);
+  useSidebarChartVolatility({
+    asset: sidebarChartAsset,
+    intervalContext: upDownIntervalContext,
+    chainlinkCandles: !!(isUpDownMarket && upDownSpotUsesChainlink),
+    volatilityLookbackCandles: notifyVolatilityCandles,
+    onAnnualizedVolPct: handleSidebarChartAnnualVolPct,
+  });
   /** Default kline size for right chart; 1h (explicit or implicit) → 5m — aligned with upDownStartTime window detection. */
   const upDownKlineDefaultInterval = useMemo((): string | undefined => {
     if (!isUpDownMarket || !selectedMarket) return undefined;
@@ -3959,7 +3976,7 @@ export function Sidebar() {
                             : 'σ —'}
                         </span>
                         <HelpTooltip
-                          text={`Annualized volatility from the left chart (same σ as the canvas corner). Uses the last ${notifyVolatilityCandles} completed ${sidebarChartKlineLabel} candles; the open candle is excluded. For 5m markets these are 5m candles, for 15m markets 15m candles, etc. Candle count and max volatility for tilt alerts are set in Tilt notifications.`}
+                          text={`Annualized volatility from spot klines (Binance or Chainlink, same source as the hidden asset chart). Uses the last ${notifyVolatilityCandles} completed ${sidebarChartKlineLabel} candles; the open candle is excluded. For 5m markets these are 5m candles, for 15m markets 15m candles, etc. Candle count and max volatility for tilt alerts are set in Tilt notifications.`}
                           openOnHover
                           wrapClassName="inline-flex shrink-0 items-center leading-none"
                         >

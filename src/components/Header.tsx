@@ -15,6 +15,7 @@ import { PrivateKeyImportDialog, getStoredPrivateKey } from './PrivateKeyImportD
 import { useSyncHeadWS } from '../hooks/useSyncHeadWS';
 import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
+import { showToast } from '../utils/toast';
 
 const IS_DEV = import.meta.env.DEV;
 
@@ -137,6 +138,7 @@ export function Header({ onRefresh }: HeaderProps) {
       }
       addPanel({ id, type, title });
       setShowAddMenu(false);
+      showToast(`Panel ${title} added to the bottom of the screen`, 'success');
     },
     [addPanel, layouts, setLayouts]
   );

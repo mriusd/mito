@@ -1,5 +1,5 @@
 /**
- * Sidebar left chart: annualized σ from completed candle closes (same math as ChainlinkChart canvas label).
+ * Sidebar chart σ from completed candle closes (same math as ChainlinkChart / useSidebarChartVolatility).
  */
 
 const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;

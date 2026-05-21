@@ -1,12 +1,6 @@
-import {
-  pitchMulFromNotifyFreqSlider,
-  playTiltNotifySoundStrikes,
-  readNotifyRingTimeS,
-  readNotifySoundFreqSlider,
-} from './tiltNotifySound';
+import { pitchMulFromNotifyFreqSlider, playNotifyBeep, readNotifySoundFreqSlider } from './tiltNotifySound';
 
 export const SIDEBAR_NOTIFY_VOLUME_SPIKE_RING_KEY = 'polybot-sidebar-notify-volume-spike-ring';
-export const CHART_VOLUME_SPIKE_RING_STRIKES = 5;
 /** Flash duration — keep in sync with `.live-trade-chart-volume-spike-flash` in index.css */
 export const CHART_VOLUME_SPIKE_FLASH_MS = 2800;
 
@@ -55,7 +49,6 @@ export function readNotifyVolumeSpikeRingEnabled(): boolean {
 
 export async function playChartVolumeSpikeRing(): Promise<void> {
   if (!readNotifyVolumeSpikeRingEnabled()) return;
-  const mul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider()) * 1.15;
-  const rt = readNotifyRingTimeS();
-  await playTiltNotifySoundStrikes('green', mul, rt, CHART_VOLUME_SPIKE_RING_STRIKES);
+  const mul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider());
+  await playNotifyBeep(mul);
 }

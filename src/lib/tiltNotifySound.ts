@@ -223,3 +223,43 @@ export async function playTradeNotifySound(
   const volumeMul = readTradeSoundVolumeSlider() / 100;
   await playUpdownTiltExtremeSound(kind, pitchMul, ringTimeS, volumeMul);
 }
+
+/** Short single beep (not glass bell) — volume spike, etc. */
+export async function playNotifyBeep(
+  pitchMul = 1,
+  volumeMul = readNotifySoundVolumeMul(),
+): Promise<void> {
+  try {
+    ensureTiltAudioUnlockListeners();
+    const ACtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!ACtx) return;
+    if (!tiltExtremeAudioCtx || tiltExtremeAudioCtx.state === 'closed') tiltExtremeAudioCtx = new ACtx();
+    const ctx = tiltExtremeAudioCtx;
+    await ctx.resume();
+    if (ctx.state !== 'running') return;
+    if (volumeMul <= 0) return;
+
+    const t0 = ctx.currentTime;
+    const m = Math.min(2.5, Math.max(0.5, pitchMul));
+    const freq = 880 * m;
+    const dur = 0.1;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(freq, t0);
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(0.1 * volumeMul, t0 + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
+    osc.connect(g);
+    g.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+  } catch {
+    /* autoplay / no AudioContext */
+  }
+}

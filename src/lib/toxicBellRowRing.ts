@@ -6,6 +6,7 @@ import {
   readNotifyRingTimeS,
   readNotifySoundFreqSlider,
 } from './tiltNotifySound';
+import { isNotifySoundPriceMuted } from './notifySoundPriceMute';
 
 /** Must match `.toxic-flow-bell-row-flash` animation duration in index.css. */
 export const TOXIC_BELL_ROW_FLASH_MS = 1350;
@@ -58,7 +59,12 @@ export function subscribeNotifyBellMinStakeUsd(listener: () => void): () => void
 }
 
 /** One strike per flashing bell row, aligned to row flash peak (~50% of 1.35s cycle). */
-export function useToxicBellRowRingSound(bellFlashingCount: number, active: boolean): void {
+export function useToxicBellRowRingSound(
+  bellFlashingCount: number,
+  active: boolean,
+  yesTokenId?: string,
+  noTokenId?: string,
+): void {
   const countRef = useRef(bellFlashingCount);
   countRef.current = bellFlashingCount;
 
@@ -69,6 +75,7 @@ export function useToxicBellRowRingSound(bellFlashingCount: number, active: bool
     const tick = () => {
       const n = countRef.current;
       if (n <= 0 || !readNotifyBellRingEnabled()) return;
+      if (isNotifySoundPriceMuted(yesTokenId, noTokenId)) return;
       const mul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider()) * 1.12;
       const rt = readNotifyRingTimeS();
       void playTiltNotifySoundStrikes('green', mul, rt, n);
@@ -85,5 +92,5 @@ export function useToxicBellRowRingSound(bellFlashingCount: number, active: bool
       window.clearTimeout(startId);
       if (intervalId != null) window.clearInterval(intervalId);
     };
-  }, [active]);
+  }, [active, yesTokenId, noTokenId]);
 }

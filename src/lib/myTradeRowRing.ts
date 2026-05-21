@@ -6,6 +6,7 @@ import {
   readNotifyRingTimeS,
   readTradeSoundFreqSlider,
 } from './tiltNotifySound';
+import { isNotifySoundPriceMuted } from './notifySoundPriceMute';
 import { onchainFillKey, polymarketTradeKey } from './tradeKeys';
 
 /** Must match `.my-trade-row-flash` animation duration in index.css. */
@@ -39,6 +40,8 @@ export function useMyTradeRowRingSound(
   trades: MySidebarTradeRow[],
   scopeKey: string | null,
   active: boolean,
+  yesTokenId?: string,
+  noTokenId?: string,
 ): Set<string> {
   const [flashKeys, setFlashKeys] = useState<Set<string>>(() => new Set());
   const seenRef = useRef(new Set<string>());
@@ -57,6 +60,7 @@ export function useMyTradeRowRingSound(
       const isNew = seen.size > 0;
       seen.add(k);
       if (!isNew) continue;
+      if (isNotifySoundPriceMuted(yesTokenId, noTokenId)) continue;
       const side = (trade.side || '').toUpperCase();
       const kind = side === 'SELL' || side === 'MERGE' ? 'red' : 'green';
       const pitchMul = pitchMulFromNotifyFreqSlider(readTradeSoundFreqSlider());
@@ -71,7 +75,7 @@ export function useMyTradeRowRingSound(
         });
       }, MY_TRADE_ROW_FLASH_MS);
     }
-  }, [trades, active]);
+  }, [trades, active, yesTokenId, noTokenId]);
 
   return flashKeys;
 }

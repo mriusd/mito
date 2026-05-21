@@ -97,6 +97,11 @@ import {
   SIDEBAR_TRADE_SOUND_VOLUME_KEY,
 } from '../lib/tiltNotifySound';
 import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
+import {
+  isNotifySoundPriceMuted,
+  readNotifySoundMaxPriceCents,
+  SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY,
+} from '../lib/notifySoundPriceMute';
 import { mySidebarTradeRowKey, useMyTradeRowRingSound } from '../lib/myTradeRowRing';
 import {
   NOTIFY_BELL_MIN_STAKE_CHANGED_EVENT,
@@ -274,7 +279,6 @@ const SIDEBAR_NOTIFY_GREENS_TILT_PCT_KEY = 'polybot-sidebar-notify-greens-tilt-p
 /** Legacy cohort tilt key (Profiter / PnL+). */
 const SIDEBAR_NOTIFY_PROFIT_TILT_PCT_LEGACY_KEY = 'polybot-sidebar-notify-profit-tilt-pct';
 const SIDEBAR_NOTIFY_STAKED_MIN_USD_KEY = 'polybot-sidebar-notify-staked-min-usd';
-const SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-sound-max-price-cents';
 const SIDEBAR_NOTIFY_WHALE_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-whale-max-price-cents';
 const SIDEBAR_NOTIFY_WHALE_IGNORE_NEGATIVE_PNL_KEY = 'polybot-sidebar-notify-whale-ignore-negative-pnl';
 const SIDEBAR_NOTIFY_DOUBLE_RING_KEY = 'polybot-sidebar-notify-double-ring';
@@ -477,16 +481,6 @@ function readNotifyStakedMinUsd(): number {
     return Math.min(1e12, n);
   } catch {
     return 0;
-  }
-}
-function readNotifySoundMaxPriceCents(): number {
-  try {
-    const raw = localStorage.getItem(SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY);
-    const n = parseFloat(raw ?? '95');
-    if (!Number.isFinite(n)) return 95;
-    return Math.min(99, Math.max(1, Math.round(n)));
-  } catch {
-    return 95;
   }
 }
 function readNotifyDoubleRing(): boolean {
@@ -1703,10 +1697,14 @@ export function Sidebar() {
     selectedMarket?.conditionId || selectedMarket?.id
       ? `${selectedMarket?.conditionId || selectedMarket?.id}|${myOnchainWalletLower}|${liveTradesSource}`
       : null;
+  const yesTokenIdForSoundMute = selectedMarket?.clobTokenIds?.[0] || '';
+  const noTokenIdForSoundMute = selectedMarket?.clobTokenIds?.[1] || '';
   const myTradeFlashKeys = useMyTradeRowRingSound(
     myTradesDisplay,
     myTradeScopeKey,
     !!selectedMarket && !marketIsExpired(selectedMarket),
+    yesTokenIdForSoundMute,
+    noTokenIdForSoundMute,
   );
 
   const { sidebarUserBidPrices, sidebarUserAskPrices } = useMemo(() => {
@@ -2147,32 +2145,13 @@ export function Sidebar() {
     const maxCents = notifySoundMaxPriceCents;
     const doubleRing = notifyDoubleRing;
 
-    const bidOkForSound = (): boolean => {
+    const tick = () => {
       const sm = tiltSoundMarketRef.current;
       const ids = sm?.clobTokenIds;
-      /** Green tilt = cohort YES-heavy → mute gate uses YES token WS quotes; red → NO token (not sidebar OB outcome). */
-      const tid =
-        k === 'green' ? ids?.[0] : k === 'red' ? ids?.[1] : undefined;
-      let compareCents: number | null = null;
-      if (tid) {
-        const row = getBidAskMarketRow(tid);
-        if (row) {
-          const b =
-            typeof row.bestBid === 'number' && Number.isFinite(row.bestBid) ? row.bestBid * 100 : null;
-          const a =
-            typeof row.bestAsk === 'number' && Number.isFinite(row.bestAsk) ? row.bestAsk * 100 : null;
-          if (b != null && a != null) compareCents = (b + a) / 2;
-          else if (b != null) compareCents = b;
-        }
-      }
-      return !(compareCents != null && compareCents > maxCents);
-    };
-
-    const tick = () => {
+      if (isNotifySoundPriceMuted(ids?.[0], ids?.[1], maxCents)) return;
       const muted = marketNotifyMutedRef.current;
       if (cohortNeedsSound) {
         if (muted) return;
-        if (!bidOkForSound()) return;
         void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
       } else if (whaleNeedsSound) {
         if (muted && notifyWhaleRingMutable) return;
@@ -3062,6 +3041,25 @@ export function Sidebar() {
               </button>
             </div>
             <div className="space-y-3 text-xs text-gray-200">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-gray-400 shrink-0">Mute sounds above (c)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  step={1}
+                  className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 tabular-nums no-spin"
+                  value={notifySoundMaxPriceCents}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (!Number.isFinite(v)) return;
+                    setNotifySoundMaxPriceCents(Math.min(99, Math.max(1, Math.round(v))));
+                  }}
+                />
+              </div>
+              <p className="text-[10px] text-gray-500 m-0 leading-snug">
+                Mute all notification sounds when YES or NO WS mid exceeds this — (bestBid+bestAsk)/2, or bestBid only if no ask.
+              </p>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -3337,25 +3335,6 @@ export function Sidebar() {
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1">Glass ring decay length; default 5s (max 5).</p>
-                <div className="flex items-center gap-2 flex-wrap mt-3">
-                  <span className="text-gray-400 shrink-0">Sound max (¢)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={99}
-                    step={1}
-                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 tabular-nums no-spin"
-                    value={notifySoundMaxPriceCents}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (!Number.isFinite(v)) return;
-                      setNotifySoundMaxPriceCents(Math.min(99, Math.max(1, Math.round(v))));
-                    }}
-                  />
-                </div>
-                <p className="text-[10px] text-gray-500 mt-1">
-                  Mute when WS mid for Tilt ring bursts only — YES token when green cohort tilt, NO token when red cohort tilt — (bestBid+bestAsk)/2, or bestBid only if no ask. Whale Ring ignores this price mute; Max volatility % (above) still applies to whales.
-                </p>
                 <label className="flex items-center gap-2 cursor-pointer mt-3">
                   <input
                     type="checkbox"
@@ -3922,6 +3901,7 @@ export function Sidebar() {
             onOrderOutcomeChange={setOrderOutcome}
             chartOutcomeSync={chartOutcomeSync}
             onChartOutcomeSyncChange={setChartOutcomeSync}
+            myTradesForMarkers={myTradesDisplay}
           />
 
 
@@ -5170,6 +5150,7 @@ export function Sidebar() {
                 marketId={selectedMarket.conditionId || ''}
                 marketName={marketName}
                 yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
+                noTokenId={selectedMarket.clobTokenIds?.[1] || ''}
                 marketExpired={isMarketExpired}
                 streamData={toxicFlowData}
                 streamTabWalletViews={toxicTabViews}

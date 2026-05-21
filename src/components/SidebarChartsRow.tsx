@@ -2,6 +2,7 @@ import { memo, useMemo } from 'react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import type { Market } from '../types';
+import type { MyTradeChartRow } from '../lib/chartTradeMarkers';
 import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 
 export type SidebarChartsRowProps = {
@@ -12,6 +13,7 @@ export type SidebarChartsRowProps = {
   onOrderOutcomeChange: (value: 'YES' | 'NO') => void;
   chartOutcomeSync: boolean;
   onChartOutcomeSyncChange: (enabled: boolean) => void;
+  myTradesForMarkers?: MyTradeChartRow[];
 };
 
 function chartsRowInner({
@@ -22,6 +24,7 @@ function chartsRowInner({
   onOrderOutcomeChange,
   chartOutcomeSync,
   onChartOutcomeSyncChange,
+  myTradesForMarkers,
 }: SidebarChartsRowProps) {
   const polymarketTape = useSidebarPolymarketTape();
   const displayLiveTrades = useMemo(
@@ -40,6 +43,7 @@ function chartsRowInner({
       <SidebarRightLiveTradeChart
         market={selectedMarket}
         trades={displayLiveTrades}
+        myTradesForMarkers={myTradesForMarkers}
         intervalSelector="dropdown"
         outcomeSync={outcomeSync}
         orderOutcome={orderOutcome}

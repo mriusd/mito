@@ -100,7 +100,8 @@ import { exportWalletFillsCsv, exportWalletMarketsCsv } from '../lib/walletInfoC
 import { fetchPolymarketNickname } from '../api/polymarket';
 import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
-import { SidebarRightLiveTradeChart, type ChartTradeMarker } from './SidebarRightLiveTradeChart';
+import type { MyTradeChartRow } from '../lib/chartTradeMarkers';
+import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 import {
   enrichMarketByIdFromWalletPositions,
   resolveWalletInfoChartMarket,
@@ -178,6 +179,7 @@ interface ToxicFlowDialogProps {
   marketId: string;
   marketName: string;
   yesTokenId?: string;
+  noTokenId?: string;
   marketExpired?: boolean;
   onClose: () => void;
   /** In-sidebar panel: no modal backdrop; fills parent flex column. */
@@ -1828,37 +1830,6 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     [selectedMarketMeta, chartOutcomeTokens],
   );
 
-  const walletInfoFillMarkers = useMemo((): ChartTradeMarker[] => {
-    const yesTok = selectedMarketForChart?.clobTokenIds?.[0]?.trim() || '';
-    const noTok = selectedMarketForChart?.clobTokenIds?.[1]?.trim() || '';
-    const out: ChartTradeMarker[] = [];
-    for (const f of fills) {
-      const action = String(f.action ?? '').trim().toUpperCase();
-      if (action !== 'BUY' && action !== 'SELL') continue;
-      const bt = Number(f.blockTime ?? 0);
-      if (!bt) continue;
-      const timeMs = bt > 1e12 ? bt : bt * 1000;
-      const pr = f.price;
-      if (pr == null || !Number.isFinite(pr)) continue;
-      let priceCents = pr * 100;
-      let side: 'BUY' | 'SELL' = action;
-      const tid = String(f.tokenId || '').trim();
-      const isNoLeg = noTok && tid && sameClobToken(tid, noTok) && !sameClobToken(tid, yesTok);
-      const isYesLeg = yesTok && tid && sameClobToken(tid, yesTok) && !sameClobToken(tid, noTok);
-      if (walletChartOutcome === 'YES') {
-        if (isNoLeg) {
-          priceCents = 100 - priceCents;
-          side = action === 'BUY' ? 'SELL' : 'BUY';
-        }
-      } else if (isYesLeg) {
-        priceCents = 100 - priceCents;
-        side = action === 'BUY' ? 'SELL' : 'BUY';
-      }
-      out.push({ timeMs, priceCents, side });
-    }
-    return out;
-  }, [fills, selectedMarketForChart, walletChartOutcome]);
-
   const onMarketRowClick = useCallback((id: string) => {
     setSelectedMarketId(id);
   }, []);
@@ -2305,7 +2276,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                 <SidebarRightLiveTradeChart
                   market={selectedMarketForChart}
                   trades={walletInfoChartTrades}
-                  tradeMarkers={walletInfoFillMarkers}
+                  ledgerFillsForMarkers={fills}
                   chartOutcome={walletChartOutcome}
                   onChartOutcomeChange={setWalletChartOutcome}
                   intervalSelector="dropdown"
@@ -2673,6 +2644,7 @@ const ToxicFlowStakedStatCell = memo(function ToxicFlowStakedStatCell({
 
 const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   yesTokenId,
+  noTokenId,
   marketId,
   open,
   marketExpired = false,
@@ -2688,6 +2660,7 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   layoutSwitch,
 }: {
   yesTokenId: string;
+  noTokenId?: string;
   marketId: string;
   open: boolean;
   marketExpired?: boolean;
@@ -2734,7 +2707,12 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
     }
     return count;
   }, [tabWalletViews, bellWalletsKey, bellMinStakeKey]);
-  useToxicBellRowRingSound(bellFlashingRowCount, open && !marketNotifyMuted && !marketExpired);
+  useToxicBellRowRingSound(
+    bellFlashingRowCount,
+    open && !marketNotifyMuted && !marketExpired,
+    yesTokenId,
+    noTokenId,
+  );
   return (
     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden mt-2 bg-gray-900/60 rounded p-2 w-full">
       {layoutMode === 'single' && (
@@ -2832,6 +2810,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   marketId,
   marketName,
   yesTokenId,
+  noTokenId,
   marketExpired = false,
   onClose,
   embedded = false,
@@ -3181,6 +3160,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
           {tabWalletViews ? (
             <ToxicFlowDialogTableStack
               yesTokenId={yesTok}
+              noTokenId={noTokenId}
               marketId={midTrim}
               open={open}
               marketExpired={marketExpired}

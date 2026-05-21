@@ -8,6 +8,9 @@ import {
   detectChartVolumeSpike,
   playChartVolumeSpikeRing,
 } from '../lib/chartVolumeSpikeAlert';
+import type { ChartTradeMarker } from '../lib/chartTradeMarkers';
+
+export type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 
 interface Candle {
   time: number;
@@ -45,12 +48,6 @@ function persistChartInterval(iv: ChartInterval) {
   }
 }
 
-export type ChartTradeMarker = {
-  timeMs: number;
-  priceCents: number;
-  side: 'BUY' | 'SELL';
-};
-
 interface LiveTradeChartProps {
   trades: LiveTrade[];
   isNo: boolean;
@@ -82,6 +79,9 @@ interface LiveTradeChartProps {
     enabled: boolean;
     onToggle: () => void;
   };
+  /** YES/NO token ids for global notification sound price mute. */
+  soundMuteYesTokenId?: string;
+  soundMuteNoTokenId?: string;
 }
 
 function defaultInterval(context?: string): string {
@@ -129,6 +129,8 @@ export function LiveTradeChart({
   intervalSelector = 'buttons',
   outcomeToggle,
   outcomeSync,
+  soundMuteYesTokenId,
+  soundMuteNoTokenId,
 }: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
@@ -723,14 +725,14 @@ export function LiveTradeChart({
     setVolumeSpikeFlash(true);
     const endMs = endTime != null && Number.isFinite(endTime) ? endTime : null;
     if (endMs == null || endMs > Date.now()) {
-      void playChartVolumeSpikeRing();
+      void playChartVolumeSpikeRing(soundMuteYesTokenId, soundMuteNoTokenId);
     }
 
     const t = window.setTimeout(() => {
       if (volumeSpikeFlashGenRef.current === gen) setVolumeSpikeFlash(false);
     }, CHART_VOLUME_SPIKE_FLASH_MS);
     return () => clearTimeout(t);
-  }, [ready, wsTick, tokenId, interval, candleMs, endTime]);
+  }, [ready, wsTick, tokenId, interval, candleMs, endTime, soundMuteYesTokenId, soundMuteNoTokenId]);
 
   useEffect(() => {
     draw();
@@ -826,20 +828,31 @@ export function LiveTradeChart({
       </div>
       {tradeMarkers != null ? (
         <div className="mb-0.5 flex items-center gap-2.5 text-[9px] text-gray-500">
-          <span className="inline-flex items-center gap-1">
-            <span
-              className="inline-block shrink-0 border-x-[4px] border-x-transparent border-b-[7px] border-b-[#2563eb]"
-              aria-hidden
-            />
-            long
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <span
-              className="inline-block shrink-0 border-x-[4px] border-x-transparent border-t-[7px] border-t-[#facc15]"
-              aria-hidden
-            />
-            short
-          </span>
+          {(() => {
+            const swapColors = outcomeToggle?.value === 'NO';
+            const buyColor = swapColors ? '#facc15' : '#2563eb';
+            const sellColor = swapColors ? '#2563eb' : '#facc15';
+            return (
+              <>
+                <span className="inline-flex items-center gap-1">
+                  <span
+                    className="inline-block shrink-0 border-x-[4px] border-x-transparent border-b-[7px]"
+                    style={{ borderBottomColor: buyColor }}
+                    aria-hidden
+                  />
+                  buy
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span
+                    className="inline-block shrink-0 border-x-[4px] border-x-transparent border-t-[7px]"
+                    style={{ borderTopColor: sellColor }}
+                    aria-hidden
+                  />
+                  sell
+                </span>
+              </>
+            );
+          })()}
           <label className="inline-flex items-center gap-1 cursor-pointer select-none text-gray-400 hover:text-gray-300">
             <input
               type="checkbox"

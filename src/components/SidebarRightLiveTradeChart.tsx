@@ -2,9 +2,16 @@ import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import type { Market } from '../types';
 import { extractAssetFromMarket } from '../utils/format';
-import { LiveTradeChart, type ChartTradeMarker } from './LiveTradeChart';
+import { LiveTradeChart } from './LiveTradeChart';
+import {
+  buildChartTradeMarkersFromLedgerFills,
+  buildChartTradeMarkersFromMyTrades,
+  type ChartTradeMarker,
+  type LedgerFillChartRow,
+  type MyTradeChartRow,
+} from '../lib/chartTradeMarkers';
 
-export type { ChartTradeMarker };
+export type { ChartTradeMarker, LedgerFillChartRow, MyTradeChartRow };
 
 function marketIsUpDown(market: { question?: string; eventSlug?: string } | null | undefined): boolean {
   return !!(market?.question?.match(/up\s+or\s+down/i) || market?.eventSlug?.match(/up-or-down|updown/i));
@@ -42,6 +49,10 @@ export type SidebarRightLiveTradeChartProps = {
   market: Market;
   trades?: LiveTrade[];
   tradeMarkers?: ChartTradeMarker[];
+  /** Build triangle markers from sidebar My Trades (uses chart YES/NO view). */
+  myTradesForMarkers?: MyTradeChartRow[];
+  /** Build triangle markers from wallet fill ledger rows (uses chart YES/NO view). */
+  ledgerFillsForMarkers?: LedgerFillChartRow[];
   className?: string;
   chartStartTime?: number;
   chartEndTime?: number;
@@ -56,7 +67,9 @@ export type SidebarRightLiveTradeChartProps = {
 export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeChart({
   market,
   trades = [],
-  tradeMarkers,
+  tradeMarkers: tradeMarkersProp,
+  myTradesForMarkers,
+  ledgerFillsForMarkers,
   className,
   chartStartTime,
   chartEndTime,
@@ -103,6 +116,32 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   const yesLabel = isUpDownMarket ? 'UP' : 'YES';
   const noLabel = isUpDownMarket ? 'DOWN' : 'NO';
 
+  const tradeMarkers = useMemo(() => {
+    if (tradeMarkersProp != null) return tradeMarkersProp;
+    if (ledgerFillsForMarkers != null) {
+      return buildChartTradeMarkersFromLedgerFills(ledgerFillsForMarkers, {
+        yesTokenId,
+        noTokenId,
+        chartOutcome,
+      });
+    }
+    if (myTradesForMarkers != null) {
+      return buildChartTradeMarkersFromMyTrades(myTradesForMarkers, {
+        yesTokenId,
+        noTokenId,
+        chartOutcome,
+      });
+    }
+    return undefined;
+  }, [
+    tradeMarkersProp,
+    ledgerFillsForMarkers,
+    myTradesForMarkers,
+    yesTokenId,
+    noTokenId,
+    chartOutcome,
+  ]);
+
   if (!yesTokenId) return null;
 
   const outcomeToggle = {
@@ -131,6 +170,8 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
         intervalSelector={intervalSelector}
         outcomeToggle={outcomeToggle}
         outcomeSync={outcomeSync}
+        soundMuteYesTokenId={yesTokenId}
+        soundMuteNoTokenId={noTokenId}
       />,
     );
   }
@@ -148,6 +189,8 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       intervalSelector={intervalSelector}
       outcomeToggle={outcomeToggle}
       outcomeSync={outcomeSync}
+      soundMuteYesTokenId={yesTokenId}
+      soundMuteNoTokenId={noTokenId}
     />,
   );
 });

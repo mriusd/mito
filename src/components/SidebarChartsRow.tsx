@@ -58,6 +58,7 @@ function chartsRowInner({
         market={selectedMarket}
         trades={displayLiveTrades}
         isNo={orderOutcome === 'NO'}
+        intervalSelector="dropdown"
       />
     </div>
   );

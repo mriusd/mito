@@ -61,8 +61,8 @@ interface LiveTradeChartProps {
   hidePriceLines?: boolean;
   /** Wallet fills — tiny buy/sell ticks to the right of candles. */
   tradeMarkers?: ChartTradeMarker[];
-  /** Fit X-axis to actual candle span (wallet info / sparse history). Chart stays full parent width. */
-  fitXAxisToCandles?: boolean;
+  /** Resolution picker UI — sidebar right uses dropdown. */
+  intervalSelector?: 'buttons' | 'dropdown';
 }
 
 function defaultInterval(context?: string): string {
@@ -86,7 +86,7 @@ export function LiveTradeChart({
   targetPrice,
   hidePriceLines,
   tradeMarkers,
-  fitXAxisToCandles,
+  intervalSelector = 'buttons',
 }: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
@@ -431,14 +431,11 @@ export function LiveTradeChart({
     const minP = 0;
     const maxP = 100;
 
-    // Use full market duration for X-axis unless fitting to sparse candle data
-    const fitData = fitXAxisToCandles && candles.length > 0;
-    const minT = fitData ? candles[0].time : startTime || candles[0].time;
-    const maxT = fitData
-      ? candles[candles.length - 1].time + candleMs
-      : endTime || candles[candles.length - 1].time + candleMs;
+    // X-axis spans market window (startTime/endTime) like sidebar right chart
+    const minT = startTime || candles[0].time;
+    const maxT = endTime || candles[candles.length - 1].time + candleMs;
     const rangeT = maxT - minT || 1;
-    const totalCandles = fitData ? candles.length : Math.ceil(rangeT / candleMs);
+    const totalCandles = Math.ceil(rangeT / candleMs);
 
     const toX = (t: number) => chartLeft + ((t - minT) / rangeT) * (chartRight - chartLeft);
     const toY = (p: number) => chartBot - ((p - minP) / (maxP - minP)) * (chartBot - chartTop);
@@ -635,7 +632,7 @@ export function LiveTradeChart({
       const t = minT + rangeT * (i / labelCount);
       ctx.fillText(fmtTime(t), toX(t), timeLabelY);
     }
-  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, fitXAxisToCandles, interval]);
+  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, interval]);
 
   useEffect(() => {
     draw();
@@ -647,15 +644,30 @@ export function LiveTradeChart({
     <div className="sidebar-section">
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs text-gray-400">Price</span>
-        <div className="flex gap-0.5">
-          {CHART_INTERVALS.map((iv) => (
-            <button
-              key={iv}
-              onClick={() => setChartInterval(iv)}
-              className={`px-1.5 py-0 text-[10px] rounded ${interval === iv ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
-            >{iv}</button>
-          ))}
-        </div>
+        {intervalSelector === 'dropdown' ? (
+          <select
+            value={interval}
+            onChange={(e) => setChartInterval(e.target.value as ChartInterval)}
+            className="min-w-[3.5rem] w-16 shrink-0 rounded border border-gray-600 bg-gray-800 py-0 pl-1.5 pr-6 text-[10px] font-medium text-gray-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40"
+            aria-label="Chart resolution"
+          >
+            {CHART_INTERVALS.map((iv) => (
+              <option key={iv} value={iv}>
+                {iv}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div className="flex gap-0.5">
+            {CHART_INTERVALS.map((iv) => (
+              <button
+                key={iv}
+                onClick={() => setChartInterval(iv)}
+                className={`px-1.5 py-0 text-[10px] rounded ${interval === iv ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
+              >{iv}</button>
+            ))}
+          </div>
+        )}
       </div>
       {tradeMarkers != null ? (
         <div className="mb-0.5 flex items-center gap-2.5 text-[9px] text-gray-500">

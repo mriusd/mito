@@ -46,6 +46,7 @@ export type SidebarRightLiveTradeChartProps = {
   className?: string;
   chartStartTime?: number;
   chartEndTime?: number;
+  intervalSelector?: 'buttons' | 'dropdown';
 };
 
 export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeChart({
@@ -56,6 +57,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   className,
   chartStartTime,
   chartEndTime,
+  intervalSelector = 'buttons',
 }: SidebarRightLiveTradeChartProps) {
   const isUpDownMarket = marketIsUpDown(market);
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(market) : null;
@@ -83,7 +85,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
         defaultIntervalOverride={upDownKlineDefaultInterval}
         chainlinkAsset={upDownAsset || undefined}
         hidePriceLines
-        fitXAxisToCandles={chartStartTime != null}
+        intervalSelector={intervalSelector}
       />,
     );
   }
@@ -98,7 +100,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       endTime={endTime}
       defaultIntervalOverride="5m"
       hidePriceLines
-      fitXAxisToCandles={chartStartTime != null}
+      intervalSelector={intervalSelector}
     />,
   );
 });

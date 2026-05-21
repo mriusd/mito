@@ -103,7 +103,6 @@ import {
   enrichMarketByIdFromWalletPositions,
   resolveWalletInfoChartMarket,
   walletInfoChartMarketWithOutcomeTokens,
-  walletInfoChartTimeRange,
 } from '../lib/walletInfoChartMarket';
 import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import type { Market } from '../types';
@@ -1801,17 +1800,6 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     [selectedMarketMeta, chartOutcomeTokens],
   );
 
-  const selectedWalletPosition = useMemo(() => {
-    const lc = selectedMarketId.trim().toLowerCase();
-    if (!lc) return undefined;
-    return markets.find((row) => String(row.marketId || '').trim().toLowerCase() === lc);
-  }, [selectedMarketId, markets]);
-
-  const walletInfoChartWindow = useMemo(() => {
-    if (!selectedMarketForChart?.clobTokenIds?.[0]) return null;
-    return walletInfoChartTimeRange(selectedMarketForChart, selectedWalletPosition);
-  }, [selectedMarketForChart, selectedWalletPosition]);
-
   const walletInfoFillMarkers = useMemo((): ChartTradeMarker[] => {
     const yesTok = selectedMarketForChart?.clobTokenIds?.[0]?.trim() || '';
     const noTok = selectedMarketForChart?.clobTokenIds?.[1]?.trim() || '';
@@ -2248,8 +2236,6 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                   market={selectedMarketForChart}
                   trades={walletInfoChartTrades}
                   tradeMarkers={walletInfoFillMarkers}
-                  chartStartTime={walletInfoChartWindow?.startTime}
-                  chartEndTime={walletInfoChartWindow?.endTime}
                 />
               </div>
             ) : null}

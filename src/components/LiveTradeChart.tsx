@@ -576,7 +576,7 @@ export function LiveTradeChart({
 
       const markerSize = 4;
       const markerGap = 3;
-      const invertTradeMarkers = outcomeToggle?.value === 'NO';
+      const swapTradeMarkerColors = outcomeToggle?.value === 'NO';
       for (const [bucketOpen, slot] of bucketMarkers) {
         const c = candles.find((row) => row.time === bucketOpen);
         if (!c) continue;
@@ -585,20 +585,12 @@ export function LiveTradeChart({
         const lowY = toY(c.l);
 
         if (slot.buy) {
-          ctx.fillStyle = '#2563eb';
-          if (invertTradeMarkers) {
-            fillTradeMarkerTriangle(ctx, cx, highY - markerGap, markerSize, 'down');
-          } else {
-            fillTradeMarkerTriangle(ctx, cx, lowY + markerGap, markerSize, 'up');
-          }
+          ctx.fillStyle = swapTradeMarkerColors ? '#facc15' : '#2563eb';
+          fillTradeMarkerTriangle(ctx, cx, lowY + markerGap, markerSize, 'up');
         }
         if (slot.sell) {
-          ctx.fillStyle = '#facc15';
-          if (invertTradeMarkers) {
-            fillTradeMarkerTriangle(ctx, cx, lowY + markerGap, markerSize, 'up');
-          } else {
-            fillTradeMarkerTriangle(ctx, cx, highY - markerGap, markerSize, 'down');
-          }
+          ctx.fillStyle = swapTradeMarkerColors ? '#2563eb' : '#facc15';
+          fillTradeMarkerTriangle(ctx, cx, highY - markerGap, markerSize, 'down');
         }
       }
     }

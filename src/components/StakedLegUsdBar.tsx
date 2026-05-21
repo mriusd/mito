@@ -6,6 +6,10 @@ function fmtUsd(absVal: number): string {
   return absVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function fmtUsdWhole(absVal: number): string {
+  return Math.round(absVal).toLocaleString('en-US', { maximumFractionDigits: 0 });
+}
+
 export type StakedLegBarMode = 'grossLegTotals' | 'cohortSurplusHalves';
 
 export function StakedLegUsdBar({
@@ -24,6 +28,8 @@ export function StakedLegUsdBar({
   midMarker = false,
   /** When compact, skip the fixed left label column (external label row). */
   compactOmitLeftLabel = false,
+  /** Compact right column: `±N% / $direction` (YES surplus if lean ≥ 0, else NO). */
+  compactShowLeanDirectionUsd = false,
 }: {
   sumYUsd: number;
   sumNUsd: number;
@@ -39,6 +45,7 @@ export function StakedLegUsdBar({
   compactLegUsdFooter?: boolean;
   midMarker?: boolean;
   compactOmitLeftLabel?: boolean;
+  compactShowLeanDirectionUsd?: boolean;
 }) {
   const finiteY = typeof sumYUsd === 'number' && Number.isFinite(sumYUsd);
   const finiteN = typeof sumNUsd === 'number' && Number.isFinite(sumNUsd);
@@ -104,6 +111,25 @@ export function StakedLegUsdBar({
       : barMode === 'grossLegTotals'
         ? `(ΣY − ΣN) / (ΣY + ΣN) tilt: ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}% · |ΣY−ΣN| $${fmtUsd(netAbs)}`
         : `(Σ splits YES − Σ splits NO)/(Σ splits): ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}%; center $${fmtUsd(displayTotal)} = Σ|per-wallet inv×px net| in cohort—not header Staked.`;
+    const directionUsd = neutralBar ? null : lean >= 0 ? sumYUsd : sumNUsd;
+    const leanPctLabel = neutralBar
+      ? '—'
+      : `${leanPct > 0 ? '+' : ''}${leanPct.toFixed(0)}%`;
+    const leanRightLabel =
+      neutralBar || directionUsd == null
+        ? '—'
+        : compactShowLeanDirectionUsd
+          ? `${leanPctLabel} \\ $${fmtUsdWhole(directionUsd)}`
+          : leanPctLabel;
+    const leanRightTitle =
+      neutralBar || directionUsd == null
+        ? leanTitle
+        : compactShowLeanDirectionUsd
+          ? `${leanTitle} · ${lean >= 0 ? 'YES' : 'NO'} direction staked $${fmtUsdWhole(directionUsd)}`
+          : leanTitle;
+    const leanColClass = compactShowLeanDirectionUsd
+      ? 'min-w-[5.75rem] max-w-[5.75rem] text-[7px] leading-tight'
+      : 'w-[28px] text-[8px]';
     const leftLbl = compactLabel ?? 'Stake';
     const yFoot =
       neutralBar ? '—'
@@ -124,13 +150,11 @@ export function StakedLegUsdBar({
             </span>
           )}
           <div className="flex-1 min-w-0">{bar}</div>
-          <span className={`text-[8px] font-bold w-[28px] shrink-0 tabular-nums text-right ${leanColor}`} title={leanTitle}>
-            {neutralBar ? '—' : (
-              <>
-                {leanPct > 0 ? '+' : ''}
-                {leanPct.toFixed(0)}%
-              </>
-            )}
+          <span
+            className={`font-bold shrink-0 tabular-nums text-right whitespace-nowrap ${leanColClass} ${leanColor}`}
+            title={leanRightTitle}
+          >
+            {leanRightLabel}
           </span>
         </div>
         {compactLegUsdFooter ? (
@@ -147,7 +171,7 @@ export function StakedLegUsdBar({
                 {neutralBar ? '—' : `N $${fmtUsd(sumNUsd)}`}
               </span>
             </div>
-            <span className="w-[28px] shrink-0" aria-hidden />
+            <span className={`shrink-0 ${compactShowLeanDirectionUsd ? 'min-w-[5.75rem]' : 'w-[28px]'}`} aria-hidden />
           </div>
         ) : null}
       </div>

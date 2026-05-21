@@ -1567,6 +1567,7 @@ function WalletTableInner({
           compactLabel="Stake"
           barMode="cohortSurplusHalves"
           midMarker
+          compactShowLeanDirectionUsd
         />
       </div>
       <div className="min-h-0 flex-1 overflow-auto w-full min-w-0 overscroll-contain toxic-flow-scroll-stable">

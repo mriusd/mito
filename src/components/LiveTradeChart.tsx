@@ -102,6 +102,7 @@ export function LiveTradeChart({
   );
   const [wsTick, setWsTick] = useState(0);
   const [chainlinkTick, setChainlinkTick] = useState(0);
+  const [hideTrades, setHideTrades] = useState(false);
 
   const setChartInterval = useCallback((iv: ChartInterval) => {
     setInterval_(iv);
@@ -505,22 +506,50 @@ export function LiveTradeChart({
       ctx.fillRect(cx - candleW / 2, bodyTop, candleW, bodyH);
     }
 
-    if (tradeMarkers && tradeMarkers.length > 0) {
-      const tickW = 5;
-      const tickGap = 1;
-      ctx.lineWidth = 1.5;
-      ctx.lineCap = 'round';
+    if (!hideTrades && tradeMarkers && tradeMarkers.length > 0) {
+      const candleForTime = (t: number): Candle | undefined => {
+        for (let i = candles.length - 1; i >= 0; i--) {
+          const c = candles[i];
+          if (t >= c.time && t < c.time + candleMs) return c;
+        }
+        return undefined;
+      };
+      const bucketMarkers = new Map<number, { buy: boolean; sell: boolean }>();
+
       for (const m of tradeMarkers) {
         if (m.timeMs < minT - candleMs || m.timeMs > maxT + candleMs) continue;
-        const bucketOpen = minT + Math.floor((m.timeMs - minT) / candleMs) * candleMs;
-        const candleCx = toX(bucketOpen + candleMs / 2);
-        const tickX0 = candleCx + candleW / 2 + tickGap;
-        const y = toY(Math.max(0, Math.min(100, m.priceCents)));
-        ctx.strokeStyle = m.side === 'BUY' ? '#2563eb' : '#facc15';
-        ctx.beginPath();
-        ctx.moveTo(tickX0, y);
-        ctx.lineTo(tickX0 + tickW, y);
-        ctx.stroke();
+        const c = candleForTime(m.timeMs);
+        if (!c) continue;
+        let slot = bucketMarkers.get(c.time);
+        if (!slot) {
+          slot = { buy: false, sell: false };
+          bucketMarkers.set(c.time, slot);
+        }
+        if (m.side === 'BUY' && !slot.buy) slot.buy = true;
+        else if (m.side === 'SELL' && !slot.sell) slot.sell = true;
+      }
+
+      const markerR = 2;
+      const markerGap = 2;
+      for (const [bucketOpen, slot] of bucketMarkers) {
+        const c = candles.find((row) => row.time === bucketOpen);
+        if (!c) continue;
+        const cx = toX(bucketOpen + candleMs / 2);
+        const highY = toY(c.h);
+        const lowY = toY(c.l);
+
+        if (slot.buy) {
+          ctx.fillStyle = '#2563eb';
+          ctx.beginPath();
+          ctx.arc(cx, lowY + markerGap + markerR, markerR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (slot.sell) {
+          ctx.fillStyle = '#facc15';
+          ctx.beginPath();
+          ctx.arc(cx, highY - markerGap - markerR, markerR, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
 
@@ -632,7 +661,7 @@ export function LiveTradeChart({
       const t = minT + rangeT * (i / labelCount);
       ctx.fillText(fmtTime(t), toX(t), timeLabelY);
     }
-  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, interval]);
+  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval]);
 
   useEffect(() => {
     draw();
@@ -672,13 +701,22 @@ export function LiveTradeChart({
       {tradeMarkers != null ? (
         <div className="mb-0.5 flex items-center gap-2.5 text-[9px] text-gray-500">
           <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-0.5 w-2.5 shrink-0 rounded-full bg-[#2563eb]" aria-hidden />
+            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#2563eb]" aria-hidden />
             buy
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-0.5 w-2.5 shrink-0 rounded-full bg-[#facc15]" aria-hidden />
+            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#facc15]" aria-hidden />
             sell
           </span>
+          <label className="inline-flex items-center gap-1 cursor-pointer select-none text-gray-400 hover:text-gray-300">
+            <input
+              type="checkbox"
+              checked={hideTrades}
+              onChange={(e) => setHideTrades(e.target.checked)}
+              className="h-3 w-3 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-0 focus:ring-offset-0"
+            />
+            Hide Trades
+          </label>
         </div>
       ) : null}
       <canvas

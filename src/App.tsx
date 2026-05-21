@@ -3,6 +3,7 @@ import './lib/wallet';
 import { useAppStore } from './stores/appStore';
 import { useBinanceWS } from './hooks/useBinanceWS';
 import { useMarketData } from './hooks/useMarketData';
+import { invalidateClobMemoryCreds } from './lib/clobClient';
 import { useWalletData } from './hooks/useWalletData';
 import { useVwapAndVolatility } from './hooks/useVwapAndVolatility';
 import { useSignalsAndArbs } from './hooks/useSignalsAndArbs';
@@ -106,6 +107,7 @@ function App() {
     }
     if (prevSigningRef.current === signingMode) return;
     prevSigningRef.current = signingMode;
+    invalidateClobMemoryCreds();
     void handleRefresh();
   }, [signingMode, handleRefresh]);
 

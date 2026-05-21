@@ -13,6 +13,7 @@ import {
 } from '@polymarket/clob-client-v2';
 import { API_BASE, POLYGON_ETHERS_NETWORK, POLYGON_JSONRPC_URL, vitePolyBuilderCode } from './env';
 import { inferPolymarketClobSignatureType, resolvePolymarketMakerAddress } from './polymarketTradingMaker';
+import { fetchProxyWallet } from '../api/polymarket';
 import { getConnection } from '@wagmi/core';
 import { wagmiAdapter } from './wallet';
 import { signingDialog } from '../components/SigningDialog';
@@ -147,6 +148,23 @@ export function clearCachedCreds() {
   cachedInferSigType = null;
   lastSigningChannel = null;
   deriveInflight.clear();
+}
+
+/** Drop in-memory L2 creds after PK ↔ wallet switch — next order reloads from disk or re-derives. */
+export function invalidateClobMemoryCreds(): void {
+  deriveInflight.clear();
+  cachedCreds = null;
+  cachedAddress = null;
+  cachedProxyWallet = null;
+  cachedInferKey = null;
+  cachedInferSigType = null;
+}
+
+export async function resolveTradingMakerForActiveSigner(): Promise<string> {
+  const signer = await getEthersSigner();
+  const eoa = (await signer.getAddress()).toLowerCase();
+  const pw = await fetchProxyWallet(eoa);
+  return resolvePolymarketMakerAddress(eoa, pw);
 }
 
 /** Drop LS + in-memory creds for this EOA — safe when server rejects stale/mismatched bundle. */
@@ -382,15 +400,17 @@ async function noteActiveSigningChannel(signer: ethers.Signer): Promise<void> {
   const prev = lastSigningChannel;
   lastSigningChannel = { mode, addr };
   const addrChanged = prev.addr !== addr;
+  const modeChanged = prev.mode !== mode;
   polyClobLog({
     event: 'signingChannelBumped',
     addrChanged,
+    modeChanged,
     from: `${prev.mode}:${prev.addr}`,
     to: `${mode}:${addr}`,
   });
 
   deriveInflight.clear();
-  if (addrChanged) {
+  if (addrChanged || modeChanged) {
     cachedCreds = null;
     cachedAddress = null;
     cachedProxyWallet = null;
@@ -720,6 +740,9 @@ export async function placeOrderDirect(params: {
   try {
     const signer = await getEthersSigner();
     const eoaPrecheck = (await signer.getAddress()).toLowerCase();
+    if (cachedAddress && cachedAddress !== eoaPrecheck) {
+      invalidateClobMemoryCreds();
+    }
     const needsAuth = !hasCredsForWallet(params.proxyWallet, eoaPrecheck);
     sd.open(needsAuth, { orderInfo: params.orderInfo });
 

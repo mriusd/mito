@@ -1,9 +1,20 @@
 import type { MarketsResponse, Market, Position, SmartMoneySignalsResponse } from '../types';
 import { isWebMode, API_BASE } from '../lib/env';
-import { placeOrderDirect, cancelOrderDirect, cancelOrdersDirect, signOrderOnly, submitSignedOrderDirect } from '../lib/clobClient';
+import { placeOrderDirect, cancelOrderDirect, cancelOrdersDirect, signOrderOnly, submitSignedOrderDirect, resolveTradingMakerForActiveSigner } from '../lib/clobClient';
 import { useAppStore } from '../stores/appStore';
 
 const BASE = API_BASE;
+
+async function tradingProxyWalletForOrder(): Promise<string | { error: string }> {
+  try {
+    const proxyWallet = await resolveTradingMakerForActiveSigner();
+    useAppStore.getState().setMarketData({ makerAddress: proxyWallet });
+    return proxyWallet;
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Wallet not connected';
+    return { error: msg };
+  }
+}
 
 export async function fetchMarkets(): Promise<MarketsResponse> {
   const resp = await fetch(`${BASE}/api/markets`);
@@ -52,9 +63,9 @@ export async function placeOrder(params: {
   orderType?: 'GTC' | 'GTD' | 'FAK' | 'FOK';
 }): Promise<{ success: boolean; error?: string }> {
   if (isWebMode) {
-    const proxyWallet = useAppStore.getState().makerAddress;
-    if (!proxyWallet) return { success: false, error: 'Wallet not connected' };
-    return placeOrderDirect({ ...params, proxyWallet });
+    const proxy = await tradingProxyWalletForOrder();
+    if (typeof proxy !== 'string') return { success: false, error: proxy.error };
+    return placeOrderDirect({ ...params, proxyWallet: proxy });
   }
   const resp = await fetch(`${BASE}/api/place-order`, {
     method: 'POST',
@@ -66,9 +77,9 @@ export async function placeOrder(params: {
 
 export async function cancelOrder(orderId: string): Promise<{ success: boolean; error?: string }> {
   if (isWebMode) {
-    const proxyWallet = useAppStore.getState().makerAddress;
-    if (!proxyWallet) return { success: false, error: 'Wallet not connected' };
-    return cancelOrderDirect(orderId, proxyWallet);
+    const proxy = await tradingProxyWalletForOrder();
+    if (typeof proxy !== 'string') return { success: false, error: proxy.error };
+    return cancelOrderDirect(orderId, proxy);
   }
   const resp = await fetch(`${BASE}/api/cancel-order`, {
     method: 'POST',
@@ -82,9 +93,9 @@ export async function cancelOrders(orderIds: string[]): Promise<{ success: boole
   const ids = orderIds.map((id) => id.trim()).filter(Boolean);
   if (ids.length === 0) return { success: true, cancelled: 0 };
   if (isWebMode) {
-    const proxyWallet = useAppStore.getState().makerAddress;
-    if (!proxyWallet) return { success: false, error: 'Wallet not connected' };
-    return cancelOrdersDirect(ids, proxyWallet);
+    const proxy = await tradingProxyWalletForOrder();
+    if (typeof proxy !== 'string') return { success: false, error: proxy.error };
+    return cancelOrdersDirect(ids, proxy);
   }
   const results = await Promise.all(ids.map((id) => cancelOrder(id)));
   const cancelled = results.filter((r) => r.success).length;
@@ -103,9 +114,9 @@ export async function signOrder(params: {
   expiration?: number;
 }): Promise<{ success: boolean; signedPayload?: any; error?: string }> {
   if (isWebMode) {
-    const proxyWallet = useAppStore.getState().makerAddress;
-    if (!proxyWallet) return { success: false, error: 'Wallet not connected' };
-    return signOrderOnly({ ...params, proxyWallet });
+    const proxy = await tradingProxyWalletForOrder();
+    if (typeof proxy !== 'string') return { success: false, error: proxy.error };
+    return signOrderOnly({ ...params, proxyWallet: proxy });
   }
   return { success: false, error: 'signOrder not supported in app mode' };
 }

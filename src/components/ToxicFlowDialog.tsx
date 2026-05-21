@@ -1684,6 +1684,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [markets, setMarkets] = useState<WalletPosition[]>([]);
   const [selectedMarketId, setSelectedMarketId] = useState('');
+  const [walletChartOutcome, setWalletChartOutcome] = useState<'YES' | 'NO'>('YES');
   const [chartOutcomeTokens, setChartOutcomeTokens] = useState<MarketOutcomeTokensResponse | null>(null);
   const [loadingMarkets, setLoadingMarkets] = useState(false);
   const [fillsRefreshToken, setFillsRefreshToken] = useState(0);
@@ -1803,6 +1804,10 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     };
   }, [open, selectedMarketId]);
 
+  useEffect(() => {
+    setWalletChartOutcome('YES');
+  }, [selectedMarketId, chartOutcomeTokens?.tokenIdYes, chartOutcomeTokens?.tokenIdNo]);
+
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const polymarketTape = useSidebarPolymarketTape();
   const walletInfoChartTrades = liveTradesSource === 'onchain' ? [] : polymarketTape;
@@ -1838,14 +1843,20 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
       let side: 'BUY' | 'SELL' = action;
       const tid = String(f.tokenId || '').trim();
       const isNoLeg = noTok && tid && sameClobToken(tid, noTok) && !sameClobToken(tid, yesTok);
-      if (isNoLeg) {
+      const isYesLeg = yesTok && tid && sameClobToken(tid, yesTok) && !sameClobToken(tid, noTok);
+      if (walletChartOutcome === 'YES') {
+        if (isNoLeg) {
+          priceCents = 100 - priceCents;
+          side = action === 'BUY' ? 'SELL' : 'BUY';
+        }
+      } else if (isYesLeg) {
         priceCents = 100 - priceCents;
         side = action === 'BUY' ? 'SELL' : 'BUY';
       }
       out.push({ timeMs, priceCents, side });
     }
     return out;
-  }, [fills, selectedMarketForChart]);
+  }, [fills, selectedMarketForChart, walletChartOutcome]);
 
   const onMarketRowClick = useCallback((id: string) => {
     setSelectedMarketId(id);
@@ -2294,6 +2305,9 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                   market={selectedMarketForChart}
                   trades={walletInfoChartTrades}
                   tradeMarkers={walletInfoFillMarkers}
+                  chartOutcome={walletChartOutcome}
+                  onChartOutcomeChange={setWalletChartOutcome}
+                  intervalSelector="dropdown"
                 />
               </div>
             ) : null}

@@ -128,7 +128,7 @@ export function StakedLegUsdBar({
           ? `${leanTitle} · ${lean >= 0 ? 'YES' : 'NO'} direction staked $${fmtUsdWhole(directionUsd)}`
           : leanTitle;
     const leanColClass = compactShowLeanDirectionUsd
-      ? 'min-w-[5.75rem] max-w-[5.75rem] text-[7px] leading-tight'
+      ? 'min-w-[6.75rem] max-w-[6.75rem] text-[10px] leading-tight'
       : 'w-[28px] text-[8px]';
     const leftLbl = compactLabel ?? 'Stake';
     const yFoot =
@@ -171,7 +171,7 @@ export function StakedLegUsdBar({
                 {neutralBar ? '—' : `N $${fmtUsd(sumNUsd)}`}
               </span>
             </div>
-            <span className={`shrink-0 ${compactShowLeanDirectionUsd ? 'min-w-[5.75rem]' : 'w-[28px]'}`} aria-hidden />
+            <span className={`shrink-0 ${compactShowLeanDirectionUsd ? 'min-w-[6.75rem]' : 'w-[28px]'}`} aria-hidden />
           </div>
         ) : null}
       </div>

@@ -46,6 +46,8 @@ export type SidebarRightLiveTradeChartProps = {
   chartStartTime?: number;
   chartEndTime?: number;
   intervalSelector?: 'buttons' | 'dropdown';
+  chartOutcome?: 'YES' | 'NO';
+  onChartOutcomeChange?: (value: 'YES' | 'NO') => void;
 };
 
 export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeChart({
@@ -56,6 +58,8 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   chartStartTime,
   chartEndTime,
   intervalSelector = 'buttons',
+  chartOutcome: chartOutcomeProp,
+  onChartOutcomeChange,
 }: SidebarRightLiveTradeChartProps) {
   const isUpDownMarket = marketIsUpDown(market);
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(market) : null;
@@ -64,11 +68,14 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   const upDownStartTime = useMemo(() => upDownStartTimeFromMarket(market), [market]);
   const yesTokenId = market.clobTokenIds?.[0] || '';
   const noTokenId = market.clobTokenIds?.[1] || '';
-  const [chartOutcome, setChartOutcome] = useState<'YES' | 'NO'>('YES');
+  const [internalChartOutcome, setInternalChartOutcome] = useState<'YES' | 'NO'>('YES');
+  const chartOutcome = chartOutcomeProp ?? internalChartOutcome;
+  const setChartOutcome = onChartOutcomeChange ?? setInternalChartOutcome;
 
   useEffect(() => {
-    setChartOutcome('YES');
-  }, [market.id, yesTokenId, noTokenId]);
+    if (chartOutcomeProp !== undefined) return;
+    setInternalChartOutcome('YES');
+  }, [market.id, yesTokenId, noTokenId, chartOutcomeProp]);
 
   const tokenId = chartOutcome === 'YES' ? yesTokenId : noTokenId || yesTokenId;
   const endTime = chartEndTime ?? (market.endDate ? new Date(market.endDate).getTime() : undefined);

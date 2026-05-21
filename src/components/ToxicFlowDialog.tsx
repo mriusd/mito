@@ -96,6 +96,9 @@ import { exportWalletFillsCsv, exportWalletMarketsCsv } from '../lib/walletInfoC
 import { fetchPolymarketNickname } from '../api/polymarket';
 import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
+import { SidebarRightLiveTradeChart, type ChartTradeMarker } from './SidebarRightLiveTradeChart';
+import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
+import type { Market } from '../types';
 import { HelperTooltip } from './HelperTooltip';
 import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
@@ -1754,6 +1757,55 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     refreshMarketTradesWS();
   }, [open, wallet, selectedMarketId, fillsRefreshToken, refreshMarketTradesWS]);
 
+  const liveTradesSource = useAppStore((s) => s.liveTradesSource);
+  const polymarketTape = useSidebarPolymarketTape();
+  const walletInfoChartTrades = liveTradesSource === 'onchain' ? [] : polymarketTape;
+
+  const selectedMarketForChart = useMemo((): Market | null => {
+    const raw = selectedMarketId.trim();
+    if (!raw) return null;
+    const lc = raw.toLowerCase();
+    const lookup = useAppStore.getState().marketLookup;
+    const fromPanel = marketById[raw] || marketById[lc];
+    const fromStore = lookup[lc] || lookup[raw];
+    let mk: Market | null = fromPanel || fromStore || null;
+    if (!mk) return null;
+    if (mk.clobTokenIds?.[0]) return mk;
+    const pos = markets.find((row) => String(row.marketId || '').trim().toLowerCase() === lc);
+    if (!pos?.tokenIdYes) return mk.clobTokenIds?.length ? mk : null;
+    const yes = String(pos.tokenIdYes).trim();
+    const no = pos.tokenIdNo ? String(pos.tokenIdNo).trim() : '';
+    return {
+      ...mk,
+      clobTokenIds: no ? [yes, no] : [yes],
+    };
+  }, [selectedMarketId, marketById, markets]);
+
+  const walletInfoFillMarkers = useMemo((): ChartTradeMarker[] => {
+    const yesTok = selectedMarketForChart?.clobTokenIds?.[0]?.trim() || '';
+    const noTok = selectedMarketForChart?.clobTokenIds?.[1]?.trim() || '';
+    const out: ChartTradeMarker[] = [];
+    for (const f of fills) {
+      const action = String(f.action ?? '').trim().toUpperCase();
+      if (action !== 'BUY' && action !== 'SELL') continue;
+      const bt = Number(f.blockTime ?? 0);
+      if (!bt) continue;
+      const timeMs = bt > 1e12 ? bt : bt * 1000;
+      const pr = f.price;
+      if (pr == null || !Number.isFinite(pr)) continue;
+      let priceCents = pr * 100;
+      let side: 'BUY' | 'SELL' = action;
+      const tid = String(f.tokenId || '').trim();
+      const isNoLeg = noTok && tid && sameClobToken(tid, noTok) && !sameClobToken(tid, yesTok);
+      if (isNoLeg) {
+        priceCents = 100 - priceCents;
+        side = action === 'BUY' ? 'SELL' : 'BUY';
+      }
+      out.push({ timeMs, priceCents, side });
+    }
+    return out;
+  }, [fills, selectedMarketForChart]);
+
   const onMarketRowClick = useCallback((id: string) => {
     setSelectedMarketId(id);
   }, []);
@@ -2159,6 +2211,15 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                 Export CSV
               </button>
             </div>
+            {selectedMarketForChart?.clobTokenIds?.[0] ? (
+              <div className="shrink-0 mb-1 border-b border-gray-800/80 pb-1">
+                <SidebarRightLiveTradeChart
+                  market={selectedMarketForChart}
+                  trades={walletInfoChartTrades}
+                  tradeMarkers={walletInfoFillMarkers}
+                />
+              </div>
+            ) : null}
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
             {loadingFills ? (
               <div className="text-gray-500 text-[10px]">Loading trades...</div>

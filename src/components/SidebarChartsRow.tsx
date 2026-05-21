@@ -1,10 +1,10 @@
 import { memo, useMemo } from 'react';
 import { extractAssetFromMarket } from '../utils/format';
 import { ChainlinkChart } from './ChainlinkChart';
-import { LiveTradeChart } from './LiveTradeChart';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import type { Market } from '../types';
+import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 
 export type SidebarChartsRowProps = {
   selectedMarket: Market;
@@ -32,8 +32,6 @@ function chartsRowInner({
   onchainLiveTrades,
   liveTradesSource,
   orderOutcome,
-  upDownStartTime,
-  upDownKlineDefaultInterval,
   volatilityLookbackCandles,
   onSidebarChartAnnualVolPct,
 }: SidebarChartsRowProps) {
@@ -56,29 +54,11 @@ function chartsRowInner({
         />
       ) : null}
 
-      {isUpDownMarket ? (
-        <LiveTradeChart
-          trades={displayLiveTrades}
-          isNo={orderOutcome === 'NO'}
-          tokenId={selectedMarket.clobTokenIds?.[0] || ''}
-          startTime={upDownStartTime ?? undefined}
-          endTime={selectedMarket.endDate ? new Date(selectedMarket.endDate).getTime() : undefined}
-          intervalContext={upDownIntervalContext}
-          defaultIntervalOverride={upDownKlineDefaultInterval}
-          chainlinkAsset={upDownAsset || undefined}
-          targetPrice={upDownTargetPrice}
-          hidePriceLines
-        />
-      ) : (
-        <LiveTradeChart
-          trades={displayLiveTrades}
-          isNo={orderOutcome === 'NO'}
-          tokenId={selectedMarket.clobTokenIds?.[0] || ''}
-          endTime={selectedMarket.endDate ? new Date(selectedMarket.endDate).getTime() : undefined}
-          defaultIntervalOverride="5m"
-          hidePriceLines
-        />
-      )}
+      <SidebarRightLiveTradeChart
+        market={selectedMarket}
+        trades={displayLiveTrades}
+        isNo={orderOutcome === 'NO'}
+      />
     </div>
   );
 }

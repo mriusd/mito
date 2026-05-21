@@ -17,6 +17,12 @@ function toPrice(raw: number, isNo: boolean): number {
 
 const INTERVAL_MS: Record<string, number> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000, '4h': 14400000 };
 
+export type ChartTradeMarker = {
+  timeMs: number;
+  priceCents: number;
+  side: 'BUY' | 'SELL';
+};
+
 interface LiveTradeChartProps {
   trades: LiveTrade[];
   isNo: boolean;
@@ -31,6 +37,8 @@ interface LiveTradeChartProps {
   targetPrice?: number | null; // target price in USD, placed at 50% Y-axis
   /** Hide dashed last-outcome-price line and spot (Binance/Chainlink) overlay — sidebar right chart */
   hidePriceLines?: boolean;
+  /** Wallet fills — tiny buy/sell ticks to the right of candles. */
+  tradeMarkers?: ChartTradeMarker[];
 }
 
 function defaultInterval(context?: string): string {
@@ -53,6 +61,7 @@ export function LiveTradeChart({
   chainlinkAsset,
   targetPrice,
   hidePriceLines,
+  tradeMarkers,
 }: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
@@ -453,6 +462,25 @@ export function LiveTradeChart({
       ctx.fillRect(cx - candleW / 2, bodyTop, candleW, bodyH);
     }
 
+    if (tradeMarkers && tradeMarkers.length > 0) {
+      const tickW = 5;
+      const tickGap = 1;
+      ctx.lineWidth = 1.5;
+      ctx.lineCap = 'round';
+      for (const m of tradeMarkers) {
+        if (m.timeMs < minT - candleMs || m.timeMs > maxT + candleMs) continue;
+        const bucketOpen = minT + Math.floor((m.timeMs - minT) / candleMs) * candleMs;
+        const candleCx = toX(bucketOpen + candleMs / 2);
+        const tickX0 = candleCx + candleW / 2 + tickGap;
+        const y = toY(Math.max(0, Math.min(100, m.priceCents)));
+        ctx.strokeStyle = m.side === 'BUY' ? '#22c55e' : '#ef4444';
+        ctx.beginPath();
+        ctx.moveTo(tickX0, y);
+        ctx.lineTo(tickX0 + tickW, y);
+        ctx.stroke();
+      }
+    }
+
     const lastPrice = candles[candles.length - 1].c;
     const lastY = toY(lastPrice);
     if (!hidePriceLines) {
@@ -556,7 +584,7 @@ export function LiveTradeChart({
       const d = new Date(t);
       ctx.fillText(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`, toX(t), timeLabelY);
     }
-  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines]);
+  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers]);
 
   useEffect(() => {
     draw();

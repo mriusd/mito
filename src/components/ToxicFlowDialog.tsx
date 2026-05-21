@@ -593,7 +593,7 @@ function LedgerSummaryField({
 function formatWalletTradeTime(blockTime: number): string {
   if (!blockTime) return '-';
   const d = blockTime > 1e12 ? new Date(blockTime) : new Date(blockTime * 1000);
-  return d.toLocaleString().replaceAll('/', '\\');
+  return d.toLocaleString().split('/').join('\\');
 }
 
 /** `wallet_scores_ledger` fields from /api/wallet-summary. */

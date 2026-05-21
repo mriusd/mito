@@ -20,9 +20,12 @@ function yesMidCentsFromWsRow(row: Market | undefined): number | null {
 export const SidebarYesMidProbBar = memo(function SidebarYesMidProbBar({
   yesTokenId,
   yesMathCents,
+  shellOnly = false,
 }: {
   yesTokenId: string;
-  yesMathCents: number;
+  yesMathCents: number | null;
+  /** Reserve layout height before model YES / target is ready. */
+  shellOnly?: boolean;
 }) {
   const tid = yesTokenId.trim();
   const wsRow = useSyncExternalStore(
@@ -30,18 +33,20 @@ export const SidebarYesMidProbBar = memo(function SidebarYesMidProbBar({
     () => getBidAskMarketRow(tid),
     () => getBidAskMarketRow(tid),
   );
-  const yMidOk = yesMidCentsFromWsRow(wsRow);
+  const yMidOk = shellOnly ? null : yesMidCentsFromWsRow(wsRow);
   const m = yesMathCents;
-  const delta = yMidOk != null ? yMidOk - m : null;
+  const delta = yMidOk != null && m != null ? yMidOk - m : null;
   const greenLeftPct =
     delta == null ? 50 : Math.min(97, Math.max(3, 50 + (delta / 22) * 46));
   const tip =
-    yMidOk == null
-      ? `Model YES ${m.toFixed(1)}¢ — no WS best bid/ask for YES yet`
-      : `YES mid ${yMidOk.toFixed(1)}¢ (bid/ask WS) vs model ${m.toFixed(1)}¢ (Δ ${delta! >= 0 ? '+' : ''}${delta!.toFixed(1)}¢)`;
+    shellOnly || m == null
+      ? 'Waiting for target price and model YES probability'
+      : yMidOk == null
+        ? `Model YES ${m.toFixed(1)}¢ — no WS best bid/ask for YES yet`
+        : `YES mid ${yMidOk.toFixed(1)}¢ (bid/ask WS) vs model ${m.toFixed(1)}¢ (Δ ${delta! >= 0 ? '+' : ''}${delta!.toFixed(1)}¢)`;
 
   return (
-    <div className="mt-2 pt-1.5 border-t border-gray-800/70" title={tip}>
+    <div className="mt-2 pt-1.5 border-t border-gray-800/70 min-h-[2.375rem]" title={tip}>
       <div className="flex items-center justify-between gap-1 mb-0.5">
         <span className="flex items-center gap-0.5 text-[10px] text-gray-500">
           Prob
@@ -67,7 +72,7 @@ export const SidebarYesMidProbBar = memo(function SidebarYesMidProbBar({
             <span className="text-gray-600">–</span>
           )}
           <span className="text-gray-600 mx-0.5">/</span>
-          <span className="text-gray-400">{m.toFixed(1)} math</span>
+          <span className="text-gray-400">{m != null ? `${m.toFixed(1)} math` : '– math'}</span>
         </span>
       </div>
       <div className="relative h-[7px] w-full rounded-full overflow-hidden bg-gray-900 ring-1 ring-gray-700/80">

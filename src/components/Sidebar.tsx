@@ -3859,10 +3859,14 @@ export function Sidebar() {
                     title: 'Binance spot',
                   };
 
+            const reserveUpDownSpotHeight = row.mode === 'updown' && !row.pastExpiry;
+
             return (
-              <div className="sidebar-section py-1 px-3">
+              <div
+                className={`sidebar-section py-1 px-3${reserveUpDownSpotHeight ? ' min-h-[7.5rem]' : ''}`}
+              >
                       <div
-                  className="grid gap-x-3 gap-y-1.5 items-center w-full"
+                  className="grid gap-x-3 gap-y-1.5 items-center w-full min-h-[3.625rem]"
                   style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(6rem, 1fr) minmax(0, 1fr)' }}
                       >
                   {/* Row 1 — labels */}
@@ -3875,7 +3879,7 @@ export function Sidebar() {
                         <CirclePercent className="h-[9px] w-[9px] shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
                         <span className="shrink-0">Math</span>
                       </>
-                  ) : row.mathCents !== null ? (
+                  ) : (
                       <>
                         <CirclePercent className="h-[9px] w-[9px] shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
                         <span className="shrink-0">Math</span>
@@ -3889,7 +3893,7 @@ export function Sidebar() {
                           </span>
                         </HelpTooltip>
                       </>
-                  ) : null}
+                  )}
                   </div>
                   <div className="flex items-center justify-end gap-1.5 min-h-[15px] flex-nowrap text-[9px] font-medium leading-none text-gray-500 min-w-0">
                     <span className="shrink-0">Current</span>
@@ -3903,7 +3907,7 @@ export function Sidebar() {
 
                   {/* Row 2 — primary values */}
                   <div className="flex items-center justify-start min-h-[16px] min-w-0">
-                    <span className="text-[11px] font-bold tabular-nums text-white truncate max-w-full">
+                    <span className="inline-flex min-h-[16px] items-center text-[11px] font-bold tabular-nums text-white truncate max-w-full">
                       {row.targetDisplay}
                     </span>
                   </div>
@@ -3994,7 +3998,7 @@ export function Sidebar() {
                   <div className="flex items-center justify-end min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
                     {row.diff && row.currentPrice > 0 ? (
                       <span
-                        className={`inline-flex whitespace-nowrap gap-0.5 ${row.diff.isUp ? 'text-green-400' : 'text-red-400'}`}
+                        className={`inline-flex min-h-[15px] items-center whitespace-nowrap gap-0.5 ${row.diff.isUp ? 'text-green-400' : 'text-red-400'}`}
                       >
                         <span>
                           {row.diff.isUp ? '↑' : '↓'}
@@ -4006,16 +4010,17 @@ export function Sidebar() {
                         </span>
                       </span>
                     ) : (
-                      <span className="text-transparent select-none" aria-hidden>
-                        —
+                      <span className="inline-flex min-h-[15px] items-center text-transparent select-none" aria-hidden>
+                        ↑0.00 (0.00%)
                       </span>
                     )}
                       </div>
                 </div>
-                {!row.pastExpiry && row.yesMathCents != null && (
+                {reserveUpDownSpotHeight && (
                   <SidebarYesMidProbBar
                     yesTokenId={selectedMarket?.clobTokenIds?.[0] || ''}
                     yesMathCents={row.yesMathCents}
+                    shellOnly={row.yesMathCents == null}
                   />
                 )}
               </div>
@@ -4266,7 +4271,7 @@ export function Sidebar() {
                       setOrderPrice(v);
                     }}
                     disabled={orderKind === 'market'}
-                    className="order-input w-full h-[38px] text-center text-lg font-bold leading-none px-10 disabled:cursor-not-allowed disabled:opacity-70"
+                    className="order-input w-full h-[38px] text-center text-lg font-bold leading-none pl-[4.5rem] pr-10 disabled:cursor-not-allowed disabled:opacity-70"
                     placeholder="50"
                   />
                   <button
@@ -4281,6 +4286,22 @@ export function Sidebar() {
                     aria-label="Decrease price by 1 cent"
                   >
                     -
+                  </button>
+                  <button
+                    type="button"
+                    disabled={orderKind === 'market' || sidebarSpotStrip?.mathCents == null}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      if (orderKind === 'market') return;
+                      const m = sidebarSpotStrip?.mathCents;
+                      if (m == null || !Number.isFinite(m)) return;
+                      setOrderPriceFromMath(m.toFixed(1).replace(/\.0$/, ''));
+                    }}
+                    className="absolute left-9 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md text-amber-300 hover:text-amber-100 hover:bg-gray-700/70 text-[11px] font-bold leading-none flex items-center justify-center disabled:pointer-events-none disabled:opacity-40"
+                    aria-label="Set price to BS math probability for current side"
+                    title="BS math"
+                  >
+                    M
                   </button>
                   <button
                     type="button"
@@ -4697,9 +4718,11 @@ export function Sidebar() {
               )}
             </div>
             <div className="my-3 border-t border-gray-700/70" />
-            <div className="flex items-center gap-1.5 mb-2 mt-3">
-              <span className="text-xs text-gray-400">My Orders</span>
-              <SidebarDataSourceBadge source="polymarket" />
+            <div className="flex items-center justify-between gap-2 mb-2 mt-3">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-xs text-gray-400">My Orders</span>
+                <SidebarDataSourceBadge source="polymarket" />
+              </div>
               {(myOrders.length > 0 || progOrders.length > 0) && (
                 <button
                   type="button"

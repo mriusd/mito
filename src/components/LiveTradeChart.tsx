@@ -124,14 +124,27 @@ export function LiveTradeChart({
       }
     };
 
+    const klineQuery = `symbol=${encodeURIComponent(tokenId)}&interval=${interval}&startTime=${st}&endTime=${et}&limit=900`;
+
     const loadKlines = () =>
-      fetch(`${API_BASE}/api/v3/klines?symbol=${encodeURIComponent(tokenId)}&interval=${interval}&startTime=${st}&endTime=${et}&limit=900`)
+      fetch(`${API_BASE}/api/v3/klines?${klineQuery}`)
         .then((r) => r.json())
         .then((klines: any[][]) => {
-          if (!cancelled) {
+          if (cancelled) return;
+          if (Array.isArray(klines) && klines.length > 0) {
             applyKlines(klines);
             setReady(true);
+            return;
           }
+          return fetch(`${API_BASE}/api/v3/klines/history?${klineQuery}`)
+            .then((r) => r.json())
+            .then((hist: any[][]) => {
+              if (cancelled) return;
+              if (Array.isArray(hist) && hist.length > 0) {
+                applyKlines(hist);
+              }
+              setReady(true);
+            });
         })
         .catch(() => {
           if (!cancelled) setReady(true);
@@ -606,6 +619,18 @@ export function LiveTradeChart({
           ))}
         </div>
       </div>
+      {tradeMarkers != null ? (
+        <div className="mb-0.5 flex items-center gap-2.5 text-[9px] text-gray-500">
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-0.5 w-2.5 shrink-0 rounded-full bg-[#2563eb]" aria-hidden />
+            buy
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-0.5 w-2.5 shrink-0 rounded-full bg-[#facc15]" aria-hidden />
+            sell
+          </span>
+        </div>
+      ) : null}
       <canvas
         ref={canvasRef}
         style={{ width: '100%', height: 110, borderRadius: 6, background: '#1a1a2e' }}

@@ -840,7 +840,7 @@ export function LiveTradeChart({
                     style={{ borderBottomColor: buyColor }}
                     aria-hidden
                   />
-                  buy
+                  long
                 </span>
                 <span className="inline-flex items-center gap-1">
                   <span
@@ -848,7 +848,7 @@ export function LiveTradeChart({
                     style={{ borderTopColor: sellColor }}
                     aria-hidden
                   />
-                  sell
+                  short
                 </span>
               </>
             );

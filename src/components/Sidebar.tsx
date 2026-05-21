@@ -702,6 +702,30 @@ function customOrderPriceLabel(spec: CustomSidebarOrderSpec): string {
   }
 }
 
+const SIDEBAR_BS_MATH_BTN_CLASS =
+  'bg-yellow-900/55 hover:bg-yellow-800/65 text-amber-200 disabled:pointer-events-none disabled:opacity-40';
+
+function roundSidebarBsMathCents(cents: number | null | undefined): number | null {
+  if (cents == null || !Number.isFinite(cents)) return null;
+  const r = Math.round(cents);
+  if (r < 1 || r > 99) return null;
+  return r;
+}
+
+function sidebarBsMathCentsForOutcome(
+  yesMathCents: number | null | undefined,
+  outcome: string | null | undefined,
+): number | null {
+  if (yesMathCents == null || !Number.isFinite(yesMathCents)) return null;
+  if (outcome === 'YES') return roundSidebarBsMathCents(yesMathCents);
+  if (outcome === 'NO') return roundSidebarBsMathCents(100 - yesMathCents);
+  return null;
+}
+
+function sidebarBsMathButtonLabel(cents: number | null): string {
+  return cents == null ? '—' : `${cents}c`;
+}
+
 function resolveCustomOrderPriceCents(spec: CustomSidebarOrderSpec, mathProbCents: number | null): number | null {
   const v = spec.priceValue;
   if (spec.priceMode === 'FIXED') {
@@ -2776,6 +2800,11 @@ export function Sidebar() {
     setEditingOrderId(null);
   };
 
+  const sidebarLimitBsCents = useMemo(
+    () => roundSidebarBsMathCents(sidebarSpotStrip?.mathCents),
+    [sidebarSpotStrip?.mathCents],
+  );
+
   const setOrderPriceDecimal = (decimal: number) => {
     const current = parseFloat(orderPrice) || 0;
     const base = Math.floor(current);
@@ -4271,7 +4300,7 @@ export function Sidebar() {
                       setOrderPrice(v);
                     }}
                     disabled={orderKind === 'market'}
-                    className="order-input w-full h-[38px] text-center text-lg font-bold leading-none pl-[4.5rem] pr-10 disabled:cursor-not-allowed disabled:opacity-70"
+                    className="order-input w-full h-[38px] text-center text-lg font-bold leading-none px-10 disabled:cursor-not-allowed disabled:opacity-70"
                     placeholder="50"
                   />
                   <button
@@ -4289,22 +4318,6 @@ export function Sidebar() {
                   </button>
                   <button
                     type="button"
-                    disabled={orderKind === 'market' || sidebarSpotStrip?.mathCents == null}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      if (orderKind === 'market') return;
-                      const m = sidebarSpotStrip?.mathCents;
-                      if (m == null || !Number.isFinite(m)) return;
-                      setOrderPriceFromMath(m.toFixed(1).replace(/\.0$/, ''));
-                    }}
-                    className="absolute left-9 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md text-amber-300 hover:text-amber-100 hover:bg-gray-700/70 text-[11px] font-bold leading-none flex items-center justify-center disabled:pointer-events-none disabled:opacity-40"
-                    aria-label="Set price to BS math probability for current side"
-                    title="BS math"
-                  >
-                    M
-                  </button>
-                  <button
-                    type="button"
                     disabled={orderKind === 'market'}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
@@ -4317,7 +4330,20 @@ export function Sidebar() {
                     +
                   </button>
                 </div>
-                <div className="mt-1 grid grid-cols-4 gap-[2px]">
+                <div className="mt-1 grid grid-cols-5 gap-[2px]">
+                  <button
+                    type="button"
+                    disabled={orderKind === 'market' || sidebarLimitBsCents == null}
+                    onClick={() => {
+                      if (orderKind === 'market' || sidebarLimitBsCents == null) return;
+                      setOrderPriceFromMath(String(sidebarLimitBsCents));
+                    }}
+                    className={`${SIDEBAR_BS_MATH_BTN_CLASS} rounded text-[9px] font-bold h-6 tabular-nums`}
+                    aria-label="Set price to BS math probability for current side"
+                    title="BS math"
+                  >
+                    {sidebarBsMathButtonLabel(sidebarLimitBsCents)}
+                  </button>
                   {[1, 5, 10, 25].map((c) => (
                     <button
                       key={c}
@@ -4826,26 +4852,18 @@ export function Sidebar() {
                       )}
                       {!isEditing && (
                         <div className="mt-0.5 flex items-center gap-0.5 flex-wrap">
-                          {([-20, -15, -10, -5, 5, 10, 15, 20] as const).map((delta) => {
+                          {([-20, -15, -10, -5] as const).map((delta) => {
                             const newP = parseFloat((price * 100 + delta).toFixed(1));
                             if (newP < 0.1 || newP > 99.9) return null;
                             const mag = Math.abs(delta);
                             const deltaClass =
-                              delta < 0
-                                ? mag >= 20
-                                  ? 'bg-red-950/90 text-red-100 hover:bg-red-900'
-                                  : mag >= 15
-                                    ? 'bg-red-950/85 text-red-200 hover:bg-red-900'
-                                    : mag >= 10
-                                      ? 'bg-red-900/80 text-red-200 hover:bg-red-800'
-                                      : 'bg-red-900/65 text-red-200 hover:bg-red-800/80'
-                                : mag >= 20
-                                  ? 'bg-green-950/55 text-green-200 hover:bg-green-900/70'
-                                  : mag >= 15
-                                    ? 'bg-green-900/40 text-green-200 hover:bg-green-800/55'
-                                    : mag >= 10
-                                      ? 'bg-green-900/50 text-green-200 hover:bg-green-800/65'
-                                      : 'bg-green-900/65 text-green-200 hover:bg-green-800/80';
+                              mag >= 20
+                                ? 'bg-red-950/90 text-red-100 hover:bg-red-900'
+                                : mag >= 15
+                                  ? 'bg-red-950/85 text-red-200 hover:bg-red-900'
+                                  : mag >= 10
+                                    ? 'bg-red-900/80 text-red-200 hover:bg-red-800'
+                                    : 'bg-red-900/65 text-red-200 hover:bg-red-800/80';
                             return (
                               <button
                                 key={delta}
@@ -4854,7 +4872,57 @@ export function Sidebar() {
                                 }}
                                 className={`text-[9px] px-1 py-0 rounded ${deltaClass}`}
                               >
-                                {delta > 0 ? '+' : ''}{delta}¢
+                                {delta}¢
+                              </button>
+                            );
+                          })}
+                          {(() => {
+                            const orderBsCents = sidebarSpotStrip?.pastExpiry
+                              ? null
+                              : sidebarBsMathCentsForOutcome(sidebarSpotStrip?.yesMathCents, outcome);
+                            return (
+                              <button
+                                type="button"
+                                disabled={orderBsCents == null}
+                                onClick={() => {
+                                  if (orderBsCents == null) return;
+                                  handleReplaceOrder(
+                                    order.id,
+                                    orderBsCents,
+                                    order.asset_id || order.token_id || '',
+                                    order.side as 'BUY' | 'SELL',
+                                    remainingSize,
+                                  );
+                                }}
+                                className={`text-[9px] px-1 py-0 rounded font-bold tabular-nums ${SIDEBAR_BS_MATH_BTN_CLASS}`}
+                                aria-label="Replace at BS math probability for order side"
+                                title="BS math"
+                              >
+                                {sidebarBsMathButtonLabel(orderBsCents)}
+                              </button>
+                            );
+                          })()}
+                          {([5, 10, 15, 20] as const).map((delta) => {
+                            const newP = parseFloat((price * 100 + delta).toFixed(1));
+                            if (newP < 0.1 || newP > 99.9) return null;
+                            const mag = Math.abs(delta);
+                            const deltaClass =
+                              mag >= 20
+                                ? 'bg-green-950/55 text-green-200 hover:bg-green-900/70'
+                                : mag >= 15
+                                  ? 'bg-green-900/40 text-green-200 hover:bg-green-800/55'
+                                  : mag >= 10
+                                    ? 'bg-green-900/50 text-green-200 hover:bg-green-800/65'
+                                    : 'bg-green-900/65 text-green-200 hover:bg-green-800/80';
+                            return (
+                              <button
+                                key={delta}
+                                onClick={() => {
+                                  handleReplaceOrder(order.id, newP, order.asset_id || order.token_id || '', order.side as 'BUY' | 'SELL', remainingSize);
+                                }}
+                                className={`text-[9px] px-1 py-0 rounded ${deltaClass}`}
+                              >
+                                +{delta}¢
                               </button>
                             );
                           })}

@@ -6,6 +6,7 @@ import { resolveLiveTradeChartWindow } from '../lib/walletInfoChartMarket';
 import {
   CHART_VOLUME_SPIKE_FLASH_MS,
   detectChartVolumeSpike,
+  MIN_CHART_CANDLES_FOR_VOLUME_SPIKE_SOUND,
   playChartVolumeSpikeRing,
 } from '../lib/chartVolumeSpikeAlert';
 import type { ChartTradeMarker } from '../lib/chartTradeMarkers';
@@ -725,7 +726,9 @@ export function LiveTradeChart({
     setVolumeSpikeFlash(true);
     const endMs = endTime != null && Number.isFinite(endTime) ? endTime : null;
     if (endMs == null || endMs > Date.now()) {
-      void playChartVolumeSpikeRing(soundMuteYesTokenId, soundMuteNoTokenId);
+      if (candles.length >= MIN_CHART_CANDLES_FOR_VOLUME_SPIKE_SOUND) {
+        void playChartVolumeSpikeRing(soundMuteYesTokenId, soundMuteNoTokenId);
+      }
     }
 
     const t = window.setTimeout(() => {

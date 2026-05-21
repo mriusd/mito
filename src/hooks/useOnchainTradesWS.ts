@@ -306,6 +306,24 @@ function mapDedupeWSTradeRows(raw: Array<Record<string, unknown>>, cap = WALLET_
   ).slice(0, cap);
 }
 
+function walletMarketTradeRowKey(t: WSTrade): string {
+  return t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side);
+}
+
+function prependWalletMarketTradeRow(
+  prev: WSTrade[],
+  trade: WSTrade,
+  cap = WALLET_MARKET_TRADES_CAP,
+): { rows: WSTrade[]; added: boolean } {
+  const k = walletMarketTradeRowKey(trade);
+  if (prev.some((t) => walletMarketTradeRowKey(t) === k)) {
+    return { rows: prev, added: false };
+  }
+  const row = trade.id ? trade : { ...trade, id: k };
+  const rows = dedupeWalletTradesByLedgerLeg([row, ...prev], walletMarketTradeRowKey).slice(0, cap);
+  return { rows, added: true };
+}
+
 export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   const { marketId = null, tokenId = null, wallet = null, scopedClobTokenIds = null } = opts;
   const [trades, setTrades] = useState<LiveTrade[]>([]);
@@ -739,6 +757,16 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const w = String(msg.wallet || '').trim().toLowerCase();
             const m = canonicalConditionKey(String(msg.marketId || ''));
             if (!w || !m) return;
+            const row = mapRawWSTrade(msg.data as Parameters<typeof mapRawWSTrade>[0]);
+            if (row) {
+              const listeners = walletMarketListenersRef.current.get(walletMarketTradesKey(w, m));
+              listeners?.forEach((l) => l.onTrade?.(row));
+              const pw = (walletRef.current || '').trim().toLowerCase();
+              const pm = marketRef.current ? canonicalConditionKey(marketRef.current) : '';
+              if (pw && pm && w === pw && m === pm) {
+                setWalletMarketTrades((prev) => prependWalletMarketTradeRow(prev, row).rows);
+              }
+            }
             scheduleWalletMarketSnapshotRefresh(w, m);
           }
         } catch {
@@ -915,6 +943,14 @@ export function useWalletMarketTradesWS(
       onSnapshot: (rows, tot) => {
         setTrades(rows.slice(0, WALLET_MARKET_TRADES_CAP));
         setTotal(tot);
+        setLoading(false);
+      },
+      onTrade: (trade) => {
+        setTrades((prev) => {
+          const { rows, added } = prependWalletMarketTradeRow(prev, trade);
+          if (added) setTotal((tot) => tot + 1);
+          return rows;
+        });
         setLoading(false);
       },
     });

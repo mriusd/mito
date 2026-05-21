@@ -2,6 +2,8 @@ import { pitchMulFromNotifyFreqSlider, playNotifyBeep, readNotifySoundFreqSlider
 import { isNotifySoundPriceMuted } from './notifySoundPriceMute';
 
 export const SIDEBAR_NOTIFY_VOLUME_SPIKE_RING_KEY = 'polybot-sidebar-notify-volume-spike-ring';
+/** Minimum bars before volume spike ring plays (flash still allowed below this). */
+export const MIN_CHART_CANDLES_FOR_VOLUME_SPIKE_SOUND = 10;
 /** Flash duration — keep in sync with `.live-trade-chart-volume-spike-flash` in index.css */
 export const CHART_VOLUME_SPIKE_FLASH_MS = 2800;
 

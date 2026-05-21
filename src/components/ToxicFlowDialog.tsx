@@ -89,7 +89,7 @@ import {
 import { WS_BASE } from '../lib/env';
 import { toxicFlowFillKey } from '../lib/tradeKeys';
 import { useAppStore } from '../stores/appStore';
-import { useWalletMarketTradesWS, type WSTrade } from '../hooks/useOnchainTradesWS';
+import { getOnchainTradesWSShared, useOnchainTradesWS, useWalletMarketTradesWS, type WSTrade } from '../hooks/useOnchainTradesWS';
 import {
   buildMarketByIdRecord,
   sortWalletPositionsByDisplayedDateDesc,
@@ -1666,6 +1666,26 @@ const WalletTable = memo(WalletTableInner, (a, b) => {
 
 export type WalletInfoPanelVariant = 'modal' | 'inline';
 
+/** Own onchain-trades socket when Sidebar hook is not mounted (mobile / lazy sidebar). */
+function WalletInfoOnchainWSBridge({
+  wallet,
+  marketId,
+  active,
+}: {
+  wallet: string;
+  marketId: string;
+  active: boolean;
+}) {
+  const walletLc = active && wallet.trim() ? wallet.trim().toLowerCase() : null;
+  const market = active && marketId.trim() ? marketId.trim() : null;
+  useOnchainTradesWS({
+    wallet: walletLc,
+    marketId: market,
+    scopedClobTokenIds: null,
+  });
+  return null;
+}
+
 const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   open,
   wallet,
@@ -1694,6 +1714,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const [dailySnapshotsRefresh, setDailySnapshotsRefresh] = useState(0);
   const [profileNickname, setProfileNickname] = useState('');
   const [inlineMarketsListOpen, setInlineMarketsListOpen] = useState(false);
+  const [needsOwnOnchainWs, setNeedsOwnOnchainWs] = useState(() => getOnchainTradesWSShared() == null);
   const isInlineWalletInfo = variant === 'inline';
   const showMarketsList = !isInlineWalletInfo || inlineMarketsListOpen;
   const {
@@ -1706,6 +1727,14 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     () => wsMarketTrades.map((t) => wsTradeToFillRow(t, wallet, selectedMarketId)),
     [wsMarketTrades, wallet, selectedMarketId],
   );
+
+  useEffect(() => {
+    if (!open) return;
+    const sync = () => setNeedsOwnOnchainWs(getOnchainTradesWSShared() == null);
+    sync();
+    const id = window.setInterval(sync, 500);
+    return () => window.clearInterval(id);
+  }, [open]);
 
   const loadMarketsAndSelect = useCallback(
     async (preserveSelected: string | null) => {
@@ -1991,6 +2020,9 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const polygonscanUrl = `https://polygonscan.com/address/${wallet.trim().toLowerCase()}`;
   const panelBody = (
     <>
+        {needsOwnOnchainWs ? (
+          <WalletInfoOnchainWSBridge wallet={wallet} marketId={selectedMarketId} active={!!wallet.trim() && !!selectedMarketId.trim()} />
+        ) : null}
         <div className="flex items-center justify-between mb-2 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-bold text-yellow-400">Wallet Info</span>

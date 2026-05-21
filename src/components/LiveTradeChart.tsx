@@ -696,7 +696,7 @@ export function LiveTradeChart({
   useEffect(() => {
     if (!ready || !tokenId) return;
     const candles = [...candleMapRef.current.values()].sort((a, b) => a.time - b.time);
-    const spike = detectChartVolumeSpike(candles);
+    const spike = detectChartVolumeSpike(candles, candleMs);
     if (!spike) return;
     if (lastVolumeSpikeBarRef.current === spike.barTime) return;
     lastVolumeSpikeBarRef.current = spike.barTime;
@@ -710,7 +710,7 @@ export function LiveTradeChart({
       if (volumeSpikeFlashGenRef.current === gen) setVolumeSpikeFlash(false);
     }, CHART_VOLUME_SPIKE_FLASH_MS);
     return () => clearTimeout(t);
-  }, [ready, wsTick, tokenId, interval]);
+  }, [ready, wsTick, tokenId, interval, candleMs]);
 
   useEffect(() => {
     draw();

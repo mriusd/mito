@@ -129,6 +129,19 @@ import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import { SidebarYesMidProbBar } from './SidebarYesMidProbBar';
 import { SidebarPositionListItem } from './SidebarPositionListItem';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
+import { SidebarHoldersExpandTip } from './SidebarHoldersExpandTip';
+import { SidebarNotifyGearTip } from './SidebarNotifyGearTip';
+import {
+  isDesktopScreenViewport,
+  persistSidebarHoldersExpandTipDismissed,
+  readSidebarHoldersExpandTipDismissed,
+} from '../lib/sidebarHoldersExpandTip';
+import {
+  persistSidebarNotifyGearTipDismissed,
+  readSidebarNotifyGearTipDismissed,
+} from '../lib/sidebarNotifyGearTip';
+import { readToxicFlowRowActionsTipDismissed } from '../lib/toxicFlowRowActionsTip';
+import { isOnboardingBlockingUiOpen, subscribeOnboardingBlockingUi } from '../lib/onboardingBlockingUi';
 import { getBidAskMarketRow } from '../lib/bidAskMarketLookup';
 import {
   ArrowRight,
@@ -2938,6 +2951,92 @@ export function Sidebar() {
   const canShowEmbeddedToxic =
     !isMobileSheet && !!selectedMarket && (selectedMarket.conditionId || '').trim().length > 0;
   const sidebarToxicEffective = toxicSidebarExpanded && canShowEmbeddedToxic;
+  const toxicExpandHandleRef = useRef<HTMLButtonElement>(null);
+  const [holdersExpandTipOpen, setHoldersExpandTipOpen] = useState(false);
+  const onboardingBlockingUiOpen = useSyncExternalStore(
+    subscribeOnboardingBlockingUi,
+    isOnboardingBlockingUiOpen,
+    () => false,
+  );
+  const dismissHoldersExpandTip = useCallback(() => {
+    persistSidebarHoldersExpandTipDismissed();
+    setHoldersExpandTipOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (readSidebarHoldersExpandTipDismissed()) {
+      setHoldersExpandTipOpen(false);
+      return;
+    }
+    if (!isDesktopScreenViewport()) {
+      setHoldersExpandTipOpen(false);
+      return;
+    }
+    if (onboardingBlockingUiOpen) {
+      setHoldersExpandTipOpen(false);
+      return;
+    }
+    if (!sidebarOpen || !canShowEmbeddedToxic || sidebarToxicEffective) {
+      setHoldersExpandTipOpen(false);
+      return;
+    }
+    setHoldersExpandTipOpen(true);
+  }, [
+    sidebarOpen,
+    canShowEmbeddedToxic,
+    sidebarToxicEffective,
+    selectedMarket?.conditionId,
+    onboardingBlockingUiOpen,
+  ]);
+
+  useEffect(() => {
+    if (sidebarToxicEffective && holdersExpandTipOpen) dismissHoldersExpandTip();
+  }, [sidebarToxicEffective, holdersExpandTipOpen, dismissHoldersExpandTip]);
+
+  const notifyGearRef = useRef<HTMLButtonElement>(null);
+  const [notifyGearTipOpen, setNotifyGearTipOpen] = useState(false);
+  const dismissNotifyGearTip = useCallback(() => {
+    persistSidebarNotifyGearTipDismissed();
+    setNotifyGearTipOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (readSidebarNotifyGearTipDismissed()) {
+      setNotifyGearTipOpen(false);
+      return;
+    }
+    if (!isDesktopScreenViewport()) {
+      setNotifyGearTipOpen(false);
+      return;
+    }
+    if (onboardingBlockingUiOpen || notifyDialogOpen) {
+      setNotifyGearTipOpen(false);
+      return;
+    }
+    if (!sidebarOpen || !selectedMarket) {
+      setNotifyGearTipOpen(false);
+      return;
+    }
+    if (holdersExpandTipOpen) {
+      setNotifyGearTipOpen(false);
+      return;
+    }
+    if (!readToxicFlowRowActionsTipDismissed()) {
+      const holdersExpandDone = readSidebarHoldersExpandTipDismissed();
+      if (!holdersExpandDone || sidebarToxicEffective) {
+        setNotifyGearTipOpen(false);
+        return;
+      }
+    }
+    setNotifyGearTipOpen(true);
+  }, [
+    sidebarOpen,
+    selectedMarket?.id,
+    onboardingBlockingUiOpen,
+    notifyDialogOpen,
+    holdersExpandTipOpen,
+    sidebarToxicEffective,
+  ]);
 
   useEffect(() => {
     if (!sidebarToxicEffective) setToxicWalletExtraWidth('0px');
@@ -2946,8 +3045,9 @@ export function Sidebar() {
   const expandSidebarToxicFlowPanel = useCallback(() => {
     if (!canShowEmbeddedToxic) return;
     preloadToxicFlowDialog();
+    dismissHoldersExpandTip();
     setToxicSidebarExpanded(true);
-  }, [canShowEmbeddedToxic]);
+  }, [canShowEmbeddedToxic, dismissHoldersExpandTip]);
 
   const startMobileDrag = (clientY: number) => {
     if (!isMobileSheet || !sidebarOpen) return;
@@ -3720,8 +3820,12 @@ export function Sidebar() {
               </span>
             ) : null}
             <button
+              ref={notifyGearRef}
               type="button"
-              onClick={() => setNotifyDialogOpen(true)}
+              onClick={() => {
+                dismissNotifyGearTip();
+                setNotifyDialogOpen(true);
+              }}
               onPointerDown={(e) => e.stopPropagation()}
               className="shrink-0 rounded-sm border border-gray-600 bg-gray-900/60 p-0.5 w-[18px] min-w-[18px] flex items-center justify-center text-amber-300 hover:bg-gray-700/80 transition-colors"
               title="Tilt notification settings"
@@ -3766,6 +3870,11 @@ export function Sidebar() {
           <div className="text-[10px] text-gray-200 leading-tight mt-0.5 break-words w-full">
             {fullMarketName}
           </div>
+          <SidebarNotifyGearTip
+            anchorRef={notifyGearRef}
+            open={notifyGearTipOpen}
+            onDismiss={dismissNotifyGearTip}
+          />
         </div>
       )}
 
@@ -5119,13 +5228,15 @@ export function Sidebar() {
           <>
           <div className="hidden md:block w-6 shrink-0" aria-hidden />
           <button
+            ref={toxicExpandHandleRef}
             type="button"
-            className={`sidebar-toxic-expand-handle hidden md:flex shrink-0 w-6 flex-col justify-center items-center border-l border-gray-700/55 bg-gray-800/95 text-gray-500 hover:text-gray-400 ${sidebarToxicEffective ? '' : 'sidebar-expand-handle-idle-flash'}`}
+            className={`sidebar-toxic-expand-handle relative hidden md:flex shrink-0 w-6 flex-col justify-center items-center border-l border-gray-700/55 bg-gray-800/95 text-gray-500 hover:text-gray-400 ${sidebarToxicEffective ? '' : holdersExpandTipOpen ? 'sidebar-expand-handle-tip-flash' : 'sidebar-expand-handle-idle-flash'}`}
             title={sidebarToxicEffective ? 'Collapse holders panel' : 'Expand holders panel in sidebar'}
             aria-expanded={toxicSidebarExpanded}
             aria-label={sidebarToxicEffective ? 'Collapse holders panel' : 'Expand holders panel'}
             onClick={() => {
               preloadToxicFlowDialog();
+              dismissHoldersExpandTip();
               setToxicSidebarExpanded((v) => !v);
             }}
             onPointerDown={(e) => e.stopPropagation()}
@@ -5136,6 +5247,11 @@ export function Sidebar() {
               <ChevronRight className="h-4 w-4" strokeWidth={2} aria-hidden />
             )}
           </button>
+          <SidebarHoldersExpandTip
+            anchorRef={toxicExpandHandleRef}
+            open={holdersExpandTipOpen}
+            onDismiss={dismissHoldersExpandTip}
+          />
           </>
         ) : null}
         {sidebarToxicEffective && selectedMarket ? (

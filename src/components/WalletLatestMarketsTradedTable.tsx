@@ -275,6 +275,8 @@ export const WalletLatestMarketsTradedTable = memo(function WalletLatestMarketsT
   onRowClick,
   /** Wider px on every th/td (e.g. History panel). */
   horizontalCellPadding = false,
+  /** Keep thead visible; parent should be flex column with min-h-0. */
+  stickyHeader = false,
 }: {
   markets: WalletPosition[];
   marketById: Record<string, Market>;
@@ -282,72 +284,68 @@ export const WalletLatestMarketsTradedTable = memo(function WalletLatestMarketsT
   selectedMarketId?: string | null;
   onRowClick?: (marketId: string) => void;
   horizontalCellPadding?: boolean;
+  stickyHeader?: boolean;
 }) {
   const cellPad = horizontalCellPadding
     ? ' [&_th]:!px-2.5 [&_td]:!px-2.5 [&_th]:!py-1 [&_td]:!py-1'
     : '';
+  const thSticky = stickyHeader ? 'sticky top-0 z-10 border-b border-gray-700' : '';
   const thead = (
     <thead>
-      <tr className="text-gray-500 border-b border-gray-700">
-        <th className="text-left py-1 whitespace-normal min-w-[10rem]">Date</th>
-        <th className="text-center w-5 py-1 whitespace-nowrap" title="Resolved outcome (Y/N); color from ledger win/loss">
+      <tr className={`text-gray-500${stickyHeader ? '' : ' border-b border-gray-700'}`}>
+        <th className={`text-left py-1 whitespace-normal min-w-[10rem] bg-gray-900 ${thSticky}`}>Date</th>
+        <th
+          className={`text-center w-5 py-1 whitespace-nowrap bg-gray-900 ${thSticky}`}
+          title="Resolved outcome (Y/N); color from ledger win/loss"
+        >
           O
         </th>
-        <th className="text-left whitespace-nowrap">Market</th>
-        <th className="text-right bg-green-900/15 text-green-300 font-bold py-1 whitespace-nowrap">Net Y</th>
-        <th className="text-right bg-red-900/15 text-red-300 font-bold py-1 whitespace-nowrap">Net N</th>
-        <th className="text-right whitespace-nowrap">Net</th>
-        <th className="text-right whitespace-nowrap" title="price_yes">
+        <th className={`text-left whitespace-nowrap bg-gray-900 ${thSticky}`}>Market</th>
+        <th className={`text-right bg-green-950 text-green-300 font-bold py-1 whitespace-nowrap ${thSticky}`}>Net Y</th>
+        <th className={`text-right bg-red-950 text-red-300 font-bold py-1 whitespace-nowrap ${thSticky}`}>Net N</th>
+        <th className={`text-right whitespace-nowrap bg-gray-900 ${thSticky}`}>Net</th>
+        <th className={`text-right whitespace-nowrap bg-gray-900 ${thSticky}`} title="price_yes">
           Px Y
         </th>
-        <th className="text-right whitespace-nowrap" title="price_no">
+        <th className={`text-right whitespace-nowrap bg-gray-900 ${thSticky}`} title="price_no">
           Px N
         </th>
         <th
-          className="text-right whitespace-nowrap font-semibold text-red-300 py-1"
+          className={`text-right whitespace-nowrap font-semibold text-red-300 py-1 bg-gray-900 ${thSticky}`}
           title="wallet_market_positions.usdc_in — USDC spent (shown as −USDC)"
         >
           Staked
         </th>
-        <th className="text-right whitespace-nowrap" title="wallet_market_positions.fee_total">
+        <th className={`text-right whitespace-nowrap bg-gray-900 ${thSticky}`} title="wallet_market_positions.fee_total">
           Fee
         </th>
-        <th className="text-right whitespace-nowrap" title="wallet_market_positions.payout">
+        <th className={`text-right whitespace-nowrap bg-gray-900 ${thSticky}`} title="wallet_market_positions.payout">
           Payout
         </th>
-        <th className="text-right whitespace-nowrap" title="usdc_out − usdc_in − fee">
+        <th className={`text-right whitespace-nowrap bg-gray-900 ${thSticky}`} title="usdc_out − usdc_in − fee">
           PnL
         </th>
-        <th className="text-right whitespace-nowrap" title="(usdc_out/(usdc_in+fee)) − 1">
+        <th className={`text-right whitespace-nowrap bg-gray-900 ${thSticky}`} title="(usdc_out/(usdc_in+fee)) − 1">
           ROI
         </th>
       </tr>
     </thead>
   );
 
-  if (loading || markets.length === 0) {
-    return (
-      <div className="flex min-h-full flex-col">
-        <table className={`w-full text-[10px] whitespace-nowrap shrink-0${cellPad}`}>
-          {thead}
-        </table>
-        <div className="flex flex-1 min-h-0 items-center justify-center text-gray-500 text-[10px]">
+  const bodyRows =
+    loading || markets.length === 0 ? (
+      <tr>
+        <td colSpan={13} className="py-8 text-center text-gray-500 text-[10px]">
           {loading ? 'Loading markets...' : 'No markets found.'}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <table
-      className={`w-full text-[10px] whitespace-nowrap${cellPad}`}
-    >
-      {thead}
-      <tbody>
-        {markets.filter((m) => m != null && String(m.marketId || '').trim()).map((m) => {
+        </td>
+      </tr>
+    ) : (
+      markets
+        .filter((m) => m != null && String(m.marketId || '').trim())
+        .map((m) => {
           const mk =
             marketById[m.marketId] ||
-            marketById[(m.marketId || '').toLowerCase()] ||
+            marketById[(m.marketId || '').trim().toLowerCase()] ||
             (m.question ? (m as unknown as Market) : undefined);
           return (
             <WalletLatestMarketsTradedRow
@@ -358,14 +356,40 @@ export const WalletLatestMarketsTradedTable = memo(function WalletLatestMarketsT
               onRowClick={onRowClick}
             />
           );
-        })}
-      </tbody>
+        })
+    );
+
+  const table = (
+    <table className={`w-full text-[10px] whitespace-nowrap${cellPad}`}>
+      {thead}
+      <tbody>{bodyRows}</tbody>
     </table>
+  );
+
+  if (!stickyHeader) {
+    if (loading || markets.length === 0) {
+      return (
+        <div className="flex min-h-full flex-col">
+          <table className={`w-full text-[10px] whitespace-nowrap shrink-0${cellPad}`}>{thead}</table>
+          <div className="flex flex-1 min-h-0 items-center justify-center text-gray-500 text-[10px]">
+            {loading ? 'Loading markets...' : 'No markets found.'}
+          </div>
+        </div>
+      );
+    }
+    return table;
+  }
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-auto">{table}</div>
+    </div>
   );
 }, (a, b) =>
   a.loading === b.loading &&
   a.selectedMarketId === b.selectedMarketId &&
   a.onRowClick === b.onRowClick &&
   a.horizontalCellPadding === b.horizontalCellPadding &&
+  a.stickyHeader === b.stickyHeader &&
   walletMarketsRowsEqual(a.markets, b.markets) &&
   walletMarketByIdEqual(a.marketById, b.marketById));

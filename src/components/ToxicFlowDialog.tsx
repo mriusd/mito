@@ -10,6 +10,7 @@ import {
   forwardRef,
   useImperativeHandle,
   type ReactNode,
+  type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -96,6 +97,13 @@ import {
   WalletLatestMarketsTradedTable,
   fmtPriceShare,
 } from './WalletLatestMarketsTradedTable';
+import { ToxicFlowTabsTip } from './ToxicFlowTabsTip';
+import { ToxicFlowRowActionsTip } from './ToxicFlowRowActionsTip';
+import { persistToxicFlowTabsTipDismissed, readToxicFlowTabsTipDismissed } from '../lib/toxicFlowTabsTip';
+import {
+  persistToxicFlowRowActionsTipDismissed,
+  readToxicFlowRowActionsTipDismissed,
+} from '../lib/toxicFlowRowActionsTip';
 import { exportWalletFillsCsv, exportWalletMarketsCsv } from '../lib/walletInfoCsvExport';
 import { fetchPolymarketNickname } from '../api/polymarket';
 import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
@@ -290,13 +298,18 @@ function ToxicFlowTabBar({
   tab,
   onTab,
   trailing,
+  barRef,
 }: {
   tab: Tab;
   onTab: (tab: Tab) => void;
   trailing?: ReactNode;
+  barRef?: RefObject<HTMLDivElement>;
 }) {
   return (
-    <div className="flex gap-1 border-b border-gray-700 pb-2 shrink-0 flex-nowrap items-center min-w-0 w-full overflow-x-auto toxic-flow-scroll-stable">
+    <div
+      ref={barRef}
+      className="flex gap-1 border-b border-gray-700 pb-2 shrink-0 flex-nowrap items-center min-w-0 w-full overflow-x-auto toxic-flow-scroll-stable"
+    >
       {TOXIC_FLOW_TABS.map((t) => (
         <button
           key={t.key}
@@ -321,6 +334,10 @@ const ToxicFlowTablePane = memo(function ToxicFlowTablePane({
   totalStakedNetUsd,
   onOpenWallet,
   trailing,
+  tabBarRef,
+  rowActionsTipOpen = false,
+  onDismissRowActionsTip,
+  rowActionsAnchorRef,
 }: {
   tab: Tab;
   onTab: (tab: Tab) => void;
@@ -328,17 +345,24 @@ const ToxicFlowTablePane = memo(function ToxicFlowTablePane({
   totalStakedNetUsd: number | null;
   onOpenWallet: (wallet: string, netShares?: number) => void;
   trailing?: ReactNode;
+  tabBarRef?: RefObject<HTMLDivElement>;
+  rowActionsTipOpen?: boolean;
+  onDismissRowActionsTip?: () => void;
+  rowActionsAnchorRef?: RefObject<HTMLTableCellElement>;
 }) {
   const { wallets, label } = toxicFlowWalletsForTab(tabWalletViews, tab);
   return (
     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden gap-2">
-      <ToxicFlowTabBar tab={tab} onTab={onTab} trailing={trailing} />
+      <ToxicFlowTabBar tab={tab} onTab={onTab} trailing={trailing} barRef={tabBarRef} />
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden min-w-0">
         <WalletTable
           wallets={wallets}
           label={label}
           totalStakedNetUsd={totalStakedNetUsd}
           onOpenWallet={onOpenWallet}
+          rowActionsTipOpen={rowActionsTipOpen}
+          onDismissRowActionsTip={onDismissRowActionsTip}
+          rowActionsAnchorRef={rowActionsAnchorRef}
         />
       </div>
     </div>
@@ -1222,6 +1246,7 @@ interface WalletTableBodyRowProps {
   onOpenWallet?: (wallet: string, netShares?: number) => void;
   stakedPct: number;
   cumStakedPct: number;
+  favColRef?: RefObject<HTMLTableCellElement>;
 }
 
 function WalletTableBodyRowImpl({
@@ -1238,6 +1263,7 @@ function WalletTableBodyRowImpl({
   onOpenWallet,
   stakedPct,
   cumStakedPct,
+  favColRef,
 }: WalletTableBodyRowProps) {
   const hoverRef = useRef<WalletLinkHoverHandle>(null);
   const onRowEnter = useCallback((e: React.MouseEvent) => hoverRef.current?.rowEnter(e), []);
@@ -1309,7 +1335,7 @@ function WalletTableBodyRowImpl({
       onMouseLeave={onRowLeave}
     >
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} pr-0 text-gray-600 ${TOXIC_TABLE_RANK_COL_CLS}`}>{rank}</td>
-      <td className={`${TOXIC_TABLE_BODY_TD_CLS} ${TOXIC_TABLE_FAV_COL_CLS}`}>
+      <td ref={favColRef} className={`${TOXIC_TABLE_BODY_TD_CLS} ${TOXIC_TABLE_FAV_COL_CLS}`}>
         <span className={`${TOXIC_TABLE_ROW_INNER_CLS} gap-0.5`}>
           <button
             type="button"
@@ -1445,6 +1471,9 @@ function WalletTableInner({
   totalStakedNetUsd,
   onOpenWallet,
   shadeRowByStakedNet = true,
+  rowActionsTipOpen = false,
+  onDismissRowActionsTip,
+  rowActionsAnchorRef,
 }: {
   wallets: WalletPosition[] | null;
   label: string;
@@ -1453,6 +1482,9 @@ function WalletTableInner({
   onOpenWallet?: (wallet: string, netShares?: number) => void;
   /** Row background from Staked Net sign (green YES / red NO); default on for all Toxic tables. */
   shadeRowByStakedNet?: boolean;
+  rowActionsTipOpen?: boolean;
+  onDismissRowActionsTip?: () => void;
+  rowActionsAnchorRef?: RefObject<HTMLTableCellElement>;
 }) {
   const tiltWhaleAmountUsd = useSyncExternalStore(
     subscribeTiltWhaleAmountUsd,
@@ -1506,6 +1538,7 @@ function WalletTableInner({
     };
   }, []);
   const toggleFavouriteWallet = useCallback((addr: string, nickname?: string) => {
+    onDismissRowActionsTip?.();
     const k = addr.trim().toLowerCase();
     if (!k) return;
     setFavouriteWallets((prev) => {
@@ -1520,11 +1553,12 @@ function WalletTableInner({
       }
       return next;
     });
-  }, []);
+  }, [onDismissRowActionsTip]);
   useEffect(() => {
     recordToxicFavouriteNicknamesFromRows(rows, favouriteWallets);
   }, [rows, favouriteWallets]);
   const toggleBellWallet = useCallback((addr: string) => {
+    onDismissRowActionsTip?.();
     const k = addr.trim().toLowerCase();
     if (!k) return;
     primeTiltAudioContextFromUserGesture();
@@ -1535,8 +1569,9 @@ function WalletTableInner({
       persistToxicBellWallets(next);
       return next;
     });
-  }, []);
+  }, [onDismissRowActionsTip]);
   const toggleXWallet = useCallback((addr: string) => {
+    onDismissRowActionsTip?.();
     const k = addr.trim().toLowerCase();
     if (!k) return;
     setXWallets((prev) => {
@@ -1546,7 +1581,7 @@ function WalletTableInner({
       persistToxicXWallets(next);
       return next;
     });
-  }, []);
+  }, [onDismissRowActionsTip]);
   const { sumYUsd: cohortSumYUsd, sumNUsd: cohortSumNUsd } = useMemo(
     () => toxicCohortStakedNetSurplusHalves(rows),
     [rows],
@@ -1634,12 +1669,20 @@ function WalletTableInner({
                 onOpenWallet={onOpenWallet}
                 stakedPct={metrics.stakedPct}
                 cumStakedPct={metrics.cumStakedPct}
+                favColRef={i === 0 ? rowActionsAnchorRef : undefined}
               />
             );
           })}
         </tbody>
       </table>
       </div>
+      {rowActionsAnchorRef && onDismissRowActionsTip ? (
+        <ToxicFlowRowActionsTip
+          anchorRef={rowActionsAnchorRef}
+          open={rowActionsTipOpen}
+          onDismiss={onDismissRowActionsTip}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1649,7 +1692,10 @@ const WalletTable = memo(WalletTableInner, (a, b) => {
     a.label !== b.label ||
     a.onOpenWallet !== b.onOpenWallet ||
     a.shadeRowByStakedNet !== b.shadeRowByStakedNet ||
-    a.totalStakedNetUsd !== b.totalStakedNetUsd
+    a.totalStakedNetUsd !== b.totalStakedNetUsd ||
+    a.rowActionsTipOpen !== b.rowActionsTipOpen ||
+    a.onDismissRowActionsTip !== b.onDismissRowActionsTip ||
+    a.rowActionsAnchorRef !== b.rowActionsAnchorRef
   ) {
     return false;
   }
@@ -2278,8 +2324,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                 Export CSV
               </button>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
-              <div className="min-h-full">
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
               <WalletLatestMarketsTradedTable
                 markets={markets}
                 marketById={marketById}
@@ -2287,8 +2332,8 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                 selectedMarketId={selectedMarketId}
                 onRowClick={onMarketRowClick}
                 horizontalCellPadding
+                stickyHeader
               />
-              </div>
             </div>
           </div>
           ) : null}
@@ -2336,30 +2381,42 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                 />
               </div>
             ) : null}
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
-            {loadingFills ? (
-              <div className="text-gray-500 text-[10px]">Loading trades...</div>
-            ) : fills.length === 0 ? (
-              <div className="text-gray-500 text-[10px]">No trades for this wallet/market.</div>
-            ) : (
-              <table className="w-full text-[10px]">
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
+            <div className="flex-1 min-h-0 overflow-auto">
+              <table className="w-full text-[10px] [&_th]:px-2.5 [&_td]:px-2.5 [&_th]:py-1 [&_td]:py-1">
                 <thead>
-                  <tr className="text-gray-500 border-b border-gray-700">
-                    <th className="text-left py-1">Time</th>
-                    <th className="text-left">Action</th>
-                    <th className="text-left">Side</th>
-                    <th className="text-center w-6 px-0" title="Taker (wallet_fill_ledger.is_taker)">
+                  <tr className="text-gray-500">
+                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-left">Time</th>
+                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-left">Action</th>
+                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-left">Side</th>
+                    <th
+                      className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-center w-6 px-0"
+                      title="Taker (wallet_fill_ledger.is_taker)"
+                    >
                       T
                     </th>
-                    <th className="text-right">Shares</th>
-                    <th className="text-right">Price</th>
-                    <th className="text-right">USDC</th>
-                    <th className="text-right">Fee</th>
-                    <th className="text-right">Tx</th>
+                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-right">Shares</th>
+                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-right">Price</th>
+                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-right">USDC</th>
+                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-right">Fee</th>
+                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-right">Tx</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {fills.map((f) => {
+            {loadingFills ? (
+              <tr>
+                <td colSpan={9} className="py-8 text-center text-gray-500">
+                  Loading trades...
+                </td>
+              </tr>
+            ) : fills.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="py-8 text-center text-gray-500">
+                  No trades for this wallet/market.
+                </td>
+              </tr>
+            ) : (
+                  fills.map((f) => {
                     const mid = String(f.marketId || '').trim().toLowerCase();
                     const mk =
                       marketById[selectedMarketId] ||
@@ -2493,15 +2550,16 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                         </td>
                       </tr>
                     );
-                  })}
+                  })
+            )}
                 </tbody>
               </table>
-            )}
             </div>
             <div className="mt-2 text-[10px] text-gray-400 shrink-0 pt-1 border-t border-gray-800">
               <span>
                 {fmtIntEn(fills.length)} shown · {fmtIntEn(fillsTotal)} total (live WS)
               </span>
+            </div>
             </div>
           </div>
         </div>
@@ -2733,6 +2791,12 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   setTabThird,
   openWalletDialog,
   layoutSwitch,
+  tabsTipOpen = false,
+  onDismissTabsTip,
+  tabsBarRef,
+  rowActionsTipOpen = false,
+  onDismissRowActionsTip,
+  rowActionsAnchorRef,
 }: {
   yesTokenId: string;
   noTokenId?: string;
@@ -2749,6 +2813,12 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   setTabThird: (tab: Tab) => void;
   openWalletDialog: (wallet: string, netShares?: number) => void;
   layoutSwitch: ReactNode;
+  tabsTipOpen?: boolean;
+  onDismissTabsTip?: () => void;
+  tabsBarRef?: RefObject<HTMLDivElement>;
+  rowActionsTipOpen?: boolean;
+  onDismissRowActionsTip?: () => void;
+  rowActionsAnchorRef?: RefObject<HTMLTableCellElement>;
 }) {
   const totalStakedNetUsd = useToxicDialogStakedNetAbsUsd(yesTokenId, marketId, open);
   const bellWalletsKey = useSyncExternalStore(
@@ -2798,6 +2868,10 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
           totalStakedNetUsd={totalStakedNetUsd}
           onOpenWallet={openWalletDialog}
           trailing={layoutSwitch}
+          tabBarRef={tabsBarRef}
+          rowActionsTipOpen={rowActionsTipOpen}
+          onDismissRowActionsTip={onDismissRowActionsTip}
+          rowActionsAnchorRef={rowActionsAnchorRef}
         />
       )}
       {layoutMode === 'split' && (
@@ -2809,6 +2883,10 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
             totalStakedNetUsd={totalStakedNetUsd}
             onOpenWallet={openWalletDialog}
             trailing={layoutSwitch}
+            tabBarRef={tabsBarRef}
+            rowActionsTipOpen={rowActionsTipOpen}
+            onDismissRowActionsTip={onDismissRowActionsTip}
+            rowActionsAnchorRef={rowActionsAnchorRef}
           />
           <ToxicFlowTablePane
             tab={tabBottom}
@@ -2828,6 +2906,10 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
             totalStakedNetUsd={totalStakedNetUsd}
             onOpenWallet={openWalletDialog}
             trailing={layoutSwitch}
+            tabBarRef={tabsBarRef}
+            rowActionsTipOpen={rowActionsTipOpen}
+            onDismissRowActionsTip={onDismissRowActionsTip}
+            rowActionsAnchorRef={rowActionsAnchorRef}
           />
           <ToxicFlowTablePane
             tab={tabBottom}
@@ -2845,6 +2927,9 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
           />
         </ToxicFlowResizableStack>
       )}
+      {tabsBarRef && onDismissTabsTip ? (
+        <ToxicFlowTabsTip anchorRef={tabsBarRef} open={tabsTipOpen} onDismiss={onDismissTabsTip} />
+      ) : null}
     </div>
   );
 }, (a, b) => {
@@ -2860,7 +2945,13 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
     a.setTabBottom !== b.setTabBottom ||
     a.setTabThird !== b.setTabThird ||
     a.openWalletDialog !== b.openWalletDialog ||
-    a.layoutSwitch !== b.layoutSwitch
+    a.layoutSwitch !== b.layoutSwitch ||
+    a.tabsTipOpen !== b.tabsTipOpen ||
+    a.onDismissTabsTip !== b.onDismissTabsTip ||
+    a.tabsBarRef !== b.tabsBarRef ||
+    a.rowActionsTipOpen !== b.rowActionsTipOpen ||
+    a.onDismissRowActionsTip !== b.onDismissRowActionsTip ||
+    a.rowActionsAnchorRef !== b.rowActionsAnchorRef
   ) {
     return false;
   }
@@ -3100,6 +3191,83 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   const tabWalletViews =
     embedded && streamTabWalletViews !== undefined ? streamTabWalletViews : tabWalletViewsBuilt;
 
+  const tabsBarRef = useRef<HTMLDivElement>(null);
+  const [tabsTipOpen, setTabsTipOpen] = useState(false);
+  const dismissTabsTip = useCallback(() => {
+    persistToxicFlowTabsTipDismissed();
+    setTabsTipOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!embedded || !open) {
+      setTabsTipOpen(false);
+      return;
+    }
+    if (readToxicFlowTabsTipDismissed()) {
+      setTabsTipOpen(false);
+      return;
+    }
+    if (loading || !tabWalletViews) {
+      setTabsTipOpen(false);
+      return;
+    }
+    setTabsTipOpen(true);
+  }, [embedded, open, loading, tabWalletViews]);
+
+  const setTabWithDismiss = useCallback(
+    (next: Tab) => {
+      dismissTabsTip();
+      setTab(next);
+    },
+    [dismissTabsTip, setTab],
+  );
+  const setTabBottomWithDismiss = useCallback(
+    (next: Tab) => {
+      dismissTabsTip();
+      setTabBottom(next);
+    },
+    [dismissTabsTip, setTabBottom],
+  );
+  const setTabThirdWithDismiss = useCallback(
+    (next: Tab) => {
+      dismissTabsTip();
+      setTabThird(next);
+    },
+    [dismissTabsTip, setTabThird],
+  );
+
+  const rowActionsAnchorRef = useRef<HTMLTableCellElement>(null);
+  const [rowActionsTipOpen, setRowActionsTipOpen] = useState(false);
+  const dismissRowActionsTip = useCallback(() => {
+    persistToxicFlowRowActionsTipDismissed();
+    setRowActionsTipOpen(false);
+  }, []);
+
+  const primaryTabWalletCount = useMemo(() => {
+    if (!tabWalletViews) return 0;
+    return toxicFlowWalletsForTab(tabWalletViews, tab).wallets.length;
+  }, [tabWalletViews, tab]);
+
+  useEffect(() => {
+    if (!embedded || !open) {
+      setRowActionsTipOpen(false);
+      return;
+    }
+    if (readToxicFlowRowActionsTipDismissed()) {
+      setRowActionsTipOpen(false);
+      return;
+    }
+    if (!readToxicFlowTabsTipDismissed() || tabsTipOpen) {
+      setRowActionsTipOpen(false);
+      return;
+    }
+    if (loading || primaryTabWalletCount === 0) {
+      setRowActionsTipOpen(false);
+      return;
+    }
+    setRowActionsTipOpen(true);
+  }, [embedded, open, loading, tabsTipOpen, primaryTabWalletCount]);
+
   const openWalletDialog = useCallback((wallet: string, _netShares?: number) => {
     const w = wallet.trim();
     if (!w) return;
@@ -3255,11 +3423,17 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
               tab={tab}
               tabBottom={tabBottom}
               tabThird={tabThird}
-              setTab={setTab}
-              setTabBottom={setTabBottom}
-              setTabThird={setTabThird}
+              setTab={embedded ? setTabWithDismiss : setTab}
+              setTabBottom={embedded ? setTabBottomWithDismiss : setTabBottom}
+              setTabThird={embedded ? setTabThirdWithDismiss : setTabThird}
               openWalletDialog={openWalletDialog}
               layoutSwitch={layoutSwitch}
+              tabsTipOpen={embedded ? tabsTipOpen : false}
+              onDismissTabsTip={embedded ? dismissTabsTip : undefined}
+              tabsBarRef={embedded ? tabsBarRef : undefined}
+              rowActionsTipOpen={embedded ? rowActionsTipOpen : false}
+              onDismissRowActionsTip={embedded ? dismissRowActionsTip : undefined}
+              rowActionsAnchorRef={embedded ? rowActionsAnchorRef : undefined}
             />
           ) : null}
         </>

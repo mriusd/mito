@@ -1,13 +1,13 @@
 import { useCallback, useLayoutEffect, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
-type SidebarHoldersExpandTipProps = {
-  anchorRef: RefObject<HTMLButtonElement | null>;
+type ToxicFlowRowActionsTipProps = {
+  anchorRef: RefObject<HTMLTableCellElement>;
   open: boolean;
   onDismiss: () => void;
 };
 
-export function SidebarHoldersExpandTip({ anchorRef, open, onDismiss }: SidebarHoldersExpandTipProps) {
+export function ToxicFlowRowActionsTip({ anchorRef, open, onDismiss }: ToxicFlowRowActionsTipProps) {
   const [pos, setPos] = useState({ top: 0, left: 0 });
 
   const updatePos = useCallback(() => {
@@ -16,7 +16,7 @@ export function SidebarHoldersExpandTip({ anchorRef, open, onDismiss }: SidebarH
     const rect = el.getBoundingClientRect();
     setPos({
       top: rect.top + rect.height / 2,
-      left: rect.left - 10,
+      left: rect.right + 10,
     });
   }, [anchorRef]);
 
@@ -38,13 +38,19 @@ export function SidebarHoldersExpandTip({ anchorRef, open, onDismiss }: SidebarH
       <div className="pointer-events-none fixed inset-0 z-[8990] bg-black/25" aria-hidden />
       <div
         role="tooltip"
-        className="pointer-events-auto fixed z-[8991] max-w-[15.5rem] rounded-lg border border-yellow-500/50 bg-gray-800 px-3 py-2.5 shadow-xl shadow-black/50"
-        style={{ top: pos.top, left: pos.left, transform: 'translate(-100%, -50%)' }}
+        className="pointer-events-auto fixed z-[8991] max-w-[17rem] rounded-lg border border-yellow-500/50 bg-gray-800 px-3 py-2.5 shadow-xl shadow-black/50"
+        style={{ top: pos.top, left: pos.left, transform: 'translate(0, -50%)' }}
       >
         <p className="text-[11px] leading-relaxed text-gray-200">
-          Click here to open{' '}
-          <span className="font-semibold text-yellow-400">detailed market data</span>
-          {' '}— holders, stakes, and wallet positions at a glance.
+          <span className="font-semibold text-yellow-400">★ Star</span> — mark favourites; they appear in the{' '}
+          <span className="font-semibold text-yellow-400/90">Favourites</span> tab.
+        </p>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-gray-200">
+          <span className="font-semibold text-amber-300">Bell</span> — alert sound when that wallet opens a position in
+          this market.
+        </p>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-gray-200">
+          <span className="font-semibold text-red-400">X</span> — mute all notifications for that wallet.
         </p>
         <button
           type="button"
@@ -54,11 +60,11 @@ export function SidebarHoldersExpandTip({ anchorRef, open, onDismiss }: SidebarH
           Got it
         </button>
         <span
-          className="pointer-events-none absolute right-0 top-1/2 h-0 w-0 translate-x-full -translate-y-1/2 border-y-[7px] border-l-[9px] border-y-transparent border-l-yellow-500/50"
+          className="pointer-events-none absolute left-0 top-1/2 h-0 w-0 -translate-x-full -translate-y-1/2 border-y-[7px] border-r-[9px] border-y-transparent border-r-yellow-500/50"
           aria-hidden
         />
         <span
-          className="pointer-events-none absolute right-[1px] top-1/2 h-0 w-0 translate-x-full -translate-y-1/2 border-y-[6px] border-l-[8px] border-y-transparent border-l-gray-800"
+          className="pointer-events-none absolute left-px top-1/2 h-0 w-0 -translate-x-full -translate-y-1/2 border-y-[6px] border-r-[8px] border-y-transparent border-r-gray-800"
           aria-hidden
         />
       </div>

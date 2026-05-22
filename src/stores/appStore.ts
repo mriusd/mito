@@ -105,6 +105,8 @@ interface AppState {
   editProgArb: ProgArb | null;
   pnlDrilldown: { open: boolean; asset: string; endDates: string[] };
   walletSummaryDialogOpen: boolean;
+  marketViewDialogOpen: boolean;
+  walletInfoOverlay: { wallet: string; initialMarketId: string } | null;
 
   // Layout panels
   panels: PanelConfig[];
@@ -149,6 +151,9 @@ interface AppState {
   openPnlDrilldown: (asset: string, endDates: string[]) => void;
   closePnlDrilldown: () => void;
   setWalletSummaryDialogOpen: (v: boolean) => void;
+  setMarketViewDialogOpen: (v: boolean) => void;
+  openWalletInfoOverlay: (wallet: string, initialMarketId?: string) => void;
+  closeWalletInfoOverlay: () => void;
   setPanels: (panels: PanelConfig[]) => void;
   setLayouts: (layouts: ReactGridLayout.Layouts | null) => void;
   addPanel: (panel: PanelConfig) => void;
@@ -416,6 +421,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   editProgArb: null,
   pnlDrilldown: { open: false, asset: '', endDates: [] },
   walletSummaryDialogOpen: false,
+  marketViewDialogOpen: false,
+  walletInfoOverlay: null,
 
   panels: loadPanels(),
   layouts: loadLayouts(),
@@ -621,6 +628,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   openPnlDrilldown: (asset, endDates) => set({ pnlDrilldown: { open: true, asset, endDates } }),
   closePnlDrilldown: () => set({ pnlDrilldown: { open: false, asset: '', endDates: [] } }),
   setWalletSummaryDialogOpen: (v) => set({ walletSummaryDialogOpen: v }),
+  setMarketViewDialogOpen: (v) => set({ marketViewDialogOpen: v }),
+  openWalletInfoOverlay: (wallet, initialMarketId = '') =>
+    set({
+      walletInfoOverlay: {
+        wallet: wallet.trim(),
+        initialMarketId: (initialMarketId || '').trim(),
+      },
+    }),
+  closeWalletInfoOverlay: () => set({ walletInfoOverlay: null }),
   setPanels: (panels) => {
     localStorage.setItem('polybot-react-panels', JSON.stringify(panels));
     set({ panels });

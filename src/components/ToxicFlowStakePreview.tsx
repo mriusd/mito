@@ -4,6 +4,7 @@ import { StakedLegUsdBar } from './StakedLegUsdBar';
 import { HelpTooltip } from './HelpTooltip';
 import { HelpCircle } from 'lucide-react';
 import { toxicCohortStakedNetSurplusHalves } from '../lib/toxicFlowStakeCohort';
+import type { MarketStakedLegsResponse } from '../api';
 
 /** Human copy: market-wide gross YES vs NO legs (all wallets). */
 export const TOXIC_TOTAL_STAKE_BAR_HELP =
@@ -29,7 +30,10 @@ function ToxicFlowStakePreviewInner({
 }: {
   label: string;
   wallets?: readonly WalletPosition[];
-  marketGrossLegsUsd?: { stakedUsdYesLeg: number; stakedUsdNoLeg: number } | null;
+  marketGrossLegsUsd?: Pick<
+    MarketStakedLegsResponse,
+    'stakedUsdYesLeg' | 'stakedUsdNoLeg' | 'stakedSumAbsSignedNetUsd'
+  > | null;
   flashExtremeTilt?: boolean;
   extremeFlashTiltThreshold?: number;
   helpText?: string;
@@ -55,6 +59,14 @@ function ToxicFlowStakePreviewInner({
   }, [marketGrossLegsUsd, wallets]);
   const total = sumYUsd + sumNUsd;
   const hasSplit = Number.isFinite(sumYUsd) && Number.isFinite(sumNUsd) && total > 1e-9;
+  const totalStakeNetUsd = useMemo(() => {
+    if (barMode === 'cohortSurplusHalves') {
+      return hasSplit ? total : 0;
+    }
+    const sumAbs = marketGrossLegsUsd?.stakedSumAbsSignedNetUsd;
+    if (typeof sumAbs === 'number' && Number.isFinite(sumAbs) && sumAbs > 0) return sumAbs;
+    return hasSplit ? Math.abs(sumYUsd - sumNUsd) : 0;
+  }, [barMode, hasSplit, total, sumYUsd, sumNUsd, marketGrossLegsUsd?.stakedSumAbsSignedNetUsd]);
 
   const helpIcon =
     layout === 'stacked' && helpText != null && helpText !== '' ? (
@@ -73,6 +85,8 @@ function ToxicFlowStakePreviewInner({
       compactOmitLeftLabel={layout === 'stacked'}
       barMode={barMode}
       midMarker
+      compactShowLeanDirectionUsd
+      compactTotalStakeNetUsd={totalStakeNetUsd > 0 ? totalStakeNetUsd : null}
       flashExtremeTilt={!!flashExtremeTilt && hasSplit}
       extremeFlashTiltThreshold={extremeFlashTiltThreshold ?? 0.3}
     />
@@ -108,6 +122,7 @@ export const ToxicFlowStakePreview = memo(ToxicFlowStakePreviewInner, (a, b) => 
   if (ga !== gb) {
     if (ga == null || gb == null) return ga === gb;
     if (ga.stakedUsdYesLeg !== gb.stakedUsdYesLeg || ga.stakedUsdNoLeg !== gb.stakedUsdNoLeg) return false;
+    if (ga.stakedSumAbsSignedNetUsd !== gb.stakedSumAbsSignedNetUsd) return false;
   }
   return walletsPreviewPropEqual(a.wallets ?? [], b.wallets ?? []);
 });

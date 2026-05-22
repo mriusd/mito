@@ -27,6 +27,10 @@ const FavouriteWalletsDialogLazy = lazyWithChunkReload(() =>
   import('./FavouriteWalletsDialog').then((m) => ({ default: m.FavouriteWalletsDialog })),
 );
 
+const MarketViewDialogLazy = lazyWithChunkReload(() =>
+  import('./MarketViewDialog').then((m) => ({ default: m.MarketViewDialog })),
+);
+
 function preloadWalletSummaryDialog() {
   void importWithChunkReload(() => import('./ToxicFlowDialog'));
 }
@@ -104,6 +108,10 @@ export function Header({ onRefresh }: HeaderProps) {
 
   const [refreshing, setRefreshing] = useState(false);
   const [favouriteWalletsDialogOpen, setFavouriteWalletsDialogOpen] = useState(false);
+  const marketViewDialogOpen = useAppStore((s) => s.marketViewDialogOpen);
+  const setMarketViewDialogOpen = useAppStore((s) => s.setMarketViewDialogOpen);
+  const walletInfoOverlay = useAppStore((s) => s.walletInfoOverlay);
+  const closeWalletInfoOverlay = useAppStore((s) => s.closeWalletInfoOverlay);
   const [favouritesWalletInfoAddress, setFavouritesWalletInfoAddress] = useState<string | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
@@ -563,6 +571,24 @@ export function Header({ onRefresh }: HeaderProps) {
           />
         </Suspense>
       )}
+
+      {marketViewDialogOpen && (
+        <Suspense fallback={null}>
+          <MarketViewDialogLazy open onClose={() => setMarketViewDialogOpen(false)} />
+        </Suspense>
+      )}
+
+      {walletInfoOverlay ? (
+        <Suspense fallback={null}>
+          <WalletInfoDialogLazy
+            open
+            wallet={walletInfoOverlay.wallet}
+            initialMarketId={walletInfoOverlay.initialMarketId}
+            overlayZClass="z-[70000]"
+            onClose={closeWalletInfoOverlay}
+          />
+        </Suspense>
+      ) : null}
     </header>
   );
 }

@@ -62,6 +62,7 @@ export type LedgerFillChartRow = {
   blockTime?: number;
   price?: number | null;
   action?: string | null;
+  side?: string | null;
   tokenId?: string | null;
 };
 
@@ -73,7 +74,7 @@ export function buildChartTradeMarkersFromLedgerFills(
   const { yesTokenId, noTokenId, chartOutcome } = opts;
   const out: ChartTradeMarker[] = [];
   for (const f of fills) {
-    const action = normalizeBuySell(String(f.action ?? ''));
+    const action = normalizeBuySell(String(f.action ?? f.side ?? ''));
     if (!action) continue;
     const timeMs = blockTimeToMs(Number(f.blockTime ?? 0));
     if (timeMs == null) continue;

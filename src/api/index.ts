@@ -639,15 +639,81 @@ export async function fetchMarketOutcomeTokens(marketId: string): Promise<Market
   return resp.json();
 }
 
+export interface OnchainMarketListItem {
+  conditionId: string;
+  question?: string;
+  slug?: string;
+  eventSlug?: string;
+  asset?: string;
+  timeframe?: string;
+  endDate?: string;
+  resolved?: number;
+  outcome?: string;
+}
+
+export async function fetchOnchainMarkets(params: {
+  asset: string;
+  timeframe: string;
+  expired_only?: boolean;
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  markets: OnchainMarketListItem[];
+  count: number;
+  total: number;
+  limit: number;
+  offset: number;
+}> {
+  const qs = new URLSearchParams();
+  qs.set('asset', params.asset);
+  qs.set('timeframe', params.timeframe);
+  if (params.expired_only === false) qs.set('expired_only', '0');
+  else qs.set('expired_only', '1');
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.offset != null) qs.set('offset', String(params.offset));
+  const resp = await fetch(`${BASE}/api/onchain-markets?${qs.toString()}`);
+  if (!resp.ok) throw new Error('Failed to fetch onchain markets');
+  return resp.json();
+}
+
+export async function fetchMarketWalletPositions(params: {
+  market_id: string;
+  limit?: number;
+  offset?: number;
+  sort?: 'pnl';
+  order?: 'asc' | 'desc';
+}): Promise<{
+  positions: WalletPosition[];
+  count: number;
+  total: number;
+  limit: number;
+  offset: number;
+  sort?: string;
+  order?: string;
+}> {
+  const qs = new URLSearchParams();
+  qs.set('market_id', params.market_id);
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.offset != null) qs.set('offset', String(params.offset));
+  if (params.sort) qs.set('sort', params.sort);
+  if (params.order) qs.set('order', params.order);
+  const resp = await fetch(`${BASE}/api/market-wallet-positions?${qs.toString()}`);
+  if (!resp.ok) throw new Error('Failed to fetch market wallet positions');
+  return resp.json();
+}
+
 export async function fetchWalletPositions(params: {
   market_id?: string;
   wallet?: string;
   asset?: string;
   type?: string;
+  timeframe?: string;
   min_trades?: number;
   limit?: number;
   /** When true, server excludes closed markets and past end_date (joins `markets`). */
   active_only?: boolean;
+  /** When true, server excludes open/future markets (end_date in the past). */
+  expired_only?: boolean;
   /** When true, rows from `wallet_market_positions` (ledger). */
   ledger?: boolean;
   /** Backend sort: `end_date_desc` = newest expiry first (surfaces far-future markets under limit vs default chain_updated). */
@@ -663,9 +729,11 @@ export async function fetchWalletPositions(params: {
   if (params.wallet) qs.set('wallet', params.wallet);
   if (params.asset) qs.set('asset', params.asset);
   if (params.type) qs.set('type', params.type);
+  if (params.timeframe) qs.set('timeframe', params.timeframe);
   if (params.min_trades) qs.set('min_trades', String(params.min_trades));
   if (params.limit) qs.set('limit', String(params.limit));
   if (params.active_only) qs.set('active_only', '1');
+  if (params.expired_only) qs.set('expired_only', '1');
   if (params.ledger) qs.set('ledger', '1');
   if (params.order) qs.set('order', params.order);
   const resp = await fetch(`${BASE}/api/wallet-positions?${qs.toString()}`);

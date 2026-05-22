@@ -288,23 +288,35 @@ export function LiveTradeChart({
         }
       };
 
+    const applyWsKline = (k: Record<string, unknown>) => {
+            const openTime = k.t as number;
+            const o = toPrice(parseFloat(String(k.o)) * 100, isNo);
+            const h = toPrice(parseFloat(String(k.h)) * 100, isNo);
+            const l = toPrice(parseFloat(String(k.l)) * 100, isNo);
+            const c = toPrice(parseFloat(String(k.c)) * 100, isNo);
+            const v = parseFloat(String(k.v)) || 0;
+            const hi = Math.max(o, h, l, c);
+            const lo = Math.min(o, h, l, c);
+            candleMapRef.current.set(openTime, { time: openTime, o, h: hi, l: lo, c, v });
+          };
+
       ws.onmessage = (event) => {
         if (!isLiveSocket()) return;
         try {
           const msg = JSON.parse(event.data);
+          if (msg.type === 'klineStreamSnapshot') {
+            const klines = msg.data?.klines;
+            if (!Array.isArray(klines)) return;
+            for (const k of klines) {
+              if (k && typeof k === 'object') applyWsKline(k as Record<string, unknown>);
+            }
+            setWsTick((n) => n + 1);
+            return;
+          }
           if (msg.type === 'klineStreamUpdate') {
             const k = msg.data?.data?.k;
             if (!k) return;
-            const map = candleMapRef.current;
-            const openTime = k.t as number;
-            const o = toPrice(parseFloat(k.o) * 100, isNo);
-            const h = toPrice(parseFloat(k.h) * 100, isNo);
-            const l = toPrice(parseFloat(k.l) * 100, isNo);
-            const c = toPrice(parseFloat(k.c) * 100, isNo);
-            const v = parseFloat(k.v) || 0;
-            const hi = Math.max(o, h, l, c);
-            const lo = Math.min(o, h, l, c);
-            map.set(openTime, { time: openTime, o, h: hi, l: lo, c, v });
+            applyWsKline(k as Record<string, unknown>);
             setWsTick((n) => n + 1);
           }
         } catch {

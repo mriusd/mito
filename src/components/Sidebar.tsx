@@ -131,6 +131,7 @@ import { SidebarPositionListItem } from './SidebarPositionListItem';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 import { SidebarHoldersExpandTip } from './SidebarHoldersExpandTip';
 import { SidebarNotifyGearTip } from './SidebarNotifyGearTip';
+import { SidebarHistoryTip } from './SidebarHistoryTip';
 import {
   isDesktopScreenViewport,
   persistSidebarHoldersExpandTipDismissed,
@@ -140,11 +141,16 @@ import {
   persistSidebarNotifyGearTipDismissed,
   readSidebarNotifyGearTipDismissed,
 } from '../lib/sidebarNotifyGearTip';
+import {
+  persistSidebarHistoryTipDismissed,
+  readSidebarHistoryTipDismissed,
+} from '../lib/sidebarHistoryTip';
 import { readToxicFlowRowActionsTipDismissed } from '../lib/toxicFlowRowActionsTip';
 import { isOnboardingBlockingUiOpen, subscribeOnboardingBlockingUi } from '../lib/onboardingBlockingUi';
 import { getBidAskMarketRow } from '../lib/bidAskMarketLookup';
 import {
   ArrowRight,
+  History,
   Bell,
   BellOff,
   ChevronDown,
@@ -930,6 +936,7 @@ export function Sidebar() {
   // const setProgDialogOpen = useAppStore((s) => s.setProgDialogOpen);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
+  const setMarketViewDialogOpen = useAppStore((s) => s.setMarketViewDialogOpen);
   const positions = useAppStore((s) => s.positions);
   const makerAddressForMerge = useAppStore((s) => s.makerAddress);
   const orders = useAppStore((s) => s.orders);
@@ -2993,6 +3000,13 @@ export function Sidebar() {
     if (sidebarToxicEffective && holdersExpandTipOpen) dismissHoldersExpandTip();
   }, [sidebarToxicEffective, holdersExpandTipOpen, dismissHoldersExpandTip]);
 
+  const historyButtonRef = useRef<HTMLButtonElement>(null);
+  const [historyTipOpen, setHistoryTipOpen] = useState(false);
+  const dismissHistoryTip = useCallback(() => {
+    persistSidebarHistoryTipDismissed();
+    setHistoryTipOpen(false);
+  }, []);
+
   const notifyGearRef = useRef<HTMLButtonElement>(null);
   const [notifyGearTipOpen, setNotifyGearTipOpen] = useState(false);
   const dismissNotifyGearTip = useCallback(() => {
@@ -3001,7 +3015,49 @@ export function Sidebar() {
   }, []);
 
   useEffect(() => {
+    if (readSidebarHistoryTipDismissed()) {
+      setHistoryTipOpen(false);
+      return;
+    }
+    if (!isDesktopScreenViewport()) {
+      setHistoryTipOpen(false);
+      return;
+    }
+    if (onboardingBlockingUiOpen || notifyDialogOpen) {
+      setHistoryTipOpen(false);
+      return;
+    }
+    if (!sidebarOpen || !selectedMarket) {
+      setHistoryTipOpen(false);
+      return;
+    }
+    if (holdersExpandTipOpen) {
+      setHistoryTipOpen(false);
+      return;
+    }
+    if (!readToxicFlowRowActionsTipDismissed()) {
+      const holdersExpandDone = readSidebarHoldersExpandTipDismissed();
+      if (!holdersExpandDone || sidebarToxicEffective) {
+        setHistoryTipOpen(false);
+        return;
+      }
+    }
+    setHistoryTipOpen(true);
+  }, [
+    sidebarOpen,
+    selectedMarket?.id,
+    onboardingBlockingUiOpen,
+    notifyDialogOpen,
+    holdersExpandTipOpen,
+    sidebarToxicEffective,
+  ]);
+
+  useEffect(() => {
     if (readSidebarNotifyGearTipDismissed()) {
+      setNotifyGearTipOpen(false);
+      return;
+    }
+    if (!readSidebarHistoryTipDismissed() || historyTipOpen) {
       setNotifyGearTipOpen(false);
       return;
     }
@@ -3036,6 +3092,7 @@ export function Sidebar() {
     notifyDialogOpen,
     holdersExpandTipOpen,
     sidebarToxicEffective,
+    historyTipOpen,
   ]);
 
   useEffect(() => {
@@ -3820,6 +3877,20 @@ export function Sidebar() {
               </span>
             ) : null}
             <button
+              ref={historyButtonRef}
+              type="button"
+              onClick={() => {
+                dismissHistoryTip();
+                setMarketViewDialogOpen(true);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="shrink-0 rounded-sm border border-gray-600 bg-gray-900/60 p-0.5 w-[18px] min-w-[18px] flex items-center justify-center text-amber-300 hover:bg-gray-700/80 transition-colors"
+              title="Market view — browse markets, traders, and trades"
+              aria-label="Market view"
+            >
+              <History className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
+            </button>
+            <button
               ref={notifyGearRef}
               type="button"
               onClick={() => {
@@ -3861,15 +3932,15 @@ export function Sidebar() {
                 <Bell className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
               )}
             </button>
-            {upDownCountdown && (
-              <span className={`text-xs font-bold flex-shrink-0 flex items-center gap-0.5 ${upDownCountdown === 'Expired' ? 'text-red-400' : upDownRemaining < 60000 ? 'text-red-400' : upDownRemaining < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>
-                <Clock size={12} /> {upDownCountdown}
-              </span>
-            )}
           </div>
           <div className="text-[10px] text-gray-200 leading-tight mt-0.5 break-words w-full">
             {fullMarketName}
           </div>
+          <SidebarHistoryTip
+            anchorRef={historyButtonRef}
+            open={historyTipOpen}
+            onDismiss={dismissHistoryTip}
+          />
           <SidebarNotifyGearTip
             anchorRef={notifyGearRef}
             open={notifyGearTipOpen}

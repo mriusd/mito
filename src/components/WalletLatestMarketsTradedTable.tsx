@@ -133,7 +133,7 @@ function fmtSharesIntEn(v: number): string {
   return Math.round(Math.abs(v)).toLocaleString('en-US');
 }
 
-function marketListEndDateTimeLocale(endDate: string | null): { label: string; color: string } {
+export function marketListEndDateTimeLocale(endDate: string | null): { label: string; color: string } {
   if (!endDate) return { label: '-', color: 'text-gray-400' };
   const dt = new Date(endDate);
   if (Number.isNaN(dt.getTime())) return { label: '-', color: 'text-gray-400' };

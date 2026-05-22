@@ -157,14 +157,20 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
               <div className="space-y-0.5">
                 {(() => {
                   let cumul = 0;
+                  let cumulUsd = 0;
                   const cumuls = displayBids.map((b) => {
                     cumul += parseFloat(b.size) || 0;
                     return cumul;
+                  });
+                  const cumulUsds = displayBids.map((b) => {
+                    cumulUsd += obLevelUsd(b);
+                    return cumulUsd;
                   });
                   const maxCumul = cumuls.length > 0 ? cumuls[cumuls.length - 1] : 1;
                   return displayBids.map((bid, i) => {
                     const levelSize = parseFloat(bid.size) || 0;
                     const levelUsd = obLevelUsd(bid);
+                    const cumulativeUsd = cumulUsds[i];
                     const centsNum = parseFloat(bid.price) * 100;
                     const bpDisp = obAggStep === '0.1' ? centsNum.toFixed(1) : String(Math.round(centsNum));
                     const orderPk =
@@ -185,7 +191,7 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                       <div
                         key={`${bpDisp}-${i}`}
                         className={`relative grid grid-cols-3 gap-1 text-[10px] px-1 hover:bg-green-900/30 cursor-pointer ${hl}`}
-                        title={`Bid ${bpDisp}¢ · ${levelSize.toFixed(0)} shares · ${fmtObLevelUsd(levelUsd)} (${levelPct.toFixed(0)}% of max bid/ask $) · cumulative ${cumuls[i].toFixed(0)} shares (${depthPct.toFixed(0)}% of book)`}
+                        title={`Bid ${bpDisp}¢ · ${levelSize.toFixed(0)} shares · level ${fmtObLevelUsd(levelUsd)} · cumulative ${cumuls[i].toFixed(0)} shares / ${fmtObLevelUsd(cumulativeUsd)} (${depthPct.toFixed(0)}% of book shares · ${levelPct.toFixed(0)}% of max bid/ask $ at level)`}
                         onClick={() => {
                           setOrderSide('SELL');
                           setOrderPrice(orderPk);
@@ -205,7 +211,7 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                         />
                         <span className="relative live-ob-bid">{bpDisp}¢</span>
                         <span className="relative text-right text-gray-400 tabular-nums">{levelSize.toFixed(0)}</span>
-                        <span className="relative text-right text-gray-500 tabular-nums">{fmtObLevelUsd(levelUsd)}</span>
+                        <span className="relative text-right text-gray-500 tabular-nums">{fmtObLevelUsd(cumulativeUsd)}</span>
                       </div>
                     );
                   });
@@ -221,14 +227,20 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
               <div className="space-y-0.5">
                 {(() => {
                   let cumul = 0;
+                  let cumulUsd = 0;
                   const cumuls = displayAsks.map((a) => {
                     cumul += parseFloat(a.size) || 0;
                     return cumul;
+                  });
+                  const cumulUsds = displayAsks.map((a) => {
+                    cumulUsd += obLevelUsd(a);
+                    return cumulUsd;
                   });
                   const maxCumul = cumuls.length > 0 ? cumuls[cumuls.length - 1] : 1;
                   return displayAsks.map((ask, i) => {
                     const levelSize = parseFloat(ask.size) || 0;
                     const levelUsd = obLevelUsd(ask);
+                    const cumulativeUsd = cumulUsds[i];
                     const centsNum = parseFloat(ask.price) * 100;
                     const apDisp = obAggStep === '0.1' ? centsNum.toFixed(1) : String(Math.round(centsNum));
                     const orderPk =
@@ -250,7 +262,7 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                       <div
                         key={`${apDisp}-${i}`}
                         className={`relative grid grid-cols-3 gap-1 text-[10px] px-1 hover:bg-red-900/30 cursor-pointer ${hl}`}
-                        title={`Ask ${apDisp}¢ · ${levelSize.toFixed(0)} shares · ${fmtObLevelUsd(levelUsd)} (${levelPct.toFixed(0)}% of max bid/ask $) · cumulative ${cumulativeAskSize.toFixed(0)} shares (${depthPct.toFixed(0)}% of book)`}
+                        title={`Ask ${apDisp}¢ · ${levelSize.toFixed(0)} shares · level ${fmtObLevelUsd(levelUsd)} · cumulative ${cumulativeAskSize.toFixed(0)} shares / ${fmtObLevelUsd(cumulativeUsd)} (${depthPct.toFixed(0)}% of book shares · ${levelPct.toFixed(0)}% of max bid/ask $ at level)`}
                         onClick={() => {
                           setOrderSide('BUY');
                           setOrderPrice(orderPk);
@@ -267,7 +279,7 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                         />
                         <span className="relative live-ob-ask">{apDisp}¢</span>
                         <span className="relative text-right text-gray-400 tabular-nums">{levelSize.toFixed(0)}</span>
-                        <span className="relative text-right text-gray-500 tabular-nums">{fmtObLevelUsd(levelUsd)}</span>
+                        <span className="relative text-right text-gray-500 tabular-nums">{fmtObLevelUsd(cumulativeUsd)}</span>
                       </div>
                     );
                   });

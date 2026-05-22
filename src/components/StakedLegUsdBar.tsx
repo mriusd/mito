@@ -111,15 +111,25 @@ export function StakedLegUsdBar({
     const leanTitle =
       neutralBar ? 'No split'
       : barMode === 'grossLegTotals'
-        ? `(ΣY − ΣN) / (ΣY + ΣN) tilt: ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}% · |ΣY−ΣN| $${fmtUsd(netAbs)}`
+        ? `(ΣY − ΣN) / (ΣY + ΣN) tilt: ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}% · |ΣY−ΣN| gross $${fmtUsd(netAbs)}`
         : `(Σ splits YES − Σ splits NO)/(Σ splits): ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}%; center $${fmtUsd(displayTotal)} = Σ|per-wallet inv×px net| in cohort—not header Staked.`;
-    const directionUsd = neutralBar ? null : lean >= 0 ? sumYUsd : sumNUsd;
     const totalStakeNetUsd =
       typeof compactTotalStakeNetUsd === 'number' && Number.isFinite(compactTotalStakeNetUsd)
         ? compactTotalStakeNetUsd
         : barMode === 'cohortSurplusHalves' && !neutralBar
           ? displayTotal
           : null;
+    const directionUsd = neutralBar
+      ? null
+      : barMode === 'grossLegTotals' && totalStakeNetUsd != null && totalStakeNetUsd > 0
+        ? (() => {
+            const yHalf = (totalStakeNetUsd * (1 + lean)) / 2;
+            const nHalf = (totalStakeNetUsd * (1 - lean)) / 2;
+            return lean >= 0 ? yHalf : nHalf;
+          })()
+        : lean >= 0
+          ? sumYUsd
+          : sumNUsd;
     const leanPctLabel = neutralBar
       ? '—'
       : `${leanPct > 0 ? '+' : ''}${leanPct.toFixed(0)}%`;
@@ -136,8 +146,8 @@ export function StakedLegUsdBar({
         ? leanTitle
         : compactShowLeanDirectionUsd
           ? totalStakeNetUsd != null && totalStakeNetUsd > 0
-            ? `${leanTitle} · ${lean >= 0 ? 'YES' : 'NO'} direction staked $${fmtUsdWhole(directionUsd)} · Σ|Staked Net| $${fmtUsdWhole(totalStakeNetUsd)}`
-            : `${leanTitle} · ${lean >= 0 ? 'YES' : 'NO'} direction staked $${fmtUsdWhole(directionUsd)}`
+            ? `${leanTitle} · ${lean >= 0 ? 'YES' : 'NO'} lean-side net $${fmtUsdWhole(directionUsd!)} · Σ|Staked Net| $${fmtUsdWhole(totalStakeNetUsd)} (matches Staked pill)`
+            : `${leanTitle} · ${lean >= 0 ? 'YES' : 'NO'} direction staked $${fmtUsdWhole(directionUsd!)}`
           : leanTitle;
     const leanColClass = compactShowLeanDirectionUsd
       ? totalStakeNetUsd != null && totalStakeNetUsd > 0

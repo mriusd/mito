@@ -59,14 +59,6 @@ function ToxicFlowStakePreviewInner({
   }, [marketGrossLegsUsd, wallets]);
   const total = sumYUsd + sumNUsd;
   const hasSplit = Number.isFinite(sumYUsd) && Number.isFinite(sumNUsd) && total > 1e-9;
-  const totalStakeNetUsd = useMemo(() => {
-    if (barMode === 'cohortSurplusHalves') {
-      return hasSplit ? total : 0;
-    }
-    const sumAbs = marketGrossLegsUsd?.stakedSumAbsSignedNetUsd;
-    if (typeof sumAbs === 'number' && Number.isFinite(sumAbs) && sumAbs > 0) return sumAbs;
-    return hasSplit ? Math.abs(sumYUsd - sumNUsd) : 0;
-  }, [barMode, hasSplit, total, sumYUsd, sumNUsd, marketGrossLegsUsd?.stakedSumAbsSignedNetUsd]);
 
   const helpIcon =
     layout === 'stacked' && helpText != null && helpText !== '' ? (
@@ -85,8 +77,6 @@ function ToxicFlowStakePreviewInner({
       compactOmitLeftLabel={layout === 'stacked'}
       barMode={barMode}
       midMarker
-      compactShowLeanDirectionUsd
-      compactTotalStakeNetUsd={totalStakeNetUsd > 0 ? totalStakeNetUsd : null}
       flashExtremeTilt={!!flashExtremeTilt && hasSplit}
       extremeFlashTiltThreshold={extremeFlashTiltThreshold ?? 0.3}
     />

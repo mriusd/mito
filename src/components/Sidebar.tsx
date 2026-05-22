@@ -5,6 +5,7 @@ import { useAppStore } from '../stores/appStore';
 import { appKit } from '../lib/wallet';
 import {
   fetchMarketStakedLegs,
+  mergeMarketStakedLegsResponse,
   placeOrder,
   cancelOrder,
   cancelOrders,
@@ -66,6 +67,7 @@ import {
 } from '../lib/toxicFlowStakeCohort';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
 import { useSidebarChartVolatility } from '../hooks/useSidebarChartVolatility';
+import { useThrottledBidAskMarketRow } from '../hooks/useThrottledBidAskMarketRow';
 import {
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
   TOXIC_FAVOURITES_CHANGED_EVENT,
@@ -1458,7 +1460,23 @@ export function Sidebar() {
       cancelled = true;
     };
   }, [selectedMarket?.conditionId, selectedMarket?.id]);
-  const sidebarStakedLegs = marketStakedLegs;
+  const sidebarStakedLiveRow = useThrottledBidAskMarketRow(selectedMarket?.clobTokenIds?.[0] ?? '');
+  const sidebarStakedLegs = useMemo(() => {
+    let live: MarketStakedLegsResponse | null = null;
+    const row = sidebarStakedLiveRow;
+    if (row) {
+      const wy = row.stakedUsdYesLeg;
+      const wn = row.stakedUsdNoLeg;
+      const sumAbs = row.stakedSumAbsSignedNetUsd;
+      if (typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn)) {
+        live = { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
+        if (typeof sumAbs === 'number' && Number.isFinite(sumAbs)) {
+          live.stakedSumAbsSignedNetUsd = sumAbs;
+        }
+      }
+    }
+    return mergeMarketStakedLegsResponse(live, marketStakedLegs);
+  }, [sidebarStakedLiveRow, marketStakedLegs]);
   const notifyStakedGatePasses = useSidebarNotifyStakedGatePasses();
 
   /** Tilt pauses while chart σ is above max (annualized %). 0 = no volatility gate. */

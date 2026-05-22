@@ -133,14 +133,26 @@ export function StakedLegUsdBar({
     const leanPctLabel = neutralBar
       ? '—'
       : `${leanPct > 0 ? '+' : ''}${leanPct.toFixed(0)}%`;
-    const leanRightLabel =
-      neutralBar || directionUsd == null
-        ? '—'
-        : compactShowLeanDirectionUsd
-          ? totalStakeNetUsd != null && totalStakeNetUsd > 0
-            ? `${leanPctLabel} \\ $${fmtUsdWhole(directionUsd)} \\ $${fmtUsdWhole(totalStakeNetUsd)}`
-            : `${leanPctLabel} \\ $${fmtUsdWhole(directionUsd)}`
-          : leanPctLabel;
+    const leanRightContent =
+      neutralBar || directionUsd == null ? (
+        '—'
+      ) : compactShowLeanDirectionUsd ? (
+        totalStakeNetUsd != null && totalStakeNetUsd > 0 ? (
+          <>
+            <span className={leanColor}>${fmtUsdWhole(directionUsd)}</span>
+            <span className={leanColor}> ({leanPctLabel})</span>
+            <span className="text-gray-500">{' \\ '}</span>
+            <span className="text-gray-500">${fmtUsdWhole(totalStakeNetUsd)}</span>
+          </>
+        ) : (
+          <>
+            <span className={leanColor}>${fmtUsdWhole(directionUsd)}</span>
+            <span className={leanColor}> ({leanPctLabel})</span>
+          </>
+        )
+      ) : (
+        leanPctLabel
+      );
     const leanRightTitle =
       neutralBar || directionUsd == null
         ? leanTitle
@@ -175,10 +187,10 @@ export function StakedLegUsdBar({
           )}
           <div className="flex-1 min-w-0">{bar}</div>
           <span
-            className={`font-bold shrink-0 tabular-nums text-right whitespace-nowrap ${leanColClass} ${leanColor}`}
+            className={`font-bold shrink-0 tabular-nums text-right whitespace-nowrap ${leanColClass}${compactShowLeanDirectionUsd && !neutralBar && directionUsd != null ? '' : ` ${leanColor}`}`}
             title={leanRightTitle}
           >
-            {leanRightLabel}
+            {leanRightContent}
           </span>
         </div>
         {compactLegUsdFooter ? (

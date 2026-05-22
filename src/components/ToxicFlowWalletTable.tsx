@@ -1253,6 +1253,7 @@ function WalletTableInner({
     () => toxicCohortStakedNetSurplusHalves(rows),
     [rows],
   );
+  const cohortStakeBarTotal = cohortSumYUsd + cohortSumNUsd;
   if (rows.length === 0) {
     return (
       <div className="flex flex-1 min-h-0 flex-col items-center justify-center text-gray-500 text-[10px] py-3">
@@ -1274,7 +1275,7 @@ function WalletTableInner({
             barMode="cohortSurplusHalves"
             midMarker
             compactShowLeanDirectionUsd
-            compactTotalStakeNetUsd={totalStakedDenom > 0 ? totalStakedDenom : null}
+            compactTotalStakeNetUsd={cohortStakeBarTotal > 0 ? cohortStakeBarTotal : null}
           />
         </div>
       ) : null}

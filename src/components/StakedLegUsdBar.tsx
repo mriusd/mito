@@ -112,7 +112,7 @@ export function StakedLegUsdBar({
       neutralBar ? 'No split'
       : barMode === 'grossLegTotals'
         ? `(ΣY − ΣN) / (ΣY + ΣN) tilt: ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}% · |ΣY−ΣN| gross $${fmtUsd(netAbs)}`
-        : `(Σ splits YES − Σ splits NO)/(Σ splits): ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}%; center $${fmtUsd(displayTotal)} = Σ|per-wallet inv×px net| in cohort—not header Staked.`;
+        : `(Σ Staked Y − Σ Staked N) / (Σ Staked Y + Σ Staked N) in this tab: ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}% · middle = Σ $ on lean side · total = sum of Staked column $ in rows below`;
     const totalStakeNetUsd =
       typeof compactTotalStakeNetUsd === 'number' && Number.isFinite(compactTotalStakeNetUsd)
         ? compactTotalStakeNetUsd
@@ -146,7 +146,7 @@ export function StakedLegUsdBar({
         ? leanTitle
         : compactShowLeanDirectionUsd
           ? totalStakeNetUsd != null && totalStakeNetUsd > 0
-            ? `${leanTitle} · ${lean >= 0 ? 'YES' : 'NO'} lean-side net $${fmtUsdWhole(directionUsd!)} · Σ|Staked Net| $${fmtUsdWhole(totalStakeNetUsd)} (matches Staked pill)`
+            ? `${leanTitle} · ${lean >= 0 ? 'Σ Staked Y' : 'Σ Staked N'} $${fmtUsdWhole(directionUsd!)} · tab total $${fmtUsdWhole(totalStakeNetUsd)}`
             : `${leanTitle} · ${lean >= 0 ? 'YES' : 'NO'} direction staked $${fmtUsdWhole(directionUsd!)}`
           : leanTitle;
     const leanColClass = compactShowLeanDirectionUsd

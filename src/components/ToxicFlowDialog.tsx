@@ -2399,7 +2399,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
 
   const rootClass = embedded
     ? 'flex flex-col flex-1 min-h-0 min-w-0 h-full w-full overflow-hidden bg-gray-900'
-    : `fixed inset-0 bg-black/60 ${overlayZClass} flex items-center justify-center`;
+    : 'fixed inset-0 bg-black/60 z-[60010] flex items-center justify-center';
   const cardClass = embedded
     ? 'bg-gray-800 flex flex-col flex-1 min-h-0 min-w-0 p-3 border-0 border-gray-700/50 w-full rounded-none shadow-none'
     : inlineWalletSlot

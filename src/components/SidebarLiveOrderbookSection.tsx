@@ -10,6 +10,21 @@ import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 
 type OBLevel = { price: string; size: string };
 
+function obLevelUsd(level: OBLevel): number {
+  const size = parseFloat(level.size);
+  const price = parseFloat(level.price);
+  if (!Number.isFinite(size) || !Number.isFinite(price)) return 0;
+  return size * price;
+}
+
+function fmtObLevelUsd(usd: number): string {
+  if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(1)}M`;
+  if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}k`;
+  if (usd >= 100) return `$${Math.round(usd)}`;
+  if (usd >= 10) return `$${usd.toFixed(0)}`;
+  return `$${usd.toFixed(2)}`;
+}
+
 export type SidebarLiveOrderbookSectionProps = {
   orderbookSectionHeight: string;
   liveOrderbookExpanded: boolean;
@@ -62,6 +77,13 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
     () => resolvedBinaryOutcomeLabel(outcomeMarket, isUpDownMarket),
     [outcomeMarket, isUpDownMarket],
   );
+
+  const maxBookLevelUsd = useMemo(() => {
+    let max = 0;
+    for (const level of displayBids) max = Math.max(max, obLevelUsd(level));
+    for (const level of displayAsks) max = Math.max(max, obLevelUsd(level));
+    return max || 1;
+  }, [displayBids, displayAsks]);
 
   const overlayPrimary = resolvedOutcomeLabel
     ? { text: `Outcome: ${resolvedOutcomeLabel}`, className: 'text-emerald-400 font-bold' }
@@ -127,9 +149,10 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
           </div>
           <div className="relative grid grid-cols-2 gap-2 flex-1 min-h-0">
             <div>
-              <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-500 mb-1">
+              <div className="grid grid-cols-3 gap-1 text-[10px] text-gray-500 mb-1">
                 <span>Bid</span>
                 <span className="text-right">Size</span>
+                <span className="text-right">USD</span>
               </div>
               <div className="space-y-0.5">
                 {(() => {
@@ -139,9 +162,9 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                     return cumul;
                   });
                   const maxCumul = cumuls.length > 0 ? cumuls[cumuls.length - 1] : 1;
-                  const maxLevelSize = displayBids.reduce((m, b) => Math.max(m, parseFloat(b.size) || 0), 0) || 1;
                   return displayBids.map((bid, i) => {
                     const levelSize = parseFloat(bid.size) || 0;
+                    const levelUsd = obLevelUsd(bid);
                     const centsNum = parseFloat(bid.price) * 100;
                     const bpDisp = obAggStep === '0.1' ? centsNum.toFixed(1) : String(Math.round(centsNum));
                     const orderPk =
@@ -157,12 +180,12 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                           ? 'bg-blue-900/50 font-bold'
                           : '';
                     const depthPct = maxCumul > 0 ? (cumuls[i] / maxCumul) * 100 : 0;
-                    const levelPct = maxLevelSize > 0 ? (levelSize / maxLevelSize) * 100 : 0;
+                    const levelPct = maxBookLevelUsd > 0 ? (levelUsd / maxBookLevelUsd) * 100 : 0;
                     return (
                       <div
                         key={`${bpDisp}-${i}`}
-                        className={`relative grid grid-cols-2 gap-1 text-[11px] px-1 hover:bg-green-900/30 cursor-pointer ${hl}`}
-                        title={`Bid ${bpDisp}¢ · size ${levelSize.toFixed(0)} (${levelPct.toFixed(0)}% of max level) · cumulative ${cumuls[i].toFixed(0)} (${depthPct.toFixed(0)}% of book)`}
+                        className={`relative grid grid-cols-3 gap-1 text-[10px] px-1 hover:bg-green-900/30 cursor-pointer ${hl}`}
+                        title={`Bid ${bpDisp}¢ · ${levelSize.toFixed(0)} shares · ${fmtObLevelUsd(levelUsd)} (${levelPct.toFixed(0)}% of max bid/ask $) · cumulative ${cumuls[i].toFixed(0)} shares (${depthPct.toFixed(0)}% of book)`}
                         onClick={() => {
                           setOrderSide('SELL');
                           setOrderPrice(orderPk);
@@ -177,11 +200,12 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                           style={{ width: `${depthPct}%` }}
                         />
                         <div
-                          className="absolute inset-y-0 right-0 bg-emerald-400/15 pointer-events-none"
+                          className="absolute inset-y-0 right-0 bg-emerald-400/20 pointer-events-none"
                           style={{ width: `${levelPct}%` }}
                         />
                         <span className="relative live-ob-bid">{bpDisp}¢</span>
-                        <span className="relative text-right text-gray-400">{levelSize.toFixed(0)}</span>
+                        <span className="relative text-right text-gray-400 tabular-nums">{levelSize.toFixed(0)}</span>
+                        <span className="relative text-right text-gray-500 tabular-nums">{fmtObLevelUsd(levelUsd)}</span>
                       </div>
                     );
                   });
@@ -189,9 +213,10 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
               </div>
             </div>
             <div>
-              <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-500 mb-1">
+              <div className="grid grid-cols-3 gap-1 text-[10px] text-gray-500 mb-1">
                 <span>Ask</span>
                 <span className="text-right">Size</span>
+                <span className="text-right">USD</span>
               </div>
               <div className="space-y-0.5">
                 {(() => {
@@ -201,9 +226,9 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                     return cumul;
                   });
                   const maxCumul = cumuls.length > 0 ? cumuls[cumuls.length - 1] : 1;
-                  const maxLevelSize = displayAsks.reduce((m, a) => Math.max(m, parseFloat(a.size) || 0), 0) || 1;
                   return displayAsks.map((ask, i) => {
                     const levelSize = parseFloat(ask.size) || 0;
+                    const levelUsd = obLevelUsd(ask);
                     const centsNum = parseFloat(ask.price) * 100;
                     const apDisp = obAggStep === '0.1' ? centsNum.toFixed(1) : String(Math.round(centsNum));
                     const orderPk =
@@ -220,12 +245,12 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                           : '';
                     const cumulativeAskSize = cumuls[i];
                     const depthPct = maxCumul > 0 ? (cumulativeAskSize / maxCumul) * 100 : 0;
-                    const levelPct = maxLevelSize > 0 ? (levelSize / maxLevelSize) * 100 : 0;
+                    const levelPct = maxBookLevelUsd > 0 ? (levelUsd / maxBookLevelUsd) * 100 : 0;
                     return (
                       <div
                         key={`${apDisp}-${i}`}
-                        className={`relative grid grid-cols-2 gap-1 text-[11px] px-1 hover:bg-red-900/30 cursor-pointer ${hl}`}
-                        title={`Ask ${apDisp}¢ · size ${levelSize.toFixed(0)} (${levelPct.toFixed(0)}% of max level) · cumulative ${cumulativeAskSize.toFixed(0)} (${depthPct.toFixed(0)}% of book)`}
+                        className={`relative grid grid-cols-3 gap-1 text-[10px] px-1 hover:bg-red-900/30 cursor-pointer ${hl}`}
+                        title={`Ask ${apDisp}¢ · ${levelSize.toFixed(0)} shares · ${fmtObLevelUsd(levelUsd)} (${levelPct.toFixed(0)}% of max bid/ask $) · cumulative ${cumulativeAskSize.toFixed(0)} shares (${depthPct.toFixed(0)}% of book)`}
                         onClick={() => {
                           setOrderSide('BUY');
                           setOrderPrice(orderPk);
@@ -237,11 +262,12 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
                           style={{ width: `${depthPct}%` }}
                         />
                         <div
-                          className="absolute inset-y-0 left-0 bg-rose-400/15 pointer-events-none"
+                          className="absolute inset-y-0 left-0 bg-rose-400/20 pointer-events-none"
                           style={{ width: `${levelPct}%` }}
                         />
                         <span className="relative live-ob-ask">{apDisp}¢</span>
-                        <span className="relative text-right text-gray-400">{levelSize.toFixed(0)}</span>
+                        <span className="relative text-right text-gray-400 tabular-nums">{levelSize.toFixed(0)}</span>
+                        <span className="relative text-right text-gray-500 tabular-nums">{fmtObLevelUsd(levelUsd)}</span>
                       </div>
                     );
                   });

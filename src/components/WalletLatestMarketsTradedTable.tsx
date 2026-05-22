@@ -283,7 +283,9 @@ export const WalletLatestMarketsTradedTable = memo(function WalletLatestMarketsT
   onRowClick?: (marketId: string) => void;
   horizontalCellPadding?: boolean;
 }) {
-  const cellPad = horizontalCellPadding ? ' [&_th]:px-2.5 [&_td]:px-2.5' : '';
+  const cellPad = horizontalCellPadding
+    ? ' [&_th]:!px-2.5 [&_td]:!px-2.5 [&_th]:!py-1 [&_td]:!py-1'
+    : '';
   const thead = (
     <thead>
       <tr className="text-gray-500 border-b border-gray-700">

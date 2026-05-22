@@ -2286,6 +2286,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                 loading={loadingMarkets}
                 selectedMarketId={selectedMarketId}
                 onRowClick={onMarketRowClick}
+                horizontalCellPadding
               />
               </div>
             </div>

@@ -4703,7 +4703,7 @@ export function Sidebar() {
                   >
                     {sidebarBsMathButtonLabel(sidebarLimitBsCents)}
                   </button>
-                  {[1, 5, 10].map((c) => (
+                  {[1, 5, 10, 25].map((c) => (
                     <button
                       key={c}
                       type="button"
@@ -4714,15 +4714,6 @@ export function Sidebar() {
                       {c}c
                     </button>
                   ))}
-                  <button
-                    type="button"
-                    disabled={!walletConnected || !selectedMarket || isMarketExpired}
-                    onClick={() => void handleSidebarQuickMarketOrder()}
-                    className="bg-red-700 hover:bg-red-600 rounded text-[9px] text-white font-bold h-6 disabled:pointer-events-none disabled:opacity-40"
-                    title={`Market ${orderSide} for amount field (FAK)`}
-                  >
-                    MKT
-                  </button>
                 </div>
               </div>
 
@@ -4915,6 +4906,15 @@ export function Sidebar() {
               <div className="flex gap-1">
                 <button
                   onClick={handleSubmitOrder}
+                  title={
+                    orderKind === 'limit'
+                      ? orderSide === 'BUY'
+                        ? 'Limit BUY: resting bid at limit price (¢) for share amount above'
+                        : 'Limit SELL: resting ask at limit price (¢) for share amount above'
+                      : orderSide === 'BUY'
+                        ? 'Market BUY (FAK) for amount in $ above'
+                        : 'Market SELL (FAK) for share amount above'
+                  }
                   className={`flex-1 h-9 rounded-lg font-bold text-sm transition whitespace-nowrap overflow-hidden ${
                     orderSide === 'BUY' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
                   }`}
@@ -4932,8 +4932,21 @@ export function Sidebar() {
                   ) : orderKind === 'market' ? (
                     orderSide === 'BUY' ? 'MARKET BUY' : 'MARKET SELL'
                   ) : (
-                    orderSide
+                    'LMT'
                   )}
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedMarket || isMarketExpired}
+                  onClick={() => void handleSidebarQuickMarketOrder()}
+                  className="h-9 shrink-0 px-2.5 rounded-lg font-bold text-sm bg-red-800 hover:bg-red-700 text-white disabled:pointer-events-none disabled:opacity-40"
+                  title={
+                    orderSide === 'BUY'
+                      ? 'Market BUY (FAK): spend $ amount above at best ask'
+                      : 'Market SELL (FAK): sell share amount above at best bid'
+                  }
+                >
+                  MKT
                 </button>
                 {customButtons.length > 4 ? (
                   <div className="h-9 grid grid-rows-2 grid-flow-col auto-cols-max gap-1">

@@ -61,11 +61,11 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
   const [chartOutcome, setChartOutcome] = useState<'YES' | 'NO'>('YES');
   const tradeElapsedTick = useTradeElapsedTick(enabled);
 
-  const scopedClobTokenIds = useMemo(() => {
+  const scopedClobTokenIds = useMemo((): string[] | null => {
     const y = chartOutcomeTokens?.tokenIdYes?.trim();
     const n = chartOutcomeTokens?.tokenIdNo?.trim();
-    if (!y && !n) return null;
-    return [y, n].filter(Boolean);
+    const ids = [y, n].filter((id): id is string => !!id);
+    return ids.length > 0 ? ids : null;
   }, [chartOutcomeTokens]);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { X, Star, Bell, ExternalLink, Copy } from 'lucide-react';
 import {
   listToxicFavouriteWalletsSorted,
@@ -39,6 +39,21 @@ export function FavouriteWalletsDialog({
   const [addrs, setAddrs] = useState<string[]>([]);
   const [bellWallets, setBellWallets] = useState(readToxicBellWallets);
   const [tagRev, setTagRev] = useState(0);
+  const [search, setSearch] = useState('');
+
+  const filteredAddrs = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return addrs;
+    return addrs.filter((raw) => {
+      const lower = raw.trim().toLowerCase();
+      if (lower.includes(q)) return true;
+      const tag = getToxicWalletTag(raw);
+      if (tag && tag.toLowerCase().includes(q)) return true;
+      const nickname = tag ? '' : getToxicFavouriteNickname(raw);
+      if (nickname && nickname.toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }, [addrs, search, tagRev]);
 
   const refresh = useCallback(() => {
     setAddrs(listToxicFavouriteWalletsSorted());
@@ -49,6 +64,7 @@ export function FavouriteWalletsDialog({
   useEffect(() => {
     if (!open) return;
     refresh();
+    setSearch('');
   }, [open, refresh]);
 
   useEffect(() => {
@@ -126,12 +142,27 @@ export function FavouriteWalletsDialog({
             <X size={16} />
           </button>
         </div>
+        {addrs.length > 0 ? (
+          <div className="px-2 pt-2 shrink-0">
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search address, nickname, tag…"
+              className="w-full rounded border border-gray-600 bg-gray-950 px-2 py-1 text-[11px] text-white placeholder:text-gray-500 focus:outline-none focus:border-gray-500"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+        ) : null}
         <div className="overflow-y-auto flex-1 p-2">
           {addrs.length === 0 ? (
             <p className="text-xs text-gray-500 text-center py-6 px-2">No favourites yet. Star a wallet in Toxic flow → Holders.</p>
+          ) : filteredAddrs.length === 0 ? (
+            <p className="text-xs text-gray-500 text-center py-6 px-2">No matches for &ldquo;{search.trim()}&rdquo;</p>
           ) : (
             <ul className="space-y-1">
-              {addrs.map((raw) => {
+              {filteredAddrs.map((raw) => {
                 const lower = raw.toLowerCase();
                 void tagRev;
                 const tag = getToxicWalletTag(raw);

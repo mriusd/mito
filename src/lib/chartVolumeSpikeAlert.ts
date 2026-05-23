@@ -2,7 +2,9 @@ import { pitchMulFromNotifyFreqSlider, playNotifyBeep, readNotifySoundFreqSlider
 import { isNotifySoundPriceMuted } from './notifySoundPriceMute';
 
 export const SIDEBAR_NOTIFY_VOLUME_SPIKE_RING_KEY = 'polybot-sidebar-notify-volume-spike-ring';
-/** Minimum bars before volume spike ring plays (flash still allowed below this). */
+/** Current open bar must reach this multiple of avg prior bar volume (sidebar flash + sound). */
+export const CHART_VOLUME_SPIKE_MIN_RATIO = 5;
+/** Minimum bars before volume spike ring plays. */
 export const MIN_CHART_CANDLES_FOR_VOLUME_SPIKE_SOUND = 10;
 /** Flash duration — keep in sync with buy/sell flash classes in index.css */
 export const CHART_VOLUME_SPIKE_FLASH_MS = 600;
@@ -55,7 +57,7 @@ export function resolveChartVolumeSpikeSide(
   return 'BUY';
 }
 
-/** Current open bar only: volume ≥ 2× average of all prior bars (100% above average). */
+/** Current open bar only: volume ≥ CHART_VOLUME_SPIKE_MIN_RATIO × average of all prior bars. */
 export function detectChartVolumeSpike(
   candles: readonly { time: number; v: number; o?: number; c?: number }[],
   candleMs: number,
@@ -73,7 +75,7 @@ export function detectChartVolumeSpike(
   const avgPrev = prev.reduce((s, c) => s + c.v, 0) / prev.length;
   if (!Number.isFinite(avgPrev) || avgPrev <= 0) return null;
   if (!Number.isFinite(latest.v) || latest.v <= 0) return null;
-  if (latest.v < avgPrev * 2) return null;
+  if (latest.v < avgPrev * CHART_VOLUME_SPIKE_MIN_RATIO) return null;
   const side = resolveChartVolumeSpikeSide(trades, latest.time, candleMs, latest);
   return {
     barTime: latest.time,

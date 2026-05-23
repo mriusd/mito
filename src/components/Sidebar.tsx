@@ -3373,7 +3373,7 @@ export function Sidebar() {
                 Bell Ring: one strike per flashing 🔔 row in Top Holders every 1.35s when |Staked Net| ≥ Min usd stake (default 100). Row flash ignores stake; sound does not. 0 = any stake.
               </p>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Volume Spike Ring: Price YES chart flashes and plays one beep when the current open bar volume is ≥2× the average of all prior bars.
+                Volume Spike Ring: Price YES chart flashes and plays one beep when the current open bar volume is ≥5× the average of all prior bars.
               </p>
               <div
                 className={

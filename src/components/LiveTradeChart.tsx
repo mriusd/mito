@@ -902,7 +902,7 @@ export function LiveTradeChart({
                 ? 'live-trade-chart-volume-spike-flash-buy'
                 : 'live-trade-chart-volume-spike-flash-sell'
             }`}
-            title={`Volume spike — ${volumeSpikeFlashSide === 'BUY' ? 'buy' : 'sell'} (≥2× prior average)`}
+            title={`Volume spike — ${volumeSpikeFlashSide === 'BUY' ? 'buy' : 'sell'} (≥5× prior average)`}
             aria-hidden
           />
         ) : null}

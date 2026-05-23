@@ -472,6 +472,27 @@ export function toxicRowWalletIsXMarked(w: WalletPosition, xSet: ReadonlySet<str
   return k.length > 0 && xSet.has(k);
 }
 
+/** Whale Ring: ≥1 wallet at whale floor with dominant-leg avg entry strictly below max (¢). */
+export function toxicFlowWhaleRingPriceGatePasses(
+  data: ToxicFlowData | null | undefined,
+  whaleFloorUsd: number,
+  maxPriceCents: number,
+  xSet: ReadonlySet<string> = new Set(),
+  ignoreNegativePnl = false,
+): boolean {
+  if (!data || !Number.isFinite(maxPriceCents)) return false;
+  for (const w of toxicFlowWalletUniverse(data)) {
+    if (toxicRowWalletIsXMarked(w, xSet)) continue;
+    const absUsd = walletStakeNetAbsUsd(w);
+    if (!Number.isFinite(absUsd) || absUsd < whaleFloorUsd) continue;
+    if (ignoreNegativePnl && toxicRowLedgerLifetimePnlNegative(w)) continue;
+    const pc = dominantStakedLegAvgPriceCents(w);
+    if (pc == null || !Number.isFinite(pc)) continue;
+    if (pc < maxPriceCents) return true;
+  }
+  return false;
+}
+
 export function toxicRowSortWinRateFrac(w: WalletPosition): number | null {
   const ledgerSum = toxicRowWalletLedgerSummary(w);
   if (ledgerSum !== undefined && ledgerSum !== null) {

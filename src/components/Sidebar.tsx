@@ -60,10 +60,9 @@ import {
   walletInvN,
   walletNet,
   walletStakeNetAbsUsd,
-  walletStakeYUsd,
-  walletStakeNUsd,
   toxicRowLedgerLifetimePnlNegative,
   toxicRowWalletIsXMarked,
+  toxicFlowWhaleRingPriceGatePasses,
 } from '../lib/toxicFlowStakeCohort';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
 import { useSidebarChartVolatility } from '../hooks/useSidebarChartVolatility';
@@ -562,31 +561,6 @@ function readNotifyWhaleIgnoreNegativePnl(): boolean {
   } catch {
     return true;
   }
-}
-
-/** Avg entry in ¢ on heavier staked leg (`inv × price`); inventory fallback when stake legs missing. */
-function dominantStakedLegAvgPriceCents(w: WalletPosition): number | null {
-  const sy = walletStakeYUsd(w);
-  const sn = walletStakeNUsd(w);
-  const y = Number.isFinite(sy) ? sy : 0;
-  const n = Number.isFinite(sn) ? sn : 0;
-  const py = w.priceYes;
-  const pn = w.priceNo;
-  if (y > 1e-9 || n > 1e-9) {
-    if (y >= n) {
-      return typeof py === 'number' && Number.isFinite(py) ? py * 100 : null;
-    }
-    return typeof pn === 'number' && Number.isFinite(pn) ? pn * 100 : null;
-  }
-  const iy = walletInvY(w);
-  const inn = walletInvN(w);
-  if (Math.abs(iy) >= Math.abs(inn) && Math.abs(iy) > 1e-6) {
-    return typeof py === 'number' && Number.isFinite(py) ? py * 100 : null;
-  }
-  if (Math.abs(inn) > 1e-6) {
-    return typeof pn === 'number' && Number.isFinite(pn) ? pn * 100 : null;
-  }
-  return null;
 }
 
 /** Annualized σ% ceiling for tilt: alerts pause while chart σ is above this. 0 = off. Default 15. */
@@ -1340,19 +1314,18 @@ export function Sidebar() {
   /** Same wallets + ordering as Toxic Flow dialog Whales tab (floor = Tilt whale USD). */
   const toxicStripWhaleWallets = toxicTabViews?.whales ?? [];
 
-  /** True when ≥1 toxic-flow whale (|Staked Net| ≥ floor) has dominant-leg avg entry **strictly below** max Whale Price (¢). */
-  const notifyWhalePassesPriceGate = useMemo(() => {
-    if (!toxicTabViews) return false;
-    const maxPc = notifyWhaleMaxPriceCents;
-    for (const w of toxicTabViews.whales) {
-      if (toxicRowWalletIsXMarked(w, toxicXSet)) continue;
-      if (notifyWhaleIgnoreNegativePnl && toxicRowLedgerLifetimePnlNegative(w)) continue;
-      const pc = dominantStakedLegAvgPriceCents(w);
-      if (pc == null || !Number.isFinite(pc)) continue;
-      if (pc < maxPc) return true;
-    }
-    return false;
-  }, [toxicTabViews, notifyWhaleMaxPriceCents, notifyWhaleIgnoreNegativePnl, toxicXSet]);
+  /** True when ≥1 toxic-flow whale has dominant-leg avg entry strictly below Max Whale Price (¢). */
+  const notifyWhalePassesPriceGate = useMemo(
+    () =>
+      toxicFlowWhaleRingPriceGatePasses(
+        toxicFlowData,
+        notifyWhaleAmountUsd,
+        notifyWhaleMaxPriceCents,
+        toxicXSet,
+        notifyWhaleIgnoreNegativePnl,
+      ),
+    [toxicFlowData, notifyWhaleAmountUsd, notifyWhaleMaxPriceCents, toxicXSet, notifyWhaleIgnoreNegativePnl],
+  );
 
   /** Active cohort thresholds (Toxic strip bars): every non-zero pct must agree on direction vs its lean. */
   const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {
@@ -2172,7 +2145,7 @@ export function Sidebar() {
 
     if (!cohortNeedsSound && !whaleNeedsSound) return;
     if (isMarketExpired) return;
-    if ((cohortNeedsSound || whaleNeedsSound) && !notifyVolatilityGatePasses) return;
+    if (cohortNeedsSound && !notifyVolatilityGatePasses) return;
     if (cohortNeedsSound && !notifyStakedGatePasses) return;
 
     const k = cohortTiltAlarm ?? 'green';
@@ -2184,9 +2157,9 @@ export function Sidebar() {
     const tick = () => {
       const sm = tiltSoundMarketRef.current;
       const ids = sm?.clobTokenIds;
-      if (isNotifySoundPriceMuted(ids?.[0], ids?.[1], maxCents)) return;
       const muted = marketNotifyMutedRef.current;
       if (cohortNeedsSound) {
+        if (isNotifySoundPriceMuted(ids?.[0], ids?.[1], maxCents)) return;
         if (muted) return;
         void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
       } else if (whaleNeedsSound) {
@@ -3451,7 +3424,7 @@ export function Sidebar() {
                 Wallets with |Staked Net| USD ≥ Whale amount are whales (same as Toxic Flow tab). Whale Ring fires only when at least one such wallet has avg entry on its heavier staked leg **below** Max Whale Price (ledger price_yes / price_no). Ignore negative pnl skips whales whose batched ledger lifetime PnL is &lt; 0.
               </p>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Whale Ring repeats while that condition holds (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, or minimum staked. If Max volatility % is &gt; 0 in this dialog, Whale Ring pauses while chart σ exceeds it (same gate as cohort tilt). Cohort tilt bursts still obey staked minimum plus Double Ring. Mutable off (default): per-market mute does not silence Whale Ring. Mutable on: market mute also silences whales.
+                Whale Ring repeats while that condition holds (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, minimum staked, volatility cap, or WS mid mute. Cohort tilt bursts still obey those gates plus Double Ring. Mutable off (default): per-market mute does not silence Whale Ring. Mutable on: market mute also silences whales.
               </p>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
                 Bell Ring: one strike per flashing 🔔 row in Top Holders every 1.35s when |Staked Net| ≥ Min usd stake (default 100). Row flash ignores stake; sound does not. 0 = any stake.

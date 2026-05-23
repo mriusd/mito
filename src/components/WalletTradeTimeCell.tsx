@@ -21,9 +21,10 @@ export function WalletTradeTimeCell({
   if (!elapsed) return <>{base}</>;
   const elapsedCls = tradeElapsedColorClass(tradeElapsedAgeSec(blockTime, nowMs));
   return (
-    <>
-      {base} <span className={elapsedCls}>({elapsed})</span>
-    </>
+    <span className="flex w-full min-w-0 items-center justify-between gap-2">
+      <span className="shrink-0 tabular-nums">{base}</span>
+      <span className={`shrink-0 tabular-nums ${elapsedCls}`}>{elapsed}</span>
+    </span>
   );
 }
 

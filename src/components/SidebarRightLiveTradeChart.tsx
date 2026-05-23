@@ -62,6 +62,7 @@ export type SidebarRightLiveTradeChartProps = {
   outcomeSync?: { enabled: boolean; onToggle: () => void };
   orderOutcome?: 'YES' | 'NO';
   onOrderOutcomeChange?: (value: 'YES' | 'NO') => void;
+  volumeSpikeAlerts?: boolean;
 };
 
 export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeChart({
@@ -79,6 +80,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   outcomeSync,
   orderOutcome,
   onOrderOutcomeChange,
+  volumeSpikeAlerts = false,
 }: SidebarRightLiveTradeChartProps) {
   const isUpDownMarket = marketIsUpDown(market);
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(market) : null;
@@ -172,6 +174,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
         outcomeSync={outcomeSync}
         soundMuteYesTokenId={yesTokenId}
         soundMuteNoTokenId={noTokenId}
+        volumeSpikeAlerts={volumeSpikeAlerts}
       />,
     );
   }
@@ -191,6 +194,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       outcomeSync={outcomeSync}
       soundMuteYesTokenId={yesTokenId}
       soundMuteNoTokenId={noTokenId}
+      volumeSpikeAlerts={volumeSpikeAlerts}
     />,
   );
 });

@@ -83,6 +83,8 @@ interface LiveTradeChartProps {
   /** YES/NO token ids for global notification sound price mute. */
   soundMuteYesTokenId?: string;
   soundMuteNoTokenId?: string;
+  /** Sidebar only: flash chart + volume spike beep. Off in wallet info / market view trades. */
+  volumeSpikeAlerts?: boolean;
 }
 
 function defaultInterval(context?: string): string {
@@ -132,6 +134,7 @@ export function LiveTradeChart({
   outcomeSync,
   soundMuteYesTokenId,
   soundMuteNoTokenId,
+  volumeSpikeAlerts = false,
 }: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
@@ -721,12 +724,19 @@ export function LiveTradeChart({
   }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval, outcomeToggle?.value]);
 
   useEffect(() => {
+    if (!volumeSpikeAlerts) {
+      lastVolumeSpikeBarRef.current = null;
+      setVolumeSpikeFlash(false);
+    }
+  }, [volumeSpikeAlerts]);
+
+  useEffect(() => {
     lastVolumeSpikeBarRef.current = null;
     setVolumeSpikeFlash(false);
   }, [tokenId, interval]);
 
   useEffect(() => {
-    if (!ready || !tokenId) return;
+    if (!volumeSpikeAlerts || !ready || !tokenId) return;
     const candles = [...candleMapRef.current.values()].sort((a, b) => a.time - b.time);
     const spike = detectChartVolumeSpike(candles, candleMs);
     if (!spike) return;
@@ -747,7 +757,7 @@ export function LiveTradeChart({
       if (volumeSpikeFlashGenRef.current === gen) setVolumeSpikeFlash(false);
     }, CHART_VOLUME_SPIKE_FLASH_MS);
     return () => clearTimeout(t);
-  }, [ready, wsTick, tokenId, interval, candleMs, endTime, soundMuteYesTokenId, soundMuteNoTokenId]);
+  }, [volumeSpikeAlerts, ready, wsTick, tokenId, interval, candleMs, endTime, soundMuteYesTokenId, soundMuteNoTokenId]);
 
   useEffect(() => {
     draw();

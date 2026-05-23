@@ -48,6 +48,7 @@ function chartsRowInner({
         outcomeSync={outcomeSync}
         orderOutcome={orderOutcome}
         onOrderOutcomeChange={onOrderOutcomeChange}
+        volumeSpikeAlerts
       />
     </div>
   );

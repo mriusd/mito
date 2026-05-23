@@ -107,6 +107,7 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
             chartOutcome={chartOutcome}
             onChartOutcomeChange={setChartOutcome}
             intervalSelector="dropdown"
+            volumeSpikeAlerts={false}
           />
         </div>
       ) : null}

@@ -1277,6 +1277,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                   chartOutcome={walletChartOutcome}
                   onChartOutcomeChange={setWalletChartOutcome}
                   intervalSelector="dropdown"
+                  volumeSpikeAlerts={false}
                 />
               </div>
             ) : null}

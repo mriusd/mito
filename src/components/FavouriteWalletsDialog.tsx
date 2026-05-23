@@ -124,7 +124,7 @@ export function FavouriteWalletsDialog({
       }}
     >
       <div
-        className="bg-gray-900 border border-gray-600 rounded-lg shadow-xl w-full max-w-md max-h-[min(70vh,520px)] flex flex-col"
+        className="bg-gray-900 border border-gray-600 rounded-lg shadow-xl w-full max-w-md h-[min(70vh,520px)] flex flex-col min-h-0"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-700 shrink-0">
@@ -144,15 +144,28 @@ export function FavouriteWalletsDialog({
         </div>
         {addrs.length > 0 ? (
           <div className="px-2 pt-2 shrink-0">
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search address, nickname, tag…"
-              className="w-full rounded border border-gray-600 bg-gray-950 px-2 py-1 text-[11px] text-white placeholder:text-gray-500 focus:outline-none focus:border-gray-500"
-              autoComplete="off"
-              spellCheck={false}
-            />
+            <div className="relative">
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search address, nickname, tag…"
+                className="w-full rounded border border-gray-600 bg-gray-950 pl-2 pr-7 py-1 text-[11px] text-white placeholder:text-gray-500 focus:outline-none focus:border-gray-500"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {search.trim() ? (
+                <button
+                  type="button"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-500 hover:text-white hover:bg-gray-700/80"
+                  title="Clear search"
+                  aria-label="Clear search"
+                  onClick={() => setSearch('')}
+                >
+                  <X size={12} />
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : null}
         <div className="overflow-y-auto flex-1 p-2">

@@ -4,20 +4,60 @@ import { isNotifySoundPriceMuted } from './notifySoundPriceMute';
 export const SIDEBAR_NOTIFY_VOLUME_SPIKE_RING_KEY = 'polybot-sidebar-notify-volume-spike-ring';
 /** Minimum bars before volume spike ring plays (flash still allowed below this). */
 export const MIN_CHART_CANDLES_FOR_VOLUME_SPIKE_SOUND = 10;
-/** Flash duration — keep in sync with `.live-trade-chart-volume-spike-flash` in index.css */
+/** Flash duration — keep in sync with buy/sell flash classes in index.css */
 export const CHART_VOLUME_SPIKE_FLASH_MS = 600;
+
+export type ChartVolumeSpikeSide = 'BUY' | 'SELL';
 
 export type ChartVolumeSpike = {
   barTime: number;
   volume: number;
   avgPrevVolume: number;
   ratio: number;
+  side: ChartVolumeSpikeSide;
 };
+
+type SpikeTradeRow = {
+  side?: string | null;
+  price?: string | number | null;
+  size?: string | number | null;
+  timestamp?: number | null;
+};
+
+/** Dominant taker notional in spike bar — falls back to candle direction. */
+export function resolveChartVolumeSpikeSide(
+  trades: readonly SpikeTradeRow[],
+  barTime: number,
+  candleMs: number,
+  candle?: { o: number; c: number } | null,
+): ChartVolumeSpikeSide {
+  const end = barTime + candleMs;
+  let buyUsd = 0;
+  let sellUsd = 0;
+  for (const t of trades) {
+    const ts = Number(t.timestamp ?? 0);
+    if (!Number.isFinite(ts) || ts < barTime || ts >= end) continue;
+    const sz = parseFloat(String(t.size ?? ''));
+    const pr = parseFloat(String(t.price ?? ''));
+    if (!Number.isFinite(sz) || !Number.isFinite(pr) || sz <= 0 || pr <= 0) continue;
+    const usd = sz * pr;
+    const side = String(t.side ?? '').trim().toUpperCase();
+    if (side === 'BUY') buyUsd += usd;
+    else if (side === 'SELL') sellUsd += usd;
+  }
+  if (buyUsd > sellUsd) return 'BUY';
+  if (sellUsd > buyUsd) return 'SELL';
+  if (candle && Number.isFinite(candle.o) && Number.isFinite(candle.c)) {
+    return candle.c >= candle.o ? 'BUY' : 'SELL';
+  }
+  return 'BUY';
+}
 
 /** Current open bar only: volume ≥ 2× average of all prior bars (100% above average). */
 export function detectChartVolumeSpike(
-  candles: readonly { time: number; v: number }[],
+  candles: readonly { time: number; v: number; o?: number; c?: number }[],
   candleMs: number,
+  trades: readonly SpikeTradeRow[] = [],
   nowMs = Date.now(),
 ): ChartVolumeSpike | null {
   if (candles.length < 2 || !Number.isFinite(candleMs) || candleMs <= 0) return null;
@@ -32,11 +72,13 @@ export function detectChartVolumeSpike(
   if (!Number.isFinite(avgPrev) || avgPrev <= 0) return null;
   if (!Number.isFinite(latest.v) || latest.v <= 0) return null;
   if (latest.v < avgPrev * 2) return null;
+  const side = resolveChartVolumeSpikeSide(trades, latest.time, candleMs, latest);
   return {
     barTime: latest.time,
     volume: latest.v,
     avgPrevVolume: avgPrev,
     ratio: latest.v / avgPrev,
+    side,
   };
 }
 

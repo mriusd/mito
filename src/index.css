@@ -434,20 +434,20 @@ input[type="range"].vol-slider::-moz-range-thumb {
   50% { opacity: 0.65; }
 }
 
-@keyframes chart-volume-spike-flash {
+@keyframes chart-volume-spike-flash-buy {
   0% {
     background-color: transparent;
     box-shadow: none;
     opacity: 0;
   }
   12% {
-    background-color: rgba(251, 191, 36, 0.55);
-    box-shadow: inset 0 0 36px rgba(251, 191, 36, 0.95);
+    background-color: rgba(34, 197, 94, 0.55);
+    box-shadow: inset 0 0 36px rgba(34, 197, 94, 0.95);
     opacity: 1;
   }
   35% {
-    background-color: rgba(239, 68, 68, 0.38);
-    box-shadow: inset 0 0 44px rgba(239, 68, 68, 0.85);
+    background-color: rgba(22, 163, 74, 0.38);
+    box-shadow: inset 0 0 44px rgba(22, 163, 74, 0.85);
     opacity: 1;
   }
   100% {
@@ -456,8 +456,37 @@ input[type="range"].vol-slider::-moz-range-thumb {
     opacity: 0;
   }
 }
-.live-trade-chart-volume-spike-flash {
-  animation: chart-volume-spike-flash 0.55s ease-out 1;
+
+@keyframes chart-volume-spike-flash-sell {
+  0% {
+    background-color: transparent;
+    box-shadow: none;
+    opacity: 0;
+  }
+  12% {
+    background-color: rgba(239, 68, 68, 0.55);
+    box-shadow: inset 0 0 36px rgba(239, 68, 68, 0.95);
+    opacity: 1;
+  }
+  35% {
+    background-color: rgba(220, 38, 38, 0.38);
+    box-shadow: inset 0 0 44px rgba(220, 38, 38, 0.85);
+    opacity: 1;
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+    opacity: 0;
+  }
+}
+
+.live-trade-chart-volume-spike-flash-buy {
+  animation: chart-volume-spike-flash-buy 0.55s ease-out 1;
+  border-radius: 6px;
+}
+
+.live-trade-chart-volume-spike-flash-sell {
+  animation: chart-volume-spike-flash-sell 0.55s ease-out 1;
   border-radius: 6px;
 }
 

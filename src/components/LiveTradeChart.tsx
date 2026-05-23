@@ -8,6 +8,7 @@ import {
   detectChartVolumeSpike,
   MIN_CHART_CANDLES_FOR_VOLUME_SPIKE_SOUND,
   playChartVolumeSpikeRing,
+  type ChartVolumeSpikeSide,
 } from '../lib/chartVolumeSpikeAlert';
 import type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 
@@ -151,7 +152,7 @@ export function LiveTradeChart({
   const [wsTick, setWsTick] = useState(0);
   const [chainlinkTick, setChainlinkTick] = useState(0);
   const [hideTrades, setHideTrades] = useState(false);
-  const [volumeSpikeFlash, setVolumeSpikeFlash] = useState(false);
+  const [volumeSpikeFlashSide, setVolumeSpikeFlashSide] = useState<ChartVolumeSpikeSide | null>(null);
   const lastVolumeSpikeBarRef = useRef<number | null>(null);
   const volumeSpikeFlashGenRef = useRef(0);
 
@@ -726,26 +727,26 @@ export function LiveTradeChart({
   useEffect(() => {
     if (!volumeSpikeAlerts) {
       lastVolumeSpikeBarRef.current = null;
-      setVolumeSpikeFlash(false);
+      setVolumeSpikeFlashSide(null);
     }
   }, [volumeSpikeAlerts]);
 
   useEffect(() => {
     lastVolumeSpikeBarRef.current = null;
-    setVolumeSpikeFlash(false);
+    setVolumeSpikeFlashSide(null);
   }, [tokenId, interval]);
 
   useEffect(() => {
     if (!volumeSpikeAlerts || !ready || !tokenId) return;
     const candles = [...candleMapRef.current.values()].sort((a, b) => a.time - b.time);
-    const spike = detectChartVolumeSpike(candles, candleMs);
+    const spike = detectChartVolumeSpike(candles, candleMs, trades);
     if (!spike) return;
     if (lastVolumeSpikeBarRef.current === spike.barTime) return;
     lastVolumeSpikeBarRef.current = spike.barTime;
 
     const gen = volumeSpikeFlashGenRef.current + 1;
     volumeSpikeFlashGenRef.current = gen;
-    setVolumeSpikeFlash(true);
+    setVolumeSpikeFlashSide(spike.side);
     const endMs = endTime != null && Number.isFinite(endTime) ? endTime : null;
     if (endMs == null || endMs > Date.now()) {
       if (candles.length >= MIN_CHART_CANDLES_FOR_VOLUME_SPIKE_SOUND) {
@@ -754,10 +755,10 @@ export function LiveTradeChart({
     }
 
     const t = window.setTimeout(() => {
-      if (volumeSpikeFlashGenRef.current === gen) setVolumeSpikeFlash(false);
+      if (volumeSpikeFlashGenRef.current === gen) setVolumeSpikeFlashSide(null);
     }, CHART_VOLUME_SPIKE_FLASH_MS);
     return () => clearTimeout(t);
-  }, [volumeSpikeAlerts, ready, wsTick, tokenId, interval, candleMs, endTime, soundMuteYesTokenId, soundMuteNoTokenId]);
+  }, [volumeSpikeAlerts, ready, wsTick, trades, tokenId, interval, candleMs, endTime, soundMuteYesTokenId, soundMuteNoTokenId]);
 
   useEffect(() => {
     draw();
@@ -894,10 +895,14 @@ export function LiveTradeChart({
           ref={canvasRef}
           style={{ width: '100%', height: 110, borderRadius: 6, background: '#1a1a2e', display: 'block' }}
         />
-        {volumeSpikeFlash ? (
+        {volumeSpikeFlashSide ? (
           <div
-            className="live-trade-chart-volume-spike-flash pointer-events-none absolute inset-0 rounded-[6px]"
-            title="Volume spike on latest bar (≥2× prior average)"
+            className={`pointer-events-none absolute inset-0 rounded-[6px] ${
+              volumeSpikeFlashSide === 'BUY'
+                ? 'live-trade-chart-volume-spike-flash-buy'
+                : 'live-trade-chart-volume-spike-flash-sell'
+            }`}
+            title={`Volume spike — ${volumeSpikeFlashSide === 'BUY' ? 'buy' : 'sell'} (≥2× prior average)`}
             aria-hidden
           />
         ) : null}

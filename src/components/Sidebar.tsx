@@ -1318,8 +1318,8 @@ export function Sidebar() {
   }, []);
 
   const toxicTabViews = useMemo(
-    () => (toxicFlowData ? buildToxicFlowTabWalletViews(toxicFlowData, toxicFavSet, notifyWhaleAmountUsd) : null),
-    [toxicFlowData, toxicFavSet, notifyWhaleAmountUsd],
+    () => (toxicFlowData ? buildToxicFlowTabWalletViews(toxicFlowData, toxicFavSet, notifyWhaleAmountUsd, toxicXSet) : null),
+    [toxicFlowData, toxicFavSet, notifyWhaleAmountUsd, toxicXSet],
   );
 
   const toxicStripModel = useMemo(() => {

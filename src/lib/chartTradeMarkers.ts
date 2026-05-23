@@ -39,7 +39,6 @@ function toChartViewMarker(
   chartOutcome: ChartOutcomeSide,
 ): ChartTradeMarker | null {
   if (!Number.isFinite(priceCents)) return null;
-  let outSide = side;
   let outPrice = priceCents;
   const yesTok = yesTokenId.trim();
   const noTok = noTokenId.trim();
@@ -47,15 +46,11 @@ function toChartViewMarker(
   const isNoLeg = noTok && tid && sameClobToken(tid, noTok) && !sameClobToken(tid, yesTok);
   const isYesLeg = yesTok && tid && sameClobToken(tid, yesTok) && !sameClobToken(tid, noTok);
   if (chartOutcome === 'YES') {
-    if (isNoLeg) {
-      outPrice = 100 - outPrice;
-      outSide = side === 'BUY' ? 'SELL' : 'BUY';
-    }
+    if (isNoLeg) outPrice = 100 - outPrice;
   } else if (isYesLeg) {
     outPrice = 100 - outPrice;
-    outSide = side === 'BUY' ? 'SELL' : 'BUY';
   }
-  return { timeMs: 0, priceCents: outPrice, side: outSide };
+  return { timeMs: 0, priceCents: outPrice, side };
 }
 
 export type LedgerFillChartRow = {

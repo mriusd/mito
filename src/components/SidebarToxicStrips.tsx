@@ -74,7 +74,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
     };
   }, []);
 
-  const toxicTabViews = useSidebarToxicFlowTabViews(toxicFavSet, notifyWhaleAmountUsd);
+  const toxicTabViews = useSidebarToxicFlowTabViews(toxicFavSet, notifyWhaleAmountUsd, toxicXSet);
 
   const toxicStripModel = useMemo(() => {
     const lists = toxicTabViews?.stripLists ?? null;

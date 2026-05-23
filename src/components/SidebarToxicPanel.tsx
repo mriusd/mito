@@ -12,6 +12,11 @@ import {
   readToxicFavouriteWallets,
 } from '../lib/toxicFavouriteWallets';
 import {
+  readToxicXWallets,
+  TOXIC_X_CHANGED_EVENT,
+  TOXIC_X_WALLETS_LS_KEY,
+} from '../lib/toxicXWallets';
+import {
   readTiltWhaleAmountUsd,
   TILT_WHALE_AMOUNT_USD_CHANGED_EVENT,
   TILT_WHALE_AMOUNT_USD_LS_KEY,
@@ -36,28 +41,33 @@ const SidebarToxicPanelBody = memo(function SidebarToxicPanelBody({
   const data = useSidebarToxicFlowData();
   const refreshing = useSidebarToxicFlowRefreshing();
   const [toxicFavSet, setToxicFavSet] = useState(readToxicFavouriteWallets);
+  const [toxicXSet, setToxicXSet] = useState(readToxicXWallets);
   const [whaleUsd, setWhaleUsd] = useState(readTiltWhaleAmountUsd);
 
   useEffect(() => {
     const syncFav = () => setToxicFavSet(readToxicFavouriteWallets());
+    const syncX = () => setToxicXSet(readToxicXWallets());
     const onStorage = (e: StorageEvent) => {
       if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY || e.key === TILT_WHALE_AMOUNT_USD_LS_KEY || e.key === null) {
         syncFav();
         setWhaleUsd(readTiltWhaleAmountUsd());
       }
+      if (e.key === TOXIC_X_WALLETS_LS_KEY || e.key === null) syncX();
     };
     const syncWhale = () => setWhaleUsd(readTiltWhaleAmountUsd());
     window.addEventListener('storage', onStorage);
     window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
+    window.addEventListener(TOXIC_X_CHANGED_EVENT, syncX);
     window.addEventListener(TILT_WHALE_AMOUNT_USD_CHANGED_EVENT, syncWhale);
     return () => {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
+      window.removeEventListener(TOXIC_X_CHANGED_EVENT, syncX);
       window.removeEventListener(TILT_WHALE_AMOUNT_USD_CHANGED_EVENT, syncWhale);
     };
   }, []);
 
-  const tabWalletViews = useSidebarToxicFlowTabViews(toxicFavSet, whaleUsd);
+  const tabWalletViews = useSidebarToxicFlowTabViews(toxicFavSet, whaleUsd, toxicXSet);
 
   return (
     <ToxicFlowDialogLazy

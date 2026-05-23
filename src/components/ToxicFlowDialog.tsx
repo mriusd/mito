@@ -158,9 +158,12 @@ import {
 } from '../lib/tiltWhaleAmountUsd';
 import {
   applyToxicFlowWSMessage,
+  findToxicFlowWalletPosition,
+  marketConditionKeysEqual,
   toxicFlowFullSnapshot,
   type ToxicFlowWSMessage,
 } from '../lib/toxicFlowWs';
+import { useSidebarToxicFlowData } from '../lib/sidebarToxicFlowStore';
 import { TOXIC_TABLE_ROW_CLS } from '../lib/toxicFlowTableAnimate';
 import {
   readToxicFlowLayoutMode,
@@ -614,6 +617,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   variant = 'modal',
   onInlineMarketsListOpenChange,
   overlayZClass = 'z-[49999]',
+  toxicFlowData: toxicFlowDataProp = null,
 }: {
   open: boolean;
   wallet: string;
@@ -627,6 +631,8 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   /** Inline sidebar: notify parent when markets list expand toggles (width). */
   onInlineMarketsListOpenChange?: (open: boolean) => void;
   overlayZClass?: string;
+  /** Live toxic-flow cohort for current market — WMP strip above trades. */
+  toxicFlowData?: import('../api').ToxicFlowData | null;
 }) {
   const [marketById, setMarketById] = useState<Record<string, import('../types').Market>>({});
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
@@ -643,6 +649,8 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const tradeElapsedTick = useTradeElapsedTick(open);
   const isInlineWalletInfo = variant === 'inline';
   const showMarketsList = !isInlineWalletInfo || inlineMarketsListOpen;
+  const sidebarToxicFlowData = useSidebarToxicFlowData();
+  const effectiveToxicFlowData = toxicFlowDataProp ?? sidebarToxicFlowData;
   const {
     trades: wsMarketTrades,
     total: fillsTotal,
@@ -803,13 +811,23 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const selectedMarketPosition = useMemo(() => {
     const raw = selectedMarketId.trim();
     if (!raw) return null;
-    const lc = raw.toLowerCase();
+    const toxicMkt = String(effectiveToxicFlowData?.marketId || '').trim();
+    if (effectiveToxicFlowData && marketConditionKeysEqual(toxicMkt, raw)) {
+      const live = findToxicFlowWalletPosition(effectiveToxicFlowData, wallet);
+      if (live) return live;
+    }
     return (
-      markets.find((row) => String(row.marketId || '').trim().toLowerCase() === lc) ??
-      markets.find((row) => row.marketId === raw) ??
+      markets.find((row) => marketConditionKeysEqual(String(row.marketId || ''), raw)) ??
+      markets.find((row) => String(row.marketId || '').trim().toLowerCase() === raw.toLowerCase()) ??
       null
     );
-  }, [markets, selectedMarketId]);
+  }, [markets, selectedMarketId, effectiveToxicFlowData, wallet]);
+
+  const toxicMarketMatchesSelected = useMemo(() => {
+    const raw = selectedMarketId.trim();
+    const toxicMkt = String(effectiveToxicFlowData?.marketId || '').trim();
+    return !!(raw && effectiveToxicFlowData && marketConditionKeysEqual(toxicMkt, raw));
+  }, [selectedMarketId, effectiveToxicFlowData]);
 
   const onMarketRowClick = useCallback((id: string) => {
     setSelectedMarketId(id);
@@ -1273,7 +1291,12 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                 />
               </div>
             ) : null}
-            <WalletSelectedMarketPositionStrip position={selectedMarketPosition} marketById={marketById} />
+            <WalletSelectedMarketPositionStrip
+              position={selectedMarketPosition}
+              marketId={selectedMarketId}
+              marketById={marketById}
+              stakedDisplay={toxicMarketMatchesSelected ? 'stakedNet' : 'usdcIn'}
+            />
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
             <div className="flex-1 min-h-0 overflow-auto">
               <table className="w-full text-[10px] [&_th]:px-2.5 [&_td]:px-2.5 [&_th]:py-1 [&_td]:py-1">
@@ -1531,6 +1554,7 @@ export function WalletInfoPanel(props: {
   onClose: () => void;
   variant?: WalletInfoPanelVariant;
   overlayZClass?: string;
+  toxicFlowData?: import('../api').ToxicFlowData | null;
 }) {
   return <WalletInfoPanelInner {...props} />;
 }
@@ -1542,6 +1566,7 @@ const InlineWalletInfoPanelHost = memo(function InlineWalletInfoPanelHost({
   focusMarketSeq,
   onClose,
   onInlineMarketsListOpenChange,
+  toxicFlowData,
 }: {
   wallet: string;
   initialMarketId: string;
@@ -1549,6 +1574,7 @@ const InlineWalletInfoPanelHost = memo(function InlineWalletInfoPanelHost({
   focusMarketSeq: number;
   onClose: () => void;
   onInlineMarketsListOpenChange?: (open: boolean) => void;
+  toxicFlowData?: import('../api').ToxicFlowData | null;
 }) {
   return (
     <WalletInfoPanelInner
@@ -1560,6 +1586,7 @@ const InlineWalletInfoPanelHost = memo(function InlineWalletInfoPanelHost({
       focusMarketSeq={focusMarketSeq}
       onClose={onClose}
       onInlineMarketsListOpenChange={onInlineMarketsListOpenChange}
+      toxicFlowData={toxicFlowData}
     />
   );
 }, (a, b) =>
@@ -1567,6 +1594,7 @@ const InlineWalletInfoPanelHost = memo(function InlineWalletInfoPanelHost({
   a.initialMarketId === b.initialMarketId &&
   a.focusMarketId === b.focusMarketId &&
   a.focusMarketSeq === b.focusMarketSeq &&
+  a.toxicFlowData === b.toxicFlowData &&
   a.onClose === b.onClose &&
   a.onInlineMarketsListOpenChange === b.onInlineMarketsListOpenChange);
 
@@ -1578,6 +1606,7 @@ export function WalletInfoDialog({
   focusMarketSeq,
   onClose,
   overlayZClass,
+  toxicFlowData,
 }: {
   open: boolean;
   wallet: string;
@@ -1586,6 +1615,7 @@ export function WalletInfoDialog({
   focusMarketSeq?: number;
   onClose: () => void;
   overlayZClass?: string;
+  toxicFlowData?: import('../api').ToxicFlowData | null;
 }) {
   if (!open) return null;
   if (typeof document === 'undefined') return null;
@@ -1599,6 +1629,7 @@ export function WalletInfoDialog({
       onClose={onClose}
       variant="modal"
       overlayZClass={overlayZClass}
+      toxicFlowData={toxicFlowData}
     />,
     document.body,
   );
@@ -2001,16 +2032,21 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     setInlineWalletWidth('0px');
   }, [open]);
   const [toxicFollowSet, setToxicFollowSet] = useState(readToxicFavouriteWallets);
+  const [toxicXSet, setToxicXSet] = useState(readToxicXWallets);
   useEffect(() => {
-    const sync = () => setToxicFollowSet(readToxicFavouriteWallets());
+    const syncFav = () => setToxicFollowSet(readToxicFavouriteWallets());
+    const syncX = () => setToxicXSet(readToxicXWallets());
     const onStorage = (e: StorageEvent) => {
-      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY || e.key === null) sync();
+      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY || e.key === null) syncFav();
+      if (e.key === TOXIC_X_WALLETS_LS_KEY || e.key === null) syncX();
     };
     window.addEventListener('storage', onStorage);
-    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
+    window.addEventListener(TOXIC_X_CHANGED_EVENT, syncX);
     return () => {
       window.removeEventListener('storage', onStorage);
-      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, sync);
+      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
+      window.removeEventListener(TOXIC_X_CHANGED_EVENT, syncX);
     };
   }, []);
 
@@ -2125,8 +2161,8 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   }, [embedded, open, marketId]);
 
   const tabWalletViewsBuilt = useMemo(
-    () => (data ? buildToxicFlowTabWalletViews(data, toxicFollowSet, tiltWhaleAmountUsd) : null),
-    [data, toxicFollowSet, tiltWhaleAmountUsd],
+    () => (data ? buildToxicFlowTabWalletViews(data, toxicFollowSet, tiltWhaleAmountUsd, toxicXSet) : null),
+    [data, toxicFollowSet, tiltWhaleAmountUsd, toxicXSet],
   );
   const tabWalletViews =
     embedded && streamTabWalletViews !== undefined ? streamTabWalletViews : tabWalletViewsBuilt;
@@ -2394,6 +2430,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
           focusMarketSeq={focusMarketSeq}
           onClose={closeWalletPanel}
           onInlineMarketsListOpenChange={onInlineMarketsListOpenChange}
+          toxicFlowData={data}
         />
       </div>
     </div>
@@ -2460,6 +2497,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
             focusMarketId={midTrim}
             focusMarketSeq={focusMarketSeq}
             onClose={closeWalletPanel}
+            toxicFlowData={data}
           />
         ) : null}
       </div>

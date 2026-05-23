@@ -37,6 +37,23 @@ function walletKey(w: string): string {
   return (w || '').trim().toLowerCase();
 }
 
+/** Match condition ids across padded/unpadded 0x hex forms. */
+export function normalizeMarketConditionKey(id: string): string {
+  let h = id.trim().toLowerCase();
+  if (!h) return '';
+  if (!h.startsWith('0x')) h = `0x${h}`;
+  const body = h.slice(2);
+  if (!/^[0-9a-f]+$/.test(body) || body.length > 64) return h;
+  if (body.length < 64) return `0x${body.padStart(64, '0')}`;
+  return h;
+}
+
+export function marketConditionKeysEqual(a: string, b: string): boolean {
+  const ka = normalizeMarketConditionKey(a);
+  const kb = normalizeMarketConditionKey(b);
+  return ka !== '' && ka === kb;
+}
+
 function isWalletRowList(v: unknown): v is WalletPosition[] {
   return Array.isArray(v) && (v.length === 0 || typeof (v[0] as WalletPosition)?.wallet === 'string');
 }
@@ -153,4 +170,19 @@ export function sanitizeToxicFlowPayload(data: ToxicFlowData): ToxicFlowData {
 export function toxicFlowFullSnapshot(next: ToxicFlowData): ToxicFlowData {
   clearToxicFlowTabWalletViewsCache();
   return sanitizeToxicFlowPayload(next);
+}
+
+/** Live wallet_market_positions row from toxic-flow topHolders (WS-updated). */
+export function findToxicFlowWalletPosition(
+  data: ToxicFlowData | null | undefined,
+  wallet: string,
+): WalletPosition | null {
+  const wk = walletKey(wallet);
+  if (!wk || !data?.topHolders?.length) return null;
+  const row = data.topHolders.find((r) => walletKey(r.wallet) === wk) ?? null;
+  if (!row) return null;
+  const mid = String(row.marketId || data.marketId || '').trim();
+  if (!mid) return row;
+  if (String(row.marketId || '').trim()) return row;
+  return { ...row, marketId: mid };
 }

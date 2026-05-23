@@ -7,6 +7,7 @@ import {
   extractAssetFromMarket,
   assetTickerFromQuestion,
 } from '../utils/format';
+import { STAKED_NET_EPS, walletStakeNetSignedUsd } from '../lib/toxicFlowStakeCohort';
 
 /** Condition id + legacy id map (same shape as Sidebar marketById). */
 export function buildMarketByIdRecord(marketLookup: Record<string, Market> | null | undefined): Record<string, Market> {
@@ -128,6 +129,27 @@ function walletMarketUsdcInCell(usdcIn: number): ReactNode {
   return <span className="tabular-nums font-semibold text-red-400">−${mag}</span>;
 }
 
+/** Same basis + styling as ToxicFlowWalletTable Staked column (no flash badge). */
+function walletStakedNetUsdCell(signed: number): ReactNode {
+  if (!Number.isFinite(signed)) return '–';
+  const mag = Math.round(Math.abs(signed)).toLocaleString('en-US');
+  if (Math.abs(signed) <= STAKED_NET_EPS) {
+    return <span className="tabular-nums font-bold text-gray-500">${mag}</span>;
+  }
+  if (signed < -STAKED_NET_EPS) {
+    return (
+      <span className="tabular-nums font-bold text-green-400">
+        ${mag} Y
+      </span>
+    );
+  }
+  return (
+    <span className="tabular-nums font-bold text-red-400">
+      ${mag} N
+    </span>
+  );
+}
+
 function fmtSharesIntEn(v: number): string {
   if (!Number.isFinite(v)) return '–';
   return Math.round(Math.abs(v)).toLocaleString('en-US');
@@ -174,6 +196,7 @@ const WalletLatestMarketsTradedRow = memo(function WalletLatestMarketsTradedRow(
   onRowClick,
   hideDate = false,
   hideMarket = false,
+  stakedDisplay = 'usdcIn',
 }: {
   m: WalletPosition;
   mk: Market | undefined;
@@ -181,6 +204,7 @@ const WalletLatestMarketsTradedRow = memo(function WalletLatestMarketsTradedRow(
   onRowClick?: (marketId: string) => void;
   hideDate?: boolean;
   hideMarket?: boolean;
+  stakedDisplay?: 'usdcIn' | 'stakedNet';
 }) {
   const qFromApi = (m.question || '').trim();
   const title = qFromApi || mk?.question || mk?.groupItemTitle;
@@ -247,8 +271,13 @@ const WalletLatestMarketsTradedRow = memo(function WalletLatestMarketsTradedRow(
       </td>
       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceYes)}</td>
       <td className="text-right text-yellow-400 tabular-nums whitespace-nowrap">{fmtPriceShare(m.priceNo)}</td>
-      <td className="text-right tabular-nums whitespace-nowrap" title="usdc_in">
-        {walletMarketUsdcInCell(rowUsdcIn)}
+      <td
+        className="text-right tabular-nums whitespace-nowrap"
+        title={stakedDisplay === 'stakedNet' ? 'Staked Y − Staked N (column display); Y / N suffix' : 'usdc_in'}
+      >
+        {stakedDisplay === 'stakedNet'
+          ? walletStakedNetUsdCell(walletStakeNetSignedUsd(m))
+          : walletMarketUsdcInCell(rowUsdcIn)}
       </td>
       <td
         className={`text-right tabular-nums font-medium whitespace-nowrap ${rowFee === 0 ? 'text-gray-400' : 'text-red-400'}`}
@@ -280,11 +309,13 @@ function walletLatestMarketsTradedHeader({
   stickyHeader,
   hideDate = false,
   hideMarket = false,
+  stakedDisplay = 'usdcIn',
 }: {
   thSticky: string;
   stickyHeader: boolean;
   hideDate?: boolean;
   hideMarket?: boolean;
+  stakedDisplay?: 'usdcIn' | 'stakedNet';
 }) {
   return (
     <thead>
@@ -311,8 +342,14 @@ function walletLatestMarketsTradedHeader({
           Px N
         </th>
         <th
-          className={`text-right whitespace-nowrap font-semibold text-red-300 py-1 bg-gray-900 ${thSticky}`}
-          title="wallet_market_positions.usdc_in — USDC spent (shown as −USDC)"
+          className={`text-right whitespace-nowrap font-semibold py-1 bg-gray-900 ${thSticky} ${
+            stakedDisplay === 'stakedNet' ? 'text-gray-300' : 'text-red-300'
+          }`}
+          title={
+            stakedDisplay === 'stakedNet'
+              ? '(−inv_y×px_y) − (−inv_n×px_n) = Staked Y − Staked N as shown; suffix Y / N'
+              : 'wallet_market_positions.usdc_in — USDC spent (shown as −USDC)'
+          }
         >
           Staked
         </th>
@@ -336,22 +373,42 @@ function walletLatestMarketsTradedHeader({
 /** Wallet info trades pane: one markets-list row without Date/Market columns. */
 export const WalletSelectedMarketPositionStrip = memo(function WalletSelectedMarketPositionStrip({
   position,
+  marketId: marketIdProp,
   marketById,
+  stakedDisplay = 'stakedNet',
 }: {
   position: WalletPosition | null | undefined;
+  marketId?: string;
   marketById: Record<string, Market>;
+  /** Match Toxic Flow Staked column when viewing same market cohort. */
+  stakedDisplay?: 'usdcIn' | 'stakedNet';
 }) {
-  if (!position || !String(position.marketId || '').trim()) return null;
+  const marketId = String(position?.marketId || marketIdProp || '').trim();
+  if (!position || !marketId) return null;
+  const row = position.marketId?.trim() ? position : { ...position, marketId };
   const mk =
-    marketById[position.marketId] ||
-    marketById[(position.marketId || '').trim().toLowerCase()] ||
-    (position.question ? (position as unknown as Market) : undefined);
+    marketById[row.marketId] ||
+    marketById[marketId.toLowerCase()] ||
+    (row.question ? (row as unknown as Market) : undefined);
   return (
     <div className="shrink-0 mb-1 overflow-x-auto border-b border-gray-800/80 pb-1 toxic-flow-scroll-stable">
       <table className="w-full text-[10px] whitespace-nowrap [&_th]:px-2.5 [&_td]:px-2.5 [&_th]:py-1 [&_td]:py-1">
-        {walletLatestMarketsTradedHeader({ thSticky: '', stickyHeader: false, hideDate: true, hideMarket: true })}
+        {walletLatestMarketsTradedHeader({
+          thSticky: '',
+          stickyHeader: false,
+          hideDate: true,
+          hideMarket: true,
+          stakedDisplay,
+        })}
         <tbody>
-          <WalletLatestMarketsTradedRow m={position} mk={mk} selected={false} hideDate hideMarket />
+          <WalletLatestMarketsTradedRow
+            m={row}
+            mk={mk}
+            selected={false}
+            hideDate
+            hideMarket
+            stakedDisplay={stakedDisplay}
+          />
         </tbody>
       </table>
     </div>

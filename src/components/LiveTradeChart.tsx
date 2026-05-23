@@ -595,7 +595,7 @@ export function LiveTradeChart({
 
       const markerSize = 4;
       const markerGap = 3;
-      const swapTradeMarkerColors = outcomeToggle?.value === 'NO';
+      const invertMarkerDirection = outcomeToggle?.value === 'NO';
       for (const [bucketOpen, slot] of bucketMarkers) {
         const c = candles.find((row) => row.time === bucketOpen);
         if (!c) continue;
@@ -604,12 +604,20 @@ export function LiveTradeChart({
         const lowY = toY(c.l);
 
         if (slot.buy) {
-          ctx.fillStyle = swapTradeMarkerColors ? '#facc15' : '#2563eb';
-          fillTradeMarkerTriangle(ctx, cx, lowY + markerGap, markerSize, 'up');
+          ctx.fillStyle = '#2563eb';
+          if (invertMarkerDirection) {
+            fillTradeMarkerTriangle(ctx, cx, highY - markerGap, markerSize, 'down');
+          } else {
+            fillTradeMarkerTriangle(ctx, cx, lowY + markerGap, markerSize, 'up');
+          }
         }
         if (slot.sell) {
-          ctx.fillStyle = swapTradeMarkerColors ? '#2563eb' : '#facc15';
-          fillTradeMarkerTriangle(ctx, cx, highY - markerGap, markerSize, 'down');
+          ctx.fillStyle = '#facc15';
+          if (invertMarkerDirection) {
+            fillTradeMarkerTriangle(ctx, cx, lowY + markerGap, markerSize, 'up');
+          } else {
+            fillTradeMarkerTriangle(ctx, cx, highY - markerGap, markerSize, 'down');
+          }
         }
       }
     }
@@ -855,23 +863,21 @@ export function LiveTradeChart({
       {tradeMarkers != null ? (
         <div className="mb-0.5 flex items-center gap-2.5 text-[9px] text-gray-500">
           {(() => {
-            const swapColors = outcomeToggle?.value === 'NO';
-            const buyColor = swapColors ? '#facc15' : '#2563eb';
-            const sellColor = swapColors ? '#2563eb' : '#facc15';
+            const invertLegend = outcomeToggle?.value === 'NO';
             return (
               <>
                 <span className="inline-flex items-center gap-1">
                   <span
-                    className="inline-block shrink-0 border-x-[4px] border-x-transparent border-b-[7px]"
-                    style={{ borderBottomColor: buyColor }}
+                    className={`inline-block shrink-0 border-x-[4px] border-x-transparent border-b-[7px]${invertLegend ? ' rotate-180' : ''}`}
+                    style={{ borderBottomColor: '#2563eb' }}
                     aria-hidden
                   />
                   long
                 </span>
                 <span className="inline-flex items-center gap-1">
                   <span
-                    className="inline-block shrink-0 border-x-[4px] border-x-transparent border-t-[7px]"
-                    style={{ borderTopColor: sellColor }}
+                    className={`inline-block shrink-0 border-x-[4px] border-x-transparent border-t-[7px]${invertLegend ? ' rotate-180' : ''}`}
+                    style={{ borderTopColor: '#facc15' }}
                     aria-hidden
                   />
                   short

@@ -311,6 +311,7 @@ export function buildToxicFlowTabWalletViews(
   data: ToxicFlowData,
   favouriteSet: ReadonlySet<string>,
   whaleFloorUsd: number,
+  xSet: ReadonlySet<string> = new Set(),
 ): ToxicFlowTabWalletViews {
   const prev = lastTabWalletViews;
   const universe = toxicFlowWalletUniverse(data);
@@ -361,6 +362,7 @@ export function buildToxicFlowTabWalletViews(
     prev?.whales,
     universe,
     (w) => {
+      if (toxicRowWalletIsXMarked(w, xSet)) return false;
       const absUsd = walletStakeNetAbsUsd(w);
       return Number.isFinite(absUsd) && absUsd >= whaleFloorUsd;
     },

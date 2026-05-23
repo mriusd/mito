@@ -2953,6 +2953,26 @@ export function Sidebar() {
       }
       if (!Number.isFinite(priceCents) || priceCents < 1 || priceCents > 99) return;
 
+      const tidKey = positionTokenKey(tid);
+      const existingSellIds = [...myOrders, ...progOrders]
+        .filter(
+          (o) =>
+            (o.side || '').toUpperCase() === 'SELL' &&
+            positionTokenKey(getOrderClobTokenId(o)) === tidKey,
+        )
+        .map((o) => o.id)
+        .filter((id): id is string => Boolean(id));
+      if (existingSellIds.length > 0) {
+        const cancelResult =
+          existingSellIds.length === 1
+            ? await cancelOrder(existingSellIds[0]!)
+            : await cancelOrders(existingSellIds);
+        if (!cancelResult.success) {
+          showToast(cancelResult.error || 'Cancel existing sell failed', 'error');
+          return;
+        }
+      }
+
       const price = priceCents / 100;
       const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
         tid,
@@ -2978,7 +2998,7 @@ export function Sidebar() {
           orderInfo: `SELL ${size} ${ol} for ${marketName} @ ${priceCents}¢ (position limit)`,
         });
         if (result.success) {
-          showToast('Order placed', 'success');
+          showToast(existingSellIds.length > 0 ? 'Sell order replaced' : 'Order placed', 'success');
           triggerWalletRefresh();
         } else {
           showToast(result.error || 'Order failed', 'error');
@@ -2993,7 +3013,16 @@ export function Sidebar() {
         });
       }
     },
-    [selectedMarket, isMarketExpired, marketLookup, isUpDownMarket, marketName, requestCrossingConfirm],
+    [
+      selectedMarket,
+      isMarketExpired,
+      marketLookup,
+      isUpDownMarket,
+      marketName,
+      requestCrossingConfirm,
+      myOrders,
+      progOrders,
+    ],
   );
 
   const fullMarketName = selectedMarket ? (selectedMarket.question || selectedMarket.groupItemTitle || '') : '';

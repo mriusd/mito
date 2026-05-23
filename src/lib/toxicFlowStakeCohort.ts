@@ -461,7 +461,7 @@ export function toxicRowLedgerLifetimePnlNegative(w: WalletPosition): boolean {
   return typeof p === 'number' && Number.isFinite(p) && p < 0;
 }
 
-export function toxicRowWalletIsXMarked(w: WalletPosition, xSet: Set<string>): boolean {
+export function toxicRowWalletIsXMarked(w: WalletPosition, xSet: ReadonlySet<string>): boolean {
   const k = (w.wallet || '').trim().toLowerCase();
   return k.length > 0 && xSet.has(k);
 }

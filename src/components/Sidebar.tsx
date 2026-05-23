@@ -2455,35 +2455,6 @@ export function Sidebar() {
     }
   };
 
-  const handleSidebarQuickMarketOrder = useCallback(async () => {
-    if (!selectedMarket || isMarketExpired) return;
-    const tokenId = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1];
-    if (!tokenId) return;
-    const size = parseFloat(orderAmount);
-    if (!size || size <= 0) {
-      showToast('Enter amount', 'error');
-      return;
-    }
-    const displayBids = sidebarBookRef.current?.displayBids ?? [];
-    const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
-    await submitSidebarMarketFak({
-      tokenId,
-      side: orderSide,
-      size,
-      orderInfo: `${orderSide} ${size} ${orderOutcome} for ${marketName} (market FAK, MKT)`,
-      bids: displayBids,
-      asks: displayAsks,
-    });
-  }, [
-    selectedMarket,
-    isMarketExpired,
-    orderOutcome,
-    orderAmount,
-    orderSide,
-    marketName,
-    submitSidebarMarketFak,
-  ]);
-
   const submitQuickGridLimitOrder = async (side: 'BUY' | 'SELL', priceCents: number) => {
     if (!selectedMarket) return;
     if (orderKind === 'market') {
@@ -4906,15 +4877,6 @@ export function Sidebar() {
               <div className="flex gap-1">
                 <button
                   onClick={handleSubmitOrder}
-                  title={
-                    orderKind === 'limit'
-                      ? orderSide === 'BUY'
-                        ? 'Limit BUY: resting bid at limit price (¢) for share amount above'
-                        : 'Limit SELL: resting ask at limit price (¢) for share amount above'
-                      : orderSide === 'BUY'
-                        ? 'Market BUY (FAK) for amount in $ above'
-                        : 'Market SELL (FAK) for share amount above'
-                  }
                   className={`flex-1 h-9 rounded-lg font-bold text-sm transition whitespace-nowrap overflow-hidden ${
                     orderSide === 'BUY' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
                   }`}
@@ -4932,21 +4894,8 @@ export function Sidebar() {
                   ) : orderKind === 'market' ? (
                     orderSide === 'BUY' ? 'MARKET BUY' : 'MARKET SELL'
                   ) : (
-                    'LMT'
+                    orderSide
                   )}
-                </button>
-                <button
-                  type="button"
-                  disabled={!selectedMarket || isMarketExpired}
-                  onClick={() => void handleSidebarQuickMarketOrder()}
-                  className="h-9 shrink-0 px-2.5 rounded-lg font-bold text-sm bg-red-800 hover:bg-red-700 text-white disabled:pointer-events-none disabled:opacity-40"
-                  title={
-                    orderSide === 'BUY'
-                      ? 'Market BUY (FAK): spend $ amount above at best ask'
-                      : 'Market SELL (FAK): sell share amount above at best bid'
-                  }
-                >
-                  MKT
                 </button>
                 {customButtons.length > 4 ? (
                   <div className="h-9 grid grid-rows-2 grid-flow-col auto-cols-max gap-1">

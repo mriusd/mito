@@ -3,6 +3,7 @@ export const TOXIC_FLOW_TAB_IDS = [
   'smart',
   'favourites',
   'whales',
+  'favWhales',
   'winners',
   'fresh',
   'topYes',

@@ -296,6 +296,7 @@ export type ToxicFlowTabWalletViews = {
   smart: WalletPosition[];
   favourites: WalletPosition[];
   whales: WalletPosition[];
+  favWhales: WalletPosition[];
   winners: WalletPosition[];
   stripLists: NonNullable<ReturnType<typeof toxicFlowStakeStripWalletLists>>;
 };
@@ -391,8 +392,13 @@ export function buildToxicFlowTabWalletViews(
       return sortStakeNetMagThenWalletNet(a, b);
     },
   );
+  const favWhales = sortedListReuse(
+    prev?.favWhales,
+    dedupeWalletsByAddress([...favourites, ...whales]),
+    sortStakeNetMagThenWalletNet,
+  );
   const stripLists = toxicFlowStakeStripWalletLists(data, favouriteSet, universe, prev?.stripLists ?? undefined)!;
-  const views = { topYes, topNo, topHolders, smart, favourites, whales, winners, stripLists };
+  const views = { topYes, topNo, topHolders, smart, favourites, whales, favWhales, winners, stripLists };
   lastTabWalletViews = views;
   return views;
 }

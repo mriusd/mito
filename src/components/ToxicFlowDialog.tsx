@@ -225,6 +225,16 @@ const TOXIC_FLOW_TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
   { key: 'favourites', label: 'Favourites', icon: <Star size={11} /> },
   { key: 'whales', label: 'Whales', icon: <Fish size={11} /> },
+  {
+    key: 'favWhales',
+    label: 'Fav + Whales',
+    icon: (
+      <span className="inline-flex items-center gap-px">
+        <Star size={10} className="fill-yellow-400 text-yellow-400" />
+        <Fish size={10} />
+      </span>
+    ),
+  },
   { key: 'winners', label: 'Greens', icon: <Trophy size={11} /> },
   { key: 'fresh', label: 'Fresh', icon: <CircleHelp size={11} /> },
   { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
@@ -244,6 +254,8 @@ function toxicFlowWalletsForTab(
       return { wallets: views.favourites, label: 'favourites' };
     case 'whales':
       return { wallets: views.whales, label: 'whales' };
+    case 'favWhales':
+      return { wallets: views.favWhales, label: 'fav + whales' };
     case 'winners':
       return { wallets: views.winners, label: 'greens' };
     case 'fresh':
@@ -1929,7 +1941,7 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   if (a.tabWalletViews === b.tabWalletViews) return true;
   const va = a.tabWalletViews;
   const vb = b.tabWalletViews;
-  const keys = ['topYes', 'topNo', 'topHolders', 'smart', 'favourites', 'whales', 'winners'] as const;
+  const keys = ['topYes', 'topNo', 'topHolders', 'smart', 'favourites', 'whales', 'favWhales', 'winners'] as const;
   for (const k of keys) {
     const wa = va[k];
     const wb = vb[k];

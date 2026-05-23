@@ -1299,7 +1299,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                   </tr>
                 </thead>
                 <tbody>
-            {loadingFills ? (
+            {loadingFills && fills.length === 0 ? (
               <tr>
                 <td colSpan={9} className="py-8 text-center text-gray-500">
                   Loading trades...

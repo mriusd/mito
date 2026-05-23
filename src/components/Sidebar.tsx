@@ -3164,6 +3164,12 @@ export function Sidebar() {
         if (liveTradesSource === 'onchain') {
           refreshWallet();
           refreshMyMarketTrades();
+          for (const delayMs of [2000, 5000, 12000]) {
+            window.setTimeout(() => {
+              refreshWallet();
+              refreshMyMarketTrades();
+            }, delayMs);
+          }
         }
       } else {
         showToast(res.error, 'error');
@@ -4945,11 +4951,14 @@ export function Sidebar() {
                 onClick={() => {
                   setPositionsRefreshing(true);
                   triggerWalletRefresh();
-                  if (walletForLivePositions) refreshWallet();
+                  if (walletForLivePositions) {
+                    refreshWallet();
+                    if (liveTradesSource === 'onchain') refreshMyMarketTrades();
+                  }
                   setTimeout(() => setPositionsRefreshing(false), 2000);
                 }}
                 className="text-gray-500 hover:text-white transition shrink-0"
-                title="Refresh positions"
+                title="Refresh positions and trades"
               >
                 <svg className={`w-3 h-3 ${positionsRefreshing ? 'animate-spin' : ''}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
               </button>

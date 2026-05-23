@@ -234,6 +234,13 @@ export type OnchainTradesWSShared = {
 
 let onchainTradesWSShared: OnchainTradesWSShared | null = null;
 
+/** Stable object identity — wallet-info listeners must not resubscribe when hook callbacks rotate. */
+const onchainTradesWSSharedStable: OnchainTradesWSShared = {
+  subscribeWalletMarketTrades: () => () => {},
+  refreshWalletMarketTrades: () => {},
+  wsConnected: false,
+};
+
 export function getOnchainTradesWSShared(): OnchainTradesWSShared | null {
   return onchainTradesWSShared;
 }
@@ -293,7 +300,10 @@ function normalizeLedgerAction(s: string | undefined): WSTrade['side'] {
   return 'BUY';
 }
 
-function mapDedupeWSTradeRows(raw: Array<Record<string, unknown>>, cap = WALLET_MARKET_TRADES_CAP): WSTrade[] {
+function mapFetchedTradesToDedupedRows(
+  raw: Array<Record<string, unknown>>,
+  cap = WALLET_MARKET_TRADES_CAP,
+): WSTrade[] {
   const rows = raw
     .map((t) => mapRawWSTrade(t as Parameters<typeof mapRawWSTrade>[0]))
     .filter((t): t is WSTrade => t != null);
@@ -347,6 +357,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   const walletRef = useRef<string | null | undefined>(null);
   const prefetchSerialRef = useRef(0);
   const effectSerialRef = useRef(0);
+  const scopedClobTokenIdsRef = useRef<string[] | null>(scopedClobTokenIds);
+  scopedClobTokenIdsRef.current = scopedClobTokenIds;
   /** Coalesce bursty onchainTrade WS messages to one React update per frame. */
   const pendingTapeBatchRef = useRef<LiveTrade[]>([]);
   const tapeBatchRafRef = useRef<number | null>(null);
@@ -382,13 +394,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             underlyingAsset: p.underlyingAsset,
           })).filter((p) => !!p.tokenId),
         );
-        const pref = (tr.trades || [])
-          .map((t) => mapRawWSTrade(t as Parameters<typeof mapRawWSTrade>[0]))
-          .filter((t): t is WSTrade => t != null);
-        const deduped = dedupeWalletTradesByLedgerLeg(pref, (t) =>
-          t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side),
-        );
-        setWalletTrades(deduped.slice(0, WALLET_TRADES_CAP));
+        const deduped = mapFetchedTradesToDedupedRows(tr.trades || [], WALLET_TRADES_CAP);
+        setWalletTrades(deduped);
         setWalletMarketTrades(deduped.slice(0, WALLET_MARKET_TRADES_CAP));
       } catch {
         /* keep prior state */
@@ -736,15 +743,19 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               const k = t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side);
               return t.id ? t : { ...t, id: k };
             });
-            setWalletTrades(
-              dedupeWalletTradesByLedgerLeg(stamped, (t) =>
-                t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side),
-              ).slice(0, WALLET_TRADES_CAP),
-            );
+            const deduped = dedupeWalletTradesByLedgerLeg(stamped, (t) =>
+              t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side),
+            ).slice(0, WALLET_TRADES_CAP);
+            setWalletTrades(deduped);
+            const pw = (walletRef.current || '').trim().toLowerCase();
+            const pm = marketRef.current ? canonicalConditionKey(marketRef.current) : '';
+            if (pw && pm && msgWallet === pw) {
+              setWalletMarketTrades(deduped.slice(0, WALLET_MARKET_TRADES_CAP));
+            }
           } else if (msg.type === 'walletMarketTrades' && Array.isArray(msg.data)) {
             const w = String(msg.wallet || '').trim().toLowerCase();
             const m = canonicalConditionKey(String(msg.marketId || ''));
-            const rows = mapDedupeWSTradeRows(msg.data as Array<Record<string, unknown>>);
+            const rows = mapFetchedTradesToDedupedRows(msg.data as Array<Record<string, unknown>>);
             const tot = Number(msg.total ?? rows.length);
             const pw = (walletRef.current || '').trim().toLowerCase();
             const pm = marketRef.current ? canonicalConditionKey(marketRef.current) : '';
@@ -874,6 +885,20 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     [sendSubscribeWalletMarket],
   );
 
+  const refetchMarketTradesFromApi = useCallback(async () => {
+    const w = (walletRef.current || '').trim().toLowerCase();
+    const ids = (scopedClobTokenIdsRef.current || []).map((x) => String(x || '').trim()).filter(Boolean);
+    if (!w || ids.length === 0) return;
+    try {
+      const tr = await fetchOnchainMarketTrades({ token_ids: ids, wallet: w, limit: 1500 });
+      const deduped = mapFetchedTradesToDedupedRows(tr.trades || [], WALLET_TRADES_CAP);
+      setWalletTrades(deduped);
+      setWalletMarketTrades(deduped.slice(0, WALLET_MARKET_TRADES_CAP));
+    } catch {
+      /* keep prior state */
+    }
+  }, []);
+
   const refreshWalletMarketTrades = useCallback(
     (wallet: string, marketId: string) => {
       sendSubscribeWalletMarket(wallet, marketId);
@@ -887,15 +912,18 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     if (ws && ws.readyState === WebSocket.OPEN && w) {
       ws.send(JSON.stringify({ type: 'subscribeWallet', wallet: w }));
     }
-  }, []);
+    void refetchMarketTradesFromApi();
+  }, [refetchMarketTradesFromApi]);
 
   useEffect(() => {
-    onchainTradesWSShared = {
-      subscribeWalletMarketTrades,
-      refreshWalletMarketTrades,
-      wsConnected,
-    };
+    onchainTradesWSSharedStable.subscribeWalletMarketTrades = subscribeWalletMarketTrades;
+    onchainTradesWSSharedStable.refreshWalletMarketTrades = refreshWalletMarketTrades;
+    onchainTradesWSSharedStable.wsConnected = wsConnected;
+    onchainTradesWSShared = onchainTradesWSSharedStable;
     return () => {
+      onchainTradesWSSharedStable.subscribeWalletMarketTrades = () => () => {};
+      onchainTradesWSSharedStable.refreshWalletMarketTrades = () => {};
+      onchainTradesWSSharedStable.wsConnected = false;
       onchainTradesWSShared = null;
     };
   }, [subscribeWalletMarketTrades, refreshWalletMarketTrades, wsConnected]);
@@ -922,30 +950,73 @@ export function useWalletMarketTradesWS(
   const [trades, setTrades] = useState<WSTrade[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [shared, setShared] = useState<OnchainTradesWSShared | null>(() => getOnchainTradesWSShared());
+  const [sharedReady, setSharedReady] = useState(() => getOnchainTradesWSShared() != null);
+  const scopeKeyRef = useRef('');
+  const tradesLenRef = useRef(0);
+  tradesLenRef.current = trades.length;
 
   useEffect(() => {
-    const tick = () => setShared(getOnchainTradesWSShared());
-    tick();
-    const id = window.setInterval(tick, 500);
+    if (getOnchainTradesWSShared()) {
+      setSharedReady(true);
+      return;
+    }
+    const id = window.setInterval(() => {
+      if (getOnchainTradesWSShared()) {
+        setSharedReady(true);
+        window.clearInterval(id);
+      }
+    }, 200);
     return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
-    if (!enabled || !shared || !wallet?.trim() || !marketId?.trim()) {
+    const w = (wallet || '').trim().toLowerCase();
+    const m = (marketId || '').trim();
+    const key = w && m ? walletMarketTradesKey(w, m) : '';
+
+    if (!enabled || !key) {
+      scopeKeyRef.current = '';
       setTrades([]);
       setTotal(0);
       setLoading(false);
       return;
     }
-    setLoading(true);
-    const unsub = shared.subscribeWalletMarketTrades(wallet, marketId, {
+    if (!sharedReady) {
+      if (scopeKeyRef.current !== key) {
+        scopeKeyRef.current = key;
+        setTrades([]);
+        setTotal(0);
+      }
+      setLoading(true);
+      return;
+    }
+
+    const shared = getOnchainTradesWSShared();
+    if (!shared) {
+      setLoading(true);
+      return;
+    }
+
+    const sameScope = scopeKeyRef.current === key;
+    scopeKeyRef.current = key;
+    if (!sameScope) {
+      setTrades([]);
+      setTotal(0);
+      setLoading(true);
+    } else if (tradesLenRef.current === 0) {
+      setLoading(true);
+    }
+
+    let cancelled = false;
+    const unsub = shared.subscribeWalletMarketTrades(wallet!, marketId!, {
       onSnapshot: (rows, tot) => {
+        if (cancelled) return;
         setTrades(rows.slice(0, WALLET_MARKET_TRADES_CAP));
         setTotal(tot);
         setLoading(false);
       },
       onTrade: (trade) => {
+        if (cancelled) return;
         setTrades((prev) => {
           const { rows, added } = prependWalletMarketTradeRow(prev, trade);
           if (added) setTotal((tot) => tot + 1);
@@ -954,14 +1025,18 @@ export function useWalletMarketTradesWS(
         setLoading(false);
       },
     });
-    return unsub;
-  }, [enabled, shared, wallet, marketId]);
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [enabled, sharedReady, wallet, marketId]);
 
   const refresh = useCallback(() => {
+    const shared = getOnchainTradesWSShared();
     if (!shared || !wallet?.trim() || !marketId?.trim()) return;
-    setLoading(true);
+    if (tradesLenRef.current === 0) setLoading(true);
     shared.refreshWalletMarketTrades(wallet, marketId);
-  }, [shared, wallet, marketId]);
+  }, [wallet, marketId]);
 
   return { trades, total, loading, refresh };
 }

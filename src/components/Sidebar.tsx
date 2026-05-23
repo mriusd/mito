@@ -1416,6 +1416,7 @@ export function Sidebar() {
   const [cancellingOrderIds, setCancellingOrderIds] = useState<Set<string>>(new Set());
   const [cancellingAllOrders, setCancellingAllOrders] = useState(false);
   const [closingPositionTokens, setClosingPositionTokens] = useState<Set<string>>(new Set());
+  const [limitSellingPositionTokens, setLimitSellingPositionTokens] = useState<Set<string>>(new Set());
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
   const [toxicSidebarExpanded, setToxicSidebarExpanded] = useState(() => {
     try {
@@ -2939,6 +2940,60 @@ export function Sidebar() {
       refreshMyMarketTrades,
       submitSidebarMarketFak,
     ],
+  );
+
+  const handlePositionLimitSell = useCallback(
+    async (tokenId: string, rawSize: number, priceCents: number) => {
+      const tid = String(tokenId || '').trim();
+      const size = Math.floor(rawSize * 100) / 100;
+      if (!tid || !selectedMarket || !size || size <= 0) return;
+      if (isMarketExpired) {
+        showToast('Market expired', 'error');
+        return;
+      }
+      if (!Number.isFinite(priceCents) || priceCents < 1 || priceCents > 99) return;
+
+      const price = priceCents / 100;
+      const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
+        tid,
+        'SELL',
+        priceCents,
+      );
+      if (crossesBook) {
+        const confirmed = await requestCrossingConfirm(bestCounterpartyCents ?? 0);
+        if (!confirmed) return;
+      }
+
+      const outcome = getTokenOutcome(tid, marketLookup);
+      const ol = isUpDownMarket ? (outcome === 'YES' ? 'UP' : 'DOWN') : outcome;
+
+      setLimitSellingPositionTokens((prev) => new Set(prev).add(tid));
+      try {
+        const result = await placeOrder({
+          tokenId: tid,
+          side: 'SELL',
+          price,
+          size,
+          expiration: 0,
+          orderInfo: `SELL ${size} ${ol} for ${marketName} @ ${priceCents}¢ (position limit)`,
+        });
+        if (result.success) {
+          showToast('Order placed', 'success');
+          triggerWalletRefresh();
+        } else {
+          showToast(result.error || 'Order failed', 'error');
+        }
+      } catch {
+        showToast('Order failed', 'error');
+      } finally {
+        setLimitSellingPositionTokens((prev) => {
+          const s = new Set(prev);
+          s.delete(tid);
+          return s;
+        });
+      }
+    },
+    [selectedMarket, isMarketExpired, marketLookup, isUpDownMarket, marketName, requestCrossingConfirm],
   );
 
   const fullMarketName = selectedMarket ? (selectedMarket.question || selectedMarket.groupItemTitle || '') : '';
@@ -4975,6 +5030,10 @@ export function Sidebar() {
                   const avg = pos.avgPrice || 0;
                   const posTok = String(pos.asset || '').trim();
                   const closing = closingPositionTokens.has(posTok);
+                  const limitSelling = limitSellingPositionTokens.has(posTok);
+                  const bsMathCents = sidebarSpotStrip?.pastExpiry
+                    ? null
+                    : sidebarBsMathCentsForOutcome(sidebarSpotStrip?.yesMathCents, outcome);
                   return (
                     <SidebarPositionListItem
                       key={posTok || i}
@@ -4985,8 +5044,11 @@ export function Sidebar() {
                       outcomeColor={outcomeColor}
                       isMarketExpired={isMarketExpired}
                       closing={closing}
+                      limitSelling={limitSelling}
+                      bsMathCents={bsMathCents}
                       onSetOrderAmount={setOrderAmount}
-                      onClose={() => handleClosePosition(posTok, size)}
+                      onClosePosition={() => handleClosePosition(posTok, size)}
+                      onLimitSellAtPrice={(priceCents) => handlePositionLimitSell(posTok, size, priceCents)}
                     />
                   );
                 })

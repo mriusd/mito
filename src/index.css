@@ -435,29 +435,29 @@ input[type="range"].vol-slider::-moz-range-thumb {
 }
 
 @keyframes chart-volume-spike-flash {
-  0%, 100% {
+  0% {
     background-color: transparent;
     box-shadow: none;
+    opacity: 0;
   }
-  20% {
+  12% {
     background-color: rgba(251, 191, 36, 0.55);
-    box-shadow: inset 0 0 28px rgba(251, 191, 36, 0.75);
+    box-shadow: inset 0 0 36px rgba(251, 191, 36, 0.95);
+    opacity: 1;
   }
-  40% {
-    background-color: rgba(239, 68, 68, 0.42);
-    box-shadow: inset 0 0 36px rgba(239, 68, 68, 0.8);
+  35% {
+    background-color: rgba(239, 68, 68, 0.38);
+    box-shadow: inset 0 0 44px rgba(239, 68, 68, 0.85);
+    opacity: 1;
   }
-  60% {
-    background-color: rgba(251, 191, 36, 0.62);
-    box-shadow: inset 0 0 32px rgba(251, 191, 36, 0.78);
-  }
-  80% {
-    background-color: rgba(245, 158, 11, 0.48);
-    box-shadow: inset 0 0 24px rgba(245, 158, 11, 0.7);
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+    opacity: 0;
   }
 }
 .live-trade-chart-volume-spike-flash {
-  animation: chart-volume-spike-flash 0.35s ease-in-out 8;
+  animation: chart-volume-spike-flash 0.55s ease-out 1;
   border-radius: 6px;
 }
 

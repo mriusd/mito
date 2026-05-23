@@ -694,3 +694,22 @@ export function formatWalletTradeTimeWithElapsed(blockTime: number, nowMs: numbe
   const elapsed = formatElapsedSinceMs(ms, nowMs);
   return elapsed ? `${base} (${elapsed})` : base;
 }
+
+export function formatWalletTradeTimeBase(blockTime: number): string {
+  if (!blockTime) return '—';
+  const ms = blockTimeToEpochMs(blockTime);
+  return new Date(ms).toLocaleString().split('/').join('\\');
+}
+
+export function tradeElapsedAgeSec(blockTime: number, nowMs: number = Date.now()): number {
+  const ms = blockTimeToEpochMs(blockTime);
+  if (!ms) return Number.POSITIVE_INFINITY;
+  return Math.max(0, Math.floor((nowMs - ms) / 1000));
+}
+
+/** Wallet trades elapsed tail: green <15s, yellow <60s, else gray. */
+export function tradeElapsedColorClass(ageSec: number): string {
+  if (ageSec < 15) return 'text-emerald-400';
+  if (ageSec < 60) return 'text-yellow-400';
+  return 'text-gray-500';
+}

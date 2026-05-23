@@ -119,7 +119,9 @@ import {
 import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import type { Market } from '../types';
 import { HelperTooltip } from './HelperTooltip';
-import { formatPolymarketVolumeK, formatThousandsAsK, formatWalletTradeTimeWithElapsed } from '../utils/format';
+import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
+import { useTradeElapsedTick } from '../hooks/useTradeElapsedTick';
+import { MemoWalletTradeTimeCell } from './WalletTradeTimeCell';
 import { isSmartGoldTrader, walletAddressColorClass } from '../lib/walletAddressColor';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
 import { WalletAddressGlyph } from './WalletAddressGlyph';
@@ -657,7 +659,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const [profileNickname, setProfileNickname] = useState('');
   const [inlineMarketsListOpen, setInlineMarketsListOpen] = useState(false);
   const [needsOwnOnchainWs, setNeedsOwnOnchainWs] = useState(() => getOnchainTradesWSShared() == null);
-  const [tradeElapsedTick, setTradeElapsedTick] = useState(() => Date.now());
+  const tradeElapsedTick = useTradeElapsedTick(open);
   const isInlineWalletInfo = variant === 'inline';
   const showMarketsList = !isInlineWalletInfo || inlineMarketsListOpen;
   const {
@@ -670,12 +672,6 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     () => wsMarketTrades.map((t) => wsTradeToFillRow(t, wallet, selectedMarketId)),
     [wsMarketTrades, wallet, selectedMarketId],
   );
-
-  useEffect(() => {
-    if (!open) return;
-    const id = window.setInterval(() => setTradeElapsedTick(Date.now()), 5000);
-    return () => window.clearInterval(id);
-  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -1326,7 +1322,6 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                       (mid && marketById[mid]) ||
                       {};
                     const bt = Number((f as { blockTime?: number }).blockTime ?? 0);
-                    const ts = formatWalletTradeTimeWithElapsed(bt, tradeElapsedTick);
                     if (isLedgerFillRow(f)) {
                       const sz = Number(f.size);
                       const pr = f.price;
@@ -1358,7 +1353,9 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                                 : 'text-gray-300';
                       return (
                         <tr key={toxicFlowFillKey(f.txHash, f.logIndex, String(f.tokenId || ''))} className="border-b border-gray-800">
-                          <td className="py-0.5">{ts}</td>
+                          <td className="py-0.5">
+                            <MemoWalletTradeTimeCell blockTime={bt} nowMs={tradeElapsedTick} />
+                          </td>
                           <td className={actionCls}>{action || '—'}</td>
                           <td className={sideCls}>{sideLabel}</td>
                           <td className="text-center text-amber-300 font-bold tabular-nums px-0">
@@ -1397,7 +1394,9 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                       const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
                       return (
                         <tr key={toxicFlowFillKey(f.txHash, f.logIndex)} className="border-b border-gray-800">
-                          <td className="py-0.5">{ts}</td>
+                          <td className="py-0.5">
+                            <MemoWalletTradeTimeCell blockTime={bt} nowMs={tradeElapsedTick} />
+                          </td>
                           <td className="text-purple-400" colSpan={2}>{label}</td>
                           <td className="text-center text-amber-300 font-bold px-0">{f.isTaker === true ? 'T' : ''}</td>
                           <td className="text-right tabular-nums">
@@ -1452,7 +1451,9 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                     const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
                     return (
                       <tr key={toxicFlowFillKey(f.txHash, f.logIndex)} className="border-b border-gray-800">
-                        <td className="py-0.5">{ts}</td>
+                        <td className="py-0.5">
+                          <MemoWalletTradeTimeCell blockTime={bt} nowMs={tradeElapsedTick} />
+                        </td>
                         <td className={action === 'BUY' ? 'text-green-400' : 'text-red-400'}>{action}</td>
                         <td className={sideCls}>{sideText}</td>
                         <td className="text-center text-amber-300 font-bold tabular-nums px-0">

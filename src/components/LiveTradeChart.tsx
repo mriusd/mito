@@ -879,14 +879,18 @@ export function LiveTradeChart({
           </label>
         </div>
       ) : null}
-      <div
-        className={volumeSpikeFlash ? 'live-trade-chart-volume-spike-flash' : undefined}
-        title={volumeSpikeFlash ? 'Volume spike on latest bar (≥2× prior average)' : undefined}
-      >
+      <div className="relative rounded-[6px]">
         <canvas
           ref={canvasRef}
-          style={{ width: '100%', height: 110, borderRadius: 6, background: '#1a1a2e' }}
+          style={{ width: '100%', height: 110, borderRadius: 6, background: '#1a1a2e', display: 'block' }}
         />
+        {volumeSpikeFlash ? (
+          <div
+            className="live-trade-chart-volume-spike-flash pointer-events-none absolute inset-0 rounded-[6px]"
+            title="Volume spike on latest bar (≥2× prior average)"
+            aria-hidden
+          />
+        ) : null}
       </div>
     </div>
   );

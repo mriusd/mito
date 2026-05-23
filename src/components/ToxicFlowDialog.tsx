@@ -119,7 +119,8 @@ import {
 import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import type { Market } from '../types';
 import { HelperTooltip } from './HelperTooltip';
-import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
+import { formatPolymarketVolumeK, formatThousandsAsK, formatWalletTradeTimeWithElapsed } from '../utils/format';
+import { isSmartGoldTrader, walletAddressColorClass } from '../lib/walletAddressColor';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
 import { WalletAddressGlyph } from './WalletAddressGlyph';
 import {
@@ -523,12 +524,6 @@ function LedgerSummaryField({
   );
 }
 
-function formatWalletTradeTime(blockTime: number): string {
-  if (!blockTime) return '-';
-  const d = blockTime > 1e12 ? new Date(blockTime) : new Date(blockTime * 1000);
-  return d.toLocaleString().split('/').join('\\');
-}
-
 function formatWslLastUpdated(raw: string | undefined | null): string {
   const t = Date.parse(String(raw || '').trim());
   if (!Number.isFinite(t)) return '–';
@@ -662,6 +657,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const [profileNickname, setProfileNickname] = useState('');
   const [inlineMarketsListOpen, setInlineMarketsListOpen] = useState(false);
   const [needsOwnOnchainWs, setNeedsOwnOnchainWs] = useState(() => getOnchainTradesWSShared() == null);
+  const [tradeElapsedTick, setTradeElapsedTick] = useState(() => Date.now());
   const isInlineWalletInfo = variant === 'inline';
   const showMarketsList = !isInlineWalletInfo || inlineMarketsListOpen;
   const {
@@ -674,6 +670,12 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     () => wsMarketTrades.map((t) => wsTradeToFillRow(t, wallet, selectedMarketId)),
     [wsMarketTrades, wallet, selectedMarketId],
   );
+
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setInterval(() => setTradeElapsedTick(Date.now()), 5000);
+    return () => window.clearInterval(id);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -969,6 +971,11 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     return '';
   }, [summary, profileNickname, markets]);
 
+  const walletAddrClass = useMemo(() => {
+    const isSmart = markets.some((row) => isSmartGoldTrader(row));
+    return walletAddressColorClass({ summary, isSmart });
+  }, [summary, markets]);
+
   useEffect(() => {
     if (!open || !walletIsFavourite) return;
     const k = wallet.trim().toLowerCase();
@@ -1075,13 +1082,13 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                   ) : null}
                   {polymarketNick ? (
                     <span
-                      className={`min-w-0 truncate ${walletTag ? 'text-[10px] text-blue-300' : 'text-xs font-medium text-blue-300'}`}
+                      className={`min-w-0 truncate ${walletTag ? 'text-[10px]' : 'text-xs font-medium'} ${walletAddrClass}`}
                       title={`Polymarket: ${polymarketNick}`}
                     >
                       {shortenWallet(polymarketNick)}
                     </span>
                   ) : walletTag ? null : (
-                    <span className="min-w-0 truncate text-xs font-medium text-blue-300 font-mono" title={wallet}>
+                    <span className={`min-w-0 truncate text-xs font-medium font-mono ${walletAddrClass}`} title={wallet}>
                       {wallet}
                     </span>
                   )}
@@ -1319,7 +1326,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                       (mid && marketById[mid]) ||
                       {};
                     const bt = Number((f as { blockTime?: number }).blockTime ?? 0);
-                    const ts = formatWalletTradeTime(bt);
+                    const ts = formatWalletTradeTimeWithElapsed(bt, tradeElapsedTick);
                     if (isLedgerFillRow(f)) {
                       const sz = Number(f.size);
                       const pr = f.price;

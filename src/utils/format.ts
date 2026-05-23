@@ -667,3 +667,30 @@ export function timeUntil(endDate: string): string {
   }
   return `${hours}h${minutes}m`;
 }
+
+/** TPO trades table: 5s, 2m, 3h, 1d since epoch ms. */
+export function formatElapsedSinceMs(ms: number, nowMs: number = Date.now()): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '';
+  const diff = nowMs - ms;
+  if (diff < 0) return '';
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  return `${Math.floor(hr / 24)}d`;
+}
+
+export function blockTimeToEpochMs(blockTime: number): number {
+  if (!blockTime || !Number.isFinite(blockTime)) return 0;
+  return blockTime > 1e12 ? blockTime : blockTime * 1000;
+}
+
+export function formatWalletTradeTimeWithElapsed(blockTime: number, nowMs: number = Date.now()): string {
+  if (!blockTime) return '—';
+  const ms = blockTimeToEpochMs(blockTime);
+  const base = new Date(ms).toLocaleString().split('/').join('\\');
+  const elapsed = formatElapsedSinceMs(ms, nowMs);
+  return elapsed ? `${base} (${elapsed})` : base;
+}

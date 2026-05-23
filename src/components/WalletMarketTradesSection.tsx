@@ -9,17 +9,12 @@ import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 import { walletInfoChartMarketWithOutcomeTokens } from '../lib/walletInfoChartMarket';
 import { toxicFlowFillKey } from '../lib/tradeKeys';
 import { MarketViewTradesWalletBar } from './MarketViewTradesWalletBar';
+import { formatWalletTradeTimeWithElapsed } from '../utils/format';
 import type { WalletPosition } from '../api';
 
 function fmtUsd2En(absVal: number): string {
   if (!Number.isFinite(absVal)) return '—';
   return absVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function formatWalletTradeTime(blockTime: number): string {
-  if (!blockTime) return '—';
-  const d = blockTime > 1e12 ? new Date(blockTime) : new Date(blockTime * 1000);
-  return d.toLocaleString().split('/').join('\\');
 }
 
 export const WalletMarketTradesSection = memo(function WalletMarketTradesSection({
@@ -59,6 +54,13 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
     tokenIdNo: string;
   } | null>(null);
   const [chartOutcome, setChartOutcome] = useState<'YES' | 'NO'>('YES');
+  const [tradeElapsedTick, setTradeElapsedTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setInterval(() => setTradeElapsedTick(Date.now()), 5000);
+    return () => window.clearInterval(id);
+  }, [open]);
 
   useEffect(() => {
     const mid = marketId.trim();
@@ -141,7 +143,7 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
               </tr>
             ) : (
               fills.map((f) => {
-                const ts = formatWalletTradeTime(f.blockTime);
+                const ts = formatWalletTradeTimeWithElapsed(f.blockTime, tradeElapsedTick);
                 const sz = Number(f.size);
                 const pr = f.price;
                 const priceFinite = Number.isFinite(pr);

@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useState } from 'react';
 import { Star, Bell, X } from 'lucide-react';
-import type { WalletPosition, WalletScoresLedgerEmbed } from '../api';
-import { ledgerWinRateFracFromStored, toxicRowResolvedStatsLow } from '../lib/toxicFlowStakeCohort';
+import type { WalletPosition } from '../api';
+import { isSmartGoldTrader, ledgerGoldFromEmbed, walletAddressColorClass } from '../lib/walletAddressColor';
 import {
   readToxicFavouriteWallets,
   persistToxicFavouriteWallets,
@@ -31,29 +31,13 @@ const BELL_CLS_OFF = 'stroke-gray-400 fill-none';
 const X_CLS_ON = 'text-red-500 fill-red-500/20 stroke-red-500';
 const X_CLS_OFF = 'stroke-gray-400 fill-none';
 
-function ledgerGoldFromEmbed(embed: WalletScoresLedgerEmbed | null | undefined): boolean {
-  if (embed == null) return false;
-  if ((embed.resolvedMarkets ?? 0) < 10) return false;
-  if (typeof embed.winRate !== 'number' || !Number.isFinite(embed.winRate)) return false;
-  if (ledgerWinRateFracFromStored(embed.winRate) <= 0.5) return false;
-  const pnl = embed.pnl;
-  return typeof pnl === 'number' && Number.isFinite(pnl) && pnl > 0;
-}
-
-function walletAddressColorClass(trader: WalletPosition | null): string {
+function walletAddressColorClassFromTrader(trader: WalletPosition | null): string {
   const embed = trader?.walletLedgerSummary;
-  const ledgerAbsent = embed == null;
-  const resolvedLow = toxicRowResolvedStatsLow(embed);
-  const pnl = embed?.pnl;
-  const lifetimeHue =
-    typeof pnl === 'number' && Number.isFinite(pnl) ? (pnl > 0 ? 'pos' : pnl < 0 ? 'neg' : null) : null;
-  const smartGold =
-    !ledgerAbsent && !resolvedLow && (ledgerGoldFromEmbed(embed) || (trader?.isSmart && (trader.cashFlow ?? 0) >= -1e-6));
-  if (resolvedLow || ledgerAbsent) return 'text-blue-400';
-  if (smartGold) return 'text-amber-400';
-  if (lifetimeHue === 'pos') return 'text-green-400';
-  if (lifetimeHue === 'neg') return 'text-red-400';
-  return 'text-zinc-400';
+  return walletAddressColorClass({
+    ledgerEmbed: embed,
+    isSmart: isSmartGoldTrader(trader),
+    ledgerGold: ledgerGoldFromEmbed(embed),
+  });
 }
 
 function fmtInt(n: number): string {
@@ -72,7 +56,7 @@ export const MarketViewTradesWalletBar = memo(function MarketViewTradesWalletBar
   const embed = trader?.walletLedgerSummary;
   const primary = toxicWalletDisplayLabel(wallet, { tag, ledgerEmbed: embed });
   const secondary = toxicWalletSecondaryAddress(wallet, { tag, ledgerEmbed: embed });
-  const addrClass = walletAddressColorClass(trader);
+  const addrClass = walletAddressColorClassFromTrader(trader);
 
   const [fav, setFav] = useState(() => readToxicFavouriteWallets().has(wk));
   const [bell, setBell] = useState(() => readToxicBellWallets().has(wk));

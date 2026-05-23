@@ -156,8 +156,17 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
       setMarketsError('');
       setLoadingTrades(false);
       setMarketsLoadSeq(0);
+      setLoadedAsset(null);
+      setLoadedTimeframe(null);
+      setDraftAsset('BTC');
+      setDraftTimeframe('5m');
       return;
     }
+    setDraftAsset('BTC');
+    setDraftTimeframe('5m');
+    setLoadedAsset('BTC');
+    setLoadedTimeframe('5m');
+    setMarketsLoadSeq((n) => n + 1);
   }, [open]);
 
   useEffect(() => {
@@ -357,7 +366,7 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
             {marketViewUsesGrid(loadedTimeframe ?? draftTimeframe) ? <MarketViewMarketsLegend /> : null}
             {!loadedAsset || !loadedTimeframe ? (
               <div className="flex flex-1 items-center justify-center text-gray-500 text-[10px]">
-                Pick asset + timeframe, then Load.
+                Loading markets…
               </div>
             ) : marketsError ? (
               <div className="flex flex-1 items-center justify-center text-red-400 text-[10px] px-2 text-center">
@@ -430,13 +439,13 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
           <div className="bg-gray-900 rounded p-2 flex flex-col min-h-0 min-w-0 overflow-hidden">
             <div className="text-[10px] text-gray-400 font-bold mb-0.5 shrink-0">Trades</div>
             <MarketViewColumnLoadBar active={!!selectedMarketId && !!selectedWallet && loadingTrades} />
-            {!selectedMarketId || !selectedWallet ? (
-              <div className="flex flex-1 items-center justify-center text-gray-500 text-[10px]">Select a trader.</div>
+            {!selectedMarketId ? (
+              <div className="flex flex-1 items-center justify-center text-gray-500 text-[10px]">Select a market.</div>
             ) : (
               <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
                 <WalletMarketTradesSection
                   open={open}
-                  wallet={selectedWallet}
+                  wallet={selectedWallet ?? ''}
                   marketId={selectedMarketId}
                   market={selectedMarket}
                   trader={selectedTrader}

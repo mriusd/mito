@@ -90,7 +90,7 @@ import {
 import { WS_BASE } from '../lib/env';
 import { toxicFlowFillKey } from '../lib/tradeKeys';
 import { useAppStore } from '../stores/appStore';
-import { getOnchainTradesWSShared, useOnchainTradesWS, useWalletMarketTradesWS, type WSTrade } from '../hooks/useOnchainTradesWS';
+import { getOnchainTradesWSShared, OnchainTradesWSBridge, useWalletMarketTradesWS, type WSTrade } from '../hooks/useOnchainTradesWS';
 import {
   buildMarketByIdRecord,
   sortWalletPositionsByDisplayedDateDesc,
@@ -603,26 +603,6 @@ function WalletScoresLedgerSummaryGrid({
 
 export type WalletInfoPanelVariant = 'modal' | 'inline';
 
-/** Own onchain-trades socket when Sidebar hook is not mounted (mobile / lazy sidebar). */
-function WalletInfoOnchainWSBridge({
-  wallet,
-  marketId,
-  active,
-}: {
-  wallet: string;
-  marketId: string;
-  active: boolean;
-}) {
-  const walletLc = active && wallet.trim() ? wallet.trim().toLowerCase() : null;
-  const market = active && marketId.trim() ? marketId.trim() : null;
-  useOnchainTradesWS({
-    wallet: walletLc,
-    marketId: market,
-    scopedClobTokenIds: null,
-  });
-  return null;
-}
-
 const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   open,
   wallet,
@@ -986,7 +966,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const panelBody = (
     <>
         {needsOwnOnchainWs ? (
-          <WalletInfoOnchainWSBridge wallet={wallet} marketId={selectedMarketId} active={!!wallet.trim() && !!selectedMarketId.trim()} />
+          <OnchainTradesWSBridge wallet={wallet} marketId={selectedMarketId} active={!!wallet.trim() && !!selectedMarketId.trim()} />
         ) : null}
         <div className="flex items-center justify-between mb-2 shrink-0">
           <div className="flex items-center gap-2 min-w-0">

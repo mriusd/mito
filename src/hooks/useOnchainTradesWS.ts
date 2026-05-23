@@ -233,6 +233,7 @@ export type OnchainTradesWSShared = {
 };
 
 let onchainTradesWSShared: OnchainTradesWSShared | null = null;
+let onchainTradesWSProviderCount = 0;
 
 /** Stable object identity — wallet-info listeners must not resubscribe when hook callbacks rotate. */
 const onchainTradesWSSharedStable: OnchainTradesWSShared = {
@@ -916,15 +917,20 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   }, [refetchMarketTradesFromApi]);
 
   useEffect(() => {
+    onchainTradesWSProviderCount += 1;
     onchainTradesWSSharedStable.subscribeWalletMarketTrades = subscribeWalletMarketTrades;
     onchainTradesWSSharedStable.refreshWalletMarketTrades = refreshWalletMarketTrades;
     onchainTradesWSSharedStable.wsConnected = wsConnected;
     onchainTradesWSShared = onchainTradesWSSharedStable;
     return () => {
-      onchainTradesWSSharedStable.subscribeWalletMarketTrades = () => () => {};
-      onchainTradesWSSharedStable.refreshWalletMarketTrades = () => {};
-      onchainTradesWSSharedStable.wsConnected = false;
-      onchainTradesWSShared = null;
+      onchainTradesWSProviderCount -= 1;
+      if (onchainTradesWSProviderCount <= 0) {
+        onchainTradesWSProviderCount = 0;
+        onchainTradesWSSharedStable.subscribeWalletMarketTrades = () => () => {};
+        onchainTradesWSSharedStable.refreshWalletMarketTrades = () => {};
+        onchainTradesWSSharedStable.wsConnected = false;
+        onchainTradesWSShared = null;
+      }
     };
   }, [subscribeWalletMarketTrades, refreshWalletMarketTrades, wsConnected]);
 
@@ -956,16 +962,9 @@ export function useWalletMarketTradesWS(
   tradesLenRef.current = trades.length;
 
   useEffect(() => {
-    if (getOnchainTradesWSShared()) {
-      setSharedReady(true);
-      return;
-    }
-    const id = window.setInterval(() => {
-      if (getOnchainTradesWSShared()) {
-        setSharedReady(true);
-        window.clearInterval(id);
-      }
-    }, 200);
+    const sync = () => setSharedReady(getOnchainTradesWSShared() != null);
+    sync();
+    const id = window.setInterval(sync, 200);
     return () => window.clearInterval(id);
   }, []);
 
@@ -1039,4 +1038,26 @@ export function useWalletMarketTradesWS(
   }, [wallet, marketId]);
 
   return { trades, total, loading, refresh };
+}
+
+/** Mount when Sidebar hook is absent — mobile, market view, wallet info modal without sidebar WS. */
+export function OnchainTradesWSBridge({
+  wallet,
+  marketId,
+  scopedClobTokenIds = null,
+  active = true,
+}: {
+  wallet: string;
+  marketId: string;
+  scopedClobTokenIds?: string[] | null;
+  active?: boolean;
+}) {
+  const walletLc = active && wallet.trim() ? wallet.trim().toLowerCase() : null;
+  const market = active && marketId.trim() ? marketId.trim() : null;
+  useOnchainTradesWS({
+    wallet: walletLc,
+    marketId: market,
+    scopedClobTokenIds,
+  });
+  return null;
 }

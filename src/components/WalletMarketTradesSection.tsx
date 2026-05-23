@@ -3,7 +3,7 @@ import { ExternalLink } from 'lucide-react';
 import type { Market } from '../types';
 import { fetchMarketOutcomeTokens } from '../api';
 import { useAppStore } from '../stores/appStore';
-import { useWalletMarketTradesWS, useOnchainTradesWS } from '../hooks/useOnchainTradesWS';
+import { getOnchainTradesWSShared, OnchainTradesWSBridge, useWalletMarketTradesWS } from '../hooks/useOnchainTradesWS';
 import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 import { walletInfoChartMarketWithOutcomeTokens } from '../lib/walletInfoChartMarket';
@@ -33,7 +33,9 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
   trader?: WalletPosition | null;
   onLoadingChange?: (loading: boolean) => void;
 }) {
-  const enabled = open && !!wallet.trim() && !!marketId.trim();
+  const hasWallet = !!wallet.trim();
+  const enabled = open && hasWallet && !!marketId.trim();
+  const [needsOwnOnchainWs, setNeedsOwnOnchainWs] = useState(() => getOnchainTradesWSShared() == null);
   const { trades: fills, loading: loadingFills } = useWalletMarketTradesWS(
     wallet.trim() || null,
     marketId.trim() || null,
@@ -44,11 +46,13 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
     onLoadingChange?.(enabled && loadingFills);
   }, [enabled, loadingFills, onLoadingChange]);
 
-  useOnchainTradesWS({
-    wallet: enabled ? wallet.trim().toLowerCase() : null,
-    marketId: enabled ? marketId.trim() : null,
-    scopedClobTokenIds: market?.clobTokenIds?.length ? market.clobTokenIds : null,
-  });
+  useEffect(() => {
+    if (!enabled) return;
+    const sync = () => setNeedsOwnOnchainWs(getOnchainTradesWSShared() == null);
+    sync();
+    const id = window.setInterval(sync, 500);
+    return () => window.clearInterval(id);
+  }, [enabled]);
 
   const [chartOutcomeTokens, setChartOutcomeTokens] = useState<{
     tokenIdYes: string;
@@ -56,6 +60,13 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
   } | null>(null);
   const [chartOutcome, setChartOutcome] = useState<'YES' | 'NO'>('YES');
   const tradeElapsedTick = useTradeElapsedTick(enabled);
+
+  const scopedClobTokenIds = useMemo(() => {
+    const y = chartOutcomeTokens?.tokenIdYes?.trim();
+    const n = chartOutcomeTokens?.tokenIdNo?.trim();
+    if (!y && !n) return null;
+    return [y, n].filter(Boolean);
+  }, [chartOutcomeTokens]);
 
   useEffect(() => {
     const mid = marketId.trim();
@@ -91,19 +102,22 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
   const polymarketTape = useSidebarPolymarketTape();
   const chartTrades = liveTradesSource === 'onchain' ? [] : polymarketTape;
 
-  if (!wallet.trim()) {
-    return <div className="flex flex-1 items-center justify-center text-gray-500 text-[10px]">Select a trader.</div>;
-  }
-
   return (
-    <>
-      <MarketViewTradesWalletBar wallet={wallet.trim()} trader={trader ?? null} />
+    <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+      {needsOwnOnchainWs && enabled ? (
+        <OnchainTradesWSBridge
+          wallet={wallet.trim()}
+          marketId={marketId.trim()}
+          scopedClobTokenIds={scopedClobTokenIds}
+        />
+      ) : null}
+      {hasWallet ? <MarketViewTradesWalletBar wallet={wallet.trim()} trader={trader ?? null} /> : null}
       {selectedMarketForChart?.clobTokenIds?.[0] ? (
         <div className="shrink-0 mb-1 border-b border-gray-800/80 pb-1">
           <SidebarRightLiveTradeChart
             market={selectedMarketForChart}
             trades={chartTrades}
-            ledgerFillsForMarkers={fills}
+            ledgerFillsForMarkers={hasWallet ? fills : undefined}
             chartOutcome={chartOutcome}
             onChartOutcomeChange={setChartOutcome}
             intervalSelector="dropdown"
@@ -111,7 +125,10 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
           />
         </div>
       ) : null}
-      <div className="flex-1 min-h-0 overflow-auto toxic-flow-scroll-stable">
+      {!hasWallet ? (
+        <div className="flex flex-1 items-center justify-center text-gray-500 text-[10px]">Select a trader.</div>
+      ) : (
+        <div className="flex-1 min-h-0 overflow-auto toxic-flow-scroll-stable">
         <table className="w-full text-[10px] [&_th]:px-2.5 [&_td]:px-2.5 [&_th]:py-1 [&_td]:py-1">
           <thead>
             <tr className="text-gray-500">
@@ -216,7 +233,8 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
             )}
           </tbody>
         </table>
-      </div>
-    </>
+        </div>
+      )}
+    </div>
   );
 });

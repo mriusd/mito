@@ -95,6 +95,7 @@ import {
   buildMarketByIdRecord,
   sortWalletPositionsByDisplayedDateDesc,
   WalletLatestMarketsTradedTable,
+  WalletSelectedMarketPositionStrip,
   fmtPriceShare,
 } from './WalletLatestMarketsTradedTable';
 import { ToxicFlowWalletTable as WalletTable } from './ToxicFlowWalletTable';
@@ -799,6 +800,17 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     [selectedMarketMeta, chartOutcomeTokens],
   );
 
+  const selectedMarketPosition = useMemo(() => {
+    const raw = selectedMarketId.trim();
+    if (!raw) return null;
+    const lc = raw.toLowerCase();
+    return (
+      markets.find((row) => String(row.marketId || '').trim().toLowerCase() === lc) ??
+      markets.find((row) => row.marketId === raw) ??
+      null
+    );
+  }, [markets, selectedMarketId]);
+
   const onMarketRowClick = useCallback((id: string) => {
     setSelectedMarketId(id);
   }, []);
@@ -1261,6 +1273,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
                 />
               </div>
             ) : null}
+            <WalletSelectedMarketPositionStrip position={selectedMarketPosition} marketById={marketById} />
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
             <div className="flex-1 min-h-0 overflow-auto">
               <table className="w-full text-[10px] [&_th]:px-2.5 [&_td]:px-2.5 [&_th]:py-1 [&_td]:py-1">

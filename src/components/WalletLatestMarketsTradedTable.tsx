@@ -172,11 +172,15 @@ const WalletLatestMarketsTradedRow = memo(function WalletLatestMarketsTradedRow(
   mk,
   selected,
   onRowClick,
+  hideDate = false,
+  hideMarket = false,
 }: {
   m: WalletPosition;
   mk: Market | undefined;
   selected: boolean;
   onRowClick?: (marketId: string) => void;
+  hideDate?: boolean;
+  hideMarket?: boolean;
 }) {
   const qFromApi = (m.question || '').trim();
   const title = qFromApi || mk?.question || mk?.groupItemTitle;
@@ -220,14 +224,18 @@ const WalletLatestMarketsTradedRow = memo(function WalletLatestMarketsTradedRow(
       }`}
       onClick={clickable ? () => onRowClick!(m.marketId) : undefined}
     >
-      <td className={`py-0.5 whitespace-normal min-w-[10rem] ${dd.color}`}>{dd.label}</td>
+      {hideDate ? null : (
+        <td className={`py-0.5 whitespace-normal min-w-[10rem] ${dd.color}`}>{dd.label}</td>
+      )}
       <td className="text-center py-0.5 align-middle whitespace-nowrap">{walletOutcomeLetterCell(m)}</td>
-      <td
-        className={`py-0.5 whitespace-nowrap font-bold ${ASSET_COLORS[assetForColor] || 'text-gray-200'}`}
-        title={titleForAsset || undefined}
-      >
-        {marketName}
-      </td>
+      {hideMarket ? null : (
+        <td
+          className={`py-0.5 whitespace-nowrap font-bold ${ASSET_COLORS[assetForColor] || 'text-gray-200'}`}
+          title={titleForAsset || undefined}
+        >
+          {marketName}
+        </td>
+      )}
       <td className="text-right tabular-nums font-bold text-green-400 bg-green-900/15 whitespace-nowrap">
         {fmtSharesIntEn(iy)}
       </td>
@@ -267,40 +275,32 @@ const WalletLatestMarketsTradedRow = memo(function WalletLatestMarketsTradedRow(
   );
 });
 
-export const WalletLatestMarketsTradedTable = memo(function WalletLatestMarketsTradedTable({
-  markets,
-  marketById,
-  loading,
-  selectedMarketId,
-  onRowClick,
-  /** Wider px on every th/td (e.g. History panel). */
-  horizontalCellPadding = false,
-  /** Keep thead visible; parent should be flex column with min-h-0. */
-  stickyHeader = false,
+function walletLatestMarketsTradedHeader({
+  thSticky,
+  stickyHeader,
+  hideDate = false,
+  hideMarket = false,
 }: {
-  markets: WalletPosition[];
-  marketById: Record<string, Market>;
-  loading: boolean;
-  selectedMarketId?: string | null;
-  onRowClick?: (marketId: string) => void;
-  horizontalCellPadding?: boolean;
-  stickyHeader?: boolean;
+  thSticky: string;
+  stickyHeader: boolean;
+  hideDate?: boolean;
+  hideMarket?: boolean;
 }) {
-  const cellPad = horizontalCellPadding
-    ? ' [&_th]:!px-2.5 [&_td]:!px-2.5 [&_th]:!py-1 [&_td]:!py-1'
-    : '';
-  const thSticky = stickyHeader ? 'sticky top-0 z-10 border-b border-gray-700' : '';
-  const thead = (
+  return (
     <thead>
       <tr className={`text-gray-500${stickyHeader ? '' : ' border-b border-gray-700'}`}>
-        <th className={`text-left py-1 whitespace-normal min-w-[10rem] bg-gray-900 ${thSticky}`}>Date</th>
+        {hideDate ? null : (
+          <th className={`text-left py-1 whitespace-normal min-w-[10rem] bg-gray-900 ${thSticky}`}>Date</th>
+        )}
         <th
           className={`text-center w-5 py-1 whitespace-nowrap bg-gray-900 ${thSticky}`}
           title="Resolved outcome (Y/N); color from ledger win/loss"
         >
           O
         </th>
-        <th className={`text-left whitespace-nowrap bg-gray-900 ${thSticky}`}>Market</th>
+        {hideMarket ? null : (
+          <th className={`text-left whitespace-nowrap bg-gray-900 ${thSticky}`}>Market</th>
+        )}
         <th className={`text-right bg-green-950 text-green-300 font-bold py-1 whitespace-nowrap ${thSticky}`}>Net Y</th>
         <th className={`text-right bg-red-950 text-red-300 font-bold py-1 whitespace-nowrap ${thSticky}`}>Net N</th>
         <th className={`text-right whitespace-nowrap bg-gray-900 ${thSticky}`}>Net</th>
@@ -331,6 +331,57 @@ export const WalletLatestMarketsTradedTable = memo(function WalletLatestMarketsT
       </tr>
     </thead>
   );
+}
+
+/** Wallet info trades pane: one markets-list row without Date/Market columns. */
+export const WalletSelectedMarketPositionStrip = memo(function WalletSelectedMarketPositionStrip({
+  position,
+  marketById,
+}: {
+  position: WalletPosition | null | undefined;
+  marketById: Record<string, Market>;
+}) {
+  if (!position || !String(position.marketId || '').trim()) return null;
+  const mk =
+    marketById[position.marketId] ||
+    marketById[(position.marketId || '').trim().toLowerCase()] ||
+    (position.question ? (position as unknown as Market) : undefined);
+  return (
+    <div className="shrink-0 mb-1 overflow-x-auto border-b border-gray-800/80 pb-1 toxic-flow-scroll-stable">
+      <table className="w-full text-[10px] whitespace-nowrap [&_th]:px-2.5 [&_td]:px-2.5 [&_th]:py-1 [&_td]:py-1">
+        {walletLatestMarketsTradedHeader({ thSticky: '', stickyHeader: false, hideDate: true, hideMarket: true })}
+        <tbody>
+          <WalletLatestMarketsTradedRow m={position} mk={mk} selected={false} hideDate hideMarket />
+        </tbody>
+      </table>
+    </div>
+  );
+});
+
+export const WalletLatestMarketsTradedTable = memo(function WalletLatestMarketsTradedTable({
+  markets,
+  marketById,
+  loading,
+  selectedMarketId,
+  onRowClick,
+  /** Wider px on every th/td (e.g. History panel). */
+  horizontalCellPadding = false,
+  /** Keep thead visible; parent should be flex column with min-h-0. */
+  stickyHeader = false,
+}: {
+  markets: WalletPosition[];
+  marketById: Record<string, Market>;
+  loading: boolean;
+  selectedMarketId?: string | null;
+  onRowClick?: (marketId: string) => void;
+  horizontalCellPadding?: boolean;
+  stickyHeader?: boolean;
+}) {
+  const cellPad = horizontalCellPadding
+    ? ' [&_th]:!px-2.5 [&_td]:!px-2.5 [&_th]:!py-1 [&_td]:!py-1'
+    : '';
+  const thSticky = stickyHeader ? 'sticky top-0 z-10 border-b border-gray-700' : '';
+  const thead = walletLatestMarketsTradedHeader({ thSticky, stickyHeader });
 
   const bodyRows =
     loading || markets.length === 0 ? (

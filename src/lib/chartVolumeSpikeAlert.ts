@@ -29,7 +29,7 @@ export function resolveChartVolumeSpikeSide(
   trades: readonly SpikeTradeRow[],
   barTime: number,
   candleMs: number,
-  candle?: { o: number; c: number } | null,
+  candle?: { o?: number; c?: number } | null,
 ): ChartVolumeSpikeSide {
   const end = barTime + candleMs;
   let buyUsd = 0;
@@ -47,8 +47,10 @@ export function resolveChartVolumeSpikeSide(
   }
   if (buyUsd > sellUsd) return 'BUY';
   if (sellUsd > buyUsd) return 'SELL';
-  if (candle && Number.isFinite(candle.o) && Number.isFinite(candle.c)) {
-    return candle.c >= candle.o ? 'BUY' : 'SELL';
+  const o = candle?.o;
+  const c = candle?.c;
+  if (typeof o === 'number' && typeof c === 'number' && Number.isFinite(o) && Number.isFinite(c)) {
+    return c >= o ? 'BUY' : 'SELL';
   }
   return 'BUY';
 }

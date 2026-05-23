@@ -301,7 +301,7 @@ function normalizeLedgerAction(s: string | undefined): WSTrade['side'] {
 }
 
 function mapFetchedTradesToDedupedRows(
-  raw: Array<Record<string, unknown>>,
+  raw: Array<Parameters<typeof mapRawWSTrade>[0]>,
   cap = WALLET_MARKET_TRADES_CAP,
 ): WSTrade[] {
   const rows = raw
@@ -755,7 +755,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
           } else if (msg.type === 'walletMarketTrades' && Array.isArray(msg.data)) {
             const w = String(msg.wallet || '').trim().toLowerCase();
             const m = canonicalConditionKey(String(msg.marketId || ''));
-            const rows = mapFetchedTradesToDedupedRows(msg.data as Array<Record<string, unknown>>);
+            const rows = mapFetchedTradesToDedupedRows(msg.data as Array<Parameters<typeof mapRawWSTrade>[0]>);
             const tot = Number(msg.total ?? rows.length);
             const pw = (walletRef.current || '').trim().toLowerCase();
             const pm = marketRef.current ? canonicalConditionKey(marketRef.current) : '';

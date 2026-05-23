@@ -2455,6 +2455,35 @@ export function Sidebar() {
     }
   };
 
+  const handleSidebarQuickMarketOrder = useCallback(async () => {
+    if (!selectedMarket || isMarketExpired) return;
+    const tokenId = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1];
+    if (!tokenId) return;
+    const size = parseFloat(orderAmount);
+    if (!size || size <= 0) {
+      showToast('Enter amount', 'error');
+      return;
+    }
+    const displayBids = sidebarBookRef.current?.displayBids ?? [];
+    const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
+    await submitSidebarMarketFak({
+      tokenId,
+      side: orderSide,
+      size,
+      orderInfo: `${orderSide} ${size} ${orderOutcome} for ${marketName} (market FAK, MKT)`,
+      bids: displayBids,
+      asks: displayAsks,
+    });
+  }, [
+    selectedMarket,
+    isMarketExpired,
+    orderOutcome,
+    orderAmount,
+    orderSide,
+    marketName,
+    submitSidebarMarketFak,
+  ]);
+
   const submitQuickGridLimitOrder = async (side: 'BUY' | 'SELL', priceCents: number) => {
     if (!selectedMarket) return;
     if (orderKind === 'market') {
@@ -4674,7 +4703,7 @@ export function Sidebar() {
                   >
                     {sidebarBsMathButtonLabel(sidebarLimitBsCents)}
                   </button>
-                  {[1, 5, 10, 25].map((c) => (
+                  {[1, 5, 10].map((c) => (
                     <button
                       key={c}
                       type="button"
@@ -4685,6 +4714,15 @@ export function Sidebar() {
                       {c}c
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    disabled={!walletConnected || !selectedMarket || isMarketExpired}
+                    onClick={() => void handleSidebarQuickMarketOrder()}
+                    className="bg-red-700 hover:bg-red-600 rounded text-[9px] text-white font-bold h-6 disabled:pointer-events-none disabled:opacity-40"
+                    title={`Market ${orderSide} for amount field (FAK)`}
+                  >
+                    MKT
+                  </button>
                 </div>
               </div>
 

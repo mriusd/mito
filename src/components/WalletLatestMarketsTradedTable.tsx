@@ -123,7 +123,8 @@ function rPnlToneClass(v: number): string {
   return v > 0 ? 'text-green-400' : 'text-red-400';
 }
 
-function walletMarketUsdcInCell(usdcIn: number): ReactNode {
+/** Wallet info markets list Staked column (usdc_in). */
+export function walletMarketUsdcInCell(usdcIn: number): ReactNode {
   if (!Number.isFinite(usdcIn) || usdcIn < 0) return <span className="text-gray-400">–</span>;
   const mag = fmtUsd2En(usdcIn);
   return <span className="tabular-nums font-semibold text-red-400">−${mag}</span>;

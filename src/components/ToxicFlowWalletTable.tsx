@@ -61,7 +61,7 @@ import {
   TILT_WHALE_AMOUNT_USD_LS_KEY,
 } from '../lib/tiltWhaleAmountUsd';
 import { TOXIC_TABLE_ROW_CLS } from '../lib/toxicFlowTableAnimate';
-import { fmtPriceShare } from './WalletLatestMarketsTradedTable';
+import { fmtPriceShare, walletMarketUsdcInCell } from './WalletLatestMarketsTradedTable';
 
 function subscribeTiltWhaleAmountUsd(listener: () => void): () => void {
   const onCustom = () => listener();
@@ -233,8 +233,8 @@ const TOXIC_TABLE_STAKED_COL_CLS =
 const TOXIC_WALLET_ROW_PX = 23;
 const TOXIC_VIRTUAL_OVERSCAN = 12;
 
-function toxicTableColCount(showRank: boolean, variant: 'toxicFlow' | 'marketView'): number {
-  return (showRank ? 1 : 0) + 10 + (variant === 'marketView' ? 3 : 2);
+function toxicTableColCount(showRank: boolean): number {
+  return (showRank ? 1 : 0) + 12;
 }
 
 const ROW_CLS_NEUTRAL = 'border-b border-gray-800 hover:bg-gray-700/30';
@@ -910,6 +910,13 @@ function WalletTableBodyRowImpl({
 
   const iy = typeof w.invYes === 'number' && Number.isFinite(w.invYes) ? w.invYes : w.netYes ?? 0;
   const inn = typeof w.invNo === 'number' && Number.isFinite(w.invNo) ? w.invNo : w.netNo ?? 0;
+  const marketViewCols = variant === 'marketView';
+  const displayIy = marketViewCols
+    ? Math.max(typeof w.maxInvYes === 'number' && Number.isFinite(w.maxInvYes) ? w.maxInvYes : 0, iy)
+    : iy;
+  const displayInn = marketViewCols
+    ? Math.max(typeof w.maxInvNo === 'number' && Number.isFinite(w.maxInvNo) ? w.maxInvNo : 0, inn)
+    : inn;
   const signedLegNet = iy - inn;
   const grossLeg = Math.abs(iy) + Math.abs(inn);
   const bias =
@@ -942,10 +949,10 @@ function WalletTableBodyRowImpl({
   const ledgerEmbed = w.walletLedgerSummary;
   const wk = (w.wallet || '').trim().toLowerCase();
   const selected = selectedWallet?.trim().toLowerCase() === wk;
-  const marketViewCols = variant === 'marketView';
   const { rowPnlFlow, rowPayout, payoutUnresolved, roiFmt } = marketViewCols
     ? walletMarketPayoutPnlRoiCells(w)
     : { rowPnlFlow: 0, rowPayout: 0, payoutUnresolved: true, roiFmt: { text: '–', tone: 'text-gray-500' } };
+  const rowUsdcIn = typeof w.usdcIn === 'number' && Number.isFinite(w.usdcIn) ? w.usdcIn : 0;
 
   return (
     <tr
@@ -1002,8 +1009,8 @@ function WalletTableBodyRowImpl({
           />
         </div>
       </td>
-      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 font-bold ${invYToneClass(iy)} bg-green-900/10`}>{rowFmtInt(iy)}</td>
-      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 font-bold text-red-400 bg-red-900/10`}>{rowFmtInt(inn)}</td>
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 font-bold ${invYToneClass(displayIy)} bg-green-900/10`}>{rowFmtInt(displayIy)}</td>
+      <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 font-bold text-red-400 bg-red-900/10`}>{rowFmtInt(displayInn)}</td>
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 whitespace-nowrap tabular-nums`} title="inv_yes − inv_no (|net| Y / N)">
         {inventoryNetSharesTableCell(signedLegNet)}
       </td>
@@ -1012,12 +1019,19 @@ function WalletTableBodyRowImpl({
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 text-gray-400`}>
         {typeof w.tradeCount === 'number' && Number.isFinite(w.tradeCount) ? rowFmtInt(w.tradeCount) : '–'}
       </td>
-      <td className={`${TOXIC_TABLE_BODY_TD_CLS} px-1 ${TOXIC_TABLE_STAKED_COL_CLS}`} title="Staked Y − Staked N (column display); Y / N suffix">
-        {stakedNetUsdTableCellWithFlash(stakeNetSigned, stakedNetFlash)}
+      <td
+        className={`${TOXIC_TABLE_BODY_TD_CLS} px-1 ${TOXIC_TABLE_STAKED_COL_CLS}`}
+        title={marketViewCols ? 'usdc_in' : 'Staked Y − Staked N (column display); Y / N suffix'}
+      >
+        {marketViewCols
+          ? walletMarketUsdcInCell(rowUsdcIn)
+          : stakedNetUsdTableCellWithFlash(stakeNetSigned, stakedNetFlash)}
       </td>
-      <td className={`${TOXIC_TABLE_BODY_TD_CLS} px-1 text-cyan-300 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}>
-        {stakedPct > 0 ? `${NF_PCT_1.format(stakedPct)}%` : '-'}
-      </td>
+      {!marketViewCols ? (
+        <td className={`${TOXIC_TABLE_BODY_TD_CLS} px-1 text-cyan-300 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}>
+          {stakedPct > 0 ? `${NF_PCT_1.format(stakedPct)}%` : '-'}
+        </td>
+      ) : null}
       {marketViewCols ? (
         <>
           <td
@@ -1087,6 +1101,8 @@ const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
     wa.wallet !== wb.wallet ||
     wa.invYes !== wb.invYes ||
     wa.invNo !== wb.invNo ||
+    wa.maxInvYes !== wb.maxInvYes ||
+    wa.maxInvNo !== wb.maxInvNo ||
     wa.netYes !== wb.netYes ||
     wa.netNo !== wb.netNo ||
     wa.priceYes !== wb.priceYes ||
@@ -1263,7 +1279,7 @@ function WalletTableInner({
   const cohortStakeBarTotal = cohortSumYUsd + cohortSumNUsd;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [virtRange, setVirtRange] = useState(() => ({ start: 0, end: rows.length }));
-  const tableColSpan = toxicTableColCount(!!showRank, variant);
+  const tableColSpan = toxicTableColCount(!!showRank);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -1333,11 +1349,17 @@ function WalletTableInner({
             {showRank ? <th className={`align-middle py-1 pr-0 ${TOXIC_TABLE_RANK_COL_CLS}`}>#</th> : null}
             <th className={`align-middle py-1 text-left ${TOXIC_TABLE_FAV_COL_CLS}`} aria-label="Favourite, bell, and X mark" />
             <th className="align-middle py-1 text-left px-1">Wallet</th>
-            <th className="align-middle py-1 text-right px-1 bg-green-900/15" title="inv_yes">
-              Inv Y
+            <th
+              className="align-middle py-1 text-right px-1 bg-green-900/15"
+              title={variant === 'marketView' ? 'max_inv_yes' : 'inv_yes'}
+            >
+              {variant === 'marketView' ? 'Max Y' : 'Inv Y'}
             </th>
-            <th className="align-middle py-1 text-right px-1 bg-red-900/15 text-red-300" title="inv_no">
-              Inv N
+            <th
+              className="align-middle py-1 text-right px-1 bg-red-900/15 text-red-300"
+              title={variant === 'marketView' ? 'max_inv_no' : 'inv_no'}
+            >
+              {variant === 'marketView' ? 'Max N' : 'Inv N'}
             </th>
             <th className="align-middle py-1 text-right px-1" title="inv_yes − inv_no (shares); magnitude + Y / N, no leading minus">
               Net
@@ -1349,28 +1371,39 @@ function WalletTableInner({
               Px N
             </th>
             <th className="align-middle py-1 text-right px-1">Trades</th>
-            <th className={`align-middle py-1 px-1 text-gray-300 ${TOXIC_TABLE_STAKED_COL_CLS}`} title="(−inv_y×px_y) − (−inv_n×px_n) = Staked Y − Staked N as shown; suffix Y / N; green = favors YES / red = favors NO">
+            <th
+              className={`align-middle py-1 px-1 ${TOXIC_TABLE_STAKED_COL_CLS} ${
+                variant === 'marketView' ? 'font-semibold text-red-300' : 'text-gray-300'
+              }`}
+              title={
+                variant === 'marketView'
+                  ? 'usdc_in'
+                  : '(−inv_y×px_y) − (−inv_n×px_n) = Staked Y − Staked N as shown; suffix Y / N; green = favors YES / red = favors NO'
+              }
+            >
               Staked
             </th>
-            <th
-              className={`align-middle py-1 px-1 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}
-              title="|Staked| USD ÷ total market staked (Σ|signed net|)"
-            >
-              %
-            </th>
+            {variant !== 'marketView' ? (
+              <th
+                className={`align-middle py-1 px-1 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}
+                title="|Staked| USD ÷ total market staked (Σ|signed net|)"
+              >
+                %
+              </th>
+            ) : null}
             {variant === 'marketView' ? (
               <>
-                <th className="align-middle py-1 text-right px-1 whitespace-nowrap bg-gray-900" title="wallet_market_positions.payout">
+                <th className="align-middle py-1 text-right px-1 whitespace-nowrap bg-gray-950" title="wallet_market_positions.payout">
                   Payout
                 </th>
                 <th
-                  className={`align-middle py-1 text-right px-1 whitespace-nowrap bg-gray-900${onPnlSortClick ? ' cursor-pointer select-none hover:text-gray-300' : ''}`}
+                  className={`align-middle py-1 text-right px-1 whitespace-nowrap bg-gray-950${onPnlSortClick ? ' cursor-pointer select-none hover:text-gray-300' : ''}`}
                   title="usdc_out − usdc_in − fee"
                   onClick={onPnlSortClick}
                 >
                   PnL{pnlSortOrder ? (pnlSortOrder === 'desc' ? ' ▼' : ' ▲') : ''}
                 </th>
-                <th className="align-middle py-1 text-right px-1 whitespace-nowrap bg-gray-900" title="(usdc_out/(usdc_in+fee)) − 1">
+                <th className="align-middle py-1 text-right px-1 whitespace-nowrap bg-gray-950" title="(usdc_out/(usdc_in+fee)) − 1">
                   ROI
                 </th>
               </>

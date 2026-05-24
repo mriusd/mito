@@ -478,6 +478,10 @@ export interface WalletPosition {
   /** Raw `wallet_market_positions` (ledger); prefer for holders table. */
   invYes?: number;
   invNo?: number;
+  /** Peak inventory YES leg from `wallet_market_positions.max_inv_yes`. */
+  maxInvYes?: number;
+  /** Peak inventory NO leg from `wallet_market_positions.max_inv_no`. */
+  maxInvNo?: number;
   usdYes?: number;
   usdNo?: number;
   /** Same leg USDC as `usdYes` / `usd_no` when API sends `usdc_yes` / `usdc_no`. */

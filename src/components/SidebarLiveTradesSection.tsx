@@ -53,16 +53,11 @@ const LiveTradeRow = memo(function LiveTradeRow({ trade: t, tradeTickBucket, liv
     <div
       className={`grid grid-cols-5 gap-1 text-[11px] px-1 rounded-sm ${
         isMine ? 'bg-blue-900/35 ring-1 ring-blue-500/60 shadow-[0_0_8px_rgba(59,130,246,0.25)]' : ''
-      } ${isPending ? 'opacity-70 italic ring-1 ring-amber-500/40 bg-amber-500/5' : ''}`}
+      } ${isPending ? 'opacity-60' : ''}`}
       title={isPending ? 'Pending — seen in mempool, not yet mined' : undefined}
     >
       <span className={`inline-flex items-center gap-1 ${isBuy ? 'text-green-400' : 'text-red-400'}`}>
         {tp}¢
-        {isPending && (
-          <span className="inline-flex items-center rounded bg-amber-500/30 px-1 py-[1px] text-[8px] font-bold leading-none text-amber-200">
-            PEND
-          </span>
-        )}
         {isMine && (
           <span className="inline-flex items-center rounded bg-blue-500/30 px-1 py-[1px] text-[8px] font-bold leading-none text-blue-200">
             ME

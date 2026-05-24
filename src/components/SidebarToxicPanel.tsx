@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, Suspense, useEffect, useState } from 'react';
 import { lazyWithChunkReload } from '../utils/lazyWithChunkReload';
 import {
   refreshSidebarToxicFlow,
@@ -30,12 +30,18 @@ const SidebarToxicPanelBody = memo(function SidebarToxicPanelBody({
   marketId,
   marketName,
   yesTokenId,
+  noTokenId,
+  marketExpired,
   onClose,
+  onInlineWalletExtraWidthChange,
 }: {
   marketId: string;
   marketName: string;
   yesTokenId: string;
+  noTokenId?: string;
+  marketExpired?: boolean;
   onClose: () => void;
+  onInlineWalletExtraWidthChange?: (width: string) => void;
 }) {
   const mid = marketId.trim();
   const data = useSidebarToxicFlowData();
@@ -76,11 +82,14 @@ const SidebarToxicPanelBody = memo(function SidebarToxicPanelBody({
       marketId={mid}
       marketName={marketName}
       yesTokenId={yesTokenId}
+      noTokenId={noTokenId}
+      marketExpired={marketExpired}
       streamData={data}
       streamTabWalletViews={tabWalletViews}
       onRefreshStream={refreshSidebarToxicFlow}
       streamRefreshing={refreshing}
       onClose={onClose}
+      onInlineWalletExtraWidthChange={onInlineWalletExtraWidthChange}
     />
   );
 });
@@ -89,21 +98,32 @@ export const SidebarToxicPanel = memo(function SidebarToxicPanel({
   marketId,
   marketName,
   yesTokenId,
+  noTokenId,
+  marketExpired,
   onClose,
+  onInlineWalletExtraWidthChange,
 }: {
   marketId: string;
   marketName: string;
   yesTokenId: string;
+  noTokenId?: string;
+  marketExpired?: boolean;
   onClose: () => void;
+  onInlineWalletExtraWidthChange?: (width: string) => void;
 }) {
   return (
     <div className="flex flex-1 min-h-0 min-w-0 w-full flex-col overflow-hidden bg-gray-900 toxic-flow-scroll-stable">
-      <SidebarToxicPanelBody
-        marketId={marketId}
-        marketName={marketName}
-        yesTokenId={yesTokenId}
-        onClose={onClose}
-      />
+      <Suspense fallback={<div className="p-2 text-[10px] text-gray-500">Loading holders…</div>}>
+        <SidebarToxicPanelBody
+          marketId={marketId}
+          marketName={marketName}
+          yesTokenId={yesTokenId}
+          noTokenId={noTokenId}
+          marketExpired={marketExpired}
+          onClose={onClose}
+          onInlineWalletExtraWidthChange={onInlineWalletExtraWidthChange}
+        />
+      </Suspense>
     </div>
   );
 });

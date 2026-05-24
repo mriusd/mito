@@ -1,4 +1,4 @@
-/** Cohort tilt flash + whale price gate — ref store so Sidebar body skips toxic WS ticks. */
+import { useSyncExternalStore } from 'react';
 export type SidebarToxicNotifySnapshot = {
   topBarExtremeBgFlash: 'green' | 'red' | null;
   whalePassesPriceGate: boolean;
@@ -36,4 +36,12 @@ export function subscribeSidebarToxicNotify(onStoreChange: () => void): () => vo
 
 export function getSidebarToxicNotify(): SidebarToxicNotifySnapshot {
   return snap;
+}
+
+export function useSidebarToxicNotify(): SidebarToxicNotifySnapshot {
+  return useSyncExternalStore(
+    subscribeSidebarToxicNotify,
+    getSidebarToxicNotify,
+    getSidebarToxicNotify,
+  );
 }

@@ -799,7 +799,15 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const pw = (walletRef.current || '').trim().toLowerCase();
             const pm = marketRef.current ? canonicalConditionKey(marketRef.current) : '';
             if (pw && pm && msgWallet === pw) {
-              setWalletMarketTrades(deduped.slice(0, WALLET_MARKET_TRADES_CAP));
+              const scopedIds = new Set(
+                (scopedClobTokenIdsRef.current || [])
+                  .map((x) => normalizeClobTokenKey(x))
+                  .filter(Boolean),
+              );
+              if (scopedIds.size > 0) {
+                const marketRows = deduped.filter((t) => scopedIds.has(normalizeClobTokenKey(t.tokenId)));
+                setWalletMarketTrades(marketRows.slice(0, WALLET_MARKET_TRADES_CAP));
+              }
             }
           } else if (msg.type === 'walletMarketTrades' && Array.isArray(msg.data)) {
             const w = String(msg.wallet || '').trim().toLowerCase();

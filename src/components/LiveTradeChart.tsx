@@ -190,6 +190,7 @@ export function LiveTradeChart({
   const [volumeSpikeFlashSide, setVolumeSpikeFlashSide] = useState<ChartVolumeSpikeSide | null>(null);
   const lastVolumeSpikeBarRef = useRef<number | null>(null);
   const volumeSpikeFlashGenRef = useRef(0);
+  const hoverMxRef = useRef<number | null>(null);
 
   const setChartInterval = useCallback((iv: ChartInterval) => {
     setInterval_(iv);
@@ -495,6 +496,100 @@ export function LiveTradeChart({
     lastTradeCountRef.current = trades.length;
   }, [trades, ready]);
 
+  const fmtCandleTime = useCallback((t: number, iv: string) => {
+    const d = new Date(t);
+    const hm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const clock = iv === '5s' ? `${hm}:${String(d.getSeconds()).padStart(2, '0')}` : hm;
+    return `${d.getMonth() + 1}/${d.getDate()} ${clock}`;
+  }, []);
+
+  const fmtVolume = useCallback((v: number) => {
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
+    if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+    if (v >= 100) return v.toFixed(0);
+    if (v >= 1) return v.toFixed(1);
+    return v.toFixed(2);
+  }, []);
+
+  const pickHoverCandle = useCallback((s: LiveChartState, mx: number): Candle | null => {
+    if (s.candles.length === 0) return null;
+    const first = s.candles[0];
+    const last = s.candles[s.candles.length - 1];
+    const lastCx = s.toX(last.time + s.candleMs / 2);
+    const lastHitRight = Math.max(s.W, lastCx + s.candleW / 2 + 2);
+
+    if (mx >= lastCx - s.candleW / 2 - 2 && mx <= lastHitRight) return last;
+
+    const span = s.chartRight - s.chartLeft || 1;
+    const tAtMouse = s.minT + ((mx - s.chartLeft) / span) * s.rangeT;
+
+    for (let i = s.candles.length - 1; i >= 0; i--) {
+      const c = s.candles[i];
+      if (tAtMouse >= c.time && tAtMouse < c.time + s.candleMs) return c;
+    }
+    if (tAtMouse >= last.time) return last;
+    if (tAtMouse < first.time) return first;
+
+    let nearest: Candle | null = null;
+    let nearestDist = Infinity;
+    for (const c of s.candles) {
+      const cx = s.toX(c.time + s.candleMs / 2);
+      const dist = Math.abs(cx - mx);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = c;
+      }
+    }
+    return nearest;
+  }, []);
+
+  const paintChartHover = useCallback((mx: number | null) => {
+    const s = chartStateRef.current;
+    const base = baseImageRef.current;
+    const canvas = canvasRef.current;
+    if (!s || !base || !canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.putImageData(base, 0, 0);
+    if (mx == null || mx < s.chartLeft || mx > s.W) return;
+
+    const nearest = pickHoverCandle(s, mx);
+    if (!nearest) return;
+
+    ctx.scale(s.dpr, s.dpr);
+    const cx = s.toX(nearest.time + s.candleMs / 2);
+
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.moveTo(cx, s.chartTop);
+    ctx.lineTo(cx, s.chartBot);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const isBull = nearest.c >= nearest.o;
+    const color = isBull ? s.bullColor : s.bearColor;
+    const bodyTop = s.toY(Math.max(nearest.o, nearest.c));
+    const bodyBot = s.toY(Math.min(nearest.o, nearest.c));
+    const bodyH = Math.max(bodyBot - bodyTop, 1);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(cx - s.candleW / 2 - 1, bodyTop - 1, s.candleW + 2, bodyH + 2);
+
+    const hoverLine = `${fmtCandleTime(nearest.time, s.interval)}  O ${nearest.o.toFixed(1)}  H ${nearest.h.toFixed(1)}  L ${nearest.l.toFixed(1)}  C ${nearest.c.toFixed(1)}  V ${fmtVolume(nearest.v)}`;
+
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = color;
+    ctx.fillText(hoverLine, s.chartLeft + 2, s.chartTop + 2);
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }, [fmtCandleTime, fmtVolume, pickHoverCandle]);
+
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -518,6 +613,7 @@ export function LiveTradeChart({
     if (candles.length === 0) {
       chartStateRef.current = null;
       baseImageRef.current = null;
+      hoverMxRef.current = null;
       ctx.fillStyle = 'rgba(255,255,255,0.2)';
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
@@ -797,115 +893,21 @@ export function LiveTradeChart({
       interval,
     };
     baseImageRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval, outcomeToggle?.value]);
-
-  const fmtCandleTime = useCallback((t: number, iv: string) => {
-    const d = new Date(t);
-    const hm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-    const clock = iv === '5s' ? `${hm}:${String(d.getSeconds()).padStart(2, '0')}` : hm;
-    return `${d.getMonth() + 1}/${d.getDate()} ${clock}`;
-  }, []);
-
-  const fmtVolume = useCallback((v: number) => {
-    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
-    if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
-    if (v >= 100) return v.toFixed(0);
-    if (v >= 1) return v.toFixed(1);
-    return v.toFixed(2);
-  }, []);
-
-  const pickHoverCandle = useCallback((s: LiveChartState, mx: number): Candle | null => {
-    if (s.candles.length === 0) return null;
-    const first = s.candles[0];
-    const last = s.candles[s.candles.length - 1];
-    const lastCx = s.toX(last.time + s.candleMs / 2);
-    const lastHitRight = Math.max(s.W, lastCx + s.candleW / 2 + 2);
-
-    if (mx >= lastCx - s.candleW / 2 - 2 && mx <= lastHitRight) return last;
-
-    const span = s.chartRight - s.chartLeft || 1;
-    const tAtMouse = s.minT + ((mx - s.chartLeft) / span) * s.rangeT;
-
-    for (let i = s.candles.length - 1; i >= 0; i--) {
-      const c = s.candles[i];
-      if (tAtMouse >= c.time && tAtMouse < c.time + s.candleMs) return c;
-    }
-    if (tAtMouse >= last.time) return last;
-    if (tAtMouse < first.time) return first;
-
-    let nearest: Candle | null = null;
-    let nearestDist = Infinity;
-    for (const c of s.candles) {
-      const cx = s.toX(c.time + s.candleMs / 2);
-      const dist = Math.abs(cx - mx);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearest = c;
-      }
-    }
-    return nearest;
-  }, []);
+    if (hoverMxRef.current != null) paintChartHover(hoverMxRef.current);
+  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval, outcomeToggle?.value, paintChartHover]);
 
   const handleMouseMove = useCallback((e: ReactMouseEvent<HTMLCanvasElement>) => {
-    const s = chartStateRef.current;
-    const base = baseImageRef.current;
-    const canvas = canvasRef.current;
-    if (!s || !base || !canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
     const mx = e.clientX - rect.left;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.putImageData(base, 0, 0);
-
-    if (mx < s.chartLeft || mx > s.W) return;
-
-    const nearest = pickHoverCandle(s, mx);
-    if (!nearest) return;
-
-    ctx.scale(s.dpr, s.dpr);
-    const cx = s.toX(nearest.time + s.candleMs / 2);
-
-    ctx.beginPath();
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 3]);
-    ctx.moveTo(cx, s.chartTop);
-    ctx.lineTo(cx, s.chartBot);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    const isBull = nearest.c >= nearest.o;
-    const color = isBull ? s.bullColor : s.bearColor;
-    const bodyTop = s.toY(Math.max(nearest.o, nearest.c));
-    const bodyBot = s.toY(Math.min(nearest.o, nearest.c));
-    const bodyH = Math.max(bodyBot - bodyTop, 1);
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(cx - s.candleW / 2 - 1, bodyTop - 1, s.candleW + 2, bodyH + 2);
-
-    const hoverLine = `${fmtCandleTime(nearest.time, s.interval)}  O ${nearest.o.toFixed(1)}  H ${nearest.h.toFixed(1)}  L ${nearest.l.toFixed(1)}  C ${nearest.c.toFixed(1)}  V ${fmtVolume(nearest.v)}`;
-
-    ctx.font = 'bold 9px monospace';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = color;
-    ctx.fillText(hoverLine, s.chartLeft + 2, s.chartTop + 2);
-
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-  }, [fmtCandleTime, fmtVolume, pickHoverCandle]);
+    hoverMxRef.current = mx;
+    paintChartHover(mx);
+  }, [paintChartHover]);
 
   const handleMouseLeave = useCallback(() => {
-    const base = baseImageRef.current;
-    const canvas = canvasRef.current;
-    if (!base || !canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.putImageData(base, 0, 0);
-  }, []);
+    hoverMxRef.current = null;
+    paintChartHover(null);
+  }, [paintChartHover]);
 
   useEffect(() => {
     if (!volumeSpikeAlerts) {

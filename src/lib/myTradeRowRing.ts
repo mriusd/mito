@@ -45,13 +45,25 @@ export function useMyTradeRowRingSound(
 ): Set<string> {
   const [flashKeys, setFlashKeys] = useState<Set<string>>(() => new Set());
   const seenRef = useRef(new Set<string>());
-  /** After scope change, seed current rows once (incl. async fetch) — no sounds until seeded. */
+  /** After scope change, seed rows until trades stop changing for a beat — no sounds until then. */
   const needsScopeSeedRef = useRef(true);
+  const scopeSeedTimerRef = useRef<number | null>(null);
+  const tradesRef = useRef(trades);
+  tradesRef.current = trades;
+
+  const clearScopeSeedTimer = () => {
+    if (scopeSeedTimerRef.current != null) {
+      clearTimeout(scopeSeedTimerRef.current);
+      scopeSeedTimerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     needsScopeSeedRef.current = true;
     seenRef.current = new Set();
     setFlashKeys(new Set());
+    clearScopeSeedTimer();
+    return clearScopeSeedTimer;
   }, [scopeKey]);
 
   useEffect(() => {
@@ -60,12 +72,19 @@ export function useMyTradeRowRingSound(
     const seen = seenRef.current;
 
     if (needsScopeSeedRef.current) {
-      if (trades.length === 0) return;
       for (const trade of trades) {
         const k = mySidebarTradeRowKey(trade);
         if (k) seen.add(k);
       }
-      needsScopeSeedRef.current = false;
+      clearScopeSeedTimer();
+      scopeSeedTimerRef.current = window.setTimeout(() => {
+        scopeSeedTimerRef.current = null;
+        for (const trade of tradesRef.current) {
+          const k = mySidebarTradeRowKey(trade);
+          if (k) seenRef.current.add(k);
+        }
+        needsScopeSeedRef.current = false;
+      }, 500);
       return;
     }
 

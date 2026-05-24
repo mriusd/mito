@@ -337,6 +337,13 @@ export function LiveTradeChart({
             if (!k) return;
             applyWsKline(k as Record<string, unknown>);
             setWsTick((n) => n + 1);
+          } else if (msg.type === 'klineStreamDelete') {
+            const tRaw = msg.data?.data?.t;
+            const t = typeof tRaw === 'number' ? tRaw : Number(tRaw);
+            if (Number.isFinite(t) && t > 0) {
+              candleMapRef.current.delete(t);
+              setWsTick((n) => n + 1);
+            }
           }
         } catch {
           /* ignore */

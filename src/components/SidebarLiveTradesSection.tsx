@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
+import { openPolygonscanTx, polygonscanTxUrl } from '../lib/polygonscanLink';
 import { onchainFillKey, polymarketTradeKey } from '../lib/tradeKeys';
 import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
@@ -45,6 +46,8 @@ const LiveTradeRow = memo(function LiveTradeRow({ trade: t, tradeTickBucket, liv
           : `${Math.floor(agoSec / 86400)}d`;
   const usdValue = (parseFloat(t.price) * parseFloat(t.size)).toFixed(2);
   const isPending = t.pending === true;
+  const scanUrl =
+    liveTradesSource === 'onchain' ? polygonscanTxUrl(t.txHash, isPending ? t.id : undefined) : null;
   void i;
   return (
     <div
@@ -65,15 +68,23 @@ const LiveTradeRow = memo(function LiveTradeRow({ trade: t, tradeTickBucket, liv
             ME
           </span>
         )}
-        {liveTradesSource === 'onchain' && t.txHash && (
+        {scanUrl && (
           <a
-            href={`https://polygonscan.com/tx/${t.txHash}`}
+            href={scanUrl}
             target="_blank"
-            rel="noreferrer"
-            title="View transaction on Polygonscan"
-            className="text-gray-400 hover:text-blue-300"
+            rel="noopener noreferrer"
+            title={isPending ? 'Open pending tx on Polygonscan' : 'View transaction on Polygonscan'}
+            className="no-drag inline-flex shrink-0 cursor-pointer p-0.5 text-gray-400 hover:text-blue-300"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!openPolygonscanTx(t.txHash, isPending ? t.id : undefined)) {
+                throw new Error('polygonscan tx link missing hash');
+              }
+            }}
           >
-            <ExternalLink size={11} />
+            <ExternalLink size={11} aria-hidden />
           </a>
         )}
       </span>

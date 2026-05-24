@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { Link2, Link2Off } from 'lucide-react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { API_BASE, WS_BASE } from '../lib/env';
@@ -34,6 +34,26 @@ interface Candle {
   l: number;
   c: number;
   v: number;
+}
+
+interface LiveChartState {
+  candles: Candle[];
+  chartLeft: number;
+  chartRight: number;
+  chartTop: number;
+  chartBot: number;
+  candleMs: number;
+  candleW: number;
+  minT: number;
+  maxT: number;
+  rangeT: number;
+  W: number;
+  toX: (t: number) => number;
+  toY: (p: number) => number;
+  bullColor: string;
+  bearColor: string;
+  dpr: number;
+  interval: string;
 }
 
 function toPrice(raw: number, isNo: boolean): number {
@@ -151,6 +171,8 @@ export function LiveTradeChart({
   volumeSpikeAlerts = false,
 }: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const chartStateRef = useRef<LiveChartState | null>(null);
+  const baseImageRef = useRef<ImageData | null>(null);
   const candleMapRef = useRef<Map<number, Candle>>(new Map());
   const chainlinkCandleMapRef = useRef<Map<number, Candle>>(new Map());
   const lastTradeCountRef = useRef(0);
@@ -494,6 +516,8 @@ export function LiveTradeChart({
     const H = rect.height;
 
     if (candles.length === 0) {
+      chartStateRef.current = null;
+      baseImageRef.current = null;
       ctx.fillStyle = 'rgba(255,255,255,0.2)';
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
@@ -752,7 +776,136 @@ export function LiveTradeChart({
       const t = minT + rangeT * (i / labelCount);
       ctx.fillText(fmtTime(t), toX(t), timeLabelY);
     }
+
+    chartStateRef.current = {
+      candles,
+      chartLeft,
+      chartRight,
+      chartTop,
+      chartBot,
+      candleMs,
+      candleW,
+      minT,
+      maxT,
+      rangeT,
+      W,
+      toX,
+      toY,
+      bullColor,
+      bearColor,
+      dpr,
+      interval,
+    };
+    baseImageRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
   }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval, outcomeToggle?.value]);
+
+  const fmtCandleTime = useCallback((t: number, iv: string) => {
+    const d = new Date(t);
+    const hm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const clock = iv === '5s' ? `${hm}:${String(d.getSeconds()).padStart(2, '0')}` : hm;
+    return `${d.getMonth() + 1}/${d.getDate()} ${clock}`;
+  }, []);
+
+  const fmtVolume = useCallback((v: number) => {
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
+    if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+    if (v >= 100) return v.toFixed(0);
+    if (v >= 1) return v.toFixed(1);
+    return v.toFixed(2);
+  }, []);
+
+  const pickHoverCandle = useCallback((s: LiveChartState, mx: number): Candle | null => {
+    if (s.candles.length === 0) return null;
+    const first = s.candles[0];
+    const last = s.candles[s.candles.length - 1];
+    const lastCx = s.toX(last.time + s.candleMs / 2);
+    const lastHitRight = Math.max(s.W, lastCx + s.candleW / 2 + 2);
+
+    if (mx >= lastCx - s.candleW / 2 - 2 && mx <= lastHitRight) return last;
+
+    const span = s.chartRight - s.chartLeft || 1;
+    const tAtMouse = s.minT + ((mx - s.chartLeft) / span) * s.rangeT;
+
+    for (let i = s.candles.length - 1; i >= 0; i--) {
+      const c = s.candles[i];
+      if (tAtMouse >= c.time && tAtMouse < c.time + s.candleMs) return c;
+    }
+    if (tAtMouse >= last.time) return last;
+    if (tAtMouse < first.time) return first;
+
+    let nearest: Candle | null = null;
+    let nearestDist = Infinity;
+    for (const c of s.candles) {
+      const cx = s.toX(c.time + s.candleMs / 2);
+      const dist = Math.abs(cx - mx);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = c;
+      }
+    }
+    return nearest;
+  }, []);
+
+  const handleMouseMove = useCallback((e: ReactMouseEvent<HTMLCanvasElement>) => {
+    const s = chartStateRef.current;
+    const base = baseImageRef.current;
+    const canvas = canvasRef.current;
+    if (!s || !base || !canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.putImageData(base, 0, 0);
+
+    if (mx < s.chartLeft || mx > s.W) return;
+
+    const nearest = pickHoverCandle(s, mx);
+    if (!nearest) return;
+
+    ctx.scale(s.dpr, s.dpr);
+    const cx = s.toX(nearest.time + s.candleMs / 2);
+
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.moveTo(cx, s.chartTop);
+    ctx.lineTo(cx, s.chartBot);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const isBull = nearest.c >= nearest.o;
+    const color = isBull ? s.bullColor : s.bearColor;
+    const bodyTop = s.toY(Math.max(nearest.o, nearest.c));
+    const bodyBot = s.toY(Math.min(nearest.o, nearest.c));
+    const bodyH = Math.max(bodyBot - bodyTop, 1);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(cx - s.candleW / 2 - 1, bodyTop - 1, s.candleW + 2, bodyH + 2);
+
+    const hoverLine = `${fmtCandleTime(nearest.time, s.interval)}  O ${nearest.o.toFixed(1)}  H ${nearest.h.toFixed(1)}  L ${nearest.l.toFixed(1)}  C ${nearest.c.toFixed(1)}  V ${fmtVolume(nearest.v)}`;
+
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = color;
+    ctx.fillText(hoverLine, s.chartLeft + 2, s.chartTop + 2);
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }, [fmtCandleTime, fmtVolume, pickHoverCandle]);
+
+  const handleMouseLeave = useCallback(() => {
+    const base = baseImageRef.current;
+    const canvas = canvasRef.current;
+    if (!base || !canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.putImageData(base, 0, 0);
+  }, []);
 
   useEffect(() => {
     if (!volumeSpikeAlerts) {
@@ -921,7 +1074,9 @@ export function LiveTradeChart({
       <div className="relative rounded-[6px]">
         <canvas
           ref={canvasRef}
-          style={{ width: '100%', height: 110, borderRadius: 6, background: '#1a1a2e', display: 'block' }}
+          style={{ width: '100%', height: 110, borderRadius: 6, background: '#1a1a2e', display: 'block', cursor: 'crosshair' }}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
         />
         {volumeSpikeFlashSide ? (
           <div

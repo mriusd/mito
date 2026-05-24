@@ -126,6 +126,7 @@ import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './S
 import { SidebarOrderCostDisplay } from './SidebarOrderCostDisplay';
 import { SidebarMarketStatsCells, SidebarNotifyStakedGateSync } from './SidebarMarketStatsCells';
 import { SidebarSpotStripMathButton } from './SidebarSpotStripMathButton';
+import { useThrottledStorePrice } from '../hooks/useThrottledStorePrice';
 import { useSidebarNotifyStakedGatePasses } from '../lib/sidebarNotifyStakedGateStore';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import { SidebarYesMidProbBar } from './SidebarYesMidProbBar';
@@ -1729,13 +1730,17 @@ export function Sidebar() {
   }, [orders, selectedMarket?.clobTokenIds, orderOutcome]);
 
   // Compute BS probability for orderbook % diff
-  const vwapData = useAppStore((s) => s.vwapData);
-  const priceData = useAppStore((s) => s.priceData);
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
   const lastUpdated = useAppStore((s) => s.lastUpdated);
+  const sidebarPriceSym = useMemo((): AssetSymbol | null => {
+    if (!selectedMarket) return null;
+    const asset = extractAssetFromMarket(selectedMarket);
+    return asset ? (`${asset.toUpperCase()}USDT` as AssetSymbol) : null;
+  }, [selectedMarket]);
+  const sidebarThrottledSpot = useThrottledStorePrice(sidebarPriceSym ?? 'BTCUSDT', 1000);
 
   const selectedMarketIsHit = useMemo(
     () => isMarketInWeeklyHitMarkets(selectedMarket?.id, weeklyHitMarkets),
@@ -1749,7 +1754,8 @@ export function Sidebar() {
     const endDate = selectedMarket.endDate || '';
     if (!asset || !strike || !endDate) return 0;
     const sym = (asset + 'USDT') as AssetSymbol;
-    const livePrice = vwapData[sym]?.price || priceData[sym]?.price || 0;
+    const vwapPrice = sidebarPriceSym === sym ? (useAppStore.getState().vwapData[sym]?.price || 0) : 0;
+    const livePrice = vwapPrice || (sidebarPriceSym === sym ? sidebarThrottledSpot : 0) || 0;
     if (!livePrice) return 0;
     const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
     const cleaned = strike.replace(/^Hit\s*/i, '').replace(/[\$,]/g, '').replace(/↑/g, '>').replace(/↓/g, '<').trim();
@@ -1760,7 +1766,7 @@ export function Sidebar() {
     if (probYes === null) return 0;
     const prob = orderOutcome === 'YES' ? probYes : 1 - probYes;
     return prob * 100;
-  }, [selectedMarket, orderOutcome, vwapData, priceData, volatilityData, volMultiplier, bsTimeOffsetHours, selectedMarketIsHit]);
+  }, [selectedMarket, orderOutcome, sidebarPriceSym, sidebarThrottledSpot, volatilityData, volMultiplier, bsTimeOffsetHours, selectedMarketIsHit]);
 
 
   // Up or Down market detection and state
@@ -1996,7 +2002,7 @@ export function Sidebar() {
       const binanceSym = (asset.toUpperCase() + 'USDT') as AssetSymbol;
       const chainlinkPrice =
         upDownSpotUsesChainlink && polyPrice.price != null && polyPrice.price > 0 ? polyPrice.price : 0;
-      const binancePrice = priceData[binanceSym]?.price || 0;
+      const binancePrice = sidebarPriceSym === binanceSym ? sidebarThrottledSpot : 0;
       const currentPrice = upDownSpotUsesChainlink ? chainlinkPrice || binancePrice : binancePrice;
       const currentSource: 'chainlink' | 'binance' =
         upDownSpotUsesChainlink && chainlinkPrice > 0 ? 'chainlink' : 'binance';
@@ -2042,7 +2048,7 @@ export function Sidebar() {
     const strikeRaw = (selectedMarket.groupItemTitle || '').trim();
     if (!strikeRaw) return null;
 
-    const currentPrice = priceData[sym]?.price || 0;
+    const currentPrice = sidebarPriceSym === sym ? sidebarThrottledSpot : 0;
     const currentSource = 'binance' as const;
 
     const cleaned = strikeRaw.replace(/^Hit\s*/i, '').replace(/[\$,]/g, '').replace(/↑/g, '>').replace(/↓/g, '<').trim();
@@ -2108,7 +2114,8 @@ export function Sidebar() {
     upDownTargetPrice,
     upDownSpotUsesChainlink,
     polyPrice.price,
-    priceData,
+    sidebarPriceSym,
+    sidebarThrottledSpot,
     volatilityData,
     volMultiplier,
     bsTimeOffsetHours,
@@ -4141,7 +4148,6 @@ export function Sidebar() {
           <SidebarChartsRow
             selectedMarket={selectedMarket}
             onchainLiveTrades={onchainLiveTrades}
-            liveTradesSource={liveTradesSource}
             orderOutcome={orderOutcome}
             onOrderOutcomeChange={setOrderOutcome}
             chartOutcomeSync={chartOutcomeSync}

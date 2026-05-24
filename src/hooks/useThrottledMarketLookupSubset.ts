@@ -1,50 +1,66 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Market } from '../types';
-import { bidAskWsRowEqual, GRID_BID_ASK_THROTTLE_MS } from '../lib/bidAskMarketLookup';
-import { useMarketLookupSubset } from './useMarketLookupSubset';
+import {
+  bidAskWsRowEqual,
+  getBidAskMarketRow,
+  GRID_BID_ASK_THROTTLE_MS,
+  subscribeBidAskMarketLookup,
+} from '../lib/bidAskMarketLookup';
 
-/** Grid subset of `marketLookup` at most every `ms` (default 2s grid bid/ask throttle). */
+function subsetEqual(prev: Record<string, Market>, next: Record<string, Market>): boolean {
+  const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+  for (const id of keys) {
+    const p = prev[id];
+    const l = next[id];
+    if (p === l) continue;
+    if (p && l && bidAskWsRowEqual(p, l)) continue;
+    return false;
+  }
+  return true;
+}
+
+/** Grid subset at most every `ms` — WS pending patch only (no zustand flush subscription). */
 export function useThrottledMarketLookupSubset(
   tokenIds: readonly string[],
   ms = GRID_BID_ASK_THROTTLE_MS,
 ): Record<string, Market> {
-  const live = useMarketLookupSubset(tokenIds);
-  const [subset, setSubset] = useState(live);
-  const liveRef = useRef(live);
-  liveRef.current = live;
+  const idsKey = tokenIds.join('\0');
+  const ids = useMemo(() => tokenIds.filter(Boolean), [idsKey]);
+
+  const readSubset = useCallback((): Record<string, Market> => {
+    const out: Record<string, Market> = {};
+    for (const id of ids) {
+      const row = getBidAskMarketRow(id);
+      if (row) out[id] = row;
+    }
+    return out;
+  }, [ids]);
+
+  const [subset, setSubset] = useState(readSubset);
 
   useEffect(() => {
+    let latest = readSubset();
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const flush = () => {
       timer = null;
-      const latest = liveRef.current;
-      setSubset((prev) => {
-        const keys = new Set([...Object.keys(prev), ...Object.keys(latest)]);
-        let same = true;
-        for (const id of keys) {
-          const p = prev[id];
-          const l = latest[id];
-          if (p === l) continue;
-          if (p && l && bidAskWsRowEqual(p, l)) continue;
-          same = false;
-          break;
-        }
-        return same ? prev : latest;
-      });
+      setSubset((prev) => (subsetEqual(prev, latest) ? prev : latest));
     };
 
     const schedule = () => {
+      latest = readSubset();
       if (timer != null) return;
       timer = setTimeout(flush, ms);
     };
 
+    const unsub = subscribeBidAskMarketLookup(schedule);
     schedule();
 
     return () => {
+      unsub();
       if (timer != null) clearTimeout(timer);
     };
-  }, [live, ms]);
+  }, [readSubset, ms]);
 
   return subset;
 }

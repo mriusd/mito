@@ -5,7 +5,7 @@ import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMat
 import { gammaImpliedNoBestBid, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
 import { GRID_BID_ASK_THROTTLE_MS } from '../../lib/bidAskMarketLookup';
-import { useThrottledLookupPair } from '../../hooks/useThrottledLookupPair';
+import { useThrottledBidAskPair } from '../../hooks/useThrottledBidAskPair';
 import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
@@ -124,7 +124,7 @@ function GridMarketCellInner({
   const yesTokenId = tokenIds[0] || '';
   const noTokenId = tokenIds[1] || '';
 
-  const ws = useThrottledLookupPair(yesTokenId, noTokenId, GRID_BID_ASK_THROTTLE_MS);
+  const ws = useThrottledBidAskPair(yesTokenId, noTokenId, GRID_BID_ASK_THROTTLE_MS);
   const ptb = market.priceToBeat ?? ws.yes?.priceToBeat;
   const strikeStr =
     deltaPriceStr ||

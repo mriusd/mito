@@ -1,14 +1,13 @@
 import { memo, useMemo } from 'react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
-import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import type { Market } from '../types';
 import type { MyTradeChartRow } from '../lib/chartTradeMarkers';
+import { usePolymarketChartTrades } from '../hooks/usePolymarketChartTrades';
 import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 
 export type SidebarChartsRowProps = {
   selectedMarket: Market;
   onchainLiveTrades: LiveTrade[];
-  liveTradesSource: string;
   orderOutcome: 'YES' | 'NO';
   onOrderOutcomeChange: (value: 'YES' | 'NO') => void;
   chartOutcomeSync: boolean;
@@ -16,21 +15,16 @@ export type SidebarChartsRowProps = {
   myTradesForMarkers?: MyTradeChartRow[];
 };
 
-function chartsRowInner({
+function SidebarChartsRowInner({
   selectedMarket,
   onchainLiveTrades,
-  liveTradesSource,
   orderOutcome,
   onOrderOutcomeChange,
   chartOutcomeSync,
   onChartOutcomeSyncChange,
   myTradesForMarkers,
 }: SidebarChartsRowProps) {
-  const polymarketTape = useSidebarPolymarketTape();
-  const displayLiveTrades = useMemo(
-    () => (liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketTape),
-    [liveTradesSource, onchainLiveTrades, polymarketTape],
-  );
+  const displayLiveTrades = usePolymarketChartTrades(onchainLiveTrades);
   const outcomeSync = useMemo(
     () => ({
       enabled: chartOutcomeSync,
@@ -54,4 +48,4 @@ function chartsRowInner({
   );
 }
 
-export const SidebarChartsRow = memo(chartsRowInner);
+export const SidebarChartsRow = memo(SidebarChartsRowInner);

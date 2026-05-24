@@ -81,8 +81,14 @@ function liveTradeDedupeKey(t: Pick<LiveTrade, 'id' | 'txHash' | 'logIndex'>): s
 function prependDedupedSortedTape(prev: LiveTrade[], t: LiveTrade, cap: number): LiveTrade[] {
   const stamped = stampLiveTradeId(t);
   const key = liveTradeDedupeKey(stamped);
+  // Confirmed (non-pending) row supersedes any pending row with same txHash.
+  const incomingTx = stamped.pending ? '' : (stamped.txHash || '').toLowerCase();
+  const filterPendingForTx = (rows: LiveTrade[]) => {
+    if (!incomingTx) return rows;
+    return rows.filter((x) => !(x.pending && (x.txHash || '').toLowerCase() === incomingTx));
+  };
   if (!key) {
-    const merged = [stamped, ...prev];
+    const merged = filterPendingForTx([stamped, ...prev]);
     merged.sort((a, b) => {
       const td = (b.timestamp ?? 0) - (a.timestamp ?? 0);
       if (td !== 0) return td;
@@ -97,13 +103,18 @@ function prependDedupedSortedTape(prev: LiveTrade[], t: LiveTrade, cap: number):
     if (!k || k === key) continue;
     byKey.set(k, x.id ? x : stampLiveTradeId(x));
   }
-  const merged = Array.from(byKey.values());
+  const merged = filterPendingForTx(Array.from(byKey.values()));
   merged.sort((a, b) => {
     const td = (b.timestamp ?? 0) - (a.timestamp ?? 0);
     if (td !== 0) return td;
     return (b.logIndex ?? 0) - (a.logIndex ?? 0);
   });
   return merged.slice(0, cap);
+}
+
+function dropPendingByTx(prev: LiveTrade[], txHashes: Set<string>): LiveTrade[] {
+  if (txHashes.size === 0) return prev;
+  return prev.filter((x) => !(x.pending && txHashes.has((x.txHash || '').toLowerCase())));
 }
 
 function pushPublicTapeBuffer(t: LiveTrade, marketCanon: string, tokenIdRaw: string) {
@@ -568,7 +579,20 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
           const tForMerge = t || null;
           const fromBuf = filterPublicTapeBuffer(mForMerge, tForMerge);
           cancelPendingTapeBatch();
-          setTrades(mergePublicLiveTapes(mapped.slice(0, MAX_TRADES), fromBuf));
+          setTrades((prev) => {
+            const pendingRows = prev.filter((x) => x.pending);
+            const confirmedTxs = new Set(mapped.map((r) => (r.txHash || '').toLowerCase()).filter(Boolean));
+            const keepPending = pendingRows.filter((x) => !confirmedTxs.has((x.txHash || '').toLowerCase()));
+            const merged = mergePublicLiveTapes(mapped.slice(0, MAX_TRADES), fromBuf);
+            if (keepPending.length === 0) return merged;
+            const out = [...keepPending, ...merged];
+            out.sort((a, b) => {
+              const td = (b.timestamp ?? 0) - (a.timestamp ?? 0);
+              if (td !== 0) return td;
+              return (b.logIndex ?? 0) - (a.logIndex ?? 0);
+            });
+            return out.slice(0, MAX_TRADES);
+          });
         })
         .catch(() => {});
     };
@@ -654,7 +678,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
           const msg = JSON.parse(event.data);
           if (!msg?.type) return;
 
-          if (msg.type === 'onchainTrade' && msg.data) {
+          if ((msg.type === 'onchainTrade' || msg.type === 'pendingTrade') && msg.data) {
+            const isPending = msg.type === 'pendingTrade';
             const d = msg.data as {
               tokenId?: string;
               marketId?: string;
@@ -689,7 +714,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const price = Number(d.price ?? 0);
             const ts = Number(d.timestamp ?? Date.now());
             const li = Number(d.logIndex ?? 0);
-            const t = stampLiveTradeId({
+            let trade: LiveTrade = {
               side,
               size: String(size),
               price: String(price),
@@ -698,16 +723,39 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               logIndex: Number.isFinite(li) && li >= 0 ? li : undefined,
               maker: d.maker ? String(d.maker).toLowerCase() : undefined,
               taker: d.taker ? String(d.taker).toLowerCase() : undefined,
-            });
+            };
+            if (isPending) {
+              const tx = (d.txHash || '').toLowerCase();
+              const tokKey = normalizeClobTokenKey(d.tokenId);
+              trade = {
+                ...trade,
+                pending: true,
+                logIndex: undefined,
+                id: `pending:${tx}:${tokKey}:${side}`,
+              };
+            } else {
+              trade = stampLiveTradeId(trade);
+            }
             const marketKeyForBuf = tradeMarket
               ? canonicalConditionKey(tradeMarket)
               : mSub
                 ? canonicalConditionKey(mSub)
                 : '';
-            if (d.tokenId) {
-              pushPublicTapeBuffer(t, marketKeyForBuf, String(d.tokenId));
+            if (!isPending && d.tokenId) {
+              pushPublicTapeBuffer(trade, marketKeyForBuf, String(d.tokenId));
             }
-            scheduleTapeTrade(t);
+            scheduleTapeTrade(trade);
+          } else if (msg.type === 'pendingTradeDrop' && Array.isArray(msg.txHashes)) {
+            const set = new Set<string>();
+            for (const h of msg.txHashes as unknown[]) {
+              const s = String(h || '').toLowerCase().trim();
+              if (s) set.add(s);
+            }
+            if (set.size === 0) return;
+            pendingTapeBatchRef.current = pendingTapeBatchRef.current.filter(
+              (x) => !(x.pending && set.has((x.txHash || '').toLowerCase())),
+            );
+            setTrades((prev) => dropPendingByTx(prev, set));
           } else if (msg.type === 'walletPositions' && Array.isArray(msg.data)) {
             const msgWallet = String(msg.wallet || '').trim().toLowerCase();
             const mine = (walletRef.current || '').trim().toLowerCase();

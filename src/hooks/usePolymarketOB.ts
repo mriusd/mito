@@ -19,6 +19,8 @@ export interface LiveTrade {
   logIndex?: number;
   maker?: string;
   taker?: string;
+  /** Mempool overlay (not yet mined). UI may render distinctly; row is replaced on confirm. */
+  pending?: boolean;
 }
 
 interface BookState {

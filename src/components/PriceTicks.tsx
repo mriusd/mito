@@ -12,6 +12,18 @@ interface TickMark {
   zIndex: number;
 }
 
+function ticksEqual(a: TickMark[], b: TickMark[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (x.y !== y.y || x.color !== y.color || x.width !== y.width || x.height !== y.height || x.zIndex !== y.zIndex) {
+      return false;
+    }
+  }
+  return true;
+}
+
 interface PriceTicksProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   /** Subscribes to spot + manual slots internally — parent grid avoids price/slot re-renders. */
@@ -135,8 +147,8 @@ export const PriceTicks = memo(function PriceTicks({ containerRef, symbol }: Pri
       }
     }
 
-    setTicks(newTicks);
-    setPriceRight(nextPriceRight);
+    setTicks((prev) => (ticksEqual(prev, newTicks) ? prev : newTicks));
+    setPriceRight((prev) => (prev === nextPriceRight ? prev : nextPriceRight));
   }, [containerRef, livePrice, slot0, slot1]);
 
   useEffect(() => {

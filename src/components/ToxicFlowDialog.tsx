@@ -117,7 +117,7 @@ import {
   resolveWalletInfoChartMarket,
   walletInfoChartMarketWithOutcomeTokens,
 } from '../lib/walletInfoChartMarket';
-import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
+import { usePolymarketChartTrades } from '../hooks/usePolymarketChartTrades';
 import type { Market } from '../types';
 import { HelperTooltip } from './HelperTooltip';
 import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
@@ -801,9 +801,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     setWalletChartOutcome('YES');
   }, [selectedMarketId, chartOutcomeTokens?.tokenIdYes, chartOutcomeTokens?.tokenIdNo]);
 
-  const liveTradesSource = useAppStore((s) => s.liveTradesSource);
-  const polymarketTape = useSidebarPolymarketTape();
-  const walletInfoChartTrades = liveTradesSource === 'onchain' ? [] : polymarketTape;
+  const walletInfoChartTrades = usePolymarketChartTrades([]);
 
   const selectedMarketMeta = useMemo(
     () => resolveWalletInfoChartMarket(selectedMarketId, marketById, markets),

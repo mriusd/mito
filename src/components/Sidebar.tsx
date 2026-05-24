@@ -98,6 +98,7 @@ import {
   SIDEBAR_TRADE_SOUND_VOLUME_KEY,
 } from '../lib/tiltNotifySound';
 import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
+import { SidebarMarketCountdownLabel } from './SidebarMarketCountdownLabel';
 import {
   isNotifySoundPriceMuted,
   readNotifySoundMaxPriceCents,
@@ -1775,14 +1776,31 @@ export function Sidebar() {
   const sidebarSpotCurrentPriceRef = useRef<HTMLDivElement>(null);
   const upDownEndPickerDetailsRef = useRef<HTMLDetailsElement>(null);
   const prevPriceRef = useRef<number>(0);
-  const [upDownCountdown, setUpDownCountdown] = useState('');
-  const [upDownRemaining, setUpDownRemaining] = useState(Infinity);
-  const isMarketExpired = useMemo(
-    () => marketIsExpired(selectedMarket),
-    [selectedMarket, upDownRemaining, upDownCountdown],
-  );
+  const [isMarketExpired, setIsMarketExpired] = useState(() => marketIsExpired(selectedMarket));
   /** Countdown stops calling setState after "Expired"; pulse keeps re-reading `upOrDownMarkets` until next window arrives. */
   const [expiredLivePickPulse, setExpiredLivePickPulse] = useState(0);
+
+  useEffect(() => {
+    const expired = marketIsExpired(selectedMarket);
+    setIsMarketExpired((prev) => (prev === expired ? prev : expired));
+    if (!selectedMarket?.endDate || expired) return;
+    const endMs = new Date(selectedMarket.endDate).getTime();
+    if (!Number.isFinite(endMs)) return;
+    const flip = () => {
+      setIsMarketExpired((prev) => {
+        const next = marketIsExpired(selectedMarket);
+        return prev === next ? prev : next;
+      });
+    };
+    const remaining = endMs - Date.now();
+    if (remaining <= 0) return;
+    const timeout = window.setTimeout(flip, remaining);
+    const iv = window.setInterval(flip, Math.min(1000, remaining));
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(iv);
+    };
+  }, [selectedMarket?.id, selectedMarket?.endDate, selectedMarket?.closed]);
 
   // Chainlink spot only for 5m/15m Up/Down; 1h/4h/24h use Binance in UI
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(selectedMarket!) : null;
@@ -1949,36 +1967,12 @@ export function Sidebar() {
     syncUpDownStrike,
   ]);
 
-  // Countdown timer for market expiry (all markets)
+  // Countdown for market expiry — driven by shared expiryTickStore (no Sidebar setState).
   useEffect(() => {
-    if (!selectedMarket?.endDate) { setUpDownCountdown(''); return; }
-    const endMs = new Date(selectedMarket.endDate).getTime();
-    if (isNaN(endMs)) { setUpDownCountdown(''); return; }
-    const tick = () => {
-      const remaining = endMs - Date.now();
-      if (remaining <= 0) { setUpDownCountdown('Expired'); setUpDownRemaining(0); return; }
-      setUpDownRemaining(remaining);
-      const d = Math.floor(remaining / 86400000);
-      const h = Math.floor((remaining % 86400000) / 3600000);
-      const m = Math.floor((remaining % 3600000) / 60000);
-      const s = Math.floor((remaining % 60000) / 1000);
-      const parts = [];
-      if (d > 0) parts.push(`${d}d`);
-      if (h > 0) parts.push(`${h}h`);
-      parts.push(`${m}m`);
-      if (d === 0) parts.push(`${s}s`);
-      setUpDownCountdown(parts.join(' '));
-    };
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, [selectedMarket?.endDate]);
-
-  useEffect(() => {
-    if (upDownCountdown !== 'Expired' || !isUpDownMarket) return;
+    if (!isMarketExpired || !isUpDownMarket) return;
     const id = window.setInterval(() => setExpiredLivePickPulse((n) => n + 1), 1500);
     return () => clearInterval(id);
-  }, [upDownCountdown, isUpDownMarket]);
+  }, [isMarketExpired, isUpDownMarket]);
 
   useEffect(() => {
     prevPriceRef.current = 0;
@@ -2036,8 +2030,6 @@ export function Sidebar() {
             ? `$${upDownTargetPrice.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}`
             : '...',
         priceDec,
-        countdown: upDownCountdown,
-        remaining: upDownRemaining,
         mathCents,
         yesMathCents,
         pastExpiry,
@@ -2101,8 +2093,6 @@ export function Sidebar() {
       mode: 'generic' as const,
       targetDisplay,
       priceDec,
-      countdown: upDownCountdown,
-      remaining: upDownRemaining,
       mathCents,
       yesMathCents,
       pastExpiry,
@@ -2124,8 +2114,6 @@ export function Sidebar() {
     bsTimeOffsetHours,
     orderOutcome,
     selectedMarketIsHit,
-    upDownCountdown,
-    upDownRemaining,
   ]);
 
   /** Cohort signals only (Black–Scholes Δ gate removed). */
@@ -2287,7 +2275,6 @@ export function Sidebar() {
     upOrDownMarkets,
     lastUpdated,
     expiredLivePickPulse,
-    upDownCountdown,
   ]);
 
   /** Market FAK path shared by type dropdown Market and close-position ✕. */
@@ -4271,23 +4258,18 @@ export function Sidebar() {
 
                   {/* Row 3 — secondary */}
                   <div className="flex items-center justify-start min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
-                    {row.countdown ? (
+                    {selectedMarket?.endDate ? (
                       <div className="flex items-center gap-1 min-w-0 whitespace-nowrap">
-                        <span
-                          className={`shrink-0 ${row.countdown === 'Expired' ? 'text-red-400' : row.remaining < 60000 ? 'text-red-400' : row.remaining > 300000 ? 'text-green-400' : 'text-yellow-400'}`}
-                        >
-                          {row.countdown}
-                        </span>
-                        {row.countdown === 'Expired' && row.mode === 'updown' && liveUpDownSameTfMarket ? (
-                          <button
-                            type="button"
-                            className="inline-flex shrink-0 items-center gap-0.5 rounded bg-green-600 px-1.5 py-px text-[9px] font-semibold leading-none text-black hover:bg-green-500"
-                            onClick={() => setSelectedMarket(liveUpDownSameTfMarket)}
-                          >
-                            <ArrowRight size={10} strokeWidth={2.5} className="shrink-0" aria-hidden />
-                            live
-                          </button>
-                        ) : null}
+                        <SidebarMarketCountdownLabel
+                          endDate={selectedMarket.endDate}
+                          mode={row.mode}
+                          liveUpDownSameTfMarket={liveUpDownSameTfMarket}
+                          onSwitchLiveMarket={
+                            liveUpDownSameTfMarket
+                              ? () => setSelectedMarket(liveUpDownSameTfMarket)
+                              : undefined
+                          }
+                        />
                       </div>
                     ) : (
                       <span className="text-transparent select-none" aria-hidden>

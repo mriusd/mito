@@ -1,5 +1,7 @@
-import { useEffect, useState, useCallback, memo } from 'react';
+import { useEffect, useState, useCallback, memo, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
+import { useThrottledStorePrice } from '../hooks/useThrottledStorePrice';
 import type { AssetSymbol } from '../types';
 
 interface TickMark {
@@ -12,30 +14,53 @@ interface TickMark {
 
 interface PriceTicksProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
-  /** When set, subscribes to spot price internally — parent grid avoids 4 Hz re-render. */
-  symbol?: AssetSymbol;
-  livePrice?: number;
-  slot0: { low: number; high: number } | null;
-  slot1: { low: number; high: number } | null;
+  /** Subscribes to spot + manual slots internally — parent grid avoids price/slot re-renders. */
+  symbol: AssetSymbol;
 }
 
-export const PriceTicks = memo(function PriceTicks({
-  containerRef,
-  symbol,
-  livePrice: livePriceProp = 0,
-  slot0,
-  slot1,
-}: PriceTicksProps) {
-  const spotFromStore = useAppStore((s) => (symbol ? s.priceData[symbol]?.price || 0 : 0));
-  const livePrice = symbol ? spotFromStore : livePriceProp;
+export const PriceTicks = memo(function PriceTicks({ containerRef, symbol }: PriceTicksProps) {
+  const livePrice = useThrottledStorePrice(symbol, 1000);
+  const slot0 = useAppStore((s) => s.manualPriceSlots[symbol]?.[0] ?? null);
+  const slot1 = useAppStore((s) => s.manualPriceSlots[symbol]?.[1] ?? null);
   const [ticks, setTicks] = useState<TickMark[]>([]);
+  const [priceRight, setPriceRight] = useState(0);
+  const [portalRoot, setPortalRoot] = useState<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      setPortalRoot(null);
+      return;
+    }
+    let overlay = container.querySelector<HTMLDivElement>(':scope > .price-ticks-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.className = 'price-ticks-overlay';
+      overlay.style.cssText =
+        'position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:5';
+      container.appendChild(overlay);
+    }
+    setPortalRoot(overlay);
+    return () => {
+      overlay?.remove();
+      setPortalRoot(null);
+    };
+  }, [containerRef, symbol]);
 
   const computeTicks = useCallback(() => {
     const container = containerRef.current;
-    if (!container || livePrice <= 0) { setTicks([]); return; }
+    if (!container || livePrice <= 0) {
+      setTicks([]);
+      setPriceRight(0);
+      return;
+    }
 
     const cells = Array.from(container.querySelectorAll<HTMLElement>('.price-col-cell'));
-    if (cells.length === 0) { setTicks([]); return; }
+    if (cells.length === 0) {
+      setTicks([]);
+      setPriceRight(0);
+      return;
+    }
 
     const containerRect = container.getBoundingClientRect();
 
@@ -45,34 +70,37 @@ export const PriceTicks = memo(function PriceTicks({
       rect: c.getBoundingClientRect(),
     }));
 
-    const rowVal = (r: typeof rows[0]) => r.low;
+    const rowVal = (r: (typeof rows)[0]) => r.low;
 
-    // Detect sort order
     let isAsc = false;
     for (let i = 0; i < rows.length - 1; i++) {
       const diff = rowVal(rows[i + 1]) - rowVal(rows[i]);
-      if (Math.abs(diff) > 0.0001) { isAsc = diff > 0; break; }
+      if (Math.abs(diff) > 0.0001) {
+        isAsc = diff > 0;
+        break;
+      }
     }
 
-    // Map each row to value + Y position (relative to container)
     const pts = rows.map((r) => {
       const y = isAsc ? r.rect.top - containerRect.top : r.rect.bottom - containerRect.top;
       return { val: rowVal(r), midY: y };
     });
 
-    // Right edge of price column relative to container
-    const priceRight = rows.length > 0 ? rows[0].rect.right - containerRect.left : 0;
+    const nextPriceRight = rows.length > 0 ? rows[0].rect.right - containerRect.left : 0;
 
     function priceToY(price: number): number | null {
       if (pts.length === 0) return null;
       const vals = pts.map((p) => p.val);
-      const minV = Math.min(...vals), maxV = Math.max(...vals);
+      const minV = Math.min(...vals);
+      const maxV = Math.max(...vals);
       const clamped = Math.max(minV, Math.min(maxV, price));
       for (let i = 0; i < pts.length - 1; i++) {
-        const a = pts[i], b = pts[i + 1];
-        const lo = Math.min(a.val, b.val), hi = Math.max(a.val, b.val);
+        const a = pts[i];
+        const b = pts[i + 1];
+        const lo = Math.min(a.val, b.val);
+        const hi = Math.max(a.val, b.val);
         if (clamped >= lo && clamped <= hi) {
-          const frac = (hi - lo) > 0.0001 ? (clamped - a.val) / (b.val - a.val) : 0;
+          const frac = hi - lo > 0.0001 ? (clamped - a.val) / (b.val - a.val) : 0;
           return a.midY + frac * (b.midY - a.midY);
         }
       }
@@ -81,16 +109,14 @@ export const PriceTicks = memo(function PriceTicks({
 
     const newTicks: TickMark[] = [];
 
-    const addTick = (price: number, color: string, width: number, height: number, zIndex: number = 9999) => {
+    const addTick = (price: number, color: string, width: number, height: number, zIndex = 9999) => {
       const y = priceToY(price);
       if (y === null) return;
       newTicks.push({ y, color, width, height, zIndex });
     };
 
-    // Red tick for live price
     addTick(livePrice, '#ef4444', 14, 3, 10001);
 
-    // Pink ticks for slot 1 (range 2) — drawn first, longer, lower z
     if (slot1) {
       if (slot1.low > 0 && slot1.high > 0 && slot1.low !== slot1.high) {
         addTick(slot1.low, '#f472b6', 14, 3, 9999);
@@ -100,7 +126,6 @@ export const PriceTicks = memo(function PriceTicks({
       }
     }
 
-    // Cyan ticks for slot 0 (range 1) — drawn second, smaller, higher z
     if (slot0) {
       if (slot0.low > 0 && slot0.high > 0 && slot0.low !== slot0.high) {
         addTick(slot0.low, '#22d3ee', 8, 2, 10000);
@@ -111,47 +136,37 @@ export const PriceTicks = memo(function PriceTicks({
     }
 
     setTicks(newTicks);
-    setPriceRight(priceRight);
+    setPriceRight(nextPriceRight);
   }, [containerRef, livePrice, slot0, slot1]);
-
-  const [priceRight, setPriceRight] = useState(0);
 
   useEffect(() => {
     computeTicks();
 
-    // Recompute on scroll and resize
     const container = containerRef.current;
     const scrollParent = container?.closest('.overflow-x-auto') || container?.parentElement;
 
     const handler = () => computeTicks();
     window.addEventListener('resize', handler);
     window.addEventListener('scroll', handler, true);
-    if (scrollParent) {
-      scrollParent.addEventListener('scroll', handler);
-    }
+    scrollParent?.addEventListener('scroll', handler);
 
-    // ResizeObserver on container
     let ro: ResizeObserver | null = null;
     if (container) {
       ro = new ResizeObserver(handler);
       ro.observe(container);
     }
 
-    // Also recompute periodically (price data updates)
-    const interval = setInterval(handler, 2000);
-
     return () => {
       window.removeEventListener('resize', handler);
       window.removeEventListener('scroll', handler, true);
-      if (scrollParent) scrollParent.removeEventListener('scroll', handler);
-      if (ro) ro.disconnect();
-      clearInterval(interval);
+      scrollParent?.removeEventListener('scroll', handler);
+      ro?.disconnect();
     };
   }, [computeTicks, containerRef]);
 
-  if (ticks.length === 0 || priceRight === 0) return null;
+  if (!portalRoot || ticks.length === 0 || priceRight === 0) return null;
 
-  return (
+  return createPortal(
     <>
       {ticks.map((t, i) => (
         <div
@@ -171,6 +186,7 @@ export const PriceTicks = memo(function PriceTicks({
           }}
         />
       ))}
-    </>
+    </>,
+    portalRoot,
   );
 });

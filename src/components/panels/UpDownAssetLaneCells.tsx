@@ -1,4 +1,4 @@
-import { Fragment, memo, useEffect, useMemo, useState } from 'react';
+import { Fragment, memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import type { Market, Order } from '../../types';
@@ -8,6 +8,7 @@ import { normalizeClobTokenId } from '../../utils/format';
 import { noOutcomeBidAsk, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
 import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLookupSubset';
+import { useExpiryNow } from '../../hooks/useExpiryNow';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
 const ASSET_COLORS: Record<string, string> = {
@@ -97,11 +98,7 @@ const UpDownExpiryBar = memo(function UpDownExpiryBar({
   durationMs: number;
   className?: string;
 }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
+  const now = useExpiryNow();
   const mEnd = new Date(endDate).getTime();
   const p = expiryProgress(now, mEnd, durationMs);
   return (

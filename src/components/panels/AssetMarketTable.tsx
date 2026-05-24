@@ -1040,7 +1040,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                 <div className="flex-1 min-h-0 border border-orange-500/40 rounded flex flex-col overflow-hidden" ref={hitContainerRef} style={{ position: 'relative' }}>
                   <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-orange-400 bg-gray-800/50 rounded-t py-0.5">Hit <HelpTooltip text={"Hit markets resolve YES if the asset price touches or crosses a specific price level at any point before expiry.\n\nUnlike Above markets which only check the price at expiry, Hit markets are path-dependent — they trigger as soon as the price 'hits' the target, regardless of where it ends up.\n\nHit markets come in two varieties: weekly (short-term, expiring each week) and monthly (longer-term, expiring at month end).\n\nRows show strike prices with ↑ (must go up to hit) or ↓ (must go down to hit). Columns show different expiry dates."} /></div>
                   {renderWeeklyHitTable()}
-                  <PriceTicks containerRef={hitContainerRef} symbol={symbol} slot0={slot0} slot1={slot1} />
+                  <PriceTicks containerRef={hitContainerRef} symbol={symbol} />
                 </div>
               )}
             </div>
@@ -1049,14 +1049,14 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
             <div className="flex-1 min-w-0 border border-emerald-500/40 rounded flex flex-col" ref={aboveContainerRef} style={{ position: 'relative' }}>
               <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-emerald-400 bg-gray-800/50 rounded-t py-0.5">Above <HelpTooltip text={"Above markets resolve YES if the asset price is above a specific strike price at the moment of expiry (noon ET).\n\nThese are the most common market type. Each row is a different strike price and each column is a different expiry date.\n\nThe YES probability increases as the live price moves further above the strike, and decreases as it falls below. At expiry, the market resolves to 100 (YES) or 0 (NO) based purely on where the price is at that moment."} /></div>
               {renderTable(aboveMarketsForAsset, 'above', aboveGridData)}
-              <PriceTicks containerRef={aboveContainerRef} symbol={symbol} slot0={slot0} slot1={slot1} />
+              <PriceTicks containerRef={aboveContainerRef} symbol={symbol} />
             </div>
           )}
           {showBetween && (
             <div className="flex-1 min-w-0 border border-purple-500/40 rounded flex flex-col" ref={priceOnContainerRef} style={{ position: 'relative' }}>
               <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-purple-400 bg-gray-800/50 rounded-t py-0.5">Between <HelpTooltip text={"Between markets resolve YES if the asset price falls within a specific price range at the moment of expiry (noon ET).\n\nEach row shows a price range (e.g. 95k-100k). The market pays out if the price lands inside that range at expiry.\n\nB-S probability for these markets peaks when the price is near the center of the range and drops off toward the edges. Unlike Above markets, the max probability may not be at the range boundary — it can be in the middle."} /></div>
               {renderTable(priceOnMarketsForAsset, 'price', priceOnGridData)}
-              <PriceTicks containerRef={priceOnContainerRef} symbol={symbol} slot0={slot0} slot1={slot1} />
+              <PriceTicks containerRef={priceOnContainerRef} symbol={symbol} />
             </div>
           )}
         </div>

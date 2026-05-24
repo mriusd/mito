@@ -43,6 +43,22 @@ function cancelRaf(slot: { current: number | null }): void {
   }
 }
 
+const MAX_BOOK_LEVELS = 500;
+
+function trimBookSide(map: Map<string, string>, cap: number, bidSide: boolean) {
+  if (map.size <= cap) return;
+  const kept = Array.from(map.entries())
+    .sort((a, b) => (bidSide ? parseFloat(b[0]) - parseFloat(a[0]) : parseFloat(a[0]) - parseFloat(b[0])))
+    .slice(0, cap);
+  map.clear();
+  for (const [price, size] of kept) map.set(price, size);
+}
+
+function trimBookMaps(bids: Map<string, string>, asks: Map<string, string>) {
+  trimBookSide(bids, MAX_BOOK_LEVELS, true);
+  trimBookSide(asks, MAX_BOOK_LEVELS, false);
+}
+
 let localBids: Map<string, string> = new Map();
 let localAsks: Map<string, string> = new Map();
 let localTrades: LiveTrade[] = [];
@@ -205,6 +221,7 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
               changed = true;
             }
             if (changed) {
+              trimBookMaps(localBids, localAsks);
               scheduleRaf(() => {
                 setBook(sortedBook(localBids, localAsks, bookLimitRef.current));
               }, bookRafSlot);

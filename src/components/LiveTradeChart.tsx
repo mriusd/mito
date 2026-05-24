@@ -14,6 +14,19 @@ import type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 
 export type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 
+const MAX_CHART_CANDLES = 2500;
+
+function pruneCandleMap(map: Map<number, Candle>, startMs: number, endMs: number, padMs: number) {
+  const lo = startMs - padMs;
+  const hi = endMs + padMs;
+  for (const t of map.keys()) {
+    if (t < lo || t > hi) map.delete(t);
+  }
+  if (map.size <= MAX_CHART_CANDLES) return;
+  const sorted = [...map.keys()].sort((a, b) => a - b);
+  for (const t of sorted.slice(0, sorted.length - MAX_CHART_CANDLES)) map.delete(t);
+}
+
 interface Candle {
   time: number;
   o: number;
@@ -201,6 +214,7 @@ export function LiveTradeChart({
         const lo = Math.min(o, h, l, c);
         map.set(openTime, { time: openTime, o, h: hi, l: lo, c, v });
       }
+      pruneCandleMap(map, st, et, candleMs * 2);
     };
 
     const klineQuery = `symbol=${encodeURIComponent(tokenId)}&interval=${interval}&startTime=${st}&endTime=${et}&limit=900`;
@@ -302,6 +316,7 @@ export function LiveTradeChart({
             const hi = Math.max(o, h, l, c);
             const lo = Math.min(o, h, l, c);
             candleMapRef.current.set(openTime, { time: openTime, o, h: hi, l: lo, c, v });
+            pruneCandleMap(candleMapRef.current, st, et, candleMs * 2);
           };
 
       ws.onmessage = (event) => {

@@ -230,6 +230,13 @@ const TOXIC_TABLE_STAKED_PCT_COL_CLS =
 const TOXIC_TABLE_STAKED_COL_CLS =
   'w-[8rem] min-w-[8rem] max-w-[8rem] box-border shrink-0 tabular-nums text-right whitespace-nowrap overflow-hidden';
 
+const TOXIC_WALLET_ROW_PX = 23;
+const TOXIC_VIRTUAL_OVERSCAN = 12;
+
+function toxicTableColCount(showRank: boolean, variant: 'toxicFlow' | 'marketView'): number {
+  return (showRank ? 1 : 0) + 10 + (variant === 'marketView' ? 3 : 2);
+}
+
 const ROW_CLS_NEUTRAL = 'border-b border-gray-800 hover:bg-gray-700/30';
 const ROW_CLS_GREEN = 'border-b border-gray-800 bg-green-900/25 hover:bg-green-900/40';
 const ROW_CLS_RED = 'border-b border-gray-800 bg-red-900/25 hover:bg-red-900/40';
@@ -1254,6 +1261,43 @@ function WalletTableInner({
     [rows],
   );
   const cohortStakeBarTotal = cohortSumYUsd + cohortSumNUsd;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [virtRange, setVirtRange] = useState(() => ({ start: 0, end: rows.length }));
+  const tableColSpan = toxicTableColCount(!!showRank, variant);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const sync = () => {
+      const scrollTop = el.scrollTop;
+      const viewportH = el.clientHeight || 0;
+      const start = Math.max(0, Math.floor(scrollTop / TOXIC_WALLET_ROW_PX) - TOXIC_VIRTUAL_OVERSCAN);
+      const end = Math.min(
+        rows.length,
+        Math.ceil((scrollTop + viewportH) / TOXIC_WALLET_ROW_PX) + TOXIC_VIRTUAL_OVERSCAN,
+      );
+      setVirtRange((prev) => (prev.start === start && prev.end === end ? prev : { start, end }));
+    };
+    sync();
+    el.addEventListener('scroll', sync, { passive: true });
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', sync);
+      ro.disconnect();
+    };
+  }, [rows.length]);
+
+  useEffect(() => {
+    setVirtRange((prev) => {
+      const end = Math.min(rows.length, Math.max(prev.end, TOXIC_VIRTUAL_OVERSCAN * 2));
+      return { start: 0, end };
+    });
+  }, [rows.length]);
+
+  const virtTopPad = virtRange.start * TOXIC_WALLET_ROW_PX;
+  const virtBottomPad = Math.max(0, (rows.length - virtRange.end) * TOXIC_WALLET_ROW_PX);
+
   if (rows.length === 0) {
     return (
       <div className="flex flex-1 min-h-0 flex-col items-center justify-center text-gray-500 text-[10px] py-3">
@@ -1279,7 +1323,10 @@ function WalletTableInner({
           />
         </div>
       ) : null}
-      <div className="min-h-0 flex-1 overflow-auto w-full min-w-0 overscroll-contain toxic-flow-scroll-stable">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-auto w-full min-w-0 overscroll-contain toxic-flow-scroll-stable"
+      >
       <table className="w-full min-w-full whitespace-nowrap text-[10px]">
         <thead className="sticky top-0 z-[1] bg-gray-950">
           <tr className="text-gray-500 border-b border-gray-700">
@@ -1341,7 +1388,13 @@ function WalletTableInner({
           </tr>
         </thead>
         <tbody>
-          {rows.map((w, i) => {
+          {virtTopPad > 0 ? (
+            <tr aria-hidden="true">
+              <td colSpan={tableColSpan} style={{ height: virtTopPad, padding: 0, border: 'none' }} />
+            </tr>
+          ) : null}
+          {rows.slice(virtRange.start, virtRange.end).map((w, vi) => {
+            const i = virtRange.start + vi;
             const wk = (w.wallet || '').toLowerCase();
             const metrics = rowStakedMetrics[i] ?? { stakedPct: 0, cumStakedPct: 0 };
             return (
@@ -1368,6 +1421,11 @@ function WalletTableInner({
               />
             );
           })}
+          {virtBottomPad > 0 ? (
+            <tr aria-hidden="true">
+              <td colSpan={tableColSpan} style={{ height: virtBottomPad, padding: 0, border: 'none' }} />
+            </tr>
+          ) : null}
         </tbody>
       </table>
       </div>

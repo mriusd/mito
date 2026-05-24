@@ -496,13 +496,6 @@ export function LiveTradeChart({
     lastTradeCountRef.current = trades.length;
   }, [trades, ready]);
 
-  const fmtCandleTime = useCallback((t: number, iv: string) => {
-    const d = new Date(t);
-    const hm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-    const clock = iv === '5s' ? `${hm}:${String(d.getSeconds()).padStart(2, '0')}` : hm;
-    return `${d.getMonth() + 1}/${d.getDate()} ${clock}`;
-  }, []);
-
   const fmtVolume = useCallback((v: number) => {
     if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
     if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
@@ -579,7 +572,7 @@ export function LiveTradeChart({
     ctx.lineWidth = 1.5;
     ctx.strokeRect(cx - s.candleW / 2 - 1, bodyTop - 1, s.candleW + 2, bodyH + 2);
 
-    const hoverLine = `${fmtCandleTime(nearest.time, s.interval)}  O ${nearest.o.toFixed(1)}  H ${nearest.h.toFixed(1)}  L ${nearest.l.toFixed(1)}  C ${nearest.c.toFixed(1)}  V ${fmtVolume(nearest.v)}`;
+    const hoverLine = `O ${nearest.o.toFixed(1)}  H ${nearest.h.toFixed(1)}  L ${nearest.l.toFixed(1)}  C ${nearest.c.toFixed(1)}  V ${fmtVolume(nearest.v)}`;
 
     ctx.font = 'bold 9px monospace';
     ctx.textAlign = 'left';
@@ -588,7 +581,7 @@ export function LiveTradeChart({
     ctx.fillText(hoverLine, s.chartLeft + 2, s.chartTop + 2);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-  }, [fmtCandleTime, fmtVolume, pickHoverCandle]);
+  }, [fmtVolume, pickHoverCandle]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;

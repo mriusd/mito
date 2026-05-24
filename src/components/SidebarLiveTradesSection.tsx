@@ -44,7 +44,7 @@ const LiveTradeRow = memo(function LiveTradeRow({ trade: t, tradeTickBucket, liv
         : agoSec < 86400
           ? `${Math.floor(agoSec / 3600)}h`
           : `${Math.floor(agoSec / 86400)}d`;
-  const usdValue = (parseFloat(t.price) * parseFloat(t.size)).toFixed(2);
+  const usdValue = Math.round(parseFloat(t.price) * parseFloat(t.size));
   const isPending = t.pending === true;
   const scanUrl =
     liveTradesSource === 'onchain' ? polygonscanTxUrl(t.txHash, isPending ? t.id : undefined) : null;
@@ -52,11 +52,16 @@ const LiveTradeRow = memo(function LiveTradeRow({ trade: t, tradeTickBucket, liv
   return (
     <div
       className={`grid grid-cols-5 gap-1 text-[11px] px-1 rounded-sm ${
-        isMine ? 'bg-blue-900/35 ring-1 ring-blue-500/60 shadow-[0_0_8px_rgba(59,130,246,0.25)]' : ''
-      } ${isPending ? 'opacity-60' : ''}`}
+        isPending
+          ? 'bg-gray-900/95'
+          : isMine
+            ? 'bg-blue-900/35 ring-1 ring-blue-500/60 shadow-[0_0_8px_rgba(59,130,246,0.25)]'
+            : ''
+      }`}
       title={isPending ? 'Pending — seen in mempool, not yet mined' : undefined}
     >
-      <span className={`inline-flex items-center gap-1 ${isBuy ? 'text-green-400' : 'text-red-400'}`}>
+      <span className={`block pr-2 min-w-0 ${isBuy ? 'text-green-400' : 'text-red-400'}`}>
+        <span className="inline-flex items-center gap-1">
         {tp}¢
         {isMine && (
           <span className="inline-flex items-center rounded bg-blue-500/30 px-1 py-[1px] text-[8px] font-bold leading-none text-blue-200">
@@ -82,12 +87,13 @@ const LiveTradeRow = memo(function LiveTradeRow({ trade: t, tradeTickBucket, liv
             <ExternalLink size={11} aria-hidden />
           </a>
         )}
+        </span>
       </span>
-      <span className={`text-right text-[9px] ${isBuy ? 'text-green-400' : 'text-red-400'}`}>
+      <span className={`text-left text-[9px] ${isBuy ? 'text-green-400' : 'text-red-400'}`}>
         {isBuy ? 'Buy' : 'Sell'}
       </span>
       <span className="text-right text-gray-400">{parseFloat(t.size).toFixed(0)}</span>
-      <span className="text-right text-gray-400">{usdValue}</span>
+      <span className="text-right text-gray-400">${Number.isFinite(usdValue) ? usdValue.toLocaleString('en-US') : '–'}</span>
       <span className="text-right text-gray-500">{isPending ? '...' : agoStr}</span>
     </div>
   );
@@ -143,8 +149,8 @@ function liveTradesSectionInner(props: SidebarLiveTradesSectionProps) {
       {liveTradesExpanded && (
         <>
           <div className="grid grid-cols-5 gap-1 text-[10px] text-gray-500 mb-1">
-            <span>Price</span>
-            <span className="text-right">Side</span>
+            <span className="pr-2">Price</span>
+            <span className="text-left">Side</span>
             <span className="text-right">Size</span>
             <span className="text-right">USD</span>
             <span className="text-right">Time</span>

@@ -30,13 +30,48 @@ function blockTimeToMs(blockTime: number): number | null {
   return blockTime > 1e12 ? blockTime : blockTime * 1000;
 }
 
+function normalizeOutcomeLeg(raw: string): 'YES' | 'NO' | null {
+  const n = raw.trim().toUpperCase().replace(/\s+/g, '');
+  if (n === 'YES' || n === 'UP') return 'YES';
+  if (n === 'NO' || n === 'DOWN') return 'NO';
+  return null;
+}
+
+function tradeLegFromToken(
+  tokenId: string,
+  yesTokenId: string,
+  noTokenId: string,
+): 'YES' | 'NO' | null {
+  const tid = tokenId.trim();
+  if (!tid) return null;
+  const yesTok = yesTokenId.trim();
+  const noTok = noTokenId.trim();
+  const isNoLeg = noTok && sameClobToken(tid, noTok) && !sameClobToken(tid, yesTok);
+  const isYesLeg = yesTok && sameClobToken(tid, yesTok) && !sameClobToken(tid, noTok);
+  if (isYesLeg) return 'YES';
+  if (isNoLeg) return 'NO';
+  return null;
+}
+
+/** Long (blue): BUY YES / SELL NO. Short (yellow): BUY NO / SELL YES — same on UP and DOWN chart. */
+function markerSideFromTrade(
+  action: 'BUY' | 'SELL',
+  tradeLeg: 'YES' | 'NO' | null,
+): 'BUY' | 'SELL' {
+  if (!tradeLeg) return action;
+  const isLong =
+    (tradeLeg === 'YES' && action === 'BUY') || (tradeLeg === 'NO' && action === 'SELL');
+  return isLong ? 'BUY' : 'SELL';
+}
+
 function toChartViewMarker(
-  side: 'BUY' | 'SELL',
+  action: 'BUY' | 'SELL',
   priceCents: number,
   tokenId: string,
   yesTokenId: string,
   noTokenId: string,
   chartOutcome: ChartOutcomeSide,
+  outcomeHint?: string,
 ): ChartTradeMarker | null {
   if (!Number.isFinite(priceCents)) return null;
   let outPrice = priceCents;
@@ -50,6 +85,9 @@ function toChartViewMarker(
   } else if (isYesLeg) {
     outPrice = 100 - outPrice;
   }
+  let tradeLeg = tradeLegFromToken(tokenId, yesTokenId, noTokenId);
+  if (!tradeLeg && outcomeHint) tradeLeg = normalizeOutcomeLeg(outcomeHint);
+  const side = markerSideFromTrade(action, tradeLeg);
   return { timeMs: 0, priceCents: outPrice, side };
 }
 
@@ -69,7 +107,7 @@ export function buildChartTradeMarkersFromLedgerFills(
   const { yesTokenId, noTokenId, chartOutcome } = opts;
   const out: ChartTradeMarker[] = [];
   for (const f of fills) {
-    const action = normalizeBuySell(String(f.action ?? f.side ?? ''));
+    const action = normalizeBuySell(String(f.action ?? ''));
     if (!action) continue;
     const timeMs = blockTimeToMs(Number(f.blockTime ?? 0));
     if (timeMs == null) continue;
@@ -82,6 +120,7 @@ export function buildChartTradeMarkersFromLedgerFills(
       yesTokenId,
       noTokenId,
       chartOutcome,
+      String(f.side ?? ''),
     );
     if (!view) continue;
     out.push({ ...view, timeMs });

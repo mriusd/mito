@@ -98,6 +98,7 @@ import {
   SIDEBAR_TRADE_SOUND_VOLUME_KEY,
 } from '../lib/tiltNotifySound';
 import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
+import { getExpiryTickNow, subscribeExpiryTick } from '../lib/expiryTickStore';
 import { SidebarMarketCountdownLabel } from './SidebarMarketCountdownLabel';
 import {
   isNotifySoundPriceMuted,
@@ -925,7 +926,9 @@ export function Sidebar() {
   const autoSwitchNextMarketOnExpiry = useAppStore((s) => s.autoSwitchNextMarketOnExpiry);
   /** Edge-detect expiry on the same sidebar selection — skip when user navigates to an already-expired market. */
   const autoSwitchPrevSelectedIdRef = useRef<string | null>(null);
-  const autoSwitchPrevExpiredRef = useRef(false);
+  const userPinnedExpiredMarketRef = useRef(false);
+  const selectedMarketForAutoSwitchRef = useRef(selectedMarket);
+  selectedMarketForAutoSwitchRef.current = selectedMarket;
   const freqSliderPreviewLastMs = useRef(0);
 
   const [notifyPlaySound, setNotifyPlaySound] = useState(readNotifyPlaySound);
@@ -1873,28 +1876,35 @@ export function Sidebar() {
   }, [isUpDownMarket, selectedMarket, isMarketExpired, upDownAsset, upOrDownMarkets, lastUpdated, expiredLivePickPulse]);
 
   useEffect(() => {
-    if (!selectedMarket) {
-      autoSwitchPrevSelectedIdRef.current = null;
-      autoSwitchPrevExpiredRef.current = false;
-      return;
-    }
-    const id = selectedMarket.id;
-    const expiredNow = marketIsExpired(selectedMarket);
-    if (id !== autoSwitchPrevSelectedIdRef.current) {
-      autoSwitchPrevSelectedIdRef.current = id;
-      autoSwitchPrevExpiredRef.current = expiredNow;
-      return;
-    }
-    const transitionedToExpired = !autoSwitchPrevExpiredRef.current && expiredNow;
-    autoSwitchPrevExpiredRef.current = expiredNow;
+    if (!autoSwitchNextMarketOnExpiry) return;
 
-    if (!autoSwitchNextMarketOnExpiry || !transitionedToExpired) return;
-    const lookup = useAppStore.getState().marketLookup;
-    const next = pickNextMarketOnExpiry(selectedMarket, Date.now(), upOrDownMarkets, lookup);
-    if (next) setSelectedMarket(next);
+    const tryAutoSwitch = () => {
+      const m = selectedMarketForAutoSwitchRef.current;
+      if (!m) {
+        autoSwitchPrevSelectedIdRef.current = null;
+        userPinnedExpiredMarketRef.current = false;
+        return;
+      }
+      const id = m.id;
+      const expiredNow = marketIsExpired(m, getExpiryTickNow());
+
+      if (id !== autoSwitchPrevSelectedIdRef.current) {
+        autoSwitchPrevSelectedIdRef.current = id;
+        userPinnedExpiredMarketRef.current = expiredNow;
+        return;
+      }
+
+      if (userPinnedExpiredMarketRef.current || !expiredNow) return;
+
+      const st = useAppStore.getState();
+      const next = pickNextMarketOnExpiry(m, getExpiryTickNow(), st.upOrDownMarkets, st.marketLookup);
+      if (next) setSelectedMarket(next);
+    };
+
+    tryAutoSwitch();
+    return subscribeExpiryTick(tryAutoSwitch);
   }, [
     autoSwitchNextMarketOnExpiry,
-    selectedMarket,
     selectedMarket?.id,
     selectedMarket?.endDate,
     selectedMarket?.closed,

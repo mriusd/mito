@@ -898,6 +898,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       setWalletMarketTrades([]);
       return;
     }
+    setWalletMarketTrades([]);
     sendSubscribeWalletMarket(w, m);
   }, [wallet, marketId, wsConnected, sendSubscribeWalletMarket]);
 

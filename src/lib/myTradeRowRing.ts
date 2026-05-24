@@ -45,21 +45,34 @@ export function useMyTradeRowRingSound(
 ): Set<string> {
   const [flashKeys, setFlashKeys] = useState<Set<string>>(() => new Set());
   const seenRef = useRef(new Set<string>());
+  /** After scope change, seed current rows once (incl. async fetch) — no sounds until seeded. */
+  const needsScopeSeedRef = useRef(true);
 
   useEffect(() => {
+    needsScopeSeedRef.current = true;
     seenRef.current = new Set();
+    setFlashKeys(new Set());
   }, [scopeKey]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || !scopeKey) return;
     ensureTiltAudioUnlockListeners();
     const seen = seenRef.current;
+
+    if (needsScopeSeedRef.current) {
+      if (trades.length === 0) return;
+      for (const trade of trades) {
+        const k = mySidebarTradeRowKey(trade);
+        if (k) seen.add(k);
+      }
+      needsScopeSeedRef.current = false;
+      return;
+    }
+
     for (const trade of trades) {
       const k = mySidebarTradeRowKey(trade);
       if (!k || seen.has(k)) continue;
-      const isNew = seen.size > 0;
       seen.add(k);
-      if (!isNew) continue;
       if (isNotifySoundPriceMuted(yesTokenId, noTokenId)) continue;
       const side = (trade.side || '').toUpperCase();
       const kind = side === 'SELL' || side === 'MERGE' ? 'red' : 'green';
@@ -75,7 +88,7 @@ export function useMyTradeRowRingSound(
         });
       }, MY_TRADE_ROW_FLASH_MS);
     }
-  }, [trades, active, yesTokenId, noTokenId]);
+  }, [trades, active, scopeKey, yesTokenId, noTokenId]);
 
   return flashKeys;
 }

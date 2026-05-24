@@ -1879,13 +1879,14 @@ export function Sidebar() {
       return;
     }
     const id = selectedMarket.id;
+    const expiredNow = marketIsExpired(selectedMarket);
     if (id !== autoSwitchPrevSelectedIdRef.current) {
       autoSwitchPrevSelectedIdRef.current = id;
-      autoSwitchPrevExpiredRef.current = isMarketExpired;
+      autoSwitchPrevExpiredRef.current = expiredNow;
       return;
     }
-    const transitionedToExpired = !autoSwitchPrevExpiredRef.current && isMarketExpired;
-    autoSwitchPrevExpiredRef.current = isMarketExpired;
+    const transitionedToExpired = !autoSwitchPrevExpiredRef.current && expiredNow;
+    autoSwitchPrevExpiredRef.current = expiredNow;
 
     if (!autoSwitchNextMarketOnExpiry || !transitionedToExpired) return;
     const lookup = useAppStore.getState().marketLookup;
@@ -1893,8 +1894,10 @@ export function Sidebar() {
     if (next) setSelectedMarket(next);
   }, [
     autoSwitchNextMarketOnExpiry,
-    isMarketExpired,
     selectedMarket,
+    selectedMarket?.id,
+    selectedMarket?.endDate,
+    selectedMarket?.closed,
     upOrDownMarkets,
     lastUpdated,
     marketLookupEpoch,

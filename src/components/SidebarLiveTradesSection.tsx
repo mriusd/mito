@@ -88,7 +88,7 @@ const LiveTradeRow = memo(function LiveTradeRow({ trade: t, tradeTickBucket, liv
       </span>
       <span className="text-right text-gray-400">{parseFloat(t.size).toFixed(0)}</span>
       <span className="text-right text-gray-400">{usdValue}</span>
-      <span className="text-right text-gray-500">{agoStr}</span>
+      <span className="text-right text-gray-500">{isPending ? '...' : agoStr}</span>
     </div>
   );
 });

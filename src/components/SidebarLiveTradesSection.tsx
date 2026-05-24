@@ -16,6 +16,10 @@ export type SidebarLiveTradesSectionProps = {
   myOnchainWalletLower: string;
 };
 
+const LIVE_TRADES_GRID =
+  'grid grid-cols-[minmax(4.75rem,1.45fr)_2.5rem_minmax(2rem,0.7fr)_minmax(2.25rem,0.8fr)_1.75rem] gap-x-2';
+const LIVE_TRADES_PENDING_ROW_BG = 'bg-sky-500/10';
+
 type LiveTradeRowProps = {
   trade: LiveTrade;
   tradeTickBucket: number;
@@ -51,16 +55,16 @@ const LiveTradeRow = memo(function LiveTradeRow({ trade: t, tradeTickBucket, liv
   void i;
   return (
     <div
-      className={`grid grid-cols-5 gap-1 text-[11px] px-1 rounded-sm ${
+      className={`${LIVE_TRADES_GRID} text-[11px] px-1 rounded-sm ${
         isPending
-          ? 'bg-gray-900/95'
+          ? LIVE_TRADES_PENDING_ROW_BG
           : isMine
             ? 'bg-blue-900/35 ring-1 ring-blue-500/60 shadow-[0_0_8px_rgba(59,130,246,0.25)]'
             : ''
       }`}
       title={isPending ? 'Pending — seen in mempool, not yet mined' : undefined}
     >
-      <span className={`block pr-2 min-w-0 ${isBuy ? 'text-green-400' : 'text-red-400'}`}>
+      <span className={`block min-w-0 ${isBuy ? 'text-green-400' : 'text-red-400'}`}>
         <span className="inline-flex items-center gap-1">
         {tp}¢
         {isMine && (
@@ -93,7 +97,7 @@ const LiveTradeRow = memo(function LiveTradeRow({ trade: t, tradeTickBucket, liv
         {isBuy ? 'Buy' : 'Sell'}
       </span>
       <span className="text-right text-gray-400">{parseFloat(t.size).toFixed(0)}</span>
-      <span className="text-right text-gray-400">${Number.isFinite(usdValue) ? usdValue.toLocaleString('en-US') : '–'}</span>
+      <span className="text-right text-gray-400">{Number.isFinite(usdValue) ? usdValue.toLocaleString('en-US') : '–'}</span>
       <span className="text-right text-gray-500">{isPending ? '...' : agoStr}</span>
     </div>
   );
@@ -144,12 +148,22 @@ function liveTradesSectionInner(props: SidebarLiveTradesSectionProps) {
           {liveTradesExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </button>
         <span>Live Trades</span>
+        {liveTradesSource === 'onchain' ? (
+          <span className="inline-flex items-center gap-1 text-[10px] text-gray-500 font-normal">
+            <span>(</span>
+            <span
+              className={`inline-block h-2.5 w-2.5 shrink-0 rounded-[2px] ${LIVE_TRADES_PENDING_ROW_BG} ring-1 ring-sky-500/20`}
+              aria-hidden
+            />
+            <span>- pending)</span>
+          </span>
+        ) : null}
         <SidebarDataSourceBadge source={liveTradesSource === 'onchain' ? 'onchain' : 'polymarket'} />
       </div>
       {liveTradesExpanded && (
         <>
-          <div className="grid grid-cols-5 gap-1 text-[10px] text-gray-500 mb-1">
-            <span className="pr-2">Price</span>
+          <div className={`${LIVE_TRADES_GRID} text-[10px] text-gray-500 mb-1`}>
+            <span>Price</span>
             <span className="text-left">Side</span>
             <span className="text-right">Size</span>
             <span className="text-right">USD</span>

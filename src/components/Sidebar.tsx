@@ -3163,83 +3163,81 @@ export const Sidebar = memo(function Sidebar() {
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
                 Volume Spike Ring: Price YES chart flashes and plays one beep when the current open bar volume is ≥5× the average of all prior bars.
               </p>
-              <div
-                className={
-                  notifyTradeSound
-                    ? 'transition-opacity'
-                    : 'opacity-35 blur-[2.5px] pointer-events-none select-none transition-opacity'
-                }
-              >
-                <div className="flex items-start gap-3 flex-wrap mt-3">
-                  <label className="flex items-center gap-2 cursor-pointer shrink-0 self-center">
-                    <input
-                      type="checkbox"
-                      className="rounded accent-amber-500"
-                      checked={notifyTradeSound}
-                      onChange={(e) => {
-                        const on = e.target.checked;
-                        setNotifyTradeSound(on);
-                        if (on) {
-                          primeTiltAudioContextFromUserGesture();
-                          void playTradeNotifySound('green', notifyTradeSoundPitchMul, notifyRingTimeS);
-                        }
-                      }}
-                    />
-                    <span>Trade Ring</span>
-                  </label>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 flex-1 min-w-0">
-                    <div className="min-w-0">
-                      <div className="text-gray-400 mb-1">Trade sound pitch</div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="range"
-                          min={0}
-                          max={100}
-                          value={notifyTradeSoundFreqSlider}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            if (!Number.isFinite(v)) return;
-                            const nv = Math.min(100, Math.max(0, Math.round(v)));
-                            setNotifyTradeSoundFreqSlider(nv);
-                            const now = Date.now();
-                            if (now - freqSliderPreviewLastMs.current < 160) return;
-                            freqSliderPreviewLastMs.current = now;
-                            void playTradeNotifySound('green', pitchMulFromNotifyFreqSlider(nv), notifyRingTimeS);
-                          }}
-                          className="flex-1 min-w-0 accent-amber-500 h-2"
-                          aria-label="Trade sound pitch"
-                        />
-                        <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifyTradeSoundFreqSlider}</span>
-                      </div>
+              <div className="flex items-start gap-3 flex-wrap mt-3">
+                <label className="flex items-center gap-2 cursor-pointer shrink-0 self-center">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyTradeSound}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setNotifyTradeSound(on);
+                      if (on) {
+                        primeTiltAudioContextFromUserGesture();
+                        void playTradeNotifySound('green', notifyTradeSoundPitchMul, notifyRingTimeS);
+                      }
+                    }}
+                  />
+                  <span>Trade Ring</span>
+                </label>
+                <div
+                  className={`grid grid-cols-2 gap-x-4 gap-y-2 flex-1 min-w-0${
+                    notifyTradeSound
+                      ? ''
+                      : ' opacity-35 blur-[2.5px] pointer-events-none select-none transition-opacity'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="text-gray-400 mb-1">Trade sound pitch</div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={notifyTradeSoundFreqSlider}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (!Number.isFinite(v)) return;
+                          const nv = Math.min(100, Math.max(0, Math.round(v)));
+                          setNotifyTradeSoundFreqSlider(nv);
+                          const now = Date.now();
+                          if (now - freqSliderPreviewLastMs.current < 160) return;
+                          freqSliderPreviewLastMs.current = now;
+                          void playTradeNotifySound('green', pitchMulFromNotifyFreqSlider(nv), notifyRingTimeS);
+                        }}
+                        className="flex-1 min-w-0 accent-amber-500 h-2"
+                        aria-label="Trade sound pitch"
+                      />
+                      <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifyTradeSoundFreqSlider}</span>
                     </div>
-                    <div className="min-w-0">
-                      <div className="text-gray-400 mb-1">Trade sound volume</div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="range"
-                          min={0}
-                          max={100}
-                          value={notifyTradeSoundVolumeSlider}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            if (!Number.isFinite(v)) return;
-                            const nv = Math.min(100, Math.max(0, Math.round(v)));
-                            setNotifyTradeSoundVolumeSlider(nv);
-                            try {
-                              localStorage.setItem(SIDEBAR_TRADE_SOUND_VOLUME_KEY, String(nv));
-                            } catch {
-                              /* */
-                            }
-                            const now = Date.now();
-                            if (now - freqSliderPreviewLastMs.current < 160) return;
-                            freqSliderPreviewLastMs.current = now;
-                            void playTradeNotifySound('green', notifyTradeSoundPitchMul, notifyRingTimeS);
-                          }}
-                          className="flex-1 min-w-0 accent-amber-500 h-2"
-                          aria-label="Trade sound volume"
-                        />
-                        <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifyTradeSoundVolumeSlider}</span>
-                      </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-gray-400 mb-1">Trade sound volume</div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={notifyTradeSoundVolumeSlider}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (!Number.isFinite(v)) return;
+                          const nv = Math.min(100, Math.max(0, Math.round(v)));
+                          setNotifyTradeSoundVolumeSlider(nv);
+                          try {
+                            localStorage.setItem(SIDEBAR_TRADE_SOUND_VOLUME_KEY, String(nv));
+                          } catch {
+                            /* */
+                          }
+                          const now = Date.now();
+                          if (now - freqSliderPreviewLastMs.current < 160) return;
+                          freqSliderPreviewLastMs.current = now;
+                          void playTradeNotifySound('green', notifyTradeSoundPitchMul, notifyRingTimeS);
+                        }}
+                        className="flex-1 min-w-0 accent-amber-500 h-2"
+                        aria-label="Trade sound volume"
+                      />
+                      <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifyTradeSoundVolumeSlider}</span>
                     </div>
                   </div>
                 </div>
@@ -3312,6 +3310,14 @@ export const Sidebar = memo(function Sidebar() {
                   </div>
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1">Left = much lower, right = much higher (×0.25–×4 at ends; center = normal). 0 volume = mute.</p>
+              </div>
+              <div
+                className={
+                  notifyPlaySound
+                    ? 'transition-opacity'
+                    : 'opacity-35 blur-[2.5px] pointer-events-none select-none transition-opacity'
+                }
+              >
                 <label className="flex items-center gap-2 cursor-pointer mt-3">
                   <input
                     type="checkbox"

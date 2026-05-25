@@ -39,6 +39,26 @@ function preloadFavouriteWalletsDialog() {
   void importWithChunkReload(() => import('./FavouriteWalletsDialog'));
 }
 
+/** Human label for backend startupSync phase from /ws/sync-head. */
+function formatStartupPhase(phase: string): string {
+  switch (phase) {
+    case 'boot':
+      return 'Starting';
+    case 'registry':
+      return 'Registry';
+    case 'onchain_maps':
+      return 'On-chain maps';
+    case 'markets':
+      return 'Markets';
+    case 'http_catchup':
+      return 'Block sync';
+    case 'populate':
+      return 'Populate';
+    default:
+      return phase.replace(/_/g, ' ');
+  }
+}
+
 /** UI: lastProcessed − tip from /ws/sync-head (negative = chain head ahead of KV). */
 function blockLagToneClass(behindBlocks: number): string {
   if (!Number.isFinite(behindBlocks)) return 'text-gray-400';
@@ -196,10 +216,25 @@ export function Header({ onRefresh }: HeaderProps) {
     setMaxOrderSizeUsdLocal(String(n));
   }, [maxOrderSizeUsdLocal, setMaxOrderSizeUsd]);
 
+  const startupSyncing = syncHead?.startupSync === true;
   const lagTone =
     syncHead != null && syncHead.chainHeadBlock > 0
-      ? blockLagToneClass(syncHead.behindBlocks)
+      ? startupSyncing
+        ? 'text-amber-400'
+        : blockLagToneClass(syncHead.behindBlocks)
       : 'text-gray-400';
+  const startupSyncTitle =
+    startupSyncing && syncHead
+      ? `Backend startup sync (${formatStartupPhase(syncHead.startupPhase || 'in progress')})${
+          syncHead.startupBatchLo > 0 && syncHead.startupBatchHi > 0
+            ? ` — batch ${syncHead.startupBatchLo}–${syncHead.startupBatchHi}`
+            : ''
+        }. On-chain live tape may be incomplete until sync finishes.`
+      : '';
+  const startupSyncLabel =
+    startupSyncing && syncHead?.startupPhase
+      ? `Syncing · ${formatStartupPhase(syncHead.startupPhase)}`
+      : 'Syncing';
 
   const blocksBehindTip =
     syncHead != null &&
@@ -219,6 +254,14 @@ export function Header({ onRefresh }: HeaderProps) {
         <div className="flex items-center gap-2 h-[28px] flex-shrink-0 min-w-0">
           <img src={logoSvg} alt="logo" className="h-5 w-5 flex-shrink-0 min-w-5 min-h-5" />
           <span className="text-sm font-bold text-white tracking-tight max-[424px]:hidden flex-shrink-0">Mito</span>
+          {startupSyncing && (
+            <span
+              className="flex items-center h-[28px] px-1.5 rounded text-[10px] font-semibold flex-shrink-0 max-[520px]:hidden bg-amber-500/15 border border-amber-500/40 text-amber-400"
+              title={startupSyncTitle}
+            >
+              {startupSyncLabel}
+            </span>
+          )}
           {syncHead != null && syncHead.lastProcessedBlock > 0 && (
             <a
               href={`https://polygonscan.com/block/${syncHead.lastProcessedBlock}`}
@@ -226,14 +269,17 @@ export function Header({ onRefresh }: HeaderProps) {
               rel="noopener noreferrer"
               className={
                 'flex items-center h-[28px] px-1.5 rounded text-[10px] tabular-nums flex-shrink-0 max-[520px]:hidden transition ' +
-                (blockPillFlashRed
+                (blockPillFlashRed && !startupSyncing
                   ? 'header-sync-block-flash border'
-                  : 'bg-gray-800/50 hover:bg-gray-700/60 border border-transparent hover:border-gray-600')
+                  : startupSyncing
+                    ? 'bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/15'
+                    : 'bg-gray-800/50 hover:bg-gray-700/60 border border-transparent hover:border-gray-600')
               }
               title={
+                (startupSyncTitle ? startupSyncTitle + ' ' : '') +
                 'KV last_processed_block number; parentheses = lastProcessed − chainTip (negative ⇒ tip ahead). ' +
                 '−1 is normal: tip moves with newHeads/logs before the block flush writes KV. Open this block on Polygonscan.' +
-                (blockPillFlashRed
+                (blockPillFlashRed && !startupSyncing
                   ? ` Pill flashes red when tip − last_processed > 5 (${blocksBehindTip} behind).`
                   : '')
               }

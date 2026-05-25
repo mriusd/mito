@@ -5,6 +5,10 @@ export type SyncHeadState = {
   lastProcessedBlock: number;
   chainHeadBlock: number;
   behindBlocks: number;
+  startupSync: boolean;
+  startupPhase: string;
+  startupBatchLo: number;
+  startupBatchHi: number;
 };
 
 /**
@@ -35,6 +39,10 @@ export function useSyncHeadWS(): SyncHeadState | null {
               lastProcessedBlock?: number;
               chainHeadBlock?: number;
               behindBlocks?: number;
+              startupSync?: boolean;
+              startupPhase?: string;
+              startupBatchLo?: number;
+              startupBatchHi?: number;
             };
           };
           if (msg.type !== 'syncHead' || !msg.data) return;
@@ -45,6 +53,10 @@ export function useSyncHeadWS(): SyncHeadState | null {
             lastProcessedBlock: last,
             chainHeadBlock: tip,
             behindBlocks: Number.isFinite(behind) ? behind : 0,
+            startupSync: msg.data.startupSync === true,
+            startupPhase: String(msg.data.startupPhase ?? '').trim(),
+            startupBatchLo: Number(msg.data.startupBatchLo) || 0,
+            startupBatchHi: Number(msg.data.startupBatchHi) || 0,
           });
         } catch {
           /* ignore */

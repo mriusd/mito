@@ -1,8 +1,13 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { Market } from '../types';
 import { useExpiryNow } from '../hooks/useExpiryNow';
 import { useThrottledMarketLookupSubset } from '../hooks/useThrottledMarketLookupSubset';
 import { GRID_BID_ASK_THROTTLE_MS } from './bidAskMarketLookup';
+import {
+  getMarketNotifyMutedSnapshot,
+  isMarketNotifyMuted,
+  subscribeMarketNotifyMuted,
+} from './marketNotifyMute';
 import { noOutcomeBidAsk } from './outcomeQuote';
 import {
   ensureTiltAudioUnlockListeners,
@@ -18,6 +23,10 @@ export const UPDOWN_TRIANGLE_FLASH_MS = 550;
 
 const UPDOWN_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 const UPDOWN_TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
+
+function marketNotifyId(market: Market): string {
+  return ((market.conditionId ?? market.id) || '').trim();
+}
 
 export function nextMarketHiFlashSides(
   market: Market,
@@ -88,18 +97,25 @@ export function useUpDownNextMarketFlashWhaleSound(
   }, [nextMarkets]);
 
   const bidAskLookup = useThrottledMarketLookupSubset(lookupTokenIds, GRID_BID_ASK_THROTTLE_MS);
+  const mutedMarketsKey = useSyncExternalStore(
+    subscribeMarketNotifyMuted,
+    getMarketNotifyMutedSnapshot,
+    () => '[]',
+  );
 
   const whaleKind = useMemo((): 'green' | 'red' | null => {
+    void mutedMarketsKey;
     let yesHi = false;
     let noHi = false;
     for (const m of nextMarkets) {
+      if (isMarketNotifyMuted(marketNotifyId(m))) continue;
       const sides = nextMarketHiFlashSides(m, bidAskLookup);
       if (sides.yesHi) yesHi = true;
       if (sides.noHi) noHi = true;
     }
     if (!yesHi && !noHi) return null;
     return yesHi ? 'green' : 'red';
-  }, [nextMarkets, bidAskLookup]);
+  }, [nextMarkets, bidAskLookup, mutedMarketsKey]);
 
   useEffect(() => {
     ensureTiltAudioUnlockListeners();

@@ -1,22 +1,29 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import { fetchMarketOutcomeTokens } from '../api';
+import { useWalletMarketTradesWS } from '../hooks/useOnchainTradesWS';
 import { usePolymarketChartTrades } from '../hooks/usePolymarketChartTrades';
 import { walletInfoChartMarketWithOutcomeTokens } from '../lib/walletInfoChartMarket';
+import { wsTradeToFillRow } from '../lib/walletInfoFillRows';
 import type { Market } from '../types';
-import type { OnchainFillRow } from '../api';
 import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 
 export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
   open,
+  wallet,
   selectedMarketId,
   selectedMarketMeta,
-  ledgerFillsForMarkers,
 }: {
   open: boolean;
+  wallet: string;
   selectedMarketId: string;
   selectedMarketMeta: Market | null;
-  ledgerFillsForMarkers: OnchainFillRow[];
 }) {
+  const enabled = open && !!wallet && !!selectedMarketId.trim();
+  const { trades: wsMarketTrades } = useWalletMarketTradesWS(wallet, selectedMarketId, enabled);
+  const ledgerFillsForMarkers = useMemo(
+    () => wsMarketTrades.map((t) => wsTradeToFillRow(t, wallet, selectedMarketId)),
+    [wsMarketTrades, wallet, selectedMarketId],
+  );
   const walletInfoChartTrades = usePolymarketChartTrades();
   const [walletChartOutcome, setWalletChartOutcome] = useState<'YES' | 'NO'>('YES');
   const [chartOutcomeTokens, setChartOutcomeTokens] = useState<{

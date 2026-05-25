@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { setSidebarOnchainLiveTrades } from '../lib/sidebarOnchainTradesStore';
 import { fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
 import { API_BASE, WS_BASE } from '../lib/env';
 import { dedupeWalletTradesByLedgerLeg, onchainFillKey, walletTradeKey } from '../lib/tradeKeys';
@@ -134,7 +135,6 @@ function filterPublicTapeBuffer(mCanon: string | null, tokenSub: string | null):
     const { __m, __tok, ...rest } = row;
     if (mCanon) {
       if (!__m || canonicalConditionKey(__m) !== mCanon) continue;
-      if (tokenSub && !sameDecimalTokenId(__tok, tokenSub)) continue;
     } else if (tokenSub) {
       if (!sameDecimalTokenId(__tok, tokenSub)) continue;
     } else {
@@ -167,10 +167,10 @@ function mergePublicLiveTapes(apiRows: LiveTrade[], fromBuffer: LiveTrade[]): Li
     if (k) byKey.set(k, stamped);
   }
   for (const t of fromBuffer) {
-    const stamped = stampLiveTradeId(t);
-    const k = liveTradeDedupeKey(stamped);
+    const row = t.id ? t : stampLiveTradeId(t);
+    const k = liveTradeDedupeKey(row);
     if (!k || byKey.has(k)) continue;
-    byKey.set(k, stamped);
+    byKey.set(k, row);
   }
   const merged = Array.from(byKey.values());
   merged.sort((a, b) => {
@@ -400,6 +400,10 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   const [walletMarketTrades, setWalletMarketTrades] = useState<WSTrade[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
   const [walletMarketConnectBump, setWalletMarketConnectBump] = useState(0);
+
+  useLayoutEffect(() => {
+    setSidebarOnchainLiveTrades(trades);
+  }, [trades]);
   const walletMarketRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const primaryWalletMarketKeyRef = useRef<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -517,6 +521,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       }
       pendingTapeBatchRef.current = [];
       setTrades([]);
+      setSidebarOnchainLiveTrades([]);
       setWalletPositions([]);
       setWalletTrades([]);
       setWalletMarketTrades([]);
@@ -541,29 +546,37 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       }, 40);
     };
 
-    const cancelPendingTapeBatch = () => {
+    const drainPendingTapeBatch = (): LiveTrade[] => {
       if (tapeBatchRafRef.current != null) {
         cancelAnimationFrame(tapeBatchRafRef.current);
         tapeBatchRafRef.current = null;
       }
-      pendingTapeBatchRef.current = [];
-    };
-
-    const flushTapeBatch = () => {
-      tapeBatchRafRef.current = null;
       const batch = pendingTapeBatchRef.current;
       pendingTapeBatchRef.current = [];
-      if (batch.length === 0) return;
+      return batch;
+    };
+
+    const applyTapeTradesNow = (incoming: LiveTrade[]) => {
+      if (incoming.length === 0) return;
       setTrades((prev) => {
         let cur = prev;
-        for (const t of batch) {
+        for (const t of incoming) {
           cur = prependDedupedSortedTape(cur, t, MAX_TRADES);
         }
+        setSidebarOnchainLiveTrades(cur);
         return cur;
       });
     };
 
+    const flushTapeBatch = () => {
+      applyTapeTradesNow(drainPendingTapeBatch());
+    };
+
     const scheduleTapeTrade = (trade: LiveTrade) => {
+      if (trade.pending) {
+        applyTapeTradesNow([trade]);
+        return;
+      }
       pendingTapeBatchRef.current.push(trade);
       if (tapeBatchRafRef.current != null) return;
       tapeBatchRafRef.current = requestAnimationFrame(flushTapeBatch);
@@ -620,29 +633,39 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
           }
           const mForMerge = m ? canonicalConditionKey(m) : null;
           const tForMerge = t || null;
-          const fromBuf = filterPublicTapeBuffer(mForMerge, tForMerge);
-          cancelPendingTapeBatch();
+          const fromBuf = filterPublicTapeBuffer(mForMerge, mForMerge ? null : tForMerge);
+          const batched = drainPendingTapeBatch();
           setTrades((prev) => {
-            const pendingRows = prev.filter((x) => x.pending);
+            let cur = prev;
+            for (const t of batched) {
+              cur = prependDedupedSortedTape(cur, t, MAX_TRADES);
+            }
+            const pendingRows = cur.filter((x) => x.pending);
             const confirmedTxs = new Set(mapped.map((r) => (r.txHash || '').toLowerCase()).filter(Boolean));
             const keepPending = pendingRows.filter((x) => !confirmedTxs.has((x.txHash || '').toLowerCase()));
             const merged = mergePublicLiveTapes(mapped.slice(0, MAX_TRADES), fromBuf);
-            if (keepPending.length === 0) return merged;
+            if (keepPending.length === 0) {
+              setSidebarOnchainLiveTrades(merged);
+              return merged;
+            }
             const out = [...keepPending, ...merged];
             out.sort((a, b) => {
               const td = (b.timestamp ?? 0) - (a.timestamp ?? 0);
               if (td !== 0) return td;
               return (b.logIndex ?? 0) - (a.logIndex ?? 0);
             });
-            return out.slice(0, MAX_TRADES);
+            const next = out.slice(0, MAX_TRADES);
+            setSidebarOnchainLiveTrades(next);
+            return next;
           });
         })
         .catch(() => {});
     };
 
-    cancelPendingTapeBatch();
     const mCanonInit = mid ? canonicalConditionKey(mid) : null;
-    setTrades(filterPublicTapeBuffer(mCanonInit, tid || null));
+    const seeded = filterPublicTapeBuffer(mCanonInit, mCanonInit ? null : tid || null);
+    setTrades(seeded);
+    setSidebarOnchainLiveTrades(seeded);
     void loadFromAPI();
 
     let disposed = false;
@@ -745,9 +768,18 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
 
             if (!d.tokenId) return;
             if (mSub) {
-              if (!tradeMarket || canonicalConditionKey(tradeMarket) !== canonicalConditionKey(mSub)) return;
-              const subTok = tokenRef.current?.trim();
-              if (subTok && !sameDecimalTokenId(d.tokenId, subTok)) return;
+              const subM = canonicalConditionKey(mSub);
+              if (tradeMarket) {
+                if (canonicalConditionKey(tradeMarket) !== subM) return;
+              } else {
+                const scoped = scopedClobTokenIdsRef.current || [];
+                if (
+                  scoped.length > 0 &&
+                  !scoped.some((id) => sameDecimalTokenId(d.tokenId, id))
+                ) {
+                  return;
+                }
+              }
             } else {
               if (!sameDecimalTokenId(d.tokenId, tokenRef.current)) return;
             }
@@ -784,7 +816,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               : mSub
                 ? canonicalConditionKey(mSub)
                 : '';
-            if (!isPending && d.tokenId) {
+            if (d.tokenId && marketKeyForBuf) {
               pushPublicTapeBuffer(trade, marketKeyForBuf, String(d.tokenId));
             }
             scheduleTapeTrade(trade);
@@ -798,7 +830,11 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             pendingTapeBatchRef.current = pendingTapeBatchRef.current.filter(
               (x) => !(x.pending && set.has((x.txHash || '').toLowerCase())),
             );
-            setTrades((prev) => dropPendingByTx(prev, set));
+            setTrades((prev) => {
+              const next = dropPendingByTx(prev, set);
+              setSidebarOnchainLiveTrades(next);
+              return next;
+            });
           } else if (msg.type === 'walletPositions' && Array.isArray(msg.data)) {
             const msgWallet = String(msg.wallet || '').trim().toLowerCase();
             const mine = (walletRef.current || '').trim().toLowerCase();

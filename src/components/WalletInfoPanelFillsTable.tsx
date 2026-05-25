@@ -1,8 +1,14 @@
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo } from 'react';
 import type { OnchainFillRow } from '../api';
 import type { Market } from '../types';
-import { getOnchainTradesWSShared, OnchainTradesWSBridge } from '../hooks/useOnchainTradesWS';
-import { fmtIntEn } from '../lib/walletInfoFillRows';
+import { useAppStore } from '../stores/appStore';
+import {
+  getOnchainTradesWSShared,
+  OnchainTradesWSBridge,
+  useWalletMarketTradesWS,
+} from '../hooks/useOnchainTradesWS';
+import { exportWalletFillsCsv } from '../lib/walletInfoCsvExport';
+import { fmtIntEn, wsTradeToFillRow } from '../lib/walletInfoFillRows';
 import { capWalletInfoFills, WalletInfoFillRow } from './WalletInfoFillRow';
 
 export const WalletInfoPanelFillsTable = memo(function WalletInfoPanelFillsTable({
@@ -10,26 +16,58 @@ export const WalletInfoPanelFillsTable = memo(function WalletInfoPanelFillsTable
   wallet,
   selectedMarketId,
   marketById,
-  fills,
-  loadingFills,
+  fillsRefreshToken,
+  onLoadingFillsChange,
 }: {
   open: boolean;
   wallet: string;
   selectedMarketId: string;
   marketById: Record<string, Market>;
-  fills: OnchainFillRow[];
-  loadingFills: boolean;
+  fillsRefreshToken: number;
+  onLoadingFillsChange?: (loading: boolean) => void;
 }) {
   const enabled = open && !!wallet && !!selectedMarketId.trim();
   const needsOwnOnchainWs = enabled && getOnchainTradesWSShared() == null;
+  const {
+    trades: wsMarketTrades,
+    loading: loadingFills,
+    refresh: refreshMarketTradesWS,
+  } = useWalletMarketTradesWS(wallet, selectedMarketId, enabled);
+  const fills = useMemo(
+    () => wsMarketTrades.map((t) => wsTradeToFillRow(t, wallet, selectedMarketId)),
+    [wsMarketTrades, wallet, selectedMarketId],
+  );
   const visibleFills = useMemo(() => capWalletInfoFills(fills), [fills]);
   const defaultMarket = marketById[selectedMarketId];
+
+  useEffect(() => {
+    onLoadingFillsChange?.(enabled && loadingFills);
+  }, [enabled, loadingFills, onLoadingFillsChange]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    refreshMarketTradesWS();
+  }, [enabled, wallet, selectedMarketId, fillsRefreshToken, refreshMarketTradesWS]);
+
+  const onExportCsv = useCallback(() => {
+    exportWalletFillsCsv(wallet, fills, useAppStore.getState().marketLookup, selectedMarketId);
+  }, [wallet, fills, selectedMarketId]);
 
   return (
     <>
       {needsOwnOnchainWs ? (
         <OnchainTradesWSBridge wallet={wallet} marketId={selectedMarketId} active />
       ) : null}
+      <div className="flex items-center justify-end gap-2 mb-1 shrink-0 min-w-0">
+        <button
+          type="button"
+          className="text-[10px] text-blue-400 hover:underline shrink-0 disabled:opacity-40 disabled:pointer-events-none"
+          disabled={loadingFills || fills.length === 0 || !selectedMarketId}
+          onClick={onExportCsv}
+        >
+          Export CSV
+        </button>
+      </div>
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
         <div className="flex-1 min-h-0 overflow-auto">
           <table className="w-full text-[10px] [&_th]:px-2.5 [&_td]:px-2.5 [&_th]:py-1 [&_td]:py-1">

@@ -82,7 +82,7 @@ html, body, #root {
   50% { opacity: 0.45; }
 }
 .updown-triangle-badge-flash {
-  animation: updown-math-flash 0.55s ease-in-out infinite;
+  animation: updown-math-flash 1s ease-in-out infinite;
 }
 
 /* Toxic Flow dialog: wallets marked with bell pulse when row is on current market */

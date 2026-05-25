@@ -4,7 +4,8 @@ import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import type { Market, Order, AssetSymbol } from '../../types';
 import { getMarketProbability } from '../../utils/bsMath';
 import { normalizeClobTokenId } from '../../utils/format';
-import { noOutcomeBidAsk, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { nextMarketHiFlashSides } from '../../lib/upDownNextMarketFlashSound';
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
 import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLookupSubset';
 import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
@@ -423,12 +424,9 @@ function UpDownAssetLaneCellsInner({
     const nextYesMid = outcomeMidOrOneSideProb(nextYesTokenId, bidAskLookup, nextGammaYes);
     const nextNoProb = nextYesMid != null ? 1 - nextYesMid : null;
     const nextNoTokenId = nextTokenIds[1] || '';
-    const { bestBid: nextBestBid } = getLiveBidAsk(nextMarket);
-    const nextBidHi = nextBestBid != null && Number.isFinite(nextBestBid) && nextBestBid >= 0.6;
-    const { bestBid: nextNoBid, bestAsk: nextNoAsk } = noOutcomeBidAsk(nextYesTokenId, nextNoTokenId, bidAskLookup, nextGammaYes);
-    const nextNoHi =
-      (nextNoBid != null && Number.isFinite(nextNoBid) && nextNoBid >= 0.6) ||
-      (nextNoAsk != null && Number.isFinite(nextNoAsk) && nextNoAsk >= 0.6);
+    const nextHi = nextMarketHiFlashSides(nextMarket, bidAskLookup, { liveOnly: true });
+    const nextBidHi = nextHi.yesHi;
+    const nextNoHi = nextHi.noHi;
     const nextHiPillBase =
       'inline-flex min-h-[1.125rem] items-center justify-center rounded border px-0.5 text-[10px] font-extrabold tabular-nums text-white shrink-0';
     const isNextSelected = selectedMarketId === nextMarket.id;

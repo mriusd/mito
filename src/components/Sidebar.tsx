@@ -1356,10 +1356,11 @@ export const Sidebar = memo(function Sidebar() {
     if (!selectedMarket?.clobTokenIds?.length) return null;
     return selectedMarket.clobTokenIds.map((x) => String(x || '').trim()).filter(Boolean);
   }, [selectedMarket?.clobTokenIds]);
-  const selectedConditionId =
-    liveTradesSource === 'onchain' && selectedMarket?.conditionId?.trim()
-      ? String(selectedMarket.conditionId).trim()
-      : null;
+  const selectedConditionId = useMemo(() => {
+    if (liveTradesSource !== 'onchain' || !selectedMarket) return null;
+    const m = (selectedMarket.conditionId ?? selectedMarket.id ?? '').trim();
+    return m || null;
+  }, [liveTradesSource, selectedMarket?.conditionId, selectedMarket?.id]);
   const refreshMyMarketTrades = useCallback(() => {
     const w = (walletForLivePositions || '').trim().toLowerCase();
     const m = selectedConditionId;

@@ -1563,7 +1563,120 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   return true;
 });
 
-const ToxicFlowDialogEmbeddedHoldersBody = memo(function ToxicFlowDialogEmbeddedHoldersBody({
+const ToxicFlowDialogLoadingLine = memo(function ToxicFlowDialogLoadingLine({
+  open,
+  marketId,
+  loadingOverride,
+}: {
+  open: boolean;
+  marketId: string;
+  loadingOverride?: boolean;
+}) {
+  const storeData = useSidebarToxicFlowData();
+  const loading =
+    loadingOverride ?? Boolean(open && marketId.trim() && storeData === null);
+  if (!loading) return null;
+  return <div className="text-gray-500 text-center py-8 shrink-0">Loading on-chain data...</div>;
+});
+
+const ToxicFlowDialogStatsGrid = memo(function ToxicFlowDialogStatsGrid({
+  yesTokenId,
+  marketId,
+  open,
+  data: dataOverride,
+}: {
+  yesTokenId: string;
+  marketId: string;
+  open: boolean;
+  data?: ToxicFlowData | null;
+}) {
+  const storeData = useSidebarToxicFlowData();
+  const data = dataOverride !== undefined ? dataOverride : storeData;
+  if (!data) return null;
+  return (
+    <div className="shrink-0 grid grid-cols-6 gap-1.5 min-w-0 w-full mb-2">
+      <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+        <div className="text-[10px] text-gray-500 truncate">Wallets</div>
+        <div className="text-sm font-bold text-white tabular-nums" title={String(data.totalWallets)}>
+          {formatThousandsAsK(data.totalWallets)}
+        </div>
+      </div>
+      <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+        <div className="text-[10px] text-gray-500 truncate">On-chain Fills</div>
+        <div className="text-sm font-bold text-white tabular-nums" title={String(data.totalTrades)}>
+          {formatThousandsAsK(data.totalTrades)}
+        </div>
+      </div>
+      <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+        <div className="text-[10px] text-gray-500 truncate">USDC Volume</div>
+        <div
+          className="text-sm font-bold text-yellow-400 tabular-nums truncate"
+          title={`$${data.totalUsdcIn.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+        >
+          ${formatPolymarketVolumeK(data.totalUsdcIn)}
+        </div>
+      </div>
+      <ToxicFlowStakedStatCell yesTokenId={yesTokenId} marketId={marketId} open={open} />
+      <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+        <div className="text-[10px] text-gray-500 truncate">Concentration</div>
+        <div className={`text-sm font-bold ${data.concentration > 0.5 ? 'text-red-400' : data.concentration > 0.3 ? 'text-yellow-400' : 'text-green-400'}`}>
+          {(data.concentration * 100).toFixed(0)}%
+        </div>
+      </div>
+      <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+        <div className="text-[10px] text-gray-500 truncate">Total Shares</div>
+        <div
+          className="text-sm font-bold text-gray-200 tabular-nums truncate"
+          title={String(Math.floor(data.totalShares || 0))}
+        >
+          {formatThousandsAsK(Math.floor(data.totalShares || 0))}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const ToxicFlowDialogZeroWalletsHelp = memo(function ToxicFlowDialogZeroWalletsHelp({
+  data: dataOverride,
+}: {
+  data?: ToxicFlowData | null;
+}) {
+  const storeData = useSidebarToxicFlowData();
+  const data = dataOverride !== undefined ? dataOverride : storeData;
+  if (!data || data.totalWallets !== 0) return null;
+  return (
+    <div className="rounded p-3 bg-gray-900 space-y-1.5 text-[10px] text-gray-500">
+      {data.polygonWssConfigured === false && (
+        <p className="text-amber-400/95">
+          On-chain collection is off: polycandles needs <span className="font-mono">POLYGON_WSS_URL</span> (Polygon JSON-RPC WebSocket). Check server logs and{' '}
+          <span className="font-mono">/api/onchain-status</span>.
+        </p>
+      )}
+      {data.polygonWssConfigured === true && (data.orderFilledEventsProcessed ?? 0) === 0 && (
+        <p>
+          Polygon WSS is configured but no <span className="font-mono">OrderFilled</span> events have been processed yet — verify the endpoint, subscription, and that trading is happening on tracked contracts.
+        </p>
+      )}
+      {data.polygonWssConfigured === true &&
+        (data.orderFilledEventsProcessed ?? 0) > 0 &&
+        (data.walletMarketTradesForMarket ?? 0) === 0 && (
+        <p>
+          Events are ingesting globally, but no ledger trades are linked to this market in <span className="font-mono">wallet_fill_ledger</span> yet. Wait for the next Gamma sync (token map refreshes after each refresh), or confirm this market&apos;s CLOB token IDs are in the DB.
+        </p>
+      )}
+      {(data.walletMarketTradesForMarket ?? 0) > 0 && (
+        <p className="text-gray-400">
+          {data.walletMarketTradesForMarket} trade(s) rolled up for this market; wallet rollups only appear after fills are matched to token IDs. If tables stay empty, check <span className="font-mono">wallet_market_positions</span> and server logs.
+        </p>
+      )}
+      <p>
+        Holders aggregates <span className="font-mono">wallet_market_positions</span> (ledger) for this market (not the CLOB orderbook). Data persists across restarts and backfills missed blocks automatically.
+      </p>
+    </div>
+  );
+});
+
+const ToxicFlowDialogEmbeddedTableStack = memo(function ToxicFlowDialogEmbeddedTableStack({
   yesTokenId,
   noTokenId,
   marketId,
@@ -1600,11 +1713,9 @@ const ToxicFlowDialogEmbeddedHoldersBody = memo(function ToxicFlowDialogEmbedded
   toxicXSet: ReadonlySet<string>;
   tiltWhaleAmountUsd: number;
 }) {
-  const yesTok = yesTokenId.trim();
-  const midTrim = marketId.trim();
-  const data = useSidebarToxicFlowData();
-  const loading = Boolean(open && midTrim && data === null);
   const tabWalletViews = useSidebarToxicFlowTabViews(toxicFollowSet, tiltWhaleAmountUsd, toxicXSet);
+  const storeData = useSidebarToxicFlowData();
+  const loading = Boolean(open && marketId.trim() && storeData === null);
 
   const tabsBarRef = useRef<HTMLDivElement>(null);
   const [tabsTipOpen, setTabsTipOpen] = useState(false);
@@ -1661,110 +1772,98 @@ const ToxicFlowDialogEmbeddedHoldersBody = memo(function ToxicFlowDialogEmbedded
     setRowActionsTipOpen(true);
   }, [open, loading, tabsTipOpen, primaryTabWalletCount]);
 
+  if (!tabWalletViews) return null;
+
+  return (
+    <ToxicFlowDialogTableStack
+      yesTokenId={yesTokenId}
+      noTokenId={noTokenId}
+      marketId={marketId}
+      open={open}
+      marketExpired={marketExpired}
+      tabWalletViews={tabWalletViews}
+      layoutMode={layoutMode}
+      tab={tab}
+      tabBottom={tabBottom}
+      tabThird={tabThird}
+      setTab={setTabWithDismiss}
+      setTabBottom={setTabBottomWithDismiss}
+      setTabThird={setTabThirdWithDismiss}
+      openWalletDialog={openWalletDialog}
+      layoutSwitch={layoutSwitch}
+      tabsTipOpen={tabsTipOpen}
+      onDismissTabsTip={dismissTabsTip}
+      tabsBarRef={tabsBarRef}
+      rowActionsTipOpen={rowActionsTipOpen}
+      onDismissRowActionsTip={dismissRowActionsTip}
+      rowActionsAnchorRef={rowActionsAnchorRef}
+    />
+  );
+});
+
+const ToxicFlowDialogEmbeddedHoldersBody = memo(function ToxicFlowDialogEmbeddedHoldersBody({
+  yesTokenId,
+  noTokenId,
+  marketId,
+  open,
+  marketExpired = false,
+  layoutMode,
+  tab,
+  tabBottom,
+  tabThird,
+  setTabWithDismiss,
+  setTabBottomWithDismiss,
+  setTabThirdWithDismiss,
+  openWalletDialog,
+  layoutSwitch,
+  toxicFollowSet,
+  toxicXSet,
+  tiltWhaleAmountUsd,
+}: {
+  yesTokenId: string;
+  noTokenId?: string;
+  marketId: string;
+  open: boolean;
+  marketExpired?: boolean;
+  layoutMode: ToxicFlowLayoutMode;
+  tab: Tab;
+  tabBottom: Tab;
+  tabThird: Tab;
+  setTabWithDismiss: (tab: Tab) => void;
+  setTabBottomWithDismiss: (tab: Tab) => void;
+  setTabThirdWithDismiss: (tab: Tab) => void;
+  openWalletDialog: (wallet: string, netShares?: number) => void;
+  layoutSwitch: ReactNode;
+  toxicFollowSet: ReadonlySet<string>;
+  toxicXSet: ReadonlySet<string>;
+  tiltWhaleAmountUsd: number;
+}) {
+  const yesTok = yesTokenId.trim();
+  const midTrim = marketId.trim();
   return (
     <>
-      {loading && <div className="text-gray-500 text-center py-8 shrink-0">Loading on-chain data...</div>}
-
-      {!loading && data && (
-        <>
-          <div className="shrink-0 grid grid-cols-6 gap-1.5 min-w-0 w-full mb-2">
-            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
-              <div className="text-[10px] text-gray-500 truncate">Wallets</div>
-              <div className="text-sm font-bold text-white tabular-nums" title={String(data.totalWallets)}>
-                {formatThousandsAsK(data.totalWallets)}
-              </div>
-            </div>
-            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
-              <div className="text-[10px] text-gray-500 truncate">On-chain Fills</div>
-              <div className="text-sm font-bold text-white tabular-nums" title={String(data.totalTrades)}>
-                {formatThousandsAsK(data.totalTrades)}
-              </div>
-            </div>
-            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
-              <div className="text-[10px] text-gray-500 truncate">USDC Volume</div>
-              <div
-                className="text-sm font-bold text-yellow-400 tabular-nums truncate"
-                title={`$${data.totalUsdcIn.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-              >
-                ${formatPolymarketVolumeK(data.totalUsdcIn)}
-              </div>
-            </div>
-            <ToxicFlowStakedStatCell yesTokenId={yesTok} marketId={midTrim} open={open} />
-            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
-              <div className="text-[10px] text-gray-500 truncate">Concentration</div>
-              <div className={`text-sm font-bold ${data.concentration > 0.5 ? 'text-red-400' : data.concentration > 0.3 ? 'text-yellow-400' : 'text-green-400'}`}>
-                {(data.concentration * 100).toFixed(0)}%
-              </div>
-            </div>
-            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
-              <div className="text-[10px] text-gray-500 truncate">Total Shares</div>
-              <div
-                className="text-sm font-bold text-gray-200 tabular-nums truncate"
-                title={String(Math.floor(data.totalShares || 0))}
-              >
-                {formatThousandsAsK(Math.floor(data.totalShares || 0))}
-              </div>
-            </div>
-          </div>
-
-          {data.totalWallets === 0 && (
-            <div className="rounded p-3 bg-gray-900 space-y-1.5 text-[10px] text-gray-500">
-              {data.polygonWssConfigured === false && (
-                <p className="text-amber-400/95">
-                  On-chain collection is off: polycandles needs <span className="font-mono">POLYGON_WSS_URL</span> (Polygon JSON-RPC WebSocket). Check server logs and{' '}
-                  <span className="font-mono">/api/onchain-status</span>.
-                </p>
-              )}
-              {data.polygonWssConfigured === true && (data.orderFilledEventsProcessed ?? 0) === 0 && (
-                <p>
-                  Polygon WSS is configured but no <span className="font-mono">OrderFilled</span> events have been processed yet — verify the endpoint, subscription, and that trading is happening on tracked contracts.
-                </p>
-              )}
-              {data.polygonWssConfigured === true &&
-                (data.orderFilledEventsProcessed ?? 0) > 0 &&
-                (data.walletMarketTradesForMarket ?? 0) === 0 && (
-                <p>
-                  Events are ingesting globally, but no ledger trades are linked to this market in <span className="font-mono">wallet_fill_ledger</span> yet. Wait for the next Gamma sync (token map refreshes after each refresh), or confirm this market&apos;s CLOB token IDs are in the DB.
-                </p>
-              )}
-              {(data.walletMarketTradesForMarket ?? 0) > 0 && (
-                <p className="text-gray-400">
-                  {data.walletMarketTradesForMarket} trade(s) rolled up for this market; wallet rollups only appear after fills are matched to token IDs. If tables stay empty, check <span className="font-mono">wallet_market_positions</span> and server logs.
-                </p>
-              )}
-              <p>
-                Holders aggregates <span className="font-mono">wallet_market_positions</span> (ledger) for this market (not the CLOB orderbook). Data persists across restarts and backfills missed blocks automatically.
-              </p>
-            </div>
-          )}
-
-          {tabWalletViews ? (
-            <ToxicFlowDialogTableStack
-              yesTokenId={yesTok}
-              noTokenId={noTokenId}
-              marketId={midTrim}
-              open={open}
-              marketExpired={marketExpired}
-              tabWalletViews={tabWalletViews}
-              layoutMode={layoutMode}
-              tab={tab}
-              tabBottom={tabBottom}
-              tabThird={tabThird}
-              setTab={setTabWithDismiss}
-              setTabBottom={setTabBottomWithDismiss}
-              setTabThird={setTabThirdWithDismiss}
-              openWalletDialog={openWalletDialog}
-              layoutSwitch={layoutSwitch}
-              tabsTipOpen={tabsTipOpen}
-              onDismissTabsTip={dismissTabsTip}
-              tabsBarRef={tabsBarRef}
-              rowActionsTipOpen={rowActionsTipOpen}
-              onDismissRowActionsTip={dismissRowActionsTip}
-              rowActionsAnchorRef={rowActionsAnchorRef}
-            />
-          ) : null}
-        </>
-      )}
+      <ToxicFlowDialogLoadingLine open={open} marketId={midTrim} />
+      <ToxicFlowDialogStatsGrid yesTokenId={yesTok} marketId={midTrim} open={open} />
+      <ToxicFlowDialogZeroWalletsHelp />
+      <ToxicFlowDialogEmbeddedTableStack
+        yesTokenId={yesTok}
+        noTokenId={noTokenId}
+        marketId={midTrim}
+        open={open}
+        marketExpired={marketExpired}
+        layoutMode={layoutMode}
+        tab={tab}
+        tabBottom={tabBottom}
+        tabThird={tabThird}
+        setTabWithDismiss={setTabWithDismiss}
+        setTabBottomWithDismiss={setTabBottomWithDismiss}
+        setTabThirdWithDismiss={setTabThirdWithDismiss}
+        openWalletDialog={openWalletDialog}
+        layoutSwitch={layoutSwitch}
+        toxicFollowSet={toxicFollowSet}
+        toxicXSet={toxicXSet}
+        tiltWhaleAmountUsd={tiltWhaleAmountUsd}
+      />
     </>
   );
 });
@@ -2135,81 +2234,13 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
 
   const holdersBody = (
     <>
-      {loading && <div className="text-gray-500 text-center py-8 shrink-0">Loading on-chain data...</div>}
+      <ToxicFlowDialogLoadingLine open={open} marketId={midTrim} loadingOverride={loading} />
       {error && <div className="text-red-400 text-center py-8 shrink-0">Error: {error}</div>}
 
       {!loading && !error && data && (
         <>
-          <div className="shrink-0 grid grid-cols-6 gap-1.5 min-w-0 w-full mb-2">
-            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
-              <div className="text-[10px] text-gray-500 truncate">Wallets</div>
-              <div className="text-sm font-bold text-white tabular-nums" title={String(data.totalWallets)}>
-                {formatThousandsAsK(data.totalWallets)}
-              </div>
-            </div>
-            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
-              <div className="text-[10px] text-gray-500 truncate">On-chain Fills</div>
-              <div className="text-sm font-bold text-white tabular-nums" title={String(data.totalTrades)}>
-                {formatThousandsAsK(data.totalTrades)}
-              </div>
-            </div>
-            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
-              <div className="text-[10px] text-gray-500 truncate">USDC Volume</div>
-              <div
-                className="text-sm font-bold text-yellow-400 tabular-nums truncate"
-                title={`$${data.totalUsdcIn.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-              >
-                ${formatPolymarketVolumeK(data.totalUsdcIn)}
-              </div>
-            </div>
-            <ToxicFlowStakedStatCell yesTokenId={yesTok} marketId={midTrim} open={open} />
-            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
-              <div className="text-[10px] text-gray-500 truncate">Concentration</div>
-              <div className={`text-sm font-bold ${data.concentration > 0.5 ? 'text-red-400' : data.concentration > 0.3 ? 'text-yellow-400' : 'text-green-400'}`}>
-                {(data.concentration * 100).toFixed(0)}%
-              </div>
-            </div>
-            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
-              <div className="text-[10px] text-gray-500 truncate">Total Shares</div>
-              <div
-                className="text-sm font-bold text-gray-200 tabular-nums truncate"
-                title={String(Math.floor(data.totalShares || 0))}
-              >
-                {formatThousandsAsK(Math.floor(data.totalShares || 0))}
-              </div>
-            </div>
-          </div>
-
-          {data.totalWallets === 0 && (
-            <div className="rounded p-3 bg-gray-900 space-y-1.5 text-[10px] text-gray-500">
-              {data.polygonWssConfigured === false && (
-                <p className="text-amber-400/95">
-                  On-chain collection is off: polycandles needs <span className="font-mono">POLYGON_WSS_URL</span> (Polygon JSON-RPC WebSocket). Check server logs and{' '}
-                  <span className="font-mono">/api/onchain-status</span>.
-                </p>
-              )}
-              {data.polygonWssConfigured === true && (data.orderFilledEventsProcessed ?? 0) === 0 && (
-                <p>
-                  Polygon WSS is configured but no <span className="font-mono">OrderFilled</span> events have been processed yet — verify the endpoint, subscription, and that trading is happening on tracked contracts.
-                </p>
-              )}
-              {data.polygonWssConfigured === true &&
-                (data.orderFilledEventsProcessed ?? 0) > 0 &&
-                (data.walletMarketTradesForMarket ?? 0) === 0 && (
-                <p>
-                  Events are ingesting globally, but no ledger trades are linked to this market in <span className="font-mono">wallet_fill_ledger</span> yet. Wait for the next Gamma sync (token map refreshes after each refresh), or confirm this market&apos;s CLOB token IDs are in the DB.
-                </p>
-              )}
-              {(data.walletMarketTradesForMarket ?? 0) > 0 && (
-                <p className="text-gray-400">
-                  {data.walletMarketTradesForMarket} trade(s) rolled up for this market; wallet rollups only appear after fills are matched to token IDs. If tables stay empty, check <span className="font-mono">wallet_market_positions</span> and server logs.
-                </p>
-              )}
-              <p>
-                Holders aggregates <span className="font-mono">wallet_market_positions</span> (ledger) for this market (not the CLOB orderbook). Data persists across restarts and backfills missed blocks automatically.
-              </p>
-            </div>
-          )}
+          <ToxicFlowDialogStatsGrid yesTokenId={yesTok} marketId={midTrim} open={open} data={data} />
+          <ToxicFlowDialogZeroWalletsHelp data={data} />
 
           {tabWalletViews ? (
             <ToxicFlowDialogTableStack

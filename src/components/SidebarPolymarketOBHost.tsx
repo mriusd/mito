@@ -3,25 +3,16 @@ import type { Market, Position } from '../types';
 import { usePolymarketOB, type LiveTrade } from '../hooks/usePolymarketOB';
 import type { SidebarObAggStep } from '../lib/sidebarOrderbookAggregate';
 import { sidebarObAggregateLevels } from '../lib/sidebarOrderbookAggregate';
+import { orderbookBookImbalance as computeOrderbookBookImbalance } from '../lib/orderbookBookImbalance';
+import { readSavedObAggStep, LS_SIDEBAR_OB_AGG_STEP } from '../lib/sidebarObAggStep';
 import { bumpSidebarTopOfBookDigest } from '../lib/sidebarTopOfBookStore';
 import { setSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import { SidebarLiveOrderbookSection } from './SidebarLiveOrderbookSection';
 
 type OBLevel = { price: string; size: string };
 
-const LS_SIDEBAR_OB_AGG_STEP = 'polybot_sidebar_ob_agg_step';
 const OB_RAW_TOP_REF = 15;
 const OB_DEEP_BOOK = 380;
-
-function readSavedObAggStep(): SidebarObAggStep {
-  try {
-    const v = typeof localStorage !== 'undefined' ? localStorage.getItem(LS_SIDEBAR_OB_AGG_STEP) : null;
-    if (v === '0.1' || v === '1' || v === '5') return v;
-  } catch {
-    /* ignore */
-  }
-  return '0.1';
-}
 
 export type SidebarPolymarketBookSnapshot = {
   displayBids: OBLevel[];
@@ -116,20 +107,10 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   }, [snapshotBids, snapshotAsks, obAggStep]);
 
   const prevTopSig = useRef<string>('');
-  const orderbookBookImbalance = useMemo(() => {
-    const bidTotal = snapshotBids.reduce((s, l) => {
-      const pCents = parseFloat(l.price) * 100;
-      if (!Number.isFinite(pCents) || pCents < 5 || pCents > 95) return s;
-      return s + parseFloat(l.size);
-    }, 0);
-    const askTotal = snapshotAsks.reduce((s, l) => {
-      const pCents = parseFloat(l.price) * 100;
-      if (!Number.isFinite(pCents) || pCents < 5 || pCents > 95) return s;
-      return s + parseFloat(l.size);
-    }, 0);
-    const bookDenom = bidTotal + askTotal;
-    return bookDenom > 0 ? (bidTotal - askTotal) / bookDenom : 0;
-  }, [snapshotBids, snapshotAsks]);
+  const orderbookBookImbalance = useMemo(
+    () => computeOrderbookBookImbalance(snapshotBids, snapshotAsks),
+    [snapshotBids, snapshotAsks],
+  );
 
   useEffect(() => {
     setSidebarPolymarketTape(polymarketLiveTrades);

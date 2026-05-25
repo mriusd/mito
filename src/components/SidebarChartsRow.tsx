@@ -11,6 +11,8 @@ export type SidebarChartsRowProps = {
   chartOutcomeSync: boolean;
   onChartOutcomeSyncChange: (enabled: boolean) => void;
   marketLookup: Record<string, Market>;
+  sidebarUserBidPrices: Set<string>;
+  sidebarUserAskPrices: Set<string>;
 };
 
 function SidebarChartsRowInner({
@@ -20,6 +22,8 @@ function SidebarChartsRowInner({
   chartOutcomeSync,
   onChartOutcomeSyncChange,
   marketLookup,
+  sidebarUserBidPrices,
+  sidebarUserAskPrices,
 }: SidebarChartsRowProps) {
   const displayLiveTrades = usePolymarketChartTrades();
   const myTradesForMarkers = useSidebarMyTradesChartMarkers(selectedMarket, marketLookup);
@@ -41,6 +45,8 @@ function SidebarChartsRowInner({
         orderOutcome={orderOutcome}
         onOrderOutcomeChange={onOrderOutcomeChange}
         volumeSpikeAlerts
+        sidebarUserBidPrices={sidebarUserBidPrices}
+        sidebarUserAskPrices={sidebarUserAskPrices}
       />
     </div>
   );

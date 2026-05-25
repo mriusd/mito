@@ -11,10 +11,16 @@ import {
   type ChartVolumeSpikeSide,
 } from '../lib/chartVolumeSpikeAlert';
 import type { ChartTradeMarker } from '../lib/chartTradeMarkers';
+import { parseCandleOb, type CandleObSnapshot } from '../lib/candleObSnapshot';
+import { prepareCandleObDisplay } from '../lib/candleObDisplay';
+import { readSavedObAggStep } from '../lib/sidebarObAggStep';
+import { SidebarOrderbookBookGrid } from './SidebarOrderbookBookGrid';
+import { drawObHeatmapColumns } from '../lib/chartObHeatmap';
 
 export type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 
 const MAX_CHART_CANDLES = 2500;
+const EMPTY_PRICE_SET = new Set<string>();
 
 function pruneCandleMap(map: Map<number, Candle>, startMs: number, endMs: number, padMs: number) {
   const lo = startMs - padMs;
@@ -34,6 +40,7 @@ interface Candle {
   l: number;
   c: number;
   v: number;
+  ob?: CandleObSnapshot;
 }
 
 interface LiveChartState {
@@ -119,6 +126,12 @@ interface LiveTradeChartProps {
   soundMuteNoTokenId?: string;
   /** Sidebar only: flash chart + volume spike beep. Off in wallet info / market view trades. */
   volumeSpikeAlerts?: boolean;
+  /** Sidebar chart: candle OB popup on hover (sidebar book grid). */
+  candleObHover?: boolean;
+  /** Sidebar chart: OB liquidity heatmap per time column (100×1¢). */
+  obHeatmap?: boolean;
+  sidebarUserBidPrices?: Set<string>;
+  sidebarUserAskPrices?: Set<string>;
 }
 
 function defaultInterval(context?: string): string {
@@ -169,6 +182,10 @@ export function LiveTradeChart({
   soundMuteYesTokenId,
   soundMuteNoTokenId,
   volumeSpikeAlerts = false,
+  candleObHover = false,
+  obHeatmap = false,
+  sidebarUserBidPrices,
+  sidebarUserAskPrices,
 }: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartStateRef = useRef<LiveChartState | null>(null);
@@ -191,6 +208,12 @@ export function LiveTradeChart({
   const lastVolumeSpikeBarRef = useRef<number | null>(null);
   const volumeSpikeFlashGenRef = useRef(0);
   const hoverMxRef = useRef<number | null>(null);
+  const [hoverOb, setHoverOb] = useState<{
+    x: number;
+    y: number;
+    ob: CandleObSnapshot;
+  } | null>(null);
+  const hoverObPopupRef = useRef<HTMLDivElement>(null);
   const drawRafRef = useRef<number | null>(null);
 
   const scheduleDraw = useCallback((drawFn: () => void) => {
@@ -244,7 +267,9 @@ export function LiveTradeChart({
         const v = parseFloat(k[5] as string) || 0;
         const hi = Math.max(o, h, l, c);
         const lo = Math.min(o, h, l, c);
-        map.set(openTime, { time: openTime, o, h: hi, l: lo, c, v });
+        const prev = map.get(openTime);
+        const ob = parseCandleOb(k[12]) ?? prev?.ob;
+        map.set(openTime, { time: openTime, o, h: hi, l: lo, c, v, ob });
       }
       pruneCandleMap(map, st, et, candleMs * 2);
     };
@@ -347,7 +372,9 @@ export function LiveTradeChart({
             const v = parseFloat(String(k.v)) || 0;
             const hi = Math.max(o, h, l, c);
             const lo = Math.min(o, h, l, c);
-            candleMapRef.current.set(openTime, { time: openTime, o, h: hi, l: lo, c, v });
+            const prev = candleMapRef.current.get(openTime);
+            const ob = parseCandleOb(k.ob) ?? prev?.ob;
+            candleMapRef.current.set(openTime, { time: openTime, o, h: hi, l: lo, c, v, ob });
             pruneCandleMap(candleMapRef.current, st, et, candleMs * 2);
           };
 
@@ -676,6 +703,10 @@ export function LiveTradeChart({
     /** Time labels sit below chartBot in bottom band (drawn last for z-order) */
     const timeLabelY = chartBot + gapZeroAboveTimeLabels;
 
+    if (obHeatmap) {
+      drawObHeatmapColumns(ctx, candles, { chartTop, chartBot, candleMs, toX, toY });
+    }
+
     // Candle widths — before volume (volume drawn behind candles)
     const candleW = Math.max(2, Math.min(12, ((chartRight - chartLeft) / Math.max(totalCandles, 1)) * 0.7));
 
@@ -904,7 +935,7 @@ export function LiveTradeChart({
     };
     baseImageRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
     if (hoverMxRef.current != null) paintChartHover(hoverMxRef.current);
-  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval, outcomeToggle?.value, paintChartHover]);
+  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval, outcomeToggle?.value, paintChartHover, obHeatmap]);
 
   const handleMouseMove = useCallback((e: ReactMouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -912,10 +943,34 @@ export function LiveTradeChart({
     const mx = e.clientX - rect.left;
     hoverMxRef.current = mx;
     paintChartHover(mx);
-  }, [paintChartHover]);
+
+    if (!candleObHover) {
+      setHoverOb(null);
+      return;
+    }
+    const s = chartStateRef.current;
+    if (!s || mx < s.chartLeft || mx > s.W) {
+      setHoverOb(null);
+      return;
+    }
+    const nearest = pickHoverCandle(s, mx);
+    if (!nearest?.ob) {
+      setHoverOb(null);
+      return;
+    }
+    if (nearest.ob.bids.length === 0 && nearest.ob.asks.length === 0) {
+      setHoverOb(null);
+      return;
+    }
+    const popupWidth = 320;
+    const x = Math.min(e.clientX + 10, window.innerWidth - popupWidth - 10);
+    const y = Math.max(10, e.clientY - 100);
+    setHoverOb({ x, y, ob: nearest.ob });
+  }, [paintChartHover, pickHoverCandle, candleObHover]);
 
   const handleMouseLeave = useCallback(() => {
     hoverMxRef.current = null;
+    setHoverOb(null);
     paintChartHover(null);
   }, [paintChartHover]);
 
@@ -929,7 +984,20 @@ export function LiveTradeChart({
   useEffect(() => {
     lastVolumeSpikeBarRef.current = null;
     setVolumeSpikeFlashSide(null);
+    setHoverOb(null);
   }, [tokenId, interval]);
+
+  useEffect(() => {
+    if (!hoverOb || !hoverObPopupRef.current) return;
+    requestAnimationFrame(() => {
+      const el = hoverObPopupRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom > window.innerHeight - 10) {
+        el.style.top = Math.max(10, window.innerHeight - rect.height - 10) + 'px';
+      }
+    });
+  }, [hoverOb]);
 
   useEffect(() => {
     if (!volumeSpikeAlerts || !ready || !tokenId) return;
@@ -1106,6 +1174,35 @@ export function LiveTradeChart({
             title={`Volume spike — ${volumeSpikeFlashSide === 'BUY' ? 'buy' : 'sell'} (≥5× prior average)`}
             aria-hidden
           />
+        ) : null}
+        {hoverOb && candleObHover ? (
+          <div
+            ref={hoverObPopupRef}
+            className="fixed z-[10020] bg-gray-900/95 border border-gray-600 rounded-lg shadow-xl p-2 pointer-events-none"
+            style={{
+              left: hoverOb.x,
+              top: hoverOb.y,
+              width: 320,
+              maxHeight: '80vh',
+              overflowY: 'auto',
+            }}
+          >
+            {(() => {
+              const step = readSavedObAggStep();
+              const { displayBids, displayAsks, orderbookBookImbalance } = prepareCandleObDisplay(hoverOb.ob, step);
+              return (
+                <SidebarOrderbookBookGrid
+                  displayBids={displayBids}
+                  displayAsks={displayAsks}
+                  obAggStep={step}
+                  orderbookBookImbalance={orderbookBookImbalance}
+                  sidebarUserBidPrices={sidebarUserBidPrices ?? EMPTY_PRICE_SET}
+                  sidebarUserAskPrices={sidebarUserAskPrices ?? EMPTY_PRICE_SET}
+                  readOnly
+                />
+              );
+            })()}
+          </div>
         ) : null}
       </div>
     </div>

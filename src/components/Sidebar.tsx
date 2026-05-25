@@ -4112,6 +4112,8 @@ export function Sidebar() {
             chartOutcomeSync={chartOutcomeSync}
             onChartOutcomeSyncChange={setChartOutcomeSync}
             marketLookup={marketLookup}
+            sidebarUserBidPrices={sidebarUserBidPrices}
+            sidebarUserAskPrices={sidebarUserAskPrices}
           />
 
 

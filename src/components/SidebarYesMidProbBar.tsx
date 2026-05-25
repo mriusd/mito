@@ -62,7 +62,7 @@ export const SidebarYesMidProbBar = memo(function SidebarYesMidProbBar({
           <span className="text-gray-500">YES mid</span>{' '}
           {yMidOk != null ? (
             <span
-              className={`font-semibold ${
+              className={`font-semibold sidebar-readable-value ${
                 delta != null ? (delta > 0.4 ? 'text-emerald-400' : delta < -0.4 ? 'text-red-400' : 'text-gray-200') : 'text-white'
               }`}
             >
@@ -72,7 +72,7 @@ export const SidebarYesMidProbBar = memo(function SidebarYesMidProbBar({
             <span className="text-gray-600">–</span>
           )}
           <span className="text-gray-600 mx-0.5">/</span>
-          <span className="text-gray-400">{m != null ? `${m.toFixed(1)} math` : '– math'}</span>
+          <span className="text-gray-400 sidebar-readable-value">{m != null ? `${m.toFixed(1)} math` : '– math'}</span>
         </span>
       </div>
       <div className="relative h-[7px] w-full rounded-full overflow-hidden bg-gray-900 ring-1 ring-gray-700/80">

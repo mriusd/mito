@@ -321,7 +321,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
         </div>
 
         <div className="flex items-center justify-start min-h-[16px] min-w-0">
-          <span className="inline-flex min-h-[16px] items-center text-[11px] font-bold tabular-nums text-white truncate max-w-full">
+          <span className="inline-flex min-h-[16px] items-center text-[11px] font-bold tabular-nums text-white truncate max-w-full sidebar-readable-value">
             {row.targetDisplay}
           </span>
         </div>
@@ -343,7 +343,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
         <div className="flex items-center justify-end min-h-[16px] min-w-0">
           <span
             ref={currentPriceRef}
-            className="text-[11px] font-bold tabular-nums text-white truncate max-w-full whitespace-nowrap"
+            className="text-[11px] font-bold tabular-nums text-white truncate max-w-full whitespace-nowrap sidebar-readable-value"
           >
             {row.currentPrice
               ? `$${row.currentPrice.toLocaleString(undefined, { minimumFractionDigits: row.priceDec, maximumFractionDigits: row.priceDec })}`
@@ -382,7 +382,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
         <div className="flex items-center justify-end min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
           {row.diff && row.currentPrice > 0 ? (
             <span
-              className={`inline-flex min-h-[15px] items-center whitespace-nowrap gap-0.5 ${row.diff.isUp ? 'text-green-400' : 'text-red-400'}`}
+              className={`inline-flex min-h-[15px] items-center whitespace-nowrap gap-0.5 sidebar-readable-value ${row.diff.isUp ? 'text-green-400' : 'text-red-400'}`}
             >
               <span>
                 {row.diff.isUp ? '↑' : '↓'}

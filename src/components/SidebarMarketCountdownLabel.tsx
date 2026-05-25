@@ -24,7 +24,7 @@ export const SidebarMarketCountdownLabel = memo(function SidebarMarketCountdownL
   return (
     <>
       <span
-        className={`shrink-0 ${text === 'Expired' ? 'text-red-400' : remaining < 60000 ? 'text-red-400' : remaining > 300000 ? 'text-green-400' : 'text-yellow-400'}`}
+        className={`shrink-0 sidebar-readable-value ${text === 'Expired' ? 'text-red-400' : remaining < 60000 ? 'text-red-400' : remaining > 300000 ? 'text-green-400' : 'text-yellow-400'}`}
       >
         {text}
       </span>

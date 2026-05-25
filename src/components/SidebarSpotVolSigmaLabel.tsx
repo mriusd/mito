@@ -30,8 +30,8 @@ export const SidebarSpotVolSigmaLabel = memo(function SidebarSpotVolSigmaLabel({
           sidebarChartAnnualVolPct == null
             ? 'text-gray-600'
             : notifyMaxVolatilityPct > 0 && sidebarChartAnnualVolPct > notifyMaxVolatilityPct
-              ? 'text-red-400'
-              : 'text-amber-200/95'
+              ? 'text-red-400 sidebar-readable-value'
+              : 'text-amber-200/95 sidebar-readable-value'
         }
       >
         {sidebarChartAnnualVolPct != null ? `σ ${sidebarChartAnnualVolPct.toFixed(1)}%` : 'σ —'}

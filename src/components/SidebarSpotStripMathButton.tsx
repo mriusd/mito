@@ -15,7 +15,7 @@ export const SidebarSpotStripMathButton = memo(function SidebarSpotStripMathButt
   return (
     <button
       type="button"
-      className="inline-flex max-w-full items-center justify-center gap-0.5 whitespace-nowrap rounded-none border-0 bg-transparent p-0 text-[11px] font-bold font-sans tabular-nums shadow-none outline-none ring-0 cursor-pointer hover:underline focus-visible:ring-1 focus-visible:ring-amber-500/60"
+      className="inline-flex max-w-full items-center justify-center gap-0.5 whitespace-nowrap rounded-none border-0 bg-transparent p-0 text-[11px] font-bold font-sans tabular-nums shadow-none outline-none ring-0 cursor-pointer hover:underline focus-visible:ring-1 focus-visible:ring-amber-500/60 sidebar-readable-value"
       style={{ color: CHART_MATH_PROB_COLOR }}
       onClick={() => onPickPrice(mathCents.toFixed(1))}
     >

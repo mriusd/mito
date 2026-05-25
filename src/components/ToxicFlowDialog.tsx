@@ -103,6 +103,8 @@ import {
   persistToxicFlowRowActionsTipDismissed,
   readToxicFlowRowActionsTipDismissed,
 } from '../lib/toxicFlowRowActionsTip';
+import { useSidebarToxicFlowData } from '../lib/sidebarToxicFlowStore';
+import { useSidebarToxicFlowTabViews } from '../lib/sidebarToxicFlowTabViews';
 import { exportWalletMarketsCsv } from '../lib/walletInfoCsvExport';
 import { fetchPolymarketNickname } from '../api/polymarket';
 import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
@@ -1561,6 +1563,212 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   return true;
 });
 
+const ToxicFlowDialogEmbeddedHoldersBody = memo(function ToxicFlowDialogEmbeddedHoldersBody({
+  yesTokenId,
+  noTokenId,
+  marketId,
+  open,
+  marketExpired = false,
+  layoutMode,
+  tab,
+  tabBottom,
+  tabThird,
+  setTabWithDismiss,
+  setTabBottomWithDismiss,
+  setTabThirdWithDismiss,
+  openWalletDialog,
+  layoutSwitch,
+  toxicFollowSet,
+  toxicXSet,
+  tiltWhaleAmountUsd,
+}: {
+  yesTokenId: string;
+  noTokenId?: string;
+  marketId: string;
+  open: boolean;
+  marketExpired?: boolean;
+  layoutMode: ToxicFlowLayoutMode;
+  tab: Tab;
+  tabBottom: Tab;
+  tabThird: Tab;
+  setTabWithDismiss: (tab: Tab) => void;
+  setTabBottomWithDismiss: (tab: Tab) => void;
+  setTabThirdWithDismiss: (tab: Tab) => void;
+  openWalletDialog: (wallet: string, netShares?: number) => void;
+  layoutSwitch: ReactNode;
+  toxicFollowSet: ReadonlySet<string>;
+  toxicXSet: ReadonlySet<string>;
+  tiltWhaleAmountUsd: number;
+}) {
+  const yesTok = yesTokenId.trim();
+  const midTrim = marketId.trim();
+  const data = useSidebarToxicFlowData();
+  const loading = Boolean(open && midTrim && data === null);
+  const tabWalletViews = useSidebarToxicFlowTabViews(toxicFollowSet, tiltWhaleAmountUsd, toxicXSet);
+
+  const tabsBarRef = useRef<HTMLDivElement>(null);
+  const [tabsTipOpen, setTabsTipOpen] = useState(false);
+  const dismissTabsTip = useCallback(() => {
+    persistToxicFlowTabsTipDismissed();
+    setTabsTipOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setTabsTipOpen(false);
+      return;
+    }
+    if (readToxicFlowTabsTipDismissed()) {
+      setTabsTipOpen(false);
+      return;
+    }
+    if (loading || !tabWalletViews) {
+      setTabsTipOpen(false);
+      return;
+    }
+    setTabsTipOpen(true);
+  }, [open, loading, tabWalletViews]);
+
+  const rowActionsAnchorRef = useRef<HTMLTableCellElement>(null);
+  const [rowActionsTipOpen, setRowActionsTipOpen] = useState(false);
+  const dismissRowActionsTip = useCallback(() => {
+    persistToxicFlowRowActionsTipDismissed();
+    setRowActionsTipOpen(false);
+  }, []);
+
+  const primaryTabWalletCount = useMemo(() => {
+    if (!tabWalletViews) return 0;
+    return toxicFlowWalletsForTab(tabWalletViews, tab).wallets.length;
+  }, [tabWalletViews, tab]);
+
+  useEffect(() => {
+    if (!open) {
+      setRowActionsTipOpen(false);
+      return;
+    }
+    if (readToxicFlowRowActionsTipDismissed()) {
+      setRowActionsTipOpen(false);
+      return;
+    }
+    if (!readToxicFlowTabsTipDismissed() || tabsTipOpen) {
+      setRowActionsTipOpen(false);
+      return;
+    }
+    if (loading || primaryTabWalletCount === 0) {
+      setRowActionsTipOpen(false);
+      return;
+    }
+    setRowActionsTipOpen(true);
+  }, [open, loading, tabsTipOpen, primaryTabWalletCount]);
+
+  return (
+    <>
+      {loading && <div className="text-gray-500 text-center py-8 shrink-0">Loading on-chain data...</div>}
+
+      {!loading && data && (
+        <>
+          <div className="shrink-0 grid grid-cols-6 gap-1.5 min-w-0 w-full mb-2">
+            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+              <div className="text-[10px] text-gray-500 truncate">Wallets</div>
+              <div className="text-sm font-bold text-white tabular-nums" title={String(data.totalWallets)}>
+                {formatThousandsAsK(data.totalWallets)}
+              </div>
+            </div>
+            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+              <div className="text-[10px] text-gray-500 truncate">On-chain Fills</div>
+              <div className="text-sm font-bold text-white tabular-nums" title={String(data.totalTrades)}>
+                {formatThousandsAsK(data.totalTrades)}
+              </div>
+            </div>
+            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+              <div className="text-[10px] text-gray-500 truncate">USDC Volume</div>
+              <div
+                className="text-sm font-bold text-yellow-400 tabular-nums truncate"
+                title={`$${data.totalUsdcIn.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              >
+                ${formatPolymarketVolumeK(data.totalUsdcIn)}
+              </div>
+            </div>
+            <ToxicFlowStakedStatCell yesTokenId={yesTok} marketId={midTrim} open={open} />
+            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+              <div className="text-[10px] text-gray-500 truncate">Concentration</div>
+              <div className={`text-sm font-bold ${data.concentration > 0.5 ? 'text-red-400' : data.concentration > 0.3 ? 'text-yellow-400' : 'text-green-400'}`}>
+                {(data.concentration * 100).toFixed(0)}%
+              </div>
+            </div>
+            <div className="bg-gray-900 rounded p-1.5 text-center min-w-0">
+              <div className="text-[10px] text-gray-500 truncate">Total Shares</div>
+              <div
+                className="text-sm font-bold text-gray-200 tabular-nums truncate"
+                title={String(Math.floor(data.totalShares || 0))}
+              >
+                {formatThousandsAsK(Math.floor(data.totalShares || 0))}
+              </div>
+            </div>
+          </div>
+
+          {data.totalWallets === 0 && (
+            <div className="rounded p-3 bg-gray-900 space-y-1.5 text-[10px] text-gray-500">
+              {data.polygonWssConfigured === false && (
+                <p className="text-amber-400/95">
+                  On-chain collection is off: polycandles needs <span className="font-mono">POLYGON_WSS_URL</span> (Polygon JSON-RPC WebSocket). Check server logs and{' '}
+                  <span className="font-mono">/api/onchain-status</span>.
+                </p>
+              )}
+              {data.polygonWssConfigured === true && (data.orderFilledEventsProcessed ?? 0) === 0 && (
+                <p>
+                  Polygon WSS is configured but no <span className="font-mono">OrderFilled</span> events have been processed yet — verify the endpoint, subscription, and that trading is happening on tracked contracts.
+                </p>
+              )}
+              {data.polygonWssConfigured === true &&
+                (data.orderFilledEventsProcessed ?? 0) > 0 &&
+                (data.walletMarketTradesForMarket ?? 0) === 0 && (
+                <p>
+                  Events are ingesting globally, but no ledger trades are linked to this market in <span className="font-mono">wallet_fill_ledger</span> yet. Wait for the next Gamma sync (token map refreshes after each refresh), or confirm this market&apos;s CLOB token IDs are in the DB.
+                </p>
+              )}
+              {(data.walletMarketTradesForMarket ?? 0) > 0 && (
+                <p className="text-gray-400">
+                  {data.walletMarketTradesForMarket} trade(s) rolled up for this market; wallet rollups only appear after fills are matched to token IDs. If tables stay empty, check <span className="font-mono">wallet_market_positions</span> and server logs.
+                </p>
+              )}
+              <p>
+                Holders aggregates <span className="font-mono">wallet_market_positions</span> (ledger) for this market (not the CLOB orderbook). Data persists across restarts and backfills missed blocks automatically.
+              </p>
+            </div>
+          )}
+
+          {tabWalletViews ? (
+            <ToxicFlowDialogTableStack
+              yesTokenId={yesTok}
+              noTokenId={noTokenId}
+              marketId={midTrim}
+              open={open}
+              marketExpired={marketExpired}
+              tabWalletViews={tabWalletViews}
+              layoutMode={layoutMode}
+              tab={tab}
+              tabBottom={tabBottom}
+              tabThird={tabThird}
+              setTab={setTabWithDismiss}
+              setTabBottom={setTabBottomWithDismiss}
+              setTabThird={setTabThirdWithDismiss}
+              openWalletDialog={openWalletDialog}
+              layoutSwitch={layoutSwitch}
+              tabsTipOpen={tabsTipOpen}
+              onDismissTabsTip={dismissTabsTip}
+              tabsBarRef={tabsBarRef}
+              rowActionsTipOpen={rowActionsTipOpen}
+              onDismissRowActionsTip={dismissRowActionsTip}
+              rowActionsAnchorRef={rowActionsAnchorRef}
+            />
+          ) : null}
+        </>
+      )}
+    </>
+  );
+});
+
 const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   open,
   marketId,
@@ -1570,8 +1778,8 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   marketExpired = false,
   onClose,
   embedded = false,
-  streamData = undefined,
-  streamTabWalletViews = undefined,
+  streamData: _streamData = undefined,
+  streamTabWalletViews: _streamTabWalletViews = undefined,
   onRefreshStream: _onRefreshStream,
   streamRefreshing: _streamRefreshing = false,
   onInlineWalletExtraWidthChange,
@@ -1581,11 +1789,9 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   const internalDataRef = useRef<ToxicFlowData | null>(null);
   const [internalLoading, setInternalLoading] = useState(false);
   const [internalError, setInternalError] = useState('');
-  const data = embedded ? (streamData ?? null) : internalData;
+  const data = embedded ? null : internalData;
   const midTrim = (marketId || '').trim();
-  const loading = embedded
-    ? Boolean(open && midTrim && streamData === null)
-    : internalLoading;
+  const loading = embedded ? false : internalLoading;
   const error = embedded ? '' : internalError;
   const [layoutMode, setLayoutMode] = useState<ToxicFlowLayoutMode>(() => readToxicFlowLayoutMode());
   const onLayoutModeChange = useCallback((mode: ToxicFlowLayoutMode) => {
@@ -1783,8 +1989,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     () => (data ? buildToxicFlowTabWalletViews(data, toxicFollowSet, tiltWhaleAmountUsd, toxicXSet) : null),
     [data, toxicFollowSet, tiltWhaleAmountUsd, toxicXSet],
   );
-  const tabWalletViews =
-    embedded && streamTabWalletViews !== undefined ? streamTabWalletViews : tabWalletViewsBuilt;
+  const tabWalletViews = embedded ? null : tabWalletViewsBuilt;
 
   const tabsBarRef = useRef<HTMLDivElement>(null);
   const [tabsTipOpen, setTabsTipOpen] = useState(false);
@@ -1794,7 +1999,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   }, []);
 
   useEffect(() => {
-    if (!embedded || !open) {
+    if (embedded || !open) {
       setTabsTipOpen(false);
       return;
     }
@@ -1844,7 +2049,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   }, [tabWalletViews, tab]);
 
   useEffect(() => {
-    if (!embedded || !open) {
+    if (embedded || !open) {
       setRowActionsTipOpen(false);
       return;
     }
@@ -2098,14 +2303,62 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
           >
             <div className="flex flex-col min-h-0 min-w-0 overflow-hidden">
               {holdersHeader}
-              <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">{holdersBody}</div>
+              <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                {embedded ? (
+                  <ToxicFlowDialogEmbeddedHoldersBody
+                    yesTokenId={yesTok}
+                    noTokenId={noTokenId}
+                    marketId={midTrim}
+                    open={open}
+                    marketExpired={marketExpired}
+                    layoutMode={layoutMode}
+                    tab={tab}
+                    tabBottom={tabBottom}
+                    tabThird={tabThird}
+                    setTabWithDismiss={setTabWithDismiss}
+                    setTabBottomWithDismiss={setTabBottomWithDismiss}
+                    setTabThirdWithDismiss={setTabThirdWithDismiss}
+                    openWalletDialog={openWalletDialog}
+                    layoutSwitch={layoutSwitch}
+                    toxicFollowSet={toxicFollowSet}
+                    toxicXSet={toxicXSet}
+                    tiltWhaleAmountUsd={tiltWhaleAmountUsd}
+                  />
+                ) : (
+                  holdersBody
+                )}
+              </div>
             </div>
             {inlineWalletPanel}
           </div>
         ) : (
           <>
             {holdersHeader}
-            <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">{holdersBody}</div>
+            <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+              {embedded ? (
+                <ToxicFlowDialogEmbeddedHoldersBody
+                  yesTokenId={yesTok}
+                  noTokenId={noTokenId}
+                  marketId={midTrim}
+                  open={open}
+                  marketExpired={marketExpired}
+                  layoutMode={layoutMode}
+                  tab={tab}
+                  tabBottom={tabBottom}
+                  tabThird={tabThird}
+                  setTabWithDismiss={setTabWithDismiss}
+                  setTabBottomWithDismiss={setTabBottomWithDismiss}
+                  setTabThirdWithDismiss={setTabThirdWithDismiss}
+                  openWalletDialog={openWalletDialog}
+                  layoutSwitch={layoutSwitch}
+                  toxicFollowSet={toxicFollowSet}
+                  toxicXSet={toxicXSet}
+                  tiltWhaleAmountUsd={tiltWhaleAmountUsd}
+                />
+              ) : (
+                holdersBody
+              )}
+            </div>
           </>
         )}
         {showInlineWalletModal ? (
@@ -2129,17 +2382,14 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     a.marketId !== b.marketId ||
     a.marketName !== b.marketName ||
     a.yesTokenId !== b.yesTokenId ||
+    a.noTokenId !== b.noTokenId ||
+    a.marketExpired !== b.marketExpired ||
     a.onClose !== b.onClose ||
     a.streamRefreshing !== b.streamRefreshing ||
     a.onRefreshStream !== b.onRefreshStream ||
-    a.onInlineWalletExtraWidthChange !== b.onInlineWalletExtraWidthChange ||
-    a.streamTabWalletViews !== b.streamTabWalletViews
+    a.onInlineWalletExtraWidthChange !== b.onInlineWalletExtraWidthChange
   ) {
     return false;
   }
-  const sa = a.streamData;
-  const sb = b.streamData;
-  if (sa === sb) return true;
-  if (sa == null || sb == null) return sa === sb;
-  return toxicFlowPayloadEqual(sa, sb);
+  return true;
 });

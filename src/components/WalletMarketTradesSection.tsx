@@ -9,8 +9,7 @@ import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 import { walletInfoChartMarketWithOutcomeTokens } from '../lib/walletInfoChartMarket';
 import { toxicFlowFillKey } from '../lib/tradeKeys';
 import { MarketViewTradesWalletBar } from './MarketViewTradesWalletBar';
-import { useTradeElapsedTick } from '../hooks/useTradeElapsedTick';
-import { MemoWalletTradeTimeCell } from './WalletTradeTimeCell';
+import { LiveWalletTradeTimeCell } from './WalletTradeTimeCell';
 import type { WalletPosition } from '../api';
 
 function fmtUsd2En(absVal: number): string {
@@ -59,7 +58,6 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
     tokenIdNo: string;
   } | null>(null);
   const [chartOutcome, setChartOutcome] = useState<'YES' | 'NO'>('YES');
-  const tradeElapsedTick = useTradeElapsedTick(enabled);
 
   const scopedClobTokenIds = useMemo((): string[] | null => {
     const y = chartOutcomeTokens?.tokenIdYes?.trim();
@@ -156,9 +154,6 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
               </tr>
             ) : (
               fills.map((f) => {
-                const ts = (
-                  <MemoWalletTradeTimeCell blockTime={f.blockTime} nowMs={tradeElapsedTick} />
-                );
                 const sz = Number(f.size);
                 const pr = f.price;
                 const priceFinite = Number.isFinite(pr);
@@ -197,7 +192,9 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
                     key={toxicFlowFillKey(tx, f.logIndex, String(f.tokenId || ''))}
                     className="border-b border-gray-800"
                   >
-                    <td className="py-0.5">{ts}</td>
+                    <td className="py-0.5">
+                      <LiveWalletTradeTimeCell blockTime={f.blockTime} />
+                    </td>
                     <td className={actionCls}>{action || '—'}</td>
                     <td className={sideCls}>{sideLabel}</td>
                     <td className="text-center text-amber-300 font-bold tabular-nums px-0">

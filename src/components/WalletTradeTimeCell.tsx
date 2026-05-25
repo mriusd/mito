@@ -6,6 +6,7 @@ import {
   tradeElapsedAgeSec,
   tradeElapsedColorClass,
 } from '../utils/format';
+import { useWalletTradeElapsedMs } from '../lib/walletTradeElapsedStore';
 
 export function WalletTradeTimeCell({
   blockTime,
@@ -29,3 +30,13 @@ export function WalletTradeTimeCell({
 }
 
 export const MemoWalletTradeTimeCell = memo(WalletTradeTimeCell);
+
+/** Subscribes shared 5s elapsed tick — parent table stays idle. */
+export const LiveWalletTradeTimeCell = memo(function LiveWalletTradeTimeCell({
+  blockTime,
+}: {
+  blockTime: number;
+}) {
+  const nowMs = useWalletTradeElapsedMs();
+  return <WalletTradeTimeCell blockTime={blockTime} nowMs={nowMs} />;
+});

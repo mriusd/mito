@@ -1,0 +1,65 @@
+export type CandleBsEnrichment = {
+  targetPrice?: number;
+  currentPrice?: number;
+  volatility?: number;
+  bsProb?: number;
+};
+
+function parseEnrichmentNum(v: unknown): number | undefined {
+  if (v == null || v === '') return undefined;
+  const n = typeof v === 'number' ? v : parseFloat(String(v));
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return n;
+}
+
+export function parseCandleBsEnrichment(raw: {
+  target_price?: unknown;
+  current_price?: unknown;
+  volatility?: unknown;
+  bs_prob?: unknown;
+}): CandleBsEnrichment | undefined {
+  const targetPrice = parseEnrichmentNum(raw.target_price);
+  const currentPrice = parseEnrichmentNum(raw.current_price);
+  const volatility = parseEnrichmentNum(raw.volatility);
+  const bsProb = parseEnrichmentNum(raw.bs_prob);
+  if (targetPrice == null && currentPrice == null && volatility == null && bsProb == null) {
+    return undefined;
+  }
+  return { targetPrice, currentPrice, volatility, bsProb };
+}
+
+export function parseHttpKlineEnrichment(k: unknown[]): CandleBsEnrichment | undefined {
+  return parseCandleBsEnrichment({
+    target_price: k[13],
+    current_price: k[14],
+    volatility: k[15],
+    bs_prob: k[16],
+  });
+}
+
+export function mergeCandleBsEnrichment(
+  next: CandleBsEnrichment | undefined,
+  prev: CandleBsEnrichment | undefined,
+): CandleBsEnrichment | undefined {
+  if (!next && !prev) return undefined;
+  return {
+    targetPrice: next?.targetPrice ?? prev?.targetPrice,
+    currentPrice: next?.currentPrice ?? prev?.currentPrice,
+    volatility: next?.volatility ?? prev?.volatility,
+    bsProb: next?.bsProb ?? prev?.bsProb,
+  };
+}
+
+export function formatChartEnrichmentUsd(n: number | undefined, priceDec: number): string {
+  if (n == null || !Number.isFinite(n) || n <= 0) return '—';
+  return `$${n.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}`;
+}
+
+export function chartEnrichmentMathCents(
+  bsProb: number | undefined,
+  chartOutcome: 'YES' | 'NO',
+): number | null {
+  if (bsProb == null || !Number.isFinite(bsProb) || bsProb <= 0) return null;
+  const yesCents = bsProb * 100;
+  return chartOutcome === 'YES' ? yesCents : 100 - yesCents;
+}

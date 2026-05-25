@@ -16,6 +16,14 @@ import { prepareCandleObDisplay } from '../lib/candleObDisplay';
 import { readSavedObAggStep } from '../lib/sidebarObAggStep';
 import { SidebarOrderbookBookGrid } from './SidebarOrderbookBookGrid';
 import { drawObHeatmapColumns } from '../lib/chartObHeatmap';
+import {
+  mergeCandleBsEnrichment,
+  parseCandleBsEnrichment,
+  parseHttpKlineEnrichment,
+  chartEnrichmentMathCents,
+  type CandleBsEnrichment,
+} from '../lib/chartCandleEnrichment';
+import { ChartObHoverEnrichmentStrip } from './ChartObHoverEnrichmentStrip';
 
 export type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 
@@ -41,6 +49,7 @@ interface Candle {
   c: number;
   v: number;
   ob?: CandleObSnapshot;
+  enrichment?: CandleBsEnrichment;
 }
 
 interface LiveChartState {
@@ -212,6 +221,7 @@ export function LiveTradeChart({
     x: number;
     y: number;
     ob: CandleObSnapshot;
+    enrichment?: CandleBsEnrichment;
   } | null>(null);
   const hoverObPopupRef = useRef<HTMLDivElement>(null);
   const drawRafRef = useRef<number | null>(null);
@@ -230,6 +240,7 @@ export function LiveTradeChart({
   }, []);
 
   const candleMs = INTERVAL_MS[interval] || 60000;
+  const enrichmentPriceDec = chainlinkAsset?.toUpperCase() === 'XRP' ? 4 : 2;
 
   // Reset candle map + fetch klines from Go backend + subscribe to WS (reconnect + tab visibility)
   useEffect(() => {
@@ -267,8 +278,19 @@ export function LiveTradeChart({
         const v = parseFloat(k[5] as string) || 0;
         const hi = Math.max(o, h, l, c);
         const lo = Math.min(o, h, l, c);
+        const prev = map.get(openTime);
         const ob = parseCandleOb(k[12]);
-        map.set(openTime, { time: openTime, o, h: hi, l: lo, c, v, ...(ob ? { ob } : {}) });
+        const enrichment = mergeCandleBsEnrichment(parseHttpKlineEnrichment(k), prev?.enrichment);
+        map.set(openTime, {
+          time: openTime,
+          o,
+          h: hi,
+          l: lo,
+          c,
+          v,
+          ...(ob ? { ob } : prev?.ob ? { ob: prev.ob } : {}),
+          ...(enrichment ? { enrichment } : {}),
+        });
       }
       pruneCandleMap(map, st, et, candleMs * 2);
     };
@@ -373,7 +395,17 @@ export function LiveTradeChart({
             const lo = Math.min(o, h, l, c);
             const prev = candleMapRef.current.get(openTime);
             const ob = parseCandleOb(k.ob) ?? prev?.ob;
-            candleMapRef.current.set(openTime, { time: openTime, o, h: hi, l: lo, c, v, ob });
+            const enrichment = mergeCandleBsEnrichment(parseCandleBsEnrichment(k), prev?.enrichment);
+            candleMapRef.current.set(openTime, {
+              time: openTime,
+              o,
+              h: hi,
+              l: lo,
+              c,
+              v,
+              ...(ob ? { ob } : {}),
+              ...(enrichment ? { enrichment } : {}),
+            });
             pruneCandleMap(candleMapRef.current, st, et, candleMs * 2);
           };
 
@@ -752,6 +784,47 @@ export function LiveTradeChart({
       ctx.fillRect(cx - candleW / 2, bodyTop, candleW, bodyH);
     }
 
+    const chartOutcome = outcomeToggle?.value ?? 'YES';
+    const mathLineColor = '#67e8f9';
+    const mathPoints: { cx: number; cy: number; cents: number }[] = [];
+    for (const c of candles) {
+      if (c.time < minT - candleMs || c.time > maxT + candleMs) continue;
+      const cents = chartEnrichmentMathCents(c.enrichment?.bsProb, chartOutcome);
+      if (cents == null) continue;
+      mathPoints.push({
+        cx: toX(c.time + candleMs / 2),
+        cy: toY(cents),
+        cents,
+      });
+    }
+    if (mathPoints.length === 1) {
+      const p = mathPoints[0];
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, 2, 0, Math.PI * 2);
+      ctx.fillStyle = mathLineColor;
+      ctx.fill();
+    } else if (mathPoints.length > 1) {
+      ctx.beginPath();
+      ctx.strokeStyle = mathLineColor;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.moveTo(mathPoints[0].cx, mathPoints[0].cy);
+      for (let i = 1; i < mathPoints.length; i++) {
+        ctx.lineTo(mathPoints[i].cx, mathPoints[i].cy);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (mathPoints.length > 0) {
+      const last = mathPoints[mathPoints.length - 1];
+      const labelY = Math.max(chartTop + 8, Math.min(chartBot - 8, last.cy));
+      ctx.fillStyle = mathLineColor;
+      ctx.font = 'bold 8px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`M ${last.cents.toFixed(1)}¢`, chartLeft + 2, labelY - 8);
+    }
+
     if (!hideTrades && tradeMarkers && tradeMarkers.length > 0) {
       const candleForTime = (t: number): Candle | undefined => {
         for (let i = candles.length - 1; i >= 0; i--) {
@@ -964,7 +1037,7 @@ export function LiveTradeChart({
     const popupWidth = 320;
     const x = Math.min(e.clientX + 10, window.innerWidth - popupWidth - 10);
     const y = Math.max(10, e.clientY - 100);
-    setHoverOb({ x, y, ob: nearest.ob });
+    setHoverOb({ x, y, ob: nearest.ob, enrichment: nearest.enrichment });
   }, [paintChartHover, pickHoverCandle, candleObHover]);
 
   const handleMouseLeave = useCallback(() => {
@@ -1190,15 +1263,22 @@ export function LiveTradeChart({
               const step = readSavedObAggStep();
               const { displayBids, displayAsks, orderbookBookImbalance } = prepareCandleObDisplay(hoverOb.ob, step);
               return (
-                <SidebarOrderbookBookGrid
-                  displayBids={displayBids}
-                  displayAsks={displayAsks}
-                  obAggStep={step}
-                  orderbookBookImbalance={orderbookBookImbalance}
-                  sidebarUserBidPrices={sidebarUserBidPrices ?? EMPTY_PRICE_SET}
-                  sidebarUserAskPrices={sidebarUserAskPrices ?? EMPTY_PRICE_SET}
-                  readOnly
-                />
+                <>
+                  <ChartObHoverEnrichmentStrip
+                    enrichment={hoverOb.enrichment}
+                    priceDec={enrichmentPriceDec}
+                    chartOutcome={outcomeToggle?.value ?? 'YES'}
+                  />
+                  <SidebarOrderbookBookGrid
+                    displayBids={displayBids}
+                    displayAsks={displayAsks}
+                    obAggStep={step}
+                    orderbookBookImbalance={orderbookBookImbalance}
+                    sidebarUserBidPrices={sidebarUserBidPrices ?? EMPTY_PRICE_SET}
+                    sidebarUserAskPrices={sidebarUserAskPrices ?? EMPTY_PRICE_SET}
+                    readOnly
+                  />
+                </>
               );
             })()}
           </div>

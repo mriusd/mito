@@ -1,0 +1,52 @@
+import {
+  chartEnrichmentMathCents,
+  formatChartEnrichmentUsd,
+  type CandleBsEnrichment,
+} from '../lib/chartCandleEnrichment';
+
+export type ChartObHoverEnrichmentStripProps = {
+  enrichment?: CandleBsEnrichment;
+  priceDec?: number;
+  chartOutcome?: 'YES' | 'NO';
+};
+
+export function ChartObHoverEnrichmentStrip({
+  enrichment,
+  priceDec = 2,
+  chartOutcome = 'YES',
+}: ChartObHoverEnrichmentStripProps) {
+  if (!enrichment) return null;
+  const { targetPrice, currentPrice, volatility, bsProb } = enrichment;
+  const mathCents = chartEnrichmentMathCents(bsProb, chartOutcome);
+  const hasAny =
+    (targetPrice != null && targetPrice > 0) ||
+    (currentPrice != null && currentPrice > 0) ||
+    (volatility != null && volatility > 0) ||
+    mathCents != null;
+  if (!hasAny) return null;
+
+  return (
+    <div className="mb-2 border-b border-gray-700/80 pb-2 px-0.5">
+      <div className="grid grid-cols-4 gap-x-1 mb-1 text-[9px] font-medium text-gray-500">
+        <span>Target</span>
+        <span className="text-center">Math</span>
+        <span className="text-center">σ</span>
+        <span className="text-right">Current</span>
+      </div>
+      <div className="grid grid-cols-4 gap-x-1 text-[10px] font-bold tabular-nums text-white">
+        <span className="truncate" title={formatChartEnrichmentUsd(targetPrice, priceDec)}>
+          {formatChartEnrichmentUsd(targetPrice, priceDec)}
+        </span>
+        <span className="text-center text-cyan-300" title="B-S fair value at candle">
+          {mathCents != null ? `${mathCents.toFixed(1)}¢` : '—'}
+        </span>
+        <span className="text-center text-gray-300" title="Annualized volatility">
+          {volatility != null && volatility > 0 ? `${(volatility * 100).toFixed(1)}%` : '—'}
+        </span>
+        <span className="text-right truncate" title={formatChartEnrichmentUsd(currentPrice, priceDec)}>
+          {formatChartEnrichmentUsd(currentPrice, priceDec)}
+        </span>
+      </div>
+    </div>
+  );
+}

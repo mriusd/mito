@@ -23,8 +23,6 @@ import { signingDialog, isDialogHidden } from './SigningDialog';
 import {
   extractAssetFromMarket,
   formatPolymarketVolumeK,
-  formatPriceShort,
-  getMarketPriceCondition,
   getOrderClobTokenId,
   getTokenOutcome,
   getTradeClobTokenId,
@@ -35,12 +33,10 @@ import {
   upDownMarketUsesChainlinkSpot,
   upDownTimeframeKeyFromMarket,
 } from '../utils/format';
-import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarkets } from '../utils/bsMath';
+import { isMarketInWeeklyHitMarkets } from '../utils/bsMath';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
-import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
-import { SidebarBarMidMarker } from './SidebarBarMidMarker';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
 import { useSidebarChartVolatility } from '../hooks/useSidebarChartVolatility';
 import { useThrottledBidAskMarketRow } from '../hooks/useThrottledBidAskMarketRow';
@@ -76,7 +72,6 @@ import {
   SIDEBAR_TRADE_SOUND_VOLUME_KEY,
 } from '../lib/tiltNotifySound';
 import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
-import { SidebarMarketCountdownLabel } from './SidebarMarketCountdownLabel';
 import {
   readNotifySoundMaxPriceCents,
   SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY,
@@ -101,8 +96,12 @@ import { SidebarChartsRow } from './SidebarChartsRow';
 import { SidebarPolymarketOBHost, type SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { SidebarOrderCostDisplay } from './SidebarOrderCostDisplay';
 import { SidebarMarketStatsCells, SidebarNotifyStakedGateSync } from './SidebarMarketStatsCells';
-import { SidebarSpotStripMathButton } from './SidebarSpotStripMathButton';
-import { useThrottledStorePrice } from '../hooks/useThrottledStorePrice';
+import {
+  getSidebarSpotStripBsSnapshot,
+} from '../lib/sidebarSpotStripStore';
+import { SidebarSpotStripSection } from './SidebarSpotStripSection';
+import { SidebarOrderBsMathButton } from './SidebarOrderBsMathButton';
+import { SidebarOrderReplaceBsButton } from './SidebarOrderReplaceBsButton';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import { SidebarOnchainTradesHost } from './SidebarOnchainTradesHost';
 import { SidebarOnchainGridPositionsSync } from './SidebarOnchainGridPositionsSync';
@@ -124,13 +123,10 @@ import { SidebarUpDownTargetHost } from './SidebarUpDownTargetHost';
 import { SidebarUpDownEndPicker } from './SidebarUpDownEndPicker';
 import { SidebarOrderHighlightHost } from './SidebarOrderHighlightHost';
 import {
-  useSidebarUpDownLiveSameTfMarket,
   useSidebarUpDownTargetPrice,
 } from '../lib/sidebarUpDownTargetStore';
-import { SidebarSpotVolSigmaLabel } from './SidebarSpotVolSigmaLabel';
 import { computeSidebarMyPositions } from '../lib/sidebarMyPositions';
 import { getSidebarOnchainTradesSnapshot } from '../lib/sidebarOnchainTradesStore';
-import { SidebarYesMidProbBar } from './SidebarYesMidProbBar';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 import { SidebarHoldersExpandTip } from './SidebarHoldersExpandTip';
 import { SidebarNotifyGearTip } from './SidebarNotifyGearTip';
@@ -683,30 +679,6 @@ function customOrderPriceLabel(spec: CustomSidebarOrderSpec): string {
     default:
       return `${spec.priceValue}¢`;
   }
-}
-
-const SIDEBAR_BS_MATH_BTN_CLASS =
-  'bg-yellow-900/55 hover:bg-yellow-800/65 text-amber-200 disabled:pointer-events-none disabled:opacity-40';
-
-function roundSidebarBsMathCents(cents: number | null | undefined): number | null {
-  if (cents == null || !Number.isFinite(cents)) return null;
-  const r = Math.round(cents);
-  if (r < 1 || r > 99) return null;
-  return r;
-}
-
-function sidebarBsMathCentsForOutcome(
-  yesMathCents: number | null | undefined,
-  outcome: string | null | undefined,
-): number | null {
-  if (yesMathCents == null || !Number.isFinite(yesMathCents)) return null;
-  if (outcome === 'YES') return roundSidebarBsMathCents(yesMathCents);
-  if (outcome === 'NO') return roundSidebarBsMathCents(100 - yesMathCents);
-  return null;
-}
-
-function sidebarBsMathButtonLabel(cents: number | null): string {
-  return cents == null ? '—' : `${cents}c`;
 }
 
 function resolveCustomOrderPriceCents(spec: CustomSidebarOrderSpec, mathProbCents: number | null): number | null {
@@ -1491,44 +1463,10 @@ export const Sidebar = memo(function Sidebar() {
   const yesTokenIdForSoundMute = selectedMarket?.clobTokenIds?.[0] || '';
   const noTokenIdForSoundMute = selectedMarket?.clobTokenIds?.[1] || '';
 
-  const volatilityData = useAppStore((s) => s.volatilityData);
-  const volMultiplier = useAppStore((s) => s.volMultiplier);
-  const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
-  const upDownTargetPrice = useSidebarUpDownTargetPrice();
-  const liveUpDownSameTfMarket = useSidebarUpDownLiveSameTfMarket();
-  const sidebarPriceSym = useMemo((): AssetSymbol | null => {
-    if (!selectedMarket) return null;
-    const asset = extractAssetFromMarket(selectedMarket);
-    return asset ? (`${asset.toUpperCase()}USDT` as AssetSymbol) : null;
-  }, [selectedMarket]);
-  const sidebarThrottledSpot = useThrottledStorePrice(sidebarPriceSym ?? 'BTCUSDT', 1000);
-
   const selectedMarketIsHit = useMemo(
     () => isMarketInWeeklyHitMarkets(selectedMarket?.id, weeklyHitMarkets),
     [selectedMarket?.id, weeklyHitMarkets],
   );
-
-  const _bsProbCents = useMemo(() => {
-    if (!selectedMarket) return 0;
-    const asset = extractAssetFromMarket(selectedMarket);
-    const strike = selectedMarket.groupItemTitle || '';
-    const endDate = selectedMarket.endDate || '';
-    if (!asset || !strike || !endDate) return 0;
-    const sym = (asset + 'USDT') as AssetSymbol;
-    const vwapPrice = sidebarPriceSym === sym ? (useAppStore.getState().vwapData[sym]?.price || 0) : 0;
-    const livePrice = vwapPrice || (sidebarPriceSym === sym ? sidebarThrottledSpot : 0) || 0;
-    if (!livePrice) return 0;
-    const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
-    const cleaned = strike.replace(/^Hit\s*/i, '').replace(/[\$,]/g, '').replace(/↑/g, '>').replace(/↓/g, '<').trim();
-    const ps = (cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-')) ? cleaned : '>' + cleaned;
-    const probYes = selectedMarketIsHit
-      ? getHitMarketProbability(ps, livePrice, endDate, sigma, bsTimeOffsetHours)
-      : getMarketProbability(ps, livePrice, endDate, sigma, bsTimeOffsetHours);
-    if (probYes === null) return 0;
-    const prob = orderOutcome === 'YES' ? probYes : 1 - probYes;
-    return prob * 100;
-  }, [selectedMarket, orderOutcome, sidebarPriceSym, sidebarThrottledSpot, volatilityData, volMultiplier, bsTimeOffsetHours, selectedMarketIsHit]);
-
 
   // Up or Down market detection and state
   const isUpDownMarket = !!(selectedMarket?.question?.match(/up\s+or\s+down/i) || selectedMarket?.eventSlug?.match(/up-or-down|updown/i));
@@ -1539,8 +1477,6 @@ export const Sidebar = memo(function Sidebar() {
     setOrderExpiryUnit(slot.unit);
   }, [isUpDownMarket, selectedMarket?.id]);
 
-  const sidebarSpotCurrentPriceRef = useRef<HTMLDivElement>(null);
-  const prevPriceRef = useRef<number>(0);
   const [isMarketExpired, setIsMarketExpired] = useState(() => marketIsExpired(selectedMarket));
 
   useEffect(() => {
@@ -1602,7 +1538,8 @@ export const Sidebar = memo(function Sidebar() {
     if (combined.match(/up-or-down-on-/i) || combined.match(/\b24[- ]?h/i)) return '15m';
     return '5m';
   }, [isUpDownMarket, selectedMarket?.eventSlug, selectedMarket?.question]);
-  const polyPrice = usePolymarketPrice(upDownSpotUsesChainlink ? upDownAsset : null);
+
+  const upDownTargetPrice = useSidebarUpDownTargetPrice();
 
   // Compute market start time for Up or Down charts
   const upDownStartTime = useMemo(() => {
@@ -1619,162 +1556,6 @@ export const Sidebar = memo(function Sidebar() {
     else if (combined.match(/up-or-down-on-/i) || combined.match(/\b24[- ]?h/i)) intervalMs = 24 * 60 * 60 * 1000;
     return endMs - intervalMs;
   }, [isUpDownMarket, selectedMarket?.endDate, selectedMarket?.eventSlug, selectedMarket?.question]);
-
-  useEffect(() => {
-    prevPriceRef.current = 0;
-  }, [selectedMarket?.id]);
-
-  /** Target | Math | Current row below charts (Up/Down + all strike markets). */
-  const sidebarSpotStrip = useMemo(() => {
-    if (!selectedMarket?.endDate) return null;
-    const endDate = selectedMarket.endDate;
-    const asset = extractAssetFromMarket(selectedMarket);
-    if (!asset) return null;
-    const sym = (asset + 'USDT') as AssetSymbol;
-    const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
-    const priceDec = asset.toUpperCase() === 'XRP' ? 4 : 2;
-
-    const nowOffset = Date.now() + bsTimeOffsetHours * 3600000;
-    const expiryMs = new Date(endDate).getTime();
-    const pastExpiry = bsTimeOffsetHours > 0 && nowOffset >= expiryMs;
-
-    if (isUpDownMarket) {
-      const binanceSym = (asset.toUpperCase() + 'USDT') as AssetSymbol;
-      const chainlinkPrice =
-        upDownSpotUsesChainlink && polyPrice.price != null && polyPrice.price > 0 ? polyPrice.price : 0;
-      const binancePrice = sidebarPriceSym === binanceSym ? sidebarThrottledSpot : 0;
-      const currentPrice = upDownSpotUsesChainlink ? chainlinkPrice || binancePrice : binancePrice;
-      const currentSource: 'chainlink' | 'binance' =
-        upDownSpotUsesChainlink && chainlinkPrice > 0 ? 'chainlink' : 'binance';
-
-      let mathCents: number | null = null;
-      let yesMathCents: number | null = null;
-      if (!pastExpiry && upDownTargetPrice && currentPrice) {
-        const probUp = getMarketProbability('>' + upDownTargetPrice, currentPrice, endDate, sigma, bsTimeOffsetHours);
-        if (probUp !== null) {
-          yesMathCents = probUp * 100;
-          mathCents = (orderOutcome === 'YES' ? probUp : 1 - probUp) * 100;
-        }
-      }
-
-      const diff =
-        upDownTargetPrice && currentPrice
-          ? (() => {
-              const signedDelta = currentPrice - upDownTargetPrice;
-              return {
-                abs: Math.abs(signedDelta),
-                pct: (signedDelta / upDownTargetPrice) * 100,
-                isUp: signedDelta >= 0,
-              };
-            })()
-          : null;
-
-      return {
-        mode: 'updown' as const,
-        targetDisplay:
-          upDownTargetPrice != null
-            ? `$${upDownTargetPrice.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}`
-            : '...',
-        priceDec,
-        mathCents,
-        yesMathCents,
-        pastExpiry,
-        currentPrice,
-        currentSource,
-        diff,
-      };
-    }
-
-    const strikeRaw = (selectedMarket.groupItemTitle || '').trim();
-    if (!strikeRaw) return null;
-
-    const currentPrice = sidebarPriceSym === sym ? sidebarThrottledSpot : 0;
-    const currentSource = 'binance' as const;
-
-    const cleaned = strikeRaw.replace(/^Hit\s*/i, '').replace(/[\$,]/g, '').replace(/↑/g, '>').replace(/↓/g, '<').trim();
-    const ps = (cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-')) ? cleaned : '>' + cleaned;
-
-    const targetDisplay =
-      getMarketPriceCondition(
-        selectedMarket.question || selectedMarket.groupItemTitle,
-        selectedMarket.clobTokenIds?.[0],
-        marketLookup,
-      ) || formatPriceShort(ps, asset === 'ETH' ? 'ETH' : undefined);
-
-    let mathCents: number | null = null;
-    let yesMathCents: number | null = null;
-    if (!pastExpiry && currentPrice > 0) {
-      const probYes = selectedMarketIsHit
-        ? getHitMarketProbability(ps, currentPrice, endDate, sigma, bsTimeOffsetHours)
-        : getMarketProbability(ps, currentPrice, endDate, sigma, bsTimeOffsetHours);
-      if (probYes !== null) {
-        yesMathCents = probYes * 100;
-        mathCents = (orderOutcome === 'YES' ? probYes : 1 - probYes) * 100;
-      }
-    }
-
-    let diff: { abs: number; pct: number; isUp: boolean } | null = null;
-    if (currentPrice > 0 && !ps.includes('-')) {
-      let rest = ps.replace(/,/g, '');
-      if (rest.startsWith('>') || rest.startsWith('<')) rest = rest.slice(1);
-      let K: number;
-      if (rest.toLowerCase().endsWith('k')) {
-        const n = parseFloat(rest.slice(0, -1));
-        if (isNaN(n) || n <= 0) K = NaN;
-        else K = n * 1000;
-      } else {
-        K = parseFloat(rest);
-      }
-      if (!isNaN(K) && K > 0) {
-        const signedDelta = currentPrice - K;
-        diff = {
-          abs: Math.abs(signedDelta),
-          pct: (signedDelta / K) * 100,
-          isUp: signedDelta >= 0,
-        };
-      }
-    }
-
-    return {
-      mode: 'generic' as const,
-      targetDisplay,
-      priceDec,
-      mathCents,
-      yesMathCents,
-      pastExpiry,
-      currentPrice,
-      currentSource,
-      diff,
-      hitModel: selectedMarketIsHit,
-    };
-  }, [
-    selectedMarket,
-    marketLookup,
-    isUpDownMarket,
-    upDownTargetPrice,
-    upDownSpotUsesChainlink,
-    polyPrice.price,
-    sidebarPriceSym,
-    sidebarThrottledSpot,
-    volatilityData,
-    volMultiplier,
-    bsTimeOffsetHours,
-    orderOutcome,
-    selectedMarketIsHit,
-  ]);
-
-  useEffect(() => {
-    const p = sidebarSpotStrip?.currentPrice;
-    if (!p || p <= 0 || !sidebarSpotCurrentPriceRef.current) return;
-    const el = sidebarSpotCurrentPriceRef.current;
-    if (prevPriceRef.current && p !== prevPriceRef.current) {
-      const cls = p > prevPriceRef.current ? 'updown-flash-up' : 'updown-flash-down';
-      el.classList.remove('updown-flash-up', 'updown-flash-down');
-      void el.offsetWidth;
-      el.classList.add(cls);
-    }
-    prevPriceRef.current = p;
-  }, [sidebarSpotStrip?.currentPrice]);
 
   const setOrderPriceFromMath = useCallback((cents: string) => {
     setOrderPrice(cents);
@@ -2138,7 +1919,7 @@ export const Sidebar = memo(function Sidebar() {
       const resolvedOutcome: 'YES' | 'NO' = spec.outcome === 'AUTO' ? orderOutcome : spec.outcome;
       const priceCents = resolveBsAnchoredCustomOrderPriceCents(
         spec,
-        sidebarSpotStrip?.yesMathCents,
+        getSidebarSpotStripBsSnapshot()?.yesMathCents,
         resolvedOutcome,
       );
       if (priceCents == null) {
@@ -2366,11 +2147,6 @@ export const Sidebar = memo(function Sidebar() {
     }
     setEditingOrderId(null);
   };
-
-  const sidebarLimitBsCents = useMemo(
-    () => roundSidebarBsMathCents(sidebarSpotStrip?.mathCents),
-    [sidebarSpotStrip?.mathCents],
-  );
 
   const setOrderPriceDecimal = (decimal: number) => {
     const current = parseFloat(orderPrice) || 0;
@@ -3724,172 +3500,20 @@ export const Sidebar = memo(function Sidebar() {
           />
 
 
-          {/* Target, math probability, current spot — Up/Down and all strike-based markets */}
-          {sidebarSpotStrip && (() => {
-            const row = sidebarSpotStrip;
-            const mathTooltip =
-              row.mode === 'updown'
-                ? 'Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the same spot as “Current” on the right: Polymarket Chainlink for 5m/15m windows, Binance spot for 1h/4h/24h. Inputs: target strike, time to expiry, implied volatility (σ).\n\nFor Up (YES): probability price is above the target at expiry. For Down (NO): below.\n\nCompare to the market price to spot mispricings.'
-                : row.hitModel
-                  ? 'Fair-value probability for this Hit market (one-touch / first-passage under GBM): risk-neutral chance price touches the strike by expiry. Same Binance spot as “Current”, σ from settings.\n\nCompare to the order book to spot mispricings.'
-                  : 'Fair-value probability (terminal Black-Scholes–style) for this market’s strike vs spot.\n\nUses Binance spot, time to expiry, and σ. For YES/NO: YES uses model YES probability; NO uses 100% − YES.\n\nCompare to the market price to spot mispricings.';
-
-            const currentBadge =
-              row.mode === 'updown'
-                ? {
-                    label: row.currentSource === 'chainlink' ? 'CL' : 'BINANCE',
-                    className: row.currentSource === 'chainlink' ? 'bg-blue-600 text-white' : 'bg-yellow-400 text-black',
-                    title:
-                      row.currentSource === 'chainlink'
-                        ? 'Polymarket RTDS Chainlink (via backend)'
-                        : upDownSpotUsesChainlink
-                          ? 'Binance spot (fallback until Chainlink connects)'
-                          : 'Binance spot (1h/4h/24h Up/Down)',
-                  }
-                : {
-                    label: 'BINANCE',
-                    className: 'bg-yellow-400 text-black',
-                    title: 'Binance spot',
-                  };
-
-            const reserveUpDownSpotHeight = row.mode === 'updown' && !row.pastExpiry;
-
-            return (
-              <div
-                className={`sidebar-section py-1 px-3${reserveUpDownSpotHeight ? ' min-h-[7.5rem]' : ''}`}
-              >
-                      <div
-                  className="grid gap-x-3 gap-y-1.5 items-center w-full min-h-[3.625rem]"
-                  style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(6rem, 1fr) minmax(0, 1fr)' }}
-                      >
-                  {/* Row 1 — labels */}
-                  <div className="flex items-center min-h-[15px] text-left text-[9px] font-medium leading-none text-gray-500">
-                    Target
-                      </div>
-                  <div className="flex items-center justify-center gap-1 min-h-[15px] text-[9px] font-medium leading-none text-gray-500 min-w-0 px-px">
-                  {row.pastExpiry ? (
-                      <>
-                        <CirclePercent className="h-[9px] w-[9px] shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
-                        <span className="shrink-0">Math</span>
-                      </>
-                  ) : (
-                      <>
-                        <CirclePercent className="h-[9px] w-[9px] shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
-                        <span className="shrink-0">Math</span>
-                        <HelpTooltip
-                          text={mathTooltip}
-                          openOnHover
-                          wrapClassName="inline-flex shrink-0 items-center leading-none ml-px"
-                        >
-                          <span className="flex size-[10px] shrink-0 cursor-help items-center justify-center rounded-full border border-gray-500 text-[7px] font-bold leading-none text-gray-400 hover:border-gray-300 hover:text-gray-200">
-                            ?
-                          </span>
-                        </HelpTooltip>
-                      </>
-                  )}
-                  </div>
-                  <div className="flex items-center justify-end gap-1.5 min-h-[15px] flex-nowrap text-[9px] font-medium leading-none text-gray-500 min-w-0">
-                    <span className="shrink-0">Current</span>
-                      <span
-                      className={`shrink-0 px-0.5 rounded-sm text-[9px] font-bold leading-none py-px ${currentBadge.className}`}
-                        title={currentBadge.title}
-                      >
-                        {currentBadge.label}
-                      </span>
-                    </div>
-
-                  {/* Row 2 — primary values */}
-                  <div className="flex items-center justify-start min-h-[16px] min-w-0">
-                    <span className="inline-flex min-h-[16px] items-center text-[11px] font-bold tabular-nums text-white truncate max-w-full">
-                      {row.targetDisplay}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-center min-h-[16px] min-w-0 text-[11px] font-bold tabular-nums px-px">
-                    {row.pastExpiry ? (
-                      <span className="text-gray-500 tabular-nums text-[11px]" title="Time machine ahead of expiration">
-                        &gt;⏱
-                      </span>
-                    ) : row.mathCents !== null ? (
-                      <SidebarSpotStripMathButton
-                        mathCents={row.mathCents}
-                        sidebarBookRef={sidebarBookRef}
-                        onPickPrice={setOrderPriceFromMath}
-                      />
-                    ) : (
-                      <span className="text-gray-600 text-[11px]">—</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-end min-h-[16px] min-w-0">
-                    <span
-                      ref={sidebarSpotCurrentPriceRef}
-                      className="text-[11px] font-bold tabular-nums text-white truncate max-w-full whitespace-nowrap"
-                    >
-                      {row.currentPrice
-                        ? `$${row.currentPrice.toLocaleString(undefined, { minimumFractionDigits: row.priceDec, maximumFractionDigits: row.priceDec })}`
-                        : '...'}
-                    </span>
-                    </div>
-
-                  {/* Row 3 — secondary */}
-                  <div className="flex items-center justify-start min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
-                    {selectedMarket?.endDate ? (
-                      <div className="flex items-center gap-1 min-w-0 whitespace-nowrap">
-                        <SidebarMarketCountdownLabel
-                          endDate={selectedMarket.endDate}
-                          mode={row.mode}
-                          liveUpDownSameTfMarket={liveUpDownSameTfMarket}
-                          onSwitchLiveMarket={
-                            liveUpDownSameTfMarket
-                              ? () => setSelectedMarket(liveUpDownSameTfMarket)
-                              : undefined
-                          }
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-transparent select-none" aria-hidden>
-                        —
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-center min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none px-px">
-                    <SidebarSpotVolSigmaLabel
-                      notifyMaxVolatilityPct={notifyMaxVolatilityPct}
-                      notifyVolatilityCandles={notifyVolatilityCandles}
-                      sidebarChartKlineLabel={sidebarChartKlineLabel}
-                      pastExpiry={row.pastExpiry}
-                    />
-                  </div>
-                  <div className="flex items-center justify-end min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
-                    {row.diff && row.currentPrice > 0 ? (
-                      <span
-                        className={`inline-flex min-h-[15px] items-center whitespace-nowrap gap-0.5 ${row.diff.isUp ? 'text-green-400' : 'text-red-400'}`}
-                      >
-                        <span>
-                          {row.diff.isUp ? '↑' : '↓'}
-                          {row.diff.abs.toLocaleString(undefined, { minimumFractionDigits: row.priceDec, maximumFractionDigits: row.priceDec })}
-                        </span>
-                        <span>
-                          ({row.diff.pct >= 0 ? '+' : ''}
-                          {row.diff.pct.toFixed(2)}%)
-                        </span>
-                      </span>
-                    ) : (
-                      <span className="inline-flex min-h-[15px] items-center text-transparent select-none" aria-hidden>
-                        ↑0.00 (0.00%)
-                      </span>
-                    )}
-                      </div>
-                </div>
-                {reserveUpDownSpotHeight && (
-                  <SidebarYesMidProbBar
-                    yesTokenId={selectedMarket?.clobTokenIds?.[0] || ''}
-                    yesMathCents={row.yesMathCents}
-                    shellOnly={row.yesMathCents == null}
-                  />
-                )}
-              </div>
-            );
-          })()}
+          <SidebarSpotStripSection
+            selectedMarket={selectedMarket}
+            marketLookup={marketLookup}
+            orderOutcome={orderOutcome}
+            isUpDownMarket={isUpDownMarket}
+            selectedMarketIsHit={selectedMarketIsHit}
+            upDownSpotUsesChainlink={upDownSpotUsesChainlink}
+            sidebarChartKlineLabel={sidebarChartKlineLabel}
+            notifyMaxVolatilityPct={notifyMaxVolatilityPct}
+            notifyVolatilityCandles={notifyVolatilityCandles}
+            sidebarBookRef={sidebarBookRef}
+            onPickPrice={setOrderPriceFromMath}
+            onSwitchLiveMarket={setSelectedMarket}
+          />
 
           {/* BS Flower */}
           {(() => {
@@ -4112,19 +3736,7 @@ export const Sidebar = memo(function Sidebar() {
                   </button>
                 </div>
                 <div className="mt-1 grid grid-cols-5 gap-[2px]">
-                  <button
-                    type="button"
-                    disabled={orderKind === 'market' || sidebarLimitBsCents == null}
-                    onClick={() => {
-                      if (orderKind === 'market' || sidebarLimitBsCents == null) return;
-                      setOrderPriceFromMath(String(sidebarLimitBsCents));
-                    }}
-                    className={`${SIDEBAR_BS_MATH_BTN_CLASS} rounded text-[9px] font-bold h-6 tabular-nums`}
-                    aria-label="Set price to BS math probability for current side"
-                    title="BS math"
-                  >
-                    {sidebarBsMathButtonLabel(sidebarLimitBsCents)}
-                  </button>
+                  <SidebarOrderBsMathButton orderKind={orderKind} onPickPrice={setOrderPriceFromMath} />
                   {[1, 5, 10, 25].map((c) => (
                     <button
                       key={c}
@@ -4466,7 +4078,6 @@ export const Sidebar = memo(function Sidebar() {
               isUpDownMarket={isUpDownMarket}
               isMarketExpired={isMarketExpired}
               mergeFunderWallet={mergeFunderWallet}
-              sidebarSpotStrip={sidebarSpotStrip}
               closingPositionTokens={closingPositionTokens}
               limitSellingPositionTokens={limitSellingPositionTokens}
               onSetOrderAmount={setOrderAmount}
@@ -4611,29 +4222,19 @@ export const Sidebar = memo(function Sidebar() {
                             );
                           })}
                           {(() => {
-                            const orderBsCents = sidebarSpotStrip?.pastExpiry
-                              ? null
-                              : sidebarBsMathCentsForOutcome(sidebarSpotStrip?.yesMathCents, outcome);
                             return (
-                              <button
-                                type="button"
-                                disabled={orderBsCents == null}
-                                onClick={() => {
-                                  if (orderBsCents == null) return;
+                              <SidebarOrderReplaceBsButton
+                                outcome={outcome}
+                                onReplace={(orderBsCents) =>
                                   handleReplaceOrder(
                                     order.id,
                                     orderBsCents,
                                     order.asset_id || order.token_id || '',
                                     order.side as 'BUY' | 'SELL',
                                     remainingSize,
-                                  );
-                                }}
-                                className={`text-[9px] px-1 py-0 rounded font-bold tabular-nums ${SIDEBAR_BS_MATH_BTN_CLASS}`}
-                                aria-label="Replace at BS math probability for order side"
-                                title="BS math"
-                              >
-                                {sidebarBsMathButtonLabel(orderBsCents)}
-                              </button>
+                                  )
+                                }
+                              />
                             );
                           })()}
                           {([5, 10, 15, 20] as const).map((delta) => {

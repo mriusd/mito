@@ -13,15 +13,7 @@ import { SidebarPositionListItem } from './SidebarPositionListItem';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { refreshSidebarOnchainMarketTrades, refreshSidebarOnchainWallet } from '../lib/sidebarOnchainTradesStore';
 
-function sidebarBsMathCentsForOutcome(
-  yesMathCents: number | null | undefined,
-  outcome: string | null | undefined,
-): number | null {
-  if (yesMathCents == null || !Number.isFinite(yesMathCents)) return null;
-  if (outcome === 'YES') return Math.round(yesMathCents * 10) / 10;
-  if (outcome === 'NO') return Math.round((100 - yesMathCents) * 10) / 10;
-  return null;
-}
+import { useSidebarSpotStripBs, sidebarBsMathCentsForOutcome } from '../lib/sidebarSpotStripStore';
 
 export type { SidebarMergeEligible };
 
@@ -33,7 +25,6 @@ export const SidebarMyPositionsPanel = memo(function SidebarMyPositionsPanel({
   isUpDownMarket,
   isMarketExpired,
   mergeFunderWallet,
-  sidebarSpotStrip,
   closingPositionTokens,
   limitSellingPositionTokens,
   onSetOrderAmount,
@@ -51,10 +42,6 @@ export const SidebarMyPositionsPanel = memo(function SidebarMyPositionsPanel({
   isUpDownMarket: boolean;
   isMarketExpired: boolean;
   mergeFunderWallet: string;
-  sidebarSpotStrip: {
-    pastExpiry?: boolean;
-    yesMathCents?: number | null;
-  } | null;
   closingPositionTokens: Set<string>;
   limitSellingPositionTokens: Set<string>;
   onSetOrderAmount: (a: string) => void;
@@ -65,6 +52,7 @@ export const SidebarMyPositionsPanel = memo(function SidebarMyPositionsPanel({
   onRefreshMyMarketTrades: () => void;
   preloadMergePositionsDialog: () => void;
 }) {
+  const spotBs = useSidebarSpotStripBs();
   const onchainWsPositions = useSidebarOnchainWalletPositions();
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
 
@@ -158,9 +146,9 @@ export const SidebarMyPositionsPanel = memo(function SidebarMyPositionsPanel({
             const avg = pos.avgPrice || 0;
             const closing = closingPositionTokens.has(posTok);
             const limitSelling = limitSellingPositionTokens.has(posTok);
-            const bsMathCents = sidebarSpotStrip?.pastExpiry
+            const bsMathCents = spotBs?.pastExpiry
               ? null
-              : sidebarBsMathCentsForOutcome(sidebarSpotStrip?.yesMathCents, outcome);
+              : sidebarBsMathCentsForOutcome(spotBs?.yesMathCents, outcome);
             return (
               <SidebarPositionListItem
                 key={posTok || i}

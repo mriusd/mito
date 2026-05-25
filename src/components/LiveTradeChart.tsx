@@ -21,6 +21,7 @@ import {
   parseCandleBsEnrichment,
   parseHttpKlineEnrichment,
   chartEnrichmentMathCents,
+  CHART_MATH_PROB_COLOR,
   type CandleBsEnrichment,
 } from '../lib/chartCandleEnrichment';
 import { ChartObHoverEnrichmentStrip } from './ChartObHoverEnrichmentStrip';
@@ -785,7 +786,7 @@ export function LiveTradeChart({
     }
 
     const chartOutcome = outcomeToggle?.value ?? 'YES';
-    const mathLineColor = '#67e8f9';
+    const mathLineColor = CHART_MATH_PROB_COLOR;
     const mathPoints: { cx: number; cy: number }[] = [];
     for (const c of candles) {
       if (c.time < minT - candleMs || c.time > maxT + candleMs) continue;

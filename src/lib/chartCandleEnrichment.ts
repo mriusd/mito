@@ -1,3 +1,6 @@
+/** Chart math-probability line + sidebar target-section math value. */
+export const CHART_MATH_PROB_COLOR = '#eab308';
+
 export type CandleBsEnrichment = {
   targetPrice?: number;
   currentPrice?: number;

@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import { fetchMarketOutcomeTokens } from '../api';
 import { useWalletMarketTradesWS } from '../hooks/useOnchainTradesWS';
-import { usePolymarketChartTrades } from '../hooks/usePolymarketChartTrades';
+import { useThrottledPolymarketChartTrades } from '../hooks/useThrottledPolymarketChartTrades';
 import { walletInfoChartMarketWithOutcomeTokens } from '../lib/walletInfoChartMarket';
 import { wsTradeToFillRow } from '../lib/walletInfoFillRows';
 import type { Market } from '../types';
@@ -24,7 +24,7 @@ export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
     () => wsMarketTrades.map((t) => wsTradeToFillRow(t, wallet, selectedMarketId)),
     [wsMarketTrades, wallet, selectedMarketId],
   );
-  const walletInfoChartTrades = usePolymarketChartTrades();
+  const walletInfoChartTrades = useThrottledPolymarketChartTrades(500);
   const [walletChartOutcome, setWalletChartOutcome] = useState<'YES' | 'NO'>('YES');
   const [chartOutcomeTokens, setChartOutcomeTokens] = useState<{
     tokenIdYes: string;

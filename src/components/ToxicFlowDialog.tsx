@@ -2222,14 +2222,20 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
 
   if (!open) return null;
 
-  const layoutSwitch = <ToxicFlowLayoutSwitch mode={layoutMode} onMode={onLayoutModeChange} />;
+  const layoutSwitch = useMemo(
+    () => <ToxicFlowLayoutSwitch mode={layoutMode} onMode={onLayoutModeChange} />,
+    [layoutMode, onLayoutModeChange],
+  );
 
-  const holdersHeader = (
-    <div className="flex items-center gap-2 min-w-0 mb-3 shrink-0">
-      <UsersRound size={16} className="text-yellow-400 shrink-0" />
-      <span className="text-sm font-bold text-yellow-400 shrink-0">Holders</span>
-      <span className="text-xs text-gray-400 truncate">{marketName}</span>
-    </div>
+  const holdersHeader = useMemo(
+    () => (
+      <div className="flex items-center gap-2 min-w-0 mb-3 shrink-0">
+        <UsersRound size={16} className="text-yellow-400 shrink-0" />
+        <span className="text-sm font-bold text-yellow-400 shrink-0">Holders</span>
+        <span className="text-xs text-gray-400 truncate">{marketName}</span>
+      </div>
+    ),
+    [marketName],
   );
 
   const holdersBody = (

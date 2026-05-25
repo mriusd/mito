@@ -11,6 +11,7 @@ import {
 } from '../../hooks/useThrottledGridWallet';
 import { GRID_BID_ASK_THROTTLE_MS } from '../../lib/bidAskMarketLookup';
 import { UpDownTimeframeRowsBody } from './UpDownTimeframeRow';
+import { useUpDownNextMarketFlashWhaleSound } from '../../lib/upDownNextMarketFlashSound';
 
 const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 const TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
@@ -186,6 +187,8 @@ function UpDownMarketsPanelInner() {
   }, [upOrDownMarkets, visibleAssets]);
 
   const colsPerAsset = (showTarget ? 1 : 0) + 1 + nextMarketsCount;
+
+  useUpDownNextMarketFlashWhaleSound(sortedOpenByAssetTf, visibleAssets, nextMarketsCount);
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">

@@ -37,7 +37,7 @@ export type SidebarOrderbookBookGridProps = {
   overlay?: { text: string; className: string } | null;
 };
 
-const OB_ROW_GRID = 'grid grid-cols-3 gap-1 text-[10px] px-1';
+const OB_ROW_GRID = 'grid grid-cols-3 gap-1 text-[11px] px-1';
 
 export function SidebarOrderbookBookGrid({
   displayBids,
@@ -248,7 +248,7 @@ export function SidebarOrderbookBookGrid({
         </div>
         {overlay ? (
           <div className="absolute inset-0 z-10 bg-gray-900/55 backdrop-blur-[1px] flex items-center justify-center pointer-events-none px-2">
-            <div className={`text-[10px] text-center leading-tight ${overlay.className}`}>{overlay.text}</div>
+            <div className={`text-[11px] text-center leading-tight ${overlay.className}`}>{overlay.text}</div>
           </div>
         ) : null}
       </div>

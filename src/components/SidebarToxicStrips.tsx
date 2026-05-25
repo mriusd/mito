@@ -1,4 +1,6 @@
 import { memo, useEffect, useMemo, useState } from 'react';
+import { fetchMarketStakedLegs, mergeMarketStakedLegsResponse, type MarketStakedLegsResponse } from '../api';
+import { useThrottledBidAskMarketRow } from '../hooks/useThrottledBidAskMarketRow';
 import { ToxicFlowStakePreview, TOXIC_TOTAL_STAKE_BAR_HELP } from './ToxicFlowStakePreview';
 import { useSidebarToxicFlowTabViews } from '../lib/sidebarToxicFlowTabViews';
 import {
@@ -19,7 +21,6 @@ import {
   TOXIC_X_WALLETS_LS_KEY,
 } from '../lib/toxicXWallets';
 import { setSidebarToxicNotify, resetSidebarToxicNotify } from '../lib/sidebarToxicNotifyStore';
-import type { MarketStakedLegsResponse } from '../api';
 
 const SIDEBAR_TOXIC_STRIP_FLASH_FRAC = 0.3;
 
@@ -35,7 +36,8 @@ const TOXIC_SIDEBAR_STRIP_HELP = {
 } as const;
 
 export const SidebarToxicStrips = memo(function SidebarToxicStrips({
-  sidebarStakedLegs,
+  yesTokenId,
+  marketConditionId,
   notifyTiltAppliesToSelectedMarket,
   notifyWhaleAmountUsd,
   notifyWhaleMaxPriceCents,
@@ -45,7 +47,8 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   notifyFavouriteTiltPct,
   notifyGreensTiltPct,
 }: {
-  sidebarStakedLegs: MarketStakedLegsResponse | null;
+  yesTokenId: string;
+  marketConditionId: string;
   notifyTiltAppliesToSelectedMarket: boolean;
   notifyWhaleAmountUsd: number;
   notifyWhaleMaxPriceCents: number;
@@ -55,6 +58,45 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   notifyFavouriteTiltPct: number;
   notifyGreensTiltPct: number;
 }) {
+  const [marketStakedLegs, setMarketStakedLegs] = useState<MarketStakedLegsResponse | null>(null);
+  const sidebarStakedLiveRow = useThrottledBidAskMarketRow(yesTokenId);
+  const sidebarStakedLegs = useMemo(() => {
+    let live: MarketStakedLegsResponse | null = null;
+    const row = sidebarStakedLiveRow;
+    if (row) {
+      const wy = row.stakedUsdYesLeg;
+      const wn = row.stakedUsdNoLeg;
+      const sumAbs = row.stakedSumAbsSignedNetUsd;
+      if (typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn)) {
+        live = { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
+        if (typeof sumAbs === 'number' && Number.isFinite(sumAbs)) {
+          live.stakedSumAbsSignedNetUsd = sumAbs;
+        }
+      }
+    }
+    return mergeMarketStakedLegsResponse(live, marketStakedLegs);
+  }, [sidebarStakedLiveRow, marketStakedLegs]);
+
+  useEffect(() => {
+    const mid = marketConditionId.trim();
+    if (!mid) {
+      setMarketStakedLegs(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const row = await fetchMarketStakedLegs(mid);
+        if (!cancelled) setMarketStakedLegs(row);
+      } catch {
+        if (!cancelled) setMarketStakedLegs(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [marketConditionId]);
+
   const [toxicFavSet, setToxicFavSet] = useState(readToxicFavouriteWallets);
   const [toxicXSet, setToxicXSet] = useState(readToxicXWallets);
   useEffect(() => {

@@ -8,8 +8,14 @@ import { RangeEditDialog } from '../RangeEditDialog';
 import { HelpTooltip } from '../HelpTooltip';
 import type { AssetName, Market, Order } from '../../types';
 import { GridMarketCell } from './GridMarketCell';
+import {
+  AssetMarketTableHitPriceCol,
+  AssetMarketTableStrikePriceCol,
+} from './AssetMarketTablePriceCol';
+import { AssetMarketTableScrollSync } from './AssetMarketTableScrollSync';
 import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
 import { useThrottledStoreVwap } from '../../hooks/useThrottledStoreVwap';
+import { useThrottledGridSignals } from '../../hooks/useThrottledGridSignals';
 import { polymarketSiteUrl } from '../../lib/polymarketSiteUrl';
 
 const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
@@ -57,7 +63,8 @@ const AssetMarketTableVwapHint = memo(function AssetMarketTableVwapHint({
   );
 });
 
-function StrikeRangeIndicator({ markets, livePrice, asset }: { markets: Market[]; livePrice: number; asset: AssetName }) {
+function StrikeRangeIndicator({ markets, asset }: { markets: Market[]; asset: AssetName }) {
+  const livePrice = useThrottledStorePrice(assetToSymbol(asset), 1000);
   if (livePrice <= 0 || markets.length === 0) return null;
 
   // Collect active strikes with end dates
@@ -153,7 +160,6 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   const priceOnMarketsForAsset = useAppStore((s) => s.priceOnMarkets[asset] ?? EMPTY_MARKETS);
   const weeklyHitMarketsForAsset = useAppStore((s) => s.weeklyHitMarkets[asset] ?? EMPTY_MARKETS);
   const upOrDownMarketsForAsset = useAppStore((s) => s.upOrDownMarkets[asset] ?? EMPTY_UDM);
-  const livePrice = useThrottledStorePrice(symbol, 1000);
   const assetVol = useAppStore((s) => s.volatilityData[symbol] ?? 0.6);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const slot0 = useAppStore((s) => s.manualPriceSlots[symbol][0]);
@@ -178,7 +184,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
   const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
   const signalsOnGrid = useAppStore((s) => s.signalsOnGrid);
-  const signals = useAppStore((s) => (s.signalsOnGrid ? s.signals : EMPTY_SIGNALS));
+  const signals = useThrottledGridSignals(2000);
   const signalMakerMode = useAppStore((s) => s.signalMakerMode);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
 
@@ -202,29 +208,6 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   const aboveContainerRef = useRef<HTMLDivElement>(null);
   const priceOnContainerRef = useRef<HTMLDivElement>(null);
   const hitContainerRef = useRef<HTMLDivElement>(null);
-  const scrolledRef = useRef<Set<string>>(new Set());
-
-  // Callback ref: scroll the row's scrollable parent to center this row
-  const scrollToCenterRef = useCallback((tableKey: string) => (el: HTMLTableRowElement | null) => {
-    if (!el || scrolledRef.current.has(tableKey)) return;
-    scrolledRef.current.add(tableKey);
-    // Use setTimeout to ensure the container has its final layout height
-    setTimeout(() => {
-      // Walk up to find the scrollable container
-      let container = el.parentElement as HTMLElement | null;
-      while (container && container.scrollHeight <= container.clientHeight) {
-        container = container.parentElement;
-      }
-      if (container) {
-        const containerRect = container.getBoundingClientRect();
-        const rowRect = el.getBoundingClientRect();
-        const scrollOffset = rowRect.top - containerRect.top + container.scrollTop
-          - containerRect.height / 2 + rowRect.height / 2;
-        container.scrollTop = Math.max(0, scrollOffset);
-      }
-    }, 100);
-  }, []);
-
   const [rangeDialogOpen, setRangeDialogOpen] = useState(false);
   const [rangeDialogSlot, setRangeDialogSlot] = useState(0);
 
@@ -312,23 +295,6 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
     return parseStrikeTokenToNumber(s) || 0;
   };
 
-  // Parse price bounds for % change calculation
-  const parsePriceBounds = (str: string) => {
-    let s = str.replace(/\$/g, '').replace(/,/g, '').trim();
-    const isLt = s.startsWith('<');
-    const isGt = s.startsWith('>');
-    s = s.replace(/</g, '').replace(/>/g, '');
-    const parseNum = (v: string) => parseStrikeTokenToNumber(v) || 0;
-    if (s.includes('-')) {
-      const parts = s.split('-');
-      return { low: parseNum(parts[0]), high: parseNum(parts[1]) };
-    }
-    const n = parseNum(s);
-    if (isLt) return { low: 0, high: n };
-    if (isGt) return { low: n, high: Infinity };
-    return { low: n, high: n };
-  };
-
   interface DateCol { slug: string; endDate: string; title: string }
 
   // Build table data — keyed by eventSlug like original
@@ -387,30 +353,6 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
     () => (priceOnMarketsForAsset.length > 0 ? buildTableData(priceOnMarketsForAsset, showPast) : null),
     [priceOnMarketsForAsset, showPast, pastFilterTick],
   );
-
-  // Check if live price satisfies the market's price condition
-  const isPriceConditionTrue = (priceStr: string, live: number) => {
-    if (live <= 0) return false;
-    const cleaned = priceStr.replace(/\$/g, '').replace(/,/g, '');
-    if (cleaned.startsWith('>')) {
-      const val = parseFloat(cleaned.substring(1));
-      return !isNaN(val) && live > val;
-    }
-    if (cleaned.startsWith('<')) {
-      const val = parseFloat(cleaned.substring(1));
-      return !isNaN(val) && live < val;
-    }
-    if (cleaned.includes('-')) {
-      const parts = cleaned.split('-');
-      const lo = parseFloat(parts[0]);
-      const hi = parseFloat(parts[1]);
-      return !isNaN(lo) && !isNaN(hi) && live >= lo && live <= hi;
-    }
-    // Plain number (above markets without > prefix): price >= threshold
-    const threshold = parseFloat(cleaned);
-    if (!isNaN(threshold)) return live >= threshold;
-    return false;
-  };
 
   const renderWeeklyHitTable = () => {
     const now = Date.now();
@@ -474,21 +416,6 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
       }
     }
 
-    // Scroll anchor: last ↓ row (dip strikes below current); fallback = closest row to live price
-    let anchorRowIdx = -1;
-    for (let i = 0; i < prices.length; i++) {
-      if (prices[i].includes('↓')) anchorRowIdx = i;
-    }
-
-    let closestRowIdx = -1;
-    if (anchorRowIdx === -1 && livePrice > 0) {
-      let minDist = Infinity;
-      for (let i = 0; i < prices.length; i++) {
-        const dist = Math.abs(hitPrice(prices[i]) - livePrice);
-        if (dist < minDist) { minDist = dist; closestRowIdx = i; }
-      }
-    }
-
     // Format size (1000+ => 1.2k)
     const fmtSz = (sz: number) => {
       const v = Math.floor(sz);
@@ -497,6 +424,13 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
 
     return (
       <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+        <AssetMarketTableScrollSync
+          containerRef={hitContainerRef}
+          symbol={symbol}
+          tableType="hit"
+          prices={prices}
+          hitPrice={hitPrice}
+        />
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-20 bg-gray-900">
             <tr>
@@ -524,33 +458,16 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
             </tr>
           </thead>
           <tbody>
-            {prices.map((priceStr, rowIdx) => {
+            {prices.map((priceStr) => {
               const rowBorder = 'border-b border-gray-700/50';
-              const isAnchorRow = rowIdx === anchorRowIdx;
               return (
-              <tr key={priceStr} className="hover:bg-gray-800/50" ref={isAnchorRow ? scrollToCenterRef('hit') : (rowIdx === closestRowIdx ? scrollToCenterRef('hit-closest') : undefined)}>
-                <td
-                  className={`price-col-cell sticky left-0 bg-gray-900 z-10 px-1 py-0.5 font-bold ${titleColor} ${rowBorder} whitespace-nowrap text-xs`}
-                  data-price-low={hitPrice(priceStr)}
-                  data-price-high={hitPrice(priceStr)}
-                >
-                  {(() => {
-                    const arrow = priceStr.includes('↑') ? '↑' : priceStr.includes('↓') ? '↓' : '';
-                    const num = hitPrice(priceStr);
-                    const fmt = num >= 1000 ? formatThousandsAsK(num, priceShortAsset) : String(num);
-                    const pct = livePrice > 0 && num > 0 ? ((num - livePrice) / livePrice) * 100 : 0;
-                    const pctSign = pct >= 0 ? '+' : '';
-                    const isAtPrice = livePrice > 0 && Math.abs(pct) < 0.5;
-                    return (
-                      <div className="flex flex-col leading-tight">
-                        <span>{arrow}{fmt}</span>
-                        {!isAtPrice && pct !== 0 && (
-                          <span className="text-gray-400 text-[11px]">{pctSign}{pct.toFixed(0)}%</span>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </td>
+              <tr key={priceStr} className="hover:bg-gray-800/50">
+                <AssetMarketTableHitPriceCol
+                  asset={asset}
+                  priceStr={priceStr}
+                  titleColor={titleColor}
+                  hitPrice={hitPrice}
+                />
                 {events.map((ev) => {
                   const market = hitLookup[priceStr]?.[ev.slug];
                   const evEnded = showPast && ev.endDate && new Date(ev.endDate).getTime() <= now;
@@ -714,7 +631,12 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
     );
   };
 
-  const renderTable = (markets: Market[], tableType: string, cached?: GridTableData | null) => {
+  const renderTable = (
+    markets: Market[],
+    tableType: string,
+    cached: GridTableData | null | undefined,
+    containerRef: React.RefObject<HTMLDivElement | null>,
+  ) => {
     if (markets.length === 0) {
       return <div className="text-gray-500 text-center py-2 text-xs">No markets</div>;
     }
@@ -726,28 +648,14 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
       return <div className="text-gray-500 text-center py-2 text-xs">No active markets</div>;
     }
 
-    // Above tables: anchor scroll to last row where live price satisfies the strike condition
-    let aboveAnchorRowIdx = -1;
-    if (tableType === 'above') {
-      for (let i = 0; i < prices.length; i++) {
-        if (isPriceConditionTrue(prices[i], livePrice)) aboveAnchorRowIdx = i;
-      }
-    }
-
-    // Find closest row to livePrice as fallback for centering
-    let closestPriceRowIdx = -1;
-    if (livePrice > 0) {
-      let minDist = Infinity;
-      for (let i = 0; i < prices.length; i++) {
-        const b = parsePriceBounds(prices[i]);
-        const mid = b.high === Infinity ? b.low : (b.low + b.high) / 2;
-        const dist = Math.abs(mid - livePrice);
-        if (dist < minDist) { minDist = dist; closestPriceRowIdx = i; }
-      }
-    }
-
     return (
       <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+        <AssetMarketTableScrollSync
+          containerRef={containerRef}
+          symbol={symbol}
+          tableType={tableType}
+          prices={prices}
+        />
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-20 bg-gray-900">
             <tr>
@@ -780,37 +688,15 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
             </tr>
           </thead>
           <tbody>
-            {prices.map((priceStr, rowIdx) => {
-              const conditionTrue = isPriceConditionTrue(priceStr, livePrice);
-              const priceCellBg = conditionTrue ? 'bg-green-900/50' : 'bg-gray-900';
-              const priceFontSize = tableType === 'price' ? 'text-[10px]' : 'text-xs';
-              const isAboveAnchorRow = tableType === 'above' && rowIdx === aboveAnchorRowIdx;
-
-              // % change from live price
-              const bounds = parsePriceBounds(priceStr);
-              const isCurrentRange = livePrice > bounds.low && livePrice < bounds.high;
-              let targetPrice: number;
-              if (livePrice <= bounds.low) targetPrice = bounds.low;
-              else if (livePrice >= bounds.high) targetPrice = bounds.high;
-              else targetPrice = livePrice;
-              const pctChange = livePrice > 0 && targetPrice > 0 && targetPrice !== Infinity
-                ? ((targetPrice - livePrice) / livePrice) * 100 : 0;
-              const pctSign = pctChange >= 0 ? '+' : '';
-
-              return (
-                <tr key={priceStr} className="hover:bg-gray-800/50" ref={isAboveAnchorRow ? scrollToCenterRef(tableType + '-yellow') : (isCurrentRange ? scrollToCenterRef(tableType + '-range') : (rowIdx === closestPriceRowIdx ? scrollToCenterRef(tableType + '-closest') : undefined))}>
-                  <td
-                    className={`price-col-cell sticky left-0 ${priceCellBg} z-10 px-1 py-0.5 font-bold ${titleColor} border-b border-gray-700/50 whitespace-nowrap ${priceFontSize}`}
-                    data-price-low={bounds.low}
-                    data-price-high={bounds.high === Infinity ? 999999999 : bounds.high}
-                  >
-                    <div className="flex flex-col leading-tight">
-                      <span>{formatPriceShort(priceStr, priceShortAsset)}</span>
-                      {!isCurrentRange && pctChange !== 0 && (
-                        <span className="text-gray-400 text-[11px]">{pctSign}{pctChange.toFixed(0)}%</span>
-                      )}
-                    </div>
-                  </td>
+            {prices.map((priceStr) => (
+                <tr key={priceStr} className="hover:bg-gray-800/50">
+                  <AssetMarketTableStrikePriceCol
+                    asset={asset}
+                    priceStr={priceStr}
+                    titleColor={titleColor}
+                    tableType={tableType}
+                    priceShortAsset={priceShortAsset}
+                  />
                   {dates.map((d) => {
                     const market = marketLookup[priceStr + '_' + d.slug];
                     const dateEnded = d.endDate && new Date(d.endDate).getTime() < Date.now();
@@ -859,8 +745,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                   );
                   })}
                 </tr>
-              );
-            })}
+            ))}
           </tbody>
         </table>
       </div>
@@ -973,7 +858,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
             </span>
           )}
           <HelpTooltip text={"Annualized volatility (σ) used for Black-Scholes probability calculations.\n\nThis value is fetched from Binance as the asset's historical realized volatility, then multiplied by the global volatility multiplier set in settings.\n\nHigher volatility means wider expected price distributions — strike prices further from the current price will have higher B-S probabilities. Lower volatility narrows the distribution, making distant strikes less likely.\n\nThis directly affects all B-S values shown across the dashboard: the flower, grid cells, signals, and hedges."} />
-          <StrikeRangeIndicator markets={aboveMarketsForAsset} livePrice={livePrice} asset={asset} />
+          <StrikeRangeIndicator markets={aboveMarketsForAsset} asset={asset} />
           <HelpTooltip text={"This bar shows where the current asset price sits relative to the active market strike prices.\n\nThe gray ticks at the ends are the nearest strikes below and above spot; the vertical marker is the live price between them.\n\nThis gives a quick visual sense of how close the asset is to triggering different markets — the closer the live price is to a strike, the more sensitive that market's probability becomes to small price moves."} />
           <label className="no-drag inline-flex items-center gap-1 text-[10px] text-gray-400 cursor-pointer ml-1 font-normal">
             <input
@@ -1049,14 +934,14 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
           {showAbove && (
             <div className="flex-1 min-w-0 border border-emerald-500/40 rounded flex flex-col" ref={aboveContainerRef} style={{ position: 'relative' }}>
               <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-emerald-400 bg-gray-800/50 rounded-t py-0.5">Above <HelpTooltip text={"Above markets resolve YES if the asset price is above a specific strike price at the moment of expiry (noon ET).\n\nThese are the most common market type. Each row is a different strike price and each column is a different expiry date.\n\nThe YES probability increases as the live price moves further above the strike, and decreases as it falls below. At expiry, the market resolves to 100 (YES) or 0 (NO) based purely on where the price is at that moment."} /></div>
-              {renderTable(aboveMarketsForAsset, 'above', aboveGridData)}
+              {renderTable(aboveMarketsForAsset, 'above', aboveGridData, aboveContainerRef)}
               <PriceTicks containerRef={aboveContainerRef} symbol={symbol} />
             </div>
           )}
           {showBetween && (
             <div className="flex-1 min-w-0 border border-purple-500/40 rounded flex flex-col" ref={priceOnContainerRef} style={{ position: 'relative' }}>
               <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-purple-400 bg-gray-800/50 rounded-t py-0.5">Between <HelpTooltip text={"Between markets resolve YES if the asset price falls within a specific price range at the moment of expiry (noon ET).\n\nEach row shows a price range (e.g. 95k-100k). The market pays out if the price lands inside that range at expiry.\n\nB-S probability for these markets peaks when the price is near the center of the range and drops off toward the edges. Unlike Above markets, the max probability may not be at the range boundary — it can be in the middle."} /></div>
-              {renderTable(priceOnMarketsForAsset, 'price', priceOnGridData)}
+              {renderTable(priceOnMarketsForAsset, 'price', priceOnGridData, priceOnContainerRef)}
               <PriceTicks containerRef={priceOnContainerRef} symbol={symbol} />
             </div>
           )}

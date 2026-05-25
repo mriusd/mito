@@ -163,6 +163,11 @@ import {
   readToxicFlowPaneTab,
   type ToxicFlowTabId,
 } from '../lib/toxicFlowPaneTabs';
+import {
+  refreshSidebarToxicFlow,
+  useSidebarToxicFlowData,
+  useSidebarToxicFlowRefreshing,
+} from '../lib/sidebarToxicFlowStore';
 
 function subscribeTiltWhaleAmountUsd(listener: () => void): () => void {
   const onCustom = () => listener();
@@ -188,13 +193,13 @@ interface ToxicFlowDialogProps {
   /** In-sidebar panel: no modal backdrop; fills parent flex column. */
   embedded?: boolean;
   /**
-   * When `embedded`, pass Sidebar `useToxicFlowMarketStream` — avoids a second `/ws/toxic-flow` + duplicate
-   * 1–2k wallet row graphs retained in closures (MessageEvent / Function churn in heap snapshots).
+   * When `embedded`, ToxicFlowDialog reads `/ws/toxic-flow` from sidebarToxicFlowStore
+   * (SidebarToxicFlowHost) — no streamData prop through panel body.
    */
   streamData?: ToxicFlowData | null;
-  /** Embedded: pre-built tab views (shared with SidebarToxicStrips cache). */
+  /** @deprecated embedded builds tab views internally */
   streamTabWalletViews?: ToxicFlowTabWalletViews | null;
-  /** Embedded panel: HTTP full refresh from parent stream hook. */
+  /** Embedded panel: HTTP full refresh from sidebar toxic store. */
   onRefreshStream?: () => void | Promise<void>;
   streamRefreshing?: boolean;
   /** Embedded sidebar: sync parent width with inline wallet panel slide (≥1920px). */
@@ -1571,21 +1576,24 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   marketExpired = false,
   onClose,
   embedded = false,
-  streamData = undefined,
-  streamTabWalletViews = undefined,
-  onRefreshStream: _onRefreshStream,
-  streamRefreshing: _streamRefreshing = false,
+  streamData: streamDataProp = undefined,
+  onRefreshStream: onRefreshStreamProp,
+  streamRefreshing: streamRefreshingProp = false,
   onInlineWalletExtraWidthChange,
 }: ToxicFlowDialogProps) {
   const yesTok = (yesTokenId || '').trim();
+  const sidebarStreamData = useSidebarToxicFlowData();
+  const sidebarStreamRefreshing = useSidebarToxicFlowRefreshing();
   const [internalData, setInternalData] = useState<ToxicFlowData | null>(null);
   const internalDataRef = useRef<ToxicFlowData | null>(null);
   const [internalLoading, setInternalLoading] = useState(false);
   const [internalError, setInternalError] = useState('');
-  const data = embedded ? (streamData ?? null) : internalData;
+  const data = embedded ? (streamDataProp ?? sidebarStreamData ?? null) : internalData;
+  const streamRefreshing = embedded ? (streamRefreshingProp || sidebarStreamRefreshing) : false;
+  const onRefreshStream = embedded ? (onRefreshStreamProp ?? refreshSidebarToxicFlow) : undefined;
   const midTrim = (marketId || '').trim();
   const loading = embedded
-    ? Boolean(open && midTrim && streamData === null)
+    ? Boolean(open && midTrim && data === null)
     : internalLoading;
   const error = embedded ? '' : internalError;
   const [layoutMode, setLayoutMode] = useState<ToxicFlowLayoutMode>(() => readToxicFlowLayoutMode());
@@ -1784,8 +1792,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     () => (data ? buildToxicFlowTabWalletViews(data, toxicFollowSet, tiltWhaleAmountUsd, toxicXSet) : null),
     [data, toxicFollowSet, tiltWhaleAmountUsd, toxicXSet],
   );
-  const tabWalletViews =
-    embedded && streamTabWalletViews !== undefined ? streamTabWalletViews : tabWalletViewsBuilt;
+  const tabWalletViews = tabWalletViewsBuilt;
 
   const tabsBarRef = useRef<HTMLDivElement>(null);
   const [tabsTipOpen, setTabsTipOpen] = useState(false);
@@ -2133,8 +2140,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     a.onClose !== b.onClose ||
     a.streamRefreshing !== b.streamRefreshing ||
     a.onRefreshStream !== b.onRefreshStream ||
-    a.onInlineWalletExtraWidthChange !== b.onInlineWalletExtraWidthChange ||
-    a.streamTabWalletViews !== b.streamTabWalletViews
+    a.onInlineWalletExtraWidthChange !== b.onInlineWalletExtraWidthChange
   ) {
     return false;
   }

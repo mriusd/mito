@@ -1,26 +1,5 @@
 import { memo, useEffect, useState, type ComponentType } from 'react';
 import { importWithChunkReload } from '../utils/lazyWithChunkReload';
-import {
-  refreshSidebarToxicFlow,
-  useSidebarToxicFlowData,
-  useSidebarToxicFlowRefreshing,
-} from '../lib/sidebarToxicFlowStore';
-import { useSidebarToxicFlowTabViews } from '../lib/sidebarToxicFlowTabViews';
-import {
-  TOXIC_FAVOURITE_WALLETS_LS_KEY,
-  TOXIC_FAVOURITES_CHANGED_EVENT,
-  readToxicFavouriteWallets,
-} from '../lib/toxicFavouriteWallets';
-import {
-  readToxicXWallets,
-  TOXIC_X_CHANGED_EVENT,
-  TOXIC_X_WALLETS_LS_KEY,
-} from '../lib/toxicXWallets';
-import {
-  readTiltWhaleAmountUsd,
-  TILT_WHALE_AMOUNT_USD_CHANGED_EVENT,
-  TILT_WHALE_AMOUNT_USD_LS_KEY,
-} from '../lib/tiltWhaleAmountUsd';
 import { setSidebarToxicWalletExtraWidth } from '../lib/sidebarToxicWalletWidthStore';
 
 type ToxicFlowDialogModule = typeof import('./ToxicFlowDialog');
@@ -81,40 +60,10 @@ const SidebarToxicPanelBody = memo(function SidebarToxicPanelBody({
 }) {
   const ToxicFlowDialog = useSidebarToxicFlowDialog();
   const mid = marketId.trim();
-  const data = useSidebarToxicFlowData();
-  const refreshing = useSidebarToxicFlowRefreshing();
-  const [toxicFavSet, setToxicFavSet] = useState(readToxicFavouriteWallets);
-  const [toxicXSet, setToxicXSet] = useState(readToxicXWallets);
-  const [whaleUsd, setWhaleUsd] = useState(readTiltWhaleAmountUsd);
 
   useEffect(() => {
     preloadSidebarToxicFlowDialog();
   }, []);
-
-  useEffect(() => {
-    const syncFav = () => setToxicFavSet(readToxicFavouriteWallets());
-    const syncX = () => setToxicXSet(readToxicXWallets());
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY || e.key === TILT_WHALE_AMOUNT_USD_LS_KEY || e.key === null) {
-        syncFav();
-        setWhaleUsd(readTiltWhaleAmountUsd());
-      }
-      if (e.key === TOXIC_X_WALLETS_LS_KEY || e.key === null) syncX();
-    };
-    const syncWhale = () => setWhaleUsd(readTiltWhaleAmountUsd());
-    window.addEventListener('storage', onStorage);
-    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
-    window.addEventListener(TOXIC_X_CHANGED_EVENT, syncX);
-    window.addEventListener(TILT_WHALE_AMOUNT_USD_CHANGED_EVENT, syncWhale);
-    return () => {
-      window.removeEventListener('storage', onStorage);
-      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
-      window.removeEventListener(TOXIC_X_CHANGED_EVENT, syncX);
-      window.removeEventListener(TILT_WHALE_AMOUNT_USD_CHANGED_EVENT, syncWhale);
-    };
-  }, []);
-
-  const tabWalletViews = useSidebarToxicFlowTabViews(toxicFavSet, whaleUsd, toxicXSet);
 
   if (!ToxicFlowDialog) {
     return <div className="p-2 text-[10px] text-gray-500">Loading holders…</div>;
@@ -129,10 +78,6 @@ const SidebarToxicPanelBody = memo(function SidebarToxicPanelBody({
       yesTokenId={yesTokenId}
       noTokenId={noTokenId}
       marketExpired={marketExpired}
-      streamData={data}
-      streamTabWalletViews={tabWalletViews}
-      onRefreshStream={refreshSidebarToxicFlow}
-      streamRefreshing={refreshing}
       onClose={onClose}
       onInlineWalletExtraWidthChange={setSidebarToxicWalletExtraWidth}
     />

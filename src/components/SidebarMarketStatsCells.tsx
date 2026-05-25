@@ -1,6 +1,6 @@
-import { memo, useLayoutEffect, useMemo } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { MarketStakedLegsResponse } from '../api';
-import { mergeMarketStakedLegsResponse } from '../api';
+import { fetchMarketStakedLegs, mergeMarketStakedLegsResponse } from '../api';
 import { useThrottledBidAskMarketRow } from '../hooks/useThrottledBidAskMarketRow';
 import { formatPolymarketVolumeK } from '../utils/format';
 import { setSidebarNotifyStakedGatePasses } from '../lib/sidebarNotifyStakedGateStore';
@@ -31,14 +31,35 @@ function stakedPillTier(net: number | null): 'muted' | 'low' | 'mid' | 'high' {
 
 export const SidebarNotifyStakedGateSync = memo(function SidebarNotifyStakedGateSync({
   yesTokenId,
-  marketStakedLegs,
+  marketConditionId,
   notifyStakedMinUsd,
 }: {
   yesTokenId: string;
-  marketStakedLegs: MarketStakedLegsResponse | null;
+  marketConditionId: string;
   notifyStakedMinUsd: number;
 }) {
+  const [marketStakedLegs, setMarketStakedLegs] = useState<MarketStakedLegsResponse | null>(null);
   const row = useThrottledBidAskMarketRow(yesTokenId);
+
+  useEffect(() => {
+    const mid = marketConditionId.trim();
+    if (!mid) {
+      setMarketStakedLegs(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const legs = await fetchMarketStakedLegs(mid);
+        if (!cancelled) setMarketStakedLegs(legs);
+      } catch {
+        if (!cancelled) setMarketStakedLegs(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [marketConditionId]);
 
   const gate = useMemo(() => {
     const tid = yesTokenId.trim();

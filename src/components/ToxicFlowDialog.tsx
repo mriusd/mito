@@ -801,7 +801,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     setWalletChartOutcome('YES');
   }, [selectedMarketId, chartOutcomeTokens?.tokenIdYes, chartOutcomeTokens?.tokenIdNo]);
 
-  const walletInfoChartTrades = usePolymarketChartTrades([]);
+  const walletInfoChartTrades = usePolymarketChartTrades();
 
   const selectedMarketMeta = useMemo(
     () => resolveWalletInfoChartMarket(selectedMarketId, marketById, markets),

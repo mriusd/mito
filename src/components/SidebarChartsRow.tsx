@@ -1,30 +1,28 @@
 import { memo, useMemo } from 'react';
-import type { LiveTrade } from '../hooks/usePolymarketOB';
 import type { Market } from '../types';
-import type { MyTradeChartRow } from '../lib/chartTradeMarkers';
 import { usePolymarketChartTrades } from '../hooks/usePolymarketChartTrades';
+import { useSidebarMyTradesChartMarkers } from '../hooks/useSidebarMyTradesChartMarkers';
 import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 
 export type SidebarChartsRowProps = {
   selectedMarket: Market;
-  onchainLiveTrades: LiveTrade[];
   orderOutcome: 'YES' | 'NO';
   onOrderOutcomeChange: (value: 'YES' | 'NO') => void;
   chartOutcomeSync: boolean;
   onChartOutcomeSyncChange: (enabled: boolean) => void;
-  myTradesForMarkers?: MyTradeChartRow[];
+  marketLookup: Record<string, Market>;
 };
 
 function SidebarChartsRowInner({
   selectedMarket,
-  onchainLiveTrades,
   orderOutcome,
   onOrderOutcomeChange,
   chartOutcomeSync,
   onChartOutcomeSyncChange,
-  myTradesForMarkers,
+  marketLookup,
 }: SidebarChartsRowProps) {
-  const displayLiveTrades = usePolymarketChartTrades(onchainLiveTrades);
+  const displayLiveTrades = usePolymarketChartTrades();
+  const myTradesForMarkers = useSidebarMyTradesChartMarkers(selectedMarket, marketLookup);
   const outcomeSync = useMemo(
     () => ({
       enabled: chartOutcomeSync,

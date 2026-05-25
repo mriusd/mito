@@ -4,6 +4,7 @@ import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { openPolygonscanTx, polygonscanTxUrl } from '../lib/polygonscanLink';
 import { onchainFillKey, polymarketTradeKey } from '../lib/tradeKeys';
 import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
+import { useSidebarOnchainLiveTrades } from '../lib/sidebarOnchainTradesStore';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 
 export type SidebarLiveTradesSectionProps = {
@@ -11,7 +12,6 @@ export type SidebarLiveTradesSectionProps = {
   onToggleLiveTradesExpanded: () => void;
   liveTradesSectionHeight: string;
   liveOrderbookExpanded: boolean;
-  onchainLiveTrades: LiveTrade[];
   liveTradesSource: string;
   myOnchainWalletLower: string;
 };
@@ -109,15 +109,15 @@ function liveTradesSectionInner(props: SidebarLiveTradesSectionProps) {
     onToggleLiveTradesExpanded,
     liveTradesSectionHeight,
     liveOrderbookExpanded,
-    onchainLiveTrades,
     liveTradesSource,
     myOnchainWalletLower,
   } = props;
 
   const polymarketTape = useSidebarPolymarketTape();
+  const onchainTape = useSidebarOnchainLiveTrades();
   const displayLiveTrades = useMemo(
-    () => (liveTradesSource === 'onchain' ? onchainLiveTrades : polymarketTape),
-    [liveTradesSource, onchainLiveTrades, polymarketTape],
+    () => (liveTradesSource === 'onchain' ? onchainTape : polymarketTape),
+    [liveTradesSource, onchainTape, polymarketTape],
   );
 
   /** Local 5 s bucket — parent 1 Hz tick re-rendered whole Sidebar + ToxicFlowDialog (381 profiler commits). */

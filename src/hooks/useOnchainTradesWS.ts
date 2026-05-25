@@ -212,6 +212,33 @@ export interface WSPosition {
   underlyingAsset?: string;
 }
 
+function mergeWalletPositionsSnapshot(
+  prev: WSPosition[],
+  incoming: WSPosition[],
+  scopedTokenIds: string[] | null | undefined,
+): WSPosition[] {
+  const scoped = new Set(
+    (scopedTokenIds || []).map((x) => normalizeClobTokenKey(x)).filter(Boolean),
+  );
+  if (scoped.size === 0) return incoming;
+  const wsScoped = incoming.filter((p) => scoped.has(normalizeClobTokenKey(p.tokenId)));
+  if (wsScoped.length === 0) {
+    const prevScoped = prev.filter((p) => scoped.has(normalizeClobTokenKey(p.tokenId)));
+    if (prevScoped.length > 0) return prev;
+  }
+  const byTok = new Map<string, WSPosition>();
+  for (const p of prev) {
+    const k = normalizeClobTokenKey(p.tokenId);
+    if (!k || scoped.has(k)) continue;
+    byTok.set(k, p);
+  }
+  for (const p of incoming) {
+    const k = normalizeClobTokenKey(p.tokenId);
+    if (k) byTok.set(k, p);
+  }
+  return [...byTok.values()];
+}
+
 export interface WSTrade {
   /** Stable dedupe key — set once at ingest. */
   id?: string;
@@ -767,7 +794,9 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
                 avgPrice: Number(p.avgPrice || 0),
               }))
               .filter((p) => !!p.tokenId);
-            setWalletPositions(raw);
+            setWalletPositions((prev) =>
+              mergeWalletPositionsSnapshot(prev, raw, scopedClobTokenIdsRef.current),
+            );
             // Market-scoped WS sends walletGridPositions for full book; wallet-only URL uses one payload for both.
             if (!marketRef.current?.trim()) {
               setGridWalletPositions(raw);

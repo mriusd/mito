@@ -9,6 +9,7 @@ import { HelpTooltip } from '../HelpTooltip';
 import type { AssetName, Market, Order } from '../../types';
 import { GridMarketCell } from './GridMarketCell';
 import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
+import { useThrottledStoreVwap } from '../../hooks/useThrottledStoreVwap';
 import { polymarketSiteUrl } from '../../lib/polymarketSiteUrl';
 
 const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
@@ -25,7 +26,7 @@ const AssetMarketTableSpotPrice = memo(function AssetMarketTableSpotPrice({
   asset: AssetName;
   symbol: ReturnType<typeof assetToSymbol>;
 }) {
-  const livePrice = useAppStore((s) => s.priceData[symbol]?.price || 0);
+  const livePrice = useThrottledStorePrice(symbol, 1000);
   return <span className="font-bold">{livePrice > 0 ? formatPrice(livePrice, asset) : '--'}</span>;
 });
 
@@ -36,8 +37,8 @@ const AssetMarketTableVwapHint = memo(function AssetMarketTableVwapHint({
   asset: AssetName;
   symbol: ReturnType<typeof assetToSymbol>;
 }) {
-  const vwapPrice = useAppStore((s) => s.vwapData[symbol]?.price || 0);
-  const spotPrice = useAppStore((s) => s.priceData[symbol]?.price || 0);
+  const vwapPrice = useThrottledStoreVwap(symbol, 1000);
+  const spotPrice = useThrottledStorePrice(symbol, 1000);
   if (vwapPrice <= 0) return null;
   const vwapFmt =
     formatPrice(vwapPrice, asset) +

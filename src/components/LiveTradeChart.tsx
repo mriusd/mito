@@ -191,6 +191,15 @@ export function LiveTradeChart({
   const lastVolumeSpikeBarRef = useRef<number | null>(null);
   const volumeSpikeFlashGenRef = useRef(0);
   const hoverMxRef = useRef<number | null>(null);
+  const drawRafRef = useRef<number | null>(null);
+
+  const scheduleDraw = useCallback((drawFn: () => void) => {
+    if (drawRafRef.current != null) return;
+    drawRafRef.current = requestAnimationFrame(() => {
+      drawRafRef.current = null;
+      drawFn();
+    });
+  }, []);
 
   const setChartInterval = useCallback((iv: ChartInterval) => {
     setInterval_(iv);
@@ -458,6 +467,10 @@ export function LiveTradeChart({
           const c = parseFloat(k[4] as string);
           map.set(openTime, { time: openTime, o, h, l, c, v: 0 });
         }
+        if (map.size > MAX_CHART_CANDLES) {
+          const sorted = [...map.keys()].sort((a, b) => a - b);
+          for (const t of sorted.slice(0, sorted.length - MAX_CHART_CANDLES)) map.delete(t);
+        }
         setChainlinkReady(true);
       })
       .catch(() => setChainlinkReady(true));
@@ -474,6 +487,10 @@ export function LiveTradeChart({
           const map = chainlinkCandleMapRef.current;
           const openTime = k.t as number;
           map.set(openTime, { time: openTime, o: parseFloat(k.o), h: parseFloat(k.h), l: parseFloat(k.l), c: parseFloat(k.c), v: 0 });
+          if (map.size > MAX_CHART_CANDLES) {
+            const sorted = [...map.keys()].sort((a, b) => a - b);
+            for (const t of sorted.slice(0, sorted.length - MAX_CHART_CANDLES)) map.delete(t);
+          }
           setChainlinkTick(n => n + 1);
         }
       } catch {}
@@ -939,8 +956,14 @@ export function LiveTradeChart({
   }, [volumeSpikeAlerts, ready, wsTick, trades, tokenId, interval, candleMs, endTime, soundMuteYesTokenId, soundMuteNoTokenId]);
 
   useEffect(() => {
-    draw();
-  }, [draw]);
+    scheduleDraw(draw);
+    return () => {
+      if (drawRafRef.current != null) {
+        cancelAnimationFrame(drawRafRef.current);
+        drawRafRef.current = null;
+      }
+    };
+  }, [draw, scheduleDraw]);
 
   if (!tokenId) return null;
 

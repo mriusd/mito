@@ -45,7 +45,6 @@ import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarke
 import { API_BASE } from '../lib/env';
 import { fetchUpDownTargetFromCrypto, upDownCryptoTimeframe } from '../lib/upDownTargetFromCrypto';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
-import { useOnchainTradesWS } from '../hooks/useOnchainTradesWS';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
@@ -130,6 +129,14 @@ import { SidebarSpotStripMathButton } from './SidebarSpotStripMathButton';
 import { useThrottledStorePrice } from '../hooks/useThrottledStorePrice';
 import { useSidebarNotifyStakedGatePasses } from '../lib/sidebarNotifyStakedGateStore';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
+import { SidebarOnchainTradesHost } from './SidebarOnchainTradesHost';
+import { SidebarOnchainGridPositionsSync } from './SidebarOnchainGridPositionsSync';
+import { SidebarMyTradesSection } from './SidebarMyTradesSection';
+import {
+  refreshSidebarOnchainMarketTrades,
+  refreshSidebarOnchainWallet,
+  useSidebarOnchainWalletPositions,
+} from '../lib/sidebarOnchainTradesStore';
 import { SidebarYesMidProbBar } from './SidebarYesMidProbBar';
 import { SidebarPositionListItem } from './SidebarPositionListItem';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
@@ -1489,7 +1496,6 @@ export function Sidebar() {
     if (liveTradesSource !== 'onchain' || !selectedMarket?.clobTokenIds?.length) return null;
     return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 0 : 1] || null;
   }, [liveTradesSource, selectedMarket, orderOutcome]);
-  const setOnchainGridPositions = useAppStore((s) => s.setOnchainGridPositions);
 
   const [proxyWallet, setProxyWallet] = useState<string | null>(null);
   const pkAddress = useAppStore((s) => s.pkAddress);
@@ -1526,27 +1532,15 @@ export function Sidebar() {
     liveTradesSource === 'onchain' && selectedMarket?.conditionId?.trim()
       ? String(selectedMarket.conditionId).trim()
       : null;
-  const {
-    trades: onchainLiveTrades,
-    walletPositions: wsPositions,
-    gridWalletPositions,
-    refreshWallet,
-    walletMarketTrades: wsMarketTrades,
-    refreshWalletMarketTrades: refreshMarketTradesWS,
-  } = useOnchainTradesWS({
-    marketId: selectedConditionId,
-    tokenId: liveTradesSource === 'onchain' ? onchainHookTokenId : null,
-    wallet: walletForLivePositions,
-    scopedClobTokenIds: scopedClobPair,
-  });
+  const onchainSidebarPositions = useSidebarOnchainWalletPositions();
   const refreshMyMarketTrades = useCallback(() => {
     const w = (walletForLivePositions || '').trim().toLowerCase();
     const m = selectedConditionId;
-    if (w && m) refreshMarketTradesWS(w, m);
-  }, [walletForLivePositions, selectedConditionId, refreshMarketTradesWS]);
-  const onchainSidebarPositions = useMemo(
-    () => (liveTradesSource === 'onchain' ? wsPositions : []),
-    [liveTradesSource, wsPositions],
+    if (w && m) refreshSidebarOnchainMarketTrades(w, m);
+  }, [walletForLivePositions, selectedConditionId]);
+  const onchainSidebarPositionsForMarket = useMemo(
+    () => (liveTradesSource === 'onchain' ? onchainSidebarPositions : []),
+    [liveTradesSource, onchainSidebarPositions],
   );
 
   const requestCrossingConfirm = useCallback((bestPriceCents: number) => {
@@ -1581,11 +1575,6 @@ export function Sidebar() {
     localStorage.setItem(SIDEBAR_CUSTOM_BUTTONS_KEY, JSON.stringify(customButtons));
   }, [customButtons]);
   useEffect(() => {
-    if (liveTradesSource !== 'onchain') return;
-    setOnchainGridPositions(gridWalletPositions.map((p) => ({ tokenId: p.tokenId, size: p.size })));
-  }, [liveTradesSource, gridWalletPositions, setOnchainGridPositions]);
-
-  useEffect(() => {
     localStorage.setItem('sidebar-live-orderbook-expanded', liveOrderbookExpanded ? 'true' : 'false');
   }, [liveOrderbookExpanded]);
   useEffect(() => {
@@ -1614,7 +1603,7 @@ export function Sidebar() {
     };
   }, [selectedMarket, marketLookup]);
   const myPositions = useMemo(() => {
-    const wsMarketRows = onchainSidebarPositions
+    const wsMarketRows = onchainSidebarPositionsForMarket
       .filter((p) => outcomeTokenBelongsToSelectedMarket(p.tokenId, selectedMarket, marketLookup))
       .map((p) => ({ tokenId: p.tokenId, size: p.size, avgPrice: p.avgPrice }));
     if (liveTradesSource === 'onchain') {
@@ -1624,7 +1613,7 @@ export function Sidebar() {
       outcomeTokenBelongsToSelectedMarket(String(p.asset || '').trim(), selectedMarket, marketLookup),
     );
     return mergeSidebarPositionsWsRest(restMarket, wsMarketRows);
-  }, [liveTradesSource, positions, selectedMarket, marketLookup, onchainSidebarPositions]);
+  }, [liveTradesSource, positions, selectedMarket, marketLookup, onchainSidebarPositionsForMarket]);
   const myPositionsDisplay = useMemo(
     () => myPositions.filter((p) => !isSidebarDustPosition(p.size || 0)),
     [myPositions],
@@ -1667,58 +1656,9 @@ export function Sidebar() {
       progOrders: sortBuyFirst(all.filter((o) => !!progOrderMap[o.id])),
     };
   }, [orders, progOrderMap, selectedMarket, marketLookup]);
-  const myTrades = useMemo(() => {
-    if (liveTradesSource !== 'onchain') {
-      return trades.filter((t) => tradeMatchesSelectedMarket(t, selectedMarket, marketLookup));
-    }
-    return wsMarketTrades
-      .sort((a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0))
-      .map((f) => ({
-        asset_id: f.tokenId,
-        token_id: f.tokenId,
-        side: f.side,
-        price: String(f.price),
-        size: String(f.size),
-        fee: String(f.fee || 0),
-        timestamp: f.blockTime > 0 ? f.blockTime * 1000 : Date.now(),
-        txHash: f.txHash,
-        logIndex: f.logIndex,
-        created_at: '',
-        matchTime: '',
-      }));
-  }, [liveTradesSource, trades, selectedMarket, marketLookup, wsMarketTrades]);
-  const myTradesDisplay = useMemo(
-    /** Hard cap to ~100 rendered rows — older context not useful in sidebar and each row mounts an anchor + SVG. */
-    () => (liveTradesSource === 'onchain' ? myTrades.slice(0, 100) : myTrades.slice(0, 20)),
-    [liveTradesSource, myTrades],
-  );
   const myOnchainWalletLower = (walletForLivePositions || '').toLowerCase();
-  const myTradesPnl = useMemo(() => {
-    let totalSellCost = 0;
-    let totalBuyCost = 0;
-    for (const trade of myTradesDisplay) {
-      const rawPrice = parseFloat(trade.price);
-      const size = tradeFilledSizeShares(trade);
-      if (!Number.isFinite(rawPrice) || !Number.isFinite(size)) continue;
-      const cost = rawPrice * size;
-      if (trade.side === 'SELL' || trade.side === 'MERGE' || trade.side === 'REDEEM') totalSellCost += cost;
-      else if (trade.side === 'BUY' || trade.side === 'SPLIT') totalBuyCost += cost;
-    }
-    return totalSellCost - totalBuyCost;
-  }, [myTradesDisplay]);
-  const myTradeScopeKey =
-    selectedMarket?.conditionId || selectedMarket?.id
-      ? `${selectedMarket?.conditionId || selectedMarket?.id}|${myOnchainWalletLower}|${liveTradesSource}`
-      : null;
   const yesTokenIdForSoundMute = selectedMarket?.clobTokenIds?.[0] || '';
   const noTokenIdForSoundMute = selectedMarket?.clobTokenIds?.[1] || '';
-  const myTradeFlashKeys = useMyTradeRowRingSound(
-    myTradesDisplay,
-    myTradeScopeKey,
-    !!selectedMarket && !marketIsExpired(selectedMarket),
-    yesTokenIdForSoundMute,
-    noTokenIdForSoundMute,
-  );
 
   const { sidebarUserBidPrices, sidebarUserAskPrices } = useMemo(() => {
     const yesToken = selectedMarket?.clobTokenIds?.[0] || '';
@@ -3226,11 +3166,11 @@ export function Sidebar() {
         showToast('Merge confirmed', 'success');
         triggerWalletRefresh();
         if (liveTradesSource === 'onchain') {
-          refreshWallet();
+          refreshSidebarOnchainWallet();
           refreshMyMarketTrades();
           for (const delayMs of [2000, 5000, 12000]) {
             window.setTimeout(() => {
-              refreshWallet();
+              refreshSidebarOnchainWallet();
               refreshMyMarketTrades();
             }, delayMs);
           }
@@ -3240,7 +3180,7 @@ export function Sidebar() {
       }
       return res;
     },
-    [mergeEligible.conditionId, mergeFunderWallet, liveTradesSource, refreshWallet, refreshMyMarketTrades],
+    [mergeEligible.conditionId, mergeFunderWallet, liveTradesSource, refreshMyMarketTrades],
   );
 
   return (
@@ -4153,6 +4093,13 @@ export function Sidebar() {
 
       {selectedMarket && (
         <>
+          <SidebarOnchainTradesHost
+            marketId={selectedConditionId}
+            tokenId={liveTradesSource === 'onchain' ? onchainHookTokenId : null}
+            wallet={walletForLivePositions}
+            scopedClobTokenIds={scopedClobPair}
+          />
+          <SidebarOnchainGridPositionsSync liveTradesSource={liveTradesSource} />
           <SidebarNotifyStakedGateSync
             yesTokenId={selectedMarket.clobTokenIds?.[0] ?? ''}
             marketStakedLegs={marketStakedLegs}
@@ -4160,12 +4107,11 @@ export function Sidebar() {
           />
           <SidebarChartsRow
             selectedMarket={selectedMarket}
-            onchainLiveTrades={onchainLiveTrades}
             orderOutcome={orderOutcome}
             onOrderOutcomeChange={setOrderOutcome}
             chartOutcomeSync={chartOutcomeSync}
             onChartOutcomeSyncChange={setChartOutcomeSync}
-            myTradesForMarkers={myTradesDisplay}
+            marketLookup={marketLookup}
           />
 
 
@@ -4510,7 +4456,6 @@ export function Sidebar() {
             onToggleLiveTradesExpanded={toggleLiveTradesExpanded}
             liveTradesSectionHeight={liveTradesSectionHeight}
             liveOrderbookExpanded={liveOrderbookExpanded}
-            onchainLiveTrades={onchainLiveTrades}
             liveTradesSource={liveTradesSource}
             myOnchainWalletLower={myOnchainWalletLower}
           />
@@ -5010,7 +4955,7 @@ export function Sidebar() {
                   setPositionsRefreshing(true);
                   triggerWalletRefresh();
                   if (walletForLivePositions) {
-                    refreshWallet();
+                    refreshSidebarOnchainWallet();
                     if (liveTradesSource === 'onchain') refreshMyMarketTrades();
                   }
                   setTimeout(() => setPositionsRefreshing(false), 2000);
@@ -5305,85 +5250,15 @@ export function Sidebar() {
           </div>
 
 
-          {/* My Trades */}
-          <div className="sidebar-section">
-            <div className="mb-2 flex items-center justify-between text-xs text-gray-400">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span>My Trades</span>
-                <SidebarDataSourceBadge source={liveTradesSource === 'onchain' ? 'onchain' : 'polymarket'} />
-              </div>
-              <span className={myTradesPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                PnL {myTradesPnl >= 0 ? '+' : ''}${Math.abs(myTradesPnl).toFixed(2)}
-              </span>
-            </div>
-            <div className="max-h-48 overflow-y-auto text-[11px]">
-              {myTradesDisplay.length === 0 ? (
-                <div className="text-gray-600">No trades</div>
-              ) : (
-                <table className="w-full table-fixed border-separate border-spacing-y-0.5">
-                  <thead>
-                    <tr className="text-[10px] uppercase tracking-wide text-gray-500">
-                      <th className="text-left font-medium">Dir</th>
-                      <th className="text-left font-medium">Side</th>
-                      <th className="text-right font-medium">Size</th>
-                      <th className="text-right font-medium">Price</th>
-                      <th className="text-right font-medium">Fee</th>
-                      <th className="text-right font-medium">Cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                {myTradesDisplay.map((trade, i) => {
-                  const rowKey = mySidebarTradeRowKey(trade) || `my-trade-${i}`;
-                  const isFlashing = myTradeFlashKeys.has(rowKey);
-                  const tid = getTradeClobTokenId(trade) || String(trade.asset_id || trade.token_id || '').trim();
-                  const outcome = getTokenOutcome(tid, marketLookup);
-                  const sideLabel = isUpDownMarket ? (outcome === 'YES' ? 'UP' : 'DOWN') : outcome;
-                  const rawPrice = parseFloat(trade.price);
-                  const size = tradeFilledSizeShares(trade);
-                  const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
-                  const side = isClaim ? 'CLAIM' : trade.side;
-                  const cost = Number.isFinite(rawPrice) && Number.isFinite(size) ? rawPrice * size : 0;
-                  const signedCost =
-                    side === 'BUY' || side === 'SPLIT'
-                      ? -cost
-                      : side === 'SELL' || side === 'MERGE' || side === 'REDEEM'
-                        ? cost
-                        : 0;
-                  const tradeFee = parseFloat(trade.fee || '0');
-                  const dirTone =
-                    side === 'BUY'
-                      ? 'text-emerald-400'
-                      : side === 'CLAIM' || side === 'REDEEM'
-                        ? 'text-blue-400'
-                        : side === 'SPLIT' || side === 'MERGE'
-                          ? 'text-purple-400'
-                          : 'text-rose-400';
-                  return (
-                    <tr key={rowKey} className={`text-gray-300${isFlashing ? ' my-trade-row-flash' : ''}`}>
-                      <td className={`py-0.5 ${dirTone}`}>{side || '-'}</td>
-                      <td className={outcome === 'YES' ? 'py-0.5 text-emerald-400' : 'py-0.5 text-rose-400'}>{sideLabel}</td>
-                      <td className="py-0.5 text-right">{Number.isFinite(size) ? size.toFixed(2) : '-'}</td>
-                      <td className="py-0.5 text-right">{Number.isFinite(rawPrice) ? `${(rawPrice * 100).toFixed(1)}¢` : '-'}</td>
-                      <td className="py-0.5 text-right text-yellow-400/80">{tradeFee > 0 ? `$${tradeFee.toFixed(2)}` : '-'}</td>
-                      <td
-                        className={`py-0.5 text-right ${
-                          side === 'BUY' || side === 'SPLIT'
-                            ? 'text-rose-400'
-                            : side === 'SELL' || side === 'MERGE' || side === 'REDEEM'
-                              ? 'text-emerald-400'
-                              : 'text-gray-300'
-                        }`}
-                      >
-                        {signedCost >= 0 ? '+' : '-'}${Math.abs(signedCost).toFixed(2)}
-                      </td>
-                    </tr>
-                  );
-                })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
+          <SidebarMyTradesSection
+            selectedMarket={selectedMarket}
+            marketLookup={marketLookup}
+            liveTradesSource={liveTradesSource}
+            isUpDownMarket={isUpDownMarket}
+            walletForLivePositions={walletForLivePositions}
+            yesTokenIdForSoundMute={yesTokenIdForSoundMute}
+            noTokenIdForSoundMute={noTokenIdForSoundMute}
+          />
         </>
       )}
         </div>

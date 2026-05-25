@@ -4,6 +4,7 @@ import {
   pitchMulFromNotifyFreqSlider,
   playTradeNotifySound,
   readNotifyRingTimeS,
+  readNotifyTradeSound,
   readTradeSoundFreqSlider,
 } from './tiltNotifySound';
 import { isNotifySoundPriceMuted } from './notifySoundPriceMute';
@@ -92,6 +93,7 @@ export function useMyTradeRowRingSound(
       const k = mySidebarTradeRowKey(trade);
       if (!k || seen.has(k)) continue;
       seen.add(k);
+      if (!readNotifyTradeSound()) continue;
       if (isNotifySoundPriceMuted(yesTokenId, noTokenId)) continue;
       const side = (trade.side || '').toUpperCase();
       const kind = side === 'SELL' || side === 'MERGE' ? 'red' : 'green';

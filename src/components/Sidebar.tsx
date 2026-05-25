@@ -4,17 +4,21 @@ import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
 import { appKit } from '../lib/wallet';
 import {
+  fetchMarketStakedLegs,
+  mergeMarketStakedLegsResponse,
   placeOrder,
   cancelOrder,
   cancelOrders,
   signOrder,
   submitSignedOrder,
+  type MarketStakedLegsResponse,
 } from '../api';
 import { fetchProxyWallet } from '../api/polymarket';
 import { resolvePolymarketMakerAddress } from '../lib/polymarketTradingMaker';
 import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { executeMergePositions } from '../lib/mergePositions';
+import { buildSidebarUserOrderHighlightSets } from '../lib/sidebarOrderbookAggregate';
 import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
 import {
@@ -28,6 +32,9 @@ import {
   outcomeTokenBelongsToSelectedMarket,
   listPastUpDownMarketsInTfBucket,
   listFutureUpDownMarketsInTfBucket,
+  pickLiveUpDownMarketInTfBucket,
+  pickNextMarketOnExpiry,
+  resolveUpDownStrikeSync,
   shortenMarketName,
   tradeMatchesSelectedMarket,
   hitStrikeMetaForBs,
@@ -35,6 +42,8 @@ import {
   upDownTimeframeKeyFromMarket,
 } from '../utils/format';
 import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarkets } from '../utils/bsMath';
+import { API_BASE } from '../lib/env';
+import { fetchUpDownTargetFromCrypto, upDownCryptoTimeframe } from '../lib/upDownTargetFromCrypto';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
@@ -42,6 +51,7 @@ import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { SidebarBarMidMarker } from './SidebarBarMidMarker';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
 import { useSidebarChartVolatility } from '../hooks/useSidebarChartVolatility';
+import { useThrottledBidAskMarketRow } from '../hooks/useThrottledBidAskMarketRow';
 import {
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
   TOXIC_FAVOURITES_CHANGED_EVENT,
@@ -63,15 +73,18 @@ import {
   readNotifyRingTimeS,
   readNotifySoundFreqSlider,
   readNotifySoundVolumeSlider,
+  readNotifyTradeSound,
   readTradeSoundFreqSlider,
   readTradeSoundVolumeSlider,
   SIDEBAR_NOTIFY_RING_TIME_S_KEY,
+  SIDEBAR_NOTIFY_TRADE_SOUND_KEY,
   SIDEBAR_NOTIFY_SOUND_FREQ_KEY,
   SIDEBAR_NOTIFY_SOUND_VOLUME_KEY,
   SIDEBAR_TRADE_SOUND_FREQ_KEY,
   SIDEBAR_TRADE_SOUND_VOLUME_KEY,
 } from '../lib/tiltNotifySound';
 import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
+import { getExpiryTickNow, subscribeExpiryTick } from '../lib/expiryTickStore';
 import { SidebarMarketCountdownLabel } from './SidebarMarketCountdownLabel';
 import {
   readNotifySoundMaxPriceCents,
@@ -117,12 +130,6 @@ import { SidebarToxicWalletWidthHost } from './SidebarToxicWalletWidthHost';
 import { SidebarToxicNotifySoundHost } from './SidebarToxicNotifySoundHost';
 import { SidebarToxicStatsFlashWrap } from './SidebarToxicStatsFlashWrap';
 import { SidebarSpotVolSigmaLabel } from './SidebarSpotVolSigmaLabel';
-import { SidebarUpDownTargetHost } from './SidebarUpDownTargetHost';
-import { SidebarOrderHighlightHost } from './SidebarOrderHighlightHost';
-import {
-  useSidebarUpDownLiveSameTfMarket,
-  useSidebarUpDownTargetPrice,
-} from '../lib/sidebarUpDownTargetStore';
 import { computeSidebarMyPositions } from '../lib/sidebarMyPositions';
 import { getSidebarOnchainTradesSnapshot } from '../lib/sidebarOnchainTradesStore';
 import { SidebarYesMidProbBar } from './SidebarYesMidProbBar';
@@ -892,6 +899,12 @@ export const Sidebar = memo(function Sidebar() {
   const marketLookupEpoch = useAppStore((s) => s.marketLookupEpoch);
   const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
   const marketLookup = useMemo(() => useAppStore.getState().marketLookup, [marketLookupEpoch]);
+  const autoSwitchNextMarketOnExpiry = useAppStore((s) => s.autoSwitchNextMarketOnExpiry);
+  /** Edge-detect expiry on the same sidebar selection — skip when user navigates to an already-expired market. */
+  const autoSwitchPrevSelectedIdRef = useRef<string | null>(null);
+  const userPinnedExpiredMarketRef = useRef(false);
+  const selectedMarketForAutoSwitchRef = useRef(selectedMarket);
+  selectedMarketForAutoSwitchRef.current = selectedMarket;
   const freqSliderPreviewLastMs = useRef(0);
 
   const [notifyPlaySound, setNotifyPlaySound] = useState(readNotifyPlaySound);
@@ -912,6 +925,7 @@ export const Sidebar = memo(function Sidebar() {
   const [notifyWhaleIgnoreNegativePnl, setNotifyWhaleIgnoreNegativePnl] = useState(readNotifyWhaleIgnoreNegativePnl);
   const [notifySoundFreqSlider, setNotifySoundFreqSlider] = useState(readNotifySoundFreqSlider);
   const [notifySoundVolumeSlider, setNotifySoundVolumeSlider] = useState(readNotifySoundVolumeSlider);
+  const [notifyTradeSound, setNotifyTradeSound] = useState(readNotifyTradeSound);
   const [notifyTradeSoundFreqSlider, setNotifyTradeSoundFreqSlider] = useState(readTradeSoundFreqSlider);
   const [notifyTradeSoundVolumeSlider, setNotifyTradeSoundVolumeSlider] = useState(readTradeSoundVolumeSlider);
   const [notifyRingTimeS, setNotifyRingTimeS] = useState(readNotifyRingTimeS);
@@ -1080,6 +1094,13 @@ export const Sidebar = memo(function Sidebar() {
       /* ignore */
     }
   }, [notifySoundVolumeSlider]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_TRADE_SOUND_KEY, notifyTradeSound ? '1' : '0');
+    } catch {
+      /* */
+    }
+  }, [notifyTradeSound]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_TRADE_SOUND_FREQ_KEY, String(notifyTradeSoundFreqSlider));
@@ -1268,6 +1289,7 @@ export const Sidebar = memo(function Sidebar() {
       return false;
     }
   });
+  const [marketStakedLegs, setMarketStakedLegs] = useState<MarketStakedLegsResponse | null>(null);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   useEffect(() => {
     try {
@@ -1283,6 +1305,42 @@ export const Sidebar = memo(function Sidebar() {
   useEffect(() => {
     setMergeDialogOpen(false);
   }, [selectedMarket?.id]);
+  useEffect(() => {
+    const mid = ((selectedMarket?.conditionId ?? selectedMarket?.id) || '').trim();
+    if (!mid) {
+      setMarketStakedLegs(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const row = await fetchMarketStakedLegs(mid);
+        if (!cancelled) setMarketStakedLegs(row);
+      } catch {
+        if (!cancelled) setMarketStakedLegs(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMarket?.conditionId, selectedMarket?.id]);
+  const sidebarStakedLiveRow = useThrottledBidAskMarketRow(selectedMarket?.clobTokenIds?.[0] ?? '');
+  const sidebarStakedLegs = useMemo(() => {
+    let live: MarketStakedLegsResponse | null = null;
+    const row = sidebarStakedLiveRow;
+    if (row) {
+      const wy = row.stakedUsdYesLeg;
+      const wn = row.stakedUsdNoLeg;
+      const sumAbs = row.stakedSumAbsSignedNetUsd;
+      if (typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn)) {
+        live = { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
+        if (typeof sumAbs === 'number' && Number.isFinite(sumAbs)) {
+          live.stakedSumAbsSignedNetUsd = sumAbs;
+        }
+      }
+    }
+    return mergeMarketStakedLegsResponse(live, marketStakedLegs);
+  }, [sidebarStakedLiveRow, marketStakedLegs]);
   const [crossingConfirmOpen, setCrossingConfirmOpen] = useState(false);
   const [crossingConfirmMessage, setCrossingConfirmMessage] = useState('');
   const crossingConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
@@ -1441,13 +1499,24 @@ export const Sidebar = memo(function Sidebar() {
   const yesTokenIdForSoundMute = selectedMarket?.clobTokenIds?.[0] || '';
   const noTokenIdForSoundMute = selectedMarket?.clobTokenIds?.[1] || '';
 
+  const { sidebarUserBidPrices, sidebarUserAskPrices } = useMemo(() => {
+    const yesToken = selectedMarket?.clobTokenIds?.[0] || '';
+    const noToken = selectedMarket?.clobTokenIds?.[1] || '';
+    const { bidPrices, askPrices } = buildSidebarUserOrderHighlightSets(
+      orders,
+      yesToken,
+      noToken,
+      orderOutcome,
+    );
+    return { sidebarUserBidPrices: bidPrices, sidebarUserAskPrices: askPrices };
+  }, [orders, selectedMarket?.clobTokenIds, orderOutcome]);
+
   // Compute BS probability for orderbook % diff
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
-  const upDownTargetPrice = useSidebarUpDownTargetPrice();
-  const liveUpDownSameTfMarket = useSidebarUpDownLiveSameTfMarket();
+  const lastUpdated = useAppStore((s) => s.lastUpdated);
   const sidebarPriceSym = useMemo((): AssetSymbol | null => {
     if (!selectedMarket) return null;
     const asset = extractAssetFromMarket(selectedMarket);
@@ -1483,6 +1552,7 @@ export const Sidebar = memo(function Sidebar() {
 
 
   // Up or Down market detection and state
+  const [upDownTargetPrice, setUpDownTargetPrice] = useState<number | null>(null);
   const isUpDownMarket = !!(selectedMarket?.question?.match(/up\s+or\s+down/i) || selectedMarket?.eventSlug?.match(/up-or-down|updown/i));
 
   useEffect(() => {
@@ -1574,6 +1644,126 @@ export const Sidebar = memo(function Sidebar() {
     else if (combined.match(/up-or-down-on-/i) || combined.match(/\b24[- ]?h/i)) intervalMs = 24 * 60 * 60 * 1000;
     return endMs - intervalMs;
   }, [isUpDownMarket, selectedMarket?.endDate, selectedMarket?.eventSlug, selectedMarket?.question]);
+
+  const liveUpDownSameTfMarket = useMemo(() => {
+    if (!isUpDownMarket || !selectedMarket || !isMarketExpired || !upDownAsset) return null;
+    const tf = upDownTimeframeKeyFromMarket(selectedMarket);
+    if (!tf) return null;
+    const live = pickLiveUpDownMarketInTfBucket(upOrDownMarkets[upDownAsset]?.[tf]);
+    if (!live || live.id === selectedMarket.id) return null;
+    return live;
+  }, [isUpDownMarket, selectedMarket, isMarketExpired, upDownAsset, upOrDownMarkets, lastUpdated, expiredLivePickPulse]);
+
+  useEffect(() => {
+    if (!autoSwitchNextMarketOnExpiry) return;
+
+    const tryAutoSwitch = () => {
+      const m = selectedMarketForAutoSwitchRef.current;
+      if (!m) {
+        autoSwitchPrevSelectedIdRef.current = null;
+        userPinnedExpiredMarketRef.current = false;
+        return;
+      }
+      const id = m.id;
+      const expiredNow = marketIsExpired(m, getExpiryTickNow());
+
+      if (id !== autoSwitchPrevSelectedIdRef.current) {
+        autoSwitchPrevSelectedIdRef.current = id;
+        userPinnedExpiredMarketRef.current = expiredNow;
+        return;
+      }
+
+      if (userPinnedExpiredMarketRef.current || !expiredNow) return;
+
+      const st = useAppStore.getState();
+      const next = pickNextMarketOnExpiry(m, getExpiryTickNow(), st.upOrDownMarkets, st.marketLookup);
+      if (next) setSelectedMarket(next);
+    };
+
+    tryAutoSwitch();
+    return subscribeExpiryTick(tryAutoSwitch);
+  }, [
+    autoSwitchNextMarketOnExpiry,
+    selectedMarket?.id,
+    selectedMarket?.endDate,
+    selectedMarket?.closed,
+    upOrDownMarkets,
+    lastUpdated,
+    marketLookupEpoch,
+    setSelectedMarket,
+  ]);
+
+  // Target price: same resolution as Up/Down grid (market.priceToBeat → lookup → bucket row by id), plus crypto API for long TF when missing.
+  const syncUpDownStrike = useMemo(
+    () =>
+      isUpDownMarket && selectedMarket
+        ? resolveUpDownStrikeSync(selectedMarket, marketLookup, upOrDownMarkets)
+        : undefined,
+    [
+      isUpDownMarket,
+      selectedMarket,
+      selectedMarket?.id,
+      selectedMarket?.priceToBeat,
+      selectedMarket?.clobTokenIds,
+      marketLookup,
+      upOrDownMarkets,
+      lastUpdated,
+    ],
+  );
+
+  useEffect(() => {
+    if (!isUpDownMarket || !selectedMarket?.endDate) {
+      setUpDownTargetPrice(null);
+      return;
+    }
+
+    const endMs = new Date(selectedMarket.endDate).getTime();
+    if (isNaN(endMs)) {
+      setUpDownTargetPrice(null);
+      return;
+    }
+
+    if (syncUpDownStrike != null && Number.isFinite(syncUpDownStrike)) {
+      setUpDownTargetPrice(syncUpDownStrike);
+      return;
+    }
+
+    setUpDownTargetPrice(null);
+
+    const slug = selectedMarket.eventSlug || '';
+    const q = selectedMarket.question || '';
+    const combined = `${slug} ${q}`;
+    const is5m = !!(combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i));
+
+    if (is5m) {
+      // 5m: priceToBeat from backend Chainlink — re-runs when syncUpDownStrike / lastUpdated updates.
+      return;
+    }
+    if (!upDownCryptoTimeframe(combined)) return;
+
+    const asset = extractAssetFromMarket(selectedMarket);
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      const p = await fetchUpDownTargetFromCrypto(API_BASE, asset, endMs, combined);
+      if (!cancelled && p != null) setUpDownTargetPrice(p);
+    };
+    void tick();
+    const iv = setInterval(() => void tick(), 12_000);
+    const stopIv = setTimeout(() => clearInterval(iv), 150_000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+      clearTimeout(stopIv);
+    };
+  }, [
+    isUpDownMarket,
+    selectedMarket?.id,
+    selectedMarket?.endDate,
+    selectedMarket?.eventSlug,
+    selectedMarket?.question,
+    syncUpDownStrike,
+  ]);
 
   // Countdown for market expiry — driven by shared expiryTickStore (no Sidebar setState).
   useEffect(() => {
@@ -1822,7 +2012,7 @@ export const Sidebar = memo(function Sidebar() {
     selectedMarket?.id,
     selectedMarket?.endDate,
     upOrDownMarkets,
-    marketLookupEpoch,
+    lastUpdated,
     expiredLivePickPulse,
   ]);
 
@@ -2975,65 +3165,93 @@ export const Sidebar = memo(function Sidebar() {
               </p>
               <div
                 className={
+                  notifyTradeSound
+                    ? 'transition-opacity'
+                    : 'opacity-35 blur-[2.5px] pointer-events-none select-none transition-opacity'
+                }
+              >
+                <div className="flex items-start gap-3 flex-wrap mt-3">
+                  <label className="flex items-center gap-2 cursor-pointer shrink-0 self-center">
+                    <input
+                      type="checkbox"
+                      className="rounded accent-amber-500"
+                      checked={notifyTradeSound}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setNotifyTradeSound(on);
+                        if (on) {
+                          primeTiltAudioContextFromUserGesture();
+                          void playTradeNotifySound('green', notifyTradeSoundPitchMul, notifyRingTimeS);
+                        }
+                      }}
+                    />
+                    <span>Trade Ring</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 flex-1 min-w-0">
+                    <div className="min-w-0">
+                      <div className="text-gray-400 mb-1">Trade sound pitch</div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={notifyTradeSoundFreqSlider}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (!Number.isFinite(v)) return;
+                            const nv = Math.min(100, Math.max(0, Math.round(v)));
+                            setNotifyTradeSoundFreqSlider(nv);
+                            const now = Date.now();
+                            if (now - freqSliderPreviewLastMs.current < 160) return;
+                            freqSliderPreviewLastMs.current = now;
+                            void playTradeNotifySound('green', pitchMulFromNotifyFreqSlider(nv), notifyRingTimeS);
+                          }}
+                          className="flex-1 min-w-0 accent-amber-500 h-2"
+                          aria-label="Trade sound pitch"
+                        />
+                        <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifyTradeSoundFreqSlider}</span>
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-gray-400 mb-1">Trade sound volume</div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={notifyTradeSoundVolumeSlider}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (!Number.isFinite(v)) return;
+                            const nv = Math.min(100, Math.max(0, Math.round(v)));
+                            setNotifyTradeSoundVolumeSlider(nv);
+                            try {
+                              localStorage.setItem(SIDEBAR_TRADE_SOUND_VOLUME_KEY, String(nv));
+                            } catch {
+                              /* */
+                            }
+                            const now = Date.now();
+                            if (now - freqSliderPreviewLastMs.current < 160) return;
+                            freqSliderPreviewLastMs.current = now;
+                            void playTradeNotifySound('green', notifyTradeSoundPitchMul, notifyRingTimeS);
+                          }}
+                          className="flex-1 min-w-0 accent-amber-500 h-2"
+                          aria-label="Trade sound volume"
+                        />
+                        <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifyTradeSoundVolumeSlider}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div
+                className={
                   notifyPlaySound || notifyWhaleRing || notifyBellRing || notifyVolumeSpikeRing
                     ? 'transition-opacity'
                     : 'opacity-35 blur-[2.5px] pointer-events-none select-none transition-opacity'
                 }
               >
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
-                  <div className="min-w-0">
-                    <div className="text-gray-400 mb-1">Trade sound pitch</div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={notifyTradeSoundFreqSlider}
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          if (!Number.isFinite(v)) return;
-                          const nv = Math.min(100, Math.max(0, Math.round(v)));
-                          setNotifyTradeSoundFreqSlider(nv);
-                          const now = Date.now();
-                          if (now - freqSliderPreviewLastMs.current < 160) return;
-                          freqSliderPreviewLastMs.current = now;
-                          void playTradeNotifySound('green', pitchMulFromNotifyFreqSlider(nv), notifyRingTimeS);
-                        }}
-                        className="flex-1 min-w-0 accent-amber-500 h-2"
-                        aria-label="Trade sound pitch"
-                      />
-                      <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifyTradeSoundFreqSlider}</span>
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-gray-400 mb-1">Trade sound volume</div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={notifyTradeSoundVolumeSlider}
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          if (!Number.isFinite(v)) return;
-                          const nv = Math.min(100, Math.max(0, Math.round(v)));
-                          setNotifyTradeSoundVolumeSlider(nv);
-                          try {
-                            localStorage.setItem(SIDEBAR_TRADE_SOUND_VOLUME_KEY, String(nv));
-                          } catch {
-                            /* */
-                          }
-                          const now = Date.now();
-                          if (now - freqSliderPreviewLastMs.current < 160) return;
-                          freqSliderPreviewLastMs.current = now;
-                          void playTradeNotifySound('green', notifyTradeSoundPitchMul, notifyRingTimeS);
-                        }}
-                        className="flex-1 min-w-0 accent-amber-500 h-2"
-                        aria-label="Trade sound volume"
-                      />
-                      <span className="text-gray-300 tabular-nums w-8 text-right shrink-0">{notifyTradeSoundVolumeSlider}</span>
-                    </div>
-                  </div>
                   <div className="min-w-0">
                     <div className="text-gray-400 mb-1">Notification sound pitch</div>
                     <div className="flex items-center gap-2">
@@ -3094,6 +3312,24 @@ export const Sidebar = memo(function Sidebar() {
                   </div>
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1">Left = much lower, right = much higher (×0.25–×4 at ends; center = normal). 0 volume = mute.</p>
+                <label className="flex items-center gap-2 cursor-pointer mt-3">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyDoubleRing}
+                    onChange={(e) => setNotifyDoubleRing(e.target.checked)}
+                  />
+                  <span>Double ring</span>
+                </label>
+                <p className="text-[10px] text-gray-500 mt-1 m-0">Tilt bursts: play two strikes ~{NOTIFY_MULTI_RING_GAP_MS}ms apart.</p>
+              </div>
+              <div
+                className={
+                  notifyTradeSound || notifyPlaySound || notifyWhaleRing || notifyBellRing || notifyVolumeSpikeRing
+                    ? 'transition-opacity'
+                    : 'opacity-35 blur-[2.5px] pointer-events-none select-none transition-opacity'
+                }
+              >
                 <div className="flex items-center gap-2 flex-wrap mt-3">
                   <span className="text-gray-400 shrink-0">Ring time (s)</span>
                   <input
@@ -3110,17 +3346,7 @@ export const Sidebar = memo(function Sidebar() {
                     }}
                   />
                 </div>
-                <p className="text-[10px] text-gray-500 mt-1">Glass ring decay length; default 5s (max 5).</p>
-                <label className="flex items-center gap-2 cursor-pointer mt-3">
-                  <input
-                    type="checkbox"
-                    className="rounded accent-amber-500"
-                    checked={notifyDoubleRing}
-                    onChange={(e) => setNotifyDoubleRing(e.target.checked)}
-                  />
-                  <span>Double ring</span>
-                </label>
-                <p className="text-[10px] text-gray-500 mt-1 m-0">Tilt bursts: play two strikes ~{NOTIFY_MULTI_RING_GAP_MS}ms apart.</p>
+                <p className="text-[10px] text-gray-500 mt-1 m-0">Glass ring decay length; default 5s (max 5).</p>
               </div>
               <div className="border border-gray-600/80 rounded-md p-2 space-y-2 bg-gray-900/40">
                 <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Markets</div>
@@ -3699,8 +3925,6 @@ export const Sidebar = memo(function Sidebar() {
 
       {selectedMarket && (
         <>
-          <SidebarUpDownTargetHost />
-          <SidebarOrderHighlightHost />
           <SidebarOnchainTradesHost
             marketId={selectedConditionId}
             tokenId={liveTradesSource === 'onchain' ? onchainHookTokenId : null}
@@ -3711,7 +3935,7 @@ export const Sidebar = memo(function Sidebar() {
           {toxicFlowMarketId ? <SidebarToxicFlowHost marketId={toxicFlowMarketId} /> : null}
           <SidebarNotifyStakedGateSync
             yesTokenId={selectedMarket.clobTokenIds?.[0] ?? ''}
-            marketConditionId={toxicFlowMarketId}
+            marketStakedLegs={marketStakedLegs}
             notifyStakedMinUsd={notifyStakedMinUsd}
           />
           <SidebarChartsRow
@@ -3721,6 +3945,8 @@ export const Sidebar = memo(function Sidebar() {
             chartOutcomeSync={chartOutcomeSync}
             onChartOutcomeSyncChange={setChartOutcomeSync}
             marketLookup={marketLookup}
+            sidebarUserBidPrices={sidebarUserBidPrices}
+            sidebarUserAskPrices={sidebarUserAskPrices}
           />
 
 
@@ -3951,8 +4177,7 @@ export const Sidebar = memo(function Sidebar() {
                       </div>
             <div className="mt-1 w-full min-w-0">
               <SidebarToxicStrips
-                yesTokenId={selectedMarket?.clobTokenIds?.[0] ?? ''}
-                marketConditionId={toxicFlowMarketId}
+                sidebarStakedLegs={sidebarStakedLegs}
                 notifyTiltAppliesToSelectedMarket={notifyTiltAppliesToSelectedMarket}
                 notifyWhaleAmountUsd={notifyWhaleAmountUsd}
                 notifyWhaleMaxPriceCents={notifyWhaleMaxPriceCents}
@@ -3975,6 +4200,8 @@ export const Sidebar = memo(function Sidebar() {
             onToggleLiveOrderbookExpanded={toggleLiveOrderbookExpanded}
             isMarketExpired={isMarketExpired}
             isUpDownMarket={isUpDownMarket}
+            sidebarUserBidPrices={sidebarUserBidPrices}
+            sidebarUserAskPrices={sidebarUserAskPrices}
             selectedMarket={selectedMarket}
             orderOutcome={orderOutcome}
             positions={positions}

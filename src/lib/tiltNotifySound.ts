@@ -36,6 +36,17 @@ export function readTradeSoundFreqSlider(): number {
 }
 
 export const SIDEBAR_TRADE_SOUND_VOLUME_KEY = 'polybot-sidebar-trade-sound-volume';
+export const SIDEBAR_NOTIFY_TRADE_SOUND_KEY = 'polybot-sidebar-notify-trade-sound';
+
+export function readNotifyTradeSound(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_TRADE_SOUND_KEY);
+    if (v === null) return true;
+    return v === '1';
+  } catch {
+    return true;
+  }
+}
 
 export function readTradeSoundVolumeSlider(): number {
   try {

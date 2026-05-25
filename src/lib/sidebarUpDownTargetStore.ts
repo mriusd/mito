@@ -1,17 +1,30 @@
 import { useSyncExternalStore } from 'react';
 import type { Market } from '../types';
 
+export type SidebarUpDownEndPickerData = {
+  endPickerList: Market[];
+  visibleEndLabel: string;
+  endIso: string;
+};
+
 type SidebarUpDownTargetSnapshot = {
   targetPrice: number | null;
   liveSameTfMarket: Market | null;
+  endPicker: SidebarUpDownEndPickerData | null;
   digest: number;
 };
 
 const EMPTY: SidebarUpDownTargetSnapshot = {
   targetPrice: null,
   liveSameTfMarket: null,
+  endPicker: null,
   digest: 0,
 };
+
+function endPickerSig(data: SidebarUpDownEndPickerData | null): string {
+  if (!data) return '';
+  return `${data.endIso}|${data.visibleEndLabel}|${data.endPickerList.map((m) => m.id).join(',')}`;
+}
 
 let snap = EMPTY;
 const listeners = new Set<() => void>();
@@ -39,6 +52,22 @@ export function setSidebarUpDownLiveSameTfMarket(next: Market | null): void {
   if (prevId === nextId) return;
   snap = { ...snap, liveSameTfMarket: next, digest: snap.digest + 1 };
   notifyListeners();
+}
+
+export function setSidebarUpDownEndPicker(next: SidebarUpDownEndPickerData | null): void {
+  if (endPickerSig(snap.endPicker) === endPickerSig(next)) return;
+  snap = { ...snap, endPicker: next, digest: snap.digest + 1 };
+  notifyListeners();
+}
+
+export function useSidebarUpDownEndPicker(): SidebarUpDownEndPickerData | null {
+  const digest = useSyncExternalStore(
+    subscribeSidebarUpDownTarget,
+    () => getSidebarUpDownTargetSnapshot().digest,
+    () => getSidebarUpDownTargetSnapshot().digest,
+  );
+  void digest;
+  return getSidebarUpDownTargetSnapshot().endPicker;
 }
 
 export function subscribeSidebarUpDownTarget(onStoreChange: () => void): () => void {

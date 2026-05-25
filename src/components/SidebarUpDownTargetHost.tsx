@@ -1,7 +1,9 @@
-import { memo, useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import {
   extractAssetFromMarket,
+  listFutureUpDownMarketsInTfBucket,
+  listPastUpDownMarketsInTfBucket,
   pickLiveUpDownMarketInTfBucket,
   pickNextMarketOnExpiry,
   resolveUpDownStrikeSync,
@@ -12,6 +14,7 @@ import { getExpiryTickNow, subscribeExpiryTick } from '../lib/expiryTickStore';
 import { fetchUpDownTargetFromCrypto, upDownCryptoTimeframe } from '../lib/upDownTargetFromCrypto';
 import { API_BASE } from '../lib/env';
 import {
+  setSidebarUpDownEndPicker,
   setSidebarUpDownLiveSameTfMarket,
   setSidebarUpDownTargetPrice,
 } from '../lib/sidebarUpDownTargetStore';
@@ -40,6 +43,8 @@ export const SidebarUpDownTargetHost = memo(function SidebarUpDownTargetHost() {
   const userPinnedExpiredMarketRef = useRef(false);
   const selectedMarketForAutoSwitchRef = useRef(selectedMarket);
   selectedMarketForAutoSwitchRef.current = selectedMarket;
+
+  const [endPickerPulse, setEndPickerPulse] = useState(0);
 
   const syncUpDownStrike = useMemo(
     () =>
@@ -151,6 +156,57 @@ export const SidebarUpDownTargetHost = memo(function SidebarUpDownTargetHost() {
       }
       setSidebarUpDownLiveSameTfMarket(live);
     }, 1500);
+    return () => window.clearInterval(id);
+  }, [isMarketExpired, isUpDownMarket]);
+
+  useEffect(() => {
+    if (!isUpDownMarket || !selectedMarket?.endDate) {
+      setSidebarUpDownEndPicker(null);
+      return;
+    }
+    const endMs = new Date(selectedMarket.endDate).getTime();
+    if (!Number.isFinite(endMs)) {
+      setSidebarUpDownEndPicker(null);
+      return;
+    }
+    const asset = extractAssetFromMarket(selectedMarket);
+    if (!asset) {
+      setSidebarUpDownEndPicker(null);
+      return;
+    }
+    const tf = upDownTimeframeKeyFromMarket(selectedMarket);
+    if (!tf) {
+      setSidebarUpDownEndPicker(null);
+      return;
+    }
+    const nowMs = Date.now();
+    const futureList = listFutureUpDownMarketsInTfBucket(upOrDownMarkets[asset]?.[tf], nowMs);
+    const pastList = listPastUpDownMarketsInTfBucket(upOrDownMarkets[asset]?.[tf], nowMs);
+    const endPickerList = [...pastList, ...futureList].sort((a, b) => {
+      const ta = a.endDate ? new Date(a.endDate).getTime() : 0;
+      const tb = b.endDate ? new Date(b.endDate).getTime() : 0;
+      return ta - tb;
+    });
+    const visibleEndLabel = new Date(selectedMarket.endDate).toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    setSidebarUpDownEndPicker({ endPickerList, visibleEndLabel, endIso: selectedMarket.endDate });
+  }, [
+    isUpDownMarket,
+    selectedMarket,
+    selectedMarket?.id,
+    selectedMarket?.endDate,
+    upOrDownMarkets,
+    lastUpdated,
+    marketLookupEpoch,
+    endPickerPulse,
+  ]);
+
+  useEffect(() => {
+    if (!isMarketExpired || !isUpDownMarket) return;
+    const id = window.setInterval(() => setEndPickerPulse((n) => n + 1), 1500);
     return () => window.clearInterval(id);
   }, [isMarketExpired, isUpDownMarket]);
 

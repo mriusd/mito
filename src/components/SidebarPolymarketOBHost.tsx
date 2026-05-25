@@ -8,7 +8,6 @@ import { readSavedObAggStep, LS_SIDEBAR_OB_AGG_STEP } from '../lib/sidebarObAggS
 import { bumpSidebarTopOfBookDigest } from '../lib/sidebarTopOfBookStore';
 import { setSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import { SidebarLiveOrderbookSection } from './SidebarLiveOrderbookSection';
-import { useSidebarOrderHighlightSets } from '../lib/sidebarOrderHighlightStore';
 
 type OBLevel = { price: string; size: string };
 
@@ -30,6 +29,8 @@ type Props = {
   onToggleLiveOrderbookExpanded: () => void;
   isMarketExpired: boolean;
   isUpDownMarket: boolean;
+  sidebarUserBidPrices: Set<string>;
+  sidebarUserAskPrices: Set<string>;
   selectedMarket: Market | null;
   orderOutcome: 'YES' | 'NO';
   positions: Position[];
@@ -47,6 +48,8 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   onToggleLiveOrderbookExpanded,
   isMarketExpired,
   isUpDownMarket,
+  sidebarUserBidPrices,
+  sidebarUserAskPrices,
   selectedMarket,
   orderOutcome,
   positions,
@@ -55,7 +58,6 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   setOrderPrice,
   setOrderAmount,
 }: Props) {
-  const { bidPrices: sidebarUserBidPrices, askPrices: sidebarUserAskPrices } = useSidebarOrderHighlightSets();
   const [obAggStep, setObAggStep] = useState<SidebarObAggStep>(() => readSavedObAggStep());
   const setObAggStepPersist = useCallback((step: SidebarObAggStep) => {
     setObAggStep(step);

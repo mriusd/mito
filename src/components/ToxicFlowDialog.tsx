@@ -37,15 +37,12 @@ import {
   fetchWalletSummary,
   fetchWalletPositions,
   fetchMarketStakedLegs,
-  fetchMarketOutcomeTokens,
   mergeMarketStakedLegsResponse,
-  type MarketOutcomeTokensResponse,
   walletSummaryFromLedgerEmbed,
   type MarketStakedLegsResponse,
   type ToxicFlowData,
   type WalletPosition,
   type WalletSummary,
-  type OnchainFillRow,
   type WalletScoresLedgerEmbed,
 } from '../api';
 import {
@@ -88,14 +85,12 @@ import {
   useToxicWalletTag,
 } from '../lib/toxicWalletTags';
 import { WS_BASE } from '../lib/env';
-import { toxicFlowFillKey } from '../lib/tradeKeys';
 import { useAppStore } from '../stores/appStore';
-import { getOnchainTradesWSShared, OnchainTradesWSBridge, useWalletMarketTradesWS, type WSTrade } from '../hooks/useOnchainTradesWS';
+import { WalletInfoPanelTradesColumn } from './WalletInfoPanelTradesColumn';
 import {
   buildMarketByIdRecord,
   sortWalletPositionsByDisplayedDateDesc,
   WalletLatestMarketsTradedTable,
-  WalletSelectedMarketPositionStrip,
   fmtPriceShare,
 } from './WalletLatestMarketsTradedTable';
 import { ToxicFlowWalletTable as WalletTable } from './ToxicFlowWalletTable';
@@ -106,23 +101,17 @@ import {
   persistToxicFlowRowActionsTipDismissed,
   readToxicFlowRowActionsTipDismissed,
 } from '../lib/toxicFlowRowActionsTip';
-import { exportWalletFillsCsv, exportWalletMarketsCsv } from '../lib/walletInfoCsvExport';
+import { exportWalletMarketsCsv } from '../lib/walletInfoCsvExport';
 import { fetchPolymarketNickname } from '../api/polymarket';
 import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { WalletScoresDailyCharts } from './WalletScoresDailyCharts';
 import type { MyTradeChartRow } from '../lib/chartTradeMarkers';
-import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 import {
   enrichMarketByIdFromWalletPositions,
-  resolveWalletInfoChartMarket,
-  walletInfoChartMarketWithOutcomeTokens,
 } from '../lib/walletInfoChartMarket';
-import { usePolymarketChartTrades } from '../hooks/usePolymarketChartTrades';
 import type { Market } from '../types';
 import { HelperTooltip } from './HelperTooltip';
 import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
-import { useTradeElapsedTick } from '../hooks/useTradeElapsedTick';
-import { MemoWalletTradeTimeCell } from './WalletTradeTimeCell';
 import { isSmartGoldTrader, walletAddressColorClass } from '../lib/walletAddressColor';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
 import { WalletAddressGlyph } from './WalletAddressGlyph';
@@ -158,7 +147,6 @@ import {
 } from '../lib/tiltWhaleAmountUsd';
 import {
   applyToxicFlowWSMessage,
-  findToxicFlowWalletPosition,
   marketConditionKeysEqual,
   toxicFlowFullSnapshot,
   type ToxicFlowWSMessage,
@@ -457,65 +445,6 @@ function shortenWallet(w: string): string {
   return w.slice(0, 6) + '…' + w.slice(-4);
 }
 
-function isLedgerFillRow(f: OnchainFillRow): boolean {
-  return f.fillSource === 'wallet_fill_ledger';
-}
-
-function wsTradeToFillRow(t: WSTrade, wallet: string, marketId: string): OnchainFillRow {
-  return {
-    txHash: t.txHash || '',
-    logIndex: t.logIndex ?? 0,
-    blockNumber: 0,
-    blockTime: t.blockTime,
-    fillSource: 'wallet_fill_ledger',
-    wallet,
-    action: t.side,
-    size: t.size,
-    price: t.price,
-    fee: t.fee,
-    tokenId: t.tokenId,
-    side: t.outcome,
-    marketId,
-    isTaker: t.isTaker,
-  };
-}
-
-function sameClobToken(a: string, b: string): boolean {
-  const sa = String(a || '').trim();
-  const sb = String(b || '').trim();
-  if (!sa || !sb) return false;
-  if (sa === sb) return true;
-  try {
-    return BigInt(sa) === BigInt(sb);
-  } catch {
-    return false;
-  }
-}
-
-function isUpDownFromFill(mk: Market | Record<string, unknown>, f: OnchainFillRow): boolean {
-  const blob = `${f.marketType || ''} ${(mk as Market)?.question || ''} ${(mk as Market)?.eventSlug || ''}`.toLowerCase();
-  return /upordown|up-down|up\s*or\s*down|updown/.test(blob);
-}
-
-function fillOutcomeDisplay(f: OnchainFillRow, mk: Market | Record<string, unknown>): { text: string; tone: 'yes' | 'no' | 'muted' } {
-  const upDown = isUpDownFromFill(mk, f);
-  const yesLab = upDown ? 'UP' : 'YES';
-  const noLab = upDown ? 'DOWN' : 'NO';
-  const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, '');
-  const raw = String(f.side ?? '').trim();
-  if (raw) {
-    const u = norm(raw);
-    if (u === 'YES' || u === 'Y' || u === 'UP') return { text: yesLab, tone: 'yes' };
-    if (u === 'NO' || u === 'N' || u === 'DOWN') return { text: noLab, tone: 'no' };
-    return { text: raw, tone: 'muted' };
-  }
-  const tid = String(f.tokenId || '').trim();
-  const yT = String((mk as Market)?.clobTokenIds?.[0] ?? '').trim();
-  const nT = String((mk as Market)?.clobTokenIds?.[1] ?? '').trim();
-  if (tid && yT && sameClobToken(tid, yT)) return { text: yesLab, tone: 'yes' };
-  if (tid && nT && sameClobToken(tid, nT)) return { text: noLab, tone: 'no' };
-  return { text: '-', tone: 'muted' };
-}
 
 function LedgerSummaryField({
   label,
@@ -628,7 +557,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   variant = 'modal',
   onInlineMarketsListOpenChange,
   overlayZClass = 'z-[49999]',
-  toxicFlowData: toxicFlowDataProp = null,
+  toxicFlowMarketId = '',
 }: {
   open: boolean;
   wallet: string;
@@ -642,43 +571,24 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   /** Inline sidebar: notify parent when markets list expand toggles (width). */
   onInlineMarketsListOpenChange?: (open: boolean) => void;
   overlayZClass?: string;
-  /** Live toxic-flow cohort for current market — WMP strip above trades. */
-  toxicFlowData?: import('../api').ToxicFlowData | null;
+  /** Toxic-flow market id for live WMP strip (no full payload subscription). */
+  toxicFlowMarketId?: string;
 }) {
   const [marketById, setMarketById] = useState<Record<string, import('../types').Market>>({});
   const [summary, setSummary] = useState<WalletSummary | null | undefined>(undefined);
   const [markets, setMarkets] = useState<WalletPosition[]>([]);
   const [selectedMarketId, setSelectedMarketId] = useState('');
-  const [walletChartOutcome, setWalletChartOutcome] = useState<'YES' | 'NO'>('YES');
-  const [chartOutcomeTokens, setChartOutcomeTokens] = useState<MarketOutcomeTokensResponse | null>(null);
   const [loadingMarkets, setLoadingMarkets] = useState(false);
+  const [loadingFills, setLoadingFills] = useState(false);
   const [fillsRefreshToken, setFillsRefreshToken] = useState(0);
   const [dailySnapshotsRefresh, setDailySnapshotsRefresh] = useState(0);
   const [profileNickname, setProfileNickname] = useState('');
   const [inlineMarketsListOpen, setInlineMarketsListOpen] = useState(false);
-  const [needsOwnOnchainWs, setNeedsOwnOnchainWs] = useState(() => getOnchainTradesWSShared() == null);
-  const tradeElapsedTick = useTradeElapsedTick(open);
   const isInlineWalletInfo = variant === 'inline';
   const showMarketsList = !isInlineWalletInfo || inlineMarketsListOpen;
-  const effectiveToxicFlowData = toxicFlowDataProp;
-  const {
-    trades: wsMarketTrades,
-    total: fillsTotal,
-    loading: loadingFills,
-    refresh: refreshMarketTradesWS,
-  } = useWalletMarketTradesWS(wallet, selectedMarketId, open && !!wallet && !!selectedMarketId);
-  const fills = useMemo(
-    () => wsMarketTrades.map((t) => wsTradeToFillRow(t, wallet, selectedMarketId)),
-    [wsMarketTrades, wallet, selectedMarketId],
-  );
-
-  useEffect(() => {
-    if (!open) return;
-    const sync = () => setNeedsOwnOnchainWs(getOnchainTradesWSShared() == null);
-    sync();
-    const id = window.setInterval(sync, 5000);
-    return () => window.clearInterval(id);
-  }, [open]);
+  const onLoadingFillsChange = useCallback((loading: boolean) => {
+    setLoadingFills(loading);
+  }, []);
 
   const loadMarketsAndSelect = useCallback(
     async (preserveSelected: string | null) => {
@@ -738,9 +648,8 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     const prefLc = prefRaw.toLowerCase();
     const hit = markets.find((row) => String(row.marketId || '').trim().toLowerCase() === prefLc);
     setSelectedMarketId(hit ? hit.marketId : prefRaw);
-    refreshMarketTradesWS();
     setFillsRefreshToken((n) => n + 1);
-  }, [focusMarketSeq, focusMarketId, initialMarketId, open, wallet, markets, refreshMarketTradesWS]);
+  }, [focusMarketSeq, focusMarketId, initialMarketId, open, wallet, markets]);
 
   useEffect(() => {
     if (!isInlineWalletInfo) return;
@@ -766,76 +675,12 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     setLoadingMarkets(true);
     try {
       await loadMarketsAndSelect(selectedMarketId);
-      refreshMarketTradesWS();
       setFillsRefreshToken((n) => n + 1);
       setDailySnapshotsRefresh((n) => n + 1);
     } finally {
       setLoadingMarkets(false);
     }
-  }, [open, wallet, selectedMarketId, loadMarketsAndSelect, refreshMarketTradesWS]);
-
-  useEffect(() => {
-    if (!open || !wallet || !selectedMarketId) return;
-    refreshMarketTradesWS();
-  }, [open, wallet, selectedMarketId, fillsRefreshToken, refreshMarketTradesWS]);
-
-  useEffect(() => {
-    const mid = selectedMarketId.trim();
-    if (!open || !mid) {
-      setChartOutcomeTokens(null);
-      return;
-    }
-    let cancelled = false;
-    setChartOutcomeTokens(null);
-    void fetchMarketOutcomeTokens(mid).then((tok) => {
-      if (!cancelled) setChartOutcomeTokens(tok);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, selectedMarketId]);
-
-  useEffect(() => {
-    setWalletChartOutcome('YES');
-  }, [selectedMarketId, chartOutcomeTokens?.tokenIdYes, chartOutcomeTokens?.tokenIdNo]);
-
-  const walletInfoChartTrades = usePolymarketChartTrades();
-
-  const selectedMarketMeta = useMemo(
-    () => resolveWalletInfoChartMarket(selectedMarketId, marketById, markets),
-    [selectedMarketId, marketById, markets],
-  );
-
-  const selectedMarketForChart = useMemo(
-    () =>
-      walletInfoChartMarketWithOutcomeTokens(
-        selectedMarketMeta,
-        chartOutcomeTokens?.tokenIdYes || '',
-        chartOutcomeTokens?.tokenIdNo || '',
-      ),
-    [selectedMarketMeta, chartOutcomeTokens],
-  );
-
-  const selectedMarketPosition = useMemo(() => {
-    const raw = selectedMarketId.trim();
-    if (!raw) return null;
-    const toxicMkt = String(effectiveToxicFlowData?.marketId || '').trim();
-    if (effectiveToxicFlowData && marketConditionKeysEqual(toxicMkt, raw)) {
-      const live = findToxicFlowWalletPosition(effectiveToxicFlowData, wallet);
-      if (live) return live;
-    }
-    return (
-      markets.find((row) => marketConditionKeysEqual(String(row.marketId || ''), raw)) ??
-      markets.find((row) => String(row.marketId || '').trim().toLowerCase() === raw.toLowerCase()) ??
-      null
-    );
-  }, [markets, selectedMarketId, effectiveToxicFlowData, wallet]);
-
-  const toxicMarketMatchesSelected = useMemo(() => {
-    const raw = selectedMarketId.trim();
-    const toxicMkt = String(effectiveToxicFlowData?.marketId || '').trim();
-    return !!(raw && effectiveToxicFlowData && marketConditionKeysEqual(toxicMkt, raw));
-  }, [selectedMarketId, effectiveToxicFlowData]);
+  }, [open, wallet, selectedMarketId, loadMarketsAndSelect]);
 
   const onMarketRowClick = useCallback((id: string) => {
     setSelectedMarketId(id);
@@ -1003,9 +848,6 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const polygonscanUrl = `https://polygonscan.com/address/${wallet.trim().toLowerCase()}`;
   const panelBody = (
     <>
-        {needsOwnOnchainWs ? (
-          <OnchainTradesWSBridge wallet={wallet} marketId={selectedMarketId} active={!!wallet.trim() && !!selectedMarketId.trim()} />
-        ) : null}
         <div className="flex items-center justify-between mb-2 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-bold text-yellow-400">Wallet Info</span>
@@ -1273,256 +1115,16 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
           ) : null}
 
           <div className={`bg-gray-900 rounded p-2 min-h-0 h-full min-w-0 flex flex-col overflow-hidden${isInlineWalletInfo ? ' flex-1' : ''}`}>
-            <div className="flex items-center justify-between gap-2 mb-1 shrink-0 min-w-0">
-              <div className="text-[10px] text-gray-400 font-bold min-w-0 truncate">
-                Trades For Selected Market {selectedMarketId ? <span className="text-gray-500">({selectedMarketId})</span> : null}
-              </div>
-              <button
-                type="button"
-                className="text-[10px] text-blue-400 hover:underline shrink-0 disabled:opacity-40 disabled:pointer-events-none"
-                disabled={loadingFills || fills.length === 0 || !selectedMarketId}
-                onClick={() => exportWalletFillsCsv(wallet, fills, useAppStore.getState().marketLookup, selectedMarketId)}
-              >
-                Export CSV
-              </button>
-            </div>
-            {selectedMarketForChart?.clobTokenIds?.[0] ? (
-              <div className="shrink-0 mb-1 border-b border-gray-800/80 pb-1">
-                <SidebarRightLiveTradeChart
-                  market={selectedMarketForChart}
-                  trades={walletInfoChartTrades}
-                  ledgerFillsForMarkers={fills}
-                  chartOutcome={walletChartOutcome}
-                  onChartOutcomeChange={setWalletChartOutcome}
-                  intervalSelector="dropdown"
-                  volumeSpikeAlerts={false}
-                />
-              </div>
-            ) : null}
-            <WalletSelectedMarketPositionStrip
-              position={selectedMarketPosition}
-              marketId={selectedMarketId}
+            <WalletInfoPanelTradesColumn
+              open={open}
+              wallet={wallet}
+              selectedMarketId={selectedMarketId}
               marketById={marketById}
-              stakedDisplay={toxicMarketMatchesSelected ? 'stakedNet' : 'usdcIn'}
+              markets={markets}
+              toxicFlowMarketId={toxicFlowMarketId}
+              fillsRefreshToken={fillsRefreshToken}
+              onLoadingFillsChange={onLoadingFillsChange}
             />
-            <div className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
-            <div className="flex-1 min-h-0 overflow-auto">
-              <table className="w-full text-[10px] [&_th]:px-2.5 [&_td]:px-2.5 [&_th]:py-1 [&_td]:py-1">
-                <thead>
-                  <tr className="text-gray-500">
-                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-left">Time</th>
-                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-left">Action</th>
-                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-left">Side</th>
-                    <th
-                      className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-center w-6 px-0"
-                      title="Taker (wallet_fill_ledger.is_taker)"
-                    >
-                      T
-                    </th>
-                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-right">Shares</th>
-                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-right">Price</th>
-                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-right">USDC</th>
-                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-right">Fee</th>
-                    <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-center w-6 px-0" aria-label="Transaction" />
-                  </tr>
-                </thead>
-                <tbody>
-            {loadingFills && fills.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="py-8 text-center text-gray-500">
-                  Loading trades...
-                </td>
-              </tr>
-            ) : fills.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="py-8 text-center text-gray-500">
-                  No trades for this wallet/market.
-                </td>
-              </tr>
-            ) : (
-                  fills.map((f) => {
-                    const mid = String(f.marketId || '').trim().toLowerCase();
-                    const mk =
-                      marketById[selectedMarketId] ||
-                      (mid && marketById[mid]) ||
-                      {};
-                    const bt = Number((f as { blockTime?: number }).blockTime ?? 0);
-                    if (isLedgerFillRow(f)) {
-                      const sz = Number(f.size);
-                      const pr = f.price;
-                      const priceFinite = pr != null && Number.isFinite(pr);
-                      const sizeFinite = Number.isFinite(sz);
-                      const priceLabel = priceFinite
-                        ? `${(pr * 100).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}¢`
-                        : '—';
-                      const usdc = priceFinite && sizeFinite ? pr * sz : NaN;
-                      const usdcLabel = Number.isFinite(usdc) ? `$${fmtUsd2En(usdc)}` : '—';
-                      const feeN = Number(f.fee);
-                      const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
-                      const rawSide = String(f.side ?? '').trim();
-                      const sideLabel = rawSide || '—';
-                      const su = rawSide.toUpperCase();
-                      const sideCls =
-                        su === 'YES' || su === 'Y' ? 'text-green-400' : su === 'NO' || su === 'N' ? 'text-red-400' : 'text-gray-300';
-                      const action = String(f.action ?? '').trim();
-                      const actionU = action.toUpperCase();
-                      const actionCls =
-                        actionU === 'BUY'
-                          ? 'text-green-400'
-                          : actionU === 'SELL'
-                            ? 'text-red-400'
-                            : actionU === 'SPLIT' || actionU === 'MERGE'
-                              ? 'text-purple-400'
-                              : actionU === 'REDEEM'
-                                ? 'text-blue-400'
-                                : 'text-gray-300';
-                      return (
-                        <tr key={toxicFlowFillKey(f.txHash, f.logIndex, String(f.tokenId || ''))} className="border-b border-gray-800">
-                          <td className="py-0.5">
-                            <MemoWalletTradeTimeCell blockTime={bt} nowMs={tradeElapsedTick} />
-                          </td>
-                          <td className={actionCls}>{action || '—'}</td>
-                          <td className={sideCls}>{sideLabel}</td>
-                          <td className="text-center text-amber-300 font-bold tabular-nums px-0">
-                            {f.isTaker === true ? 'T' : ''}
-                          </td>
-                          <td className="text-right tabular-nums">
-                            {sizeFinite ? sz.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-                          </td>
-                          <td className="text-right text-gray-300 tabular-nums">{priceLabel}</td>
-                          <td className="text-right text-yellow-400">{usdcLabel}</td>
-                          <td className="text-right text-yellow-400/80">{feeLabel}</td>
-                          <td className="text-center px-0">
-                            {f.txHash ? (
-                              <a
-                                href={`https://polygonscan.com/tx/${f.txHash}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex text-gray-400 hover:text-cyan-300"
-                                title={`Open tx ${f.txHash} on Polygonscan`}
-                                aria-label="Open transaction on Polygonscan"
-                              >
-                                <ExternalLink size={12} />
-                              </a>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    }
-                    const isSplitMerge = f.orderHash === 'SPLIT' || f.orderHash === 'MERGE';
-                    if (isSplitMerge) {
-                      const label = String(f.orderHash);
-                      const amount = Number(f.makerAmount ?? 0);
-                      const feeN = Number(f.fee ?? 0);
-                      const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
-                      return (
-                        <tr key={toxicFlowFillKey(f.txHash, f.logIndex)} className="border-b border-gray-800">
-                          <td className="py-0.5">
-                            <MemoWalletTradeTimeCell blockTime={bt} nowMs={tradeElapsedTick} />
-                          </td>
-                          <td className="text-purple-400" colSpan={2}>{label}</td>
-                          <td className="text-center text-amber-300 font-bold px-0">{f.isTaker === true ? 'T' : ''}</td>
-                          <td className="text-right tabular-nums">
-                            {Number.isFinite(amount)
-                              ? amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                              : '—'}
-                          </td>
-                          <td className="text-right text-gray-500">—</td>
-                          <td className="text-right text-gray-500 tabular-nums">
-                            {Number.isFinite(amount) ? `$${fmtUsd2En(amount)}` : '—'}
-                          </td>
-                          <td className="text-right text-yellow-400/80">{feeLabel}</td>
-                          <td className="text-center px-0">
-                            {f.txHash ? (
-                              <a
-                                href={`https://polygonscan.com/tx/${f.txHash}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex text-gray-400 hover:text-cyan-300"
-                                title={`Open tx ${f.txHash} on Polygonscan`}
-                                aria-label="Open transaction on Polygonscan"
-                              >
-                                <ExternalLink size={12} />
-                              </a>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    }
-                    const walletLower = wallet.toLowerCase();
-                    const isTaker = (f.taker || '').toLowerCase() === walletLower;
-                    const walletPaysUsdc = (isTaker && f.takerAssetId === '0') || (!isTaker && f.makerAssetId === '0');
-                    const wa = String(f.walletAccountSide || '').toUpperCase();
-                    const action = wa === 'BUY' || wa === 'SELL' ? wa : (walletPaysUsdc ? 'BUY' : 'SELL');
-                    const shares = walletPaysUsdc
-                      ? (isTaker ? f.makerAmount : f.takerAmount)
-                      : (isTaker ? f.takerAmount : f.makerAmount);
-                    const usdc = walletPaysUsdc
-                      ? (isTaker ? f.takerAmount : f.makerAmount)
-                      : (isTaker ? f.makerAmount : f.takerAmount);
-                    const nShares = Number(shares);
-                    const nUsdc = Number(usdc);
-                    const pricePerShare = nShares > 1e-9 && Number.isFinite(nShares) && Number.isFinite(nUsdc) ? nUsdc / nShares : NaN;
-                    const priceLabel = Number.isFinite(pricePerShare)
-                      ? `${(pricePerShare * 100).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}¢`
-                      : '—';
-                    const { text: sideText, tone: sideTone } = fillOutcomeDisplay(f, mk);
-                    const sideCls = sideTone === 'yes' ? 'text-green-400' : sideTone === 'no' ? 'text-red-400' : 'text-gray-300';
-                    const feeN = Number(f.fee ?? 0);
-                    const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
-                    return (
-                      <tr key={toxicFlowFillKey(f.txHash, f.logIndex)} className="border-b border-gray-800">
-                        <td className="py-0.5">
-                          <MemoWalletTradeTimeCell blockTime={bt} nowMs={tradeElapsedTick} />
-                        </td>
-                        <td className={action === 'BUY' ? 'text-green-400' : 'text-red-400'}>{action}</td>
-                        <td className={sideCls}>{sideText}</td>
-                        <td className="text-center text-amber-300 font-bold tabular-nums px-0">
-                          {f.isTaker === true ? 'T' : ''}
-                        </td>
-                        <td className="text-right tabular-nums">
-                          {Number.isFinite(nShares)
-                            ? nShares.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                            : '—'}
-                        </td>
-                        <td className="text-right text-gray-300 tabular-nums">{priceLabel}</td>
-                        <td className="text-right text-yellow-400 tabular-nums">
-                          {Number.isFinite(nUsdc) ? `$${fmtUsd2En(nUsdc)}` : '—'}
-                        </td>
-                        <td className="text-right text-yellow-400/80 tabular-nums">{feeLabel}</td>
-                        <td className="text-center px-0">
-                          {f.txHash ? (
-                            <a
-                              href={`https://polygonscan.com/tx/${f.txHash}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex text-gray-400 hover:text-cyan-300"
-                              title={`Open tx ${f.txHash} on Polygonscan`}
-                              aria-label="Open transaction on Polygonscan"
-                            >
-                              <ExternalLink size={12} />
-                            </a>
-                          ) : (
-                            '—'
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-            )}
-                </tbody>
-              </table>
-            </div>
-            <div className="mt-2 text-[10px] text-gray-400 shrink-0 pt-1 border-t border-gray-800">
-              <span>
-                {fmtIntEn(fills.length)} shown · {fmtIntEn(fillsTotal)} total (live WS)
-              </span>
-            </div>
-            </div>
           </div>
         </div>
         </div>
@@ -1551,7 +1153,17 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
       </div>
     </div>
   );
-});
+}, (a, b) =>
+  a.open === b.open &&
+  a.wallet === b.wallet &&
+  a.initialMarketId === b.initialMarketId &&
+  a.focusMarketId === b.focusMarketId &&
+  a.focusMarketSeq === b.focusMarketSeq &&
+  a.variant === b.variant &&
+  a.overlayZClass === b.overlayZClass &&
+  a.toxicFlowMarketId === b.toxicFlowMarketId &&
+  a.onClose === b.onClose &&
+  a.onInlineMarketsListOpenChange === b.onInlineMarketsListOpenChange);
 
 export function WalletInfoPanel(props: {
   open: boolean;
@@ -1562,7 +1174,7 @@ export function WalletInfoPanel(props: {
   onClose: () => void;
   variant?: WalletInfoPanelVariant;
   overlayZClass?: string;
-  toxicFlowData?: import('../api').ToxicFlowData | null;
+  toxicFlowMarketId?: string;
 }) {
   return <WalletInfoPanelInner {...props} />;
 }
@@ -1574,7 +1186,7 @@ const InlineWalletInfoPanelHost = memo(function InlineWalletInfoPanelHost({
   focusMarketSeq,
   onClose,
   onInlineMarketsListOpenChange,
-  toxicFlowData,
+  toxicFlowMarketId,
 }: {
   wallet: string;
   initialMarketId: string;
@@ -1582,7 +1194,7 @@ const InlineWalletInfoPanelHost = memo(function InlineWalletInfoPanelHost({
   focusMarketSeq: number;
   onClose: () => void;
   onInlineMarketsListOpenChange?: (open: boolean) => void;
-  toxicFlowData?: import('../api').ToxicFlowData | null;
+  toxicFlowMarketId: string;
 }) {
   return (
     <WalletInfoPanelInner
@@ -1594,29 +1206,17 @@ const InlineWalletInfoPanelHost = memo(function InlineWalletInfoPanelHost({
       focusMarketSeq={focusMarketSeq}
       onClose={onClose}
       onInlineMarketsListOpenChange={onInlineMarketsListOpenChange}
-      toxicFlowData={toxicFlowData}
+      toxicFlowMarketId={toxicFlowMarketId}
     />
   );
-}, (a, b) => {
-  if (a.wallet !== b.wallet) return false;
-  if (a.initialMarketId !== b.initialMarketId) return false;
-  if (a.focusMarketId !== b.focusMarketId) return false;
-  if (a.focusMarketSeq !== b.focusMarketSeq) return false;
-  if (a.onClose !== b.onClose) return false;
-  if (a.onInlineMarketsListOpenChange !== b.onInlineMarketsListOpenChange) return false;
-  const posA = findToxicFlowWalletPosition(a.toxicFlowData, a.wallet);
-  const posB = findToxicFlowWalletPosition(b.toxicFlowData, b.wallet);
-  if (posA === posB) return true;
-  if (!posA || !posB) return false;
-  return (
-    posA.marketId === posB.marketId &&
-    posA.net === posB.net &&
-    posA.netYes === posB.netYes &&
-    posA.netNo === posB.netNo &&
-    posA.priceYes === posB.priceYes &&
-    posA.priceNo === posB.priceNo
-  );
-});
+}, (a, b) =>
+  a.wallet === b.wallet &&
+  a.initialMarketId === b.initialMarketId &&
+  a.focusMarketId === b.focusMarketId &&
+  a.focusMarketSeq === b.focusMarketSeq &&
+  a.toxicFlowMarketId === b.toxicFlowMarketId &&
+  a.onClose === b.onClose &&
+  a.onInlineMarketsListOpenChange === b.onInlineMarketsListOpenChange);
 
 export function WalletInfoDialog({
   open,
@@ -1626,7 +1226,7 @@ export function WalletInfoDialog({
   focusMarketSeq,
   onClose,
   overlayZClass,
-  toxicFlowData,
+  toxicFlowMarketId,
 }: {
   open: boolean;
   wallet: string;
@@ -1635,7 +1235,7 @@ export function WalletInfoDialog({
   focusMarketSeq?: number;
   onClose: () => void;
   overlayZClass?: string;
-  toxicFlowData?: import('../api').ToxicFlowData | null;
+  toxicFlowMarketId?: string;
 }) {
   if (!open) return null;
   if (typeof document === 'undefined') return null;
@@ -1649,7 +1249,7 @@ export function WalletInfoDialog({
       onClose={onClose}
       variant="modal"
       overlayZClass={overlayZClass}
-      toxicFlowData={toxicFlowData}
+      toxicFlowMarketId={toxicFlowMarketId}
     />,
     document.body,
   );
@@ -2450,7 +2050,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
           focusMarketSeq={focusMarketSeq}
           onClose={closeWalletPanel}
           onInlineMarketsListOpenChange={onInlineMarketsListOpenChange}
-          toxicFlowData={data}
+          toxicFlowMarketId={midTrim}
         />
       </div>
     </div>
@@ -2517,7 +2117,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
             focusMarketId={midTrim}
             focusMarketSeq={focusMarketSeq}
             onClose={closeWalletPanel}
-            toxicFlowData={data}
+            toxicFlowMarketId={midTrim}
           />
         ) : null}
       </div>

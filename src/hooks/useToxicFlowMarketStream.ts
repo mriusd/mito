@@ -164,11 +164,13 @@ export function useToxicFlowMarketStream(
   useEffect(() => {
     if (!sidebarStore) return;
     registerSidebarToxicFlowRefresh(refresh);
-    return () => {
-      registerSidebarToxicFlowRefresh(null);
-      resetSidebarToxicFlowStore();
-    };
+    return () => registerSidebarToxicFlowRefresh(null);
   }, [sidebarStore, refresh]);
+
+  useEffect(() => {
+    if (!sidebarStore) return;
+    return () => resetSidebarToxicFlowStore();
+  }, [sidebarStore]);
 
   return {
     data: sidebarStore ? null : enabled && mid ? data : null,

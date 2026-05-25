@@ -26,6 +26,7 @@ import {
   type CandleBsEnrichment,
 } from '../lib/chartCandleEnrichment';
 import { ChartObHoverEnrichmentStrip } from './ChartObHoverEnrichmentStrip';
+import { ChartObHoverOhlcvStrip, type ChartObHoverOhlcv } from './ChartObHoverOhlcvStrip';
 
 export type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 
@@ -223,6 +224,7 @@ export function LiveTradeChart({
     clientX: number;
     clientY: number;
     ob: CandleObSnapshot;
+    ohlcv: ChartObHoverOhlcv;
     enrichment?: CandleBsEnrichment;
   } | null>(null);
   const [hoverObPos, setHoverObPos] = useState<{ left: number; top: number } | null>(null);
@@ -1027,7 +1029,13 @@ export function LiveTradeChart({
       setHoverOb(null);
       return;
     }
-    setHoverOb({ clientX: e.clientX, clientY: e.clientY, ob: nearest.ob, enrichment: nearest.enrichment });
+    setHoverOb({
+      clientX: e.clientX,
+      clientY: e.clientY,
+      ob: nearest.ob,
+      ohlcv: { o: nearest.o, h: nearest.h, l: nearest.l, c: nearest.c, v: nearest.v },
+      enrichment: nearest.enrichment,
+    });
   }, [paintChartHover, pickHoverCandle, candleObHover]);
 
   const handleMouseLeave = useCallback(() => {
@@ -1267,6 +1275,7 @@ export function LiveTradeChart({
                   const { displayBids, displayAsks, orderbookBookImbalance } = prepareCandleObDisplay(hoverOb.ob, step);
                   return (
                     <>
+                      <ChartObHoverOhlcvStrip ohlcv={hoverOb.ohlcv} />
                       <ChartObHoverEnrichmentStrip
                         enrichment={hoverOb.enrichment}
                         priceDec={enrichmentPriceDec}

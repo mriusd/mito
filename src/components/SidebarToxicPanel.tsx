@@ -1,5 +1,5 @@
-import { memo, Suspense, useEffect, useState } from 'react';
-import { lazyWithChunkReload } from '../utils/lazyWithChunkReload';
+import { memo, useEffect, useState, type ComponentType } from 'react';
+import { importWithChunkReload } from '../utils/lazyWithChunkReload';
 import {
   refreshSidebarToxicFlow,
   useSidebarToxicFlowData,
@@ -21,12 +21,48 @@ import {
   TILT_WHALE_AMOUNT_USD_CHANGED_EVENT,
   TILT_WHALE_AMOUNT_USD_LS_KEY,
 } from '../lib/tiltWhaleAmountUsd';
-
-const ToxicFlowDialogLazy = lazyWithChunkReload(() =>
-  import('./ToxicFlowDialog').then((m) => ({ default: m.ToxicFlowDialog })),
-);
-
 import { setSidebarToxicWalletExtraWidth } from '../lib/sidebarToxicWalletWidthStore';
+
+type ToxicFlowDialogModule = typeof import('./ToxicFlowDialog');
+type ToxicFlowDialogComponent = ComponentType<
+  Parameters<ToxicFlowDialogModule['ToxicFlowDialog']>[0]
+>;
+
+let toxicFlowDialogModule: ToxicFlowDialogModule | null = null;
+let toxicFlowDialogLoad: Promise<ToxicFlowDialogModule> | null = null;
+
+export function preloadSidebarToxicFlowDialog(): void {
+  if (toxicFlowDialogModule) return;
+  if (!toxicFlowDialogLoad) {
+    toxicFlowDialogLoad = importWithChunkReload(() => import('./ToxicFlowDialog')).then((mod) => {
+      toxicFlowDialogModule = mod;
+      return mod;
+    });
+  }
+}
+
+function useSidebarToxicFlowDialog(): ToxicFlowDialogComponent | null {
+  const [Dialog, setDialog] = useState<ToxicFlowDialogComponent | null>(
+    () => toxicFlowDialogModule?.ToxicFlowDialog ?? null,
+  );
+
+  useEffect(() => {
+    if (toxicFlowDialogModule) {
+      setDialog(() => toxicFlowDialogModule!.ToxicFlowDialog);
+      return;
+    }
+    preloadSidebarToxicFlowDialog();
+    let cancelled = false;
+    void toxicFlowDialogLoad!.then((mod) => {
+      if (!cancelled) setDialog(() => mod.ToxicFlowDialog);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return Dialog;
+}
 
 const SidebarToxicPanelBody = memo(function SidebarToxicPanelBody({
   marketId,
@@ -43,12 +79,17 @@ const SidebarToxicPanelBody = memo(function SidebarToxicPanelBody({
   marketExpired?: boolean;
   onClose: () => void;
 }) {
+  const ToxicFlowDialog = useSidebarToxicFlowDialog();
   const mid = marketId.trim();
   const data = useSidebarToxicFlowData();
   const refreshing = useSidebarToxicFlowRefreshing();
   const [toxicFavSet, setToxicFavSet] = useState(readToxicFavouriteWallets);
   const [toxicXSet, setToxicXSet] = useState(readToxicXWallets);
   const [whaleUsd, setWhaleUsd] = useState(readTiltWhaleAmountUsd);
+
+  useEffect(() => {
+    preloadSidebarToxicFlowDialog();
+  }, []);
 
   useEffect(() => {
     const syncFav = () => setToxicFavSet(readToxicFavouriteWallets());
@@ -75,8 +116,12 @@ const SidebarToxicPanelBody = memo(function SidebarToxicPanelBody({
 
   const tabWalletViews = useSidebarToxicFlowTabViews(toxicFavSet, whaleUsd, toxicXSet);
 
+  if (!ToxicFlowDialog) {
+    return <div className="p-2 text-[10px] text-gray-500">Loading holders…</div>;
+  }
+
   return (
-    <ToxicFlowDialogLazy
+    <ToxicFlowDialog
       embedded
       open
       marketId={mid}
@@ -111,16 +156,14 @@ export const SidebarToxicPanel = memo(function SidebarToxicPanel({
 }) {
   return (
     <div className="flex flex-1 min-h-0 min-w-0 w-full flex-col overflow-hidden bg-gray-900 toxic-flow-scroll-stable">
-      <Suspense fallback={<div className="p-2 text-[10px] text-gray-500">Loading holders…</div>}>
-        <SidebarToxicPanelBody
-          marketId={marketId}
-          marketName={marketName}
-          yesTokenId={yesTokenId}
-          noTokenId={noTokenId}
-          marketExpired={marketExpired}
-          onClose={onClose}
-        />
-      </Suspense>
+      <SidebarToxicPanelBody
+        marketId={marketId}
+        marketName={marketName}
+        yesTokenId={yesTokenId}
+        noTokenId={noTokenId}
+        marketExpired={marketExpired}
+        onClose={onClose}
+      />
     </div>
   );
 });

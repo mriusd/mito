@@ -121,7 +121,7 @@ import {
 import { SidebarMyPositionsPanel, type SidebarMergeEligible } from './SidebarMyPositionsPanel';
 import { SidebarToxicFlowHost } from './SidebarToxicFlowHost';
 import { SidebarToxicStrips } from './SidebarToxicStrips';
-import { SidebarToxicPanel } from './SidebarToxicPanel';
+import { SidebarToxicPanel, preloadSidebarToxicFlowDialog } from './SidebarToxicPanel';
 import { resetSidebarToxicWalletExtraWidth } from '../lib/sidebarToxicWalletWidthStore';
 import { setSidebarChartAnnualVolPct } from '../lib/sidebarChartVolStore';
 import { SidebarToxicWalletWidthHost } from './SidebarToxicWalletWidthHost';
@@ -2892,9 +2892,15 @@ export const Sidebar = memo(function Sidebar() {
 
   const expandSidebarToxicFlowPanel = useCallback(() => {
     if (!canShowEmbeddedToxic) return;
+    preloadSidebarToxicFlowDialog();
     dismissHoldersExpandTip();
     setToxicSidebarExpanded(true);
   }, [canShowEmbeddedToxic, dismissHoldersExpandTip]);
+
+  useEffect(() => {
+    if (!canShowEmbeddedToxic || !toxicSidebarExpanded) return;
+    preloadSidebarToxicFlowDialog();
+  }, [canShowEmbeddedToxic, toxicSidebarExpanded, toxicFlowMarketId]);
 
   const startMobileDrag = (clientY: number) => {
     if (!isMobileSheet || !sidebarOpen) return;
@@ -4925,8 +4931,13 @@ export const Sidebar = memo(function Sidebar() {
             aria-label={sidebarToxicEffective ? 'Collapse holders panel' : 'Expand holders panel'}
             onClick={() => {
               dismissHoldersExpandTip();
-              setToxicSidebarExpanded((v) => !v);
+              setToxicSidebarExpanded((v) => {
+                if (!v) preloadSidebarToxicFlowDialog();
+                return !v;
+              });
             }}
+            onMouseEnter={preloadSidebarToxicFlowDialog}
+            onFocus={preloadSidebarToxicFlowDialog}
             onPointerDown={(e) => e.stopPropagation()}
           >
             {sidebarToxicEffective ? (

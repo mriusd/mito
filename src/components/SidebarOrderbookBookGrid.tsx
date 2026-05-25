@@ -37,6 +37,8 @@ export type SidebarOrderbookBookGridProps = {
   overlay?: { text: string; className: string } | null;
 };
 
+const OB_ROW_GRID = 'grid grid-cols-3 gap-1 text-[10px] px-1';
+
 export function SidebarOrderbookBookGrid({
   displayBids,
   displayAsks,
@@ -60,17 +62,21 @@ export function SidebarOrderbookBookGrid({
     return max || 1;
   }, [displayBids, displayAsks]);
 
+  /** YES: bids=long, asks=short. NO token book inverts — flip so blue stays long, yellow short. */
+  const longShortImbalance = orderOutcome === 'NO' ? -orderbookBookImbalance : orderbookBookImbalance;
+  const longBarPct = Math.max(2, Math.min(98, 50 + longShortImbalance * 50));
+
   return (
     <>
       <div
         className="shrink-0 mb-1.5 px-0.5"
-        title={`Book imbalance: ${(orderbookBookImbalance * 100).toFixed(1)}% (5–95¢ depth)`}
+        title={`Long/short depth (5–95¢): ${(longShortImbalance * 100).toFixed(1)}% toward long (blue)`}
       >
         <div className="relative h-[5px] bg-gray-700 rounded-full overflow-hidden flex w-full">
           <div
             className="h-full transition-all"
             style={{
-              width: `${Math.max(2, Math.min(98, 50 + orderbookBookImbalance * 50))}%`,
+              width: `${longBarPct}%`,
               backgroundColor: 'rgb(37 99 235 / 0.7)',
             }}
           />
@@ -83,10 +89,10 @@ export function SidebarOrderbookBookGrid({
       </div>
       <div className="relative grid grid-cols-2 gap-2 flex-1 min-h-0">
         <div>
-          <div className="grid grid-cols-3 gap-1 text-[10px] text-gray-500 mb-1">
-            <span>USD</span>
-            <span className="text-right">Size</span>
-            <span className="text-center">Bid</span>
+          <div className={`${OB_ROW_GRID} text-gray-500 mb-1`}>
+            <span className="block min-w-0 w-full text-left">USD</span>
+            <span className="block min-w-0 w-full text-right">Size</span>
+            <span className="block min-w-0 w-full text-center">Bid</span>
           </div>
           <div className="space-y-0.5">
             {(() => {
@@ -124,7 +130,7 @@ export function SidebarOrderbookBookGrid({
                 return (
                   <div
                     key={`${bpDisp}-${i}`}
-                    className={`relative grid grid-cols-3 gap-1 text-[10px] px-1 ${readOnly ? '' : 'hover:bg-green-900/30 cursor-pointer'} ${hl}`}
+                    className={`relative ${OB_ROW_GRID} ${readOnly ? '' : 'hover:bg-green-900/30 cursor-pointer'} ${hl}`}
                     title={`Bid ${bpDisp}¢ · ${levelSize.toFixed(0)} shares · level ${fmtObLevelUsd(levelUsd)} · cumulative ${cumuls[i].toFixed(0)} shares / ${fmtObLevelUsd(cumulativeUsd)} (${depthPct.toFixed(0)}% of book shares · ${levelPct.toFixed(0)}% of max bid/ask size at level)`}
                     onClick={
                       readOnly
@@ -149,13 +155,13 @@ export function SidebarOrderbookBookGrid({
                         style={{ width: `${levelPct}%`, minWidth: levelPct > 0 ? 2 : 0 }}
                       />
                     </div>
-                    <span className="relative z-[1] text-left live-ob-usd tabular-nums sidebar-readable-value">
+                    <span className="relative z-[1] block min-w-0 w-full text-left live-ob-usd tabular-nums sidebar-readable-value">
                       {fmtObLevelUsd(cumulativeUsd)}
                     </span>
-                    <span className="relative z-[1] text-right live-ob-size tabular-nums sidebar-readable-value">
+                    <span className="relative z-[1] block min-w-0 w-full text-right live-ob-size tabular-nums sidebar-readable-value">
                       {levelSize.toFixed(0)}
                     </span>
-                    <span className="relative z-[1] text-center live-ob-bid">{bpDisp}¢</span>
+                    <span className="relative z-[1] block min-w-0 w-full text-center live-ob-bid">{bpDisp}¢</span>
                   </div>
                 );
               });
@@ -163,10 +169,10 @@ export function SidebarOrderbookBookGrid({
           </div>
         </div>
         <div>
-          <div className="grid grid-cols-3 gap-1 text-[10px] text-gray-500 mb-1">
-            <span>Ask</span>
-            <span className="text-right">Size</span>
-            <span className="text-right">USD</span>
+          <div className={`${OB_ROW_GRID} text-gray-500 mb-1`}>
+            <span className="block min-w-0 w-full text-left">Ask</span>
+            <span className="block min-w-0 w-full text-right">Size</span>
+            <span className="block min-w-0 w-full text-right">USD</span>
           </div>
           <div className="space-y-0.5">
             {(() => {
@@ -205,7 +211,7 @@ export function SidebarOrderbookBookGrid({
                 return (
                   <div
                     key={`${apDisp}-${i}`}
-                    className={`relative grid grid-cols-3 gap-1 text-[10px] px-1 ${readOnly ? '' : 'hover:bg-red-900/30 cursor-pointer'} ${hl}`}
+                    className={`relative ${OB_ROW_GRID} ${readOnly ? '' : 'hover:bg-red-900/30 cursor-pointer'} ${hl}`}
                     title={`Ask ${apDisp}¢ · ${levelSize.toFixed(0)} shares · level ${fmtObLevelUsd(levelUsd)} · cumulative ${cumulativeAskSize.toFixed(0)} shares / ${fmtObLevelUsd(cumulativeUsd)} (${depthPct.toFixed(0)}% of book shares · ${levelPct.toFixed(0)}% of max bid/ask size at level)`}
                     onClick={
                       readOnly
@@ -227,11 +233,11 @@ export function SidebarOrderbookBookGrid({
                         style={{ width: `${levelPct}%`, minWidth: levelPct > 0 ? 2 : 0 }}
                       />
                     </div>
-                    <span className="relative z-[1] live-ob-ask">{apDisp}¢</span>
-                    <span className="relative z-[1] text-right live-ob-size tabular-nums sidebar-readable-value">
+                    <span className="relative z-[1] block min-w-0 w-full text-left live-ob-ask">{apDisp}¢</span>
+                    <span className="relative z-[1] block min-w-0 w-full text-right live-ob-size tabular-nums sidebar-readable-value">
                       {levelSize.toFixed(0)}
                     </span>
-                    <span className="relative z-[1] text-right live-ob-usd tabular-nums sidebar-readable-value">
+                    <span className="relative z-[1] block min-w-0 w-full text-right live-ob-usd tabular-nums sidebar-readable-value">
                       {fmtObLevelUsd(cumulativeUsd)}
                     </span>
                   </div>

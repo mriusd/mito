@@ -1286,6 +1286,7 @@ export function LiveTradeChart({
                         displayAsks={displayAsks}
                         obAggStep={step}
                         orderbookBookImbalance={orderbookBookImbalance}
+                        orderOutcome={outcomeToggle?.value ?? 'YES'}
                         sidebarUserBidPrices={sidebarUserBidPrices ?? EMPTY_PRICE_SET}
                         sidebarUserAskPrices={sidebarUserAskPrices ?? EMPTY_PRICE_SET}
                         readOnly

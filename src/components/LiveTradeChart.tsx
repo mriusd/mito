@@ -267,9 +267,8 @@ export function LiveTradeChart({
         const v = parseFloat(k[5] as string) || 0;
         const hi = Math.max(o, h, l, c);
         const lo = Math.min(o, h, l, c);
-        const prev = map.get(openTime);
-        const ob = parseCandleOb(k[12]) ?? prev?.ob;
-        map.set(openTime, { time: openTime, o, h: hi, l: lo, c, v, ob });
+        const ob = parseCandleOb(k[12]);
+        map.set(openTime, { time: openTime, o, h: hi, l: lo, c, v, ...(ob ? { ob } : {}) });
       }
       pruneCandleMap(map, st, et, candleMs * 2);
     };

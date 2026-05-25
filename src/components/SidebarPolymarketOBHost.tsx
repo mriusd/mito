@@ -87,8 +87,8 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
     const refAsk = snapshotAsks.slice(0, OB_RAW_TOP_REF);
     if (obAggStep === '0.1') {
       return {
-        viewBids: snapshotBids,
-        viewAsks: snapshotAsks,
+        viewBids: snapshotBids.slice(0, OB_RAW_TOP_REF),
+        viewAsks: snapshotAsks.slice(0, OB_RAW_TOP_REF),
         refSnapshotBids: refBid,
         refSnapshotAsks: refAsk,
       };

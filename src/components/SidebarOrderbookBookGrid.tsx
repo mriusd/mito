@@ -62,8 +62,8 @@ export function SidebarOrderbookBookGrid({
     return max || 1;
   }, [displayBids, displayAsks]);
 
-  /** YES: bids=long, asks=short. NO token book inverts — flip so blue stays long, yellow short. */
-  const longShortImbalance = orderOutcome === 'NO' ? -orderbookBookImbalance : orderbookBookImbalance;
+  /** Bar is always YES-book long (blue) vs short (yellow); parent passes YES-token imbalance on sidebar. */
+  const longShortImbalance = orderbookBookImbalance;
   const longBarPct = Math.max(2, Math.min(98, 50 + longShortImbalance * 50));
 
   return (

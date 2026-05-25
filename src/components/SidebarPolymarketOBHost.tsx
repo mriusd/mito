@@ -67,7 +67,11 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   }, []);
 
   const bookLimit = OB_DEEP_BOOK;
+  const yesObTokenId = (selectedMarket?.clobTokenIds?.[0] || '').trim() || null;
+  const imbalanceObTokenId =
+    yesObTokenId && obTokenId && yesObTokenId !== obTokenId.trim() ? yesObTokenId : null;
   const { bids, asks, trades: polymarketLiveTrades, loading: obLoading } = usePolymarketOB(obTokenId, bookLimit);
+  const { bids: yesImbBids, asks: yesImbAsks } = usePolymarketOB(imbalanceObTokenId, bookLimit);
 
   const obStaleBookRef = useRef<{ bids: OBLevel[]; asks: OBLevel[] }>({ bids: [], asks: [] });
   useLayoutEffect(() => {
@@ -105,9 +109,11 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   }, [snapshotBids, snapshotAsks, obAggStep]);
 
   const prevTopSig = useRef<string>('');
+  const imbalanceBids = imbalanceObTokenId ? yesImbBids : snapshotBids;
+  const imbalanceAsks = imbalanceObTokenId ? yesImbAsks : snapshotAsks;
   const orderbookBookImbalance = useMemo(
-    () => computeOrderbookBookImbalance(snapshotBids, snapshotAsks),
-    [snapshotBids, snapshotAsks],
+    () => computeOrderbookBookImbalance(imbalanceBids, imbalanceAsks),
+    [imbalanceBids, imbalanceAsks],
   );
 
   useEffect(() => {

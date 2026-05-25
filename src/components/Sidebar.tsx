@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, Suspense, useSyncExternalStore } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, Suspense, useSyncExternalStore, memo } from 'react';
 import { useAccount } from 'wagmi';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
@@ -49,20 +49,6 @@ import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
 import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
 import { SidebarBarMidMarker } from './SidebarBarMidMarker';
-import { ToxicFlowStakePreview, TOXIC_TOTAL_STAKE_BAR_HELP } from './ToxicFlowStakePreview';
-import { useToxicFlowMarketStream } from '../hooks/useToxicFlowMarketStream';
-import {
-  buildToxicFlowTabWalletViews,
-  toxicCohortStakedNetSurplusHalves,
-  cohortSurplusLean,
-  walletInvY,
-  walletInvN,
-  walletNet,
-  walletStakeNetAbsUsd,
-  toxicRowLedgerLifetimePnlNegative,
-  toxicRowWalletIsXMarked,
-  toxicFlowWhaleRingPriceGatePasses,
-} from '../lib/toxicFlowStakeCohort';
 import { sidebarChartIntervalFromContext } from '../lib/chartVolatility';
 import { useSidebarChartVolatility } from '../hooks/useSidebarChartVolatility';
 import { useThrottledBidAskMarketRow } from '../hooks/useThrottledBidAskMarketRow';
@@ -78,7 +64,6 @@ import {
 } from '../lib/toxicXWallets';
 import { persistTiltWhaleAmountUsd, readTiltWhaleAmountUsd } from '../lib/tiltWhaleAmountUsd';
 import {
-  ensureTiltAudioUnlockListeners,
   NOTIFY_MULTI_RING_GAP_MS,
   pitchMulFromNotifyFreqSlider,
   playTiltNotifySoundStrikes,
@@ -100,11 +85,9 @@ import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
 import { getExpiryTickNow, subscribeExpiryTick } from '../lib/expiryTickStore';
 import { SidebarMarketCountdownLabel } from './SidebarMarketCountdownLabel';
 import {
-  isNotifySoundPriceMuted,
   readNotifySoundMaxPriceCents,
   SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY,
 } from '../lib/notifySoundPriceMute';
-import { mySidebarTradeRowKey, useMyTradeRowRingSound } from '../lib/myTradeRowRing';
 import {
   NOTIFY_BELL_MIN_STAKE_CHANGED_EVENT,
   readNotifyBellMinStakeUsd,
@@ -127,7 +110,6 @@ import { SidebarOrderCostDisplay } from './SidebarOrderCostDisplay';
 import { SidebarMarketStatsCells, SidebarNotifyStakedGateSync } from './SidebarMarketStatsCells';
 import { SidebarSpotStripMathButton } from './SidebarSpotStripMathButton';
 import { useThrottledStorePrice } from '../hooks/useThrottledStorePrice';
-import { useSidebarNotifyStakedGatePasses } from '../lib/sidebarNotifyStakedGateStore';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
 import { SidebarOnchainTradesHost } from './SidebarOnchainTradesHost';
 import { SidebarOnchainGridPositionsSync } from './SidebarOnchainGridPositionsSync';
@@ -135,10 +117,20 @@ import { SidebarMyTradesSection } from './SidebarMyTradesSection';
 import {
   refreshSidebarOnchainMarketTrades,
   refreshSidebarOnchainWallet,
-  useSidebarOnchainWalletPositions,
 } from '../lib/sidebarOnchainTradesStore';
+import { SidebarMyPositionsPanel, type SidebarMergeEligible } from './SidebarMyPositionsPanel';
+import { SidebarToxicFlowHost } from './SidebarToxicFlowHost';
+import { SidebarToxicStrips } from './SidebarToxicStrips';
+import { SidebarToxicPanel } from './SidebarToxicPanel';
+import { resetSidebarToxicWalletExtraWidth } from '../lib/sidebarToxicWalletWidthStore';
+import { setSidebarChartAnnualVolPct } from '../lib/sidebarChartVolStore';
+import { SidebarToxicWalletWidthHost } from './SidebarToxicWalletWidthHost';
+import { SidebarToxicNotifySoundHost } from './SidebarToxicNotifySoundHost';
+import { SidebarToxicStatsFlashWrap } from './SidebarToxicStatsFlashWrap';
+import { SidebarSpotVolSigmaLabel } from './SidebarSpotVolSigmaLabel';
+import { computeSidebarMyPositions } from '../lib/sidebarMyPositions';
+import { getSidebarOnchainTradesSnapshot } from '../lib/sidebarOnchainTradesStore';
 import { SidebarYesMidProbBar } from './SidebarYesMidProbBar';
-import { SidebarPositionListItem } from './SidebarPositionListItem';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 import { SidebarHoldersExpandTip } from './SidebarHoldersExpandTip';
 import { SidebarNotifyGearTip } from './SidebarNotifyGearTip';
@@ -178,14 +170,6 @@ import {
 import type { AssetSymbol, Market, Position } from '../types';
 import type { WalletPosition } from '../api';
 import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
-
-const ToxicFlowDialogLazy = lazyWithChunkReload(() =>
-  import('./ToxicFlowDialog').then((m) => ({ default: m.ToxicFlowDialog })),
-);
-
-function preloadToxicFlowDialog() {
-  void importWithChunkReload(() => import('./ToxicFlowDialog'));
-}
 
 const MergePositionsDialogLazy = lazyWithChunkReload(() =>
   import('./MergePositionsDialog').then((m) => ({ default: m.MergePositionsDialog })),
@@ -228,21 +212,6 @@ function sidebarQuickSellBg(i: number, n: number): string {
   const l = lStart - t * (lStart - lEnd);
   return `hsl(351 78% ${l}%)`;
 }
-
-/** Bar segment pulse when cohort/gross lean ≥ this fraction (default 30% each side). */
-const SIDEBAR_TOXIC_STRIP_FLASH_FRAC = 0.3;
-
-/** Tooltips for toxic cohort strips (mirror Toxic Flow dialog tab copy). */
-const TOXIC_SIDEBAR_STRIP_HELP = {
-  total: TOXIC_TOTAL_STAKE_BAR_HELP,
-  holders: 'Biggest wallets active on this market. Green = YES bets, red = NO bets.',
-  smart: 'Wallets with strong winning record. Only those who profit often.',
-  top20: 'Top 20 position holders on this market (by |staked net|, same ordering as Holders).',
-  fav: 'Your favorite wallets betting here right now.',
-  greens: 'Wallets with profits in tracked time. Green = more dollars staked on YES, red = more on NO.',
-  whales:
-    'Wallets with |Staked Net| USD ≥ Whale amount (Tilt bell). Same cohort as Toxic Flow Whales tab. Bar pulse = cohort lean ≥ sidebar strip threshold.',
-} as const;
 
 const LS_ORDER_EXPIRY_UPDOWN = 'polymarket-order-expiry-updown';
 const LS_ORDER_EXPIRY_OTHER = 'polymarket-order-expiry-other';
@@ -295,8 +264,6 @@ function writeOrderExpirySlot(isUpDownMarket: boolean, value: string, unit: 's' 
   }
 }
 
-/** Match `ToxicFlowStakePreview` / `StakedLegUsdBar` flash + `sidebar-stats-flash-*` CSS. */
-const TILT_EXTREME_FLASH_MS = 550;
 
 const SIDEBAR_NOTIFY_PLAY_SOUND_KEY = 'polybot-sidebar-notify-play-sound';
 const SIDEBAR_NOTIFY_FLASH_BG_KEY = 'polybot-sidebar-notify-flash-bg';
@@ -915,7 +882,7 @@ function mergeSidebarPositionsWsRest(
   return out;
 }
 
-export function Sidebar() {
+export const Sidebar = memo(function Sidebar() {
   const { isConnected: walletConnected, address: walletAddress } = useAccount();
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
@@ -970,7 +937,6 @@ export function Sidebar() {
   const [notifyTiltUd1h, setNotifyTiltUd1h] = useState(readNotifyTiltUd1h);
   const [notifyTiltUd4h, setNotifyTiltUd4h] = useState(readNotifyTiltUd4h);
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
-  const [sidebarChartAnnualVolPct, setSidebarChartAnnualVolPct] = useState<number | null>(null);
   const [notifyMaxVolatilityPct, setNotifyMaxVolatilityPct] = useState(readNotifyMaxVolatilityPct);
   const [notifyVolatilityCandles, setNotifyVolatilityCandles] = useState(readNotifyVolatilityCandles);
   const [notifyVolatilityCandlesDraft, setNotifyVolatilityCandlesDraft] = useState(() =>
@@ -997,6 +963,7 @@ export function Sidebar() {
   const handleSidebarChartAnnualVolPct = useCallback((pct: number | null) => {
     setSidebarChartAnnualVolPct(pct);
   }, []);
+  const sidebarRootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
@@ -1281,103 +1248,6 @@ export function Sidebar() {
     () => isMarketNotifyMuted(toxicFlowMarketId),
     [toxicFlowMarketId, mutedMarketsKey],
   );
-  const { data: toxicFlowData, refresh: refreshToxicFlow, refreshing: toxicFlowRefreshing } =
-    useToxicFlowMarketStream(toxicFlowMarketId, Boolean(toxicFlowMarketId));
-
-  const [toxicFavSet, setToxicFavSet] = useState(readToxicFavouriteWallets);
-  const [toxicXSet, setToxicXSet] = useState(readToxicXWallets);
-  useEffect(() => {
-    const syncFav = () => setToxicFavSet(readToxicFavouriteWallets());
-    const syncX = () => setToxicXSet(readToxicXWallets());
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY) syncFav();
-      if (e.key === TOXIC_X_WALLETS_LS_KEY) syncX();
-    };
-    window.addEventListener('storage', onStorage);
-    window.addEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
-    window.addEventListener(TOXIC_X_CHANGED_EVENT, syncX);
-    return () => {
-      window.removeEventListener('storage', onStorage);
-      window.removeEventListener(TOXIC_FAVOURITES_CHANGED_EVENT, syncFav);
-      window.removeEventListener(TOXIC_X_CHANGED_EVENT, syncX);
-    };
-  }, []);
-
-  const toxicTabViews = useMemo(
-    () => (toxicFlowData ? buildToxicFlowTabWalletViews(toxicFlowData, toxicFavSet, notifyWhaleAmountUsd, toxicXSet) : null),
-    [toxicFlowData, toxicFavSet, notifyWhaleAmountUsd, toxicXSet],
-  );
-
-  const toxicStripModel = useMemo(() => {
-    const lists = toxicTabViews?.stripLists ?? null;
-    if (!lists) return { lists: null, bars: null };
-    return {
-      lists,
-      bars: {
-        holders: toxicCohortStakedNetSurplusHalves(lists.holders),
-        smart: toxicCohortStakedNetSurplusHalves(lists.smart),
-        top20: toxicCohortStakedNetSurplusHalves(lists.top20),
-        favourites: toxicCohortStakedNetSurplusHalves(lists.favourites),
-        pnlPlus: toxicCohortStakedNetSurplusHalves(lists.pnlPlus),
-      },
-    };
-  }, [toxicTabViews]);
-
-  /** Same wallets + ordering as Toxic Flow dialog Whales tab (floor = Tilt whale USD). */
-  const toxicStripWhaleWallets = toxicTabViews?.whales ?? [];
-
-  /** True when ≥1 toxic-flow whale has dominant-leg avg entry strictly below Max Whale Price (¢). */
-  const notifyWhalePassesPriceGate = useMemo(
-    () =>
-      toxicFlowWhaleRingPriceGatePasses(
-        toxicFlowData,
-        notifyWhaleAmountUsd,
-        notifyWhaleMaxPriceCents,
-        toxicXSet,
-        notifyWhaleIgnoreNegativePnl,
-      ),
-    [toxicFlowData, notifyWhaleAmountUsd, notifyWhaleMaxPriceCents, toxicXSet, notifyWhaleIgnoreNegativePnl],
-  );
-
-  /** Active cohort thresholds (Toxic strip bars): every non-zero pct must agree on direction vs its lean. */
-  const topBarExtremeBgFlash = useMemo((): 'green' | 'red' | null => {
-    if (!notifyTiltAppliesToSelectedMarket) return null;
-    const bars = toxicStripModel.bars;
-    const barLean = (bar: { sumYUsd: number; sumNUsd: number } | undefined): number | null => {
-      if (!bar || !(bar.sumYUsd + bar.sumNUsd > 1e-9)) return null;
-      return cohortSurplusLean(bar.sumYUsd, bar.sumNUsd);
-    };
-    const legs = [
-      { pct: notifyHolderTiltPct, lean: barLean(bars?.holders) },
-      { pct: notifySmartTiltPct, lean: barLean(bars?.smart) },
-      { pct: notifyFavouriteTiltPct, lean: barLean(bars?.favourites) },
-      { pct: notifyGreensTiltPct, lean: barLean(bars?.pnlPlus) },
-    ].filter((x) => x.pct > 0);
-    if (legs.length === 0) return null;
-
-    let greenOk = true;
-    let redOk = true;
-    for (const { pct, lean } of legs) {
-      const frac = pct / 100;
-      if (lean == null || lean < frac) greenOk = false;
-      if (lean == null || lean > -frac) redOk = false;
-    }
-    if (greenOk && !redOk) return 'green';
-    if (redOk && !greenOk) return 'red';
-    return null;
-  }, [
-    notifyTiltAppliesToSelectedMarket,
-    toxicStripModel,
-    notifyHolderTiltPct,
-    notifySmartTiltPct,
-    notifyFavouriteTiltPct,
-    notifyGreensTiltPct,
-  ]);
-
-  useEffect(() => {
-    ensureTiltAudioUnlockListeners();
-  }, []);
-
   const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
 
   const [orderSide, setOrderSide] = useState<'BUY' | 'SELL'>('BUY');
@@ -1402,7 +1272,6 @@ export function Sidebar() {
   const [cancellingAllOrders, setCancellingAllOrders] = useState(false);
   const [closingPositionTokens, setClosingPositionTokens] = useState<Set<string>>(new Set());
   const [limitSellingPositionTokens, setLimitSellingPositionTokens] = useState<Set<string>>(new Set());
-  const [positionsRefreshing, setPositionsRefreshing] = useState(false);
   const [toxicSidebarExpanded, setToxicSidebarExpanded] = useState(() => {
     try {
       return localStorage.getItem(SIDEBAR_TOXIC_EXPANDED_KEY) === 'true';
@@ -1410,7 +1279,6 @@ export function Sidebar() {
       return false;
     }
   });
-  const [toxicWalletExtraWidth, setToxicWalletExtraWidth] = useState('0px');
   const [marketStakedLegs, setMarketStakedLegs] = useState<MarketStakedLegsResponse | null>(null);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   useEffect(() => {
@@ -1422,7 +1290,7 @@ export function Sidebar() {
   }, [toxicSidebarExpanded]);
   const closeToxicSidebarPanel = useCallback(() => {
     setToxicSidebarExpanded(false);
-    setToxicWalletExtraWidth('0px');
+    resetSidebarToxicWalletExtraWidth();
   }, []);
   useEffect(() => {
     setMergeDialogOpen(false);
@@ -1463,15 +1331,6 @@ export function Sidebar() {
     }
     return mergeMarketStakedLegsResponse(live, marketStakedLegs);
   }, [sidebarStakedLiveRow, marketStakedLegs]);
-  const notifyStakedGatePasses = useSidebarNotifyStakedGatePasses();
-
-  /** Tilt pauses while chart σ is above max (annualized %). 0 = no volatility gate. */
-  const notifyVolatilityGatePasses = useMemo(() => {
-    if (notifyMaxVolatilityPct <= 0) return true;
-    if (sidebarChartAnnualVolPct == null || !Number.isFinite(sidebarChartAnnualVolPct)) return false;
-    return sidebarChartAnnualVolPct <= notifyMaxVolatilityPct;
-  }, [notifyMaxVolatilityPct, sidebarChartAnnualVolPct]);
-
   const [crossingConfirmOpen, setCrossingConfirmOpen] = useState(false);
   const [crossingConfirmMessage, setCrossingConfirmMessage] = useState('');
   const crossingConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
@@ -1484,11 +1343,6 @@ export function Sidebar() {
     return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 0 : 1] || null;
   }, [sidebarOpen, selectedMarket, orderOutcome]);
   const sidebarBookRef = useRef<SidebarPolymarketBookSnapshot | null>(null);
-  /** Keep latest market/book lookup for tilt sound mute check — must not rerun sound interval on each book bump. */
-  const tiltSoundMarketRef = useRef(selectedMarket);
-  tiltSoundMarketRef.current = selectedMarket;
-  const marketNotifyMutedRef = useRef(isCurrentMarketMuted);
-  marketNotifyMutedRef.current = isCurrentMarketMuted;
 
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   /** On-chain WS + REST prefetch: must not depend on sidebarOpen or tables stay empty after refresh until sidebar opens. */
@@ -1532,16 +1386,29 @@ export function Sidebar() {
     liveTradesSource === 'onchain' && selectedMarket?.conditionId?.trim()
       ? String(selectedMarket.conditionId).trim()
       : null;
-  const onchainSidebarPositions = useSidebarOnchainWalletPositions();
   const refreshMyMarketTrades = useCallback(() => {
     const w = (walletForLivePositions || '').trim().toLowerCase();
     const m = selectedConditionId;
     if (w && m) refreshSidebarOnchainMarketTrades(w, m);
   }, [walletForLivePositions, selectedConditionId]);
-  const onchainSidebarPositionsForMarket = useMemo(
-    () => (liveTradesSource === 'onchain' ? onchainSidebarPositions : []),
-    [liveTradesSource, onchainSidebarPositions],
+
+  const getMyPositionsSnapshot = useCallback(
+    () =>
+      computeSidebarMyPositions(
+        liveTradesSource,
+        positions,
+        selectedMarket,
+        marketLookup,
+        getSidebarOnchainTradesSnapshot().walletPositions,
+      ),
+    [liveTradesSource, positions, selectedMarket, marketLookup],
   );
+
+  const [mergeDialogParams, setMergeDialogParams] = useState<SidebarMergeEligible | null>(null);
+  const handleOpenMergeDialog = useCallback((eligible: SidebarMergeEligible) => {
+    setMergeDialogParams(eligible);
+    setMergeDialogOpen(true);
+  }, []);
 
   const requestCrossingConfirm = useCallback((bestPriceCents: number) => {
     if (useAppStore.getState().disableMarketPriceWarning) {
@@ -1602,44 +1469,6 @@ export function Sidebar() {
       closed: row.closed ?? selectedMarket.closed,
     };
   }, [selectedMarket, marketLookup]);
-  const myPositions = useMemo(() => {
-    const wsMarketRows = onchainSidebarPositionsForMarket
-      .filter((p) => outcomeTokenBelongsToSelectedMarket(p.tokenId, selectedMarket, marketLookup))
-      .map((p) => ({ tokenId: p.tokenId, size: p.size, avgPrice: p.avgPrice }));
-    if (liveTradesSource === 'onchain') {
-      return wsMarketRows.map((p) => ({ asset: p.tokenId, size: p.size, avgPrice: p.avgPrice }));
-    }
-    const restMarket = positions.filter((p) =>
-      outcomeTokenBelongsToSelectedMarket(String(p.asset || '').trim(), selectedMarket, marketLookup),
-    );
-    return mergeSidebarPositionsWsRest(restMarket, wsMarketRows);
-  }, [liveTradesSource, positions, selectedMarket, marketLookup, onchainSidebarPositionsForMarket]);
-  const myPositionsDisplay = useMemo(
-    () => myPositions.filter((p) => !isSidebarDustPosition(p.size || 0)),
-    [myPositions],
-  );
-
-  const mergeEligible = useMemo(() => {
-    if (!selectedMarket?.clobTokenIds || selectedMarket.clobTokenIds.length < 2) {
-      return { showButton: false, canOpenDialog: false, maxMerge: 0, conditionId: '' };
-    }
-    const yesT = selectedMarket.clobTokenIds[0] || '';
-    const noT = selectedMarket.clobTokenIds[1] || '';
-    const yesP = myPositions.find((p) => (p.asset || '').trim() === yesT);
-    const noP = myPositions.find((p) => (p.asset || '').trim() === noT);
-    const yesSz = yesP?.size || 0;
-    const noSz = noP?.size || 0;
-    if (yesSz <= 0 || noSz <= 0) {
-      return { showButton: false, canOpenDialog: false, maxMerge: 0, conditionId: '' };
-    }
-    let conditionId = (selectedMarket.conditionId || '').trim();
-    if (!conditionId && yesP && typeof (yesP as { conditionId?: string }).conditionId === 'string') {
-      conditionId = String((yesP as { conditionId?: string }).conditionId).trim();
-    }
-    const maxMerge = Math.min(yesSz, noSz);
-    const canOpenDialog = !!conditionId && !!mergeFunderWallet;
-    return { showButton: true, canOpenDialog, maxMerge, conditionId };
-  }, [selectedMarket, myPositions, mergeFunderWallet]);
 
   const { myOrders, progOrders } = useMemo(() => {
     const all = orders.filter((o) => outcomeTokenBelongsToSelectedMarket(getOrderClobTokenId(o), selectedMarket, marketLookup));
@@ -2076,66 +1905,6 @@ export function Sidebar() {
     selectedMarketIsHit,
   ]);
 
-  /** Cohort signals only (Black–Scholes Δ gate removed). */
-  const effectiveSidebarBgFlash = useMemo((): 'green' | 'red' | null => {
-    if (!notifyFlashBg || !notifyStakedGatePasses || !notifyVolatilityGatePasses) return null;
-    return topBarExtremeBgFlash;
-  }, [notifyFlashBg, notifyStakedGatePasses, notifyVolatilityGatePasses, topBarExtremeBgFlash]);
-
-  useEffect(() => {
-    const cohortTiltAlarm = topBarExtremeBgFlash;
-
-    const cohortNeedsSound = cohortTiltAlarm != null && notifyPlaySound;
-    /** Whale Ring: whale at floor whose dominant-leg avg entry is below configured max (¢). */
-    const whaleEligible = notifyWhaleRing && notifyWhalePassesPriceGate;
-    /** Play whale ring whenever eligible and cohort tilt is not actively sounding (Tilt Ring off suppresses cohort, not whales). */
-    const whaleNeedsSound = whaleEligible && !cohortNeedsSound;
-
-    if (!cohortNeedsSound && !whaleNeedsSound) return;
-    if (isMarketExpired) return;
-    if (cohortNeedsSound && !notifyVolatilityGatePasses) return;
-    if (cohortNeedsSound && !notifyStakedGatePasses) return;
-
-    const k = cohortTiltAlarm ?? 'green';
-    const mul = notifySoundPitchMul;
-    const rt = notifyRingTimeS;
-    const maxCents = notifySoundMaxPriceCents;
-    const doubleRing = notifyDoubleRing;
-
-    const tick = () => {
-      const sm = tiltSoundMarketRef.current;
-      const ids = sm?.clobTokenIds;
-      const muted = marketNotifyMutedRef.current;
-      if (cohortNeedsSound) {
-        if (isNotifySoundPriceMuted(ids?.[0], ids?.[1], maxCents)) return;
-        if (muted) return;
-        void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
-      } else if (whaleNeedsSound) {
-        if (muted && notifyWhaleRingMutable) return;
-        void playTiltNotifySoundStrikes(k, mul, rt, 3);
-      }
-    };
-
-    tick();
-    const repeatMs = Math.max(TILT_EXTREME_FLASH_MS, Math.ceil(rt * 1000) + 80);
-    const id = window.setInterval(tick, repeatMs);
-    return () => clearInterval(id);
-  }, [
-    topBarExtremeBgFlash,
-    notifyWhaleRing,
-    notifyWhaleRingMutable,
-    notifyWhalePassesPriceGate,
-    notifyWhaleIgnoreNegativePnl,
-    notifyPlaySound,
-    notifyStakedGatePasses,
-    notifyVolatilityGatePasses,
-    notifySoundPitchMul,
-    notifyRingTimeS,
-    notifySoundMaxPriceCents,
-    notifyDoubleRing,
-    isMarketExpired,
-  ]);
-
   useEffect(() => {
     const p = sidebarSpotStrip?.currentPrice;
     if (!p || p <= 0 || !sidebarSpotCurrentPriceRef.current) return;
@@ -2563,7 +2332,7 @@ export function Sidebar() {
       if (spec.side === 'SELL' && spec.maxSell) {
         const tidKey = positionTokenKey(tokenId);
         const pos = tidKey
-          ? myPositions.find(
+          ? getMyPositionsSnapshot().find(
               (p) => positionTokenKey(String(p.asset || '')) === tidKey && (p.size || 0) > 0,
             )
           : undefined;
@@ -3118,12 +2887,11 @@ export function Sidebar() {
   ]);
 
   useEffect(() => {
-    if (!sidebarToxicEffective) setToxicWalletExtraWidth('0px');
+    if (!sidebarToxicEffective) resetSidebarToxicWalletExtraWidth();
   }, [sidebarToxicEffective]);
 
   const expandSidebarToxicFlowPanel = useCallback(() => {
     if (!canShowEmbeddedToxic) return;
-    preloadToxicFlowDialog();
     dismissHoldersExpandTip();
     setToxicSidebarExpanded(true);
   }, [canShowEmbeddedToxic, dismissHoldersExpandTip]);
@@ -3154,11 +2922,11 @@ export function Sidebar() {
 
   const handleMergeSubmit = useCallback(
     async (amount: number) => {
-      if (!mergeEligible.conditionId || !mergeFunderWallet) {
+      if (!mergeDialogParams?.conditionId || !mergeFunderWallet) {
         return { success: false, error: 'Missing condition id or proxy wallet' };
       }
       const res = await executeMergePositions({
-        conditionId: mergeEligible.conditionId,
+        conditionId: mergeDialogParams.conditionId,
         amount,
         funderAddress: mergeFunderWallet,
       });
@@ -3180,18 +2948,18 @@ export function Sidebar() {
       }
       return res;
     },
-    [mergeEligible.conditionId, mergeFunderWallet, liveTradesSource, refreshMyMarketTrades],
+    [mergeDialogParams?.conditionId, mergeFunderWallet, liveTradesSource, refreshMyMarketTrades],
   );
 
   return (
     <>
-    {mergeDialogOpen && !!mergeEligible.conditionId && (
+    {mergeDialogOpen && !!mergeDialogParams?.conditionId && (
       <Suspense fallback={null}>
         <MergePositionsDialogLazy
           open
       onClose={() => setMergeDialogOpen(false)}
-      maxShares={mergeEligible.maxMerge}
-      conditionId={mergeEligible.conditionId}
+      maxShares={mergeDialogParams.maxMerge}
+      conditionId={mergeDialogParams.conditionId}
       title={fullMarketName || marketName}
       outcomePairLabel={isUpDownMarket ? 'UP / DOWN' : 'YES / NO'}
       onSubmit={handleMergeSubmit}
@@ -3803,14 +3571,26 @@ export function Sidebar() {
       />
     )}
     <div
+      ref={sidebarRootRef}
       className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}${canShowEmbeddedToxic && !sidebarToxicEffective ? ' sidebar-toxic-collapsed' : ''}${sidebarToxicEffective ? ' sidebar-toxic-expanded' : ''}`}
       style={
         {
           ['--mobile-sheet-offset' as string]: `${mobileDragOffset}px`,
-          ['--toxic-wallet-extra-width' as string]: toxicWalletExtraWidth,
         } as React.CSSProperties
       }
     >
+      <SidebarToxicWalletWidthHost rootRef={sidebarRootRef} />
+      <SidebarToxicNotifySoundHost
+        notifyPlaySound={notifyPlaySound}
+        notifyWhaleRing={notifyWhaleRing}
+        notifyWhaleRingMutable={notifyWhaleRingMutable}
+        notifySoundPitchMul={notifySoundPitchMul}
+        notifyRingTimeS={notifyRingTimeS}
+        notifySoundMaxPriceCents={notifySoundMaxPriceCents}
+        notifyDoubleRing={notifyDoubleRing}
+        notifyMaxVolatilityPct={notifyMaxVolatilityPct}
+        isMarketExpired={isMarketExpired}
+      />
       <div
         className="mobile-sidebar-drag-zone no-drag"
         onTouchStart={(e) => startMobileDrag(e.touches[0].clientY)}
@@ -4100,6 +3880,7 @@ export function Sidebar() {
             scopedClobTokenIds={scopedClobPair}
           />
           <SidebarOnchainGridPositionsSync liveTradesSource={liveTradesSource} />
+          {toxicFlowMarketId ? <SidebarToxicFlowHost marketId={toxicFlowMarketId} /> : null}
           <SidebarNotifyStakedGateSync
             yesTokenId={selectedMarket.clobTokenIds?.[0] ?? ''}
             marketStakedLegs={marketStakedLegs}
@@ -4245,36 +4026,12 @@ export function Sidebar() {
                     )}
                   </div>
                   <div className="flex items-center justify-center min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none px-px">
-                    {!row.pastExpiry ? (
-                      <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                        <span
-                          className={
-                            sidebarChartAnnualVolPct == null
-                              ? 'text-gray-600'
-                              : notifyMaxVolatilityPct > 0 && sidebarChartAnnualVolPct > notifyMaxVolatilityPct
-                                ? 'text-red-400'
-                                : 'text-amber-200/95'
-                          }
-                        >
-                          {sidebarChartAnnualVolPct != null
-                            ? `σ ${sidebarChartAnnualVolPct.toFixed(1)}%`
-                            : 'σ —'}
-                        </span>
-                        <HelpTooltip
-                          text={`Annualized volatility from spot klines (Binance or Chainlink, same source as the hidden asset chart). Uses the last ${notifyVolatilityCandles} completed ${sidebarChartKlineLabel} candles; the open candle is excluded. For 5m markets these are 5m candles, for 15m markets 15m candles, etc. Candle count and max volatility for tilt alerts are set in Tilt notifications.`}
-                          openOnHover
-                          wrapClassName="inline-flex shrink-0 items-center leading-none"
-                        >
-                          <span className="flex size-[10px] shrink-0 cursor-help items-center justify-center rounded-full border border-gray-500 text-[7px] font-bold leading-none text-gray-400 hover:border-gray-300 hover:text-gray-200">
-                            ?
-                          </span>
-                        </HelpTooltip>
-                      </span>
-                    ) : (
-                      <span className="text-transparent select-none" aria-hidden>
-                        —
-                      </span>
-                    )}
+                    <SidebarSpotVolSigmaLabel
+                      notifyMaxVolatilityPct={notifyMaxVolatilityPct}
+                      notifyVolatilityCandles={notifyVolatilityCandles}
+                      sidebarChartKlineLabel={sidebarChartKlineLabel}
+                      pastExpiry={row.pastExpiry}
+                    />
                   </div>
                   <div className="flex items-center justify-end min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
                     {row.diff && row.currentPrice > 0 ? (
@@ -4355,15 +4112,10 @@ export function Sidebar() {
           })()}
 
           <div className="sidebar-section py-1">
-            <div
-              className={`min-w-0 min-h-0 rounded-md px-1 py-0.5 -mx-1${
-                effectiveSidebarBgFlash === 'green'
-                  ? ' sidebar-stats-flash-green'
-                  : effectiveSidebarBgFlash === 'red'
-                    ? ' sidebar-stats-flash-red'
-                    : ''
-              }`}
-            >
+          <SidebarToxicStatsFlashWrap
+            notifyFlashBg={notifyFlashBg}
+            notifyMaxVolatilityPct={notifyMaxVolatilityPct}
+          >
               <div className="grid w-full grid-cols-4 gap-1.5 text-[10px] min-w-0 items-stretch">
               <SidebarMarketStatsCells
                 yesTokenId={selectedMarket?.clobTokenIds?.[0] ?? ''}
@@ -4371,66 +4123,20 @@ export function Sidebar() {
                 onExpandToxic={expandSidebarToxicFlowPanel}
               />
                       </div>
-            <div className="mt-1 w-full min-w-0 flex flex-col gap-y-2 pb-0.5">
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.total}
-                    label="Total"
-                    marketGrossLegsUsd={sidebarStakedLegs}
-                    wallets={[]}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.holders}
-                    label="Holders"
-                    wallets={toxicStripModel.lists?.holders ?? []}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.smart}
-                    label="Smart"
-                    wallets={toxicStripModel.lists?.smart ?? []}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.greens}
-                    label="Greens"
-                    wallets={toxicStripModel.lists?.pnlPlus ?? []}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.top20}
-                    label="Top20"
-                    wallets={toxicStripModel.lists?.top20 ?? []}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.whales}
-                    label="Whales"
-                    wallets={toxicStripWhaleWallets}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
-                  <ToxicFlowStakePreview
-                    layout="stacked"
-                    helpText={TOXIC_SIDEBAR_STRIP_HELP.fav}
-                    label="Fav"
-                    wallets={toxicStripModel.lists?.favourites ?? []}
-                    flashExtremeTilt
-                    extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
-                  />
-                </div>
-          </div>
+            <div className="mt-1 w-full min-w-0">
+              <SidebarToxicStrips
+                sidebarStakedLegs={sidebarStakedLegs}
+                notifyTiltAppliesToSelectedMarket={notifyTiltAppliesToSelectedMarket}
+                notifyWhaleAmountUsd={notifyWhaleAmountUsd}
+                notifyWhaleMaxPriceCents={notifyWhaleMaxPriceCents}
+                notifyWhaleIgnoreNegativePnl={notifyWhaleIgnoreNegativePnl}
+                notifyHolderTiltPct={notifyHolderTiltPct}
+                notifySmartTiltPct={notifySmartTiltPct}
+                notifyFavouriteTiltPct={notifyFavouriteTiltPct}
+                notifyGreensTiltPct={notifyGreensTiltPct}
+              />
+            </div>
+          </SidebarToxicStatsFlashWrap>
           </div>
 
           {/* Live Orderbook + Trades */}
@@ -4669,7 +4375,7 @@ export function Sidebar() {
                         const tid = selectedMarket?.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
                         const tidKey = positionTokenKey(tid);
                         const pos = tidKey
-                          ? myPositions.find(
+                          ? getMyPositionsSnapshot().find(
                               (p) =>
                                 positionTokenKey(String(p.asset || '')) === tidKey && (p.size || 0) > 0,
                             )
@@ -4928,82 +4634,25 @@ export function Sidebar() {
 
           {/* My Positions & Orders */}
           <div className="sidebar-section">
-            <div className="flex items-center justify-between mb-2 gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-xs text-gray-400 shrink-0">My Positions</span>
-                <SidebarDataSourceBadge source={liveTradesSource === 'onchain' ? 'onchain' : 'polymarket'} />
-                {mergeEligible.showButton && !isMarketExpired && (
-                  <button
-                    type="button"
-                    disabled={!mergeEligible.canOpenDialog}
-                    onClick={() => mergeEligible.canOpenDialog && setMergeDialogOpen(true)}
-                    onMouseEnter={preloadMergePositionsDialog}
-                    onFocus={preloadMergePositionsDialog}
-                    title={
-                      !mergeEligible.canOpenDialog
-                        ? !mergeEligible.conditionId
-                          ? 'Market conditionId missing — refresh markets or re-open sidebar'
-                          : 'Resolve Polymarket proxy wallet (connect wallet / API keys)'
-                        : `Merge complementary ${isUpDownMarket ? 'UP/DOWN' : 'YES/NO'} shares into USDC`
-                    }
-                    className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-cyan-600/60 text-cyan-300 hover:bg-cyan-900/40 disabled:opacity-35 disabled:cursor-not-allowed shrink-0"
-                  >
-                    Merge
-                  </button>
-                )}
-              </div>
-              <button
-                onClick={() => {
-                  setPositionsRefreshing(true);
-                  triggerWalletRefresh();
-                  if (walletForLivePositions) {
-                    refreshSidebarOnchainWallet();
-                    if (liveTradesSource === 'onchain') refreshMyMarketTrades();
-                  }
-                  setTimeout(() => setPositionsRefreshing(false), 2000);
-                }}
-                className="text-gray-500 hover:text-white transition shrink-0"
-                title="Refresh positions and trades"
-              >
-                <svg className={`w-3 h-3 ${positionsRefreshing ? 'animate-spin' : ''}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              </button>
-            </div>
-            <div className="space-y-1 text-xs">
-              {myPositionsDisplay.length === 0 ? (
-                <div className="text-gray-600">No positions</div>
-              ) : (
-                myPositionsDisplay.map((pos, i) => {
-                  const outcome = getTokenOutcome(pos.asset || '', marketLookup);
-                  const outcomeLabel = isUpDownMarket ? (outcome === 'YES' ? 'UP' : 'DOWN') : outcome;
-                  const outcomeColor = outcome === 'YES' ? 'text-green-400' : 'text-red-400';
-                  const size = pos.size || 0;
-                  const avg = pos.avgPrice || 0;
-                  const posTok = String(pos.asset || '').trim();
-                  const closing = closingPositionTokens.has(posTok);
-                  const limitSelling = limitSellingPositionTokens.has(posTok);
-                  const bsMathCents = sidebarSpotStrip?.pastExpiry
-                    ? null
-                    : sidebarBsMathCentsForOutcome(sidebarSpotStrip?.yesMathCents, outcome);
-                  return (
-                    <SidebarPositionListItem
-                      key={posTok || i}
-                      tokenId={posTok}
-                      size={size}
-                      avg={avg}
-                      outcomeLabel={outcomeLabel}
-                      outcomeColor={outcomeColor}
-                      isMarketExpired={isMarketExpired}
-                      closing={closing}
-                      limitSelling={limitSelling}
-                      bsMathCents={bsMathCents}
-                      onSetOrderAmount={setOrderAmount}
-                      onClosePosition={() => handleClosePosition(posTok, size)}
-                      onLimitSellAtPrice={(priceCents) => handlePositionLimitSell(posTok, size, priceCents)}
-                    />
-                  );
-                })
-              )}
-            </div>
+            <SidebarMyPositionsPanel
+              selectedMarket={selectedMarket}
+              marketLookup={marketLookup}
+              liveTradesSource={liveTradesSource}
+              positions={positions}
+              isUpDownMarket={isUpDownMarket}
+              isMarketExpired={isMarketExpired}
+              mergeFunderWallet={mergeFunderWallet}
+              sidebarSpotStrip={sidebarSpotStrip}
+              closingPositionTokens={closingPositionTokens}
+              limitSellingPositionTokens={limitSellingPositionTokens}
+              onSetOrderAmount={setOrderAmount}
+              onClosePosition={handleClosePosition}
+              onLimitSellAtPrice={handlePositionLimitSell}
+              onOpenMergeDialog={handleOpenMergeDialog}
+              walletForLivePositions={walletForLivePositions}
+              onRefreshMyMarketTrades={refreshMyMarketTrades}
+              preloadMergePositionsDialog={preloadMergePositionsDialog}
+            />
             <div className="my-3 border-t border-gray-700/70" />
             <div className="flex items-center justify-between gap-2 mb-2 mt-3">
               <div className="flex items-center gap-1.5 min-w-0">
@@ -5275,7 +4924,6 @@ export function Sidebar() {
             aria-expanded={toxicSidebarExpanded}
             aria-label={sidebarToxicEffective ? 'Collapse holders panel' : 'Expand holders panel'}
             onClick={() => {
-              preloadToxicFlowDialog();
               dismissHoldersExpandTip();
               setToxicSidebarExpanded((v) => !v);
             }}
@@ -5295,25 +4943,14 @@ export function Sidebar() {
           </>
         ) : null}
         {sidebarToxicEffective && selectedMarket ? (
-          <div className="flex flex-1 min-h-0 min-w-0 w-full flex-col overflow-hidden bg-gray-900 toxic-flow-scroll-stable">
-            <Suspense fallback={<div className="p-2 text-[10px] text-gray-500">Loading holders…</div>}>
-              <ToxicFlowDialogLazy
-                embedded
-                open
-                marketId={selectedMarket.conditionId || ''}
-                marketName={marketName}
-                yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
-                noTokenId={selectedMarket.clobTokenIds?.[1] || ''}
-                marketExpired={isMarketExpired}
-                streamData={toxicFlowData}
-                streamTabWalletViews={toxicTabViews}
-                onRefreshStream={refreshToxicFlow}
-                streamRefreshing={toxicFlowRefreshing}
-                onClose={closeToxicSidebarPanel}
-                onInlineWalletExtraWidthChange={setToxicWalletExtraWidth}
-              />
-            </Suspense>
-          </div>
+          <SidebarToxicPanel
+            marketId={selectedMarket.conditionId || ''}
+            marketName={marketName}
+            yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
+            noTokenId={selectedMarket.clobTokenIds?.[1] || ''}
+            marketExpired={isMarketExpired}
+            onClose={closeToxicSidebarPanel}
+          />
         ) : null}
       </div>
       {customDialogOpen && typeof document !== 'undefined' && createPortal((
@@ -5443,4 +5080,4 @@ export function Sidebar() {
     </div>
     </>
   );
-}
+});

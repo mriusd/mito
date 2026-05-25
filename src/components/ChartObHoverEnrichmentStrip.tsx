@@ -31,7 +31,7 @@ export function ChartObHoverEnrichmentStrip({
         <span>Target</span>
         <span className="text-center">Math</span>
         <span className="text-center">σ</span>
-        <span className="text-right">Current</span>
+        <span className="text-right">Oracle</span>
       </div>
       <div className="grid grid-cols-4 gap-x-1 text-[10px] font-bold tabular-nums text-white">
         <span className="truncate" title={formatChartEnrichmentUsd(targetPrice, priceDec)}>

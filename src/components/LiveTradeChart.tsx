@@ -1,4 +1,5 @@
-import { useEffect, useRef, useCallback, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useCallback, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Link2, Link2Off } from 'lucide-react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { API_BASE, WS_BASE } from '../lib/env';
@@ -219,11 +220,12 @@ export function LiveTradeChart({
   const volumeSpikeFlashGenRef = useRef(0);
   const hoverMxRef = useRef<number | null>(null);
   const [hoverOb, setHoverOb] = useState<{
-    x: number;
-    y: number;
+    clientX: number;
+    clientY: number;
     ob: CandleObSnapshot;
     enrichment?: CandleBsEnrichment;
   } | null>(null);
+  const [hoverObPos, setHoverObPos] = useState<{ left: number; top: number } | null>(null);
   const hoverObPopupRef = useRef<HTMLDivElement>(null);
   const drawRafRef = useRef<number | null>(null);
 
@@ -1025,10 +1027,7 @@ export function LiveTradeChart({
       setHoverOb(null);
       return;
     }
-    const popupWidth = 320;
-    const x = Math.min(e.clientX + 10, window.innerWidth - popupWidth - 10);
-    const y = Math.max(10, e.clientY - 100);
-    setHoverOb({ x, y, ob: nearest.ob, enrichment: nearest.enrichment });
+    setHoverOb({ clientX: e.clientX, clientY: e.clientY, ob: nearest.ob, enrichment: nearest.enrichment });
   }, [paintChartHover, pickHoverCandle, candleObHover]);
 
   const handleMouseLeave = useCallback(() => {
@@ -1050,16 +1049,28 @@ export function LiveTradeChart({
     setHoverOb(null);
   }, [tokenId, interval]);
 
-  useEffect(() => {
-    if (!hoverOb || !hoverObPopupRef.current) return;
-    requestAnimationFrame(() => {
-      const el = hoverObPopupRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      if (rect.bottom > window.innerHeight - 10) {
-        el.style.top = Math.max(10, window.innerHeight - rect.height - 10) + 'px';
-      }
-    });
+  useLayoutEffect(() => {
+    if (!hoverOb) {
+      setHoverObPos(null);
+      return;
+    }
+    const el = hoverObPopupRef.current;
+    if (!el) return;
+    const margin = 10;
+    const offset = 10;
+    const w = el.offsetWidth || 320;
+    const h = el.offsetHeight;
+    let left = hoverOb.clientX + offset;
+    if (left + w > window.innerWidth - margin) {
+      left = hoverOb.clientX - w - offset;
+    }
+    left = Math.max(margin, Math.min(left, window.innerWidth - w - margin));
+    let top = hoverOb.clientY - Math.min(100, h * 0.25);
+    if (top + h > window.innerHeight - margin) {
+      top = window.innerHeight - h - margin;
+    }
+    top = Math.max(margin, top);
+    setHoverObPos({ left, top });
   }, [hoverOb]);
 
   useEffect(() => {
@@ -1238,42 +1249,45 @@ export function LiveTradeChart({
             aria-hidden
           />
         ) : null}
-        {hoverOb && candleObHover ? (
-          <div
-            ref={hoverObPopupRef}
-            className="fixed z-[10020] bg-gray-900/95 border border-gray-600 rounded-lg shadow-xl p-2 pointer-events-none"
-            style={{
-              left: hoverOb.x,
-              top: hoverOb.y,
-              width: 320,
-              maxHeight: '80vh',
-              overflowY: 'auto',
-            }}
-          >
-            {(() => {
-              const step = readSavedObAggStep();
-              const { displayBids, displayAsks, orderbookBookImbalance } = prepareCandleObDisplay(hoverOb.ob, step);
-              return (
-                <>
-                  <ChartObHoverEnrichmentStrip
-                    enrichment={hoverOb.enrichment}
-                    priceDec={enrichmentPriceDec}
-                    chartOutcome={outcomeToggle?.value ?? 'YES'}
-                  />
-                  <SidebarOrderbookBookGrid
-                    displayBids={displayBids}
-                    displayAsks={displayAsks}
-                    obAggStep={step}
-                    orderbookBookImbalance={orderbookBookImbalance}
-                    sidebarUserBidPrices={sidebarUserBidPrices ?? EMPTY_PRICE_SET}
-                    sidebarUserAskPrices={sidebarUserAskPrices ?? EMPTY_PRICE_SET}
-                    readOnly
-                  />
-                </>
-              );
-            })()}
-          </div>
-        ) : null}
+        {hoverOb && candleObHover && typeof document !== 'undefined'
+          ? createPortal(
+              <div
+                ref={hoverObPopupRef}
+                className="fixed z-[10020] bg-gray-900/95 border border-gray-600 rounded-lg shadow-xl p-2 pointer-events-none"
+                style={{
+                  left: hoverObPos?.left ?? hoverOb.clientX + 10,
+                  top: hoverObPos?.top ?? Math.max(10, hoverOb.clientY - 100),
+                  width: 320,
+                  maxHeight: '80vh',
+                  overflowY: 'auto',
+                }}
+              >
+                {(() => {
+                  const step = readSavedObAggStep();
+                  const { displayBids, displayAsks, orderbookBookImbalance } = prepareCandleObDisplay(hoverOb.ob, step);
+                  return (
+                    <>
+                      <ChartObHoverEnrichmentStrip
+                        enrichment={hoverOb.enrichment}
+                        priceDec={enrichmentPriceDec}
+                        chartOutcome={outcomeToggle?.value ?? 'YES'}
+                      />
+                      <SidebarOrderbookBookGrid
+                        displayBids={displayBids}
+                        displayAsks={displayAsks}
+                        obAggStep={step}
+                        orderbookBookImbalance={orderbookBookImbalance}
+                        sidebarUserBidPrices={sidebarUserBidPrices ?? EMPTY_PRICE_SET}
+                        sidebarUserAskPrices={sidebarUserAskPrices ?? EMPTY_PRICE_SET}
+                        readOnly
+                      />
+                    </>
+                  );
+                })()}
+              </div>,
+              document.body,
+            )
+          : null}
       </div>
     </div>
   );

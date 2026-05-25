@@ -212,6 +212,24 @@ export interface WSPosition {
   underlyingAsset?: string;
 }
 
+function mapRawWSPosition(p: Record<string, unknown>): WSPosition | null {
+  const tokenId = String(p.tokenId || '');
+  const size = Number(p.size || 0);
+  if (!tokenId || size <= 0) return null;
+  return {
+    tokenId,
+    size,
+    avgPrice: Number(p.avgPrice || 0),
+    title: typeof p.title === 'string' ? p.title : undefined,
+    slug: typeof p.slug === 'string' ? p.slug : undefined,
+    eventSlug: typeof p.eventSlug === 'string' ? p.eventSlug : undefined,
+    marketId: typeof p.marketId === 'string' ? p.marketId : undefined,
+    outcome: typeof p.outcome === 'string' ? p.outcome : undefined,
+    endDate: typeof p.endDate === 'string' ? p.endDate : undefined,
+    underlyingAsset: typeof p.underlyingAsset === 'string' ? p.underlyingAsset : undefined,
+  };
+}
+
 function mergeWalletPositionsSnapshot(
   prev: WSPosition[],
   incoming: WSPosition[],
@@ -220,21 +238,19 @@ function mergeWalletPositionsSnapshot(
   const scoped = new Set(
     (scopedTokenIds || []).map((x) => normalizeClobTokenKey(x)).filter(Boolean),
   );
-  if (scoped.size === 0) return incoming;
-  const wsScoped = incoming.filter((p) => scoped.has(normalizeClobTokenKey(p.tokenId)));
-  if (wsScoped.length === 0) {
-    const prevScoped = prev.filter((p) => scoped.has(normalizeClobTokenKey(p.tokenId)));
-    if (prevScoped.length > 0) return prev;
-  }
+  const live = incoming.filter((p) => !!p.tokenId && p.size > 0);
+  if (scoped.size === 0) return live;
+
   const byTok = new Map<string, WSPosition>();
   for (const p of prev) {
     const k = normalizeClobTokenKey(p.tokenId);
-    if (!k || scoped.has(k)) continue;
+    if (!k || scoped.has(k) || p.size <= 0) continue;
     byTok.set(k, p);
   }
-  for (const p of incoming) {
+  for (const p of live) {
     const k = normalizeClobTokenKey(p.tokenId);
-    if (k) byTok.set(k, p);
+    if (!k || !scoped.has(k)) continue;
+    byTok.set(k, p);
   }
   return [...byTok.values()];
 }
@@ -787,13 +803,9 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const msgWallet = String(msg.wallet || '').trim().toLowerCase();
             const mine = (walletRef.current || '').trim().toLowerCase();
             if (msgWallet && mine && msgWallet !== mine) return;
-            const raw = (msg.data as Array<{ tokenId?: string; size?: number; avgPrice?: number }>)
-              .map((p) => ({
-                tokenId: String(p.tokenId || ''),
-                size: Number(p.size || 0),
-                avgPrice: Number(p.avgPrice || 0),
-              }))
-              .filter((p) => !!p.tokenId);
+            const raw = (msg.data as Array<Record<string, unknown>>)
+              .map((p) => mapRawWSPosition(p))
+              .filter((p): p is WSPosition => p != null);
             setWalletPositions((prev) =>
               mergeWalletPositionsSnapshot(prev, raw, scopedClobTokenIdsRef.current),
             );
@@ -802,13 +814,9 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               setGridWalletPositions(raw);
             }
           } else if (msg.type === 'walletGridPositions' && Array.isArray(msg.data)) {
-            const raw = (msg.data as Array<{ tokenId?: string; size?: number; avgPrice?: number }>)
-              .map((p) => ({
-                tokenId: String(p.tokenId || ''),
-                size: Number(p.size || 0),
-                avgPrice: Number(p.avgPrice || 0),
-              }))
-              .filter((p) => !!p.tokenId);
+            const raw = (msg.data as Array<Record<string, unknown>>)
+              .map((p) => mapRawWSPosition(p))
+              .filter((p): p is WSPosition => p != null);
             setGridWalletPositions(raw);
           } else if (msg.type === 'walletTrades' && Array.isArray(msg.data)) {
             const msgWallet = String(msg.wallet || '').trim().toLowerCase();

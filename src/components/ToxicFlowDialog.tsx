@@ -163,7 +163,6 @@ import {
   toxicFlowFullSnapshot,
   type ToxicFlowWSMessage,
 } from '../lib/toxicFlowWs';
-import { useSidebarToxicFlowData } from '../lib/sidebarToxicFlowStore';
 import { TOXIC_TABLE_ROW_CLS } from '../lib/toxicFlowTableAnimate';
 import {
   readToxicFlowLayoutMode,
@@ -661,8 +660,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const tradeElapsedTick = useTradeElapsedTick(open);
   const isInlineWalletInfo = variant === 'inline';
   const showMarketsList = !isInlineWalletInfo || inlineMarketsListOpen;
-  const sidebarToxicFlowData = useSidebarToxicFlowData();
-  const effectiveToxicFlowData = toxicFlowDataProp ?? sidebarToxicFlowData;
+  const effectiveToxicFlowData = toxicFlowDataProp;
   const {
     trades: wsMarketTrades,
     total: fillsTotal,
@@ -678,7 +676,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     if (!open) return;
     const sync = () => setNeedsOwnOnchainWs(getOnchainTradesWSShared() == null);
     sync();
-    const id = window.setInterval(sync, 500);
+    const id = window.setInterval(sync, 5000);
     return () => window.clearInterval(id);
   }, [open]);
 
@@ -1599,14 +1597,26 @@ const InlineWalletInfoPanelHost = memo(function InlineWalletInfoPanelHost({
       toxicFlowData={toxicFlowData}
     />
   );
-}, (a, b) =>
-  a.wallet === b.wallet &&
-  a.initialMarketId === b.initialMarketId &&
-  a.focusMarketId === b.focusMarketId &&
-  a.focusMarketSeq === b.focusMarketSeq &&
-  a.toxicFlowData === b.toxicFlowData &&
-  a.onClose === b.onClose &&
-  a.onInlineMarketsListOpenChange === b.onInlineMarketsListOpenChange);
+}, (a, b) => {
+  if (a.wallet !== b.wallet) return false;
+  if (a.initialMarketId !== b.initialMarketId) return false;
+  if (a.focusMarketId !== b.focusMarketId) return false;
+  if (a.focusMarketSeq !== b.focusMarketSeq) return false;
+  if (a.onClose !== b.onClose) return false;
+  if (a.onInlineMarketsListOpenChange !== b.onInlineMarketsListOpenChange) return false;
+  const posA = findToxicFlowWalletPosition(a.toxicFlowData, a.wallet);
+  const posB = findToxicFlowWalletPosition(b.toxicFlowData, b.wallet);
+  if (posA === posB) return true;
+  if (!posA || !posB) return false;
+  return (
+    posA.marketId === posB.marketId &&
+    posA.net === posB.net &&
+    posA.netYes === posB.netYes &&
+    posA.netNo === posB.netNo &&
+    posA.priceYes === posB.priceYes &&
+    posA.priceNo === posB.priceNo
+  );
+});
 
 export function WalletInfoDialog({
   open,

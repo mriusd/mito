@@ -26,6 +26,8 @@ const ToxicFlowDialogLazy = lazyWithChunkReload(() =>
   import('./ToxicFlowDialog').then((m) => ({ default: m.ToxicFlowDialog })),
 );
 
+import { setSidebarToxicWalletExtraWidth } from '../lib/sidebarToxicWalletWidthStore';
+
 const SidebarToxicPanelBody = memo(function SidebarToxicPanelBody({
   marketId,
   marketName,
@@ -33,7 +35,6 @@ const SidebarToxicPanelBody = memo(function SidebarToxicPanelBody({
   noTokenId,
   marketExpired,
   onClose,
-  onInlineWalletExtraWidthChange,
 }: {
   marketId: string;
   marketName: string;
@@ -41,7 +42,6 @@ const SidebarToxicPanelBody = memo(function SidebarToxicPanelBody({
   noTokenId?: string;
   marketExpired?: boolean;
   onClose: () => void;
-  onInlineWalletExtraWidthChange?: (width: string) => void;
 }) {
   const mid = marketId.trim();
   const data = useSidebarToxicFlowData();
@@ -89,7 +89,7 @@ const SidebarToxicPanelBody = memo(function SidebarToxicPanelBody({
       onRefreshStream={refreshSidebarToxicFlow}
       streamRefreshing={refreshing}
       onClose={onClose}
-      onInlineWalletExtraWidthChange={onInlineWalletExtraWidthChange}
+      onInlineWalletExtraWidthChange={setSidebarToxicWalletExtraWidth}
     />
   );
 });
@@ -101,7 +101,6 @@ export const SidebarToxicPanel = memo(function SidebarToxicPanel({
   noTokenId,
   marketExpired,
   onClose,
-  onInlineWalletExtraWidthChange,
 }: {
   marketId: string;
   marketName: string;
@@ -109,7 +108,6 @@ export const SidebarToxicPanel = memo(function SidebarToxicPanel({
   noTokenId?: string;
   marketExpired?: boolean;
   onClose: () => void;
-  onInlineWalletExtraWidthChange?: (width: string) => void;
 }) {
   return (
     <div className="flex flex-1 min-h-0 min-w-0 w-full flex-col overflow-hidden bg-gray-900 toxic-flow-scroll-stable">
@@ -121,7 +119,6 @@ export const SidebarToxicPanel = memo(function SidebarToxicPanel({
           noTokenId={noTokenId}
           marketExpired={marketExpired}
           onClose={onClose}
-          onInlineWalletExtraWidthChange={onInlineWalletExtraWidthChange}
         />
       </Suspense>
     </div>

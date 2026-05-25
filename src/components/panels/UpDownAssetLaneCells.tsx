@@ -5,7 +5,7 @@ import type { Market, Order, AssetSymbol } from '../../types';
 import { getMarketProbability } from '../../utils/bsMath';
 import { normalizeClobTokenId } from '../../utils/format';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
-import { nextMarketHiFlashSides } from '../../lib/upDownNextMarketFlashSound';
+import { nextMarketHiFlashSides, useUpDownNextHiSettings } from '../../lib/upDownNextMarketFlashSound';
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
 import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLookupSubset';
 import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
@@ -247,6 +247,8 @@ function UpDownAssetLaneCellsInner({
   }, [yesTokenId, noTokenId, futuresSlots]);
 
   const bidAskLookup = useThrottledMarketLookupSubset(lookupTokenIds);
+  const { alertEnabled: upDownNextHiAlertEnabled, hiThreshold: upDownNextHiThreshold } =
+    useUpDownNextHiSettings();
 
   const getLiveBidAsk = (m: Market) => {
     const tid = m.clobTokenIds?.[0];
@@ -424,7 +426,12 @@ function UpDownAssetLaneCellsInner({
     const nextYesMid = outcomeMidOrOneSideProb(nextYesTokenId, bidAskLookup, nextGammaYes);
     const nextNoProb = nextYesMid != null ? 1 - nextYesMid : null;
     const nextNoTokenId = nextTokenIds[1] || '';
-    const nextHi = nextMarketHiFlashSides(nextMarket, bidAskLookup, { liveOnly: true });
+    const nextHi = upDownNextHiAlertEnabled
+      ? nextMarketHiFlashSides(nextMarket, bidAskLookup, {
+          liveOnly: true,
+          hiThreshold: upDownNextHiThreshold,
+        })
+      : { yesHi: false, noHi: false };
     const nextBidHi = nextHi.yesHi;
     const nextNoHi = nextHi.noHi;
     const nextHiPillBase =

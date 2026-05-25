@@ -87,6 +87,13 @@ import {
   SIDEBAR_NOTIFY_VOLUME_SPIKE_RING_KEY,
 } from '../lib/chartVolumeSpikeAlert';
 import {
+  publishUpDownNextHiSettings,
+  readNotifyUpDownNextHi,
+  readNotifyUpDownNextHiCents,
+  SIDEBAR_NOTIFY_UPDOWN_NEXT_HI_CENTS_KEY,
+  SIDEBAR_NOTIFY_UPDOWN_NEXT_HI_KEY,
+} from '../lib/upDownNextMarketFlashSound';
+import {
   getMarketNotifyMutedSnapshot,
   isMarketNotifyMuted,
   subscribeMarketNotifyMuted,
@@ -903,6 +910,8 @@ export const Sidebar = memo(function Sidebar() {
   const [notifyTiltUd15m, setNotifyTiltUd15m] = useState(readNotifyTiltUd15m);
   const [notifyTiltUd1h, setNotifyTiltUd1h] = useState(readNotifyTiltUd1h);
   const [notifyTiltUd4h, setNotifyTiltUd4h] = useState(readNotifyTiltUd4h);
+  const [notifyUpDownNextHi, setNotifyUpDownNextHi] = useState(readNotifyUpDownNextHi);
+  const [notifyUpDownNextHiCents, setNotifyUpDownNextHiCents] = useState(readNotifyUpDownNextHiCents);
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
   const [notifyMaxVolatilityPct, setNotifyMaxVolatilityPct] = useState(readNotifyMaxVolatilityPct);
   const [notifyVolatilityCandles, setNotifyVolatilityCandles] = useState(readNotifyVolatilityCandles);
@@ -1156,6 +1165,15 @@ export const Sidebar = memo(function Sidebar() {
       /* */
     }
   }, [notifyTiltUd4h]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_UPDOWN_NEXT_HI_KEY, notifyUpDownNextHi ? '1' : '0');
+      localStorage.setItem(SIDEBAR_NOTIFY_UPDOWN_NEXT_HI_CENTS_KEY, String(notifyUpDownNextHiCents));
+    } catch {
+      /* */
+    }
+    publishUpDownNextHiSettings(notifyUpDownNextHi, notifyUpDownNextHiCents);
+  }, [notifyUpDownNextHi, notifyUpDownNextHiCents]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_MAX_VOLATILITY_PCT_KEY, String(notifyMaxVolatilityPct));
@@ -2996,6 +3014,34 @@ export const Sidebar = memo(function Sidebar() {
                       />
                       <span>4h</span>
                     </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer w-full mt-1">
+                      <input
+                        type="checkbox"
+                        className="rounded accent-amber-500"
+                        checked={notifyUpDownNextHi}
+                        onChange={(e) => setNotifyUpDownNextHi(e.target.checked)}
+                      />
+                      <span>Next market hi</span>
+                    </label>
+                    {notifyUpDownNextHi ? (
+                      <div className="flex items-center gap-2 pl-5 w-full">
+                        <span className="text-[10px] text-gray-400 shrink-0">≥</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={99}
+                          step={1}
+                          className="bg-gray-900 border border-gray-600 rounded px-2 py-0.5 text-white w-14 tabular-nums text-xs no-spin"
+                          value={notifyUpDownNextHiCents}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (!Number.isFinite(v)) return;
+                            setNotifyUpDownNextHiCents(Math.min(99, Math.max(1, Math.round(v))));
+                          }}
+                        />
+                        <span className="text-[10px] text-gray-400">¢ flash + sound</span>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 <label className="flex items-center gap-2 cursor-pointer">

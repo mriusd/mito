@@ -17,12 +17,109 @@ import {
   readNotifySoundFreqSlider,
 } from './tiltNotifySound';
 
-export const UPDOWN_NEXT_MARKET_HI_THRESHOLD = 0.65;
+export const SIDEBAR_NOTIFY_UPDOWN_NEXT_HI_KEY = 'polybot-sidebar-notify-updown-next-hi';
+export const SIDEBAR_NOTIFY_UPDOWN_NEXT_HI_CENTS_KEY = 'polybot-sidebar-notify-updown-next-hi-cents';
+export const DEFAULT_UPDOWN_NEXT_HI_CENTS = 65;
 /** Matches `.updown-triangle-badge-flash` animation period in index.css. */
 export const UPDOWN_TRIANGLE_FLASH_MS = 1000;
 
+const SIDEBAR_NOTIFY_PLAY_SOUND_KEY = 'polybot-sidebar-notify-play-sound';
+
 const UPDOWN_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 const UPDOWN_TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
+
+type UpDownNextHiSettingsSnap = {
+  digest: number;
+  alertEnabled: boolean;
+  hiCents: number;
+};
+
+const upDownNextHiListeners = new Set<() => void>();
+
+function clampHiCents(raw: number): number {
+  if (!Number.isFinite(raw)) return DEFAULT_UPDOWN_NEXT_HI_CENTS;
+  return Math.min(99, Math.max(1, Math.round(raw)));
+}
+
+export function readNotifyUpDownNextHi(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_UPDOWN_NEXT_HI_KEY);
+    if (v === null) return true;
+    return v === '1';
+  } catch {
+    return true;
+  }
+}
+
+export function readNotifyUpDownNextHiCents(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_UPDOWN_NEXT_HI_CENTS_KEY);
+    if (raw == null || raw === '') return DEFAULT_UPDOWN_NEXT_HI_CENTS;
+    return clampHiCents(Number.parseFloat(raw));
+  } catch {
+    return DEFAULT_UPDOWN_NEXT_HI_CENTS;
+  }
+}
+
+function readNotifyPlaySoundEnabled(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_PLAY_SOUND_KEY);
+    if (v === null) return false;
+    return v === '1';
+  } catch {
+    return false;
+  }
+}
+
+function buildUpDownNextHiSettingsSnap(): Omit<UpDownNextHiSettingsSnap, 'digest'> {
+  return {
+    alertEnabled: readNotifyUpDownNextHi(),
+    hiCents: readNotifyUpDownNextHiCents(),
+  };
+}
+
+let upDownNextHiSettingsSnap: UpDownNextHiSettingsSnap = {
+  digest: 0,
+  ...buildUpDownNextHiSettingsSnap(),
+};
+
+function notifyUpDownNextHiSettingsListeners(): void {
+  for (const fn of upDownNextHiListeners) fn();
+}
+
+export function publishUpDownNextHiSettings(alertEnabled: boolean, hiCents: number): void {
+  const nextCents = clampHiCents(hiCents);
+  upDownNextHiSettingsSnap = {
+    digest: upDownNextHiSettingsSnap.digest + 1,
+    alertEnabled,
+    hiCents: nextCents,
+  };
+  notifyUpDownNextHiSettingsListeners();
+}
+
+export function subscribeUpDownNextHiSettings(onStoreChange: () => void): () => void {
+  upDownNextHiListeners.add(onStoreChange);
+  return () => upDownNextHiListeners.delete(onStoreChange);
+}
+
+export function getUpDownNextHiSettingsSnapshot(): UpDownNextHiSettingsSnap {
+  return upDownNextHiSettingsSnap;
+}
+
+export function useUpDownNextHiSettings(): { alertEnabled: boolean; hiCents: number; hiThreshold: number } {
+  const digest = useSyncExternalStore(
+    subscribeUpDownNextHiSettings,
+    () => getUpDownNextHiSettingsSnapshot().digest,
+    () => getUpDownNextHiSettingsSnapshot().digest,
+  );
+  void digest;
+  const snap = getUpDownNextHiSettingsSnapshot();
+  return {
+    alertEnabled: snap.alertEnabled,
+    hiCents: snap.hiCents,
+    hiThreshold: snap.hiCents / 100,
+  };
+}
 
 function marketNotifyId(market: Market): string {
   return ((market.conditionId ?? market.id) || '').trim();
@@ -35,31 +132,31 @@ function hiFlashKey(marketId: string, side: 'yes' | 'no'): string {
 export function nextMarketHiFlashSides(
   market: Market,
   bidAskLookup: Record<string, Market>,
-  opts?: { liveOnly?: boolean },
+  opts?: { liveOnly?: boolean; hiThreshold?: number },
 ): { yesHi: boolean; noHi: boolean } {
   const liveOnly = opts?.liveOnly === true;
+  const threshold = opts?.hiThreshold ?? readNotifyUpDownNextHiCents() / 100;
   const yesTokenId = market.clobTokenIds?.[0] || '';
   const noTokenId = market.clobTokenIds?.[1] || '';
   const live = yesTokenId ? bidAskLookup[yesTokenId] : null;
   const bestBid = liveOnly ? live?.bestBid : (live?.bestBid ?? market.bestBid);
   const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
-  const yesHi =
-    bestBid != null && Number.isFinite(bestBid) && bestBid >= UPDOWN_NEXT_MARKET_HI_THRESHOLD;
+  const yesHi = bestBid != null && Number.isFinite(bestBid) && bestBid >= threshold;
 
   if (liveOnly) {
     const noLive = noTokenId ? bidAskLookup[noTokenId] : null;
     const noBid = noLive?.bestBid;
     const noAsk = noLive?.bestAsk;
     const noHi =
-      (noBid != null && Number.isFinite(noBid) && noBid >= UPDOWN_NEXT_MARKET_HI_THRESHOLD) ||
-      (noAsk != null && Number.isFinite(noAsk) && noAsk >= UPDOWN_NEXT_MARKET_HI_THRESHOLD);
+      (noBid != null && Number.isFinite(noBid) && noBid >= threshold) ||
+      (noAsk != null && Number.isFinite(noAsk) && noAsk >= threshold);
     return { yesHi, noHi };
   }
 
   const { bestBid: noBid, bestAsk: noAsk } = noOutcomeBidAsk(yesTokenId, noTokenId, bidAskLookup, gammaYes);
   const noHi =
-    (noBid != null && Number.isFinite(noBid) && noBid >= UPDOWN_NEXT_MARKET_HI_THRESHOLD) ||
-    (noAsk != null && Number.isFinite(noAsk) && noAsk >= UPDOWN_NEXT_MARKET_HI_THRESHOLD);
+    (noBid != null && Number.isFinite(noBid) && noBid >= threshold) ||
+    (noAsk != null && Number.isFinite(noAsk) && noAsk >= threshold);
   return { yesHi, noHi };
 }
 
@@ -96,6 +193,7 @@ export function useUpDownNextMarketFlashWhaleSound(
   visibleAssets: readonly (typeof UPDOWN_ASSETS)[number][],
   nextMarketsCount: number,
 ): void {
+  const { alertEnabled, hiThreshold } = useUpDownNextHiSettings();
   const now = useExpiryNow();
   const nextMarkets = useMemo(
     () => collectUpDownNextMarkets(sortedOpenByAssetTf, visibleAssets, now, nextMarketsCount),
@@ -122,12 +220,15 @@ export function useUpDownNextMarketFlashWhaleSound(
 
   const { hiKeysSig, whaleKind } = useMemo(() => {
     void mutedMarketsKey;
+    if (!alertEnabled) {
+      return { hiKeysSig: '', whaleKind: null };
+    }
     const keys: string[] = [];
     let yesHi = false;
     let noHi = false;
     for (const m of nextMarkets) {
       if (isMarketNotifyMuted(marketNotifyId(m))) continue;
-      const sides = nextMarketHiFlashSides(m, bidAskLookup, { liveOnly: true });
+      const sides = nextMarketHiFlashSides(m, bidAskLookup, { liveOnly: true, hiThreshold });
       if (sides.yesHi) {
         yesHi = true;
         keys.push(hiFlashKey(m.id, 'yes'));
@@ -142,7 +243,7 @@ export function useUpDownNextMarketFlashWhaleSound(
       hiKeysSig: keys.join('|'),
       whaleKind: yesHi ? ('green' as const) : noHi ? ('red' as const) : null,
     };
-  }, [nextMarkets, bidAskLookup, mutedMarketsKey]);
+  }, [nextMarkets, bidAskLookup, mutedMarketsKey, alertEnabled, hiThreshold]);
 
   const prevHiKeysRef = useRef('');
   const intervalRef = useRef<number | null>(null);
@@ -157,25 +258,26 @@ export function useUpDownNextMarketFlashWhaleSound(
       intervalRef.current = null;
     }
 
-    if (!whaleKind || !hiKeysSig) {
+    if (!alertEnabled || !whaleKind || !hiKeysSig) {
       prevHiKeysRef.current = '';
       return;
     }
 
     const prev = prevHiKeysRef.current;
-    const hasNewHi = prev !== hiKeysSig && hiKeysSig.split('|').some((k) => k && !prev.split('|').filter(Boolean).includes(k));
+    const hasNewHi =
+      prev !== hiKeysSig &&
+      hiKeysSig.split('|').some((k) => k && !prev.split('|').filter(Boolean).includes(k));
     prevHiKeysRef.current = hiKeysSig;
 
     const pitchMul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider());
     const ringTimeS = readNotifyRingTimeS();
     const tick = () => {
+      if (!readNotifyPlaySoundEnabled()) return;
       const kind = whaleKindRef.current;
       if (!kind) return;
       void playTiltNotifySoundStrikes(kind, pitchMul, ringTimeS, 3);
     };
 
-    // Only start ringing on a fresh ≥65¢ cross on a next-market slot — not on rollover to current
-    // and not when stale gamma already showed ≥65¢ before live quotes arrived.
     if (hasNewHi) tick();
 
     intervalRef.current = window.setInterval(tick, UPDOWN_TRIANGLE_FLASH_MS);
@@ -186,5 +288,5 @@ export function useUpDownNextMarketFlashWhaleSound(
         intervalRef.current = null;
       }
     };
-  }, [hiKeysSig, whaleKind]);
+  }, [hiKeysSig, whaleKind, alertEnabled]);
 }

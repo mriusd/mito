@@ -786,7 +786,7 @@ export function LiveTradeChart({
 
     const chartOutcome = outcomeToggle?.value ?? 'YES';
     const mathLineColor = '#67e8f9';
-    const mathPoints: { cx: number; cy: number; cents: number }[] = [];
+    const mathPoints: { cx: number; cy: number }[] = [];
     for (const c of candles) {
       if (c.time < minT - candleMs || c.time > maxT + candleMs) continue;
       const cents = chartEnrichmentMathCents(c.enrichment?.bsProb, chartOutcome);
@@ -794,7 +794,6 @@ export function LiveTradeChart({
       mathPoints.push({
         cx: toX(c.time + candleMs / 2),
         cy: toY(cents),
-        cents,
       });
     }
     if (mathPoints.length === 1) {
@@ -814,15 +813,6 @@ export function LiveTradeChart({
       }
       ctx.stroke();
       ctx.setLineDash([]);
-    }
-    if (mathPoints.length > 0) {
-      const last = mathPoints[mathPoints.length - 1];
-      const labelY = Math.max(chartTop + 8, Math.min(chartBot - 8, last.cy));
-      ctx.fillStyle = mathLineColor;
-      ctx.font = 'bold 8px monospace';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`M ${last.cents.toFixed(1)}¢`, chartLeft + 2, labelY - 8);
     }
 
     if (!hideTrades && tradeMarkers && tradeMarkers.length > 0) {

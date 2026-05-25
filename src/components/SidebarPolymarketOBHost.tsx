@@ -66,7 +66,7 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
     }
   }, []);
 
-  const bookLimit = obAggStep === '0.1' ? OB_RAW_TOP_REF : OB_DEEP_BOOK;
+  const bookLimit = OB_DEEP_BOOK;
   const { bids, asks, trades: polymarketLiveTrades, loading: obLoading } = usePolymarketOB(obTokenId, bookLimit);
 
   const obStaleBookRef = useRef<{ bids: OBLevel[]; asks: OBLevel[] }>({ bids: [], asks: [] });

@@ -1,13 +1,15 @@
-import { Fragment, memo, useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import { CirclePercent, Minus, Triangle } from 'lucide-react';
-import type { Market, Order } from '../../types';
-import type { AssetSymbol } from '../../types';
+import type { Market, Order, AssetSymbol } from '../../types';
 import { getMarketProbability } from '../../utils/bsMath';
 import { normalizeClobTokenId } from '../../utils/format';
 import { noOutcomeBidAsk, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
 import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLookupSubset';
+import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
+import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
+import { GRID_BID_ASK_THROTTLE_MS } from '../../lib/bidAskMarketLookup';
 import { useExpiryNow } from '../../hooks/useExpiryNow';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
@@ -194,8 +196,6 @@ export type UpDownAssetLaneCellsProps = {
   showTarget: boolean;
   isLastTfRow: boolean;
   nextMarketsCount: number;
-  chainlinkSpot?: number;
-  binanceSpot?: number;
   vol: number;
   volMultiplier: number;
   bsTimeOffsetHours: number;
@@ -214,8 +214,6 @@ function UpDownAssetLaneCellsInner({
   showTarget,
   isLastTfRow,
   nextMarketsCount,
-  chainlinkSpot,
-  binanceSpot,
   vol,
   volMultiplier,
   bsTimeOffsetHours,
@@ -230,6 +228,8 @@ function UpDownAssetLaneCellsInner({
   const noTokenId = tokenIds[1] || '';
   const sym = (asset + 'USDT') as AssetSymbol;
   const duration = TF_DURATIONS_MS[tf] ?? 0;
+  const binanceSpot = useThrottledStorePrice(sym, GRID_BID_ASK_THROTTLE_MS);
+  const chainlinkSpot = useThrottledChainlinkPricesMap(GRID_BID_ASK_THROTTLE_MS)[asset];
 
   const lookupTokenIds = useMemo(() => {
     const ids = new Set<string>();
@@ -258,10 +258,10 @@ function UpDownAssetLaneCellsInner({
   const livePrice = preferChainlink
     ? chainlinkSpot != null && chainlinkSpot > 0
       ? chainlinkSpot
-      : binanceSpot != null && binanceSpot > 0
+      : binanceSpot > 0
         ? binanceSpot
         : undefined
-    : binanceSpot != null && binanceSpot > 0
+    : binanceSpot > 0
       ? binanceSpot
       : undefined;
   const strikeTarget = strikePriceFromMarket(market, yesTokenId, bidAskLookup);
@@ -493,11 +493,11 @@ function UpDownAssetLaneCellsInner({
   });
 
   return (
-    <Fragment>
+    <>
       {targetCell}
       {quoteCell}
       {futureCells}
-    </Fragment>
+    </>
   );
 }
 
@@ -521,8 +521,6 @@ export const UpDownAssetLaneCells = memo(UpDownAssetLaneCellsInner, (a, b) => {
     a.showTarget !== b.showTarget ||
     a.isLastTfRow !== b.isLastTfRow ||
     a.nextMarketsCount !== b.nextMarketsCount ||
-    a.chainlinkSpot !== b.chainlinkSpot ||
-    a.binanceSpot !== b.binanceSpot ||
     a.vol !== b.vol ||
     a.volMultiplier !== b.volMultiplier ||
     a.bsTimeOffsetHours !== b.bsTimeOffsetHours ||

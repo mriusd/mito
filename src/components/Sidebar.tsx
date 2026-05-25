@@ -3935,7 +3935,7 @@ export const Sidebar = memo(function Sidebar() {
           {toxicFlowMarketId ? <SidebarToxicFlowHost marketId={toxicFlowMarketId} /> : null}
           <SidebarNotifyStakedGateSync
             yesTokenId={selectedMarket.clobTokenIds?.[0] ?? ''}
-            marketStakedLegs={marketStakedLegs}
+            marketConditionId={toxicFlowMarketId}
             notifyStakedMinUsd={notifyStakedMinUsd}
           />
           <SidebarChartsRow

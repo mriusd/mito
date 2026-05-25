@@ -94,6 +94,8 @@ import {
   fmtPriceShare,
 } from './WalletLatestMarketsTradedTable';
 import { ToxicFlowWalletTable as WalletTable } from './ToxicFlowWalletTable';
+import { HelperTooltip } from './HelperTooltip';
+import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
 import { ToxicFlowTabsTip } from './ToxicFlowTabsTip';
 import { ToxicFlowRowActionsTip } from './ToxicFlowRowActionsTip';
 import { persistToxicFlowTabsTipDismissed, readToxicFlowTabsTipDismissed } from '../lib/toxicFlowTabsTip';

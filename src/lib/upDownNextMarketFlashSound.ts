@@ -17,7 +17,7 @@ import {
   readNotifySoundFreqSlider,
 } from './tiltNotifySound';
 
-export const UPDOWN_NEXT_MARKET_HI_THRESHOLD = 0.6;
+export const UPDOWN_NEXT_MARKET_HI_THRESHOLD = 0.65;
 /** Matches `.updown-triangle-badge-flash` animation period in index.css. */
 export const UPDOWN_TRIANGLE_FLASH_MS = 1000;
 
@@ -174,8 +174,8 @@ export function useUpDownNextMarketFlashWhaleSound(
       void playTiltNotifySoundStrikes(kind, pitchMul, ringTimeS, 3);
     };
 
-    // Only start ringing on a fresh ≥60¢ cross on a next-market slot — not on rollover to current
-    // and not when stale gamma already showed ≥60¢ before live quotes arrived.
+    // Only start ringing on a fresh ≥65¢ cross on a next-market slot — not on rollover to current
+    // and not when stale gamma already showed ≥65¢ before live quotes arrived.
     if (hasNewHi) tick();
 
     intervalRef.current = window.setInterval(tick, UPDOWN_TRIANGLE_FLASH_MS);

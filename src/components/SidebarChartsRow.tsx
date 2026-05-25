@@ -3,6 +3,7 @@ import type { Market } from '../types';
 import { usePolymarketChartTrades } from '../hooks/usePolymarketChartTrades';
 import { useSidebarMyTradesChartMarkers } from '../hooks/useSidebarMyTradesChartMarkers';
 import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
+import { useSidebarOrderHighlightSets } from '../lib/sidebarOrderHighlightStore';
 
 export type SidebarChartsRowProps = {
   selectedMarket: Market;
@@ -11,8 +12,6 @@ export type SidebarChartsRowProps = {
   chartOutcomeSync: boolean;
   onChartOutcomeSyncChange: (enabled: boolean) => void;
   marketLookup: Record<string, Market>;
-  sidebarUserBidPrices: Set<string>;
-  sidebarUserAskPrices: Set<string>;
 };
 
 function SidebarChartsRowInner({
@@ -22,9 +21,8 @@ function SidebarChartsRowInner({
   chartOutcomeSync,
   onChartOutcomeSyncChange,
   marketLookup,
-  sidebarUserBidPrices,
-  sidebarUserAskPrices,
 }: SidebarChartsRowProps) {
+  const { bidPrices: sidebarUserBidPrices, askPrices: sidebarUserAskPrices } = useSidebarOrderHighlightSets();
   const displayLiveTrades = usePolymarketChartTrades();
   const myTradesForMarkers = useSidebarMyTradesChartMarkers(selectedMarket, marketLookup);
   const outcomeSync = useMemo(

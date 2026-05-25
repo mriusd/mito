@@ -18,7 +18,6 @@ import { resolvePolymarketMakerAddress } from '../lib/polymarketTradingMaker';
 import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { executeMergePositions } from '../lib/mergePositions';
-import { buildSidebarUserOrderHighlightSets } from '../lib/sidebarOrderbookAggregate';
 import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
 import {
@@ -30,11 +29,6 @@ import {
   getTokenOutcome,
   getTradeClobTokenId,
   outcomeTokenBelongsToSelectedMarket,
-  listPastUpDownMarketsInTfBucket,
-  listFutureUpDownMarketsInTfBucket,
-  pickLiveUpDownMarketInTfBucket,
-  pickNextMarketOnExpiry,
-  resolveUpDownStrikeSync,
   shortenMarketName,
   tradeMatchesSelectedMarket,
   hitStrikeMetaForBs,
@@ -42,8 +36,6 @@ import {
   upDownTimeframeKeyFromMarket,
 } from '../utils/format';
 import { getHitMarketProbability, getMarketProbability, isMarketInWeeklyHitMarkets } from '../utils/bsMath';
-import { API_BASE } from '../lib/env';
-import { fetchUpDownTargetFromCrypto, upDownCryptoTimeframe } from '../lib/upDownTargetFromCrypto';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { BsFlower } from './BsFlower';
 import { HelpTooltip } from './HelpTooltip';
@@ -84,7 +76,6 @@ import {
   SIDEBAR_TRADE_SOUND_VOLUME_KEY,
 } from '../lib/tiltNotifySound';
 import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
-import { getExpiryTickNow, subscribeExpiryTick } from '../lib/expiryTickStore';
 import { SidebarMarketCountdownLabel } from './SidebarMarketCountdownLabel';
 import {
   readNotifySoundMaxPriceCents,
@@ -129,6 +120,13 @@ import { setSidebarChartAnnualVolPct } from '../lib/sidebarChartVolStore';
 import { SidebarToxicWalletWidthHost } from './SidebarToxicWalletWidthHost';
 import { SidebarToxicNotifySoundHost } from './SidebarToxicNotifySoundHost';
 import { SidebarToxicStatsFlashWrap } from './SidebarToxicStatsFlashWrap';
+import { SidebarUpDownTargetHost } from './SidebarUpDownTargetHost';
+import { SidebarUpDownEndPicker } from './SidebarUpDownEndPicker';
+import { SidebarOrderHighlightHost } from './SidebarOrderHighlightHost';
+import {
+  useSidebarUpDownLiveSameTfMarket,
+  useSidebarUpDownTargetPrice,
+} from '../lib/sidebarUpDownTargetStore';
 import { SidebarSpotVolSigmaLabel } from './SidebarSpotVolSigmaLabel';
 import { computeSidebarMyPositions } from '../lib/sidebarMyPositions';
 import { getSidebarOnchainTradesSnapshot } from '../lib/sidebarOnchainTradesStore';
@@ -899,12 +897,6 @@ export const Sidebar = memo(function Sidebar() {
   const marketLookupEpoch = useAppStore((s) => s.marketLookupEpoch);
   const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
   const marketLookup = useMemo(() => useAppStore.getState().marketLookup, [marketLookupEpoch]);
-  const autoSwitchNextMarketOnExpiry = useAppStore((s) => s.autoSwitchNextMarketOnExpiry);
-  /** Edge-detect expiry on the same sidebar selection — skip when user navigates to an already-expired market. */
-  const autoSwitchPrevSelectedIdRef = useRef<string | null>(null);
-  const userPinnedExpiredMarketRef = useRef(false);
-  const selectedMarketForAutoSwitchRef = useRef(selectedMarket);
-  selectedMarketForAutoSwitchRef.current = selectedMarket;
   const freqSliderPreviewLastMs = useRef(0);
 
   const [notifyPlaySound, setNotifyPlaySound] = useState(readNotifyPlaySound);
@@ -1499,24 +1491,11 @@ export const Sidebar = memo(function Sidebar() {
   const yesTokenIdForSoundMute = selectedMarket?.clobTokenIds?.[0] || '';
   const noTokenIdForSoundMute = selectedMarket?.clobTokenIds?.[1] || '';
 
-  const { sidebarUserBidPrices, sidebarUserAskPrices } = useMemo(() => {
-    const yesToken = selectedMarket?.clobTokenIds?.[0] || '';
-    const noToken = selectedMarket?.clobTokenIds?.[1] || '';
-    const { bidPrices, askPrices } = buildSidebarUserOrderHighlightSets(
-      orders,
-      yesToken,
-      noToken,
-      orderOutcome,
-    );
-    return { sidebarUserBidPrices: bidPrices, sidebarUserAskPrices: askPrices };
-  }, [orders, selectedMarket?.clobTokenIds, orderOutcome]);
-
-  // Compute BS probability for orderbook % diff
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
-  const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
-  const lastUpdated = useAppStore((s) => s.lastUpdated);
+  const upDownTargetPrice = useSidebarUpDownTargetPrice();
+  const liveUpDownSameTfMarket = useSidebarUpDownLiveSameTfMarket();
   const sidebarPriceSym = useMemo((): AssetSymbol | null => {
     if (!selectedMarket) return null;
     const asset = extractAssetFromMarket(selectedMarket);
@@ -1552,7 +1531,6 @@ export const Sidebar = memo(function Sidebar() {
 
 
   // Up or Down market detection and state
-  const [upDownTargetPrice, setUpDownTargetPrice] = useState<number | null>(null);
   const isUpDownMarket = !!(selectedMarket?.question?.match(/up\s+or\s+down/i) || selectedMarket?.eventSlug?.match(/up-or-down|updown/i));
 
   useEffect(() => {
@@ -1562,11 +1540,8 @@ export const Sidebar = memo(function Sidebar() {
   }, [isUpDownMarket, selectedMarket?.id]);
 
   const sidebarSpotCurrentPriceRef = useRef<HTMLDivElement>(null);
-  const upDownEndPickerDetailsRef = useRef<HTMLDetailsElement>(null);
   const prevPriceRef = useRef<number>(0);
   const [isMarketExpired, setIsMarketExpired] = useState(() => marketIsExpired(selectedMarket));
-  /** Countdown stops calling setState after "Expired"; pulse keeps re-reading `upOrDownMarkets` until next window arrives. */
-  const [expiredLivePickPulse, setExpiredLivePickPulse] = useState(0);
 
   useEffect(() => {
     const expired = marketIsExpired(selectedMarket);
@@ -1644,133 +1619,6 @@ export const Sidebar = memo(function Sidebar() {
     else if (combined.match(/up-or-down-on-/i) || combined.match(/\b24[- ]?h/i)) intervalMs = 24 * 60 * 60 * 1000;
     return endMs - intervalMs;
   }, [isUpDownMarket, selectedMarket?.endDate, selectedMarket?.eventSlug, selectedMarket?.question]);
-
-  const liveUpDownSameTfMarket = useMemo(() => {
-    if (!isUpDownMarket || !selectedMarket || !isMarketExpired || !upDownAsset) return null;
-    const tf = upDownTimeframeKeyFromMarket(selectedMarket);
-    if (!tf) return null;
-    const live = pickLiveUpDownMarketInTfBucket(upOrDownMarkets[upDownAsset]?.[tf]);
-    if (!live || live.id === selectedMarket.id) return null;
-    return live;
-  }, [isUpDownMarket, selectedMarket, isMarketExpired, upDownAsset, upOrDownMarkets, lastUpdated, expiredLivePickPulse]);
-
-  useEffect(() => {
-    if (!autoSwitchNextMarketOnExpiry) return;
-
-    const tryAutoSwitch = () => {
-      const m = selectedMarketForAutoSwitchRef.current;
-      if (!m) {
-        autoSwitchPrevSelectedIdRef.current = null;
-        userPinnedExpiredMarketRef.current = false;
-        return;
-      }
-      const id = m.id;
-      const expiredNow = marketIsExpired(m, getExpiryTickNow());
-
-      if (id !== autoSwitchPrevSelectedIdRef.current) {
-        autoSwitchPrevSelectedIdRef.current = id;
-        userPinnedExpiredMarketRef.current = expiredNow;
-        return;
-      }
-
-      if (userPinnedExpiredMarketRef.current || !expiredNow) return;
-
-      const st = useAppStore.getState();
-      const next = pickNextMarketOnExpiry(m, getExpiryTickNow(), st.upOrDownMarkets, st.marketLookup);
-      if (next) setSelectedMarket(next);
-    };
-
-    tryAutoSwitch();
-    return subscribeExpiryTick(tryAutoSwitch);
-  }, [
-    autoSwitchNextMarketOnExpiry,
-    selectedMarket?.id,
-    selectedMarket?.endDate,
-    selectedMarket?.closed,
-    upOrDownMarkets,
-    lastUpdated,
-    marketLookupEpoch,
-    setSelectedMarket,
-  ]);
-
-  // Target price: same resolution as Up/Down grid (market.priceToBeat → lookup → bucket row by id), plus crypto API for long TF when missing.
-  const syncUpDownStrike = useMemo(
-    () =>
-      isUpDownMarket && selectedMarket
-        ? resolveUpDownStrikeSync(selectedMarket, marketLookup, upOrDownMarkets)
-        : undefined,
-    [
-      isUpDownMarket,
-      selectedMarket,
-      selectedMarket?.id,
-      selectedMarket?.priceToBeat,
-      selectedMarket?.clobTokenIds,
-      marketLookup,
-      upOrDownMarkets,
-      lastUpdated,
-    ],
-  );
-
-  useEffect(() => {
-    if (!isUpDownMarket || !selectedMarket?.endDate) {
-      setUpDownTargetPrice(null);
-      return;
-    }
-
-    const endMs = new Date(selectedMarket.endDate).getTime();
-    if (isNaN(endMs)) {
-      setUpDownTargetPrice(null);
-      return;
-    }
-
-    if (syncUpDownStrike != null && Number.isFinite(syncUpDownStrike)) {
-      setUpDownTargetPrice(syncUpDownStrike);
-      return;
-    }
-
-    setUpDownTargetPrice(null);
-
-    const slug = selectedMarket.eventSlug || '';
-    const q = selectedMarket.question || '';
-    const combined = `${slug} ${q}`;
-    const is5m = !!(combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i));
-
-    if (is5m) {
-      // 5m: priceToBeat from backend Chainlink — re-runs when syncUpDownStrike / lastUpdated updates.
-      return;
-    }
-    if (!upDownCryptoTimeframe(combined)) return;
-
-    const asset = extractAssetFromMarket(selectedMarket);
-    let cancelled = false;
-    const tick = async () => {
-      if (cancelled) return;
-      const p = await fetchUpDownTargetFromCrypto(API_BASE, asset, endMs, combined);
-      if (!cancelled && p != null) setUpDownTargetPrice(p);
-    };
-    void tick();
-    const iv = setInterval(() => void tick(), 12_000);
-    const stopIv = setTimeout(() => clearInterval(iv), 150_000);
-    return () => {
-      cancelled = true;
-      clearInterval(iv);
-      clearTimeout(stopIv);
-    };
-  }, [
-    isUpDownMarket,
-    selectedMarket?.id,
-    selectedMarket?.endDate,
-    selectedMarket?.eventSlug,
-    selectedMarket?.question,
-    syncUpDownStrike,
-  ]);
-
-  // Countdown for market expiry — driven by shared expiryTickStore (no Sidebar setState).
-  useEffect(() => {
-    if (!isMarketExpired || !isUpDownMarket) return;
-    const id = window.setInterval(() => setExpiredLivePickPulse((n) => n + 1), 1500);
-    return () => clearInterval(id);
-  }, [isMarketExpired, isUpDownMarket]);
 
   useEffect(() => {
     prevPriceRef.current = 0;
@@ -1983,38 +1831,6 @@ export const Sidebar = memo(function Sidebar() {
   const marketName = selectedMarket
     ? shortenMarketName(selectedMarket.question || selectedMarket.groupItemTitle, undefined, undefined, selectedMarket.eventSlug)
     : '';
-
-  const sidebarUpDownEndSwitch = useMemo(() => {
-    if (!isUpDownMarket || !selectedMarket?.endDate) return null;
-    const endMs = new Date(selectedMarket.endDate).getTime();
-    if (!Number.isFinite(endMs)) return null;
-    const asset = extractAssetFromMarket(selectedMarket);
-    if (!asset) return null;
-    const tf = upDownTimeframeKeyFromMarket(selectedMarket);
-    if (!tf) return null;
-    const nowMs = Date.now();
-    const futureList = listFutureUpDownMarketsInTfBucket(upOrDownMarkets[asset]?.[tf], nowMs);
-    const pastList = listPastUpDownMarketsInTfBucket(upOrDownMarkets[asset]?.[tf], nowMs);
-    const endPickerList = [...pastList, ...futureList].sort((a, b) => {
-      const ta = a.endDate ? new Date(a.endDate).getTime() : 0;
-      const tb = b.endDate ? new Date(b.endDate).getTime() : 0;
-      return ta - tb;
-    });
-    const visibleEndLabel = new Date(selectedMarket.endDate).toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-    return { endPickerList, visibleEndLabel, endIso: selectedMarket.endDate };
-  }, [
-    isUpDownMarket,
-    selectedMarket,
-    selectedMarket?.id,
-    selectedMarket?.endDate,
-    upOrDownMarkets,
-    lastUpdated,
-    expiredLivePickPulse,
-  ]);
 
   /** Market FAK path shared by type dropdown Market and close-position ✕. */
   const submitSidebarMarketFak = useCallback(
@@ -3693,55 +3509,7 @@ export const Sidebar = memo(function Sidebar() {
                 <span className={`${sidebarTitleColor} font-bold text-sm`}>{marketName}</span>
               )}
             </div>
-            {sidebarUpDownEndSwitch && sidebarUpDownEndSwitch.endPickerList.length > 1 ? (
-              <details ref={upDownEndPickerDetailsRef} className="relative shrink-0">
-                <summary className={`inline-flex cursor-pointer select-none list-none items-center gap-0.5 rounded border border-gray-600/80 bg-gray-900/70 px-1 py-0.5 tabular-nums text-[11px] font-bold ${sidebarTitleColor} [&::-webkit-details-marker]:hidden hover:border-gray-500`}>
-                  {sidebarUpDownEndSwitch.visibleEndLabel}
-                  <ChevronDown className="size-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
-                </summary>
-                <ul
-                  className="absolute right-0 top-full z-[200] mt-0.5 max-h-[50vh] min-w-[5.5rem] overflow-y-auto rounded border border-gray-600 bg-neutral-950 py-0.5 text-left shadow-lg"
-                  role="menu"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                >
-                  {sidebarUpDownEndSwitch.endPickerList.map((m) => {
-                    const endMs = m.endDate ? new Date(m.endDate).getTime() : NaN;
-                    const expired = Number.isFinite(endMs) && endMs <= Date.now();
-                    const sel = m.id === selectedMarket?.id;
-                    const tone = sel ? (expired ? 'text-amber-500/85' : 'text-amber-300') : expired ? 'text-gray-500' : 'text-gray-100';
-                    return (
-                    <li key={m.id}>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className={`w-full whitespace-nowrap px-2 py-1 text-left text-[11px] font-semibold tabular-nums hover:bg-neutral-800 ${tone}`}
-                        title={expired ? `${m.endDate} (ended)` : m.endDate}
-                        onClick={() => {
-                          setSelectedMarket(m);
-                          const dr = upDownEndPickerDetailsRef.current;
-                          if (dr) dr.open = false;
-                        }}
-                      >
-                        {new Date(m.endDate).toLocaleTimeString(undefined, {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          hour12: false,
-                        })}
-                      </button>
-                    </li>
-                    );
-                  })}
-                </ul>
-              </details>
-            ) : sidebarUpDownEndSwitch ? (
-              <span
-                className="shrink-0 tabular-nums text-[11px] font-bold text-gray-400"
-                title={sidebarUpDownEndSwitch.endIso}
-              >
-                {sidebarUpDownEndSwitch.visibleEndLabel}
-              </span>
-            ) : null}
+            <SidebarUpDownEndPicker titleColor={sidebarTitleColor} />
             <button
               ref={historyButtonRef}
               type="button"
@@ -3937,6 +3705,8 @@ export const Sidebar = memo(function Sidebar() {
             wallet={walletForLivePositions}
             scopedClobTokenIds={scopedClobPair}
           />
+          <SidebarUpDownTargetHost />
+          <SidebarOrderHighlightHost />
           <SidebarOnchainGridPositionsSync liveTradesSource={liveTradesSource} />
           {toxicFlowMarketId ? <SidebarToxicFlowHost marketId={toxicFlowMarketId} /> : null}
           <SidebarNotifyStakedGateSync
@@ -3951,8 +3721,6 @@ export const Sidebar = memo(function Sidebar() {
             chartOutcomeSync={chartOutcomeSync}
             onChartOutcomeSyncChange={setChartOutcomeSync}
             marketLookup={marketLookup}
-            sidebarUserBidPrices={sidebarUserBidPrices}
-            sidebarUserAskPrices={sidebarUserAskPrices}
           />
 
 
@@ -4206,8 +3974,6 @@ export const Sidebar = memo(function Sidebar() {
             onToggleLiveOrderbookExpanded={toggleLiveOrderbookExpanded}
             isMarketExpired={isMarketExpired}
             isUpDownMarket={isUpDownMarket}
-            sidebarUserBidPrices={sidebarUserBidPrices}
-            sidebarUserAskPrices={sidebarUserAskPrices}
             selectedMarket={selectedMarket}
             orderOutcome={orderOutcome}
             positions={positions}

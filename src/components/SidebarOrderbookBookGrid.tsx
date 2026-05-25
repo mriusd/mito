@@ -134,17 +134,19 @@ export function SidebarOrderbookBookGrid({
                           }
                     }
                   >
-                    <div
-                      className="absolute inset-y-0 right-0 z-0 sidebar-ob-depth-bar-bid pointer-events-none"
-                      style={{ width: `${depthPct}%` }}
-                    />
-                    <div
-                      className="absolute inset-y-0 right-0 z-[1] sidebar-ob-level-bar-bid pointer-events-none"
-                      style={{ width: `${levelPct}%`, minWidth: levelPct > 0 ? 2 : 0 }}
-                    />
-                    <span className="relative live-ob-bid">{bpDisp}¢</span>
-                    <span className="relative text-right text-gray-400 tabular-nums">{levelSize.toFixed(0)}</span>
-                    <span className="relative text-right text-gray-500 tabular-nums">{fmtObLevelUsd(cumulativeUsd)}</span>
+                    <div className="absolute inset-0 z-0 pointer-events-none" aria-hidden>
+                      <div
+                        className="absolute inset-y-0 right-0 sidebar-ob-depth-bar-bid"
+                        style={{ width: `${depthPct}%` }}
+                      />
+                      <div
+                        className="absolute inset-y-0 right-0 sidebar-ob-level-bar-bid"
+                        style={{ width: `${levelPct}%`, minWidth: levelPct > 0 ? 2 : 0 }}
+                      />
+                    </div>
+                    <span className="relative z-[1] live-ob-bid">{bpDisp}¢</span>
+                    <span className="relative z-[1] text-right text-gray-400 tabular-nums">{levelSize.toFixed(0)}</span>
+                    <span className="relative z-[1] text-right text-gray-500 tabular-nums">{fmtObLevelUsd(cumulativeUsd)}</span>
                   </div>
                 );
               });
@@ -206,17 +208,19 @@ export function SidebarOrderbookBookGrid({
                           }
                     }
                   >
-                    <div
-                      className="absolute inset-y-0 left-0 z-0 sidebar-ob-depth-bar-ask pointer-events-none"
-                      style={{ width: `${depthPct}%` }}
-                    />
-                    <div
-                      className="absolute inset-y-0 left-0 z-[1] sidebar-ob-level-bar-ask pointer-events-none"
-                      style={{ width: `${levelPct}%`, minWidth: levelPct > 0 ? 2 : 0 }}
-                    />
-                    <span className="relative live-ob-ask">{apDisp}¢</span>
-                    <span className="relative text-right text-gray-400 tabular-nums">{levelSize.toFixed(0)}</span>
-                    <span className="relative text-right text-gray-500 tabular-nums">{fmtObLevelUsd(cumulativeUsd)}</span>
+                    <div className="absolute inset-0 z-0 pointer-events-none" aria-hidden>
+                      <div
+                        className="absolute inset-y-0 left-0 sidebar-ob-depth-bar-ask"
+                        style={{ width: `${depthPct}%` }}
+                      />
+                      <div
+                        className="absolute inset-y-0 left-0 sidebar-ob-level-bar-ask"
+                        style={{ width: `${levelPct}%`, minWidth: levelPct > 0 ? 2 : 0 }}
+                      />
+                    </div>
+                    <span className="relative z-[1] live-ob-ask">{apDisp}¢</span>
+                    <span className="relative z-[1] text-right text-gray-400 tabular-nums">{levelSize.toFixed(0)}</span>
+                    <span className="relative z-[1] text-right text-gray-500 tabular-nums">{fmtObLevelUsd(cumulativeUsd)}</span>
                   </div>
                 );
               });

@@ -14,9 +14,14 @@ export function candleObToRawLevels(ob: CandleObSnapshot): { bids: ObLevel[]; as
   return { bids, asks };
 }
 
+export function candleObBookImbalance(ob: CandleObSnapshot): number {
+  const { bids, asks } = candleObToRawLevels(ob);
+  return orderbookBookImbalance(bids, asks);
+}
+
 export function prepareCandleObDisplay(ob: CandleObSnapshot, step: SidebarObAggStep) {
   const { bids: rawBids, asks: rawAsks } = candleObToRawLevels(ob);
-  const imbalance = orderbookBookImbalance(rawBids, rawAsks);
+  const imbalance = candleObBookImbalance(ob);
   if (step === '0.1') {
     return { displayBids: rawBids, displayAsks: rawAsks, orderbookBookImbalance: imbalance };
   }

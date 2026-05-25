@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { API_BASE } from '../lib/env';
-import { onchainFillKey, polymarketTradeKey } from '../lib/tradeKeys';
+import { polymarketTradeKey } from '../lib/tradeKeys';
 
 interface OBLevel {
   price: string;
@@ -29,7 +29,7 @@ interface BookState {
 }
 
 const WS_URL = 'wss://ws-subscriptions-clob.polymarket.com/ws/market';
-// Shared local book maps — kept outside React state for perf; React book state is RAF-coalesced on price deltas.
+
 function scheduleRaf(cb: () => void, slot: { current: number | null }): void {
   if (slot.current !== null) return;
   slot.current = requestAnimationFrame(() => {
@@ -46,6 +46,7 @@ function cancelRaf(slot: { current: number | null }): void {
 }
 
 const MAX_BOOK_LEVELS = 500;
+const MAX_TRADES = 30;
 
 function trimBookSide(map: Map<string, string>, cap: number, bidSide: boolean) {
   if (map.size <= cap) return;
@@ -60,11 +61,6 @@ function trimBookMaps(bids: Map<string, string>, asks: Map<string, string>) {
   trimBookSide(bids, MAX_BOOK_LEVELS, true);
   trimBookSide(asks, MAX_BOOK_LEVELS, false);
 }
-
-let localBids: Map<string, string> = new Map();
-let localAsks: Map<string, string> = new Map();
-let localTrades: LiveTrade[] = [];
-const MAX_TRADES = 30;
 
 function sortedBook(bids: Map<string, string>, asks: Map<string, string>, limit: number): BookState {
   const capped = Number.isFinite(limit) && limit > 0 ? limit : 15;
@@ -86,13 +82,23 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
   const wsRef = useRef<WebSocket | null>(null);
   const tokenIdRef = useRef<string | null>(null);
   const bookLimitRef = useRef(bookLimit);
-
-  bookLimitRef.current = bookLimit;
+  const localBidsRef = useRef(new Map<string, string>());
+  const localAsksRef = useRef(new Map<string, string>());
+  const localTradesRef = useRef<LiveTrade[]>([]);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const snapshotLoaded = useRef(false);
   const bookRafSlot = useRef<number | null>(null);
   const tradesRafSlot = useRef<number | null>(null);
+
+  bookLimitRef.current = bookLimit;
+
+  const resetLocalBook = useCallback(() => {
+    localBidsRef.current = new Map();
+    localAsksRef.current = new Map();
+    localTradesRef.current = [];
+    snapshotLoaded.current = false;
+  }, []);
 
   const cleanup = useCallback(() => {
     cancelRaf(bookRafSlot);
@@ -120,19 +126,15 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
     if (!tid) return;
 
     cleanup();
-    localBids = new Map();
-    localAsks = new Map();
-    localTrades = [];
-    snapshotLoaded.current = false;
+    resetLocalBook();
     setLoading(true);
     setTrades([]);
 
-    // Fetch recent trades from backend to seed the list
     fetch(`${API_BASE}/api/trades/${tid}?limit=100`)
-      .then(r => r.json())
+      .then((r) => r.json())
       .then((data: { price: number; size: number; side: string; timestamp: number }[] | null) => {
         if (!data || !Array.isArray(data)) return;
-        const fetched: LiveTrade[] = data.map(t => {
+        const fetched: LiveTrade[] = data.map((t) => {
           const price = String(t.price);
           const size = String(t.size);
           return {
@@ -143,16 +145,18 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
             timestamp: t.timestamp,
           };
         });
-        const existing = new Set(localTrades.map(t => t.id ?? polymarketTradeKey(t.timestamp, t.price, t.size)));
+        const existing = new Set(
+          localTradesRef.current.map((t) => t.id ?? polymarketTradeKey(t.timestamp, t.price, t.size)),
+        );
         for (const t of fetched) {
           const k = t.id ?? polymarketTradeKey(t.timestamp, t.price, t.size);
           if (!existing.has(k)) {
-            localTrades.push(t);
+            localTradesRef.current.push(t);
           }
         }
-        localTrades.sort((a, b) => b.timestamp - a.timestamp);
-        localTrades = localTrades.slice(0, MAX_TRADES);
-        setTrades([...localTrades]);
+        localTradesRef.current.sort((a, b) => b.timestamp - a.timestamp);
+        localTradesRef.current = localTradesRef.current.slice(0, MAX_TRADES);
+        setTrades([...localTradesRef.current]);
       })
       .catch(() => {});
 
@@ -160,14 +164,14 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      // Subscribe to WS channel
-      ws.send(JSON.stringify({
-        type: 'market',
-        assets_ids: [tid],
-        custom_feature_enabled: true,
-      }));
+      ws.send(
+        JSON.stringify({
+          type: 'market',
+          assets_ids: [tid],
+          custom_feature_enabled: true,
+        }),
+      );
 
-      // Heartbeat keepalive
       pingTimer.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send('PING');
@@ -178,12 +182,18 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
     ws.onmessage = (event) => {
       const raw = event.data;
       if (raw === 'PONG') return;
-      if (raw === 'PING') { ws.send('PONG'); return; }
+      if (raw === 'PING') {
+        ws.send('PONG');
+        return;
+      }
 
       let parsed: any;
-      try { parsed = JSON.parse(raw); } catch { return; }
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return;
+      }
 
-      // WS can send arrays (e.g. book snapshots) or single objects
       const messages = Array.isArray(parsed) ? parsed : [parsed];
 
       for (const msg of messages) {
@@ -191,20 +201,21 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
 
         switch (msg.event_type) {
           case 'book': {
-            // Full snapshot — filter to our token
             if (msg.asset_id && msg.asset_id !== tid) break;
-            localBids = new Map();
-            localAsks = new Map();
+            const nextBids = new Map<string, string>();
+            const nextAsks = new Map<string, string>();
             for (const b of msg.bids || []) {
-              localBids.set(b.price, b.size);
+              nextBids.set(b.price, b.size);
             }
             for (const a of msg.asks || []) {
-              localAsks.set(a.price, a.size);
+              nextAsks.set(a.price, a.size);
             }
+            localBidsRef.current = nextBids;
+            localAsksRef.current = nextAsks;
             snapshotLoaded.current = true;
             setLoading(false);
             cancelRaf(bookRafSlot);
-            setBook(sortedBook(localBids, localAsks, bookLimitRef.current));
+            setBook(sortedBook(localBidsRef.current, localAsksRef.current, bookLimitRef.current));
             break;
           }
 
@@ -213,7 +224,7 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
             let changed = false;
             for (const change of msg.price_changes || []) {
               if (change.asset_id && change.asset_id !== tid) continue;
-              const map = change.side === 'BUY' ? localBids : localAsks;
+              const map = change.side === 'BUY' ? localBidsRef.current : localAsksRef.current;
               const size = parseFloat(change.size);
               if (size <= 0) {
                 map.delete(change.price);
@@ -223,9 +234,9 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
               changed = true;
             }
             if (changed) {
-              trimBookMaps(localBids, localAsks);
+              trimBookMaps(localBidsRef.current, localAsksRef.current);
               scheduleRaf(() => {
-                setBook(sortedBook(localBids, localAsks, bookLimitRef.current));
+                setBook(sortedBook(localBidsRef.current, localAsksRef.current, bookLimitRef.current));
               }, bookRafSlot);
             }
             break;
@@ -243,9 +254,9 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
               side: msg.side || 'BUY',
               timestamp,
             };
-            localTrades = [trade, ...localTrades].slice(0, MAX_TRADES);
+            localTradesRef.current = [trade, ...localTradesRef.current].slice(0, MAX_TRADES);
             scheduleRaf(() => {
-              setTrades([...localTrades]);
+              setTrades([...localTradesRef.current]);
             }, tradesRafSlot);
             break;
           }
@@ -260,17 +271,14 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
         reconnectTimer.current = setTimeout(connect, 2000);
       }
     };
-  }, [cleanup]);
+  }, [cleanup, resetLocalBook]);
 
   useEffect(() => {
     tokenIdRef.current = tokenId;
 
     if (!tokenId) {
       cleanup();
-      localBids = new Map();
-      localAsks = new Map();
-      localTrades = [];
-      snapshotLoaded.current = false;
+      resetLocalBook();
       setLoading(false);
       cancelRaf(bookRafSlot);
       cancelRaf(tradesRafSlot);
@@ -279,7 +287,6 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
       return;
     }
 
-    // Clear old book immediately so stale OB doesn't show while loading
     cancelRaf(bookRafSlot);
     cancelRaf(tradesRafSlot);
     setBook({ bids: [], asks: [] });
@@ -288,13 +295,13 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
     return () => {
       cleanup();
     };
-  }, [tokenId, connect, cleanup]);
+  }, [tokenId, connect, cleanup, resetLocalBook]);
 
   useEffect(() => {
     bookLimitRef.current = bookLimit;
     if (!tokenId || !snapshotLoaded.current) return;
     cancelRaf(bookRafSlot);
-    setBook(sortedBook(localBids, localAsks, bookLimit));
+    setBook(sortedBook(localBidsRef.current, localAsksRef.current, bookLimit));
   }, [tokenId, bookLimit]);
 
   return { bids: book.bids, asks: book.asks, trades, loading };

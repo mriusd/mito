@@ -1274,21 +1274,19 @@ export function LiveTradeChart({
                   const step = readSavedObAggStep();
                   const chartOutcome = outcomeToggle?.value ?? 'YES';
                   const { displayBids, displayAsks, orderbookBookImbalance } = prepareCandleObDisplay(hoverOb.ob, step);
-                  const chartObImbalance =
-                    chartOutcome === 'NO' ? -orderbookBookImbalance : orderbookBookImbalance;
                   return (
                     <>
                       <ChartObHoverOhlcvStrip ohlcv={hoverOb.ohlcv} />
                       <ChartObHoverEnrichmentStrip
                         enrichment={hoverOb.enrichment}
                         priceDec={enrichmentPriceDec}
-                        chartOutcome={outcomeToggle?.value ?? 'YES'}
+                        chartOutcome={chartOutcome}
                       />
                       <SidebarOrderbookBookGrid
                         displayBids={displayBids}
                         displayAsks={displayAsks}
                         obAggStep={step}
-                        orderbookBookImbalance={chartObImbalance}
+                        orderbookBookImbalance={orderbookBookImbalance}
                         orderOutcome={chartOutcome}
                         sidebarUserBidPrices={sidebarUserBidPrices ?? EMPTY_PRICE_SET}
                         sidebarUserAskPrices={sidebarUserAskPrices ?? EMPTY_PRICE_SET}

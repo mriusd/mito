@@ -62,7 +62,6 @@ export function SidebarOrderbookBookGrid({
     return max || 1;
   }, [displayBids, displayAsks]);
 
-  /** Bar is always YES-book long (blue) vs short (yellow); parent passes YES-token imbalance on sidebar. */
   const longShortImbalance = orderbookBookImbalance;
   const longBarPct = Math.max(2, Math.min(98, 50 + longShortImbalance * 50));
 
@@ -90,9 +89,9 @@ export function SidebarOrderbookBookGrid({
       <div className="relative grid grid-cols-2 gap-2 flex-1 min-h-0">
         <div>
           <div className={`${OB_ROW_GRID} text-gray-500 mb-1`}>
-            <span className="block min-w-0 w-full text-left">USD</span>
+            <span className="block min-w-0 w-full text-left">Bid</span>
             <span className="block min-w-0 w-full text-right">Size</span>
-            <span className="block min-w-0 w-full text-center">Bid</span>
+            <span className="block min-w-0 w-full text-right">USD</span>
           </div>
           <div className="space-y-0.5">
             {(() => {
@@ -155,13 +154,13 @@ export function SidebarOrderbookBookGrid({
                         style={{ width: `${levelPct}%`, minWidth: levelPct > 0 ? 2 : 0 }}
                       />
                     </div>
-                    <span className="relative z-[1] block min-w-0 w-full text-left live-ob-usd tabular-nums sidebar-readable-value">
-                      {fmtObLevelUsd(cumulativeUsd)}
-                    </span>
+                    <span className="relative z-[1] block min-w-0 w-full text-left live-ob-bid">{bpDisp}¢</span>
                     <span className="relative z-[1] block min-w-0 w-full text-right live-ob-size tabular-nums sidebar-readable-value">
                       {levelSize.toFixed(0)}
                     </span>
-                    <span className="relative z-[1] block min-w-0 w-full text-center live-ob-bid">{bpDisp}¢</span>
+                    <span className="relative z-[1] block min-w-0 w-full text-right live-ob-usd tabular-nums sidebar-readable-value">
+                      {fmtObLevelUsd(cumulativeUsd)}
+                    </span>
                   </div>
                 );
               });

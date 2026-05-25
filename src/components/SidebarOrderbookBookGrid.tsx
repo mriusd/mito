@@ -14,11 +14,10 @@ function obLevelUsd(level: SidebarObLevel): number {
 }
 
 function fmtObLevelUsd(usd: number): string {
-  if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(1)}M`;
-  if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}k`;
-  if (usd >= 100) return `$${Math.round(usd)}`;
-  if (usd >= 10) return `$${usd.toFixed(0)}`;
-  return `$${usd.toFixed(2)}`;
+  const n = Math.round(usd);
+  if (n >= 1_000_000) return `$${Math.round(n / 1_000_000)}M`;
+  if (n >= 1000) return `$${Math.round(n / 1000)}k`;
+  return `$${n}`;
 }
 
 export type SidebarOrderbookBookGridProps = {
@@ -69,19 +68,25 @@ export function SidebarOrderbookBookGrid({
       >
         <div className="relative h-[5px] bg-gray-700 rounded-full overflow-hidden flex w-full">
           <div
-            className="bg-emerald-500/70 h-full transition-all"
-            style={{ width: `${Math.max(2, Math.min(98, 50 + orderbookBookImbalance * 50))}%` }}
+            className="h-full transition-all"
+            style={{
+              width: `${Math.max(2, Math.min(98, 50 + orderbookBookImbalance * 50))}%`,
+              backgroundColor: 'rgb(37 99 235 / 0.7)',
+            }}
           />
-          <div className="bg-amber-500/70 h-full transition-all flex-1" />
+          <div
+            className="h-full transition-all flex-1"
+            style={{ backgroundColor: 'rgb(250 204 21 / 0.7)' }}
+          />
           <SidebarBarMidMarker />
         </div>
       </div>
       <div className="relative grid grid-cols-2 gap-2 flex-1 min-h-0">
         <div>
           <div className="grid grid-cols-3 gap-1 text-[10px] text-gray-500 mb-1">
-            <span>Bid</span>
+            <span>USD</span>
             <span className="text-right">Size</span>
-            <span className="text-right">USD</span>
+            <span className="text-center">Bid</span>
           </div>
           <div className="space-y-0.5">
             {(() => {
@@ -144,9 +149,13 @@ export function SidebarOrderbookBookGrid({
                         style={{ width: `${levelPct}%`, minWidth: levelPct > 0 ? 2 : 0 }}
                       />
                     </div>
-                    <span className="relative z-[1] live-ob-bid">{bpDisp}¢</span>
-                    <span className="relative z-[1] text-right text-gray-400 tabular-nums">{levelSize.toFixed(0)}</span>
-                    <span className="relative z-[1] text-right text-gray-500 tabular-nums">{fmtObLevelUsd(cumulativeUsd)}</span>
+                    <span className="relative z-[1] text-left live-ob-usd tabular-nums sidebar-readable-value">
+                      {fmtObLevelUsd(cumulativeUsd)}
+                    </span>
+                    <span className="relative z-[1] text-right live-ob-size tabular-nums sidebar-readable-value">
+                      {levelSize.toFixed(0)}
+                    </span>
+                    <span className="relative z-[1] text-center live-ob-bid">{bpDisp}¢</span>
                   </div>
                 );
               });
@@ -219,8 +228,12 @@ export function SidebarOrderbookBookGrid({
                       />
                     </div>
                     <span className="relative z-[1] live-ob-ask">{apDisp}¢</span>
-                    <span className="relative z-[1] text-right text-gray-400 tabular-nums">{levelSize.toFixed(0)}</span>
-                    <span className="relative z-[1] text-right text-gray-500 tabular-nums">{fmtObLevelUsd(cumulativeUsd)}</span>
+                    <span className="relative z-[1] text-right live-ob-size tabular-nums sidebar-readable-value">
+                      {levelSize.toFixed(0)}
+                    </span>
+                    <span className="relative z-[1] text-right live-ob-usd tabular-nums sidebar-readable-value">
+                      {fmtObLevelUsd(cumulativeUsd)}
+                    </span>
                   </div>
                 );
               });

@@ -44,10 +44,10 @@ function clampHiCents(raw: number): number {
 export function readNotifyUpDownNextHi(): boolean {
   try {
     const v = localStorage.getItem(SIDEBAR_NOTIFY_UPDOWN_NEXT_HI_KEY);
-    if (v === null) return true;
+    if (v === null) return false;
     return v === '1';
   } catch {
-    return true;
+    return false;
   }
 }
 

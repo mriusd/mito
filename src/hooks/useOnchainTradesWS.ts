@@ -307,10 +307,23 @@ export interface WSTrade {
   eventSlug?: string;
 }
 
+export interface WSInferredOrder {
+  orderHash: string;
+  tokenId: string;
+  marketId: string;
+  side: 'BUY' | 'SELL';
+  totalShares: number;
+  filledShares: number;
+  remainingShares: number;
+  limitPrice?: number;
+  pending?: boolean;
+}
+
 export type WalletMarketTradesListener = {
   onSnapshot: (trades: WSTrade[], total: number) => void;
   onTrade?: (trade: WSTrade) => void;
   onPendingDrop?: (txHashes: Set<string>) => void;
+  onOrders?: (orders: WSInferredOrder[]) => void;
 };
 
 export type OnchainTradesWSShared = {
@@ -359,6 +372,39 @@ export function getWalletMarketPendingTrades(wallet: string, marketId: string): 
   const scope = walletMarketPendingByScope.get(walletMarketTradesKey(wallet, marketId));
   if (!scope) return [];
   return [...scope.values()];
+}
+
+const walletMarketOrdersByScope = new Map<string, WSInferredOrder[]>();
+
+function setWalletMarketOrdersScope(wallet: string, marketId: string, orders: WSInferredOrder[]): void {
+  const k = walletMarketTradesKey(wallet, marketId);
+  if (orders.length === 0) {
+    walletMarketOrdersByScope.delete(k);
+  } else {
+    walletMarketOrdersByScope.set(k, orders);
+  }
+}
+
+export function getWalletMarketOrders(wallet: string, marketId: string): WSInferredOrder[] {
+  return walletMarketOrdersByScope.get(walletMarketTradesKey(wallet, marketId)) ?? [];
+}
+
+function mapRawWSInferredOrder(raw: Record<string, unknown>): WSInferredOrder | null {
+  const orderHash = String(raw.orderHash || '').trim();
+  const tokenId = String(raw.tokenId || '').trim();
+  if (!orderHash || !tokenId) return null;
+  const side = raw.side === 'SELL' ? 'SELL' : 'BUY';
+  return {
+    orderHash,
+    tokenId,
+    marketId: String(raw.marketId || '').trim(),
+    side,
+    totalShares: Number(raw.totalShares ?? 0),
+    filledShares: Number(raw.filledShares ?? 0),
+    remainingShares: Number(raw.remainingShares ?? 0),
+    limitPrice: raw.limitPrice != null ? Number(raw.limitPrice) : undefined,
+    pending: raw.pending === true,
+  };
 }
 
 function upsertWalletMarketPendingScope(wallet: string, marketId: string, row: WSTrade): void {
@@ -986,6 +1032,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               taker?: string;
               wallet?: string;
               priceApproximate?: boolean;
+              isTaker?: boolean;
             };
             const mSub = marketRef.current?.trim() || '';
             const tradeMarket = String(d.marketId || '').trim();
@@ -995,6 +1042,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
                 ...d,
                 marketId: d.marketId || tradeMarket || mSub || undefined,
               });
+              // Maker pending is wallet-scoped only — do not mirror onto public live tape.
+              if (d.isTaker !== true) return;
             }
 
             // Do not mirror onchainTrade into walletTrades — rows come from wallet_fill_ledger via
@@ -1035,6 +1084,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               wallet: d.wallet ? String(d.wallet).toLowerCase() : undefined,
               tokenId: String(d.tokenId || '').trim() || undefined,
               priceApproximate: isPending ? !!d.priceApproximate : undefined,
+              isTaker: isPending ? d.isTaker === true : undefined,
             };
             if (isPending) {
               const tx = (d.txHash || '').toLowerCase();
@@ -1151,6 +1201,18 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
                 setWalletMarketTrades((prev) => prependWalletMarketTradeRow(prev, row).rows);
               }
             }
+          } else if (msg.type === 'walletOrders' && Array.isArray(msg.data)) {
+            const w = String(msg.wallet || '').trim().toLowerCase();
+            const m = canonicalConditionKey(String(msg.marketId || ''));
+            if (!w) return;
+            const rows = (msg.data as Array<Record<string, unknown>>)
+              .map((r) => mapRawWSInferredOrder(r))
+              .filter((r): r is WSInferredOrder => r != null);
+            if (m) {
+              setWalletMarketOrdersScope(w, m, rows);
+              const listeners = walletMarketListenersRef.current.get(walletMarketTradesKey(w, m));
+              listeners?.forEach((l) => l.onOrders?.(rows));
+            }
           }
         } catch {
           /* ignore */
@@ -1241,6 +1303,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       for (const row of getWalletMarketPendingTrades(w, m)) {
         listener.onTrade?.(row);
       }
+      listener.onOrders?.(getWalletMarketOrders(w, m));
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         setWalletMarketConnectBump((n) => n + 1);
       }
@@ -1327,8 +1390,9 @@ export function useWalletMarketTradesWS(
   wallet: string | null,
   marketId: string | null,
   enabled: boolean,
-): { trades: WSTrade[]; total: number; loading: boolean; refresh: () => void } {
+): { trades: WSTrade[]; orders: WSInferredOrder[]; total: number; loading: boolean; refresh: () => void } {
   const [trades, setTrades] = useState<WSTrade[]>([]);
+  const [orders, setOrders] = useState<WSInferredOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [sharedReady, setSharedReady] = useState(() => getOnchainTradesWSShared() != null);
@@ -1351,6 +1415,7 @@ export function useWalletMarketTradesWS(
     if (!enabled || !key) {
       scopeKeyRef.current = '';
       setTrades([]);
+      setOrders([]);
       setTotal(0);
       setLoading(false);
       return;
@@ -1359,6 +1424,7 @@ export function useWalletMarketTradesWS(
       if (scopeKeyRef.current !== key) {
         scopeKeyRef.current = key;
         setTrades([]);
+        setOrders([]);
         setTotal(0);
       }
       setLoading(true);
@@ -1375,6 +1441,7 @@ export function useWalletMarketTradesWS(
     scopeKeyRef.current = key;
     if (!sameScope) {
       setTrades([]);
+      setOrders([]);
       setTotal(0);
       setLoading(true);
     } else if (tradesLenRef.current === 0) {
@@ -1402,6 +1469,10 @@ export function useWalletMarketTradesWS(
         if (cancelled) return;
         setTrades((prev) => dropPendingWalletMarketByTx(prev, txHashes));
       },
+      onOrders: (next) => {
+        if (cancelled) return;
+        setOrders(next);
+      },
     });
     return () => {
       cancelled = true;
@@ -1416,7 +1487,7 @@ export function useWalletMarketTradesWS(
     shared.refreshWalletMarketTrades(wallet, marketId);
   }, [wallet, marketId]);
 
-  return { trades, total, loading, refresh };
+  return { trades, orders, total, loading, refresh };
 }
 
 /** Mount when Sidebar hook is absent — mobile, market view, wallet info modal without sidebar WS. */

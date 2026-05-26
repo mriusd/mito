@@ -27,6 +27,8 @@ export interface LiveTrade {
   pending?: boolean;
   /** true = price is LIMIT/approximate from calldata fast path; will be refined by trace broadcast. */
   priceApproximate?: boolean;
+  /** wallet_fill_ledger is_taker — false for resting maker liquidity pending. */
+  isTaker?: boolean;
 }
 
 interface BookState {

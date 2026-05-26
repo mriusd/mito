@@ -9,6 +9,8 @@ import { WalletLatestMarketsTradedTable } from './WalletLatestMarketsTradedTable
 import { WalletScoresLedgerSummaryGrid } from './walletInfoPanelSummaryGrid';
 import { WalletInfoPanelLiveChart } from './WalletInfoPanelLiveChart';
 import { WalletInfoPanelFillsTable } from './WalletInfoPanelFillsTable';
+import { WalletInfoPanelOrdersList } from './WalletInfoPanelOrdersList';
+import { useWalletMarketTradesWS } from '../hooks/useOnchainTradesWS';
 import { WalletInfoToxicPositionStripHost } from './WalletInfoToxicPositionStripHost';
 import { resolveWalletInfoChartMarket } from '../lib/walletInfoChartMarket';
 import { canonicalConditionKey } from '../hooks/useOnchainTradesWS';
@@ -174,6 +176,13 @@ export const WalletInfoPanelTradesSection = memo(function WalletInfoPanelTradesS
     [selectedMarketId, marketById, markets],
   );
 
+  const ordersEnabled = open && !!wallet && !!selectedMarketId.trim();
+  const { orders: inferredOrders } = useWalletMarketTradesWS(
+    wallet,
+    selectedMarketId,
+    ordersEnabled,
+  );
+
   return (
     <>
       <div className="text-[10px] text-gray-400 font-bold mb-1 shrink-0 min-w-0 truncate">
@@ -192,6 +201,11 @@ export const WalletInfoPanelTradesSection = memo(function WalletInfoPanelTradesS
         marketById={marketById}
         markets={markets}
         toxicFlowMarketId={toxicFlowMarketId}
+      />
+      <WalletInfoPanelOrdersList
+        orders={inferredOrders}
+        selectedMarketId={selectedMarketId}
+        marketById={marketById}
       />
       <WalletInfoPanelFillsTable
         open={open}

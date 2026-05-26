@@ -25,6 +25,7 @@ export function filterTapePendingForWalletMarket(
   const tokenIds = (market?.clobTokenIds || []).map((id) => String(id || '').trim()).filter(Boolean);
   return tape.filter((t) => {
     if (!t.pending) return false;
+    if (t.isTaker === false) return false;
     const lw = (t.wallet || t.taker || '').toLowerCase();
     const mw = (t.maker || '').toLowerCase();
     if (lw !== wk && mw !== wk) return false;
@@ -56,7 +57,7 @@ export function liveTradePendingToWSTrade(t: LiveTrade, wallet: string): WSTrade
     fee: 0,
     blockTime,
     txHash: tx,
-    isTaker: (t.wallet || t.taker || '').toLowerCase() === wk,
+    isTaker: t.isTaker === true,
   };
 }
 
@@ -85,10 +86,10 @@ export function mergeWalletInfoPendingTrades(
     if (confirmedKeys.has(key)) return;
     const existing = pendingByKey.get(key);
     if (existing && existing.priceApproximate !== true && p.priceApproximate === true) return;
+    if (existing && existing.isTaker !== true && p.isTaker === true) return;
     pendingByKey.set(key, p);
   };
 
-  for (const r of scopePending) addPending(r);
   for (const r of wsRows) {
     if (r.pending) addPending(r);
   }
@@ -96,6 +97,7 @@ export function mergeWalletInfoPendingTrades(
     const row = liveTradePendingToWSTrade(t, wallet);
     if (row) addPending(row);
   }
+  for (const r of scopePending) addPending(r);
 
   const pending = [...pendingByKey.values()];
   const all = [...pending, ...confirmed];

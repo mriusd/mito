@@ -65,10 +65,10 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
               ? 'text-blue-400'
               : 'text-gray-300';
     return (
-      <tr className={`border-b border-gray-800 ${isPending ? WALLET_TRADE_PENDING_ROW_BG : ''}`}>
+      <tr className={`border-b border-gray-800 ${isPending ? `${WALLET_TRADE_PENDING_ROW_BG} italic` : ''}`}>
         <td className="py-0.5">
           {isPending ? (
-            <span className="tabular-nums text-gray-500">...</span>
+            <span className="text-gray-500">pending...</span>
           ) : (
             <LiveWalletTradeTimeCell blockTime={bt} />
           )}

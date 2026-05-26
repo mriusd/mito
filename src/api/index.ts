@@ -787,6 +787,8 @@ export interface OnchainFillRow {
   /** Mempool overlay before wallet_fill_ledger row lands. */
   pending?: boolean;
   pendingId?: string;
+  /** true = price is LIMIT/approx from calldata fast path; trace broadcast will replace with real exec price. */
+  priceApproximate?: boolean;
 }
 
 export async function fetchOnchainFills(params: { market_id?: string; wallet?: string; token_id?: string; limit?: number; offset?: number }): Promise<{ fills: OnchainFillRow[]; count: number; total: number }> {

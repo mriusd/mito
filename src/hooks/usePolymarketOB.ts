@@ -25,6 +25,8 @@ export interface LiveTrade {
   tokenId?: string;
   /** Mempool overlay (not yet mined). UI may render distinctly; row is replaced on confirm. */
   pending?: boolean;
+  /** true = price is LIMIT/approximate from calldata fast path; will be refined by trace broadcast. */
+  priceApproximate?: boolean;
 }
 
 interface BookState {

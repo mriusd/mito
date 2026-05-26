@@ -26,6 +26,7 @@ export function wsTradeToFillRow(t: WSTrade, wallet: string, marketId: string): 
     isTaker: t.isTaker,
     pending: t.pending === true,
     pendingId: t.pending ? t.id : undefined,
+    priceApproximate: t.priceApproximate === true,
   };
 }
 

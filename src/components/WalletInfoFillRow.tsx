@@ -39,11 +39,14 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
     const pr = f.price;
     const priceFinite = pr != null && Number.isFinite(pr);
     const sizeFinite = Number.isFinite(sz);
+    const priceApprox = f.priceApproximate === true;
     const priceLabel = priceFinite
       ? `${(pr * 100).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}¢`
       : '—';
+    const priceCls = priceApprox ? 'text-right text-gray-500 italic tabular-nums' : 'text-right text-gray-300 tabular-nums';
     const usdc = priceFinite && sizeFinite ? pr * sz : NaN;
     const usdcLabel = Number.isFinite(usdc) ? `$${fmtUsd2En(usdc)}` : '—';
+    const usdcCls = priceApprox ? 'text-right text-yellow-400/60 italic' : 'text-right text-yellow-400';
     const feeN = Number(f.fee);
     const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
     const { text: sideLabel, tone: sideTone } = fillOutcomeDisplay(f, market as Market);
@@ -76,8 +79,8 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
         <td className="text-right tabular-nums">
           {sizeFinite ? sz.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
         </td>
-        <td className="text-right text-gray-300 tabular-nums">{priceLabel}</td>
-        <td className="text-right text-yellow-400">{usdcLabel}</td>
+        <td className={priceCls} title={priceApprox ? 'Limit price from mempool — actual exec price pending' : undefined}>{priceLabel}</td>
+        <td className={usdcCls} title={priceApprox ? 'Estimated from limit price' : undefined}>{usdcLabel}</td>
         <td className="text-right text-yellow-400/80">{feeLabel}</td>
         <td className="text-center px-0">
           {f.txHash || isPending ? (

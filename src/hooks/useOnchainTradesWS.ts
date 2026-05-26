@@ -288,6 +288,8 @@ export interface WSTrade {
   id?: string;
   /** Mempool overlay — superseded by ledger row with same txHash. */
   pending?: boolean;
+  /** true = LIMIT/approx price from calldata fast path; replaced by trace broadcast. */
+  priceApproximate?: boolean;
   tokenId: string;
   side: 'BUY' | 'SELL' | 'SPLIT' | 'MERGE' | 'REDEEM';
   outcome?: string;
@@ -497,6 +499,7 @@ function mapPendingOnchainToWSTrade(
     maker?: string;
     taker?: string;
     wallet?: string;
+    priceApproximate?: boolean;
   },
   wallet: string,
 ): WSTrade | null {
@@ -513,6 +516,7 @@ function mapPendingOnchainToWSTrade(
   return {
     id: `pending:${tx.toLowerCase()}:${normalizeClobTokenKey(tokenId)}:${side}`,
     pending: true,
+    priceApproximate: !!d.priceApproximate,
     tokenId,
     side,
     size: Number(d.size ?? 0),
@@ -734,6 +738,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       maker?: string;
       taker?: string;
       wallet?: string;
+      priceApproximate?: boolean;
     }) => {
       if (!d.tokenId) return;
       const tradeMarket = canonicalConditionKey(String(d.marketId || ''));
@@ -933,6 +938,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               maker?: string;
               taker?: string;
               wallet?: string;
+              priceApproximate?: boolean;
             };
             const mSub = marketRef.current?.trim() || '';
             const tradeMarket = String(d.marketId || '').trim();
@@ -981,6 +987,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               taker: d.taker ? String(d.taker).toLowerCase() : undefined,
               wallet: d.wallet ? String(d.wallet).toLowerCase() : undefined,
               tokenId: String(d.tokenId || '').trim() || undefined,
+              priceApproximate: isPending ? !!d.priceApproximate : undefined,
             };
             if (isPending) {
               const tx = (d.txHash || '').toLowerCase();

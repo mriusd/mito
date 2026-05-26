@@ -362,27 +362,52 @@ export function getWalletMarketPendingTrades(wallet: string, marketId: string): 
 }
 
 function upsertWalletMarketPendingScope(wallet: string, marketId: string, row: WSTrade): void {
-  const tx = (row.txHash || '').toLowerCase();
-  if (!tx) return;
+  const key = walletMarketPendingStoreKey(row);
+  if (!key) return;
   const sk = walletMarketTradesKey(wallet, marketId);
-  let byTx = walletMarketPendingByScope.get(sk);
-  if (!byTx) {
-    byTx = new Map();
-    walletMarketPendingByScope.set(sk, byTx);
+  let byKey = walletMarketPendingByScope.get(sk);
+  if (!byKey) {
+    byKey = new Map();
+    walletMarketPendingByScope.set(sk, byKey);
   }
-  byTx.set(tx, row);
+  byKey.set(key, row);
   bumpWalletMarketPendingStore();
 }
 
-function dropWalletMarketPendingByTx(txHashes: Set<string>): void {
+function dropWalletMarketPendingByTx(txHashes: Set<string>, wallet?: string): void {
   if (txHashes.size === 0) return;
+  const wk = wallet?.trim().toLowerCase() || '';
   let changed = false;
-  for (const [sk, byTx] of walletMarketPendingByScope.entries()) {
-    for (const tx of txHashes) {
-      if (byTx.delete(tx)) changed = true;
+  for (const [sk, byKey] of walletMarketPendingByScope.entries()) {
+    if (wk) {
+      const [scopeWallet] = sk.split('|');
+      if (scopeWallet !== wk) continue;
     }
-    if (byTx.size === 0) walletMarketPendingByScope.delete(sk);
+    for (const tx of txHashes) {
+      for (const [k, row] of byKey.entries()) {
+        if ((row.txHash || '').toLowerCase() === tx) {
+          byKey.delete(k);
+          changed = true;
+        }
+      }
+    }
+    if (byKey.size === 0) walletMarketPendingByScope.delete(sk);
   }
+  if (changed) bumpWalletMarketPendingStore();
+}
+
+function dropWalletMarketPendingByConfirmed(wallet: string, marketId: string, confirmed: WSTrade): void {
+  const sk = walletMarketTradesKey(wallet, marketId);
+  const byKey = walletMarketPendingByScope.get(sk);
+  if (!byKey) return;
+  let changed = false;
+  for (const [k, row] of byKey.entries()) {
+    if (pendingSupersededByConfirmed(row, confirmed)) {
+      byKey.delete(k);
+      changed = true;
+    }
+  }
+  if (byKey.size === 0) walletMarketPendingByScope.delete(sk);
   if (changed) bumpWalletMarketPendingStore();
 }
 
@@ -457,9 +482,25 @@ function walletMarketTradeRowKey(t: WSTrade): string {
   return t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side);
 }
 
+function walletMarketPendingStoreKey(t: WSTrade): string {
+  return walletMarketTradeRowKey(t);
+}
+
+function walletMarketPendingSupersedeKey(t: WSTrade): string {
+  return `${(t.txHash || '').toLowerCase()}:${normalizeClobTokenKey(t.tokenId)}:${t.side}`;
+}
+
+function pendingSupersededByConfirmed(pending: WSTrade, confirmed: WSTrade): boolean {
+  return walletMarketPendingSupersedeKey(pending) === walletMarketPendingSupersedeKey(confirmed);
+}
+
 function dropPendingWalletMarketByTx(prev: WSTrade[], txHashes: Set<string>): WSTrade[] {
   if (txHashes.size === 0) return prev;
   return prev.filter((t) => !(t.pending && txHashes.has((t.txHash || '').toLowerCase())));
+}
+
+function dropPendingWalletMarketByConfirmed(prev: WSTrade[], confirmed: WSTrade): WSTrade[] {
+  return prev.filter((t) => !(t.pending && pendingSupersededByConfirmed(t, confirmed)));
 }
 
 function sortWalletMarketTradeRows(rows: WSTrade[]): WSTrade[] {
@@ -480,8 +521,8 @@ function mergeWalletMarketSnapshotWithPending(
 ): WSTrade[] {
   const pending = prev.filter((t) => t.pending);
   if (pending.length === 0) return snapshot.slice(0, cap);
-  const confirmedTxs = new Set(snapshot.map((t) => (t.txHash || '').toLowerCase()).filter(Boolean));
-  const keepPending = pending.filter((p) => !confirmedTxs.has((p.txHash || '').toLowerCase()));
+  const confirmedKeys = new Set(snapshot.map((t) => walletMarketPendingSupersedeKey(t)));
+  const keepPending = pending.filter((p) => !confirmedKeys.has(walletMarketPendingSupersedeKey(p)));
   if (keepPending.length === 0) return snapshot.slice(0, cap);
   return sortWalletMarketTradeRows(
     dedupeWalletTradesByLedgerLeg([...keepPending, ...snapshot], walletMarketTradeRowKey),
@@ -499,6 +540,8 @@ function mapPendingOnchainToWSTrade(
     maker?: string;
     taker?: string;
     wallet?: string;
+    isTaker?: boolean;
+    logIndex?: number;
     priceApproximate?: boolean;
   },
   wallet: string,
@@ -513,8 +556,10 @@ function mapPendingOnchainToWSTrade(
   const tx = String(d.txHash || '').trim();
   const tsRaw = Number(d.timestamp ?? Date.now());
   const blockTime = tsRaw > 1e12 ? Math.floor(tsRaw / 1000) : Math.floor(tsRaw);
+  const li = Number(d.logIndex ?? 0);
+  const logIndex = Number.isFinite(li) && li >= 0 ? li : undefined;
   return {
-    id: `pending:${tx.toLowerCase()}:${normalizeClobTokenKey(tokenId)}:${side}`,
+    id: `pending:${tx.toLowerCase()}:${normalizeClobTokenKey(tokenId)}:${side}:${logIndex ?? 0}`,
     pending: true,
     priceApproximate: !!d.priceApproximate,
     tokenId,
@@ -524,7 +569,8 @@ function mapPendingOnchainToWSTrade(
     fee: 0,
     blockTime,
     txHash: tx,
-    isTaker: String(d.taker || d.wallet || '').toLowerCase() === wk,
+    logIndex,
+    isTaker: d.isTaker === true,
   };
 }
 
@@ -534,10 +580,9 @@ function prependWalletMarketTradeRow(
   cap = WALLET_MARKET_TRADES_CAP,
 ): { rows: WSTrade[]; added: boolean } {
   const k = walletMarketTradeRowKey(trade);
-  const tx = (trade.txHash || '').toLowerCase();
   let base = prev;
-  if (!trade.pending && tx) {
-    base = prev.filter((t) => !(t.pending && (t.txHash || '').toLowerCase() === tx));
+  if (!trade.pending) {
+    base = dropPendingWalletMarketByConfirmed(prev, trade);
   }
   if (base.some((t) => walletMarketTradeRowKey(t) === k)) {
     return { rows: base, added: false };
@@ -739,6 +784,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       taker?: string;
       wallet?: string;
       priceApproximate?: boolean;
+      isTaker?: boolean;
+      logIndex?: number;
     }) => {
       if (!d.tokenId) return;
       const tradeMarket = canonicalConditionKey(String(d.marketId || ''));
@@ -1097,8 +1144,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             if (row) {
               const listeners = walletMarketListenersRef.current.get(walletMarketTradesKey(w, m));
               listeners?.forEach((l) => l.onTrade?.(row));
-              const tx = (row.txHash || '').toLowerCase();
-              if (tx) dropWalletMarketPendingByTx(new Set([tx]));
+              dropWalletMarketPendingByConfirmed(w, m, row);
               const pw = (walletRef.current || '').trim().toLowerCase();
               const pm = marketRef.current ? canonicalConditionKey(marketRef.current) : '';
               if (pw && pm && w === pw && m === pm) {

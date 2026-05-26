@@ -164,7 +164,7 @@ export function OrderbookPopup() {
   return (
     <OrderbookPopupPanel
       ref={popupRef}
-      className="fixed z-[10020] bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-3 pointer-events-none"
+      className="fixed z-[60100] bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-3 pointer-events-none"
       style={{ left: state.x, top: state.y, minWidth: 220, maxWidth: 250, maxHeight: '80vh', overflowY: 'auto', fontSize: 11 }}
       title={state.title}
       tokenId={state.tokenId}

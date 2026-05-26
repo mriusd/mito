@@ -48,6 +48,7 @@ export function liveTradePendingToWSTrade(t: LiveTrade, wallet: string): WSTrade
   return {
     id: t.id || `pending:${tx.toLowerCase()}:${tokKey}:${side}`,
     pending: true,
+    priceApproximate: t.priceApproximate === true,
     tokenId,
     side,
     size: parseFloat(t.size) || 0,
@@ -59,6 +60,12 @@ export function liveTradePendingToWSTrade(t: LiveTrade, wallet: string): WSTrade
   };
 }
 
+function walletInfoPendingSupersedeKey(t: WSTrade): string {
+  const tx = (t.txHash || '').toLowerCase();
+  const tok = normalizeClobTokenId(String(t.tokenId || ''));
+  return `${tx}:${tok}:${t.side}`;
+}
+
 /** Sidebar live tape pending (reliable) + scope store + wallet-market WS pending, deduped vs confirmed. */
 export function mergeWalletInfoPendingTrades(
   wsRows: WSTrade[],
@@ -68,14 +75,17 @@ export function mergeWalletInfoPendingTrades(
   market: Market | undefined,
 ): WSTrade[] {
   const confirmed = wsRows.filter((r) => !r.pending);
-  const confirmedTxs = new Set(confirmed.map((r) => (r.txHash || '').toLowerCase()).filter(Boolean));
-  const pendingByTx = new Map<string, WSTrade>();
+  const confirmedKeys = new Set(confirmed.map((r) => walletInfoPendingSupersedeKey(r)));
+  const pendingByKey = new Map<string, WSTrade>();
 
   const addPending = (p: WSTrade) => {
-    if (p.priceApproximate === true) return;
     const tx = (p.txHash || '').toLowerCase();
-    if (!tx || confirmedTxs.has(tx)) return;
-    pendingByTx.set(tx, p);
+    if (!tx) return;
+    const key = walletInfoPendingSupersedeKey(p);
+    if (confirmedKeys.has(key)) return;
+    const existing = pendingByKey.get(key);
+    if (existing && existing.priceApproximate !== true && p.priceApproximate === true) return;
+    pendingByKey.set(key, p);
   };
 
   for (const r of scopePending) addPending(r);
@@ -83,12 +93,11 @@ export function mergeWalletInfoPendingTrades(
     if (r.pending) addPending(r);
   }
   for (const t of filterTapePendingForWalletMarket(tape, wallet, market)) {
-    if (t.priceApproximate === true) continue;
     const row = liveTradePendingToWSTrade(t, wallet);
     if (row) addPending(row);
   }
 
-  const pending = [...pendingByTx.values()];
+  const pending = [...pendingByKey.values()];
   const all = [...pending, ...confirmed];
   all.sort((a, b) => {
     const ap = a.pending ? 1 : 0;

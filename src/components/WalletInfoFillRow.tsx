@@ -33,6 +33,8 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
 }) {
   const bt = Number((f as { blockTime?: number }).blockTime ?? 0);
   const isPending = f.pending === true;
+  const takerMark =
+    f.isTaker === true && (!isPending || f.priceApproximate === true) ? 'T' : '';
 
   if (isLedgerFillRow(f)) {
     const sz = Number(f.size);
@@ -75,7 +77,7 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
         </td>
         <td className={actionCls}>{action || '—'}</td>
         <td className={sideCls}>{sideLabel}</td>
-        <td className="text-center text-amber-300 font-bold tabular-nums px-0">{f.isTaker === true ? 'T' : ''}</td>
+        <td className="text-center text-amber-300 font-bold tabular-nums px-0">{takerMark}</td>
         <td className="text-right tabular-nums">
           {sizeFinite ? sz.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
         </td>
@@ -129,7 +131,7 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
         <td className="text-purple-400" colSpan={2}>
           {label}
         </td>
-        <td className="text-center text-amber-300 font-bold px-0">{f.isTaker === true ? 'T' : ''}</td>
+        <td className="text-center text-amber-300 font-bold px-0">{takerMark}</td>
         <td className="text-right tabular-nums">
           {Number.isFinite(amount)
             ? amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -198,7 +200,7 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
       </td>
       <td className={action === 'BUY' ? 'text-green-400' : 'text-red-400'}>{action}</td>
       <td className={sideCls}>{sideText}</td>
-      <td className="text-center text-amber-300 font-bold tabular-nums px-0">{f.isTaker === true ? 'T' : ''}</td>
+      <td className="text-center text-amber-300 font-bold tabular-nums px-0">{takerMark}</td>
       <td className="text-right tabular-nums">
         {Number.isFinite(nShares)
           ? nShares.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

@@ -38,9 +38,22 @@ function liveTradesHeadEqual(a: LiveTrade[], b: LiveTrade[]): boolean {
   if (a === b) return true;
   if (a.length !== b.length) return false;
   if (a.length === 0) return true;
-  const p0 = a[0];
-  const t0 = b[0];
-  return p0.id === t0.id && p0.timestamp === t0.timestamp && p0.size === t0.size;
+  const n = Math.min(6, a.length);
+  for (let i = 0; i < n; i++) {
+    const p = a[i];
+    const t = b[i];
+    if (p === t) continue;
+    if (
+      p.id !== t.id ||
+      p.timestamp !== t.timestamp ||
+      p.size !== t.size ||
+      p.pending !== t.pending ||
+      p.txHash !== t.txHash
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function walletMarketTradesHeadEqual(a: WSTrade[], b: WSTrade[]): boolean {

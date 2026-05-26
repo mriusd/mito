@@ -645,9 +645,6 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   const [wsConnected, setWsConnected] = useState(false);
   const [walletMarketConnectBump, setWalletMarketConnectBump] = useState(0);
 
-  useLayoutEffect(() => {
-    setSidebarOnchainLiveTrades(trades);
-  }, [trades]);
   const walletMarketRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const primaryWalletMarketKeyRef = useRef<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -803,10 +800,6 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     };
 
     const scheduleTapeTrade = (trade: LiveTrade) => {
-      if (trade.pending) {
-        applyTapeTradesNow([trade]);
-        return;
-      }
       pendingTapeBatchRef.current.push(trade);
       if (tapeBatchRafRef.current != null) return;
       tapeBatchRafRef.current = requestAnimationFrame(flushTapeBatch);
@@ -1032,16 +1025,6 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const mSub = marketRef.current?.trim() || '';
             const tradeMarket = String(d.marketId || '').trim();
 
-            if (isPending && d.tokenId) {
-              notifyPendingWalletMarketTrade({
-                ...d,
-                marketId: d.marketId || tradeMarket || mSub || undefined,
-              });
-            }
-
-            // Do not mirror onchainTrade into walletTrades — rows come from wallet_fill_ledger via
-            // fetchOnchainMarketTrades prefetch + walletTrades WS snapshots (avoids phantom/extra rows vs WFL).
-
             if (!d.tokenId) return;
             if (mSub) {
               const subM = canonicalConditionKey(mSub);
@@ -1060,12 +1043,20 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               if (!sameDecimalTokenId(d.tokenId, tokenRef.current)) return;
             }
 
+            if (isPending) {
+              notifyPendingWalletMarketTrade({
+                ...d,
+                marketId: d.marketId || tradeMarket || mSub || undefined,
+              });
+              return;
+            }
+
             const side = (d.side === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
             const size = Number(d.size ?? 0);
             const price = Number(d.price ?? 0);
             const ts = Number(d.timestamp ?? Date.now());
             const li = Number(d.logIndex ?? 0);
-            let trade: LiveTrade = {
+            const trade = stampLiveTradeId({
               side,
               size: String(size),
               price: String(price),
@@ -1076,26 +1067,13 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               taker: d.taker ? String(d.taker).toLowerCase() : undefined,
               wallet: d.wallet ? String(d.wallet).toLowerCase() : undefined,
               tokenId: String(d.tokenId || '').trim() || undefined,
-              priceApproximate: isPending ? !!d.priceApproximate : undefined,
-            };
-            if (isPending) {
-              const tx = (d.txHash || '').toLowerCase();
-              const tokKey = normalizeClobTokenKey(d.tokenId);
-              trade = {
-                ...trade,
-                pending: true,
-                logIndex: undefined,
-                id: `pending:${tx}:${tokKey}:${side}`,
-              };
-            } else {
-              trade = stampLiveTradeId(trade);
-            }
+            });
             const marketKeyForBuf = tradeMarket
               ? canonicalConditionKey(tradeMarket)
               : mSub
                 ? canonicalConditionKey(mSub)
                 : '';
-            if (d.tokenId && marketKeyForBuf && !isPending) {
+            if (d.tokenId && marketKeyForBuf) {
               if (trade.txHash) {
                 dropPendingFromPublicTapeBuffer(new Set([(trade.txHash || '').toLowerCase()]));
               }

@@ -4,7 +4,6 @@ import {
   registerSidebarOnchainRefreshFns,
   resetSidebarOnchainTradesStore,
   setSidebarOnchainGridWalletPositions,
-  setSidebarOnchainLiveTrades,
   setSidebarOnchainWalletMarketTrades,
   setSidebarOnchainWalletPositions,
 } from '../lib/sidebarOnchainTradesStore';
@@ -12,17 +11,12 @@ import {
 /** Null host — onchain WS writes external store (Sidebar body stays off hot path). */
 export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(opts: OnchainTradesWSOpts) {
   const {
-    trades,
     walletPositions,
     gridWalletPositions,
     walletMarketTrades,
     refreshWallet,
     refreshWalletMarketTrades,
   } = useOnchainTradesWS(opts);
-
-  useEffect(() => {
-    setSidebarOnchainLiveTrades(trades);
-  }, [trades]);
 
   useEffect(() => {
     setSidebarOnchainWalletPositions(walletPositions);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { setSidebarOnchainLiveTrades } from '../lib/sidebarOnchainTradesStore';
 import { fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
 import { API_BASE, WS_BASE } from '../lib/env';

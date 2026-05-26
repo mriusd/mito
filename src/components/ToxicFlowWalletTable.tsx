@@ -61,6 +61,7 @@ import {
   TILT_WHALE_AMOUNT_USD_LS_KEY,
 } from '../lib/tiltWhaleAmountUsd';
 import { TOXIC_TABLE_ROW_CLS } from '../lib/toxicFlowTableAnimate';
+import { useCancelDomAnimationsOnUnmount } from '../lib/cancelDomAnimations';
 import { fmtPriceShare, walletMarketUsdcInCell } from './WalletLatestMarketsTradedTable';
 
 function subscribeTiltWhaleAmountUsd(listener: () => void): () => void {
@@ -168,25 +169,38 @@ function stakedNetUsdTableCell(signed: number): ReactNode {
   );
 }
 
+const STAKED_NET_FLASH_BADGE_BASE =
+  'inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded updown-triangle-badge-flash-finite';
+
+function StakedNetFlashBadge({ dir }: { dir: StakedNetFlashDir }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useCancelDomAnimationsOnUnmount(ref);
+  if (dir === 'up') {
+    return (
+      <span
+        ref={ref}
+        className={`${STAKED_NET_FLASH_BADGE_BASE} border border-green-600/45 bg-green-900/65 text-green-100`}
+        title="Staked net increased on same side (Y or N)"
+      >
+        <Triangle className="h-2 w-2 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
+      </span>
+    );
+  }
+  return (
+    <span
+      ref={ref}
+      className={`${STAKED_NET_FLASH_BADGE_BASE} border border-red-600/45 bg-red-900/65 text-red-100`}
+      title="Staked net decreased on same side (Y or N)"
+    >
+      <Triangle className="h-2 w-2 rotate-180 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
+    </span>
+  );
+}
+
 function stakedNetUsdTableCellWithFlash(signed: number, flash: StakedNetFlashDir | null): ReactNode {
   return (
     <span className="inline-flex w-full items-center justify-end gap-0.5">
-      {flash === 'up' && (
-        <span
-          className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-green-600/45 bg-green-900/65 text-green-100 updown-triangle-badge-flash"
-          title="Staked net increased on same side (Y or N)"
-        >
-          <Triangle className="h-2 w-2 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
-        </span>
-      )}
-      {flash === 'down' && (
-        <span
-          className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-red-600/45 bg-red-900/65 text-red-100 updown-triangle-badge-flash"
-          title="Staked net decreased on same side (Y or N)"
-        >
-          <Triangle className="h-2 w-2 rotate-180 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
-        </span>
-      )}
+      {flash ? <StakedNetFlashBadge dir={flash} /> : null}
       {stakedNetUsdTableCell(signed)}
     </span>
   );
@@ -879,6 +893,8 @@ function WalletTableBodyRowImpl({
   showRank = true,
   variant = 'toxicFlow',
 }: WalletTableBodyRowProps) {
+  const trRef = useRef<HTMLTableRowElement>(null);
+  useCancelDomAnimationsOnUnmount(trRef);
   const hoverRef = useRef<WalletLinkHoverHandle>(null);
   const onRowEnter = useCallback((e: React.MouseEvent) => hoverRef.current?.rowEnter(e), []);
   const onRowMove = useCallback((e: React.MouseEvent) => hoverRef.current?.rowMove(e), []);
@@ -956,6 +972,7 @@ function WalletTableBodyRowImpl({
 
   return (
     <tr
+      ref={trRef}
       className={`${rowClass} ${TOXIC_TABLE_ROW_CLS}${selected ? ' bg-gray-700/40' : ''}${onRowClick ? ' cursor-pointer' : ''}`}
       onMouseEnter={onRowEnter}
       onMouseMove={onRowMove}

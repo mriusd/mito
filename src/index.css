@@ -84,6 +84,10 @@ html, body, #root {
 .updown-triangle-badge-flash {
   animation: updown-math-flash 1s ease-in-out infinite;
 }
+/** Ephemeral badges (e.g. toxic staked-net tick flash): finite so unmount can GC. */
+.updown-triangle-badge-flash-finite {
+  animation: updown-math-flash 1s ease-in-out 2 forwards;
+}
 
 /* Toxic Flow dialog: wallets marked with bell pulse when row is on current market */
 @keyframes toxic-flow-bell-row-flash {

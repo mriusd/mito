@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { X, Star, Bell, ExternalLink, Copy } from 'lucide-react';
 import {
-  listToxicFavouriteWalletsSorted,
+  listToxicFavouriteWalletsByAddedAt,
   readToxicFavouriteWallets,
   persistToxicFavouriteWallets,
   readToxicBellWallets,
   persistToxicBellWallets,
   getToxicFavouriteNickname,
+  exportToxicFavouriteWalletsCsv,
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
   TOXIC_FAVOURITE_NICKNAMES_LS_KEY,
+  TOXIC_FAVOURITE_ADDED_AT_LS_KEY,
   TOXIC_FAVOURITES_CHANGED_EVENT,
   TOXIC_BELL_WALLETS_LS_KEY,
   TOXIC_BELLS_CHANGED_EVENT,
+  type ToxicFavouriteListRow,
 } from '../lib/toxicFavouriteWallets';
 import { primeTiltAudioContextFromUserGesture } from '../lib/tiltNotifySound';
 import { getToxicWalletTag, TOXIC_WALLET_TAGS_CHANGED_EVENT } from '../lib/toxicWalletTags';
@@ -27,6 +30,16 @@ function shortenAddr(a: string): string {
   return `${t.slice(0, 6)}…${t.slice(-4)}`;
 }
 
+function formatAddedAt(ms: number | null): string {
+  if (ms == null || !Number.isFinite(ms) || ms <= 0) return '—';
+  return new Date(ms).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export function FavouriteWalletsDialog({
   open,
   onClose,
@@ -36,15 +49,15 @@ export function FavouriteWalletsDialog({
   onClose: () => void;
   onOpenWalletInfo: (wallet: string) => void;
 }) {
-  const [addrs, setAddrs] = useState<string[]>([]);
+  const [entries, setEntries] = useState<ToxicFavouriteListRow[]>([]);
   const [bellWallets, setBellWallets] = useState(readToxicBellWallets);
   const [tagRev, setTagRev] = useState(0);
   const [search, setSearch] = useState('');
 
-  const filteredAddrs = useMemo(() => {
+  const filteredEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return addrs;
-    return addrs.filter((raw) => {
+    if (!q) return entries;
+    return entries.filter(({ wallet: raw }) => {
       const lower = raw.trim().toLowerCase();
       if (lower.includes(q)) return true;
       const tag = getToxicWalletTag(raw);
@@ -53,10 +66,10 @@ export function FavouriteWalletsDialog({
       if (nickname && nickname.toLowerCase().includes(q)) return true;
       return false;
     });
-  }, [addrs, search, tagRev]);
+  }, [entries, search, tagRev]);
 
   const refresh = useCallback(() => {
-    setAddrs(listToxicFavouriteWalletsSorted());
+    setEntries(listToxicFavouriteWalletsByAddedAt());
     setBellWallets(readToxicBellWallets());
     setTagRev((n) => n + 1);
   }, []);
@@ -72,6 +85,7 @@ export function FavouriteWalletsDialog({
       if (
         e.key === TOXIC_FAVOURITE_WALLETS_LS_KEY ||
         e.key === TOXIC_FAVOURITE_NICKNAMES_LS_KEY ||
+        e.key === TOXIC_FAVOURITE_ADDED_AT_LS_KEY ||
         e.key === TOXIC_BELL_WALLETS_LS_KEY ||
         e.key === null
       ) {
@@ -131,9 +145,19 @@ export function FavouriteWalletsDialog({
           <div className="flex items-center gap-1.5 min-w-0">
             <Star size={14} className="text-yellow-400 fill-yellow-400 shrink-0" />
             <span className="text-sm font-bold text-white truncate">Favourite wallets</span>
-            {addrs.length > 0 && <span className="text-[10px] text-gray-500">({addrs.length})</span>}
+            {entries.length > 0 && <span className="text-[10px] text-gray-500">({entries.length})</span>}
           </div>
-          <button
+          <div className="flex items-center gap-1 shrink-0">
+            {entries.length > 0 ? (
+              <button
+                type="button"
+                className="rounded px-2 py-0.5 text-[10px] font-semibold text-gray-300 hover:text-white hover:bg-gray-700 border border-gray-600"
+                onClick={() => exportToxicFavouriteWalletsCsv()}
+              >
+                Export CSV
+              </button>
+            ) : null}
+            <button
             type="button"
             onClick={onClose}
             className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
@@ -141,12 +165,13 @@ export function FavouriteWalletsDialog({
           >
             <X size={16} />
           </button>
+          </div>
         </div>
-        {addrs.length > 0 ? (
+        {entries.length > 0 ? (
           <div className="px-2 pt-2 shrink-0">
             <div className="relative">
               <input
-                type="search"
+                type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search address, nickname, tag…"
@@ -169,13 +194,13 @@ export function FavouriteWalletsDialog({
           </div>
         ) : null}
         <div className="overflow-y-auto flex-1 p-2">
-          {addrs.length === 0 ? (
+          {entries.length === 0 ? (
             <p className="text-xs text-gray-500 text-center py-6 px-2">No favourites yet. Star a wallet in Toxic flow → Holders.</p>
-          ) : filteredAddrs.length === 0 ? (
+          ) : filteredEntries.length === 0 ? (
             <p className="text-xs text-gray-500 text-center py-6 px-2">No matches for &ldquo;{search.trim()}&rdquo;</p>
           ) : (
             <ul className="space-y-1">
-              {filteredAddrs.map((raw) => {
+              {filteredEntries.map(({ wallet: raw, addedAtMs }) => {
                 const lower = raw.toLowerCase();
                 void tagRev;
                 const tag = getToxicWalletTag(raw);
@@ -235,6 +260,16 @@ export function FavouriteWalletsDialog({
                         <span className="truncate font-mono text-[10px] text-blue-400">{shortenAddr(raw)}</span>
                       </span>
                     </button>
+                    <span
+                      className="shrink-0 text-[9px] text-gray-500 tabular-nums whitespace-nowrap"
+                      title={
+                        addedAtMs != null && addedAtMs > 0
+                          ? new Date(addedAtMs).toLocaleString()
+                          : 'Added before time tracking'
+                      }
+                    >
+                      {formatAddedAt(addedAtMs)}
+                    </span>
                     <button
                       type="button"
                       className="p-1 rounded hover:bg-gray-600/50 text-gray-400 hover:text-white shrink-0"

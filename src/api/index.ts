@@ -784,6 +784,9 @@ export interface OnchainFillRow {
   walletAccountSide?: string;
   /** Ledger: true = OrderFilled taker sweep (maker=wallet, taker=CTF exchange); false = maker leg or split/merge */
   isTaker?: boolean;
+  /** Mempool overlay before wallet_fill_ledger row lands. */
+  pending?: boolean;
+  pendingId?: string;
 }
 
 export async function fetchOnchainFills(params: { market_id?: string; wallet?: string; token_id?: string; limit?: number; offset?: number }): Promise<{ fills: OnchainFillRow[]; count: number; total: number }> {

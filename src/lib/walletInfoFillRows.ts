@@ -2,6 +2,8 @@ import type { OnchainFillRow } from '../api';
 import type { Market } from '../types';
 import type { WSTrade } from '../hooks/useOnchainTradesWS';
 
+export const WALLET_TRADE_PENDING_ROW_BG = 'bg-sky-500/10';
+
 export function isLedgerFillRow(f: OnchainFillRow): boolean {
   return f.fillSource === 'wallet_fill_ledger';
 }
@@ -22,6 +24,8 @@ export function wsTradeToFillRow(t: WSTrade, wallet: string, marketId: string): 
     side: t.outcome,
     marketId,
     isTaker: t.isTaker,
+    pending: t.pending === true,
+    pendingId: t.pending ? t.id : undefined,
   };
 }
 

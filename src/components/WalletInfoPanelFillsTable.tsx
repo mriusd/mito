@@ -106,9 +106,12 @@ export const WalletInfoPanelFillsTable = memo(function WalletInfoPanelFillsTable
                 visibleFills.map((f) => {
                   const mid = String(f.marketId || '').trim().toLowerCase();
                   const market = defaultMarket || (mid && marketById[mid]) || {};
+                  const rowKey = f.pending
+                    ? f.pendingId || `pending:${f.txHash}:${f.tokenId}`
+                    : `${f.txHash ?? ''}:${f.logIndex ?? ''}:${f.tokenId ?? ''}`;
                   return (
                     <WalletInfoFillRow
-                      key={`${f.txHash ?? ''}:${f.logIndex ?? ''}:${f.tokenId ?? ''}`}
+                      key={rowKey}
                       fill={f}
                       wallet={wallet}
                       market={market}

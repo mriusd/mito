@@ -9,6 +9,7 @@ import {
 import { mySidebarTradeRowKey, useMyTradeRowRingSound } from '../lib/myTradeRowRing';
 import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
 import { useSidebarOnchainWalletMarketTrades } from '../lib/sidebarOnchainTradesStore';
+import { WALLET_TRADE_PENDING_ROW_BG } from '../lib/walletInfoFillRows';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 
 function tradeFilledSizeShares(trade: { size: string; size_filled?: string }): number {
@@ -41,7 +42,12 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
     }
     return wsMarketTrades
       .slice()
-      .sort((a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0))
+      .sort((a, b) => {
+        const ap = a.pending ? 1 : 0;
+        const bp = b.pending ? 1 : 0;
+        if (ap !== bp) return bp - ap;
+        return b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0);
+      })
       .map((f) => ({
         asset_id: f.tokenId,
         token_id: f.tokenId,
@@ -54,6 +60,8 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
         logIndex: f.logIndex,
         created_at: '',
         matchTime: '',
+        pending: f.pending === true,
+        pendingId: f.pending ? f.id : undefined,
       }));
   }, [liveTradesSource, trades, selectedMarket, marketLookup, wsMarketTrades]);
 
@@ -117,8 +125,12 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
             </thead>
             <tbody>
               {myTradesDisplay.map((trade, i) => {
-                const rowKey = mySidebarTradeRowKey(trade) || `my-trade-${i}`;
-                const isFlashing = myTradeFlashKeys.has(rowKey);
+                const rowKey =
+                  (trade as { pendingId?: string }).pendingId ||
+                  mySidebarTradeRowKey(trade) ||
+                  `my-trade-${i}`;
+                const isPending = (trade as { pending?: boolean }).pending === true;
+                const isFlashing = !isPending && myTradeFlashKeys.has(rowKey);
                 const tid = getTradeClobTokenId(trade) || String(trade.asset_id || trade.token_id || '').trim();
                 const outcome = getTokenOutcome(tid, marketLookup);
                 const sideLabel = isUpDownMarket ? (outcome === 'YES' ? 'UP' : 'DOWN') : outcome;
@@ -143,7 +155,10 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
                         ? 'text-purple-400'
                         : 'text-rose-400';
                 return (
-                  <tr key={rowKey} className={`text-gray-300${isFlashing ? ' my-trade-row-flash' : ''}`}>
+                  <tr
+                    key={rowKey}
+                    className={`text-gray-300${isPending ? ` ${WALLET_TRADE_PENDING_ROW_BG}` : ''}${isFlashing ? ' my-trade-row-flash' : ''}`}
+                  >
                     <td className={`py-0.5 ${dirTone}`}>{side || '-'}</td>
                     <td className={outcome === 'YES' ? 'py-0.5 text-emerald-400' : 'py-0.5 text-rose-400'}>{sideLabel}</td>
                     <td className="py-0.5 text-right">{Number.isFinite(size) ? size.toFixed(2) : '-'}</td>

@@ -6,7 +6,9 @@ import {
   fillOutcomeDisplay,
   fmtUsd2En,
   isLedgerFillRow,
+  WALLET_TRADE_PENDING_ROW_BG,
 } from '../lib/walletInfoFillRows';
+import { openPolygonscanTx, polygonscanTxUrl } from '../lib/polygonscanLink';
 import { LiveWalletTradeTimeCell } from './WalletTradeTimeCell';
 
 const FILL_ROW_CAP = 200;
@@ -25,6 +27,7 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
   market: Market | Record<string, unknown>;
 }) {
   const bt = Number((f as { blockTime?: number }).blockTime ?? 0);
+  const isPending = f.pending === true;
 
   if (isLedgerFillRow(f)) {
     const sz = Number(f.size);
@@ -56,9 +59,13 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
               ? 'text-blue-400'
               : 'text-gray-300';
     return (
-      <tr className="border-b border-gray-800">
+      <tr className={`border-b border-gray-800 ${isPending ? WALLET_TRADE_PENDING_ROW_BG : ''}`}>
         <td className="py-0.5">
-          <LiveWalletTradeTimeCell blockTime={bt} />
+          {isPending ? (
+            <span className="tabular-nums text-gray-500">...</span>
+          ) : (
+            <LiveWalletTradeTimeCell blockTime={bt} />
+          )}
         </td>
         <td className={actionCls}>{action || '—'}</td>
         <td className={sideCls}>{sideLabel}</td>
@@ -70,17 +77,30 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
         <td className="text-right text-yellow-400">{usdcLabel}</td>
         <td className="text-right text-yellow-400/80">{feeLabel}</td>
         <td className="text-center px-0">
-          {f.txHash ? (
-            <a
-              href={`https://polygonscan.com/tx/${f.txHash}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex text-gray-400 hover:text-cyan-300"
-              title={`Open tx ${f.txHash} on Polygonscan`}
-              aria-label="Open transaction on Polygonscan"
-            >
-              <ExternalLink size={12} />
-            </a>
+          {f.txHash || isPending ? (
+            (() => {
+              const scanUrl = polygonscanTxUrl(f.txHash, isPending ? f.pendingId : undefined);
+              if (!scanUrl) return '—';
+              return (
+                <a
+                  href={scanUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex text-gray-400 hover:text-cyan-300"
+                  title={isPending ? 'Open pending tx on Polygonscan' : `Open tx ${f.txHash} on Polygonscan`}
+                  aria-label={isPending ? 'Open pending transaction on Polygonscan' : 'Open transaction on Polygonscan'}
+                  onClick={(e) => {
+                    if (!isPending) return;
+                    e.preventDefault();
+                    if (!openPolygonscanTx(f.txHash, f.pendingId)) {
+                      throw new Error('polygonscan tx link missing hash');
+                    }
+                  }}
+                >
+                  <ExternalLink size={12} />
+                </a>
+              );
+            })()
           ) : (
             '—'
           )}

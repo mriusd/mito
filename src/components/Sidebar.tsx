@@ -774,7 +774,7 @@ function readCustomSidebarButtons(): CustomSidebarButton[] {
         const label = String(b.label || '?').slice(0, 3);
         if (!label) return null;
         const base = {
-          id: String(b.id || `${Date.now()}-${Math.random()}`),
+        id: String(b.id || `${Date.now()}-${Math.random()}`),
           label,
           color: String(b.color || '#2563eb'),
         };
@@ -793,10 +793,10 @@ function readCustomSidebarButtons(): CustomSidebarButton[] {
           ...base,
           orders: [
             {
-              side: b.side as 'BUY' | 'SELL',
+        side: b.side as 'BUY' | 'SELL',
               priceMode: 'FIXED' as const,
               priceValue: priceCents,
-              maxSell: !!b.maxSell,
+        maxSell: !!b.maxSell,
               outcome: 'AUTO' as const,
             },
           ],
@@ -1954,7 +1954,7 @@ export const Sidebar = memo(function Sidebar() {
         return;
       }
 
-      let size = parseFloat(orderAmount);
+    let size = parseFloat(orderAmount);
       if (spec.side === 'SELL' && spec.maxSell) {
         const tidKey = positionTokenKey(tokenId);
         const pos = tidKey
@@ -1963,24 +1963,24 @@ export const Sidebar = memo(function Sidebar() {
             )
           : undefined;
         size = pos ? Math.floor(Number(pos.size) * 100) / 100 : 0;
-      }
-      if (!size || size <= 0) {
+    }
+    if (!size || size <= 0) {
         showToast(
           spec.side === 'SELL' && spec.maxSell ? 'No position size available for MAX sell' : 'Invalid amount',
           'error',
         );
+      return;
+    }
+
+    let expiration = 0;
+      if (spec.side === 'BUY') {
+      const exp = computeLimitExpiration(selectedMarket.endDate);
+      expiration = exp.expiration;
+      if (exp.invalidLead) {
+        showToast('Lead time to expiration already passed for this market', 'error');
         return;
       }
-
-      let expiration = 0;
-      if (spec.side === 'BUY') {
-        const exp = computeLimitExpiration(selectedMarket.endDate);
-        expiration = exp.expiration;
-        if (exp.invalidLead) {
-          showToast('Lead time to expiration already passed for this market', 'error');
-          return;
-        }
-      }
+    }
 
       if (spec.side === 'BUY') {
         const customEarlyVusd = orderNotionalUsd(priceCents / 100, size);
@@ -1996,24 +1996,24 @@ export const Sidebar = memo(function Sidebar() {
         spec.side,
         priceCents,
       );
-      if (crossesBook) {
+    if (crossesBook) {
         const confirmed = await requestCrossingConfirm(bestCounterpartyCents ?? 0);
-        if (!confirmed) return;
-      }
+      if (!confirmed) return;
+    }
 
-      const result = await placeOrder({
-        tokenId,
+    const result = await placeOrder({
+      tokenId,
         side: spec.side,
         price: priceCents / 100,
-        size,
-        expiration,
+      size,
+      expiration,
         orderInfo: `${spec.side} ${size} ${resolvedOutcome} for ${marketName} @ ${priceCents}¢`,
-      });
+    });
       if (!result.success) {
-        showToast(result.error || 'Custom order failed', 'error');
+      showToast(result.error || 'Custom order failed', 'error');
         if (placed > 0) triggerWalletRefresh();
         return;
-      }
+    }
       placed += 1;
     }
 
@@ -3619,7 +3619,7 @@ export const Sidebar = memo(function Sidebar() {
                 canShowEmbeddedToxic={canShowEmbeddedToxic}
                 onExpandToxic={expandSidebarToxicFlowPanel}
               />
-                      </div>
+                </div>
             <div className="mt-1 w-full min-w-0">
               <SidebarToxicStrips
                 sidebarStakedLegs={sidebarStakedLegs}
@@ -3632,7 +3632,7 @@ export const Sidebar = memo(function Sidebar() {
                 notifyFavouriteTiltPct={notifyFavouriteTiltPct}
                 notifyGreensTiltPct={notifyGreensTiltPct}
               />
-            </div>
+              </div>
           </SidebarToxicStatsFlashWrap>
           </div>
 
@@ -3926,7 +3926,7 @@ export const Sidebar = memo(function Sidebar() {
                 orderPrice={orderPrice}
                 orderAmount={orderAmount}
               />
-            </div>
+                </div>
 
             <div className="mb-2 flex flex-col gap-0.5">
               <div
@@ -4142,8 +4142,8 @@ export const Sidebar = memo(function Sidebar() {
                 <SidebarDataSourceBadge source="polymarket" />
               </div>
               {(myOrders.length > 0 || progOrders.length > 0) && (
-                <button
-                  type="button"
+                  <button
+                    type="button"
                   onClick={() => !cancellingAllOrders && handleCancelAllOrders()}
                   disabled={cancellingAllOrders}
                   className="w-4 h-4 rounded-sm flex items-center justify-center flex-shrink-0 bg-red-600 hover:bg-red-500 disabled:bg-red-600/50"
@@ -4155,9 +4155,9 @@ export const Sidebar = memo(function Sidebar() {
                   ) : (
                     <span className="text-black text-[10px] font-bold leading-none">✕</span>
                   )}
-                </button>
-              )}
-            </div>
+                          </button>
+                        )}
+                      </div>
             <div className="space-y-2 text-xs">
               {myOrders.length === 0 && progOrders.length === 0 ? (
                 <div className="text-gray-600">No orders</div>
@@ -4252,9 +4252,9 @@ export const Sidebar = memo(function Sidebar() {
                               mag >= 20
                                 ? 'bg-red-950/90 text-red-100 hover:bg-red-900'
                                 : mag >= 15
-                                  ? 'bg-red-950/85 text-red-200 hover:bg-red-900'
+                                    ? 'bg-red-950/85 text-red-200 hover:bg-red-900'
                                   : mag >= 10
-                                    ? 'bg-red-900/80 text-red-200 hover:bg-red-800'
+                                      ? 'bg-red-900/80 text-red-200 hover:bg-red-800'
                                     : 'bg-red-900/65 text-red-200 hover:bg-red-800/80';
                             return (
                               <button
@@ -4384,7 +4384,7 @@ export const Sidebar = memo(function Sidebar() {
           />
         </>
       )}
-        </div>
+            </div>
         {!isMobileSheet && selectedMarket ? (
           <>
           <div className="hidden md:block w-6 shrink-0" aria-hidden />
@@ -4449,18 +4449,18 @@ export const Sidebar = memo(function Sidebar() {
                       </button>
                     ) : null}
                   </div>
-                  <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
                     <span className="text-gray-400 w-16 shrink-0">Side</span>
                     <select
                       value={draft.side}
                       onChange={(e) => updateCustomOrderDraft(index, { side: e.target.value as 'BUY' | 'SELL' })}
                       className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white flex-1"
                     >
-                      <option value="BUY">BUY</option>
-                      <option value="SELL">SELL</option>
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-2">
+                  <option value="BUY">BUY</option>
+                  <option value="SELL">SELL</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
                     <span className="text-gray-400 w-16 shrink-0">Direction</span>
                     <select
                       value={draft.outcome}
@@ -4473,7 +4473,7 @@ export const Sidebar = memo(function Sidebar() {
                       <option value="YES">YES</option>
                       <option value="NO">NO</option>
                     </select>
-                  </div>
+              </div>
                   <div className="flex items-center gap-2">
                     <span className="text-gray-400 w-16 shrink-0">Price</span>
                     <select
@@ -4501,16 +4501,16 @@ export const Sidebar = memo(function Sidebar() {
                     <span className="text-gray-400 w-3 shrink-0 text-center">{customOrderPriceInputSuffix(draft.priceMode)}</span>
                   </div>
                   {draft.side === 'SELL' && (
-                    <label className="flex items-center gap-2 ml-[4.5rem] text-gray-300">
+                <label className="flex items-center gap-2 ml-[4.5rem] text-gray-300">
                       <input
                         type="checkbox"
                         checked={draft.maxSell}
                         onChange={(e) => updateCustomOrderDraft(index, { maxSell: e.target.checked })}
                         className="rounded accent-red-500"
                       />
-                      <span>Max</span>
-                    </label>
-                  )}
+                  <span>Max</span>
+                </label>
+              )}
                 </div>
               ))}
               {customOrderDrafts.length < 2 ? (

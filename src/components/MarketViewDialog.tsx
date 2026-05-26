@@ -403,6 +403,7 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
                 traders={traders}
                 loading={loadingTraders}
                 selectedWallet={selectedWallet}
+                marketId={selectedMarketId}
                 onRowClick={onSelectTraderRow}
                 onOpenWallet={onOpenTraderWallet}
                 offset={tradersOffset}

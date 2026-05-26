@@ -258,6 +258,8 @@ function mergeWalletPositionsSnapshot(
 export interface WSTrade {
   /** Stable dedupe key — set once at ingest. */
   id?: string;
+  /** Mempool overlay — superseded by ledger row with same txHash. */
+  pending?: boolean;
   tokenId: string;
   side: 'BUY' | 'SELL' | 'SPLIT' | 'MERGE' | 'REDEEM';
   outcome?: string;
@@ -278,6 +280,7 @@ export interface WSTrade {
 export type WalletMarketTradesListener = {
   onSnapshot: (trades: WSTrade[], total: number) => void;
   onTrade?: (trade: WSTrade) => void;
+  onPendingDrop?: (txHashes: Set<string>) => void;
 };
 
 export type OnchainTradesWSShared = {
@@ -375,17 +378,93 @@ function walletMarketTradeRowKey(t: WSTrade): string {
   return t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side);
 }
 
+function dropPendingWalletMarketByTx(prev: WSTrade[], txHashes: Set<string>): WSTrade[] {
+  if (txHashes.size === 0) return prev;
+  return prev.filter((t) => !(t.pending && txHashes.has((t.txHash || '').toLowerCase())));
+}
+
+function sortWalletMarketTradeRows(rows: WSTrade[]): WSTrade[] {
+  return [...rows].sort((a, b) => {
+    const ap = a.pending ? 1 : 0;
+    const bp = b.pending ? 1 : 0;
+    if (ap !== bp) return bp - ap;
+    const tb = (b.blockTime ?? 0) - (a.blockTime ?? 0);
+    if (tb !== 0) return tb;
+    return (b.logIndex ?? 0) - (a.logIndex ?? 0);
+  });
+}
+
+function mergeWalletMarketSnapshotWithPending(
+  prev: WSTrade[],
+  snapshot: WSTrade[],
+  cap = WALLET_MARKET_TRADES_CAP,
+): WSTrade[] {
+  const pending = prev.filter((t) => t.pending);
+  if (pending.length === 0) return snapshot.slice(0, cap);
+  const confirmedTxs = new Set(snapshot.map((t) => (t.txHash || '').toLowerCase()).filter(Boolean));
+  const keepPending = pending.filter((p) => !confirmedTxs.has((p.txHash || '').toLowerCase()));
+  if (keepPending.length === 0) return snapshot.slice(0, cap);
+  return sortWalletMarketTradeRows(
+    dedupeWalletTradesByLedgerLeg([...keepPending, ...snapshot], walletMarketTradeRowKey),
+  ).slice(0, cap);
+}
+
+function mapPendingOnchainToWSTrade(
+  d: {
+    tokenId?: string;
+    side?: string;
+    size?: number;
+    price?: number;
+    timestamp?: number;
+    txHash?: string;
+    maker?: string;
+    taker?: string;
+  },
+  wallet: string,
+): WSTrade | null {
+  const wk = wallet.trim().toLowerCase();
+  if (!wk) return null;
+  const maker = String(d.maker || '').toLowerCase();
+  const taker = String(d.taker || '').toLowerCase();
+  if (maker !== wk && taker !== wk) return null;
+  const tokenId = String(d.tokenId || '').trim();
+  if (!tokenId) return null;
+  const side = d.side === 'SELL' ? ('SELL' as const) : ('BUY' as const);
+  const tx = String(d.txHash || '').trim();
+  const tsRaw = Number(d.timestamp ?? Date.now());
+  const blockTime = tsRaw > 1e12 ? Math.floor(tsRaw / 1000) : Math.floor(tsRaw);
+  return {
+    id: `pending:${tx.toLowerCase()}:${normalizeClobTokenKey(tokenId)}:${side}`,
+    pending: true,
+    tokenId,
+    side,
+    size: Number(d.size ?? 0),
+    price: Number(d.price ?? 0),
+    fee: 0,
+    blockTime,
+    txHash: tx,
+    isTaker: taker === wk,
+  };
+}
+
 function prependWalletMarketTradeRow(
   prev: WSTrade[],
   trade: WSTrade,
   cap = WALLET_MARKET_TRADES_CAP,
 ): { rows: WSTrade[]; added: boolean } {
   const k = walletMarketTradeRowKey(trade);
-  if (prev.some((t) => walletMarketTradeRowKey(t) === k)) {
-    return { rows: prev, added: false };
+  const tx = (trade.txHash || '').toLowerCase();
+  let base = prev;
+  if (!trade.pending && tx) {
+    base = prev.filter((t) => !(t.pending && (t.txHash || '').toLowerCase() === tx));
+  }
+  if (base.some((t) => walletMarketTradeRowKey(t) === k)) {
+    return { rows: base, added: false };
   }
   const row = trade.id ? trade : { ...trade, id: k };
-  const rows = dedupeWalletTradesByLedgerLeg([row, ...prev], walletMarketTradeRowKey).slice(0, cap);
+  const rows = sortWalletMarketTradeRows(
+    dedupeWalletTradesByLedgerLeg([row, ...base], walletMarketTradeRowKey),
+  ).slice(0, cap);
   return { rows, added: true };
 }
 
@@ -580,6 +659,45 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       pendingTapeBatchRef.current.push(trade);
       if (tapeBatchRafRef.current != null) return;
       tapeBatchRafRef.current = requestAnimationFrame(flushTapeBatch);
+    };
+
+    const notifyPendingWalletMarketTrade = (d: {
+      tokenId?: string;
+      marketId?: string;
+      side?: string;
+      size?: number;
+      price?: number;
+      timestamp?: number;
+      txHash?: string;
+      maker?: string;
+      taker?: string;
+    }) => {
+      const tradeMarket = canonicalConditionKey(String(d.marketId || ''));
+      if (!tradeMarket || !d.tokenId) return;
+      const maker = String(d.maker || '').toLowerCase();
+      const taker = String(d.taker || '').toLowerCase();
+      const wallets = new Set<string>();
+      if (maker) wallets.add(maker);
+      if (taker) wallets.add(taker);
+      for (const w of wallets) {
+        const row = mapPendingOnchainToWSTrade(d, w);
+        if (!row) continue;
+        const k = walletMarketTradesKey(w, tradeMarket);
+        walletMarketListenersRef.current.get(k)?.forEach((l) => l.onTrade?.(row));
+        const pw = (walletRef.current || '').trim().toLowerCase();
+        const pm = marketRef.current ? canonicalConditionKey(marketRef.current) : '';
+        if (pw && pm && w === pw && pm === tradeMarket) {
+          setWalletMarketTrades((prev) => prependWalletMarketTradeRow(prev, row).rows);
+        }
+      }
+    };
+
+    const dropPendingWalletMarketForAllListeners = (txHashes: Set<string>) => {
+      if (txHashes.size === 0) return;
+      for (const listeners of walletMarketListenersRef.current.values()) {
+        listeners.forEach((l) => l.onPendingDrop?.(txHashes));
+      }
+      setWalletMarketTrades((prev) => dropPendingWalletMarketByTx(prev, txHashes));
     };
 
     const loadFromAPI = () => {
@@ -820,6 +938,9 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               pushPublicTapeBuffer(trade, marketKeyForBuf, String(d.tokenId));
             }
             scheduleTapeTrade(trade);
+            if (isPending) {
+              notifyPendingWalletMarketTrade(d);
+            }
           } else if (msg.type === 'pendingTradeDrop' && Array.isArray(msg.txHashes)) {
             const set = new Set<string>();
             for (const h of msg.txHashes as unknown[]) {
@@ -830,6 +951,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             pendingTapeBatchRef.current = pendingTapeBatchRef.current.filter(
               (x) => !(x.pending && set.has((x.txHash || '').toLowerCase())),
             );
+            dropPendingWalletMarketForAllListeners(set);
             setTrades((prev) => {
               const next = dropPendingByTx(prev, set);
               setSidebarOnchainLiveTrades(next);
@@ -890,7 +1012,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const pw = (walletRef.current || '').trim().toLowerCase();
             const pm = marketRef.current ? canonicalConditionKey(marketRef.current) : '';
             if (pw && pm && w === pw && m === pm) {
-              setWalletMarketTrades(rows);
+              setWalletMarketTrades((prev) => mergeWalletMarketSnapshotWithPending(prev, rows));
             }
             const listeners = walletMarketListenersRef.current.get(walletMarketTradesKey(w, m));
             listeners?.forEach((l) => l.onSnapshot(rows, tot));
@@ -1140,7 +1262,7 @@ export function useWalletMarketTradesWS(
     const unsub = shared.subscribeWalletMarketTrades(wallet!, marketId!, {
       onSnapshot: (rows, tot) => {
         if (cancelled) return;
-        setTrades(rows.slice(0, WALLET_MARKET_TRADES_CAP));
+        setTrades((prev) => mergeWalletMarketSnapshotWithPending(prev, rows));
         setTotal(tot);
         setLoading(false);
       },
@@ -1152,6 +1274,10 @@ export function useWalletMarketTradesWS(
           return rows;
         });
         setLoading(false);
+      },
+      onPendingDrop: (txHashes) => {
+        if (cancelled) return;
+        setTrades((prev) => dropPendingWalletMarketByTx(prev, txHashes));
       },
     });
     return () => {

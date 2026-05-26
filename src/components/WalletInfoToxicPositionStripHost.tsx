@@ -25,8 +25,8 @@ export const WalletInfoToxicPositionStripHost = memo(function WalletInfoToxicPos
     if (!raw) return null;
     const toxicMkt = String(toxicFlowData?.marketId || toxicFlowMarketId || '').trim();
     if (toxicFlowData && toxicMkt && marketConditionKeysEqual(toxicMkt, raw)) {
-      const live = findToxicFlowWalletPosition(toxicFlowData, wallet);
-      if (live) return live;
+      // Same market as live toxic-flow cohort: topHolders is authoritative (closed → row gone).
+      return findToxicFlowWalletPosition(toxicFlowData, wallet);
     }
     return (
       markets.find((row) => marketConditionKeysEqual(String(row.marketId || ''), raw)) ??

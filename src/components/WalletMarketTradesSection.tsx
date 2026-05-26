@@ -1,21 +1,15 @@
 import { memo, useEffect, useMemo, useState } from 'react';
-import { ExternalLink } from 'lucide-react';
 import type { Market } from '../types';
 import { fetchMarketOutcomeTokens } from '../api';
 import { useAppStore } from '../stores/appStore';
 import { getOnchainTradesWSShared, OnchainTradesWSBridge, useWalletMarketTradesWS } from '../hooks/useOnchainTradesWS';
 import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
+import { wsTradeToFillRow } from '../lib/walletInfoFillRows';
 import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 import { walletInfoChartMarketWithOutcomeTokens } from '../lib/walletInfoChartMarket';
-import { toxicFlowFillKey } from '../lib/tradeKeys';
 import { MarketViewTradesWalletBar } from './MarketViewTradesWalletBar';
-import { LiveWalletTradeTimeCell } from './WalletTradeTimeCell';
+import { capWalletInfoFills, WalletInfoFillRow } from './WalletInfoFillRow';
 import type { WalletPosition } from '../api';
-
-function fmtUsd2En(absVal: number): string {
-  if (!Number.isFinite(absVal)) return '—';
-  return absVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 
 export const WalletMarketTradesSection = memo(function WalletMarketTradesSection({
   open,
@@ -39,6 +33,10 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
     wallet.trim() || null,
     marketId.trim() || null,
     enabled,
+  );
+  const fillRows = useMemo(
+    () => capWalletInfoFills(fills.map((t) => wsTradeToFillRow(t, wallet.trim(), marketId.trim()))),
+    [fills, wallet, marketId],
   );
 
   useEffect(() => {
@@ -146,85 +144,24 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
               <tr>
                 <td colSpan={9} className="py-4" />
               </tr>
-            ) : fills.length === 0 ? (
+            ) : fillRows.length === 0 ? (
               <tr>
                 <td colSpan={9} className="py-8 text-center text-gray-500">
                   No trades for this wallet/market.
                 </td>
               </tr>
             ) : (
-              fills.map((f) => {
-                const sz = Number(f.size);
-                const pr = f.price;
-                const priceFinite = Number.isFinite(pr);
-                const sizeFinite = Number.isFinite(sz);
-                const priceLabel = priceFinite
-                  ? `${(pr * 100).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}¢`
-                  : '—';
-                const usdc = priceFinite && sizeFinite ? pr * sz : NaN;
-                const usdcLabel = Number.isFinite(usdc) ? `$${fmtUsd2En(usdc)}` : '—';
-                const feeN = Number(f.fee);
-                const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
-                const rawSide = String(f.outcome ?? '').trim();
-                const sideLabel = rawSide || '—';
-                const su = rawSide.toUpperCase();
-                const sideCls =
-                  su === 'YES' || su === 'Y' || su === 'UP'
-                    ? 'text-green-400'
-                    : su === 'NO' || su === 'N' || su === 'DOWN'
-                      ? 'text-red-400'
-                      : 'text-gray-300';
-                const action = String(f.side ?? '').trim();
-                const actionU = action.toUpperCase();
-                const actionCls =
-                  actionU === 'BUY'
-                    ? 'text-green-400'
-                    : actionU === 'SELL'
-                      ? 'text-red-400'
-                      : actionU === 'SPLIT' || actionU === 'MERGE'
-                        ? 'text-purple-400'
-                        : actionU === 'REDEEM'
-                          ? 'text-blue-400'
-                          : 'text-gray-300';
-                const tx = String(f.txHash || '').trim();
+              fillRows.map((f) => {
+                const rowKey = f.pending
+                  ? f.pendingId || `pending:${f.txHash}:${f.tokenId}`
+                  : `${f.txHash ?? ''}:${f.logIndex ?? ''}:${f.tokenId ?? ''}`;
                 return (
-                  <tr
-                    key={toxicFlowFillKey(tx, f.logIndex, String(f.tokenId || ''))}
-                    className="border-b border-gray-800"
-                  >
-                    <td className="py-0.5">
-                      <LiveWalletTradeTimeCell blockTime={f.blockTime} />
-                    </td>
-                    <td className={actionCls}>{action || '—'}</td>
-                    <td className={sideCls}>{sideLabel}</td>
-                    <td className="text-center text-amber-300 font-bold tabular-nums px-0">
-                      {f.isTaker === true ? 'T' : ''}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {sizeFinite
-                        ? sz.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                        : '—'}
-                    </td>
-                    <td className="text-right text-gray-300 tabular-nums">{priceLabel}</td>
-                    <td className="text-right text-yellow-400">{usdcLabel}</td>
-                    <td className="text-right text-yellow-400/80">{feeLabel}</td>
-                    <td className="text-center px-0">
-                      {tx ? (
-                        <a
-                          href={`https://polygonscan.com/tx/${tx}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex text-gray-400 hover:text-cyan-300"
-                          title={`Open tx ${tx} on Polygonscan`}
-                          aria-label="Open transaction on Polygonscan"
-                        >
-                          <ExternalLink size={12} />
-                        </a>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                  </tr>
+                  <WalletInfoFillRow
+                    key={rowKey}
+                    fill={f}
+                    wallet={wallet.trim()}
+                    market={selectedMarketForChart || market || {}}
+                  />
                 );
               })
             )}

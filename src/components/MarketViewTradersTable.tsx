@@ -1,5 +1,7 @@
-import { memo } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
+import { X } from 'lucide-react';
 import type { WalletPosition } from '../api';
+import { getToxicWalletTag, TOXIC_WALLET_TAGS_CHANGED_EVENT } from '../lib/toxicWalletTags';
 import { ToxicFlowWalletTable } from './ToxicFlowWalletTable';
 
 export const TRADERS_PAGE_SIZE = 100;
@@ -11,6 +13,7 @@ export const MarketViewTradersTable = memo(function MarketViewTradersTable({
   traders,
   loading,
   selectedWallet,
+  marketId,
   onRowClick,
   onOpenWallet,
   offset,
@@ -25,6 +28,7 @@ export const MarketViewTradersTable = memo(function MarketViewTradersTable({
   traders: WalletPosition[];
   loading: boolean;
   selectedWallet: string | null;
+  marketId: string;
   onRowClick: (wallet: string) => void;
   onOpenWallet: (wallet: string) => void;
   offset: number;
@@ -36,6 +40,34 @@ export const MarketViewTradersTable = memo(function MarketViewTradersTable({
   onNextPage: () => void;
   onLastPage: () => void;
 }) {
+  const [search, setSearch] = useState('');
+  const [tagRev, setTagRev] = useState(0);
+
+  useEffect(() => {
+    setSearch('');
+  }, [marketId]);
+
+  useEffect(() => {
+    const onTags = () => setTagRev((n) => n + 1);
+    window.addEventListener(TOXIC_WALLET_TAGS_CHANGED_EVENT, onTags);
+    return () => window.removeEventListener(TOXIC_WALLET_TAGS_CHANGED_EVENT, onTags);
+  }, []);
+
+  const filteredTraders = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return traders;
+    void tagRev;
+    return traders.filter((t) => {
+      const wallet = (t.wallet || '').trim().toLowerCase();
+      if (wallet.includes(q)) return true;
+      const nick = (t.walletLedgerSummary?.polymarketNickname ?? '').trim().toLowerCase();
+      if (nick && nick.includes(q)) return true;
+      const tag = getToxicWalletTag(t.wallet || '');
+      if (tag && tag.toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }, [traders, search, tagRev]);
+
   if (loading && traders.length === 0) {
     return <div className="flex flex-1 min-h-0" />;
   }
@@ -55,19 +87,47 @@ export const MarketViewTradersTable = memo(function MarketViewTradersTable({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <ToxicFlowWalletTable
-        wallets={traders}
-        label="traders"
-        hideStakeBar
-        showRank
-        rankStart={offset}
-        pnlSortOrder={pnlOrder}
-        onPnlSortClick={onPnlOrderToggle}
-        selectedWallet={selectedWallet}
-        onRowClick={onRowClick}
-        onOpenWallet={onOpenWallet}
-        variant="marketView"
-      />
+      <div className="relative mb-1.5 shrink-0">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search wallet, nickname, tag…"
+          className="w-full rounded border border-gray-600 bg-gray-950 pl-2 pr-7 py-1 text-[11px] text-white placeholder:text-gray-500 focus:outline-none focus:border-gray-500"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {search.trim() ? (
+          <button
+            type="button"
+            className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-500 hover:text-white hover:bg-gray-700/80"
+            title="Clear search"
+            aria-label="Clear search"
+            onClick={() => setSearch('')}
+          >
+            <X size={12} />
+          </button>
+        ) : null}
+      </div>
+      {filteredTraders.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center text-gray-500 text-[10px] px-2 text-center">
+          No matches for &ldquo;{search.trim()}&rdquo;
+        </div>
+      ) : (
+        <ToxicFlowWalletTable
+          wallets={filteredTraders}
+          label="traders"
+          hideStakeBar
+          showRank
+          rankStart={offset}
+          pnlSortOrder={pnlOrder}
+          onPnlSortClick={onPnlOrderToggle}
+          selectedWallet={selectedWallet}
+          onRowClick={onRowClick}
+          onOpenWallet={onOpenWallet}
+          variant="marketView"
+        />
+      )}
       <div className="mt-2 shrink-0 flex items-center justify-between gap-2 border-t border-gray-800 pt-2">
         <div className="flex items-center gap-1">
           <button type="button" className={PAGE_BTN_CLS} disabled={!hasFirst || loading} onClick={onFirstPage}>

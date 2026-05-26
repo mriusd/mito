@@ -72,6 +72,7 @@ export function mergeWalletInfoPendingTrades(
   const pendingByTx = new Map<string, WSTrade>();
 
   const addPending = (p: WSTrade) => {
+    if (p.priceApproximate === true) return;
     const tx = (p.txHash || '').toLowerCase();
     if (!tx || confirmedTxs.has(tx)) return;
     pendingByTx.set(tx, p);
@@ -82,6 +83,7 @@ export function mergeWalletInfoPendingTrades(
     if (r.pending) addPending(r);
   }
   for (const t of filterTapePendingForWalletMarket(tape, wallet, market)) {
+    if (t.priceApproximate === true) continue;
     const row = liveTradePendingToWSTrade(t, wallet);
     if (row) addPending(row);
   }

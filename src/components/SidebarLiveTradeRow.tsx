@@ -18,7 +18,6 @@ export const LiveTradeRow = memo(function LiveTradeRow({
   fallbackIndex: number;
 }) {
   const tradeTickBucket = useLiveTradeElapsedMs();
-  const priceApprox = t.priceApproximate === true;
   const tp = (parseFloat(t.price) * 100).toFixed(1);
   const isBuy = t.side === 'BUY';
   const makerLower = (t.maker || '').toLowerCase();
@@ -56,7 +55,7 @@ export const LiveTradeRow = memo(function LiveTradeRow({
     >
       <span className={`block min-w-0 ${isBuy ? 'text-green-400' : 'text-red-400'}`}>
         <span className="inline-flex items-center gap-1">
-          {priceApprox ? '–' : `${tp}¢`}
+          {tp}¢
           {isMine && (
             <span className="inline-flex items-center rounded bg-blue-500/30 px-1 py-[1px] text-[8px] font-bold leading-none text-blue-200">
               ME
@@ -87,7 +86,7 @@ export const LiveTradeRow = memo(function LiveTradeRow({
         {isBuy ? 'Buy' : 'Sell'}
       </span>
       <span className="text-right text-gray-400">{parseFloat(t.size).toFixed(0)}</span>
-      <span className="text-right text-gray-400">{priceApprox ? '–' : Number.isFinite(usdValue) ? usdValue.toLocaleString('en-US') : '–'}</span>
+      <span className="text-right text-gray-400">{Number.isFinite(usdValue) ? usdValue.toLocaleString('en-US') : '–'}</span>
       <span className="text-right text-gray-500">{isPending ? '...' : agoStr}</span>
     </div>
   );

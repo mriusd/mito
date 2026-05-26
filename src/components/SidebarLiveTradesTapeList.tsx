@@ -25,8 +25,9 @@ export const SidebarLiveTradesTapeList = memo(function SidebarLiveTradesTapeList
   const onchainTape = useSidebarOnchainLiveTrades();
   const displayLiveTrades = useMemo(() => {
     const raw = liveTradesSource === 'onchain' ? onchainTape : polymarketTape;
-    if (!selectedTokenId) return raw;
-    return raw.map((t) => normalizeLiveTradeToSelectedToken(t, selectedTokenId, oppositeTokenId));
+    const filtered = raw.filter((t) => t.priceApproximate !== true);
+    if (!selectedTokenId) return filtered;
+    return filtered.map((t) => normalizeLiveTradeToSelectedToken(t, selectedTokenId, oppositeTokenId));
   }, [liveTradesSource, onchainTape, polymarketTape, selectedTokenId, oppositeTokenId]);
   const visibleTrades = displayLiveTrades.length > 150 ? displayLiveTrades.slice(0, 150) : displayLiveTrades;
 

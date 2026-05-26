@@ -1,15 +1,21 @@
-import { memo, useCallback, useEffect, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type { OnchainFillRow } from '../api';
 import type { Market } from '../types';
 import { useAppStore } from '../stores/appStore';
 import {
   getOnchainTradesWSShared,
+  getWalletMarketPendingStoreRevision,
+  getWalletMarketPendingTrades,
   OnchainTradesWSBridge,
+  subscribeWalletMarketPendingStore,
   useWalletMarketTradesWS,
 } from '../hooks/useOnchainTradesWS';
 import { exportWalletFillsCsv } from '../lib/walletInfoCsvExport';
+import { mergeWalletInfoPendingTrades } from '../lib/walletInfoPendingTrades';
+import { useSidebarOnchainLiveTrades } from '../lib/sidebarOnchainTradesStore';
 import { fmtIntEn, wsTradeToFillRow } from '../lib/walletInfoFillRows';
-import { capWalletInfoFills, WalletInfoFillRow } from './WalletInfoFillRow';
+import { capWalletInfoFills } from './WalletInfoFillRow';
+import { WalletInfoFillsVirtualTable } from './WalletInfoFillsVirtualTable';
 
 export const WalletInfoPanelFillsTable = memo(function WalletInfoPanelFillsTable({
   open,
@@ -35,12 +41,28 @@ export const WalletInfoPanelFillsTable = memo(function WalletInfoPanelFillsTable
     loading: loadingFills,
     refresh: refreshMarketTradesWS,
   } = useWalletMarketTradesWS(wallet, selectedMarketId, enabled);
-  const fills = useMemo(() => {
-    const rows = showPendingTrades ? wsMarketTrades : wsMarketTrades.filter((t) => !t.pending);
-    return rows.map((t) => wsTradeToFillRow(t, wallet, selectedMarketId));
-  }, [wsMarketTrades, wallet, selectedMarketId, showPendingTrades]);
-  const visibleFills = useMemo(() => capWalletInfoFills(fills), [fills]);
+  const pendingStoreRev = useSyncExternalStore(
+    subscribeWalletMarketPendingStore,
+    getWalletMarketPendingStoreRevision,
+    getWalletMarketPendingStoreRevision,
+  );
+  const onchainTape = useSidebarOnchainLiveTrades();
   const defaultMarket = marketById[selectedMarketId];
+  const scopePending = useMemo(
+    () => getWalletMarketPendingTrades(wallet, selectedMarketId),
+    [wallet, selectedMarketId, pendingStoreRev],
+  );
+  const pendingCountRef = useRef(0);
+  const fills = useMemo(() => {
+    const rows = showPendingTrades
+      ? mergeWalletInfoPendingTrades(wsMarketTrades, onchainTape, scopePending, wallet, defaultMarket)
+      : wsMarketTrades.filter((t) => !t.pending);
+    return rows.map((t) => wsTradeToFillRow(t, wallet, selectedMarketId));
+  }, [wsMarketTrades, onchainTape, scopePending, wallet, selectedMarketId, showPendingTrades, defaultMarket]);
+  const pendingCount = useMemo(() => fills.filter((f) => f.pending).length, [fills]);
+  const visibleFills = useMemo(() => capWalletInfoFills(fills), [fills]);
+  const scrollBump = pendingCount > pendingCountRef.current ? pendingCount : 0;
+  pendingCountRef.current = pendingCount;
 
   useEffect(() => {
     onLoadingFillsChange?.(enabled && loadingFills);
@@ -71,59 +93,15 @@ export const WalletInfoPanelFillsTable = memo(function WalletInfoPanelFillsTable
         </button>
       </div>
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
-        <div className="flex-1 min-h-0 overflow-auto">
-          <table className="w-full text-[10px] [&_th]:px-2.5 [&_td]:px-2.5 [&_th]:py-1 [&_td]:py-1">
-            <thead>
-              <tr className="text-gray-500">
-                <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-left">Time</th>
-                <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-left">Action</th>
-                <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-left">Side</th>
-                <th
-                  className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-center w-6 px-0"
-                  title="Taker (wallet_fill_ledger.is_taker)"
-                >
-                  T
-                </th>
-                <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-right">Shares</th>
-                <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-right">Price</th>
-                <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-right">USDC</th>
-                <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-right">Fee</th>
-                <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700 text-center w-6 px-0" aria-label="Transaction" />
-              </tr>
-            </thead>
-            <tbody>
-              {loadingFills && fills.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-8 text-center text-gray-500">
-                    Loading trades...
-                  </td>
-                </tr>
-              ) : visibleFills.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-8 text-center text-gray-500">
-                    No trades for this wallet/market.
-                  </td>
-                </tr>
-              ) : (
-                visibleFills.map((f) => {
-                  const mid = String(f.marketId || '').trim().toLowerCase();
-                  const market = defaultMarket || (mid && marketById[mid]) || {};
-                  const rowKey = f.pending
-                    ? f.pendingId || `pending:${f.txHash}:${f.tokenId}`
-                    : `${f.txHash ?? ''}:${f.logIndex ?? ''}:${f.tokenId ?? ''}`;
-                  return (
-                    <WalletInfoFillRow
-                      key={rowKey}
-                      fill={f}
-                      wallet={wallet}
-                      market={market}
-                    />
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        <WalletInfoFillsVirtualTable
+          fills={visibleFills}
+          wallet={wallet}
+          marketById={marketById}
+          defaultMarket={defaultMarket}
+          loading={loadingFills && fills.length === 0}
+          empty={!loadingFills && visibleFills.length === 0}
+          scrollResetKey={`${wallet}:${selectedMarketId}:${scrollBump}`}
+        />
         <div className="mt-2 text-[10px] text-gray-400 shrink-0 pt-1 border-t border-gray-800">
           <span>{fmtIntEn(visibleFills.length)} shown (live WS)</span>
         </div>

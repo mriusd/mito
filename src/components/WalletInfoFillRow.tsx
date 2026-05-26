@@ -17,6 +17,11 @@ export function capWalletInfoFills(fills: OnchainFillRow[]): OnchainFillRow[] {
   return fills.length > FILL_ROW_CAP ? fills.slice(0, FILL_ROW_CAP) : fills;
 }
 
+export function walletInfoFillRowKey(f: OnchainFillRow): string {
+  if (f.pending) return f.pendingId || `pending:${f.txHash}:${f.tokenId}`;
+  return `${f.txHash ?? ''}:${f.logIndex ?? ''}:${f.tokenId ?? ''}`;
+}
+
 export const WalletInfoFillRow = memo(function WalletInfoFillRow({
   fill: f,
   wallet,

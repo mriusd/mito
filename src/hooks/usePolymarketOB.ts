@@ -19,6 +19,8 @@ export interface LiveTrade {
   logIndex?: number;
   maker?: string;
   taker?: string;
+  /** Ledger wallet on pending mempool overlays. */
+  wallet?: string;
   /** Outcome CLOB token this fill traded (on-chain tape). */
   tokenId?: string;
   /** Mempool overlay (not yet mined). UI may render distinctly; row is replaced on confirm. */

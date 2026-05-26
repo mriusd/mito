@@ -13,7 +13,8 @@ export const WalletInfoPanelOrdersList = memo(function WalletInfoPanelOrdersList
   selectedMarketId: string;
   marketById: Record<string, Market>;
 }) {
-  if (orders.length === 0) {
+  const openOrders = orders.filter((o) => o.remainingShares > 0);
+  if (openOrders.length === 0) {
     return null;
   }
   const market = marketById[selectedMarketId] || {};
@@ -33,7 +34,7 @@ export const WalletInfoPanelOrdersList = memo(function WalletInfoPanelOrdersList
             </tr>
           </thead>
           <tbody>
-            {orders.map((o) => {
+            {openOrders.map((o) => {
               const sideCls = o.side === 'BUY' ? 'text-green-400' : 'text-red-400';
               const fakeFill: OnchainFillRow = {
                 txHash: '',

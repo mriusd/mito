@@ -1,4 +1,5 @@
 import { memo, useMemo } from 'react';
+import { canonicalConditionKey } from '../hooks/useOnchainTradesWS';
 import { resolveWalletInfoChartMarket } from '../lib/walletInfoChartMarket';
 import type { Market } from '../types';
 import type { WalletPosition } from '../api';
@@ -14,6 +15,7 @@ export const WalletInfoPanelTradesColumn = memo(function WalletInfoPanelTradesCo
   markets,
   toxicFlowMarketId,
   fillsRefreshToken,
+  variant = 'modal',
   onLoadingFillsChange,
 }: {
   open: boolean;
@@ -23,8 +25,16 @@ export const WalletInfoPanelTradesColumn = memo(function WalletInfoPanelTradesCo
   markets: WalletPosition[];
   toxicFlowMarketId: string;
   fillsRefreshToken: number;
+  variant?: 'inline' | 'modal';
   onLoadingFillsChange?: (loading: boolean) => void;
 }) {
+  const showPendingTrades = useMemo(() => {
+    if (variant !== 'inline') return false;
+    const sel = canonicalConditionKey(selectedMarketId);
+    const sidebar = canonicalConditionKey(toxicFlowMarketId);
+    return !!sel && !!sidebar && sel === sidebar;
+  }, [variant, selectedMarketId, toxicFlowMarketId]);
+
   const selectedMarketMeta = useMemo(
     () => resolveWalletInfoChartMarket(selectedMarketId, marketById, markets),
     [selectedMarketId, marketById, markets],
@@ -55,6 +65,7 @@ export const WalletInfoPanelTradesColumn = memo(function WalletInfoPanelTradesCo
         selectedMarketId={selectedMarketId}
         marketById={marketById}
         fillsRefreshToken={fillsRefreshToken}
+        showPendingTrades={showPendingTrades}
         onLoadingFillsChange={onLoadingFillsChange}
       />
     </>

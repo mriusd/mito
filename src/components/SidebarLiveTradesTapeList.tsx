@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo } from 'react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { onchainFillKey, polymarketTradeKey } from '../lib/tradeKeys';
 import { resetLiveTradeElapsedBucket } from '../lib/liveTradeElapsedStore';
+import { normalizeLiveTradeToSelectedToken } from '../lib/liveTradeOutcomeNormalize';
 import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import { useSidebarOnchainLiveTrades } from '../lib/sidebarOnchainTradesStore';
 import { LiveTradeRow } from './SidebarLiveTradeRow';
@@ -12,16 +13,21 @@ const LIVE_TRADES_GRID =
 export const SidebarLiveTradesTapeList = memo(function SidebarLiveTradesTapeList({
   liveTradesSource,
   myOnchainWalletLower,
+  selectedTokenId,
+  oppositeTokenId,
 }: {
   liveTradesSource: string;
   myOnchainWalletLower: string;
+  selectedTokenId: string | null;
+  oppositeTokenId: string | null;
 }) {
   const polymarketTape = useSidebarPolymarketTape();
   const onchainTape = useSidebarOnchainLiveTrades();
-  const displayLiveTrades = useMemo(
-    () => (liveTradesSource === 'onchain' ? onchainTape : polymarketTape),
-    [liveTradesSource, onchainTape, polymarketTape],
-  );
+  const displayLiveTrades = useMemo(() => {
+    const raw = liveTradesSource === 'onchain' ? onchainTape : polymarketTape;
+    if (!selectedTokenId) return raw;
+    return raw.map((t) => normalizeLiveTradeToSelectedToken(t, selectedTokenId, oppositeTokenId));
+  }, [liveTradesSource, onchainTape, polymarketTape, selectedTokenId, oppositeTokenId]);
   const visibleTrades = displayLiveTrades.length > 150 ? displayLiveTrades.slice(0, 150) : displayLiveTrades;
 
   useEffect(() => {

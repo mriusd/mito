@@ -1342,6 +1342,14 @@ export const Sidebar = memo(function Sidebar() {
     if (liveTradesSource !== 'onchain' || !selectedMarket?.clobTokenIds?.length) return null;
     return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 0 : 1] || null;
   }, [liveTradesSource, selectedMarket, orderOutcome]);
+  const liveTradesSelectedTokenId = useMemo(() => {
+    if (!selectedMarket?.clobTokenIds?.length) return null;
+    return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 0 : 1] || null;
+  }, [selectedMarket, orderOutcome]);
+  const liveTradesOppositeTokenId = useMemo(() => {
+    if (!selectedMarket?.clobTokenIds?.length) return null;
+    return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 1 : 0] || null;
+  }, [selectedMarket, orderOutcome]);
 
   const [proxyWallet, setProxyWallet] = useState<string | null>(null);
   const pkAddress = useAppStore((s) => s.pkAddress);
@@ -3661,6 +3669,8 @@ export const Sidebar = memo(function Sidebar() {
             liveOrderbookExpanded={liveOrderbookExpanded}
             liveTradesSource={liveTradesSource}
             myOnchainWalletLower={myOnchainWalletLower}
+            selectedTokenId={liveTradesSelectedTokenId}
+            oppositeTokenId={liveTradesOppositeTokenId}
           />
 
           {/* Order Form */}

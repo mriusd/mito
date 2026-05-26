@@ -12,6 +12,8 @@ export type SidebarLiveTradesSectionProps = {
   liveOrderbookExpanded: boolean;
   liveTradesSource: string;
   myOnchainWalletLower: string;
+  selectedTokenId: string | null;
+  oppositeTokenId: string | null;
 };
 
 function liveTradesSectionInner(props: SidebarLiveTradesSectionProps) {
@@ -22,6 +24,8 @@ function liveTradesSectionInner(props: SidebarLiveTradesSectionProps) {
     liveOrderbookExpanded,
     liveTradesSource,
     myOnchainWalletLower,
+    selectedTokenId,
+    oppositeTokenId,
   } = props;
 
   return (
@@ -55,6 +59,8 @@ function liveTradesSectionInner(props: SidebarLiveTradesSectionProps) {
         <SidebarLiveTradesTapeList
           liveTradesSource={liveTradesSource}
           myOnchainWalletLower={myOnchainWalletLower}
+          selectedTokenId={selectedTokenId}
+          oppositeTokenId={oppositeTokenId}
         />
       ) : null}
     </div>

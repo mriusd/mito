@@ -17,6 +17,7 @@ export const WalletInfoPanelFillsTable = memo(function WalletInfoPanelFillsTable
   selectedMarketId,
   marketById,
   fillsRefreshToken,
+  showPendingTrades = false,
   onLoadingFillsChange,
 }: {
   open: boolean;
@@ -24,6 +25,7 @@ export const WalletInfoPanelFillsTable = memo(function WalletInfoPanelFillsTable
   selectedMarketId: string;
   marketById: Record<string, Market>;
   fillsRefreshToken: number;
+  showPendingTrades?: boolean;
   onLoadingFillsChange?: (loading: boolean) => void;
 }) {
   const enabled = open && !!wallet && !!selectedMarketId.trim();
@@ -33,10 +35,10 @@ export const WalletInfoPanelFillsTable = memo(function WalletInfoPanelFillsTable
     loading: loadingFills,
     refresh: refreshMarketTradesWS,
   } = useWalletMarketTradesWS(wallet, selectedMarketId, enabled);
-  const fills = useMemo(
-    () => wsMarketTrades.map((t) => wsTradeToFillRow(t, wallet, selectedMarketId)),
-    [wsMarketTrades, wallet, selectedMarketId],
-  );
+  const fills = useMemo(() => {
+    const rows = showPendingTrades ? wsMarketTrades : wsMarketTrades.filter((t) => !t.pending);
+    return rows.map((t) => wsTradeToFillRow(t, wallet, selectedMarketId));
+  }, [wsMarketTrades, wallet, selectedMarketId, showPendingTrades]);
   const visibleFills = useMemo(() => capWalletInfoFills(fills), [fills]);
   const defaultMarket = marketById[selectedMarketId];
 

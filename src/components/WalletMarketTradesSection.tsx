@@ -35,7 +35,12 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
     enabled,
   );
   const fillRows = useMemo(
-    () => capWalletInfoFills(fills.map((t) => wsTradeToFillRow(t, wallet.trim(), marketId.trim()))),
+    () =>
+      capWalletInfoFills(
+        fills
+          .filter((t) => !t.pending)
+          .map((t) => wsTradeToFillRow(t, wallet.trim(), marketId.trim())),
+      ),
     [fills, wallet, marketId],
   );
 

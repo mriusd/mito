@@ -41,11 +41,9 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
     const usdcLabel = Number.isFinite(usdc) ? `$${fmtUsd2En(usdc)}` : '—';
     const feeN = Number(f.fee);
     const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
-    const rawSide = String(f.side ?? '').trim();
-    const sideLabel = rawSide || '—';
-    const su = rawSide.toUpperCase();
+    const { text: sideLabel, tone: sideTone } = fillOutcomeDisplay(f, market as Market);
     const sideCls =
-      su === 'YES' || su === 'Y' ? 'text-green-400' : su === 'NO' || su === 'N' ? 'text-red-400' : 'text-gray-300';
+      sideTone === 'yes' ? 'text-green-400' : sideTone === 'no' ? 'text-red-400' : 'text-gray-300';
     const action = String(f.action ?? '').trim();
     const actionU = action.toUpperCase();
     const actionCls =

@@ -1124,6 +1124,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
               markets={markets}
               toxicFlowMarketId={toxicFlowMarketId}
               fillsRefreshToken={fillsRefreshToken}
+              variant={variant}
               onLoadingFillsChange={onLoadingFillsChange}
             />
           </div>

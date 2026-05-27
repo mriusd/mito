@@ -106,14 +106,16 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
     }
 
     let whalePassesPriceGate = false;
-    for (const w of toxicTabViews.whales) {
-      if (toxicRowWalletIsXMarked(w, toxicXSet)) continue;
-      if (notifyWhaleIgnoreNegativePnl && toxicRowLedgerLifetimePnlNegative(w)) continue;
-      const pc = dominantStakedLegAvgPriceCents(w);
-      if (pc == null || !Number.isFinite(pc)) continue;
-      if (pc < notifyWhaleMaxPriceCents) {
-        whalePassesPriceGate = true;
-        break;
+    if (notifyTiltAppliesToSelectedMarket) {
+      for (const w of toxicTabViews.whales) {
+        if (toxicRowWalletIsXMarked(w, toxicXSet)) continue;
+        if (notifyWhaleIgnoreNegativePnl && toxicRowLedgerLifetimePnlNegative(w)) continue;
+        const pc = dominantStakedLegAvgPriceCents(w);
+        if (pc == null || !Number.isFinite(pc)) continue;
+        if (pc < notifyWhaleMaxPriceCents) {
+          whalePassesPriceGate = true;
+          break;
+        }
       }
     }
 

@@ -10,7 +10,7 @@ function fmtUsdWhole(absVal: number): string {
   return Math.round(absVal).toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
-export type StakedLegBarMode = 'grossLegTotals' | 'cohortSurplusHalves';
+export type StakedLegBarMode = 'grossLegTotals' | 'cohortSurplusHalves' | 'yesBookDepth';
 
 export function StakedLegUsdBar({
   sumYUsd,
@@ -68,10 +68,14 @@ export function StakedLegUsdBar({
   const flashY = !neutralBar && flashExtremeTilt && Number.isFinite(lean) && lean >= flashFrac;
   const flashN = !neutralBar && flashExtremeTilt && Number.isFinite(lean) && lean <= -flashFrac;
   const tip = neutralBar
-    ? barMode === 'grossLegTotals'
+    ? barMode === 'yesBookDepth'
+      ? 'No YES book depth to chart'
+      : barMode === 'grossLegTotals'
       ? 'No gross leg totals to chart'
       : 'No cohort staked-net split to chart'
-    : barMode === 'grossLegTotals'
+    : barMode === 'yesBookDepth'
+      ? `YES bids ${pctY.toFixed(1)}% ($${fmtUsd(sumYUsd)}) · YES asks ${pctN.toFixed(1)}% ($${fmtUsd(sumNUsd)}) · 5–95¢`
+      : barMode === 'grossLegTotals'
       ? `YES leg ${pctY.toFixed(1)}% ($${fmtUsd(sumYUsd)}) · NO leg ${pctN.toFixed(1)}% ($${fmtUsd(sumNUsd)}) · Σ legs $${fmtUsd(displayTotal)} · Staked pill |ΣY−ΣN| $${fmtUsd(netAbs)}`
       : `Splits per wallet inv×px: Σ max(0, signed net) greenside + Σ max(0, −signed) redside equals Σ|net| for this cohort only ($${fmtUsd(displayTotal)}). Header Staked is ‖Σ ‖Y-leg‖ − Σ ‖N-leg‖‖ over all wallets—different pooling; neither caps the other.`;
 

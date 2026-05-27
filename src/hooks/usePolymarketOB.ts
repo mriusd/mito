@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { API_BASE } from '../lib/env';
+import { obBookSideUsdTotal } from '../lib/orderbookBookImbalance';
 import { polymarketTradeKey } from '../lib/tradeKeys';
 
 interface OBLevel {
@@ -54,10 +55,29 @@ function cancelRaf(slot: { current: number | null }): void {
 const MAX_BOOK_LEVELS = 500;
 const MAX_TRADES = 30;
 
+function trimAskSideNearTouch(map: Map<string, string>, cap: number) {
+  if (map.size <= cap) return;
+  const sorted = Array.from(map.entries()).sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]));
+  const best = parseFloat(sorted[0]?.[0] ?? '0');
+  if (!Number.isFinite(best)) return;
+  const floor = Math.max(0.05, best - 0.01);
+  let kept = sorted.filter(([price]) => {
+    const p = parseFloat(price);
+    return Number.isFinite(p) && p >= floor;
+  });
+  if (kept.length > cap) kept = kept.slice(0, cap);
+  map.clear();
+  for (const [price, size] of kept) map.set(price, size);
+}
+
 function trimBookSide(map: Map<string, string>, cap: number, bidSide: boolean) {
   if (map.size <= cap) return;
+  if (!bidSide) {
+    trimAskSideNearTouch(map, cap);
+    return;
+  }
   const kept = Array.from(map.entries())
-    .sort((a, b) => (bidSide ? parseFloat(b[0]) - parseFloat(a[0]) : parseFloat(a[0]) - parseFloat(b[0])))
+    .sort((a, b) => parseFloat(b[0]) - parseFloat(a[0]))
     .slice(0, cap);
   map.clear();
   for (const [price, size] of kept) map.set(price, size);
@@ -68,7 +88,11 @@ function trimBookMaps(bids: Map<string, string>, asks: Map<string, string>) {
   trimBookSide(asks, MAX_BOOK_LEVELS, false);
 }
 
-function sortedBook(bids: Map<string, string>, asks: Map<string, string>, limit: number): BookState {
+function sortedBook(
+  bids: Map<string, string>,
+  asks: Map<string, string>,
+  limit: number,
+): BookState & { bidUsdTotal: number; askUsdTotal: number } {
   const capped = Number.isFinite(limit) && limit > 0 ? limit : 15;
   const sortedBids = Array.from(bids.entries())
     .map(([price, size]) => ({ price, size }))
@@ -78,11 +102,27 @@ function sortedBook(bids: Map<string, string>, asks: Map<string, string>, limit:
     .map(([price, size]) => ({ price, size }))
     .sort((a, b) => parseFloat(a.price) - parseFloat(b.price))
     .slice(0, capped);
-  return { bids: sortedBids, asks: sortedAsks };
+  return {
+    bids: sortedBids,
+    asks: sortedAsks,
+    bidUsdTotal: obBookSideUsdTotal(sortedBids),
+    askUsdTotal: obBookSideUsdTotal(sortedAsks),
+  };
+}
+
+function fullBookUsdTotals(bids: Map<string, string>, asks: Map<string, string>) {
+  const allBids = Array.from(bids.entries()).map(([price, size]) => ({ price, size }));
+  const allAsks = Array.from(asks.entries()).map(([price, size]) => ({ price, size }));
+  return {
+    bidUsdTotal: obBookSideUsdTotal(allBids),
+    askUsdTotal: obBookSideUsdTotal(allAsks),
+  };
 }
 
 export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
   const [book, setBook] = useState<BookState>({ bids: [], asks: [] });
+  const [bidUsdTotal, setBidUsdTotal] = useState(0);
+  const [askUsdTotal, setAskUsdTotal] = useState(0);
   const [trades, setTrades] = useState<LiveTrade[]>([]);
   const [loading, setLoading] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -104,6 +144,16 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
     localAsksRef.current = new Map();
     localTradesRef.current = [];
     snapshotLoaded.current = false;
+    setBidUsdTotal(0);
+    setAskUsdTotal(0);
+  }, []);
+
+  const publishBook = useCallback((limit: number) => {
+    const next = sortedBook(localBidsRef.current, localAsksRef.current, limit);
+    const totals = fullBookUsdTotals(localBidsRef.current, localAsksRef.current);
+    setBook({ bids: next.bids, asks: next.asks });
+    setBidUsdTotal(totals.bidUsdTotal);
+    setAskUsdTotal(totals.askUsdTotal);
   }, []);
 
   const cleanup = useCallback(() => {
@@ -221,7 +271,7 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
             snapshotLoaded.current = true;
             setLoading(false);
             cancelRaf(bookRafSlot);
-            setBook(sortedBook(localBidsRef.current, localAsksRef.current, bookLimitRef.current));
+            publishBook(bookLimitRef.current);
             break;
           }
 
@@ -242,7 +292,7 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
             if (changed) {
               trimBookMaps(localBidsRef.current, localAsksRef.current);
               scheduleRaf(() => {
-                setBook(sortedBook(localBidsRef.current, localAsksRef.current, bookLimitRef.current));
+                publishBook(bookLimitRef.current);
               }, bookRafSlot);
             }
             break;
@@ -277,7 +327,7 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
         reconnectTimer.current = setTimeout(connect, 2000);
       }
     };
-  }, [cleanup, resetLocalBook]);
+  }, [cleanup, resetLocalBook, publishBook]);
 
   useEffect(() => {
     tokenIdRef.current = tokenId;
@@ -290,6 +340,8 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
       cancelRaf(tradesRafSlot);
       setBook({ bids: [], asks: [] });
       setTrades([]);
+      setBidUsdTotal(0);
+      setAskUsdTotal(0);
       return;
     }
 
@@ -307,8 +359,8 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
     bookLimitRef.current = bookLimit;
     if (!tokenId || !snapshotLoaded.current) return;
     cancelRaf(bookRafSlot);
-    setBook(sortedBook(localBidsRef.current, localAsksRef.current, bookLimit));
-  }, [tokenId, bookLimit]);
+    publishBook(bookLimit);
+  }, [tokenId, bookLimit, publishBook]);
 
-  return { bids: book.bids, asks: book.asks, trades, loading };
+  return { bids: book.bids, asks: book.asks, trades, loading, bidUsdTotal, askUsdTotal };
 }

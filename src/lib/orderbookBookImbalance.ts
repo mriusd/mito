@@ -7,29 +7,39 @@ function obLevelUsd(level: OBLevel): number {
   return size * price;
 }
 
-/** Sum USD depth on one book side, 5–95¢ only. */
-export function obBookSideUsdTotal(levels: OBLevel[]): number {
-  return levels.reduce((s, l) => {
-    const pCents = parseFloat(l.price) * 100;
-    if (!Number.isFinite(pCents) || pCents < 5 || pCents > 95) return s;
-    return s + obLevelUsd(l);
-  }, 0);
+export function obPriceCents(priceStr: string): number {
+  const p = parseFloat(priceStr);
+  return Number.isFinite(p) ? Math.round(p * 100) : NaN;
 }
 
-/** Long = YES bids + NO asks; short = NO bids + YES asks (5–95¢). */
-export function orderbookLongShortDepth(
+export function obPriceCentsInBand(priceStr: string): boolean {
+  const pCents = obPriceCents(priceStr);
+  return Number.isFinite(pCents) && pCents >= 5 && pCents <= 95;
+}
+
+/** USD for one raw level; 0 outside 5–95¢. */
+export function obLevelBandUsd(level: OBLevel): number {
+  if (!obPriceCentsInBand(level.price)) return 0;
+  return obLevelUsd(level);
+}
+
+/** Sum USD depth on one book side, 5–95¢ only. */
+export function obBookSideUsdTotal(levels: OBLevel[]): number {
+  return levels.reduce((s, l) => s + obLevelBandUsd(l), 0);
+}
+
+/** YES book bid vs ask USD depth (5–95¢). */
+export function orderbookYesBookDepth(
   yesBids: OBLevel[],
   yesAsks: OBLevel[],
-  noBids: OBLevel[],
-  noAsks: OBLevel[],
-): { longUsd: number; shortUsd: number; imbalance: number } {
-  const longUsd = obBookSideUsdTotal(yesBids) + obBookSideUsdTotal(noAsks);
-  const shortUsd = obBookSideUsdTotal(noBids) + obBookSideUsdTotal(yesAsks);
-  const bookDenom = longUsd + shortUsd;
+): { yesBidUsd: number; yesAskUsd: number; imbalance: number } {
+  const yesBidUsd = obBookSideUsdTotal(yesBids);
+  const yesAskUsd = obBookSideUsdTotal(yesAsks);
+  const bookDenom = yesBidUsd + yesAskUsd;
   return {
-    longUsd,
-    shortUsd,
-    imbalance: bookDenom > 0 ? (longUsd - shortUsd) / bookDenom : 0,
+    yesBidUsd,
+    yesAskUsd,
+    imbalance: bookDenom > 0 ? (yesBidUsd - yesAskUsd) / bookDenom : 0,
   };
 }
 

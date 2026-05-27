@@ -3537,7 +3537,6 @@ export const Sidebar = memo(function Sidebar() {
             <div className="mt-1 w-full min-w-0">
               <SidebarToxicStrips
                 toxicFlowMarketId={toxicFlowMarketId}
-                sidebarStakedLegs={sidebarStakedLegs}
                 notifyTiltAppliesToSelectedMarket={notifyTiltAppliesToSelectedMarket}
                 notifyWhaleAmountUsd={notifyWhaleAmountUsd}
                 notifyWhaleMaxPriceCents={notifyWhaleMaxPriceCents}
@@ -3897,13 +3896,13 @@ export const Sidebar = memo(function Sidebar() {
               signingMode === 'privateKey' ? (
                 <div className="w-full py-2 text-center text-xs text-gray-400">Import PK in header</div>
               ) : (
-                <button
+              <button
                   type="button"
-                  onClick={() => appKit.open()}
-                  className="w-full py-2 rounded-lg font-bold text-sm transition bg-blue-600 hover:bg-blue-700"
-                >
-                  Connect Wallet
-                </button>
+                onClick={() => appKit.open()}
+                className="w-full py-2 rounded-lg font-bold text-sm transition bg-blue-600 hover:bg-blue-700"
+              >
+                Connect Wallet
+              </button>
               )
             ) : (
               <div className="flex gap-1">

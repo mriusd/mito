@@ -1274,7 +1274,8 @@ export function LiveTradeChart({
                 {(() => {
                   const step = readSavedObAggStep();
                   const chartOutcome = outcomeToggle?.value ?? 'YES';
-                  const { displayBids, displayAsks, orderbookBookImbalance } = prepareCandleObDisplay(hoverOb.ob, step);
+                  const { displayBids, displayAsks, yesBidUsd, yesAskUsd, displayBidFullUsd, displayAskFullUsd } =
+                    prepareCandleObDisplay(hoverOb.ob, step);
                   return (
                     <>
                       <ChartObHoverOhlcvStrip ohlcv={hoverOb.ohlcv} />
@@ -1287,7 +1288,10 @@ export function LiveTradeChart({
                         displayBids={displayBids}
                         displayAsks={displayAsks}
                         obAggStep={step}
-                        orderbookBookImbalance={orderbookBookImbalance}
+                        yesBidUsd={yesBidUsd}
+                        yesAskUsd={yesAskUsd}
+                        displayBidFullUsd={displayBidFullUsd}
+                        displayAskFullUsd={displayAskFullUsd}
                         orderOutcome={chartOutcome}
                         sidebarUserBidPrices={sidebarUserBidPrices ?? EMPTY_PRICE_SET}
                         sidebarUserAskPrices={sidebarUserAskPrices ?? EMPTY_PRICE_SET}

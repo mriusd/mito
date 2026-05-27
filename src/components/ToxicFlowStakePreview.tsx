@@ -6,9 +6,9 @@ import { HelpCircle } from 'lucide-react';
 import { toxicCohortStakedNetSurplusHalves } from '../lib/toxicFlowStakeCohort';
 import type { MarketStakedLegsResponse } from '../api';
 
-/** Human copy: market-wide gross YES vs NO legs (all wallets). */
+/** YES orderbook bid vs ask USD depth (5–95¢) — same source as Live Orderbook imbalance bar. */
 export const TOXIC_TOTAL_STAKE_BAR_HELP =
-  'Total dollars staked on this market across all wallets. Green = more on YES, red = more on NO.';
+  'YES orderbook depth (5–95¢). Green = more bid-side USD, red = more ask-side USD. NO book omitted (mirrors YES).';
 
 function walletsPreviewPropEqual(a: readonly WalletPosition[], b: readonly WalletPosition[]): boolean {
   if (a === b) return true;
@@ -23,6 +23,8 @@ function ToxicFlowStakePreviewInner({
   label,
   wallets = [],
   marketGrossLegsUsd,
+  yesBookBidUsd,
+  yesBookAskUsd,
   flashExtremeTilt,
   extremeFlashTiltThreshold,
   helpText,
@@ -34,12 +36,25 @@ function ToxicFlowStakePreviewInner({
     MarketStakedLegsResponse,
     'stakedUsdYesLeg' | 'stakedUsdNoLeg' | 'stakedSumAbsSignedNetUsd'
   > | null;
+  yesBookBidUsd?: number;
+  yesBookAskUsd?: number;
   flashExtremeTilt?: boolean;
   extremeFlashTiltThreshold?: number;
   helpText?: string;
   layout?: 'inline' | 'stacked';
 }) {
   const { sumYUsd, sumNUsd, barMode } = useMemo(() => {
+    const yBid = yesBookBidUsd;
+    const yAsk = yesBookAskUsd;
+    if (
+      typeof yBid === 'number' &&
+      Number.isFinite(yBid) &&
+      typeof yAsk === 'number' &&
+      Number.isFinite(yAsk) &&
+      (yBid > 0 || yAsk > 0)
+    ) {
+      return { sumYUsd: yBid, sumNUsd: yAsk, barMode: 'yesBookDepth' as const };
+    }
     const g = marketGrossLegsUsd;
     if (
       g &&
@@ -56,7 +71,7 @@ function ToxicFlowStakePreviewInner({
     }
     const c = toxicCohortStakedNetSurplusHalves(wallets ?? []);
     return { sumYUsd: c.sumYUsd, sumNUsd: c.sumNUsd, barMode: 'cohortSurplusHalves' as const };
-  }, [marketGrossLegsUsd, wallets]);
+  }, [marketGrossLegsUsd, wallets, yesBookBidUsd, yesBookAskUsd]);
   const total = sumYUsd + sumNUsd;
   const hasSplit = Number.isFinite(sumYUsd) && Number.isFinite(sumNUsd) && total > 1e-9;
 
@@ -103,7 +118,9 @@ export const ToxicFlowStakePreview = memo(ToxicFlowStakePreviewInner, (a, b) => 
     a.flashExtremeTilt !== b.flashExtremeTilt ||
     a.extremeFlashTiltThreshold !== b.extremeFlashTiltThreshold ||
     a.helpText !== b.helpText ||
-    a.layout !== b.layout
+    a.layout !== b.layout ||
+    a.yesBookBidUsd !== b.yesBookBidUsd ||
+    a.yesBookAskUsd !== b.yesBookAskUsd
   ) {
     return false;
   }

@@ -3,12 +3,12 @@ import type { Market, Position } from '../types';
 import { usePolymarketOB, type LiveTrade } from '../hooks/usePolymarketOB';
 import type { SidebarObAggStep } from '../lib/sidebarOrderbookAggregate';
 import { sidebarObAggregateLevels } from '../lib/sidebarOrderbookAggregate';
-import { orderbookLongShortDepth } from '../lib/orderbookBookImbalance';
 import { readSavedObAggStep, LS_SIDEBAR_OB_AGG_STEP } from '../lib/sidebarObAggStep';
 import { bumpSidebarTopOfBookDigest } from '../lib/sidebarTopOfBookStore';
 import { setSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import { SidebarLiveOrderbookSection } from './SidebarLiveOrderbookSection';
 import { useSidebarOrderHighlightSets } from '../lib/sidebarOrderHighlightStore';
+import { setSidebarYesObDepth, resetSidebarYesObDepth } from '../lib/sidebarYesObDepthStore';
 
 type OBLevel = { price: string; size: string };
 
@@ -81,12 +81,16 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
     asks: yesAsks,
     trades: yesTrades,
     loading: yesObLoading,
+    bidUsdTotal: yesBidUsdTotal,
+    askUsdTotal: yesAskUsdTotal,
   } = usePolymarketOB(yesTokenId, bookLimit);
   const {
     bids: noBids,
     asks: noAsks,
     trades: noTrades,
     loading: noObLoading,
+    bidUsdTotal: noBidUsdTotal,
+    askUsdTotal: noAskUsdTotal,
   } = usePolymarketOB(noTokenId, bookLimit);
 
   const activeObLoading = orderOutcome === 'YES' ? yesObLoading : noObLoading;
@@ -94,8 +98,13 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   const obLoading = activeObLoading || yesObLoading || noObLoading;
 
   const obStaleBookRef = useRef<{ bids: OBLevel[]; asks: OBLevel[] }>({ bids: [], asks: [] });
+  const yesUsdStaleRef = useRef({ bidUsdTotal: 0, askUsdTotal: 0 });
+  const displayUsdStaleRef = useRef({ bidUsdTotal: 0, askUsdTotal: 0 });
   useLayoutEffect(() => {
     obStaleBookRef.current = { bids: [], asks: [] };
+    yesUsdStaleRef.current = { bidUsdTotal: 0, askUsdTotal: 0 };
+    displayUsdStaleRef.current = { bidUsdTotal: 0, askUsdTotal: 0 };
+    resetSidebarYesObDepth();
   }, [obTokenId]);
   useLayoutEffect(() => {
     if (!activeObLoading) {
@@ -103,50 +112,79 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
         orderOutcome === 'YES' ? { bids: yesBids, asks: yesAsks } : { bids: noBids, asks: noAsks };
     }
   }, [activeObLoading, orderOutcome, yesBids, yesAsks, noBids, noAsks]);
+  useLayoutEffect(() => {
+    if (!yesObLoading) {
+      yesUsdStaleRef.current = { bidUsdTotal: yesBidUsdTotal, askUsdTotal: yesAskUsdTotal };
+    }
+  }, [yesObLoading, yesBidUsdTotal, yesAskUsdTotal]);
+  useLayoutEffect(() => {
+    const loading = orderOutcome === 'YES' ? yesObLoading : noObLoading;
+    if (!loading) {
+      displayUsdStaleRef.current =
+        orderOutcome === 'YES'
+          ? { bidUsdTotal: yesBidUsdTotal, askUsdTotal: yesAskUsdTotal }
+          : { bidUsdTotal: noBidUsdTotal, askUsdTotal: noAskUsdTotal };
+    }
+  }, [orderOutcome, yesObLoading, noObLoading, yesBidUsdTotal, yesAskUsdTotal, noBidUsdTotal, noAskUsdTotal]);
 
   const snapshotBids = activeObLoading ? obStaleBookRef.current.bids : orderOutcome === 'YES' ? yesBids : noBids;
   const snapshotAsks = activeObLoading ? obStaleBookRef.current.asks : orderOutcome === 'YES' ? yesAsks : noAsks;
-  const yesSnapshotBids = yesObLoading ? [] : yesBids;
-  const yesSnapshotAsks = yesObLoading ? [] : yesAsks;
-  const noSnapshotBids = noObLoading ? [] : noBids;
-  const noSnapshotAsks = noObLoading ? [] : noAsks;
 
-  const { viewBids, viewAsks, refSnapshotBids, refSnapshotAsks } = useMemo(() => {
-    const refBid = snapshotBids.slice(0, OB_RAW_TOP_REF);
-    const refAsk = snapshotAsks.slice(0, OB_RAW_TOP_REF);
-    if (obAggStep === '0.1') {
+  const { viewBids, viewAsks, refSnapshotBids, refSnapshotAsks, yesBarBidUsd, yesBarAskUsd, displayBidFullUsd, displayAskFullUsd } =
+    useMemo(() => {
+      const refBid = snapshotBids.slice(0, OB_RAW_TOP_REF);
+      const refAsk = snapshotAsks.slice(0, OB_RAW_TOP_REF);
+      const yesUsd = yesObLoading ? yesUsdStaleRef.current : { bidUsdTotal: yesBidUsdTotal, askUsdTotal: yesAskUsdTotal };
+      const displayUsd = (orderOutcome === 'YES' ? yesObLoading : noObLoading)
+        ? displayUsdStaleRef.current
+        : orderOutcome === 'YES'
+          ? { bidUsdTotal: yesBidUsdTotal, askUsdTotal: yesAskUsdTotal }
+          : { bidUsdTotal: noBidUsdTotal, askUsdTotal: noAskUsdTotal };
+
+      if (obAggStep === '0.1') {
+        return {
+          viewBids: snapshotBids,
+          viewAsks: snapshotAsks,
+          refSnapshotBids: refBid,
+          refSnapshotAsks: refAsk,
+          yesBarBidUsd: yesUsd.bidUsdTotal,
+          yesBarAskUsd: yesUsd.askUsdTotal,
+          displayBidFullUsd: displayUsd.bidUsdTotal,
+          displayAskFullUsd: displayUsd.askUsdTotal,
+        };
+      }
+
+      const step = obAggStep === '1' ? '1' : '5';
+      const bidCap = step === '1' ? 40 : 24;
+      const askCap = step === '1' ? 40 : 24;
       return {
-        viewBids: snapshotBids.slice(0, OB_RAW_TOP_REF),
-        viewAsks: snapshotAsks.slice(0, OB_RAW_TOP_REF),
+        viewBids: sidebarObAggregateLevels(snapshotBids, step, 'bid', bidCap),
+        viewAsks: sidebarObAggregateLevels(snapshotAsks, step, 'ask', askCap),
         refSnapshotBids: refBid,
         refSnapshotAsks: refAsk,
+        yesBarBidUsd: yesUsd.bidUsdTotal,
+        yesBarAskUsd: yesUsd.askUsdTotal,
+        displayBidFullUsd: displayUsd.bidUsdTotal,
+        displayAskFullUsd: displayUsd.askUsdTotal,
       };
-    }
-    const step = obAggStep === '1' ? '1' : '5';
-    const bidCap = step === '1' ? 40 : 24;
-    const askCap = step === '1' ? 40 : 24;
-    return {
-      viewBids: sidebarObAggregateLevels(snapshotBids, step, 'bid', bidCap),
-      viewAsks: sidebarObAggregateLevels(snapshotAsks, step, 'ask', askCap),
-      refSnapshotBids: refBid,
-      refSnapshotAsks: refAsk,
-    };
-  }, [snapshotBids, snapshotAsks, obAggStep]);
+    }, [
+      snapshotBids,
+      snapshotAsks,
+      obAggStep,
+      orderOutcome,
+      yesObLoading,
+      noObLoading,
+      yesBidUsdTotal,
+      yesAskUsdTotal,
+      noBidUsdTotal,
+      noAskUsdTotal,
+    ]);
 
   const prevTopSig = useRef<string>('');
-  const { orderbookBookImbalance, longDepthUsd, shortDepthUsd } = useMemo(() => {
-    const depth = orderbookLongShortDepth(
-      yesSnapshotBids,
-      yesSnapshotAsks,
-      noSnapshotBids,
-      noSnapshotAsks,
-    );
-    return {
-      orderbookBookImbalance: depth.imbalance,
-      longDepthUsd: depth.longUsd,
-      shortDepthUsd: depth.shortUsd,
-    };
-  }, [yesSnapshotBids, yesSnapshotAsks, noSnapshotBids, noSnapshotAsks]);
+
+  useLayoutEffect(() => {
+    setSidebarYesObDepth({ yesBidUsd: yesBarBidUsd, yesAskUsd: yesBarAskUsd });
+  }, [yesBarBidUsd, yesBarAskUsd]);
 
   useEffect(() => {
     setSidebarPolymarketTape(polymarketLiveTrades);
@@ -176,9 +214,10 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
       orderbookSectionHeight={orderbookSectionHeight}
       liveOrderbookExpanded={liveOrderbookExpanded}
       onToggleLiveOrderbookExpanded={onToggleLiveOrderbookExpanded}
-      orderbookBookImbalance={orderbookBookImbalance}
-      longDepthUsd={longDepthUsd}
-      shortDepthUsd={shortDepthUsd}
+      yesBidUsd={yesBarBidUsd}
+      yesAskUsd={yesBarAskUsd}
+      displayBidFullUsd={displayBidFullUsd}
+      displayAskFullUsd={displayAskFullUsd}
       displayBids={viewBids}
       displayAsks={viewAsks}
       obAggStep={obAggStep}

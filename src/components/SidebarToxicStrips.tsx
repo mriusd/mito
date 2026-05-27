@@ -20,7 +20,7 @@ import {
 } from '../lib/toxicXWallets';
 import { useSidebarToxicFlowData } from '../lib/sidebarToxicFlowStore';
 import { setSidebarToxicNotify, resetSidebarToxicNotify } from '../lib/sidebarToxicNotifyStore';
-import type { MarketStakedLegsResponse } from '../api';
+import { useSidebarYesObDepth } from '../lib/sidebarYesObDepthStore';
 
 const SIDEBAR_TOXIC_STRIP_FLASH_FRAC = 0.3;
 
@@ -37,7 +37,6 @@ const TOXIC_SIDEBAR_STRIP_HELP = {
 
 export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   toxicFlowMarketId,
-  sidebarStakedLegs,
   notifyTiltAppliesToSelectedMarket,
   notifyWhaleAmountUsd,
   notifyWhaleMaxPriceCents,
@@ -48,7 +47,6 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   notifyGreensTiltPct,
 }: {
   toxicFlowMarketId: string;
-  sidebarStakedLegs: MarketStakedLegsResponse | null;
   notifyTiltAppliesToSelectedMarket: boolean;
   notifyWhaleAmountUsd: number;
   notifyWhaleMaxPriceCents: number;
@@ -78,6 +76,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   }, []);
 
   const toxicFlowData = useSidebarToxicFlowData();
+  const yesObDepth = useSidebarYesObDepth();
   const toxicTabViews = useSidebarToxicFlowTabViews(toxicFavSet, notifyWhaleAmountUsd, toxicXSet);
 
   const toxicStripModel = useMemo(() => {
@@ -169,7 +168,8 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
         layout="stacked"
         helpText={TOXIC_SIDEBAR_STRIP_HELP.total}
         label="Total"
-        marketGrossLegsUsd={sidebarStakedLegs}
+        yesBookBidUsd={yesObDepth.yesBidUsd}
+        yesBookAskUsd={yesObDepth.yesAskUsd}
         wallets={[]}
         flashExtremeTilt={notifyTiltAppliesToSelectedMarket}
         extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}

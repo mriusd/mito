@@ -1,6 +1,10 @@
 /** Sidebar live OB: collapse raw ladder into 1¢ or 5¢ buckets (sizes summed). Price strings stay decimals 0–1 like Polymarket WS. */
 
+import { obLevelBandUsd } from './orderbookBookImbalance';
+
 export type SidebarObAggStep = '0.1' | '1' | '5';
+
+export type SidebarObAggLevel = { price: string; size: string; bandUsd?: number };
 
 type OBLevel = { price: string; size: string };
 
@@ -37,8 +41,8 @@ export function sidebarObAggregateLevels(
   step: Exclude<SidebarObAggStep, '0.1'>,
   side: 'bid' | 'ask',
   maxLevels: number,
-): OBLevel[] {
-  const m = new Map<number, number>();
+): SidebarObAggLevel[] {
+  const m = new Map<number, { size: number; bandUsd: number }>();
   for (const l of levels) {
     const c = centsFromPolymarketPrice(l.price);
     if (!Number.isFinite(c)) continue;
@@ -47,16 +51,21 @@ export function sidebarObAggregateLevels(
     k = clampAggBucketCents(k, step);
     const sz = parseFloat(l.size);
     const add = Number.isFinite(sz) ? sz : 0;
-    m.set(k, (m.get(k) ?? 0) + add);
+    const prev = m.get(k) ?? { size: 0, bandUsd: 0 };
+    m.set(k, { size: prev.size + add, bandUsd: prev.bandUsd + obLevelBandUsd(l) });
   }
   let keys = Array.from(m.keys());
   if (side === 'bid') keys.sort((a, b) => b - a);
   else keys.sort((a, b) => a - b);
   keys = keys.slice(0, maxLevels);
-  return keys.map((k) => ({
-    price: decimalFromBucketCents(k),
-    size: String(m.get(k) ?? 0),
-  }));
+  return keys.map((k) => {
+    const acc = m.get(k) ?? { size: 0, bandUsd: 0 };
+    return {
+      price: decimalFromBucketCents(k),
+      size: String(acc.size),
+      bandUsd: acc.bandUsd,
+    };
+  });
 }
 
 export function sidebarUserPriceHitsBucket(sidePrices: Set<string>, bucketCents: number, step: Exclude<SidebarObAggStep, '0.1'>): boolean {

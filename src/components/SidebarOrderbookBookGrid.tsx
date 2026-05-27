@@ -4,7 +4,9 @@ import type { SidebarObAggStep } from '../lib/sidebarOrderbookAggregate';
 import { sidebarObAggOrderPriceCents, sidebarUserPriceHitsBucket } from '../lib/sidebarOrderbookAggregate';
 import { SidebarBarMidMarker } from './SidebarBarMidMarker';
 
-export type SidebarObLevel = { price: string; size: string };
+import { obLevelBandUsd } from '../lib/orderbookBookImbalance';
+
+export type SidebarObLevel = { price: string; size: string; bandUsd?: number };
 
 function obLevelUsd(level: SidebarObLevel): number {
   const size = parseFloat(level.size);
@@ -24,9 +26,10 @@ export type SidebarOrderbookBookGridProps = {
   displayBids: SidebarObLevel[];
   displayAsks: SidebarObLevel[];
   obAggStep: SidebarObAggStep;
-  orderbookBookImbalance: number;
-  longDepthUsd?: number;
-  shortDepthUsd?: number;
+  yesBidUsd?: number;
+  yesAskUsd?: number;
+  displayBidFullUsd?: number;
+  displayAskFullUsd?: number;
   sidebarUserBidPrices: Set<string>;
   sidebarUserAskPrices: Set<string>;
   readOnly?: boolean;
@@ -122,6 +125,11 @@ const SidebarObBookRow = memo(function SidebarObBookRow({
 
 type ObPreparedRow = Omit<ObBookRowProps, 'readOnly' | 'onClick'> & { onClick?: () => void };
 
+function obLevelUsdInBand(level: SidebarObLevel): number {
+  if (typeof level.bandUsd === 'number' && Number.isFinite(level.bandUsd)) return level.bandUsd;
+  return obLevelBandUsd(level);
+}
+
 function prepareObSideRows(
   levels: SidebarObLevel[],
   side: ObRowSide,
@@ -130,6 +138,7 @@ function prepareObSideRows(
   maxBookLevelSize: number,
   readOnly: boolean,
   onLevelClick: (orderPk: string, levelSize: number, cumulativeSize: number) => void,
+  sideFullUsd?: number,
 ): ObPreparedRow[] {
   let cumul = 0;
   let cumulUsd = 0;
@@ -138,16 +147,23 @@ function prepareObSideRows(
   for (const level of levels) {
     cumul += parseFloat(level.size) || 0;
     cumuls.push(cumul);
-    cumulUsd += obLevelUsd(level);
+    cumulUsd += obLevelUsdInBand(level);
     cumulUsds.push(cumulUsd);
   }
+  const lastIdx = levels.length - 1;
   const maxCumul = cumuls.length > 0 ? cumuls[cumuls.length - 1] : 1;
   const aggKey = obAggStep === '1' ? '1' : '5';
 
+  let prevCumulUsd = 0;
   return levels.map((level, i) => {
     const levelSize = parseFloat(level.size) || 0;
-    const levelUsd = obLevelUsd(level);
-    const cumulativeUsd = cumulUsds[i];
+    const levelUsd = obLevelUsdInBand(level);
+    let cumulativeUsd = cumulUsds[i];
+    if (i === lastIdx && typeof sideFullUsd === 'number' && Number.isFinite(sideFullUsd) && sideFullUsd > 0) {
+      cumulativeUsd = Math.max(cumulativeUsd, sideFullUsd);
+    }
+    cumulativeUsd = Math.max(cumulativeUsd, prevCumulUsd);
+    prevCumulUsd = cumulativeUsd;
     const cumulativeSize = cumuls[i];
     const centsNum = parseFloat(level.price) * 100;
     const bpDisp = obAggStep === '0.1' ? centsNum.toFixed(1) : String(Math.round(centsNum));
@@ -193,9 +209,10 @@ export const SidebarOrderbookBookGrid = memo(function SidebarOrderbookBookGrid({
   displayBids,
   displayAsks,
   obAggStep,
-  orderbookBookImbalance,
-  longDepthUsd,
-  shortDepthUsd,
+  yesBidUsd = 0,
+  yesAskUsd = 0,
+  displayBidFullUsd,
+  displayAskFullUsd,
   sidebarUserBidPrices,
   sidebarUserAskPrices,
   readOnly = false,
@@ -214,7 +231,18 @@ export const SidebarOrderbookBookGrid = memo(function SidebarOrderbookBookGrid({
     return max || 1;
   }, [displayBids, displayAsks]);
 
-  const longShortImbalance = orderbookBookImbalance;
+  const { leftBarUsd, rightBarUsd, barImbalance } = useMemo(() => {
+    const left = yesBidUsd;
+    const right = yesAskUsd;
+    const denom = left + right;
+    return {
+      leftBarUsd: left,
+      rightBarUsd: right,
+      barImbalance: denom > 0 ? (left - right) / denom : 0,
+    };
+  }, [yesBidUsd, yesAskUsd]);
+
+  const longShortImbalance = barImbalance;
   const longBarPct = Math.max(2, Math.min(98, 50 + longShortImbalance * 50));
 
   const bidRows = useMemo(
@@ -234,6 +262,7 @@ export const SidebarOrderbookBookGrid = memo(function SidebarOrderbookBookGrid({
           if (pos) setOrderAmount?.(String(Math.floor(pos.size * 100) / 100));
           else setOrderAmount?.('');
         },
+        displayBidFullUsd,
       ),
     [
       displayBids,
@@ -247,6 +276,7 @@ export const SidebarOrderbookBookGrid = memo(function SidebarOrderbookBookGrid({
       selectedMarket,
       orderOutcome,
       positions,
+      displayBidFullUsd,
     ],
   );
 
@@ -264,6 +294,7 @@ export const SidebarOrderbookBookGrid = memo(function SidebarOrderbookBookGrid({
           setOrderPrice?.(orderPk);
           setOrderAmount?.(cumulativeSize.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'));
         },
+        displayAskFullUsd,
       ),
     [
       displayAsks,
@@ -274,6 +305,7 @@ export const SidebarOrderbookBookGrid = memo(function SidebarOrderbookBookGrid({
       setOrderSide,
       setOrderPrice,
       setOrderAmount,
+      displayAskFullUsd,
     ],
   );
 
@@ -281,18 +313,12 @@ export const SidebarOrderbookBookGrid = memo(function SidebarOrderbookBookGrid({
     <>
       <div
         className="shrink-0 mb-1.5 px-0.5"
-        title={
-          longDepthUsd != null && shortDepthUsd != null
-            ? `Long $${Math.round(longDepthUsd).toLocaleString()} (YES bids + NO asks) · Short $${Math.round(shortDepthUsd).toLocaleString()} (NO bids + YES asks) · 5–95¢ · ${(longShortImbalance * 100).toFixed(1)}% toward long (blue)`
-            : `Long/short depth (5–95¢): ${(longShortImbalance * 100).toFixed(1)}% toward long (blue)`
-        }
+        title={`YES bids $${Math.round(leftBarUsd).toLocaleString()} · YES asks $${Math.round(rightBarUsd).toLocaleString()} · full book 5–95¢ · ${(longShortImbalance * 100).toFixed(1)}% bid-heavy (blue)`}
       >
         <div className="flex items-center gap-1.5">
-          {longDepthUsd != null ? (
-            <span className="shrink-0 text-[9px] tabular-nums font-semibold text-blue-400 sidebar-readable-value min-w-[2.25rem] text-left">
-              {fmtObLevelUsd(longDepthUsd)}
-            </span>
-          ) : null}
+          <span className="shrink-0 text-[9px] tabular-nums font-semibold text-blue-400 sidebar-readable-value min-w-[2.25rem] text-left">
+            {fmtObLevelUsd(leftBarUsd)}
+          </span>
           <div className="relative h-[5px] bg-gray-700 rounded-full overflow-hidden flex flex-1 min-w-0">
             <div
               className="h-full"
@@ -304,11 +330,9 @@ export const SidebarOrderbookBookGrid = memo(function SidebarOrderbookBookGrid({
             <div className="h-full flex-1" style={{ backgroundColor: 'rgb(250 204 21 / 0.7)' }} />
             <SidebarBarMidMarker />
           </div>
-          {shortDepthUsd != null ? (
-            <span className="shrink-0 text-[9px] tabular-nums font-semibold text-yellow-400 sidebar-readable-value min-w-[2.25rem] text-right">
-              {fmtObLevelUsd(shortDepthUsd)}
-            </span>
-          ) : null}
+          <span className="shrink-0 text-[9px] tabular-nums font-semibold text-yellow-400 sidebar-readable-value min-w-[2.25rem] text-right">
+            {fmtObLevelUsd(rightBarUsd)}
+          </span>
         </div>
       </div>
       <div className="relative grid grid-cols-2 gap-2 flex-1 min-h-0">

@@ -1,5 +1,5 @@
 import type { CandleObSnapshot } from './candleObSnapshot';
-import { orderbookBookImbalance } from './orderbookBookImbalance';
+import { orderbookBookImbalance, obBookSideUsdTotal } from './orderbookBookImbalance';
 import { sidebarObAggregateLevels, type SidebarObAggStep } from './sidebarOrderbookAggregate';
 
 export type ObLevel = { price: string; size: string };
@@ -21,15 +21,23 @@ export function candleObBookImbalance(ob: CandleObSnapshot): number {
 
 export function prepareCandleObDisplay(ob: CandleObSnapshot, step: SidebarObAggStep) {
   const { bids: rawBids, asks: rawAsks } = candleObToRawLevels(ob);
+  const yesBidUsd = obBookSideUsdTotal(rawBids);
+  const yesAskUsd = obBookSideUsdTotal(rawAsks);
   const imbalance = candleObBookImbalance(ob);
   if (step === '0.1') {
-    return { displayBids: rawBids, displayAsks: rawAsks, orderbookBookImbalance: imbalance };
+    return { displayBids: rawBids, displayAsks: rawAsks, yesBidUsd, yesAskUsd, displayBidFullUsd: yesBidUsd, displayAskFullUsd: yesAskUsd, orderbookBookImbalance: imbalance };
   }
   const bucket = step === '1' ? '1' : '5';
   const cap = bucket === '1' ? 40 : 24;
+  const displayBids = sidebarObAggregateLevels(rawBids, bucket, 'bid', cap);
+  const displayAsks = sidebarObAggregateLevels(rawAsks, bucket, 'ask', cap);
   return {
-    displayBids: sidebarObAggregateLevels(rawBids, bucket, 'bid', cap),
-    displayAsks: sidebarObAggregateLevels(rawAsks, bucket, 'ask', cap),
+    displayBids,
+    displayAsks,
+    yesBidUsd,
+    yesAskUsd,
+    displayBidFullUsd: yesBidUsd,
+    displayAskFullUsd: yesAskUsd,
     orderbookBookImbalance: imbalance,
   };
 }

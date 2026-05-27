@@ -7,6 +7,8 @@ import {
   fmtUsd2En,
   isLedgerFillRow,
   WALLET_TRADE_PENDING_ROW_BG,
+  walletInfoFeeClass,
+  walletInfoFeeLabel,
 } from '../lib/walletInfoFillRows';
 import { openPolygonscanTx, polygonscanTxUrl } from '../lib/polygonscanLink';
 import { LiveWalletTradeTimeCell } from './WalletTradeTimeCell';
@@ -47,8 +49,8 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
     const usdc = priceFinite && sizeFinite ? pr * sz : NaN;
     const usdcLabel = Number.isFinite(usdc) ? `$${fmtUsd2En(usdc)}` : '—';
     const usdcCls = priceApprox ? 'text-right text-yellow-400/60 italic' : 'text-right text-yellow-400';
-    const feeN = Number(f.fee);
-    const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
+    const feeLabel = walletInfoFeeLabel(f.fee);
+    const feeCls = walletInfoFeeClass(f.fee);
     const { text: sideLabel, tone: sideTone } = fillOutcomeDisplay(f, market as Market);
     const sideCls =
       sideTone === 'yes' ? 'text-green-400' : sideTone === 'no' ? 'text-red-400' : 'text-gray-300';
@@ -81,7 +83,7 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
         </td>
         <td className={priceCls} title={priceApprox ? 'Limit price from mempool — actual exec price pending' : undefined}>{priceLabel}</td>
         <td className={usdcCls} title={priceApprox ? 'Estimated from limit price' : undefined}>{usdcLabel}</td>
-        <td className="text-right text-yellow-400/80">{feeLabel}</td>
+        <td className={feeCls}>{feeLabel}</td>
         <td className="text-center px-0">
           {f.txHash || isPending ? (
             (() => {
@@ -119,8 +121,8 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
   if (isSplitMerge) {
     const label = String(f.orderHash);
     const amount = Number(f.makerAmount ?? 0);
-    const feeN = Number(f.fee ?? 0);
-    const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
+    const feeLabel = walletInfoFeeLabel(f.fee);
+    const feeCls = walletInfoFeeClass(f.fee);
     return (
       <tr className="border-b border-gray-800">
         <td className="py-0.5">
@@ -139,7 +141,7 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
         <td className="text-right text-gray-500 tabular-nums">
           {Number.isFinite(amount) ? `$${fmtUsd2En(amount)}` : '—'}
         </td>
-        <td className="text-right text-yellow-400/80">{feeLabel}</td>
+        <td className={feeCls}>{feeLabel}</td>
         <td className="text-center px-0">
           {f.txHash ? (
             <a
@@ -188,8 +190,8 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
     : '—';
   const { text: sideText, tone: sideTone } = fillOutcomeDisplay(f, market as Market);
   const sideCls = sideTone === 'yes' ? 'text-green-400' : sideTone === 'no' ? 'text-red-400' : 'text-gray-300';
-  const feeN = Number(f.fee ?? 0);
-  const feeLabel = Number.isFinite(feeN) ? `$${fmtUsd2En(feeN)}` : '—';
+  const feeLabel = walletInfoFeeLabel(f.fee);
+  const feeCls = walletInfoFeeClass(f.fee);
 
   return (
     <tr className="border-b border-gray-800">
@@ -208,7 +210,7 @@ export const WalletInfoFillRow = memo(function WalletInfoFillRow({
       <td className="text-right text-yellow-400 tabular-nums">
         {Number.isFinite(nUsdc) ? `$${fmtUsd2En(nUsdc)}` : '—'}
       </td>
-      <td className="text-right text-yellow-400/80 tabular-nums">{feeLabel}</td>
+      <td className={feeCls}>{feeLabel}</td>
       <td className="text-center px-0">
         {f.txHash ? (
           <a

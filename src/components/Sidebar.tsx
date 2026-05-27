@@ -3630,6 +3630,7 @@ export const Sidebar = memo(function Sidebar() {
                 </div>
             <div className="mt-1 w-full min-w-0">
               <SidebarToxicStrips
+                toxicFlowMarketId={toxicFlowMarketId}
                 sidebarStakedLegs={sidebarStakedLegs}
                 notifyTiltAppliesToSelectedMarket={notifyTiltAppliesToSelectedMarket}
                 notifyWhaleAmountUsd={notifyWhaleAmountUsd}

@@ -18,6 +18,7 @@ import {
   TOXIC_X_CHANGED_EVENT,
   TOXIC_X_WALLETS_LS_KEY,
 } from '../lib/toxicXWallets';
+import { useSidebarToxicFlowData } from '../lib/sidebarToxicFlowStore';
 import { setSidebarToxicNotify, resetSidebarToxicNotify } from '../lib/sidebarToxicNotifyStore';
 import type { MarketStakedLegsResponse } from '../api';
 
@@ -35,6 +36,7 @@ const TOXIC_SIDEBAR_STRIP_HELP = {
 } as const;
 
 export const SidebarToxicStrips = memo(function SidebarToxicStrips({
+  toxicFlowMarketId,
   sidebarStakedLegs,
   notifyTiltAppliesToSelectedMarket,
   notifyWhaleAmountUsd,
@@ -45,6 +47,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   notifyFavouriteTiltPct,
   notifyGreensTiltPct,
 }: {
+  toxicFlowMarketId: string;
   sidebarStakedLegs: MarketStakedLegsResponse | null;
   notifyTiltAppliesToSelectedMarket: boolean;
   notifyWhaleAmountUsd: number;
@@ -74,6 +77,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
     };
   }, []);
 
+  const toxicFlowData = useSidebarToxicFlowData();
   const toxicTabViews = useSidebarToxicFlowTabViews(toxicFavSet, notifyWhaleAmountUsd, toxicXSet);
 
   const toxicStripModel = useMemo(() => {
@@ -94,7 +98,9 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   const toxicStripWhaleWallets = toxicTabViews?.whales ?? [];
 
   useEffect(() => {
-    if (!toxicTabViews) {
+    const curMid = toxicFlowMarketId.trim();
+    const dataMid = (toxicFlowData?.marketId ?? '').trim();
+    if (!toxicTabViews || !curMid || !dataMid || dataMid !== curMid) {
       resetSidebarToxicNotify();
       return;
     }
@@ -139,6 +145,8 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
 
     setSidebarToxicNotify({ topBarExtremeBgFlash, whalePassesPriceGate });
   }, [
+    toxicFlowMarketId,
+    toxicFlowData?.marketId,
     toxicTabViews,
     toxicStripModel,
     notifyTiltAppliesToSelectedMarket,

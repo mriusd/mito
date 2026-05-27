@@ -13,7 +13,8 @@ import {
 } from '../lib/marketNotifyMute';
 import { useSidebarChartAnnualVolPct } from '../lib/sidebarChartVolStore';
 import { useSidebarNotifyStakedGatePasses } from '../lib/sidebarNotifyStakedGateStore';
-import { useSidebarToxicNotify } from '../lib/sidebarToxicNotifyStore';
+import { getSidebarToxicFlowSnapshot } from '../lib/sidebarToxicFlowStore';
+import { resetSidebarToxicNotify, useSidebarToxicNotify } from '../lib/sidebarToxicNotifyStore';
 
 const TILT_EXTREME_FLASH_MS = 550;
 
@@ -74,6 +75,10 @@ export function SidebarToxicNotifySoundHost({
   }, []);
 
   useEffect(() => {
+    resetSidebarToxicNotify();
+  }, [toxicFlowMarketId]);
+
+  useEffect(() => {
     const cohortTiltAlarm = topBarExtremeBgFlash;
     const cohortNeedsSound = cohortTiltAlarm != null && notifyPlaySound;
     const whaleEligible = notifyWhaleRing && notifyWhalePassesPriceGate;
@@ -99,6 +104,9 @@ export function SidebarToxicNotifySoundHost({
         if (muted) return;
         void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
       } else if (whaleNeedsSound) {
+        const tfMid = (getSidebarToxicFlowSnapshot().data?.marketId ?? '').trim();
+        const curMid = toxicFlowMarketId.trim();
+        if (!tfMid || !curMid || tfMid !== curMid) return;
         if (muted && notifyWhaleRingMutable) return;
         void playTiltNotifySoundStrikes(k, mul, rt, 3);
       }
@@ -121,6 +129,8 @@ export function SidebarToxicNotifySoundHost({
     notifySoundMaxPriceCents,
     notifyDoubleRing,
     isMarketExpired,
+    toxicFlowMarketId,
+    isCurrentMarketMuted,
   ]);
 
   return null;

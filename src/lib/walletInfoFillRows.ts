@@ -79,3 +79,16 @@ export function fmtUsd2En(absVal: number): string {
   if (!Number.isFinite(absVal)) return '—';
   return absVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+export function walletInfoFeeLabel(fee: number | undefined | null): string {
+  const feeN = Number(fee);
+  if (!Number.isFinite(feeN)) return '—';
+  if (feeN <= 0) return `$${fmtUsd2En(0)}`;
+  return `-$${fmtUsd2En(feeN)}`;
+}
+
+export function walletInfoFeeClass(fee: number | undefined | null): string {
+  const feeN = Number(fee);
+  if (Number.isFinite(feeN) && feeN > 0) return 'text-right text-red-400 tabular-nums';
+  return 'text-right text-gray-500 tabular-nums';
+}

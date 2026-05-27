@@ -81,6 +81,10 @@ export function useToxicFlowMarketStream(
       return;
     }
 
+    dataRef.current = null;
+    commitData(null);
+    clearToxicFlowTabWalletViewsCache();
+
     let cancelled = false;
     (async () => {
       try {

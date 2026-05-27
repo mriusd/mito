@@ -10,7 +10,12 @@ type OBLevel = { price: string; size: string };
 
 function centsFromPolymarketPrice(priceStr: string): number {
   const p = parseFloat(priceStr);
-  return Number.isFinite(p) ? p * 100 : NaN;
+  return Number.isFinite(p) ? Math.round(p * 100) : NaN;
+}
+
+export function sidebarObAggBucketCents(cents: number, step: Exclude<SidebarObAggStep, '0.1'>): number {
+  if (!Number.isFinite(cents)) return NaN;
+  return clampAggBucketCents(sidebarObBucketKeyCents(Math.round(cents), step), step);
 }
 
 export function sidebarObBucketKeyCents(cents: number, step: Exclude<SidebarObAggStep, '0.1'>): number {
@@ -46,9 +51,8 @@ export function sidebarObAggregateLevels(
   for (const l of levels) {
     const c = centsFromPolymarketPrice(l.price);
     if (!Number.isFinite(c)) continue;
-    let k = sidebarObBucketKeyCents(c, step);
+    let k = sidebarObAggBucketCents(c, step);
     if (!Number.isFinite(k)) continue;
-    k = clampAggBucketCents(k, step);
     const sz = parseFloat(l.size);
     const add = Number.isFinite(sz) ? sz : 0;
     const prev = m.get(k) ?? { size: 0, bandUsd: 0 };
@@ -69,13 +73,13 @@ export function sidebarObAggregateLevels(
 }
 
 export function sidebarUserPriceHitsBucket(sidePrices: Set<string>, bucketCents: number, step: Exclude<SidebarObAggStep, '0.1'>): boolean {
-  const bTarget = clampAggBucketCents(bucketCents, step);
+  const bTarget = sidebarObAggBucketCents(bucketCents, step);
   if (!Number.isFinite(bTarget)) return false;
   for (const s of sidePrices) {
     const c = parseFloat(s);
     if (!Number.isFinite(c)) continue;
-    const bk = clampAggBucketCents(sidebarObBucketKeyCents(c, step), step);
-    if (bk === bTarget) return true;
+    const bk = sidebarObAggBucketCents(c, step);
+    if (Number.isFinite(bk) && bk === bTarget) return true;
   }
   return false;
 }
@@ -89,7 +93,7 @@ type OrderLike = {
 
 function addHighlightCents(set: Set<string>, cents: number) {
   if (!Number.isFinite(cents)) return;
-  set.add(cents.toFixed(1));
+  set.add(Math.round(cents).toFixed(1));
 }
 
 /**
@@ -104,15 +108,17 @@ export function buildSidebarUserOrderHighlightSets(
 ): { bidPrices: Set<string>; askPrices: Set<string> } {
   const bidPrices = new Set<string>();
   const askPrices = new Set<string>();
-  const viewToken = viewOutcome === 'YES' ? yesTokenId : noTokenId;
-  const oppToken = viewOutcome === 'YES' ? noTokenId : yesTokenId;
+  const yesTok = String(yesTokenId || '').trim();
+  const noTok = String(noTokenId || '').trim();
+  const viewToken = viewOutcome === 'YES' ? yesTok : noTok;
+  const oppToken = viewOutcome === 'YES' ? noTok : yesTok;
   if (!viewToken) return { bidPrices, askPrices };
 
   for (const o of orders) {
-    const oid = o.asset_id || o.token_id || '';
+    const oid = String(o.asset_id || o.token_id || '').trim();
     const p = parseFloat(String(o.price ?? ''));
     if (!Number.isFinite(p)) continue;
-    const cents = p * 100;
+    const cents = Math.round(p * 100);
     const side = String(o.side || '').toUpperCase();
 
     if (oid === viewToken) {

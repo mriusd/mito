@@ -165,7 +165,7 @@ function prepareObSideRows(
     cumulativeUsd = Math.max(cumulativeUsd, prevCumulUsd);
     prevCumulUsd = cumulativeUsd;
     const cumulativeSize = cumuls[i];
-    const centsNum = parseFloat(level.price) * 100;
+    const centsNum = Math.round(parseFloat(level.price) * 100);
     const bpDisp = obAggStep === '0.1' ? centsNum.toFixed(1) : String(Math.round(centsNum));
     const orderPk =
       obAggStep === '0.1'

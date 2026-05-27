@@ -171,7 +171,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
         label="Total"
         marketGrossLegsUsd={sidebarStakedLegs}
         wallets={[]}
-        flashExtremeTilt
+        flashExtremeTilt={notifyTiltAppliesToSelectedMarket}
         extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
       />
       <ToxicFlowStakePreview
@@ -179,7 +179,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
         helpText={TOXIC_SIDEBAR_STRIP_HELP.holders}
         label="Holders"
         wallets={toxicStripModel.lists?.holders ?? []}
-        flashExtremeTilt
+        flashExtremeTilt={notifyTiltAppliesToSelectedMarket}
         extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
       />
       <ToxicFlowStakePreview
@@ -187,7 +187,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
         helpText={TOXIC_SIDEBAR_STRIP_HELP.smart}
         label="Smart"
         wallets={toxicStripModel.lists?.smart ?? []}
-        flashExtremeTilt
+        flashExtremeTilt={notifyTiltAppliesToSelectedMarket}
         extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
       />
       <ToxicFlowStakePreview
@@ -195,7 +195,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
         helpText={TOXIC_SIDEBAR_STRIP_HELP.greens}
         label="Greens"
         wallets={toxicStripModel.lists?.pnlPlus ?? []}
-        flashExtremeTilt
+        flashExtremeTilt={notifyTiltAppliesToSelectedMarket}
         extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
       />
       <ToxicFlowStakePreview
@@ -203,7 +203,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
         helpText={TOXIC_SIDEBAR_STRIP_HELP.top20}
         label="Top20"
         wallets={toxicStripModel.lists?.top20 ?? []}
-        flashExtremeTilt
+        flashExtremeTilt={notifyTiltAppliesToSelectedMarket}
         extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
       />
       <ToxicFlowStakePreview
@@ -211,7 +211,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
         helpText={TOXIC_SIDEBAR_STRIP_HELP.whales}
         label="Whales"
         wallets={toxicStripWhaleWallets}
-        flashExtremeTilt
+        flashExtremeTilt={notifyTiltAppliesToSelectedMarket}
         extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
       />
       <ToxicFlowStakePreview
@@ -219,7 +219,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
         helpText={TOXIC_SIDEBAR_STRIP_HELP.fav}
         label="Fav"
         wallets={toxicStripModel.lists?.favourites ?? []}
-        flashExtremeTilt
+        flashExtremeTilt={notifyTiltAppliesToSelectedMarket}
         extremeFlashTiltThreshold={SIDEBAR_TOXIC_STRIP_FLASH_FRAC}
       />
     </div>

@@ -24,7 +24,9 @@ export function WalletButton() {
     const textColor = isPkActive ? 'text-yellow-400' : 'text-green-400';
     return (
       <button
-        onClick={() => appKit.open({ view: 'Account' })}
+        onClick={() => {
+          if (!isPkActive) appKit.open({ view: 'Account' });
+        }}
         className="flex items-center gap-1.5 bg-gray-800/50 rounded px-2 h-[28px] hover:bg-gray-700/50 transition text-xs"
       >
         <span className={`w-2 h-2 rounded-full ${dotColor} flex-shrink-0`} />

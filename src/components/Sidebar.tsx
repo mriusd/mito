@@ -52,6 +52,10 @@ import {
 } from '../lib/toxicXWallets';
 import { persistTiltWhaleAmountUsd, readTiltWhaleAmountUsd } from '../lib/tiltWhaleAmountUsd';
 import {
+  bumpNotifyTiltMarketFiltersRevision,
+  useNotifyTiltAppliesToSelectedMarket,
+} from '../lib/notifyTiltMarketFilters';
+import {
   NOTIFY_MULTI_RING_GAP_MS,
   pitchMulFromNotifyFreqSlider,
   playTiltNotifySoundStrikes,
@@ -126,6 +130,7 @@ import { setSidebarChartAnnualVolPct } from '../lib/sidebarChartVolStore';
 import { SidebarToxicWalletWidthHost } from './SidebarToxicWalletWidthHost';
 import { SidebarToxicNotifySoundHost } from './SidebarToxicNotifySoundHost';
 import { SidebarToxicStatsFlashWrap } from './SidebarToxicStatsFlashWrap';
+import { NotifyDialogNumberInput } from './NotifyDialogNumberInput';
 import { SidebarUpDownTargetHost } from './SidebarUpDownTargetHost';
 import { SidebarUpDownEndPicker } from './SidebarUpDownEndPicker';
 import { SidebarOrderHighlightHost } from './SidebarOrderHighlightHost';
@@ -296,17 +301,6 @@ const SIDEBAR_NOTIFY_TILT_UD_4H_KEY = 'polybot-sidebar-notify-tilt-ud-4h';
 const SIDEBAR_NOTIFY_MAX_VOLATILITY_PCT_KEY = 'polybot-sidebar-notify-max-volatility-pct';
 const SIDEBAR_NOTIFY_VOLATILITY_CANDLES_KEY = 'polybot-sidebar-notify-volatility-candles';
 
-type NotifyTiltMarketFiltersPersisted = {
-  upDown: boolean;
-  hit: boolean;
-  above: boolean;
-  between: boolean;
-  ud5m: boolean;
-  ud15m: boolean;
-  ud1h: boolean;
-  ud4h: boolean;
-};
-
 function readNotifyTiltMktUpDown(): boolean {
   try {
     const v = localStorage.getItem(SIDEBAR_NOTIFY_TILT_MKT_UPDOWN_KEY);
@@ -378,33 +372,6 @@ function readNotifyTiltUd4h(): boolean {
   } catch {
     return false;
   }
-}
-
-/** Tilt sound/flash/top-cohort tilt only when the selected market matches user filters. */
-function marketMatchesNotifyTiltFilters(
-  market: Parameters<typeof hitStrikeMetaForBs>[0] | null | undefined,
-  f: NotifyTiltMarketFiltersPersisted,
-  isWeeklyListedHit: boolean,
-): boolean {
-  if (!market) return false;
-  if (!(f.upDown || f.hit || f.above || f.between)) return false;
-  const isUd = !!(market.question?.match(/up\s+or\s+down/i) || market.eventSlug?.match(/up-or-down|updown/i));
-  if (isUd && f.upDown) {
-    const tf = upDownTimeframeKeyFromMarket(market);
-    if (tf === '5m') return f.ud5m;
-    if (tf === '15m') return f.ud15m;
-    if (tf === '1h') return f.ud1h;
-    if (tf === '4h') return f.ud4h;
-    return false;
-  }
-  if (isUd) return false;
-  const isHit = isWeeklyListedHit || hitStrikeMetaForBs(market) != null;
-  const q = (market.question || '').trim();
-  const isBetween = /\bbetween\b.+\band\b/i.test(q);
-  if (isHit && f.hit) return true;
-  if (isBetween && f.between) return true;
-  if (!isHit && !isBetween && f.above) return true;
-  return false;
 }
 
 function readNotifyPlaySound(): boolean {
@@ -1166,6 +1133,18 @@ export const Sidebar = memo(function Sidebar() {
     }
   }, [notifyTiltUd4h]);
   useEffect(() => {
+    bumpNotifyTiltMarketFiltersRevision();
+  }, [
+    notifyTiltMktUpDown,
+    notifyTiltMktHit,
+    notifyTiltMktAbove,
+    notifyTiltMktBetween,
+    notifyTiltUd5m,
+    notifyTiltUd15m,
+    notifyTiltUd1h,
+    notifyTiltUd4h,
+  ]);
+  useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_UPDOWN_NEXT_HI_KEY, notifyUpDownNextHi ? '1' : '0');
       localStorage.setItem(SIDEBAR_NOTIFY_UPDOWN_NEXT_HI_CENTS_KEY, String(notifyUpDownNextHiCents));
@@ -1199,33 +1178,7 @@ export const Sidebar = memo(function Sidebar() {
     [notifyTradeSoundFreqSlider],
   );
 
-  const notifyTiltAppliesToSelectedMarket = useMemo(() => {
-    return marketMatchesNotifyTiltFilters(
-      selectedMarket,
-      {
-        upDown: notifyTiltMktUpDown,
-        hit: notifyTiltMktHit,
-        above: notifyTiltMktAbove,
-        between: notifyTiltMktBetween,
-        ud5m: notifyTiltUd5m,
-        ud15m: notifyTiltUd15m,
-        ud1h: notifyTiltUd1h,
-        ud4h: notifyTiltUd4h,
-      },
-      isMarketInWeeklyHitMarkets(selectedMarket?.id, weeklyHitMarkets),
-    );
-  }, [
-    selectedMarket,
-    weeklyHitMarkets,
-    notifyTiltMktUpDown,
-    notifyTiltMktHit,
-    notifyTiltMktAbove,
-    notifyTiltMktBetween,
-    notifyTiltUd5m,
-    notifyTiltUd15m,
-    notifyTiltUd1h,
-    notifyTiltUd4h,
-  ]);
+  const notifyTiltAppliesToSelectedMarket = useNotifyTiltAppliesToSelectedMarket();
 
   const toxicFlowMarketId = useMemo(
     () => ((selectedMarket?.conditionId ?? selectedMarket?.id) || '').trim(),
@@ -1355,6 +1308,8 @@ export const Sidebar = memo(function Sidebar() {
   const pkAddress = useAppStore((s) => s.pkAddress);
   const signingMode = useAppStore((s) => s.signingMode);
   const effectiveSidebarEoa = signingMode === 'privateKey' && pkAddress ? pkAddress : walletAddress;
+  const effectiveSidebarConnected =
+    signingMode === 'privateKey' && pkAddress ? true : walletConnected;
   useEffect(() => {
     if (!effectiveSidebarEoa) {
       setProxyWallet(null);
@@ -2628,18 +2583,14 @@ export const Sidebar = memo(function Sidebar() {
             <div className="space-y-3 text-xs text-gray-200">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-gray-400 shrink-0">Mute sounds above (c)</span>
-                <input
-                  type="number"
+                <NotifyDialogNumberInput
                   min={1}
                   max={99}
                   step={1}
+                  integer
                   className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 tabular-nums no-spin"
                   value={notifySoundMaxPriceCents}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (!Number.isFinite(v)) return;
-                    setNotifySoundMaxPriceCents(Math.min(99, Math.max(1, Math.round(v))));
-                  }}
+                  onChange={setNotifySoundMaxPriceCents}
                 />
               </div>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
@@ -2694,17 +2645,12 @@ export const Sidebar = memo(function Sidebar() {
                 </label>
                 <label className="flex items-center gap-2 shrink-0">
                   <span className="text-gray-400 whitespace-nowrap">Min usd stake</span>
-                  <input
-                    type="number"
+                  <NotifyDialogNumberInput
                     min={0}
                     step={50}
                     className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-28 tabular-nums no-spin"
                     value={notifyBellMinStakeUsd}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (!Number.isFinite(v)) return;
-                      setNotifyBellMinStakeUsd(Math.min(1e12, Math.max(0, v)));
-                    }}
+                    onChange={setNotifyBellMinStakeUsd}
                   />
                 </label>
               </div>
@@ -2731,33 +2677,25 @@ export const Sidebar = memo(function Sidebar() {
               <div className="flex items-center gap-3 flex-wrap">
                 <label className="flex items-center gap-2 shrink-0">
                   <span className="text-gray-400 whitespace-nowrap">Whale amount (USDC)</span>
-                  <input
-                    type="number"
+                  <NotifyDialogNumberInput
                     min={0}
+                    max={1e12}
                     step={500}
                     className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-28 tabular-nums no-spin"
                     value={notifyWhaleAmountUsd}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (!Number.isFinite(v)) return;
-                      setNotifyWhaleAmountUsd(Math.min(1e12, Math.max(0, v)));
-                    }}
+                    onChange={setNotifyWhaleAmountUsd}
                   />
                 </label>
                 <label className="flex items-center gap-2 shrink-0">
                   <span className="text-gray-400 whitespace-nowrap">Max Whale Price (¢)</span>
-                  <input
-                    type="number"
+                  <NotifyDialogNumberInput
                     min={1}
                     max={99}
                     step={1}
+                    integer
                     className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 tabular-nums no-spin"
                     value={notifyWhaleMaxPriceCents}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (!Number.isFinite(v)) return;
-                      setNotifyWhaleMaxPriceCents(Math.min(99, Math.max(1, Math.round(v))));
-                    }}
+                    onChange={setNotifyWhaleMaxPriceCents}
                   />
                 </label>
                 <label className="flex items-center gap-2 shrink-0 cursor-pointer">
@@ -2957,18 +2895,14 @@ export const Sidebar = memo(function Sidebar() {
               >
                 <div className="flex items-center gap-2 flex-wrap mt-3">
                   <span className="text-gray-400 shrink-0">Ring time (s)</span>
-                  <input
-                    type="number"
+                  <NotifyDialogNumberInput
                     min={0.05}
                     max={5}
                     step={0.05}
+                    precision={2}
                     className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-20 tabular-nums no-spin"
                     value={notifyRingTimeS}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (!Number.isFinite(v)) return;
-                      setNotifyRingTimeS(Math.min(5, Math.max(0.05, Math.round(v * 100) / 100)));
-                    }}
+                    onChange={setNotifyRingTimeS}
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1 m-0">Glass ring decay length; default 5s (max 5).</p>
@@ -3034,18 +2968,14 @@ export const Sidebar = memo(function Sidebar() {
                     {notifyUpDownNextHi ? (
                       <div className="flex items-center gap-2 pl-5 w-full">
                         <span className="text-[10px] text-gray-400 shrink-0">≥</span>
-                        <input
-                          type="number"
+                        <NotifyDialogNumberInput
                           min={1}
                           max={99}
                           step={1}
+                          integer
                           className="bg-gray-900 border border-gray-600 rounded px-2 py-0.5 text-white w-14 tabular-nums text-xs no-spin"
                           value={notifyUpDownNextHiCents}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            if (!Number.isFinite(v)) return;
-                            setNotifyUpDownNextHiCents(Math.min(99, Math.max(1, Math.round(v))));
-                          }}
+                          onChange={setNotifyUpDownNextHiCents}
                         />
                         <span className="text-[10px] text-gray-400">¢ flash + sound</span>
                       </div>
@@ -3099,18 +3029,14 @@ export const Sidebar = memo(function Sidebar() {
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="text-[11px] font-medium text-gray-300 shrink-0">Holder Tilt (%)</span>
-                        <input
-                          type="number"
+                        <NotifyDialogNumberInput
                           min={0}
                           max={99}
                           step={1}
+                          integer
                           className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs no-spin"
                           value={notifyHolderTiltPct}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            if (!Number.isFinite(v)) return;
-                            setNotifyHolderTiltPct(Math.min(99, Math.max(0, Math.round(v))));
-                          }}
+                          onChange={setNotifyHolderTiltPct}
                         />
                       </div>
                       <p className="text-[10px] text-gray-500 m-0 leading-snug">
@@ -3120,18 +3046,14 @@ export const Sidebar = memo(function Sidebar() {
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="text-[11px] font-medium text-gray-300 shrink-0">Smart Tilt (%)</span>
-                        <input
-                          type="number"
+                        <NotifyDialogNumberInput
                           min={0}
                           max={99}
                           step={1}
+                          integer
                           className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs no-spin"
                           value={notifySmartTiltPct}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            if (!Number.isFinite(v)) return;
-                            setNotifySmartTiltPct(Math.min(99, Math.max(0, Math.round(v))));
-                          }}
+                          onChange={setNotifySmartTiltPct}
                         />
                       </div>
                       <p className="text-[10px] text-gray-500 m-0 leading-snug">
@@ -3141,18 +3063,14 @@ export const Sidebar = memo(function Sidebar() {
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="text-[11px] font-medium text-gray-300 shrink-0">Favourite Tilt (%)</span>
-                        <input
-                          type="number"
+                        <NotifyDialogNumberInput
                           min={0}
                           max={99}
                           step={1}
+                          integer
                           className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs no-spin"
                           value={notifyFavouriteTiltPct}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            if (!Number.isFinite(v)) return;
-                            setNotifyFavouriteTiltPct(Math.min(99, Math.max(0, Math.round(v))));
-                          }}
+                          onChange={setNotifyFavouriteTiltPct}
                         />
                       </div>
                       <p className="text-[10px] text-gray-500 m-0 leading-snug">
@@ -3162,18 +3080,14 @@ export const Sidebar = memo(function Sidebar() {
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="text-[11px] font-medium text-gray-300 shrink-0">Greens Tilt (%)</span>
-                        <input
-                          type="number"
+                        <NotifyDialogNumberInput
                           min={0}
                           max={99}
                           step={1}
+                          integer
                           className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs no-spin"
                           value={notifyGreensTiltPct}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            if (!Number.isFinite(v)) return;
-                            setNotifyGreensTiltPct(Math.min(99, Math.max(0, Math.round(v))));
-                          }}
+                          onChange={setNotifyGreensTiltPct}
                         />
                       </div>
                       <p className="text-[10px] text-gray-500 m-0 leading-snug">
@@ -3186,18 +3100,14 @@ export const Sidebar = memo(function Sidebar() {
                 <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Chart volatility</div>
                 <div className="flex items-center gap-2 flex-wrap justify-between">
                   <span className="text-gray-400 shrink-0 text-[11px]">Max volatility (%)</span>
-                  <input
-                    type="number"
+                  <NotifyDialogNumberInput
                     min={0}
                     max={500}
                     step={1}
+                    integer
                     className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-[4.75rem] tabular-nums text-xs no-spin"
                     value={notifyMaxVolatilityPct}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (!Number.isFinite(v)) return;
-                      setNotifyMaxVolatilityPct(Math.min(500, Math.max(0, Math.round(v))));
-                    }}
+                    onChange={setNotifyMaxVolatilityPct}
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 m-0 leading-snug">
@@ -3237,17 +3147,13 @@ export const Sidebar = memo(function Sidebar() {
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-gray-400 shrink-0">Staked min (USDC)</span>
-                <input
-                  type="number"
+                <NotifyDialogNumberInput
                   min={0}
+                  max={1e12}
                   step={100}
                   className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-28 tabular-nums no-spin"
                   value={notifyStakedMinUsd}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (!Number.isFinite(v)) return;
-                    setNotifyStakedMinUsd(Math.min(1e12, Math.max(0, v)));
-                  }}
+                  onChange={setNotifyStakedMinUsd}
                 />
               </div>
               <p className="text-[10px] text-gray-500">
@@ -3949,7 +3855,7 @@ export const Sidebar = memo(function Sidebar() {
                     key={`quick-buy-${c}`}
                     type="button"
                     title={`Limit BUY @ ${c}¢ (amount field)`}
-                    disabled={!walletConnected || !selectedMarket || orderKind === 'market' || isMarketExpired}
+                    disabled={!effectiveSidebarConnected || !selectedMarket || orderKind === 'market' || isMarketExpired}
                     onClick={() => void submitQuickGridLimitOrder('BUY', c)}
                     style={{
                       backgroundColor: sidebarQuickBuyBg(i, SIDEBAR_QUICK_LIMIT_GRID_CENTS.length),
@@ -3971,7 +3877,7 @@ export const Sidebar = memo(function Sidebar() {
                     key={`quick-sell-${c}`}
                     type="button"
                     title={`Limit SELL @ ${c}¢ (amount field)`}
-                    disabled={!walletConnected || !selectedMarket || orderKind === 'market' || isMarketExpired}
+                    disabled={!effectiveSidebarConnected || !selectedMarket || orderKind === 'market' || isMarketExpired}
                     onClick={() => void submitQuickGridLimitOrder('SELL', c)}
                     style={{
                       backgroundColor: sidebarQuickSellBg(i, SIDEBAR_QUICK_LIMIT_GRID_CENTS.length),
@@ -3987,13 +3893,18 @@ export const Sidebar = memo(function Sidebar() {
             </div>
 
             {/* Submit Button + BOT */}
-            {!walletConnected ? (
-              <button
-                onClick={() => appKit.open()}
-                className="w-full py-2 rounded-lg font-bold text-sm transition bg-blue-600 hover:bg-blue-700"
-              >
-                Connect Wallet
-              </button>
+            {!effectiveSidebarConnected ? (
+              signingMode === 'privateKey' ? (
+                <div className="w-full py-2 text-center text-xs text-gray-400">Import PK in header</div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => appKit.open()}
+                  className="w-full py-2 rounded-lg font-bold text-sm transition bg-blue-600 hover:bg-blue-700"
+                >
+                  Connect Wallet
+                </button>
+              )
             ) : (
               <div className="flex gap-1">
                 <button

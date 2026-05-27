@@ -115,6 +115,7 @@ import {
   TILT_WHALE_AMOUNT_USD_CHANGED_EVENT,
   TILT_WHALE_AMOUNT_USD_LS_KEY,
 } from '../lib/tiltWhaleAmountUsd';
+import { useNotifyTiltAppliesToSelectedMarket } from '../lib/notifyTiltMarketFilters';
 import {
   applyToxicFlowWSMessage,
   marketConditionKeysEqual,
@@ -574,6 +575,7 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
     () => isMarketNotifyMuted(marketId),
     [marketId, mutedMarketsKey],
   );
+  const tiltNotifyApplies = useNotifyTiltAppliesToSelectedMarket();
   const bellFlashingRowCount = useMemo(() => {
     const bellWallets = readToxicBellWallets();
     const floor = readNotifyBellMinStakeUsd();
@@ -588,7 +590,7 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   }, [tabWalletViews, bellWalletsKey, bellMinStakeKey]);
   useToxicBellRowRingSound(
     bellFlashingRowCount,
-    open && !marketNotifyMuted && !marketExpired,
+    open && !marketNotifyMuted && !marketExpired && tiltNotifyApplies,
     yesTokenId,
     noTokenId,
   );

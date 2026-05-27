@@ -527,8 +527,8 @@ export function Header({ onRefresh }: HeaderProps) {
           }}
           className="shrink-0 rounded border border-cyan-600/50 bg-cyan-950/35 px-2 h-[28px] text-[10px] font-semibold text-cyan-200 hover:bg-cyan-900/40 disabled:opacity-40 disabled:pointer-events-none whitespace-nowrap"
           title={
-            !walletConnected
-              ? 'Connect wallet'
+            !effectiveWalletConnected
+              ? 'Connect wallet or import private key (PK)'
               : !tradingWallet
                 ? 'Wallet address not ready'
                 : !selectedMarket?.conditionId?.trim()
@@ -539,7 +539,7 @@ export function Header({ onRefresh }: HeaderProps) {
           Wallet Summary
         </button>
 
-        {effectiveWalletConnected && <SigningModeSwitch />}
+        <SigningModeSwitch />
 
         <WalletButton />
       </div>

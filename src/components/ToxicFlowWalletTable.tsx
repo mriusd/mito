@@ -60,6 +60,7 @@ import {
   TILT_WHALE_AMOUNT_USD_CHANGED_EVENT,
   TILT_WHALE_AMOUNT_USD_LS_KEY,
 } from '../lib/tiltWhaleAmountUsd';
+import { useNotifyTiltAppliesToSelectedMarket } from '../lib/notifyTiltMarketFilters';
 import { TOXIC_TABLE_ROW_CLS } from '../lib/toxicFlowTableAnimate';
 import { useCancelDomAnimationsOnUnmount } from '../lib/cancelDomAnimations';
 import { fmtPriceShare, walletMarketUsdcInCell } from './WalletLatestMarketsTradedTable';
@@ -860,6 +861,7 @@ interface WalletTableBodyRowProps {
   xActive: boolean;
   /** Row flash when |Staked Net| USD ≥ this (Tilt notifications “Whale amount”). */
   tiltWhaleAmountUsd: number;
+  tiltRowFlashEnabled?: boolean;
   toggleFavouriteWallet: (addr: string, nickname?: string) => void;
   toggleBellWallet: (addr: string) => void;
   toggleXWallet: (addr: string) => void;
@@ -881,6 +883,7 @@ function WalletTableBodyRowImpl({
   bellActive,
   xActive,
   tiltWhaleAmountUsd,
+  tiltRowFlashEnabled = true,
   toggleFavouriteWallet,
   toggleBellWallet,
   toggleXWallet,
@@ -945,10 +948,13 @@ function WalletTableBodyRowImpl({
   const stakeNetAbsUsd = walletStakeNetAbsUsd(w);
   const rowNearResolved = walletHasSharePriceAtOrAbove95Cents(w);
   const tiltWhaleRowFlash =
-    !rowNearResolved && Number.isFinite(stakeNetAbsUsd) && stakeNetAbsUsd >= tiltWhaleAmountUsd;
+    tiltRowFlashEnabled &&
+    !rowNearResolved &&
+    Number.isFinite(stakeNetAbsUsd) &&
+    stakeNetAbsUsd >= tiltWhaleAmountUsd;
   const rowClass =
     walletRowClassForStakedNet(shadeRowByStakedNet, stakeNetSigned) +
-    rowPulseClassFor(bellActive, tiltWhaleRowFlash) +
+    rowPulseClassFor(bellActive && tiltRowFlashEnabled, tiltWhaleRowFlash) +
     (rowNearResolved ? ' toxic-flow-row-near-resolved' : '');
   const prevStakeNetRef = useRef<number | null>(null);
   const [stakedNetFlash, setStakedNetFlash] = useState<StakedNetFlashDir | null>(null);
@@ -1098,6 +1104,7 @@ const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
     a.bellActive !== b.bellActive ||
     a.xActive !== b.xActive ||
     a.tiltWhaleAmountUsd !== b.tiltWhaleAmountUsd ||
+    a.tiltRowFlashEnabled !== b.tiltRowFlashEnabled ||
     a.stakedPct !== b.stakedPct ||
     a.cumStakedPct !== b.cumStakedPct ||
     a.toggleFavouriteWallet !== b.toggleFavouriteWallet ||
@@ -1198,6 +1205,8 @@ function WalletTableInner({
     readTiltWhaleAmountUsd,
     () => DEFAULT_TILT_WHALE_AMOUNT_USD,
   );
+  const tiltNotifyApplies = useNotifyTiltAppliesToSelectedMarket();
+  const tiltRowFlashEnabled = variant !== 'marketView' && tiltNotifyApplies;
   const rows = wallets || [];
   const totalStakedDenom = useMemo(() => {
     if (typeof totalStakedNetUsd === 'number' && Number.isFinite(totalStakedNetUsd) && totalStakedNetUsd > 0) {
@@ -1460,6 +1469,7 @@ function WalletTableInner({
                 toggleBellWallet={toggleBellWallet}
                 toggleXWallet={toggleXWallet}
                 tiltWhaleAmountUsd={tiltWhaleAmountUsd}
+                tiltRowFlashEnabled={tiltRowFlashEnabled}
                 onOpenWallet={onOpenWallet}
                 stakedPct={metrics.stakedPct}
                 cumStakedPct={metrics.cumStakedPct}

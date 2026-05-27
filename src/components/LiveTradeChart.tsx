@@ -717,7 +717,11 @@ export function LiveTradeChart({
     const rangeT = maxT - minT || 1;
     const totalCandles = Math.ceil(rangeT / candleMs);
 
-    const toX = (t: number) => chartLeft + ((t - minT) / rangeT) * (chartRight - chartLeft);
+    const candleW = Math.max(2, Math.min(12, ((chartRight - chartLeft) / Math.max(totalCandles, 1)) * 0.7));
+    const halfCandleW = candleW / 2;
+    const xSpan = Math.max(1, chartRight - chartLeft - candleW);
+    /** Inset plot so first/last candle bodies stay inside canvas (center at minT/maxT). */
+    const toX = (t: number) => chartLeft + halfCandleW + ((t - minT) / rangeT) * xSpan;
     const toY = (p: number) => chartBot - ((p - minP) / (maxP - minP)) * (chartBot - chartTop);
 
     // Grid lines + price labels (every 10¢ on 0–100¢ axis)
@@ -742,9 +746,6 @@ export function LiveTradeChart({
     if (obHeatmap) {
       drawObHeatmapColumns(ctx, candles, { chartTop, chartBot, candleMs, toX, toY });
     }
-
-    // Candle widths — before volume (volume drawn behind candles)
-    const candleW = Math.max(2, Math.min(12, ((chartRight - chartLeft) / Math.max(totalCandles, 1)) * 0.7));
 
     // Volume bars — span into candle pane + full overflow through time band to bottom
     const volBleedUp = Math.min(40, Math.floor((chartBot - chartTop) * 0.38));
@@ -1261,7 +1262,7 @@ export function LiveTradeChart({
           ? createPortal(
               <div
                 ref={hoverObPopupRef}
-                className="fixed z-[10020] bg-gray-900/95 border border-gray-600 rounded-lg shadow-xl p-2 pointer-events-none"
+                className="fixed z-[60150] bg-gray-900/95 border border-gray-600 rounded-lg shadow-xl p-2 pointer-events-none"
                 style={{
                   left: hoverObPos?.left ?? hoverOb.clientX + 10,
                   top: hoverObPos?.top ?? Math.max(10, hoverOb.clientY - 100),

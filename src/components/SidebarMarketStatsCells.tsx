@@ -1,17 +1,12 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { MarketStakedLegsResponse } from '../api';
-import { fetchMarketStakedLegs, mergeMarketStakedLegsResponse } from '../api';
+import { fetchMarketStakedLegs, marketTotalStakedAbsUsd, mergeMarketStakedLegsResponse } from '../api';
 import { useThrottledBidAskMarketRow } from '../hooks/useThrottledBidAskMarketRow';
 import { formatPolymarketVolumeK } from '../utils/format';
 import { setSidebarNotifyStakedGatePasses } from '../lib/sidebarNotifyStakedGateStore';
 
 function stakedNetAbsUsd(legs: MarketStakedLegsResponse | null): number | null {
-  if (!legs) return null;
-  const net =
-    typeof legs.stakedSumAbsSignedNetUsd === 'number' && Number.isFinite(legs.stakedSumAbsSignedNetUsd)
-      ? legs.stakedSumAbsSignedNetUsd
-      : Math.abs(legs.stakedUsdYesLeg - legs.stakedUsdNoLeg);
-  return Number.isFinite(net) ? net : null;
+  return marketTotalStakedAbsUsd(legs);
 }
 
 function stakedGrossUsd(legs: MarketStakedLegsResponse | null): number | null {
@@ -120,14 +115,8 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
   }, [row]);
 
   const stakedNetAbs = useMemo(() => {
-    const wy = row?.stakedUsdYesLeg;
-    const wn = row?.stakedUsdNoLeg;
-    if (typeof wy !== 'number' || !Number.isFinite(wy) || typeof wn !== 'number' || !Number.isFinite(wn)) {
-      return null;
-    }
     const sumAbs = row?.stakedSumAbsSignedNetUsd;
-    if (typeof sumAbs === 'number' && Number.isFinite(sumAbs)) return sumAbs;
-    return Math.abs(wy - wn);
+    return typeof sumAbs === 'number' && Number.isFinite(sumAbs) ? sumAbs : null;
   }, [row]);
 
   const stakedGross = useMemo(() => {
@@ -178,8 +167,8 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
         }`}
         title={
           canShowEmbeddedToxic
-            ? `Net staked: |Σ|YES leg| − Σ|NO leg|| USD ≈ $${typeof stakedNetAbs === 'number' && Number.isFinite(stakedNetAbs) ? stakedNetAbs.toFixed(0) : '—'}. Σ|legs| gross $${typeof stakedGross === 'number' && Number.isFinite(stakedGross) ? stakedGross.toFixed(0) : '—'}. Click to expand Toxic Flow.`
-            : `Net staked (pill value): |Σ|YES leg| − Σ|NO leg|| USD ≈ $${typeof stakedNetAbs === 'number' && Number.isFinite(stakedNetAbs) ? stakedNetAbs.toFixed(0) : '—'}. Σ|legs| gross USD: $${typeof stakedGross === 'number' && Number.isFinite(stakedGross) ? stakedGross.toFixed(0) : '—'}`
+            ? `Total staked: Σ_w |Staked Net| USD ≈ $${typeof stakedNetAbs === 'number' && Number.isFinite(stakedNetAbs) ? stakedNetAbs.toFixed(0) : '—'}. Σ|usd_yes|+Σ|usd_no| gross $${typeof stakedGross === 'number' && Number.isFinite(stakedGross) ? stakedGross.toFixed(0) : '—'}. Click to expand Toxic Flow.`
+            : `Total staked (pill): Σ_w |Staked Net| USD ≈ $${typeof stakedNetAbs === 'number' && Number.isFinite(stakedNetAbs) ? stakedNetAbs.toFixed(0) : '—'}. Gross leg USD: $${typeof stakedGross === 'number' && Number.isFinite(stakedGross) ? stakedGross.toFixed(0) : '—'}`
         }
         onClick={onExpandToxic}
         onPointerDown={(e) => e.stopPropagation()}

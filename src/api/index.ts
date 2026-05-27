@@ -624,6 +624,13 @@ export function mergeMarketStakedLegsResponse(
   return out;
 }
 
+/** Market total staked = Σ_w |Staked Net| (dominant-leg inv×price). No |ΣY−ΣN| fallback. */
+export function marketTotalStakedAbsUsd(legs: MarketStakedLegsResponse | null | undefined): number | null {
+  if (!legs) return null;
+  const v = legs.stakedSumAbsSignedNetUsd;
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
 export async function fetchMarketStakedLegs(marketId: string): Promise<MarketStakedLegsResponse> {
   const resp = await fetch(`${BASE}/api/market-staked-legs?market_id=${encodeURIComponent(marketId)}`);
   if (!resp.ok) throw new Error('Failed to fetch market staked legs');

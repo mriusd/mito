@@ -472,12 +472,8 @@ function useToxicDialogStakedNetAbsUsd(yesTokenId: string, marketId: string, ope
 
   return useMemo(() => {
     if (!dialogMarketStakedLegs) return null;
-    let n =
-      typeof dialogMarketStakedLegs.stakedSumAbsSignedNetUsd === 'number' &&
-      Number.isFinite(dialogMarketStakedLegs.stakedSumAbsSignedNetUsd)
-        ? dialogMarketStakedLegs.stakedSumAbsSignedNetUsd
-        : Math.abs(dialogMarketStakedLegs.stakedUsdYesLeg - dialogMarketStakedLegs.stakedUsdNoLeg);
-    return Number.isFinite(n) ? n : null;
+    const n = dialogMarketStakedLegs.stakedSumAbsSignedNetUsd;
+    return typeof n === 'number' && Number.isFinite(n) ? n : null;
   }, [dialogMarketStakedLegs]);
 }
 

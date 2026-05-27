@@ -6,9 +6,9 @@ import { HelpCircle } from 'lucide-react';
 import { toxicCohortStakedNetSurplusHalves } from '../lib/toxicFlowStakeCohort';
 import type { MarketStakedLegsResponse } from '../api';
 
-/** YES orderbook bid vs ask USD depth (5–95¢) — same source as Live Orderbook imbalance bar. */
+/** YES bids vs NO bids USD depth (5–95¢) — same source as Live Orderbook imbalance bar. */
 export const TOXIC_TOTAL_STAKE_BAR_HELP =
-  'YES orderbook depth (5–95¢). Green = more bid-side USD, red = more ask-side USD. NO book omitted (mirrors YES).';
+  'YES bids vs NO bids (5–95¢). Blue = more YES bid USD, yellow = more NO bid USD.';
 
 function walletsPreviewPropEqual(a: readonly WalletPosition[], b: readonly WalletPosition[]): boolean {
   if (a === b) return true;
@@ -24,7 +24,7 @@ function ToxicFlowStakePreviewInner({
   wallets = [],
   marketGrossLegsUsd,
   yesBookBidUsd,
-  yesBookAskUsd,
+  noBookBidUsd,
   flashExtremeTilt,
   extremeFlashTiltThreshold,
   helpText,
@@ -37,7 +37,7 @@ function ToxicFlowStakePreviewInner({
     'stakedUsdYesLeg' | 'stakedUsdNoLeg' | 'stakedSumAbsSignedNetUsd'
   > | null;
   yesBookBidUsd?: number;
-  yesBookAskUsd?: number;
+  noBookBidUsd?: number;
   flashExtremeTilt?: boolean;
   extremeFlashTiltThreshold?: number;
   helpText?: string;
@@ -45,15 +45,15 @@ function ToxicFlowStakePreviewInner({
 }) {
   const { sumYUsd, sumNUsd, barMode } = useMemo(() => {
     const yBid = yesBookBidUsd;
-    const yAsk = yesBookAskUsd;
+    const nBid = noBookBidUsd;
     if (
       typeof yBid === 'number' &&
       Number.isFinite(yBid) &&
-      typeof yAsk === 'number' &&
-      Number.isFinite(yAsk) &&
-      (yBid > 0 || yAsk > 0)
+      typeof nBid === 'number' &&
+      Number.isFinite(nBid) &&
+      (yBid > 0 || nBid > 0)
     ) {
-      return { sumYUsd: yBid, sumNUsd: yAsk, barMode: 'yesBookDepth' as const };
+      return { sumYUsd: yBid, sumNUsd: nBid, barMode: 'yesBookDepth' as const };
     }
     const g = marketGrossLegsUsd;
     if (
@@ -71,7 +71,7 @@ function ToxicFlowStakePreviewInner({
     }
     const c = toxicCohortStakedNetSurplusHalves(wallets ?? []);
     return { sumYUsd: c.sumYUsd, sumNUsd: c.sumNUsd, barMode: 'cohortSurplusHalves' as const };
-  }, [marketGrossLegsUsd, wallets, yesBookBidUsd, yesBookAskUsd]);
+  }, [marketGrossLegsUsd, wallets, yesBookBidUsd, noBookBidUsd]);
   const total = sumYUsd + sumNUsd;
   const hasSplit = Number.isFinite(sumYUsd) && Number.isFinite(sumNUsd) && total > 1e-9;
 
@@ -120,7 +120,7 @@ export const ToxicFlowStakePreview = memo(ToxicFlowStakePreviewInner, (a, b) => 
     a.helpText !== b.helpText ||
     a.layout !== b.layout ||
     a.yesBookBidUsd !== b.yesBookBidUsd ||
-    a.yesBookAskUsd !== b.yesBookAskUsd
+    a.noBookBidUsd !== b.noBookBidUsd
   ) {
     return false;
   }

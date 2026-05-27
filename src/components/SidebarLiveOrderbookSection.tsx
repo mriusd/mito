@@ -11,7 +11,7 @@ export type SidebarLiveOrderbookSectionProps = {
   liveOrderbookExpanded: boolean;
   onToggleLiveOrderbookExpanded: () => void;
   yesBidUsd: number;
-  yesAskUsd: number;
+  noBidUsd: number;
   displayBidFullUsd: number;
   displayAskFullUsd: number;
   displayBids: SidebarObLevel[];
@@ -38,7 +38,7 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
     liveOrderbookExpanded,
     onToggleLiveOrderbookExpanded,
     yesBidUsd,
-    yesAskUsd,
+    noBidUsd,
     displayBidFullUsd,
     displayAskFullUsd,
     displayBids,
@@ -117,7 +117,7 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
             displayAsks={displayAsks}
             obAggStep={obAggStep}
             yesBidUsd={yesBidUsd}
-            yesAskUsd={yesAskUsd}
+            noBidUsd={noBidUsd}
             displayBidFullUsd={displayBidFullUsd}
             displayAskFullUsd={displayAskFullUsd}
             sidebarUserBidPrices={sidebarUserBidPrices}

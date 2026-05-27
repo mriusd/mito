@@ -17,10 +17,14 @@ export function obPriceCentsInBand(priceStr: string): boolean {
   return Number.isFinite(pCents) && pCents >= 5 && pCents <= 95;
 }
 
-/** USD for one raw level; 0 outside 5–95¢. */
+/** USD for one raw level; prices clamped into 5–95¢ (96–99¢ → 95¢, 1–4¢ → 5¢). */
 export function obLevelBandUsd(level: OBLevel): number {
-  if (!obPriceCentsInBand(level.price)) return 0;
-  return obLevelUsd(level);
+  const pCents = obPriceCents(level.price);
+  if (!Number.isFinite(pCents) || pCents <= 0 || pCents >= 100) return 0;
+  const clampedCents = Math.min(95, Math.max(5, pCents));
+  const size = parseFloat(level.size);
+  if (!Number.isFinite(size)) return 0;
+  return size * (clampedCents / 100);
 }
 
 /** Sum USD depth on one book side, 5–95¢ only. */
@@ -28,18 +32,18 @@ export function obBookSideUsdTotal(levels: OBLevel[]): number {
   return levels.reduce((s, l) => s + obLevelBandUsd(l), 0);
 }
 
-/** YES book bid vs ask USD depth (5–95¢). */
-export function orderbookYesBookDepth(
+/** YES bids vs NO bids USD depth (5–95¢ each book). */
+export function orderbookYesBidNoBidDepth(
   yesBids: OBLevel[],
-  yesAsks: OBLevel[],
-): { yesBidUsd: number; yesAskUsd: number; imbalance: number } {
+  noBids: OBLevel[],
+): { yesBidUsd: number; noBidUsd: number; imbalance: number } {
   const yesBidUsd = obBookSideUsdTotal(yesBids);
-  const yesAskUsd = obBookSideUsdTotal(yesAsks);
-  const bookDenom = yesBidUsd + yesAskUsd;
+  const noBidUsd = obBookSideUsdTotal(noBids);
+  const bookDenom = yesBidUsd + noBidUsd;
   return {
     yesBidUsd,
-    yesAskUsd,
-    imbalance: bookDenom > 0 ? (yesBidUsd - yesAskUsd) / bookDenom : 0,
+    noBidUsd,
+    imbalance: bookDenom > 0 ? (yesBidUsd - noBidUsd) / bookDenom : 0,
   };
 }
 

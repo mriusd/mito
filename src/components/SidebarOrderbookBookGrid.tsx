@@ -27,7 +27,7 @@ export type SidebarOrderbookBookGridProps = {
   displayAsks: SidebarObLevel[];
   obAggStep: SidebarObAggStep;
   yesBidUsd?: number;
-  yesAskUsd?: number;
+  noBidUsd?: number;
   displayBidFullUsd?: number;
   displayAskFullUsd?: number;
   sidebarUserBidPrices: Set<string>;
@@ -210,7 +210,7 @@ export const SidebarOrderbookBookGrid = memo(function SidebarOrderbookBookGrid({
   displayAsks,
   obAggStep,
   yesBidUsd = 0,
-  yesAskUsd = 0,
+  noBidUsd = 0,
   displayBidFullUsd,
   displayAskFullUsd,
   sidebarUserBidPrices,
@@ -233,14 +233,14 @@ export const SidebarOrderbookBookGrid = memo(function SidebarOrderbookBookGrid({
 
   const { leftBarUsd, rightBarUsd, barImbalance } = useMemo(() => {
     const left = yesBidUsd;
-    const right = yesAskUsd;
+    const right = noBidUsd;
     const denom = left + right;
     return {
       leftBarUsd: left,
       rightBarUsd: right,
       barImbalance: denom > 0 ? (left - right) / denom : 0,
     };
-  }, [yesBidUsd, yesAskUsd]);
+  }, [yesBidUsd, noBidUsd]);
 
   const longShortImbalance = barImbalance;
   const longBarPct = Math.max(2, Math.min(98, 50 + longShortImbalance * 50));
@@ -313,7 +313,7 @@ export const SidebarOrderbookBookGrid = memo(function SidebarOrderbookBookGrid({
     <>
       <div
         className="shrink-0 mb-1.5 px-0.5"
-        title={`YES bids $${Math.round(leftBarUsd).toLocaleString()} · YES asks $${Math.round(rightBarUsd).toLocaleString()} · full book 5–95¢ · ${(longShortImbalance * 100).toFixed(1)}% bid-heavy (blue)`}
+        title={`YES bids $${Math.round(leftBarUsd).toLocaleString()} · NO bids $${Math.round(rightBarUsd).toLocaleString()} · full book 5–95¢ · ${(longShortImbalance * 100).toFixed(1)}% YES-bid-heavy (blue)`}
       >
         <div className="flex items-center gap-1.5">
           <span className="shrink-0 text-[9px] tabular-nums font-semibold text-blue-400 sidebar-readable-value min-w-[2.25rem] text-left">

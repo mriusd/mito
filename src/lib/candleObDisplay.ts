@@ -22,10 +22,18 @@ export function candleObBookImbalance(ob: CandleObSnapshot): number {
 export function prepareCandleObDisplay(ob: CandleObSnapshot, step: SidebarObAggStep) {
   const { bids: rawBids, asks: rawAsks } = candleObToRawLevels(ob);
   const yesBidUsd = obBookSideUsdTotal(rawBids);
-  const yesAskUsd = obBookSideUsdTotal(rawAsks);
+  const noBidUsd = 0;
   const imbalance = candleObBookImbalance(ob);
   if (step === '0.1') {
-    return { displayBids: rawBids, displayAsks: rawAsks, yesBidUsd, yesAskUsd, displayBidFullUsd: yesBidUsd, displayAskFullUsd: yesAskUsd, orderbookBookImbalance: imbalance };
+    return {
+      displayBids: rawBids,
+      displayAsks: rawAsks,
+      yesBidUsd,
+      noBidUsd,
+      displayBidFullUsd: yesBidUsd,
+      displayAskFullUsd: obBookSideUsdTotal(rawAsks),
+      orderbookBookImbalance: imbalance,
+    };
   }
   const bucket = step === '1' ? '1' : '5';
   const cap = bucket === '1' ? 40 : 24;
@@ -35,9 +43,9 @@ export function prepareCandleObDisplay(ob: CandleObSnapshot, step: SidebarObAggS
     displayBids,
     displayAsks,
     yesBidUsd,
-    yesAskUsd,
+    noBidUsd,
     displayBidFullUsd: yesBidUsd,
-    displayAskFullUsd: yesAskUsd,
+    displayAskFullUsd: obBookSideUsdTotal(rawAsks),
     orderbookBookImbalance: imbalance,
   };
 }

@@ -1,9 +1,10 @@
 import { memo, useMemo } from 'react';
-import type { WalletPosition } from '../api';
+import type { Market } from '../types';
 import { findToxicFlowWalletPosition, marketConditionKeysEqual } from '../lib/toxicFlowWs';
 import { useSidebarToxicFlowData } from '../lib/sidebarToxicFlowStore';
 import { WalletSelectedMarketPositionStrip } from './WalletLatestMarketsTradedTable';
-import type { Market } from '../types';
+import type { WalletPosition } from '../api';
+import { resolveWalletInfoMarketPosition } from '../lib/walletInfoChartMarket';
 
 export const WalletInfoToxicPositionStripHost = memo(function WalletInfoToxicPositionStripHost({
   wallet,
@@ -20,20 +21,10 @@ export const WalletInfoToxicPositionStripHost = memo(function WalletInfoToxicPos
 }) {
   const toxicFlowData = useSidebarToxicFlowData();
 
-  const selectedMarketPosition = useMemo(() => {
-    const raw = selectedMarketId.trim();
-    if (!raw) return null;
-    const toxicMkt = String(toxicFlowData?.marketId || toxicFlowMarketId || '').trim();
-    if (toxicFlowData && toxicMkt && marketConditionKeysEqual(toxicMkt, raw)) {
-      // Same market as live toxic-flow cohort: topHolders is authoritative (closed → row gone).
-      return findToxicFlowWalletPosition(toxicFlowData, wallet);
-    }
-    return (
-      markets.find((row) => marketConditionKeysEqual(String(row.marketId || ''), raw)) ??
-      markets.find((row) => String(row.marketId || '').trim().toLowerCase() === raw.toLowerCase()) ??
-      null
-    );
-  }, [markets, selectedMarketId, toxicFlowData, toxicFlowMarketId, wallet]);
+  const selectedMarketPosition = useMemo(
+    () => resolveWalletInfoMarketPosition(wallet, selectedMarketId, markets, toxicFlowData, toxicFlowMarketId),
+    [markets, selectedMarketId, toxicFlowData, toxicFlowMarketId, wallet],
+  );
 
   const toxicMarketMatchesSelected = useMemo(() => {
     const raw = selectedMarketId.trim();

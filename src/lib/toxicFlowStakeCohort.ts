@@ -61,6 +61,21 @@ export function walletStakeNetAbsUsd(w: WalletPosition): number {
   return Number.isFinite(s) ? Math.abs(s) : NaN;
 }
 
+/** Chart outcome from inventory / staked lean for wallet info (YES if flat). */
+export function walletDirectionalChartOutcome(w: WalletPosition | null | undefined): 'YES' | 'NO' {
+  if (!w) return 'YES';
+  const net = walletNet(w);
+  if (net > STAKED_NET_EPS) return 'YES';
+  if (net < -STAKED_NET_EPS) return 'NO';
+  const sy = walletStakeYUsd(w);
+  const sn = walletStakeNUsd(w);
+  if (Number.isFinite(sy) && Number.isFinite(sn)) {
+    if (sy > sn + STAKED_NET_EPS) return 'YES';
+    if (sn > sy + STAKED_NET_EPS) return 'NO';
+  }
+  return 'YES';
+}
+
 /** Avg entry in ¢ on dominant inventory leg (inv_yes vs inv_no). */
 export function dominantStakedLegAvgPriceCents(w: WalletPosition): number | null {
   const iy = walletInvY(w);

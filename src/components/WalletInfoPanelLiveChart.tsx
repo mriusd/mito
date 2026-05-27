@@ -1,7 +1,9 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import type { WalletPosition } from '../api';
 import { fetchMarketOutcomeTokens } from '../api';
 import { useWalletMarketTradesWS } from '../hooks/useOnchainTradesWS';
 import { useThrottledPolymarketChartTrades } from '../hooks/useThrottledPolymarketChartTrades';
+import { walletDirectionalChartOutcome } from '../lib/toxicFlowStakeCohort';
 import { walletInfoChartMarketWithOutcomeTokens } from '../lib/walletInfoChartMarket';
 import { wsTradeToFillRow } from '../lib/walletInfoFillRows';
 import type { Market } from '../types';
@@ -12,11 +14,15 @@ export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
   wallet,
   selectedMarketId,
   selectedMarketMeta,
+  positionForMarket = null,
+  focusMarketSeq = 0,
 }: {
   open: boolean;
   wallet: string;
   selectedMarketId: string;
   selectedMarketMeta: Market | null;
+  positionForMarket?: WalletPosition | null;
+  focusMarketSeq?: number;
 }) {
   const enabled = open && !!wallet && !!selectedMarketId.trim();
   const { trades: wsMarketTrades } = useWalletMarketTradesWS(wallet, selectedMarketId, enabled);
@@ -26,6 +32,7 @@ export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
   );
   const walletInfoChartTrades = useThrottledPolymarketChartTrades(500);
   const [walletChartOutcome, setWalletChartOutcome] = useState<'YES' | 'NO'>('YES');
+  const userChartOverrideRef = useRef(false);
   const [chartOutcomeTokens, setChartOutcomeTokens] = useState<{
     tokenIdYes: string;
     tokenIdNo: string;
@@ -48,8 +55,13 @@ export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
   }, [open, selectedMarketId]);
 
   useEffect(() => {
-    setWalletChartOutcome('YES');
-  }, [selectedMarketId, chartOutcomeTokens?.tokenIdYes, chartOutcomeTokens?.tokenIdNo]);
+    userChartOverrideRef.current = false;
+  }, [wallet, selectedMarketId, focusMarketSeq]);
+
+  useEffect(() => {
+    if (userChartOverrideRef.current) return;
+    setWalletChartOutcome(walletDirectionalChartOutcome(positionForMarket));
+  }, [wallet, selectedMarketId, focusMarketSeq, positionForMarket]);
 
   const selectedMarketForChart = useMemo(
     () =>
@@ -70,7 +82,10 @@ export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
         trades={walletInfoChartTrades}
         ledgerFillsForMarkers={ledgerFillsForMarkers}
         chartOutcome={walletChartOutcome}
-        onChartOutcomeChange={setWalletChartOutcome}
+        onChartOutcomeChange={(next) => {
+          userChartOverrideRef.current = true;
+          setWalletChartOutcome(next);
+        }}
         intervalSelector="dropdown"
         volumeSpikeAlerts={false}
       />

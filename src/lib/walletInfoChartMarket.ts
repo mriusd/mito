@@ -1,6 +1,7 @@
-import type { WalletPosition } from '../api';
+import type { ToxicFlowData, WalletPosition } from '../api';
 import type { Market } from '../types';
 import { buildMarketByIdRecord } from '../components/WalletLatestMarketsTradedTable';
+import { findToxicFlowWalletPosition, marketConditionKeysEqual } from './toxicFlowWs';
 
 /** Merge ledger position end dates + labels into marketById for wallet-info charts. */
 export function enrichMarketByIdFromWalletPositions(
@@ -57,6 +58,27 @@ export function resolveWalletInfoChartMarket(
     endDate: pos.endDate || '',
     clobTokenIds: [],
   };
+}
+
+/** Wallet position for selected market — toxic-flow WS row wins when same market. */
+export function resolveWalletInfoMarketPosition(
+  wallet: string,
+  selectedMarketId: string,
+  markets: WalletPosition[],
+  toxicFlowData: ToxicFlowData | null | undefined,
+  toxicFlowMarketId: string,
+): WalletPosition | null {
+  const raw = selectedMarketId.trim();
+  if (!raw) return null;
+  const toxicMkt = String(toxicFlowData?.marketId || toxicFlowMarketId || '').trim();
+  if (toxicFlowData && toxicMkt && marketConditionKeysEqual(toxicMkt, raw)) {
+    return findToxicFlowWalletPosition(toxicFlowData, wallet);
+  }
+  return (
+    markets.find((row) => marketConditionKeysEqual(String(row.marketId || ''), raw)) ??
+    markets.find((row) => String(row.marketId || '').trim().toLowerCase() === raw.toLowerCase()) ??
+    null
+  );
 }
 
 export function walletInfoChartMarketWithOutcomeTokens(

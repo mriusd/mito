@@ -1,4 +1,4 @@
-import { memo, type RefObject } from 'react';
+import { memo, useMemo, type RefObject } from 'react';
 import { RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { WalletPosition, WalletSummary } from '../api';
 import type { Market } from '../types';
@@ -10,9 +10,9 @@ import { WalletScoresLedgerSummaryGrid } from './walletInfoPanelSummaryGrid';
 import { WalletInfoPanelLiveChart } from './WalletInfoPanelLiveChart';
 import { WalletInfoPanelFillsTable } from './WalletInfoPanelFillsTable';
 import { WalletInfoToxicPositionStripHost } from './WalletInfoToxicPositionStripHost';
-import { resolveWalletInfoChartMarket } from '../lib/walletInfoChartMarket';
+import { resolveWalletInfoChartMarket, resolveWalletInfoMarketPosition } from '../lib/walletInfoChartMarket';
 import { canonicalConditionKey } from '../hooks/useOnchainTradesWS';
-import { useMemo } from 'react';
+import { useSidebarToxicFlowData } from '../lib/sidebarToxicFlowStore';
 
 export const WalletInfoPanelSummarySection = memo(function WalletInfoPanelSummarySection({
   wallet,
@@ -151,6 +151,7 @@ export const WalletInfoPanelTradesSection = memo(function WalletInfoPanelTradesS
   markets,
   toxicFlowMarketId,
   fillsRefreshToken,
+  focusMarketSeq = 0,
   variant = 'modal',
 }: {
   open: boolean;
@@ -160,8 +161,10 @@ export const WalletInfoPanelTradesSection = memo(function WalletInfoPanelTradesS
   markets: WalletPosition[];
   toxicFlowMarketId: string;
   fillsRefreshToken: number;
+  focusMarketSeq?: number;
   variant?: 'inline' | 'modal';
 }) {
+  const toxicFlowData = useSidebarToxicFlowData();
   const showPendingTrades = useMemo(() => {
     if (variant !== 'inline') return false;
     const sel = canonicalConditionKey(selectedMarketId);
@@ -172,6 +175,11 @@ export const WalletInfoPanelTradesSection = memo(function WalletInfoPanelTradesS
   const selectedMarketMeta = useMemo(
     () => resolveWalletInfoChartMarket(selectedMarketId, marketById, markets),
     [selectedMarketId, marketById, markets],
+  );
+
+  const positionForMarket = useMemo(
+    () => resolveWalletInfoMarketPosition(wallet, selectedMarketId, markets, toxicFlowData, toxicFlowMarketId),
+    [wallet, selectedMarketId, markets, toxicFlowData, toxicFlowMarketId],
   );
 
   return (
@@ -185,6 +193,8 @@ export const WalletInfoPanelTradesSection = memo(function WalletInfoPanelTradesS
         wallet={wallet}
         selectedMarketId={selectedMarketId}
         selectedMarketMeta={selectedMarketMeta}
+        positionForMarket={positionForMarket}
+        focusMarketSeq={focusMarketSeq}
       />
       <WalletInfoToxicPositionStripHost
         wallet={wallet}

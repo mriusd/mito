@@ -1,8 +1,9 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { Market } from '../types';
 import { fetchMarketOutcomeTokens } from '../api';
 import { useAppStore } from '../stores/appStore';
 import { getOnchainTradesWSShared, OnchainTradesWSBridge, useWalletMarketTradesWS } from '../hooks/useOnchainTradesWS';
+import { walletDirectionalChartOutcome } from '../lib/toxicFlowStakeCohort';
 import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import { wsTradeToFillRow } from '../lib/walletInfoFillRows';
 import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
@@ -61,6 +62,16 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
     tokenIdNo: string;
   } | null>(null);
   const [chartOutcome, setChartOutcome] = useState<'YES' | 'NO'>('YES');
+  const userChartOverrideRef = useRef(false);
+
+  useEffect(() => {
+    userChartOverrideRef.current = false;
+  }, [wallet, marketId, trader?.marketId, trader?.invYes, trader?.invNo, trader?.netYes, trader?.netNo]);
+
+  useEffect(() => {
+    if (userChartOverrideRef.current) return;
+    setChartOutcome(walletDirectionalChartOutcome(trader));
+  }, [wallet, marketId, trader]);
 
   const scopedClobTokenIds = useMemo((): string[] | null => {
     const y = chartOutcomeTokens?.tokenIdYes?.trim();
@@ -84,10 +95,6 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
       cancelled = true;
     };
   }, [open, marketId]);
-
-  useEffect(() => {
-    setChartOutcome('YES');
-  }, [marketId, chartOutcomeTokens?.tokenIdYes]);
 
   const selectedMarketForChart = useMemo(
     () =>
@@ -120,7 +127,10 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
             trades={chartTrades}
             ledgerFillsForMarkers={hasWallet ? fills : undefined}
             chartOutcome={chartOutcome}
-            onChartOutcomeChange={setChartOutcome}
+            onChartOutcomeChange={(next) => {
+              userChartOverrideRef.current = true;
+              setChartOutcome(next);
+            }}
             intervalSelector="dropdown"
             volumeSpikeAlerts={false}
           />

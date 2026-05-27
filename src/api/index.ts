@@ -600,7 +600,7 @@ export async function fetchToxicFlow(marketId: string): Promise<ToxicFlowData> {
 export interface MarketStakedLegsResponse {
   stakedUsdYesLeg: number;
   stakedUsdNoLeg: number;
-  /** Σ_w |inv_y×px_y − inv_n×px_n| — headline Staked (matches Toxic wallet Staked Net abs sum over market). */
+  /** Σ_w |Staked Net| — dominant-leg (inv_yes vs inv_no) share delta × leg price. */
   stakedSumAbsSignedNetUsd?: number;
 }
 

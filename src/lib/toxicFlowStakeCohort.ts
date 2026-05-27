@@ -39,14 +39,21 @@ export function walletStakeTotalUsd(w: WalletPosition): number {
   return (Number.isFinite(sy) ? sy : 0) + (Number.isFinite(sn) ? sn : 0);
 }
 
-/** Ledger/display basis: inv_n×px_n − inv_y×px_y — matches Staked Net column. */
+/** Signed Staked Net (USD): YES lean negative, NO lean positive.
+ *  |net| = (inv_yes − inv_no)×price_yes when inv_yes > inv_no, else (inv_no − inv_yes)×price_no. */
 export function walletStakeNetSignedUsd(w: WalletPosition): number {
-  const sy = walletStakeYUsd(w);
-  const sn = walletStakeNUsd(w);
-  if (!(Number.isFinite(sy) || Number.isFinite(sn))) return NaN;
-  const y = Number.isFinite(sy) ? sy : 0;
-  const n = Number.isFinite(sn) ? sn : 0;
-  return n - y;
+  const iy = walletInvY(w);
+  const inn = walletInvN(w);
+  if (iy > inn) {
+    const py = typeof w.priceYes === 'number' && Number.isFinite(w.priceYes) ? w.priceYes : NaN;
+    if (!Number.isFinite(py)) return NaN;
+    return -((iy - inn) * py);
+  }
+  const delta = inn - iy;
+  if (delta <= STAKED_NET_EPS) return 0;
+  const pn = typeof w.priceNo === 'number' && Number.isFinite(w.priceNo) ? w.priceNo : NaN;
+  if (!Number.isFinite(pn)) return NaN;
+  return delta * pn;
 }
 
 export function walletStakeNetAbsUsd(w: WalletPosition): number {
@@ -54,27 +61,15 @@ export function walletStakeNetAbsUsd(w: WalletPosition): number {
   return Number.isFinite(s) ? Math.abs(s) : NaN;
 }
 
-/** Avg entry in ¢ on heavier staked leg; inventory fallback when stake legs missing. */
+/** Avg entry in ¢ on dominant inventory leg (inv_yes vs inv_no). */
 export function dominantStakedLegAvgPriceCents(w: WalletPosition): number | null {
-  const sy = walletStakeYUsd(w);
-  const sn = walletStakeNUsd(w);
-  const y = Number.isFinite(sy) ? sy : 0;
-  const n = Number.isFinite(sn) ? sn : 0;
-  const py = w.priceYes;
-  const pn = w.priceNo;
-  if (y > 1e-9 || n > 1e-9) {
-    if (y >= n) {
-      return typeof py === 'number' && Number.isFinite(py) ? py * 100 : null;
-    }
-    return typeof pn === 'number' && Number.isFinite(pn) ? pn * 100 : null;
-  }
   const iy = walletInvY(w);
   const inn = walletInvN(w);
-  if (Math.abs(iy) >= Math.abs(inn) && Math.abs(iy) > 1e-6) {
-    return typeof py === 'number' && Number.isFinite(py) ? py * 100 : null;
+  if (iy > inn) {
+    return typeof w.priceYes === 'number' && Number.isFinite(w.priceYes) ? w.priceYes * 100 : null;
   }
-  if (Math.abs(inn) > 1e-6) {
-    return typeof pn === 'number' && Number.isFinite(pn) ? pn * 100 : null;
+  if (inn > iy) {
+    return typeof w.priceNo === 'number' && Number.isFinite(w.priceNo) ? w.priceNo * 100 : null;
   }
   return null;
 }

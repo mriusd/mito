@@ -1044,7 +1044,7 @@ function WalletTableBodyRowImpl({
       </td>
       <td
         className={`${TOXIC_TABLE_BODY_TD_CLS} px-1 ${TOXIC_TABLE_STAKED_COL_CLS}`}
-        title={marketViewCols ? 'usdc_in' : 'Staked Y − Staked N (column display); Y / N suffix'}
+        title={marketViewCols ? 'usdc_in' : 'Signed Staked Net USD; Y / N suffix by dominant inv leg'}
       >
         {marketViewCols
           ? walletMarketUsdcInCell(rowUsdcIn)
@@ -1404,7 +1404,7 @@ function WalletTableInner({
               title={
                 variant === 'marketView'
                   ? 'usdc_in'
-                  : '(−inv_y×px_y) − (−inv_n×px_n) = Staked Y − Staked N as shown; suffix Y / N; green = favors YES / red = favors NO'
+                  : 'inv_yes > inv_no → (inv_yes−inv_no)×price_yes [Y]; else (inv_no−inv_yes)×price_no [N]; green = YES / red = NO'
               }
             >
               Staked

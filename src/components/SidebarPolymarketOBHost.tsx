@@ -3,7 +3,7 @@ import type { Market, Position } from '../types';
 import { usePolymarketOB, type LiveTrade } from '../hooks/usePolymarketOB';
 import type { SidebarObAggStep } from '../lib/sidebarOrderbookAggregate';
 import { sidebarObAggregateLevels } from '../lib/sidebarOrderbookAggregate';
-import { orderbookBookImbalance as computeOrderbookBookImbalance } from '../lib/orderbookBookImbalance';
+import { orderbookLongShortDepth } from '../lib/orderbookBookImbalance';
 import { readSavedObAggStep, LS_SIDEBAR_OB_AGG_STEP } from '../lib/sidebarObAggStep';
 import { bumpSidebarTopOfBookDigest } from '../lib/sidebarTopOfBookStore';
 import { setSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
@@ -67,20 +67,49 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   }, []);
 
   const bookLimit = OB_DEEP_BOOK;
-  const { bids, asks, trades: polymarketLiveTrades, loading: obLoading } = usePolymarketOB(obTokenId, bookLimit);
+  const yesTokenId = useMemo(() => {
+    if (!obTokenId || !selectedMarket?.clobTokenIds?.[0]) return null;
+    return selectedMarket.clobTokenIds[0] || null;
+  }, [obTokenId, selectedMarket?.clobTokenIds]);
+  const noTokenId = useMemo(() => {
+    if (!obTokenId || !selectedMarket?.clobTokenIds?.[1]) return null;
+    return selectedMarket.clobTokenIds[1] || null;
+  }, [obTokenId, selectedMarket?.clobTokenIds]);
+
+  const {
+    bids: yesBids,
+    asks: yesAsks,
+    trades: yesTrades,
+    loading: yesObLoading,
+  } = usePolymarketOB(yesTokenId, bookLimit);
+  const {
+    bids: noBids,
+    asks: noAsks,
+    trades: noTrades,
+    loading: noObLoading,
+  } = usePolymarketOB(noTokenId, bookLimit);
+
+  const activeObLoading = orderOutcome === 'YES' ? yesObLoading : noObLoading;
+  const polymarketLiveTrades = orderOutcome === 'YES' ? yesTrades : noTrades;
+  const obLoading = activeObLoading || yesObLoading || noObLoading;
 
   const obStaleBookRef = useRef<{ bids: OBLevel[]; asks: OBLevel[] }>({ bids: [], asks: [] });
   useLayoutEffect(() => {
     obStaleBookRef.current = { bids: [], asks: [] };
   }, [obTokenId]);
   useLayoutEffect(() => {
-    if (!obLoading) {
-      obStaleBookRef.current = { bids, asks };
+    if (!activeObLoading) {
+      obStaleBookRef.current =
+        orderOutcome === 'YES' ? { bids: yesBids, asks: yesAsks } : { bids: noBids, asks: noAsks };
     }
-  }, [obLoading, bids, asks]);
+  }, [activeObLoading, orderOutcome, yesBids, yesAsks, noBids, noAsks]);
 
-  const snapshotBids = obLoading ? obStaleBookRef.current.bids : bids;
-  const snapshotAsks = obLoading ? obStaleBookRef.current.asks : asks;
+  const snapshotBids = activeObLoading ? obStaleBookRef.current.bids : orderOutcome === 'YES' ? yesBids : noBids;
+  const snapshotAsks = activeObLoading ? obStaleBookRef.current.asks : orderOutcome === 'YES' ? yesAsks : noAsks;
+  const yesSnapshotBids = yesObLoading ? [] : yesBids;
+  const yesSnapshotAsks = yesObLoading ? [] : yesAsks;
+  const noSnapshotBids = noObLoading ? [] : noBids;
+  const noSnapshotAsks = noObLoading ? [] : noAsks;
 
   const { viewBids, viewAsks, refSnapshotBids, refSnapshotAsks } = useMemo(() => {
     const refBid = snapshotBids.slice(0, OB_RAW_TOP_REF);
@@ -105,10 +134,19 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   }, [snapshotBids, snapshotAsks, obAggStep]);
 
   const prevTopSig = useRef<string>('');
-  const orderbookBookImbalance = useMemo(
-    () => computeOrderbookBookImbalance(snapshotBids, snapshotAsks),
-    [snapshotBids, snapshotAsks],
-  );
+  const { orderbookBookImbalance, longDepthUsd, shortDepthUsd } = useMemo(() => {
+    const depth = orderbookLongShortDepth(
+      yesSnapshotBids,
+      yesSnapshotAsks,
+      noSnapshotBids,
+      noSnapshotAsks,
+    );
+    return {
+      orderbookBookImbalance: depth.imbalance,
+      longDepthUsd: depth.longUsd,
+      shortDepthUsd: depth.shortUsd,
+    };
+  }, [yesSnapshotBids, yesSnapshotAsks, noSnapshotBids, noSnapshotAsks]);
 
   useEffect(() => {
     setSidebarPolymarketTape(polymarketLiveTrades);
@@ -139,6 +177,8 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
       liveOrderbookExpanded={liveOrderbookExpanded}
       onToggleLiveOrderbookExpanded={onToggleLiveOrderbookExpanded}
       orderbookBookImbalance={orderbookBookImbalance}
+      longDepthUsd={longDepthUsd}
+      shortDepthUsd={shortDepthUsd}
       displayBids={viewBids}
       displayAsks={viewAsks}
       obAggStep={obAggStep}

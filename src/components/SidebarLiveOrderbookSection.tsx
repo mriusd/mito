@@ -11,6 +11,8 @@ export type SidebarLiveOrderbookSectionProps = {
   liveOrderbookExpanded: boolean;
   onToggleLiveOrderbookExpanded: () => void;
   orderbookBookImbalance: number;
+  longDepthUsd: number;
+  shortDepthUsd: number;
   displayBids: SidebarObLevel[];
   displayAsks: SidebarObLevel[];
   obAggStep: SidebarObAggStep;
@@ -35,6 +37,8 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
     liveOrderbookExpanded,
     onToggleLiveOrderbookExpanded,
     orderbookBookImbalance,
+    longDepthUsd,
+    shortDepthUsd,
     displayBids,
     displayAsks,
     obAggStep,
@@ -111,6 +115,8 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
             displayAsks={displayAsks}
             obAggStep={obAggStep}
             orderbookBookImbalance={orderbookBookImbalance}
+            longDepthUsd={longDepthUsd}
+            shortDepthUsd={shortDepthUsd}
             sidebarUserBidPrices={sidebarUserBidPrices}
             sidebarUserAskPrices={sidebarUserAskPrices}
             selectedMarket={selectedMarket}

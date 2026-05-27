@@ -25,6 +25,8 @@ export type SidebarOrderbookBookGridProps = {
   displayAsks: SidebarObLevel[];
   obAggStep: SidebarObAggStep;
   orderbookBookImbalance: number;
+  longDepthUsd?: number;
+  shortDepthUsd?: number;
   sidebarUserBidPrices: Set<string>;
   sidebarUserAskPrices: Set<string>;
   readOnly?: boolean;
@@ -192,6 +194,8 @@ export const SidebarOrderbookBookGrid = memo(function SidebarOrderbookBookGrid({
   displayAsks,
   obAggStep,
   orderbookBookImbalance,
+  longDepthUsd,
+  shortDepthUsd,
   sidebarUserBidPrices,
   sidebarUserAskPrices,
   readOnly = false,
@@ -277,18 +281,34 @@ export const SidebarOrderbookBookGrid = memo(function SidebarOrderbookBookGrid({
     <>
       <div
         className="shrink-0 mb-1.5 px-0.5"
-        title={`Long/short depth (5–95¢): ${(longShortImbalance * 100).toFixed(1)}% toward long (blue)`}
+        title={
+          longDepthUsd != null && shortDepthUsd != null
+            ? `Long $${Math.round(longDepthUsd).toLocaleString()} (YES bids + NO asks) · Short $${Math.round(shortDepthUsd).toLocaleString()} (NO bids + YES asks) · 5–95¢ · ${(longShortImbalance * 100).toFixed(1)}% toward long (blue)`
+            : `Long/short depth (5–95¢): ${(longShortImbalance * 100).toFixed(1)}% toward long (blue)`
+        }
       >
-        <div className="relative h-[5px] bg-gray-700 rounded-full overflow-hidden flex w-full">
-          <div
-            className="h-full"
-            style={{
-              width: `${longBarPct}%`,
-              backgroundColor: 'rgb(37 99 235 / 0.7)',
-            }}
-          />
-          <div className="h-full flex-1" style={{ backgroundColor: 'rgb(250 204 21 / 0.7)' }} />
-          <SidebarBarMidMarker />
+        <div className="flex items-center gap-1.5">
+          {longDepthUsd != null ? (
+            <span className="shrink-0 text-[9px] tabular-nums font-semibold text-blue-400 sidebar-readable-value min-w-[2.25rem] text-left">
+              {fmtObLevelUsd(longDepthUsd)}
+            </span>
+          ) : null}
+          <div className="relative h-[5px] bg-gray-700 rounded-full overflow-hidden flex flex-1 min-w-0">
+            <div
+              className="h-full"
+              style={{
+                width: `${longBarPct}%`,
+                backgroundColor: 'rgb(37 99 235 / 0.7)',
+              }}
+            />
+            <div className="h-full flex-1" style={{ backgroundColor: 'rgb(250 204 21 / 0.7)' }} />
+            <SidebarBarMidMarker />
+          </div>
+          {shortDepthUsd != null ? (
+            <span className="shrink-0 text-[9px] tabular-nums font-semibold text-yellow-400 sidebar-readable-value min-w-[2.25rem] text-right">
+              {fmtObLevelUsd(shortDepthUsd)}
+            </span>
+          ) : null}
         </div>
       </div>
       <div className="relative grid grid-cols-2 gap-2 flex-1 min-h-0">

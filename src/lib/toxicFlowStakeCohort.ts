@@ -15,8 +15,64 @@ function toxicFlowSwarmIdFromWallet(wallet: string): number {
   return m ? parseInt(m[1], 10) : NaN;
 }
 
+const SWARM_SLOT_SEC = 5;
+const SWARM_PRE_OPEN_SEC = 4;
+
+export function swarmMarketActiveUnixFromMeta(
+  eventSlug?: string,
+  endDate?: string,
+  timeframe?: string,
+): number {
+  const blob = (eventSlug || '').toLowerCase();
+  const m = blob.match(/updown-(5m|15m|4h)-(\d+)/);
+  if (m) {
+    const ts = parseInt(m[2], 10);
+    if (Number.isFinite(ts) && ts > 0) return ts;
+  }
+  const endMs = endDate ? Date.parse(endDate) : NaN;
+  if (!Number.isFinite(endMs) || endMs <= 0) return 0;
+  let dur = 300;
+  const tf = (timeframe || '').toLowerCase();
+  if (tf === '15m') dur = 900;
+  else if (tf === '1h') dur = 3600;
+  else if (tf === '4h') dur = 14400;
+  else if (tf === '24h') dur = 86400;
+  return Math.floor(endMs / 1000) - dur;
+}
+
+function toxicSwarmTimeSlot(startTime: number, marketActive: number): number {
+  if (!Number.isFinite(startTime) || startTime <= 0) return 0;
+  if (!Number.isFinite(marketActive) || marketActive <= 0) return 0;
+  const rel = startTime - marketActive;
+  if (rel < 0) {
+    if (rel >= -SWARM_PRE_OPEN_SEC) return -1;
+    return Math.trunc(rel / SWARM_SLOT_SEC);
+  }
+  return Math.trunc(rel / SWARM_SLOT_SEC);
+}
+
+function toxicSwarmDisplaySlotFromStart(startTime: number, marketActive: number, side: string): number {
+  const slot = toxicSwarmTimeSlot(startTime, marketActive);
+  if (slot < 0) return -1;
+  if (side === 'NO' && slot === 0) return 1;
+  return slot;
+}
+
+export function toxicSwarmDisplaySlot(
+  s: Pick<ToxicFlowSwarm, 'slotIndex' | 'swarmId' | 'startTime' | 'side'>,
+  marketActive = 0,
+): number {
+  if (typeof s.slotIndex === 'number' && Number.isFinite(s.slotIndex)) return s.slotIndex;
+  if (marketActive > 0) return toxicSwarmDisplaySlotFromStart(s.startTime, marketActive, s.side);
+  return s.swarmId;
+}
+
 /** Map API swarms to WalletPosition rows for the standard toxic-flow table. */
-export function toxicFlowSwarmsToWalletRows(swarms: readonly ToxicFlowSwarm[], marketId: string): WalletPosition[] {
+export function toxicFlowSwarmsToWalletRows(
+  swarms: readonly ToxicFlowSwarm[],
+  marketId: string,
+  marketActiveUnix = 0,
+): WalletPosition[] {
   const rows: WalletPosition[] = [];
   for (const s of swarms) {
     const iy = s.invYes ?? 0;
@@ -25,7 +81,7 @@ export function toxicFlowSwarmsToWalletRows(swarms: readonly ToxicFlowSwarm[], m
     const signed = iy - inn;
     rows.push({
       wallet: `__swarm:${s.swarmId}__`,
-      displayLabel: `Swarm #${s.swarmId} (${s.walletCount})`,
+      displayLabel: `Swarm #${toxicSwarmDisplaySlot(s, marketActiveUnix)} (${s.walletCount})`,
       marketId,
       invYes: iy,
       invNo: inn,
@@ -334,6 +390,7 @@ function swarmEqual(a: ToxicFlowSwarm, b: ToxicFlowSwarm): boolean {
   if (a === b) return true;
   if (
     a.swarmId !== b.swarmId ||
+    a.slotIndex !== b.slotIndex ||
     a.side !== b.side ||
     a.walletCount !== b.walletCount ||
     a.membersInMarket !== b.membersInMarket ||

@@ -112,7 +112,10 @@ import {
   toxicFlowStakeStripWalletLists,
   toxicFlowSwarmsToWalletRows,
   toxicFlowSwarmByRowWallet,
+  toxicSwarmDisplaySlot,
+  swarmMarketActiveUnixFromMeta,
 } from '../lib/toxicFlowStakeCohort';
+import { upDownTimeframeKeyFromMarket } from '../utils/format';
 import {
   readTiltWhaleAmountUsd,
   DEFAULT_TILT_WHALE_AMOUNT_USD,
@@ -259,7 +262,22 @@ const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
       ),
     [selectedMarket?.question, selectedMarket?.eventSlug],
   );
-  const rows = useMemo(() => toxicFlowSwarmsToWalletRows(swarms, marketId), [swarms, marketId]);
+  const marketActiveUnix = useMemo(() => {
+    if (!selectedMarket) return 0;
+    const mid = marketId.trim();
+    const sid = String(selectedMarket.id ?? '').trim();
+    const cid = String(selectedMarket.conditionId ?? '').trim().toLowerCase();
+    if (mid && sid !== mid && cid !== mid.toLowerCase()) return 0;
+    return swarmMarketActiveUnixFromMeta(
+      selectedMarket.eventSlug,
+      selectedMarket.endDate,
+      upDownTimeframeKeyFromMarket(selectedMarket) ?? undefined,
+    );
+  }, [selectedMarket, marketId]);
+  const rows = useMemo(
+    () => toxicFlowSwarmsToWalletRows(swarms, marketId, marketActiveUnix),
+    [swarms, marketId, marketActiveUnix],
+  );
   const detailSwarm = useMemo(
     () => (detailRowWallet ? toxicFlowSwarmByRowWallet(swarms, detailRowWallet) : null),
     [swarms, detailRowWallet],
@@ -310,7 +328,7 @@ const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
                   <div className="flex items-center gap-2 min-w-0 text-sm font-bold text-white truncate">
                     <span className="inline-flex items-center gap-1.5 min-w-0">
                       <span>
-                        Swarm #{detailSwarm.swarmId} ({detailSwarm.walletCount})
+                        Swarm #{toxicSwarmDisplaySlot(detailSwarm, marketActiveUnix)} ({detailSwarm.walletCount})
                       </span>
                       <SwarmSidePill side={detailSwarm.side} upDown={swarmUpDownMarket} />
                     </span>

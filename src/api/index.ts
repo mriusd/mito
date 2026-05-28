@@ -575,6 +575,8 @@ export interface ToxicFlowCluster {
 /** Live swarm of wallets that entered same side together; sticky for market lifetime. */
 export interface ToxicFlowSwarm {
   swarmId: number;
+  /** 5s slot from market active; −1 = entered within 4s before open. */
+  slotIndex?: number;
   side: 'YES' | 'NO';
   startTime: number;
   endTime: number;

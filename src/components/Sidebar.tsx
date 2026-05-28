@@ -129,6 +129,7 @@ import { resetSidebarToxicWalletExtraWidth } from '../lib/sidebarToxicWalletWidt
 import { getSidebarChartAnnualVolPct, setSidebarChartAnnualVolPct } from '../lib/sidebarChartVolStore';
 import { SidebarToxicWalletWidthHost } from './SidebarToxicWalletWidthHost';
 import { SidebarToxicNotifySoundHost } from './SidebarToxicNotifySoundHost';
+import { SidebarVolatilityRingHost } from './SidebarVolatilityRingHost';
 import { SidebarToxicStatsFlashWrap } from './SidebarToxicStatsFlashWrap';
 import { NotifyDialogNumberInput } from './NotifyDialogNumberInput';
 import { SidebarUpDownTargetHost } from './SidebarUpDownTargetHost';
@@ -304,6 +305,7 @@ const SIDEBAR_NOTIFY_TILT_UD_4H_KEY = 'polybot-sidebar-notify-tilt-ud-4h';
 const SIDEBAR_NOTIFY_MAX_VOLATILITY_PCT_KEY = 'polybot-sidebar-notify-max-volatility-pct';
 const SIDEBAR_NOTIFY_VOLATILITY_CANDLES_KEY = 'polybot-sidebar-notify-volatility-candles';
 const SIDEBAR_NOTIFY_VOLATILITY_ABOVE_KEY = 'polybot-sidebar-notify-volatility-above';
+const SIDEBAR_NOTIFY_VOLATILITY_RING_KEY = 'polybot-sidebar-notify-volatility-ring';
 
 function readNotifyTiltMktUpDown(): boolean {
   try {
@@ -573,6 +575,16 @@ function readNotifyVolatilityCandles(): number {
 function readNotifyVolatilityAbove(): boolean {
   try {
     const v = localStorage.getItem(SIDEBAR_NOTIFY_VOLATILITY_ABOVE_KEY);
+    if (v === null) return false;
+    return v === '1';
+  } catch {
+    return false;
+  }
+}
+
+function readNotifyVolatilityRing(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_VOLATILITY_RING_KEY);
     if (v === null) return false;
     return v === '1';
   } catch {
@@ -931,6 +943,7 @@ export const Sidebar = memo(function Sidebar() {
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
   const [notifyMaxVolatilityPct, setNotifyMaxVolatilityPct] = useState(readNotifyMaxVolatilityPct);
   const [notifyVolatilityAbove, setNotifyVolatilityAbove] = useState(readNotifyVolatilityAbove);
+  const [notifyVolatilityRing, setNotifyVolatilityRing] = useState(readNotifyVolatilityRing);
   const [notifyVolatilityCandles, setNotifyVolatilityCandles] = useState(readNotifyVolatilityCandles);
   const [notifyVolatilityCandlesDraft, setNotifyVolatilityCandlesDraft] = useState(() =>
     String(readNotifyVolatilityCandles()),
@@ -1238,6 +1251,13 @@ export const Sidebar = memo(function Sidebar() {
       /* ignore */
     }
   }, [notifyVolatilityAbove]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_VOLATILITY_RING_KEY, notifyVolatilityRing ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [notifyVolatilityRing]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_VOLATILITY_CANDLES_KEY, String(notifyVolatilityCandles));
@@ -3235,6 +3255,22 @@ export const Sidebar = memo(function Sidebar() {
                   />
                   <span>Notify Volatility Above</span>
                 </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyVolatilityRing}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setNotifyVolatilityRing(on);
+                      if (on) {
+                        primeTiltAudioContextFromUserGesture();
+                        void playTiltNotifySoundStrikes('green', notifySoundPitchMul, notifyRingTimeS, 1);
+                      }
+                    }}
+                  />
+                  <span>Volatility Ring</span>
+                </label>
                 <div className="flex items-center gap-2 flex-wrap justify-between">
                   <span className="text-gray-400 shrink-0 text-[11px]">Volatility candles</span>
                   <input
@@ -3317,6 +3353,14 @@ export const Sidebar = memo(function Sidebar() {
         notifySoundMaxPriceCents={notifySoundMaxPriceCents}
         notifyDoubleRing={notifyDoubleRing}
         notifyMaxVolatilityPct={notifyMaxVolatilityPct}
+        isMarketExpired={isMarketExpired}
+      />
+      <SidebarVolatilityRingHost
+        notifyVolatilityRing={notifyVolatilityRing}
+        notifyMaxVolatilityPct={notifyMaxVolatilityPct}
+        notifySoundPitchMul={notifySoundPitchMul}
+        notifyRingTimeS={notifyRingTimeS}
+        notifySoundMaxPriceCents={notifySoundMaxPriceCents}
         isMarketExpired={isMarketExpired}
       />
       <div

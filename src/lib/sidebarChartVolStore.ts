@@ -25,3 +25,7 @@ export function useSidebarChartAnnualVolPct(): number | null {
     getSidebarChartAnnualVolPct,
   );
 }
+
+export function sidebarVolBelowMaxCap(vol: number | null, maxVolPct: number): boolean {
+  return maxVolPct > 0 && vol != null && Number.isFinite(vol) && vol < maxVolPct;
+}

@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { useSidebarChartAnnualVolPct } from '../lib/sidebarChartVolStore';
+import { useSidebarChartAnnualVolPct, sidebarVolBelowMaxCap } from '../lib/sidebarChartVolStore';
 import { HelpTooltip } from './HelpTooltip';
 
 export const SidebarSpotVolSigmaLabel = memo(function SidebarSpotVolSigmaLabel({
@@ -25,6 +25,7 @@ export const SidebarSpotVolSigmaLabel = memo(function SidebarSpotVolSigmaLabel({
 
   const vol = sidebarChartAnnualVolPct;
   const maxVol = notifyMaxVolatilityPct;
+  const volBelowMax = sidebarVolBelowMaxCap(vol, maxVol);
   const volClass =
     vol == null
       ? 'text-gray-600'
@@ -38,7 +39,7 @@ export const SidebarSpotVolSigmaLabel = memo(function SidebarSpotVolSigmaLabel({
 
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap">
-      <span className={volClass}>
+      <span className={`${volClass}${volBelowMax ? ' sidebar-vol-below-max-flash' : ''}`}>
         {vol != null ? `σ ${vol.toFixed(1)}%` : 'σ —'}
       </span>
       <HelpTooltip

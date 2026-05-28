@@ -217,6 +217,19 @@ tr.toxic-flow-row-near-resolved:hover {
   animation: sidebar-bar-seg-flash 0.55s ease-in-out infinite;
 }
 
+@keyframes sidebar-vol-below-max-flash {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.65);
+  }
+}
+.sidebar-vol-below-max-flash {
+  animation: sidebar-vol-below-max-flash 0.55s ease-in-out infinite;
+}
+
 /* Stats row + bias bars only (not full sidebar). */
 .sidebar-stats-flash-green {
   animation: sidebar-bg-flash-green 0.55s ease-in-out infinite;

@@ -39,7 +39,6 @@ import {
   mergeMarketStakedLegsResponse,
   walletSummaryFromLedgerEmbed,
   type MarketStakedLegsResponse,
-  type ToxicFlowCluster,
   type ToxicFlowSwarm,
   type ToxicFlowData,
   type WalletPosition,
@@ -429,7 +428,6 @@ const ToxicFlowTablePane = memo(function ToxicFlowTablePane({
   tab,
   onTab,
   tabWalletViews,
-  clusters,
   swarms,
   totalStakedNetUsd,
   onOpenWallet,
@@ -442,7 +440,6 @@ const ToxicFlowTablePane = memo(function ToxicFlowTablePane({
   tab: Tab;
   onTab: (tab: Tab) => void;
   tabWalletViews: ToxicFlowTabWalletViews;
-  clusters: ToxicFlowCluster[];
   swarms: ToxicFlowSwarm[];
   totalStakedNetUsd: number | null;
   onOpenWallet: (wallet: string, netShares?: number) => void;
@@ -643,7 +640,6 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   open,
   marketExpired = false,
   tabWalletViews,
-  clusters,
   swarms,
   layoutMode,
   tab,
@@ -667,7 +663,6 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   open: boolean;
   marketExpired?: boolean;
   tabWalletViews: ToxicFlowTabWalletViews;
-  clusters: ToxicFlowCluster[];
   swarms: ToxicFlowSwarm[];
   layoutMode: ToxicFlowLayoutMode;
   tab: Tab;
@@ -731,7 +726,6 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
           tab={tab}
           onTab={setTab}
           tabWalletViews={tabWalletViews}
-          clusters={clusters}
           swarms={swarms}
           totalStakedNetUsd={totalStakedNetUsd}
           onOpenWallet={openWalletDialog}
@@ -748,7 +742,6 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
             tab={tab}
             onTab={setTab}
             tabWalletViews={tabWalletViews}
-            clusters={clusters}
             swarms={swarms}
             totalStakedNetUsd={totalStakedNetUsd}
             onOpenWallet={openWalletDialog}
@@ -762,7 +755,6 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
             tab={tabBottom}
             onTab={setTabBottom}
             tabWalletViews={tabWalletViews}
-            clusters={clusters}
             swarms={swarms}
             totalStakedNetUsd={totalStakedNetUsd}
             onOpenWallet={openWalletDialog}
@@ -775,7 +767,6 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
             tab={tab}
             onTab={setTab}
             tabWalletViews={tabWalletViews}
-            clusters={clusters}
             swarms={swarms}
             totalStakedNetUsd={totalStakedNetUsd}
             onOpenWallet={openWalletDialog}
@@ -789,7 +780,6 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
             tab={tabBottom}
             onTab={setTabBottom}
             tabWalletViews={tabWalletViews}
-            clusters={clusters}
             swarms={swarms}
             totalStakedNetUsd={totalStakedNetUsd}
             onOpenWallet={openWalletDialog}
@@ -798,7 +788,6 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
             tab={tabThird}
             onTab={setTabThird}
             tabWalletViews={tabWalletViews}
-            clusters={clusters}
             swarms={swarms}
             totalStakedNetUsd={totalStakedNetUsd}
             onOpenWallet={openWalletDialog}
@@ -823,7 +812,6 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
     a.setTabBottom !== b.setTabBottom ||
     a.setTabThird !== b.setTabThird ||
     a.openWalletDialog !== b.openWalletDialog ||
-    a.clusters !== b.clusters ||
     a.swarms !== b.swarms ||
     a.layoutSwitch !== b.layoutSwitch ||
     a.tabsTipOpen !== b.tabsTipOpen ||
@@ -1003,7 +991,6 @@ const ToxicFlowDialogEmbeddedTableStack = memo(function ToxicFlowDialogEmbeddedT
 }) {
   const tabWalletViews = useSidebarToxicFlowTabViews(toxicFollowSet, tiltWhaleAmountUsd, toxicXSet);
   const storeData = useSidebarToxicFlowData();
-  const clusters = storeData?.clusters ?? [];
   const swarms = storeData?.swarms ?? [];
   const loading = Boolean(open && marketId.trim() && storeData === null);
 
@@ -1073,7 +1060,6 @@ const ToxicFlowDialogEmbeddedTableStack = memo(function ToxicFlowDialogEmbeddedT
       open={open}
       marketExpired={marketExpired}
       tabWalletViews={tabWalletViews}
-      clusters={clusters}
       swarms={swarms}
       layoutMode={layoutMode}
       tab={tab}
@@ -1435,7 +1421,6 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     setRowActionsTipOpen(false);
   }, []);
 
-  const flowClusters = data?.clusters ?? [];
   const flowSwarms = data?.swarms ?? [];
 
   const primaryTabWalletCount = useMemo(() => {
@@ -1553,7 +1538,6 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
               open={open}
               marketExpired={marketExpired}
               tabWalletViews={tabWalletViews}
-              clusters={flowClusters}
               swarms={flowSwarms}
               layoutMode={layoutMode}
               tab={tab}

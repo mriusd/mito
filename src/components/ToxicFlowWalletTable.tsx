@@ -17,6 +17,7 @@ import { Star, Bell, X } from 'lucide-react';
 import {
   fetchWalletSummary,
   walletSummaryFromLedgerEmbed,
+  type ToxicFlowSwarm,
   type WalletPosition,
   type WalletSummary,
   type WalletScoresLedgerEmbed,
@@ -41,6 +42,7 @@ import {
 } from '../lib/toxicXWallets';
 import { HelperTooltip } from './HelperTooltip';
 import { StakedLegUsdBar } from './StakedLegUsdBar';
+import { ToxicFlowSwarmsSlotChart } from './ToxicFlowSwarmsSlotChart';
 import { WalletAddressGlyph } from './WalletAddressGlyph';
 import { ToxicFlowRowActionsTip } from './ToxicFlowRowActionsTip';
 import {
@@ -1185,6 +1187,8 @@ function WalletTableInner({
   rankStart = 0,
   pnlSortOrder,
   onPnlSortClick,
+  swarmsChart,
+  marketActiveUnixForChart = 0,
 }: {
   wallets: WalletPosition[] | null;
   label: string;
@@ -1202,6 +1206,8 @@ function WalletTableInner({
   rankStart?: number;
   pnlSortOrder?: 'asc' | 'desc';
   onPnlSortClick?: () => void;
+  swarmsChart?: readonly ToxicFlowSwarm[];
+  marketActiveUnixForChart?: number;
 }) {
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
   useEffect(() => {
@@ -1375,6 +1381,9 @@ function WalletTableInner({
             compactTotalStakeNetUsd={cohortStakeBarTotal > 0 ? cohortStakeBarTotal : null}
           />
         </div>
+      ) : null}
+      {variant === 'swarms' && swarmsChart && swarmsChart.length > 0 ? (
+        <ToxicFlowSwarmsSlotChart swarms={swarmsChart} marketActiveUnix={marketActiveUnixForChart} />
       ) : null}
       <div
         ref={scrollRef}
@@ -1555,9 +1564,19 @@ const WalletTable = memo(WalletTableInner, (a, b) => {
     a.variant !== b.variant ||
     a.rankStart !== b.rankStart ||
     a.pnlSortOrder !== b.pnlSortOrder ||
-    a.onPnlSortClick !== b.onPnlSortClick
+    a.onPnlSortClick !== b.onPnlSortClick ||
+    a.marketActiveUnixForChart !== b.marketActiveUnixForChart
   ) {
     return false;
+  }
+  const sa = a.swarmsChart;
+  const sb = b.swarmsChart;
+  if (sa !== sb) {
+    if (sa == null || sb == null) return sa === sb;
+    if (sa.length !== sb.length) return false;
+    for (let i = 0; i < sa.length; i++) {
+      if (sa[i] !== sb[i]) return false;
+    }
   }
   const wa = a.wallets;
   const wb = b.wallets;
@@ -1587,6 +1606,8 @@ export type ToxicFlowWalletTableProps = {
   rankStart?: number;
   pnlSortOrder?: 'asc' | 'desc';
   onPnlSortClick?: () => void;
+  swarmsChart?: readonly ToxicFlowSwarm[];
+  marketActiveUnixForChart?: number;
 };
 
 export const ToxicFlowWalletTable = WalletTable;

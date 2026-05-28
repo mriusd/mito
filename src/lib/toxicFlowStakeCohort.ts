@@ -40,7 +40,8 @@ export function swarmMarketActiveUnixFromMeta(
   return Math.floor(endMs / 1000) - dur;
 }
 
-function toxicSwarmTimeSlot(startTime: number, marketActive: number): number {
+/** 5s time bucket from market active (−1 = within 4s before open). */
+export function toxicSwarmTimeSlot(startTime: number, marketActive: number): number {
   if (!Number.isFinite(startTime) || startTime <= 0) return 0;
   if (!Number.isFinite(marketActive) || marketActive <= 0) return 0;
   const rel = startTime - marketActive;
@@ -56,6 +57,68 @@ function toxicSwarmDisplaySlotFromStart(startTime: number, marketActive: number,
   if (slot < 0) return -1;
   if (side === 'NO' && slot === 0) return 1;
   return slot;
+}
+
+export type SwarmSlotChartPoint = {
+  slot: number;
+  yesUsd: number;
+  noUsd: number;
+};
+
+export function toxicSwarmStakedAbsUsd(s: ToxicFlowSwarm): number {
+  const stub: WalletPosition = {
+    wallet: '',
+    marketId: '',
+    invYes: s.invYes ?? 0,
+    invNo: s.invNo ?? 0,
+    boughtYes: s.boughtYes ?? 0,
+    soldYes: s.soldYes ?? 0,
+    boughtNo: s.boughtNo ?? 0,
+    soldNo: s.soldNo ?? 0,
+    net: s.net ?? 0,
+    netYes: s.netYes ?? 0,
+    netNo: s.netNo ?? 0,
+    usdcIn: s.usdcIn ?? 0,
+    usdcOut: s.usdcOut ?? 0,
+    pnl: 0,
+    priceYes: s.priceYes,
+    priceNo: s.priceNo,
+    tradeCount: s.tradeCount ?? 0,
+    firstTradeTime: s.startTime ?? 0,
+    lastTradeTime: s.endTime ?? 0,
+    marketAsset: '',
+    marketType: '',
+    marketTimeframe: '',
+    netSide: s.side,
+    inventoryBias: 0,
+  };
+  return walletStakeNetAbsUsd(stub);
+}
+
+/** Per 5s time slot: YES staked above zero, NO staked below (magnitudes). */
+export function buildSwarmSlotChartPoints(
+  swarms: readonly ToxicFlowSwarm[],
+  marketActiveUnix: number,
+): SwarmSlotChartPoint[] {
+  const bySlot = new Map<number, { yesUsd: number; noUsd: number }>();
+  for (const s of swarms) {
+    const slot =
+      marketActiveUnix > 0
+        ? toxicSwarmTimeSlot(s.startTime, marketActiveUnix)
+        : toxicSwarmDisplaySlot(s, marketActiveUnix);
+    const usd = toxicSwarmStakedAbsUsd(s);
+    if (!Number.isFinite(usd) || usd <= 0) continue;
+    let row = bySlot.get(slot);
+    if (!row) {
+      row = { yesUsd: 0, noUsd: 0 };
+      bySlot.set(slot, row);
+    }
+    if (s.side === 'YES') row.yesUsd += usd;
+    else row.noUsd += usd;
+  }
+  return [...bySlot.entries()]
+    .map(([slot, v]) => ({ slot, yesUsd: v.yesUsd, noUsd: v.noUsd }))
+    .sort((a, b) => a.slot - b.slot);
 }
 
 export function toxicSwarmDisplaySlot(

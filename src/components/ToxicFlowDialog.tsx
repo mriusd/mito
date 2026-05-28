@@ -311,6 +311,8 @@ const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
         rowActionsAnchorRef={rowActionsAnchorRef}
         onRowClick={(wallet) => setDetailRowWallet(wallet)}
         selectedWallet={detailRowWallet}
+        swarmsChart={swarms}
+        marketActiveUnixForChart={marketActiveUnix}
       />
       {detailSwarm && typeof document !== 'undefined'
         ? createPortal(

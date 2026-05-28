@@ -193,6 +193,13 @@ tr.toxic-flow-row-near-resolved:hover {
   animation: toxic-flow-bell-high-stake-combo-row-flash 1.35s ease-in-out infinite;
 }
 
+/* Toxic-flow wallet column: ledger WR ≥ 75% (≥10 resolved markets). */
+.toxic-flow-wallet-high-wr-glow {
+  text-shadow:
+    0 0 8px rgba(244, 114, 182, 0.9),
+    0 0 14px rgba(236, 72, 153, 0.55);
+}
+
 /* Up/Down HUD: winner-bias bar when >75% turquoise or >75% pink */
 .updown-winner-bias-bar-flash {
   animation: updown-math-flash 0.55s ease-in-out infinite;

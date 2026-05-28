@@ -54,6 +54,10 @@ import {
   toxicRowResolvedStatsLow,
   isToxicFlowSwarmWallet,
 } from '../lib/toxicFlowStakeCohort';
+import {
+  ledgerHighWinRateFromLedgerInput,
+  TOXIC_FLOW_HIGH_WIN_RATE_ADDR_CLASS,
+} from '../lib/walletAddressColor';
 import { primeTiltAudioContextFromUserGesture } from '../lib/tiltNotifySound';
 import { toxicWalletDisplayLabel } from '../lib/toxicWalletDisplayLabel';
 import { useToxicWalletTag } from '../lib/toxicWalletTags';
@@ -727,15 +731,19 @@ const WalletLink = forwardRef<
   const resolvedStatsLow = resolvedLowEmbed || resolvedLowSummary;
 
   const smartGoldAddr = !ledgerAbsent && !resolvedStatsLow && (ledgerGold || isSmart);
+  const highWinRateAddr =
+    !ledgerAbsent && !resolvedStatsLow && ledgerHighWinRateFromLedgerInput(ledgerEmbed, summary);
   const addrClass = resolvedStatsLow || ledgerAbsent
     ? 'text-blue-400'
-    : smartGoldAddr
-      ? 'text-amber-400'
-      : lifetimeHue === 'pos'
-        ? 'text-green-400'
-        : lifetimeHue === 'neg'
-          ? 'text-red-400'
-          : 'text-zinc-400';
+    : highWinRateAddr
+      ? TOXIC_FLOW_HIGH_WIN_RATE_ADDR_CLASS
+      : smartGoldAddr
+        ? 'text-amber-400'
+        : lifetimeHue === 'pos'
+          ? 'text-green-400'
+          : lifetimeHue === 'neg'
+            ? 'text-red-400'
+            : 'text-zinc-400';
   const btnTitle = (() => {
     const parts: string[] = [wallet];
     if (polymarketNick) parts.push(`Polymarket: ${polymarketNick}`);
@@ -747,6 +755,7 @@ const WalletLink = forwardRef<
       else if (lifetimeHue === 'neg') parts.push('Lifetime ledger PnL < 0');
       else parts.push('Lifetime ledger PnL flat (~0)');
     }
+    if (highWinRateAddr) parts.push('Ledger WR ≥75%, ≥10 resolved markets');
     if (ledgerGold && isSmart) parts.push('Ledger WR >50%, ≥10 resolved, ledger PnL >0; proven smart wallet');
     else {
       if (ledgerGold) parts.push('Ledger WR >50%, ≥10 resolved markets, ledger PnL >0');

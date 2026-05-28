@@ -53,6 +53,35 @@ export function ledgerGoldFromSummary(summary: WalletSummary | null | undefined)
   return typeof summary.pnl === 'number' && Number.isFinite(summary.pnl) && summary.pnl > 0;
 }
 
+const LEDGER_HIGH_WIN_RATE_MIN_FRAC = 0.75;
+const LEDGER_HIGH_WIN_RATE_MIN_RESOLVED = 10;
+
+/** Toxic-flow pink glow: ledger WR ≥ 75% with ≥10 resolved markets. */
+export function ledgerHighWinRateFromEmbed(embed: WalletScoresLedgerEmbed | null | undefined): boolean {
+  if (embed == null) return false;
+  if ((embed.resolvedMarkets ?? 0) < LEDGER_HIGH_WIN_RATE_MIN_RESOLVED) return false;
+  if (typeof embed.winRate !== 'number' || !Number.isFinite(embed.winRate)) return false;
+  return ledgerWinRateFracFromStored(embed.winRate) >= LEDGER_HIGH_WIN_RATE_MIN_FRAC;
+}
+
+export function ledgerHighWinRateFromSummary(summary: WalletSummary | null | undefined): boolean {
+  if (summary == null) return false;
+  if ((summary.resolvedMarkets ?? 0) < LEDGER_HIGH_WIN_RATE_MIN_RESOLVED) return false;
+  if (typeof summary.winRate !== 'number' || !Number.isFinite(summary.winRate)) return false;
+  return ledgerWinRateFracFromStored(summary.winRate) >= LEDGER_HIGH_WIN_RATE_MIN_FRAC;
+}
+
+export function ledgerHighWinRateFromLedgerInput(
+  ledgerEmbed: WalletScoresLedgerEmbed | null | undefined,
+  summary: WalletSummary | null | undefined,
+): boolean {
+  if (ledgerEmbed !== undefined && ledgerEmbed !== null) return ledgerHighWinRateFromEmbed(ledgerEmbed);
+  if (summary !== undefined && summary !== null) return ledgerHighWinRateFromSummary(summary);
+  return false;
+}
+
+export const TOXIC_FLOW_HIGH_WIN_RATE_ADDR_CLASS = 'text-pink-400 toxic-flow-wallet-high-wr-glow';
+
 /** Toxic-flow wallet column colors (blue / amber / green / red / zinc). */
 export function walletAddressColorClass(input: {
   ledgerEmbed?: WalletScoresLedgerEmbed | null;

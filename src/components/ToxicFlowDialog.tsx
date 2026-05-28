@@ -1582,10 +1582,21 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
       <div className="flex items-center gap-2 min-w-0 mb-3 shrink-0">
         <UsersRound size={16} className="text-yellow-400 shrink-0" />
         <span className="text-sm font-bold text-yellow-400 shrink-0">Holders</span>
-        <span className="text-xs text-gray-400 truncate">{marketName}</span>
+        <span className="text-xs text-gray-400 truncate min-w-0 flex-1">{marketName}</span>
+        {!inlineSplit ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 p-0.5 rounded text-gray-500 hover:text-white hover:bg-gray-700/70 transition"
+            title="Close holders"
+            aria-label="Close holders"
+          >
+            <X size={16} strokeWidth={2} />
+          </button>
+        ) : null}
       </div>
     ),
-    [marketName],
+    [marketName, inlineSplit, onClose],
   );
 
   const holdersBody = (

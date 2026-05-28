@@ -42,6 +42,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   notifyWhaleIgnoreNegativePnl,
   notifyInsiderWinRatePct,
   notifyInsiderMinStakeUsd,
+  notifySoundMaxPriceCents,
   notifyHolderTiltPct,
   notifySmartTiltPct,
   notifyFavouriteTiltPct,
@@ -54,6 +55,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   notifyWhaleIgnoreNegativePnl: boolean;
   notifyInsiderWinRatePct: number;
   notifyInsiderMinStakeUsd: number;
+  notifySoundMaxPriceCents: number;
   notifyHolderTiltPct: number;
   notifySmartTiltPct: number;
   notifyFavouriteTiltPct: number;
@@ -122,6 +124,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
         notifyInsiderWinRatePct,
         notifyInsiderMinStakeUsd,
         toxicXSet,
+        notifySoundMaxPriceCents,
       );
     }
 
@@ -164,6 +167,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
     notifyWhaleIgnoreNegativePnl,
     notifyInsiderWinRatePct,
     notifyInsiderMinStakeUsd,
+    notifySoundMaxPriceCents,
     toxicXSet,
     notifyHolderTiltPct,
     notifySmartTiltPct,

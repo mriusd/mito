@@ -858,14 +858,20 @@ export function toxicFlowInsiderRingGatePasses(
   minWinRatePct: number,
   minStakeUsd: number,
   xSet: ReadonlySet<string> = new Set(),
+  maxSoundMutePriceCents: number,
 ): boolean {
-  if (!data || !Number.isFinite(minWinRatePct) || !Number.isFinite(minStakeUsd)) return false;
+  if (!data || !Number.isFinite(minWinRatePct) || !Number.isFinite(minStakeUsd) || !Number.isFinite(maxSoundMutePriceCents)) {
+    return false;
+  }
   const minFrac = Math.max(0, Math.min(1, minWinRatePct / 100));
   const floor = Math.max(0, minStakeUsd);
   for (const w of toxicFlowWalletUniverse(data)) {
     if (toxicRowWalletIsXMarked(w, xSet)) continue;
     const absUsd = walletStakeNetAbsUsd(w);
     if (!Number.isFinite(absUsd) || absUsd < floor) continue;
+    const pc = dominantStakedLegAvgPriceCents(w);
+    if (pc == null || !Number.isFinite(pc)) continue;
+    if (pc > maxSoundMutePriceCents) continue;
     const wr = toxicRowSortWinRateFrac(w);
     if (wr == null || !Number.isFinite(wr)) continue;
     if (wr >= minFrac) return true;

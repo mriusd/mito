@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useMemo, memo, useLayoutEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo, memo, useLayoutEffect, type ReactNode } from 'react';
+import { useAccount } from 'wagmi';
 import { useAppStore } from '../../stores/appStore';
 import {
   cancelOrder,
@@ -14,6 +15,10 @@ import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { onchainFillKey } from '../../lib/tradeKeys';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
+import { hasCredsForWallet, ensureCredsForWallet, triggerWalletRefresh } from '../../lib/clobClient';
+import { isWebMode } from '../../lib/env';
+import { appKit } from '../../lib/wallet';
+import { signingDialog } from '../SigningDialog';
 import type { Position, Trade } from '../../types';
 import { showToast } from '../../utils/toast';
 import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, getPositionClobTokenId, extractAssetFromMarket, formatPriceShort, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
@@ -80,11 +85,43 @@ function getTimeLeftDisplay(endDate: string | null): { label: string; color: str
   return { label: `${d}d`, color: 'text-gray-400' };
 }
 
+function TpoAuthEmpty({
+  mode,
+  onLogIn,
+  loggingIn,
+}: {
+  mode: 'connect' | 'login';
+  onLogIn?: () => void;
+  loggingIn?: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center py-8 gap-2">
+      <button
+        type="button"
+        disabled={mode === 'login' && loggingIn}
+        onClick={mode === 'connect' ? () => appKit.open({ view: 'Connect' }) : onLogIn}
+        className="px-4 py-2 rounded-lg font-bold text-xs transition bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none text-white"
+      >
+        {mode === 'connect' ? 'Connect Wallet' : loggingIn ? 'Signing…' : 'Log In'}
+      </button>
+      {mode === 'login' && (
+        <p className="text-[10px] text-gray-500 m-0 text-center max-w-[220px]">
+          Sign once to load orders and sync trading data.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const positions = useAppStore((s) => s.positions);
   const orders = useAppStore((s) => s.orders);
   const trades = useAppStore((s) => s.trades);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
+  const signingMode = useAppStore((s) => s.signingMode);
+  const pkAddress = useAppStore((s) => s.pkAddress);
+  const pkRevision = useAppStore((s) => s.pkRevision);
+  const { address, isConnected } = useAccount();
   const makerAddress = useTradingWalletAddress();
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
@@ -315,6 +352,54 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   };
 
   const [cancellingOrderIds, setCancellingOrderIds] = useState<Set<string>>(new Set());
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [authEpoch, setAuthEpoch] = useState(0);
+
+  const effectiveEoa = useMemo(
+    () => ((signingMode === 'privateKey' && pkAddress ? pkAddress : address) || '').trim().toLowerCase(),
+    [signingMode, pkAddress, address],
+  );
+  const walletConnected = signingMode === 'privateKey' ? !!pkAddress : isConnected && !!address;
+  const walletAuthed = useMemo(() => {
+    if (!isWebMode) return true;
+    if (signingMode === 'privateKey' && pkAddress) return true;
+    if (!walletConnected || !effectiveEoa || !makerAddress) return false;
+    return hasCredsForWallet(makerAddress, effectiveEoa);
+  }, [walletConnected, effectiveEoa, makerAddress, signingMode, pkAddress, pkRevision, authEpoch]);
+  const showConnectWallet = isWebMode && !walletConnected;
+  const showLogIn =
+    isWebMode &&
+    walletConnected &&
+    !!makerAddress &&
+    signingMode !== 'privateKey' &&
+    !walletAuthed;
+
+  const handleLogIn = useCallback(async () => {
+    if (!makerAddress || loggingIn) return;
+    setLoggingIn(true);
+    signingDialog.open(true, {
+      title: 'Log In',
+      signLabel: 'Sign in wallet',
+      submitLabel: 'Authenticate',
+    });
+    try {
+      await ensureCredsForWallet(makerAddress);
+      signingDialog.setStep('auth', 'done');
+      setAuthEpoch((n) => n + 1);
+      triggerWalletRefresh();
+      setTimeout(() => signingDialog.close(), 600);
+    } catch (err) {
+      signingDialog.setStep('auth', 'error', err instanceof Error ? err.message : 'Authentication failed');
+    } finally {
+      setLoggingIn(false);
+    }
+  }, [makerAddress, loggingIn]);
+
+  const renderEmptyOrAuth = (fallback: ReactNode) => {
+    if (showConnectWallet) return <TpoAuthEmpty mode="connect" />;
+    if (showLogIn) return <TpoAuthEmpty mode="login" onLogIn={() => void handleLogIn()} loggingIn={loggingIn} />;
+    return fallback;
+  };
 
   const handleCancelOrder = async (orderId: string) => {
     setCancellingOrderIds(prev => new Set(prev).add(orderId));
@@ -586,7 +671,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           onchainLoading && liveTradesSource === 'onchain' && processedTrades.length === 0 ? (
             <div className="text-purple-300/90 text-center py-4">Loading on-chain trades…</div>
           ) : processedTrades.length === 0 ? (
-            <div className="text-gray-500 text-center py-4">No trades</div>
+            renderEmptyOrAuth(<div className="text-gray-500 text-center py-4">No trades</div>)
           ) : (<div className="flex flex-col flex-1 min-h-0">
             {/* Fixed header */}
             <table className="w-full text-[10px] table-fixed">{trColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
@@ -639,13 +724,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           onchainLoading && liveTradesSource === 'onchain' && processedPositions.length === 0 ? (
             <div className="text-purple-300/90 text-center py-4">Loading on-chain positions…</div>
           ) : processedPositions.length === 0 ? (
-            <div className="text-gray-500 text-center py-4">
-              {liveTradesSource === 'onchain' && !makerAddress
-                ? 'Connect wallet (proxy) for on-chain positions'
-                : liveTradesSource === 'onchain'
+            renderEmptyOrAuth(
+              <div className="text-gray-500 text-center py-4">
+                {liveTradesSource === 'onchain'
                   ? 'No on-chain positions for known tokens'
                   : 'No positions'}
-            </div>
+              </div>,
+            )
           ) : (<div className="flex flex-col flex-1 min-h-0">
             {/* Fixed header */}
             <table className="w-full text-[10px] table-fixed">{posColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
@@ -708,7 +793,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         {/* Orders */}
         {tab === 'orders' && (
           processedOrders.length === 0 ? (
-            <div className="text-gray-500 text-center py-4">No open orders</div>
+            renderEmptyOrAuth(<div className="text-gray-500 text-center py-4">No open orders</div>)
           ) : (<div className="flex flex-col flex-1 min-h-0">
             {/* Fixed header */}
             <table className="w-full text-[10px] table-fixed">{ordColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">

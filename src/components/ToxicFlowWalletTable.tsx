@@ -1189,6 +1189,7 @@ function WalletTableInner({
   onPnlSortClick,
   swarmsChart,
   marketActiveUnixForChart = 0,
+  marketDurationSecForChart = 0,
 }: {
   wallets: WalletPosition[] | null;
   label: string;
@@ -1208,6 +1209,7 @@ function WalletTableInner({
   onPnlSortClick?: () => void;
   swarmsChart?: readonly ToxicFlowSwarm[];
   marketActiveUnixForChart?: number;
+  marketDurationSecForChart?: number;
 }) {
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
   useEffect(() => {
@@ -1383,7 +1385,11 @@ function WalletTableInner({
         </div>
       ) : null}
       {variant === 'swarms' && swarmsChart && swarmsChart.length > 0 ? (
-        <ToxicFlowSwarmsSlotChart swarms={swarmsChart} marketActiveUnix={marketActiveUnixForChart} />
+        <ToxicFlowSwarmsSlotChart
+          swarms={swarmsChart}
+          marketActiveUnix={marketActiveUnixForChart}
+          marketDurationSec={marketDurationSecForChart}
+        />
       ) : null}
       <div
         ref={scrollRef}
@@ -1565,7 +1571,8 @@ const WalletTable = memo(WalletTableInner, (a, b) => {
     a.rankStart !== b.rankStart ||
     a.pnlSortOrder !== b.pnlSortOrder ||
     a.onPnlSortClick !== b.onPnlSortClick ||
-    a.marketActiveUnixForChart !== b.marketActiveUnixForChart
+    a.marketActiveUnixForChart !== b.marketActiveUnixForChart ||
+    a.marketDurationSecForChart !== b.marketDurationSecForChart
   ) {
     return false;
   }
@@ -1608,6 +1615,7 @@ export type ToxicFlowWalletTableProps = {
   onPnlSortClick?: () => void;
   swarmsChart?: readonly ToxicFlowSwarm[];
   marketActiveUnixForChart?: number;
+  marketDurationSecForChart?: number;
 };
 
 export const ToxicFlowWalletTable = WalletTable;

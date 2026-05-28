@@ -16,7 +16,6 @@ function toxicFlowSwarmIdFromWallet(wallet: string): number {
 }
 
 const SWARM_SLOT_SEC = 5;
-const SWARM_PRE_OPEN_SEC = 4;
 
 export function swarmMarketActiveUnixFromMeta(
   eventSlug?: string,
@@ -40,15 +39,39 @@ export function swarmMarketActiveUnixFromMeta(
   return Math.floor(endMs / 1000) - dur;
 }
 
-/** 5s time bucket from market active (−1 = within 4s before open). */
+/** Market window length in seconds (up/down slug/tf, else end − active). */
+export function swarmMarketDurationSecFromMeta(
+  eventSlug?: string,
+  endDate?: string,
+  timeframe?: string,
+): number {
+  const blob = (eventSlug || '').toLowerCase();
+  const m = blob.match(/updown-(5m|15m|4h)-/);
+  if (m) {
+    if (m[1] === '5m') return 300;
+    if (m[1] === '15m') return 900;
+    if (m[1] === '4h') return 14400;
+  }
+  const tf = (timeframe || '').toLowerCase();
+  if (tf === '5m') return 300;
+  if (tf === '15m') return 900;
+  if (tf === '1h') return 3600;
+  if (tf === '4h') return 14400;
+  if (tf === '24h') return 86400;
+  const active = swarmMarketActiveUnixFromMeta(eventSlug, endDate, timeframe);
+  const endMs = endDate ? Date.parse(endDate) : NaN;
+  if (active > 0 && Number.isFinite(endMs) && endMs > 0) {
+    return Math.max(SWARM_SLOT_SEC, Math.floor(endMs / 1000) - active);
+  }
+  return 300;
+}
+
+/** 5s time bucket from market active; any time before open → −1. */
 export function toxicSwarmTimeSlot(startTime: number, marketActive: number): number {
   if (!Number.isFinite(startTime) || startTime <= 0) return 0;
   if (!Number.isFinite(marketActive) || marketActive <= 0) return 0;
   const rel = startTime - marketActive;
-  if (rel < 0) {
-    if (rel >= -SWARM_PRE_OPEN_SEC) return -1;
-    return Math.trunc(rel / SWARM_SLOT_SEC);
-  }
+  if (rel < 0) return -1;
   return Math.trunc(rel / SWARM_SLOT_SEC);
 }
 
@@ -95,12 +118,40 @@ export function toxicSwarmStakedAbsUsd(s: ToxicFlowSwarm): number {
   return walletStakeNetAbsUsd(stub);
 }
 
-/** Per 5s time slot: YES staked above zero, NO staked below (magnitudes). */
-export function buildSwarmSlotChartPoints(
+export type SwarmSlotChartLayout = {
+  points: SwarmSlotChartPoint[];
+  postSlotCount: number;
+  showPreOpen: boolean;
+};
+
+/** Full market timeline (−1 pre-open + every 5s bucket); empty slots included. */
+export function buildSwarmSlotChartLayout(
   swarms: readonly ToxicFlowSwarm[],
   marketActiveUnix: number,
-): SwarmSlotChartPoint[] {
+  marketDurationSec: number,
+): SwarmSlotChartLayout {
+  const fullTimeline =
+    marketActiveUnix > 0 && marketDurationSec > 0;
+  const postSlotCount = fullTimeline
+    ? Math.max(1, Math.ceil(marketDurationSec / SWARM_SLOT_SEC))
+    : 0;
+  const showPreOpen = fullTimeline;
+
   const bySlot = new Map<number, { yesUsd: number; noUsd: number }>();
+  const touch = (slot: number) => {
+    let row = bySlot.get(slot);
+    if (!row) {
+      row = { yesUsd: 0, noUsd: 0 };
+      bySlot.set(slot, row);
+    }
+    return row;
+  };
+
+  if (fullTimeline) {
+    touch(-1);
+    for (let i = 0; i < postSlotCount; i++) touch(i);
+  }
+
   for (const s of swarms) {
     const slot =
       marketActiveUnix > 0
@@ -108,17 +159,21 @@ export function buildSwarmSlotChartPoints(
         : toxicSwarmDisplaySlot(s, marketActiveUnix);
     const usd = toxicSwarmStakedAbsUsd(s);
     if (!Number.isFinite(usd) || usd <= 0) continue;
-    let row = bySlot.get(slot);
-    if (!row) {
-      row = { yesUsd: 0, noUsd: 0 };
-      bySlot.set(slot, row);
-    }
+    const row = touch(slot);
     if (s.side === 'YES') row.yesUsd += usd;
     else row.noUsd += usd;
   }
-  return [...bySlot.entries()]
-    .map(([slot, v]) => ({ slot, yesUsd: v.yesUsd, noUsd: v.noUsd }))
-    .sort((a, b) => a.slot - b.slot);
+
+  const slotOrder: number[] = fullTimeline
+    ? [-1, ...Array.from({ length: postSlotCount }, (_, i) => i)]
+    : [...bySlot.keys()].sort((a, b) => a - b);
+
+  const points = slotOrder.map((slot) => {
+    const v = bySlot.get(slot) ?? { yesUsd: 0, noUsd: 0 };
+    return { slot, yesUsd: v.yesUsd, noUsd: v.noUsd };
+  });
+
+  return { points, postSlotCount, showPreOpen };
 }
 
 export function toxicSwarmDisplaySlot(

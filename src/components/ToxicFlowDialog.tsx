@@ -114,6 +114,7 @@ import {
   toxicFlowSwarmByRowWallet,
   toxicSwarmDisplaySlot,
   swarmMarketActiveUnixFromMeta,
+  swarmMarketDurationSecFromMeta,
 } from '../lib/toxicFlowStakeCohort';
 import { upDownTimeframeKeyFromMarket } from '../utils/format';
 import {
@@ -274,6 +275,18 @@ const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
       upDownTimeframeKeyFromMarket(selectedMarket) ?? undefined,
     );
   }, [selectedMarket, marketId]);
+  const marketDurationSec = useMemo(() => {
+    if (!selectedMarket) return 0;
+    const mid = marketId.trim();
+    const sid = String(selectedMarket.id ?? '').trim();
+    const cid = String(selectedMarket.conditionId ?? '').trim().toLowerCase();
+    if (mid && sid !== mid && cid !== mid.toLowerCase()) return 0;
+    return swarmMarketDurationSecFromMeta(
+      selectedMarket.eventSlug,
+      selectedMarket.endDate,
+      upDownTimeframeKeyFromMarket(selectedMarket) ?? undefined,
+    );
+  }, [selectedMarket, marketId]);
   const rows = useMemo(
     () => toxicFlowSwarmsToWalletRows(swarms, marketId, marketActiveUnix),
     [swarms, marketId, marketActiveUnix],
@@ -313,6 +326,7 @@ const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
         selectedWallet={detailRowWallet}
         swarmsChart={swarms}
         marketActiveUnixForChart={marketActiveUnix}
+        marketDurationSecForChart={marketDurationSec}
       />
       {detailSwarm && typeof document !== 'undefined'
         ? createPortal(

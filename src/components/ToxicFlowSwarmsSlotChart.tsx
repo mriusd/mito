@@ -1,16 +1,44 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { ToxicFlowSwarm } from '../api';
-import { buildSwarmSlotChartPoints, type SwarmSlotChartPoint } from '../lib/toxicFlowStakeCohort';
+import { buildSwarmSlotChartLayout, type SwarmSlotChartLayout } from '../lib/toxicFlowStakeCohort';
 
 const CHART_H = 88;
 const PAD_L = 36;
 const PAD_R = 6;
 const PAD_T = 6;
 const PAD_B = 16;
+const SWARM_SLOT_SEC = 5;
 
-function slotLabel(slot: number): string {
-  if (slot < 0) return `#${slot}`;
-  return `#${slot}`;
+function slotCenterX(
+  slot: number,
+  layout: SwarmSlotChartLayout,
+  plotL: number,
+  plotW: number,
+): number {
+  const cols = (layout.showPreOpen ? 1 : 0) + layout.postSlotCount;
+  if (cols <= 0) return plotL + plotW / 2;
+  const colIdx = slot < 0 ? 0 : (layout.showPreOpen ? 1 : 0) + slot;
+  return plotL + ((colIdx + 0.5) / cols) * plotW;
+}
+
+function slotBarWidth(layout: SwarmSlotChartLayout, plotW: number): number {
+  const cols = (layout.showPreOpen ? 1 : 0) + layout.postSlotCount;
+  if (cols <= 0) return 8;
+  const groupW = plotW / cols;
+  return Math.max(2, Math.min(12, groupW * 0.32));
+}
+
+function slotTimeLabel(slot: number, marketDurationSec: number): string {
+  if (slot < 0) return '−1';
+  const sec = slot * SWARM_SLOT_SEC;
+  if (marketDurationSec <= 300) return `${sec}s`;
+  if (marketDurationSec <= 3600) {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return s === 0 ? `${m}m` : `${m}:${String(s).padStart(2, '0')}`;
+  }
+  const m = Math.floor(sec / 60);
+  return `${m}m`;
 }
 
 function fmtUsdK(v: number): string {
@@ -20,7 +48,12 @@ function fmtUsdK(v: number): string {
   return `$${Math.round(v)}`;
 }
 
-function drawChart(canvas: HTMLCanvasElement, points: SwarmSlotChartPoint[]) {
+function drawChart(
+  canvas: HTMLCanvasElement,
+  layout: SwarmSlotChartLayout,
+  marketDurationSec: number,
+) {
+  const points = layout.points;
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return;
@@ -41,12 +74,12 @@ function drawChart(canvas: HTMLCanvasElement, points: SwarmSlotChartPoint[]) {
   const plotW = plotR - plotL;
   const plotH = plotB - plotT;
 
-  if (points.length === 0) {
+  if (points.length === 0 || layout.postSlotCount <= 0) {
     ctx.fillStyle = 'rgba(156,163,175,0.5)';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('No swarm slots', W / 2, H / 2);
+    ctx.fillText('No market window', W / 2, H / 2);
     return;
   }
 
@@ -87,15 +120,11 @@ function drawChart(canvas: HTMLCanvasElement, points: SwarmSlotChartPoint[]) {
   ctx.fillText('0', plotL - 4, zeroY);
   ctx.fillText(fmtUsdK(yMin), plotL - 4, plotB - 2);
 
-  const n = points.length;
-  const groupW = plotW / n;
-  const barW = Math.max(4, Math.min(14, groupW * 0.32));
+  const barW = slotBarWidth(layout, plotW);
   const gap = 2;
 
-  for (let i = 0; i < n; i++) {
-    const p = points[i];
-    const cx = plotL + (i + 0.5) * groupW;
-
+  for (const p of points) {
+    const cx = slotCenterX(p.slot, layout, plotL, plotW);
     if (p.yesUsd > 0) {
       const yTop = toY(p.yesUsd);
       const h = zeroY - yTop;
@@ -112,33 +141,46 @@ function drawChart(canvas: HTMLCanvasElement, points: SwarmSlotChartPoint[]) {
         ctx.fillRect(cx + gap / 2, zeroY, barW, h);
       }
     }
+  }
 
-    ctx.fillStyle = 'rgba(156,163,175,0.45)';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.font = '8px monospace';
-    ctx.fillText(slotLabel(p.slot), cx, plotB + 2);
+  const labelSlots: number[] = [];
+  if (layout.showPreOpen) labelSlots.push(-1);
+  const tickEvery = marketDurationSec <= 300 ? 12 : marketDurationSec <= 900 ? 12 : 24;
+  for (let i = 0; i < layout.postSlotCount; i += tickEvery) labelSlots.push(i);
+  if (layout.postSlotCount > 1 && labelSlots[labelSlots.length - 1] !== layout.postSlotCount - 1) {
+    labelSlots.push(layout.postSlotCount - 1);
+  }
+
+  ctx.fillStyle = 'rgba(156,163,175,0.45)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.font = '8px monospace';
+  for (const slot of labelSlots) {
+    const cx = slotCenterX(slot, layout, plotL, plotW);
+    ctx.fillText(slotTimeLabel(slot, marketDurationSec), cx, plotB + 2);
   }
 }
 
 export const ToxicFlowSwarmsSlotChart = memo(function ToxicFlowSwarmsSlotChart({
   swarms,
   marketActiveUnix,
+  marketDurationSec,
 }: {
   swarms: readonly ToxicFlowSwarm[];
   marketActiveUnix: number;
+  marketDurationSec: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const points = useMemo(
-    () => buildSwarmSlotChartPoints(swarms, marketActiveUnix),
-    [swarms, marketActiveUnix],
+  const layout = useMemo(
+    () => buildSwarmSlotChartLayout(swarms, marketActiveUnix, marketDurationSec),
+    [swarms, marketActiveUnix, marketDurationSec],
   );
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    drawChart(canvas, points);
-  }, [points]);
+    drawChart(canvas, layout, marketDurationSec);
+  }, [layout, marketDurationSec]);
 
   useEffect(() => {
     redraw();
@@ -153,7 +195,10 @@ export const ToxicFlowSwarmsSlotChart = memo(function ToxicFlowSwarmsSlotChart({
   }, [redraw]);
 
   return (
-    <div className="shrink-0 w-full min-w-0 px-0.5 py-1 border-b border-gray-800/90 bg-gray-950/80" title="YES staked above · NO staked below · 5s time slots">
+    <div
+      className="shrink-0 w-full min-w-0 px-0.5 py-1 border-b border-gray-800/90 bg-gray-950/80"
+      title="Full market window · YES above · NO below · 5s slots"
+    >
       <canvas ref={canvasRef} className="block w-full" style={{ height: CHART_H }} />
     </div>
   );

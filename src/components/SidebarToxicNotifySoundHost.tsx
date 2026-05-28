@@ -92,7 +92,7 @@ export function SidebarToxicNotifySoundHost({
 
     if (!cohortNeedsSound && !specialRingNeedsSound) return;
     if (isMarketExpired) return;
-    if (cohortNeedsSound && !notifyVolatilityGatePasses) return;
+    if (!notifyVolatilityGatePasses) return;
     if (cohortNeedsSound && !notifyStakedGatePasses) return;
 
     const k = cohortTiltAlarm ?? 'green';

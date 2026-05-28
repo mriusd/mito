@@ -7,7 +7,6 @@ import {
   readNotifySoundFreqSlider,
 } from './tiltNotifySound';
 import { isNotifySoundPriceMuted } from './notifySoundPriceMute';
-import { notifyVolatilityGatePasses } from './sidebarChartVolStore';
 
 /** Must match `.toxic-flow-bell-row-flash` animation duration in index.css. */
 export const TOXIC_BELL_ROW_FLASH_MS = 1350;
@@ -76,7 +75,6 @@ export function useToxicBellRowRingSound(
     const tick = () => {
       const n = countRef.current;
       if (n <= 0 || !readNotifyBellRingEnabled()) return;
-      if (!notifyVolatilityGatePasses()) return;
       if (isNotifySoundPriceMuted(yesTokenId, noTokenId)) return;
       const mul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider()) * 1.12;
       const rt = readNotifyRingTimeS();

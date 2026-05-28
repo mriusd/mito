@@ -1,3 +1,5 @@
+import { notifyVolatilityGatePasses } from './sidebarChartVolStore';
+
 /** Glass ping tilt / bell notification sounds (Web Audio). */
 
 /** ms between successive strikes inside one notification burst (double / triple ring). */
@@ -206,6 +208,7 @@ export async function playTiltNotifySoundStrikes(
   ringTimeS: number,
   strikes: number,
 ): Promise<void> {
+  if (!notifyVolatilityGatePasses()) return;
   const n = Math.max(1, Math.min(16, Math.trunc(strikes)));
   for (let i = 0; i < n; i++) {
     if (i > 0) {
@@ -231,6 +234,7 @@ export async function playTradeNotifySound(
   pitchMul: number,
   ringTimeS: number,
 ): Promise<void> {
+  if (!notifyVolatilityGatePasses()) return;
   const volumeMul = readTradeSoundVolumeSlider() / 100;
   await playUpdownTiltExtremeSound(kind, pitchMul, ringTimeS, volumeMul);
 }
@@ -240,6 +244,7 @@ export async function playNotifyBeep(
   pitchMul = 1,
   volumeMul = readNotifySoundVolumeMul(),
 ): Promise<void> {
+  if (!notifyVolatilityGatePasses()) return;
   try {
     ensureTiltAudioUnlockListeners();
     const ACtx =

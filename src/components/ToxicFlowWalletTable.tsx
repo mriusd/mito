@@ -13,7 +13,7 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Star, Bell, X, Triangle } from 'lucide-react';
+import { Star, Bell, X } from 'lucide-react';
 import {
   fetchWalletSummary,
   walletSummaryFromLedgerEmbed,
@@ -64,6 +64,12 @@ import {
 import { useNotifyTiltAppliesToSelectedMarket } from '../lib/notifyTiltMarketFilters';
 import { TOXIC_TABLE_ROW_CLS } from '../lib/toxicFlowTableAnimate';
 import { useCancelDomAnimationsOnUnmount } from '../lib/cancelDomAnimations';
+import {
+  STAKED_NET_FLASH_MS,
+  type StakedNetFlashDir,
+  stakedNetDeltaFlashDir,
+  stakedNetUsdTableCellWithFlash,
+} from '../lib/toxicStakedNetFlash';
 import { fmtPriceShare, walletMarketUsdcInCell } from './WalletLatestMarketsTradedTable';
 
 function subscribeTiltWhaleAmountUsd(listener: () => void): () => void {
@@ -127,87 +133,6 @@ function walletMarketPayoutPnlRoiCells(m: WalletPosition) {
   return { rowPnlFlow, rowPayout, payoutUnresolved, roiFmt };
 }
 
-const STAKED_NET_FLASH_MIN_USD = 1;
-
-const STAKED_NET_FLASH_MS = 2000;
-
-type StakedNetFlashDir = 'up' | 'down';
-
-function stakedNetDominantSide(signed: number): 'yes' | 'no' | 'flat' {
-  if (signed < -STAKED_NET_EPS) return 'yes';
-  if (signed > STAKED_NET_EPS) return 'no';
-  return 'flat';
-}
-
-function stakedNetDeltaFlashDir(prev: number, next: number): StakedNetFlashDir | null {
-  if (!Number.isFinite(prev) || !Number.isFinite(next)) return null;
-  const prevSide = stakedNetDominantSide(prev);
-  const nextSide = stakedNetDominantSide(next);
-  if (prevSide === 'flat' || nextSide === 'flat' || prevSide !== nextSide) return null;
-  const prevMag = Math.abs(prev);
-  const nextMag = Math.abs(next);
-  if (nextMag > prevMag + STAKED_NET_FLASH_MIN_USD) return 'up';
-  if (nextMag < prevMag - STAKED_NET_FLASH_MIN_USD) return 'down';
-  return null;
-}
-
-function stakedNetUsdTableCell(signed: number): ReactNode {
-  if (!Number.isFinite(signed)) return '–';
-  const mag = Math.round(Math.abs(signed)).toLocaleString('en-US');
-  if (Math.abs(signed) <= STAKED_NET_EPS) {
-    return <span className="tabular-nums font-bold text-gray-500">${mag}</span>;
-  }
-  if (signed < -STAKED_NET_EPS) {
-    return (
-      <span className="tabular-nums font-bold text-green-400">
-        ${mag} Y
-      </span>
-    );
-  }
-  return (
-    <span className="tabular-nums font-bold text-red-400">
-      ${mag} N
-    </span>
-  );
-}
-
-const STAKED_NET_FLASH_BADGE_BASE =
-  'inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded updown-triangle-badge-flash-finite';
-
-function StakedNetFlashBadge({ dir }: { dir: StakedNetFlashDir }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  useCancelDomAnimationsOnUnmount(ref);
-  if (dir === 'up') {
-    return (
-      <span
-        ref={ref}
-        className={`${STAKED_NET_FLASH_BADGE_BASE} border border-green-600/45 bg-green-900/65 text-green-100`}
-        title="Staked net increased on same side (Y or N)"
-      >
-        <Triangle className="h-2 w-2 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
-      </span>
-    );
-  }
-  return (
-    <span
-      ref={ref}
-      className={`${STAKED_NET_FLASH_BADGE_BASE} border border-red-600/45 bg-red-900/65 text-red-100`}
-      title="Staked net decreased on same side (Y or N)"
-    >
-      <Triangle className="h-2 w-2 rotate-180 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
-    </span>
-  );
-}
-
-function stakedNetUsdTableCellWithFlash(signed: number, flash: StakedNetFlashDir | null): ReactNode {
-  return (
-    <span className="inline-flex w-full items-center justify-end gap-0.5">
-      {flash ? <StakedNetFlashBadge dir={flash} /> : null}
-      {stakedNetUsdTableCell(signed)}
-    </span>
-  );
-}
-
 /** Inv Y − Inv N in shares: |net| + Y/N suffix (no leading minus), same layout idea as Staked Net. */
 const SHARE_INV_NET_EPS = 0.001;
 
@@ -256,18 +181,15 @@ function toxicTableColCount(showRank: boolean, variant: ToxicFlowTableVariant): 
   return (showRank ? 1 : 0) + createdCol + 12;
 }
 
-function fmtSwarmCreatedClock(tsUnix: number): string {
-  if (!Number.isFinite(tsUnix) || tsUnix <= 0) return '–';
-  return new Date(tsUnix * 1000).toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-}
-
 function swarmElapsedSecFromCreated(detectedAt: number, nowSec: number): number {
   if (!Number.isFinite(detectedAt) || detectedAt <= 0) return 0;
   return Math.max(0, nowSec - Math.trunc(detectedAt));
+}
+
+function swarmElapsedToneClass(elapsedSec: number): string {
+  if (elapsedSec < 15) return 'text-green-400 font-bold';
+  if (elapsedSec < 60) return 'text-yellow-400 font-bold';
+  return 'text-red-400 font-bold';
 }
 
 const ROW_CLS_NEUTRAL = 'border-b border-gray-800 hover:bg-gray-700/30';
@@ -1004,6 +926,8 @@ function WalletTableBodyRowImpl({
     ? walletMarketPayoutPnlRoiCells(w)
     : { rowPnlFlow: 0, rowPayout: 0, payoutUnresolved: true, roiFmt: { text: '–', tone: 'text-gray-500' } };
   const rowUsdcIn = typeof w.usdcIn === 'number' && Number.isFinite(w.usdcIn) ? w.usdcIn : 0;
+  const swarmElapsedSec =
+    variant === 'swarms' ? swarmElapsedSecFromCreated(w.firstTradeTime, nowSec) : 0;
 
   return (
     <tr
@@ -1019,15 +943,14 @@ function WalletTableBodyRowImpl({
       ) : null}
       {variant === 'swarms' ? (
         <td
-          className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 tabular-nums text-gray-400 whitespace-nowrap`}
+          className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 tabular-nums whitespace-nowrap`}
           title={
             w.firstTradeTime > 0
               ? new Date(w.firstTradeTime * 1000).toLocaleString()
               : undefined
           }
         >
-          <span className="text-gray-300">{fmtSwarmCreatedClock(w.firstTradeTime)}</span>
-          <span className="text-cyan-400/90 ml-1">{swarmElapsedSecFromCreated(w.firstTradeTime, nowSec)}s</span>
+          <span className={swarmElapsedToneClass(swarmElapsedSec)}>{swarmElapsedSec}s</span>
         </td>
       ) : null}
       <td ref={favColRef} className={`${TOXIC_TABLE_BODY_TD_CLS} ${TOXIC_TABLE_FAV_COL_CLS}`}>
@@ -1430,7 +1353,7 @@ function WalletTableInner({
             {variant === 'swarms' ? (
               <th
                 className="align-middle py-1 text-right px-1 whitespace-nowrap"
-                title="Swarm detected_at (local clock) · seconds since creation"
+                title="Seconds since swarm creation · green &lt;15s · yellow &lt;60s · red ≥60s"
               >
                 Created
               </th>

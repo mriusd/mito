@@ -34,8 +34,9 @@ export type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 
 const MAX_CHART_CANDLES = 2500;
 const EMPTY_PRICE_SET = new Set<string>();
-const ORDER_LINE_HANDLE_W = 12;
-const ORDER_LINE_HANDLE_H = 14;
+const ORDER_LINE_HANDLE_W = 10;
+const ORDER_LINE_HANDLE_H = 12;
+const ORDER_LINE_HANDLE_GAP = 3;
 
 type ChartOrderLineLayout = {
   orderId: string;
@@ -83,10 +84,10 @@ function drawSidebarChartOrderLines(
     ctx.textBaseline = 'middle';
     ctx.fillText(`${lv.priceCents.toFixed(1)}¢`, chartLeft - 3, y);
 
-    const handleX = chartRight - 2;
     const hw = ORDER_LINE_HANDLE_W;
     const hh = ORDER_LINE_HANDLE_H;
-    const hx = handleX - hw / 2;
+    const hx = chartRight + ORDER_LINE_HANDLE_GAP;
+    const handleX = hx + hw / 2;
     const hy = y - hh / 2;
     ctx.fillStyle = color;
     ctx.strokeStyle = 'rgba(255,255,255,0.85)';
@@ -788,7 +789,11 @@ export function LiveTradeChart({
     }
 
     const chartLeft = 36;
-    const chartRight = W - 4;
+    const orderHandleGutter =
+      displayChartOrderLevels && displayChartOrderLevels.length > 0
+        ? ORDER_LINE_HANDLE_W + ORDER_LINE_HANDLE_GAP + 2
+        : 0;
+    const chartRight = W - 4 - orderHandleGutter;
     const chartTop = 4;
     /** hh:mm sits in bottom band — 0¢ is drawn flush above it */
     const timeBand = 13;
@@ -1212,9 +1217,19 @@ export function LiveTradeChart({
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
     if (chartOrderDragEnabled && !orderDrag) {
-      setOrderHandleHover(!!hitTestOrderHandle(mx, my));
+      const onHandle = !!hitTestOrderHandle(mx, my);
+      setOrderHandleHover(onHandle);
+      if (onHandle) {
+        hoverMxRef.current = null;
+        setHoverOb(null);
+        paintChartHover(null);
+        return;
+      }
     }
-    if (orderDrag) return;
+    if (orderDrag) {
+      setHoverOb(null);
+      return;
+    }
     hoverMxRef.current = mx;
     paintChartHover(mx);
 

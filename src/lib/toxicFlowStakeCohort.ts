@@ -25,7 +25,7 @@ export function toxicFlowSwarmsToWalletRows(swarms: readonly ToxicFlowSwarm[], m
     const signed = iy - inn;
     rows.push({
       wallet: `__swarm:${s.swarmId}__`,
-      displayLabel: `Swarm #${s.swarmId} (${s.walletCount}) · BUY ${s.side}`,
+      displayLabel: `Swarm #${s.swarmId} (${s.walletCount})`,
       marketId,
       invYes: iy,
       invNo: inn,

@@ -62,6 +62,7 @@ import {
   TILT_WHALE_AMOUNT_USD_LS_KEY,
 } from '../lib/tiltWhaleAmountUsd';
 import { useNotifyTiltAppliesToSelectedMarket } from '../lib/notifyTiltMarketFilters';
+import { useAppStore } from '../stores/appStore';
 import { TOXIC_TABLE_ROW_CLS } from '../lib/toxicFlowTableAnimate';
 import { useCancelDomAnimationsOnUnmount } from '../lib/cancelDomAnimations';
 import {
@@ -178,7 +179,27 @@ type ToxicFlowTableVariant = 'toxicFlow' | 'marketView' | 'swarms';
 
 function toxicTableColCount(showRank: boolean, variant: ToxicFlowTableVariant): number {
   const createdCol = variant === 'swarms' ? 1 : 0;
-  return (showRank ? 1 : 0) + createdCol + 12;
+  const favCol = variant === 'swarms' ? 0 : 1;
+  return (showRank ? 1 : 0) + createdCol + favCol + 11;
+}
+
+function marketIsUpDown(market: { question?: string; eventSlug?: string } | null | undefined): boolean {
+  return !!(market?.question?.match(/up\s+or\s+down/i) || market?.eventSlug?.match(/up-or-down|updown/i));
+}
+
+export function SwarmSidePill({ side, upDown }: { side: string | undefined; upDown: boolean }) {
+  const s = (side || '').trim().toUpperCase();
+  const yes = s === 'YES' || s === 'Y' || s === 'UP';
+  const text = yes ? (upDown ? 'UP' : 'YES') : upDown ? 'DOWN' : 'NO';
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded px-1 py-px text-[9px] font-bold leading-none ${
+        yes ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+      }`}
+    >
+      {text}
+    </span>
+  );
 }
 
 function swarmElapsedSecFromCreated(detectedAt: number, nowSec: number): number {
@@ -822,6 +843,7 @@ interface WalletTableBodyRowProps {
   showRank?: boolean;
   variant?: ToxicFlowTableVariant;
   nowSec?: number;
+  swarmUpDownMarket?: boolean;
 }
 
 function WalletTableBodyRowImpl({
@@ -845,6 +867,7 @@ function WalletTableBodyRowImpl({
   showRank = true,
   variant = 'toxicFlow',
   nowSec = 0,
+  swarmUpDownMarket = false,
 }: WalletTableBodyRowProps) {
   const trRef = useRef<HTMLTableRowElement>(null);
   useCancelDomAnimationsOnUnmount(trRef);
@@ -933,9 +956,9 @@ function WalletTableBodyRowImpl({
     <tr
       ref={trRef}
       className={`${rowClass} ${TOXIC_TABLE_ROW_CLS}${selected ? ' bg-gray-700/40' : ''}${onRowClick ? ' cursor-pointer' : ''}`}
-      onMouseEnter={onRowEnter}
-      onMouseMove={onRowMove}
-      onMouseLeave={onRowLeave}
+      onMouseEnter={swarmRow ? undefined : onRowEnter}
+      onMouseMove={swarmRow ? undefined : onRowMove}
+      onMouseLeave={swarmRow ? undefined : onRowLeave}
       onClick={onRowClick ? () => onRowClick(w.wallet) : undefined}
     >
       {showRank ? (
@@ -953,10 +976,8 @@ function WalletTableBodyRowImpl({
           <span className={swarmElapsedToneClass(swarmElapsedSec)}>{swarmElapsedSec}s</span>
         </td>
       ) : null}
-      <td ref={favColRef} className={`${TOXIC_TABLE_BODY_TD_CLS} ${TOXIC_TABLE_FAV_COL_CLS}`}>
-        {swarmRow ? (
-          <span className={`${TOXIC_TABLE_ROW_INNER_CLS} text-gray-600`}>—</span>
-        ) : (
+      {variant !== 'swarms' ? (
+        <td ref={favColRef} className={`${TOXIC_TABLE_BODY_TD_CLS} ${TOXIC_TABLE_FAV_COL_CLS}`}>
           <span className={`${TOXIC_TABLE_ROW_INNER_CLS} gap-0.5`}>
             <button
               type="button"
@@ -986,20 +1007,27 @@ function WalletTableBodyRowImpl({
               <X size={11} strokeWidth={2} className={xActive ? X_CLS_ON : X_CLS_OFF} />
             </button>
           </span>
-        )}
-      </td>
+        </td>
+      ) : null}
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} whitespace-nowrap px-1`}>
         <div className={TOXIC_TABLE_ROW_INNER_CLS}>
-          <WalletLink
-            ref={hoverRef}
-            wallet={w.wallet}
-            netShares={signedLegNet}
-            onOpenWallet={swarmRow ? undefined : onOpenWallet}
-            isSmart={isSmartGold(w)}
-            ledgerEmbed={ledgerEmbed}
-            ledgerGold={ledgerGoldFromEmbed(ledgerEmbed)}
-            rowDisplayLabel={w.displayLabel}
-          />
+          {swarmRow ? (
+            <span className="flex items-center gap-1 min-w-0 font-bold text-gray-200 leading-none" title={w.displayLabel}>
+              <span className="truncate">{w.displayLabel ?? w.wallet}</span>
+              <SwarmSidePill side={w.netSide} upDown={swarmUpDownMarket} />
+            </span>
+          ) : (
+            <WalletLink
+              ref={hoverRef}
+              wallet={w.wallet}
+              netShares={signedLegNet}
+              onOpenWallet={onOpenWallet}
+              isSmart={isSmartGold(w)}
+              ledgerEmbed={ledgerEmbed}
+              ledgerGold={ledgerGoldFromEmbed(ledgerEmbed)}
+              rowDisplayLabel={w.displayLabel}
+            />
+          )}
         </div>
       </td>
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 font-bold ${invYToneClass(displayIy)} bg-green-900/10`}>{rowFmtInt(displayIy)}</td>
@@ -1085,7 +1113,8 @@ const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
     a.onRowClick !== b.onRowClick ||
     a.showRank !== b.showRank ||
     a.variant !== b.variant ||
-    (a.variant === 'swarms' && a.nowSec !== b.nowSec)
+    (a.variant === 'swarms' && a.nowSec !== b.nowSec) ||
+    a.swarmUpDownMarket !== b.swarmUpDownMarket
   ) {
     return false;
   }
@@ -1094,6 +1123,9 @@ const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
   if (wa === wb) return true;
   if (
     wa.wallet !== wb.wallet ||
+    wa.displayLabel !== wb.displayLabel ||
+    wa.netSide !== wb.netSide ||
+    wa.firstTradeTime !== wb.firstTradeTime ||
     wa.invYes !== wb.invYes ||
     wa.invNo !== wb.invNo ||
     wa.maxInvYes !== wb.maxInvYes ||
@@ -1184,6 +1216,8 @@ function WalletTableInner({
   );
   const tiltNotifyApplies = useNotifyTiltAppliesToSelectedMarket();
   const tiltRowFlashEnabled = variant !== 'marketView' && tiltNotifyApplies;
+  const selectedMarket = useAppStore((s) => s.selectedMarket);
+  const swarmUpDownMarket = useMemo(() => marketIsUpDown(selectedMarket), [selectedMarket]);
   const rows = wallets || [];
   const totalStakedDenom = useMemo(() => {
     if (typeof totalStakedNetUsd === 'number' && Number.isFinite(totalStakedNetUsd) && totalStakedNetUsd > 0) {
@@ -1358,8 +1392,10 @@ function WalletTableInner({
                 Created
               </th>
             ) : null}
-            <th className={`align-middle py-1 text-left ${TOXIC_TABLE_FAV_COL_CLS}`} aria-label="Favourite, bell, and X mark" />
-            <th className="align-middle py-1 text-left px-1">Wallet</th>
+            {variant !== 'swarms' ? (
+              <th className={`align-middle py-1 text-left ${TOXIC_TABLE_FAV_COL_CLS}`} aria-label="Favourite, bell, and X mark" />
+            ) : null}
+            <th className="align-middle py-1 text-left px-1">{variant === 'swarms' ? 'Swarm' : 'Wallet'}</th>
             <th
               className="align-middle py-1 text-right px-1 bg-green-900/15"
               title={variant === 'marketView' ? 'max_inv_yes' : 'inv_yes'}
@@ -1480,6 +1516,7 @@ function WalletTableInner({
                 showRank={showRank}
                 variant={variant}
                 nowSec={variant === 'swarms' ? nowSec : 0}
+                swarmUpDownMarket={variant === 'swarms' ? swarmUpDownMarket : false}
               />
             );
           })}

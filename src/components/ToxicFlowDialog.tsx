@@ -75,7 +75,7 @@ import { InlineWalletInfoPanelHost, WalletInfoDialog } from './WalletInfoPanel';
 export { WalletInfoDialog } from './WalletInfoPanel';
 export type { WalletInfoPanelVariant } from './WalletInfoPanel';
 import { fmtPriceShare } from './WalletLatestMarketsTradedTable';
-import { ToxicFlowWalletTable as WalletTable } from './ToxicFlowWalletTable';
+import { ToxicFlowWalletTable as WalletTable, SwarmSidePill } from './ToxicFlowWalletTable';
 import { HelperTooltip } from './HelperTooltip';
 import { formatPolymarketVolumeK, formatThousandsAsK } from '../utils/format';
 import { ToxicFlowTabsTip } from './ToxicFlowTabsTip';
@@ -250,6 +250,15 @@ const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
   rowActionsAnchorRef?: RefObject<HTMLTableCellElement>;
 }) {
   const [detailRowWallet, setDetailRowWallet] = useState<string | null>(null);
+  const selectedMarket = useAppStore((s) => s.selectedMarket);
+  const swarmUpDownMarket = useMemo(
+    () =>
+      !!(
+        selectedMarket?.question?.match(/up\s+or\s+down/i) ||
+        selectedMarket?.eventSlug?.match(/up-or-down|updown/i)
+      ),
+    [selectedMarket?.question, selectedMarket?.eventSlug],
+  );
   const rows = useMemo(() => toxicFlowSwarmsToWalletRows(swarms, marketId), [swarms, marketId]);
   const detailSwarm = useMemo(
     () => (detailRowWallet ? toxicFlowSwarmByRowWallet(swarms, detailRowWallet) : null),
@@ -299,8 +308,11 @@ const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
               >
                 <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-700 shrink-0">
                   <div className="flex items-center gap-2 min-w-0 text-sm font-bold text-white truncate">
-                    <span>
-                      Swarm #{detailSwarm.swarmId} ({detailSwarm.walletCount}) · BUY {detailSwarm.side}
+                    <span className="inline-flex items-center gap-1.5 min-w-0">
+                      <span>
+                        Swarm #{detailSwarm.swarmId} ({detailSwarm.walletCount})
+                      </span>
+                      <SwarmSidePill side={detailSwarm.side} upDown={swarmUpDownMarket} />
                     </span>
                     <span className="text-[10px] font-normal text-gray-500">
                       {detailPositions.length} with position

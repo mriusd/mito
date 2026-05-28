@@ -85,11 +85,34 @@ export function sidebarUserPriceHitsBucket(sidePrices: Set<string>, bucketCents:
 }
 
 type OrderLike = {
+  id?: string;
   asset_id?: string;
   token_id?: string;
   side?: string;
   price?: string;
+  original_size?: string;
+  size?: string;
+  size_matched?: string;
 };
+
+export function orderRemainingSize(o: OrderLike): number {
+  const totalSize = Math.floor(parseFloat(o.original_size || o.size || '0') * 100) / 100;
+  const filled = Math.floor(parseFloat(o.size_matched || '0') * 100) / 100;
+  return Math.max(0, totalSize - filled);
+}
+
+/** Chart Y-axis cents → limit price cents on the order's outcome token. */
+export function chartViewCentsToTokenPriceCents(
+  chartCents: number,
+  orderTokenId: string,
+  viewOutcome: 'YES' | 'NO',
+  yesTokenId: string,
+  noTokenId: string,
+): number {
+  const viewToken = viewOutcome === 'YES' ? yesTokenId : noTokenId;
+  if (orderTokenId === viewToken) return chartCents;
+  return Math.round((100 - chartCents) * 10) / 10;
+}
 
 function addHighlightCents(set: Set<string>, cents: number) {
   if (!Number.isFinite(cents)) return;
@@ -134,8 +157,23 @@ export function buildSidebarUserOrderHighlightSets(
 }
 
 export type SidebarChartOrderLevel = {
+  orderId: string;
+  tokenId: string;
+  side: 'BUY' | 'SELL';
+  remainingSize: number;
+  /** Limit on chart Y-axis (viewed outcome, 0–100¢). */
   priceCents: number;
+  /** Limit on order token (for replace). */
+  tokenPriceCents: number;
   direction: 'long' | 'short';
+};
+
+export type ChartOrderReplaceParams = {
+  orderId: string;
+  tokenId: string;
+  side: 'BUY' | 'SELL';
+  remainingSize: number;
+  newPriceCents: number;
 };
 
 /** Long = BUY YES or SELL NO; short = SELL YES or BUY NO. */
@@ -180,7 +218,23 @@ export function buildSidebarChartOrderLevels(
     }
 
     if (!Number.isFinite(chartCents) || chartCents < 0 || chartCents > 100) continue;
-    levels.push({ priceCents: chartCents, direction: orderExposureDirection(side, tokenOutcome) });
+    const orderId = String(o.id || '').trim();
+    const tokenId = oid;
+    if (!orderId || !tokenId) continue;
+    const orderSide = side === 'SELL' ? 'SELL' : 'BUY';
+    const remainingSize = orderRemainingSize(o);
+    if (remainingSize <= 0) continue;
+    const tokenPriceCents =
+      tokenOutcome === viewOutcome ? cents : Math.round((100 - cents) * 10) / 10;
+    levels.push({
+      orderId,
+      tokenId,
+      side: orderSide,
+      remainingSize,
+      priceCents: chartCents,
+      tokenPriceCents,
+      direction: orderExposureDirection(side, tokenOutcome),
+    });
   }
   return levels;
 }

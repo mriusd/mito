@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useCallback, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useCallback, useState, useMemo, type MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link2, Link2Off } from 'lucide-react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
@@ -15,7 +15,8 @@ import type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 import { parseCandleOb, type CandleObSnapshot } from '../lib/candleObSnapshot';
 import { prepareCandleObDisplay } from '../lib/candleObDisplay';
 import { readSavedObAggStep } from '../lib/sidebarObAggStep';
-import type { SidebarChartOrderLevel } from '../lib/sidebarOrderbookAggregate';
+import type { ChartOrderReplaceParams, SidebarChartOrderLevel } from '../lib/sidebarOrderbookAggregate';
+import { chartViewCentsToTokenPriceCents } from '../lib/sidebarOrderbookAggregate';
 import { SidebarOrderbookBookGrid } from './SidebarOrderbookBookGrid';
 import { drawObHeatmapColumns } from '../lib/chartObHeatmap';
 import {
@@ -33,6 +34,76 @@ export type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 
 const MAX_CHART_CANDLES = 2500;
 const EMPTY_PRICE_SET = new Set<string>();
+const ORDER_LINE_HANDLE_W = 12;
+const ORDER_LINE_HANDLE_H = 14;
+
+type ChartOrderLineLayout = {
+  orderId: string;
+  y: number;
+  chartCents: number;
+  handleX: number;
+  handleW: number;
+  handleH: number;
+};
+
+function snapChartCentsFromY(y: number, chartTop: number, chartBot: number): number {
+  const span = chartBot - chartTop;
+  if (span <= 0) return 50;
+  const p = ((chartBot - y) / span) * 100;
+  return Math.max(0.1, Math.min(99.9, Math.round(p * 10) / 10));
+}
+
+function drawSidebarChartOrderLines(
+  ctx: CanvasRenderingContext2D,
+  levels: SidebarChartOrderLevel[],
+  chartLeft: number,
+  chartRight: number,
+  chartTop: number,
+  chartBot: number,
+  toY: (p: number) => number,
+  layoutOut: ChartOrderLineLayout[],
+) {
+  layoutOut.length = 0;
+  for (const lv of levels) {
+    const y = toY(lv.priceCents);
+    if (y < chartTop - 1 || y > chartBot + 1) continue;
+    const color = lv.direction === 'long' ? '#2563eb' : '#facc15';
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.moveTo(chartLeft, y);
+    ctx.lineTo(chartRight, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.font = 'bold 9px monospace';
+    ctx.fillStyle = color;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${lv.priceCents.toFixed(1)}¢`, chartLeft - 3, y);
+
+    const handleX = chartRight - 2;
+    const hw = ORDER_LINE_HANDLE_W;
+    const hh = ORDER_LINE_HANDLE_H;
+    const hx = handleX - hw / 2;
+    const hy = y - hh / 2;
+    ctx.fillStyle = color;
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 1;
+    ctx.fillRect(hx, hy, hw, hh);
+    ctx.strokeRect(hx + 0.5, hy + 0.5, hw - 1, hh - 1);
+
+    layoutOut.push({
+      orderId: lv.orderId,
+      y,
+      chartCents: lv.priceCents,
+      handleX,
+      handleW: hw,
+      handleH: hh,
+    });
+  }
+}
 
 function pruneCandleMap(map: Map<number, Candle>, startMs: number, endMs: number, padMs: number) {
   const lo = startMs - padMs;
@@ -147,6 +218,7 @@ interface LiveTradeChartProps {
   sidebarUserAskPrices?: Set<string>;
   /** Sidebar: blue = long (BUY YES / SELL NO), yellow = short at limit price on chart Y. */
   sidebarChartOrderLevels?: SidebarChartOrderLevel[];
+  onChartOrderReplace?: (params: ChartOrderReplaceParams) => void;
 }
 
 function defaultInterval(context?: string): string {
@@ -202,6 +274,7 @@ export function LiveTradeChart({
   sidebarUserBidPrices,
   sidebarUserAskPrices,
   sidebarChartOrderLevels,
+  onChartOrderReplace,
 }: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartStateRef = useRef<LiveChartState | null>(null);
@@ -234,6 +307,19 @@ export function LiveTradeChart({
   const [hoverObPos, setHoverObPos] = useState<{ left: number; top: number } | null>(null);
   const hoverObPopupRef = useRef<HTMLDivElement>(null);
   const drawRafRef = useRef<number | null>(null);
+  const orderLineLayoutRef = useRef<ChartOrderLineLayout[]>([]);
+  const orderDragLevelRef = useRef<SidebarChartOrderLevel | null>(null);
+  const [orderDrag, setOrderDrag] = useState<{ orderId: string; chartCents: number } | null>(null);
+  const [orderHandleHover, setOrderHandleHover] = useState(false);
+  const chartOrderDragEnabled = !!(sidebarChartOrderLevels?.length && onChartOrderReplace);
+
+  const displayChartOrderLevels = useMemo(() => {
+    if (!sidebarChartOrderLevels?.length) return undefined;
+    if (!orderDrag) return sidebarChartOrderLevels;
+    return sidebarChartOrderLevels.map((lv) =>
+      lv.orderId === orderDrag.orderId ? { ...lv, priceCents: orderDrag.chartCents } : lv,
+    );
+  }, [sidebarChartOrderLevels, orderDrag]);
 
   const scheduleDraw = useCallback((drawFn: () => void) => {
     if (drawRafRef.current != null) return;
@@ -825,19 +911,19 @@ export function LiveTradeChart({
       ctx.setLineDash([]);
     }
 
-    if (sidebarChartOrderLevels && sidebarChartOrderLevels.length > 0) {
-      for (const lv of sidebarChartOrderLevels) {
-        const y = toY(lv.priceCents);
-        if (y < chartTop - 1 || y > chartBot + 1) continue;
-        ctx.beginPath();
-        ctx.strokeStyle = lv.direction === 'long' ? '#2563eb' : '#facc15';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([6, 4]);
-        ctx.moveTo(chartLeft, y);
-        ctx.lineTo(chartRight, y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
+    if (displayChartOrderLevels && displayChartOrderLevels.length > 0) {
+      drawSidebarChartOrderLines(
+        ctx,
+        displayChartOrderLevels,
+        chartLeft,
+        chartRight,
+        chartTop,
+        chartBot,
+        toY,
+        orderLineLayoutRef.current,
+      );
+    } else {
+      orderLineLayoutRef.current.length = 0;
     }
 
     if (!hideTrades && tradeMarkers && tradeMarkers.length > 0) {
@@ -1022,12 +1108,113 @@ export function LiveTradeChart({
     };
     baseImageRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
     if (hoverMxRef.current != null) paintChartHover(hoverMxRef.current);
-  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval, outcomeToggle?.value, paintChartHover, obHeatmap, sidebarChartOrderLevels]);
+  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval, outcomeToggle?.value, paintChartHover, obHeatmap, displayChartOrderLevels]);
+
+  useEffect(() => {
+    if (!orderDrag) return;
+    scheduleDraw(draw);
+  }, [orderDrag, scheduleDraw, draw]);
+
+  const orderDragRef = useRef(orderDrag);
+  orderDragRef.current = orderDrag;
+
+  const hitTestOrderHandle = useCallback((mx: number, my: number): ChartOrderLineLayout | null => {
+    for (const L of orderLineLayoutRef.current) {
+      if (
+        mx >= L.handleX - L.handleW / 2 &&
+        mx <= L.handleX + L.handleW / 2 &&
+        my >= L.y - L.handleH / 2 &&
+        my <= L.y + L.handleH / 2
+      ) {
+        return L;
+      }
+    }
+    return null;
+  }, []);
+
+  const handleMouseDown = useCallback(
+    (e: ReactMouseEvent<HTMLCanvasElement>) => {
+      if (!chartOrderDragEnabled) return;
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const hit = hitTestOrderHandle(mx, my);
+      if (!hit) return;
+      const lv = sidebarChartOrderLevels?.find((l) => l.orderId === hit.orderId);
+      if (!lv) return;
+      orderDragLevelRef.current = lv;
+      setOrderDrag({ orderId: hit.orderId, chartCents: hit.chartCents });
+      e.preventDefault();
+    },
+    [chartOrderDragEnabled, hitTestOrderHandle, sidebarChartOrderLevels],
+  );
+
+  useEffect(() => {
+    if (!orderDrag || !chartOrderDragEnabled) return;
+    const onPointerMove = (e: PointerEvent) => {
+      const canvas = canvasRef.current;
+      const s = chartStateRef.current;
+      if (!canvas || !s) return;
+      const rect = canvas.getBoundingClientRect();
+      const my = e.clientY - rect.top;
+      const cents = snapChartCentsFromY(my, s.chartTop, s.chartBot);
+      setOrderDrag((prev) => (prev ? { ...prev, chartCents: cents } : null));
+    };
+    const onPointerUp = () => {
+      const drag = orderDragRef.current;
+      const lv = orderDragLevelRef.current;
+      orderDragLevelRef.current = null;
+      setOrderDrag(null);
+      if (!drag || !lv || !onChartOrderReplace) return;
+      const viewOutcome = outcomeToggle?.value ?? 'YES';
+      const newTokenCents = chartViewCentsToTokenPriceCents(
+        drag.chartCents,
+        lv.tokenId,
+        viewOutcome,
+        soundMuteYesTokenId || '',
+        soundMuteNoTokenId || '',
+      );
+      if (Math.abs(newTokenCents - lv.tokenPriceCents) < 0.05) return;
+      onChartOrderReplace({
+        orderId: lv.orderId,
+        tokenId: lv.tokenId,
+        side: lv.side,
+        remainingSize: lv.remainingSize,
+        newPriceCents: newTokenCents,
+      });
+    };
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+    };
+  }, [
+    orderDrag,
+    chartOrderDragEnabled,
+    onChartOrderReplace,
+    outcomeToggle?.value,
+    soundMuteYesTokenId,
+    soundMuteNoTokenId,
+  ]);
+
+  useEffect(() => {
+    setOrderDrag(null);
+    orderDragLevelRef.current = null;
+  }, [sidebarChartOrderLevels, tokenId]);
 
   const handleMouseMove = useCallback((e: ReactMouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    if (chartOrderDragEnabled && !orderDrag) {
+      setOrderHandleHover(!!hitTestOrderHandle(mx, my));
+    }
+    if (orderDrag) return;
     hoverMxRef.current = mx;
     paintChartHover(mx);
 
@@ -1056,13 +1243,16 @@ export function LiveTradeChart({
       ohlcv: { o: nearest.o, h: nearest.h, l: nearest.l, c: nearest.c, v: nearest.v },
       enrichment: nearest.enrichment,
     });
-  }, [paintChartHover, pickHoverCandle, candleObHover]);
+  }, [paintChartHover, pickHoverCandle, candleObHover, chartOrderDragEnabled, orderDrag, hitTestOrderHandle]);
 
   const handleMouseLeave = useCallback(() => {
     hoverMxRef.current = null;
     setHoverOb(null);
+    setOrderHandleHover(false);
     paintChartHover(null);
   }, [paintChartHover]);
+
+  const chartCanvasCursor = orderDrag ? 'grabbing' : orderHandleHover ? 'ns-resize' : 'crosshair';
 
   useEffect(() => {
     if (!volumeSpikeAlerts) {
@@ -1262,7 +1452,15 @@ export function LiveTradeChart({
       <div className="relative rounded-[6px]">
         <canvas
           ref={canvasRef}
-          style={{ width: '100%', height: 110, borderRadius: 6, background: '#1a1a2e', display: 'block', cursor: 'crosshair' }}
+          style={{
+            width: '100%',
+            height: 110,
+            borderRadius: 6,
+            background: '#1a1a2e',
+            display: 'block',
+            cursor: chartCanvasCursor,
+          }}
+          onMouseDown={chartOrderDragEnabled ? handleMouseDown : undefined}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
         />

@@ -10,7 +10,7 @@ import {
   type LedgerFillChartRow,
   type MyTradeChartRow,
 } from '../lib/chartTradeMarkers';
-import { buildSidebarChartOrderLevels } from '../lib/sidebarOrderbookAggregate';
+import { buildSidebarChartOrderLevels, type ChartOrderReplaceParams } from '../lib/sidebarOrderbookAggregate';
 import type { Order } from '../types';
 
 export type { ChartTradeMarker, LedgerFillChartRow, MyTradeChartRow };
@@ -69,6 +69,7 @@ export type SidebarRightLiveTradeChartProps = {
   sidebarUserAskPrices?: Set<string>;
   /** My Orders for selected market (non-prog) — chart horizontal lines. */
   sidebarChartOrders?: Order[];
+  onChartOrderReplace?: (params: ChartOrderReplaceParams) => void;
 };
 
 export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeChart({
@@ -90,6 +91,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   sidebarUserBidPrices,
   sidebarUserAskPrices,
   sidebarChartOrders,
+  onChartOrderReplace,
 }: SidebarRightLiveTradeChartProps) {
   const isUpDownMarket = marketIsUpDown(market);
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(market) : null;
@@ -194,6 +196,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
         sidebarUserBidPrices={sidebarUserBidPrices}
         sidebarUserAskPrices={sidebarUserAskPrices}
         sidebarChartOrderLevels={sidebarChartOrderLevels}
+        onChartOrderReplace={onChartOrderReplace}
       />,
     );
   }
@@ -219,6 +222,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       sidebarUserBidPrices={sidebarUserBidPrices}
       sidebarUserAskPrices={sidebarUserAskPrices}
       sidebarChartOrderLevels={sidebarChartOrderLevels}
+      onChartOrderReplace={onChartOrderReplace}
     />,
   );
 });

@@ -3458,6 +3458,9 @@ export const Sidebar = memo(function Sidebar() {
             chartOutcomeSync={chartOutcomeSync}
             onChartOutcomeSyncChange={setChartOutcomeSync}
             marketLookup={marketLookup}
+            onChartOrderReplace={(p) =>
+              handleReplaceOrder(p.orderId, p.newPriceCents, p.tokenId, p.side, p.remainingSize)
+            }
           />
 
 

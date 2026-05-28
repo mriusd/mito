@@ -6,6 +6,7 @@ import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 import { useSidebarOrderHighlightSets } from '../lib/sidebarOrderHighlightStore';
 import { useAppStore } from '../stores/appStore';
 import { getOrderClobTokenId, outcomeTokenBelongsToSelectedMarket } from '../utils/format';
+import type { ChartOrderReplaceParams } from '../lib/sidebarOrderbookAggregate';
 
 const SidebarChartsRowChart = memo(function SidebarChartsRowChart({
   selectedMarket,
@@ -14,6 +15,7 @@ const SidebarChartsRowChart = memo(function SidebarChartsRowChart({
   chartOutcomeSync,
   onChartOutcomeSyncChange,
   marketLookup,
+  onChartOrderReplace,
 }: {
   selectedMarket: Market;
   orderOutcome: 'YES' | 'NO';
@@ -21,6 +23,7 @@ const SidebarChartsRowChart = memo(function SidebarChartsRowChart({
   chartOutcomeSync: boolean;
   onChartOutcomeSyncChange: (enabled: boolean) => void;
   marketLookup: Record<string, Market>;
+  onChartOrderReplace?: (params: ChartOrderReplaceParams) => void;
 }) {
   const { bidPrices: sidebarUserBidPrices, askPrices: sidebarUserAskPrices } = useSidebarOrderHighlightSets();
   const orders = useAppStore((s) => s.orders);
@@ -56,6 +59,7 @@ const SidebarChartsRowChart = memo(function SidebarChartsRowChart({
       sidebarUserBidPrices={sidebarUserBidPrices}
       sidebarUserAskPrices={sidebarUserAskPrices}
       sidebarChartOrders={sidebarChartOrders}
+      onChartOrderReplace={onChartOrderReplace}
     />
   );
 });
@@ -67,6 +71,7 @@ export type SidebarChartsRowProps = {
   chartOutcomeSync: boolean;
   onChartOutcomeSyncChange: (enabled: boolean) => void;
   marketLookup: Record<string, Market>;
+  onChartOrderReplace?: (params: ChartOrderReplaceParams) => void;
 };
 
 function SidebarChartsRowInner({
@@ -76,6 +81,7 @@ function SidebarChartsRowInner({
   chartOutcomeSync,
   onChartOutcomeSyncChange,
   marketLookup,
+  onChartOrderReplace,
 }: SidebarChartsRowProps) {
   return (
     <div className="sidebar-chart-row">
@@ -86,6 +92,7 @@ function SidebarChartsRowInner({
         chartOutcomeSync={chartOutcomeSync}
         onChartOutcomeSyncChange={onChartOutcomeSyncChange}
         marketLookup={marketLookup}
+        onChartOrderReplace={onChartOrderReplace}
       />
     </div>
   );

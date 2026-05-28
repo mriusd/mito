@@ -2,7 +2,7 @@
  * Toxic Flow “cohort surplus” stake math shared by ToxicFlowDialog sidebar strip and market Sidebar.
  */
 
-import type { ToxicFlowData, WalletPosition, WalletScoresLedgerEmbed, WalletSummary } from '../api';
+import type { ToxicFlowCluster, ToxicFlowData, ToxicFlowSwarm, WalletPosition, WalletScoresLedgerEmbed, WalletSummary } from '../api';
 import { walletSummaryFromLedgerEmbed } from '../api';
 
 /** Epsilon for treating signed staked-net as flat (table + cohort bar). */
@@ -202,13 +202,90 @@ function stabilizeWalletList(prev: WalletPosition[], next: WalletPosition[]): Wa
   return out;
 }
 
+function toxicFlowClusterEqual(a: ToxicFlowCluster, b: ToxicFlowCluster): boolean {
+  if (a === b) return true;
+  if (
+    a.clusterId !== b.clusterId ||
+    a.mainWallet !== b.mainWallet ||
+    a.clusterSize !== b.clusterSize ||
+    a.membersInMarket !== b.membersInMarket ||
+    a.stakedNetSignedUsd !== b.stakedNetSignedUsd ||
+    a.net !== b.net ||
+    a.tradeCount !== b.tradeCount
+  ) {
+    return false;
+  }
+  return toxicFlowListEqual(a.positions ?? [], b.positions ?? []);
+}
+
+function stabilizeClusterList(prev: ToxicFlowCluster[], next: ToxicFlowCluster[]): ToxicFlowCluster[] {
+  if (prev === next) return prev;
+  if (next.length === 0) return next;
+  const prevById = new Map<number, ToxicFlowCluster>();
+  for (const c of prev) prevById.set(c.clusterId, c);
+  const out = new Array<ToxicFlowCluster>(next.length);
+  let allPrevRefs = prev.length === next.length;
+  for (let i = 0; i < next.length; i++) {
+    const n = next[i];
+    const p = prevById.get(n.clusterId);
+    if (p && toxicFlowClusterEqual(p, n)) out[i] = p;
+    else {
+      out[i] = {
+        ...n,
+        positions: stabilizeWalletList(p?.positions ?? [], n.positions ?? []),
+      };
+      allPrevRefs = false;
+    }
+  }
+  if (allPrevRefs && prev.length === next.length) {
+    let ixMatch = true;
+    for (let i = 0; i < prev.length; i++) {
+      if (prev[i] !== out[i]) {
+        ixMatch = false;
+        break;
+      }
+    }
+    if (ixMatch) return prev;
+  }
+  return out;
+}
+
+function swarmEqual(a: ToxicFlowSwarm, b: ToxicFlowSwarm): boolean {
+  if (a === b) return true;
+  if (
+    a.swarmId !== b.swarmId ||
+    a.side !== b.side ||
+    a.walletCount !== b.walletCount ||
+    a.membersInMarket !== b.membersInMarket ||
+    a.invYes !== b.invYes ||
+    a.invNo !== b.invNo ||
+    a.usdcIn !== b.usdcIn ||
+    a.stakedNetSignedUsd !== b.stakedNetSignedUsd ||
+    a.tradeCount !== b.tradeCount
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function swarmListEqual(a: ToxicFlowSwarm[], b: ToxicFlowSwarm[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (!swarmEqual(a[i], b[i])) return false;
+  return true;
+}
+
 /** WS JSON → reuse prior list + row refs when row fields unchanged (stops Array× climb). */
 export function coalesceToxicFlowPayload(prev: ToxicFlowData | null, next: ToxicFlowData): ToxicFlowData {
   if (!prev) return next;
   if (toxicFlowPayloadEqual(prev, next)) return prev;
+  const swarmsNext = next.swarms ?? [];
+  const swarmsPrev = prev.swarms ?? [];
   return {
     ...next,
     topHolders: stabilizeWalletList(prev.topHolders ?? [], next.topHolders ?? []),
+    clusters: stabilizeClusterList(prev.clusters ?? [], next.clusters ?? []),
+    swarms: swarmListEqual(swarmsPrev, swarmsNext) ? swarmsPrev : swarmsNext,
   };
 }
 
@@ -286,6 +363,13 @@ export function toxicFlowPayloadEqual(a: ToxicFlowData, b: ToxicFlowData): boole
     return false;
   }
   if (!toxicFlowListEqual(a.topHolders ?? [], b.topHolders ?? [])) return false;
+  const ca = a.clusters ?? [];
+  const cb = b.clusters ?? [];
+  if (ca.length !== cb.length) return false;
+  for (let i = 0; i < ca.length; i++) {
+    if (!toxicFlowClusterEqual(ca[i], cb[i])) return false;
+  }
+  if (!swarmListEqual(a.swarms ?? [], b.swarms ?? [])) return false;
   const ra = a.redFlags;
   const rb = b.redFlags;
   if ((ra?.length ?? 0) !== (rb?.length ?? 0)) return false;

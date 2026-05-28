@@ -1,5 +1,6 @@
 export const TOXIC_FLOW_TAB_IDS = [
   'topHolders',
+  'swarms',
   'smart',
   'favourites',
   'whales',

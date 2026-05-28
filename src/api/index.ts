@@ -553,10 +553,63 @@ export interface WalletPosition {
   lastUpdated?: string;
 }
 
+/** Co-trading cluster in this market (from cluster_wallet_assignment + positions). */
+export interface ToxicFlowCluster {
+  clusterId: number;
+  mainWallet: string;
+  clusterSize: number;
+  membersInMarket: number;
+  stakedNetSignedUsd: number;
+  net: number;
+  invYes: number;
+  invNo: number;
+  usdcIn: number;
+  usdcOut: number;
+  volume: number;
+  tradeCount: number;
+  positions: WalletPosition[];
+}
+
+/** Live swarm of wallets that entered same side together; sticky for market lifetime. */
+export interface ToxicFlowSwarm {
+  swarmId: number;
+  side: 'YES' | 'NO';
+  startTime: number;
+  endTime: number;
+  detectedAt: number;
+  walletCount: number;
+  members: string[];
+  /** Members with effective positions in this market (subset of members). */
+  membersInMarket: number;
+  invYes: number;
+  invNo: number;
+  usdYes: number;
+  usdNo: number;
+  usdcIn: number;
+  usdcOut: number;
+  volume: number;
+  net: number;
+  netYes: number;
+  netNo: number;
+  boughtYes: number;
+  soldYes: number;
+  boughtNo: number;
+  soldNo: number;
+  feeTotal: number;
+  priceYes: number;
+  priceNo: number;
+  tradeCount: number;
+  stakedNetSignedUsd: number;
+}
+
 export interface ToxicFlowData {
   marketId: string;
   /** Top 100 holders by |net|; YES/NO/Smart/Whale tabs are derived client-side from this list. */
   topHolders: WalletPosition[];
+  /** Cotrade clusters with per-wallet positions in this market (separate from topHolders). */
+  clusters?: ToxicFlowCluster[];
+  /** Live BUY swarms (detected in-memory by polycandles). Newest first. */
+  swarms?: ToxicFlowSwarm[];
   totalYesVol: number;
   totalNoVol: number;
   totalShares: number;

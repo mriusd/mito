@@ -1,4 +1,4 @@
-import {
+import React, {
   memo,
   useState,
   useEffect,
@@ -31,6 +31,7 @@ import {
   Triangle,
   ChevronLeft,
   ChevronRight,
+  Zap,
 } from 'lucide-react';
 import {
   fetchToxicFlow,
@@ -38,6 +39,8 @@ import {
   mergeMarketStakedLegsResponse,
   walletSummaryFromLedgerEmbed,
   type MarketStakedLegsResponse,
+  type ToxicFlowCluster,
+  type ToxicFlowSwarm,
   type ToxicFlowData,
   type WalletPosition,
   type WalletSummary,
@@ -180,6 +183,7 @@ type Tab = ToxicFlowTabId;
 
 const TOXIC_FLOW_TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'topHolders', label: 'Top Holders', icon: <Crown size={11} /> },
+  { key: 'swarms', label: 'Swarms', icon: <Zap size={11} /> },
   { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
   { key: 'favourites', label: 'Favourites', icon: <Star size={11} /> },
   { key: 'whales', label: 'Whales', icon: <Fish size={11} /> },
@@ -222,8 +226,124 @@ function toxicFlowWalletsForTab(
       return { wallets: views.topYes, label: 'Net Y (Staked)' };
     case 'topNo':
       return { wallets: views.topNo, label: 'Net N (Staked)' };
+    case 'swarms':
+      return { wallets: [], label: 'swarms' };
   }
 }
+
+function shortWalletLabel(wallet: string): string {
+  const w = (wallet || '').trim();
+  if (w.length <= 12) return w;
+  return `${w.slice(0, 6)}…${w.slice(-4)}`;
+}
+
+function fmtUsdShort(n: number): string {
+  if (!Number.isFinite(n)) return '–';
+  const a = Math.abs(n);
+  if (a >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (a >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toFixed(0);
+}
+
+const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
+  swarms,
+  onOpenWallet,
+}: {
+  swarms: ToxicFlowSwarm[];
+  onOpenWallet: (wallet: string, netShares?: number) => void;
+}) {
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const sorted = useMemo(() => {
+    return [...swarms].sort((a, b) => {
+      const da = Math.abs(a.stakedNetSignedUsd ?? 0);
+      const db = Math.abs(b.stakedNetSignedUsd ?? 0);
+      if (da !== db) return db - da;
+      return a.swarmId - b.swarmId;
+    });
+  }, [swarms]);
+  if (sorted.length === 0) {
+    return (
+      <div className="flex flex-1 min-h-0 items-center justify-center text-[11px] text-gray-500">
+        No swarms detected in this market.
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-auto toxic-flow-scroll-stable">
+      <table className="w-full text-[11px] tabular-nums">
+        <thead className="sticky top-0 bg-gray-900/95 backdrop-blur z-10 text-gray-500">
+          <tr className="border-b border-gray-700">
+            <th className="text-left font-bold px-2 py-1">#</th>
+            <th className="text-left font-bold px-2 py-1">Swarm</th>
+            <th className="text-right font-bold px-2 py-1">Wallets</th>
+            <th className="text-right font-bold px-2 py-1">Inv Y</th>
+            <th className="text-right font-bold px-2 py-1">Inv N</th>
+            <th className="text-right font-bold px-2 py-1">Staked Net</th>
+            <th className="text-right font-bold px-2 py-1">USDC In</th>
+            <th className="text-right font-bold px-2 py-1">Volume</th>
+            <th className="text-right font-bold px-2 py-1">Trades</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((s, i) => {
+            const sideColor = s.side === 'YES' ? 'text-green-400' : 'text-red-400';
+            const stakeNet = s.stakedNetSignedUsd ?? 0;
+            const stakeTone = stakeNet < 0 ? 'text-green-400' : stakeNet > 0 ? 'text-red-400' : 'text-gray-400';
+            const isOpen = !!expanded[s.swarmId];
+            return (
+              <React.Fragment key={s.swarmId}>
+                <tr
+                  className="border-b border-gray-800 hover:bg-gray-800/40 cursor-pointer"
+                  onClick={() => setExpanded((m) => ({ ...m, [s.swarmId]: !m[s.swarmId] }))}
+                >
+                  <td className="px-2 py-1 text-gray-500">{i + 1}</td>
+                  <td className="px-2 py-1">
+                    <span className="font-bold text-gray-200">Swarm #{s.swarmId}</span>
+                    <span className="ml-2 text-[9px] text-gray-500">{isOpen ? '▼' : '▶'}</span>
+                    <span className={`ml-2 font-bold ${sideColor}`}>BUY {s.side}</span>
+                  </td>
+                  <td className="px-2 py-1 text-right text-gray-300">
+                    {s.membersInMarket}/{s.walletCount}
+                  </td>
+                  <td className="px-2 py-1 text-right text-green-400">{fmtUsdShort(s.invYes)}</td>
+                  <td className="px-2 py-1 text-right text-red-400">{fmtUsdShort(s.invNo)}</td>
+                  <td className={`px-2 py-1 text-right font-bold ${stakeTone}`}>
+                    {stakeNet >= 0 ? '+' : '−'}${fmtUsdShort(Math.abs(stakeNet))}
+                  </td>
+                  <td className="px-2 py-1 text-right text-gray-300">${fmtUsdShort(s.usdcIn)}</td>
+                  <td className="px-2 py-1 text-right text-gray-300">${fmtUsdShort(s.volume)}</td>
+                  <td className="px-2 py-1 text-right text-gray-300">{s.tradeCount}</td>
+                </tr>
+                {isOpen ? (
+                  <tr className="bg-gray-900/60 border-b border-gray-800">
+                    <td colSpan={9} className="px-2 py-1.5">
+                      <div className="flex flex-wrap gap-1">
+                        {s.members.map((w) => (
+                          <button
+                            key={w}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenWallet(w);
+                            }}
+                            className="font-mono text-[9px] px-1 py-0.5 rounded bg-gray-800/80 border border-gray-700 text-gray-300 hover:text-yellow-300 hover:border-yellow-500/60"
+                            title={w}
+                          >
+                            {shortWalletLabel(w)}
+                          </button>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+});
 
 function ToxicFlowLayoutSwitch({
   mode,
@@ -309,6 +429,8 @@ const ToxicFlowTablePane = memo(function ToxicFlowTablePane({
   tab,
   onTab,
   tabWalletViews,
+  clusters,
+  swarms,
   totalStakedNetUsd,
   onOpenWallet,
   trailing,
@@ -320,6 +442,8 @@ const ToxicFlowTablePane = memo(function ToxicFlowTablePane({
   tab: Tab;
   onTab: (tab: Tab) => void;
   tabWalletViews: ToxicFlowTabWalletViews;
+  clusters: ToxicFlowCluster[];
+  swarms: ToxicFlowSwarm[];
   totalStakedNetUsd: number | null;
   onOpenWallet: (wallet: string, netShares?: number) => void;
   trailing?: ReactNode;
@@ -333,15 +457,19 @@ const ToxicFlowTablePane = memo(function ToxicFlowTablePane({
     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden gap-2">
       <ToxicFlowTabBar tab={tab} onTab={onTab} trailing={trailing} barRef={tabBarRef} />
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden min-w-0">
-        <WalletTable
-          wallets={wallets}
-          label={label}
-          totalStakedNetUsd={totalStakedNetUsd}
-          onOpenWallet={onOpenWallet}
-          rowActionsTipOpen={rowActionsTipOpen}
-          onDismissRowActionsTip={onDismissRowActionsTip}
-          rowActionsAnchorRef={rowActionsAnchorRef}
-        />
+        {tab === 'swarms' ? (
+          <ToxicFlowSwarmsPane swarms={swarms} onOpenWallet={onOpenWallet} />
+        ) : (
+          <WalletTable
+            wallets={wallets}
+            label={label}
+            totalStakedNetUsd={totalStakedNetUsd}
+            onOpenWallet={onOpenWallet}
+            rowActionsTipOpen={rowActionsTipOpen}
+            onDismissRowActionsTip={onDismissRowActionsTip}
+            rowActionsAnchorRef={rowActionsAnchorRef}
+          />
+        )}
       </div>
     </div>
   );
@@ -351,10 +479,12 @@ const ToxicFlowTablePane = memo(function ToxicFlowTablePane({
     a.onTab !== b.onTab ||
     a.onOpenWallet !== b.onOpenWallet ||
     a.trailing !== b.trailing ||
-    a.totalStakedNetUsd !== b.totalStakedNetUsd
+    a.totalStakedNetUsd !== b.totalStakedNetUsd ||
+    a.swarms !== b.swarms
   ) {
     return false;
   }
+  if (a.tab === 'swarms') return true;
   if (a.tabWalletViews === b.tabWalletViews) return true;
   const wa = toxicFlowWalletsForTab(a.tabWalletViews, a.tab).wallets;
   const wb = toxicFlowWalletsForTab(b.tabWalletViews, b.tab).wallets;
@@ -513,6 +643,8 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   open,
   marketExpired = false,
   tabWalletViews,
+  clusters,
+  swarms,
   layoutMode,
   tab,
   tabBottom,
@@ -535,6 +667,8 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   open: boolean;
   marketExpired?: boolean;
   tabWalletViews: ToxicFlowTabWalletViews;
+  clusters: ToxicFlowCluster[];
+  swarms: ToxicFlowSwarm[];
   layoutMode: ToxicFlowLayoutMode;
   tab: Tab;
   tabBottom: Tab;
@@ -597,6 +731,8 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
           tab={tab}
           onTab={setTab}
           tabWalletViews={tabWalletViews}
+          clusters={clusters}
+          swarms={swarms}
           totalStakedNetUsd={totalStakedNetUsd}
           onOpenWallet={openWalletDialog}
           trailing={layoutSwitch}
@@ -612,6 +748,8 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
             tab={tab}
             onTab={setTab}
             tabWalletViews={tabWalletViews}
+            clusters={clusters}
+            swarms={swarms}
             totalStakedNetUsd={totalStakedNetUsd}
             onOpenWallet={openWalletDialog}
             trailing={layoutSwitch}
@@ -624,6 +762,8 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
             tab={tabBottom}
             onTab={setTabBottom}
             tabWalletViews={tabWalletViews}
+            clusters={clusters}
+            swarms={swarms}
             totalStakedNetUsd={totalStakedNetUsd}
             onOpenWallet={openWalletDialog}
           />
@@ -635,6 +775,8 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
             tab={tab}
             onTab={setTab}
             tabWalletViews={tabWalletViews}
+            clusters={clusters}
+            swarms={swarms}
             totalStakedNetUsd={totalStakedNetUsd}
             onOpenWallet={openWalletDialog}
             trailing={layoutSwitch}
@@ -647,6 +789,8 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
             tab={tabBottom}
             onTab={setTabBottom}
             tabWalletViews={tabWalletViews}
+            clusters={clusters}
+            swarms={swarms}
             totalStakedNetUsd={totalStakedNetUsd}
             onOpenWallet={openWalletDialog}
           />
@@ -654,6 +798,8 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
             tab={tabThird}
             onTab={setTabThird}
             tabWalletViews={tabWalletViews}
+            clusters={clusters}
+            swarms={swarms}
             totalStakedNetUsd={totalStakedNetUsd}
             onOpenWallet={openWalletDialog}
           />
@@ -677,6 +823,8 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
     a.setTabBottom !== b.setTabBottom ||
     a.setTabThird !== b.setTabThird ||
     a.openWalletDialog !== b.openWalletDialog ||
+    a.clusters !== b.clusters ||
+    a.swarms !== b.swarms ||
     a.layoutSwitch !== b.layoutSwitch ||
     a.tabsTipOpen !== b.tabsTipOpen ||
     a.onDismissTabsTip !== b.onDismissTabsTip ||
@@ -855,6 +1003,8 @@ const ToxicFlowDialogEmbeddedTableStack = memo(function ToxicFlowDialogEmbeddedT
 }) {
   const tabWalletViews = useSidebarToxicFlowTabViews(toxicFollowSet, tiltWhaleAmountUsd, toxicXSet);
   const storeData = useSidebarToxicFlowData();
+  const clusters = storeData?.clusters ?? [];
+  const swarms = storeData?.swarms ?? [];
   const loading = Boolean(open && marketId.trim() && storeData === null);
 
   const tabsBarRef = useRef<HTMLDivElement>(null);
@@ -889,8 +1039,9 @@ const ToxicFlowDialogEmbeddedTableStack = memo(function ToxicFlowDialogEmbeddedT
 
   const primaryTabWalletCount = useMemo(() => {
     if (!tabWalletViews) return 0;
+    if (tab === 'swarms') return swarms.length;
     return toxicFlowWalletsForTab(tabWalletViews, tab).wallets.length;
-  }, [tabWalletViews, tab]);
+  }, [tabWalletViews, tab, swarms]);
 
   useEffect(() => {
     if (!open) {
@@ -922,6 +1073,8 @@ const ToxicFlowDialogEmbeddedTableStack = memo(function ToxicFlowDialogEmbeddedT
       open={open}
       marketExpired={marketExpired}
       tabWalletViews={tabWalletViews}
+      clusters={clusters}
+      swarms={swarms}
       layoutMode={layoutMode}
       tab={tab}
       tabBottom={tabBottom}
@@ -1282,10 +1435,14 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     setRowActionsTipOpen(false);
   }, []);
 
+  const flowClusters = data?.clusters ?? [];
+  const flowSwarms = data?.swarms ?? [];
+
   const primaryTabWalletCount = useMemo(() => {
     if (!tabWalletViews) return 0;
+    if (tab === 'swarms') return flowSwarms.length;
     return toxicFlowWalletsForTab(tabWalletViews, tab).wallets.length;
-  }, [tabWalletViews, tab]);
+  }, [tabWalletViews, tab, flowSwarms]);
 
   useEffect(() => {
     if (embedded || !open) {
@@ -1396,6 +1553,8 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
               open={open}
               marketExpired={marketExpired}
               tabWalletViews={tabWalletViews}
+              clusters={flowClusters}
+              swarms={flowSwarms}
               layoutMode={layoutMode}
               tab={tab}
               tabBottom={tabBottom}

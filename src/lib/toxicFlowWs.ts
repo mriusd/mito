@@ -163,7 +163,12 @@ function isFullToxicFlowPayload(data: ToxicFlowPatchBody | ToxicFlowData): data 
 
 /** Keep only topHolders from server (ignore legacy extra cohort arrays). */
 export function sanitizeToxicFlowPayload(data: ToxicFlowData): ToxicFlowData {
-  return { ...data, topHolders: data.topHolders ?? [] };
+  return {
+    ...data,
+    topHolders: data.topHolders ?? [],
+    clusters: data.clusters ?? [],
+    swarms: data.swarms ?? [],
+  };
 }
 
 /** HTTP refresh: replace local state with full snapshot (no WS coalesce merge from prior). */

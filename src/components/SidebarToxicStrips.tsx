@@ -3,10 +3,9 @@ import { ToxicFlowStakePreview, TOXIC_TOTAL_STAKE_BAR_HELP } from './ToxicFlowSt
 import { useSidebarToxicFlowTabViews } from '../lib/sidebarToxicFlowTabViews';
 import {
   cohortSurplusLean,
-  dominantStakedLegAvgPriceCents,
   toxicCohortStakedNetSurplusHalves,
-  toxicRowLedgerLifetimePnlNegative,
-  toxicRowWalletIsXMarked,
+  toxicFlowInsiderRingGatePasses,
+  toxicFlowWhaleRingPriceGatePasses,
 } from '../lib/toxicFlowStakeCohort';
 import {
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
@@ -41,6 +40,8 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   notifyWhaleAmountUsd,
   notifyWhaleMaxPriceCents,
   notifyWhaleIgnoreNegativePnl,
+  notifyInsiderWinRatePct,
+  notifyInsiderMinStakeUsd,
   notifyHolderTiltPct,
   notifySmartTiltPct,
   notifyFavouriteTiltPct,
@@ -51,6 +52,8 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   notifyWhaleAmountUsd: number;
   notifyWhaleMaxPriceCents: number;
   notifyWhaleIgnoreNegativePnl: boolean;
+  notifyInsiderWinRatePct: number;
+  notifyInsiderMinStakeUsd: number;
   notifyHolderTiltPct: number;
   notifySmartTiltPct: number;
   notifyFavouriteTiltPct: number;
@@ -105,17 +108,21 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
     }
 
     let whalePassesPriceGate = false;
-    if (notifyTiltAppliesToSelectedMarket) {
-      for (const w of toxicTabViews.whales) {
-        if (toxicRowWalletIsXMarked(w, toxicXSet)) continue;
-        if (notifyWhaleIgnoreNegativePnl && toxicRowLedgerLifetimePnlNegative(w)) continue;
-        const pc = dominantStakedLegAvgPriceCents(w);
-        if (pc == null || !Number.isFinite(pc)) continue;
-        if (pc < notifyWhaleMaxPriceCents) {
-          whalePassesPriceGate = true;
-          break;
-        }
-      }
+    let insiderPassesGate = false;
+    if (notifyTiltAppliesToSelectedMarket && toxicFlowData) {
+      whalePassesPriceGate = toxicFlowWhaleRingPriceGatePasses(
+        toxicFlowData,
+        notifyWhaleAmountUsd,
+        notifyWhaleMaxPriceCents,
+        toxicXSet,
+        notifyWhaleIgnoreNegativePnl,
+      );
+      insiderPassesGate = toxicFlowInsiderRingGatePasses(
+        toxicFlowData,
+        notifyInsiderWinRatePct,
+        notifyInsiderMinStakeUsd,
+        toxicXSet,
+      );
     }
 
     let topBarExtremeBgFlash: 'green' | 'red' | null = null;
@@ -144,15 +151,19 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
       }
     }
 
-    setSidebarToxicNotify({ topBarExtremeBgFlash, whalePassesPriceGate });
+    setSidebarToxicNotify({ topBarExtremeBgFlash, whalePassesPriceGate, insiderPassesGate });
   }, [
     toxicFlowMarketId,
+    toxicFlowData,
     toxicFlowData?.marketId,
     toxicTabViews,
     toxicStripModel,
     notifyTiltAppliesToSelectedMarket,
+    notifyWhaleAmountUsd,
     notifyWhaleMaxPriceCents,
     notifyWhaleIgnoreNegativePnl,
+    notifyInsiderWinRatePct,
+    notifyInsiderMinStakeUsd,
     toxicXSet,
     notifyHolderTiltPct,
     notifySmartTiltPct,

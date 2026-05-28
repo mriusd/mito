@@ -852,6 +852,27 @@ export function toxicFlowWhaleRingPriceGatePasses(
   return false;
 }
 
+/** Insider Ring: ≥1 toxic-flow wallet with WR ≥ min (%) and |Staked Net| ≥ min stake. */
+export function toxicFlowInsiderRingGatePasses(
+  data: ToxicFlowData | null | undefined,
+  minWinRatePct: number,
+  minStakeUsd: number,
+  xSet: ReadonlySet<string> = new Set(),
+): boolean {
+  if (!data || !Number.isFinite(minWinRatePct) || !Number.isFinite(minStakeUsd)) return false;
+  const minFrac = Math.max(0, Math.min(1, minWinRatePct / 100));
+  const floor = Math.max(0, minStakeUsd);
+  for (const w of toxicFlowWalletUniverse(data)) {
+    if (toxicRowWalletIsXMarked(w, xSet)) continue;
+    const absUsd = walletStakeNetAbsUsd(w);
+    if (!Number.isFinite(absUsd) || absUsd < floor) continue;
+    const wr = toxicRowSortWinRateFrac(w);
+    if (wr == null || !Number.isFinite(wr)) continue;
+    if (wr >= minFrac) return true;
+  }
+  return false;
+}
+
 export function toxicRowSortWinRateFrac(w: WalletPosition): number | null {
   const ledgerSum = toxicRowWalletLedgerSummary(w);
   if (ledgerSum !== undefined && ledgerSum !== null) {

@@ -289,6 +289,9 @@ const SIDEBAR_NOTIFY_WHALE_IGNORE_NEGATIVE_PNL_KEY = 'polybot-sidebar-notify-wha
 const SIDEBAR_NOTIFY_DOUBLE_RING_KEY = 'polybot-sidebar-notify-double-ring';
 const SIDEBAR_NOTIFY_WHALE_RING_KEY = 'polybot-sidebar-notify-whale-ring';
 const SIDEBAR_NOTIFY_WHALE_RING_MUTABLE_KEY = 'polybot-sidebar-notify-whale-ring-mutable';
+const SIDEBAR_NOTIFY_INSIDER_RING_KEY = 'polybot-sidebar-notify-insider-ring';
+const SIDEBAR_NOTIFY_INSIDER_WIN_RATE_PCT_KEY = 'polybot-sidebar-notify-insider-win-rate-pct';
+const SIDEBAR_NOTIFY_INSIDER_MIN_STAKE_USD_KEY = 'polybot-sidebar-notify-insider-min-stake-usd';
 const SIDEBAR_NOTIFY_BELL_RING_KEY = 'polybot-sidebar-notify-bell-ring';
 const SIDEBAR_NOTIFY_TILT_MKT_UPDOWN_KEY = 'polybot-sidebar-notify-tilt-mkt-updown';
 const SIDEBAR_NOTIFY_TILT_MKT_HIT_KEY = 'polybot-sidebar-notify-tilt-mkt-hit';
@@ -476,6 +479,38 @@ function readNotifyWhaleRingMutable(): boolean {
     return v === '1';
   } catch {
     return false;
+  }
+}
+
+function readNotifyInsiderRing(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_INSIDER_RING_KEY);
+    if (v === null) return true;
+    return v === '1';
+  } catch {
+    return true;
+  }
+}
+
+function readNotifyInsiderWinRatePct(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_INSIDER_WIN_RATE_PCT_KEY);
+    const n = parseFloat(raw ?? '75');
+    if (!Number.isFinite(n)) return 75;
+    return Math.min(100, Math.max(0, Math.round(n)));
+  } catch {
+    return 75;
+  }
+}
+
+function readNotifyInsiderMinStakeUsd(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_NOTIFY_INSIDER_MIN_STAKE_USD_KEY);
+    const n = parseFloat(raw ?? '1000');
+    if (!Number.isFinite(n)) return 1000;
+    return Math.max(0, n);
+  } catch {
+    return 1000;
   }
 }
 
@@ -855,6 +890,9 @@ export const Sidebar = memo(function Sidebar() {
   const [notifyWhaleAmountUsd, setNotifyWhaleAmountUsd] = useState(readTiltWhaleAmountUsd);
   const [notifyWhaleRing, setNotifyWhaleRing] = useState(readNotifyWhaleRing);
   const [notifyWhaleRingMutable, setNotifyWhaleRingMutable] = useState(readNotifyWhaleRingMutable);
+  const [notifyInsiderRing, setNotifyInsiderRing] = useState(readNotifyInsiderRing);
+  const [notifyInsiderWinRatePct, setNotifyInsiderWinRatePct] = useState(readNotifyInsiderWinRatePct);
+  const [notifyInsiderMinStakeUsd, setNotifyInsiderMinStakeUsd] = useState(readNotifyInsiderMinStakeUsd);
   const [notifyBellRing, setNotifyBellRing] = useState(readNotifyBellRing);
   const [notifyVolumeSpikeRing, setNotifyVolumeSpikeRing] = useState(readNotifyVolumeSpikeRingEnabled);
   const [chartOutcomeSync, setChartOutcomeSync] = useState(readChartOutcomeSync);
@@ -974,6 +1012,27 @@ export const Sidebar = memo(function Sidebar() {
       /* ignore */
     }
   }, [notifyWhaleRingMutable]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_INSIDER_RING_KEY, notifyInsiderRing ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [notifyInsiderRing]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_INSIDER_WIN_RATE_PCT_KEY, String(notifyInsiderWinRatePct));
+    } catch {
+      /* ignore */
+    }
+  }, [notifyInsiderWinRatePct]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_NOTIFY_INSIDER_MIN_STAKE_USD_KEY, String(notifyInsiderMinStakeUsd));
+    } catch {
+      /* ignore */
+    }
+  }, [notifyInsiderMinStakeUsd]);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_NOTIFY_BELL_RING_KEY, notifyBellRing ? '1' : '0');
@@ -2674,6 +2733,40 @@ export const Sidebar = memo(function Sidebar() {
                   <span>Mutable</span>
                 </label>
               </div>
+              <div className="flex items-center gap-4 flex-wrap">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyInsiderRing}
+                    onChange={(e) => setNotifyInsiderRing(e.target.checked)}
+                  />
+                  <span>Insider Ring</span>
+                </label>
+                <label className="flex items-center gap-2 shrink-0">
+                  <span className="text-gray-400 whitespace-nowrap">Insider win Rate (%)</span>
+                  <NotifyDialogNumberInput
+                    min={0}
+                    max={100}
+                    step={1}
+                    integer
+                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 tabular-nums no-spin"
+                    value={notifyInsiderWinRatePct}
+                    onChange={setNotifyInsiderWinRatePct}
+                  />
+                </label>
+                <label className="flex items-center gap-2 shrink-0">
+                  <span className="text-gray-400 whitespace-nowrap">Min Insider Stake</span>
+                  <NotifyDialogNumberInput
+                    min={0}
+                    max={1e12}
+                    step={50}
+                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-28 tabular-nums no-spin"
+                    value={notifyInsiderMinStakeUsd}
+                    onChange={setNotifyInsiderMinStakeUsd}
+                  />
+                </label>
+              </div>
               <div className="flex items-center gap-3 flex-wrap">
                 <label className="flex items-center gap-2 shrink-0">
                   <span className="text-gray-400 whitespace-nowrap">Whale amount (USDC)</span>
@@ -2708,6 +2801,9 @@ export const Sidebar = memo(function Sidebar() {
                   <span className="text-gray-400 whitespace-nowrap">Ignore negative pnl</span>
                 </label>
               </div>
+              <p className="text-[10px] text-gray-500 m-0 leading-snug">
+                Insider Ring fires when a wallet in toxic flow has win rate ≥ Insider win Rate (%) and |Staked Net| ≥ Min Insider Stake. Same triple-strike repeat as Whale Ring; obeys Mutable mute like whales.
+              </p>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
                 Wallets with |Staked Net| USD ≥ Whale amount are whales (same as Toxic Flow tab). Whale Ring fires only when at least one such wallet has avg entry on its heavier staked leg **below** Max Whale Price (ledger price_yes / price_no). Ignore negative pnl skips whales whose batched ledger lifetime PnL is &lt; 0.
               </p>
@@ -2801,7 +2897,7 @@ export const Sidebar = memo(function Sidebar() {
               </div>
               <div
                 className={
-                  notifyPlaySound || notifyWhaleRing || notifyBellRing || notifyVolumeSpikeRing
+                  notifyPlaySound || notifyWhaleRing || notifyInsiderRing || notifyBellRing || notifyVolumeSpikeRing
                     ? 'transition-opacity'
                     : 'opacity-35 blur-[2.5px] pointer-events-none select-none transition-opacity'
                 }
@@ -2888,7 +2984,7 @@ export const Sidebar = memo(function Sidebar() {
               </div>
               <div
                 className={
-                  notifyTradeSound || notifyPlaySound || notifyWhaleRing || notifyBellRing || notifyVolumeSpikeRing
+                  notifyTradeSound || notifyPlaySound || notifyWhaleRing || notifyInsiderRing || notifyBellRing || notifyVolumeSpikeRing
                     ? 'transition-opacity'
                     : 'opacity-35 blur-[2.5px] pointer-events-none select-none transition-opacity'
                 }
@@ -3194,6 +3290,7 @@ export const Sidebar = memo(function Sidebar() {
       <SidebarToxicNotifySoundHost
         notifyPlaySound={notifyPlaySound}
         notifyWhaleRing={notifyWhaleRing}
+        notifyInsiderRing={notifyInsiderRing}
         notifyWhaleRingMutable={notifyWhaleRingMutable}
         notifySoundPitchMul={notifySoundPitchMul}
         notifyRingTimeS={notifyRingTimeS}
@@ -3544,6 +3641,8 @@ export const Sidebar = memo(function Sidebar() {
                 notifyWhaleAmountUsd={notifyWhaleAmountUsd}
                 notifyWhaleMaxPriceCents={notifyWhaleMaxPriceCents}
                 notifyWhaleIgnoreNegativePnl={notifyWhaleIgnoreNegativePnl}
+                notifyInsiderWinRatePct={notifyInsiderWinRatePct}
+                notifyInsiderMinStakeUsd={notifyInsiderMinStakeUsd}
                 notifyHolderTiltPct={notifyHolderTiltPct}
                 notifySmartTiltPct={notifySmartTiltPct}
                 notifyFavouriteTiltPct={notifyFavouriteTiltPct}

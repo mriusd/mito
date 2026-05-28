@@ -21,6 +21,7 @@ const TILT_EXTREME_FLASH_MS = 550;
 export function SidebarToxicNotifySoundHost({
   notifyPlaySound,
   notifyWhaleRing,
+  notifyInsiderRing,
   notifyWhaleRingMutable,
   notifySoundPitchMul,
   notifyRingTimeS,
@@ -31,6 +32,7 @@ export function SidebarToxicNotifySoundHost({
 }: {
   notifyPlaySound: boolean;
   notifyWhaleRing: boolean;
+  notifyInsiderRing: boolean;
   notifyWhaleRingMutable: boolean;
   notifySoundPitchMul: number;
   notifyRingTimeS: number;
@@ -39,8 +41,11 @@ export function SidebarToxicNotifySoundHost({
   notifyMaxVolatilityPct: number;
   isMarketExpired: boolean;
 }) {
-  const { topBarExtremeBgFlash, whalePassesPriceGate: notifyWhalePassesPriceGate } =
-    useSidebarToxicNotify();
+  const {
+    topBarExtremeBgFlash,
+    whalePassesPriceGate: notifyWhalePassesPriceGate,
+    insiderPassesGate: notifyInsiderPassesGate,
+  } = useSidebarToxicNotify();
   const notifyStakedGatePasses = useSidebarNotifyStakedGatePasses();
   const sidebarChartAnnualVolPct = useSidebarChartAnnualVolPct();
   const selectedMarket = useAppStore((s) => s.selectedMarket);
@@ -82,9 +87,10 @@ export function SidebarToxicNotifySoundHost({
     const cohortTiltAlarm = topBarExtremeBgFlash;
     const cohortNeedsSound = cohortTiltAlarm != null && notifyPlaySound;
     const whaleEligible = notifyWhaleRing && notifyWhalePassesPriceGate;
-    const whaleNeedsSound = whaleEligible && !cohortNeedsSound;
+    const insiderEligible = notifyInsiderRing && notifyInsiderPassesGate;
+    const specialRingNeedsSound = (whaleEligible || insiderEligible) && !cohortNeedsSound;
 
-    if (!cohortNeedsSound && !whaleNeedsSound) return;
+    if (!cohortNeedsSound && !specialRingNeedsSound) return;
     if (isMarketExpired) return;
     if (cohortNeedsSound && !notifyVolatilityGatePasses) return;
     if (cohortNeedsSound && !notifyStakedGatePasses) return;
@@ -103,7 +109,7 @@ export function SidebarToxicNotifySoundHost({
         if (isNotifySoundPriceMuted(ids?.[0], ids?.[1], maxCents)) return;
         if (muted) return;
         void playTiltNotifySoundWithDoubleRing(k, mul, rt, doubleRing);
-      } else if (whaleNeedsSound) {
+      } else if (specialRingNeedsSound) {
         const tfMid = (getSidebarToxicFlowSnapshot().data?.marketId ?? '').trim();
         const curMid = toxicFlowMarketId.trim();
         if (!tfMid || !curMid || tfMid !== curMid) return;
@@ -119,8 +125,10 @@ export function SidebarToxicNotifySoundHost({
   }, [
     topBarExtremeBgFlash,
     notifyWhaleRing,
+    notifyInsiderRing,
     notifyWhaleRingMutable,
     notifyWhalePassesPriceGate,
+    notifyInsiderPassesGate,
     notifyPlaySound,
     notifyStakedGatePasses,
     notifyVolatilityGatePasses,

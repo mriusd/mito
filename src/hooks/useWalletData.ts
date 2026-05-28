@@ -7,7 +7,6 @@ import { fetchOpenOrdersDirect, setWalletRefreshFn, setOrdersRefreshFn, hasCreds
 import { usePolymarketUserOrdersWS } from './usePolymarketUserOrdersWS';
 import { resolvePolymarketMakerAddress } from '../lib/polymarketTradingMaker';
 import { clearWalletAccountSlice } from '../lib/clearWalletAccountSlice';
-import { showSignatureExplainer } from '../components/SignatureExplainerDialog';
 import { isWebMode } from '../lib/env';
 import { getStoredPrivateKey } from '../components/PrivateKeyImportDialog';
 
@@ -207,21 +206,8 @@ export function useWalletData() {
           console.log('[useWalletData] API creds derived successfully (PK)');
           fetchAll();
         }).catch(() => { credsCheckedRef.current = false; });
-      } else {
-        console.log('[useWalletData] No cached API creds for wallet, asking user...');
-        showSignatureExplainer(
-          'Wallet Signature Required',
-          'Your wallet will request a signature to derive your Polymarket API credentials. These credentials are used for reading your open orders, positions, and trades, and for cancelling orders.\n\nPlacing new orders requires a separate signature each time. No withdrawals or transfers are possible with these keys.',
-          () => ensureCredsForWallet(proxyWallet),
-        ).then((success) => {
-          if (success) {
-            console.log('[useWalletData] API creds derived successfully');
-            fetchAll();
-          } else {
-            credsCheckedRef.current = false;
-          }
-        });
       }
+      // Wallet mode: defer L1 auth until place/cancel/merge (SigningDialog + ensureCreds).
     }
   }, [effectiveEoa, proxyWallet, fetchAll, signingMode, pkEoa]);
 

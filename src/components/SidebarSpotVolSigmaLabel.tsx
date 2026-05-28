@@ -23,20 +23,23 @@ export const SidebarSpotVolSigmaLabel = memo(function SidebarSpotVolSigmaLabel({
     );
   }
 
+  const vol = sidebarChartAnnualVolPct;
+  const maxVol = notifyMaxVolatilityPct;
+  const volClass =
+    vol == null
+      ? 'text-gray-600'
+      : maxVol <= 0
+        ? 'text-amber-200/95 sidebar-readable-value'
+        : vol > maxVol
+          ? 'text-red-400 sidebar-readable-value'
+          : vol >= maxVol * 0.75
+            ? 'text-yellow-400 sidebar-readable-value'
+            : 'text-green-400 sidebar-readable-value';
+
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap">
-      <span
-        className={
-          sidebarChartAnnualVolPct == null
-            ? 'text-gray-600'
-            : notifyMaxVolatilityPct > 0 && sidebarChartAnnualVolPct > notifyMaxVolatilityPct
-              ? 'text-red-400 sidebar-readable-value'
-              : notifyMaxVolatilityPct > 0 && sidebarChartAnnualVolPct <= notifyMaxVolatilityPct
-                ? 'text-green-400 sidebar-readable-value'
-                : 'text-amber-200/95 sidebar-readable-value'
-        }
-      >
-        {sidebarChartAnnualVolPct != null ? `σ ${sidebarChartAnnualVolPct.toFixed(1)}%` : 'σ —'}
+      <span className={volClass}>
+        {vol != null ? `σ ${vol.toFixed(1)}%` : 'σ —'}
       </span>
       <HelpTooltip
         text={`Annualized volatility from spot klines (Binance or Chainlink, same source as the hidden asset chart). Uses the last ${notifyVolatilityCandles} completed ${sidebarChartKlineLabel} candles; the open candle is excluded. For 5m markets these are 5m candles, for 15m markets 15m candles, etc. Candle count and max volatility for tilt alerts are set in Tilt notifications.`}

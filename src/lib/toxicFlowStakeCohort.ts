@@ -3,6 +3,7 @@
  */
 
 import type { ToxicFlowCluster, ToxicFlowData, ToxicFlowSwarm, WalletPosition, WalletScoresLedgerEmbed, WalletSummary } from '../api';
+import { wsQuoteMidCents } from './notifySoundPriceMute';
 
 export const TOXIC_SWARM_WALLET_PREFIX = '__swarm:';
 
@@ -350,6 +351,18 @@ export function dominantStakedLegAvgPriceCents(w: WalletPosition): number | null
     return typeof w.priceNo === 'number' && Number.isFinite(w.priceNo) ? w.priceNo * 100 : null;
   }
   return null;
+}
+
+/** WS mid (¢) on wallet's directional leg — YES token if net YES, else NO. */
+export function walletDirectionWsMidCents(
+  w: WalletPosition,
+  yesTokenId: string,
+  noTokenId: string,
+): number | null {
+  const outcome = walletDirectionalChartOutcome(w);
+  const tid = (outcome === 'YES' ? yesTokenId : noTokenId).trim();
+  if (!tid) return null;
+  return wsQuoteMidCents(tid);
 }
 
 /** Staked-net cohort bar: Σ max(0, −signed_net) YES vs Σ max(0, signed_net) NO — `cohortSurplusHalves` mode. */
@@ -852,11 +865,13 @@ export function toxicFlowWhaleRingPriceGatePasses(
   return false;
 }
 
-/** Insider Ring: ≥1 toxic-flow wallet with WR ≥ min (%) and |Staked Net| ≥ min stake. */
+/** Insider Ring: ≥1 toxic-flow wallet with WR ≥ min (%) and |Staked Net| ≥ min stake; directional WS mid ≤ mute cap. */
 export function toxicFlowInsiderRingGatePasses(
   data: ToxicFlowData | null | undefined,
   minWinRatePct: number,
   minStakeUsd: number,
+  yesTokenId: string,
+  noTokenId: string,
   xSet: ReadonlySet<string> = new Set(),
   maxSoundMutePriceCents: number,
 ): boolean {
@@ -869,12 +884,12 @@ export function toxicFlowInsiderRingGatePasses(
     if (toxicRowWalletIsXMarked(w, xSet)) continue;
     const absUsd = walletStakeNetAbsUsd(w);
     if (!Number.isFinite(absUsd) || absUsd < floor) continue;
-    const pc = dominantStakedLegAvgPriceCents(w);
-    if (pc == null || !Number.isFinite(pc)) continue;
-    if (pc > maxSoundMutePriceCents) continue;
     const wr = toxicRowSortWinRateFrac(w);
     if (wr == null || !Number.isFinite(wr)) continue;
-    if (wr >= minFrac) return true;
+    if (wr < minFrac) continue;
+    const dirMid = walletDirectionWsMidCents(w, yesTokenId, noTokenId);
+    if (dirMid == null || dirMid > maxSoundMutePriceCents) continue;
+    return true;
   }
   return false;
 }

@@ -2802,7 +2802,7 @@ export const Sidebar = memo(function Sidebar() {
                 </label>
               </div>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Insider Ring fires when a wallet in toxic flow has win rate ≥ Insider win Rate (%) and |Staked Net| ≥ Min Insider Stake, with dominant-leg avg entry ≤ Mute sounds above (¢). Same triple-strike repeat as Whale Ring; obeys Mutable mute like whales.
+                Insider Ring fires when a wallet in toxic flow meets WR/stake thresholds and its directional WS mid (YES or NO leg) is ≤ Mute sounds above (¢). Whale/Insider rings also obey that market mute (either token mid &gt; cap silences all rings). Same triple-strike repeat as Whale Ring; obeys Mutable mute like whales.
               </p>
               <p className="text-[10px] text-gray-500 m-0 leading-snug">
                 Wallets with |Staked Net| USD ≥ Whale amount are whales (same as Toxic Flow tab). Whale Ring fires only when at least one such wallet has avg entry on its heavier staked leg **below** Max Whale Price (ledger price_yes / price_no). Ignore negative pnl skips whales whose batched ledger lifetime PnL is &lt; 0.
@@ -3643,6 +3643,8 @@ export const Sidebar = memo(function Sidebar() {
                 notifyWhaleIgnoreNegativePnl={notifyWhaleIgnoreNegativePnl}
                 notifyInsiderWinRatePct={notifyInsiderWinRatePct}
                 notifyInsiderMinStakeUsd={notifyInsiderMinStakeUsd}
+                yesTokenId={selectedMarket?.clobTokenIds?.[0] ?? ''}
+                noTokenId={selectedMarket?.clobTokenIds?.[1] ?? ''}
                 notifySoundMaxPriceCents={notifySoundMaxPriceCents}
                 notifyHolderTiltPct={notifyHolderTiltPct}
                 notifySmartTiltPct={notifySmartTiltPct}

@@ -20,6 +20,8 @@ import {
 import { useSidebarToxicFlowData } from '../lib/sidebarToxicFlowStore';
 import { setSidebarToxicNotify, resetSidebarToxicNotify } from '../lib/sidebarToxicNotifyStore';
 import { useSidebarYesObDepth } from '../lib/sidebarYesObDepthStore';
+import { useBidAskMarketRow } from '../hooks/useBidAskMarketRow';
+import { wsQuoteMidCents } from '../lib/notifySoundPriceMute';
 
 const SIDEBAR_TOXIC_STRIP_FLASH_FRAC = 0.3;
 
@@ -42,6 +44,8 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   notifyWhaleIgnoreNegativePnl,
   notifyInsiderWinRatePct,
   notifyInsiderMinStakeUsd,
+  yesTokenId,
+  noTokenId,
   notifySoundMaxPriceCents,
   notifyHolderTiltPct,
   notifySmartTiltPct,
@@ -55,6 +59,8 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   notifyWhaleIgnoreNegativePnl: boolean;
   notifyInsiderWinRatePct: number;
   notifyInsiderMinStakeUsd: number;
+  yesTokenId: string;
+  noTokenId: string;
   notifySoundMaxPriceCents: number;
   notifyHolderTiltPct: number;
   notifySmartTiltPct: number;
@@ -82,6 +88,9 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
 
   const toxicFlowData = useSidebarToxicFlowData();
   const yesObDepth = useSidebarYesObDepth();
+  useBidAskMarketRow(yesTokenId);
+  useBidAskMarketRow(noTokenId);
+  const insiderQuoteGateKey = `${wsQuoteMidCents(yesTokenId) ?? 'n'}|${wsQuoteMidCents(noTokenId) ?? 'n'}`;
   const toxicTabViews = useSidebarToxicFlowTabViews(toxicFavSet, notifyWhaleAmountUsd, toxicXSet);
 
   const toxicStripModel = useMemo(() => {
@@ -123,6 +132,8 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
         toxicFlowData,
         notifyInsiderWinRatePct,
         notifyInsiderMinStakeUsd,
+        yesTokenId,
+        noTokenId,
         toxicXSet,
         notifySoundMaxPriceCents,
       );
@@ -167,7 +178,10 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
     notifyWhaleIgnoreNegativePnl,
     notifyInsiderWinRatePct,
     notifyInsiderMinStakeUsd,
+    yesTokenId,
+    noTokenId,
     notifySoundMaxPriceCents,
+    insiderQuoteGateKey,
     toxicXSet,
     notifyHolderTiltPct,
     notifySmartTiltPct,

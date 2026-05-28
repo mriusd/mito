@@ -113,6 +113,7 @@ export function SidebarToxicNotifySoundHost({
         const tfMid = (getSidebarToxicFlowSnapshot().data?.marketId ?? '').trim();
         const curMid = toxicFlowMarketId.trim();
         if (!tfMid || !curMid || tfMid !== curMid) return;
+        if (isNotifySoundPriceMuted(ids?.[0], ids?.[1], maxCents)) return;
         if (muted && notifyWhaleRingMutable) return;
         void playTiltNotifySoundStrikes(k, mul, rt, 3);
       }

@@ -238,3 +238,62 @@ export function buildSidebarChartOrderLevels(
   }
   return levels;
 }
+
+export type SidebarChartPositionLevel = {
+  tokenId: string;
+  priceCents: number;
+  direction: 'long' | 'short';
+};
+
+/** Holding YES = long (blue); holding NO = short on YES view (yellow). */
+export function positionExposureDirection(tokenOutcome: 'YES' | 'NO'): 'long' | 'short' {
+  return tokenOutcome === 'YES' ? 'long' : 'short';
+}
+
+/** Avg-entry lines for My Positions on chart Y-axis (0–100¢). */
+export function buildSidebarChartPositionLevels(
+  positions: { asset: string; size: number; avgPrice: number }[],
+  yesTokenId: string,
+  noTokenId: string,
+  viewOutcome: 'YES' | 'NO',
+  minSize = 0.01,
+): SidebarChartPositionLevel[] {
+  const levels: SidebarChartPositionLevel[] = [];
+  const yesTok = String(yesTokenId || '').trim();
+  const noTok = String(noTokenId || '').trim();
+  const viewToken = viewOutcome === 'YES' ? yesTok : noTok;
+  const oppToken = viewOutcome === 'YES' ? noTok : yesTok;
+  if (!viewToken) return levels;
+
+  for (const p of positions) {
+    const oid = String(p.asset || '').trim();
+    const sz = p.size;
+    if (!Number.isFinite(sz) || sz < minSize) continue;
+    const avgRaw = p.avgPrice;
+    if (typeof avgRaw !== 'number' || !Number.isFinite(avgRaw) || avgRaw <= 0) continue;
+    const priceFrac = avgRaw > 1 ? avgRaw / 100 : avgRaw;
+    if (priceFrac <= 0 || priceFrac >= 1) continue;
+    const cents = Math.round(priceFrac * 1000) / 10;
+
+    let chartCents: number;
+    let tokenOutcome: 'YES' | 'NO';
+
+    if (oid === viewToken) {
+      chartCents = cents;
+      tokenOutcome = viewOutcome;
+    } else if (oppToken && oid === oppToken) {
+      chartCents = Math.round((100 - cents) * 10) / 10;
+      tokenOutcome = viewOutcome === 'YES' ? 'NO' : 'YES';
+    } else {
+      continue;
+    }
+
+    if (!Number.isFinite(chartCents) || chartCents < 0.1 || chartCents > 99.9) continue;
+    levels.push({
+      tokenId: oid,
+      priceCents: chartCents,
+      direction: positionExposureDirection(tokenOutcome),
+    });
+  }
+  return levels;
+}

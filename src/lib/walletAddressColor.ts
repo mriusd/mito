@@ -103,7 +103,10 @@ export function walletAddressColorClass(input: {
     ledgerGoldOverride ??
     (ledgerEmbed != null ? ledgerGoldFromEmbed(ledgerEmbed) : ledgerGoldFromSummary(summary));
   const smartGoldAddr = !ledgerAbsent && !resolvedStatsLow && (ledgerGold || isSmart);
+  const highWinRateAddr =
+    !ledgerAbsent && !resolvedStatsLow && ledgerHighWinRateFromLedgerInput(ledgerEmbed, summary);
   if (resolvedStatsLow || ledgerAbsent) return 'text-blue-400';
+  if (highWinRateAddr) return TOXIC_FLOW_HIGH_WIN_RATE_ADDR_CLASS;
   if (smartGoldAddr) return 'text-amber-400';
   if (lifetimeHue === 'pos') return 'text-green-400';
   if (lifetimeHue === 'neg') return 'text-red-400';

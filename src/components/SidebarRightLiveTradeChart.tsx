@@ -10,7 +10,11 @@ import {
   type LedgerFillChartRow,
   type MyTradeChartRow,
 } from '../lib/chartTradeMarkers';
-import { buildSidebarChartOrderLevels, type ChartOrderReplaceParams } from '../lib/sidebarOrderbookAggregate';
+import {
+  buildSidebarChartOrderLevels,
+  buildSidebarChartPositionLevels,
+  type ChartOrderReplaceParams,
+} from '../lib/sidebarOrderbookAggregate';
 import type { Order } from '../types';
 
 export type { ChartTradeMarker, LedgerFillChartRow, MyTradeChartRow };
@@ -70,6 +74,7 @@ export type SidebarRightLiveTradeChartProps = {
   /** My Orders for selected market (non-prog) — chart horizontal lines. */
   sidebarChartOrders?: Order[];
   onChartOrderReplace?: (params: ChartOrderReplaceParams) => void;
+  sidebarChartPositions?: { asset: string; size: number; avgPrice: number }[];
 };
 
 export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeChart({
@@ -92,6 +97,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   sidebarUserAskPrices,
   sidebarChartOrders,
   onChartOrderReplace,
+  sidebarChartPositions,
 }: SidebarRightLiveTradeChartProps) {
   const isUpDownMarket = marketIsUpDown(market);
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(market) : null;
@@ -133,6 +139,11 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
     if (!sidebarChartOrders?.length) return undefined;
     return buildSidebarChartOrderLevels(sidebarChartOrders, yesTokenId, noTokenId, chartOutcome);
   }, [sidebarChartOrders, yesTokenId, noTokenId, chartOutcome]);
+
+  const sidebarChartPositionLevels = useMemo(() => {
+    if (!sidebarChartPositions?.length) return undefined;
+    return buildSidebarChartPositionLevels(sidebarChartPositions, yesTokenId, noTokenId, chartOutcome);
+  }, [sidebarChartPositions, yesTokenId, noTokenId, chartOutcome]);
 
   const tradeMarkers = useMemo(() => {
     if (tradeMarkersProp != null) return tradeMarkersProp;
@@ -196,6 +207,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
         sidebarUserBidPrices={sidebarUserBidPrices}
         sidebarUserAskPrices={sidebarUserAskPrices}
         sidebarChartOrderLevels={sidebarChartOrderLevels}
+        sidebarChartPositionLevels={sidebarChartPositionLevels}
         onChartOrderReplace={onChartOrderReplace}
       />,
     );
@@ -222,6 +234,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       sidebarUserBidPrices={sidebarUserBidPrices}
       sidebarUserAskPrices={sidebarUserAskPrices}
       sidebarChartOrderLevels={sidebarChartOrderLevels}
+      sidebarChartPositionLevels={sidebarChartPositionLevels}
       onChartOrderReplace={onChartOrderReplace}
     />,
   );

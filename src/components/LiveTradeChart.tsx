@@ -15,7 +15,11 @@ import type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 import { parseCandleOb, type CandleObSnapshot } from '../lib/candleObSnapshot';
 import { prepareCandleObDisplay } from '../lib/candleObDisplay';
 import { readSavedObAggStep } from '../lib/sidebarObAggStep';
-import type { ChartOrderReplaceParams, SidebarChartOrderLevel } from '../lib/sidebarOrderbookAggregate';
+import type {
+  ChartOrderReplaceParams,
+  SidebarChartOrderLevel,
+  SidebarChartPositionLevel,
+} from '../lib/sidebarOrderbookAggregate';
 import { chartViewCentsToTokenPriceCents } from '../lib/sidebarOrderbookAggregate';
 import { SidebarOrderbookBookGrid } from './SidebarOrderbookBookGrid';
 import { drawObHeatmapColumns } from '../lib/chartObHeatmap';
@@ -51,6 +55,35 @@ function snapChartCentsFromY(y: number, chartTop: number, chartBot: number): num
   if (span <= 0) return 50;
   const p = ((chartBot - y) / span) * 100;
   return Math.max(0.1, Math.min(99.9, Math.round(p * 10) / 10));
+}
+
+function drawSidebarChartPositionLines(
+  ctx: CanvasRenderingContext2D,
+  levels: SidebarChartPositionLevel[],
+  chartLeft: number,
+  chartRight: number,
+  chartTop: number,
+  chartBot: number,
+  toY: (p: number) => number,
+) {
+  for (const lv of levels) {
+    const y = toY(lv.priceCents);
+    if (y < chartTop - 1 || y > chartBot + 1) continue;
+    const color = lv.direction === 'long' ? '#2563eb' : '#facc15';
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
+    ctx.moveTo(chartLeft, y);
+    ctx.lineTo(chartRight, y);
+    ctx.stroke();
+
+    ctx.font = '9px monospace';
+    ctx.fillStyle = color;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${lv.priceCents.toFixed(1)}¢`, chartLeft - 3, y);
+  }
 }
 
 function drawSidebarChartOrderLines(
@@ -219,6 +252,7 @@ interface LiveTradeChartProps {
   /** Sidebar: blue = long (BUY YES / SELL NO), yellow = short at limit price on chart Y. */
   sidebarChartOrderLevels?: SidebarChartOrderLevel[];
   onChartOrderReplace?: (params: ChartOrderReplaceParams) => void;
+  sidebarChartPositionLevels?: SidebarChartPositionLevel[];
 }
 
 function defaultInterval(context?: string): string {
@@ -275,6 +309,7 @@ export function LiveTradeChart({
   sidebarUserAskPrices,
   sidebarChartOrderLevels,
   onChartOrderReplace,
+  sidebarChartPositionLevels,
 }: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartStateRef = useRef<LiveChartState | null>(null);
@@ -911,6 +946,18 @@ export function LiveTradeChart({
       ctx.setLineDash([]);
     }
 
+    if (sidebarChartPositionLevels && sidebarChartPositionLevels.length > 0) {
+      drawSidebarChartPositionLines(
+        ctx,
+        sidebarChartPositionLevels,
+        chartLeft,
+        chartRight,
+        chartTop,
+        chartBot,
+        toY,
+      );
+    }
+
     if (displayChartOrderLevels && displayChartOrderLevels.length > 0) {
       drawSidebarChartOrderLines(
         ctx,
@@ -1108,7 +1155,7 @@ export function LiveTradeChart({
     };
     baseImageRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
     if (hoverMxRef.current != null) paintChartHover(hoverMxRef.current);
-  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval, outcomeToggle?.value, paintChartHover, obHeatmap, displayChartOrderLevels]);
+  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval, outcomeToggle?.value, paintChartHover, obHeatmap, displayChartOrderLevels, sidebarChartPositionLevels]);
 
   useEffect(() => {
     if (!orderDrag) return;

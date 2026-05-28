@@ -1,7 +1,6 @@
 /** Sidebar: bar = Σ|YES leg| vs Σ|NO leg| proportions; pill |ΣY−ΣN| is separate. Toxic cohort: bar = YES-net vs NO-net surplus halves. */
 
 import { SidebarBarMidMarker } from './SidebarBarMidMarker';
-import { StakedNetFlashInline, useUsdMagnitudeFlash } from '../lib/toxicStakedNetFlash';
 
 function fmtUsd(absVal: number): string {
   return absVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -85,16 +84,6 @@ export function StakedLegUsdBar({
       : lean >= 0
         ? sumYUsd
         : sumNUsd;
-  const directionUsdFlash = useUsdMagnitudeFlash(
-    compact && compactShowLeanDirectionUsd && !neutralBar && directionUsd != null
-      ? directionUsd
-      : null,
-  );
-  const totalStakeFlash = useUsdMagnitudeFlash(
-    compact && compactShowLeanDirectionUsd && totalStakeNetUsd != null && totalStakeNetUsd > 0
-      ? totalStakeNetUsd
-      : null,
-  );
   const tip = neutralBar
     ? barMode === 'yesBookDepth'
       ? 'No YES / NO bid depth to chart'
@@ -161,24 +150,16 @@ export function StakedLegUsdBar({
       ) : compactShowLeanDirectionUsd ? (
         totalStakeNetUsd != null && totalStakeNetUsd > 0 ? (
           <>
-            <StakedNetFlashInline flash={directionUsdFlash}>
-              <>
-                <span className={leanColor}>${fmtUsdWhole(directionUsd)}</span>
-                <span className={leanColor}> ({leanPctLabel})</span>
-              </>
-            </StakedNetFlashInline>
+            <span className={leanColor}>${fmtUsdWhole(directionUsd)}</span>
+            <span className={leanColor}> ({leanPctLabel})</span>
             <span className="text-gray-500">{' \\ '}</span>
-            <StakedNetFlashInline flash={totalStakeFlash}>
-              <span className="text-gray-500">${fmtUsdWhole(totalStakeNetUsd)}</span>
-            </StakedNetFlashInline>
+            <span className="text-gray-500">${fmtUsdWhole(totalStakeNetUsd)}</span>
           </>
         ) : (
-          <StakedNetFlashInline flash={directionUsdFlash}>
-            <>
-              <span className={leanColor}>${fmtUsdWhole(directionUsd)}</span>
-              <span className={leanColor}> ({leanPctLabel})</span>
-            </>
-          </StakedNetFlashInline>
+          <>
+            <span className={leanColor}>${fmtUsdWhole(directionUsd)}</span>
+            <span className={leanColor}> ({leanPctLabel})</span>
+          </>
         )
       ) : (
         leanPctLabel

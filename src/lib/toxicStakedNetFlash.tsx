@@ -27,14 +27,6 @@ export function stakedNetDeltaFlashDir(prev: number, next: number): StakedNetFla
   return null;
 }
 
-/** Progress bar / unsigned USD totals. */
-export function usdMagnitudeFlashDir(prev: number, next: number): StakedNetFlashDir | null {
-  if (!Number.isFinite(prev) || !Number.isFinite(next)) return null;
-  if (next > prev + STAKED_NET_FLASH_MIN_USD) return 'up';
-  if (next < prev - STAKED_NET_FLASH_MIN_USD) return 'down';
-  return null;
-}
-
 const STAKED_NET_FLASH_BADGE_BASE =
   'inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded updown-triangle-badge-flash-finite';
 
@@ -63,22 +55,6 @@ export function StakedNetFlashBadge({ dir }: { dir: StakedNetFlashDir }) {
   );
 }
 
-export function StakedNetFlashInline({
-  flash,
-  children,
-}: {
-  flash: StakedNetFlashDir | null;
-  children: ReactNode;
-}) {
-  return (
-    <span className="inline-flex items-center justify-end gap-0.5 max-w-full">
-      {flash ? <StakedNetFlashBadge dir={flash} /> : null}
-      {children}
-    </span>
-  );
-}
-
-/** Flash when a displayed USD total moves up/down (stake bar right column). */
 function stakedNetUsdTableCell(signed: number): ReactNode {
   if (!Number.isFinite(signed)) return '–';
   const mag = Math.round(Math.abs(signed)).toLocaleString('en-US');
@@ -108,22 +84,3 @@ export function stakedNetUsdTableCellWithFlash(signed: number, flash: StakedNetF
   );
 }
 
-export function useUsdMagnitudeFlash(value: number | null | undefined): StakedNetFlashDir | null {
-  const [flash, setFlash] = useState<StakedNetFlashDir | null>(null);
-  const prevRef = useRef<number | null>(null);
-  useEffect(() => {
-    const next = typeof value === 'number' && Number.isFinite(value) ? value : null;
-    const prev = prevRef.current;
-    prevRef.current = next;
-    if (prev === null || next === null) {
-      setFlash(null);
-      return;
-    }
-    const dir = usdMagnitudeFlashDir(prev, next);
-    if (!dir) return;
-    setFlash(dir);
-    const t = window.setTimeout(() => setFlash(null), STAKED_NET_FLASH_MS);
-    return () => window.clearTimeout(t);
-  }, [value]);
-  return flash;
-}

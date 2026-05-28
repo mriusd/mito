@@ -132,3 +132,55 @@ export function buildSidebarUserOrderHighlightSets(
   }
   return { bidPrices, askPrices };
 }
+
+export type SidebarChartOrderLevel = {
+  priceCents: number;
+  direction: 'long' | 'short';
+};
+
+/** Long = BUY YES or SELL NO; short = SELL YES or BUY NO. */
+export function orderExposureDirection(side: string, tokenOutcome: 'YES' | 'NO'): 'long' | 'short' {
+  const s = String(side || '').toUpperCase();
+  if ((s === 'BUY' && tokenOutcome === 'YES') || (s === 'SELL' && tokenOutcome === 'NO')) return 'long';
+  return 'short';
+}
+
+/** Horizontal chart lines for My Orders on the viewed outcome Y-axis (0–100¢). */
+export function buildSidebarChartOrderLevels(
+  orders: OrderLike[],
+  yesTokenId: string,
+  noTokenId: string,
+  viewOutcome: 'YES' | 'NO',
+): SidebarChartOrderLevel[] {
+  const levels: SidebarChartOrderLevel[] = [];
+  const yesTok = String(yesTokenId || '').trim();
+  const noTok = String(noTokenId || '').trim();
+  const viewToken = viewOutcome === 'YES' ? yesTok : noTok;
+  const oppToken = viewOutcome === 'YES' ? noTok : yesTok;
+  if (!viewToken) return levels;
+
+  for (const o of orders) {
+    const oid = String(o.asset_id || o.token_id || '').trim();
+    const p = parseFloat(String(o.price ?? ''));
+    if (!Number.isFinite(p)) continue;
+    const cents = Math.round(p * 100);
+    const side = String(o.side || '').toUpperCase();
+
+    let chartCents: number;
+    let tokenOutcome: 'YES' | 'NO';
+
+    if (oid === viewToken) {
+      chartCents = cents;
+      tokenOutcome = viewOutcome;
+    } else if (oppToken && oid === oppToken) {
+      chartCents = 100 - cents;
+      tokenOutcome = viewOutcome === 'YES' ? 'NO' : 'YES';
+    } else {
+      continue;
+    }
+
+    if (!Number.isFinite(chartCents) || chartCents < 0 || chartCents > 100) continue;
+    levels.push({ priceCents: chartCents, direction: orderExposureDirection(side, tokenOutcome) });
+  }
+  return levels;
+}

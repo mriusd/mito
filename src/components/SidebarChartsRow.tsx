@@ -4,6 +4,8 @@ import { useThrottledPolymarketChartTrades } from '../hooks/useThrottledPolymark
 import { useSidebarMyTradesChartMarkers } from '../hooks/useSidebarMyTradesChartMarkers';
 import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 import { useSidebarOrderHighlightSets } from '../lib/sidebarOrderHighlightStore';
+import { useAppStore } from '../stores/appStore';
+import { getOrderClobTokenId, outcomeTokenBelongsToSelectedMarket } from '../utils/format';
 
 const SidebarChartsRowChart = memo(function SidebarChartsRowChart({
   selectedMarket,
@@ -21,6 +23,17 @@ const SidebarChartsRowChart = memo(function SidebarChartsRowChart({
   marketLookup: Record<string, Market>;
 }) {
   const { bidPrices: sidebarUserBidPrices, askPrices: sidebarUserAskPrices } = useSidebarOrderHighlightSets();
+  const orders = useAppStore((s) => s.orders);
+  const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
+  const sidebarChartOrders = useMemo(
+    () =>
+      orders.filter(
+        (o) =>
+          !progOrderMap[o.id] &&
+          outcomeTokenBelongsToSelectedMarket(getOrderClobTokenId(o), selectedMarket, marketLookup),
+      ),
+    [orders, progOrderMap, selectedMarket, marketLookup],
+  );
   const displayLiveTrades = useThrottledPolymarketChartTrades(500);
   const myTradesForMarkers = useSidebarMyTradesChartMarkers(selectedMarket, marketLookup);
   const outcomeSync = useMemo(
@@ -42,6 +55,7 @@ const SidebarChartsRowChart = memo(function SidebarChartsRowChart({
       volumeSpikeAlerts
       sidebarUserBidPrices={sidebarUserBidPrices}
       sidebarUserAskPrices={sidebarUserAskPrices}
+      sidebarChartOrders={sidebarChartOrders}
     />
   );
 });

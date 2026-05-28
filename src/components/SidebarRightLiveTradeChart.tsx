@@ -10,6 +10,8 @@ import {
   type LedgerFillChartRow,
   type MyTradeChartRow,
 } from '../lib/chartTradeMarkers';
+import { buildSidebarChartOrderLevels } from '../lib/sidebarOrderbookAggregate';
+import type { Order } from '../types';
 
 export type { ChartTradeMarker, LedgerFillChartRow, MyTradeChartRow };
 
@@ -65,6 +67,8 @@ export type SidebarRightLiveTradeChartProps = {
   volumeSpikeAlerts?: boolean;
   sidebarUserBidPrices?: Set<string>;
   sidebarUserAskPrices?: Set<string>;
+  /** My Orders for selected market (non-prog) — chart horizontal lines. */
+  sidebarChartOrders?: Order[];
 };
 
 export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeChart({
@@ -85,6 +89,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   volumeSpikeAlerts = false,
   sidebarUserBidPrices,
   sidebarUserAskPrices,
+  sidebarChartOrders,
 }: SidebarRightLiveTradeChartProps) {
   const isUpDownMarket = marketIsUpDown(market);
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(market) : null;
@@ -121,6 +126,11 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   const startTimeProp = chartStartTime ?? (upDownStartTime > 0 ? upDownStartTime : undefined);
   const yesLabel = isUpDownMarket ? 'UP' : 'YES';
   const noLabel = isUpDownMarket ? 'DOWN' : 'NO';
+
+  const sidebarChartOrderLevels = useMemo(() => {
+    if (!sidebarChartOrders?.length) return undefined;
+    return buildSidebarChartOrderLevels(sidebarChartOrders, yesTokenId, noTokenId, chartOutcome);
+  }, [sidebarChartOrders, yesTokenId, noTokenId, chartOutcome]);
 
   const tradeMarkers = useMemo(() => {
     if (tradeMarkersProp != null) return tradeMarkersProp;
@@ -183,6 +193,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
         obHeatmap
         sidebarUserBidPrices={sidebarUserBidPrices}
         sidebarUserAskPrices={sidebarUserAskPrices}
+        sidebarChartOrderLevels={sidebarChartOrderLevels}
       />,
     );
   }
@@ -207,6 +218,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       obHeatmap
       sidebarUserBidPrices={sidebarUserBidPrices}
       sidebarUserAskPrices={sidebarUserAskPrices}
+      sidebarChartOrderLevels={sidebarChartOrderLevels}
     />,
   );
 });

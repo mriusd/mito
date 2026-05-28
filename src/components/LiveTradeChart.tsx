@@ -15,6 +15,7 @@ import type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 import { parseCandleOb, type CandleObSnapshot } from '../lib/candleObSnapshot';
 import { prepareCandleObDisplay } from '../lib/candleObDisplay';
 import { readSavedObAggStep } from '../lib/sidebarObAggStep';
+import type { SidebarChartOrderLevel } from '../lib/sidebarOrderbookAggregate';
 import { SidebarOrderbookBookGrid } from './SidebarOrderbookBookGrid';
 import { drawObHeatmapColumns } from '../lib/chartObHeatmap';
 import {
@@ -144,6 +145,8 @@ interface LiveTradeChartProps {
   obHeatmap?: boolean;
   sidebarUserBidPrices?: Set<string>;
   sidebarUserAskPrices?: Set<string>;
+  /** Sidebar: blue = long (BUY YES / SELL NO), yellow = short at limit price on chart Y. */
+  sidebarChartOrderLevels?: SidebarChartOrderLevel[];
 }
 
 function defaultInterval(context?: string): string {
@@ -198,6 +201,7 @@ export function LiveTradeChart({
   obHeatmap = false,
   sidebarUserBidPrices,
   sidebarUserAskPrices,
+  sidebarChartOrderLevels,
 }: LiveTradeChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartStateRef = useRef<LiveChartState | null>(null);
@@ -821,6 +825,21 @@ export function LiveTradeChart({
       ctx.setLineDash([]);
     }
 
+    if (sidebarChartOrderLevels && sidebarChartOrderLevels.length > 0) {
+      for (const lv of sidebarChartOrderLevels) {
+        const y = toY(lv.priceCents);
+        if (y < chartTop - 1 || y > chartBot + 1) continue;
+        ctx.beginPath();
+        ctx.strokeStyle = lv.direction === 'long' ? '#2563eb' : '#facc15';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        ctx.moveTo(chartLeft, y);
+        ctx.lineTo(chartRight, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
     if (!hideTrades && tradeMarkers && tradeMarkers.length > 0) {
       const candleForTime = (t: number): Candle | undefined => {
         for (let i = candles.length - 1; i >= 0; i--) {
@@ -1003,7 +1022,7 @@ export function LiveTradeChart({
     };
     baseImageRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
     if (hoverMxRef.current != null) paintChartHover(hoverMxRef.current);
-  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval, outcomeToggle?.value, paintChartHover, obHeatmap]);
+  }, [trades, isNo, ready, startTime, endTime, candleMs, wsTick, chainlinkReady, chainlinkTick, targetPrice, hidePriceLines, tradeMarkers, hideTrades, interval, outcomeToggle?.value, paintChartHover, obHeatmap, sidebarChartOrderLevels]);
 
   const handleMouseMove = useCallback((e: ReactMouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current?.getBoundingClientRect();

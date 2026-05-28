@@ -50,6 +50,7 @@ import {
   toxicCohortStakedNetSurplusHalves,
   ledgerWinRateFracFromStored,
   toxicRowResolvedStatsLow,
+  isToxicFlowSwarmWallet,
 } from '../lib/toxicFlowStakeCohort';
 import { primeTiltAudioContextFromUserGesture } from '../lib/tiltNotifySound';
 import { toxicWalletDisplayLabel } from '../lib/toxicWalletDisplayLabel';
@@ -580,6 +581,8 @@ const WalletLink = forwardRef<
     /** Toxic-flow batched ledger: set (even `null`) to skip `/api/wallet-summary` hover fetch. */
     ledgerEmbed?: WalletScoresLedgerEmbed | null;
     ledgerGold?: boolean;
+    /** Swarm / synthetic row label (overrides address shortening). */
+    rowDisplayLabel?: string;
   }
 >(function WalletLink(
   {
@@ -589,6 +592,7 @@ const WalletLink = forwardRef<
     isSmart,
     ledgerEmbed,
     ledgerGold,
+    rowDisplayLabel,
   },
   ref,
 ) {
@@ -752,9 +756,14 @@ const WalletLink = forwardRef<
     [runEnter, runMove, runLeave],
   );
 
-  const walletTag = useToxicWalletTag(wallet);
+  const swarmRow = isToxicFlowSwarmWallet(wallet);
+  const walletTag = useToxicWalletTag(swarmRow ? '' : wallet);
   const polymarketNick = polymarketNicknameFromEmbed(ledgerEmbed);
-  const displayLabel = toxicWalletDisplayLabel(wallet, { tag: walletTag, ledgerEmbed });
+  const displayLabel = toxicWalletDisplayLabel(wallet, {
+    tag: swarmRow ? null : walletTag,
+    ledgerEmbed,
+    displayLabel: rowDisplayLabel,
+  });
 
   const lifetimeHue = lifetimeLedgerPnlHue(ledgerEmbed, summary);
   const ledgerAbsent = walletScoresLedgerRowAbsent(ledgerEmbed, summary);
@@ -969,6 +978,7 @@ function WalletTableBodyRowImpl({
     return () => window.clearTimeout(t);
   }, [stakeNetSigned]);
   const ledgerEmbed = w.walletLedgerSummary;
+  const swarmRow = isToxicFlowSwarmWallet(w.wallet);
   const wk = (w.wallet || '').trim().toLowerCase();
   const selected = selectedWallet?.trim().toLowerCase() === wk;
   const { rowPnlFlow, rowPayout, payoutUnresolved, roiFmt } = marketViewCols
@@ -989,35 +999,39 @@ function WalletTableBodyRowImpl({
         <td className={`${TOXIC_TABLE_BODY_TD_CLS} pr-0 text-gray-600 ${TOXIC_TABLE_RANK_COL_CLS}`}>{rank}</td>
       ) : null}
       <td ref={favColRef} className={`${TOXIC_TABLE_BODY_TD_CLS} ${TOXIC_TABLE_FAV_COL_CLS}`}>
-        <span className={`${TOXIC_TABLE_ROW_INNER_CLS} gap-0.5`}>
-          <button
-            type="button"
-            className="rounded p-0 leading-none hover:bg-gray-600/40 text-gray-500 hover:text-gray-300"
-            title={favouriteActive ? 'Remove favourite' : 'Add favourite'}
-            aria-pressed={favouriteActive}
-            onClick={onFavClick}
-          >
-            <Star size={12} className={favouriteActive ? STAR_CLS_ON : STAR_CLS_OFF} />
-          </button>
-          <button
-            type="button"
-            className="rounded p-0 leading-none hover:bg-gray-600/40 text-gray-500 hover:text-amber-200/90"
-            title={bellActive ? 'Stop highlighting this wallet on Toxic tables' : 'Flash row when wallet is on this market'}
-            aria-pressed={bellActive}
-            onClick={onBellClick}
-          >
-            <Bell size={11} strokeWidth={2} className={bellActive ? BELL_CLS_ON : BELL_CLS_OFF} />
-          </button>
-          <button
-            type="button"
-            className="rounded p-0 leading-none hover:bg-gray-600/40 text-gray-500 hover:text-red-400/90"
-            title={xActive ? 'Clear X mark' : 'Mark wallet with X'}
-            aria-pressed={xActive}
-            onClick={onXClick}
-          >
-            <X size={11} strokeWidth={2} className={xActive ? X_CLS_ON : X_CLS_OFF} />
-          </button>
-        </span>
+        {swarmRow ? (
+          <span className={`${TOXIC_TABLE_ROW_INNER_CLS} text-gray-600`}>—</span>
+        ) : (
+          <span className={`${TOXIC_TABLE_ROW_INNER_CLS} gap-0.5`}>
+            <button
+              type="button"
+              className="rounded p-0 leading-none hover:bg-gray-600/40 text-gray-500 hover:text-gray-300"
+              title={favouriteActive ? 'Remove favourite' : 'Add favourite'}
+              aria-pressed={favouriteActive}
+              onClick={onFavClick}
+            >
+              <Star size={12} className={favouriteActive ? STAR_CLS_ON : STAR_CLS_OFF} />
+            </button>
+            <button
+              type="button"
+              className="rounded p-0 leading-none hover:bg-gray-600/40 text-gray-500 hover:text-amber-200/90"
+              title={bellActive ? 'Stop highlighting this wallet on Toxic tables' : 'Flash row when wallet is on this market'}
+              aria-pressed={bellActive}
+              onClick={onBellClick}
+            >
+              <Bell size={11} strokeWidth={2} className={bellActive ? BELL_CLS_ON : BELL_CLS_OFF} />
+            </button>
+            <button
+              type="button"
+              className="rounded p-0 leading-none hover:bg-gray-600/40 text-gray-500 hover:text-red-400/90"
+              title={xActive ? 'Clear X mark' : 'Mark wallet with X'}
+              aria-pressed={xActive}
+              onClick={onXClick}
+            >
+              <X size={11} strokeWidth={2} className={xActive ? X_CLS_ON : X_CLS_OFF} />
+            </button>
+          </span>
+        )}
       </td>
       <td className={`${TOXIC_TABLE_BODY_TD_CLS} whitespace-nowrap px-1`}>
         <div className={TOXIC_TABLE_ROW_INNER_CLS}>
@@ -1025,10 +1039,11 @@ function WalletTableBodyRowImpl({
             ref={hoverRef}
             wallet={w.wallet}
             netShares={signedLegNet}
-            onOpenWallet={onOpenWallet}
+            onOpenWallet={swarmRow ? undefined : onOpenWallet}
             isSmart={isSmartGold(w)}
             ledgerEmbed={ledgerEmbed}
             ledgerGold={ledgerGoldFromEmbed(ledgerEmbed)}
+            rowDisplayLabel={w.displayLabel}
           />
         </div>
       </td>

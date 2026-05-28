@@ -3,6 +3,76 @@
  */
 
 import type { ToxicFlowCluster, ToxicFlowData, ToxicFlowSwarm, WalletPosition, WalletScoresLedgerEmbed, WalletSummary } from '../api';
+
+export const TOXIC_SWARM_WALLET_PREFIX = '__swarm:';
+
+export function isToxicFlowSwarmWallet(wallet: string): boolean {
+  return (wallet || '').startsWith(TOXIC_SWARM_WALLET_PREFIX);
+}
+
+function toxicFlowSwarmIdFromWallet(wallet: string): number {
+  const m = (wallet || '').match(/^__swarm:(\d+)__$/);
+  return m ? parseInt(m[1], 10) : NaN;
+}
+
+/** Map API swarms to WalletPosition rows for the standard toxic-flow table. */
+export function toxicFlowSwarmsToWalletRows(swarms: readonly ToxicFlowSwarm[], marketId: string): WalletPosition[] {
+  const rows: WalletPosition[] = [];
+  for (const s of swarms) {
+    const iy = s.invYes ?? 0;
+    const inn = s.invNo ?? 0;
+    const gross = Math.abs(iy) + Math.abs(inn);
+    const signed = iy - inn;
+    rows.push({
+      wallet: `__swarm:${s.swarmId}__`,
+      displayLabel: `Swarm #${s.swarmId} (${s.walletCount}) · BUY ${s.side}`,
+      marketId,
+      invYes: iy,
+      invNo: inn,
+      boughtYes: s.boughtYes ?? 0,
+      soldYes: s.soldYes ?? 0,
+      boughtNo: s.boughtNo ?? 0,
+      soldNo: s.soldNo ?? 0,
+      net: s.net ?? signed,
+      netYes: s.netYes ?? 0,
+      netNo: s.netNo ?? 0,
+      usdcIn: s.usdcIn ?? 0,
+      usdcOut: s.usdcOut ?? 0,
+      priceYes: s.priceYes,
+      priceNo: s.priceNo,
+      feeTotal: s.feeTotal ?? 0,
+      tradeCount: s.tradeCount ?? 0,
+      netSide: s.side,
+      inventoryBias: gross > 0 ? Math.abs(signed) / gross : 0,
+      pnl: 0,
+      firstTradeTime: s.startTime ?? 0,
+      lastTradeTime: s.endTime ?? 0,
+      marketAsset: '',
+      marketType: '',
+      marketTimeframe: '',
+    });
+  }
+  rows.sort((a, b) => {
+    const da = Math.abs(walletStakeNetAbsUsd(a));
+    const db = Math.abs(walletStakeNetAbsUsd(b));
+    if (da !== db) return db - da;
+    const idA = toxicFlowSwarmIdFromWallet(a.wallet);
+    const idB = toxicFlowSwarmIdFromWallet(b.wallet);
+    return (Number.isFinite(idA) ? idA : 0) - (Number.isFinite(idB) ? idB : 0);
+  });
+  return rows;
+}
+
+export function toxicFlowSwarmMembersByRowWallet(
+  swarms: readonly ToxicFlowSwarm[],
+  wallet: string,
+): string[] {
+  if (!isToxicFlowSwarmWallet(wallet)) return [];
+  const id = toxicFlowSwarmIdFromWallet(wallet);
+  if (!Number.isFinite(id)) return [];
+  const s = swarms.find((x) => x.swarmId === id);
+  return s?.members ?? [];
+}
 import { walletSummaryFromLedgerEmbed } from '../api';
 
 /** Epsilon for treating signed staked-net as flat (table + cohort bar). */

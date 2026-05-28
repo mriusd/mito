@@ -12,8 +12,15 @@ function nickTrim(raw: string | null | undefined): string {
 /** User tag → Polymarket nickname → shortened address. */
 export function toxicWalletDisplayLabel(
   wallet: string,
-  opts: { tag?: string | null; ledgerEmbed?: WalletScoresLedgerEmbed | null; nickname?: string } = {},
+  opts: {
+    tag?: string | null;
+    ledgerEmbed?: WalletScoresLedgerEmbed | null;
+    nickname?: string;
+    displayLabel?: string;
+  } = {},
 ): string {
+  const dl = nickTrim(opts.displayLabel);
+  if (dl) return dl;
   const tag = nickTrim(opts.tag);
   if (tag) return tag;
   const nick =

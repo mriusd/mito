@@ -474,6 +474,8 @@ export interface WalletScoresLedgerEmbed {
 
 export interface WalletPosition {
   wallet: string;
+  /** Synthetic rows (e.g. swarms): show this in the Wallet column instead of the address. */
+  displayLabel?: string;
   marketId: string;
   /** Raw `wallet_market_positions` (ledger); prefer for holders table. */
   invYes?: number;

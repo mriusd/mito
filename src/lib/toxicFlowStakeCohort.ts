@@ -88,8 +88,8 @@ export type SwarmSlotChartPoint = {
   noUsd: number;
 };
 
-export function toxicSwarmStakedAbsUsd(s: ToxicFlowSwarm): number {
-  const stub: WalletPosition = {
+function toxicSwarmWalletStub(s: ToxicFlowSwarm): WalletPosition {
+  return {
     wallet: '',
     marketId: '',
     invYes: s.invYes ?? 0,
@@ -115,7 +115,15 @@ export function toxicSwarmStakedAbsUsd(s: ToxicFlowSwarm): number {
     netSide: s.side,
     inventoryBias: 0,
   };
-  return walletStakeNetAbsUsd(stub);
+}
+
+export function toxicSwarmStakedSignedUsd(s: ToxicFlowSwarm): number {
+  return walletStakeNetSignedUsd(toxicSwarmWalletStub(s));
+}
+
+export function toxicSwarmStakedAbsUsd(s: ToxicFlowSwarm): number {
+  const signed = toxicSwarmStakedSignedUsd(s);
+  return Number.isFinite(signed) ? Math.abs(signed) : NaN;
 }
 
 export type SwarmSlotChartLayout = {
@@ -157,10 +165,11 @@ export function buildSwarmSlotChartLayout(
       marketActiveUnix > 0
         ? toxicSwarmTimeSlot(s.startTime, marketActiveUnix)
         : toxicSwarmDisplaySlot(s, marketActiveUnix);
-    const usd = toxicSwarmStakedAbsUsd(s);
-    if (!Number.isFinite(usd) || usd <= 0) continue;
+    const signed = toxicSwarmStakedSignedUsd(s);
+    if (!Number.isFinite(signed) || Math.abs(signed) <= STAKED_NET_EPS) continue;
+    const usd = Math.abs(signed);
     const row = touch(slot);
-    if (s.side === 'YES') row.yesUsd += usd;
+    if (signed < -STAKED_NET_EPS) row.yesUsd += usd;
     else row.noUsd += usd;
   }
 

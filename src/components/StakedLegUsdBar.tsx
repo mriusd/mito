@@ -28,7 +28,7 @@ export function StakedLegUsdBar({
   midMarker = false,
   /** When compact, skip the fixed left label column (external label row). */
   compactOmitLeftLabel = false,
-  /** Compact right column: `±N% / $direction / $Σ|staked net|` (YES surplus if lean ≥ 0, else NO). */
+  /** Compact right column: `±N% / $|ΣY−ΣN| / $total` (cohort) or lean-side $ (other modes). */
   compactShowLeanDirectionUsd = false,
   compactTotalStakeNetUsd,
 }: {
@@ -75,15 +75,17 @@ export function StakedLegUsdBar({
         : null;
   const directionUsd = neutralBar
     ? null
-    : barMode === 'grossLegTotals' && totalStakeNetUsd != null && totalStakeNetUsd > 0
-      ? (() => {
-          const yHalf = (totalStakeNetUsd * (1 + lean)) / 2;
-          const nHalf = (totalStakeNetUsd * (1 - lean)) / 2;
-          return lean >= 0 ? yHalf : nHalf;
-        })()
-      : lean >= 0
-        ? sumYUsd
-        : sumNUsd;
+    : barMode === 'cohortSurplusHalves'
+      ? netAbs
+      : barMode === 'grossLegTotals' && totalStakeNetUsd != null && totalStakeNetUsd > 0
+        ? (() => {
+            const yHalf = (totalStakeNetUsd * (1 + lean)) / 2;
+            const nHalf = (totalStakeNetUsd * (1 - lean)) / 2;
+            return lean >= 0 ? yHalf : nHalf;
+          })()
+        : lean >= 0
+          ? sumYUsd
+          : sumNUsd;
   const tip = neutralBar
     ? barMode === 'yesBookDepth'
       ? 'No YES / NO bid depth to chart'
@@ -143,7 +145,7 @@ export function StakedLegUsdBar({
       neutralBar ? 'No split'
       : barMode === 'grossLegTotals'
         ? `(ΣY − ΣN) / (ΣY + ΣN) tilt: ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}% · |ΣY−ΣN| gross $${fmtUsd(netAbs)}`
-        : `(Σ Staked Y − Σ Staked N) / (Σ Staked Y + Σ Staked N) in this tab: ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}% · middle = Σ $ on lean side · total = sum of Staked column $ in rows below`;
+        : `(Σ Staked Y − Σ Staked N) / (Σ Staked Y + Σ Staked N) in this tab: ${leanPct >= 0 ? '+' : ''}${leanPct.toFixed(0)}% · $${fmtUsdWhole(netAbs)} = higher side minus lower · total = Σ Staked $ in rows`;
     const leanRightContent =
       neutralBar || directionUsd == null ? (
         '—'
@@ -169,7 +171,7 @@ export function StakedLegUsdBar({
         ? leanTitle
         : compactShowLeanDirectionUsd
           ? totalStakeNetUsd != null && totalStakeNetUsd > 0
-            ? `${leanTitle} · ${lean >= 0 ? 'Σ Staked Y' : 'Σ Staked N'} $${fmtUsdWhole(directionUsd!)} · tab total $${fmtUsdWhole(totalStakeNetUsd)}`
+            ? `${leanTitle} · |ΣY−ΣN| $${fmtUsdWhole(directionUsd!)} · tab total $${fmtUsdWhole(totalStakeNetUsd)}`
             : `${leanTitle} · ${lean >= 0 ? 'YES' : 'NO'} direction staked $${fmtUsdWhole(directionUsd!)}`
           : leanTitle;
     const leanColClass = compactShowLeanDirectionUsd

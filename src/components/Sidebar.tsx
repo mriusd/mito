@@ -126,7 +126,7 @@ import { SidebarToxicFlowHost } from './SidebarToxicFlowHost';
 import { SidebarToxicStrips } from './SidebarToxicStrips';
 import { SidebarToxicPanel, preloadSidebarToxicFlowDialog } from './SidebarToxicPanel';
 import { resetSidebarToxicWalletExtraWidth } from '../lib/sidebarToxicWalletWidthStore';
-import { setSidebarChartAnnualVolPct } from '../lib/sidebarChartVolStore';
+import { getSidebarChartAnnualVolPct, setSidebarChartAnnualVolPct } from '../lib/sidebarChartVolStore';
 import { SidebarToxicWalletWidthHost } from './SidebarToxicWalletWidthHost';
 import { SidebarToxicNotifySoundHost } from './SidebarToxicNotifySoundHost';
 import { SidebarToxicStatsFlashWrap } from './SidebarToxicStatsFlashWrap';
@@ -303,6 +303,7 @@ const SIDEBAR_NOTIFY_TILT_UD_1H_KEY = 'polybot-sidebar-notify-tilt-ud-1h';
 const SIDEBAR_NOTIFY_TILT_UD_4H_KEY = 'polybot-sidebar-notify-tilt-ud-4h';
 const SIDEBAR_NOTIFY_MAX_VOLATILITY_PCT_KEY = 'polybot-sidebar-notify-max-volatility-pct';
 const SIDEBAR_NOTIFY_VOLATILITY_CANDLES_KEY = 'polybot-sidebar-notify-volatility-candles';
+const SIDEBAR_NOTIFY_VOLATILITY_ABOVE_KEY = 'polybot-sidebar-notify-volatility-above';
 
 function readNotifyTiltMktUpDown(): boolean {
   try {
@@ -566,6 +567,16 @@ function readNotifyVolatilityCandles(): number {
     return Math.min(500, Math.max(3, n));
   } catch {
     return 5;
+  }
+}
+
+function readNotifyVolatilityAbove(): boolean {
+  try {
+    const v = localStorage.getItem(SIDEBAR_NOTIFY_VOLATILITY_ABOVE_KEY);
+    if (v === null) return false;
+    return v === '1';
+  } catch {
+    return false;
   }
 }
 
@@ -919,6 +930,7 @@ export const Sidebar = memo(function Sidebar() {
   const [notifyUpDownNextHiCents, setNotifyUpDownNextHiCents] = useState(readNotifyUpDownNextHiCents);
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
   const [notifyMaxVolatilityPct, setNotifyMaxVolatilityPct] = useState(readNotifyMaxVolatilityPct);
+  const [notifyVolatilityAbove, setNotifyVolatilityAbove] = useState(readNotifyVolatilityAbove);
   const [notifyVolatilityCandles, setNotifyVolatilityCandles] = useState(readNotifyVolatilityCandles);
   const [notifyVolatilityCandlesDraft, setNotifyVolatilityCandlesDraft] = useState(() =>
     String(readNotifyVolatilityCandles()),
@@ -1221,6 +1233,13 @@ export const Sidebar = memo(function Sidebar() {
   }, [notifyMaxVolatilityPct]);
   useEffect(() => {
     try {
+      localStorage.setItem(SIDEBAR_NOTIFY_VOLATILITY_ABOVE_KEY, notifyVolatilityAbove ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [notifyVolatilityAbove]);
+  useEffect(() => {
+    try {
       localStorage.setItem(SIDEBAR_NOTIFY_VOLATILITY_CANDLES_KEY, String(notifyVolatilityCandles));
     } catch {
       /* */
@@ -1338,6 +1357,9 @@ export const Sidebar = memo(function Sidebar() {
   const [crossingConfirmOpen, setCrossingConfirmOpen] = useState(false);
   const [crossingConfirmMessage, setCrossingConfirmMessage] = useState('');
   const crossingConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
+  const [volatilityConfirmOpen, setVolatilityConfirmOpen] = useState(false);
+  const [volatilityConfirmMessage, setVolatilityConfirmMessage] = useState('');
+  const volatilityConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
   // Inline signing step display when dialog is hidden
   const [signingState, setSigningState] = useState(signingDialog.getState());
   useEffect(() => signingDialog.subscribe(setSigningState), []);
@@ -1439,6 +1461,27 @@ export const Sidebar = memo(function Sidebar() {
     setCrossingConfirmOpen(false);
     const resolver = crossingConfirmResolver.current;
     crossingConfirmResolver.current = null;
+    if (resolver) resolver(confirmed);
+  }, []);
+
+  const ensureOrderVolatilityConfirmed = useCallback(async (): Promise<boolean> => {
+    if (!notifyVolatilityAbove) return true;
+    if (notifyMaxVolatilityPct <= 0) return true;
+    const vol = getSidebarChartAnnualVolPct();
+    if (vol == null || !Number.isFinite(vol) || vol <= notifyMaxVolatilityPct) return true;
+    return new Promise<boolean>((resolve) => {
+      volatilityConfirmResolver.current = resolve;
+      setVolatilityConfirmMessage(
+        `Chart volatility is ${vol.toFixed(1)}%, above your max of ${notifyMaxVolatilityPct}%. Press Confirm to place the order.`,
+      );
+      setVolatilityConfirmOpen(true);
+    });
+  }, [notifyVolatilityAbove, notifyMaxVolatilityPct]);
+
+  const closeVolatilityConfirm = useCallback((confirmed: boolean) => {
+    setVolatilityConfirmOpen(false);
+    const resolver = volatilityConfirmResolver.current;
+    volatilityConfirmResolver.current = null;
     if (resolver) resolver(confirmed);
   }, []);
 
@@ -1666,6 +1709,7 @@ export const Sidebar = memo(function Sidebar() {
       afterSuccess?: () => void;
     }) => {
       const { tokenId, side, size, orderInfo, bids, asks, afterSuccess } = args;
+      if (!(await ensureOrderVolatilityConfirmed())) return;
       if (side === 'BUY') {
         if (!asks.length) {
           showToast('No asks in book — cannot market buy', 'error');
@@ -1713,7 +1757,7 @@ export const Sidebar = memo(function Sidebar() {
         showToast('Order failed', 'error');
       }
     },
-    [maxOrderSizeUsd],
+    [maxOrderSizeUsd, ensureOrderVolatilityConfirmed],
   );
 
   const handleSubmitOrder = async () => {
@@ -1725,6 +1769,8 @@ export const Sidebar = memo(function Sidebar() {
     const size = parseFloat(orderAmount);
 
     if (!size) return;
+
+    if (!(await ensureOrderVolatilityConfirmed())) return;
 
     const isMarket = orderKind === 'market';
     if (isMarket) {
@@ -1810,6 +1856,8 @@ export const Sidebar = memo(function Sidebar() {
       return;
     }
     if (!Number.isFinite(priceCents) || priceCents < 1 || priceCents > 99) return;
+
+    if (!(await ensureOrderVolatilityConfirmed())) return;
 
     const price = priceCents / 100;
     if (side === 'BUY') {
@@ -1954,6 +2002,7 @@ export const Sidebar = memo(function Sidebar() {
 
   const handleCustomButtonClick = async (btn: CustomSidebarButton) => {
     if (!selectedMarket) return;
+    if (!(await ensureOrderVolatilityConfirmed())) return;
 
     let placed = 0;
     for (const spec of btn.orders) {
@@ -2107,6 +2156,10 @@ export const Sidebar = memo(function Sidebar() {
     const newPrice = newPriceCents / 100;
 
     if (!newPrice || newPrice <= 0 || newPrice >= 1 || !size) { setEditingOrderId(null); return; }
+    if (!(await ensureOrderVolatilityConfirmed())) {
+      setEditingOrderId(null);
+      return;
+    }
     if (side === 'BUY') {
       const replaceVusd = orderNotionalUsd(newPrice, size);
       const replaceCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, replaceVusd);
@@ -2284,6 +2337,7 @@ export const Sidebar = memo(function Sidebar() {
         return;
       }
       if (!Number.isFinite(priceCents) || priceCents < 1 || priceCents > 99) return;
+      if (!(await ensureOrderVolatilityConfirmed())) return;
 
       const tidKey = positionTokenKey(tid);
       const existingSellIds = [...myOrders, ...progOrders]
@@ -2801,21 +2855,6 @@ export const Sidebar = memo(function Sidebar() {
                   <span className="text-gray-400 whitespace-nowrap">Ignore negative pnl</span>
                 </label>
               </div>
-              <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Insider Ring fires when a wallet in toxic flow meets WR/stake thresholds and its directional WS mid (YES or NO leg) is ≤ Mute sounds above (¢). Whale/Insider rings also obey that market mute (either token mid &gt; cap silences all rings). Same triple-strike repeat as Whale Ring; obeys Mutable mute like whales.
-              </p>
-              <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Wallets with |Staked Net| USD ≥ Whale amount are whales (same as Toxic Flow tab). Whale Ring fires only when at least one such wallet has avg entry on its heavier staked leg **below** Max Whale Price (ledger price_yes / price_no). Ignore negative pnl skips whales whose batched ledger lifetime PnL is &lt; 0.
-              </p>
-              <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Whale Ring repeats while that condition holds (triple strike per repeat, ~{NOTIFY_MULTI_RING_GAP_MS}ms between strikes). Does not require Tilt Ring, market filters, minimum staked, volatility cap, or WS mid mute. Cohort tilt bursts still obey those gates plus Double Ring. Mutable off (default): per-market mute does not silence Whale Ring. Mutable on: market mute also silences whales.
-              </p>
-              <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Bell Ring: one strike per flashing 🔔 row in Top Holders every 1.35s when |Staked Net| ≥ Min usd stake (default 100). Row flash ignores stake; sound does not. 0 = any stake.
-              </p>
-              <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                Volume Spike Ring: Price YES chart flashes and plays one beep when the current open bar volume is ≥5× the average of all prior bars.
-              </p>
               <div className="flex items-start gap-3 flex-wrap mt-3">
                 <label className="flex items-center gap-2 cursor-pointer shrink-0 self-center">
                   <input
@@ -2962,7 +3001,6 @@ export const Sidebar = memo(function Sidebar() {
                     </div>
                   </div>
                 </div>
-                <p className="text-[10px] text-gray-500 mt-1">Left = much lower, right = much higher (×0.25–×4 at ends; center = normal). 0 volume = mute.</p>
               </div>
               <div
                 className={
@@ -2980,7 +3018,6 @@ export const Sidebar = memo(function Sidebar() {
                   />
                   <span>Double ring</span>
                 </label>
-                <p className="text-[10px] text-gray-500 mt-1 m-0">Tilt bursts: play two strikes ~{NOTIFY_MULTI_RING_GAP_MS}ms apart.</p>
               </div>
               <div
                 className={
@@ -3001,7 +3038,6 @@ export const Sidebar = memo(function Sidebar() {
                     onChange={setNotifyRingTimeS}
                   />
                 </div>
-                <p className="text-[10px] text-gray-500 mt-1 m-0">Glass ring decay length; default 5s (max 5).</p>
               </div>
               <div className="border border-gray-600/80 rounded-md p-2 space-y-2 bg-gray-900/40">
                 <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Markets</div>
@@ -3105,7 +3141,6 @@ export const Sidebar = memo(function Sidebar() {
                   />
                   <span>Between</span>
                 </label>
-                <p className="text-[10px] text-gray-500 m-0">Sound and flash only for checked market types.</p>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -3118,9 +3153,6 @@ export const Sidebar = memo(function Sidebar() {
               </label>
               <div className="border border-gray-600/80 rounded-md p-2 space-y-3 bg-gray-900/40">
                 <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Toxic cohort tilts</div>
-                <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                  Set how far each group must tilt before alarm rings. Rings only if all active groups agree on direction. Use 0 to ignore a group.
-                </p>
                   <div className="space-y-2">
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -3135,9 +3167,6 @@ export const Sidebar = memo(function Sidebar() {
                           onChange={setNotifyHolderTiltPct}
                         />
                       </div>
-                      <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                        Biggest position wallets. Default 30. Set 0 to ignore.
-                      </p>
                     </div>
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -3152,9 +3181,6 @@ export const Sidebar = memo(function Sidebar() {
                           onChange={setNotifySmartTiltPct}
                         />
                       </div>
-                      <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                        Wallets with good win record. Default 30. Set 0 to ignore.
-                      </p>
                     </div>
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -3169,9 +3195,6 @@ export const Sidebar = memo(function Sidebar() {
                           onChange={setNotifyFavouriteTiltPct}
                         />
                       </div>
-                      <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                        Your favorite wallets here. Default 0. Set 0 to ignore.
-                      </p>
                     </div>
                     <div className="rounded border border-gray-700/55 p-2 space-y-1.5 bg-gray-950/25">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -3186,9 +3209,6 @@ export const Sidebar = memo(function Sidebar() {
                           onChange={setNotifyGreensTiltPct}
                         />
                       </div>
-                      <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                        Wallets with profits in tracked period. Green = YES lean. Default 30. Set 0 to ignore.
-                      </p>
                     </div>
                   </div>
               </div>
@@ -3206,9 +3226,15 @@ export const Sidebar = memo(function Sidebar() {
                     onChange={setNotifyMaxVolatilityPct}
                   />
                 </div>
-                <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                  Tilt flash/sound pause while sidebar chart σ (annualized) is above this. 0 = no cap. Raise if alerts rarely fire.
-                </p>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded accent-amber-500"
+                    checked={notifyVolatilityAbove}
+                    onChange={(e) => setNotifyVolatilityAbove(e.target.checked)}
+                  />
+                  <span>Notify Volatility Above</span>
+                </label>
                 <div className="flex items-center gap-2 flex-wrap justify-between">
                   <span className="text-gray-400 shrink-0 text-[11px]">Volatility candles</span>
                   <input
@@ -3237,9 +3263,6 @@ export const Sidebar = memo(function Sidebar() {
                     }}
                   />
                 </div>
-                <p className="text-[10px] text-gray-500 m-0 leading-snug">
-                  Completed candles used for σ (in-progress bar excluded). Interval follows the market (5m → 5m candles, 15m → 15m, etc.).
-                </p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-gray-400 shrink-0">Staked min (USDC)</span>
@@ -3252,9 +3275,6 @@ export const Sidebar = memo(function Sidebar() {
                   onChange={setNotifyStakedMinUsd}
                 />
               </div>
-              <p className="text-[10px] text-gray-500">
-                Flash/sound only when net staked (sidebar pill) is greater than this. 0 = no minimum.
-              </p>
             </div>
             <div className="mt-4 flex justify-end">
               <button
@@ -4564,6 +4584,18 @@ export const Sidebar = memo(function Sidebar() {
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => { setCustomDialogOpen(false); setEditingCustomButtonId(null); }} className="px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-xs font-medium">Cancel</button>
               <button onClick={handleCreateCustomButton} className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-bold">{editingCustomButtonId ? 'Save' : 'Create'}</button>
+            </div>
+          </div>
+        </div>
+      ), document.body)}
+      {volatilityConfirmOpen && typeof document !== 'undefined' && createPortal((
+        <div className="fixed inset-0 z-[61000] bg-black/70 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) closeVolatilityConfirm(false); }}>
+          <div className="w-full max-w-sm mx-4 rounded-lg border border-amber-500/40 bg-gray-900 p-4">
+            <div className="text-sm font-bold text-amber-300 mb-2">High volatility</div>
+            <div className="text-xs text-gray-200">{volatilityConfirmMessage}</div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => closeVolatilityConfirm(false)} className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-xs font-medium">Cancel</button>
+              <button onClick={() => closeVolatilityConfirm(true)} className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-xs font-bold text-black">Confirm</button>
             </div>
           </div>
         </div>

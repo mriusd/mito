@@ -134,13 +134,7 @@ export function StakedLegUsdBar({
     const leanPctLabel =
       neutralBar
         ? '—'
-        : barMode === 'yesBookDepth'
-          ? (() => {
-              const absPct = Math.min(100, Math.round(Math.abs(lean) * 100));
-              if (absPct <= 0) return '0%';
-              return `${absPct}% ${lean >= 0 ? 'Y' : 'N'}`;
-            })()
-          : `${leanPct > 0 ? '+' : ''}${leanPct.toFixed(0)}%`;
+        : `${leanPct > 0 ? '+' : ''}${leanPct.toFixed(0)}%`;
     const leanTitle =
       neutralBar ? 'No split'
       : barMode === 'grossLegTotals'

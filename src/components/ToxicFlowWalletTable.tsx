@@ -180,9 +180,8 @@ const TOXIC_VIRTUAL_OVERSCAN = 12;
 type ToxicFlowTableVariant = 'toxicFlow' | 'marketView' | 'swarms';
 
 function toxicTableColCount(showRank: boolean, variant: ToxicFlowTableVariant): number {
-  const createdCol = variant === 'swarms' ? 1 : 0;
   const favCol = variant === 'swarms' ? 0 : 1;
-  return (showRank ? 1 : 0) + createdCol + favCol + 11;
+  return (showRank ? 1 : 0) + favCol + 11;
 }
 
 function marketIsUpDown(market: { question?: string; eventSlug?: string } | null | undefined): boolean {
@@ -202,17 +201,6 @@ export function SwarmSidePill({ side, upDown }: { side: string | undefined; upDo
       {text}
     </span>
   );
-}
-
-function swarmElapsedSecFromCreated(detectedAt: number, nowSec: number): number {
-  if (!Number.isFinite(detectedAt) || detectedAt <= 0) return 0;
-  return Math.max(0, nowSec - Math.trunc(detectedAt));
-}
-
-function swarmElapsedToneClass(elapsedSec: number): string {
-  if (elapsedSec < 15) return 'text-green-400 font-bold';
-  if (elapsedSec < 60) return 'text-yellow-400 font-bold';
-  return 'text-red-400 font-bold';
 }
 
 const ROW_CLS_NEUTRAL = 'border-b border-gray-800 hover:bg-gray-700/30';
@@ -844,8 +832,8 @@ interface WalletTableBodyRowProps {
   onRowClick?: (wallet: string) => void;
   showRank?: boolean;
   variant?: ToxicFlowTableVariant;
-  nowSec?: number;
   swarmUpDownMarket?: boolean;
+  onSwarmRowHover?: (wallet: string | null) => void;
 }
 
 function WalletTableBodyRowImpl({
@@ -868,8 +856,8 @@ function WalletTableBodyRowImpl({
   onRowClick,
   showRank = true,
   variant = 'toxicFlow',
-  nowSec = 0,
   swarmUpDownMarket = false,
+  onSwarmRowHover,
 }: WalletTableBodyRowProps) {
   const trRef = useRef<HTMLTableRowElement>(null);
   useCancelDomAnimationsOnUnmount(trRef);
@@ -951,32 +939,30 @@ function WalletTableBodyRowImpl({
     ? walletMarketPayoutPnlRoiCells(w)
     : { rowPnlFlow: 0, rowPayout: 0, payoutUnresolved: true, roiFmt: { text: '–', tone: 'text-gray-500' } };
   const rowUsdcIn = typeof w.usdcIn === 'number' && Number.isFinite(w.usdcIn) ? w.usdcIn : 0;
-  const swarmElapsedSec =
-    variant === 'swarms' ? swarmElapsedSecFromCreated(w.firstTradeTime, nowSec) : 0;
 
   return (
     <tr
       ref={trRef}
       className={`${rowClass} ${TOXIC_TABLE_ROW_CLS}${selected ? ' bg-gray-700/40' : ''}${onRowClick ? ' cursor-pointer' : ''}`}
-      onMouseEnter={swarmRow ? undefined : onRowEnter}
+      onMouseEnter={
+        swarmRow && onSwarmRowHover
+          ? () => onSwarmRowHover(w.wallet)
+          : swarmRow
+            ? undefined
+            : onRowEnter
+      }
       onMouseMove={swarmRow ? undefined : onRowMove}
-      onMouseLeave={swarmRow ? undefined : onRowLeave}
+      onMouseLeave={
+        swarmRow && onSwarmRowHover
+          ? () => onSwarmRowHover(null)
+          : swarmRow
+            ? undefined
+            : onRowLeave
+      }
       onClick={onRowClick ? () => onRowClick(w.wallet) : undefined}
     >
       {showRank ? (
         <td className={`${TOXIC_TABLE_BODY_TD_CLS} pr-0 text-gray-600 ${TOXIC_TABLE_RANK_COL_CLS}`}>{rank}</td>
-      ) : null}
-      {variant === 'swarms' ? (
-        <td
-          className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 tabular-nums whitespace-nowrap`}
-          title={
-            w.firstTradeTime > 0
-              ? new Date(w.firstTradeTime * 1000).toLocaleString()
-              : undefined
-          }
-        >
-          <span className={swarmElapsedToneClass(swarmElapsedSec)}>{swarmElapsedSec}s</span>
-        </td>
       ) : null}
       {variant !== 'swarms' ? (
         <td ref={favColRef} className={`${TOXIC_TABLE_BODY_TD_CLS} ${TOXIC_TABLE_FAV_COL_CLS}`}>
@@ -1115,8 +1101,8 @@ const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
     a.onRowClick !== b.onRowClick ||
     a.showRank !== b.showRank ||
     a.variant !== b.variant ||
-    (a.variant === 'swarms' && a.nowSec !== b.nowSec) ||
-    a.swarmUpDownMarket !== b.swarmUpDownMarket
+    a.swarmUpDownMarket !== b.swarmUpDownMarket ||
+    a.onSwarmRowHover !== b.onSwarmRowHover
   ) {
     return false;
   }
@@ -1190,6 +1176,8 @@ function WalletTableInner({
   swarmsChart,
   marketActiveUnixForChart = 0,
   marketDurationSecForChart = 0,
+  swarmHighlightSlot = null,
+  onSwarmRowHover,
 }: {
   wallets: WalletPosition[] | null;
   label: string;
@@ -1210,13 +1198,9 @@ function WalletTableInner({
   swarmsChart?: readonly ToxicFlowSwarm[];
   marketActiveUnixForChart?: number;
   marketDurationSecForChart?: number;
+  swarmHighlightSlot?: number | null;
+  onSwarmRowHover?: (wallet: string | null) => void;
 }) {
-  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
-  useEffect(() => {
-    if (variant !== 'swarms') return;
-    const id = window.setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000);
-    return () => window.clearInterval(id);
-  }, [variant]);
   const tiltWhaleAmountUsd = useSyncExternalStore(
     subscribeTiltWhaleAmountUsd,
     readTiltWhaleAmountUsd,
@@ -1389,6 +1373,7 @@ function WalletTableInner({
           swarms={swarmsChart}
           marketActiveUnix={marketActiveUnixForChart}
           marketDurationSec={marketDurationSecForChart}
+          highlightSlot={swarmHighlightSlot}
         />
       ) : null}
       <div
@@ -1399,14 +1384,6 @@ function WalletTableInner({
         <thead className="sticky top-0 z-[1] bg-gray-950">
           <tr className="text-gray-500 border-b border-gray-700">
             {showRank ? <th className={`align-middle py-1 pr-0 ${TOXIC_TABLE_RANK_COL_CLS}`}>#</th> : null}
-            {variant === 'swarms' ? (
-              <th
-                className="align-middle py-1 text-right px-1 whitespace-nowrap"
-                title="Seconds since swarm creation · green &lt;15s · yellow &lt;60s · red ≥60s"
-              >
-                Created
-              </th>
-            ) : null}
             {variant !== 'swarms' ? (
               <th className={`align-middle py-1 text-left ${TOXIC_TABLE_FAV_COL_CLS}`} aria-label="Favourite, bell, and X mark" />
             ) : null}
@@ -1530,8 +1507,8 @@ function WalletTableInner({
                 onRowClick={onRowClick}
                 showRank={showRank}
                 variant={variant}
-                nowSec={variant === 'swarms' ? nowSec : 0}
                 swarmUpDownMarket={variant === 'swarms' ? swarmUpDownMarket : false}
+                onSwarmRowHover={variant === 'swarms' ? onSwarmRowHover : undefined}
               />
             );
           })}
@@ -1572,7 +1549,9 @@ const WalletTable = memo(WalletTableInner, (a, b) => {
     a.pnlSortOrder !== b.pnlSortOrder ||
     a.onPnlSortClick !== b.onPnlSortClick ||
     a.marketActiveUnixForChart !== b.marketActiveUnixForChart ||
-    a.marketDurationSecForChart !== b.marketDurationSecForChart
+    a.marketDurationSecForChart !== b.marketDurationSecForChart ||
+    a.swarmHighlightSlot !== b.swarmHighlightSlot ||
+    a.onSwarmRowHover !== b.onSwarmRowHover
   ) {
     return false;
   }
@@ -1616,6 +1595,8 @@ export type ToxicFlowWalletTableProps = {
   swarmsChart?: readonly ToxicFlowSwarm[];
   marketActiveUnixForChart?: number;
   marketDurationSecForChart?: number;
+  swarmHighlightSlot?: number | null;
+  onSwarmRowHover?: (wallet: string | null) => void;
 };
 
 export const ToxicFlowWalletTable = WalletTable;

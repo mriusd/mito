@@ -113,6 +113,7 @@ import {
   toxicFlowSwarmsToWalletRows,
   toxicFlowSwarmByRowWallet,
   toxicSwarmDisplaySlot,
+  toxicSwarmTimeSlot,
   swarmMarketActiveUnixFromMeta,
   swarmMarketDurationSecFromMeta,
 } from '../lib/toxicFlowStakeCohort';
@@ -254,6 +255,7 @@ const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
   rowActionsAnchorRef?: RefObject<HTMLTableCellElement>;
 }) {
   const [detailRowWallet, setDetailRowWallet] = useState<string | null>(null);
+  const [hoveredSwarmWallet, setHoveredSwarmWallet] = useState<string | null>(null);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const swarmUpDownMarket = useMemo(
     () =>
@@ -295,6 +297,14 @@ const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
     () => (detailRowWallet ? toxicFlowSwarmByRowWallet(swarms, detailRowWallet) : null),
     [swarms, detailRowWallet],
   );
+  const swarmHighlightSlot = useMemo(() => {
+    if (!hoveredSwarmWallet) return null;
+    const s = toxicFlowSwarmByRowWallet(swarms, hoveredSwarmWallet);
+    if (!s) return null;
+    return marketActiveUnix > 0
+      ? toxicSwarmTimeSlot(s.startTime, marketActiveUnix)
+      : toxicSwarmDisplaySlot(s, marketActiveUnix);
+  }, [hoveredSwarmWallet, swarms, marketActiveUnix]);
   const detailPositions = detailSwarm?.positions ?? [];
   const detailStakedTotal = useMemo(() => {
     let sum = 0;
@@ -327,6 +337,8 @@ const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
         swarmsChart={swarms}
         marketActiveUnixForChart={marketActiveUnix}
         marketDurationSecForChart={marketDurationSec}
+        swarmHighlightSlot={swarmHighlightSlot}
+        onSwarmRowHover={setHoveredSwarmWallet}
       />
       {detailSwarm && typeof document !== 'undefined'
         ? createPortal(

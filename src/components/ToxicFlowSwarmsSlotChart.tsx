@@ -48,10 +48,25 @@ function fmtUsdK(v: number): string {
   return `$${Math.round(v)}`;
 }
 
+function slotColumnRect(
+  slot: number,
+  layout: SwarmSlotChartLayout,
+  plotL: number,
+  plotW: number,
+): { x: number; w: number } | null {
+  const cols = (layout.showPreOpen ? 1 : 0) + layout.postSlotCount;
+  if (cols <= 0) return null;
+  const colIdx = slot < 0 ? 0 : (layout.showPreOpen ? 1 : 0) + slot;
+  if (colIdx < 0 || colIdx >= cols) return null;
+  const groupW = plotW / cols;
+  return { x: plotL + colIdx * groupW, w: groupW };
+}
+
 function drawChart(
   canvas: HTMLCanvasElement,
   layout: SwarmSlotChartLayout,
   marketDurationSec: number,
+  highlightSlot: number | null | undefined,
 ) {
   const points = layout.points;
   const dpr = window.devicePixelRatio || 1;
@@ -123,13 +138,25 @@ function drawChart(
   const barW = slotBarWidth(layout, plotW);
   const gap = 2;
 
+  if (highlightSlot != null && Number.isFinite(highlightSlot)) {
+    const band = slotColumnRect(highlightSlot, layout, plotL, plotW);
+    if (band) {
+      ctx.fillStyle = 'rgba(250,204,21,0.12)';
+      ctx.fillRect(band.x, plotT, band.w, plotB - plotT);
+      ctx.strokeStyle = 'rgba(250,204,21,0.45)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(band.x + 0.5, plotT + 0.5, band.w - 1, plotB - plotT - 1);
+    }
+  }
+
   for (const p of points) {
     const cx = slotCenterX(p.slot, layout, plotL, plotW);
+    const hi = highlightSlot != null && p.slot === highlightSlot;
     if (p.yesUsd > 0) {
       const yTop = toY(p.yesUsd);
       const h = zeroY - yTop;
       if (h > 0.5) {
-        ctx.fillStyle = 'rgba(34,197,94,0.85)';
+        ctx.fillStyle = hi ? 'rgba(74,222,128,1)' : 'rgba(34,197,94,0.85)';
         ctx.fillRect(cx - barW - gap / 2, yTop, barW, h);
       }
     }
@@ -137,7 +164,7 @@ function drawChart(
       const yBot = toY(-p.noUsd);
       const h = yBot - zeroY;
       if (h > 0.5) {
-        ctx.fillStyle = 'rgba(239,68,68,0.85)';
+        ctx.fillStyle = hi ? 'rgba(248,113,113,1)' : 'rgba(239,68,68,0.85)';
         ctx.fillRect(cx + gap / 2, zeroY, barW, h);
       }
     }
@@ -165,10 +192,12 @@ export const ToxicFlowSwarmsSlotChart = memo(function ToxicFlowSwarmsSlotChart({
   swarms,
   marketActiveUnix,
   marketDurationSec,
+  highlightSlot = null,
 }: {
   swarms: readonly ToxicFlowSwarm[];
   marketActiveUnix: number;
   marketDurationSec: number;
+  highlightSlot?: number | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const layout = useMemo(
@@ -179,12 +208,12 @@ export const ToxicFlowSwarmsSlotChart = memo(function ToxicFlowSwarmsSlotChart({
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    drawChart(canvas, layout, marketDurationSec);
-  }, [layout, marketDurationSec]);
+    drawChart(canvas, layout, marketDurationSec, highlightSlot);
+  }, [layout, marketDurationSec, highlightSlot]);
 
   useEffect(() => {
     redraw();
-  }, [redraw, swarms]);
+  }, [redraw, swarms, highlightSlot]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

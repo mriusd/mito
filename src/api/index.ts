@@ -602,6 +602,8 @@ export interface ToxicFlowSwarm {
   priceNo: number;
   tradeCount: number;
   stakedNetSignedUsd: number;
+  /** Per-wallet positions in this market (same shape as topHolders rows). */
+  positions?: WalletPosition[];
 }
 
 export interface ToxicFlowData {

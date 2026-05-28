@@ -45,7 +45,7 @@ export function toxicFlowSwarmsToWalletRows(swarms: readonly ToxicFlowSwarm[], m
       netSide: s.side,
       inventoryBias: gross > 0 ? Math.abs(signed) / gross : 0,
       pnl: 0,
-      firstTradeTime: s.startTime ?? 0,
+      firstTradeTime: s.detectedAt ?? s.startTime ?? 0,
       lastTradeTime: s.endTime ?? 0,
       marketAsset: '',
       marketType: '',
@@ -72,6 +72,16 @@ export function toxicFlowSwarmMembersByRowWallet(
   if (!Number.isFinite(id)) return [];
   const s = swarms.find((x) => x.swarmId === id);
   return s?.members ?? [];
+}
+
+export function toxicFlowSwarmByRowWallet(
+  swarms: readonly ToxicFlowSwarm[],
+  wallet: string,
+): ToxicFlowSwarm | null {
+  if (!isToxicFlowSwarmWallet(wallet)) return null;
+  const id = toxicFlowSwarmIdFromWallet(wallet);
+  if (!Number.isFinite(id)) return null;
+  return swarms.find((x) => x.swarmId === id) ?? null;
 }
 import { walletSummaryFromLedgerEmbed } from '../api';
 
@@ -331,7 +341,8 @@ function swarmEqual(a: ToxicFlowSwarm, b: ToxicFlowSwarm): boolean {
     a.invNo !== b.invNo ||
     a.usdcIn !== b.usdcIn ||
     a.stakedNetSignedUsd !== b.stakedNetSignedUsd ||
-    a.tradeCount !== b.tradeCount
+    a.tradeCount !== b.tradeCount ||
+    (a.positions?.length ?? 0) !== (b.positions?.length ?? 0)
   ) {
     return false;
   }

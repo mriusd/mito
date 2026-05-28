@@ -111,7 +111,7 @@ import {
   toxicRowResolvedStatsLow,
   toxicFlowStakeStripWalletLists,
   toxicFlowSwarmsToWalletRows,
-  toxicFlowSwarmMembersByRowWallet,
+  toxicFlowSwarmByRowWallet,
 } from '../lib/toxicFlowStakeCohort';
 import {
   readTiltWhaleAmountUsd,
@@ -232,12 +232,6 @@ function toxicFlowWalletsForTab(
   }
 }
 
-function shortWalletLabel(wallet: string): string {
-  const w = (wallet || '').trim();
-  if (w.length <= 12) return w;
-  return `${w.slice(0, 6)}…${w.slice(-4)}`;
-}
-
 const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
   swarms,
   marketId,
@@ -255,12 +249,21 @@ const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
   onDismissRowActionsTip?: () => void;
   rowActionsAnchorRef?: RefObject<HTMLTableCellElement>;
 }) {
-  const [expandedWallet, setExpandedWallet] = useState<string | null>(null);
+  const [detailRowWallet, setDetailRowWallet] = useState<string | null>(null);
   const rows = useMemo(() => toxicFlowSwarmsToWalletRows(swarms, marketId), [swarms, marketId]);
-  const expandedMembers = useMemo(() => {
-    if (!expandedWallet) return [];
-    return toxicFlowSwarmMembersByRowWallet(swarms, expandedWallet);
-  }, [swarms, expandedWallet]);
+  const detailSwarm = useMemo(
+    () => (detailRowWallet ? toxicFlowSwarmByRowWallet(swarms, detailRowWallet) : null),
+    [swarms, detailRowWallet],
+  );
+  const detailPositions = detailSwarm?.positions ?? [];
+  const detailStakedTotal = useMemo(() => {
+    let sum = 0;
+    for (const w of detailPositions) {
+      const v = walletStakeNetAbsUsd(w);
+      if (Number.isFinite(v)) sum += v;
+    }
+    return sum > 0 ? sum : null;
+  }, [detailPositions]);
   if (rows.length === 0) {
     return (
       <div className="flex flex-1 min-h-0 items-center justify-center text-[11px] text-gray-500">
@@ -273,30 +276,64 @@ const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
       <WalletTable
         wallets={rows}
         label="swarms"
+        variant="swarms"
         totalStakedNetUsd={totalStakedNetUsd}
         onOpenWallet={onOpenWallet}
         rowActionsTipOpen={rowActionsTipOpen}
         onDismissRowActionsTip={onDismissRowActionsTip}
         rowActionsAnchorRef={rowActionsAnchorRef}
-        onRowClick={(wallet) =>
-          setExpandedWallet((prev) => (prev === wallet ? null : wallet))
-        }
+        onRowClick={(wallet) => setDetailRowWallet(wallet)}
+        selectedWallet={detailRowWallet}
       />
-      {expandedMembers.length > 0 ? (
-        <div className="shrink-0 border-t border-gray-700 px-2 py-1.5 flex flex-wrap gap-1 max-h-[4.5rem] overflow-y-auto toxic-flow-scroll-stable">
-          {expandedMembers.map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => onOpenWallet(w)}
-              className="font-mono text-[9px] px-1 py-0.5 rounded bg-gray-800/80 border border-gray-700 text-gray-300 hover:text-yellow-300 hover:border-yellow-500/60"
-              title={w}
+      {detailSwarm && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[60030] bg-black/70 flex items-center justify-center p-3"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) setDetailRowWallet(null);
+              }}
             >
-              {shortWalletLabel(w)}
-            </button>
-          ))}
-        </div>
-      ) : null}
+              <div
+                className="bg-gray-900 border border-gray-600 rounded-lg shadow-xl w-full max-w-[min(96rem,96vw)] h-[min(82vh,720px)] flex flex-col min-h-0"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-700 shrink-0">
+                  <div className="flex items-center gap-2 min-w-0 text-sm font-bold text-white truncate">
+                    <span>
+                      Swarm #{detailSwarm.swarmId} ({detailSwarm.walletCount}) · BUY {detailSwarm.side}
+                    </span>
+                    <span className="text-[10px] font-normal text-gray-500">
+                      {detailPositions.length} with position
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDetailRowWallet(null)}
+                    className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white shrink-0"
+                    aria-label="Close"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="flex flex-col flex-1 min-h-0 p-2">
+                  {detailPositions.length === 0 ? (
+                    <div className="flex flex-1 items-center justify-center text-[11px] text-gray-500">
+                      No open positions for swarm members in this market.
+                    </div>
+                  ) : (
+                    <WalletTable
+                      wallets={detailPositions}
+                      label={`swarm ${detailSwarm.swarmId} wallets`}
+                      totalStakedNetUsd={detailStakedTotal ?? totalStakedNetUsd}
+                      onOpenWallet={onOpenWallet}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 });

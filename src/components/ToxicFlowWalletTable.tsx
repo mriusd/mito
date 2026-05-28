@@ -249,8 +249,25 @@ const TOXIC_TABLE_STAKED_COL_CLS =
 const TOXIC_WALLET_ROW_PX = 23;
 const TOXIC_VIRTUAL_OVERSCAN = 12;
 
-function toxicTableColCount(showRank: boolean): number {
-  return (showRank ? 1 : 0) + 12;
+type ToxicFlowTableVariant = 'toxicFlow' | 'marketView' | 'swarms';
+
+function toxicTableColCount(showRank: boolean, variant: ToxicFlowTableVariant): number {
+  const createdCol = variant === 'swarms' ? 1 : 0;
+  return (showRank ? 1 : 0) + createdCol + 12;
+}
+
+function fmtSwarmCreatedClock(tsUnix: number): string {
+  if (!Number.isFinite(tsUnix) || tsUnix <= 0) return '–';
+  return new Date(tsUnix * 1000).toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function swarmElapsedSecFromCreated(detectedAt: number, nowSec: number): number {
+  if (!Number.isFinite(detectedAt) || detectedAt <= 0) return 0;
+  return Math.max(0, nowSec - Math.trunc(detectedAt));
 }
 
 const ROW_CLS_NEUTRAL = 'border-b border-gray-800 hover:bg-gray-700/30';
@@ -881,7 +898,8 @@ interface WalletTableBodyRowProps {
   selectedWallet?: string | null;
   onRowClick?: (wallet: string) => void;
   showRank?: boolean;
-  variant?: 'toxicFlow' | 'marketView';
+  variant?: ToxicFlowTableVariant;
+  nowSec?: number;
 }
 
 function WalletTableBodyRowImpl({
@@ -904,6 +922,7 @@ function WalletTableBodyRowImpl({
   onRowClick,
   showRank = true,
   variant = 'toxicFlow',
+  nowSec = 0,
 }: WalletTableBodyRowProps) {
   const trRef = useRef<HTMLTableRowElement>(null);
   useCancelDomAnimationsOnUnmount(trRef);
@@ -997,6 +1016,19 @@ function WalletTableBodyRowImpl({
     >
       {showRank ? (
         <td className={`${TOXIC_TABLE_BODY_TD_CLS} pr-0 text-gray-600 ${TOXIC_TABLE_RANK_COL_CLS}`}>{rank}</td>
+      ) : null}
+      {variant === 'swarms' ? (
+        <td
+          className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 tabular-nums text-gray-400 whitespace-nowrap`}
+          title={
+            w.firstTradeTime > 0
+              ? new Date(w.firstTradeTime * 1000).toLocaleString()
+              : undefined
+          }
+        >
+          <span className="text-gray-300">{fmtSwarmCreatedClock(w.firstTradeTime)}</span>
+          <span className="text-cyan-400/90 ml-1">{swarmElapsedSecFromCreated(w.firstTradeTime, nowSec)}s</span>
+        </td>
       ) : null}
       <td ref={favColRef} className={`${TOXIC_TABLE_BODY_TD_CLS} ${TOXIC_TABLE_FAV_COL_CLS}`}>
         {swarmRow ? (
@@ -1129,7 +1161,8 @@ const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
     a.selectedWallet !== b.selectedWallet ||
     a.onRowClick !== b.onRowClick ||
     a.showRank !== b.showRank ||
-    a.variant !== b.variant
+    a.variant !== b.variant ||
+    (a.variant === 'swarms' && a.nowSec !== b.nowSec)
   ) {
     return false;
   }
@@ -1210,11 +1243,17 @@ function WalletTableInner({
   onRowClick?: (wallet: string) => void;
   hideStakeBar?: boolean;
   showRank?: boolean;
-  variant?: 'toxicFlow' | 'marketView';
+  variant?: ToxicFlowTableVariant;
   rankStart?: number;
   pnlSortOrder?: 'asc' | 'desc';
   onPnlSortClick?: () => void;
 }) {
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    if (variant !== 'swarms') return;
+    const id = window.setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000);
+    return () => window.clearInterval(id);
+  }, [variant]);
   const tiltWhaleAmountUsd = useSyncExternalStore(
     subscribeTiltWhaleAmountUsd,
     readTiltWhaleAmountUsd,
@@ -1320,7 +1359,7 @@ function WalletTableInner({
   const cohortStakeBarTotal = cohortSumYUsd + cohortSumNUsd;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [virtRange, setVirtRange] = useState(() => ({ start: 0, end: rows.length }));
-  const tableColSpan = toxicTableColCount(!!showRank);
+  const tableColSpan = toxicTableColCount(!!showRank, variant);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -1388,6 +1427,14 @@ function WalletTableInner({
         <thead className="sticky top-0 z-[1] bg-gray-950">
           <tr className="text-gray-500 border-b border-gray-700">
             {showRank ? <th className={`align-middle py-1 pr-0 ${TOXIC_TABLE_RANK_COL_CLS}`}>#</th> : null}
+            {variant === 'swarms' ? (
+              <th
+                className="align-middle py-1 text-right px-1 whitespace-nowrap"
+                title="Swarm detected_at (local clock) · seconds since creation"
+              >
+                Created
+              </th>
+            ) : null}
             <th className={`align-middle py-1 text-left ${TOXIC_TABLE_FAV_COL_CLS}`} aria-label="Favourite, bell, and X mark" />
             <th className="align-middle py-1 text-left px-1">Wallet</th>
             <th
@@ -1424,7 +1471,7 @@ function WalletTableInner({
             >
               Staked
             </th>
-            {variant !== 'marketView' ? (
+            {variant !== 'marketView' && variant !== 'swarms' ? (
               <th
                 className={`align-middle py-1 px-1 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}
                 title="|Staked| USD ÷ total market staked (Σ|signed net|)"
@@ -1447,6 +1494,22 @@ function WalletTableInner({
                 <th className="align-middle py-1 text-right px-1 whitespace-nowrap bg-gray-950" title="(usdc_out/(usdc_in+fee)) − 1">
                   ROI
                 </th>
+              </>
+            ) : variant === 'swarms' ? (
+              <>
+                <th
+                  className={`align-middle py-1 px-1 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}
+                  title="|Staked| USD ÷ total swarm staked"
+                >
+                  %
+                </th>
+                <th
+                  className={`align-middle py-1 px-1 ${TOXIC_TABLE_STAKED_PCT_COL_CLS}`}
+                  title="Running sum of % within swarm list"
+                >
+                  Cum%
+                </th>
+                <th className="align-middle py-1 text-right px-1">Bias</th>
               </>
             ) : (
               <>
@@ -1493,6 +1556,7 @@ function WalletTableInner({
                 onRowClick={onRowClick}
                 showRank={showRank}
                 variant={variant}
+                nowSec={variant === 'swarms' ? nowSec : 0}
               />
             );
           })}
@@ -1559,7 +1623,7 @@ export type ToxicFlowWalletTableProps = {
   onRowClick?: (wallet: string) => void;
   hideStakeBar?: boolean;
   showRank?: boolean;
-  variant?: 'toxicFlow' | 'marketView';
+  variant?: ToxicFlowTableVariant;
   rankStart?: number;
   pnlSortOrder?: 'asc' | 'desc';
   onPnlSortClick?: () => void;

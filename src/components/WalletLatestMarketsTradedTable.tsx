@@ -287,7 +287,7 @@ const WalletLatestMarketsTradedRow = memo(function WalletLatestMarketsTradedRow(
         {rowFee === 0 ? `$${fmtUsd2En(0)}` : `−$${fmtUsd2En(rowFee)}`}
       </td>
       <td
-        className={`text-right tabular-nums font-bold whitespace-nowrap ${payoutUnresolved ? 'text-gray-500' : rPnlToneClass(rowPayout)}`}
+        className={`text-right tabular-nums font-bold whitespace-nowrap ${payoutUnresolved ? 'text-gray-500' : 'text-yellow-400'}`}
         title={payoutUnresolved ? 'Market not scored (W/L/F all zero)' : 'payout'}
       >
         {payoutUnresolved ? '-' : fmtUsdSignedLedger(rowPayout)}

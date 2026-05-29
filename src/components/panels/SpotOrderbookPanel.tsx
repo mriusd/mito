@@ -1,6 +1,8 @@
 import { memo, useMemo, useState } from 'react';
+import { Triangle } from 'lucide-react';
 import {
   SPOT_OB_MOVE_PCT_LEVELS,
+  binanceSpotBookMid,
   formatSpotObImpactUsd,
   formatSpotObMovePctLabel,
   usdToMoveBinanceSpotDown,
@@ -14,6 +16,7 @@ import {
   type BinanceObMarket,
   type BinanceSpotObAsset,
 } from '../../lib/binanceSpotOrderbookFeed';
+import { formatPrice } from '../../utils/format';
 
 const MARKET_LABEL: Record<BinanceObMarket, string> = {
   spot: 'spot',
@@ -40,15 +43,21 @@ const AssetRows = memo(function AssetRows({
     [book],
   );
   const mkt = MARKET_LABEL[market];
+  const mid = binanceSpotBookMid(book);
 
   return (
     <>
       <tr className="border-b border-gray-800/80">
-        <td rowSpan={2} className="py-1.5 px-2 text-[11px] font-bold text-white align-middle border-r border-gray-800">
-          {asset}
+        <td rowSpan={2} className="py-1.5 px-2 align-middle border-r border-gray-800">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[11px] font-bold text-white">{asset}</span>
+            <span className="text-[9px] tabular-nums font-medium text-gray-400">
+              {mid != null ? formatPrice(mid, asset) : '—'}
+            </span>
+          </div>
         </td>
-        <td className="py-1 px-2 text-[10px] font-semibold text-green-400 whitespace-nowrap border-r border-gray-800/60">
-          UP
+        <td className="py-1 px-2 text-center whitespace-nowrap border-r border-gray-800/60">
+          <Triangle className="mx-auto h-2.5 w-2.5 fill-green-400 stroke-green-400 text-green-400" strokeWidth={1.5} aria-label="Up" />
         </td>
         {upCells.map((v, i) => {
           const pct = SPOT_OB_MOVE_PCT_LEVELS[i]!;
@@ -71,8 +80,8 @@ const AssetRows = memo(function AssetRows({
         })}
       </tr>
       <tr className="border-b border-gray-800">
-        <td className="py-1 px-2 text-[10px] font-semibold text-red-400 whitespace-nowrap border-r border-gray-800/60">
-          DOWN
+        <td className="py-1 px-2 text-center whitespace-nowrap border-r border-gray-800/60">
+          <Triangle className="mx-auto h-2.5 w-2.5 rotate-180 fill-red-400 stroke-red-400 text-red-400" strokeWidth={1.5} aria-label="Down" />
         </td>
         {downCells.map((v, i) => {
           const pct = SPOT_OB_MOVE_PCT_LEVELS[i]!;

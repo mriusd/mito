@@ -7,6 +7,7 @@ import {
   type CexObCandleSnapshot,
   type CexObExchangePanels,
 } from '../lib/cexObSnapshot';
+import type { AssetName } from '../types';
 import { formatPrice } from '../utils/format';
 
 function impactFromCell(cell: ReturnType<typeof cexObCellForPct>) {
@@ -59,7 +60,7 @@ function ExchangeTable({
 }: {
   exchangeLabel: string;
   panel: CexObAssetPanel;
-  asset: string;
+  asset: AssetName;
 }) {
   const mid = panel.mid ?? null;
   return (
@@ -113,7 +114,7 @@ function MarketSection({
 }: {
   label: string;
   panels: CexObExchangePanels | null | undefined;
-  asset: string;
+  asset: AssetName;
 }) {
   if (!panels?.binance && !panels?.okx) return null;
   return (
@@ -129,11 +130,12 @@ function MarketSection({
 
 export function ChartCexObHoverGrid({ snapshot }: { snapshot: CexObCandleSnapshot }) {
   if (!snapshot.spot && !snapshot.futures) return null;
+  const asset = snapshot.asset as AssetName;
   return (
     <div className="mt-2 pt-2 border-t border-gray-700">
-      <div className="text-[10px] font-bold text-gray-300 mb-1.5">{snapshot.asset} CEX OB</div>
-      <MarketSection label="spot" panels={snapshot.spot} asset={snapshot.asset} />
-      <MarketSection label="futures" panels={snapshot.futures} asset={snapshot.asset} />
+      <div className="text-[10px] font-bold text-gray-300 mb-1.5">{asset} CEX OB</div>
+      <MarketSection label="spot" panels={snapshot.spot} asset={asset} />
+      <MarketSection label="futures" panels={snapshot.futures} asset={asset} />
     </div>
   );
 }

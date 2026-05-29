@@ -40,6 +40,9 @@ const LazyPriceForecastPanel = lazyWithChunkReload(() =>
 const LazyBinanceChartPanel = lazyWithChunkReload(() =>
   import('./panels/BinanceChartPanel').then((m) => ({ default: m.BinanceChartPanel })),
 );
+const LazySpotOrderbookPanel = lazyWithChunkReload(() =>
+  import('./panels/SpotOrderbookPanel').then((m) => ({ default: m.SpotOrderbookPanel })),
+);
 const LazyUpOrDownHUDPanel = lazyWithChunkReload(() =>
   import('./panels/UpOrDownHUDPanel').then((m) => ({ default: m.UpOrDownHUDPanel })),
 );
@@ -174,6 +177,8 @@ function renderPanel(panel: PanelConfig): ReactNode {
       return <LazyPriceForecastPanel />;
     case 'binance-chart':
       return <LazyBinanceChartPanel panelId={panel.id} initialAsset="BTC" />;
+    case 'spot-orderbook':
+      return <LazySpotOrderbookPanel />;
     case 'updown-hud':
       return <LazyUpOrDownHUDPanel panelId={panel.id} />;
     case 'chat':
@@ -332,6 +337,7 @@ export function DraggableCanvas() {
     'perp-bot': 'Perp Bot',
     'price-forecast': 'Price Forecast',
     'binance-chart': 'Asset Candle Chart',
+    'spot-orderbook': 'Spot Orderbook',
     'updown-hud': 'UpOrDown HUD',
     'signals': 'Signals', 'smart-money': 'Smart Money', 'chat': 'Chat', 'pnl': 'P&L',
     'arbs': 'Hedges', 'summary': 'Summary',

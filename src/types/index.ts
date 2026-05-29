@@ -290,6 +290,7 @@ export type PanelType =
   | 'binance-chart'
   | 'updown-hud'
   | 'chat'
+  | 'spot-orderbook'
   | 'wallet-history';
 
 export interface PanelConfig {

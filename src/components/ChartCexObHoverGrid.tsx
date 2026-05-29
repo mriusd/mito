@@ -67,7 +67,8 @@ function ExchangeTable({
     <table className="w-full border-collapse text-[9px] mb-1.5 last:mb-0">
       <thead>
         <tr className="text-gray-500">
-          <th className="w-[18px]" />
+          <th className="w-[52px] py-0.5 px-1 font-medium text-left" />
+          <th className="w-[26px] py-0.5 px-1 font-medium text-center">U/D</th>
           {SPOT_OB_MOVE_PCT_LEVELS.map((pct) => (
             <th key={pct} className="text-right font-medium py-0.5 px-1">
               {formatSpotObMovePctLabel(pct)}

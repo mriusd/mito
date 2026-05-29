@@ -62,7 +62,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'perp-bot', title: 'Perp Bot', devOnly: true },
   { type: 'price-forecast', title: 'Price Forecast' },
   { type: 'binance-chart', title: 'Asset Candle Chart', multi: true },
-  { type: 'spot-orderbook', title: 'Spot Orderbook' },
+  { type: 'spot-orderbook', title: 'Orderbook' },
   { type: 'chat', title: 'Chat' },
 ];
 

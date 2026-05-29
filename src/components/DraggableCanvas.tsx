@@ -337,7 +337,7 @@ export function DraggableCanvas() {
     'perp-bot': 'Perp Bot',
     'price-forecast': 'Price Forecast',
     'binance-chart': 'Asset Candle Chart',
-    'spot-orderbook': 'Spot Orderbook',
+    'spot-orderbook': 'Orderbook',
     'updown-hud': 'UpOrDown HUD',
     'signals': 'Signals', 'smart-money': 'Smart Money', 'chat': 'Chat', 'pnl': 'P&L',
     'arbs': 'Hedges', 'summary': 'Summary',

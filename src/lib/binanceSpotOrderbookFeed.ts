@@ -213,10 +213,27 @@ export function getBinanceObPanelSnapshot(market: BinanceObMarket): BinanceObPan
   return marketState[market].snap;
 }
 
+function subscribeSpot(onStoreChange: () => void): () => void {
+  return subscribeMarket('spot', onStoreChange);
+}
+
+function subscribeFutures(onStoreChange: () => void): () => void {
+  return subscribeMarket('futures', onStoreChange);
+}
+
+const SUBSCRIBE_BY_MARKET: Record<BinanceObMarket, (onStoreChange: () => void) => () => void> = {
+  spot: subscribeSpot,
+  futures: subscribeFutures,
+};
+
+function getDigest(market: BinanceObMarket): number {
+  return marketState[market].digest;
+}
+
 export function useBinanceObFeedStatus(market: BinanceObMarket): BinanceObFeedStatus {
   useSyncExternalStore(
-    (cb) => subscribeMarket(market, cb),
-    () => marketState[market].digest,
+    SUBSCRIBE_BY_MARKET[market],
+    () => getDigest(market),
     () => 0,
   );
   return getBinanceObFeedStatus(market);
@@ -224,8 +241,8 @@ export function useBinanceObFeedStatus(market: BinanceObMarket): BinanceObFeedSt
 
 export function useBinanceObPanels(market: BinanceObMarket): Record<BinanceSpotObAsset, BinanceObAssetPanel | null> {
   useSyncExternalStore(
-    (cb) => subscribeMarket(market, cb),
-    () => marketState[market].digest,
+    SUBSCRIBE_BY_MARKET[market],
+    () => getDigest(market),
     () => 0,
   );
   return marketState[market].snap?.assets ?? EMPTY_PANELS;

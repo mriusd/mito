@@ -220,7 +220,7 @@ export function useWalletData() {
 
   // Register global refresh callback so order/cancel can trigger immediate refresh
   useEffect(() => {
-    if (isWebMode && proxyWallet) {
+    if (proxyWallet) {
       setWalletRefreshFn(fetchAll);
       setOrdersRefreshFn(fetchOrdersOnly);
     }
@@ -232,21 +232,21 @@ export function useWalletData() {
 
   // Orders HTTP backstop every 30s (WS is primary)
   useEffect(() => {
-    if (!isWebMode || !proxyWallet) return;
+    if (!proxyWallet) return;
     const interval = setInterval(fetchOrdersOnly, 30000);
     return () => clearInterval(interval);
   }, [proxyWallet, fetchOrdersOnly]);
 
   // Full wallet poll every 90s as WS / order-poll backstop
   useEffect(() => {
-    if (!isWebMode || !proxyWallet) return;
+    if (!proxyWallet) return;
     const interval = setInterval(fetchAll, 90000);
     return () => clearInterval(interval);
   }, [proxyWallet, fetchAll]);
 
   // Refetch when user focuses a market (Data API can lag; sidebar filters need fresh rows)
   useEffect(() => {
-    if (!isWebMode || !proxyWallet || !selectedMarketId) return;
+    if (!proxyWallet || !selectedMarketId) return;
     const t = window.setTimeout(() => {
       void fetchAll();
     }, 400);

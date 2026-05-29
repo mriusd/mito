@@ -1287,12 +1287,30 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     [sendSubscribeWalletMarket],
   );
 
-  const refetchMarketTradesFromApi = useCallback(async () => {
+  const refetchWalletFromApi = useCallback(async () => {
     const w = (walletRef.current || '').trim().toLowerCase();
     const ids = (scopedClobTokenIdsRef.current || []).map((x) => String(x || '').trim()).filter(Boolean);
     if (!w || ids.length === 0) return;
     try {
-      const tr = await fetchOnchainMarketTrades({ token_ids: ids, wallet: w, limit: 1500 });
+      const [pr, tr] = await Promise.all([
+        fetchOnchainMarketPositions({ token_ids: ids, wallet: w }),
+        fetchOnchainMarketTrades({ token_ids: ids, wallet: w, limit: 1500 }),
+      ]);
+      const mappedPositions = (pr.positions || [])
+        .map((p) => ({
+          tokenId: String(p.tokenId || ''),
+          size: Number(p.size || 0),
+          avgPrice: Number(p.avgPrice || 0),
+          title: p.title,
+          slug: p.slug,
+          eventSlug: p.eventSlug,
+          marketId: p.marketId,
+          outcome: p.outcome,
+          endDate: p.endDate,
+          underlyingAsset: p.underlyingAsset,
+        }))
+        .filter((p) => !!p.tokenId);
+      setWalletPositions((prev) => mergeWalletPositionsSnapshot(prev, mappedPositions, scopedClobTokenIdsRef.current));
       const deduped = mapFetchedTradesToDedupedRows(tr.trades || [], WALLET_TRADES_CAP);
       setWalletTrades(deduped);
       setWalletMarketTrades(deduped.slice(0, WALLET_MARKET_TRADES_CAP));
@@ -1314,8 +1332,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     if (ws && ws.readyState === WebSocket.OPEN && w) {
       ws.send(JSON.stringify({ type: 'subscribeWallet', wallet: w }));
     }
-    void refetchMarketTradesFromApi();
-  }, [refetchMarketTradesFromApi]);
+    void refetchWalletFromApi();
+  }, [refetchWalletFromApi]);
 
   useEffect(() => {
     onchainTradesWSProviderCount += 1;

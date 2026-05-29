@@ -40,9 +40,6 @@ export function computeSidebarMyPositions(
   const wsMarketRows = (liveTradesSource === 'onchain' ? onchainWsPositions : [])
     .filter((p) => outcomeTokenBelongsToSelectedMarket(p.tokenId, selectedMarket, marketLookup))
     .map((p) => ({ tokenId: p.tokenId, size: p.size, avgPrice: p.avgPrice }));
-  if (liveTradesSource === 'onchain') {
-    return wsMarketRows.map((p) => ({ asset: p.tokenId, size: p.size, avgPrice: p.avgPrice }));
-  }
   const restMarket = positions.filter((p) =>
     outcomeTokenBelongsToSelectedMarket(String(p.asset || '').trim(), selectedMarket, marketLookup),
   );

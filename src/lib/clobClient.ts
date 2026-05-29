@@ -12,6 +12,7 @@ import {
   type SignedOrder,
 } from '@polymarket/clob-client-v2';
 import { API_BASE, POLYGON_ETHERS_NETWORK, POLYGON_JSONRPC_URL, vitePolyBuilderCode } from './env';
+import { refreshSidebarOnchainWallet } from './sidebarOnchainTradesStore';
 import { inferPolymarketClobSignatureType, resolvePolymarketMakerAddress } from './polymarketTradingMaker';
 import { fetchProxyWallet } from '../api/polymarket';
 import { getConnection } from '@wagmi/core';
@@ -246,6 +247,8 @@ export function setOrdersRefreshFn(fn: () => void) {
 
 export function triggerWalletRefresh() {
   if (_ordersRefreshFn) setTimeout(_ordersRefreshFn, 200);
+  refreshSidebarOnchainWallet();
+  setTimeout(refreshSidebarOnchainWallet, 2500);
   if (_walletRefreshFn) setTimeout(_walletRefreshFn, 1500);
 }
 

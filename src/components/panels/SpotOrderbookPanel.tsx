@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react';
 import {
-  SPOT_OB_MOVE_USD_LEVELS,
+  SPOT_OB_MOVE_PCT_LEVELS,
+  formatSpotObMovePctLabel,
   usdToMoveBinanceSpotDown,
   usdToMoveBinanceSpotUp,
   type BinanceSpotBook,
@@ -27,11 +28,11 @@ const AssetRows = memo(function AssetRows({
   connected: boolean;
 }) {
   const upCells = useMemo(
-    () => SPOT_OB_MOVE_USD_LEVELS.map((move) => usdToMoveBinanceSpotUp(book, move)),
+    () => SPOT_OB_MOVE_PCT_LEVELS.map((move) => usdToMoveBinanceSpotUp(book, move)),
     [book],
   );
   const downCells = useMemo(
-    () => SPOT_OB_MOVE_USD_LEVELS.map((move) => usdToMoveBinanceSpotDown(book, move)),
+    () => SPOT_OB_MOVE_PCT_LEVELS.map((move) => usdToMoveBinanceSpotDown(book, move)),
     [book],
   );
 
@@ -44,29 +45,37 @@ const AssetRows = memo(function AssetRows({
         <td className="py-1 px-2 text-[10px] font-semibold text-green-400 whitespace-nowrap border-r border-gray-800/60">
           UP
         </td>
-        {upCells.map((v, i) => (
+        {upCells.map((v, i) => {
+          const pct = SPOT_OB_MOVE_PCT_LEVELS[i]!;
+          const pctLabel = formatSpotObMovePctLabel(pct);
+          return (
           <td
-            key={`${asset}-up-${SPOT_OB_MOVE_USD_LEVELS[i]}`}
+            key={`${asset}-up-${pct}`}
             className="py-1 px-2 text-right text-[10px] tabular-nums font-bold text-green-300/95"
-            title={connected ? `USD to lift spot ~$${SPOT_OB_MOVE_USD_LEVELS[i]}` : 'Waiting for Binance book'}
+            title={connected ? `USD to lift spot ~${pctLabel}` : 'Waiting for Binance book'}
           >
             {fmtImpactUsd(v)}
           </td>
-        ))}
+          );
+        })}
       </tr>
       <tr className="border-b border-gray-800">
         <td className="py-1 px-2 text-[10px] font-semibold text-red-400 whitespace-nowrap border-r border-gray-800/60">
           DOWN
         </td>
-        {downCells.map((v, i) => (
+        {downCells.map((v, i) => {
+          const pct = SPOT_OB_MOVE_PCT_LEVELS[i]!;
+          const pctLabel = formatSpotObMovePctLabel(pct);
+          return (
           <td
-            key={`${asset}-down-${SPOT_OB_MOVE_USD_LEVELS[i]}`}
+            key={`${asset}-down-${pct}`}
             className="py-1 px-2 text-right text-[10px] tabular-nums font-bold text-red-300/95"
-            title={connected ? `USD to hit spot ~$${SPOT_OB_MOVE_USD_LEVELS[i]}` : 'Waiting for Binance book'}
+            title={connected ? `USD to hit spot ~${pctLabel}` : 'Waiting for Binance book'}
           >
             {fmtImpactUsd(v)}
           </td>
-        ))}
+          );
+        })}
       </tr>
     </>
   );
@@ -90,9 +99,9 @@ export function SpotOrderbookPanel() {
             <tr className="text-[9px] font-medium text-gray-500 border-b border-gray-700">
               <th className="py-1 px-2 font-medium">Asset</th>
               <th className="py-1 px-2 font-medium">U/D</th>
-              {SPOT_OB_MOVE_USD_LEVELS.map((n) => (
+              {SPOT_OB_MOVE_PCT_LEVELS.map((n) => (
                 <th key={n} className="py-1 px-2 text-right font-medium tabular-nums">
-                  ${n}
+                  {formatSpotObMovePctLabel(n)}
                 </th>
               ))}
             </tr>
@@ -104,9 +113,6 @@ export function SpotOrderbookPanel() {
           </tbody>
         </table>
       </div>
-      <p className="mt-2 shrink-0 text-[9px] leading-snug text-gray-500 m-0">
-        USD notional to move Binance spot best ask/bid by each $ move (top 20 levels).
-      </p>
     </div>
   );
 }

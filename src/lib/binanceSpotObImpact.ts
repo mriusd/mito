@@ -6,9 +6,15 @@ export type BinanceSpotBook = {
   updatedAt: number;
 };
 
-export const SPOT_OB_MOVE_USD_LEVELS = [25, 50, 75, 100] as const;
+export const SPOT_OB_MOVE_PCT_LEVELS = [0.025, 0.05, 0.075, 1] as const;
 
-export type SpotObMoveUsd = (typeof SPOT_OB_MOVE_USD_LEVELS)[number];
+export type SpotObMovePct = (typeof SPOT_OB_MOVE_PCT_LEVELS)[number];
+
+export function formatSpotObMovePctLabel(pct: number): string {
+  if (!Number.isFinite(pct)) return '—';
+  const s = pct >= 1 ? String(pct) : pct.toFixed(3).replace(/\.?0+$/, '');
+  return `${s}%`;
+}
 
 export function parseBinanceObLevels(raw: unknown): BinanceObLevel[] {
   if (!Array.isArray(raw)) return [];
@@ -38,12 +44,12 @@ export function binanceSpotBookMid(book: BinanceSpotBook | null | undefined): nu
   return (bestBid + bestAsk) / 2;
 }
 
-/** USD notional to lift asks until best ask is ≥ bestAsk + moveUsd. */
-export function usdToMoveBinanceSpotUp(book: BinanceSpotBook | null | undefined, moveUsd: number): number | null {
-  if (!book?.asks.length || !Number.isFinite(moveUsd) || moveUsd <= 0) return null;
+/** USD notional to lift asks until best ask is ≥ bestAsk × (1 + movePct/100). */
+export function usdToMoveBinanceSpotUp(book: BinanceSpotBook | null | undefined, movePct: number): number | null {
+  if (!book?.asks.length || !Number.isFinite(movePct) || movePct <= 0) return null;
   const bestAsk = book.asks[0]?.price;
   if (bestAsk == null || !Number.isFinite(bestAsk) || bestAsk <= 0) return null;
-  const targetAsk = bestAsk + moveUsd;
+  const targetAsk = bestAsk * (1 + movePct / 100);
   let cost = 0;
   for (const level of book.asks) {
     if (level.price >= targetAsk) break;
@@ -52,12 +58,12 @@ export function usdToMoveBinanceSpotUp(book: BinanceSpotBook | null | undefined,
   return cost > 0 ? cost : null;
 }
 
-/** USD notional to hit bids until best bid is ≤ bestBid − moveUsd. */
-export function usdToMoveBinanceSpotDown(book: BinanceSpotBook | null | undefined, moveUsd: number): number | null {
-  if (!book?.bids.length || !Number.isFinite(moveUsd) || moveUsd <= 0) return null;
+/** USD notional to hit bids until best bid is ≤ bestBid × (1 − movePct/100). */
+export function usdToMoveBinanceSpotDown(book: BinanceSpotBook | null | undefined, movePct: number): number | null {
+  if (!book?.bids.length || !Number.isFinite(movePct) || movePct <= 0) return null;
   const bestBid = book.bids[0]?.price;
   if (bestBid == null || !Number.isFinite(bestBid) || bestBid <= 0) return null;
-  const targetBid = bestBid - moveUsd;
+  const targetBid = bestBid * (1 - movePct / 100);
   if (targetBid <= 0) return null;
   let cost = 0;
   for (const level of book.bids) {

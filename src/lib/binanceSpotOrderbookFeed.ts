@@ -7,6 +7,9 @@ import {
   type BinanceSpotBook,
 } from './binanceSpotObImpact';
 
+/** Same backend as other polycandles REST calls; dev defaults to data.mito.trade when API_BASE is empty. */
+const POLYCANDLES_API = API_BASE || 'https://data.mito.trade';
+
 export const BINANCE_SPOT_OB_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 export type BinanceSpotObAsset = (typeof BINANCE_SPOT_OB_ASSETS)[number];
 export type BinanceObMarket = 'spot' | 'futures';
@@ -22,19 +25,9 @@ const ASSET_BY_SYMBOL = Object.fromEntries(
   Object.entries(SYMBOL_BY_ASSET).map(([asset, symbol]) => [symbol, asset as BinanceSpotObAsset]),
 ) as Record<string, BinanceSpotObAsset>;
 
-function futuresDepthUrl(): string {
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') {
-      return '/api/binance-proxy/futures/v1/depth';
-    }
-  }
-  return `${API_BASE}/api/binance-proxy/futures/v1/depth`;
-}
-
 const REST_DEPTH_URL: Record<BinanceObMarket, string> = {
-  spot: 'https://api.binance.com/api/v3/depth',
-  futures: futuresDepthUrl(),
+  spot: `${POLYCANDLES_API}/api/binance-proxy/spot/v3/depth`,
+  futures: `${POLYCANDLES_API}/api/binance-proxy/futures/v1/depth`,
 };
 
 const WS_STREAM_BASE: Record<BinanceObMarket, string> = {
@@ -47,8 +40,9 @@ const SNAPSHOT_LIMIT = 500;
 
 const EMIT_MS = 250;
 const RECONNECT_MS = 5000;
-const SNAPSHOT_GAP_MS = 500;
+const SNAPSHOT_RETRY_MS = 300;
 const RESYNC_BACKOFF_MS = 60_000;
+const MAX_SNAPSHOT_ATTEMPTS = 8;
 
 export const DEPTH_LIMIT = SNAPSHOT_LIMIT;
 
@@ -71,6 +65,7 @@ type AssetBookState = {
   synced: boolean;
   pending: DepthEvent[];
   snapshotLoading: boolean;
+  snapshotAttempts: number;
   lastResyncAt: number;
 };
 
@@ -79,6 +74,7 @@ type MarketConn = {
   reconnectTimer: number | null;
   emitTimer: number | null;
   connectGen: number;
+  connecting: boolean;
   dirty: Set<BinanceSpotObAsset>;
   assets: Record<BinanceSpotObAsset, AssetBookState>;
 };
@@ -91,6 +87,7 @@ function emptyAssetState(): AssetBookState {
     synced: false,
     pending: [],
     snapshotLoading: false,
+    snapshotAttempts: 0,
     lastResyncAt: 0,
   };
 }
@@ -101,6 +98,7 @@ function emptyMarketConn(): MarketConn {
     reconnectTimer: null,
     emitTimer: null,
     connectGen: 0,
+    connecting: false,
     dirty: new Set(),
     assets: {
       BTC: emptyAssetState(),
@@ -211,11 +209,14 @@ function resetAssetState(state: AssetBookState): void {
   state.synced = false;
   state.pending = [];
   state.snapshotLoading = false;
+  state.snapshotAttempts = 0;
 }
 
 async function fetchSnapshot(market: BinanceObMarket, asset: BinanceSpotObAsset): Promise<DepthSnapshot> {
   const symbol = SYMBOL_BY_ASSET[asset];
-  const resp = await fetch(`${REST_DEPTH_URL[market]}?symbol=${symbol}&limit=${SNAPSHOT_LIMIT}`);
+  const resp = await fetch(`${REST_DEPTH_URL[market]}?symbol=${symbol}&limit=${SNAPSHOT_LIMIT}`, {
+    cache: 'no-store',
+  });
   if (!resp.ok) {
     throw new Error(`Binance ${market} depth snapshot ${symbol} HTTP ${resp.status}`);
   }
@@ -231,10 +232,30 @@ async function fetchSnapshot(market: BinanceObMarket, asset: BinanceSpotObAsset)
   };
 }
 
-function syncAssetFromSnapshot(market: BinanceObMarket, asset: BinanceSpotObAsset, snap: DepthSnapshot): void {
+function scheduleSnapshotRetry(
+  market: BinanceObMarket,
+  asset: BinanceSpotObAsset,
+  connectGen: number,
+): void {
+  const state = marketConns[market].assets[asset];
+  if (state.synced || state.snapshotLoading) return;
+  if (state.snapshotAttempts >= MAX_SNAPSHOT_ATTEMPTS) return;
+  window.setTimeout(() => {
+    if (connectGen !== marketConns[market].connectGen || refCountByMarket[market] <= 0) return;
+    void loadSnapshot(market, asset, connectGen);
+  }, SNAPSHOT_RETRY_MS);
+}
+
+function syncAssetFromSnapshot(
+  market: BinanceObMarket,
+  asset: BinanceSpotObAsset,
+  snap: DepthSnapshot,
+  connectGen: number,
+): void {
   const state = marketConns[market].assets[asset];
   const pending = state.pending.filter((e) => e.u > snap.lastUpdateId);
   if (pending.length > 0 && pending[0]!.U > snap.lastUpdateId + 1) {
+    scheduleSnapshotRetry(market, asset, connectGen);
     return;
   }
 
@@ -247,6 +268,7 @@ function syncAssetFromSnapshot(market: BinanceObMarket, asset: BinanceSpotObAsse
     if (event.U > state.lastUpdateId + 1) {
       resetAssetState(state);
       state.pending = pending.slice(pending.indexOf(event));
+      scheduleSnapshotRetry(market, asset, connectGen);
       return;
     }
     applyEventToState(state, event);
@@ -254,6 +276,7 @@ function syncAssetFromSnapshot(market: BinanceObMarket, asset: BinanceSpotObAsse
 
   state.pending = [];
   state.synced = true;
+  state.snapshotAttempts = 0;
   publishAssetState(market, asset, state);
 }
 
@@ -261,25 +284,21 @@ async function loadSnapshot(market: BinanceObMarket, asset: BinanceSpotObAsset, 
   const state = marketConns[market].assets[asset];
   if (state.synced || state.snapshotLoading) return;
   state.snapshotLoading = true;
+  state.snapshotAttempts += 1;
   try {
     const snap = await fetchSnapshot(market, asset);
     if (refCountByMarket[market] <= 0 || connectGen !== marketConns[market].connectGen) return;
-    syncAssetFromSnapshot(market, asset, snap);
+    syncAssetFromSnapshot(market, asset, snap, connectGen);
   } catch (err) {
     console.error(`binance ${market} ob snapshot ${asset}:`, err);
+    scheduleSnapshotRetry(market, asset, connectGen);
   } finally {
     state.snapshotLoading = false;
   }
 }
 
 async function loadAllSnapshots(market: BinanceObMarket, connectGen: number): Promise<void> {
-  for (const asset of BINANCE_SPOT_OB_ASSETS) {
-    if (refCountByMarket[market] <= 0 || connectGen !== marketConns[market].connectGen) return;
-    await loadSnapshot(market, asset, connectGen);
-    if (BINANCE_SPOT_OB_ASSETS.indexOf(asset) < BINANCE_SPOT_OB_ASSETS.length - 1) {
-      await sleep(SNAPSHOT_GAP_MS);
-    }
-  }
+  await Promise.all(BINANCE_SPOT_OB_ASSETS.map((asset) => loadSnapshot(market, asset, connectGen)));
 }
 
 function requestResync(market: BinanceObMarket, asset: BinanceSpotObAsset, connectGen: number): void {
@@ -287,6 +306,7 @@ function requestResync(market: BinanceObMarket, asset: BinanceSpotObAsset, conne
   const now = Date.now();
   if (state.snapshotLoading || now - state.lastResyncAt < RESYNC_BACKOFF_MS) return;
   state.lastResyncAt = now;
+  state.snapshotAttempts = 0;
   void loadSnapshot(market, asset, connectGen);
 }
 
@@ -319,19 +339,9 @@ function wsUrlForMarket(market: BinanceObMarket): string {
   return `${WS_STREAM_BASE[market]}?streams=${streams}`;
 }
 
-function connectMarket(market: BinanceObMarket): void {
+function openDepthWs(market: BinanceObMarket, connectGen: number): void {
   const conn = marketConns[market];
-  if (conn.ws != null) return;
-
-  conn.connectGen += 1;
-  const connectGen = conn.connectGen;
-
-  booksByMarket = { ...booksByMarket, [market]: { ...EMPTY_BOOKS } };
-  emit(market);
-
-  for (const asset of BINANCE_SPOT_OB_ASSETS) {
-    resetAssetState(conn.assets[asset]);
-  }
+  if (conn.ws != null || refCountByMarket[market] <= 0 || connectGen !== conn.connectGen) return;
 
   const ws = new WebSocket(wsUrlForMarket(market));
   conn.ws = ws;
@@ -365,13 +375,38 @@ function connectMarket(market: BinanceObMarket): void {
       if (refCountByMarket[market] > 0) connectMarket(market);
     }, RECONNECT_MS);
   };
+}
 
-  void loadAllSnapshots(market, connectGen);
+function connectMarket(market: BinanceObMarket): void {
+  const conn = marketConns[market];
+  if (conn.ws != null || conn.connecting) return;
+
+  conn.connectGen += 1;
+  const connectGen = conn.connectGen;
+  conn.connecting = true;
+
+  booksByMarket = { ...booksByMarket, [market]: { ...EMPTY_BOOKS } };
+  emit(market);
+
+  for (const asset of BINANCE_SPOT_OB_ASSETS) {
+    resetAssetState(conn.assets[asset]);
+  }
+
+  void (async () => {
+    try {
+      await loadAllSnapshots(market, connectGen);
+      if (refCountByMarket[market] <= 0 || connectGen !== conn.connectGen) return;
+      openDepthWs(market, connectGen);
+    } finally {
+      if (connectGen === conn.connectGen) conn.connecting = false;
+    }
+  })();
 }
 
 function disconnectMarket(market: BinanceObMarket): void {
   const conn = marketConns[market];
   conn.connectGen += 1;
+  conn.connecting = false;
   if (conn.reconnectTimer != null) {
     window.clearTimeout(conn.reconnectTimer);
     conn.reconnectTimer = null;

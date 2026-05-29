@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Triangle } from 'lucide-react';
 import {
   SPOT_OB_MOVE_PCT_LEVELS,
@@ -117,6 +117,34 @@ export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
   const [market, setMarket] = useState<BinanceObMarket>(() => readStoredMarket(panelId));
   const books = useBinanceObOrderbooks(market);
   const connected = BINANCE_SPOT_OB_ASSETS.some((a) => books[a] != null);
+  const [, ageTick] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => ageTick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const bookAgeSec = useMemo(() => {
+    let maxAt = 0;
+    for (const asset of BINANCE_SPOT_OB_ASSETS) {
+      const t = books[asset]?.updatedAt ?? 0;
+      if (t > maxAt) maxAt = t;
+    }
+    if (maxAt <= 0) return null;
+    return Math.max(0, Math.round((Date.now() - maxAt) / 1000));
+  }, [books, ageTick]);
+
+  const liveLabel =
+    connected && bookAgeSec != null
+      ? bookAgeSec <= 2
+        ? `Binance ${MARKET_LABEL[market]} live`
+        : `Binance ${MARKET_LABEL[market]} · ${bookAgeSec}s stale`
+      : connected
+        ? `Binance ${MARKET_LABEL[market]} live`
+        : 'Connecting…';
+
+  const liveClass =
+    connected && bookAgeSec != null && bookAgeSec > 2 ? 'text-amber-400' : connected ? 'text-emerald-400' : 'text-gray-500';
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-900/40 p-2">
@@ -145,8 +173,8 @@ export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
               Futures
             </button>
           </div>
-          <div className={`text-[9px] tabular-nums ${connected ? 'text-emerald-400' : 'text-gray-500'}`}>
-            {connected ? `Binance ${MARKET_LABEL[market]} live` : 'Connecting…'}
+          <div className={`text-[9px] tabular-nums ${liveClass}`}>
+            {liveLabel}
           </div>
         </div>
       </div>

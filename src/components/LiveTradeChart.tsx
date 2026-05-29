@@ -14,6 +14,7 @@ import {
 } from '../lib/chartVolumeSpikeAlert';
 import type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 import { parseCandleOb, type CandleObSnapshot } from '../lib/candleObSnapshot';
+import { parseCexObSnapshot, type CexObCandleSnapshot } from '../lib/cexObSnapshot';
 import { prepareCandleObDisplay } from '../lib/candleObDisplay';
 import type {
   ChartOrderReplaceParams,
@@ -33,6 +34,7 @@ import {
 } from '../lib/chartCandleEnrichment';
 import { ChartObHoverEnrichmentStrip } from './ChartObHoverEnrichmentStrip';
 import { ChartObHoverOhlcvStrip, type ChartObHoverOhlcv } from './ChartObHoverOhlcvStrip';
+import { ChartCexObHoverGrid } from './ChartCexObHoverGrid';
 
 export type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 
@@ -157,6 +159,7 @@ interface Candle {
   c: number;
   v: number;
   ob?: CandleObSnapshot;
+  cexOb?: CexObCandleSnapshot;
   enrichment?: CandleBsEnrichment;
 }
 
@@ -334,7 +337,8 @@ export function LiveTradeChart({
   const [hoverOb, setHoverOb] = useState<{
     clientX: number;
     clientY: number;
-    ob: CandleObSnapshot;
+    ob?: CandleObSnapshot;
+    cexOb?: CexObCandleSnapshot;
     ohlcv: ChartObHoverOhlcv;
     enrichment?: CandleBsEnrichment;
   } | null>(null);
@@ -397,6 +401,7 @@ export function LiveTradeChart({
         const lo = Math.min(o, h, l, c);
         const prev = map.get(openTime);
         const ob = parseCandleOb(k[12]);
+        const cexOb = parseCexObSnapshot(k[17]) ?? prev?.cexOb;
         const enrichment = mergeCandleBsEnrichment(parseHttpKlineEnrichment(k), prev?.enrichment);
         map.set(openTime, {
           time: openTime,
@@ -406,6 +411,7 @@ export function LiveTradeChart({
           c,
           v,
           ...(ob ? { ob } : prev?.ob ? { ob: prev.ob } : {}),
+          ...(cexOb ? { cexOb } : {}),
           ...(enrichment ? { enrichment } : {}),
         });
       }
@@ -455,6 +461,7 @@ export function LiveTradeChart({
       const lo = Math.min(o, h, l, c);
       const prev = candleMapRef.current.get(openTime);
       const ob = parseCandleOb(k.ob) ?? prev?.ob;
+      const cexOb = parseCexObSnapshot(k.cex_ob) ?? prev?.cexOb;
       const enrichment = mergeCandleBsEnrichment(parseCandleBsEnrichment(k), prev?.enrichment);
       candleMapRef.current.set(openTime, {
         time: openTime,
@@ -464,6 +471,7 @@ export function LiveTradeChart({
         c,
         v,
         ...(ob ? { ob } : {}),
+        ...(cexOb ? { cexOb } : {}),
         ...(enrichment ? { enrichment } : {}),
       });
       pruneCandleMap(candleMapRef.current, st, et, candleMs * 2);
@@ -1179,20 +1187,20 @@ export function LiveTradeChart({
       return;
     }
     const nearest = pickHoverCandle(s, mx);
-    if (!nearest?.ob) {
-      setHoverOb(null);
-      return;
-    }
-    if (nearest.ob.bids.length === 0 && nearest.ob.asks.length === 0) {
+    const hasPolyOb =
+      nearest?.ob != null && (nearest.ob.bids.length > 0 || nearest.ob.asks.length > 0);
+    const hasCexOb = nearest?.cexOb != null;
+    if (!hasPolyOb && !hasCexOb) {
       setHoverOb(null);
       return;
     }
     setHoverOb({
       clientX: e.clientX,
       clientY: e.clientY,
-      ob: nearest.ob,
-      ohlcv: { o: nearest.o, h: nearest.h, l: nearest.l, c: nearest.c, v: nearest.v },
-      enrichment: nearest.enrichment,
+      ...(hasPolyOb ? { ob: nearest!.ob } : {}),
+      ...(hasCexOb ? { cexOb: nearest!.cexOb } : {}),
+      ohlcv: { o: nearest!.o, h: nearest!.h, l: nearest!.l, c: nearest!.c, v: nearest!.v },
+      enrichment: nearest!.enrichment,
     });
   }, [paintChartHover, pickHoverCandle, candleObHover, chartOrderDragEnabled, orderDrag, hitTestOrderHandle]);
 
@@ -1442,8 +1450,12 @@ export function LiveTradeChart({
                 {(() => {
                   const step = '5' as const;
                   const chartOutcome = outcomeToggle?.value ?? 'YES';
-                  const { displayBids, displayAsks, yesBidUsd, noBidUsd, displayBidFullUsd, displayAskFullUsd } =
-                    prepareCandleObDisplay(hoverOb.ob, step);
+                  const hasPolyOb =
+                    hoverOb.ob != null &&
+                    (hoverOb.ob.bids.length > 0 || hoverOb.ob.asks.length > 0);
+                  const polyDisplay = hasPolyOb
+                    ? prepareCandleObDisplay(hoverOb.ob!, step)
+                    : null;
                   return (
                     <>
                       <ChartObHoverOhlcvStrip ohlcv={hoverOb.ohlcv} />
@@ -1452,19 +1464,22 @@ export function LiveTradeChart({
                         priceDec={enrichmentPriceDec}
                         chartOutcome={chartOutcome}
                       />
-                      <SidebarOrderbookBookGrid
-                        displayBids={displayBids}
-                        displayAsks={displayAsks}
-                        obAggStep={step}
-                        yesBidUsd={yesBidUsd}
-                        noBidUsd={noBidUsd}
-                        displayBidFullUsd={displayBidFullUsd}
-                        displayAskFullUsd={displayAskFullUsd}
-                        orderOutcome={chartOutcome}
-                        sidebarUserBidPrices={sidebarUserBidPrices ?? EMPTY_PRICE_SET}
-                        sidebarUserAskPrices={sidebarUserAskPrices ?? EMPTY_PRICE_SET}
-                        readOnly
-                      />
+                      {polyDisplay ? (
+                        <SidebarOrderbookBookGrid
+                          displayBids={polyDisplay.displayBids}
+                          displayAsks={polyDisplay.displayAsks}
+                          obAggStep={step}
+                          yesBidUsd={polyDisplay.yesBidUsd}
+                          noBidUsd={polyDisplay.noBidUsd}
+                          displayBidFullUsd={polyDisplay.displayBidFullUsd}
+                          displayAskFullUsd={polyDisplay.displayAskFullUsd}
+                          orderOutcome={chartOutcome}
+                          sidebarUserBidPrices={sidebarUserBidPrices ?? EMPTY_PRICE_SET}
+                          sidebarUserAskPrices={sidebarUserAskPrices ?? EMPTY_PRICE_SET}
+                          readOnly
+                        />
+                      ) : null}
+                      {hoverOb.cexOb ? <ChartCexObHoverGrid snapshot={hoverOb.cexOb} /> : null}
                     </>
                   );
                 })()}

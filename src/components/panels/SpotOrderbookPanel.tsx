@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Triangle } from 'lucide-react';
 import { formatSpotObImpactUsd, formatSpotObMovePctLabel } from '../../lib/binanceSpotObImpact';
 import {
@@ -8,11 +8,24 @@ import {
   useBinanceObFeedStatus,
   useBinanceObPanels,
   type BinanceObAssetPanel,
+  type BinanceObFeedStatus,
   type BinanceObImpactCell,
   type BinanceObMarket,
   type BinanceSpotObAsset,
 } from '../../lib/binanceSpotOrderbookFeed';
+import {
+  okxObDepthLimit,
+  useOkxObFeedStatus,
+  useOkxObPanels,
+} from '../../lib/okxSpotOrderbookFeed';
 import { formatPrice } from '../../utils/format';
+
+type ObExchange = 'binance' | 'okx';
+
+type ExchangeSelection = {
+  binance: boolean;
+  okx: boolean;
+};
 
 const MARKET_LABEL: Record<BinanceObMarket, string> = {
   spot: 'spot',
@@ -26,6 +39,77 @@ function cellForPct(cells: BinanceObImpactCell[], pct: number): BinanceObImpactC
 function impactFromCell(cell: BinanceObImpactCell | null) {
   if (!cell) return null;
   return { usd: cell.usd, depthCapped: cell.capped };
+}
+
+function mergeImpactCells(a: BinanceObImpactCell[], b: BinanceObImpactCell[]): BinanceObImpactCell[] {
+  const out: BinanceObImpactCell[] = [];
+  for (const pct of SPOT_OB_MOVE_PCT_LEVELS) {
+    const ca = cellForPct(a, pct);
+    const cb = cellForPct(b, pct);
+    const usd = (ca?.usd ?? 0) + (cb?.usd ?? 0);
+    if (usd <= 0) continue;
+    out.push({ pct, usd, capped: ca?.capped === true || cb?.capped === true });
+  }
+  return out;
+}
+
+function combineAssetPanel(
+  bin: BinanceObAssetPanel | null,
+  okx: BinanceObAssetPanel | null,
+  sel: ExchangeSelection,
+): BinanceObAssetPanel | null {
+  if (sel.binance && sel.okx) {
+    if (!bin && !okx) return null;
+    const mids = [bin?.mid, okx?.mid].filter((m): m is number => m != null && Number.isFinite(m));
+    const mid = mids.length > 0 ? mids.reduce((s, m) => s + m, 0) / mids.length : null;
+    return {
+      synced: (sel.binance ? bin?.synced === true : true) && (sel.okx ? okx?.synced === true : true),
+      mid,
+      up: mergeImpactCells(bin?.up ?? [], okx?.up ?? []),
+      down: mergeImpactCells(bin?.down ?? [], okx?.down ?? []),
+    };
+  }
+  if (sel.binance) return bin;
+  if (sel.okx) return okx;
+  return null;
+}
+
+function combinePanels(
+  binPanels: Record<BinanceSpotObAsset, BinanceObAssetPanel | null>,
+  okxPanels: Record<BinanceSpotObAsset, BinanceObAssetPanel | null>,
+  sel: ExchangeSelection,
+): Record<BinanceSpotObAsset, BinanceObAssetPanel | null> {
+  const out = {} as Record<BinanceSpotObAsset, BinanceObAssetPanel | null>;
+  for (const asset of BINANCE_SPOT_OB_ASSETS) {
+    out[asset] = combineAssetPanel(binPanels[asset], okxPanels[asset], sel);
+  }
+  return out;
+}
+
+function combineFeedStatus(
+  bin: BinanceObFeedStatus,
+  okx: BinanceObFeedStatus,
+  sel: ExchangeSelection,
+): BinanceObFeedStatus {
+  const feeds = [
+    sel.binance ? bin : null,
+    sel.okx ? okx : null,
+  ].filter((f): f is BinanceObFeedStatus => f != null);
+  if (feeds.length === 0) {
+    return { hasBook: false, wsLive: false, allSynced: false, wsAgeSec: null, bookAgeSec: null };
+  }
+  const hasBook = feeds.every((f) => f.hasBook);
+  const wsLive = feeds.every((f) => f.wsLive);
+  const allSynced = feeds.every((f) => f.allSynced);
+  const wsAgeSec = Math.max(...feeds.map((f) => f.wsAgeSec ?? 0));
+  const bookAgeSec = Math.max(...feeds.map((f) => f.bookAgeSec ?? 0));
+  return {
+    hasBook,
+    wsLive,
+    allSynced,
+    wsAgeSec: wsLive ? 0 : wsAgeSec,
+    bookAgeSec,
+  };
 }
 
 function impactPair(panel: BinanceObAssetPanel | null, pct: number) {
@@ -71,15 +155,20 @@ const AssetRows = memo(function AssetRows({
   panel,
   connected,
   market,
+  exchanges,
 }: {
   asset: BinanceSpotObAsset;
   panel: BinanceObAssetPanel | null;
   connected: boolean;
   market: BinanceObMarket;
+  exchanges: ExchangeSelection;
 }) {
   const mkt = MARKET_LABEL[market];
   const mid = panel?.mid ?? null;
-  const depthLimit = binanceObDepthLimit(market);
+  const depthParts: string[] = [];
+  if (exchanges.binance) depthParts.push(`BIN ${binanceObDepthLimit(market)}`);
+  if (exchanges.okx) depthParts.push(`OKX ${okxObDepthLimit(market)}`);
+  const depthLabel = depthParts.join(' + ');
 
   return (
     <>
@@ -107,9 +196,9 @@ const AssetRows = memo(function AssetRows({
               title={
                 connected
                   ? up?.depthCapped
-                    ? `Book depth exhausted before ~${pctLabel} up (+ = capped at ${depthLimit} levels)`
+                    ? `Book depth exhausted before ~${pctLabel} up (+ = capped at ${depthLabel} levels)`
                     : `USD to lift ${mkt} ~${pctLabel}`
-                  : 'Waiting for Binance book'
+                  : 'Waiting for orderbook'
               }
             />
           );
@@ -131,9 +220,9 @@ const AssetRows = memo(function AssetRows({
               title={
                 connected
                   ? down?.depthCapped
-                    ? `Book depth exhausted before ~${pctLabel} down (+ = capped at ${depthLimit} levels)`
+                    ? `Book depth exhausted before ~${pctLabel} down (+ = capped at ${depthLabel} levels)`
                     : `USD to hit ${mkt} ~${pctLabel}`
-                  : 'Waiting for Binance book'
+                  : 'Waiting for orderbook'
               }
             />
           );
@@ -148,10 +237,48 @@ function readStoredMarket(panelId: string): BinanceObMarket {
   return saved === 'futures' ? 'futures' : 'spot';
 }
 
+function readStoredExchanges(panelId: string): ExchangeSelection {
+  const saved = localStorage.getItem(`polybot-ob-exchanges-${panelId}`);
+  if (!saved) return { binance: true, okx: true };
+  try {
+    const parsed = JSON.parse(saved) as Partial<ExchangeSelection>;
+    const binance = parsed.binance !== false;
+    const okx = parsed.okx !== false;
+    if (!binance && !okx) return { binance: true, okx: true };
+    return { binance, okx };
+  } catch {
+    return { binance: true, okx: true };
+  }
+}
+
+function storeExchanges(panelId: string, sel: ExchangeSelection): void {
+  localStorage.setItem(`polybot-ob-exchanges-${panelId}`, JSON.stringify(sel));
+}
+
+function exchangeLabel(sel: ExchangeSelection): string {
+  if (sel.binance && sel.okx) return 'BIN+OKX';
+  if (sel.binance) return 'BIN';
+  return 'OKX';
+}
+
 export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
   const [market, setMarket] = useState<BinanceObMarket>(() => readStoredMarket(panelId));
-  const panels = useBinanceObPanels(market);
-  const feed = useBinanceObFeedStatus(market);
+  const [exchanges, setExchanges] = useState<ExchangeSelection>(() => readStoredExchanges(panelId));
+
+  const binPanels = useBinanceObPanels(market, exchanges.binance);
+  const okxPanels = useOkxObPanels(market, exchanges.okx);
+  const binFeed = useBinanceObFeedStatus(market, exchanges.binance);
+  const okxFeed = useOkxObFeedStatus(market, exchanges.okx);
+
+  const panels = useMemo(
+    () => combinePanels(binPanels, okxPanels, exchanges),
+    [binPanels, okxPanels, exchanges],
+  );
+  const feed = useMemo(
+    () => combineFeedStatus(binFeed, okxFeed, exchanges),
+    [binFeed, okxFeed, exchanges],
+  );
+
   const [, ageTick] = useState(0);
 
   useEffect(() => {
@@ -159,17 +286,18 @@ export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
     return () => window.clearInterval(id);
   }, []);
 
+  const exLabel = exchangeLabel(exchanges);
   const liveLabel = !feed.hasBook
     ? 'Connecting…'
     : !feed.wsLive
       ? feed.wsAgeSec != null
-        ? `Binance ${MARKET_LABEL[market]} · stream ${feed.wsAgeSec}s stale`
-        : `Binance ${MARKET_LABEL[market]} · waiting stream`
+        ? `${exLabel} ${MARKET_LABEL[market]} · stream ${feed.wsAgeSec}s stale`
+        : `${exLabel} ${MARKET_LABEL[market]} · waiting stream`
       : !feed.allSynced
-        ? `Binance ${MARKET_LABEL[market]} · syncing`
+        ? `${exLabel} ${MARKET_LABEL[market]} · syncing`
         : feed.bookAgeSec != null && feed.bookAgeSec > 2
-          ? `Binance ${MARKET_LABEL[market]} · book ${feed.bookAgeSec}s stale`
-          : `Binance ${MARKET_LABEL[market]} live`;
+          ? `${exLabel} ${MARKET_LABEL[market]} · book ${feed.bookAgeSec}s stale`
+          : `${exLabel} ${MARKET_LABEL[market]} live`;
 
   const liveClass =
     feed.hasBook && feed.wsLive && feed.allSynced && (feed.bookAgeSec ?? 0) <= 2
@@ -178,11 +306,40 @@ export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
         ? 'text-amber-400'
         : 'text-gray-500';
 
+  const toggleExchange = (key: ObExchange) => {
+    setExchanges((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      if (!next.binance && !next.okx) return prev;
+      storeExchanges(panelId, next);
+      return next;
+    });
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-900/40 p-2">
       <div className="panel-header mb-2 flex items-center justify-between gap-2 shrink-0 cursor-grab">
         <div className="text-[11px] font-bold text-yellow-400">Orderbook</div>
         <div className="flex items-center gap-2 no-drag" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="flex shrink-0 items-center gap-2 rounded border border-gray-600 px-2 py-0.5">
+            <label className="flex cursor-pointer items-center gap-1 text-[9px] font-semibold text-gray-300">
+              <input
+                type="checkbox"
+                className="h-3 w-3 accent-cyan-400"
+                checked={exchanges.binance}
+                onChange={() => toggleExchange('binance')}
+              />
+              BIN
+            </label>
+            <label className="flex cursor-pointer items-center gap-1 text-[9px] font-semibold text-gray-300">
+              <input
+                type="checkbox"
+                className="h-3 w-3 accent-cyan-400"
+                checked={exchanges.okx}
+                onChange={() => toggleExchange('okx')}
+              />
+              OKX
+            </label>
+          </div>
           <div className="flex shrink-0 overflow-hidden rounded border border-gray-600">
             <button
               type="button"
@@ -231,6 +388,7 @@ export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
                 panel={panels[asset]}
                 connected={feed.hasBook && feed.wsLive && feed.allSynced}
                 market={market}
+                exchanges={exchanges}
               />
             ))}
           </tbody>

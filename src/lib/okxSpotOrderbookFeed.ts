@@ -1,45 +1,18 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { WS_BASE } from './env';
 import { SPOT_OB_MOVE_PCT_LEVELS } from './binanceSpotObImpact';
+import type {
+  BinanceObAssetPanel,
+  BinanceObFeedStatus,
+  BinanceObImpactCell,
+  BinanceObMarket,
+  BinanceObPanelSnapshot,
+  BinanceSpotObAsset,
+} from './binanceSpotOrderbookFeed';
+import { BINANCE_SPOT_OB_ASSETS } from './binanceSpotOrderbookFeed';
 
-export const BINANCE_SPOT_OB_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
-export type BinanceSpotObAsset = (typeof BINANCE_SPOT_OB_ASSETS)[number];
-export type BinanceObMarket = 'spot' | 'futures';
-
-export const DEPTH_LIMIT = 1000;
-
-export function binanceObDepthLimit(_market: BinanceObMarket): number {
-  return DEPTH_LIMIT;
-}
-
-export type BinanceObImpactCell = {
-  pct: number;
-  usd: number;
-  capped: boolean;
-};
-
-export type BinanceObAssetPanel = {
-  synced: boolean;
-  mid: number | null;
-  up: BinanceObImpactCell[];
-  down: BinanceObImpactCell[];
-};
-
-export type BinanceObPanelSnapshot = {
-  market: BinanceObMarket;
-  synced: boolean;
-  wsLive: boolean;
-  assets: Record<BinanceSpotObAsset, BinanceObAssetPanel | null>;
-  updatedAt: number;
-};
-
-export type BinanceObFeedStatus = {
-  hasBook: boolean;
-  wsLive: boolean;
-  allSynced: boolean;
-  wsAgeSec: number | null;
-  bookAgeSec: number | null;
-};
+export { SPOT_OB_MOVE_PCT_LEVELS, BINANCE_SPOT_OB_ASSETS };
+export type { BinanceObAssetPanel, BinanceObFeedStatus, BinanceObImpactCell, BinanceObMarket, BinanceObPanelSnapshot, BinanceSpotObAsset };
 
 const EMPTY_PANELS: Record<BinanceSpotObAsset, BinanceObAssetPanel | null> = {
   BTC: null,
@@ -131,7 +104,7 @@ function connectMarket(market: BinanceObMarket): void {
   const st = marketState[market];
   if (st.ws != null) return;
 
-  const ws = new WebSocket(`${WS_BASE}/ws/binance-orderbook?market=${market}`);
+  const ws = new WebSocket(`${WS_BASE}/ws/okx-orderbook?market=${market}`);
   st.ws = ws;
 
   ws.onmessage = (event) => {
@@ -142,7 +115,7 @@ function connectMarket(market: BinanceObMarket): void {
       return;
     }
     const msg = payload as { type?: unknown; data?: unknown };
-    if (msg.type !== 'binanceOrderbook') return;
+    if (msg.type !== 'okxOrderbook') return;
     const snap = parsePanelSnapshot(msg.data);
     if (!snap || snap.market !== market) return;
     applySnapshot(market, snap);
@@ -199,7 +172,20 @@ function useObConnection(market: BinanceObMarket, enabled: boolean): void {
   }, [market, enabled]);
 }
 
-export function getBinanceObFeedStatus(market: BinanceObMarket): BinanceObFeedStatus {
+function subscribeSpot(onStoreChange: () => void): () => void {
+  return subscribeMarket('spot', onStoreChange);
+}
+
+function subscribeFutures(onStoreChange: () => void): () => void {
+  return subscribeMarket('futures', onStoreChange);
+}
+
+const SUBSCRIBE_BY_MARKET: Record<BinanceObMarket, (onStoreChange: () => void) => () => void> = {
+  spot: subscribeSpot,
+  futures: subscribeFutures,
+};
+
+export function getOkxObFeedStatus(market: BinanceObMarket): BinanceObFeedStatus {
   const snap = marketState[market].snap;
   const now = Date.now();
   if (!snap) {
@@ -222,28 +208,15 @@ export function getBinanceObFeedStatus(market: BinanceObMarket): BinanceObFeedSt
   };
 }
 
-export function getBinanceObPanelSnapshot(market: BinanceObMarket): BinanceObPanelSnapshot | null {
-  return marketState[market].snap;
-}
-
-function subscribeSpot(onStoreChange: () => void): () => void {
-  return subscribeMarket('spot', onStoreChange);
-}
-
-function subscribeFutures(onStoreChange: () => void): () => void {
-  return subscribeMarket('futures', onStoreChange);
-}
-
-const SUBSCRIBE_BY_MARKET: Record<BinanceObMarket, (onStoreChange: () => void) => () => void> = {
-  spot: subscribeSpot,
-  futures: subscribeFutures,
-};
-
 function getDigest(market: BinanceObMarket): number {
   return marketState[market].digest;
 }
 
-export function useBinanceObFeedStatus(market: BinanceObMarket, enabled = true): BinanceObFeedStatus {
+export function okxObDepthLimit(_market: BinanceObMarket): number {
+  return 400;
+}
+
+export function useOkxObFeedStatus(market: BinanceObMarket, enabled = true): BinanceObFeedStatus {
   useObConnection(market, enabled);
   useSyncExternalStore(
     SUBSCRIBE_BY_MARKET[market],
@@ -253,10 +226,10 @@ export function useBinanceObFeedStatus(market: BinanceObMarket, enabled = true):
   if (!enabled) {
     return { hasBook: false, wsLive: false, allSynced: false, wsAgeSec: null, bookAgeSec: null };
   }
-  return getBinanceObFeedStatus(market);
+  return getOkxObFeedStatus(market);
 }
 
-export function useBinanceObPanels(market: BinanceObMarket, enabled = true): Record<BinanceSpotObAsset, BinanceObAssetPanel | null> {
+export function useOkxObPanels(market: BinanceObMarket, enabled = true): Record<BinanceSpotObAsset, BinanceObAssetPanel | null> {
   useObConnection(market, enabled);
   useSyncExternalStore(
     SUBSCRIBE_BY_MARKET[market],
@@ -266,5 +239,3 @@ export function useBinanceObPanels(market: BinanceObMarket, enabled = true): Rec
   if (!enabled) return EMPTY_PANELS;
   return marketState[market].snap?.assets ?? EMPTY_PANELS;
 }
-
-export { SPOT_OB_MOVE_PCT_LEVELS };

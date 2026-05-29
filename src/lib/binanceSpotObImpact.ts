@@ -20,8 +20,7 @@ export function formatSpotObMovePctLabel(pct: number): string {
 
 export function formatSpotObImpactUsd(v: SpotObImpact | null): string {
   if (!v || !Number.isFinite(v.usd) || v.usd <= 0) return '—';
-  const u = v.usd;
-  const core = u >= 1000 ? `${Math.round(u / 1000)}k` : `${Math.round(u).toLocaleString()}`;
+  const core = `${(v.usd / 1_000_000).toFixed(1)}M`;
   return v.depthCapped ? `${core}+` : core;
 }
 

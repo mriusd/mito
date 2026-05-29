@@ -1,4 +1,5 @@
 import type { GexAssetSnapshot } from '../lib/deribitGexFeed';
+import { GexExpirationsTable } from './GexExpirationsTable';
 
 function fmtUsd(v: number): string {
   const abs = Math.abs(v);
@@ -66,6 +67,7 @@ export function ChartGexHoverGrid({ gex }: { gex: GexAssetSnapshot }) {
           <span className="tabular-nums text-gray-300">{fmtStrike(gex.spot)}</span>
         </div>
       </div>
+      <GexExpirationsTable expirations={gex.expirations ?? []} compact />
       <div className="flex flex-col gap-px">
         {gex.strikes.map((b) => {
           const frac = maxAbs > 0 ? Math.min(1, Math.abs(b.gex) / maxAbs) : 0;

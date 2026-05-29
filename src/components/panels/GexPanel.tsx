@@ -7,6 +7,7 @@ import {
   type GexAssetSnapshot,
   type GexStrikeBucket,
 } from '../../lib/deribitGexFeed';
+import { GexExpirationsTable } from '../GexExpirationsTable';
 
 function readStoredGexAsset(panelId: string): GexAsset {
   const saved = localStorage.getItem(`polybot-gex-asset-${panelId}`);
@@ -287,6 +288,8 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
           />
         </div>
       </div>
+
+      <GexExpirationsTable expirations={snap.expirations} />
 
       <div className="text-[8px] text-gray-500 mb-0.5 px-1">dealer $γ per 1% by strike (red=short/amplify · green=long/dampen)</div>
       <div className="flex flex-col gap-px">

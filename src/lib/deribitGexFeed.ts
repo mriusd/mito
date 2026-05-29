@@ -16,6 +16,20 @@ export type GexProfilePoint = {
   gex: number;
 };
 
+export type GexExpiryBucket = {
+  expiryMs: number;
+  label: string;
+  hoursToExp: number;
+  netGex: number;
+  regime: 'positive' | 'negative' | string;
+  totalOi: number;
+  callOi: number;
+  putOi: number;
+  contracts: number;
+  gammaFlip?: number | null;
+  pinStrike?: number | null;
+};
+
 export type GexAssetSnapshot = {
   asset: string;
   synced: boolean;
@@ -28,6 +42,7 @@ export type GexAssetSnapshot = {
   putWall?: number | null;
   pinStrike?: number | null;
   strikes: GexStrikeBucket[];
+  expirations: GexExpiryBucket[];
   profile: GexProfilePoint[];
   contracts: number;
   updatedAt: number;
@@ -66,6 +81,27 @@ function parseStrike(raw: unknown): GexStrikeBucket | null {
   return { strike, gex, callOi: num(r.callOi) ?? 0, putOi: num(r.putOi) ?? 0 };
 }
 
+function parseExpiry(raw: unknown): GexExpiryBucket | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const expiryMs = num(r.expiryMs);
+  const label = String(r.label ?? '').trim();
+  if (expiryMs == null || !label) return null;
+  return {
+    expiryMs,
+    label,
+    hoursToExp: num(r.hoursToExp) ?? 0,
+    netGex: num(r.netGex) ?? 0,
+    regime: r.regime === 'negative' ? 'negative' : 'positive',
+    totalOi: num(r.totalOi) ?? 0,
+    callOi: num(r.callOi) ?? 0,
+    putOi: num(r.putOi) ?? 0,
+    contracts: num(r.contracts) ?? 0,
+    gammaFlip: num(r.gammaFlip),
+    pinStrike: num(r.pinStrike),
+  };
+}
+
 function parseAsset(raw: unknown): GexAssetSnapshot | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -86,6 +122,9 @@ function parseAsset(raw: unknown): GexAssetSnapshot | null {
         })
         .filter((x): x is GexProfilePoint => x != null)
     : [];
+  const expirations = Array.isArray(r.expirations)
+    ? r.expirations.map(parseExpiry).filter((x): x is GexExpiryBucket => x != null)
+    : [];
   return {
     asset,
     synced: r.synced === true,
@@ -98,6 +137,7 @@ function parseAsset(raw: unknown): GexAssetSnapshot | null {
     putWall: num(r.putWall),
     pinStrike: num(r.pinStrike),
     strikes,
+    expirations,
     profile,
     contracts: num(r.contracts) ?? 0,
     updatedAt: num(r.updatedAt) ?? Date.now(),

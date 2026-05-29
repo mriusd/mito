@@ -3727,6 +3727,7 @@ export const Sidebar = memo(function Sidebar() {
 
           {/* Live Orderbook + Trades */}
           <SidebarPolymarketOBHost
+            key={`${selectedMarket?.id ?? ''}-${selectedMarket?.clobTokenIds?.[0] ?? ''}-${selectedMarket?.clobTokenIds?.[1] ?? ''}`}
             obTokenId={obTokenId}
             sidebarBookRef={sidebarBookRef}
             orderbookSectionHeight={orderbookSectionHeight}

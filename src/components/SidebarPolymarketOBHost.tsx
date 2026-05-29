@@ -67,14 +67,15 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   }, []);
 
   const bookLimit = OB_DEEP_BOOK;
+  const obEnabled = obTokenId != null;
   const yesTokenId = useMemo(() => {
-    if (!obTokenId || !selectedMarket?.clobTokenIds?.[0]) return null;
+    if (!obEnabled || !selectedMarket?.clobTokenIds?.[0]) return null;
     return selectedMarket.clobTokenIds[0] || null;
-  }, [obTokenId, selectedMarket?.clobTokenIds]);
+  }, [obEnabled, selectedMarket?.id, selectedMarket?.clobTokenIds?.[0]]);
   const noTokenId = useMemo(() => {
-    if (!obTokenId || !selectedMarket?.clobTokenIds?.[1]) return null;
+    if (!obEnabled || !selectedMarket?.clobTokenIds?.[1]) return null;
     return selectedMarket.clobTokenIds[1] || null;
-  }, [obTokenId, selectedMarket?.clobTokenIds]);
+  }, [obEnabled, selectedMarket?.id, selectedMarket?.clobTokenIds?.[1]]);
 
   const {
     bids: yesBids,
@@ -106,7 +107,7 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
     noUsdStaleRef.current = { bidUsdTotal: 0 };
     displayUsdStaleRef.current = { bidUsdTotal: 0, askUsdTotal: 0 };
     resetSidebarYesObDepth();
-  }, [obTokenId]);
+  }, [selectedMarket?.id, obTokenId]);
   useLayoutEffect(() => {
     if (!activeObLoading) {
       obStaleBookRef.current =

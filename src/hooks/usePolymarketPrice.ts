@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { WS_BASE } from '../lib/env';
 
 interface PriceState {
@@ -6,128 +6,101 @@ interface PriceState {
   timestamp: number | null;
 }
 
-/**
- * Subscribe to our backend's /ws/prices for live Chainlink prices.
- * Backend proxies Polymarket's WS with correct Origin header for undelayed feed.
- * Returns current price and timestamp. Auto-reconnects on disconnect.
- */
-export function usePolymarketPrice(asset: string | null): PriceState {
-  const [state, setState] = useState<PriceState>({ price: null, timestamp: null });
+export type ChainlinkPricesMap = Record<string, number>;
 
-  useEffect(() => {
-    setState({ price: null, timestamp: null });
+// Single shared /ws/prices socket for the whole app. Every consumer (grid cells,
+// HUD, chart panels, sidebar strip) reads from this one connection via refCount,
+// instead of opening its own socket. Backend proxies Polymarket's Chainlink feed
+// with correct Origin for the undelayed stream.
+let ws: WebSocket | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let refCount = 0;
 
-    if (!asset) return;
-    const assetUpper = asset.toUpperCase();
+let pricesMap: ChainlinkPricesMap = {};
+const tsMap: Record<string, number> = {};
+const listeners = new Set<() => void>();
 
-    let cancelled = false;
-    let ws: WebSocket | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-    function connect() {
-      if (cancelled) return;
-
-      ws = new WebSocket(`${WS_BASE}/ws/prices`);
-
-      ws.onmessage = (event) => {
-        if (cancelled) return;
-        try {
-          const msg = JSON.parse(event.data);
-          // Messages: { asset: "BTC", price: 70500.12, timestamp: 1774009608084 }
-          if (msg.asset === assetUpper && typeof msg.price === 'number' && msg.price > 0) {
-            setState({ price: msg.price, timestamp: msg.timestamp });
-          }
-        } catch {}
-      };
-
-      ws.onerror = () => {};
-
-      ws.onclose = () => {
-        if (!cancelled) {
-          reconnectTimer = setTimeout(connect, 3000);
-        }
-      };
-    }
-
-    connect();
-
-    return () => {
-      cancelled = true;
-      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-      if (ws) {
-        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-          ws.close();
-        }
-        ws = null;
-      }
-    };
-  }, [asset]);
-
-  return state;
+function emit(): void {
+  for (const fn of listeners) fn();
 }
 
-export type ChainlinkPricesMap = Record<string, number>;
+function connect(): void {
+  if (ws != null) return;
+  const sock = new WebSocket(`${WS_BASE}/ws/prices`);
+  ws = sock;
+
+  sock.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data) as { asset?: string; price?: number; timestamp?: number };
+      if (typeof msg.asset !== 'string' || typeof msg.price !== 'number' || msg.price <= 0) return;
+      const k = msg.asset.toUpperCase();
+      if (typeof msg.timestamp === 'number') tsMap[k] = msg.timestamp;
+      if (pricesMap[k] === msg.price) return;
+      pricesMap = { ...pricesMap, [k]: msg.price };
+      emit();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  sock.onerror = () => {};
+
+  sock.onclose = () => {
+    ws = null;
+    if (refCount <= 0) return;
+    if (reconnectTimer != null) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (refCount > 0) connect();
+    }, 3000);
+  };
+}
+
+function disconnect(): void {
+  if (reconnectTimer != null) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (ws != null) {
+    ws.onclose = null;
+    ws.close();
+    ws = null;
+  }
+}
+
+function subscribe(onChange: () => void): () => void {
+  listeners.add(onChange);
+  refCount += 1;
+  if (refCount === 1) connect();
+  return () => {
+    listeners.delete(onChange);
+    refCount -= 1;
+    if (refCount === 0) disconnect();
+  };
+}
+
+function getSnapshot(): ChainlinkPricesMap {
+  return pricesMap;
+}
 
 /**
  * Single WS to /ws/prices: keeps latest Chainlink spot per asset (keys uppercased, e.g. BTC).
- * Use for grids that need all tracked assets without opening one socket per cell.
+ * Shared across all consumers — one socket regardless of how many components mount.
  */
 export function useChainlinkPricesMap(): ChainlinkPricesMap {
-  const [prices, setPrices] = useState<ChainlinkPricesMap>({});
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
 
-  useEffect(() => {
-    let cancelled = false;
-    let ws: WebSocket | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-    function connect() {
-      if (cancelled) return;
-      ws = new WebSocket(`${WS_BASE}/ws/prices`);
-
-      ws.onmessage = (event) => {
-        if (cancelled) return;
-        try {
-          const msg = JSON.parse(event.data) as { asset?: string; price?: number };
-          if (typeof msg.asset !== 'string' || typeof msg.price !== 'number' || msg.price <= 0) return;
-          const k = msg.asset.toUpperCase();
-          const p = msg.price;
-          setPrices((prev) => {
-            if (prev[k] === p) return prev;
-            const next: ChainlinkPricesMap = { ...prev, [k]: p };
-            return next;
-          });
-        } catch {
-          /* ignore */
-        }
-      };
-
-      ws.onerror = () => {};
-
-      ws.onclose = () => {
-        if (!cancelled) {
-          reconnectTimer = setTimeout(connect, 3000);
-        }
-      };
-    }
-
-    connect();
-
-    return () => {
-      cancelled = true;
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-      if (ws) {
-        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-          ws.close();
-        }
-        ws = null;
-      }
-    };
-  }, []);
-
-  return prices;
+/**
+ * Single-asset Chainlink price from the shared /ws/prices socket.
+ * Returns current price and timestamp.
+ */
+export function usePolymarketPrice(asset: string | null): PriceState {
+  const map = useChainlinkPricesMap();
+  if (!asset) return { price: null, timestamp: null };
+  const k = asset.toUpperCase();
+  const price = map[k] ?? null;
+  return { price, timestamp: price != null ? tsMap[k] ?? null : null };
 }
 
 /** Chainlink /ws/prices at most every `ms` — UpDownMarketsPanel was full tick × all cells. */

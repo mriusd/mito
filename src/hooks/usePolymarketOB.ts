@@ -189,10 +189,32 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
     setLoading(true);
     setTrades([]);
 
+    fetch(`https://clob.polymarket.com/book?token_id=${encodeURIComponent(tid)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { bids?: { price: string; size: string }[]; asks?: { price: string; size: string }[] } | null) => {
+        if (tokenIdRef.current !== tid || !data) return;
+        const nextBids = new Map<string, string>();
+        const nextAsks = new Map<string, string>();
+        for (const b of data.bids || []) {
+          if (b?.price != null) nextBids.set(String(b.price), String(b.size ?? '0'));
+        }
+        for (const a of data.asks || []) {
+          if (a?.price != null) nextAsks.set(String(a.price), String(a.size ?? '0'));
+        }
+        if (nextBids.size === 0 && nextAsks.size === 0) return;
+        localBidsRef.current = nextBids;
+        localAsksRef.current = nextAsks;
+        snapshotLoaded.current = true;
+        setLoading(false);
+        cancelRaf(bookRafSlot);
+        publishBook(bookLimitRef.current);
+      })
+      .catch(() => {});
+
     fetch(`${API_BASE}/api/trades/${tid}?limit=100`)
       .then((r) => r.json())
       .then((data: { price: number; size: number; side: string; timestamp: number }[] | null) => {
-        if (!data || !Array.isArray(data)) return;
+        if (tokenIdRef.current !== tid || !data || !Array.isArray(data)) return;
         const fetched: LiveTrade[] = data.map((t) => {
           const price = String(t.price);
           const size = String(t.size);
@@ -351,6 +373,7 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
     cancelRaf(bookRafSlot);
     cancelRaf(tradesRafSlot);
     setBook({ bids: [], asks: [] });
+    setLoading(true);
     connect();
 
     return () => {

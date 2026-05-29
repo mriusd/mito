@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useLayoutEffect, useSyncExternalStore } from 'react';
 import { WS_BASE } from './env';
 import { SPOT_OB_MOVE_PCT_LEVELS } from './binanceSpotObImpact';
 
@@ -34,6 +34,7 @@ export type BinanceObPanelSnapshot = {
 };
 
 export type BinanceObFeedStatus = {
+  hasSnap: boolean;
   hasBook: boolean;
   wsLive: boolean;
   allSynced: boolean;
@@ -134,6 +135,13 @@ function connectMarket(market: BinanceObMarket): void {
   const ws = new WebSocket(`${WS_BASE}/ws/binance-orderbook?market=${market}`);
   st.ws = ws;
 
+  ws.onopen = () => {
+    if (st.reconnectTimer != null) {
+      window.clearTimeout(st.reconnectTimer);
+      st.reconnectTimer = null;
+    }
+  };
+
   ws.onmessage = (event) => {
     let payload: unknown;
     try {
@@ -155,12 +163,26 @@ function connectMarket(market: BinanceObMarket): void {
     st.reconnectTimer = window.setTimeout(() => {
       st.reconnectTimer = null;
       if (st.refCount > 0) connectMarket(market);
-    }, 3000);
+    }, 1500);
   };
 
   ws.onerror = () => {
     ws.close();
   };
+}
+
+function scheduleReconnect(market: BinanceObMarket): void {
+  const st = marketState[market];
+  if (st.refCount <= 0 || st.reconnectTimer != null) return;
+  if (st.ws != null) {
+    st.ws.onclose = null;
+    st.ws.close();
+    st.ws = null;
+  }
+  st.reconnectTimer = window.setTimeout(() => {
+    st.reconnectTimer = null;
+    if (st.refCount > 0) connectMarket(market);
+  }, 1500);
 }
 
 function disconnectMarket(market: BinanceObMarket): void {
@@ -187,23 +209,35 @@ function subscribeMarket(market: BinanceObMarket, onStoreChange: () => void): ()
 }
 
 function useObConnection(market: BinanceObMarket, enabled: boolean): void {
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!enabled) return;
     const st = marketState[market];
     st.refCount += 1;
     if (st.refCount === 1) connectMarket(market);
+
+    const watchdog = window.setTimeout(() => {
+      if (st.refCount <= 0) return;
+      if (st.snap != null) return;
+      scheduleReconnect(market);
+    }, 6000);
+
     return () => {
+      window.clearTimeout(watchdog);
       st.refCount -= 1;
       if (st.refCount === 0) disconnectMarket(market);
     };
   }, [market, enabled]);
 }
 
+export function useBinanceObMarketConnection(market: BinanceObMarket, enabled = true): void {
+  useObConnection(market, enabled);
+}
+
 export function getBinanceObFeedStatus(market: BinanceObMarket): BinanceObFeedStatus {
   const snap = marketState[market].snap;
   const now = Date.now();
   if (!snap) {
-    return { hasBook: false, wsLive: false, allSynced: false, wsAgeSec: null, bookAgeSec: null };
+    return { hasSnap: false, hasBook: false, wsLive: false, allSynced: false, wsAgeSec: null, bookAgeSec: null };
   }
   let hasBook = false;
   let allSynced = true;
@@ -214,6 +248,7 @@ export function getBinanceObFeedStatus(market: BinanceObMarket): BinanceObFeedSt
   }
   const bookAgeSec = snap.updatedAt > 0 ? Math.max(0, Math.round((now - snap.updatedAt) / 1000)) : null;
   return {
+    hasSnap: true,
     hasBook,
     wsLive: snap.wsLive,
     allSynced: hasBook && allSynced,
@@ -244,20 +279,18 @@ function getDigest(market: BinanceObMarket): number {
 }
 
 export function useBinanceObFeedStatus(market: BinanceObMarket, enabled = true): BinanceObFeedStatus {
-  useObConnection(market, enabled);
   useSyncExternalStore(
     SUBSCRIBE_BY_MARKET[market],
     () => getDigest(market),
     () => 0,
   );
   if (!enabled) {
-    return { hasBook: false, wsLive: false, allSynced: false, wsAgeSec: null, bookAgeSec: null };
+    return { hasSnap: false, hasBook: false, wsLive: false, allSynced: false, wsAgeSec: null, bookAgeSec: null };
   }
   return getBinanceObFeedStatus(market);
 }
 
 export function useBinanceObPanels(market: BinanceObMarket, enabled = true): Record<BinanceSpotObAsset, BinanceObAssetPanel | null> {
-  useObConnection(market, enabled);
   useSyncExternalStore(
     SUBSCRIBE_BY_MARKET[market],
     () => getDigest(market),

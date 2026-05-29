@@ -6,6 +6,7 @@ import {
   SPOT_OB_MOVE_PCT_LEVELS,
   binanceObDepthLimit,
   useBinanceObFeedStatus,
+  useBinanceObMarketConnection,
   useBinanceObPanels,
   type BinanceObAssetPanel,
   type BinanceObFeedStatus,
@@ -16,6 +17,7 @@ import {
 import {
   okxObDepthLimit,
   useOkxObFeedStatus,
+  useOkxObMarketConnection,
   useOkxObPanels,
 } from '../../lib/okxSpotOrderbookFeed';
 import { formatPrice } from '../../utils/format';
@@ -96,14 +98,16 @@ function combineFeedStatus(
     sel.okx ? okx : null,
   ].filter((f): f is BinanceObFeedStatus => f != null);
   if (feeds.length === 0) {
-    return { hasBook: false, wsLive: false, allSynced: false, wsAgeSec: null, bookAgeSec: null };
+    return { hasSnap: false, hasBook: false, wsLive: false, allSynced: false, wsAgeSec: null, bookAgeSec: null };
   }
+  const hasSnap = feeds.some((f) => f.hasSnap);
   const hasBook = feeds.every((f) => f.hasBook);
   const wsLive = feeds.every((f) => f.wsLive);
   const allSynced = feeds.every((f) => f.allSynced);
   const wsAgeSec = Math.max(...feeds.map((f) => f.wsAgeSec ?? 0));
   const bookAgeSec = Math.max(...feeds.map((f) => f.bookAgeSec ?? 0));
   return {
+    hasSnap,
     hasBook,
     wsLive,
     allSynced,
@@ -272,6 +276,9 @@ export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
   const [market, setMarket] = useState<BinanceObMarket>(() => readStoredMarket(panelId));
   const [exchanges, setExchanges] = useState<ExchangeSelection>(() => readStoredExchanges(panelId));
 
+  useBinanceObMarketConnection(market, exchanges.binance);
+  useOkxObMarketConnection(market, exchanges.okx);
+
   const binPanels = useBinanceObPanels(market, exchanges.binance);
   const okxPanels = useOkxObPanels(market, exchanges.okx);
   const binFeed = useBinanceObFeedStatus(market, exchanges.binance);
@@ -294,9 +301,11 @@ export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
   }, []);
 
   const exLabel = exchangeLabel(exchanges);
-  const liveLabel = !feed.hasBook
+  const liveLabel = !feed.hasSnap
     ? 'Connecting…'
-    : !feed.wsLive
+    : !feed.hasBook
+      ? `${exLabel} ${MARKET_LABEL[market]} · syncing`
+      : !feed.wsLive
       ? feed.wsAgeSec != null
         ? `${exLabel} ${MARKET_LABEL[market]} · stream ${feed.wsAgeSec}s stale`
         : `${exLabel} ${MARKET_LABEL[market]} · waiting stream`
@@ -309,7 +318,7 @@ export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
   const liveClass =
     feed.hasBook && feed.wsLive && feed.allSynced && (feed.bookAgeSec ?? 0) <= 2
       ? 'text-emerald-400'
-      : feed.hasBook
+      : feed.hasSnap
         ? 'text-amber-400'
         : 'text-gray-500';
 

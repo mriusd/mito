@@ -19,6 +19,7 @@ export type BinanceObImpactCell = {
 };
 
 export type BinanceObAssetPanel = {
+  synced: boolean;
   mid: number | null;
   up: BinanceObImpactCell[];
   down: BinanceObImpactCell[];
@@ -91,8 +92,9 @@ function parsePanelSnapshot(raw: unknown): BinanceObPanelSnapshot | null {
   for (const asset of BINANCE_SPOT_OB_ASSETS) {
     const row = (assetsIn as Record<string, unknown>)[asset];
     if (!row || typeof row !== 'object') continue;
-    const r = row as { mid?: unknown; up?: unknown; down?: unknown };
+    const r = row as { synced?: unknown; mid?: unknown; up?: unknown; down?: unknown };
     const mid = typeof r.mid === 'number' && Number.isFinite(r.mid) ? r.mid : null;
+    const synced = r.synced === true;
     const parseCells = (rawCells: unknown): BinanceObImpactCell[] => {
       if (!Array.isArray(rawCells)) return [];
       const out: BinanceObImpactCell[] = [];
@@ -106,7 +108,7 @@ function parsePanelSnapshot(raw: unknown): BinanceObPanelSnapshot | null {
       }
       return out;
     };
-    assets[asset] = { mid, up: parseCells(r.up), down: parseCells(r.down) };
+    assets[asset] = { synced, mid, up: parseCells(r.up), down: parseCells(r.down) };
   }
 
   return {
@@ -196,14 +198,17 @@ export function getBinanceObFeedStatus(market: BinanceObMarket): BinanceObFeedSt
     return { hasBook: false, wsLive: false, allSynced: false, wsAgeSec: null, bookAgeSec: null };
   }
   let hasBook = false;
+  let allSynced = true;
   for (const asset of BINANCE_SPOT_OB_ASSETS) {
-    if (panelHasBook(snap.assets[asset])) hasBook = true;
+    const row = snap.assets[asset];
+    if (panelHasBook(row)) hasBook = true;
+    if (!row?.synced) allSynced = false;
   }
   const bookAgeSec = snap.updatedAt > 0 ? Math.max(0, Math.round((now - snap.updatedAt) / 1000)) : null;
   return {
     hasBook,
     wsLive: snap.wsLive,
-    allSynced: snap.synced && hasBook,
+    allSynced: hasBook && allSynced,
     wsAgeSec: snap.wsLive ? 0 : bookAgeSec,
     bookAgeSec,
   };

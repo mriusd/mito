@@ -43,7 +43,7 @@ const RECONNECT_MS = 5000;
 const SNAPSHOT_RETRY_MS = 300;
 const RESYNC_BACKOFF_MS = 10_000;
 const WS_STALE_MS = 4000;
-const MAX_SNAPSHOT_ATTEMPTS = 8;
+const MAX_HTTP_SNAPSHOT_ATTEMPTS = 8;
 
 export const DEPTH_LIMIT = SNAPSHOT_LIMIT;
 
@@ -157,13 +157,29 @@ function markWsMessage(market: BinanceObMarket): void {
   emitStatus(market);
 }
 
+function eventBridgesSnapshot(
+  market: BinanceObMarket,
+  event: DepthEvent,
+  lastUpdateId: number,
+): boolean {
+  if (event.u <= lastUpdateId) return false;
+  if (event.U > lastUpdateId + 1) return false;
+  if (event.u < lastUpdateId + 1) return false;
+  if (market === 'futures' && event.pu != null && event.pu !== lastUpdateId) return false;
+  return true;
+}
+
+function findBridgeIndex(
+  market: BinanceObMarket,
+  pending: DepthEvent[],
+  lastUpdateId: number,
+): number {
+  return pending.findIndex((e) => eventBridgesSnapshot(market, e, lastUpdateId));
+}
+
 function diffHasGap(market: BinanceObMarket, state: AssetBookState, event: DepthEvent): boolean {
   if (event.u <= state.lastUpdateId) return false;
-  if (market === 'futures') {
-    if (event.pu != null && event.pu !== state.lastUpdateId) return true;
-    return event.U > state.lastUpdateId + 1;
-  }
-  return event.U > state.lastUpdateId + 1;
+  return !eventBridgesSnapshot(market, event, state.lastUpdateId);
 }
 
 function diffStreamName(asset: BinanceSpotObAsset): string {
@@ -275,14 +291,14 @@ function scheduleSnapshotRetry(
   market: BinanceObMarket,
   asset: BinanceSpotObAsset,
   connectGen: number,
+  delayMs = SNAPSHOT_RETRY_MS,
 ): void {
   const state = marketConns[market].assets[asset];
   if (state.synced || state.snapshotLoading) return;
-  if (state.snapshotAttempts >= MAX_SNAPSHOT_ATTEMPTS) return;
   window.setTimeout(() => {
     if (connectGen !== marketConns[market].connectGen || refCountByMarket[market] <= 0) return;
     void loadSnapshot(market, asset, connectGen);
-  }, SNAPSHOT_RETRY_MS);
+  }, delayMs);
 }
 
 function syncAssetFromSnapshot(
@@ -293,19 +309,21 @@ function syncAssetFromSnapshot(
 ): void {
   const state = marketConns[market].assets[asset];
   const pending = state.pending.filter((e) => e.u > snap.lastUpdateId);
-  if (pending.length > 0 && pending[0]!.U > snap.lastUpdateId + 1) {
+  const startIdx = findBridgeIndex(market, pending, snap.lastUpdateId);
+  if (pending.length > 0 && startIdx < 0) {
+    state.pending = pending;
     scheduleSnapshotRetry(market, asset, connectGen);
     return;
   }
+  const toApply = startIdx < 0 ? [] : pending.slice(startIdx);
 
   state.bids = new Map(snap.bids.map((l) => [l.price, l.qty]));
   state.asks = new Map(snap.asks.map((l) => [l.price, l.qty]));
   state.lastUpdateId = snap.lastUpdateId;
 
-  for (const event of pending) {
+  for (const event of toApply) {
     if (event.u <= state.lastUpdateId) continue;
     if (diffHasGap(market, state, event)) {
-      resetAssetState(state);
       state.pending = pending.slice(pending.indexOf(event));
       scheduleSnapshotRetry(market, asset, connectGen);
       return;
@@ -317,20 +335,22 @@ function syncAssetFromSnapshot(
   state.synced = true;
   state.snapshotAttempts = 0;
   publishAssetState(market, asset, state);
+  emitStatus(market);
 }
 
 async function loadSnapshot(market: BinanceObMarket, asset: BinanceSpotObAsset, connectGen: number): Promise<void> {
   const state = marketConns[market].assets[asset];
   if (state.synced || state.snapshotLoading) return;
   state.snapshotLoading = true;
-  state.snapshotAttempts += 1;
   try {
     const snap = await fetchSnapshot(market, asset);
     if (refCountByMarket[market] <= 0 || connectGen !== marketConns[market].connectGen) return;
     syncAssetFromSnapshot(market, asset, snap, connectGen);
   } catch (err) {
+    state.snapshotAttempts += 1;
     console.error(`binance ${market} ob snapshot ${asset}:`, err);
-    scheduleSnapshotRetry(market, asset, connectGen);
+    if (state.snapshotAttempts >= MAX_HTTP_SNAPSHOT_ATTEMPTS) return;
+    scheduleSnapshotRetry(market, asset, connectGen, SNAPSHOT_RETRY_MS * state.snapshotAttempts);
   } finally {
     state.snapshotLoading = false;
   }
@@ -358,14 +378,17 @@ function onDiffMessage(
   const state = marketConns[market].assets[asset];
   if (!state.synced) {
     state.pending.push(event);
+    if (!state.snapshotLoading) scheduleSnapshotRetry(market, asset, connectGen);
     return;
   }
 
   if (event.u <= state.lastUpdateId) return;
   if (diffHasGap(market, state, event)) {
-    resetAssetState(state);
+    state.synced = false;
+    state.snapshotAttempts = 0;
     state.pending = [event];
-    requestResync(market, asset, connectGen);
+    emitStatus(market);
+    scheduleSnapshotRetry(market, asset, connectGen);
     return;
   }
 
@@ -473,9 +496,8 @@ function connectMarket(market: BinanceObMarket): void {
 
   void (async () => {
     try {
-      await loadAllSnapshots(market, connectGen);
-      if (refCountByMarket[market] <= 0 || connectGen !== conn.connectGen) return;
       openDepthWs(market, connectGen);
+      await loadAllSnapshots(market, connectGen);
     } finally {
       if (connectGen === conn.connectGen) conn.connecting = false;
     }

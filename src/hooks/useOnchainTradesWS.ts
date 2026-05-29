@@ -323,7 +323,13 @@ function mergeWalletPositionsSnapshot(
   for (const p of live) {
     const k = normalizeClobTokenKey(p.tokenId);
     if (!k || !scoped.has(k)) continue;
-    byTok.set(k, p);
+    const prev = byTok.get(k);
+    if (prev) {
+      const avgPrice = p.avgPrice > 0 ? p.avgPrice : prev.avgPrice;
+      byTok.set(k, { ...p, avgPrice });
+    } else {
+      byTok.set(k, p);
+    }
   }
   return [...byTok.values()];
 }

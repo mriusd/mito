@@ -249,7 +249,10 @@ export function triggerWalletRefresh() {
   if (_ordersRefreshFn) setTimeout(_ordersRefreshFn, 200);
   refreshSidebarOnchainWallet();
   setTimeout(refreshSidebarOnchainWallet, 2500);
-  if (_walletRefreshFn) setTimeout(_walletRefreshFn, 1500);
+  if (_walletRefreshFn) {
+    _walletRefreshFn();
+    setTimeout(_walletRefreshFn, 1500);
+  }
 }
 
 export async function refreshOpenOrdersInStore(proxyWallet: string): Promise<void> {

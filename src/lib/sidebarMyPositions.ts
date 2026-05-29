@@ -22,11 +22,32 @@ export function mergeSidebarPositionsWsRest(
     const asset = row.tokenId.trim();
     if (!asset) continue;
     const prev = byTok.get(asset);
-    if (!prev || row.size > prev.size) {
-      byTok.set(asset, { asset, size: row.size, avgPrice: row.avgPrice });
-    }
+    const avgPrice = row.avgPrice > 0 ? row.avgPrice : prev?.avgPrice ?? 0;
+    byTok.set(asset, { asset, size: row.size, avgPrice });
   }
   return [...byTok.values()];
+}
+
+function enrichAvgPriceFromBuyTrades(
+  rows: { asset: string; size: number; avgPrice: number }[],
+  trades: { tokenId: string; side: string; price: number; size: number }[],
+): { asset: string; size: number; avgPrice: number }[] {
+  if (trades.length === 0) return rows;
+  return rows.map((p) => {
+    if (p.avgPrice > 0) return p;
+    const tok = p.asset.trim();
+    let totalCost = 0;
+    let totalSize = 0;
+    for (const t of trades) {
+      if (t.tokenId.trim() !== tok || t.side !== 'BUY') continue;
+      if (t.price > 0 && t.size > 0) {
+        totalCost += t.price * t.size;
+        totalSize += t.size;
+      }
+    }
+    if (totalSize <= 0) return p;
+    return { ...p, avgPrice: totalCost / totalSize };
+  });
 }
 
 export function computeSidebarMyPositions(
@@ -35,6 +56,7 @@ export function computeSidebarMyPositions(
   selectedMarket: Market | null,
   marketLookup: Record<string, Market>,
   onchainWsPositions: WSPosition[],
+  onchainMarketTrades: { tokenId: string; side: string; price: number; size: number }[] = [],
 ): { asset: string; size: number; avgPrice: number }[] {
   if (!selectedMarket) return [];
   const wsMarketRows = (liveTradesSource === 'onchain' ? onchainWsPositions : [])
@@ -43,7 +65,9 @@ export function computeSidebarMyPositions(
   const restMarket = positions.filter((p) =>
     outcomeTokenBelongsToSelectedMarket(String(p.asset || '').trim(), selectedMarket, marketLookup),
   );
-  return mergeSidebarPositionsWsRest(restMarket, wsMarketRows);
+  const merged = mergeSidebarPositionsWsRest(restMarket, wsMarketRows);
+  if (liveTradesSource !== 'onchain') return merged;
+  return enrichAvgPriceFromBuyTrades(merged, onchainMarketTrades);
 }
 
 export type SidebarMergeEligible = {

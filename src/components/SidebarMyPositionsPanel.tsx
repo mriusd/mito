@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import type { Market, Position } from '../types';
 import { getTokenOutcome } from '../utils/format';
-import { useSidebarOnchainWalletPositions } from '../lib/sidebarOnchainTradesStore';
+import { useSidebarOnchainWalletPositions, useSidebarOnchainWalletMarketTrades } from '../lib/sidebarOnchainTradesStore';
 import {
   computeSidebarMergeEligible,
   computeSidebarMyPositions,
@@ -54,6 +54,7 @@ export const SidebarMyPositionsPanel = memo(function SidebarMyPositionsPanel({
 }) {
   const spotBs = useSidebarSpotStripBs();
   const onchainWsPositions = useSidebarOnchainWalletPositions();
+  const onchainMarketTrades = useSidebarOnchainWalletMarketTrades();
   const [positionsRefreshing, setPositionsRefreshing] = useState(false);
 
   const myPositions = useMemo(
@@ -64,8 +65,9 @@ export const SidebarMyPositionsPanel = memo(function SidebarMyPositionsPanel({
         selectedMarket,
         marketLookup,
         onchainWsPositions,
+        onchainMarketTrades,
       ),
-    [liveTradesSource, positions, selectedMarket, marketLookup, onchainWsPositions],
+    [liveTradesSource, positions, selectedMarket, marketLookup, onchainWsPositions, onchainMarketTrades],
   );
 
   const myPositionsDisplay = useMemo(

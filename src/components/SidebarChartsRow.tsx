@@ -8,7 +8,7 @@ import { useAppStore } from '../stores/appStore';
 import { getOrderClobTokenId, outcomeTokenBelongsToSelectedMarket } from '../utils/format';
 import type { ChartOrderReplaceParams } from '../lib/sidebarOrderbookAggregate';
 import { computeSidebarMyPositions, isSidebarDustPosition } from '../lib/sidebarMyPositions';
-import { useSidebarOnchainWalletPositions } from '../lib/sidebarOnchainTradesStore';
+import { useSidebarOnchainWalletPositions, useSidebarOnchainWalletMarketTrades } from '../lib/sidebarOnchainTradesStore';
 
 const SidebarChartsRowChart = memo(function SidebarChartsRowChart({
   selectedMarket,
@@ -32,6 +32,7 @@ const SidebarChartsRowChart = memo(function SidebarChartsRowChart({
   const positions = useAppStore((s) => s.positions);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const onchainWsPositions = useSidebarOnchainWalletPositions();
+  const onchainMarketTrades = useSidebarOnchainWalletMarketTrades();
   const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
   const sidebarChartPositions = useMemo(() => {
     const rows = computeSidebarMyPositions(
@@ -40,9 +41,10 @@ const SidebarChartsRowChart = memo(function SidebarChartsRowChart({
       selectedMarket,
       marketLookup,
       onchainWsPositions,
+      onchainMarketTrades,
     );
     return rows.filter((p) => !isSidebarDustPosition(p.size || 0));
-  }, [liveTradesSource, positions, selectedMarket, marketLookup, onchainWsPositions]);
+  }, [liveTradesSource, positions, selectedMarket, marketLookup, onchainWsPositions, onchainMarketTrades]);
   const sidebarChartOrders = useMemo(
     () =>
       orders.filter(

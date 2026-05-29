@@ -1462,6 +1462,7 @@ export const Sidebar = memo(function Sidebar() {
         selectedMarket,
         marketLookup,
         getSidebarOnchainTradesSnapshot().walletPositions,
+        getSidebarOnchainTradesSnapshot().walletMarketTrades,
       ),
     [liveTradesSource, positions, selectedMarket, marketLookup],
   );

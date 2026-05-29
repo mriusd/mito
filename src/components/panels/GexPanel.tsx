@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import {
   GEX_ASSETS,
   useDeribitGexConnection,
@@ -45,6 +45,40 @@ function pulseFlash(el: HTMLElement, cls: (typeof FLASH_CLASSES)[number]): void 
 
 type GexFlashMode = 'directional' | 'change';
 
+function useGexValueFlash(
+  ref: RefObject<HTMLElement | null>,
+  value: number | null | undefined,
+  format: (v: number) => string,
+  mode: GexFlashMode,
+): void {
+  const formatRef = useRef(format);
+  formatRef.current = format;
+  const prevRawRef = useRef<number | null>(null);
+  const prevFmtRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (value == null || !Number.isFinite(value)) {
+      prevRawRef.current = null;
+      prevFmtRef.current = null;
+      return;
+    }
+    const el = ref.current;
+    if (!el) return;
+    const fmt = formatRef.current(value);
+    const prevRaw = prevRawRef.current;
+    const prevFmt = prevFmtRef.current;
+    if (prevRaw != null && prevFmt != null && prevFmt !== fmt) {
+      if (mode === 'directional') {
+        pulseFlash(el, value > prevRaw ? 'updown-flash-up' : 'updown-flash-down');
+      } else {
+        pulseFlash(el, 'gex-flash-change');
+      }
+    }
+    prevRawRef.current = value;
+    prevFmtRef.current = fmt;
+  }, [value, mode, ref]);
+}
+
 function GexFlashValue({
   value,
   className,
@@ -57,26 +91,8 @@ function GexFlashValue({
   children: (formatted: string) => ReactNode;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
-  const prevRef = useRef<number | null>(null);
+  useGexValueFlash(ref, value, fmtUsd, mode);
   const display = value == null || !Number.isFinite(value) ? '—' : children(fmtUsd(value));
-
-  useEffect(() => {
-    if (value == null || !Number.isFinite(value)) {
-      prevRef.current = null;
-      return;
-    }
-    const el = ref.current;
-    if (!el) return;
-    const prev = prevRef.current;
-    if (prev != null && value !== prev) {
-      if (mode === 'directional') {
-        pulseFlash(el, value > prev ? 'updown-flash-up' : 'updown-flash-down');
-      } else {
-        pulseFlash(el, 'gex-flash-change');
-      }
-    }
-    prevRef.current = value;
-  }, [value, mode]);
 
   if (typeof display === 'string' && display === '—') {
     return <span className={className}>—</span>;
@@ -86,6 +102,14 @@ function GexFlashValue({
       {display}
     </span>
   );
+}
+
+function formatGexSpot(v: number): string {
+  return `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+function formatGexOi(v: number): string {
+  return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
 function GexFlashText({
@@ -100,25 +124,7 @@ function GexFlashText({
   mode?: GexFlashMode;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
-  const prevRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (value == null || !Number.isFinite(value)) {
-      prevRef.current = null;
-      return;
-    }
-    const el = ref.current;
-    if (!el) return;
-    const prev = prevRef.current;
-    if (prev != null && value !== prev) {
-      if (mode === 'directional') {
-        pulseFlash(el, value > prev ? 'updown-flash-up' : 'updown-flash-down');
-      } else {
-        pulseFlash(el, 'gex-flash-change');
-      }
-    }
-    prevRef.current = value;
-  }, [value, mode]);
+  useGexValueFlash(ref, value, format, mode);
 
   if (value == null || !Number.isFinite(value)) {
     return <span className={className}>—</span>;
@@ -210,7 +216,7 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
             value={snap.spot}
             mode="directional"
             className="text-[10px] tabular-nums text-gray-400"
-            format={(p) => `$${p.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+            format={formatGexSpot}
           />
         </div>
         <span
@@ -277,7 +283,7 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
           <GexFlashText
             value={snap.totalOi}
             className="tabular-nums text-gray-300"
-            format={(v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            format={formatGexOi}
           />
         </div>
       </div>

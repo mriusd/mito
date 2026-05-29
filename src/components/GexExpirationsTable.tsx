@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react';
 import type { GexExpiryBucket } from '../lib/deribitGexFeed';
+
+const H24_MS = 24 * 60 * 60 * 1000;
 
 function fmtUsd(v: number): string {
   const abs = Math.abs(v);
@@ -15,10 +18,16 @@ function fmtStrike(v: number | null | undefined): string {
   return v.toFixed(0);
 }
 
-function fmtHoursToExp(h: number): string {
-  if (!Number.isFinite(h) || h <= 0) return '0h';
-  if (h < 24) return `${h.toFixed(1)}h`;
-  return `${(h / 24).toFixed(1)}d`;
+function fmtCountdown(expiryMs: number, nowMs: number): string {
+  const ms = expiryMs - nowMs;
+  if (ms <= 0) return '0s';
+  const sec = Math.floor(ms / 1000);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`;
+  return `${s}s`;
 }
 
 type GexExpirationsTableProps = {
@@ -27,16 +36,29 @@ type GexExpirationsTableProps = {
 };
 
 export function GexExpirationsTable({ expirations, compact = false }: GexExpirationsTableProps) {
-  if (expirations.length === 0) return null;
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const upcoming = expirations.filter((row) => {
+    const ms = row.expiryMs - now;
+    return ms > 0 && ms <= H24_MS;
+  });
+
+  if (upcoming.length === 0) return null;
   const text = compact ? 'text-[8px]' : 'text-[9px]';
   return (
     <div className={compact ? 'mt-1.5' : 'mb-1.5'}>
-      <div className={`${text} font-semibold text-gray-400 uppercase tracking-wide mb-1`}>Upcoming expiries</div>
+      <div className={`${text} font-semibold text-gray-400 uppercase tracking-wide mb-1`}>Next 24h expiries</div>
       <div className="overflow-x-auto">
         <table className={`w-full border-collapse ${text} tabular-nums`}>
           <thead>
             <tr className="text-gray-500 border-b border-gray-800">
               <th className="text-left py-0.5 pr-1 font-medium">Exp</th>
+              <th className="text-left py-0.5 px-0.5 font-medium">T−</th>
               <th className="text-right py-0.5 px-0.5 font-medium">Net/1%</th>
               <th className="text-center py-0.5 px-0.5 font-medium">γ</th>
               <th className="text-right py-0.5 px-0.5 font-medium">OI</th>
@@ -50,13 +72,18 @@ export function GexExpirationsTable({ expirations, compact = false }: GexExpirat
             </tr>
           </thead>
           <tbody>
-            {expirations.map((row) => {
+            {upcoming.map((row) => {
               const neg = row.regime === 'negative';
+              const urgent = row.expiryMs - now <= 60 * 60 * 1000;
               return (
                 <tr key={row.expiryMs} className="border-b border-gray-800/60">
-                  <td className="py-0.5 pr-1 text-gray-300 whitespace-nowrap">
-                    <span className="font-semibold">{row.label}</span>
-                    <span className="text-gray-600 ml-1">{fmtHoursToExp(row.hoursToExp)}</span>
+                  <td className="py-0.5 pr-1 text-gray-300 whitespace-nowrap font-semibold">{row.label}</td>
+                  <td
+                    className={`py-0.5 px-0.5 whitespace-nowrap font-bold ${
+                      urgent ? 'text-amber-300' : 'text-cyan-300/90'
+                    }`}
+                  >
+                    {fmtCountdown(row.expiryMs, now)}
                   </td>
                   <td className={`py-0.5 px-0.5 text-right font-bold ${neg ? 'text-red-400' : 'text-green-400'}`}>
                     {fmtUsd(row.netGex)}

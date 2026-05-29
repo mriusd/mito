@@ -1490,7 +1490,8 @@ export const Sidebar = memo(function Sidebar() {
     if (resolver) resolver(confirmed);
   }, []);
 
-  const ensureOrderVolatilityConfirmed = useCallback(async (): Promise<boolean> => {
+  const ensureOrderVolatilityConfirmed = useCallback(async (side?: 'BUY' | 'SELL'): Promise<boolean> => {
+    if (side === 'SELL') return true;
     if (!notifyVolatilityAbove) return true;
     if (notifyMaxVolatilityPct <= 0) return true;
     const vol = getSidebarChartAnnualVolPct();
@@ -1735,7 +1736,7 @@ export const Sidebar = memo(function Sidebar() {
       afterSuccess?: () => void;
     }) => {
       const { tokenId, side, size, orderInfo, bids, asks, afterSuccess } = args;
-      if (!(await ensureOrderVolatilityConfirmed())) return;
+      if (!(await ensureOrderVolatilityConfirmed(side))) return;
       if (side === 'BUY') {
         if (!asks.length) {
           showToast('No asks in book — cannot market buy', 'error');
@@ -1796,7 +1797,7 @@ export const Sidebar = memo(function Sidebar() {
 
     if (!size) return;
 
-    if (!(await ensureOrderVolatilityConfirmed())) return;
+    if (!(await ensureOrderVolatilityConfirmed(orderSide))) return;
 
     const isMarket = orderKind === 'market';
     if (isMarket) {
@@ -1883,7 +1884,7 @@ export const Sidebar = memo(function Sidebar() {
     }
     if (!Number.isFinite(priceCents) || priceCents < 1 || priceCents > 99) return;
 
-    if (!(await ensureOrderVolatilityConfirmed())) return;
+    if (!(await ensureOrderVolatilityConfirmed(side))) return;
 
     const price = priceCents / 100;
     if (side === 'BUY') {
@@ -2028,7 +2029,7 @@ export const Sidebar = memo(function Sidebar() {
 
   const handleCustomButtonClick = async (btn: CustomSidebarButton) => {
     if (!selectedMarket) return;
-    if (!(await ensureOrderVolatilityConfirmed())) return;
+    if (btn.orders.some((o) => o.side === 'BUY') && !(await ensureOrderVolatilityConfirmed('BUY'))) return;
 
     let placed = 0;
     for (const spec of btn.orders) {
@@ -2182,7 +2183,7 @@ export const Sidebar = memo(function Sidebar() {
     const newPrice = newPriceCents / 100;
 
     if (!newPrice || newPrice <= 0 || newPrice >= 1 || !size) { setEditingOrderId(null); return; }
-    if (!(await ensureOrderVolatilityConfirmed())) {
+    if (!(await ensureOrderVolatilityConfirmed(side))) {
       setEditingOrderId(null);
       return;
     }
@@ -2363,7 +2364,7 @@ export const Sidebar = memo(function Sidebar() {
         return;
       }
       if (!Number.isFinite(priceCents) || priceCents < 1 || priceCents > 99) return;
-      if (!(await ensureOrderVolatilityConfirmed())) return;
+      if (!(await ensureOrderVolatilityConfirmed('SELL'))) return;
 
       const tidKey = positionTokenKey(tid);
       const existingSellIds = [...myOrders, ...progOrders]

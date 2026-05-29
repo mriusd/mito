@@ -266,12 +266,6 @@ function storeExchanges(panelId: string, sel: ExchangeSelection): void {
   localStorage.setItem(`polybot-ob-exchanges-${panelId}`, JSON.stringify(sel));
 }
 
-function exchangeLabel(sel: ExchangeSelection): string {
-  if (sel.binance && sel.okx) return 'BIN+OKX';
-  if (sel.binance) return 'BIN';
-  return 'OKX';
-}
-
 export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
   const [market, setMarket] = useState<BinanceObMarket>(() => readStoredMarket(panelId));
   const [exchanges, setExchanges] = useState<ExchangeSelection>(() => readStoredExchanges(panelId));
@@ -300,20 +294,19 @@ export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
     return () => window.clearInterval(id);
   }, []);
 
-  const exLabel = exchangeLabel(exchanges);
   const liveLabel = !feed.hasSnap
     ? 'Connecting…'
     : !feed.hasBook
-      ? `${exLabel} ${MARKET_LABEL[market]} · syncing`
+      ? 'syncing'
       : !feed.wsLive
       ? feed.wsAgeSec != null
-        ? `${exLabel} ${MARKET_LABEL[market]} · stream ${feed.wsAgeSec}s stale`
-        : `${exLabel} ${MARKET_LABEL[market]} · waiting stream`
+        ? `stream ${feed.wsAgeSec}s stale`
+        : 'waiting stream'
       : !feed.allSynced
-        ? `${exLabel} ${MARKET_LABEL[market]} · syncing`
+        ? 'syncing'
         : feed.bookAgeSec != null && feed.bookAgeSec > 2
-          ? `${exLabel} ${MARKET_LABEL[market]} · book ${feed.bookAgeSec}s stale`
-          : `${exLabel} ${MARKET_LABEL[market]} live`;
+          ? `book ${feed.bookAgeSec}s stale`
+          : 'live';
 
   const liveClass =
     feed.hasBook && feed.wsLive && feed.allSynced && (feed.bookAgeSec ?? 0) <= 2

@@ -1,5 +1,6 @@
 import {
   chartEnrichmentMathCents,
+  computeSpotTargetPriceDiff,
   formatChartEnrichmentUsd,
   type CandleBsEnrichment,
 } from '../lib/chartCandleEnrichment';
@@ -18,6 +19,7 @@ export function ChartObHoverEnrichmentStrip({
   if (!enrichment) return null;
   const { targetPrice, currentPrice, volatility, bsProb } = enrichment;
   const mathCents = chartEnrichmentMathCents(bsProb, chartOutcome);
+  const diff = computeSpotTargetPriceDiff(currentPrice, targetPrice);
   const hasAny =
     (targetPrice != null && targetPrice > 0) ||
     (currentPrice != null && currentPrice > 0) ||
@@ -47,6 +49,25 @@ export function ChartObHoverEnrichmentStrip({
           {formatChartEnrichmentUsd(currentPrice, priceDec)}
         </span>
       </div>
+      {diff ? (
+        <div className="mt-1.5 flex justify-end text-[10px] font-bold tabular-nums leading-none">
+          <span
+            className={`inline-flex min-h-[15px] items-center whitespace-nowrap gap-0.5 ${diff.isUp ? 'text-green-400' : 'text-red-400'}`}
+          >
+            <span>
+              {diff.isUp ? '↑' : '↓'}
+              {diff.abs.toLocaleString(undefined, {
+                minimumFractionDigits: priceDec,
+                maximumFractionDigits: priceDec,
+              })}
+            </span>
+            <span>
+              ({diff.pct >= 0 ? '+' : ''}
+              {diff.pct.toFixed(2)}%)
+            </span>
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

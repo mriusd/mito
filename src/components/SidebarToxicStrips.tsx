@@ -6,6 +6,7 @@ import {
   toxicCohortStakedNetSurplusHalves,
   toxicFlowInsiderRingGatePasses,
   toxicFlowWhaleRingPriceGatePasses,
+  toxicSwarmStakedAbsUsd,
 } from '../lib/toxicFlowStakeCohort';
 import {
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
@@ -91,13 +92,28 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
   const yesBidAskRow = useBidAskMarketRow(yesTokenId);
   useBidAskMarketRow(noTokenId);
   const totalNetHalves = useMemo(() => {
+    // Match the Swarms cohort bar exactly: sum each swarm's Σ_member|signed| into its swarm side.
+    const dataMid = (toxicFlowData?.marketId ?? '').trim();
+    const curMid = toxicFlowMarketId.trim();
+    const swarms = dataMid && curMid && dataMid === curMid ? toxicFlowData?.swarms ?? [] : [];
+    if (swarms.length > 0) {
+      let y = 0;
+      let n = 0;
+      for (const s of swarms) {
+        const abs = toxicSwarmStakedAbsUsd(s);
+        if (!Number.isFinite(abs)) continue;
+        if (s.side === 'YES') y += abs;
+        else n += abs;
+      }
+      if (y + n > 1e-9) return { sumYUsd: y, sumNUsd: n };
+    }
     const ny = yesBidAskRow?.stakedNetYesUsd;
     const nn = yesBidAskRow?.stakedNetNoUsd;
     if (typeof ny === 'number' && Number.isFinite(ny) && typeof nn === 'number' && Number.isFinite(nn) && ny + nn > 1e-9) {
       return { sumYUsd: ny, sumNUsd: nn };
     }
     return null;
-  }, [yesBidAskRow?.stakedNetYesUsd, yesBidAskRow?.stakedNetNoUsd]);
+  }, [toxicFlowData?.swarms, toxicFlowData?.marketId, toxicFlowMarketId, yesBidAskRow?.stakedNetYesUsd, yesBidAskRow?.stakedNetNoUsd]);
   const insiderQuoteGateKey = `${wsQuoteMidCents(yesTokenId) ?? 'n'}|${wsQuoteMidCents(noTokenId) ?? 'n'}`;
   const toxicTabViews = useSidebarToxicFlowTabViews(toxicFavSet, notifyWhaleAmountUsd, toxicXSet);
 

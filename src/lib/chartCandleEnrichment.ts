@@ -58,6 +58,20 @@ export function formatChartEnrichmentUsd(n: number | undefined, priceDec: number
   return `$${n.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}`;
 }
 
+export function computeSpotTargetPriceDiff(
+  currentPrice: number | undefined | null,
+  targetPrice: number | undefined | null,
+): { abs: number; pct: number; isUp: boolean } | null {
+  if (currentPrice == null || !Number.isFinite(currentPrice) || currentPrice <= 0) return null;
+  if (targetPrice == null || !Number.isFinite(targetPrice) || targetPrice <= 0) return null;
+  const signedDelta = currentPrice - targetPrice;
+  return {
+    abs: Math.abs(signedDelta),
+    pct: (signedDelta / targetPrice) * 100,
+    isUp: signedDelta >= 0,
+  };
+}
+
 export function chartEnrichmentMathCents(
   bsProb: number | undefined,
   chartOutcome: 'YES' | 'NO',

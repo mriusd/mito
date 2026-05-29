@@ -33,13 +33,37 @@ function impactPair(panel: BinanceObAssetPanel | null, pct: number) {
   const down = impactFromCell(cellForPct(panel?.down ?? [], pct));
   const upUsd = up?.usd ?? 0;
   const downUsd = down?.usd ?? 0;
-  const comparable = upUsd > 0 && downUsd > 0 && upUsd !== downUsd;
+  const total = upUsd + downUsd;
   return {
     up,
     down,
-    upSmaller: comparable && upUsd < downUsd,
-    downSmaller: comparable && downUsd < upUsd,
+    upFrac: total > 0 ? upUsd / total : 0,
+    downFrac: total > 0 ? downUsd / total : 0,
   };
+}
+
+function ImpactCell({
+  value,
+  frac,
+  tone,
+  title,
+}: {
+  value: ReturnType<typeof impactFromCell>;
+  frac: number;
+  tone: 'up' | 'down';
+  title: string;
+}) {
+  const barClass = tone === 'up' ? 'bg-green-900/55' : 'bg-red-900/55';
+  const textClass = tone === 'up' ? 'text-green-300/95' : 'text-red-300/95';
+  const widthPct = Math.max(0, Math.min(100, frac * 100));
+  return (
+    <td className={`relative overflow-hidden py-1 px-2 text-right text-[10px] tabular-nums font-bold ${textClass}`} title={title}>
+      {widthPct > 0 ? (
+        <div className={`absolute inset-y-0 right-0 ${barClass}`} style={{ width: `${widthPct}%` }} />
+      ) : null}
+      <span className="relative z-[1]">{formatSpotObImpactUsd(value)}</span>
+    </td>
+  );
 }
 
 const AssetRows = memo(function AssetRows({
@@ -72,22 +96,22 @@ const AssetRows = memo(function AssetRows({
           <Triangle className="mx-auto h-2.5 w-2.5 fill-green-400 stroke-green-400 text-green-400" strokeWidth={1.5} aria-label="Up" />
         </td>
         {SPOT_OB_MOVE_PCT_LEVELS.map((pct) => {
-          const { up: v, upSmaller } = impactPair(panel, pct);
+          const { up, upFrac } = impactPair(panel, pct);
           const pctLabel = formatSpotObMovePctLabel(pct);
           return (
-            <td
+            <ImpactCell
               key={`${asset}-up-${pct}`}
-              className={`py-1 px-2 text-right text-[10px] tabular-nums font-bold text-green-300/95${upSmaller ? ' bg-green-900/55' : ''}`}
+              value={up}
+              frac={upFrac}
+              tone="up"
               title={
                 connected
-                  ? v?.depthCapped
+                  ? up?.depthCapped
                     ? `Book depth exhausted before ~${pctLabel} up (+ = capped at ${depthLimit} levels)`
                     : `USD to lift ${mkt} ~${pctLabel}`
                   : 'Waiting for Binance book'
               }
-            >
-              {formatSpotObImpactUsd(v)}
-            </td>
+            />
           );
         })}
       </tr>
@@ -96,22 +120,22 @@ const AssetRows = memo(function AssetRows({
           <Triangle className="mx-auto h-2.5 w-2.5 rotate-180 fill-red-400 stroke-red-400 text-red-400" strokeWidth={1.5} aria-label="Down" />
         </td>
         {SPOT_OB_MOVE_PCT_LEVELS.map((pct) => {
-          const { down: v, downSmaller } = impactPair(panel, pct);
+          const { down, downFrac } = impactPair(panel, pct);
           const pctLabel = formatSpotObMovePctLabel(pct);
           return (
-            <td
+            <ImpactCell
               key={`${asset}-down-${pct}`}
-              className={`py-1 px-2 text-right text-[10px] tabular-nums font-bold text-red-300/95${downSmaller ? ' bg-red-900/55' : ''}`}
+              value={down}
+              frac={downFrac}
+              tone="down"
               title={
                 connected
-                  ? v?.depthCapped
+                  ? down?.depthCapped
                     ? `Book depth exhausted before ~${pctLabel} down (+ = capped at ${depthLimit} levels)`
                     : `USD to hit ${mkt} ~${pctLabel}`
                   : 'Waiting for Binance book'
               }
-            >
-              {formatSpotObImpactUsd(v)}
-            </td>
+            />
           );
         })}
       </tr>

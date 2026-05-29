@@ -16,13 +16,19 @@ const SYMBOL_BY_ASSET: Record<BinanceSpotObAsset, string> = {
   XRP: 'XRPUSDT',
 };
 
-const DEPTH_URL: Record<BinanceObMarket, string> = {
-  spot: 'https://api.binance.com/api/v3/depth',
-  futures: 'https://fapi.binance.com/fapi/v1/depth',
+const ASSET_BY_SYMBOL = Object.fromEntries(
+  Object.entries(SYMBOL_BY_ASSET).map(([asset, symbol]) => [symbol, asset as BinanceSpotObAsset]),
+) as Record<string, BinanceSpotObAsset>;
+
+const WS_STREAM_BASE: Record<BinanceObMarket, string> = {
+  spot: 'wss://stream.binance.com:9443/stream',
+  futures: 'wss://fstream.binance.com/stream',
 };
 
-const DEPTH_LIMIT = 500;
-const POLL_MS = 1000;
+/** Top-of-book levels from Binance partial depth WS (`@depth20@100ms`). */
+const DEPTH_LIMIT = 20;
+const EMIT_MS = 250;
+const RECONNECT_MS = 5000;
 
 export { DEPTH_LIMIT };
 
@@ -30,7 +36,23 @@ type BooksSnap = Record<BinanceSpotObAsset, BinanceSpotBook | null>;
 
 const EMPTY_BOOKS: BooksSnap = { BTC: null, ETH: null, SOL: null, XRP: null };
 
-const MARKETS: BinanceObMarket[] = ['spot', 'futures'];
+type MarketConn = {
+  ws: WebSocket | null;
+  reconnectTimer: number | null;
+  emitTimer: number | null;
+  dirty: Set<BinanceSpotObAsset>;
+  pending: Partial<Record<BinanceSpotObAsset, BinanceSpotBook>>;
+};
+
+function emptyMarketConn(): MarketConn {
+  return {
+    ws: null,
+    reconnectTimer: null,
+    emitTimer: null,
+    dirty: new Set(),
+    pending: {},
+  };
+}
 
 let booksByMarket: Record<BinanceObMarket, BooksSnap> = {
   spot: { ...EMPTY_BOOKS },
@@ -43,58 +65,133 @@ const listenersByMarket: Record<BinanceObMarket, Set<() => void>> = {
   futures: new Set(),
 };
 
-let pollTimer: number | null = null;
-let pollInFlight = false;
+const marketConns: Record<BinanceObMarket, MarketConn> = {
+  spot: emptyMarketConn(),
+  futures: emptyMarketConn(),
+};
 
 function emit(market: BinanceObMarket): void {
   digestByMarket[market] += 1;
   for (const fn of listenersByMarket[market]) fn();
 }
 
-function activeMarkets(): BinanceObMarket[] {
-  return MARKETS.filter((m) => refCountByMarket[m] > 0);
+function depthStreamName(asset: BinanceSpotObAsset): string {
+  return `${SYMBOL_BY_ASSET[asset].toLowerCase()}@depth${DEPTH_LIMIT}@100ms`;
 }
 
-function applyBook(market: BinanceObMarket, asset: BinanceSpotObAsset, payload: { bids?: unknown; asks?: unknown }): void {
-  const next = normalizeBinanceSpotBook(parseBinanceObLevels(payload.bids), parseBinanceObLevels(payload.asks));
-  if (!next) return;
-  booksByMarket = { ...booksByMarket, [market]: { ...booksByMarket[market], [asset]: next } };
+function assetFromStream(stream: string): BinanceSpotObAsset | null {
+  const symbol = stream.split('@')[0]?.toUpperCase();
+  if (!symbol) return null;
+  return ASSET_BY_SYMBOL[symbol] ?? null;
+}
+
+function parsePartialDepth(raw: unknown): BinanceSpotBook | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const msg = raw as { bids?: unknown; asks?: unknown; b?: unknown; a?: unknown };
+  return normalizeBinanceSpotBook(
+    parseBinanceObLevels(msg.bids ?? msg.b),
+    parseBinanceObLevels(msg.asks ?? msg.a),
+  );
+}
+
+function flushPending(market: BinanceObMarket): void {
+  const conn = marketConns[market];
+  conn.emitTimer = null;
+  const dirty = [...conn.dirty];
+  conn.dirty.clear();
+  if (dirty.length === 0) return;
+
+  let nextBooks = booksByMarket[market];
+  for (const asset of dirty) {
+    const book = conn.pending[asset];
+    if (!book) continue;
+    nextBooks = { ...nextBooks, [asset]: book };
+  }
+  booksByMarket = { ...booksByMarket, [market]: nextBooks };
   emit(market);
 }
 
-async function fetchDepth(market: BinanceObMarket, asset: BinanceSpotObAsset): Promise<void> {
-  const symbol = SYMBOL_BY_ASSET[asset];
-  const resp = await fetch(`${DEPTH_URL[market]}?symbol=${symbol}&limit=${DEPTH_LIMIT}`);
-  if (!resp.ok) {
-    throw new Error(`Binance ${market} depth ${symbol} HTTP ${resp.status}`);
+function schedulePublish(market: BinanceObMarket, asset: BinanceSpotObAsset, book: BinanceSpotBook): void {
+  const conn = marketConns[market];
+  conn.pending[asset] = book;
+  conn.dirty.add(asset);
+  if (conn.emitTimer != null) return;
+  conn.emitTimer = window.setTimeout(() => flushPending(market), EMIT_MS);
+}
+
+function wsUrlForMarket(market: BinanceObMarket): string {
+  const streams = BINANCE_SPOT_OB_ASSETS.map((asset) => depthStreamName(asset)).join('/');
+  return `${WS_STREAM_BASE[market]}?streams=${streams}`;
+}
+
+function connectMarket(market: BinanceObMarket): void {
+  const conn = marketConns[market];
+  if (conn.ws != null) return;
+
+  booksByMarket = { ...booksByMarket, [market]: { ...EMPTY_BOOKS } };
+  conn.pending = {};
+  conn.dirty.clear();
+  emit(market);
+
+  const ws = new WebSocket(wsUrlForMarket(market));
+  conn.ws = ws;
+
+  ws.onmessage = (event) => {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(String(event.data));
+    } catch {
+      return;
+    }
+    const wrapped = payload as { stream?: unknown; data?: unknown };
+    const raw = wrapped.data ?? payload;
+
+    let asset: BinanceSpotObAsset | null = null;
+    if (typeof wrapped.stream === 'string') {
+      asset = assetFromStream(wrapped.stream);
+    }
+    if (!asset) {
+      const symbol = (raw as { s?: unknown }).s;
+      if (typeof symbol === 'string') asset = ASSET_BY_SYMBOL[symbol] ?? null;
+    }
+    if (!asset) return;
+
+    const book = parsePartialDepth(raw);
+    if (!book) return;
+    schedulePublish(market, asset, book);
+  };
+
+  ws.onerror = () => {
+    ws.close();
+  };
+
+  ws.onclose = () => {
+    conn.ws = null;
+    if (refCountByMarket[market] <= 0) return;
+    if (conn.reconnectTimer != null) return;
+    conn.reconnectTimer = window.setTimeout(() => {
+      conn.reconnectTimer = null;
+      if (refCountByMarket[market] > 0) connectMarket(market);
+    }, RECONNECT_MS);
+  };
+}
+
+function disconnectMarket(market: BinanceObMarket): void {
+  const conn = marketConns[market];
+  if (conn.reconnectTimer != null) {
+    window.clearTimeout(conn.reconnectTimer);
+    conn.reconnectTimer = null;
   }
-  const data = (await resp.json()) as { bids?: unknown; asks?: unknown };
-  applyBook(market, asset, data);
-}
-
-async function pollAll(): Promise<void> {
-  const markets = activeMarkets();
-  if (markets.length === 0 || pollInFlight) return;
-  pollInFlight = true;
-  try {
-    await Promise.all(markets.flatMap((market) => BINANCE_SPOT_OB_ASSETS.map((asset) => fetchDepth(market, asset))));
-  } finally {
-    pollInFlight = false;
+  if (conn.emitTimer != null) {
+    window.clearTimeout(conn.emitTimer);
+    conn.emitTimer = null;
   }
-}
-
-function connect(): void {
-  if (pollTimer != null) return;
-  void pollAll();
-  pollTimer = window.setInterval(() => {
-    void pollAll();
-  }, POLL_MS);
-}
-
-function disconnect(): void {
-  if (pollTimer != null) {
-    window.clearInterval(pollTimer);
-    pollTimer = null;
+  conn.dirty.clear();
+  conn.pending = {};
+  if (conn.ws != null) {
+    conn.ws.onclose = null;
+    conn.ws.close();
+    conn.ws = null;
   }
 }
 
@@ -126,15 +223,16 @@ const GET_BOOKS_BY_MARKET: Record<BinanceObMarket, () => BooksSnap> = {
 
 export function subscribeBinanceObOrderbooks(market: BinanceObMarket, onStoreChange: () => void): () => void {
   listenersByMarket[market].add(onStoreChange);
+  const prev = refCountByMarket[market];
   refCountByMarket[market] += 1;
-  if (refCountByMarket.spot + refCountByMarket.futures === 1) connect();
+  if (prev === 0) connectMarket(market);
   return () => {
     listenersByMarket[market].delete(onStoreChange);
     refCountByMarket[market] -= 1;
-    if (refCountByMarket.spot + refCountByMarket.futures === 0) {
-      disconnect();
-      booksByMarket = { spot: { ...EMPTY_BOOKS }, futures: { ...EMPTY_BOOKS } };
-      digestByMarket = { spot: digestByMarket.spot + 1, futures: digestByMarket.futures + 1 };
+    if (refCountByMarket[market] === 0) {
+      disconnectMarket(market);
+      booksByMarket = { ...booksByMarket, [market]: { ...EMPTY_BOOKS } };
+      digestByMarket[market] += 1;
     }
   };
 }

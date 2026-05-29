@@ -154,6 +154,9 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
     setBook({ bids: next.bids, asks: next.asks });
     setBidUsdTotal(totals.bidUsdTotal);
     setAskUsdTotal(totals.askUsdTotal);
+    if (next.bids.length > 0 || next.asks.length > 0) {
+      setLoading(false);
+    }
   }, []);
 
   const cleanup = useCallback(() => {

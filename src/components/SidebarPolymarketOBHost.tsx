@@ -95,7 +95,6 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
 
   const activeObLoading = orderOutcome === 'YES' ? yesObLoading : noObLoading;
   const polymarketLiveTrades = orderOutcome === 'YES' ? yesTrades : noTrades;
-  const obLoading = activeObLoading || yesObLoading || noObLoading;
 
   const obStaleBookRef = useRef<{ bids: OBLevel[]; asks: OBLevel[] }>({ bids: [], asks: [] });
   const yesUsdStaleRef = useRef({ bidUsdTotal: 0 });
@@ -187,6 +186,8 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
       noBidUsdTotal,
       noAskUsdTotal,
     ]);
+
+  const obLoading = activeObLoading && viewBids.length === 0 && viewAsks.length === 0;
 
   const prevTopSig = useRef<string>('');
 

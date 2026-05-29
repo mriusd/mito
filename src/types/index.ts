@@ -291,6 +291,7 @@ export type PanelType =
   | 'updown-hud'
   | 'chat'
   | 'spot-orderbook'
+  | 'gex'
   | 'wallet-history';
 
 export interface PanelConfig {

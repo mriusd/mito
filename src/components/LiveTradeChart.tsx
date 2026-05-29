@@ -15,6 +15,7 @@ import {
 import type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 import { parseCandleOb, type CandleObSnapshot } from '../lib/candleObSnapshot';
 import { parseCexObSnapshot, type CexObCandleSnapshot } from '../lib/cexObSnapshot';
+import { parseGexAssetSnapshot, type GexAssetSnapshot } from '../lib/deribitGexFeed';
 import { prepareCandleObDisplay } from '../lib/candleObDisplay';
 import type {
   ChartOrderReplaceParams,
@@ -35,6 +36,7 @@ import {
 import { ChartObHoverEnrichmentStrip } from './ChartObHoverEnrichmentStrip';
 import { ChartObHoverOhlcvStrip, type ChartObHoverOhlcv } from './ChartObHoverOhlcvStrip';
 import { ChartCexObHoverGrid } from './ChartCexObHoverGrid';
+import { ChartGexHoverGrid } from './ChartGexHoverGrid';
 
 export type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 
@@ -160,6 +162,7 @@ interface Candle {
   v: number;
   ob?: CandleObSnapshot;
   cexOb?: CexObCandleSnapshot;
+  gex?: GexAssetSnapshot;
   enrichment?: CandleBsEnrichment;
 }
 
@@ -339,6 +342,7 @@ export function LiveTradeChart({
     clientY: number;
     ob?: CandleObSnapshot;
     cexOb?: CexObCandleSnapshot;
+    gex?: GexAssetSnapshot;
     ohlcv: ChartObHoverOhlcv;
     enrichment?: CandleBsEnrichment;
   } | null>(null);
@@ -402,6 +406,7 @@ export function LiveTradeChart({
         const prev = map.get(openTime);
         const ob = parseCandleOb(k[12]);
         const cexOb = parseCexObSnapshot(k[17]) ?? prev?.cexOb;
+        const gex = parseGexAssetSnapshot(k[18]) ?? prev?.gex;
         const enrichment = mergeCandleBsEnrichment(parseHttpKlineEnrichment(k), prev?.enrichment);
         map.set(openTime, {
           time: openTime,
@@ -412,6 +417,7 @@ export function LiveTradeChart({
           v,
           ...(ob ? { ob } : prev?.ob ? { ob: prev.ob } : {}),
           ...(cexOb ? { cexOb } : {}),
+          ...(gex ? { gex } : {}),
           ...(enrichment ? { enrichment } : {}),
         });
       }
@@ -462,6 +468,7 @@ export function LiveTradeChart({
       const prev = candleMapRef.current.get(openTime);
       const ob = parseCandleOb(k.ob) ?? prev?.ob;
       const cexOb = parseCexObSnapshot(k.cex_ob) ?? prev?.cexOb;
+      const gex = parseGexAssetSnapshot(k.gex) ?? prev?.gex;
       const enrichment = mergeCandleBsEnrichment(parseCandleBsEnrichment(k), prev?.enrichment);
       candleMapRef.current.set(openTime, {
         time: openTime,
@@ -472,6 +479,7 @@ export function LiveTradeChart({
         v,
         ...(ob ? { ob } : {}),
         ...(cexOb ? { cexOb } : {}),
+        ...(gex ? { gex } : {}),
         ...(enrichment ? { enrichment } : {}),
       });
       pruneCandleMap(candleMapRef.current, st, et, candleMs * 2);
@@ -1190,7 +1198,8 @@ export function LiveTradeChart({
     const hasPolyOb =
       nearest?.ob != null && (nearest.ob.bids.length > 0 || nearest.ob.asks.length > 0);
     const hasCexOb = nearest?.cexOb != null;
-    if (!hasPolyOb && !hasCexOb) {
+    const hasGex = nearest?.gex != null;
+    if (!hasPolyOb && !hasCexOb && !hasGex) {
       setHoverOb(null);
       return;
     }
@@ -1199,6 +1208,7 @@ export function LiveTradeChart({
       clientY: e.clientY,
       ...(hasPolyOb ? { ob: nearest!.ob } : {}),
       ...(hasCexOb ? { cexOb: nearest!.cexOb } : {}),
+      ...(hasGex ? { gex: nearest!.gex } : {}),
       ohlcv: { o: nearest!.o, h: nearest!.h, l: nearest!.l, c: nearest!.c, v: nearest!.v },
       enrichment: nearest!.enrichment,
     });
@@ -1480,6 +1490,7 @@ export function LiveTradeChart({
                         />
                       ) : null}
                       {hoverOb.cexOb ? <ChartCexObHoverGrid snapshot={hoverOb.cexOb} /> : null}
+                      {hoverOb.gex ? <ChartGexHoverGrid gex={hoverOb.gex} /> : null}
                     </>
                   );
                 })()}

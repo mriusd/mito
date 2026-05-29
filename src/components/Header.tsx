@@ -63,6 +63,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'price-forecast', title: 'Price Forecast' },
   { type: 'binance-chart', title: 'Asset Candle Chart', multi: true },
   { type: 'spot-orderbook', title: 'Orderbook' },
+  { type: 'gex', title: 'Dealer GEX' },
   { type: 'chat', title: 'Chat' },
 ];
 

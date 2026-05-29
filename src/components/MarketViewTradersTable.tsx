@@ -18,8 +18,9 @@ export const MarketViewTradersTable = memo(function MarketViewTradersTable({
   onOpenWallet,
   offset,
   total,
-  pnlOrder,
-  onPnlOrderToggle,
+  sortCol,
+  sortOrder,
+  onSortClick,
   onFirstPage,
   onPrevPage,
   onNextPage,
@@ -33,8 +34,9 @@ export const MarketViewTradersTable = memo(function MarketViewTradersTable({
   onOpenWallet: (wallet: string) => void;
   offset: number;
   total: number;
-  pnlOrder: 'asc' | 'desc';
-  onPnlOrderToggle: () => void;
+  sortCol: 'pnl' | 'staked';
+  sortOrder: 'asc' | 'desc';
+  onSortClick: (col: 'pnl' | 'staked') => void;
   onFirstPage: () => void;
   onPrevPage: () => void;
   onNextPage: () => void;
@@ -120,8 +122,9 @@ export const MarketViewTradersTable = memo(function MarketViewTradersTable({
           hideStakeBar
           showRank
           rankStart={offset}
-          pnlSortOrder={pnlOrder}
-          onPnlSortClick={onPnlOrderToggle}
+          marketViewSortCol={sortCol}
+          marketViewSortOrder={sortOrder}
+          onMarketViewSortClick={onSortClick}
           selectedWallet={selectedWallet}
           onRowClick={onRowClick}
           onOpenWallet={onOpenWallet}

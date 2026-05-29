@@ -750,7 +750,7 @@ export async function fetchMarketWalletPositions(params: {
   market_id: string;
   limit?: number;
   offset?: number;
-  sort?: 'pnl';
+  sort?: 'pnl' | 'staked';
   order?: 'asc' | 'desc';
 }): Promise<{
   positions: WalletPosition[];

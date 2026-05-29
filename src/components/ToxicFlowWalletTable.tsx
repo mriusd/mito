@@ -179,6 +179,16 @@ const TOXIC_WALLET_ROW_PX = 23;
 const TOXIC_VIRTUAL_OVERSCAN = 12;
 
 type ToxicFlowTableVariant = 'toxicFlow' | 'marketView' | 'swarms';
+type MarketViewSortCol = 'pnl' | 'staked';
+
+function marketViewSortSuffix(
+  col: MarketViewSortCol,
+  activeCol: MarketViewSortCol | undefined,
+  order: 'asc' | 'desc' | undefined,
+): string {
+  if (activeCol !== col || !order) return '';
+  return order === 'desc' ? ' ▼' : ' ▲';
+}
 
 function toxicTableColCount(showRank: boolean, variant: ToxicFlowTableVariant): number {
   const favCol = variant === 'swarms' ? 0 : 1;
@@ -1167,8 +1177,9 @@ function WalletTableInner({
   showRank = true,
   variant = 'toxicFlow',
   rankStart = 0,
-  pnlSortOrder,
-  onPnlSortClick,
+  marketViewSortCol,
+  marketViewSortOrder,
+  onMarketViewSortClick,
   swarmsChart,
   marketActiveUnixForChart = 0,
   marketDurationSecForChart = 0,
@@ -1189,8 +1200,9 @@ function WalletTableInner({
   showRank?: boolean;
   variant?: ToxicFlowTableVariant;
   rankStart?: number;
-  pnlSortOrder?: 'asc' | 'desc';
-  onPnlSortClick?: () => void;
+  marketViewSortCol?: MarketViewSortCol;
+  marketViewSortOrder?: 'asc' | 'desc';
+  onMarketViewSortClick?: (col: MarketViewSortCol) => void;
   swarmsChart?: readonly ToxicFlowSwarm[];
   marketActiveUnixForChart?: number;
   marketDurationSecForChart?: number;
@@ -1409,14 +1421,15 @@ function WalletTableInner({
             <th
               className={`align-middle py-1 px-1 ${TOXIC_TABLE_STAKED_COL_CLS} ${
                 variant === 'marketView' ? 'font-semibold text-red-300' : 'text-gray-300'
-              }`}
+              }${variant === 'marketView' && onMarketViewSortClick ? ' cursor-pointer select-none hover:text-gray-100' : ''}`}
               title={
                 variant === 'marketView'
                   ? 'usdc_in'
                   : 'inv_yes > inv_no → (inv_yes−inv_no)×price_yes [Y]; else (inv_no−inv_yes)×price_no [N]; green = YES / red = NO'
               }
+              onClick={variant === 'marketView' && onMarketViewSortClick ? () => onMarketViewSortClick('staked') : undefined}
             >
-              Staked
+              Staked{variant === 'marketView' ? marketViewSortSuffix('staked', marketViewSortCol, marketViewSortOrder) : ''}
             </th>
             {variant !== 'marketView' && variant !== 'swarms' ? (
               <th
@@ -1432,11 +1445,11 @@ function WalletTableInner({
                   Payout
                 </th>
                 <th
-                  className={`align-middle py-1 text-right px-1 whitespace-nowrap bg-gray-950${onPnlSortClick ? ' cursor-pointer select-none hover:text-gray-300' : ''}`}
+                  className={`align-middle py-1 text-right px-1 whitespace-nowrap bg-gray-950${onMarketViewSortClick ? ' cursor-pointer select-none hover:text-gray-300' : ''}`}
                   title="usdc_out − usdc_in − fee"
-                  onClick={onPnlSortClick}
+                  onClick={onMarketViewSortClick ? () => onMarketViewSortClick('pnl') : undefined}
                 >
-                  PnL{pnlSortOrder ? (pnlSortOrder === 'desc' ? ' ▼' : ' ▲') : ''}
+                  PnL{marketViewSortSuffix('pnl', marketViewSortCol, marketViewSortOrder)}
                 </th>
                 <th className="align-middle py-1 text-right px-1 whitespace-nowrap bg-gray-950" title="(usdc_out/(usdc_in+fee)) − 1">
                   ROI
@@ -1542,8 +1555,9 @@ const WalletTable = memo(WalletTableInner, (a, b) => {
     a.showRank !== b.showRank ||
     a.variant !== b.variant ||
     a.rankStart !== b.rankStart ||
-    a.pnlSortOrder !== b.pnlSortOrder ||
-    a.onPnlSortClick !== b.onPnlSortClick ||
+    a.marketViewSortCol !== b.marketViewSortCol ||
+    a.marketViewSortOrder !== b.marketViewSortOrder ||
+    a.onMarketViewSortClick !== b.onMarketViewSortClick ||
     a.marketActiveUnixForChart !== b.marketActiveUnixForChart ||
     a.marketDurationSecForChart !== b.marketDurationSecForChart ||
     a.swarmHighlightSlot !== b.swarmHighlightSlot ||
@@ -1586,8 +1600,9 @@ export type ToxicFlowWalletTableProps = {
   showRank?: boolean;
   variant?: ToxicFlowTableVariant;
   rankStart?: number;
-  pnlSortOrder?: 'asc' | 'desc';
-  onPnlSortClick?: () => void;
+  marketViewSortCol?: MarketViewSortCol;
+  marketViewSortOrder?: 'asc' | 'desc';
+  onMarketViewSortClick?: (col: MarketViewSortCol) => void;
   swarmsChart?: readonly ToxicFlowSwarm[];
   marketActiveUnixForChart?: number;
   marketDurationSecForChart?: number;

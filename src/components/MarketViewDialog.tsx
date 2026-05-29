@@ -14,6 +14,46 @@ const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 const TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
 const MARKETS_PAGE_SIZE = 100;
 const TRADERS_PAGE_SIZE = 100;
+const MARKET_VIEW_TRADERS_SORT_COL_KEY = 'polybot-market-view-traders-sort-col';
+const MARKET_VIEW_TRADERS_SORT_ORDER_KEY = 'polybot-market-view-traders-pnl-order';
+
+export type MarketViewTradersSortCol = 'pnl' | 'staked';
+
+function readMarketViewTradersSortCol(): MarketViewTradersSortCol {
+  try {
+    const v = localStorage.getItem(MARKET_VIEW_TRADERS_SORT_COL_KEY);
+    if (v === 'pnl' || v === 'staked') return v;
+  } catch {
+    /* */
+  }
+  return 'pnl';
+}
+
+function persistMarketViewTradersSortCol(col: MarketViewTradersSortCol): void {
+  try {
+    localStorage.setItem(MARKET_VIEW_TRADERS_SORT_COL_KEY, col);
+  } catch {
+    /* */
+  }
+}
+
+function readMarketViewTradersSortOrder(): 'asc' | 'desc' {
+  try {
+    const v = localStorage.getItem(MARKET_VIEW_TRADERS_SORT_ORDER_KEY);
+    if (v === 'asc' || v === 'desc') return v;
+  } catch {
+    /* */
+  }
+  return 'desc';
+}
+
+function persistMarketViewTradersSortOrder(order: 'asc' | 'desc'): void {
+  try {
+    localStorage.setItem(MARKET_VIEW_TRADERS_SORT_ORDER_KEY, order);
+  } catch {
+    /* */
+  }
+}
 
 type Asset = (typeof ASSETS)[number];
 type Timeframe = (typeof TIMEFRAMES)[number];
@@ -66,7 +106,8 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
   const [traders, setTraders] = useState<Awaited<ReturnType<typeof fetchMarketWalletPositions>>['positions']>([]);
   const [tradersOffset, setTradersOffset] = useState(0);
   const [tradersTotal, setTradersTotal] = useState(-1);
-  const [tradersPnlOrder, setTradersPnlOrder] = useState<'asc' | 'desc'>('desc');
+  const [tradersSortCol, setTradersSortCol] = useState<MarketViewTradersSortCol>(readMarketViewTradersSortCol);
+  const [tradersSortOrder, setTradersSortOrder] = useState<'asc' | 'desc'>(readMarketViewTradersSortOrder);
   const [loadingTraders, setLoadingTraders] = useState(false);
   const [tradersError, setTradersError] = useState('');
   const [loadingTrades, setLoadingTrades] = useState(false);
@@ -146,7 +187,6 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
       setTradersError('');
       setTradersOffset(0);
       setTradersTotal(-1);
-      setTradersPnlOrder('desc');
       setLoadingTraders(false);
       setLoadedMarkets([]);
       setMarketsOffset(0);
@@ -222,7 +262,6 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
       setTradersError('');
       setTradersOffset(0);
       setTradersTotal(-1);
-      setTradersPnlOrder('desc');
       setLoadingTraders(false);
       return;
     }
@@ -233,8 +272,8 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
       market_id: selectedMarketId,
       limit: TRADERS_PAGE_SIZE,
       offset: tradersOffset,
-      sort: 'pnl',
-      order: tradersPnlOrder,
+      sort: tradersSortCol,
+      order: tradersSortOrder,
     })
       .then((data) => {
         if (cancelled) return;
@@ -253,7 +292,7 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
     return () => {
       cancelled = true;
     };
-  }, [open, selectedMarketId, tradersOffset, tradersPnlOrder]);
+  }, [open, selectedMarketId, tradersOffset, tradersSortCol, tradersSortOrder]);
 
   const onSelectTraderRow = useCallback((wallet: string) => {
     const addr = wallet.trim();
@@ -277,12 +316,31 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
     setLoadingTraders(true);
   }, []);
 
+  const onTradersSortClick = useCallback(
+    (col: MarketViewTradersSortCol) => {
+      beginTradersLoad();
+      setTradersOffset(0);
+      if (tradersSortCol === col) {
+        setTradersSortOrder((o) => {
+          const next = o === 'desc' ? 'asc' : 'desc';
+          persistMarketViewTradersSortOrder(next);
+          return next;
+        });
+        return;
+      }
+      setTradersSortCol(col);
+      persistMarketViewTradersSortCol(col);
+      setTradersSortOrder('desc');
+      persistMarketViewTradersSortOrder('desc');
+    },
+    [beginTradersLoad, tradersSortCol],
+  );
+
   const onSelectMarket = useCallback(
     (id: string) => {
       setSelectedMarketId(id);
       setTradersTotal(-1);
       setTradersOffset(0);
-      setTradersPnlOrder('desc');
       setSelectedWallet(null);
       beginTradersLoad();
     },
@@ -408,12 +466,9 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
                 onOpenWallet={onOpenTraderWallet}
                 offset={tradersOffset}
                 total={tradersTotal}
-                pnlOrder={tradersPnlOrder}
-                onPnlOrderToggle={() => {
-                  beginTradersLoad();
-                  setTradersOffset(0);
-                  setTradersPnlOrder((o) => (o === 'desc' ? 'asc' : 'desc'));
-                }}
+                sortCol={tradersSortCol}
+                sortOrder={tradersSortOrder}
+                onSortClick={onTradersSortClick}
                 onFirstPage={() => {
                   if (tradersOffset === 0) return;
                   beginTradersLoad();

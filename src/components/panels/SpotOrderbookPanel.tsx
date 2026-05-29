@@ -1,19 +1,14 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Triangle } from 'lucide-react';
-import {
-  SPOT_OB_MOVE_PCT_LEVELS,
-  binanceSpotBookMid,
-  formatSpotObImpactUsd,
-  formatSpotObMovePctLabel,
-  usdToMoveBinanceSpotDown,
-  usdToMoveBinanceSpotUp,
-  type BinanceSpotBook,
-} from '../../lib/binanceSpotObImpact';
+import { formatSpotObImpactUsd, formatSpotObMovePctLabel } from '../../lib/binanceSpotObImpact';
 import {
   BINANCE_SPOT_OB_ASSETS,
+  SPOT_OB_MOVE_PCT_LEVELS,
   binanceObDepthLimit,
   useBinanceObFeedStatus,
-  useBinanceObOrderbooks,
+  useBinanceObPanels,
+  type BinanceObAssetPanel,
+  type BinanceObImpactCell,
   type BinanceObMarket,
   type BinanceSpotObAsset,
 } from '../../lib/binanceSpotOrderbookFeed';
@@ -24,27 +19,28 @@ const MARKET_LABEL: Record<BinanceObMarket, string> = {
   futures: 'futures',
 };
 
+function cellForPct(cells: BinanceObImpactCell[], pct: number): BinanceObImpactCell | null {
+  return cells.find((c) => c.pct === pct) ?? null;
+}
+
+function impactFromCell(cell: BinanceObImpactCell | null) {
+  if (!cell) return null;
+  return { usd: cell.usd, depthCapped: cell.capped };
+}
+
 const AssetRows = memo(function AssetRows({
   asset,
-  book,
+  panel,
   connected,
   market,
 }: {
   asset: BinanceSpotObAsset;
-  book: BinanceSpotBook | null;
+  panel: BinanceObAssetPanel | null;
   connected: boolean;
   market: BinanceObMarket;
 }) {
-  const upCells = useMemo(
-    () => SPOT_OB_MOVE_PCT_LEVELS.map((move) => usdToMoveBinanceSpotUp(book, move)),
-    [book],
-  );
-  const downCells = useMemo(
-    () => SPOT_OB_MOVE_PCT_LEVELS.map((move) => usdToMoveBinanceSpotDown(book, move)),
-    [book],
-  );
   const mkt = MARKET_LABEL[market];
-  const mid = binanceSpotBookMid(book);
+  const mid = panel?.mid ?? null;
   const depthLimit = binanceObDepthLimit(market);
 
   return (
@@ -61,8 +57,8 @@ const AssetRows = memo(function AssetRows({
         <td className="py-1 px-2 text-center whitespace-nowrap border-r border-gray-800/60">
           <Triangle className="mx-auto h-2.5 w-2.5 fill-green-400 stroke-green-400 text-green-400" strokeWidth={1.5} aria-label="Up" />
         </td>
-        {upCells.map((v, i) => {
-          const pct = SPOT_OB_MOVE_PCT_LEVELS[i]!;
+        {SPOT_OB_MOVE_PCT_LEVELS.map((pct) => {
+          const v = impactFromCell(cellForPct(panel?.up ?? [], pct));
           const pctLabel = formatSpotObMovePctLabel(pct);
           return (
             <td
@@ -85,8 +81,8 @@ const AssetRows = memo(function AssetRows({
         <td className="py-1 px-2 text-center whitespace-nowrap border-r border-gray-800/60">
           <Triangle className="mx-auto h-2.5 w-2.5 rotate-180 fill-red-400 stroke-red-400 text-red-400" strokeWidth={1.5} aria-label="Down" />
         </td>
-        {downCells.map((v, i) => {
-          const pct = SPOT_OB_MOVE_PCT_LEVELS[i]!;
+        {SPOT_OB_MOVE_PCT_LEVELS.map((pct) => {
+          const v = impactFromCell(cellForPct(panel?.down ?? [], pct));
           const pctLabel = formatSpotObMovePctLabel(pct);
           return (
             <td
@@ -116,7 +112,7 @@ function readStoredMarket(panelId: string): BinanceObMarket {
 
 export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
   const [market, setMarket] = useState<BinanceObMarket>(() => readStoredMarket(panelId));
-  const books = useBinanceObOrderbooks(market);
+  const panels = useBinanceObPanels(market);
   const feed = useBinanceObFeedStatus(market);
   const [, ageTick] = useState(0);
 
@@ -194,7 +190,7 @@ export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
               <AssetRows
                 key={asset}
                 asset={asset}
-                book={books[asset]}
+                panel={panels[asset]}
                 connected={feed.hasBook && feed.wsLive && feed.allSynced}
                 market={market}
               />

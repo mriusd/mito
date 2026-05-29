@@ -6,7 +6,7 @@ export type BinanceSpotBook = {
   updatedAt: number;
 };
 
-export const SPOT_OB_MOVE_PCT_LEVELS = [0.025, 0.05, 0.075, 1] as const;
+export const SPOT_OB_MOVE_PCT_LEVELS = [0.025, 0.05, 0.075, 0.1] as const;
 
 export type SpotObMovePct = (typeof SPOT_OB_MOVE_PCT_LEVELS)[number];
 

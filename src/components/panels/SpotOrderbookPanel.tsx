@@ -126,6 +126,10 @@ function impactPair(panel: BinanceObAssetPanel | null, pct: number) {
   };
 }
 
+const COL_ASSET = 'w-[72px]';
+const COL_UD = 'w-[26px]';
+const COL_IMPACT = 'w-[58px]';
+
 function ImpactCell({
   value,
   frac,
@@ -141,7 +145,10 @@ function ImpactCell({
   const textClass = tone === 'up' ? 'text-green-300/95' : 'text-red-300/95';
   const widthPct = Math.max(0, Math.min(100, frac * 100));
   return (
-    <td className={`relative overflow-hidden py-1 px-2 text-right text-[10px] tabular-nums font-bold ${textClass}`} title={title}>
+    <td
+      className={`relative overflow-hidden py-1 px-1.5 text-right text-[10px] tabular-nums font-bold whitespace-nowrap ${COL_IMPACT} ${textClass}`}
+      title={title}
+    >
       {widthPct > 0 ? (
         <div className={`absolute inset-y-0 right-0 ${barClass}`} style={{ width: `${widthPct}%` }} />
       ) : null}
@@ -173,15 +180,15 @@ const AssetRows = memo(function AssetRows({
   return (
     <>
       <tr className="border-b border-gray-800/80">
-        <td rowSpan={2} className="py-1.5 px-2 align-middle border-r border-gray-800">
-          <div className="flex flex-col gap-0.5">
+        <td rowSpan={2} className={`py-1.5 px-2 align-middle border-r border-gray-800 ${COL_ASSET}`}>
+          <div className="flex flex-col gap-0.5 min-w-0">
             <span className="text-[11px] font-bold text-white">{asset}</span>
-            <span className="text-[9px] tabular-nums font-medium text-gray-400">
+            <span className="text-[9px] tabular-nums font-medium text-gray-400 truncate">
               {mid != null ? formatPrice(mid, asset) : '—'}
             </span>
           </div>
         </td>
-        <td className="py-1 px-2 text-center whitespace-nowrap border-r border-gray-800/60">
+        <td className={`py-1 px-1 text-center whitespace-nowrap border-r border-gray-800/60 ${COL_UD}`}>
           <Triangle className="mx-auto h-2.5 w-2.5 fill-green-400 stroke-green-400 text-green-400" strokeWidth={1.5} aria-label="Up" />
         </td>
         {SPOT_OB_MOVE_PCT_LEVELS.map((pct) => {
@@ -205,7 +212,7 @@ const AssetRows = memo(function AssetRows({
         })}
       </tr>
       <tr className="border-b border-gray-800">
-        <td className="py-1 px-2 text-center whitespace-nowrap border-r border-gray-800/60">
+        <td className={`py-1 px-1 text-center whitespace-nowrap border-r border-gray-800/60 ${COL_UD}`}>
           <Triangle className="mx-auto h-2.5 w-2.5 rotate-180 fill-red-400 stroke-red-400 text-red-400" strokeWidth={1.5} aria-label="Down" />
         </td>
         {SPOT_OB_MOVE_PCT_LEVELS.map((pct) => {
@@ -368,13 +375,20 @@ export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full border-collapse text-left">
+        <table className="w-full table-fixed border-collapse text-left">
+          <colgroup>
+            <col className={COL_ASSET} />
+            <col className={COL_UD} />
+            {SPOT_OB_MOVE_PCT_LEVELS.map((n) => (
+              <col key={n} className={COL_IMPACT} />
+            ))}
+          </colgroup>
           <thead className="sticky top-0 z-[1] bg-gray-900">
             <tr className="text-[9px] font-medium text-gray-500 border-b border-gray-700">
-              <th className="py-1 px-2 font-medium">Asset</th>
-              <th className="py-1 px-2 font-medium">U/D</th>
+              <th className={`py-1 px-2 font-medium ${COL_ASSET}`}>Asset</th>
+              <th className={`py-1 px-1 font-medium text-center ${COL_UD}`}>U/D</th>
               {SPOT_OB_MOVE_PCT_LEVELS.map((n) => (
-                <th key={n} className="py-1 px-2 text-right font-medium tabular-nums">
+                <th key={n} className={`py-1 px-1.5 text-right font-medium tabular-nums ${COL_IMPACT}`}>
                   {formatSpotObMovePctLabel(n)}
                 </th>
               ))}

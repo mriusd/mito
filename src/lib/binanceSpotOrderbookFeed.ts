@@ -22,9 +22,19 @@ const ASSET_BY_SYMBOL = Object.fromEntries(
   Object.entries(SYMBOL_BY_ASSET).map(([asset, symbol]) => [symbol, asset as BinanceSpotObAsset]),
 ) as Record<string, BinanceSpotObAsset>;
 
+function futuresDepthUrl(): string {
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return '/api/binance-proxy/futures/v1/depth';
+    }
+  }
+  return `${API_BASE}/api/binance-proxy/futures/v1/depth`;
+}
+
 const REST_DEPTH_URL: Record<BinanceObMarket, string> = {
   spot: 'https://api.binance.com/api/v3/depth',
-  futures: `${API_BASE}/api/binance-proxy/futures/v1/depth`,
+  futures: futuresDepthUrl(),
 };
 
 const WS_STREAM_BASE: Record<BinanceObMarket, string> = {

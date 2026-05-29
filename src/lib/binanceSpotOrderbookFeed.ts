@@ -8,14 +8,17 @@ import {
 export const BINANCE_SPOT_OB_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 export type BinanceSpotObAsset = (typeof BINANCE_SPOT_OB_ASSETS)[number];
 
-const BINANCE_SPOT_WS = 'wss://stream.binance.com:9443/stream?streams=btcusdt@depth20@100ms/ethusdt@depth20@100ms/solusdt@depth20@100ms/xrpusdt@depth20@100ms';
-
-const ASSET_BY_STREAM: Record<string, BinanceSpotObAsset> = {
-  btcusdt: 'BTC',
-  ethusdt: 'ETH',
-  solusdt: 'SOL',
-  xrpusdt: 'XRP',
+const SYMBOL_BY_ASSET: Record<BinanceSpotObAsset, string> = {
+  BTC: 'BTCUSDT',
+  ETH: 'ETHUSDT',
+  SOL: 'SOLUSDT',
+  XRP: 'XRPUSDT',
 };
+
+const DEPTH_LIMIT = 500;
+const POLL_MS = 1000;
+
+export { DEPTH_LIMIT };
 
 type BooksSnap = Record<BinanceSpotObAsset, BinanceSpotBook | null>;
 
@@ -23,9 +26,9 @@ const EMPTY_BOOKS: BooksSnap = { BTC: null, ETH: null, SOL: null, XRP: null };
 
 let books: BooksSnap = { ...EMPTY_BOOKS };
 let digest = 0;
-let ws: WebSocket | null = null;
 let refCount = 0;
-let reconnectTimer: number | null = null;
+let pollTimer: number | null = null;
+let pollInFlight = false;
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -33,53 +36,46 @@ function emit(): void {
   for (const fn of listeners) fn();
 }
 
-function parseStreamAsset(stream: string): BinanceSpotObAsset | null {
-  const key = stream.split('@')[0]?.toLowerCase() ?? '';
-  return ASSET_BY_STREAM[key] ?? null;
-}
-
-function applyDepthMessage(asset: BinanceSpotObAsset, payload: { bids?: unknown; asks?: unknown }): void {
+function applyBook(asset: BinanceSpotObAsset, payload: { bids?: unknown; asks?: unknown }): void {
   const next = normalizeBinanceSpotBook(parseBinanceObLevels(payload.bids), parseBinanceObLevels(payload.asks));
   if (!next) return;
   books = { ...books, [asset]: next };
   emit();
 }
 
+async function fetchDepth(asset: BinanceSpotObAsset): Promise<void> {
+  const symbol = SYMBOL_BY_ASSET[asset];
+  const resp = await fetch(`https://api.binance.com/api/v3/depth?symbol=${symbol}&limit=${DEPTH_LIMIT}`);
+  if (!resp.ok) {
+    throw new Error(`Binance depth ${symbol} HTTP ${resp.status}`);
+  }
+  const data = (await resp.json()) as { bids?: unknown; asks?: unknown };
+  applyBook(asset, data);
+}
+
+async function pollAll(): Promise<void> {
+  if (pollInFlight) return;
+  pollInFlight = true;
+  try {
+    await Promise.all(BINANCE_SPOT_OB_ASSETS.map((asset) => fetchDepth(asset)));
+  } finally {
+    pollInFlight = false;
+  }
+}
+
 function connect(): void {
-  if (ws) return;
-  ws = new WebSocket(BINANCE_SPOT_WS);
-  ws.onmessage = (ev) => {
-    try {
-      const msg = JSON.parse(String(ev.data)) as { stream?: string; data?: { bids?: unknown; asks?: unknown } };
-      const stream = String(msg.stream ?? '');
-      const asset = parseStreamAsset(stream);
-      if (!asset || !msg.data) return;
-      applyDepthMessage(asset, msg.data);
-    } catch {
-      /* ignore malformed frame */
-    }
-  };
-  ws.onclose = () => {
-    ws = null;
-    if (refCount > 0) {
-      reconnectTimer = window.setTimeout(() => {
-        reconnectTimer = null;
-        connect();
-      }, 1500);
-    }
-  };
-  ws.onerror = () => {
-    ws?.close();
-  };
+  if (pollTimer != null) return;
+  void pollAll();
+  pollTimer = window.setInterval(() => {
+    void pollAll();
+  }, POLL_MS);
 }
 
 function disconnect(): void {
-  if (reconnectTimer != null) {
-    window.clearTimeout(reconnectTimer);
-    reconnectTimer = null;
+  if (pollTimer != null) {
+    window.clearInterval(pollTimer);
+    pollTimer = null;
   }
-  ws?.close();
-  ws = null;
 }
 
 export function subscribeBinanceSpotOrderbooks(onStoreChange: () => void): () => void {

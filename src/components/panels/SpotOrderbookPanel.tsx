@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react';
 import {
   SPOT_OB_MOVE_PCT_LEVELS,
+  formatSpotObImpactUsd,
   formatSpotObMovePctLabel,
   usdToMoveBinanceSpotDown,
   usdToMoveBinanceSpotUp,
@@ -8,15 +9,10 @@ import {
 } from '../../lib/binanceSpotObImpact';
 import {
   BINANCE_SPOT_OB_ASSETS,
+  DEPTH_LIMIT,
   useBinanceSpotOrderbooks,
   type BinanceSpotObAsset,
 } from '../../lib/binanceSpotOrderbookFeed';
-import { formatPolymarketVolumeKInteger } from '../../utils/format';
-
-function fmtImpactUsd(v: number | null): string {
-  if (v == null || !Number.isFinite(v) || v <= 0) return '—';
-  return `$${formatPolymarketVolumeKInteger(v)}`;
-}
 
 const AssetRows = memo(function AssetRows({
   asset,
@@ -52,9 +48,15 @@ const AssetRows = memo(function AssetRows({
           <td
             key={`${asset}-up-${pct}`}
             className="py-1 px-2 text-right text-[10px] tabular-nums font-bold text-green-300/95"
-            title={connected ? `USD to lift spot ~${pctLabel}` : 'Waiting for Binance book'}
+            title={
+              connected
+                ? v?.depthCapped
+                  ? `Book depth exhausted before ~${pctLabel} up (+ = capped at ${DEPTH_LIMIT} levels)`
+                  : `USD to lift spot ~${pctLabel}`
+                : 'Waiting for Binance book'
+            }
           >
-            {fmtImpactUsd(v)}
+            {formatSpotObImpactUsd(v)}
           </td>
           );
         })}
@@ -70,9 +72,15 @@ const AssetRows = memo(function AssetRows({
           <td
             key={`${asset}-down-${pct}`}
             className="py-1 px-2 text-right text-[10px] tabular-nums font-bold text-red-300/95"
-            title={connected ? `USD to hit spot ~${pctLabel}` : 'Waiting for Binance book'}
+            title={
+              connected
+                ? v?.depthCapped
+                  ? `Book depth exhausted before ~${pctLabel} down (+ = capped at ${DEPTH_LIMIT} levels)`
+                  : `USD to hit spot ~${pctLabel}`
+                : 'Waiting for Binance book'
+            }
           >
-            {fmtImpactUsd(v)}
+            {formatSpotObImpactUsd(v)}
           </td>
           );
         })}

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { API_BASE } from './env';
 import {
   normalizeBinanceSpotBook,
   parseBinanceObLevels,
@@ -23,7 +24,7 @@ const ASSET_BY_SYMBOL = Object.fromEntries(
 
 const REST_DEPTH_URL: Record<BinanceObMarket, string> = {
   spot: 'https://api.binance.com/api/v3/depth',
-  futures: 'https://fapi.binance.com/fapi/v1/depth',
+  futures: `${API_BASE}/api/binance-proxy/futures/v1/depth`,
 };
 
 const WS_STREAM_BASE: Record<BinanceObMarket, string> = {
@@ -31,13 +32,19 @@ const WS_STREAM_BASE: Record<BinanceObMarket, string> = {
   futures: 'wss://fstream.binance.com/stream',
 };
 
-const DEPTH_LIMIT = 1000;
+/** Binance REST only accepts 5/10/20/50/100/500/1000. */
+const SNAPSHOT_LIMIT = 500;
+
 const EMIT_MS = 250;
 const RECONNECT_MS = 5000;
-const SNAPSHOT_GAP_MS = 400;
+const SNAPSHOT_GAP_MS = 500;
 const RESYNC_BACKOFF_MS = 60_000;
 
-export { DEPTH_LIMIT };
+export const DEPTH_LIMIT = SNAPSHOT_LIMIT;
+
+export function binanceObDepthLimit(_market: BinanceObMarket): number {
+  return SNAPSHOT_LIMIT;
+}
 
 type BooksSnap = Record<BinanceSpotObAsset, BinanceSpotBook | null>;
 
@@ -61,6 +68,7 @@ type MarketConn = {
   ws: WebSocket | null;
   reconnectTimer: number | null;
   emitTimer: number | null;
+  connectGen: number;
   dirty: Set<BinanceSpotObAsset>;
   assets: Record<BinanceSpotObAsset, AssetBookState>;
 };
@@ -82,6 +90,7 @@ function emptyMarketConn(): MarketConn {
     ws: null,
     reconnectTimer: null,
     emitTimer: null,
+    connectGen: 0,
     dirty: new Set(),
     assets: {
       BTC: emptyAssetState(),
@@ -113,7 +122,7 @@ function emit(market: BinanceObMarket): void {
   for (const fn of listenersByMarket[market]) fn();
 }
 
-function depthStreamName(asset: BinanceSpotObAsset): string {
+function diffStreamName(asset: BinanceSpotObAsset): string {
   return `${SYMBOL_BY_ASSET[asset].toLowerCase()}@depth@100ms`;
 }
 
@@ -154,15 +163,15 @@ function stateToBook(state: AssetBookState): BinanceSpotBook | null {
   const bids: BinanceObLevel[] = [...state.bids.entries()]
     .map(([price, qty]) => ({ price, qty }))
     .sort((a, b) => b.price - a.price)
-    .slice(0, DEPTH_LIMIT);
+    .slice(0, SNAPSHOT_LIMIT);
   const asks: BinanceObLevel[] = [...state.asks.entries()]
     .map(([price, qty]) => ({ price, qty }))
     .sort((a, b) => a.price - b.price)
-    .slice(0, DEPTH_LIMIT);
+    .slice(0, SNAPSHOT_LIMIT);
   return normalizeBinanceSpotBook(bids, asks);
 }
 
-function publishAssetBook(market: BinanceObMarket, asset: BinanceSpotObAsset, state: AssetBookState): void {
+function publishAssetState(market: BinanceObMarket, asset: BinanceSpotObAsset, state: AssetBookState): void {
   const next = stateToBook(state);
   if (!next) return;
   booksByMarket = { ...booksByMarket, [market]: { ...booksByMarket[market], [asset]: next } };
@@ -180,7 +189,7 @@ function schedulePublish(market: BinanceObMarket, asset: BinanceSpotObAsset): vo
     for (const a of dirty) {
       const st = conn.assets[a];
       if (!st.synced) continue;
-      publishAssetBook(market, a, st);
+      publishAssetState(market, a, st);
     }
   }, EMIT_MS);
 }
@@ -196,7 +205,7 @@ function resetAssetState(state: AssetBookState): void {
 
 async function fetchSnapshot(market: BinanceObMarket, asset: BinanceSpotObAsset): Promise<DepthSnapshot> {
   const symbol = SYMBOL_BY_ASSET[asset];
-  const resp = await fetch(`${REST_DEPTH_URL[market]}?symbol=${symbol}&limit=${DEPTH_LIMIT}`);
+  const resp = await fetch(`${REST_DEPTH_URL[market]}?symbol=${symbol}&limit=${SNAPSHOT_LIMIT}`);
   if (!resp.ok) {
     throw new Error(`Binance ${market} depth snapshot ${symbol} HTTP ${resp.status}`);
   }
@@ -235,22 +244,17 @@ function syncAssetFromSnapshot(market: BinanceObMarket, asset: BinanceSpotObAsse
 
   state.pending = [];
   state.synced = true;
-  publishAssetBook(market, asset, state);
+  publishAssetState(market, asset, state);
 }
 
-async function loadSnapshot(market: BinanceObMarket, asset: BinanceSpotObAsset): Promise<void> {
+async function loadSnapshot(market: BinanceObMarket, asset: BinanceSpotObAsset, connectGen: number): Promise<void> {
   const state = marketConns[market].assets[asset];
   if (state.synced || state.snapshotLoading) return;
   state.snapshotLoading = true;
   try {
     const snap = await fetchSnapshot(market, asset);
-    if (refCountByMarket[market] <= 0) return;
+    if (refCountByMarket[market] <= 0 || connectGen !== marketConns[market].connectGen) return;
     syncAssetFromSnapshot(market, asset, snap);
-    if (!state.synced && state.pending.length > 0) {
-      const retrySnap = await fetchSnapshot(market, asset);
-      if (refCountByMarket[market] <= 0) return;
-      syncAssetFromSnapshot(market, asset, retrySnap);
-    }
   } catch (err) {
     console.error(`binance ${market} ob snapshot ${asset}:`, err);
   } finally {
@@ -258,25 +262,30 @@ async function loadSnapshot(market: BinanceObMarket, asset: BinanceSpotObAsset):
   }
 }
 
-async function loadAllSnapshots(market: BinanceObMarket): Promise<void> {
+async function loadAllSnapshots(market: BinanceObMarket, connectGen: number): Promise<void> {
   for (const asset of BINANCE_SPOT_OB_ASSETS) {
-    if (refCountByMarket[market] <= 0) return;
-    await loadSnapshot(market, asset);
+    if (refCountByMarket[market] <= 0 || connectGen !== marketConns[market].connectGen) return;
+    await loadSnapshot(market, asset, connectGen);
     if (BINANCE_SPOT_OB_ASSETS.indexOf(asset) < BINANCE_SPOT_OB_ASSETS.length - 1) {
       await sleep(SNAPSHOT_GAP_MS);
     }
   }
 }
 
-function requestResync(market: BinanceObMarket, asset: BinanceSpotObAsset): void {
+function requestResync(market: BinanceObMarket, asset: BinanceSpotObAsset, connectGen: number): void {
   const state = marketConns[market].assets[asset];
   const now = Date.now();
   if (state.snapshotLoading || now - state.lastResyncAt < RESYNC_BACKOFF_MS) return;
   state.lastResyncAt = now;
-  void loadSnapshot(market, asset);
+  void loadSnapshot(market, asset, connectGen);
 }
 
-function onDepthMessage(market: BinanceObMarket, asset: BinanceSpotObAsset, event: DepthEvent): void {
+function onDiffMessage(
+  market: BinanceObMarket,
+  asset: BinanceSpotObAsset,
+  event: DepthEvent,
+  connectGen: number,
+): void {
   const state = marketConns[market].assets[asset];
   if (!state.synced) {
     state.pending.push(event);
@@ -287,7 +296,7 @@ function onDepthMessage(market: BinanceObMarket, asset: BinanceSpotObAsset, even
   if (event.U > state.lastUpdateId + 1) {
     resetAssetState(state);
     state.pending = [event];
-    requestResync(market, asset);
+    requestResync(market, asset, connectGen);
     return;
   }
 
@@ -296,13 +305,16 @@ function onDepthMessage(market: BinanceObMarket, asset: BinanceSpotObAsset, even
 }
 
 function wsUrlForMarket(market: BinanceObMarket): string {
-  const streams = BINANCE_SPOT_OB_ASSETS.map((asset) => depthStreamName(asset)).join('/');
+  const streams = BINANCE_SPOT_OB_ASSETS.map((asset) => diffStreamName(asset)).join('/');
   return `${WS_STREAM_BASE[market]}?streams=${streams}`;
 }
 
 function connectMarket(market: BinanceObMarket): void {
   const conn = marketConns[market];
   if (conn.ws != null) return;
+
+  conn.connectGen += 1;
+  const connectGen = conn.connectGen;
 
   booksByMarket = { ...booksByMarket, [market]: { ...EMPTY_BOOKS } };
   emit(market);
@@ -327,7 +339,7 @@ function connectMarket(market: BinanceObMarket): void {
     if (!diff) return;
     const asset = ASSET_BY_SYMBOL[diff.symbol];
     if (!asset) return;
-    onDepthMessage(market, asset, diff);
+    onDiffMessage(market, asset, diff, connectGen);
   };
 
   ws.onerror = () => {
@@ -344,11 +356,12 @@ function connectMarket(market: BinanceObMarket): void {
     }, RECONNECT_MS);
   };
 
-  void loadAllSnapshots(market);
+  void loadAllSnapshots(market, connectGen);
 }
 
 function disconnectMarket(market: BinanceObMarket): void {
   const conn = marketConns[market];
+  conn.connectGen += 1;
   if (conn.reconnectTimer != null) {
     window.clearTimeout(conn.reconnectTimer);
     conn.reconnectTimer = null;

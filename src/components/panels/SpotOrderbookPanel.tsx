@@ -11,7 +11,7 @@ import {
 } from '../../lib/binanceSpotObImpact';
 import {
   BINANCE_SPOT_OB_ASSETS,
-  DEPTH_LIMIT,
+  binanceObDepthLimit,
   useBinanceObOrderbooks,
   type BinanceObMarket,
   type BinanceSpotObAsset,
@@ -44,6 +44,7 @@ const AssetRows = memo(function AssetRows({
   );
   const mkt = MARKET_LABEL[market];
   const mid = binanceSpotBookMid(book);
+  const depthLimit = binanceObDepthLimit(market);
 
   return (
     <>
@@ -69,7 +70,7 @@ const AssetRows = memo(function AssetRows({
               title={
                 connected
                   ? v?.depthCapped
-                    ? `Book depth exhausted before ~${pctLabel} up (+ = capped at ${DEPTH_LIMIT} levels)`
+                    ? `Book depth exhausted before ~${pctLabel} up (+ = capped at ${depthLimit} levels)`
                     : `USD to lift ${mkt} ~${pctLabel}`
                   : 'Waiting for Binance book'
               }
@@ -93,7 +94,7 @@ const AssetRows = memo(function AssetRows({
               title={
                 connected
                   ? v?.depthCapped
-                    ? `Book depth exhausted before ~${pctLabel} down (+ = capped at ${DEPTH_LIMIT} levels)`
+                    ? `Book depth exhausted before ~${pctLabel} down (+ = capped at ${depthLimit} levels)`
                     : `USD to hit ${mkt} ~${pctLabel}`
                   : 'Waiting for Binance book'
               }

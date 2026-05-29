@@ -183,7 +183,7 @@ function renderPanel(panel: PanelConfig): ReactNode {
     case 'spot-orderbook':
       return <LazySpotOrderbookPanel panelId={panel.id} />;
     case 'gex':
-      return <LazyGexPanel />;
+      return <LazyGexPanel panelId={panel.id} />;
     case 'updown-hud':
       return <LazyUpOrDownHUDPanel panelId={panel.id} />;
     case 'chat':

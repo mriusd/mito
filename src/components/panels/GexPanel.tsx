@@ -1,11 +1,17 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import {
   GEX_ASSETS,
   useDeribitGexConnection,
   useDeribitGexSnapshot,
+  type GexAsset,
   type GexAssetSnapshot,
   type GexStrikeBucket,
 } from '../../lib/deribitGexFeed';
+
+function readStoredGexAsset(panelId: string): GexAsset {
+  const saved = localStorage.getItem(`polybot-gex-asset-${panelId}`);
+  return GEX_ASSETS.includes(saved as GexAsset) ? (saved as GexAsset) : 'BTC';
+}
 
 function fmtUsd(v: number): string {
   const abs = Math.abs(v);
@@ -155,26 +161,40 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
   );
 }
 
-export function GexPanel() {
+export function GexPanel({ panelId }: { panelId: string }) {
   useDeribitGexConnection(true);
   const snap = useDeribitGexSnapshot();
+  const [asset, setAsset] = useState<GexAsset>(() => readStoredGexAsset(panelId));
 
-  const hasData = snap != null && GEX_ASSETS.some((a) => snap.assets[a] != null);
+  const selected = snap?.assets[asset] ?? null;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-900/40 p-2">
       <div className="panel-header mb-1.5 flex items-center justify-between gap-2 shrink-0 cursor-grab">
         <div className="text-[11px] font-bold text-yellow-400">Dealer GEX (Deribit)</div>
-        <div className="text-[8px] text-gray-500">net gamma exposure</div>
+        <div className="no-drag" onMouseDown={(e) => e.stopPropagation()}>
+          <select
+            className="rounded border border-gray-600 bg-gray-900 px-1.5 py-0.5 text-[10px] font-semibold text-gray-200 focus:outline-none"
+            value={asset}
+            onChange={(e) => {
+              const next = e.target.value as GexAsset;
+              setAsset(next);
+              localStorage.setItem(`polybot-gex-asset-${panelId}`, next);
+            }}
+          >
+            {GEX_ASSETS.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
-        {!hasData ? (
-          <div className="text-[10px] text-gray-500 p-2">Connecting to Deribit option chain…</div>
+        {selected ? (
+          <AssetGex snap={selected} />
         ) : (
-          GEX_ASSETS.map((asset) => {
-            const a = snap!.assets[asset];
-            return a ? <AssetGex key={asset} snap={a} /> : null;
-          })
+          <div className="text-[10px] text-gray-500 p-2">Connecting to Deribit option chain…</div>
         )}
       </div>
     </div>

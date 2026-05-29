@@ -37,6 +37,8 @@ const BIDASK_EQ_KEYS: (keyof Market)[] = [
   'stakedSumAbsSignedNetUsd',
   'stakedTopHoldersCohortYesUsd',
   'stakedTopHoldersCohortNoUsd',
+  'stakedNetYesUsd',
+  'stakedNetNoUsd',
 ];
 
 const NON_BIDASK_EQ_KEYS = BIDASK_EQ_KEYS.filter((k) => k !== 'bestBid' && k !== 'bestAsk');

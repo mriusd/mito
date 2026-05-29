@@ -18,6 +18,7 @@ const WS_FIELDS: (keyof Market)[] = [
   'stakedUsdYesLeg', 'stakedUsdNoLeg',
   'stakedSumAbsSignedNetUsd',
   'stakedTopHoldersCohortYesUsd', 'stakedTopHoldersCohortNoUsd',
+  'stakedNetYesUsd', 'stakedNetNoUsd',
 ];
 
 function mergeWsFields(fresh: Record<string, Market>, prev: Record<string, Market>): Record<string, Market> {

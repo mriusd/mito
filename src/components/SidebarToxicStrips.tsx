@@ -88,8 +88,16 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
 
   const toxicFlowData = useSidebarToxicFlowData();
   const yesObDepth = useSidebarYesObDepth();
-  useBidAskMarketRow(yesTokenId);
+  const yesBidAskRow = useBidAskMarketRow(yesTokenId);
   useBidAskMarketRow(noTokenId);
+  const totalNetHalves = useMemo(() => {
+    const ny = yesBidAskRow?.stakedNetYesUsd;
+    const nn = yesBidAskRow?.stakedNetNoUsd;
+    if (typeof ny === 'number' && Number.isFinite(ny) && typeof nn === 'number' && Number.isFinite(nn) && ny + nn > 1e-9) {
+      return { sumYUsd: ny, sumNUsd: nn };
+    }
+    return null;
+  }, [yesBidAskRow?.stakedNetYesUsd, yesBidAskRow?.stakedNetNoUsd]);
   const insiderQuoteGateKey = `${wsQuoteMidCents(yesTokenId) ?? 'n'}|${wsQuoteMidCents(noTokenId) ?? 'n'}`;
   const toxicTabViews = useSidebarToxicFlowTabViews(toxicFavSet, notifyWhaleAmountUsd, toxicXSet);
 
@@ -197,6 +205,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
         layout="stacked"
         helpText={TOXIC_SIDEBAR_STRIP_HELP.total}
         label="Total"
+        marketNetHalvesUsd={totalNetHalves}
         yesBookBidUsd={yesObDepth.yesBidUsd}
         noBookBidUsd={yesObDepth.noBidUsd}
         wallets={[]}

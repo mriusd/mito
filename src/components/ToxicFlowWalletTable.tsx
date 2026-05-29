@@ -1050,7 +1050,7 @@ function WalletTableBodyRowImpl({
       {marketViewCols ? (
         <>
           <td
-            className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 tabular-nums font-bold ${payoutUnresolved ? 'text-gray-500' : 'text-yellow-400'}`}
+            className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 tabular-nums font-bold ${payoutUnresolved || rowPayout === 0 ? 'text-gray-500' : 'text-yellow-400'}`}
             title={payoutUnresolved ? 'Market not scored (W/L/F all zero)' : 'wallet_market_positions.payout'}
           >
             {payoutUnresolved ? '-' : fmtUsdSignedLedger(rowPayout)}

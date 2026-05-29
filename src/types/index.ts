@@ -64,6 +64,9 @@ export interface Market {
   /** Sidebar Stake cohort bar: Σ max(0, inv_y×px_y − inv_n×px_n) vs Σ max(0, −) for top 20 |CTF net| holders */
   stakedTopHoldersCohortYesUsd?: number;
   stakedTopHoldersCohortNoUsd?: number;
+  /** Full-market staked-net halves over ALL wallets (YES-lean vs NO-lean); sum = stakedSumAbsSignedNetUsd. Matches swarm cohort bar. */
+  stakedNetYesUsd?: number;
+  stakedNetNoUsd?: number;
   // B-S computed values from server
   bs1?: number;
   bs2?: number;

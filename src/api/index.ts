@@ -368,6 +368,7 @@ const LOOKUP_WS_KEYS: (keyof Market)[] = [
   'winBiasConvictionShares', 'winBiasConvictionSharesYes', 'winBiasConvictionSharesNo',
   'stakedUsdYesLeg', 'stakedUsdNoLeg', 'stakedSumAbsSignedNetUsd',
   'stakedTopHoldersCohortYesUsd', 'stakedTopHoldersCohortNoUsd',
+  'stakedNetYesUsd', 'stakedNetNoUsd',
 ];
 
 function pickLookupWsFields(old: Market): Partial<Market> {
@@ -665,6 +666,9 @@ export interface MarketStakedLegsResponse {
   stakedUsdNoLeg: number;
   /** Σ_w |Staked Net| — dominant-leg (inv_yes vs inv_no) share delta × leg price. */
   stakedSumAbsSignedNetUsd?: number;
+  /** Full-market staked-net halves over ALL wallets: Σ YES-lean vs Σ NO-lean (sum = stakedSumAbsSignedNetUsd). Matches swarm cohort bar. */
+  stakedNetYesUsd?: number;
+  stakedNetNoUsd?: number;
 }
 
 /** WS often sends gross legs without `stakedSumAbsSignedNetUsd`; REST may have it — merge so headline ≠ bogus |ΣY−ΣN|. */
@@ -683,6 +687,17 @@ export function mergeMarketStakedLegsResponse(
     out.stakedSumAbsSignedNetUsd = sumLive;
   } else if (typeof sumRest === 'number' && Number.isFinite(sumRest)) {
     out.stakedSumAbsSignedNetUsd = sumRest;
+  }
+  const nyLive = live?.stakedNetYesUsd;
+  const nyRest = rest?.stakedNetYesUsd;
+  const nnLive = live?.stakedNetNoUsd;
+  const nnRest = rest?.stakedNetNoUsd;
+  if (typeof nyLive === 'number' && Number.isFinite(nyLive) && typeof nnLive === 'number' && Number.isFinite(nnLive)) {
+    out.stakedNetYesUsd = nyLive;
+    out.stakedNetNoUsd = nnLive;
+  } else if (typeof nyRest === 'number' && Number.isFinite(nyRest) && typeof nnRest === 'number' && Number.isFinite(nnRest)) {
+    out.stakedNetYesUsd = nyRest;
+    out.stakedNetNoUsd = nnRest;
   }
   return out;
 }

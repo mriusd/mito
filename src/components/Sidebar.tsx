@@ -1365,10 +1365,16 @@ export const Sidebar = memo(function Sidebar() {
       const wy = row.stakedUsdYesLeg;
       const wn = row.stakedUsdNoLeg;
       const sumAbs = row.stakedSumAbsSignedNetUsd;
+      const netY = row.stakedNetYesUsd;
+      const netN = row.stakedNetNoUsd;
       if (typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn)) {
         live = { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
         if (typeof sumAbs === 'number' && Number.isFinite(sumAbs)) {
           live.stakedSumAbsSignedNetUsd = sumAbs;
+        }
+        if (typeof netY === 'number' && Number.isFinite(netY) && typeof netN === 'number' && Number.isFinite(netN)) {
+          live.stakedNetYesUsd = netY;
+          live.stakedNetNoUsd = netN;
         }
       }
     }

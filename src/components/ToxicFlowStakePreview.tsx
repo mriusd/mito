@@ -6,9 +6,9 @@ import { HelpCircle } from 'lucide-react';
 import { toxicCohortStakedNetSurplusHalves } from '../lib/toxicFlowStakeCohort';
 import type { MarketStakedLegsResponse } from '../api';
 
-/** YES bids vs NO bids USD depth (5–95¢) — same source as Live Orderbook imbalance bar. */
+/** Full-market staked-net halves over ALL wallets — same basis as the Swarms cohort bar (Σ per-wallet |inv×px net|). */
 export const TOXIC_TOTAL_STAKE_BAR_HELP =
-  'YES bids vs NO bids (5–95¢). Blue = more YES bid USD, yellow = more NO bid USD.';
+  'Whole-market staked net: Σ per-wallet |inv×px net|, split YES vs NO lean. Same basis as the Swarms bar. Falls back to YES/NO bid depth (5–95¢) if unavailable.';
 
 function walletsPreviewPropEqual(a: readonly WalletPosition[], b: readonly WalletPosition[]): boolean {
   if (a === b) return true;
@@ -23,6 +23,7 @@ function ToxicFlowStakePreviewInner({
   label,
   wallets = [],
   marketGrossLegsUsd,
+  marketNetHalvesUsd,
   yesBookBidUsd,
   noBookBidUsd,
   flashExtremeTilt,
@@ -36,6 +37,8 @@ function ToxicFlowStakePreviewInner({
     MarketStakedLegsResponse,
     'stakedUsdYesLeg' | 'stakedUsdNoLeg' | 'stakedSumAbsSignedNetUsd'
   > | null;
+  /** Full-market staked-net halves (YES-lean / NO-lean). Takes precedence; rendered as cohortSurplusHalves (same basis as swarm bar). */
+  marketNetHalvesUsd?: { sumYUsd: number; sumNUsd: number } | null;
   yesBookBidUsd?: number;
   noBookBidUsd?: number;
   flashExtremeTilt?: boolean;
@@ -44,6 +47,17 @@ function ToxicFlowStakePreviewInner({
   layout?: 'inline' | 'stacked';
 }) {
   const { sumYUsd, sumNUsd, barMode } = useMemo(() => {
+    const nh = marketNetHalvesUsd;
+    if (
+      nh &&
+      typeof nh.sumYUsd === 'number' &&
+      Number.isFinite(nh.sumYUsd) &&
+      typeof nh.sumNUsd === 'number' &&
+      Number.isFinite(nh.sumNUsd) &&
+      nh.sumYUsd + nh.sumNUsd > 1e-9
+    ) {
+      return { sumYUsd: nh.sumYUsd, sumNUsd: nh.sumNUsd, barMode: 'cohortSurplusHalves' as const };
+    }
     const yBid = yesBookBidUsd;
     const nBid = noBookBidUsd;
     if (
@@ -71,7 +85,7 @@ function ToxicFlowStakePreviewInner({
     }
     const c = toxicCohortStakedNetSurplusHalves(wallets ?? []);
     return { sumYUsd: c.sumYUsd, sumNUsd: c.sumNUsd, barMode: 'cohortSurplusHalves' as const };
-  }, [marketGrossLegsUsd, wallets, yesBookBidUsd, noBookBidUsd]);
+  }, [marketGrossLegsUsd, marketNetHalvesUsd, wallets, yesBookBidUsd, noBookBidUsd]);
   const total = sumYUsd + sumNUsd;
   const hasSplit = Number.isFinite(sumYUsd) && Number.isFinite(sumNUsd) && total > 1e-9;
 
@@ -123,6 +137,12 @@ export const ToxicFlowStakePreview = memo(ToxicFlowStakePreviewInner, (a, b) => 
     a.noBookBidUsd !== b.noBookBidUsd
   ) {
     return false;
+  }
+  const na = a.marketNetHalvesUsd;
+  const nb = b.marketNetHalvesUsd;
+  if (na !== nb) {
+    if (na == null || nb == null) return false;
+    if (na.sumYUsd !== nb.sumYUsd || na.sumNUsd !== nb.sumNUsd) return false;
   }
   const ga = a.marketGrossLegsUsd;
   const gb = b.marketGrossLegsUsd;

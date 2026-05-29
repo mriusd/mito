@@ -476,6 +476,8 @@ export interface WalletPosition {
   wallet: string;
   /** Synthetic rows (e.g. swarms): show this in the Wallet column instead of the address. */
   displayLabel?: string;
+  /** Synthetic rows (e.g. swarms): exact signed staked USD (overrides inv-derived calc). YES lean negative, NO positive. */
+  stakedNetSignedUsdOverride?: number;
   marketId: string;
   /** Raw `wallet_market_positions` (ledger); prefer for holders table. */
   invYes?: number;
@@ -604,6 +606,8 @@ export interface ToxicFlowSwarm {
   priceNo: number;
   tradeCount: number;
   stakedNetSignedUsd: number;
+  /** Σ_member |inv_y·py − inv_n·pn| — exact per-position staked basis (matches market total). */
+  stakedAbsSumUsd: number;
   /** Per-wallet positions in this market (same shape as topHolders rows). */
   positions?: WalletPosition[];
 }

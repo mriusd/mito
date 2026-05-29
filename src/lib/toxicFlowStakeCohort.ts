@@ -118,13 +118,20 @@ function toxicSwarmWalletStub(s: ToxicFlowSwarm): WalletPosition {
   };
 }
 
-export function toxicSwarmStakedSignedUsd(s: ToxicFlowSwarm): number {
-  return walletStakeNetSignedUsd(toxicSwarmWalletStub(s));
+/** Exact swarm staked = Σ_member |inv_y·py − inv_n·pn| (matches market total); fallback to inv-derived. */
+export function toxicSwarmStakedAbsUsd(s: ToxicFlowSwarm): number {
+  if (typeof s.stakedAbsSumUsd === 'number' && Number.isFinite(s.stakedAbsSumUsd)) {
+    return s.stakedAbsSumUsd;
+  }
+  const signed = walletStakeNetSignedUsd(toxicSwarmWalletStub(s));
+  return Number.isFinite(signed) ? Math.abs(signed) : NaN;
 }
 
-export function toxicSwarmStakedAbsUsd(s: ToxicFlowSwarm): number {
-  const signed = toxicSwarmStakedSignedUsd(s);
-  return Number.isFinite(signed) ? Math.abs(signed) : NaN;
+/** Signed by swarm side: YES lean negative, NO lean positive (matches walletStakeNetSignedUsd convention). */
+export function toxicSwarmStakedSignedUsd(s: ToxicFlowSwarm): number {
+  const abs = toxicSwarmStakedAbsUsd(s);
+  if (!Number.isFinite(abs)) return walletStakeNetSignedUsd(toxicSwarmWalletStub(s));
+  return s.side === 'YES' ? -abs : abs;
 }
 
 export type SwarmSlotChartLayout = {
@@ -210,6 +217,7 @@ export function toxicFlowSwarmsToWalletRows(
     rows.push({
       wallet: `__swarm:${s.swarmId}__`,
       displayLabel: `Swarm #${toxicSwarmDisplaySlot(s, marketActiveUnix)} (${s.walletCount})`,
+      stakedNetSignedUsdOverride: toxicSwarmStakedSignedUsd(s),
       marketId,
       invYes: iy,
       invNo: inn,
@@ -306,6 +314,9 @@ export function walletStakeTotalUsd(w: WalletPosition): number {
 /** Signed Staked Net (USD): YES lean negative, NO lean positive.
  *  |net| = (inv_yes − inv_no)×price_yes when inv_yes > inv_no, else (inv_no − inv_yes)×price_no. */
 export function walletStakeNetSignedUsd(w: WalletPosition): number {
+  if (typeof w.stakedNetSignedUsdOverride === 'number' && Number.isFinite(w.stakedNetSignedUsdOverride)) {
+    return w.stakedNetSignedUsdOverride;
+  }
   const iy = walletInvY(w);
   const inn = walletInvN(w);
   if (iy > inn) {
@@ -538,6 +549,7 @@ function swarmEqual(a: ToxicFlowSwarm, b: ToxicFlowSwarm): boolean {
     a.invNo !== b.invNo ||
     a.usdcIn !== b.usdcIn ||
     a.stakedNetSignedUsd !== b.stakedNetSignedUsd ||
+    a.stakedAbsSumUsd !== b.stakedAbsSumUsd ||
     a.tradeCount !== b.tradeCount ||
     (a.positions?.length ?? 0) !== (b.positions?.length ?? 0)
   ) {

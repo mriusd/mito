@@ -178,7 +178,7 @@ function renderPanel(panel: PanelConfig): ReactNode {
     case 'binance-chart':
       return <LazyBinanceChartPanel panelId={panel.id} initialAsset="BTC" />;
     case 'spot-orderbook':
-      return <LazySpotOrderbookPanel />;
+      return <LazySpotOrderbookPanel panelId={panel.id} />;
     case 'updown-hud':
       return <LazyUpOrDownHUDPanel panelId={panel.id} />;
     case 'chat':

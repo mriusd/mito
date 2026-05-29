@@ -7,12 +7,18 @@ import {
 
 export const BINANCE_SPOT_OB_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 export type BinanceSpotObAsset = (typeof BINANCE_SPOT_OB_ASSETS)[number];
+export type BinanceObMarket = 'spot' | 'futures';
 
 const SYMBOL_BY_ASSET: Record<BinanceSpotObAsset, string> = {
   BTC: 'BTCUSDT',
   ETH: 'ETHUSDT',
   SOL: 'SOLUSDT',
   XRP: 'XRPUSDT',
+};
+
+const DEPTH_URL: Record<BinanceObMarket, string> = {
+  spot: 'https://api.binance.com/api/v3/depth',
+  futures: 'https://fapi.binance.com/fapi/v1/depth',
 };
 
 const DEPTH_LIMIT = 500;
@@ -24,40 +30,54 @@ type BooksSnap = Record<BinanceSpotObAsset, BinanceSpotBook | null>;
 
 const EMPTY_BOOKS: BooksSnap = { BTC: null, ETH: null, SOL: null, XRP: null };
 
-let books: BooksSnap = { ...EMPTY_BOOKS };
-let digest = 0;
-let refCount = 0;
+const MARKETS: BinanceObMarket[] = ['spot', 'futures'];
+
+let booksByMarket: Record<BinanceObMarket, BooksSnap> = {
+  spot: { ...EMPTY_BOOKS },
+  futures: { ...EMPTY_BOOKS },
+};
+let digestByMarket: Record<BinanceObMarket, number> = { spot: 0, futures: 0 };
+let refCountByMarket: Record<BinanceObMarket, number> = { spot: 0, futures: 0 };
+const listenersByMarket: Record<BinanceObMarket, Set<() => void>> = {
+  spot: new Set(),
+  futures: new Set(),
+};
+
 let pollTimer: number | null = null;
 let pollInFlight = false;
-const listeners = new Set<() => void>();
 
-function emit(): void {
-  digest += 1;
-  for (const fn of listeners) fn();
+function emit(market: BinanceObMarket): void {
+  digestByMarket[market] += 1;
+  for (const fn of listenersByMarket[market]) fn();
 }
 
-function applyBook(asset: BinanceSpotObAsset, payload: { bids?: unknown; asks?: unknown }): void {
+function activeMarkets(): BinanceObMarket[] {
+  return MARKETS.filter((m) => refCountByMarket[m] > 0);
+}
+
+function applyBook(market: BinanceObMarket, asset: BinanceSpotObAsset, payload: { bids?: unknown; asks?: unknown }): void {
   const next = normalizeBinanceSpotBook(parseBinanceObLevels(payload.bids), parseBinanceObLevels(payload.asks));
   if (!next) return;
-  books = { ...books, [asset]: next };
-  emit();
+  booksByMarket = { ...booksByMarket, [market]: { ...booksByMarket[market], [asset]: next } };
+  emit(market);
 }
 
-async function fetchDepth(asset: BinanceSpotObAsset): Promise<void> {
+async function fetchDepth(market: BinanceObMarket, asset: BinanceSpotObAsset): Promise<void> {
   const symbol = SYMBOL_BY_ASSET[asset];
-  const resp = await fetch(`https://api.binance.com/api/v3/depth?symbol=${symbol}&limit=${DEPTH_LIMIT}`);
+  const resp = await fetch(`${DEPTH_URL[market]}?symbol=${symbol}&limit=${DEPTH_LIMIT}`);
   if (!resp.ok) {
-    throw new Error(`Binance depth ${symbol} HTTP ${resp.status}`);
+    throw new Error(`Binance ${market} depth ${symbol} HTTP ${resp.status}`);
   }
   const data = (await resp.json()) as { bids?: unknown; asks?: unknown };
-  applyBook(asset, data);
+  applyBook(market, asset, data);
 }
 
 async function pollAll(): Promise<void> {
-  if (pollInFlight) return;
+  const markets = activeMarkets();
+  if (markets.length === 0 || pollInFlight) return;
   pollInFlight = true;
   try {
-    await Promise.all(BINANCE_SPOT_OB_ASSETS.map((asset) => fetchDepth(asset)));
+    await Promise.all(markets.flatMap((market) => BINANCE_SPOT_OB_ASSETS.map((asset) => fetchDepth(market, asset))));
   } finally {
     pollInFlight = false;
   }
@@ -78,30 +98,51 @@ function disconnect(): void {
   }
 }
 
-export function subscribeBinanceSpotOrderbooks(onStoreChange: () => void): () => void {
-  listeners.add(onStoreChange);
-  refCount += 1;
-  if (refCount === 1) connect();
+function subscribeSpot(onStoreChange: () => void): () => void {
+  return subscribeBinanceObOrderbooks('spot', onStoreChange);
+}
+
+function subscribeFutures(onStoreChange: () => void): () => void {
+  return subscribeBinanceObOrderbooks('futures', onStoreChange);
+}
+
+function getSpotBooks(): BooksSnap {
+  return booksByMarket.spot;
+}
+
+function getFuturesBooks(): BooksSnap {
+  return booksByMarket.futures;
+}
+
+const SUBSCRIBE_BY_MARKET: Record<BinanceObMarket, (onStoreChange: () => void) => () => void> = {
+  spot: subscribeSpot,
+  futures: subscribeFutures,
+};
+
+const GET_BOOKS_BY_MARKET: Record<BinanceObMarket, () => BooksSnap> = {
+  spot: getSpotBooks,
+  futures: getFuturesBooks,
+};
+
+export function subscribeBinanceObOrderbooks(market: BinanceObMarket, onStoreChange: () => void): () => void {
+  listenersByMarket[market].add(onStoreChange);
+  refCountByMarket[market] += 1;
+  if (refCountByMarket.spot + refCountByMarket.futures === 1) connect();
   return () => {
-    listeners.delete(onStoreChange);
-    refCount -= 1;
-    if (refCount === 0) {
+    listenersByMarket[market].delete(onStoreChange);
+    refCountByMarket[market] -= 1;
+    if (refCountByMarket.spot + refCountByMarket.futures === 0) {
       disconnect();
-      books = { ...EMPTY_BOOKS };
-      digest += 1;
-      emit();
+      booksByMarket = { spot: { ...EMPTY_BOOKS }, futures: { ...EMPTY_BOOKS } };
+      digestByMarket = { spot: digestByMarket.spot + 1, futures: digestByMarket.futures + 1 };
     }
   };
 }
 
-export function getBinanceSpotOrderbooksSnapshot(): { digest: number; books: BooksSnap } {
-  return { digest, books };
+export function getBinanceObOrderbooksSnapshot(market: BinanceObMarket): { digest: number; books: BooksSnap } {
+  return { digest: digestByMarket[market], books: booksByMarket[market] };
 }
 
-export function useBinanceSpotOrderbooks(): BooksSnap {
-  return useSyncExternalStore(
-    subscribeBinanceSpotOrderbooks,
-    () => getBinanceSpotOrderbooksSnapshot().books,
-    () => EMPTY_BOOKS,
-  );
+export function useBinanceObOrderbooks(market: BinanceObMarket): BooksSnap {
+  return useSyncExternalStore(SUBSCRIBE_BY_MARKET[market], GET_BOOKS_BY_MARKET[market], () => EMPTY_BOOKS);
 }

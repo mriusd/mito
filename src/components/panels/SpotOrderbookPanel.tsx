@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import {
   SPOT_OB_MOVE_PCT_LEVELS,
   formatSpotObImpactUsd,
@@ -10,18 +10,26 @@ import {
 import {
   BINANCE_SPOT_OB_ASSETS,
   DEPTH_LIMIT,
-  useBinanceSpotOrderbooks,
+  useBinanceObOrderbooks,
+  type BinanceObMarket,
   type BinanceSpotObAsset,
 } from '../../lib/binanceSpotOrderbookFeed';
+
+const MARKET_LABEL: Record<BinanceObMarket, string> = {
+  spot: 'spot',
+  futures: 'futures',
+};
 
 const AssetRows = memo(function AssetRows({
   asset,
   book,
   connected,
+  market,
 }: {
   asset: BinanceSpotObAsset;
   book: BinanceSpotBook | null;
   connected: boolean;
+  market: BinanceObMarket;
 }) {
   const upCells = useMemo(
     () => SPOT_OB_MOVE_PCT_LEVELS.map((move) => usdToMoveBinanceSpotUp(book, move)),
@@ -31,6 +39,7 @@ const AssetRows = memo(function AssetRows({
     () => SPOT_OB_MOVE_PCT_LEVELS.map((move) => usdToMoveBinanceSpotDown(book, move)),
     [book],
   );
+  const mkt = MARKET_LABEL[market];
 
   return (
     <>
@@ -45,19 +54,19 @@ const AssetRows = memo(function AssetRows({
           const pct = SPOT_OB_MOVE_PCT_LEVELS[i]!;
           const pctLabel = formatSpotObMovePctLabel(pct);
           return (
-          <td
-            key={`${asset}-up-${pct}`}
-            className="py-1 px-2 text-right text-[10px] tabular-nums font-bold text-green-300/95"
-            title={
-              connected
-                ? v?.depthCapped
-                  ? `Book depth exhausted before ~${pctLabel} up (+ = capped at ${DEPTH_LIMIT} levels)`
-                  : `USD to lift spot ~${pctLabel}`
-                : 'Waiting for Binance book'
-            }
-          >
-            {formatSpotObImpactUsd(v)}
-          </td>
+            <td
+              key={`${asset}-up-${pct}`}
+              className="py-1 px-2 text-right text-[10px] tabular-nums font-bold text-green-300/95"
+              title={
+                connected
+                  ? v?.depthCapped
+                    ? `Book depth exhausted before ~${pctLabel} up (+ = capped at ${DEPTH_LIMIT} levels)`
+                    : `USD to lift ${mkt} ~${pctLabel}`
+                  : 'Waiting for Binance book'
+              }
+            >
+              {formatSpotObImpactUsd(v)}
+            </td>
           );
         })}
       </tr>
@@ -69,19 +78,19 @@ const AssetRows = memo(function AssetRows({
           const pct = SPOT_OB_MOVE_PCT_LEVELS[i]!;
           const pctLabel = formatSpotObMovePctLabel(pct);
           return (
-          <td
-            key={`${asset}-down-${pct}`}
-            className="py-1 px-2 text-right text-[10px] tabular-nums font-bold text-red-300/95"
-            title={
-              connected
-                ? v?.depthCapped
-                  ? `Book depth exhausted before ~${pctLabel} down (+ = capped at ${DEPTH_LIMIT} levels)`
-                  : `USD to hit spot ~${pctLabel}`
-                : 'Waiting for Binance book'
-            }
-          >
-            {formatSpotObImpactUsd(v)}
-          </td>
+            <td
+              key={`${asset}-down-${pct}`}
+              className="py-1 px-2 text-right text-[10px] tabular-nums font-bold text-red-300/95"
+              title={
+                connected
+                  ? v?.depthCapped
+                    ? `Book depth exhausted before ~${pctLabel} down (+ = capped at ${DEPTH_LIMIT} levels)`
+                    : `USD to hit ${mkt} ~${pctLabel}`
+                  : 'Waiting for Binance book'
+              }
+            >
+              {formatSpotObImpactUsd(v)}
+            </td>
           );
         })}
       </tr>
@@ -89,16 +98,46 @@ const AssetRows = memo(function AssetRows({
   );
 });
 
-export function SpotOrderbookPanel() {
-  const books = useBinanceSpotOrderbooks();
+function readStoredMarket(panelId: string): BinanceObMarket {
+  const saved = localStorage.getItem(`polybot-spot-ob-market-${panelId}`);
+  return saved === 'futures' ? 'futures' : 'spot';
+}
+
+export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
+  const [market, setMarket] = useState<BinanceObMarket>(() => readStoredMarket(panelId));
+  const books = useBinanceObOrderbooks(market);
   const connected = BINANCE_SPOT_OB_ASSETS.some((a) => books[a] != null);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-900/40 p-2">
       <div className="panel-header mb-2 flex items-center justify-between gap-2 shrink-0 cursor-grab">
         <div className="text-[11px] font-bold text-yellow-400">Spot Orderbook</div>
-        <div className={`text-[9px] tabular-nums ${connected ? 'text-emerald-400' : 'text-gray-500'}`}>
-          {connected ? 'Binance live' : 'Connecting…'}
+        <div className="flex items-center gap-2 no-drag" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="flex shrink-0 overflow-hidden rounded border border-gray-600">
+            <button
+              type="button"
+              className={`px-2 py-0.5 text-[9px] font-semibold ${market === 'spot' ? 'bg-cyan-900/75 text-cyan-200' : 'bg-gray-900 text-gray-500 hover:text-gray-300'}`}
+              onClick={() => {
+                setMarket('spot');
+                localStorage.setItem(`polybot-spot-ob-market-${panelId}`, 'spot');
+              }}
+            >
+              Spot
+            </button>
+            <button
+              type="button"
+              className={`border-l border-gray-600 px-2 py-0.5 text-[9px] font-semibold ${market === 'futures' ? 'bg-cyan-900/75 text-cyan-200' : 'bg-gray-900 text-gray-500 hover:text-gray-300'}`}
+              onClick={() => {
+                setMarket('futures');
+                localStorage.setItem(`polybot-spot-ob-market-${panelId}`, 'futures');
+              }}
+            >
+              Futures
+            </button>
+          </div>
+          <div className={`text-[9px] tabular-nums ${connected ? 'text-emerald-400' : 'text-gray-500'}`}>
+            {connected ? `Binance ${MARKET_LABEL[market]} live` : 'Connecting…'}
+          </div>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
@@ -116,7 +155,7 @@ export function SpotOrderbookPanel() {
           </thead>
           <tbody>
             {BINANCE_SPOT_OB_ASSETS.map((asset) => (
-              <AssetRows key={asset} asset={asset} book={books[asset]} connected={connected} />
+              <AssetRows key={asset} asset={asset} book={books[asset]} connected={connected} market={market} />
             ))}
           </tbody>
         </table>

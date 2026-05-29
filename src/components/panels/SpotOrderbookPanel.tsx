@@ -332,7 +332,7 @@ export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-900/40 p-2">
+    <div className="panel-wrapper flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-gray-800/50 p-3">
       <div className="panel-header mb-2 flex items-center justify-between gap-2 shrink-0 cursor-grab">
         <div className="text-[11px] font-bold text-yellow-400">Orderbook</div>
         <div className="flex items-center gap-2 no-drag" onMouseDown={(e) => e.stopPropagation()}>

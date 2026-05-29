@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   GEX_ASSETS,
   useDeribitGexConnection,
@@ -33,6 +33,101 @@ function pctTo(spot: number, level: number | null | undefined): string {
   const p = ((level - spot) / spot) * 100;
   const s = p >= 0 ? '+' : '';
   return `${s}${p.toFixed(1)}%`;
+}
+
+const FLASH_CLASSES = ['updown-flash-up', 'updown-flash-down', 'gex-flash-change'] as const;
+
+function pulseFlash(el: HTMLElement, cls: (typeof FLASH_CLASSES)[number]): void {
+  el.classList.remove(...FLASH_CLASSES);
+  void el.offsetWidth;
+  el.classList.add(cls);
+}
+
+type GexFlashMode = 'directional' | 'change';
+
+function GexFlashValue({
+  value,
+  className,
+  mode = 'directional',
+  children,
+}: {
+  value: number | null | undefined;
+  className?: string;
+  mode?: GexFlashMode;
+  children: (formatted: string) => ReactNode;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const prevRef = useRef<number | null>(null);
+  const display = value == null || !Number.isFinite(value) ? '—' : children(fmtUsd(value));
+
+  useEffect(() => {
+    if (value == null || !Number.isFinite(value)) {
+      prevRef.current = null;
+      return;
+    }
+    const el = ref.current;
+    if (!el) return;
+    const prev = prevRef.current;
+    if (prev != null && value !== prev) {
+      if (mode === 'directional') {
+        pulseFlash(el, value > prev ? 'updown-flash-up' : 'updown-flash-down');
+      } else {
+        pulseFlash(el, 'gex-flash-change');
+      }
+    }
+    prevRef.current = value;
+  }, [value, mode]);
+
+  if (typeof display === 'string' && display === '—') {
+    return <span className={className}>—</span>;
+  }
+  return (
+    <span ref={ref} className={className}>
+      {display}
+    </span>
+  );
+}
+
+function GexFlashText({
+  value,
+  className,
+  format,
+  mode = 'change',
+}: {
+  value: number | null | undefined;
+  className?: string;
+  format: (v: number) => string;
+  mode?: GexFlashMode;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const prevRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (value == null || !Number.isFinite(value)) {
+      prevRef.current = null;
+      return;
+    }
+    const el = ref.current;
+    if (!el) return;
+    const prev = prevRef.current;
+    if (prev != null && value !== prev) {
+      if (mode === 'directional') {
+        pulseFlash(el, value > prev ? 'updown-flash-up' : 'updown-flash-down');
+      } else {
+        pulseFlash(el, 'gex-flash-change');
+      }
+    }
+    prevRef.current = value;
+  }, [value, mode]);
+
+  if (value == null || !Number.isFinite(value)) {
+    return <span className={className}>—</span>;
+  }
+  return (
+    <span ref={ref} className={className}>
+      {format(value)}
+    </span>
+  );
 }
 
 const StrikeRow = memo(function StrikeRow({
@@ -77,13 +172,15 @@ const StrikeRow = memo(function StrikeRow({
           ) : null}
         </div>
       </div>
-      <div
+      <GexFlashValue
+        value={bucket.gex}
+        mode="directional"
         className={`w-[48px] shrink-0 text-[9px] tabular-nums text-right ${
           positive ? 'text-green-400/90' : 'text-red-400/90'
         }`}
       >
-        {fmtUsd(bucket.gex)}
-      </div>
+        {(s) => s}
+      </GexFlashValue>
     </div>
   );
 });
@@ -91,14 +188,33 @@ const StrikeRow = memo(function StrikeRow({
 function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
   const negative = snap.regime === 'negative';
   const maxAbs = snap.strikes.reduce((m, s) => Math.max(m, Math.abs(s.gex)), 0);
+  const regimeRef = useRef<HTMLSpanElement>(null);
+  const prevRegimeRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const el = regimeRef.current;
+    if (!el) return;
+    const prev = prevRegimeRef.current;
+    if (prev != null && prev !== snap.regime) {
+      pulseFlash(el, 'gex-flash-change');
+    }
+    prevRegimeRef.current = snap.regime;
+  }, [snap.regime]);
+
   return (
     <div className="mb-3 last:mb-0 border-b border-gray-800 pb-2 last:border-b-0">
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-baseline gap-1.5">
           <span className="text-[12px] font-bold text-white">{snap.asset}</span>
-          <span className="text-[10px] tabular-nums text-gray-400">${snap.spot.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+          <GexFlashText
+            value={snap.spot}
+            mode="directional"
+            className="text-[10px] tabular-nums text-gray-400"
+            format={(p) => `$${p.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+          />
         </div>
         <span
+          ref={regimeRef}
           className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide ${
             negative ? 'bg-red-900/60 text-red-300' : 'bg-green-900/60 text-green-300'
           }`}
@@ -115,37 +231,54 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[9.5px] mb-1.5">
         <div className="flex justify-between">
           <span className="text-gray-500">Net GEX/1%</span>
-          <span className={`tabular-nums font-bold ${snap.netGex >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {fmtUsd(snap.netGex)}
-          </span>
+          <GexFlashValue
+            value={snap.netGex}
+            mode="directional"
+            className={`tabular-nums font-bold ${snap.netGex >= 0 ? 'text-green-400' : 'text-red-400'}`}
+          >
+            {(s) => s}
+          </GexFlashValue>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">γ-flip</span>
           <span className="tabular-nums text-gray-200">
-            {snap.gammaFlip != null ? `${fmtStrike(snap.gammaFlip)} (${pctTo(snap.spot, snap.gammaFlip)})` : '—'}
+            {snap.gammaFlip != null ? (
+              <>
+                <GexFlashText value={snap.gammaFlip} format={fmtStrike} /> ({pctTo(snap.spot, snap.gammaFlip)})
+              </>
+            ) : (
+              '—'
+            )}
           </span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Put wall</span>
           <span className="tabular-nums text-red-300/90">
-            {fmtStrike(snap.putWall)} <span className="text-gray-600">{pctTo(snap.spot, snap.putWall)}</span>
+            <GexFlashText value={snap.putWall} format={fmtStrike} />{' '}
+            <span className="text-gray-600">{pctTo(snap.spot, snap.putWall)}</span>
           </span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Call wall</span>
           <span className="tabular-nums text-green-300/90">
-            {fmtStrike(snap.callWall)} <span className="text-gray-600">{pctTo(snap.spot, snap.callWall)}</span>
+            <GexFlashText value={snap.callWall} format={fmtStrike} />{' '}
+            <span className="text-gray-600">{pctTo(snap.spot, snap.callWall)}</span>
           </span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Pin</span>
           <span className="tabular-nums text-yellow-300/90">
-            {fmtStrike(snap.pinStrike)} <span className="text-gray-600">{pctTo(snap.spot, snap.pinStrike)}</span>
+            <GexFlashText value={snap.pinStrike} format={fmtStrike} />{' '}
+            <span className="text-gray-600">{pctTo(snap.spot, snap.pinStrike)}</span>
           </span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">OI</span>
-          <span className="tabular-nums text-gray-300">{snap.totalOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+          <GexFlashText
+            value={snap.totalOi}
+            className="tabular-nums text-gray-300"
+            format={(v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          />
         </div>
       </div>
 
@@ -169,7 +302,7 @@ export function GexPanel({ panelId }: { panelId: string }) {
   const selected = snap?.assets[asset] ?? null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-900/40 p-2">
+    <div className="panel-wrapper flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-gray-800/50 p-3">
       <div className="panel-header mb-1.5 flex items-center justify-between gap-2 shrink-0 cursor-grab">
         <div className="text-[11px] font-bold text-yellow-400">Dealer GEX (Deribit)</div>
         <div className="no-drag" onMouseDown={(e) => e.stopPropagation()}>
@@ -192,7 +325,7 @@ export function GexPanel({ panelId }: { panelId: string }) {
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {selected ? (
-          <AssetGex snap={selected} />
+          <AssetGex key={asset} snap={selected} />
         ) : (
           <div className="text-[10px] text-gray-500 p-2">Connecting to Deribit option chain…</div>
         )}

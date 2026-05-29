@@ -437,6 +437,12 @@ input[type="range"].vol-slider::-moz-range-thumb {
 .updown-flash-up { animation: updownFlashUp 0.6s ease-out; }
 .updown-flash-down { animation: updownFlashDown 0.6s ease-out; }
 
+@keyframes gexFlashChange {
+  0% { background-color: rgba(250, 204, 21, 0.4); box-shadow: 0 0 6px rgba(250, 204, 21, 0.35); }
+  100% { background-color: transparent; box-shadow: none; }
+}
+.gex-flash-change { animation: gexFlashChange 0.45s ease-out; border-radius: 2px; }
+
 @keyframes pulseDot {
   0%, 100% { box-shadow: 0 0 6px 2px rgba(239,68,68,0.6); }
   50% { box-shadow: 0 0 10px 5px rgba(239,68,68,0.9); }

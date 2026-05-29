@@ -12,6 +12,7 @@ import {
 import {
   BINANCE_SPOT_OB_ASSETS,
   binanceObDepthLimit,
+  useBinanceObFeedStatus,
   useBinanceObOrderbooks,
   type BinanceObMarket,
   type BinanceSpotObAsset,
@@ -116,7 +117,7 @@ function readStoredMarket(panelId: string): BinanceObMarket {
 export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
   const [market, setMarket] = useState<BinanceObMarket>(() => readStoredMarket(panelId));
   const books = useBinanceObOrderbooks(market);
-  const connected = BINANCE_SPOT_OB_ASSETS.some((a) => books[a] != null);
+  const feed = useBinanceObFeedStatus(market);
   const [, ageTick] = useState(0);
 
   useEffect(() => {
@@ -124,27 +125,24 @@ export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
     return () => window.clearInterval(id);
   }, []);
 
-  const bookAgeSec = useMemo(() => {
-    let maxAt = 0;
-    for (const asset of BINANCE_SPOT_OB_ASSETS) {
-      const t = books[asset]?.updatedAt ?? 0;
-      if (t > maxAt) maxAt = t;
-    }
-    if (maxAt <= 0) return null;
-    return Math.max(0, Math.round((Date.now() - maxAt) / 1000));
-  }, [books, ageTick]);
-
-  const liveLabel =
-    connected && bookAgeSec != null
-      ? bookAgeSec <= 2
-        ? `Binance ${MARKET_LABEL[market]} live`
-        : `Binance ${MARKET_LABEL[market]} · ${bookAgeSec}s stale`
-      : connected
-        ? `Binance ${MARKET_LABEL[market]} live`
-        : 'Connecting…';
+  const liveLabel = !feed.hasBook
+    ? 'Connecting…'
+    : !feed.wsLive
+      ? feed.wsAgeSec != null
+        ? `Binance ${MARKET_LABEL[market]} · stream ${feed.wsAgeSec}s stale`
+        : `Binance ${MARKET_LABEL[market]} · waiting stream`
+      : !feed.allSynced
+        ? `Binance ${MARKET_LABEL[market]} · syncing`
+        : feed.bookAgeSec != null && feed.bookAgeSec > 2
+          ? `Binance ${MARKET_LABEL[market]} · book ${feed.bookAgeSec}s stale`
+          : `Binance ${MARKET_LABEL[market]} live`;
 
   const liveClass =
-    connected && bookAgeSec != null && bookAgeSec > 2 ? 'text-amber-400' : connected ? 'text-emerald-400' : 'text-gray-500';
+    feed.hasBook && feed.wsLive && feed.allSynced && (feed.bookAgeSec ?? 0) <= 2
+      ? 'text-emerald-400'
+      : feed.hasBook
+        ? 'text-amber-400'
+        : 'text-gray-500';
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-900/40 p-2">
@@ -193,7 +191,13 @@ export function SpotOrderbookPanel({ panelId }: { panelId: string }) {
           </thead>
           <tbody>
             {BINANCE_SPOT_OB_ASSETS.map((asset) => (
-              <AssetRows key={asset} asset={asset} book={books[asset]} connected={connected} market={market} />
+              <AssetRows
+                key={asset}
+                asset={asset}
+                book={books[asset]}
+                connected={feed.hasBook && feed.wsLive && feed.allSynced}
+                market={market}
+              />
             ))}
           </tbody>
         </table>

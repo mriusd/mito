@@ -41,7 +41,8 @@ const SNAPSHOT_LIMIT = 500;
 const EMIT_MS = 250;
 const RECONNECT_MS = 5000;
 const SNAPSHOT_RETRY_MS = 300;
-const RESYNC_BACKOFF_MS = 60_000;
+const RESYNC_BACKOFF_MS = 10_000;
+const WS_STALE_MS = 4000;
 const MAX_SNAPSHOT_ATTEMPTS = 8;
 
 export const DEPTH_LIMIT = SNAPSHOT_LIMIT;
@@ -50,11 +51,19 @@ export function binanceObDepthLimit(_market: BinanceObMarket): number {
   return SNAPSHOT_LIMIT;
 }
 
+export type BinanceObFeedStatus = {
+  hasBook: boolean;
+  wsLive: boolean;
+  allSynced: boolean;
+  wsAgeSec: number | null;
+  bookAgeSec: number | null;
+};
+
 type BooksSnap = Record<BinanceSpotObAsset, BinanceSpotBook | null>;
 
 const EMPTY_BOOKS: BooksSnap = { BTC: null, ETH: null, SOL: null, XRP: null };
 
-type DepthEvent = { U: number; u: number; bids: BinanceObLevel[]; asks: BinanceObLevel[] };
+type DepthEvent = { U: number; u: number; pu: number | null; bids: BinanceObLevel[]; asks: BinanceObLevel[] };
 
 type DepthSnapshot = { lastUpdateId: number; bids: BinanceObLevel[]; asks: BinanceObLevel[] };
 
@@ -73,6 +82,8 @@ type MarketConn = {
   ws: WebSocket | null;
   reconnectTimer: number | null;
   emitTimer: number | null;
+  wsWatchTimer: number | null;
+  wsLastMessageAt: number;
   connectGen: number;
   connecting: boolean;
   dirty: Set<BinanceSpotObAsset>;
@@ -97,6 +108,8 @@ function emptyMarketConn(): MarketConn {
     ws: null,
     reconnectTimer: null,
     emitTimer: null,
+    wsWatchTimer: null,
+    wsLastMessageAt: 0,
     connectGen: 0,
     connecting: false,
     dirty: new Set(),
@@ -114,6 +127,8 @@ let booksByMarket: Record<BinanceObMarket, BooksSnap> = {
   futures: { ...EMPTY_BOOKS },
 };
 let digestByMarket: Record<BinanceObMarket, number> = { spot: 0, futures: 0 };
+let statusDigestByMarket: Record<BinanceObMarket, number> = { spot: 0, futures: 0 };
+let wsLastMessageAtByMarket: Record<BinanceObMarket, number> = { spot: 0, futures: 0 };
 let refCountByMarket: Record<BinanceObMarket, number> = { spot: 0, futures: 0 };
 const listenersByMarket: Record<BinanceObMarket, Set<() => void>> = {
   spot: new Set(),
@@ -130,6 +145,27 @@ function emit(market: BinanceObMarket): void {
   for (const fn of listenersByMarket[market]) fn();
 }
 
+function emitStatus(market: BinanceObMarket): void {
+  statusDigestByMarket[market] += 1;
+  for (const fn of listenersByMarket[market]) fn();
+}
+
+function markWsMessage(market: BinanceObMarket): void {
+  const now = Date.now();
+  wsLastMessageAtByMarket[market] = now;
+  marketConns[market].wsLastMessageAt = now;
+  emitStatus(market);
+}
+
+function diffHasGap(market: BinanceObMarket, state: AssetBookState, event: DepthEvent): boolean {
+  if (event.u <= state.lastUpdateId) return false;
+  if (market === 'futures') {
+    if (event.pu != null && event.pu !== state.lastUpdateId) return true;
+    return event.U > state.lastUpdateId + 1;
+  }
+  return event.U > state.lastUpdateId + 1;
+}
+
 function diffStreamName(asset: BinanceSpotObAsset): string {
   return `${SYMBOL_BY_ASSET[asset].toLowerCase()}@depth@100ms`;
 }
@@ -140,15 +176,18 @@ function sleep(ms: number): Promise<void> {
 
 function parseDiffDepth(raw: unknown): (DepthEvent & { symbol: string }) | null {
   if (!raw || typeof raw !== 'object') return null;
-  const msg = raw as { s?: unknown; U?: unknown; u?: unknown; b?: unknown; a?: unknown };
+  const msg = raw as { s?: unknown; U?: unknown; u?: unknown; pu?: unknown; b?: unknown; a?: unknown };
   const symbol = msg.s;
   const U = Number(msg.U);
   const u = Number(msg.u);
+  const puRaw = msg.pu;
+  const pu = puRaw == null ? null : Number(puRaw);
   if (typeof symbol !== 'string' || !Number.isFinite(U) || !Number.isFinite(u)) return null;
   return {
     symbol,
     U,
     u,
+    pu: pu != null && Number.isFinite(pu) ? pu : null,
     bids: parseBinanceObLevels(msg.b),
     asks: parseBinanceObLevels(msg.a),
   };
@@ -265,7 +304,7 @@ function syncAssetFromSnapshot(
 
   for (const event of pending) {
     if (event.u <= state.lastUpdateId) continue;
-    if (event.U > state.lastUpdateId + 1) {
+    if (diffHasGap(market, state, event)) {
       resetAssetState(state);
       state.pending = pending.slice(pending.indexOf(event));
       scheduleSnapshotRetry(market, asset, connectGen);
@@ -323,7 +362,7 @@ function onDiffMessage(
   }
 
   if (event.u <= state.lastUpdateId) return;
-  if (event.U > state.lastUpdateId + 1) {
+  if (diffHasGap(market, state, event)) {
     resetAssetState(state);
     state.pending = [event];
     requestResync(market, asset, connectGen);
@@ -332,6 +371,37 @@ function onDiffMessage(
 
   applyEventToState(state, event);
   schedulePublish(market, asset);
+}
+
+function stopWsWatch(market: BinanceObMarket): void {
+  const conn = marketConns[market];
+  if (conn.wsWatchTimer != null) {
+    window.clearInterval(conn.wsWatchTimer);
+    conn.wsWatchTimer = null;
+  }
+}
+
+function forceWsReconnect(market: BinanceObMarket): void {
+  const conn = marketConns[market];
+  if (conn.ws == null) return;
+  conn.ws.onclose = null;
+  conn.ws.close();
+  conn.ws = null;
+  stopWsWatch(market);
+  connectMarket(market);
+}
+
+function startWsWatch(market: BinanceObMarket): void {
+  const conn = marketConns[market];
+  stopWsWatch(market);
+  conn.wsWatchTimer = window.setInterval(() => {
+    if (refCountByMarket[market] <= 0 || conn.ws == null) return;
+    const last = conn.wsLastMessageAt;
+    if (last <= 0) return;
+    if (Date.now() - last > WS_STALE_MS) {
+      forceWsReconnect(market);
+    }
+  }, 1000);
 }
 
 function wsUrlForMarket(market: BinanceObMarket): string {
@@ -346,6 +416,10 @@ function openDepthWs(market: BinanceObMarket, connectGen: number): void {
   const ws = new WebSocket(wsUrlForMarket(market));
   conn.ws = ws;
 
+  ws.onopen = () => {
+    startWsWatch(market);
+  };
+
   ws.onmessage = (event) => {
     let payload: unknown;
     try {
@@ -359,6 +433,7 @@ function openDepthWs(market: BinanceObMarket, connectGen: number): void {
     if (!diff) return;
     const asset = ASSET_BY_SYMBOL[diff.symbol];
     if (!asset) return;
+    markWsMessage(market);
     onDiffMessage(market, asset, diff, connectGen);
   };
 
@@ -368,6 +443,10 @@ function openDepthWs(market: BinanceObMarket, connectGen: number): void {
 
   ws.onclose = () => {
     conn.ws = null;
+    stopWsWatch(market);
+    wsLastMessageAtByMarket[market] = 0;
+    conn.wsLastMessageAt = 0;
+    emitStatus(market);
     if (refCountByMarket[market] <= 0) return;
     if (conn.reconnectTimer != null) return;
     conn.reconnectTimer = window.setTimeout(() => {
@@ -407,6 +486,10 @@ function disconnectMarket(market: BinanceObMarket): void {
   const conn = marketConns[market];
   conn.connectGen += 1;
   conn.connecting = false;
+  stopWsWatch(market);
+  wsLastMessageAtByMarket[market] = 0;
+  conn.wsLastMessageAt = 0;
+  emitStatus(market);
   if (conn.reconnectTimer != null) {
     window.clearTimeout(conn.reconnectTimer);
     conn.reconnectTimer = null;
@@ -464,6 +547,7 @@ export function subscribeBinanceObOrderbooks(market: BinanceObMarket, onStoreCha
       disconnectMarket(market);
       booksByMarket = { ...booksByMarket, [market]: { ...EMPTY_BOOKS } };
       digestByMarket[market] += 1;
+      statusDigestByMarket[market] += 1;
     }
   };
 }
@@ -472,6 +556,46 @@ export function getBinanceObOrderbooksSnapshot(market: BinanceObMarket): { diges
   return { digest: digestByMarket[market], books: booksByMarket[market] };
 }
 
+export function getBinanceObFeedStatus(market: BinanceObMarket): BinanceObFeedStatus {
+  const books = booksByMarket[market];
+  const conn = marketConns[market];
+  let maxBookAt = 0;
+  let allSynced = true;
+  let hasBook = false;
+  for (const asset of BINANCE_SPOT_OB_ASSETS) {
+    const book = books[asset];
+    const st = conn.assets[asset];
+    if (book) hasBook = true;
+    if (!st.synced) allSynced = false;
+    const t = book?.updatedAt ?? 0;
+    if (t > maxBookAt) maxBookAt = t;
+  }
+  const wsAt = conn.wsLastMessageAt;
+  const now = Date.now();
+  const wsAgeSec = wsAt > 0 ? Math.max(0, Math.round((now - wsAt) / 1000)) : null;
+  const bookAgeSec = maxBookAt > 0 ? Math.max(0, Math.round((now - maxBookAt) / 1000)) : null;
+  const wsLive = wsAt > 0 && now - wsAt <= WS_STALE_MS;
+  return { hasBook, wsLive, allSynced, wsAgeSec, bookAgeSec };
+}
+
+function getStatusDigest(market: BinanceObMarket): number {
+  return statusDigestByMarket[market] + digestByMarket[market];
+}
+
+export function useBinanceObFeedStatus(market: BinanceObMarket): BinanceObFeedStatus {
+  useSyncExternalStore(
+    SUBSCRIBE_BY_MARKET[market],
+    () => getStatusDigest(market),
+    () => 0,
+  );
+  return getBinanceObFeedStatus(market);
+}
+
 export function useBinanceObOrderbooks(market: BinanceObMarket): BooksSnap {
-  return useSyncExternalStore(SUBSCRIBE_BY_MARKET[market], GET_BOOKS_BY_MARKET[market], () => EMPTY_BOOKS);
+  useSyncExternalStore(
+    SUBSCRIBE_BY_MARKET[market],
+    () => getStatusDigest(market),
+    () => 0,
+  );
+  return GET_BOOKS_BY_MARKET[market]();
 }

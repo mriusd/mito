@@ -28,6 +28,20 @@ function impactFromCell(cell: BinanceObImpactCell | null) {
   return { usd: cell.usd, depthCapped: cell.capped };
 }
 
+function impactPair(panel: BinanceObAssetPanel | null, pct: number) {
+  const up = impactFromCell(cellForPct(panel?.up ?? [], pct));
+  const down = impactFromCell(cellForPct(panel?.down ?? [], pct));
+  const upUsd = up?.usd ?? 0;
+  const downUsd = down?.usd ?? 0;
+  const comparable = upUsd > 0 && downUsd > 0 && upUsd !== downUsd;
+  return {
+    up,
+    down,
+    upSmaller: comparable && upUsd < downUsd,
+    downSmaller: comparable && downUsd < upUsd,
+  };
+}
+
 const AssetRows = memo(function AssetRows({
   asset,
   panel,
@@ -58,12 +72,12 @@ const AssetRows = memo(function AssetRows({
           <Triangle className="mx-auto h-2.5 w-2.5 fill-green-400 stroke-green-400 text-green-400" strokeWidth={1.5} aria-label="Up" />
         </td>
         {SPOT_OB_MOVE_PCT_LEVELS.map((pct) => {
-          const v = impactFromCell(cellForPct(panel?.up ?? [], pct));
+          const { up: v, upSmaller } = impactPair(panel, pct);
           const pctLabel = formatSpotObMovePctLabel(pct);
           return (
             <td
               key={`${asset}-up-${pct}`}
-              className="py-1 px-2 text-right text-[10px] tabular-nums font-bold text-green-300/95"
+              className={`py-1 px-2 text-right text-[10px] tabular-nums font-bold text-green-300/95${upSmaller ? ' bg-green-900/55' : ''}`}
               title={
                 connected
                   ? v?.depthCapped
@@ -82,12 +96,12 @@ const AssetRows = memo(function AssetRows({
           <Triangle className="mx-auto h-2.5 w-2.5 rotate-180 fill-red-400 stroke-red-400 text-red-400" strokeWidth={1.5} aria-label="Down" />
         </td>
         {SPOT_OB_MOVE_PCT_LEVELS.map((pct) => {
-          const v = impactFromCell(cellForPct(panel?.down ?? [], pct));
+          const { down: v, downSmaller } = impactPair(panel, pct);
           const pctLabel = formatSpotObMovePctLabel(pct);
           return (
             <td
               key={`${asset}-down-${pct}`}
-              className="py-1 px-2 text-right text-[10px] tabular-nums font-bold text-red-300/95"
+              className={`py-1 px-2 text-right text-[10px] tabular-nums font-bold text-red-300/95${downSmaller ? ' bg-red-900/55' : ''}`}
               title={
                 connected
                   ? v?.depthCapped

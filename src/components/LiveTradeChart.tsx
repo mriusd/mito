@@ -14,7 +14,6 @@ import {
 import type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 import { parseCandleOb, type CandleObSnapshot } from '../lib/candleObSnapshot';
 import { prepareCandleObDisplay } from '../lib/candleObDisplay';
-import { readSavedObAggStep } from '../lib/sidebarObAggStep';
 import type {
   ChartOrderReplaceParams,
   SidebarChartOrderLevel,
@@ -1546,7 +1545,7 @@ export function LiveTradeChart({
                 }}
               >
                 {(() => {
-                  const step = readSavedObAggStep();
+                  const step = '5' as const;
                   const chartOutcome = outcomeToggle?.value ?? 'YES';
                   const { displayBids, displayAsks, yesBidUsd, noBidUsd, displayBidFullUsd, displayAskFullUsd } =
                     prepareCandleObDisplay(hoverOb.ob, step);

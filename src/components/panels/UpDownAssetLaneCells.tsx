@@ -79,19 +79,6 @@ function strikePriceFromMarket(market: Market, tokenId: string, lookup: Record<s
   return p != null && Number.isFinite(p) ? p : undefined;
 }
 
-function deltaMidVsMathBg(yesMidProb: number | null, mathYesProb: number | null): CSSProperties {
-  if (yesMidProb == null || mathYesProb == null) return {};
-  const delta = (yesMidProb - mathYesProb) * 100;
-  const alpha = Math.min(0.55, Math.abs(delta) * 0.035);
-  if (alpha < 0.02) return {};
-  return {
-    backgroundColor:
-      delta > 0
-        ? `rgba(34, 197, 94, ${alpha.toFixed(3)})`
-        : `rgba(239, 68, 68, ${alpha.toFixed(3)})`,
-  };
-}
-
 const UpDownExpiryBar = memo(function UpDownExpiryBar({
   endDate,
   durationMs,
@@ -306,7 +293,6 @@ function UpDownAssetLaneCellsInner({
   const noProb = yesMidProb != null ? 1 - yesMidProb : null;
   const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
   const noProbStr = noProb != null ? (noProb * 100).toFixed(1) : '-';
-  const quoteDeltaBg = deltaMidVsMathBg(yesMidProb, mathYesProb);
   const isSelected = selectedMarketId === market.id;
   const provenSMS = yesTokenId ? (bidAskLookup[yesTokenId]?.provenSMS ?? 0) : 0;
   const smartMoneyBarPct = Math.max(2, Math.min(98, 50 + provenSMS * 50));
@@ -370,7 +356,6 @@ function UpDownAssetLaneCellsInner({
       className={`market-cell px-0.5 py-1 text-center whitespace-nowrap border-l border-r border-solid border-gray-700 relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
       style={{
         minWidth: 60,
-        ...quoteDeltaBg,
         ...assetBorderStyle(asset, showTarget ? { B: isLastTfRow } : { L: true, B: isLastTfRow }),
       }}
       onClick={() => onCellClick(market)}

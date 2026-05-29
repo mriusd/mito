@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useCallback, useState, useMemo, typ
 import { createPortal } from 'react-dom';
 import { Link2, Link2Off } from 'lucide-react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
-import { API_BASE, WS_BASE } from '../lib/env';
+import { API_BASE } from '../lib/env';
+import { subscribeChartKline } from '../lib/chartWsShared';
 import { resolveLiveTradeChartWindow } from '../lib/walletInfoChartMarket';
 import {
   CHART_VOLUME_SPIKE_FLASH_MS,
@@ -318,7 +319,6 @@ export function LiveTradeChart({
   const lastTradeCountRef = useRef(0);
   const [ready, setReady] = useState(false);
   const [chainlinkReady, setChainlinkReady] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
   const chainlinkWsRef = useRef<WebSocket | null>(null);
   const resolvedDefaultInterval = defaultIntervalOverride || defaultInterval(intervalContext);
   const [interval, setInterval_] = useState<ChartInterval>(
@@ -377,21 +377,9 @@ export function LiveTradeChart({
     lastTradeCountRef.current = 0;
     setReady(false);
 
-    if (wsRef.current) {
-      try {
-        wsRef.current.close();
-      } catch {
-        /* ignore */
-      }
-      wsRef.current = null;
-    }
-
     if (!tokenId) return;
 
     let cancelled = false;
-    let reconnectTimeout: number | null = null;
-    let pingIv: number | null = null;
-    let reconnectAttempt = 0;
 
     const { startMs: st, endMs: et } = resolveLiveTradeChartWindow(tokenId, startTime, endTime);
 
@@ -456,169 +444,76 @@ export function LiveTradeChart({
 
     void loadKlines();
 
-    const clearPing = () => {
-      if (pingIv != null) {
-        clearInterval(pingIv);
-        pingIv = null;
-      }
-    };
-
-    const scheduleReconnect = () => {
-      if (cancelled) return;
-      const delay = Math.min(30_000, 800 * Math.pow(2, reconnectAttempt));
-      reconnectAttempt = Math.min(reconnectAttempt + 1, 10);
-      reconnectTimeout = window.setTimeout(() => {
-        reconnectTimeout = null;
-        connectWs();
-      }, delay);
-    };
-
-    const connectWs = () => {
-      if (cancelled || !tokenId) return;
-
-      clearPing();
-      const prev = wsRef.current;
-      if (prev && (prev.readyState === WebSocket.OPEN || prev.readyState === WebSocket.CONNECTING)) {
-        try {
-          prev.close();
-        } catch {
-          /* ignore */
-        }
-      }
-      wsRef.current = null;
-
-      const ws = new WebSocket(`${WS_BASE}/ws/chart`);
-      wsRef.current = ws;
-      const isLiveSocket = () => wsRef.current === ws;
-
-      ws.onopen = () => {
-        if (cancelled || !isLiveSocket()) return;
-        const wasReconnect = reconnectAttempt > 0;
-        reconnectAttempt = 0;
-        ws.send(
-          JSON.stringify({
-            type: 'subscribeKlineStream',
-            data: { symbol: tokenId, interval },
-          }),
-        );
-        pingIv = window.setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'ping' }));
-          }
-        }, 30_000);
-        if (wasReconnect) {
-          void loadKlines().then(() => {
-            if (!cancelled) setWsTick((n) => n + 1);
-          });
-        }
-      };
-
     const applyWsKline = (k: Record<string, unknown>) => {
-            const openTime = k.t as number;
-            const o = toPrice(parseFloat(String(k.o)) * 100, isNo);
-            const h = toPrice(parseFloat(String(k.h)) * 100, isNo);
-            const l = toPrice(parseFloat(String(k.l)) * 100, isNo);
-            const c = toPrice(parseFloat(String(k.c)) * 100, isNo);
-            const v = parseFloat(String(k.v)) || 0;
-            const hi = Math.max(o, h, l, c);
-            const lo = Math.min(o, h, l, c);
-            const prev = candleMapRef.current.get(openTime);
-            const ob = parseCandleOb(k.ob) ?? prev?.ob;
-            const enrichment = mergeCandleBsEnrichment(parseCandleBsEnrichment(k), prev?.enrichment);
-            candleMapRef.current.set(openTime, {
-              time: openTime,
-              o,
-              h: hi,
-              l: lo,
-              c,
-              v,
-              ...(ob ? { ob } : {}),
-              ...(enrichment ? { enrichment } : {}),
-            });
-            pruneCandleMap(candleMapRef.current, st, et, candleMs * 2);
-          };
-
-      ws.onmessage = (event) => {
-        if (!isLiveSocket()) return;
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === 'klineStreamSnapshot') {
-            const klines = msg.data?.klines;
-            if (!Array.isArray(klines)) return;
-            for (const k of klines) {
-              if (k && typeof k === 'object') applyWsKline(k as Record<string, unknown>);
-            }
-            setWsTick((n) => n + 1);
-            return;
-          }
-          if (msg.type === 'klineStreamUpdate') {
-            const k = msg.data?.data?.k;
-            if (!k) return;
-            applyWsKline(k as Record<string, unknown>);
-            setWsTick((n) => n + 1);
-          } else if (msg.type === 'klineStreamDelete') {
-            const tRaw = msg.data?.data?.t;
-            const t = typeof tRaw === 'number' ? tRaw : Number(tRaw);
-            if (Number.isFinite(t) && t > 0) {
-              candleMapRef.current.delete(t);
-              setWsTick((n) => n + 1);
-            }
-          }
-        } catch {
-          /* ignore */
-        }
-      };
-
-      ws.onerror = () => {
-        if (!isLiveSocket()) return;
-        try {
-          ws.close();
-        } catch {
-          /* ignore */
-        }
-      };
-
-      ws.onclose = () => {
-        // Ignore close events from stale sockets we intentionally replaced.
-        if (!isLiveSocket()) return;
-        clearPing();
-        wsRef.current = null;
-        if (!cancelled) scheduleReconnect();
-      };
+      const openTime = k.t as number;
+      const o = toPrice(parseFloat(String(k.o)) * 100, isNo);
+      const h = toPrice(parseFloat(String(k.h)) * 100, isNo);
+      const l = toPrice(parseFloat(String(k.l)) * 100, isNo);
+      const c = toPrice(parseFloat(String(k.c)) * 100, isNo);
+      const v = parseFloat(String(k.v)) || 0;
+      const hi = Math.max(o, h, l, c);
+      const lo = Math.min(o, h, l, c);
+      const prev = candleMapRef.current.get(openTime);
+      const ob = parseCandleOb(k.ob) ?? prev?.ob;
+      const enrichment = mergeCandleBsEnrichment(parseCandleBsEnrichment(k), prev?.enrichment);
+      candleMapRef.current.set(openTime, {
+        time: openTime,
+        o,
+        h: hi,
+        l: lo,
+        c,
+        v,
+        ...(ob ? { ob } : {}),
+        ...(enrichment ? { enrichment } : {}),
+      });
+      pruneCandleMap(candleMapRef.current, st, et, candleMs * 2);
     };
+
+    const unsub = subscribeChartKline(tokenId, interval, {
+      onMessage: (msg) => {
+        if (msg.type === 'klineStreamSnapshot') {
+          const klines = msg.data?.klines;
+          if (!Array.isArray(klines)) return;
+          for (const k of klines) {
+            if (k && typeof k === 'object') applyWsKline(k as Record<string, unknown>);
+          }
+          setWsTick((n) => n + 1);
+          return;
+        }
+        if (msg.type === 'klineStreamUpdate') {
+          const k = msg.data?.data?.k;
+          if (!k) return;
+          applyWsKline(k as Record<string, unknown>);
+          setWsTick((n) => n + 1);
+        } else if (msg.type === 'klineStreamDelete') {
+          const tRaw = msg.data?.data?.t;
+          const t = typeof tRaw === 'number' ? tRaw : Number(tRaw);
+          if (Number.isFinite(t) && t > 0) {
+            candleMapRef.current.delete(t);
+            setWsTick((n) => n + 1);
+          }
+        }
+      },
+      onReconnect: () => {
+        void loadKlines().then(() => {
+          if (!cancelled) setWsTick((n) => n + 1);
+        });
+      },
+    });
 
     const onVisibility = () => {
       if (cancelled || document.visibilityState !== 'visible') return;
-      const w = wsRef.current;
-      if (w && w.readyState === WebSocket.OPEN) return;
-      reconnectAttempt = 0;
-      if (reconnectTimeout != null) {
-        clearTimeout(reconnectTimeout);
-        reconnectTimeout = null;
-      }
       void loadKlines().then(() => {
         if (!cancelled) setWsTick((n) => n + 1);
       });
-      connectWs();
     };
 
-    connectWs();
     document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', onVisibility);
-      if (reconnectTimeout != null) clearTimeout(reconnectTimeout);
-      clearPing();
-      const w = wsRef.current;
-      if (w && (w.readyState === WebSocket.OPEN || w.readyState === WebSocket.CONNECTING)) {
-        try {
-          w.close();
-        } catch {
-          /* ignore */
-        }
-      }
-      wsRef.current = null;
+      unsub();
     };
   }, [tokenId, isNo, startTime, endTime, interval]);
 

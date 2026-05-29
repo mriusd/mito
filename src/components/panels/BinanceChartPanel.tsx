@@ -4,7 +4,8 @@ import { Settings } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import type { AssetName, Market } from '../../types';
 import { ASSET_COLORS } from '../../types';
-import { API_BASE, WS_BASE } from '../../lib/env';
+import { API_BASE } from '../../lib/env';
+import { subscribeChartKline } from '../../lib/chartWsShared';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 
@@ -1159,109 +1160,46 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     if (priceSource !== 'chainlink') return;
 
     const clSym = chainlinkKlineSymbol(asset);
+    const subIv = polycandlesChartInterval(timeframe);
 
     let disposed = false;
-    let ws: WebSocket | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-    let pingIv: ReturnType<typeof setInterval> | undefined;
-    let attempt = 0;
 
-    const connect = () => {
-      if (disposed) return;
-      ws = new WebSocket(`${WS_BASE}/ws/chart`);
-
-      ws.onopen = () => {
-        attempt = 0;
-        const subIv = polycandlesChartInterval(timeframeRef.current);
-        ws?.send(
-          JSON.stringify({
-            type: 'subscribeKlineStream',
-            data: { symbol: clSym, interval: subIv },
-          }),
+    const unsub = subscribeChartKline(clSym, subIv, {
+      onMessage: (msg) => {
+        if (msg.type !== 'klineStreamUpdate') return;
+        const k = msg.data?.data?.k as
+          | { t: number; o: string; h: string; l: string; c: string; s?: string; i?: string }
+          | undefined;
+        if (!k) return;
+        if (k.s !== clSym || k.i !== polycandlesChartInterval(timeframeRef.current)) return;
+        const tOpen = Number(k.t);
+        const o = parseFloat(k.o);
+        const h = parseFloat(k.h);
+        const l = parseFloat(k.l);
+        const c = parseFloat(k.c);
+        if (!Number.isFinite(tOpen) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return;
+        if (disposed || priceSourceRef.current !== 'chainlink') return;
+        // Any valid live candle means the stream is healthy; remove stale overlay.
+        setLoadErr(null);
+        const windowStart = candleWindowStart(
+          Date.now(),
+          candleCountRef.current,
+          timeframeRef.current,
+          'chainlink',
         );
+        setCandles((prev) => mergeKlineIntoSeries(prev, tOpen, o, h, l, c, windowStart));
+      },
+      onReconnect: () => {
+        if (disposed) return;
         // Backend just came back: clear stale fetch overlay and backfill history.
         setLoadErr(null);
         void fetchKlines();
-        pingIv = setInterval(() => {
-          if (ws?.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'ping' }));
-          }
-        }, 30_000);
-      };
-
-      ws.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data as string) as {
-            type?: string;
-            data?: { data?: { k?: { t: number; o: string; h: string; l: string; c: string; s?: string; i?: string } } };
-          };
-          if (msg.type !== 'klineStreamUpdate') return;
-          const k = msg.data?.data?.k;
-          if (!k) return;
-          if (k.s !== clSym || k.i !== polycandlesChartInterval(timeframeRef.current)) return;
-          const tOpen = Number(k.t);
-          const o = parseFloat(k.o);
-          const h = parseFloat(k.h);
-          const l = parseFloat(k.l);
-          const c = parseFloat(k.c);
-          if (!Number.isFinite(tOpen) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return;
-          if (disposed || priceSourceRef.current !== 'chainlink') return;
-          // Any valid live candle means the stream is healthy; remove stale overlay.
-          setLoadErr(null);
-          const windowStart = candleWindowStart(
-            Date.now(),
-            candleCountRef.current,
-            timeframeRef.current,
-            'chainlink',
-          );
-          setCandles((prev) => mergeKlineIntoSeries(prev, tOpen, o, h, l, c, windowStart));
-        } catch {
-          /* ignore malformed */
-        }
-      };
-
-      ws.onerror = () => {
-        try {
-          ws?.close();
-        } catch {
-          /* ignore */
-        }
-      };
-
-      ws.onclose = () => {
-        clearInterval(pingIv);
-        pingIv = undefined;
-        if (disposed) return;
-        const delay = Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5));
-        attempt += 1;
-        reconnectTimer = setTimeout(connect, delay);
-      };
-    };
-
-    connect();
+      },
+    });
 
     return () => {
       disposed = true;
-      clearInterval(pingIv);
-      if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
-      const subIv = polycandlesChartInterval(timeframe);
-      try {
-        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-          ws.send(
-            JSON.stringify({
-              type: 'unsubscribeKlineStream',
-              data: { symbol: clSym, interval: subIv },
-            }),
-          );
-        }
-      } catch {
-        /* ignore */
-      }
-      try {
-        ws?.close();
-      } catch {
-        /* ignore */
-      }
+      unsub();
     };
   }, [asset, timeframe, candleCount, priceSource]);
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { API_BASE, WS_BASE } from '../lib/env';
+import { API_BASE } from '../lib/env';
+import { subscribeChartKline } from '../lib/chartWsShared';
 import {
   SIDEBAR_CHART_INTERVAL_MS,
   annualizedVolPctFromClosePrices,
@@ -125,10 +126,6 @@ export function ChainlinkChart({
 
     const clSymbol = chainlinkKlineSymbol(asset);
     let disposed = false;
-    let ws: WebSocket | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-    let pingIv: ReturnType<typeof setInterval> | undefined;
-    let attempt = 0;
 
     const params = new URLSearchParams({ symbol: clSymbol, interval, limit: '100' });
     void fetch(`${API_BASE}/api/v3/klines?${params}`)
@@ -153,80 +150,30 @@ export function ChainlinkChart({
       })
       .catch(() => setReady(true));
 
-    const connect = () => {
-      if (disposed) return;
-      ws = new WebSocket(`${WS_BASE}/ws/chart`);
-
-      ws.onopen = () => {
-        attempt = 0;
-        const iv = intervalRef.current;
-        ws?.send(JSON.stringify({ type: 'subscribeKlineStream', data: { symbol: clSymbol, interval: iv } }));
-        pingIv = setInterval(() => {
-          if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
-        }, 30_000);
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data as string) as {
-            type?: string;
-            data?: { data?: { k?: { t: number; o: string; h: string; l: string; c: string; s?: string; i?: string } } };
-          };
-          if (msg.type !== 'klineStreamUpdate') return;
-          const k = msg.data?.data?.k;
-          if (!k) return;
-          if (k.s !== clSymbol || k.i !== intervalRef.current) return;
-          const tOpen = Number(k.t);
-          const o = parseFloat(k.o);
-          const h = parseFloat(k.h);
-          const l = parseFloat(k.l);
-          const c = parseFloat(k.c);
-          if (!Number.isFinite(tOpen) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return;
-          if (disposed) return;
-          const map = candleMapRef.current;
-          map.set(tOpen, { time: tOpen, o, h, l, c });
-          setTick((n) => n + 1);
-        } catch {
-          /* ignore */
-        }
-      };
-
-      ws.onerror = () => {
-        try {
-          ws?.close();
-        } catch {
-          /* ignore */
-        }
-      };
-
-      ws.onclose = () => {
-        clearInterval(pingIv);
-        pingIv = undefined;
+    const unsub = subscribeChartKline(clSymbol, interval, {
+      onMessage: (msg) => {
+        if (msg.type !== 'klineStreamUpdate') return;
+        const k = msg.data?.data?.k as
+          | { t: number; o: string; h: string; l: string; c: string; s?: string; i?: string }
+          | undefined;
+        if (!k) return;
+        if (k.s !== clSymbol || k.i !== intervalRef.current) return;
+        const tOpen = Number(k.t);
+        const o = parseFloat(k.o);
+        const h = parseFloat(k.h);
+        const l = parseFloat(k.l);
+        const c = parseFloat(k.c);
+        if (!Number.isFinite(tOpen) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return;
         if (disposed) return;
-        const delay = Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5));
-        attempt += 1;
-        reconnectTimer = setTimeout(connect, delay);
-      };
-    };
-
-    connect();
+        const map = candleMapRef.current;
+        map.set(tOpen, { time: tOpen, o, h, l, c });
+        setTick((n) => n + 1);
+      },
+    });
 
     return () => {
       disposed = true;
-      clearInterval(pingIv);
-      if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
-      try {
-        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-          ws.send(JSON.stringify({ type: 'unsubscribeKlineStream', data: { symbol: clSymbol, interval } }));
-        }
-      } catch {
-        /* ignore */
-      }
-      try {
-        ws?.close();
-      } catch {
-        /* ignore */
-      }
+      unsub();
     };
   }, [chainlinkCandles, asset, interval]);
 

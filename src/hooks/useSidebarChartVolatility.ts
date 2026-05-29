@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { API_BASE, WS_BASE } from '../lib/env';
+import { API_BASE } from '../lib/env';
+import { subscribeChartKline } from '../lib/chartWsShared';
 import {
   SIDEBAR_CHART_INTERVAL_MS,
   annualizedVolPctFromClosePrices,
@@ -160,10 +161,6 @@ export function useSidebarChartVolatility({
 
     const clSymbol = chainlinkKlineSymbol(asset);
     let disposed = false;
-    let ws: WebSocket | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-    let pingIv: ReturnType<typeof setInterval> | undefined;
-    let attempt = 0;
 
     const params = new URLSearchParams({ symbol: clSymbol, interval, limit: '100' });
     void fetch(`${API_BASE}/api/v3/klines?${params}`)
@@ -182,74 +179,24 @@ export function useSidebarChartVolatility({
       })
       .catch(() => setReady(true));
 
-    const connect = () => {
-      if (disposed) return;
-      ws = new WebSocket(`${WS_BASE}/ws/chart`);
-
-      ws.onopen = () => {
-        attempt = 0;
-        const iv = intervalRef.current;
-        ws?.send(JSON.stringify({ type: 'subscribeKlineStream', data: { symbol: clSymbol, interval: iv } }));
-        pingIv = setInterval(() => {
-          if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
-        }, 30_000);
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data as string) as {
-            type?: string;
-            data?: { data?: { k?: { t: number; o: string; h: string; l: string; c: string; s?: string; i?: string } } };
-          };
-          if (msg.type !== 'klineStreamUpdate') return;
-          const k = msg.data?.data?.k;
-          if (!k) return;
-          if (k.s !== clSymbol || k.i !== intervalRef.current) return;
-          const row = parseKlineRow([k.t, k.o, k.h, k.l, k.c]);
-          if (!row || disposed) return;
-          candleMapRef.current.set(row.time, row);
-          setTick((n) => n + 1);
-        } catch {
-          /* ignore */
-        }
-      };
-
-      ws.onerror = () => {
-        try {
-          ws?.close();
-        } catch {
-          /* ignore */
-        }
-      };
-
-      ws.onclose = () => {
-        clearInterval(pingIv);
-        pingIv = undefined;
-        if (disposed) return;
-        const delay = Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5));
-        attempt += 1;
-        reconnectTimer = setTimeout(connect, delay);
-      };
-    };
-
-    connect();
+    const unsub = subscribeChartKline(clSymbol, interval, {
+      onMessage: (msg) => {
+        if (msg.type !== 'klineStreamUpdate') return;
+        const k = msg.data?.data?.k as
+          | { t: number; o: string; h: string; l: string; c: string; s?: string; i?: string }
+          | undefined;
+        if (!k) return;
+        if (k.s !== clSymbol || k.i !== intervalRef.current) return;
+        const row = parseKlineRow([k.t, k.o, k.h, k.l, k.c]);
+        if (!row || disposed) return;
+        candleMapRef.current.set(row.time, row);
+        setTick((n) => n + 1);
+      },
+    });
 
     return () => {
       disposed = true;
-      clearTimeout(reconnectTimer);
-      clearInterval(pingIv);
-      try {
-        if (ws?.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'unsubscribeKlineStream', data: { symbol: clSymbol, interval } }));
-        }
-      } catch {
-        /* ignore */
-      }
-      try {
-        ws?.close();
-      } catch {
-        /* ignore */
-      }
+      unsub();
     };
   }, [asset, chainlinkCandles, interval]);
 

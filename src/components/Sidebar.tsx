@@ -806,8 +806,7 @@ function readCustomSidebarButtons(): CustomSidebarButton[] {
         if (Array.isArray(b.orders) && b.orders.length > 0) {
           const orders = (b.orders as unknown[])
             .map(normalizeCustomSidebarOrderSpec)
-            .filter((o): o is CustomSidebarOrderSpec => o != null)
-            .slice(0, 2);
+            .filter((o): o is CustomSidebarOrderSpec => o != null);
           if (orders.length === 0) return null;
           return { ...base, orders };
         }
@@ -1999,7 +1998,7 @@ export const Sidebar = memo(function Sidebar() {
   };
 
   const handleAddCustomOrderDraft = () => {
-    setCustomOrderDrafts((prev) => (prev.length >= 2 ? prev : [...prev, DEFAULT_CUSTOM_ORDER_DRAFT()]));
+    setCustomOrderDrafts((prev) => [...prev, DEFAULT_CUSTOM_ORDER_DRAFT()]);
   };
 
   const handleRemoveCustomOrderDraft = (index: number) => {
@@ -4610,15 +4609,13 @@ export const Sidebar = memo(function Sidebar() {
               )}
                 </div>
               ))}
-              {customOrderDrafts.length < 2 ? (
-                <button
-                  type="button"
-                  onClick={handleAddCustomOrderDraft}
-                  className="w-full rounded border border-dashed border-gray-600 px-2 py-1.5 text-gray-300 hover:bg-gray-700/40"
-                >
-                  Add order
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={handleAddCustomOrderDraft}
+                className="w-full rounded border border-dashed border-gray-600 px-2 py-1.5 text-gray-300 hover:bg-gray-700/40"
+              >
+                Add order
+              </button>
               <p className="text-[10px] text-gray-500 leading-snug">
                 Direction — uses YES/NO from Place Order box. BS ± applies to sidebar YES math prob; NO price = 100 − that.
               </p>

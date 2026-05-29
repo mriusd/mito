@@ -188,7 +188,7 @@ function GridMarketCellInner({
   return (
     <td
       data-market-id={market.id}
-      className={`market-cell px-0.5 py-${variant === 'above' || variant === 'between' ? '0.5' : '1'} text-center ${rowBorder} ${bgColor} ${opacityClass} whitespace-nowrap ${borderClass} relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected' : ''} ${isColHighlighted && !isSelected ? 'date-column-highlighted' : ''}`}
+      className={`market-cell px-0.5 py-${variant === 'above' || variant === 'between' ? '0.5' : '1'} text-center ${rowBorder} ${bgColor} ${opacityClass} whitespace-nowrap ${borderClass} relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${isColHighlighted && !isSelected ? 'date-column-highlighted' : ''}`}
       style={{
         minWidth,
         ...(isWeekend && !isSelected && !isColHighlighted ? { boxShadow: 'inset 0 0 0 100px rgba(147, 51, 234, 0.08)' } : {}),

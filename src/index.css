@@ -529,30 +529,6 @@ input[type="range"].vol-slider::-moz-range-thumb {
   animation: outOfRangePulse 1.5s ease-in-out infinite;
 }
 
-/* Selected market cell highlight with glowing animation */
-@keyframes selectedGlow {
-  0%, 100% { opacity: 0; }
-  50% { opacity: 1; }
-}
-.market-cell.selected {
-  outline: 3px solid #3b82f6;
-  outline-offset: -2px;
-  box-shadow: inset 0 0 0 3px #3b82f6;
-  z-index: 10;
-  position: relative;
-  border-color: #3b82f6;
-}
-.market-cell.selected::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border: 3px solid #93c5fd;
-  border-radius: inherit;
-  box-shadow: 0 0 10px 2px #60a5fa;
-  pointer-events: none;
-  animation: selectedGlow 1.2s ease-in-out infinite;
-}
-
 /* Date column highlight when a market is selected */
 .date-column-highlighted {
   background-color: rgba(59, 130, 246, 0.12) !important;
@@ -850,29 +826,6 @@ input[type="range"].vol-slider::-moz-range-thumb {
 .order-input:focus {
   outline: none;
   border-color: #3b82f6;
-}
-
-@keyframes selectedGlow {
-  0%, 100% { opacity: 0; }
-  50% { opacity: 1; }
-}
-.market-cell.selected {
-  outline: 3px solid #3b82f6;
-  outline-offset: -2px;
-  box-shadow: inset 0 0 0 3px #3b82f6;
-  z-index: 10;
-  position: relative;
-  border-color: #3b82f6;
-}
-.market-cell.selected::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border: 3px solid #93c5fd;
-  border-radius: inherit;
-  box-shadow: 0 0 10px 2px #60a5fa;
-  pointer-events: none;
-  animation: selectedGlow 1.2s ease-in-out infinite;
 }
 
 /* react-grid-layout overrides */

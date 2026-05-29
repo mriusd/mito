@@ -1570,6 +1570,32 @@ export const Sidebar = memo(function Sidebar() {
       progOrders: sortBuyFirst(all.filter((o) => !!progOrderMap[o.id])),
     };
   }, [orders, progOrderMap, selectedMarket, marketLookup]);
+
+  const cancelExistingSellOrdersForToken = useCallback(
+    async (tokenId: string): Promise<{ ok: true; replaced: boolean } | { ok: false }> => {
+      const tidKey = positionTokenKey(tokenId);
+      const existingSellIds = [...myOrders, ...progOrders]
+        .filter(
+          (o) =>
+            (o.side || '').toUpperCase() === 'SELL' &&
+            positionTokenKey(getOrderClobTokenId(o)) === tidKey,
+        )
+        .map((o) => o.id)
+        .filter((id): id is string => Boolean(id));
+      if (existingSellIds.length === 0) return { ok: true, replaced: false };
+      const cancelResult =
+        existingSellIds.length === 1
+          ? await cancelOrder(existingSellIds[0]!)
+          : await cancelOrders(existingSellIds);
+      if (!cancelResult.success) {
+        showToast(cancelResult.error || 'Cancel existing sell failed', 'error');
+        return { ok: false };
+      }
+      return { ok: true, replaced: true };
+    },
+    [myOrders, progOrders],
+  );
+
   const myOnchainWalletLower = (walletForLivePositions || '').toLowerCase();
   const yesTokenIdForSoundMute = selectedMarket?.clobTokenIds?.[0] || '';
   const noTokenIdForSoundMute = selectedMarket?.clobTokenIds?.[1] || '';
@@ -2032,6 +2058,7 @@ export const Sidebar = memo(function Sidebar() {
     if (btn.orders.some((o) => o.side === 'BUY') && !(await ensureOrderVolatilityConfirmed('BUY'))) return;
 
     let placed = 0;
+    let replacedSell = false;
     for (const spec of btn.orders) {
       const resolvedOutcome: 'YES' | 'NO' = spec.outcome === 'AUTO' ? orderOutcome : spec.outcome;
       const priceCents = resolveBsAnchoredCustomOrderPriceCents(
@@ -2069,6 +2096,12 @@ export const Sidebar = memo(function Sidebar() {
         );
       return;
     }
+
+      if (spec.side === 'SELL' && spec.maxSell) {
+        const cancel = await cancelExistingSellOrdersForToken(tokenId);
+        if (!cancel.ok) return;
+        if (cancel.replaced) replacedSell = true;
+      }
 
     let expiration = 0;
       if (spec.side === 'BUY') {
@@ -2115,7 +2148,10 @@ export const Sidebar = memo(function Sidebar() {
       placed += 1;
     }
 
-    showToast(placed > 1 ? `${placed} custom orders placed` : 'Custom order placed', 'success');
+    showToast(
+      placed > 1 ? `${placed} custom orders placed` : replacedSell ? 'Sell order replaced' : 'Custom order placed',
+      'success',
+    );
     triggerWalletRefresh();
   };
 
@@ -2366,25 +2402,9 @@ export const Sidebar = memo(function Sidebar() {
       if (!Number.isFinite(priceCents) || priceCents < 1 || priceCents > 99) return;
       if (!(await ensureOrderVolatilityConfirmed('SELL'))) return;
 
-      const tidKey = positionTokenKey(tid);
-      const existingSellIds = [...myOrders, ...progOrders]
-        .filter(
-          (o) =>
-            (o.side || '').toUpperCase() === 'SELL' &&
-            positionTokenKey(getOrderClobTokenId(o)) === tidKey,
-        )
-        .map((o) => o.id)
-        .filter((id): id is string => Boolean(id));
-      if (existingSellIds.length > 0) {
-        const cancelResult =
-          existingSellIds.length === 1
-            ? await cancelOrder(existingSellIds[0]!)
-            : await cancelOrders(existingSellIds);
-        if (!cancelResult.success) {
-          showToast(cancelResult.error || 'Cancel existing sell failed', 'error');
-          return;
-        }
-      }
+      const cancel = await cancelExistingSellOrdersForToken(tid);
+      if (!cancel.ok) return;
+      const replacedSell = cancel.replaced;
 
       const price = priceCents / 100;
       const { crosses: crossesBook, bestCounterpartyCents } = orderCrossesBookFromWsLookup(
@@ -2411,7 +2431,7 @@ export const Sidebar = memo(function Sidebar() {
           orderInfo: `SELL ${size} ${ol} for ${marketName} @ ${priceCents}¢ (position limit)`,
         });
         if (result.success) {
-          showToast(existingSellIds.length > 0 ? 'Sell order replaced' : 'Order placed', 'success');
+          showToast(replacedSell ? 'Sell order replaced' : 'Order placed', 'success');
           triggerWalletRefresh();
         } else {
           showToast(result.error || 'Order failed', 'error');
@@ -2435,6 +2455,7 @@ export const Sidebar = memo(function Sidebar() {
       requestCrossingConfirm,
       myOrders,
       progOrders,
+      cancelExistingSellOrdersForToken,
     ],
   );
 

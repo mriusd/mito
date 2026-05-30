@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
-import type { WSPosition, WSTrade } from '../hooks/useOnchainTradesWS';
+import type { WSPosition, WSTrade, WalletPnlDailyWS } from '../hooks/useOnchainTradesWS';
 import type { WalletPosition } from '../api';
 
 type SidebarOnchainTradesSnapshot = {
@@ -14,9 +14,13 @@ type SidebarOnchainTradesSnapshot = {
   walletTrades: WSTrade[];
   walletHistoryDigest: number;
   walletHistory: WalletPosition[];
+  walletPnlDailyDigest: number;
+  walletPnlDaily: WalletPnlDailyWS | null;
   walletMarketTradesDigest: number;
   walletMarketTrades: WSTrade[];
   walletWsHydrated: boolean;
+  walletHistoryHydrated: boolean;
+  walletMarketTradesHydrated: boolean;
 };
 
 const EMPTY: SidebarOnchainTradesSnapshot = {
@@ -30,9 +34,13 @@ const EMPTY: SidebarOnchainTradesSnapshot = {
   walletTrades: [],
   walletHistoryDigest: 0,
   walletHistory: [],
+  walletPnlDailyDigest: 0,
+  walletPnlDaily: null,
   walletMarketTradesDigest: 0,
   walletMarketTrades: [],
   walletWsHydrated: false,
+  walletHistoryHydrated: false,
+  walletMarketTradesHydrated: false,
 };
 
 let snap: SidebarOnchainTradesSnapshot = EMPTY;
@@ -41,6 +49,7 @@ const listeners = new Set<() => void>();
 
 let refreshWalletImpl: (() => void) | null = null;
 let refreshMarketTradesImpl: ((wallet: string, marketId: string) => void) | null = null;
+let subscribeWalletPnlImpl: ((wallet: string, from: string, to: string) => void) | null = null;
 
 function notify(): void {
   for (const fn of listeners) fn();
@@ -98,22 +107,29 @@ export function resetSidebarOnchainTradesStore(): void {
   walletMarketTradesScopeKey = '';
   refreshWalletImpl = null;
   refreshMarketTradesImpl = null;
+  subscribeWalletPnlImpl = null;
   notify();
 }
 
 export function resetSidebarOnchainWalletMarketTradesScope(scopeKey: string): void {
   walletMarketTradesScopeKey = scopeKey;
-  if (snap.walletMarketTrades.length === 0) return;
-  snap = { ...snap, walletMarketTrades: [], walletMarketTradesDigest: snap.walletMarketTradesDigest + 1 };
+  snap = {
+    ...snap,
+    walletMarketTrades: [],
+    walletMarketTradesDigest: snap.walletMarketTradesDigest + 1,
+    walletMarketTradesHydrated: false,
+  };
   notify();
 }
 
 export function registerSidebarOnchainRefreshFns(fns: {
   refreshWallet: (() => void) | null;
   refreshMarketTrades: ((wallet: string, marketId: string) => void) | null;
+  subscribeWalletPnl: ((wallet: string, from: string, to: string) => void) | null;
 }): void {
   refreshWalletImpl = fns.refreshWallet;
   refreshMarketTradesImpl = fns.refreshMarketTrades;
+  subscribeWalletPnlImpl = fns.subscribeWalletPnl;
 }
 
 export function refreshSidebarOnchainWallet(): void {
@@ -122,6 +138,10 @@ export function refreshSidebarOnchainWallet(): void {
 
 export function refreshSidebarOnchainMarketTrades(wallet: string, marketId: string): void {
   refreshMarketTradesImpl?.(wallet, marketId);
+}
+
+export function refreshSidebarOnchainWalletPnl(wallet: string, from: string, to: string): void {
+  subscribeWalletPnlImpl?.(wallet.trim().toLowerCase(), from.trim(), to.trim());
 }
 
 export function setSidebarOnchainLiveTrades(next: LiveTrade[]): void {
@@ -167,8 +187,8 @@ export function setSidebarOnchainWalletHistory(next: WalletPosition[]): void {
   const sig = walletHistorySig(next);
   const prevSig = walletHistorySig(snap.walletHistory);
   if (sig === prevSig && next.length === snap.walletHistory.length) {
-    if (!snap.walletWsHydrated) {
-      snap = { ...snap, walletWsHydrated: true };
+    if (!snap.walletWsHydrated || !snap.walletHistoryHydrated) {
+      snap = { ...snap, walletWsHydrated: true, walletHistoryHydrated: true };
       notify();
     }
     return;
@@ -178,14 +198,59 @@ export function setSidebarOnchainWalletHistory(next: WalletPosition[]): void {
     walletHistory: next,
     walletHistoryDigest: snap.walletHistoryDigest + 1,
     walletWsHydrated: true,
+    walletHistoryHydrated: true,
+  };
+  notify();
+}
+
+export function setSidebarOnchainWalletPnlDaily(next: WalletPnlDailyWS | null): void {
+  const sig = next ? `${next.from}|${next.to}|${Object.keys(next.tradeByDate).length}|${Object.keys(next.marketByDate).length}` : '';
+  const prev = snap.walletPnlDaily;
+  const prevSig = prev ? `${prev.from}|${prev.to}|${Object.keys(prev.tradeByDate).length}|${Object.keys(prev.marketByDate).length}` : '';
+  if (sig === prevSig && next === prev) {
+    if (next && !snap.walletWsHydrated) {
+      snap = { ...snap, walletWsHydrated: true };
+      notify();
+    }
+    return;
+  }
+  // shallow compare first keys for value changes when lengths match
+  if (sig === prevSig && prev && next) {
+    let same = true;
+    for (const k of Object.keys(next.tradeByDate)) {
+      const a = prev.tradeByDate[k];
+      const b = next.tradeByDate[k];
+      if (!a || !b || a.bought !== b.bought || a.sold !== b.sold) {
+        same = false;
+        break;
+      }
+    }
+    if (same) return;
+  }
+  snap = {
+    ...snap,
+    walletPnlDaily: next,
+    walletPnlDailyDigest: snap.walletPnlDailyDigest + 1,
+    walletWsHydrated: next != null ? true : snap.walletWsHydrated,
   };
   notify();
 }
 
 export function setSidebarOnchainWalletMarketTrades(next: WSTrade[], scopeKey = walletMarketTradesScopeKey): void {
   if (scopeKey !== walletMarketTradesScopeKey) return;
-  if (walletMarketTradesHeadEqual(snap.walletMarketTrades, next)) return;
-  snap = { ...snap, walletMarketTrades: next, walletMarketTradesDigest: snap.walletMarketTradesDigest + 1 };
+  if (walletMarketTradesHeadEqual(snap.walletMarketTrades, next)) {
+    if (!snap.walletMarketTradesHydrated) {
+      snap = { ...snap, walletMarketTradesHydrated: true };
+      notify();
+    }
+    return;
+  }
+  snap = {
+    ...snap,
+    walletMarketTrades: next,
+    walletMarketTradesDigest: snap.walletMarketTradesDigest + 1,
+    walletMarketTradesHydrated: true,
+  };
   notify();
 }
 
@@ -246,6 +311,22 @@ export function useSidebarOnchainWalletWsHydrated(): boolean {
   );
 }
 
+export function useSidebarOnchainWalletHistoryHydrated(): boolean {
+  return useSyncExternalStore(
+    subscribeSidebarOnchainTrades,
+    () => getSidebarOnchainTradesSnapshot().walletHistoryHydrated,
+    () => getSidebarOnchainTradesSnapshot().walletHistoryHydrated,
+  );
+}
+
+export function useSidebarOnchainWalletMarketTradesHydrated(): boolean {
+  return useSyncExternalStore(
+    subscribeSidebarOnchainTrades,
+    () => getSidebarOnchainTradesSnapshot().walletMarketTradesHydrated,
+    () => getSidebarOnchainTradesSnapshot().walletMarketTradesHydrated,
+  );
+}
+
 export function useSidebarOnchainWalletHistory(): WalletPosition[] {
   const digest = useSyncExternalStore(
     subscribeSidebarOnchainTrades,
@@ -254,6 +335,16 @@ export function useSidebarOnchainWalletHistory(): WalletPosition[] {
   );
   void digest;
   return getSidebarOnchainTradesSnapshot().walletHistory;
+}
+
+export function useSidebarOnchainWalletPnlDaily(): WalletPnlDailyWS | null {
+  const digest = useSyncExternalStore(
+    subscribeSidebarOnchainTrades,
+    () => getSidebarOnchainTradesSnapshot().walletPnlDailyDigest,
+    () => getSidebarOnchainTradesSnapshot().walletPnlDailyDigest,
+  );
+  void digest;
+  return getSidebarOnchainTradesSnapshot().walletPnlDaily;
 }
 
 export function useSidebarOnchainWalletMarketTrades(): WSTrade[] {

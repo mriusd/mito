@@ -1,18 +1,19 @@
-import { useMemo, useState, useCallback, useEffect, useLayoutEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
-import { fetchWalletPnlDaily } from '../../api';
+import {
+  refreshSidebarOnchainWallet,
+  refreshSidebarOnchainWalletPnl,
+  useSidebarOnchainWalletPnlDaily,
+} from '../../lib/sidebarOnchainTradesStore';
 import { triggerWalletRefresh } from '../../lib/clobClient';
 import type { Trade } from '../../types';
 import { getTradeClobTokenId } from '../../utils/format';
 
 const PNL_BUCKET_KEY = 'polybot-pnl-bucket-mode';
 const PNL_MARKET_TYPE_FILTER_KEY = 'polybot-pnl-market-type-filter';
-
-/** Re-fetch `fetchWalletPnlDaily` while on-chain source (server-backed buckets). */
-const PNL_ONCHAIN_REFRESH_MS = 30_000;
 
 function getTradeTimeMs(trade: Trade): number {
   const ts = (trade as { match_time?: string }).match_time || trade.timestamp || trade.created_at || trade.matchTime || '';
@@ -71,6 +72,7 @@ export function PnLPanel() {
   const marketLookup = useMarketLookupSnapshot();
   const makerAddress = useTradingWalletAddress();
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
+  const wsPnl = useSidebarOnchainWalletPnlDaily();
 
   const [calendarBump, setCalendarBump] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -96,15 +98,6 @@ export function PnLPanel() {
       dateSet: new Set(dates),
     };
   }, [calendarBump]);
-
-  /** `inactive` = no wallet or fetch failed → Polymarket activity trades; `pending` = loading (show activity); object = on-chain buckets */
-  const [onchainByDate, setOnchainByDate] = useState<
-    Record<string, { bought: number; sold: number }> | 'pending' | 'inactive'
-  >('inactive');
-
-  useLayoutEffect(() => {
-    setOnchainByDate('inactive');
-  }, [makerAddress.trim().toLowerCase()]);
 
   const [bucketMode, setBucketMode] = useState<PnlBucketMode>(() => {
     const saved = localStorage.getItem(PNL_BUCKET_KEY);
@@ -139,81 +132,35 @@ export function PnLPanel() {
     });
   }, []);
 
-  const loadOnchainPnl = useCallback(
-    async (showPending: boolean) => {
-      const w = makerAddress?.trim();
-      if (!w || liveTradesSource !== 'onchain') return;
-      if (showPending) {
-        setOnchainByDate('pending');
-        setRefreshing(true);
-      }
-      try {
-        const res = await fetchWalletPnlDaily({
-          wallet: w,
-          from: dateWindow.fromStr,
-          to: dateWindow.toStr,
-          bucket: bucketMode,
-          updown: marketTypeFilter.updown,
-          hit: marketTypeFilter.hit,
-          above: marketTypeFilter.above,
-          between: marketTypeFilter.between,
-        });
-        setOnchainByDate(res.byDate || {});
-      } catch {
-        if (showPending) setOnchainByDate('inactive');
-      } finally {
-        if (showPending) setRefreshing(false);
-      }
-    },
-    [
-      makerAddress,
-      liveTradesSource,
-      dateWindow.fromStr,
-      dateWindow.toStr,
-      bucketMode,
-      marketTypeFilter.updown,
-      marketTypeFilter.hit,
-      marketTypeFilter.above,
-      marketTypeFilter.between,
-    ],
-  );
+  useEffect(() => {
+    const w = makerAddress?.trim().toLowerCase();
+    if (!w || liveTradesSource !== 'onchain') return;
+    refreshSidebarOnchainWalletPnl(w, dateWindow.fromStr, dateWindow.toStr);
+  }, [makerAddress, liveTradesSource, dateWindow.fromStr, dateWindow.toStr]);
 
-  const handleRefresh = useCallback(async () => {
+  const onchainByDate = useMemo((): Record<string, { bought: number; sold: number }> | 'pending' | 'inactive' => {
     const w = makerAddress?.trim();
+    if (!w || liveTradesSource !== 'onchain') return 'inactive';
+    if (!wsPnl || wsPnl.from !== dateWindow.fromStr || wsPnl.to !== dateWindow.toStr) return 'pending';
+    return bucketMode === 'market' ? wsPnl.marketByDate : wsPnl.tradeByDate;
+  }, [makerAddress, liveTradesSource, wsPnl, dateWindow.fromStr, dateWindow.toStr, bucketMode]);
+
+  const handleRefresh = useCallback(() => {
+    const w = makerAddress?.trim().toLowerCase();
     if (!w) return;
     setRefreshing(true);
     try {
       if (liveTradesSource === 'onchain') {
-        await loadOnchainPnl(true);
+        refreshSidebarOnchainWalletPnl(w, dateWindow.fromStr, dateWindow.toStr);
+        refreshSidebarOnchainWallet();
       } else {
         triggerWalletRefresh();
       }
     } finally {
       if (liveTradesSource !== 'onchain') setRefreshing(false);
+      else window.setTimeout(() => setRefreshing(false), 400);
     }
-  }, [makerAddress, liveTradesSource, loadOnchainPnl]);
-
-  useEffect(() => {
-    const w = makerAddress?.trim();
-    if (!w || liveTradesSource !== 'onchain') {
-      setOnchainByDate('inactive');
-      return;
-    }
-    let cancelled = false;
-
-    const load = (showPending: boolean) => {
-      if (cancelled) return;
-      void loadOnchainPnl(showPending);
-    };
-
-    load(true);
-    const intervalId = window.setInterval(() => load(false), PNL_ONCHAIN_REFRESH_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, [makerAddress, liveTradesSource, loadOnchainPnl]);
+  }, [makerAddress, liveTradesSource, dateWindow.fromStr, dateWindow.toStr]);
 
   const { dates, dataByDate } = useMemo(() => {
     const { dates, dateSet } = dateWindow;
@@ -307,7 +254,7 @@ export function PnLPanel() {
             </button>
           </div>
           {makerAddress?.trim() && liveTradesSource === 'onchain' && typeof onchainByDate === 'object' && (
-            <span className="text-[8px] text-cyan-400/90 font-medium">On-chain fills</span>
+            <span className="text-[8px] text-cyan-400/90 font-medium">On-chain fills (WS)</span>
           )}
           {makerAddress?.trim() && liveTradesSource === 'polymarket' && (
             <span className="text-[8px] text-violet-400/90 font-medium">Polymarket API trades</span>

@@ -7,6 +7,7 @@ import {
   setSidebarOnchainGridWalletPositions,
   setSidebarOnchainWalletHistory,
   setSidebarOnchainWalletMarketTrades,
+  setSidebarOnchainWalletPnlDaily,
   setSidebarOnchainWalletPositions,
   setSidebarOnchainWalletTrades,
 } from '../lib/sidebarOnchainTradesStore';
@@ -18,9 +19,11 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
     gridWalletPositions,
     walletTrades,
     walletHistory,
+    walletPnlDaily,
     walletMarketTrades,
     refreshWallet,
     refreshWalletMarketTrades,
+    subscribeWalletPnl,
   } = useOnchainTradesWS(opts);
 
   const walletMarketTradesScopeKey = useMemo(
@@ -50,6 +53,10 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
   }, [walletHistory]);
 
   useEffect(() => {
+    setSidebarOnchainWalletPnlDaily(walletPnlDaily);
+  }, [walletPnlDaily]);
+
+  useEffect(() => {
     const scopedIds = new Set(
       (opts.scopedClobTokenIds || []).map((x) => String(x || '').trim()).filter(Boolean),
     );
@@ -64,12 +71,13 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
     registerSidebarOnchainRefreshFns({
       refreshWallet,
       refreshMarketTrades: refreshWalletMarketTrades,
+      subscribeWalletPnl,
     });
     return () => {
-      registerSidebarOnchainRefreshFns({ refreshWallet: null, refreshMarketTrades: null });
+      registerSidebarOnchainRefreshFns({ refreshWallet: null, refreshMarketTrades: null, subscribeWalletPnl: null });
       resetSidebarOnchainTradesStore();
     };
-  }, [refreshWallet, refreshWalletMarketTrades]);
+  }, [refreshWallet, refreshWalletMarketTrades, subscribeWalletPnl]);
 
   return null;
 });

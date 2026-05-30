@@ -871,7 +871,8 @@ function mergeSidebarPositionsWsRest(
     if (w) {
       usedWs.add(k);
       if (w.size <= 0) continue;
-      const avg = p.avgPrice > 0 ? p.avgPrice : (w.avgPrice > 0 ? w.avgPrice : 0);
+      const pAvg = p.avgPrice ?? 0;
+      const avg = pAvg > 0 ? pAvg : (w.avgPrice > 0 ? w.avgPrice : 0);
       out.push({ ...p, size: w.size, avgPrice: avg });
       continue;
     }

@@ -658,23 +658,16 @@ function PairLegPositionsRow({
   closeDisabled: boolean;
 }) {
   return (
-    <div className="mt-2 min-w-0 overflow-x-auto border-t border-gray-700/60 pt-1.5 text-[9px]">
-      <div className="flex min-w-max flex-1 items-start gap-2">
+    <div className="mt-2 border-t border-gray-700/60 pt-1.5 text-[9px]">
+      <div className="flex min-w-0 items-stretch gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <div className="flex items-center gap-2">
-            <PairLegPositionLabelRow />
-            <span className="text-gray-600">|</span>
-            <PairLegPositionLabelRow />
-          </div>
-          <div className="flex items-center gap-2">
-            <PairLegPositionValueRow row={left} />
-            <span className="text-gray-600">|</span>
-            <PairLegPositionValueRow row={right} />
-          </div>
+          <PairLegPositionLabelRow />
+          <PairLegPositionValueRow row={left} />
+          <PairLegPositionValueRow row={right} />
         </div>
-        <div className="ml-auto flex shrink-0 flex-col gap-0.5 self-stretch justify-between">
-          <span className="text-center text-[8px] text-gray-500">Total</span>
-          <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-col items-center justify-center gap-1.5 border-l border-gray-700/50 pl-3">
+          <div className="flex flex-col items-center gap-0.5">
+            <span className="text-[8px] text-gray-500">Total</span>
             <span
               className={`min-w-[3rem] text-center font-bold tabular-nums ${
                 totalPnlUsd == null ? 'text-gray-400' : totalPnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
@@ -682,15 +675,15 @@ function PairLegPositionsRow({
             >
               {totalPnlUsd == null ? '—' : formatPnlUsd(totalPnlUsd)}
             </span>
-            <button
-              type="button"
-              disabled={closeDisabled}
-              onClick={onClose}
-              className="h-5 shrink-0 rounded bg-red-700 px-2 text-[9px] font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {closing ? 'Closing…' : 'CLOSE'}
-            </button>
           </div>
+          <button
+            type="button"
+            disabled={closeDisabled}
+            onClick={onClose}
+            className="h-5 shrink-0 rounded bg-red-700 px-2 text-[9px] font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {closing ? 'Closing…' : 'CLOSE'}
+          </button>
         </div>
       </div>
     </div>

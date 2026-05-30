@@ -5,8 +5,10 @@ import {
   resetSidebarOnchainTradesStore,
   resetSidebarOnchainWalletMarketTradesScope,
   setSidebarOnchainGridWalletPositions,
+  setSidebarOnchainWalletHistory,
   setSidebarOnchainWalletMarketTrades,
   setSidebarOnchainWalletPositions,
+  setSidebarOnchainWalletTrades,
 } from '../lib/sidebarOnchainTradesStore';
 
 /** Null host — onchain WS writes external store (Sidebar body stays off hot path). */
@@ -14,6 +16,8 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
   const {
     walletPositions,
     gridWalletPositions,
+    walletTrades,
+    walletHistory,
     walletMarketTrades,
     refreshWallet,
     refreshWalletMarketTrades,
@@ -36,6 +40,14 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
   useEffect(() => {
     setSidebarOnchainGridWalletPositions(gridWalletPositions);
   }, [gridWalletPositions]);
+
+  useEffect(() => {
+    setSidebarOnchainWalletTrades(walletTrades);
+  }, [walletTrades]);
+
+  useEffect(() => {
+    setSidebarOnchainWalletHistory(walletHistory);
+  }, [walletHistory]);
 
   useEffect(() => {
     const scopedIds = new Set(

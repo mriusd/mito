@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import type { WSPosition, WSTrade } from '../hooks/useOnchainTradesWS';
+import type { WalletPosition } from '../api';
 
 type SidebarOnchainTradesSnapshot = {
   tradesDigest: number;
@@ -9,8 +10,13 @@ type SidebarOnchainTradesSnapshot = {
   walletPositions: WSPosition[];
   gridWalletPositionsDigest: number;
   gridWalletPositions: WSPosition[];
+  walletTradesDigest: number;
+  walletTrades: WSTrade[];
+  walletHistoryDigest: number;
+  walletHistory: WalletPosition[];
   walletMarketTradesDigest: number;
   walletMarketTrades: WSTrade[];
+  walletWsHydrated: boolean;
 };
 
 const EMPTY: SidebarOnchainTradesSnapshot = {
@@ -20,8 +26,13 @@ const EMPTY: SidebarOnchainTradesSnapshot = {
   walletPositions: [],
   gridWalletPositionsDigest: 0,
   gridWalletPositions: [],
+  walletTradesDigest: 0,
+  walletTrades: [],
+  walletHistoryDigest: 0,
+  walletHistory: [],
   walletMarketTradesDigest: 0,
   walletMarketTrades: [],
+  walletWsHydrated: false,
 };
 
 let snap: SidebarOnchainTradesSnapshot = EMPTY;
@@ -74,6 +85,14 @@ function wsPositionsSig(rows: WSPosition[]): string {
     .join('|');
 }
 
+function walletHistorySig(rows: WalletPosition[]): string {
+  if (rows.length === 0) return '';
+  return rows
+    .slice(0, 6)
+    .map((r) => `${r.marketId}:${r.tradeCount}:${r.lastTradeTime}:${r.usdcIn}:${r.usdcOut}`)
+    .join('|');
+}
+
 export function resetSidebarOnchainTradesStore(): void {
   snap = EMPTY;
   walletMarketTradesScopeKey = '';
@@ -123,7 +142,43 @@ export function setSidebarOnchainGridWalletPositions(next: WSPosition[]): void {
   const sig = wsPositionsSig(next);
   const prevSig = wsPositionsSig(snap.gridWalletPositions);
   if (sig === prevSig && next.length === snap.gridWalletPositions.length) return;
-  snap = { ...snap, gridWalletPositions: next, gridWalletPositionsDigest: snap.gridWalletPositionsDigest + 1 };
+  snap = { ...snap, gridWalletPositions: next, gridWalletPositionsDigest: snap.gridWalletPositionsDigest + 1, walletWsHydrated: true };
+  notify();
+}
+
+export function setSidebarOnchainWalletTrades(next: WSTrade[]): void {
+  if (walletMarketTradesHeadEqual(snap.walletTrades, next)) {
+    if (!snap.walletWsHydrated) {
+      snap = { ...snap, walletWsHydrated: true };
+      notify();
+    }
+    return;
+  }
+  snap = {
+    ...snap,
+    walletTrades: next,
+    walletTradesDigest: snap.walletTradesDigest + 1,
+    walletWsHydrated: true,
+  };
+  notify();
+}
+
+export function setSidebarOnchainWalletHistory(next: WalletPosition[]): void {
+  const sig = walletHistorySig(next);
+  const prevSig = walletHistorySig(snap.walletHistory);
+  if (sig === prevSig && next.length === snap.walletHistory.length) {
+    if (!snap.walletWsHydrated) {
+      snap = { ...snap, walletWsHydrated: true };
+      notify();
+    }
+    return;
+  }
+  snap = {
+    ...snap,
+    walletHistory: next,
+    walletHistoryDigest: snap.walletHistoryDigest + 1,
+    walletWsHydrated: true,
+  };
   notify();
 }
 
@@ -171,6 +226,34 @@ export function useSidebarOnchainGridWalletPositions(): WSPosition[] {
   );
   void digest;
   return getSidebarOnchainTradesSnapshot().gridWalletPositions;
+}
+
+export function useSidebarOnchainWalletTrades(): WSTrade[] {
+  const digest = useSyncExternalStore(
+    subscribeSidebarOnchainTrades,
+    () => getSidebarOnchainTradesSnapshot().walletTradesDigest,
+    () => getSidebarOnchainTradesSnapshot().walletTradesDigest,
+  );
+  void digest;
+  return getSidebarOnchainTradesSnapshot().walletTrades;
+}
+
+export function useSidebarOnchainWalletWsHydrated(): boolean {
+  return useSyncExternalStore(
+    subscribeSidebarOnchainTrades,
+    () => getSidebarOnchainTradesSnapshot().walletWsHydrated,
+    () => getSidebarOnchainTradesSnapshot().walletWsHydrated,
+  );
+}
+
+export function useSidebarOnchainWalletHistory(): WalletPosition[] {
+  const digest = useSyncExternalStore(
+    subscribeSidebarOnchainTrades,
+    () => getSidebarOnchainTradesSnapshot().walletHistoryDigest,
+    () => getSidebarOnchainTradesSnapshot().walletHistoryDigest,
+  );
+  void digest;
+  return getSidebarOnchainTradesSnapshot().walletHistory;
 }
 
 export function useSidebarOnchainWalletMarketTrades(): WSTrade[] {

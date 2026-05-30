@@ -114,8 +114,6 @@ import { SidebarSpotStripSection } from './SidebarSpotStripSection';
 import { SidebarOrderBsMathButton } from './SidebarOrderBsMathButton';
 import { SidebarOrderReplaceBsButton } from './SidebarOrderReplaceBsButton';
 import { SidebarLiveTradesSection } from './SidebarLiveTradesSection';
-import { SidebarOnchainTradesHost } from './SidebarOnchainTradesHost';
-import { SidebarOnchainGridPositionsSync } from './SidebarOnchainGridPositionsSync';
 import { SidebarMyTradesSection } from './SidebarMyTradesSection';
 import {
   refreshSidebarOnchainMarketTrades,
@@ -3630,15 +3628,8 @@ export const Sidebar = memo(function Sidebar() {
 
       {selectedMarket && (
         <>
-          <SidebarOnchainTradesHost
-            marketId={selectedConditionId}
-            tokenId={liveTradesSource === 'onchain' ? onchainHookTokenId : null}
-            wallet={walletForLivePositions}
-            scopedClobTokenIds={scopedClobPair}
-          />
           <SidebarUpDownTargetHost />
           <SidebarOrderHighlightHost />
-          <SidebarOnchainGridPositionsSync liveTradesSource={liveTradesSource} />
           {toxicFlowMarketId ? <SidebarToxicFlowHost marketId={toxicFlowMarketId} /> : null}
           <SidebarNotifyStakedGateSync
             yesTokenId={selectedMarket.clobTokenIds?.[0] ?? ''}

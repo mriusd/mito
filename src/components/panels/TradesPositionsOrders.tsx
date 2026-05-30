@@ -1,20 +1,20 @@
-import { useState, useCallback, useEffect, useMemo, memo, useLayoutEffect, type ReactNode } from 'react';
+import { useState, useCallback, useEffect, useMemo, memo, type ReactNode } from 'react';
 import { useAccount } from 'wagmi';
 import { useAppStore } from '../../stores/appStore';
 import {
   cancelOrder,
-  fetchWalletPositions,
-  fetchOnchainMarketPositions,
-  fetchOnchainMarketTrades,
-  // fetchOnchainClaims,
-  type OnchainMarketPositionRow,
-  type OnchainMarketTradeRow,
   type OnchainClaimRow,
 } from '../../api';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { onchainFillKey } from '../../lib/tradeKeys';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
+import {
+  useSidebarOnchainGridWalletPositions,
+  useSidebarOnchainWalletTrades,
+  useSidebarOnchainWalletWsHydrated,
+} from '../../lib/sidebarOnchainTradesStore';
+import type { WSPosition, WSTrade } from '../../hooks/useOnchainTradesWS';
 import { hasCredsForWallet, ensureCredsForWallet, triggerWalletRefresh } from '../../lib/clobClient';
 import { isWebMode } from '../../lib/env';
 import { appKit } from '../../lib/wallet';
@@ -85,6 +85,52 @@ function getTimeLeftDisplay(endDate: string | null): { label: string; color: str
   return { label: `${d}d`, color: 'text-gray-400' };
 }
 
+function wsPositionsToPM(rows: WSPosition[], marketLookup: Record<string, Market>): Position[] {
+  return rows.map((r) => {
+    const m = marketLookup[r.tokenId];
+    const mid = outcomeMidOrOneSideProb(
+      r.tokenId,
+      marketLookup,
+      m ? { bestBid: m.bestBid, bestAsk: m.bestAsk } : {},
+    );
+    const cur = mid ?? m?.lastTradePrice ?? r.avgPrice;
+    return {
+      asset: r.tokenId,
+      size: r.size,
+      avgPrice: r.avgPrice,
+      curPrice: cur,
+      ...(r.title ? { title: r.title } : {}),
+      ...(r.slug ? { slug: r.slug } : {}),
+      ...(r.eventSlug ? { eventSlug: r.eventSlug } : {}),
+      ...(r.outcome ? { outcome: r.outcome } : {}),
+      ...(r.endDate ? { endDate: r.endDate } : {}),
+      ...(r.underlyingAsset ? { underlyingAsset: r.underlyingAsset } : {}),
+      ...(r.marketId ? { market: r.marketId } : {}),
+    };
+  });
+}
+
+function wsTradesToPM(rows: WSTrade[]): Trade[] {
+  return rows.map((t) => {
+    const tsMs = t.blockTime > 1e12 ? t.blockTime : t.blockTime * 1000;
+    const id = onchainFillKey(t.txHash, t.logIndex) || t.id;
+    return {
+      id: id || `token:${t.tokenId}:${tsMs}`,
+      asset_id: t.tokenId,
+      token_id: t.tokenId,
+      side: t.side as Trade['side'],
+      price: String(t.price),
+      size: String(t.size),
+      fee: String(t.fee || 0),
+      timestamp: String(tsMs),
+      ...(t.outcome ? { outcome: t.outcome } : {}),
+      ...(t.title ? { title: t.title } : {}),
+      ...(t.slug ? { slug: t.slug } : {}),
+      ...(t.eventSlug ? { eventSlug: t.eventSlug } : {}),
+    };
+  });
+}
+
 function TpoAuthEmpty({
   mode,
   onLogIn,
@@ -128,18 +174,15 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
 
-  const [onchainPosRows, setOnchainPosRows] = useState<OnchainMarketPositionRow[]>([]);
-  const [onchainTrRows, setOnchainTrRows] = useState<OnchainMarketTradeRow[]>([]);
-  const [onchainClaimRows, setOnchainClaimRows] = useState<OnchainClaimRow[]>([]);
-  const [onchainLoading, setOnchainLoading] = useState(false);
+  const [onchainClaimRows] = useState<OnchainClaimRow[]>([]);
+  const onchainWsPositions = useSidebarOnchainGridWalletPositions();
+  const onchainWsTrades = useSidebarOnchainWalletTrades();
+  const onchainWsHydrated = useSidebarOnchainWalletWsHydrated();
   const tradingWalletKey = makerAddress.trim().toLowerCase();
-
-  useLayoutEffect(() => {
-    setOnchainPosRows([]);
-    setOnchainTrRows([]);
-    setOnchainClaimRows([]);
-    setOnchainLoading(false);
-  }, [tradingWalletKey]);
+  const onchainLoading =
+    liveTradesSource === 'onchain' &&
+    !!tradingWalletKey &&
+    !onchainWsHydrated;
 
   const polymarketTokenKey = useMemo(() => {
     const s = new Set<string>();
@@ -166,135 +209,21 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         if (t) set.add(t);
       }
     }
-    for (const r of onchainPosRows) {
+    for (const r of onchainWsPositions) {
       if (r.tokenId) set.add(String(r.tokenId));
     }
     for (const t of selectedMarket?.clobTokenIds || []) if (t) set.add(String(t));
     return [...set];
-  }, [polymarketTokenKey, onchainPosRows, selectedMarket?.id, selectedMarket?.clobTokenIds]);
+  }, [polymarketTokenKey, onchainWsPositions, selectedMarket?.id, selectedMarket?.clobTokenIds]);
 
   const marketLookup = useMarketLookupSubset(tpoClobIds);
 
-  useEffect(() => {
-    if (liveTradesSource !== 'onchain' || !tradingWalletKey) {
-      setOnchainPosRows([]);
-      setOnchainTrRows([]);
-      setOnchainClaimRows([]);
-      setOnchainLoading(false);
-      return;
-    }
-    let cancelled = false;
-    const load = async () => {
-      setOnchainLoading(true);
-      try {
-        const walletRes = await fetchWalletPositions({
-          wallet: tradingWalletKey,
-          limit: 500,
-          active_only: true,
-          ledger: true,
-        });
-        const idSet = new Set<string>();
-        for (const tid of selectedMarket?.clobTokenIds || []) {
-          const t = String(tid || '').trim();
-          if (t) idSet.add(t);
-        }
-        for (const wp of walletRes.positions || []) {
-          if (wp.tokenIdYes) idSet.add(wp.tokenIdYes);
-          if (wp.tokenIdNo) idSet.add(wp.tokenIdNo);
-        }
-        for (const p of positions) {
-          const tid = getPositionClobTokenId(p);
-          if (tid) idSet.add(tid);
-        }
-        for (const o of orders) {
-          const t = o.asset_id || o.token_id;
-          if (t) idSet.add(t);
-        }
-        for (const t of trades) {
-          const id = t.asset_id || t.asset || t.token_id;
-          if (id) idSet.add(id);
-        }
-        const token_ids = Array.from(idSet).filter(Boolean);
-        if (token_ids.length === 0) {
-          if (!cancelled) {
-            setOnchainPosRows([]);
-            setOnchainTrRows([]);
-          }
-          return;
-        }
-        const [pr, tr] = await Promise.all([
-          fetchOnchainMarketPositions({ token_ids, wallet: tradingWalletKey }),
-          fetchOnchainMarketTrades({ token_ids, wallet: tradingWalletKey, limit: 500 }),
-          // fetchOnchainClaims({ wallet: makerAddress, limit: 200 }),
-        ]);
-        if (!cancelled) {
-          setOnchainPosRows(pr.positions || []);
-          setOnchainTrRows(tr.trades || []);
-          setOnchainClaimRows([]);
-        }
-      } catch {
-        if (!cancelled) {
-          setOnchainPosRows([]);
-          setOnchainTrRows([]);
-          setOnchainClaimRows([]);
-        }
-      } finally {
-        if (!cancelled) setOnchainLoading(false);
-      }
-    };
-    void load();
-    const iv = window.setInterval(load, 45_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(iv);
-    };
-  }, [liveTradesSource, tradingWalletKey, polymarketTokenKey, positions, orders, trades, selectedMarket?.id, selectedMarket?.clobTokenIds?.join('|')]);
+  const onchainPositionsAsPM = useMemo(
+    () => wsPositionsToPM(onchainWsPositions, marketLookup),
+    [onchainWsPositions, marketLookup],
+  );
 
-  const onchainPositionsAsPM = useMemo((): Position[] => {
-    return onchainPosRows.map((r) => {
-      const m = marketLookup[r.tokenId];
-      const mid = outcomeMidOrOneSideProb(
-        r.tokenId,
-        marketLookup,
-        m ? { bestBid: m.bestBid, bestAsk: m.bestAsk } : {},
-      );
-      const cur = mid ?? m?.lastTradePrice ?? r.avgPrice;
-      return {
-        asset: r.tokenId,
-        size: r.size,
-        avgPrice: r.avgPrice,
-        curPrice: cur,
-        ...(r.title ? { title: r.title } : {}),
-        ...(r.slug ? { slug: r.slug } : {}),
-        ...(r.eventSlug ? { eventSlug: r.eventSlug } : {}),
-        ...(r.outcome ? { outcome: r.outcome } : {}),
-        ...(r.endDate ? { endDate: r.endDate } : {}),
-        ...(r.underlyingAsset ? { underlyingAsset: r.underlyingAsset } : {}),
-        ...(r.marketId ? { market: r.marketId } : {}),
-      };
-    });
-  }, [onchainPosRows, marketLookup]);
-
-  const onchainTradesAsPM = useMemo((): Trade[] => {
-    return onchainTrRows.map((t) => {
-      const tsMs = t.blockTime > 1e12 ? t.blockTime : t.blockTime * 1000;
-      const id = onchainFillKey(t.txHash, t.logIndex);
-      return {
-        id: id || `token:${t.tokenId}:${tsMs}`,
-        asset_id: t.tokenId,
-        token_id: t.tokenId,
-        side: t.side as Trade['side'],
-        price: String(t.price),
-        size: String(t.size),
-        fee: String(t.fee || 0),
-        timestamp: String(tsMs),
-        ...(t.outcome ? { outcome: t.outcome } : {}),
-        ...(t.title ? { title: t.title } : {}),
-        ...(t.slug ? { slug: t.slug } : {}),
-        ...(t.eventSlug ? { eventSlug: t.eventSlug } : {}),
-      };
-    });
-  }, [onchainTrRows]);
+  const onchainTradesAsPM = useMemo(() => wsTradesToPM(onchainWsTrades), [onchainWsTrades]);
 
   const onchainClaimsAsPM = useMemo((): Trade[] => {
     return onchainClaimRows.map((c, i) => {

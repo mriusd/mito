@@ -6,6 +6,11 @@ import { useAppStore } from '../../stores/appStore';
 import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import {
+  refreshSidebarOnchainWallet,
+  useSidebarOnchainWalletHistory,
+  useSidebarOnchainWalletWsHydrated,
+} from '../../lib/sidebarOnchainTradesStore';
+import {
   WalletLatestMarketsTradedTable,
   buildMarketByIdRecord,
   sortWalletPositionsByDisplayedDateDesc,
@@ -16,13 +21,16 @@ const WalletInfoDialogLazy = lazyWithChunkReload(() =>
   import('../ToxicFlowDialog').then((m) => ({ default: m.WalletInfoDialog })),
 );
 
-const HISTORY_PANEL_REFRESH_MS = 30_000;
-
 export function HistoryPanel() {
   const tradingWallet = useTradingWalletAddress();
+  const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const marketLookup = useMarketLookupSnapshot();
-  const [markets, setMarkets] = useState<WalletPosition[]>([]);
-  const [loading, setLoading] = useState(false);
+  const wsHistory = useSidebarOnchainWalletHistory();
+  const wsHydrated = useSidebarOnchainWalletWsHydrated();
+  const onchainMode = liveTradesSource === 'onchain';
+
+  const [restMarkets, setRestMarkets] = useState<WalletPosition[]>([]);
+  const [restLoading, setRestLoading] = useState(false);
   const [refreshBump, setRefreshBump] = useState(0);
   const [walletInfoOpen, setWalletInfoOpen] = useState(false);
   const [walletInfoMarketId, setWalletInfoMarketId] = useState('');
@@ -33,46 +41,47 @@ export function HistoryPanel() {
 
   useLayoutEffect(() => {
     loadEpochRef.current += 1;
-    setMarkets([]);
-    setLoading(Boolean(tradingWalletKey));
+    setRestMarkets([]);
+    setRestLoading(false);
     setWalletInfoOpen(false);
     setWalletInfoMarketId('');
   }, [tradingWalletKey]);
 
-  const load = useCallback(async (options?: { showLoading?: boolean }) => {
+  const loadRest = useCallback(async (options?: { showLoading?: boolean }) => {
     const showLoading = options?.showLoading !== false;
     const w = tradingWalletKey;
     const epochAtStart = loadEpochRef.current;
     if (!w) {
-      setMarkets([]);
+      setRestMarkets([]);
       return;
     }
-    if (showLoading) setLoading(true);
+    if (showLoading) setRestLoading(true);
     try {
       const byId = buildMarketByIdRecord(useAppStore.getState().marketLookup);
       const p = await fetchWalletPositions({ wallet: w, limit: 1000, ledger: true, order: 'end_date_desc' });
       if (epochAtStart !== loadEpochRef.current) return;
-      const sorted = sortWalletPositionsByDisplayedDateDesc(p.positions || [], byId);
-      setMarkets(sorted);
+      setRestMarkets(sortWalletPositionsByDisplayedDateDesc(p.positions || [], byId));
     } catch {
       if (epochAtStart !== loadEpochRef.current) return;
-      setMarkets([]);
+      setRestMarkets([]);
     } finally {
-      if (showLoading && epochAtStart === loadEpochRef.current) setLoading(false);
+      if (showLoading && epochAtStart === loadEpochRef.current) setRestLoading(false);
     }
   }, [tradingWalletKey]);
 
   useEffect(() => {
-    void load();
-  }, [load, refreshBump]);
+    if (onchainMode) return;
+    void loadRest();
+  }, [onchainMode, loadRest, refreshBump]);
 
-  useEffect(() => {
-    if (!tradingWalletKey) return;
-    const id = window.setInterval(() => {
-      void load({ showLoading: false });
-    }, HISTORY_PANEL_REFRESH_MS);
-    return () => window.clearInterval(id);
-  }, [tradingWalletKey, load]);
+  const markets = useMemo(() => {
+    if (!onchainMode) return restMarkets;
+    return sortWalletPositionsByDisplayedDateDesc(wsHistory, marketById);
+  }, [onchainMode, restMarkets, wsHistory, marketById]);
+
+  const loading =
+    !!tradingWalletKey &&
+    (onchainMode ? !wsHydrated : restLoading && markets.length === 0);
 
   const displayWallet = tradingWalletKey;
 
@@ -83,6 +92,18 @@ export function HistoryPanel() {
       setWalletInfoOpen(true);
     },
     [displayWallet],
+  );
+
+  const onRefresh = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (onchainMode) {
+        refreshSidebarOnchainWallet();
+        return;
+      }
+      setRefreshBump((b) => b + 1);
+    },
+    [onchainMode],
   );
 
   return (
@@ -97,16 +118,18 @@ export function HistoryPanel() {
           ) : (
             <span className="text-[10px] text-amber-500/90">No trading wallet</span>
           )}
+          {onchainMode ? (
+            <span className="text-[9px] font-bold text-purple-300/90 shrink-0" title="Live via walletHistory WS">
+              CHAIN
+            </span>
+          ) : null}
           <button
             type="button"
             className="shrink-0 p-1 rounded text-gray-500 hover:text-white hover:bg-gray-700 disabled:opacity-40"
             title="Refresh"
             aria-label="Refresh wallet markets"
             disabled={!tradingWalletKey || loading}
-            onClick={(e) => {
-              e.stopPropagation();
-              setRefreshBump((b) => b + 1);
-            }}
+            onClick={onRefresh}
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { setSidebarOnchainLiveTrades } from '../lib/sidebarOnchainTradesStore';
 import { fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
+import type { WalletPosition } from '../api';
 import { API_BASE, WS_BASE } from '../lib/env';
 import { dedupeWalletTradesByLedgerLeg, onchainFillKey, walletTradeKey } from '../lib/tradeKeys';
 import type { LiveTrade } from './usePolymarketOB';
@@ -652,6 +653,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   /** Full wallet snapshot from WS (never scoped to sidebar YES/NO) — for asset grid / HUD dots. */
   const [gridWalletPositions, setGridWalletPositions] = useState<WSPosition[]>([]);
   const [walletTrades, setWalletTrades] = useState<WSTrade[]>([]);
+  /** Per-market history rows (GET /api/wallet-positions shape) for History panel. */
+  const [walletHistory, setWalletHistory] = useState<WalletPosition[]>([]);
   /** Market-scoped WFL rows for sidebar My Trades (same source as wallet info dialog). */
   const [walletMarketTrades, setWalletMarketTrades] = useState<WSTrade[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
@@ -682,6 +685,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     setWalletPositions([]);
     setWalletTrades([]);
     setWalletMarketTrades([]);
+    setWalletHistory([]);
     if (!w || ids.length === 0) return;
     const serial = ++prefetchSerialRef.current;
     let cancelled = false;
@@ -747,6 +751,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     setWalletTrades([]);
     setWalletMarketTrades([]);
     setGridWalletPositions([]);
+    setWalletHistory([]);
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const w = (wallet || '').trim().toLowerCase();
@@ -779,6 +784,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       setWalletTrades([]);
       setWalletMarketTrades([]);
       setGridWalletPositions([]);
+      setWalletHistory([]);
       return;
     }
 
@@ -1156,6 +1162,11 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
                 setWalletMarketTrades(marketRows.slice(0, WALLET_MARKET_TRADES_CAP));
               }
             }
+          } else if (msg.type === 'walletHistory' && Array.isArray(msg.data)) {
+            const msgWallet = String(msg.wallet || '').trim().toLowerCase();
+            const mine = (walletRef.current || '').trim().toLowerCase();
+            if (msgWallet && mine && msgWallet !== mine) return;
+            setWalletHistory(msg.data as WalletPosition[]);
           } else if (msg.type === 'walletMarketTrades' && Array.isArray(msg.data)) {
             const w = String(msg.wallet || '').trim().toLowerCase();
             const m = canonicalConditionKey(String(msg.marketId || ''));
@@ -1374,6 +1385,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     walletPositions,
     gridWalletPositions,
     walletTrades,
+    walletHistory,
     walletMarketTrades,
     refreshWallet,
     subscribeWalletMarketTrades,

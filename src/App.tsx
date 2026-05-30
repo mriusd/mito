@@ -12,6 +12,7 @@ import { useSignalsAndArbs } from './hooks/useSignalsAndArbs';
 import { useBidAskWS } from './hooks/useBidAskWS';
 import { Header } from './components/Header';
 import { DraggableCanvas } from './components/DraggableCanvas';
+import { AppOnchainWSHost } from './components/AppOnchainWSHost';
 import { OrderbookPopup } from './components/OrderbookPopup';
 import { CreateProgDialog } from './components/CreateProgDialog';
 import { EditProgDialog } from './components/EditProgDialog';
@@ -280,6 +281,9 @@ function App() {
           )}
         </div>
       </div>
+
+      {/* On-chain wallet WS (TPO, pair trading, HUD) — always on when CHAIN mode */}
+      <AppOnchainWSHost />
 
       {/* Right Sidebar — lazy chunk until desktop (always) or mobile (open / market selected) */}
       {mountSidebarChunk && (

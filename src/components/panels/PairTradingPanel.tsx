@@ -31,6 +31,8 @@ type PairMarketSlot = 'current' | 'next';
 const PAIR_LIMIT_MAX_CENTS = 99;
 const PAIR_LIMIT_MIN_CENTS = 1;
 const PAIR_LIMIT_DELTA_DEFAULT_CENTS = 10;
+const PAIR_98C_SELL_PRICE = 0.98;
+const PAIR_98C_SELL_CENTS = 98;
 const CLOB_MIN_EXPIRY_SEC = 90;
 
 const LS_ORDER_EXPIRY_UPDOWN = 'polymarket-order-expiry-updown';
@@ -584,6 +586,7 @@ function legTokenId(market: Market | null, leg: PairLeg): string {
 }
 
 const PAIR_POS_FIELDS = ['sz', 'ent', 'cost', 'exit', 'PnL'] as const;
+const PAIR_TOTAL_SECTION_W = 'w-[10rem]';
 
 function pairLegPositionValues(row: PairLegPositionRowData): (string | JSX.Element)[] {
   const flat = row.size <= 0;
@@ -654,8 +657,11 @@ function PairLegPositionsRow({
   totalEntryCents,
   totalExitCents,
   totalPnlUsd,
+  onSell98c,
   onClose,
+  selling98c,
   closing,
+  sell98Disabled,
   closeDisabled,
 }: {
   left: PairLegPositionRowData;
@@ -663,8 +669,11 @@ function PairLegPositionsRow({
   totalEntryCents: number | null;
   totalExitCents: number | null;
   totalPnlUsd: number | null;
+  onSell98c: () => void;
   onClose: () => void;
+  selling98c: boolean;
   closing: boolean;
+  sell98Disabled: boolean;
   closeDisabled: boolean;
 }) {
   return (
@@ -698,24 +707,24 @@ function PairLegPositionsRow({
             </tbody>
           </table>
         </div>
-        <div className="flex w-[7.5rem] shrink-0 flex-col gap-1.5 border-l border-gray-700/50 pl-3">
-          <div className="grid grid-cols-3 gap-1">
-            <div className="flex flex-col items-end gap-0.5">
+        <div className={`flex ${PAIR_TOTAL_SECTION_W} shrink-0 flex-none flex-col gap-1.5 border-l border-gray-700/50 pl-3`}>
+          <div className="grid w-full grid-cols-3 gap-0.5">
+            <div className="flex min-w-0 flex-col items-end gap-0.5">
               <span className="text-[8px] text-gray-500">Entry</span>
-              <span className="font-bold tabular-nums text-gray-200">
+              <span className="block w-full truncate text-right font-bold tabular-nums text-gray-200">
                 {totalEntryCents != null ? fmtCents(totalEntryCents) : '—'}
               </span>
             </div>
-            <div className="flex flex-col items-end gap-0.5">
+            <div className="flex min-w-0 flex-col items-end gap-0.5">
               <span className="text-[8px] text-gray-500">Exit</span>
-              <span className={`font-bold tabular-nums ${pairExitColorClass(totalExitCents)}`}>
+              <span className={`block w-full truncate text-right font-bold tabular-nums ${pairExitColorClass(totalExitCents)}`}>
                 {totalExitCents != null ? fmtCents(totalExitCents) : '—'}
               </span>
             </div>
-            <div className="flex flex-col items-end gap-0.5">
+            <div className="flex min-w-0 flex-col items-end gap-0.5">
               <span className="text-[8px] text-gray-500">PnL</span>
               <span
-                className={`font-bold tabular-nums ${
+                className={`block w-full truncate text-right font-bold tabular-nums ${
                   totalPnlUsd == null ? 'text-gray-400' : totalPnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
                 }`}
               >
@@ -723,14 +732,24 @@ function PairLegPositionsRow({
               </span>
             </div>
           </div>
-          <button
-            type="button"
-            disabled={closeDisabled}
-            onClick={onClose}
-            className="h-5 w-full rounded bg-red-700 text-[9px] font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {closing ? 'Closing…' : 'CLOSE'}
-          </button>
+          <div className="flex w-full gap-1">
+            <button
+              type="button"
+              disabled={sell98Disabled}
+              onClick={onSell98c}
+              className="h-5 flex-1 rounded bg-amber-700 text-[9px] font-bold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {selling98c ? '98c…' : '98c'}
+            </button>
+            <button
+              type="button"
+              disabled={closeDisabled}
+              onClick={onClose}
+              className="h-5 flex-1 rounded bg-red-700 text-[9px] font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {closing ? 'Closing…' : 'CLOSE'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -815,6 +834,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const [orderAmount, setOrderAmount] = useState('');
   const [placing, setPlacing] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [selling98c, setSelling98c] = useState(false);
 
   const leftLeg: PairLeg = upSlot === 'left' ? 'UP' : 'DOWN';
   const rightLeg: PairLeg = upSlot === 'left' ? 'DOWN' : 'UP';
@@ -1075,6 +1095,67 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
     leftTokenId,
     rightTokenId,
     priceDeltaCents,
+    timeframe,
+  ]);
+
+  const handleSell98c = useCallback(async () => {
+    if (!walletReady) {
+      showToast('Connect wallet first', 'error');
+      return;
+    }
+    if (!hasOpenPosition) {
+      showToast('No open positions', 'error');
+      return;
+    }
+
+    const legs = [
+      { row: leftPositionRow, market: leftMarket, tokenId: leftTokenId },
+      { row: rightPositionRow, market: rightMarket, tokenId: rightTokenId },
+    ];
+
+    setSelling98c(true);
+    try {
+      for (const { row, market, tokenId } of legs) {
+        if (row.size <= 0 || !tokenId || !market) continue;
+        if (isMarketExpired(market)) {
+          showToast(`${row.asset} ${row.leg}: market expired`, 'error');
+          return;
+        }
+
+        const size = Math.floor(row.size * 100) / 100;
+        if (size <= 0) continue;
+
+        const result = await placeOrder({
+          tokenId,
+          side: 'SELL',
+          price: PAIR_98C_SELL_PRICE,
+          size,
+          expiration: 0,
+          orderInfo: `Pair SELL ${size} ${row.leg} ${row.asset} @ ${PAIR_98C_SELL_CENTS}¢ (${timeframe})`,
+        });
+        if (!result.success) {
+          showToast(result.error || `${row.asset} ${row.leg} 98c sell failed`, 'error');
+          triggerWalletRefresh();
+          return;
+        }
+      }
+
+      showToast('Pair 98c sell orders placed', 'success');
+      triggerWalletRefresh();
+    } catch {
+      showToast('Pair 98c sell failed', 'error');
+    } finally {
+      setSelling98c(false);
+    }
+  }, [
+    walletReady,
+    hasOpenPosition,
+    leftPositionRow,
+    rightPositionRow,
+    leftMarket,
+    rightMarket,
+    leftTokenId,
+    rightTokenId,
     timeframe,
   ]);
 
@@ -1366,9 +1447,12 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
           totalEntryCents={totalEntryCents}
           totalExitCents={totalExitCents}
           totalPnlUsd={totalPnlUsd}
+          onSell98c={() => void handleSell98c()}
           onClose={() => void handleClosePair()}
+          selling98c={selling98c}
           closing={closing}
-          closeDisabled={!walletReady || closing || placing || !hasOpenPosition}
+          sell98Disabled={!walletReady || selling98c || closing || placing || !hasOpenPosition}
+          closeDisabled={!walletReady || closing || selling98c || placing || !hasOpenPosition}
         />
       </div>
     </div>

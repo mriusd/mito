@@ -113,16 +113,16 @@ export function resolveLegPositionForToken(
   const rest = positions.find((p) => normalizeClobTokenId(p.asset) === tidKey);
   let size = 0;
   let avgPrice = 0;
-  if (rest && (rest.size || 0) > 0) {
-    size = rest.size || 0;
-    avgPrice = rest.avgPrice ?? 0;
+  if (rest) {
+    if ((rest.size || 0) > 0) size = rest.size || 0;
+    if (rest.avgPrice != null && rest.avgPrice > 0) avgPrice = rest.avgPrice;
   }
 
   if (liveTradesSource === 'onchain') {
     const ws = onchainWsPositions.find((p) => normalizeClobTokenId(p.tokenId) === tidKey);
     if (ws && ws.size > 0) {
       size = ws.size;
-      avgPrice = ws.avgPrice > 0 ? ws.avgPrice : avgPrice;
+      if (ws.avgPrice > 0) avgPrice = ws.avgPrice;
     }
   }
 

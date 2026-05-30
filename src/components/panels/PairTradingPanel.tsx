@@ -660,8 +660,7 @@ function PairLegPositionsRow({
 }) {
   return (
     <div className="mt-2 min-w-0 overflow-x-auto border-t border-gray-700/60 pt-1.5 text-[9px]">
-      <div className="flex min-w-max items-start gap-2">
-        <span className="w-5 shrink-0 pt-px text-[10px] font-semibold text-gray-400">Pos</span>
+      <div className="flex min-w-max flex-1 items-start gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <div className="flex items-center gap-2">
             <PairLegPositionLabelRow />

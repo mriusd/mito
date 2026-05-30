@@ -1150,10 +1150,21 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             setWalletPositions((prev) =>
               mergeWalletPositionsSnapshot(prev, raw, scopedClobTokenIdsRef.current),
             );
-            // Market-scoped WS sends walletGridPositions for full book; wallet-only URL uses one payload for both.
-            if (!marketRef.current?.trim()) {
-              setGridWalletPositions(raw);
-            }
+            setGridWalletPositions((prev) => {
+              if (raw.length === 0) return prev;
+              const scoped = scopedClobTokenIdsRef.current || [];
+              const scopedKeys = new Set(
+                scoped.map((x) => normalizeClobTokenKey(x)).filter(Boolean),
+              );
+              const looksFullBook =
+                scopedKeys.size === 0 ||
+                raw.some((p) => {
+                  const k = normalizeClobTokenKey(p.tokenId);
+                  return k && !scopedKeys.has(k);
+                });
+              if (looksFullBook || prev.length === 0) return raw;
+              return prev;
+            });
           } else if (msg.type === 'walletGridPositions' && Array.isArray(msg.data)) {
             const raw = (msg.data as Array<Record<string, unknown>>)
               .map((p) => mapRawWSPosition(p))

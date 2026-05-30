@@ -30,6 +30,7 @@ import {
   shouldIgnoreGridKeyEvent,
 } from './lib/marketGridKeyboard';
 import { pickLiveUpDownMarketInTfBucket } from './utils/format';
+import { setMarketDataRefreshFn } from './lib/marketDataRefresh';
 
 const SidebarLazy = lazyWithChunkReload(() =>
   import('./components/Sidebar').then((m) => ({ default: m.Sidebar })),
@@ -96,6 +97,11 @@ function App() {
   useBidAskWS();
   const { refreshData } = useMarketData();
   const { refreshWalletData } = useWalletData();
+
+  useEffect(() => {
+    setMarketDataRefreshFn(refreshData);
+    return () => setMarketDataRefreshFn(null);
+  }, [refreshData]);
 
   const handleRefresh = useCallback(async () => {
     await Promise.all([refreshData(), refreshWalletData()]);

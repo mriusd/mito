@@ -17,6 +17,7 @@ import { fetchProxyWallet } from '../api/polymarket';
 import { resolvePolymarketMakerAddress } from '../lib/polymarketTradingMaker';
 import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { triggerWalletRefresh } from '../lib/clobClient';
+import { preloadMarketViewDialog } from '../lib/preloadMarketViewDialog';
 import { executeMergePositions } from '../lib/mergePositions';
 import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
@@ -3444,8 +3445,11 @@ export const Sidebar = memo(function Sidebar() {
               type="button"
               onClick={() => {
                 dismissHistoryTip();
+                preloadMarketViewDialog();
                 setMarketViewDialogOpen(true);
               }}
+              onMouseEnter={preloadMarketViewDialog}
+              onFocus={preloadMarketViewDialog}
               onPointerDown={(e) => e.stopPropagation()}
               className="shrink-0 rounded-sm border border-gray-600 bg-gray-900/60 p-0.5 w-[18px] min-w-[18px] flex items-center justify-center text-amber-300 hover:bg-gray-700/80 transition-colors"
               title="Market view — browse markets, traders, and trades"

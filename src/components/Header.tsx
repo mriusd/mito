@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { useAccount } from 'wagmi';
 import { RefreshCw, Clock, Settings, Plus, Github, Send, Star } from 'lucide-react';
 import logoSvg from '../assets/logo.svg';
@@ -27,7 +27,7 @@ const FavouriteWalletsDialogLazy = lazyWithChunkReload(() =>
   import('./FavouriteWalletsDialog').then((m) => ({ default: m.FavouriteWalletsDialog })),
 );
 
-const MarketViewDialogLazy = lazyWithChunkReload(() =>
+const MarketViewDialogLazy = lazy(() =>
   import('./MarketViewDialog').then((m) => ({ default: m.MarketViewDialog })),
 );
 

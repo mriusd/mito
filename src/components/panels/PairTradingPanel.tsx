@@ -576,7 +576,6 @@ function pairLegPositionValues(row: PairLegPositionRowData): (string | JSX.Eleme
     ) : (
       <>
         {fmtCents(row.exitCents)}
-        {row.exitUsd != null ? <span className="text-gray-400"> ${row.exitUsd.toFixed(2)}</span> : null}
         {row.exitPartial ? <span className="text-red-400"> thin</span> : null}
       </>
     );

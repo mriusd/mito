@@ -27,6 +27,11 @@ const PAIR_LIMIT_MAX_CENTS = 99;
 const PAIR_LIMIT_DELTA_DEFAULT_CENTS = 10;
 const CLOB_MIN_EXPIRY_SEC = 90;
 
+const LS_ORDER_EXPIRY_UPDOWN = 'polymarket-order-expiry-updown';
+const LS_ORDER_EXPIRY_UNIT_UPDOWN = 'polymarket-order-expiry-unit-updown';
+const LS_ORDER_EXPIRY_LEGACY = 'polymarket-order-expiry';
+const LS_ORDER_EXPIRY_UNIT_LEGACY = 'polymarket-order-expiry-unit';
+
 const ASSET_COLORS: Record<PairAsset, string> = {
   BTC: 'text-orange-400',
   ETH: 'text-blue-400',
@@ -94,7 +99,25 @@ function maxOrderUsdViolationMessage(maxUsd: number, valueUsd: number): string |
   return `Max order size ${lim} USD. To increase the limit go to settings menu in the header.`;
 }
 
+function normalizeExpiryUnit(raw: string | null): 's' | 'm' | 'h' {
+  const u = String(raw || 'm').trim().toLowerCase();
+  if (u === 's' || u === 'h') return u;
+  return 'm';
+}
+
+function getUpDownOrderExpiryLeadSeconds(): number {
+  const value = localStorage.getItem(LS_ORDER_EXPIRY_UPDOWN) ?? localStorage.getItem(LS_ORDER_EXPIRY_LEGACY) ?? '180';
+  const uRaw = localStorage.getItem(LS_ORDER_EXPIRY_UNIT_UPDOWN) ?? localStorage.getItem(LS_ORDER_EXPIRY_UNIT_LEGACY);
+  const unit = normalizeExpiryUnit(uRaw);
+  const n = parseFloat(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  if (unit === 's') return Math.floor(n);
+  if (unit === 'h') return Math.floor(n * 3600);
+  return Math.floor(n * 60);
+}
+
 function computePairLimitExpiration(marketEndDate?: string): { expiration: number; invalidLead: boolean } {
+  const expLeadSec = getUpDownOrderExpiryLeadSeconds();
   const nowSec = Math.floor(Date.now() / 1000);
   const endDate = String(marketEndDate || '').trim();
   if (!endDate) {
@@ -104,9 +127,11 @@ function computePairLimitExpiration(marketEndDate?: string): { expiration: numbe
   if (!Number.isFinite(endTimeSec)) {
     return { expiration: nowSec + 86400, invalidLead: false };
   }
-  const leadSec = 60;
-  const expiration = endTimeSec - leadSec;
-  const invalidLead = endTimeSec - nowSec <= leadSec;
+  if (expLeadSec <= 0) {
+    return { expiration: 0, invalidLead: false };
+  }
+  const expiration = endTimeSec - expLeadSec;
+  const invalidLead = endTimeSec - nowSec <= expLeadSec;
   if (expiration - nowSec < CLOB_MIN_EXPIRY_SEC) {
     return { expiration: 0, invalidLead };
   }
@@ -118,10 +143,47 @@ function bestAskDecimal(asks: SidebarObLevel[]): number | null {
   return Number.isFinite(px) && px > 0 ? px : null;
 }
 
-function pairLimitFromBestAsk(bestAsk: number | null, offsetCents: number): { price: number; cents: number } | null {
-  if (bestAsk == null || !Number.isFinite(bestAsk) || bestAsk <= 0) return null;
+type AskWalkResult = {
+  avgPrice: number;
+  avgCents: number;
+  totalCostUsd: number;
+  filledShares: number;
+  complete: boolean;
+};
+
+function walkAsksForShares(asks: SidebarObLevel[], shares: number): AskWalkResult | null {
+  if (!Number.isFinite(shares) || shares <= 0 || asks.length === 0) return null;
+
+  let remaining = shares;
+  let costUsd = 0;
+  let filled = 0;
+
+  for (const level of asks) {
+    const px = parseFloat(String(level.price));
+    const sz = parseFloat(String(level.size));
+    if (!Number.isFinite(px) || px <= 0 || !Number.isFinite(sz) || sz <= 0) continue;
+    const take = Math.min(remaining, sz);
+    costUsd += take * px;
+    filled += take;
+    remaining -= take;
+    if (remaining <= 1e-9) break;
+  }
+
+  if (filled <= 0) return null;
+  const avgPrice = costUsd / filled;
+  return {
+    avgPrice,
+    avgCents: avgPrice * 100,
+    totalCostUsd: costUsd,
+    filledShares: filled,
+    complete: remaining <= 1e-6,
+  };
+}
+
+function pairLimitFromAskPrice(askPrice: number | null, offsetCents: number): { price: number; cents: number } | null {
+  if (askPrice == null || !Number.isFinite(askPrice) || askPrice <= 0) return null;
   if (!Number.isFinite(offsetCents) || offsetCents < 0) return null;
-  const cents = Math.min(bestAsk * 100 + offsetCents, PAIR_LIMIT_MAX_CENTS);
+  const cents = Math.min(askPrice * 100 + offsetCents, PAIR_LIMIT_MAX_CENTS);
   return { price: cents / 100, cents };
 }
 
@@ -402,17 +464,44 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const upAsset = upSlot === 'left' ? leftAsset : rightAsset;
   const downAsset = upSlot === 'left' ? rightAsset : leftAsset;
 
-  const pairAskCents =
+  const shares = parseFloat(orderAmount);
+  const hasShareAmount = Number.isFinite(shares) && shares > 0;
+
+  const upAskWalk = useMemo(
+    () => (hasShareAmount ? walkAsksForShares(upBook.rawAsks, shares) : null),
+    [hasShareAmount, shares, upBook.rawAsks],
+  );
+  const downAskWalk = useMemo(
+    () => (hasShareAmount ? walkAsksForShares(downBook.rawAsks, shares) : null),
+    [hasShareAmount, shares, downBook.rawAsks],
+  );
+
+  const pairTopAskCents =
     upBook.bestAsk != null && downBook.bestAsk != null ? (upBook.bestAsk + downBook.bestAsk) * 100 : null;
 
-  const upLimit = pairLimitFromBestAsk(upBook.bestAsk, priceDeltaCents);
-  const downLimit = pairLimitFromBestAsk(downBook.bestAsk, priceDeltaCents);
+  const pairAskCents = useMemo(() => {
+    if (hasShareAmount && upAskWalk && downAskWalk) {
+      return upAskWalk.avgCents + downAskWalk.avgCents;
+    }
+    return pairTopAskCents;
+  }, [hasShareAmount, upAskWalk, downAskWalk, pairTopAskCents]);
+
+  const pairAskInsufficient =
+    hasShareAmount && upAskWalk != null && downAskWalk != null && (!upAskWalk.complete || !downAskWalk.complete);
+
+  const upLimit = pairLimitFromAskPrice(
+    hasShareAmount && upAskWalk ? upAskWalk.avgPrice : upBook.bestAsk,
+    priceDeltaCents,
+  );
+  const downLimit = pairLimitFromAskPrice(
+    hasShareAmount && downAskWalk ? downAskWalk.avgPrice : downBook.bestAsk,
+    priceDeltaCents,
+  );
   const pairLimitCents =
     upLimit != null && downLimit != null ? upLimit.cents + downLimit.cents : null;
 
-  const shares = parseFloat(orderAmount);
   const estPairCostUsd =
-    Number.isFinite(shares) && shares > 0 && upLimit != null && downLimit != null
+    hasShareAmount && upLimit != null && downLimit != null
       ? (upLimit.price + downLimit.price) * shares
       : null;
 
@@ -444,8 +533,19 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
       return;
     }
 
-    const upLimitPx = pairLimitFromBestAsk(upBook.bestAsk, priceDeltaCents);
-    const downLimitPx = pairLimitFromBestAsk(downBook.bestAsk, priceDeltaCents);
+    const upAskWalkPx = walkAsksForShares(upBook.rawAsks, shares);
+    const downAskWalkPx = walkAsksForShares(downBook.rawAsks, shares);
+    if (!upAskWalkPx?.complete) {
+      showToast(`${upAsset} UP: not enough ask depth for ${shares} shares`, 'error');
+      return;
+    }
+    if (!downAskWalkPx?.complete) {
+      showToast(`${downAsset} DOWN: not enough ask depth for ${shares} shares`, 'error');
+      return;
+    }
+
+    const upLimitPx = pairLimitFromAskPrice(upAskWalkPx.avgPrice, priceDeltaCents);
+    const downLimitPx = pairLimitFromAskPrice(downAskWalkPx.avgPrice, priceDeltaCents);
     if (!upLimitPx) {
       showToast(`${upAsset} UP: no ask in book`, 'error');
       return;
@@ -522,8 +622,8 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
     upAsset,
     downAsset,
     timeframe,
-    upBook.bestAsk,
-    downBook.bestAsk,
+    upBook.rawAsks,
+    downBook.rawAsks,
     priceDeltaCents,
   ]);
 
@@ -629,10 +729,34 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
             <span className={`font-bold tabular-nums ${pairAskColorClass(pairAskCents)}`}>
               {pairAskCents != null ? `${pairAskCents.toFixed(1)}¢` : '—'}
             </span>
+            {hasShareAmount ? (
+              <span className="ml-1 text-gray-500">@ {shares} sh VWAP</span>
+            ) : (
+              <span className="ml-1 text-gray-500">top</span>
+            )}
             <span className="ml-1 text-gray-500">
-              ({upAsset} UP {(upBook.bestAsk != null ? (upBook.bestAsk * 100).toFixed(1) : '—')}¢ + {downAsset} DOWN{' '}
-              {(downBook.bestAsk != null ? (downBook.bestAsk * 100).toFixed(1) : '—')}¢)
+              (
+              {upAsset} UP{' '}
+              {(hasShareAmount && upAskWalk
+                ? upAskWalk.avgCents.toFixed(1)
+                : upBook.bestAsk != null
+                  ? (upBook.bestAsk * 100).toFixed(1)
+                  : '—')}
+              ¢ + {downAsset} DOWN{' '}
+              {(hasShareAmount && downAskWalk
+                ? downAskWalk.avgCents.toFixed(1)
+                : downBook.bestAsk != null
+                  ? (downBook.bestAsk * 100).toFixed(1)
+                  : '—')}
+              ¢
+              {hasShareAmount && pairTopAskCents != null ? (
+                <span> · top {pairTopAskCents.toFixed(1)}¢</span>
+              ) : null}
+              )
             </span>
+            {pairAskInsufficient ? (
+              <span className="ml-2 font-semibold text-red-400">insufficient ask depth</span>
+            ) : null}
             <span className="ml-2 text-gray-500">
               Limit:{' '}
               <span className="tabular-nums text-gray-300">
@@ -685,7 +809,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
           </div>
           <button
             type="button"
-            disabled={!walletReady || placing || leftAsset === rightAsset}
+            disabled={!walletReady || placing || leftAsset === rightAsset || pairAskInsufficient === true}
             onClick={() => void handlePlacePair()}
             className="h-[34px] shrink-0 rounded-lg bg-emerald-700 px-4 text-[11px] font-bold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
           >

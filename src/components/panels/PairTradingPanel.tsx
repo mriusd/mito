@@ -1,17 +1,17 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAccount } from 'wagmi';
-import type { AssetSymbol, Market, Position } from '../../types';
+import type { AssetSymbol, Market, Position, Trade } from '../../types';
 import { placeOrder } from '../../api';
 import { useAppStore } from '../../stores/appStore';
 import { usePolymarketOB } from '../../hooks/usePolymarketOB';
 import { useExpiryNow } from '../../hooks/useExpiryNow';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { formatMarketCountdown } from '../../lib/marketCountdown';
-import { pickLiveUpDownMarketInTfBucket, resolvedBinaryOutcomeLabel } from '../../utils/format';
+import { pickLiveUpDownMarketInTfBucket, normalizeClobTokenId, resolvedBinaryOutcomeLabel } from '../../utils/format';
 import { isMarketExpired } from '../../lib/marketExpiry';
 import { triggerWalletRefresh } from '../../lib/clobClient';
-import { isSidebarDustPosition } from '../../lib/sidebarMyPositions';
-import { useSidebarOnchainWalletPositions } from '../../lib/sidebarOnchainTradesStore';
+import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
+import { useSidebarOnchainWalletMarketTrades, useSidebarOnchainWalletPositions } from '../../lib/sidebarOnchainTradesStore';
 import type { SidebarObAggStep } from '../../lib/sidebarOrderbookAggregate';
 import { sidebarObAggregateLevels } from '../../lib/sidebarOrderbookAggregate';
 import { readSavedObAggStep, LS_SIDEBAR_OB_AGG_STEP } from '../../lib/sidebarObAggStep';
@@ -225,33 +225,6 @@ function walkBidsForShares(bids: SidebarObLevel[], shares: number): BidWalkResul
     filledShares: filled,
     complete: remaining <= 1e-6,
   };
-}
-
-function findLegPosition(
-  tokenId: string,
-  positions: Position[],
-  liveTradesSource: string,
-  onchainWsPositions: { tokenId: string; size: number; avgPrice: number }[],
-): { size: number; avgPrice: number } | null {
-  const tid = tokenId.trim();
-  if (!tid) return null;
-
-  let size = 0;
-  let avgPrice = 0;
-  const rest = positions.find((p) => String(p.asset || '').trim() === tid);
-  if (rest && (rest.size || 0) > 0) {
-    size = rest.size || 0;
-    avgPrice = rest.avgPrice ?? 0;
-  }
-  if (liveTradesSource === 'onchain') {
-    const ws = onchainWsPositions.find((p) => p.tokenId.trim() === tid);
-    if (ws && ws.size > 0) {
-      size = ws.size;
-      avgPrice = ws.avgPrice > 0 ? ws.avgPrice : avgPrice;
-    }
-  }
-  if (isSidebarDustPosition(size)) return null;
-  return { size, avgPrice };
 }
 
 function pairLimitFromAskPrice(askPrice: number | null, offsetCents: number): { price: number; cents: number } | null {
@@ -538,8 +511,19 @@ function buildPairLegPositionRow(
   positions: Position[],
   liveTradesSource: string,
   onchainWsPositions: { tokenId: string; size: number; avgPrice: number }[],
+  onchainTrades: { tokenId: string; side: string; price: number; size: number }[],
+  restTrades: Trade[],
 ): PairLegPositionRowData {
-  const pos = tokenId ? findLegPosition(tokenId, positions, liveTradesSource, onchainWsPositions) : null;
+  const pos = tokenId
+    ? resolveLegPositionForToken(
+        tokenId,
+        positions,
+        liveTradesSource,
+        onchainWsPositions,
+        onchainTrades,
+        restTrades,
+      )
+    : null;
   if (!pos) {
     return {
       leg,
@@ -582,53 +566,49 @@ function legTokenId(market: Market | null, leg: PairLeg): string {
   return market?.clobTokenIds?.[idx]?.trim() ?? '';
 }
 
-function PairLegPositionHalf({ row }: { row: PairLegPositionRowData }) {
+function PairLegPositionInline({ row }: { row: PairLegPositionRowData }) {
   const flat = row.size <= 0;
   return (
-    <div className="min-w-0 flex-1 rounded border border-gray-700/60 bg-gray-900/30 px-2 py-1.5 text-[9px]">
-      <div className="mb-1 flex items-center gap-1 border-b border-gray-700/50 pb-1">
-        <span className={`font-bold ${ASSET_COLORS[row.asset]}`}>{row.asset}</span>
-        <span
-          className={`rounded px-1 py-px text-[8px] font-bold ${
-            row.leg === 'UP' ? 'bg-green-900/60 text-green-300' : 'bg-red-900/60 text-red-300'
-          }`}
-        >
-          {row.leg}
-        </span>
-      </div>
-      <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
-        <span className="text-gray-500">Size</span>
-        <span className="text-right tabular-nums text-gray-200">{flat ? '—' : row.size.toFixed(0)}</span>
-        <span className="text-gray-500">Entry</span>
-        <span className="text-right tabular-nums text-gray-200">
-          {row.entryCents != null ? fmtCents(row.entryCents) : '—'}
-        </span>
-        <span className="text-gray-500">Cost</span>
-        <span className="text-right tabular-nums text-gray-200">
-          {row.costUsd != null ? `$${row.costUsd.toFixed(2)}` : '—'}
-        </span>
-        <span className="text-gray-500">Exit</span>
-        <span className="text-right tabular-nums text-emerald-300">
-          {flat || row.exitCents == null ? (
-            '—'
-          ) : (
-            <>
-              {fmtCents(row.exitCents)}
-              {row.exitUsd != null ? <span className="text-gray-400"> · ${row.exitUsd.toFixed(2)}</span> : null}
-              {row.exitPartial ? <span className="text-red-400"> · thin</span> : null}
-            </>
-          )}
-        </span>
-        <span className="text-gray-500">PnL</span>
-        <span
-          className={`text-right tabular-nums font-semibold ${
-            row.pnlUsd == null ? 'text-gray-200' : row.pnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
-          }`}
-        >
-          {flat || row.pnlUsd == null ? '—' : `${row.pnlUsd >= 0 ? '+' : ''}$${row.pnlUsd.toFixed(2)}`}
-        </span>
-      </div>
-    </div>
+    <span className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap tabular-nums">
+      <span className={`font-bold ${ASSET_COLORS[row.asset]}`}>{row.asset}</span>
+      <span
+        className={`rounded px-1 py-px text-[8px] font-bold leading-none ${
+          row.leg === 'UP' ? 'bg-green-900/60 text-green-300' : 'bg-red-900/60 text-red-300'
+        }`}
+      >
+        {row.leg}
+      </span>
+      {flat ? (
+        <span className="text-gray-500">—</span>
+      ) : (
+        <>
+          <span className="text-gray-500">sz</span>
+          <span className="text-gray-200">{row.size.toFixed(0)}</span>
+          <span className="text-gray-600">·</span>
+          <span className="text-gray-500">ent</span>
+          <span className="text-gray-200">{row.entryCents != null ? fmtCents(row.entryCents) : '—'}</span>
+          <span className="text-gray-600">·</span>
+          <span className="text-gray-500">cost</span>
+          <span className="text-gray-200">{row.costUsd != null ? `$${row.costUsd.toFixed(2)}` : '—'}</span>
+          <span className="text-gray-600">·</span>
+          <span className="text-gray-500">exit</span>
+          <span className="text-emerald-300">
+            {row.exitCents != null ? fmtCents(row.exitCents) : '—'}
+            {row.exitUsd != null ? ` $${row.exitUsd.toFixed(2)}` : ''}
+            {row.exitPartial ? <span className="text-red-400"> thin</span> : null}
+          </span>
+          <span className="text-gray-600">·</span>
+          <span className="text-gray-500">PnL</span>
+          <span
+            className={`font-semibold ${
+              row.pnlUsd == null ? 'text-gray-200' : row.pnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
+            }`}
+          >
+            {row.pnlUsd == null ? '—' : `${row.pnlUsd >= 0 ? '+' : ''}$${row.pnlUsd.toFixed(2)}`}
+          </span>
+        </>
+      )}
+    </span>
   );
 }
 
@@ -648,33 +628,30 @@ function PairLegPositionsRow({
   closeDisabled: boolean;
 }) {
   return (
-    <div className="mt-2 border-t border-gray-700/60 pt-2">
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <div className="text-[10px] font-semibold text-gray-400">Open positions</div>
-        <div className="flex items-center gap-2">
-          <div className="text-[10px] tabular-nums">
-            <span className="text-gray-500">Total PnL </span>
-            <span
-              className={`font-bold ${
-                totalPnlUsd == null ? 'text-gray-400' : totalPnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
-              }`}
-            >
-              {totalPnlUsd == null ? '—' : formatPnlUsd(totalPnlUsd)}
-            </span>
-          </div>
-          <button
-            type="button"
-            disabled={closeDisabled}
-            onClick={onClose}
-            className="h-6 shrink-0 rounded bg-red-700 px-2.5 text-[10px] font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+    <div className="mt-2 flex min-w-0 items-center gap-2 overflow-x-auto border-t border-gray-700/60 pt-1.5 text-[9px]">
+      <span className="shrink-0 text-[10px] font-semibold text-gray-400">Pos</span>
+      <PairLegPositionInline row={left} />
+      <span className="shrink-0 text-gray-600">|</span>
+      <PairLegPositionInline row={right} />
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        <span className="tabular-nums whitespace-nowrap">
+          <span className="text-gray-500">Total </span>
+          <span
+            className={`font-bold ${
+              totalPnlUsd == null ? 'text-gray-400' : totalPnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
+            }`}
           >
-            {closing ? 'Closing…' : 'CLOSE'}
-          </button>
-        </div>
-      </div>
-      <div className="flex gap-2">
-        <PairLegPositionHalf row={left} />
-        <PairLegPositionHalf row={right} />
+            {totalPnlUsd == null ? '—' : formatPnlUsd(totalPnlUsd)}
+          </span>
+        </span>
+        <button
+          type="button"
+          disabled={closeDisabled}
+          onClick={onClose}
+          className="h-5 shrink-0 rounded bg-red-700 px-2 text-[9px] font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {closing ? 'Closing…' : 'CLOSE'}
+        </button>
       </div>
     </div>
   );
@@ -713,10 +690,12 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
   const maxOrderSizeUsd = useAppStore((s) => s.maxOrderSizeUsd);
   const positions = useAppStore((s) => s.positions);
+  const trades = useAppStore((s) => s.trades);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const signingMode = useAppStore((s) => s.signingMode);
   const pkAddress = useAppStore((s) => s.pkAddress);
   const onchainWsPositions = useSidebarOnchainWalletPositions();
+  const onchainMarketTrades = useSidebarOnchainWalletMarketTrades();
   const { isConnected } = useAccount();
   const tradingWallet = useTradingWalletAddress();
 
@@ -820,6 +799,14 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const leftTokenId = legTokenId(leftMarket, leftLeg);
   const rightTokenId = legTokenId(rightMarket, rightLeg);
 
+  const pairLegOnchainTrades = useMemo(() => {
+    const keys = new Set(
+      [leftTokenId, rightTokenId].map((id) => normalizeClobTokenId(id)).filter(Boolean),
+    );
+    if (keys.size === 0) return [];
+    return onchainMarketTrades.filter((t) => keys.has(normalizeClobTokenId(t.tokenId)));
+  }, [leftTokenId, rightTokenId, onchainMarketTrades]);
+
   const leftPositionRow = useMemo(
     () =>
       buildPairLegPositionRow(
@@ -830,8 +817,20 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
         positions,
         liveTradesSource,
         onchainWsPositions,
+        pairLegOnchainTrades,
+        trades,
       ),
-    [leftLeg, leftAsset, leftTokenId, leftBook, positions, liveTradesSource, onchainWsPositions],
+    [
+      leftLeg,
+      leftAsset,
+      leftTokenId,
+      leftBook,
+      positions,
+      liveTradesSource,
+      onchainWsPositions,
+      pairLegOnchainTrades,
+      trades,
+    ],
   );
   const rightPositionRow = useMemo(
     () =>
@@ -843,8 +842,20 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
         positions,
         liveTradesSource,
         onchainWsPositions,
+        pairLegOnchainTrades,
+        trades,
       ),
-    [rightLeg, rightAsset, rightTokenId, rightBook, positions, liveTradesSource, onchainWsPositions],
+    [
+      rightLeg,
+      rightAsset,
+      rightTokenId,
+      rightBook,
+      positions,
+      liveTradesSource,
+      onchainWsPositions,
+      pairLegOnchainTrades,
+      trades,
+    ],
   );
 
   const totalPnlUsd = useMemo(() => {

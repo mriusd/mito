@@ -1,7 +1,6 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAccount } from 'wagmi';
 import type { AssetSymbol, Market, Position, Trade } from '../../types';
-import type { WalletPosition } from '../../api';
 import { placeOrder } from '../../api';
 import { useAppStore } from '../../stores/appStore';
 import { usePolymarketOB } from '../../hooks/usePolymarketOB';
@@ -10,12 +9,10 @@ import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { formatMarketCountdown } from '../../lib/marketCountdown';
 import { pickLiveUpDownMarketInTfBucket, pickNextUpDownMarketInTfBucket, resolvedBinaryOutcomeLabel } from '../../utils/format';
 import { isMarketExpired } from '../../lib/marketExpiry';
-import { triggerMarketDataRefresh } from '../../lib/marketDataRefresh';
-import { getExpiryTickNow, subscribeExpiryTick } from '../../lib/expiryTickStore';
 import { triggerWalletRefresh } from '../../lib/clobClient';
 import { cancelExistingSellOrdersForToken } from '../../lib/cancelExistingSellOrdersForToken';
-import { resolveLegPositionForToken, resolveLegPositionFromWalletHistory, resolveFeesPaidForToken } from '../../lib/sidebarMyPositions';
-import { useSidebarOnchainGridWalletPositions, useSidebarOnchainWalletHistory } from '../../lib/sidebarOnchainTradesStore';
+import { resolveLegPositionForToken, resolveFeesPaidForToken } from '../../lib/sidebarMyPositions';
+import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
 import type { SidebarObAggStep } from '../../lib/sidebarOrderbookAggregate';
 import { sidebarObAggregateLevels } from '../../lib/sidebarOrderbookAggregate';
 import { readSavedObAggStep, LS_SIDEBAR_OB_AGG_STEP } from '../../lib/sidebarObAggStep';
@@ -531,19 +528,15 @@ function buildPairLegPositionRow(
   leg: PairLeg,
   asset: PairAsset,
   tokenId: string,
-  market: Market | null,
   book: ReturnType<typeof usePairLegOrderbook>,
   positions: Position[],
   liveTradesSource: string,
   onchainWsPositions: { tokenId: string; size: number; avgPrice: number; feesPaid?: number }[],
-  walletHistory: WalletPosition[],
   trades: Trade[],
 ): PairLegPositionRowData {
-  const pos =
-    liveTradesSource === 'onchain' && market
-      ? resolveLegPositionFromWalletHistory(tokenId, market, walletHistory) ??
-        resolveLegPositionForToken(tokenId, positions, liveTradesSource, onchainWsPositions)
-      : resolveLegPositionForToken(tokenId, positions, liveTradesSource, onchainWsPositions);
+  const pos = tokenId
+    ? resolveLegPositionForToken(tokenId, positions, liveTradesSource, onchainWsPositions)
+    : null;
   if (!pos) {
     return {
       leg,
@@ -559,9 +552,7 @@ function buildPairLegPositionRow(
     };
   }
 
-  const feesUsd = pos.feesPaid != null && Number.isFinite(pos.feesPaid)
-    ? pos.feesPaid
-    : resolveFeesPaidForToken(tokenId, liveTradesSource, onchainWsPositions, trades);
+  const feesUsd = resolveFeesPaidForToken(tokenId, liveTradesSource, onchainWsPositions, trades);
   const feePart = feesUsd ?? 0;
   const baseCostUsd = pos.avgPrice > 0 ? pos.avgPrice * pos.size : 0;
   let costUsd: number | null = null;
@@ -846,10 +837,8 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const signingMode = useAppStore((s) => s.signingMode);
   const pkAddress = useAppStore((s) => s.pkAddress);
   const onchainWsPositions = useSidebarOnchainGridWalletPositions();
-  const walletHistory = useSidebarOnchainWalletHistory();
   const { isConnected } = useAccount();
   const tradingWallet = useTradingWalletAddress();
-  const expiryNow = useExpiryNow();
 
   const [timeframe, setTimeframe] = useState<PairTimeframe>(() => readStoredPairTf(panelId));
   const [leftAsset, setLeftAsset] = useState<PairAsset>(() => readStoredPairAsset(panelId, 'left', 'BTC'));
@@ -911,35 +900,12 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
 
   const leftMarket = useMemo(() => {
     const bucket = upOrDownMarkets[leftAsset as AssetSymbol]?.[timeframe];
-    return marketSlot === 'next'
-      ? pickNextUpDownMarketInTfBucket(bucket, expiryNow)
-      : pickLiveUpDownMarketInTfBucket(bucket, expiryNow);
-  }, [upOrDownMarkets, leftAsset, timeframe, marketSlot, expiryNow]);
+    return marketSlot === 'next' ? pickNextUpDownMarketInTfBucket(bucket) : pickLiveUpDownMarketInTfBucket(bucket);
+  }, [upOrDownMarkets, leftAsset, timeframe, marketSlot]);
   const rightMarket = useMemo(() => {
     const bucket = upOrDownMarkets[rightAsset as AssetSymbol]?.[timeframe];
-    return marketSlot === 'next'
-      ? pickNextUpDownMarketInTfBucket(bucket, expiryNow)
-      : pickLiveUpDownMarketInTfBucket(bucket, expiryNow);
-  }, [upOrDownMarkets, rightAsset, timeframe, marketSlot, expiryNow]);
-
-  useEffect(() => {
-    if (marketSlot !== 'current') return;
-    let lastRefreshMs = 0;
-    return subscribeExpiryTick(() => {
-      const now = getExpiryTickNow();
-      if (now - lastRefreshMs < 2000) return;
-      const st = useAppStore.getState();
-      for (const asset of [leftAsset, rightAsset] as PairAsset[]) {
-        const live = pickLiveUpDownMarketInTfBucket(st.upOrDownMarkets[asset as AssetSymbol]?.[timeframe], now);
-        if (live) continue;
-        const bucket = st.upOrDownMarkets[asset as AssetSymbol]?.[timeframe];
-        if (!bucket?.some((m) => m.endDate && new Date(m.endDate).getTime() <= now)) continue;
-        lastRefreshMs = now;
-        triggerMarketDataRefresh();
-        return;
-      }
-    });
-  }, [marketSlot, leftAsset, rightAsset, timeframe]);
+    return marketSlot === 'next' ? pickNextUpDownMarketInTfBucket(bucket) : pickLiveUpDownMarketInTfBucket(bucket);
+  }, [upOrDownMarkets, rightAsset, timeframe, marketSlot]);
 
   const leftBook = usePairLegOrderbook(leftMarket, leftLeg, obAggStep);
   const rightBook = usePairLegOrderbook(rightMarket, rightLeg, obAggStep);
@@ -990,15 +956,13 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
         leftLeg,
         leftAsset,
         leftTokenId,
-        leftMarket,
         leftBook,
         positions,
         liveTradesSource,
         onchainWsPositions,
-        walletHistory,
         trades,
       ),
-    [leftLeg, leftAsset, leftTokenId, leftMarket, leftBook, positions, liveTradesSource, onchainWsPositions, walletHistory, trades],
+    [leftLeg, leftAsset, leftTokenId, leftBook, positions, liveTradesSource, onchainWsPositions, trades],
   );
   const rightPositionRow = useMemo(
     () =>
@@ -1006,15 +970,13 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
         rightLeg,
         rightAsset,
         rightTokenId,
-        rightMarket,
         rightBook,
         positions,
         liveTradesSource,
         onchainWsPositions,
-        walletHistory,
         trades,
       ),
-    [rightLeg, rightAsset, rightTokenId, rightMarket, rightBook, positions, liveTradesSource, onchainWsPositions, walletHistory, trades],
+    [rightLeg, rightAsset, rightTokenId, rightBook, positions, liveTradesSource, onchainWsPositions, trades],
   );
 
   const totalEntryCents = useMemo(() => {

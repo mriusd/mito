@@ -121,16 +121,6 @@ export function clearSidebarOnchainWalletTrades(): void {
   notify();
 }
 
-export function resetSidebarOnchainWalletHistory(): void {
-  snap = {
-    ...snap,
-    walletHistory: [],
-    walletHistoryDigest: snap.walletHistoryDigest + 1,
-    walletHistoryHydrated: false,
-  };
-  notify();
-}
-
 export function resetSidebarOnchainWalletMarketTradesScope(scopeKey: string): void {
   if (walletMarketTradesScopeKey === scopeKey) return;
   walletMarketTradesScopeKey = scopeKey;

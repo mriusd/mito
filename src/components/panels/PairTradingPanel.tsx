@@ -10,6 +10,7 @@ import { formatMarketCountdown } from '../../lib/marketCountdown';
 import { pickLiveUpDownMarketInTfBucket, pickNextUpDownMarketInTfBucket, normalizeClobTokenId, resolvedBinaryOutcomeLabel } from '../../utils/format';
 import { isMarketExpired } from '../../lib/marketExpiry';
 import { triggerWalletRefresh } from '../../lib/clobClient';
+import { cancelExistingSellOrdersForToken } from '../../lib/cancelExistingSellOrdersForToken';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
 import { useSidebarOnchainWalletMarketTrades, useSidebarOnchainWalletPositions } from '../../lib/sidebarOnchainTradesStore';
 import type { SidebarObAggStep } from '../../lib/sidebarOrderbookAggregate';
@@ -814,6 +815,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
   const maxOrderSizeUsd = useAppStore((s) => s.maxOrderSizeUsd);
   const positions = useAppStore((s) => s.positions);
+  const orders = useAppStore((s) => s.orders);
   const trades = useAppStore((s) => s.trades);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const signingMode = useAppStore((s) => s.signingMode);
@@ -1125,6 +1127,13 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
         const size = Math.floor(row.size * 100) / 100;
         if (size <= 0) continue;
 
+        const cancel = await cancelExistingSellOrdersForToken(tokenId, orders);
+        if (!cancel.success) {
+          showToast(cancel.error || `${row.asset} ${row.leg}: cancel existing sells failed`, 'error');
+          triggerWalletRefresh();
+          return;
+        }
+
         const result = await placeOrder({
           tokenId,
           side: 'SELL',
@@ -1156,6 +1165,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
     rightMarket,
     leftTokenId,
     rightTokenId,
+    orders,
     timeframe,
   ]);
 

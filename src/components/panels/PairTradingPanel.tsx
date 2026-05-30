@@ -1,13 +1,17 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAccount } from 'wagmi';
-import type { AssetSymbol, Market } from '../../types';
+import type { AssetSymbol, Market, Position } from '../../types';
 import { placeOrder } from '../../api';
 import { useAppStore } from '../../stores/appStore';
 import { usePolymarketOB } from '../../hooks/usePolymarketOB';
+import { useExpiryNow } from '../../hooks/useExpiryNow';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
+import { formatMarketCountdown } from '../../lib/marketCountdown';
 import { pickLiveUpDownMarketInTfBucket, resolvedBinaryOutcomeLabel } from '../../utils/format';
 import { isMarketExpired } from '../../lib/marketExpiry';
 import { triggerWalletRefresh } from '../../lib/clobClient';
+import { isSidebarDustPosition } from '../../lib/sidebarMyPositions';
+import { useSidebarOnchainWalletPositions } from '../../lib/sidebarOnchainTradesStore';
 import type { SidebarObAggStep } from '../../lib/sidebarOrderbookAggregate';
 import { sidebarObAggregateLevels } from '../../lib/sidebarOrderbookAggregate';
 import { readSavedObAggStep, LS_SIDEBAR_OB_AGG_STEP } from '../../lib/sidebarObAggStep';
@@ -151,6 +155,19 @@ type AskWalkResult = {
   complete: boolean;
 };
 
+type BidWalkResult = {
+  avgPrice: number;
+  avgCents: number;
+  totalProceedsUsd: number;
+  filledShares: number;
+  complete: boolean;
+};
+
+function bestBidDecimal(bids: SidebarObLevel[]): number | null {
+  const px = parseFloat(String(bids[0]?.price ?? ''));
+  return Number.isFinite(px) && px > 0 ? px : null;
+}
+
 function walkAsksForShares(asks: SidebarObLevel[], shares: number): AskWalkResult | null {
   if (!Number.isFinite(shares) || shares <= 0 || asks.length === 0) return null;
 
@@ -180,6 +197,62 @@ function walkAsksForShares(asks: SidebarObLevel[], shares: number): AskWalkResul
   };
 }
 
+function walkBidsForShares(bids: SidebarObLevel[], shares: number): BidWalkResult | null {
+  if (!Number.isFinite(shares) || shares <= 0 || bids.length === 0) return null;
+
+  let remaining = shares;
+  let proceedsUsd = 0;
+  let filled = 0;
+
+  for (const level of bids) {
+    const px = parseFloat(String(level.price));
+    const sz = parseFloat(String(level.size));
+    if (!Number.isFinite(px) || px <= 0 || !Number.isFinite(sz) || sz <= 0) continue;
+    const take = Math.min(remaining, sz);
+    proceedsUsd += take * px;
+    filled += take;
+    remaining -= take;
+    if (remaining <= 1e-9) break;
+  }
+
+  if (filled <= 0) return null;
+  const avgPrice = proceedsUsd / filled;
+  return {
+    avgPrice,
+    avgCents: avgPrice * 100,
+    totalProceedsUsd: proceedsUsd,
+    filledShares: filled,
+    complete: remaining <= 1e-6,
+  };
+}
+
+function findLegPosition(
+  tokenId: string,
+  positions: Position[],
+  liveTradesSource: string,
+  onchainWsPositions: { tokenId: string; size: number; avgPrice: number }[],
+): { size: number; avgPrice: number } | null {
+  const tid = tokenId.trim();
+  if (!tid) return null;
+
+  let size = 0;
+  let avgPrice = 0;
+  const rest = positions.find((p) => String(p.asset || '').trim() === tid);
+  if (rest && (rest.size || 0) > 0) {
+    size = rest.size || 0;
+    avgPrice = rest.avgPrice ?? 0;
+  }
+  if (liveTradesSource === 'onchain') {
+    const ws = onchainWsPositions.find((p) => p.tokenId.trim() === tid);
+    if (ws && ws.size > 0) {
+      size = ws.size;
+      avgPrice = ws.avgPrice > 0 ? ws.avgPrice : avgPrice;
+    }
+  }
+  if (isSidebarDustPosition(size)) return null;
+  return { size, avgPrice };
+}
+
 function pairLimitFromAskPrice(askPrice: number | null, offsetCents: number): { price: number; cents: number } | null {
   if (askPrice == null || !Number.isFinite(askPrice) || askPrice <= 0) return null;
   if (!Number.isFinite(offsetCents) || offsetCents < 0) return null;
@@ -190,6 +263,73 @@ function pairLimitFromAskPrice(askPrice: number | null, offsetCents: number): { 
 function fmtCents(cents: number): string {
   return `${cents.toFixed(1)}¢`;
 }
+
+function expiryCountdownColor(text: string, remaining: number): string {
+  if (text === 'Expired') return 'text-red-400';
+  if (remaining < 60_000) return 'text-red-400';
+  if (remaining > 300_000) return 'text-green-400';
+  return 'text-yellow-400';
+}
+
+const PairTradingExpiryCountdown = memo(function PairTradingExpiryCountdown({
+  upMarket,
+  downMarket,
+  upAsset,
+  downAsset,
+}: {
+  upMarket: Market | null;
+  downMarket: Market | null;
+  upAsset: PairAsset;
+  downAsset: PairAsset;
+}) {
+  const now = useExpiryNow();
+  const upEnd = upMarket?.endDate?.trim() ?? '';
+  const downEnd = downMarket?.endDate?.trim() ?? '';
+  const sameEnd = upEnd !== '' && upEnd === downEnd;
+
+  if (sameEnd) {
+    const { text, remaining } = formatMarketCountdown(upEnd, now);
+    if (!text) return null;
+    return (
+      <div
+        className="no-drag ml-auto shrink-0 text-right leading-tight"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="text-[8px] text-gray-500">Expires</div>
+        <div className={`text-[10px] font-semibold tabular-nums ${expiryCountdownColor(text, remaining)}`}>
+          {text}
+        </div>
+      </div>
+    );
+  }
+
+  const up = formatMarketCountdown(upEnd, now);
+  const down = formatMarketCountdown(downEnd, now);
+  if (!up.text && !down.text) return null;
+
+  return (
+    <div
+      className="no-drag ml-auto shrink-0 text-right leading-tight"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div className="text-[8px] text-gray-500">Expires</div>
+      <div className="flex flex-col items-end gap-0.5 text-[10px] font-semibold tabular-nums">
+        {up.text ? (
+          <div>
+            <span className={`${ASSET_COLORS[upAsset]} mr-1`}>{upAsset}</span>
+            <span className={expiryCountdownColor(up.text, up.remaining)}>{up.text}</span>
+          </div>
+        ) : null}
+        {down.text ? (
+          <div>
+            <span className={`${ASSET_COLORS[downAsset]} mr-1`}>{downAsset}</span>
+            <span className={expiryCountdownColor(down.text, down.remaining)}>{down.text}</span>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+});
 
 function usePairLegOrderbook(market: Market | null, leg: PairLeg, obAggStep: SidebarObAggStep) {
   const yesTokenId = market?.clobTokenIds?.[0]?.trim() || null;
@@ -269,6 +409,7 @@ function usePairLegOrderbook(market: Market | null, leg: PairLeg, obAggStep: Sid
 
     const obLoading = activeObLoading && viewBids.length === 0 && viewAsks.length === 0;
     const rawAsks = orderOutcome === 'YES' ? yesAsks : noAsks;
+    const rawBids = orderOutcome === 'YES' ? yesBids : noBids;
 
     return {
       viewBids,
@@ -279,7 +420,9 @@ function usePairLegOrderbook(market: Market | null, leg: PairLeg, obAggStep: Sid
       displayAskFullUsd: displayUsd.askUsdTotal,
       obLoading,
       bestAsk: bestAskDecimal(rawAsks),
+      bestBid: bestBidDecimal(rawBids),
       rawAsks,
+      rawBids,
     };
   }, [
     snapshotBids,
@@ -295,6 +438,8 @@ function usePairLegOrderbook(market: Market | null, leg: PairLeg, obAggStep: Sid
     noAskUsdTotal,
     yesAsks,
     noAsks,
+    yesBids,
+    noBids,
   ]);
 }
 
@@ -361,6 +506,124 @@ const PairTradingOrderbookColumn = memo(function PairTradingOrderbookColumn({
   );
 });
 
+type PairLegPositionRowData = {
+  leg: PairLeg;
+  asset: PairAsset;
+  size: number;
+  entryCents: number | null;
+  costUsd: number | null;
+  exitCents: number | null;
+  exitUsd: number | null;
+  pnlUsd: number | null;
+  exitPartial: boolean;
+};
+
+function buildPairLegPositionRow(
+  leg: PairLeg,
+  asset: PairAsset,
+  tokenId: string,
+  book: ReturnType<typeof usePairLegOrderbook>,
+  positions: Position[],
+  liveTradesSource: string,
+  onchainWsPositions: { tokenId: string; size: number; avgPrice: number }[],
+): PairLegPositionRowData {
+  const pos = tokenId ? findLegPosition(tokenId, positions, liveTradesSource, onchainWsPositions) : null;
+  if (!pos) {
+    return {
+      leg,
+      asset,
+      size: 0,
+      entryCents: null,
+      costUsd: null,
+      exitCents: null,
+      exitUsd: null,
+      pnlUsd: null,
+      exitPartial: false,
+    };
+  }
+
+  const entryCents = pos.avgPrice > 0 ? pos.avgPrice * 100 : null;
+  const costUsd = pos.avgPrice > 0 ? pos.avgPrice * pos.size : null;
+  const bidWalk = walkBidsForShares(book.rawBids, pos.size);
+  const exitCents =
+    bidWalk?.avgCents ?? (book.bestBid != null ? book.bestBid * 100 : null);
+  const exitUsd =
+    bidWalk?.totalProceedsUsd ?? (book.bestBid != null ? book.bestBid * pos.size : null);
+  const pnlUsd =
+    costUsd != null && exitUsd != null ? exitUsd - costUsd : null;
+
+  return {
+    leg,
+    asset,
+    size: pos.size,
+    entryCents,
+    costUsd,
+    exitCents,
+    exitUsd,
+    pnlUsd,
+    exitPartial: bidWalk != null && !bidWalk.complete,
+  };
+}
+
+function PairLegPositionsTable({ rows }: { rows: PairLegPositionRowData[] }) {
+  return (
+    <div className="mt-2 border-t border-gray-700/60 pt-2">
+      <div className="mb-1 text-[10px] font-semibold text-gray-400">Open positions</div>
+      <div className="overflow-x-auto">
+        <div className="min-w-[580px] grid grid-cols-[44px_44px_56px_56px_64px_1fr_64px] gap-x-2 gap-y-1 text-[9px]">
+          <div className="text-gray-500">Leg</div>
+          <div className="text-gray-500">Asset</div>
+          <div className="text-right text-gray-500">Size</div>
+          <div className="text-right text-gray-500">Entry</div>
+          <div className="text-right text-gray-500">Cost</div>
+          <div className="text-right text-gray-500">Exit (bid VWAP)</div>
+          <div className="text-right text-gray-500">PnL</div>
+          {rows.map((row) => (
+            <div key={row.leg} className="contents">
+              <PairLegPositionCells row={row} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PairLegPositionCells({ row }: { row: PairLegPositionRowData }) {
+  const flat = row.size <= 0;
+  return (
+    <>
+      <div className={row.leg === 'UP' ? 'font-bold text-green-300' : 'font-bold text-red-300'}>{row.leg}</div>
+      <div className={`font-bold ${ASSET_COLORS[row.asset]}`}>{row.asset}</div>
+      <div className="text-right tabular-nums text-gray-200">{flat ? '—' : row.size.toFixed(0)}</div>
+      <div className="text-right tabular-nums text-gray-200">
+        {row.entryCents != null ? fmtCents(row.entryCents) : '—'}
+      </div>
+      <div className="text-right tabular-nums text-gray-200">
+        {row.costUsd != null ? `$${row.costUsd.toFixed(2)}` : '—'}
+      </div>
+      <div className="text-right tabular-nums text-emerald-300">
+        {flat || row.exitCents == null ? (
+          '—'
+        ) : (
+          <>
+            {fmtCents(row.exitCents)}
+            {row.exitUsd != null ? <span className="text-gray-400"> · ${row.exitUsd.toFixed(2)}</span> : null}
+            {row.exitPartial ? <span className="text-red-400"> · thin</span> : null}
+          </>
+        )}
+      </div>
+      <div
+        className={`text-right tabular-nums font-semibold ${
+          row.pnlUsd == null ? 'text-gray-200' : row.pnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
+        }`}
+      >
+        {flat || row.pnlUsd == null ? '—' : `${row.pnlUsd >= 0 ? '+' : ''}$${row.pnlUsd.toFixed(2)}`}
+      </div>
+    </>
+  );
+}
+
 function LegToggle({
   leg,
   onPick,
@@ -393,8 +656,11 @@ function LegToggle({
 export function PairTradingPanel({ panelId }: { panelId: string }) {
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
   const maxOrderSizeUsd = useAppStore((s) => s.maxOrderSizeUsd);
+  const positions = useAppStore((s) => s.positions);
+  const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const signingMode = useAppStore((s) => s.signingMode);
   const pkAddress = useAppStore((s) => s.pkAddress);
+  const onchainWsPositions = useSidebarOnchainWalletPositions();
   const { isConnected } = useAccount();
   const tradingWallet = useTradingWalletAddress();
 
@@ -502,6 +768,27 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
 
   const estPairCostUsd =
     hasShareAmount && pairAskCents != null ? (pairAskCents / 100) * shares : null;
+
+  const upTokenId = upMarket?.clobTokenIds?.[0]?.trim() ?? '';
+  const downTokenId = downMarket?.clobTokenIds?.[1]?.trim() ?? '';
+
+  const pairLegPositionRows = useMemo(
+    () => [
+      buildPairLegPositionRow('UP', upAsset, upTokenId, upBook, positions, liveTradesSource, onchainWsPositions),
+      buildPairLegPositionRow('DOWN', downAsset, downTokenId, downBook, positions, liveTradesSource, onchainWsPositions),
+    ],
+    [
+      upAsset,
+      downAsset,
+      upTokenId,
+      downTokenId,
+      upBook,
+      downBook,
+      positions,
+      liveTradesSource,
+      onchainWsPositions,
+    ],
+  );
 
   const handlePlacePair = useCallback(async () => {
     if (!walletReady) {
@@ -630,9 +917,10 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
 
   return (
     <div className="panel-wrapper flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-gray-800/50 p-3">
-      <div className="panel-header mb-1.5 flex shrink-0 flex-wrap items-center gap-2 cursor-grab">
-        <div className="text-[11px] font-bold text-emerald-400">Pair Trading</div>
-        <div className="no-drag flex flex-wrap items-center gap-2" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="panel-header mb-1.5 flex shrink-0 items-start gap-2 cursor-grab">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <div className="text-[11px] font-bold text-emerald-400">Pair Trading</div>
+          <div className="no-drag flex flex-wrap items-center gap-2" onMouseDown={(e) => e.stopPropagation()}>
           <label className="flex items-center gap-1 text-[9px] text-gray-500">
             TF
             <select
@@ -713,6 +1001,13 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
             ))}
           </div>
         </div>
+        </div>
+        <PairTradingExpiryCountdown
+          upMarket={upMarket}
+          downMarket={downMarket}
+          upAsset={upAsset}
+          downAsset={downAsset}
+        />
       </div>
 
       <div className="flex min-h-0 flex-1 gap-2">
@@ -814,6 +1109,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
             {placing ? 'Placing…' : 'Place Pair'}
           </button>
         </div>
+        <PairLegPositionsTable rows={pairLegPositionRows} />
       </div>
     </div>
   );

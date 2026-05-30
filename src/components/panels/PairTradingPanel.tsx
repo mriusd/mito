@@ -23,8 +23,8 @@ type PairTimeframe = (typeof TIMEFRAMES)[number];
 type PairLeg = 'UP' | 'DOWN';
 type PairSlot = 'left' | 'right';
 
-const PAIR_LIMIT_ASK_OFFSET_CENTS = 10;
 const PAIR_LIMIT_MAX_CENTS = 99;
+const PAIR_LIMIT_DELTA_DEFAULT_CENTS = 10;
 const CLOB_MIN_EXPIRY_SEC = 90;
 
 const ASSET_COLORS: Record<PairAsset, string> = {
@@ -71,6 +71,16 @@ function readStoredUpSlot(panelId: string): PairSlot {
   }
 }
 
+function readStoredPairPriceDelta(panelId: string): number {
+  try {
+    const saved = localStorage.getItem(`polybot-pair-trading-price-delta-${panelId}`);
+    const n = parseFloat(String(saved ?? ''));
+    return Number.isFinite(n) && n >= 0 ? n : PAIR_LIMIT_DELTA_DEFAULT_CENTS;
+  } catch {
+    return PAIR_LIMIT_DELTA_DEFAULT_CENTS;
+  }
+}
+
 function orderNotionalUsd(priceDecimal: number, size: number): number {
   if (!Number.isFinite(priceDecimal) || !Number.isFinite(size) || size <= 0 || priceDecimal <= 0) return 0;
   return priceDecimal * size;
@@ -108,9 +118,10 @@ function bestAskDecimal(asks: SidebarObLevel[]): number | null {
   return Number.isFinite(px) && px > 0 ? px : null;
 }
 
-function pairLimitFromBestAsk(bestAsk: number | null): { price: number; cents: number } | null {
+function pairLimitFromBestAsk(bestAsk: number | null, offsetCents: number): { price: number; cents: number } | null {
   if (bestAsk == null || !Number.isFinite(bestAsk) || bestAsk <= 0) return null;
-  const cents = Math.min(bestAsk * 100 + PAIR_LIMIT_ASK_OFFSET_CENTS, PAIR_LIMIT_MAX_CENTS);
+  if (!Number.isFinite(offsetCents) || offsetCents < 0) return null;
+  const cents = Math.min(bestAsk * 100 + offsetCents, PAIR_LIMIT_MAX_CENTS);
   return { price: cents / 100, cents };
 }
 
@@ -329,6 +340,8 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const [leftAsset, setLeftAsset] = useState<PairAsset>(() => readStoredPairAsset(panelId, 'left', 'BTC'));
   const [rightAsset, setRightAsset] = useState<PairAsset>(() => readStoredPairAsset(panelId, 'right', 'ETH'));
   const [upSlot, setUpSlot] = useState<PairSlot>(() => readStoredUpSlot(panelId));
+  const [priceDeltaCents, setPriceDeltaCents] = useState<number>(() => readStoredPairPriceDelta(panelId));
+  const [priceDeltaInput, setPriceDeltaInput] = useState<string>(() => String(readStoredPairPriceDelta(panelId)));
   const [obAggStep, setObAggStep] = useState<SidebarObAggStep>(() => readSavedObAggStep());
   const [orderAmount, setOrderAmount] = useState('');
   const [placing, setPlacing] = useState(false);
@@ -356,6 +369,20 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
     [panelId],
   );
 
+  const commitPriceDelta = useCallback(
+    (raw: string) => {
+      const n = parseFloat(raw.trim());
+      if (!Number.isFinite(n) || n < 0) {
+        setPriceDeltaInput(String(priceDeltaCents));
+        return;
+      }
+      setPriceDeltaCents(n);
+      setPriceDeltaInput(String(n));
+      localStorage.setItem(`polybot-pair-trading-price-delta-${panelId}`, String(n));
+    },
+    [panelId, priceDeltaCents],
+  );
+
   const leftMarket = useMemo(
     () => pickLiveUpDownMarketInTfBucket(upOrDownMarkets[leftAsset as AssetSymbol]?.[timeframe]),
     [upOrDownMarkets, leftAsset, timeframe],
@@ -378,8 +405,8 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const pairAskCents =
     upBook.bestAsk != null && downBook.bestAsk != null ? (upBook.bestAsk + downBook.bestAsk) * 100 : null;
 
-  const upLimit = pairLimitFromBestAsk(upBook.bestAsk);
-  const downLimit = pairLimitFromBestAsk(downBook.bestAsk);
+  const upLimit = pairLimitFromBestAsk(upBook.bestAsk, priceDeltaCents);
+  const downLimit = pairLimitFromBestAsk(downBook.bestAsk, priceDeltaCents);
   const pairLimitCents =
     upLimit != null && downLimit != null ? upLimit.cents + downLimit.cents : null;
 
@@ -417,8 +444,8 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
       return;
     }
 
-    const upLimitPx = pairLimitFromBestAsk(upBook.bestAsk);
-    const downLimitPx = pairLimitFromBestAsk(downBook.bestAsk);
+    const upLimitPx = pairLimitFromBestAsk(upBook.bestAsk, priceDeltaCents);
+    const downLimitPx = pairLimitFromBestAsk(downBook.bestAsk, priceDeltaCents);
     if (!upLimitPx) {
       showToast(`${upAsset} UP: no ask in book`, 'error');
       return;
@@ -497,6 +524,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
     timeframe,
     upBook.bestAsk,
     downBook.bestAsk,
+    priceDeltaCents,
   ]);
 
   const selectClass =
@@ -619,6 +647,23 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-2">
+          <div className="w-[72px] shrink-0">
+            <label className="mb-1 block text-[10px] text-gray-400">Δ price (¢)</label>
+            <input
+              type="number"
+              value={priceDeltaInput}
+              onChange={(e) => setPriceDeltaInput(e.target.value)}
+              onBlur={() => commitPriceDelta(priceDeltaInput)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitPriceDelta(priceDeltaInput);
+              }}
+              onWheel={(e) => e.preventDefault()}
+              className="order-input no-spin h-[34px] w-full"
+              placeholder="10"
+              min={0}
+              step={0.1}
+            />
+          </div>
           <div className="min-w-[120px] flex-1">
             <label className="mb-1 block text-[10px] text-gray-400">Amount (shares per leg)</label>
             <input

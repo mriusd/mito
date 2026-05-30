@@ -501,9 +501,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
     upLimit != null && downLimit != null ? upLimit.cents + downLimit.cents : null;
 
   const estPairCostUsd =
-    hasShareAmount && upLimit != null && downLimit != null
-      ? (upLimit.price + downLimit.price) * shares
-      : null;
+    hasShareAmount && pairAskCents != null ? (pairAskCents / 100) * shares : null;
 
   const handlePlacePair = useCallback(async () => {
     if (!walletReady) {

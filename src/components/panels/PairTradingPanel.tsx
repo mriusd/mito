@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAccount } from 'wagmi';
 import type { AssetSymbol, Market, Position, Trade } from '../../types';
 import type { WalletPosition } from '../../api';
@@ -10,6 +10,8 @@ import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { formatMarketCountdown } from '../../lib/marketCountdown';
 import { pickLiveUpDownMarketInTfBucket, pickNextUpDownMarketInTfBucket, resolvedBinaryOutcomeLabel } from '../../utils/format';
 import { isMarketExpired } from '../../lib/marketExpiry';
+import { triggerMarketDataRefresh } from '../../lib/marketDataRefresh';
+import { getExpiryTickNow, subscribeExpiryTick } from '../../lib/expiryTickStore';
 import { triggerWalletRefresh } from '../../lib/clobClient';
 import { cancelExistingSellOrdersForToken } from '../../lib/cancelExistingSellOrdersForToken';
 import { resolveLegPositionForToken, resolveLegPositionFromWalletHistory, resolveFeesPaidForToken } from '../../lib/sidebarMyPositions';
@@ -847,6 +849,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const walletHistory = useSidebarOnchainWalletHistory();
   const { isConnected } = useAccount();
   const tradingWallet = useTradingWalletAddress();
+  const expiryNow = useExpiryNow();
 
   const [timeframe, setTimeframe] = useState<PairTimeframe>(() => readStoredPairTf(panelId));
   const [leftAsset, setLeftAsset] = useState<PairAsset>(() => readStoredPairAsset(panelId, 'left', 'BTC'));
@@ -908,12 +911,35 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
 
   const leftMarket = useMemo(() => {
     const bucket = upOrDownMarkets[leftAsset as AssetSymbol]?.[timeframe];
-    return marketSlot === 'next' ? pickNextUpDownMarketInTfBucket(bucket) : pickLiveUpDownMarketInTfBucket(bucket);
-  }, [upOrDownMarkets, leftAsset, timeframe, marketSlot]);
+    return marketSlot === 'next'
+      ? pickNextUpDownMarketInTfBucket(bucket, expiryNow)
+      : pickLiveUpDownMarketInTfBucket(bucket, expiryNow);
+  }, [upOrDownMarkets, leftAsset, timeframe, marketSlot, expiryNow]);
   const rightMarket = useMemo(() => {
     const bucket = upOrDownMarkets[rightAsset as AssetSymbol]?.[timeframe];
-    return marketSlot === 'next' ? pickNextUpDownMarketInTfBucket(bucket) : pickLiveUpDownMarketInTfBucket(bucket);
-  }, [upOrDownMarkets, rightAsset, timeframe, marketSlot]);
+    return marketSlot === 'next'
+      ? pickNextUpDownMarketInTfBucket(bucket, expiryNow)
+      : pickLiveUpDownMarketInTfBucket(bucket, expiryNow);
+  }, [upOrDownMarkets, rightAsset, timeframe, marketSlot, expiryNow]);
+
+  useEffect(() => {
+    if (marketSlot !== 'current') return;
+    let lastRefreshMs = 0;
+    return subscribeExpiryTick(() => {
+      const now = getExpiryTickNow();
+      if (now - lastRefreshMs < 2000) return;
+      const st = useAppStore.getState();
+      for (const asset of [leftAsset, rightAsset] as PairAsset[]) {
+        const live = pickLiveUpDownMarketInTfBucket(st.upOrDownMarkets[asset as AssetSymbol]?.[timeframe], now);
+        if (live) continue;
+        const bucket = st.upOrDownMarkets[asset as AssetSymbol]?.[timeframe];
+        if (!bucket?.some((m) => m.endDate && new Date(m.endDate).getTime() <= now)) continue;
+        lastRefreshMs = now;
+        triggerMarketDataRefresh();
+        return;
+      }
+    });
+  }, [marketSlot, leftAsset, rightAsset, timeframe]);
 
   const leftBook = usePairLegOrderbook(leftMarket, leftLeg, obAggStep);
   const rightBook = usePairLegOrderbook(rightMarket, rightLeg, obAggStep);

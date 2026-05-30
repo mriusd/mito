@@ -5,6 +5,7 @@ import { useAppStore } from './stores/appStore';
 import { useBinanceWS } from './hooks/useBinanceWS';
 import { useMarketData } from './hooks/useMarketData';
 import { invalidateClobMemoryCreds } from './lib/clobClient';
+import { setMarketDataRefreshFn } from './lib/marketDataRefresh';
 import { clearWalletAccountSlice } from './lib/clearWalletAccountSlice';
 import { useWalletData } from './hooks/useWalletData';
 import { useVwapAndVolatility } from './hooks/useVwapAndVolatility';
@@ -96,6 +97,11 @@ function App() {
   useBidAskWS();
   const { refreshData } = useMarketData();
   const { refreshWalletData } = useWalletData();
+
+  useEffect(() => {
+    setMarketDataRefreshFn(refreshData);
+    return () => setMarketDataRefreshFn(null);
+  }, [refreshData]);
 
   const handleRefresh = useCallback(async () => {
     await Promise.all([refreshData(), refreshWalletData()]);

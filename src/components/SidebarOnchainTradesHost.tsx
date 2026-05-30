@@ -4,6 +4,7 @@ import {
   clearSidebarOnchainWalletTrades,
   registerSidebarOnchainRefreshFns,
   resetSidebarOnchainTradesStore,
+  resetSidebarOnchainWalletHistory,
   resetSidebarOnchainWalletMarketTradesScope,
   setSidebarOnchainGridWalletPositions,
   setSidebarOnchainWalletHistory,
@@ -41,6 +42,7 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
 
   useLayoutEffect(() => {
     clearSidebarOnchainWalletTrades();
+    resetSidebarOnchainWalletHistory();
   }, [walletKey]);
 
   useEffect(() => {

@@ -717,7 +717,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             outcome: p.outcome,
             endDate: p.endDate,
             underlyingAsset: p.underlyingAsset,
-          })        ).filter((p) => !!p.tokenId),
+          })).filter((p) => !!p.tokenId),
         );
         const deduped = mapFetchedTradesToDedupedRows(tr.trades || [], WALLET_MARKET_TRADES_CAP);
         setWalletMarketTrades(deduped);

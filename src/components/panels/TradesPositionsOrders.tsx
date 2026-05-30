@@ -11,8 +11,7 @@ import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import {
   useSidebarOnchainGridWalletPositions,
-  useSidebarOnchainWalletMarketTrades,
-  useSidebarOnchainWalletMarketTradesHydrated,
+  useSidebarOnchainWalletTrades,
   useSidebarOnchainWalletWsHydrated,
 } from '../../lib/sidebarOnchainTradesStore';
 import type { WSPosition, WSTrade } from '../../hooks/useOnchainTradesWS';
@@ -177,9 +176,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
   const [onchainClaimRows] = useState<OnchainClaimRow[]>([]);
   const onchainWsPositions = useSidebarOnchainGridWalletPositions();
-  const onchainWsMarketTrades = useSidebarOnchainWalletMarketTrades();
+  const onchainWsTrades = useSidebarOnchainWalletTrades();
   const onchainWsHydrated = useSidebarOnchainWalletWsHydrated();
-  const onchainMarketTradesHydrated = useSidebarOnchainWalletMarketTradesHydrated();
   const tradingWalletKey = makerAddress.trim().toLowerCase();
   const onchainPositionsLoading =
     liveTradesSource === 'onchain' &&
@@ -188,8 +186,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const onchainTradesLoading =
     liveTradesSource === 'onchain' &&
     !!tradingWalletKey &&
-    !!selectedMarket &&
-    !onchainMarketTradesHydrated;
+    !onchainWsHydrated;
 
   const polymarketTokenKey = useMemo(() => {
     const s = new Set<string>();
@@ -219,9 +216,12 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     for (const r of onchainWsPositions) {
       if (r.tokenId) set.add(String(r.tokenId));
     }
+    for (const t of onchainWsTrades) {
+      if (t.tokenId) set.add(String(t.tokenId));
+    }
     for (const t of selectedMarket?.clobTokenIds || []) if (t) set.add(String(t));
     return [...set];
-  }, [polymarketTokenKey, onchainWsPositions, selectedMarket?.id, selectedMarket?.clobTokenIds]);
+  }, [polymarketTokenKey, onchainWsPositions, onchainWsTrades, selectedMarket?.id, selectedMarket?.clobTokenIds]);
 
   const marketLookup = useMarketLookupSubset(tpoClobIds);
 
@@ -230,16 +230,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     [onchainWsPositions, marketLookup],
   );
 
-  const onchainTradesAsPM = useMemo(() => {
-    if (liveTradesSource !== 'onchain') return [];
-    const ids = new Set(
-      (selectedMarket?.clobTokenIds || []).map((x) => String(x || '').trim()).filter(Boolean),
-    );
-    if (ids.size === 0) return [];
-    return wsTradesToPM(
-      onchainWsMarketTrades.filter((t) => ids.has(String(t.tokenId || '').trim())),
-    );
-  }, [liveTradesSource, onchainWsMarketTrades, selectedMarket?.clobTokenIds]);
+  const onchainTradesAsPM = useMemo(() => wsTradesToPM(onchainWsTrades), [onchainWsTrades]);
 
   const onchainClaimsAsPM = useMemo((): Trade[] => {
     return onchainClaimRows.map((c, i) => {

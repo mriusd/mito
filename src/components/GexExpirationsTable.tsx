@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { GexExpiryBucket } from '../lib/deribitGexFeed';
 
-const H24_MS = 24 * 60 * 60 * 1000;
+const H72_MS = 72 * 60 * 60 * 1000;
 
 function fmtUsd(v: number): string {
   const abs = Math.abs(v);
@@ -45,14 +45,14 @@ export function GexExpirationsTable({ expirations, compact = false }: GexExpirat
 
   const upcoming = expirations.filter((row) => {
     const ms = row.expiryMs - now;
-    return ms > 0 && ms <= H24_MS;
+    return ms > 0 && ms <= H72_MS;
   });
 
   if (upcoming.length === 0) return null;
   const text = compact ? 'text-[8px]' : 'text-[9px]';
   return (
     <div className={compact ? 'mt-1.5' : 'mb-1.5'}>
-      <div className={`${text} font-semibold text-gray-400 uppercase tracking-wide mb-1`}>Next 24h expiries</div>
+      <div className={`${text} font-semibold text-gray-400 uppercase tracking-wide mb-1`}>Next 72h expiries</div>
       <div className="overflow-x-auto">
         <table className={`w-full border-collapse ${text} tabular-nums`}>
           <thead>

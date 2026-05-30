@@ -192,9 +192,24 @@ const StrikeRow = memo(function StrikeRow({
   );
 });
 
+const STRIKE_ROWS_PER_SIDE = 3;
+
+function topStrikesBySide(strikes: GexStrikeBucket[], perSide: number): GexStrikeBucket[] {
+  const positives = strikes
+    .filter((s) => s.gex >= 0)
+    .sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex))
+    .slice(0, perSide);
+  const negatives = strikes
+    .filter((s) => s.gex < 0)
+    .sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex))
+    .slice(0, perSide);
+  return [...negatives, ...positives].sort((a, b) => a.strike - b.strike);
+}
+
 function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
   const negative = snap.regime === 'negative';
-  const maxAbs = snap.strikes.reduce((m, s) => Math.max(m, Math.abs(s.gex)), 0);
+  const displayStrikes = topStrikesBySide(snap.strikes, STRIKE_ROWS_PER_SIDE);
+  const maxAbs = displayStrikes.reduce((m, s) => Math.max(m, Math.abs(s.gex)), 0);
   const regimeRef = useRef<HTMLSpanElement>(null);
   const prevRegimeRef = useRef<string | null>(null);
 
@@ -293,10 +308,10 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
 
       <div className="text-[8px] text-gray-500 mb-0.5 px-1">dealer $γ per 1% by strike (red=short/amplify · green=long/dampen)</div>
       <div className="flex flex-col gap-px">
-        {snap.strikes.length === 0 ? (
+        {displayStrikes.length === 0 ? (
           <div className="text-[9px] text-gray-600 px-1">no strikes</div>
         ) : (
-          snap.strikes.map((b) => <StrikeRow key={b.strike} bucket={b} spot={snap.spot} maxAbs={maxAbs} />)
+          displayStrikes.map((b) => <StrikeRow key={b.strike} bucket={b} spot={snap.spot} maxAbs={maxAbs} />)
         )}
       </div>
     </div>

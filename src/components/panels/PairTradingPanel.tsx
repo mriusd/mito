@@ -566,49 +566,80 @@ function legTokenId(market: Market | null, leg: PairLeg): string {
   return market?.clobTokenIds?.[idx]?.trim() ?? '';
 }
 
-function PairLegPositionInline({ row }: { row: PairLegPositionRowData }) {
+const PAIR_POS_FIELDS = ['sz', 'ent', 'cost', 'exit', 'PnL'] as const;
+
+function pairLegPositionValues(row: PairLegPositionRowData): (string | JSX.Element)[] {
   const flat = row.size <= 0;
-  return (
-    <span className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap tabular-nums">
-      <span className={`font-bold ${ASSET_COLORS[row.asset]}`}>{row.asset}</span>
-      <span
-        className={`rounded px-1 py-px text-[8px] font-bold leading-none ${
-          row.leg === 'UP' ? 'bg-green-900/60 text-green-300' : 'bg-red-900/60 text-red-300'
-        }`}
-      >
-        {row.leg}
+  const exitValue =
+    flat || row.exitCents == null ? (
+      '—'
+    ) : (
+      <>
+        {fmtCents(row.exitCents)}
+        {row.exitUsd != null ? <span className="text-gray-400"> ${row.exitUsd.toFixed(2)}</span> : null}
+        {row.exitPartial ? <span className="text-red-400"> thin</span> : null}
+      </>
+    );
+  const pnlValue =
+    flat || row.pnlUsd == null ? (
+      '—'
+    ) : (
+      <span className={row.pnlUsd >= 0 ? 'text-green-400' : 'text-red-400'}>
+        {`${row.pnlUsd >= 0 ? '+' : ''}$${row.pnlUsd.toFixed(2)}`}
       </span>
-      {flat ? (
-        <span className="text-gray-500">—</span>
-      ) : (
-        <>
-          <span className="text-gray-500">sz</span>
-          <span className="text-gray-200">{row.size.toFixed(0)}</span>
-          <span className="text-gray-600">·</span>
-          <span className="text-gray-500">ent</span>
-          <span className="text-gray-200">{row.entryCents != null ? fmtCents(row.entryCents) : '—'}</span>
-          <span className="text-gray-600">·</span>
-          <span className="text-gray-500">cost</span>
-          <span className="text-gray-200">{row.costUsd != null ? `$${row.costUsd.toFixed(2)}` : '—'}</span>
-          <span className="text-gray-600">·</span>
-          <span className="text-gray-500">exit</span>
-          <span className="text-emerald-300">
-            {row.exitCents != null ? fmtCents(row.exitCents) : '—'}
-            {row.exitUsd != null ? ` $${row.exitUsd.toFixed(2)}` : ''}
-            {row.exitPartial ? <span className="text-red-400"> thin</span> : null}
-          </span>
-          <span className="text-gray-600">·</span>
-          <span className="text-gray-500">PnL</span>
-          <span
-            className={`font-semibold ${
-              row.pnlUsd == null ? 'text-gray-200' : row.pnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
-            }`}
-          >
-            {row.pnlUsd == null ? '—' : `${row.pnlUsd >= 0 ? '+' : ''}$${row.pnlUsd.toFixed(2)}`}
-          </span>
-        </>
-      )}
-    </span>
+    );
+
+  return [
+    flat ? '—' : row.size.toFixed(0),
+    row.entryCents != null ? fmtCents(row.entryCents) : '—',
+    row.costUsd != null ? `$${row.costUsd.toFixed(2)}` : '—',
+    exitValue,
+    pnlValue,
+  ];
+}
+
+function PairLegPositionLabelRow() {
+  return (
+    <div className="inline-flex items-center gap-2 whitespace-nowrap">
+      <div className="min-w-[2.75rem]" />
+      {PAIR_POS_FIELDS.map((label) => (
+        <span key={label} className="min-w-[2.5rem] text-center text-[8px] text-gray-500">
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function PairLegPositionValueRow({ row }: { row: PairLegPositionRowData }) {
+  const values = pairLegPositionValues(row);
+  return (
+    <div className="inline-flex items-center gap-2 whitespace-nowrap tabular-nums">
+      <span className="inline-flex min-w-[2.75rem] items-center justify-center gap-0.5 leading-none">
+        <span className={`font-bold ${ASSET_COLORS[row.asset]}`}>{row.asset}</span>
+        <span
+          className={`rounded px-1 py-px text-[8px] font-bold ${
+            row.leg === 'UP' ? 'bg-green-900/60 text-green-300' : 'bg-red-900/60 text-red-300'
+          }`}
+        >
+          {row.leg}
+        </span>
+      </span>
+      {values.map((value, i) => (
+        <span
+          key={PAIR_POS_FIELDS[i]}
+          className={`min-w-[2.5rem] text-center text-[9px] font-medium ${
+            PAIR_POS_FIELDS[i] === 'exit'
+              ? 'text-emerald-300'
+              : PAIR_POS_FIELDS[i] === 'PnL'
+                ? 'font-semibold'
+                : 'text-gray-200'
+          }`}
+        >
+          {value}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -628,30 +659,41 @@ function PairLegPositionsRow({
   closeDisabled: boolean;
 }) {
   return (
-    <div className="mt-2 flex min-w-0 items-center gap-2 overflow-x-auto border-t border-gray-700/60 pt-1.5 text-[9px]">
-      <span className="shrink-0 text-[10px] font-semibold text-gray-400">Pos</span>
-      <PairLegPositionInline row={left} />
-      <span className="shrink-0 text-gray-600">|</span>
-      <PairLegPositionInline row={right} />
-      <div className="ml-auto flex shrink-0 items-center gap-2">
-        <span className="tabular-nums whitespace-nowrap">
-          <span className="text-gray-500">Total </span>
-          <span
-            className={`font-bold ${
-              totalPnlUsd == null ? 'text-gray-400' : totalPnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
-            }`}
-          >
-            {totalPnlUsd == null ? '—' : formatPnlUsd(totalPnlUsd)}
-          </span>
-        </span>
-        <button
-          type="button"
-          disabled={closeDisabled}
-          onClick={onClose}
-          className="h-5 shrink-0 rounded bg-red-700 px-2 text-[9px] font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {closing ? 'Closing…' : 'CLOSE'}
-        </button>
+    <div className="mt-2 min-w-0 overflow-x-auto border-t border-gray-700/60 pt-1.5 text-[9px]">
+      <div className="flex min-w-max items-start gap-2">
+        <span className="w-5 shrink-0 pt-px text-[10px] font-semibold text-gray-400">Pos</span>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="flex items-center gap-2">
+            <PairLegPositionLabelRow />
+            <span className="text-gray-600">|</span>
+            <PairLegPositionLabelRow />
+          </div>
+          <div className="flex items-center gap-2">
+            <PairLegPositionValueRow row={left} />
+            <span className="text-gray-600">|</span>
+            <PairLegPositionValueRow row={right} />
+          </div>
+        </div>
+        <div className="ml-auto flex shrink-0 flex-col gap-0.5 self-stretch justify-between">
+          <span className="text-center text-[8px] text-gray-500">Total</span>
+          <div className="flex items-center gap-2">
+            <span
+              className={`min-w-[3rem] text-center font-bold tabular-nums ${
+                totalPnlUsd == null ? 'text-gray-400' : totalPnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
+              }`}
+            >
+              {totalPnlUsd == null ? '—' : formatPnlUsd(totalPnlUsd)}
+            </span>
+            <button
+              type="button"
+              disabled={closeDisabled}
+              onClick={onClose}
+              className="h-5 shrink-0 rounded bg-red-700 px-2 text-[9px] font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {closing ? 'Closing…' : 'CLOSE'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

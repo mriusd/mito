@@ -54,6 +54,13 @@ function pairAskColorClass(cents: number | null): string {
   return 'text-green-400';
 }
 
+function pairExitColorClass(cents: number | null): string {
+  if (cents == null || !Number.isFinite(cents)) return 'text-gray-400';
+  if (cents > 100) return 'text-green-400';
+  if (cents > 95) return 'text-yellow-400';
+  return 'text-red-400';
+}
+
 function readStoredPairAsset(panelId: string, key: PairSlot, fallback: PairAsset): PairAsset {
   try {
     const saved = localStorage.getItem(`polybot-pair-trading-${key}-${panelId}`);
@@ -634,6 +641,7 @@ function PairLegPositionTableRow({ row }: { row: PairLegPositionRowData }) {
 function PairLegPositionsRow({
   left,
   right,
+  totalExitCents,
   totalPnlUsd,
   onClose,
   closing,
@@ -641,6 +649,7 @@ function PairLegPositionsRow({
 }: {
   left: PairLegPositionRowData;
   right: PairLegPositionRowData;
+  totalExitCents: number | null;
   totalPnlUsd: number | null;
   onClose: () => void;
   closing: boolean;
@@ -650,14 +659,21 @@ function PairLegPositionsRow({
     <div className="mt-2 border-t border-gray-700/60 pt-1.5 text-[9px]">
       <div className="flex min-w-0 items-stretch gap-3">
         <div className="min-w-0 flex-1 overflow-x-auto">
-          <table className="w-full border-collapse tabular-nums">
+          <table className="min-w-full border-collapse tabular-nums">
+            <colgroup>
+              <col />
+              {PAIR_POS_FIELDS.map((label) => (
+                <col key={label} className="w-[3rem]" />
+              ))}
+            </colgroup>
             <thead>
-              <tr>
-                <th className="pb-0.5 pr-2 text-left align-bottom text-[8px] font-normal text-gray-500" />
+              <tr className="text-[8px] text-gray-500">
+                <th className="pb-0.5 pr-2 text-left align-bottom font-normal" scope="col" />
                 {PAIR_POS_FIELDS.map((label) => (
                   <th
                     key={label}
-                    className="px-1 pb-0.5 text-right align-bottom text-[8px] font-normal text-gray-500"
+                    scope="col"
+                    className="px-1 pb-0.5 text-right align-bottom font-normal whitespace-nowrap"
                   >
                     {label}
                   </th>
@@ -670,16 +686,21 @@ function PairLegPositionsRow({
             </tbody>
           </table>
         </div>
-        <div className="flex shrink-0 flex-col items-center justify-center gap-1.5 border-l border-gray-700/50 pl-3">
-          <div className="flex flex-col items-center gap-0.5">
+        <div className="flex shrink-0 flex-col items-end justify-center gap-1.5 border-l border-gray-700/50 pl-3">
+          <div className="flex flex-col items-end gap-0.5">
             <span className="text-[8px] text-gray-500">Total</span>
-            <span
-              className={`min-w-[3rem] text-center font-bold tabular-nums ${
-                totalPnlUsd == null ? 'text-gray-400' : totalPnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
-              }`}
-            >
-              {totalPnlUsd == null ? '—' : formatPnlUsd(totalPnlUsd)}
-            </span>
+            <div className="flex items-baseline gap-2 whitespace-nowrap">
+              <span className={`font-bold tabular-nums ${pairExitColorClass(totalExitCents)}`}>
+                {totalExitCents != null ? `${totalExitCents.toFixed(1)}¢` : '—'}
+              </span>
+              <span
+                className={`font-bold tabular-nums ${
+                  totalPnlUsd == null ? 'text-gray-400' : totalPnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
+                }`}
+              >
+                {totalPnlUsd == null ? '—' : formatPnlUsd(totalPnlUsd)}
+              </span>
+            </div>
           </div>
           <button
             type="button"
@@ -895,6 +916,12 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
       trades,
     ],
   );
+
+  const totalExitCents = useMemo(() => {
+    const parts = [leftPositionRow.exitCents, rightPositionRow.exitCents].filter((v): v is number => v != null);
+    if (parts.length === 0) return null;
+    return parts.reduce((sum, v) => sum + v, 0);
+  }, [leftPositionRow.exitCents, rightPositionRow.exitCents]);
 
   const totalPnlUsd = useMemo(() => {
     const parts = [leftPositionRow.pnlUsd, rightPositionRow.pnlUsd].filter((v): v is number => v != null);
@@ -1274,6 +1301,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
         <PairLegPositionsRow
           left={leftPositionRow}
           right={rightPositionRow}
+          totalExitCents={totalExitCents}
           totalPnlUsd={totalPnlUsd}
           onClose={() => void handleClosePair()}
           closing={closing}

@@ -694,7 +694,6 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   useEffect(() => {
     const w = (wallet || '').trim().toLowerCase();
     const ids = (scopedClobTokenIds || []).map((x) => String(x || '').trim()).filter(Boolean);
-    setWalletMarketTrades([]);
     if (!w || ids.length === 0) return;
     const serial = ++prefetchSerialRef.current;
     let cancelled = false;
@@ -1174,7 +1173,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const deduped = dedupeWalletTradesByLedgerLeg(stamped, (t) =>
               t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side),
             ).slice(0, WALLET_TRADES_CAP);
-            setWalletTrades(deduped);
+            setWalletTrades((prev) => (deduped.length === 0 && prev.length > 0 ? prev : deduped));
             const pw = (walletRef.current || '').trim().toLowerCase();
             const pm = marketRef.current ? canonicalConditionKey(marketRef.current) : '';
             if (pw && pm && msgWallet === pw) {
@@ -1300,10 +1299,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     const m = marketId ? canonicalConditionKey(marketId) : '';
     primaryWalletMarketKeyRef.current = w && m ? walletMarketTradesKey(w, m) : null;
     if (!w || !m) {
-      setWalletMarketTrades([]);
       return;
     }
-    setWalletMarketTrades([]);
     sendSubscribeWalletMarket(w, m);
   }, [wallet, marketId, wsConnected, sendSubscribeWalletMarket]);
 
@@ -1372,9 +1369,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
         }))
         .filter((p) => !!p.tokenId);
       setWalletPositions((prev) => mergeWalletPositionsSnapshot(prev, mappedPositions, scopedClobTokenIdsRef.current));
-      const deduped = mapFetchedTradesToDedupedRows(tr.trades || [], WALLET_TRADES_CAP);
-      setWalletTrades(deduped);
-      setWalletMarketTrades(deduped.slice(0, WALLET_MARKET_TRADES_CAP));
+      const deduped = mapFetchedTradesToDedupedRows(tr.trades || [], WALLET_MARKET_TRADES_CAP);
+      setWalletMarketTrades(deduped);
     } catch {
       /* keep prior state */
     }

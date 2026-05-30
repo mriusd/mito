@@ -111,14 +111,20 @@ export function resetSidebarOnchainTradesStore(): void {
   notify();
 }
 
-export function resetSidebarOnchainWalletMarketTradesScope(scopeKey: string): void {
-  walletMarketTradesScopeKey = scopeKey;
+export function clearSidebarOnchainWalletTrades(): void {
+  if (snap.walletTrades.length === 0) return;
   snap = {
     ...snap,
-    walletMarketTrades: [],
-    walletMarketTradesDigest: snap.walletMarketTradesDigest + 1,
-    walletMarketTradesHydrated: false,
+    walletTrades: [],
+    walletTradesDigest: snap.walletTradesDigest + 1,
   };
+  notify();
+}
+
+export function resetSidebarOnchainWalletMarketTradesScope(scopeKey: string): void {
+  if (walletMarketTradesScopeKey === scopeKey) return;
+  walletMarketTradesScopeKey = scopeKey;
+  snap = { ...snap, walletMarketTradesHydrated: false };
   notify();
 }
 
@@ -167,6 +173,7 @@ export function setSidebarOnchainGridWalletPositions(next: WSPosition[]): void {
 }
 
 export function setSidebarOnchainWalletTrades(next: WSTrade[]): void {
+  if (next.length === 0 && snap.walletTrades.length > 0) return;
   if (walletMarketTradesHeadEqual(snap.walletTrades, next)) {
     if (!snap.walletWsHydrated) {
       snap = { ...snap, walletWsHydrated: true };

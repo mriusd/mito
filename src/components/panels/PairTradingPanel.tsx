@@ -23,7 +23,9 @@ type PairTimeframe = (typeof TIMEFRAMES)[number];
 type PairLeg = 'UP' | 'DOWN';
 type PairSlot = 'left' | 'right';
 
-const MARKET_AGGRESSIVE_BUY = 0.99;
+const PAIR_LIMIT_ASK_OFFSET_CENTS = 10;
+const PAIR_LIMIT_MAX_CENTS = 99;
+const CLOB_MIN_EXPIRY_SEC = 90;
 
 const ASSET_COLORS: Record<PairAsset, string> = {
   BTC: 'text-orange-400',
@@ -82,9 +84,38 @@ function maxOrderUsdViolationMessage(maxUsd: number, valueUsd: number): string |
   return `Max order size ${lim} USD. To increase the limit go to settings menu in the header.`;
 }
 
+function computePairLimitExpiration(marketEndDate?: string): { expiration: number; invalidLead: boolean } {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const endDate = String(marketEndDate || '').trim();
+  if (!endDate) {
+    return { expiration: nowSec + 86400, invalidLead: false };
+  }
+  const endTimeSec = Math.floor(new Date(endDate).getTime() / 1000);
+  if (!Number.isFinite(endTimeSec)) {
+    return { expiration: nowSec + 86400, invalidLead: false };
+  }
+  const leadSec = 60;
+  const expiration = endTimeSec - leadSec;
+  const invalidLead = endTimeSec - nowSec <= leadSec;
+  if (expiration - nowSec < CLOB_MIN_EXPIRY_SEC) {
+    return { expiration: 0, invalidLead };
+  }
+  return { expiration, invalidLead };
+}
+
 function bestAskDecimal(asks: SidebarObLevel[]): number | null {
   const px = parseFloat(String(asks[0]?.price ?? ''));
   return Number.isFinite(px) && px > 0 ? px : null;
+}
+
+function pairLimitFromBestAsk(bestAsk: number | null): { price: number; cents: number } | null {
+  if (bestAsk == null || !Number.isFinite(bestAsk) || bestAsk <= 0) return null;
+  const cents = Math.min(bestAsk * 100 + PAIR_LIMIT_ASK_OFFSET_CENTS, PAIR_LIMIT_MAX_CENTS);
+  return { price: cents / 100, cents };
+}
+
+function fmtCents(cents: number): string {
+  return `${cents.toFixed(1)}¢`;
 }
 
 function usePairLegOrderbook(market: Market | null, leg: PairLeg, obAggStep: SidebarObAggStep) {
@@ -347,10 +378,15 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const pairAskCents =
     upBook.bestAsk != null && downBook.bestAsk != null ? (upBook.bestAsk + downBook.bestAsk) * 100 : null;
 
+  const upLimit = pairLimitFromBestAsk(upBook.bestAsk);
+  const downLimit = pairLimitFromBestAsk(downBook.bestAsk);
+  const pairLimitCents =
+    upLimit != null && downLimit != null ? upLimit.cents + downLimit.cents : null;
+
   const shares = parseFloat(orderAmount);
   const estPairCostUsd =
-    pairAskCents != null && Number.isFinite(shares) && shares > 0
-      ? ((upBook.bestAsk ?? 0) + (downBook.bestAsk ?? 0)) * shares
+    Number.isFinite(shares) && shares > 0 && upLimit != null && downLimit != null
+      ? (upLimit.price + downLimit.price) * shares
       : null;
 
   const handlePlacePair = useCallback(async () => {
@@ -380,24 +416,32 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
       showToast('Enter amount (shares)', 'error');
       return;
     }
-    if (upBook.rawAsks.length === 0 || downBook.rawAsks.length === 0) {
-      showToast('No asks in book for one or both legs', 'error');
+
+    const upLimitPx = pairLimitFromBestAsk(upBook.bestAsk);
+    const downLimitPx = pairLimitFromBestAsk(downBook.bestAsk);
+    if (!upLimitPx) {
+      showToast(`${upAsset} UP: no ask in book`, 'error');
       return;
     }
-    const upAsk = upBook.bestAsk;
-    const downAsk = downBook.bestAsk;
-    if (upAsk == null || downAsk == null) {
-      showToast('Cannot read ask prices', 'error');
+    if (!downLimitPx) {
+      showToast(`${downAsset} DOWN: no ask in book`, 'error');
       return;
     }
 
-    const upVusd = orderNotionalUsd(upAsk, shares);
-    const downVusd = orderNotionalUsd(downAsk, shares);
+    const upExp = computePairLimitExpiration(upMarket.endDate);
+    const downExp = computePairLimitExpiration(downMarket.endDate);
+    if (upExp.invalidLead || downExp.invalidLead) {
+      showToast('Lead time to expiration already passed for this market', 'error');
+      return;
+    }
+
+    const upVusd = orderNotionalUsd(upLimitPx.price, shares);
     const upCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, upVusd);
     if (upCap) {
       showToast(`${upAsset} UP: ${upCap}`, 'error');
       return;
     }
+    const downVusd = orderNotionalUsd(downLimitPx.price, shares);
     const downCap = maxOrderUsdViolationMessage(maxOrderSizeUsd, downVusd);
     if (downCap) {
       showToast(`${downAsset} DOWN: ${downCap}`, 'error');
@@ -409,11 +453,10 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
       const upResult = await placeOrder({
         tokenId: upTokenId,
         side: 'BUY',
-        price: MARKET_AGGRESSIVE_BUY,
+        price: upLimitPx.price,
         size: shares,
-        expiration: 0,
-        orderType: 'FAK',
-        orderInfo: `Pair BUY ${shares} UP ${upAsset} (${timeframe})`,
+        expiration: upExp.expiration,
+        orderInfo: `Pair BUY ${shares} UP ${upAsset} @ ${fmtCents(upLimitPx.cents)} (${timeframe})`,
       });
       if (!upResult.success) {
         showToast(upResult.error || `${upAsset} UP order failed`, 'error');
@@ -423,11 +466,10 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
       const downResult = await placeOrder({
         tokenId: downTokenId,
         side: 'BUY',
-        price: MARKET_AGGRESSIVE_BUY,
+        price: downLimitPx.price,
         size: shares,
-        expiration: 0,
-        orderType: 'FAK',
-        orderInfo: `Pair BUY ${shares} DOWN ${downAsset} (${timeframe})`,
+        expiration: downExp.expiration,
+        orderInfo: `Pair BUY ${shares} DOWN ${downAsset} @ ${fmtCents(downLimitPx.cents)} (${timeframe})`,
       });
       if (!downResult.success) {
         showToast(downResult.error || `${downAsset} DOWN order failed (UP leg filled)`, 'error');
@@ -435,7 +477,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
         return;
       }
 
-      showToast('Pair orders submitted', 'success');
+      showToast('Pair limit orders placed', 'success');
       triggerWalletRefresh();
     } catch {
       showToast('Pair order failed', 'error');
@@ -449,14 +491,12 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
     upMarket,
     downMarket,
     shares,
-    upBook.rawAsks.length,
-    downBook.rawAsks.length,
-    upBook.bestAsk,
-    downBook.bestAsk,
     maxOrderSizeUsd,
     upAsset,
     downAsset,
     timeframe,
+    upBook.bestAsk,
+    downBook.bestAsk,
   ]);
 
   const selectClass =
@@ -564,6 +604,17 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
             <span className="ml-1 text-gray-500">
               ({upAsset} UP {(upBook.bestAsk != null ? (upBook.bestAsk * 100).toFixed(1) : '—')}¢ + {downAsset} DOWN{' '}
               {(downBook.bestAsk != null ? (downBook.bestAsk * 100).toFixed(1) : '—')}¢)
+            </span>
+            <span className="ml-2 text-gray-500">
+              Limit:{' '}
+              <span className="tabular-nums text-gray-300">
+                {pairLimitCents != null ? fmtCents(pairLimitCents) : '—'}
+              </span>
+              {upLimit != null && downLimit != null ? (
+                <span className="ml-1">
+                  ({upAsset} UP {fmtCents(upLimit.cents)} + {downAsset} DOWN {fmtCents(downLimit.cents)})
+                </span>
+              ) : null}
             </span>
           </div>
         </div>

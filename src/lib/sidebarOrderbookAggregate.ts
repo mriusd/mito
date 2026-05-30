@@ -119,9 +119,15 @@ export function chartViewCentsToTokenPriceCents(
   return Math.round((100 - chartCents) * 10) / 10;
 }
 
+function highlightPriceKey(cents: number): string {
+  const tenths = Math.round(cents * 10) / 10;
+  if (!Number.isFinite(tenths)) return '';
+  return tenths.toFixed(1).replace(/\.0$/, '');
+}
+
 function addHighlightCents(set: Set<string>, cents: number) {
-  if (!Number.isFinite(cents)) return;
-  set.add(Math.round(cents).toFixed(1));
+  const k = highlightPriceKey(cents);
+  if (k) set.add(k);
 }
 
 /**
@@ -146,14 +152,14 @@ export function buildSidebarUserOrderHighlightSets(
     const oid = String(o.asset_id || o.token_id || '').trim();
     const p = parseFloat(String(o.price ?? ''));
     if (!Number.isFinite(p)) continue;
-    const cents = Math.round(p * 100);
+    const cents = Math.round(p * 1000) / 10;
     const side = String(o.side || '').toUpperCase();
 
     if (oid === viewToken) {
       if (side === 'BUY') addHighlightCents(bidPrices, cents);
       else if (side === 'SELL') addHighlightCents(askPrices, cents);
     } else if (oppToken && oid === oppToken) {
-      const comp = 100 - cents;
+      const comp = Math.round((100 - cents) * 10) / 10;
       if (side === 'BUY') addHighlightCents(askPrices, comp);
       else if (side === 'SELL') addHighlightCents(bidPrices, comp);
     }

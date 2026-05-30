@@ -552,9 +552,17 @@ function buildPairLegPositionRow(
     };
   }
 
-  const entryCents = pos.avgPrice > 0 ? pos.avgPrice * 100 : null;
-  const costUsd = pos.avgPrice > 0 ? pos.avgPrice * pos.size : null;
   const feesUsd = resolveFeesPaidForToken(tokenId, liveTradesSource, onchainWsPositions, trades);
+  const feePart = feesUsd ?? 0;
+  const baseCostUsd = pos.avgPrice > 0 ? pos.avgPrice * pos.size : 0;
+  let costUsd: number | null = null;
+  let entryCents: number | null = null;
+  if (baseCostUsd > 0 || feePart > 0) {
+    costUsd = baseCostUsd + feePart;
+    if (pos.size > 0) {
+      entryCents = (costUsd / pos.size) * 100;
+    }
+  }
   const bidWalk = walkBidsForShares(book.rawBids, pos.size);
   const exitCents =
     bidWalk?.avgCents ?? (book.bestBid != null ? book.bestBid * 100 : null);
@@ -584,6 +592,23 @@ function legTokenId(market: Market | null, leg: PairLeg): string {
 
 const PAIR_POS_FIELDS = ['sz', 'ent', 'cost', 'fees', 'exit', 'PnL'] as const;
 const PAIR_TOTAL_SECTION_W = 'w-[10rem]';
+
+function pairPosFieldColorClass(field: (typeof PAIR_POS_FIELDS)[number]): string {
+  switch (field) {
+    case 'ent':
+      return 'text-yellow-400';
+    case 'cost':
+      return 'text-gray-400';
+    case 'fees':
+      return 'text-red-400';
+    case 'exit':
+      return 'text-emerald-300';
+    case 'PnL':
+      return 'font-semibold';
+    default:
+      return 'text-gray-200';
+  }
+}
 
 function pairLegPositionValues(row: PairLegPositionRowData): (string | JSX.Element)[] {
   const flat = row.size <= 0;
@@ -634,13 +659,7 @@ function PairLegPositionTableRow({ row }: { row: PairLegPositionRowData }) {
       {values.map((value, i) => (
         <td
           key={PAIR_POS_FIELDS[i]}
-          className={`whitespace-nowrap px-1 py-0.5 text-right align-middle text-[9px] font-medium ${
-            PAIR_POS_FIELDS[i] === 'exit'
-              ? 'text-emerald-300'
-              : PAIR_POS_FIELDS[i] === 'PnL'
-                ? 'font-semibold'
-                : 'text-gray-200'
-          }`}
+          className={`whitespace-nowrap px-1 py-0.5 text-right align-middle text-[9px] font-medium ${pairPosFieldColorClass(PAIR_POS_FIELDS[i])}`}
         >
           {value}
         </td>
@@ -692,7 +711,7 @@ function PairLegPositionsRow({
                   <th
                     key={label}
                     scope="col"
-                    className="px-1 pb-0.5 text-right align-bottom font-normal whitespace-nowrap"
+                    className={`px-1 pb-0.5 text-right align-bottom font-normal whitespace-nowrap ${pairPosFieldColorClass(label)}`}
                   >
                     {label}
                   </th>

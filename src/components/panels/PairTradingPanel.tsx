@@ -16,7 +16,6 @@ import { resolveLegPositionForToken, resolveFeesPaidForToken } from '../../lib/s
 import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
 import type { SidebarObAggStep } from '../../lib/sidebarOrderbookAggregate';
 import { sidebarObAggregateLevels } from '../../lib/sidebarOrderbookAggregate';
-import { readSavedObAggStep, LS_SIDEBAR_OB_AGG_STEP } from '../../lib/sidebarObAggStep';
 import { SidebarOrderbookBookGrid, type SidebarObLevel } from '../SidebarOrderbookBookGrid';
 import { SidebarDataSourceBadge } from '../SidebarDataSourceBadge';
 import { showToast } from '../../utils/toast';
@@ -110,6 +109,16 @@ function readStoredPairPriceDelta(panelId: string): number {
   } catch {
     return PAIR_LIMIT_DELTA_DEFAULT_CENTS;
   }
+}
+
+function readStoredPairObAggStep(panelId: string): SidebarObAggStep {
+  try {
+    const saved = localStorage.getItem(`polybot-pair-trading-ob-agg-${panelId}`);
+    if (saved === '0.1' || saved === '1' || saved === '5') return saved;
+  } catch {
+    /* ignore */
+  }
+  return '0.1';
 }
 
 function orderNotionalUsd(priceDecimal: number, size: number): number {
@@ -850,7 +859,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const [marketSlot, setMarketSlot] = useState<PairMarketSlot>(() => readStoredPairMarketSlot(panelId));
   const [priceDeltaCents, setPriceDeltaCents] = useState<number>(() => readStoredPairPriceDelta(panelId));
   const [priceDeltaInput, setPriceDeltaInput] = useState<string>(() => String(readStoredPairPriceDelta(panelId)));
-  const [obAggStep, setObAggStep] = useState<SidebarObAggStep>(() => readSavedObAggStep());
+  const [obAggStep, setObAggStep] = useState<SidebarObAggStep>(() => readStoredPairObAggStep(panelId));
   const [orderAmount, setOrderAmount] = useState('');
   const [placing, setPlacing] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -865,11 +874,11 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const setObAggStepPersist = useCallback((step: SidebarObAggStep) => {
     setObAggStep(step);
     try {
-      localStorage.setItem(LS_SIDEBAR_OB_AGG_STEP, step);
+      localStorage.setItem(`polybot-pair-trading-ob-agg-${panelId}`, step);
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [panelId]);
 
   const setUpSlotPersist = useCallback(
     (slot: PairSlot) => {

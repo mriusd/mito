@@ -1,18 +1,18 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAccount } from 'wagmi';
-import type { AssetSymbol, Market, Position, Trade } from '../../types';
+import type { AssetSymbol, Market, Position } from '../../types';
 import { placeOrder } from '../../api';
 import { useAppStore } from '../../stores/appStore';
 import { usePolymarketOB } from '../../hooks/usePolymarketOB';
 import { useExpiryNow } from '../../hooks/useExpiryNow';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { formatMarketCountdown } from '../../lib/marketCountdown';
-import { pickLiveUpDownMarketInTfBucket, pickNextUpDownMarketInTfBucket, normalizeClobTokenId, resolvedBinaryOutcomeLabel } from '../../utils/format';
+import { pickLiveUpDownMarketInTfBucket, pickNextUpDownMarketInTfBucket, resolvedBinaryOutcomeLabel } from '../../utils/format';
 import { isMarketExpired } from '../../lib/marketExpiry';
 import { triggerWalletRefresh } from '../../lib/clobClient';
 import { cancelExistingSellOrdersForToken } from '../../lib/cancelExistingSellOrdersForToken';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
-import { useSidebarOnchainWalletMarketTrades, useSidebarOnchainWalletPositions } from '../../lib/sidebarOnchainTradesStore';
+import { useSidebarOnchainWalletPositions } from '../../lib/sidebarOnchainTradesStore';
 import type { SidebarObAggStep } from '../../lib/sidebarOrderbookAggregate';
 import { sidebarObAggregateLevels } from '../../lib/sidebarOrderbookAggregate';
 import { readSavedObAggStep, LS_SIDEBAR_OB_AGG_STEP } from '../../lib/sidebarObAggStep';
@@ -531,18 +531,9 @@ function buildPairLegPositionRow(
   positions: Position[],
   liveTradesSource: string,
   onchainWsPositions: { tokenId: string; size: number; avgPrice: number }[],
-  onchainTrades: { tokenId: string; side: string; price: number; size: number }[],
-  restTrades: Trade[],
 ): PairLegPositionRowData {
   const pos = tokenId
-    ? resolveLegPositionForToken(
-        tokenId,
-        positions,
-        liveTradesSource,
-        onchainWsPositions,
-        onchainTrades,
-        restTrades,
-      )
+    ? resolveLegPositionForToken(tokenId, positions, liveTradesSource, onchainWsPositions)
     : null;
   if (!pos) {
     return {
@@ -816,12 +807,10 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const maxOrderSizeUsd = useAppStore((s) => s.maxOrderSizeUsd);
   const positions = useAppStore((s) => s.positions);
   const orders = useAppStore((s) => s.orders);
-  const trades = useAppStore((s) => s.trades);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const signingMode = useAppStore((s) => s.signingMode);
   const pkAddress = useAppStore((s) => s.pkAddress);
   const onchainWsPositions = useSidebarOnchainWalletPositions();
-  const onchainMarketTrades = useSidebarOnchainWalletMarketTrades();
   const { isConnected } = useAccount();
   const tradingWallet = useTradingWalletAddress();
 
@@ -935,14 +924,6 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const leftTokenId = legTokenId(leftMarket, leftLeg);
   const rightTokenId = legTokenId(rightMarket, rightLeg);
 
-  const pairLegOnchainTrades = useMemo(() => {
-    const keys = new Set(
-      [leftTokenId, rightTokenId].map((id) => normalizeClobTokenId(id)).filter(Boolean),
-    );
-    if (keys.size === 0) return [];
-    return onchainMarketTrades.filter((t) => keys.has(normalizeClobTokenId(t.tokenId)));
-  }, [leftTokenId, rightTokenId, onchainMarketTrades]);
-
   const leftPositionRow = useMemo(
     () =>
       buildPairLegPositionRow(
@@ -953,20 +934,8 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
         positions,
         liveTradesSource,
         onchainWsPositions,
-        pairLegOnchainTrades,
-        trades,
       ),
-    [
-      leftLeg,
-      leftAsset,
-      leftTokenId,
-      leftBook,
-      positions,
-      liveTradesSource,
-      onchainWsPositions,
-      pairLegOnchainTrades,
-      trades,
-    ],
+    [leftLeg, leftAsset, leftTokenId, leftBook, positions, liveTradesSource, onchainWsPositions],
   );
   const rightPositionRow = useMemo(
     () =>
@@ -978,20 +947,8 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
         positions,
         liveTradesSource,
         onchainWsPositions,
-        pairLegOnchainTrades,
-        trades,
       ),
-    [
-      rightLeg,
-      rightAsset,
-      rightTokenId,
-      rightBook,
-      positions,
-      liveTradesSource,
-      onchainWsPositions,
-      pairLegOnchainTrades,
-      trades,
-    ],
+    [rightLeg, rightAsset, rightTokenId, rightBook, positions, liveTradesSource, onchainWsPositions],
   );
 
   const totalEntryCents = useMemo(() => {

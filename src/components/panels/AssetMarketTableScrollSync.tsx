@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef } from 'react';
 import type { AssetSymbol } from '../../types';
-import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
+import { useGridAssetLivePrice } from '../../lib/gridAssetLivePriceStore';
 import { parsePriceBounds } from './AssetMarketTablePriceCol';
 
 function isPriceConditionTrue(priceStr: string, live: number): boolean {
@@ -55,7 +55,7 @@ export const AssetMarketTableScrollSync = memo(function AssetMarketTableScrollSy
   prices,
   hitPrice,
 }: Props) {
-  const livePrice = useThrottledStorePrice(symbol, 1000);
+  const livePrice = useGridAssetLivePrice(symbol);
   const scrolledRef = useRef(false);
 
   useEffect(() => {

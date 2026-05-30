@@ -1,49 +1,11 @@
-import { memo, useMemo, type CSSProperties } from 'react';
+import { memo, useMemo } from 'react';
 import type { AssetName, Market, Order } from '../../types';
-import { assetToSymbol } from '../../utils/format';
-import { getMarketProbability, getHitMarketProbability } from '../../utils/bsMath';
 import { gammaImpliedNoBestBid, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
 import { GRID_BID_ASK_THROTTLE_MS } from '../../lib/bidAskMarketLookup';
 import { useThrottledBidAskPair } from '../../hooks/useThrottledBidAskPair';
-import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
 import { MarketCellMidRow } from './MarketCellMidRow';
-
-const fmtSz = (sz: number) => {
-  const v = Math.floor(sz);
-  return v >= 1000 ? (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : v.toLocaleString();
-};
-
-function deltaBgStyle(
-  priceStr: string,
-  yesMidProb: number | null,
-  endDate: string,
-  livePrice: number,
-  adjVol: number,
-  bsTimeOffsetHours: number,
-  isHit = false,
-): CSSProperties {
-  if (yesMidProb == null || livePrice <= 0 || !endDate) return {};
-  const cleaned = priceStr
-    .replace(/\$/g, '').replace(/,/g, '')
-    .replace(/↑/g, '>').replace(/↓/g, '<')
-    .trim();
-  const ps = (cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-'))
-    ? cleaned : '>' + cleaned;
-  const mathProb = isHit
-    ? getHitMarketProbability(ps, livePrice, endDate, adjVol, bsTimeOffsetHours)
-    : getMarketProbability(ps, livePrice, endDate, adjVol, bsTimeOffsetHours);
-  if (mathProb == null || !Number.isFinite(mathProb)) return {};
-  const spreadPp = Math.abs(yesMidProb - mathProb) * 100;
-  const alpha = Math.min(0.4, spreadPp * 0.035);
-  if (alpha < 0.02) return {};
-  const green = yesMidProb > mathProb;
-  return {
-    backgroundColor: green
-      ? `rgba(34, 197, 94, ${alpha.toFixed(3)})`
-      : `rgba(239, 68, 68, ${alpha.toFixed(3)})`,
-  };
-}
+import { GridMarketCellLiveFx } from './GridMarketCellLiveFx';
 
 export type GridMarketCellProps = {
   market: Market;
@@ -73,27 +35,6 @@ export type GridMarketCellProps = {
   skipDeltaBg?: boolean;
 };
 
-function isPriceConditionTrue(priceStr: string, live: number): boolean {
-  if (live <= 0) return false;
-  const cleaned = priceStr.replace(/\$/g, '').replace(/,/g, '');
-  if (cleaned.startsWith('>')) {
-    const val = parseFloat(cleaned.substring(1));
-    return !isNaN(val) && live > val;
-  }
-  if (cleaned.startsWith('<')) {
-    const val = parseFloat(cleaned.substring(1));
-    return !isNaN(val) && live < val;
-  }
-  if (cleaned.includes('-')) {
-    const parts = cleaned.split('-');
-    const lo = parseFloat(parts[0]);
-    const hi = parseFloat(parts[1]);
-    return !isNaN(lo) && !isNaN(hi) && live >= lo && live <= hi;
-  }
-  const threshold = parseFloat(cleaned);
-  return !isNaN(threshold) && live >= threshold;
-}
-
 function GridMarketCellInner({
   market,
   asset,
@@ -119,7 +60,6 @@ function GridMarketCellInner({
   variant,
   skipDeltaBg = false,
 }: GridMarketCellProps) {
-  const livePrice = useThrottledStorePrice(assetToSymbol(asset), 1000);
   const tokenIds = market.clobTokenIds || [];
   const yesTokenId = tokenIds[0] || '';
   const noTokenId = tokenIds[1] || '';
@@ -130,13 +70,7 @@ function GridMarketCellInner({
     deltaPriceStr ||
     (ptb != null && Number.isFinite(ptb) ? '>' + ptb : '');
   const skipDelta = skipDeltaBg || (variant === 'updown' && (isPast || ptb == null));
-
-  const conditionMet =
-    variant === 'above' || variant === 'between'
-      ? isPriceConditionTrue(strikeStr, livePrice)
-      : false;
-  const yesWinning = conditionMet;
-  const noWinning = !conditionMet && livePrice > 0;
+  const showLiveFx = !skipDelta || yesPosSize != null || noPosSize != null;
 
   const cellLookup = useMemo(() => {
     const o: Record<string, Market> = {};
@@ -174,10 +108,6 @@ function GridMarketCellInner({
   const concColor = `rgb(${cR}, ${cG}, 0)`;
   const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
 
-  const gridDeltaBg = !skipDelta && !isClosed && !isPast
-    ? deltaBgStyle(strikeStr, yesMidProb, endDate, livePrice, adjVol, bsTimeOffsetHours, isHit)
-    : {};
-
   const bgColor = isClosed || isPast ? 'bg-gray-700/30' : '';
   const opacityClass = isClosed || isPast ? 'opacity-50' : '';
   const borderClass = variant === 'updown' ? 'border border-gray-400' : 'border border-gray-700';
@@ -192,7 +122,6 @@ function GridMarketCellInner({
       style={{
         minWidth,
         ...(isWeekend && !isSelected && !isColHighlighted ? { boxShadow: 'inset 0 0 0 100px rgba(147, 51, 234, 0.08)' } : {}),
-        ...gridDeltaBg,
       }}
       onClick={() => onCellClick(market)}
     >
@@ -207,7 +136,7 @@ function GridMarketCellInner({
         </>
       )}
       <MarketCellMidRow
-        className="text-[10px] text-gray-400"
+        className="relative z-[2] text-[10px] text-gray-400"
         left={
           <span
             className="ob-trigger text-green-400 cursor-pointer hover:underline"
@@ -232,36 +161,23 @@ function GridMarketCellInner({
         }
       />
 
-      {(yesPosSize != null || noPosSize != null) && (
-        <div className="mt-0.5 text-[9px] border-t border-gray-600/50 pt-0.5">
-          {yesPosSize != null && (
-            <div className={`text-green-300 text-center ${
-              variant === 'hit'
-                ? 'bg-yellow-500/40 px-1 rounded font-bold'
-                : yesWinning
-                  ? 'bg-green-500/40 px-1 rounded font-bold'
-                  : livePrice > 0
-                    ? 'bg-red-500/40 px-1 rounded'
-                    : ''
-            }`}>
-              {fmtSz(yesPosSize)}
-            </div>
-          )}
-          {noPosSize != null && (
-            <div className={`text-red-300 text-center ${
-              variant === 'hit'
-                ? 'bg-yellow-500/40 px-1 rounded font-bold'
-                : noWinning
-                  ? 'bg-green-500/40 px-1 rounded font-bold'
-                  : livePrice > 0
-                    ? 'bg-red-500/40 px-1 rounded'
-                    : ''
-            }`}>
-              {fmtSz(noPosSize)}
-            </div>
-          )}
-        </div>
-      )}
+      {showLiveFx ? (
+        <GridMarketCellLiveFx
+          asset={asset}
+          endDate={endDate}
+          strikeStr={strikeStr}
+          yesMidProb={yesMidProb}
+          adjVol={adjVol}
+          bsTimeOffsetHours={bsTimeOffsetHours}
+          isHit={isHit}
+          isClosed={isClosed}
+          isPast={isPast}
+          skipDelta={skipDelta}
+          variant={variant}
+          yesPosSize={yesPosSize}
+          noPosSize={noPosSize}
+        />
+      ) : null}
 
       {yesBuyOrders.length > 0 && (
         <div className="absolute bottom-0 left-0 z-[5] bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
@@ -289,7 +205,7 @@ function GridMarketCellInner({
         title={`Concentration (top wallets): ${concPct.toFixed(0)}%`}
       >
         <div
-          className="absolute bottom-0 left-0 w-full transition-all"
+          className="absolute bottom-0 left-0 w-full"
           style={{ height: `${concPct}%`, backgroundColor: concColor }}
         />
       </div>
@@ -297,14 +213,14 @@ function GridMarketCellInner({
         className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
         title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
       >
-        <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
+        <div className="bg-cyan-400/75 h-full shrink-0" style={{ width: `${wbPct}%` }} />
         <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
       </div>
       <div
         className="absolute bottom-[2px] left-0 right-0 h-[2px] pointer-events-none z-[1] flex"
         title={`Smart Money (proven wallets): ${(smsRaw * 100).toFixed(0)}%`}
       >
-        <div className="bg-yellow-400/75 h-full shrink-0 transition-[width]" style={{ width: `${smsPct}%` }} />
+        <div className="bg-yellow-400/75 h-full shrink-0" style={{ width: `${smsPct}%` }} />
         <div className="bg-purple-400/75 h-full flex-1 min-w-0" />
       </div>
     </td>

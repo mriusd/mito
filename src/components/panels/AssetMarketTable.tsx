@@ -10,7 +10,7 @@ import type { AssetName, Market, Order } from '../../types';
 import { GridMarketCell } from './GridMarketCell';
 import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
 import { useThrottledStoreVwap } from '../../hooks/useThrottledStoreVwap';
-import { useThrottledGridSignals } from '../../hooks/useThrottledGridSignals';
+import { useGridSignals } from '../../lib/gridSignalsStore';
 import {
   useThrottledGridOrders,
   useThrottledGridPositions,
@@ -199,7 +199,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
   const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
   const signalsOnGrid = useAppStore((s) => s.signalsOnGrid);
-  const signals = useThrottledGridSignals(2000);
+  const signals = useGridSignals();
   const signalMakerMode = useAppStore((s) => s.signalMakerMode);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
 

@@ -871,7 +871,7 @@ function mergeSidebarPositionsWsRest(
     if (w) {
       usedWs.add(k);
       if (w.size <= 0) continue;
-      const avg = w.avgPrice > 0 ? w.avgPrice : p.avgPrice ?? 0;
+      const avg = p.avgPrice > 0 ? p.avgPrice : (w.avgPrice > 0 ? w.avgPrice : 0);
       out.push({ ...p, size: w.size, avgPrice: avg });
       continue;
     }
@@ -1467,7 +1467,6 @@ export const Sidebar = memo(function Sidebar() {
         selectedMarket,
         marketLookup,
         getSidebarOnchainTradesSnapshot().walletPositions,
-        getSidebarOnchainTradesSnapshot().walletMarketTrades,
       ),
     [liveTradesSource, positions, selectedMarket, marketLookup],
   );

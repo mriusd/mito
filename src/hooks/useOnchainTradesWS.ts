@@ -325,7 +325,11 @@ function mergeWalletPositionsSnapshot(
     if (!k || !scoped.has(k)) continue;
     const prev = byTok.get(k);
     if (prev) {
-      const avgPrice = p.avgPrice > 0 ? p.avgPrice : prev.avgPrice;
+      let avgPrice = p.avgPrice;
+      // Do not keep stale avg when size changed — backend may send avgPrice=0 until ledger row catches up.
+      if (avgPrice <= 0 && Math.abs(p.size - prev.size) <= 1e-6) {
+        avgPrice = prev.avgPrice;
+      }
       byTok.set(k, { ...p, avgPrice });
     } else {
       byTok.set(k, p);

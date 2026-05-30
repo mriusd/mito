@@ -1,4 +1,4 @@
-import type { Market, Position, Trade } from '../types';
+import type { Market, Position } from '../types';
 import { normalizeClobTokenId, outcomeTokenBelongsToSelectedMarket } from '../utils/format';
 import type { WSPosition } from '../hooks/useOnchainTradesWS';
 
@@ -26,7 +26,7 @@ export function mergeSidebarPositionsWsRest(
     const key = normalizeClobTokenId(row.tokenId);
     if (!key) continue;
     const prev = byTok.get(key);
-    const avgPrice = row.avgPrice > 0 ? row.avgPrice : prev?.avgPrice ?? 0;
+    const avgPrice = prev?.avgPrice && prev.avgPrice > 0 ? prev.avgPrice : row.avgPrice > 0 ? row.avgPrice : 0;
     byTok.set(key, {
       asset: row.tokenId.trim() || prev?.asset || key,
       size: row.size,
@@ -36,109 +36,36 @@ export function mergeSidebarPositionsWsRest(
   return [...byTok.values()];
 }
 
-type BuyTradeRow = { tokenId: string; side: string; price: number; size: number };
-
-function tradeRowTokenKey(t: BuyTradeRow): string {
-  return normalizeClobTokenId(t.tokenId);
-}
-
-function restTradeTokenKey(t: Trade): string {
-  return normalizeClobTokenId(t.asset || t.asset_id || t.token_id || '');
-}
-
-function avgPriceFromBuyTrades(tokenKey: string, trades: BuyTradeRow[]): number {
-  if (!tokenKey || trades.length === 0) return 0;
-  let totalCost = 0;
-  let totalSize = 0;
-  for (const t of trades) {
-    if (tradeRowTokenKey(t) !== tokenKey || t.side !== 'BUY') continue;
-    if (t.price > 0 && t.size > 0) {
-      totalCost += t.price * t.size;
-      totalSize += t.size;
-    }
-  }
-  return totalSize > 0 ? totalCost / totalSize : 0;
-}
-
-function enrichAvgPriceFromBuyTrades(
-  rows: { asset: string; size: number; avgPrice: number }[],
-  trades: BuyTradeRow[],
-): { asset: string; size: number; avgPrice: number }[] {
-  if (trades.length === 0) return rows;
-  return rows.map((p) => {
-    if (p.avgPrice > 0) return p;
-    const avgPrice = avgPriceFromBuyTrades(normalizeClobTokenId(p.asset), trades);
-    if (avgPrice <= 0) return p;
-    return { ...p, avgPrice };
-  });
-}
-
-function enrichAvgPriceFromRestTrades(
-  rows: { asset: string; size: number; avgPrice: number }[],
-  trades: Trade[],
-): { asset: string; size: number; avgPrice: number }[] {
-  if (trades.length === 0) return rows;
-  return rows.map((p) => {
-    if (p.avgPrice > 0) return p;
-    const tokenKey = normalizeClobTokenId(p.asset);
-    if (!tokenKey) return p;
-    let totalCost = 0;
-    let totalSize = 0;
-    for (const t of trades) {
-      if (restTradeTokenKey(t) !== tokenKey || t.side !== 'BUY') continue;
-      const price = parseFloat(t.price) || 0;
-      const size = parseFloat(t.size) || 0;
-      if (price > 0 && size > 0) {
-        totalCost += price * size;
-        totalSize += size;
-      }
-    }
-    if (totalSize <= 0) return p;
-    return { ...p, avgPrice: totalCost / totalSize };
-  });
-}
-
-/** Match sidebar merge + avg enrichment for a single outcome token (pair legs, etc.). */
+/** Match sidebar merge for a single outcome token (pair legs, etc.). WS = live size; REST avg beats WS avg. */
 export function resolveLegPositionForToken(
   tokenId: string,
   positions: Position[],
   liveTradesSource: string,
   onchainWsPositions: WSPosition[],
-  onchainTrades: BuyTradeRow[] = [],
-  restTrades: Trade[] = [],
 ): { size: number; avgPrice: number } | null {
   const tidKey = normalizeClobTokenId(tokenId);
   if (!tidKey) return null;
 
   const rest = positions.find((p) => normalizeClobTokenId(p.asset) === tidKey);
   let size = 0;
-  let avgPrice = 0;
+  let restAvg = 0;
   if (rest) {
     if ((rest.size || 0) > 0) size = rest.size || 0;
-    if (rest.avgPrice != null && rest.avgPrice > 0) avgPrice = rest.avgPrice;
+    if (rest.avgPrice != null && rest.avgPrice > 0) restAvg = rest.avgPrice;
   }
 
+  let wsAvg = 0;
   if (liveTradesSource === 'onchain') {
     const ws = onchainWsPositions.find((p) => normalizeClobTokenId(p.tokenId) === tidKey);
     if (ws && ws.size > 0) {
       size = ws.size;
-      if (ws.avgPrice > 0) avgPrice = ws.avgPrice;
+      if (ws.avgPrice > 0) wsAvg = ws.avgPrice;
     }
   }
 
   if (isSidebarDustPosition(size)) return null;
 
-  if (avgPrice <= 0) {
-    let row = { asset: String(tokenId || '').trim() || tidKey, size, avgPrice: 0 };
-    if (liveTradesSource === 'onchain' && onchainTrades.length > 0) {
-      row = enrichAvgPriceFromBuyTrades([row], onchainTrades)[0] ?? row;
-    }
-    if (row.avgPrice <= 0 && restTrades.length > 0) {
-      row = enrichAvgPriceFromRestTrades([row], restTrades)[0] ?? row;
-    }
-    avgPrice = row.avgPrice;
-  }
-
+  const avgPrice = restAvg > 0 ? restAvg : wsAvg;
   return { size, avgPrice };
 }
 
@@ -148,7 +75,6 @@ export function computeSidebarMyPositions(
   selectedMarket: Market | null,
   marketLookup: Record<string, Market>,
   onchainWsPositions: WSPosition[],
-  onchainMarketTrades: { tokenId: string; side: string; price: number; size: number }[] = [],
 ): { asset: string; size: number; avgPrice: number }[] {
   if (!selectedMarket) return [];
   const wsMarketRows = (liveTradesSource === 'onchain' ? onchainWsPositions : [])
@@ -157,9 +83,7 @@ export function computeSidebarMyPositions(
   const restMarket = positions.filter((p) =>
     outcomeTokenBelongsToSelectedMarket(String(p.asset || '').trim(), selectedMarket, marketLookup),
   );
-  const merged = mergeSidebarPositionsWsRest(restMarket, wsMarketRows);
-  if (liveTradesSource !== 'onchain') return merged;
-  return enrichAvgPriceFromBuyTrades(merged, onchainMarketTrades);
+  return mergeSidebarPositionsWsRest(restMarket, wsMarketRows);
 }
 
 export type SidebarMergeEligible = {

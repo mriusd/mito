@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import type { AssetName } from '../../types';
 import { assetToSymbol, formatPriceShort, formatThousandsAsK, parseStrikeTokenToNumber } from '../../utils/format';
-import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
+import { useGridAssetLivePrice } from '../../lib/gridAssetLivePriceStore';
 
 function isPriceConditionTrue(priceStr: string, live: number): boolean {
   if (live <= 0) return false;
@@ -39,7 +39,7 @@ export const AssetMarketTableHitPriceCol = memo(function AssetMarketTableHitPric
   titleColor: string;
   hitPrice: (t: string) => number;
 }) {
-  const livePrice = useThrottledStorePrice(assetToSymbol(asset), 1000);
+  const livePrice = useGridAssetLivePrice(assetToSymbol(asset));
   const arrow = priceStr.includes('↑') ? '↑' : priceStr.includes('↓') ? '↓' : '';
   const num = hitPrice(priceStr);
   const priceShortAsset = asset === 'ETH' ? 'ETH' : undefined;
@@ -77,7 +77,7 @@ export const AssetMarketTableStrikePriceCol = memo(function AssetMarketTableStri
   tableType: string;
   priceShortAsset?: 'ETH';
 }) {
-  const livePrice = useThrottledStorePrice(assetToSymbol(asset), 1000);
+  const livePrice = useGridAssetLivePrice(assetToSymbol(asset));
   const conditionTrue = isPriceConditionTrue(priceStr, livePrice);
   const priceCellBg = conditionTrue ? 'bg-green-900/50' : 'bg-gray-900';
   const priceFontSize = tableType === 'price' ? 'text-[10px]' : 'text-xs';

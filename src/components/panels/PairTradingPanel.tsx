@@ -599,10 +599,10 @@ function pairLegPositionValues(row: PairLegPositionRowData): (string | JSX.Eleme
 
 function PairLegPositionLabelRow() {
   return (
-    <div className="inline-flex items-center gap-2 whitespace-nowrap">
-      <div className="min-w-[2.75rem]" />
+    <div className="flex w-full items-center gap-2 whitespace-nowrap">
+      <div className="min-w-[2.75rem] shrink-0" />
       {PAIR_POS_FIELDS.map((label) => (
-        <span key={label} className="min-w-[2.5rem] text-center text-[8px] text-gray-500">
+        <span key={label} className="min-w-[2.5rem] flex-1 text-right text-[8px] text-gray-500">
           {label}
         </span>
       ))}
@@ -613,8 +613,8 @@ function PairLegPositionLabelRow() {
 function PairLegPositionValueRow({ row }: { row: PairLegPositionRowData }) {
   const values = pairLegPositionValues(row);
   return (
-    <div className="inline-flex items-center gap-2 whitespace-nowrap tabular-nums">
-      <span className="inline-flex min-w-[2.75rem] items-center justify-center gap-0.5 leading-none">
+    <div className="flex w-full items-center gap-2 whitespace-nowrap tabular-nums">
+      <span className="inline-flex min-w-[2.75rem] shrink-0 items-center justify-start gap-0.5 leading-none">
         <span className={`font-bold ${ASSET_COLORS[row.asset]}`}>{row.asset}</span>
         <span
           className={`rounded px-1 py-px text-[8px] font-bold ${
@@ -627,7 +627,7 @@ function PairLegPositionValueRow({ row }: { row: PairLegPositionRowData }) {
       {values.map((value, i) => (
         <span
           key={PAIR_POS_FIELDS[i]}
-          className={`min-w-[2.5rem] text-center text-[9px] font-medium ${
+          className={`min-w-[2.5rem] flex-1 text-right text-[9px] font-medium ${
             PAIR_POS_FIELDS[i] === 'exit'
               ? 'text-emerald-300'
               : PAIR_POS_FIELDS[i] === 'PnL'
@@ -1211,42 +1211,6 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
       </div>
 
       <div className="no-drag mt-2 shrink-0 rounded border border-gray-700/80 bg-gray-900/50 p-2" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="mb-2 flex flex-wrap items-center gap-3 text-[10px]">
-          <div className="text-gray-400">
-            Pair ask:{' '}
-            <span className={`font-bold tabular-nums ${pairAskColorClass(pairAskCents)}`}>
-              {pairAskCents != null ? `${pairAskCents.toFixed(1)}¢` : '—'}
-            </span>
-            {hasShareAmount ? (
-              <span className="ml-1 text-gray-500">@ {shares} sh VWAP</span>
-            ) : (
-              <span className="ml-1 text-gray-500">top</span>
-            )}
-            <span className="ml-1 text-gray-500">
-              (
-              {upAsset} UP{' '}
-              {(hasShareAmount && upAskWalk
-                ? upAskWalk.avgCents.toFixed(1)
-                : upBook.bestAsk != null
-                  ? (upBook.bestAsk * 100).toFixed(1)
-                  : '—')}
-              ¢ + {downAsset} DOWN{' '}
-              {(hasShareAmount && downAskWalk
-                ? downAskWalk.avgCents.toFixed(1)
-                : downBook.bestAsk != null
-                  ? (downBook.bestAsk * 100).toFixed(1)
-                  : '—')}
-              ¢
-              {hasShareAmount && pairTopAskCents != null ? (
-                <span> · top {pairTopAskCents.toFixed(1)}¢</span>
-              ) : null}
-              )
-            </span>
-            {pairAskInsufficient ? (
-              <span className="ml-2 font-semibold text-red-400">insufficient ask depth</span>
-            ) : null}
-          </div>
-        </div>
         <div className="flex flex-wrap items-end gap-2">
           <div className="w-[72px] shrink-0">
             <label className="mb-1 block text-[10px] text-gray-400">Δ price (¢)</label>
@@ -1279,10 +1243,18 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
             />
           </div>
           <div className="rounded bg-gray-800/80 px-2 py-1 text-[10px] text-gray-400">
-            <div>Est. cost</div>
+            <div className="flex items-baseline justify-between gap-3">
+              <span>Est. cost</span>
+              <span className={`font-bold tabular-nums ${pairAskColorClass(pairAskCents)}`}>
+                {pairAskCents != null ? `${pairAskCents.toFixed(1)}¢` : '—'}
+              </span>
+            </div>
             <div className="font-bold tabular-nums text-red-300">
               {estPairCostUsd != null ? `$${estPairCostUsd.toFixed(2)}` : '—'}
             </div>
+            {pairAskInsufficient ? (
+              <div className="text-[9px] font-semibold text-red-400">insufficient ask depth</div>
+            ) : null}
           </div>
           <button
             type="button"

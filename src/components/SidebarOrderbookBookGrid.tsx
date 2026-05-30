@@ -152,7 +152,6 @@ function prepareObSideRows(
   }
   const lastIdx = levels.length - 1;
   const maxCumul = cumuls.length > 0 ? cumuls[cumuls.length - 1] : 1;
-  const aggKey = obAggStep === '1' ? '1' : '5';
 
   let prevCumulUsd = 0;
   return levels.map((level, i) => {
@@ -165,24 +164,14 @@ function prepareObSideRows(
     cumulativeUsd = Math.max(cumulativeUsd, prevCumulUsd);
     prevCumulUsd = cumulativeUsd;
     const cumulativeSize = cumuls[i];
-    const centsNum = Math.round(parseFloat(level.price) * 100);
+    const centsNum = Math.round(parseFloat(level.price) * 1000) / 10;
     const bpDisp = obAggStep === '0.1' ? centsNum.toFixed(1) : String(Math.round(centsNum));
-    const orderPk =
-      obAggStep === '0.1'
-        ? centsNum.toFixed(1).replace(/\.0$/, '')
-        : sidebarObAggOrderPriceCents(centsNum, aggKey);
-    const hl =
-      obAggStep === '0.1'
-        ? userPrices.has(centsNum.toFixed(1))
-          ? side === 'bid'
-            ? 'bg-blue-900/50 font-bold'
-            : 'bg-orange-900/50 font-bold'
-          : ''
-        : sidebarUserPriceHitsBucket(userPrices, centsNum, aggKey)
-          ? side === 'bid'
-            ? 'bg-blue-900/50 font-bold'
-            : 'bg-orange-900/50 font-bold'
-          : '';
+    const orderPk = sidebarObAggOrderPriceCents(centsNum, obAggStep);
+    const hl = sidebarUserPriceHitsBucket(userPrices, centsNum, obAggStep)
+      ? side === 'bid'
+        ? 'bg-blue-900/50 font-bold'
+        : 'bg-orange-900/50 font-bold'
+      : '';
     const depthPct = maxCumul > 0 ? (cumulativeSize / maxCumul) * 100 : 0;
     const levelPct = maxBookLevelSize > 0 ? (levelSize / maxBookLevelSize) * 100 : 0;
     const sideLabel = side === 'bid' ? 'Bid' : 'Ask';

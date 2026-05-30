@@ -149,25 +149,11 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
           ? { bidUsdTotal: yesBidUsdTotal, askUsdTotal: yesAskUsdTotal }
           : { bidUsdTotal: noBidUsdTotal, askUsdTotal: noAskUsdTotal };
 
-      if (obAggStep === '0.1') {
-        return {
-          viewBids: snapshotBids,
-          viewAsks: snapshotAsks,
-          refSnapshotBids: refBid,
-          refSnapshotAsks: refAsk,
-          yesBarBidUsd: yesBidForBar,
-          noBarBidUsd: noBidForBar,
-          displayBidFullUsd: displayUsd.bidUsdTotal,
-          displayAskFullUsd: displayUsd.askUsdTotal,
-        };
-      }
-
-      const step = obAggStep === '1' ? '1' : '5';
-      const bidCap = step === '1' ? 40 : 24;
-      const askCap = step === '1' ? 40 : 24;
+      const bidCap = obAggStep === '0.1' ? 50 : obAggStep === '1' ? 40 : 24;
+      const askCap = bidCap;
       return {
-        viewBids: sidebarObAggregateLevels(snapshotBids, step, 'bid', bidCap),
-        viewAsks: sidebarObAggregateLevels(snapshotAsks, step, 'ask', askCap),
+        viewBids: sidebarObAggregateLevels(snapshotBids, obAggStep, 'bid', bidCap),
+        viewAsks: sidebarObAggregateLevels(snapshotAsks, obAggStep, 'ask', askCap),
         refSnapshotBids: refBid,
         refSnapshotAsks: refAsk,
         yesBarBidUsd: yesBidForBar,

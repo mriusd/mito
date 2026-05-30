@@ -8,13 +8,16 @@ export type SidebarObAggLevel = { price: string; size: string; bandUsd?: number 
 
 type OBLevel = { price: string; size: string };
 
-function centsFromPolymarketPrice(priceStr: string): number {
+function centsFromPolymarketPrice(priceStr: string, step: SidebarObAggStep): number {
   const p = parseFloat(priceStr);
-  return Number.isFinite(p) ? Math.round(p * 100) : NaN;
+  if (!Number.isFinite(p)) return NaN;
+  if (step === '0.1') return Math.round(p * 1000) / 10;
+  return Math.round(p * 100);
 }
 
-export function sidebarObAggBucketCents(cents: number, step: Exclude<SidebarObAggStep, '0.1'>): number {
+export function sidebarObAggBucketCents(cents: number, step: SidebarObAggStep): number {
   if (!Number.isFinite(cents)) return NaN;
+  if (step === '0.1') return clampAggBucketCents(Math.round(cents * 10) / 10, step);
   return clampAggBucketCents(sidebarObBucketKeyCents(Math.round(cents), step), step);
 }
 
@@ -24,16 +27,18 @@ export function sidebarObBucketKeyCents(cents: number, step: Exclude<SidebarObAg
   return Math.round(cents / 5) * 5;
 }
 
-function clampAggBucketCents(c: number, step: Exclude<SidebarObAggStep, '0.1'>): number {
+function clampAggBucketCents(c: number, step: SidebarObAggStep): number {
   if (!Number.isFinite(c)) return c;
-  if (step === '1') return Math.min(99, Math.max(1, c));
-  return Math.min(95, Math.max(5, c));
+  if (step === '0.1') return Math.min(99.9, Math.max(0.1, Math.round(c * 10) / 10));
+  if (step === '1') return Math.min(99, Math.max(1, Math.round(c)));
+  return Math.min(95, Math.max(5, Math.round(c / 5) * 5));
 }
 
-/** Order form stores cents string; coarse steps use integer cents */
-export function sidebarObAggOrderPriceCents(bucketCents: number, step: Exclude<SidebarObAggStep, '0.1'>): string {
+/** Order form stores cents string; coarse steps use integer cents, 0.1 step uses one decimal. */
+export function sidebarObAggOrderPriceCents(bucketCents: number, step: SidebarObAggStep): string {
   if (!Number.isFinite(bucketCents)) return '';
-  const b = clampAggBucketCents(bucketCents, step);
+  const b = sidebarObAggBucketCents(bucketCents, step);
+  if (step === '0.1') return b.toFixed(1).replace(/\.0$/, '');
   return String(Math.round(b));
 }
 
@@ -43,15 +48,15 @@ function decimalFromBucketCents(bucketCents: number): string {
 
 export function sidebarObAggregateLevels(
   levels: OBLevel[],
-  step: Exclude<SidebarObAggStep, '0.1'>,
+  step: SidebarObAggStep,
   side: 'bid' | 'ask',
   maxLevels: number,
 ): SidebarObAggLevel[] {
   const m = new Map<number, { size: number; bandUsd: number }>();
   for (const l of levels) {
-    const c = centsFromPolymarketPrice(l.price);
+    const c = centsFromPolymarketPrice(l.price, step);
     if (!Number.isFinite(c)) continue;
-    let k = sidebarObAggBucketCents(c, step);
+    const k = sidebarObAggBucketCents(c, step);
     if (!Number.isFinite(k)) continue;
     const sz = parseFloat(l.size);
     const add = Number.isFinite(sz) ? sz : 0;
@@ -72,7 +77,7 @@ export function sidebarObAggregateLevels(
   });
 }
 
-export function sidebarUserPriceHitsBucket(sidePrices: Set<string>, bucketCents: number, step: Exclude<SidebarObAggStep, '0.1'>): boolean {
+export function sidebarUserPriceHitsBucket(sidePrices: Set<string>, bucketCents: number, step: SidebarObAggStep): boolean {
   const bTarget = sidebarObAggBucketCents(bucketCents, step);
   if (!Number.isFinite(bTarget)) return false;
   for (const s of sidePrices) {

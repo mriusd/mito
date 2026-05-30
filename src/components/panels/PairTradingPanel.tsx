@@ -416,11 +416,9 @@ function usePairLegOrderbook(market: Market | null, leg: PairLeg, obAggStep: Sid
 
     let viewBids = snapshotBids;
     let viewAsks = snapshotAsks;
-    if (obAggStep !== '0.1') {
-      const step = obAggStep === '1' ? '1' : '5';
-      viewBids = sidebarObAggregateLevels(snapshotBids, step, 'bid', step === '1' ? 40 : 24);
-      viewAsks = sidebarObAggregateLevels(snapshotAsks, step, 'ask', step === '1' ? 40 : 24);
-    }
+    const cap = obAggStep === '0.1' ? 50 : obAggStep === '1' ? 40 : 24;
+    viewBids = sidebarObAggregateLevels(snapshotBids, obAggStep, 'bid', cap);
+    viewAsks = sidebarObAggregateLevels(snapshotAsks, obAggStep, 'ask', cap);
 
     const obLoading = activeObLoading && viewBids.length === 0 && viewAsks.length === 0;
     const rawAsks = orderOutcome === 'YES' ? yesAsks : noAsks;

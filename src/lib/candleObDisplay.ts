@@ -24,21 +24,9 @@ export function prepareCandleObDisplay(ob: CandleObSnapshot, step: SidebarObAggS
   const yesBidUsd = obBookSideUsdTotal(rawBids);
   const noBidUsd = 0;
   const imbalance = candleObBookImbalance(ob);
-  if (step === '0.1') {
-    return {
-      displayBids: rawBids,
-      displayAsks: rawAsks,
-      yesBidUsd,
-      noBidUsd,
-      displayBidFullUsd: yesBidUsd,
-      displayAskFullUsd: obBookSideUsdTotal(rawAsks),
-      orderbookBookImbalance: imbalance,
-    };
-  }
-  const bucket = step === '1' ? '1' : '5';
-  const cap = bucket === '1' ? 40 : 24;
-  const displayBids = sidebarObAggregateLevels(rawBids, bucket, 'bid', cap);
-  const displayAsks = sidebarObAggregateLevels(rawAsks, bucket, 'ask', cap);
+  const cap = step === '0.1' ? 50 : step === '1' ? 40 : 24;
+  const displayBids = sidebarObAggregateLevels(rawBids, step, 'bid', cap);
+  const displayAsks = sidebarObAggregateLevels(rawAsks, step, 'ask', cap);
   return {
     displayBids,
     displayAsks,

@@ -1150,10 +1150,6 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             setWalletPositions((prev) =>
               mergeWalletPositionsSnapshot(prev, raw, scopedClobTokenIdsRef.current),
             );
-            // Market-scoped WS sends walletGridPositions for full book; wallet-only URL uses one payload for both.
-            if (!marketRef.current?.trim()) {
-              setGridWalletPositions(raw);
-            }
           } else if (msg.type === 'walletGridPositions' && Array.isArray(msg.data)) {
             const raw = (msg.data as Array<Record<string, unknown>>)
               .map((p) => mapRawWSPosition(p))

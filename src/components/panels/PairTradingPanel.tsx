@@ -1,6 +1,7 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAccount } from 'wagmi';
 import type { AssetSymbol, Market, Position, Trade } from '../../types';
+import type { WalletPosition } from '../../api';
 import { placeOrder } from '../../api';
 import { useAppStore } from '../../stores/appStore';
 import { usePolymarketOB } from '../../hooks/usePolymarketOB';
@@ -11,8 +12,8 @@ import { pickLiveUpDownMarketInTfBucket, pickNextUpDownMarketInTfBucket, resolve
 import { isMarketExpired } from '../../lib/marketExpiry';
 import { triggerWalletRefresh } from '../../lib/clobClient';
 import { cancelExistingSellOrdersForToken } from '../../lib/cancelExistingSellOrdersForToken';
-import { resolveLegPositionForToken, resolveFeesPaidForToken } from '../../lib/sidebarMyPositions';
-import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
+import { resolveLegPositionForToken, resolveLegPositionFromWalletHistory, resolveFeesPaidForToken } from '../../lib/sidebarMyPositions';
+import { useSidebarOnchainGridWalletPositions, useSidebarOnchainWalletHistory } from '../../lib/sidebarOnchainTradesStore';
 import type { SidebarObAggStep } from '../../lib/sidebarOrderbookAggregate';
 import { sidebarObAggregateLevels } from '../../lib/sidebarOrderbookAggregate';
 import { readSavedObAggStep, LS_SIDEBAR_OB_AGG_STEP } from '../../lib/sidebarObAggStep';
@@ -528,15 +529,19 @@ function buildPairLegPositionRow(
   leg: PairLeg,
   asset: PairAsset,
   tokenId: string,
+  market: Market | null,
   book: ReturnType<typeof usePairLegOrderbook>,
   positions: Position[],
   liveTradesSource: string,
   onchainWsPositions: { tokenId: string; size: number; avgPrice: number; feesPaid?: number }[],
+  walletHistory: WalletPosition[],
   trades: Trade[],
 ): PairLegPositionRowData {
-  const pos = tokenId
-    ? resolveLegPositionForToken(tokenId, positions, liveTradesSource, onchainWsPositions)
-    : null;
+  const pos =
+    liveTradesSource === 'onchain' && market
+      ? resolveLegPositionFromWalletHistory(tokenId, market, walletHistory) ??
+        resolveLegPositionForToken(tokenId, positions, liveTradesSource, onchainWsPositions)
+      : resolveLegPositionForToken(tokenId, positions, liveTradesSource, onchainWsPositions);
   if (!pos) {
     return {
       leg,
@@ -552,7 +557,9 @@ function buildPairLegPositionRow(
     };
   }
 
-  const feesUsd = resolveFeesPaidForToken(tokenId, liveTradesSource, onchainWsPositions, trades);
+  const feesUsd = pos.feesPaid != null && Number.isFinite(pos.feesPaid)
+    ? pos.feesPaid
+    : resolveFeesPaidForToken(tokenId, liveTradesSource, onchainWsPositions, trades);
   const feePart = feesUsd ?? 0;
   const baseCostUsd = pos.avgPrice > 0 ? pos.avgPrice * pos.size : 0;
   let costUsd: number | null = null;
@@ -837,6 +844,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const signingMode = useAppStore((s) => s.signingMode);
   const pkAddress = useAppStore((s) => s.pkAddress);
   const onchainWsPositions = useSidebarOnchainGridWalletPositions();
+  const walletHistory = useSidebarOnchainWalletHistory();
   const { isConnected } = useAccount();
   const tradingWallet = useTradingWalletAddress();
 
@@ -956,13 +964,15 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
         leftLeg,
         leftAsset,
         leftTokenId,
+        leftMarket,
         leftBook,
         positions,
         liveTradesSource,
         onchainWsPositions,
+        walletHistory,
         trades,
       ),
-    [leftLeg, leftAsset, leftTokenId, leftBook, positions, liveTradesSource, onchainWsPositions, trades],
+    [leftLeg, leftAsset, leftTokenId, leftMarket, leftBook, positions, liveTradesSource, onchainWsPositions, walletHistory, trades],
   );
   const rightPositionRow = useMemo(
     () =>
@@ -970,13 +980,15 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
         rightLeg,
         rightAsset,
         rightTokenId,
+        rightMarket,
         rightBook,
         positions,
         liveTradesSource,
         onchainWsPositions,
+        walletHistory,
         trades,
       ),
-    [rightLeg, rightAsset, rightTokenId, rightBook, positions, liveTradesSource, onchainWsPositions, trades],
+    [rightLeg, rightAsset, rightTokenId, rightMarket, rightBook, positions, liveTradesSource, onchainWsPositions, walletHistory, trades],
   );
 
   const totalEntryCents = useMemo(() => {

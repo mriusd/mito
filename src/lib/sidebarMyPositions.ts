@@ -1,6 +1,8 @@
 import type { Market, Position, Trade } from '../types';
+import type { WalletPosition } from '../api';
 import { normalizeClobTokenId, getPositionClobTokenId, outcomeTokenBelongsToSelectedMarket } from '../utils/format';
 import type { WSPosition } from '../hooks/useOnchainTradesWS';
+import { marketConditionKeysEqual } from './toxicFlowWs';
 
 export const SIDEBAR_POSITION_DUST_SIZE = 0.01;
 
@@ -42,7 +44,7 @@ export function resolveLegPositionForToken(
   positions: Position[],
   liveTradesSource: string,
   onchainWsPositions: WSPosition[],
-): { size: number; avgPrice: number } | null {
+): { size: number; avgPrice: number; feesPaid?: number } | null {
   const tidKey = normalizeClobTokenId(tokenId);
   if (!tidKey) return null;
 
@@ -55,18 +57,87 @@ export function resolveLegPositionForToken(
   }
 
   let wsAvg = 0;
+  let wsFees: number | undefined;
   if (liveTradesSource === 'onchain') {
     const ws = onchainWsPositions.find((p) => normalizeClobTokenId(p.tokenId) === tidKey);
     if (ws && ws.size > 0) {
       size = ws.size;
       if (ws.avgPrice > 0) wsAvg = ws.avgPrice;
+      if (ws.feesPaid != null && Number.isFinite(ws.feesPaid)) wsFees = ws.feesPaid;
     }
   }
 
   if (isSidebarDustPosition(size)) return null;
 
-  const avgPrice = restAvg > 0 ? restAvg : wsAvg;
-  return { size, avgPrice };
+  let avgPrice = restAvg > 0 ? restAvg : wsAvg;
+  if (avgPrice <= 0 && restAvg > 0) avgPrice = restAvg;
+  if (avgPrice <= 0 && wsAvg > 0) avgPrice = wsAvg;
+
+  return { size, avgPrice, feesPaid: wsFees };
+}
+
+function legFeesFromHistoryRow(
+  feeTotal: number,
+  invY: number,
+  invN: number,
+  prY: number,
+  prN: number,
+  yesLeg: boolean,
+): number {
+  if (!Number.isFinite(feeTotal) || feeTotal <= 0) return 0;
+  const hasY = Math.abs(invY) > 1e-9;
+  const hasN = Math.abs(invN) > 1e-9;
+  if (yesLeg) {
+    if (!hasY) return 0;
+    if (!hasN) return feeTotal;
+  } else {
+    if (!hasN) return 0;
+    if (!hasY) return feeTotal;
+  }
+  const stakeY = Math.abs(invY * prY);
+  const stakeN = Math.abs(invN * prN);
+  const tot = stakeY + stakeN;
+  if (tot <= 1e-18) return feeTotal * 0.5;
+  return yesLeg ? feeTotal * (stakeY / tot) : feeTotal * (stakeN / tot);
+}
+
+/** Per-outcome leg from walletHistory WS row (same source as History panel). */
+export function resolveLegPositionFromWalletHistory(
+  tokenId: string,
+  market: Market | null,
+  history: WalletPosition[],
+): { size: number; avgPrice: number; feesPaid?: number } | null {
+  if (!market) return null;
+  const mid = String(market.conditionId ?? market.id ?? '').trim();
+  if (!mid) return null;
+  const row = history.find((h) => marketConditionKeysEqual(String(h.marketId || ''), mid));
+  if (!row) return null;
+
+  const tidKey = normalizeClobTokenId(tokenId);
+  if (!tidKey) return null;
+  const yesTok = normalizeClobTokenId(row.tokenIdYes || market.clobTokenIds?.[0] || '');
+  const noTok = normalizeClobTokenId(row.tokenIdNo || market.clobTokenIds?.[1] || '');
+  const invY = Number(row.invYes ?? 0);
+  const invN = Number(row.invNo ?? 0);
+  const prY = Number(row.priceYes ?? 0);
+  const prN = Number(row.priceNo ?? 0);
+  const feeTotal = Number(row.feeTotal ?? 0);
+
+  if (tidKey === yesTok && !isSidebarDustPosition(invY)) {
+    return {
+      size: invY,
+      avgPrice: prY > 0 ? prY : 0,
+      feesPaid: legFeesFromHistoryRow(feeTotal, invY, invN, prY, prN, true),
+    };
+  }
+  if (tidKey === noTok && !isSidebarDustPosition(invN)) {
+    return {
+      size: invN,
+      avgPrice: prN > 0 ? prN : 0,
+      feesPaid: legFeesFromHistoryRow(feeTotal, invY, invN, prY, prN, false),
+    };
+  }
+  return null;
 }
 
 /** Σ ledger/API fees for one outcome token (pair leg fees column). */

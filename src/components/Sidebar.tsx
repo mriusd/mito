@@ -1454,6 +1454,11 @@ export const Sidebar = memo(function Sidebar() {
     if (w && m) refreshSidebarOnchainMarketTrades(w, m);
   }, [walletForLivePositions, selectedConditionId]);
 
+  useEffect(() => {
+    if (liveTradesSource !== 'onchain') return;
+    refreshMyMarketTrades();
+  }, [liveTradesSource, selectedMarket?.id, refreshMyMarketTrades]);
+
   const getMyPositionsSnapshot = useCallback(
     () =>
       computeSidebarMyPositions(

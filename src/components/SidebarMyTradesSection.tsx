@@ -4,6 +4,7 @@ import { useAppStore } from '../stores/appStore';
 import {
   getTokenOutcome,
   getTradeClobTokenId,
+  outcomeTokenBelongsToSelectedMarket,
   tradeMatchesSelectedMarket,
 } from '../utils/format';
 import { mySidebarTradeRowKey, useMyTradeRowRingSound } from '../lib/myTradeRowRing';
@@ -40,7 +41,11 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
       return trades.filter((t) => tradeMatchesSelectedMarket(t, selectedMarket, marketLookup));
     }
     return wsMarketTrades
-      .filter((f) => !f.pending)
+      .filter(
+        (f) =>
+          !f.pending &&
+          outcomeTokenBelongsToSelectedMarket(String(f.tokenId || '').trim(), selectedMarket, marketLookup),
+      )
       .slice()
       .sort((a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0))
       .map((f) => ({

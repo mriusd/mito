@@ -25,6 +25,7 @@ const EMPTY: SidebarOnchainTradesSnapshot = {
 };
 
 let snap: SidebarOnchainTradesSnapshot = EMPTY;
+let walletMarketTradesScopeKey = '';
 const listeners = new Set<() => void>();
 
 let refreshWalletImpl: (() => void) | null = null;
@@ -75,8 +76,16 @@ function wsPositionsSig(rows: WSPosition[]): string {
 
 export function resetSidebarOnchainTradesStore(): void {
   snap = EMPTY;
+  walletMarketTradesScopeKey = '';
   refreshWalletImpl = null;
   refreshMarketTradesImpl = null;
+  notify();
+}
+
+export function resetSidebarOnchainWalletMarketTradesScope(scopeKey: string): void {
+  walletMarketTradesScopeKey = scopeKey;
+  if (snap.walletMarketTrades.length === 0) return;
+  snap = { ...snap, walletMarketTrades: [], walletMarketTradesDigest: snap.walletMarketTradesDigest + 1 };
   notify();
 }
 
@@ -118,7 +127,8 @@ export function setSidebarOnchainGridWalletPositions(next: WSPosition[]): void {
   notify();
 }
 
-export function setSidebarOnchainWalletMarketTrades(next: WSTrade[]): void {
+export function setSidebarOnchainWalletMarketTrades(next: WSTrade[], scopeKey = walletMarketTradesScopeKey): void {
+  if (scopeKey !== walletMarketTradesScopeKey) return;
   if (walletMarketTradesHeadEqual(snap.walletMarketTrades, next)) return;
   snap = { ...snap, walletMarketTrades: next, walletMarketTradesDigest: snap.walletMarketTradesDigest + 1 };
   notify();

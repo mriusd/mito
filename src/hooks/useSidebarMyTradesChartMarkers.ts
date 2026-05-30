@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { Market } from '../types';
 import { useAppStore } from '../stores/appStore';
-import { tradeMatchesSelectedMarket } from '../utils/format';
+import { tradeMatchesSelectedMarket, outcomeTokenBelongsToSelectedMarket } from '../utils/format';
 import type { MyTradeChartRow } from '../lib/chartTradeMarkers';
 import { useSidebarOnchainWalletMarketTrades } from '../lib/sidebarOnchainTradesStore';
 
@@ -22,6 +22,9 @@ export function useSidebarMyTradesChartMarkers(
         .slice(0, 20) as MyTradeChartRow[];
     }
     return wsMarketTrades
+      .filter((f) =>
+        outcomeTokenBelongsToSelectedMarket(String(f.tokenId || '').trim(), selectedMarket, marketLookup),
+      )
       .slice()
       .sort((a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0))
       .slice(0, 100)

@@ -46,6 +46,9 @@ const LazySpotOrderbookPanel = lazyWithChunkReload(() =>
 const LazyGexPanel = lazyWithChunkReload(() =>
   import('./panels/GexPanel').then((m) => ({ default: m.GexPanel })),
 );
+const LazyPairTradingPanel = lazyWithChunkReload(() =>
+  import('./panels/PairTradingPanel').then((m) => ({ default: m.PairTradingPanel })),
+);
 const LazyUpOrDownHUDPanel = lazyWithChunkReload(() =>
   import('./panels/UpOrDownHUDPanel').then((m) => ({ default: m.UpOrDownHUDPanel })),
 );
@@ -182,6 +185,8 @@ function renderPanel(panel: PanelConfig): ReactNode {
       return <LazyBinanceChartPanel panelId={panel.id} initialAsset="BTC" />;
     case 'spot-orderbook':
       return <LazySpotOrderbookPanel panelId={panel.id} />;
+    case 'pair-trading':
+      return <LazyPairTradingPanel panelId={panel.id} />;
     case 'gex':
       return <LazyGexPanel panelId={panel.id} />;
     case 'updown-hud':
@@ -343,6 +348,7 @@ export function DraggableCanvas() {
     'price-forecast': 'Price Forecast',
     'binance-chart': 'Asset Candle Chart',
     'spot-orderbook': 'Orderbook',
+    'pair-trading': 'Pair Trading',
     'gex': 'Dealer GEX',
     'updown-hud': 'UpOrDown HUD',
     'signals': 'Signals', 'smart-money': 'Smart Money', 'chat': 'Chat', 'pnl': 'P&L',

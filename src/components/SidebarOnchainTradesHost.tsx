@@ -1,8 +1,9 @@
-import { memo, useEffect } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useOnchainTradesWS, type OnchainTradesWSOpts } from '../hooks/useOnchainTradesWS';
 import {
   registerSidebarOnchainRefreshFns,
   resetSidebarOnchainTradesStore,
+  resetSidebarOnchainWalletMarketTradesScope,
   setSidebarOnchainGridWalletPositions,
   setSidebarOnchainWalletMarketTrades,
   setSidebarOnchainWalletPositions,
@@ -18,6 +19,16 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
     refreshWalletMarketTrades,
   } = useOnchainTradesWS(opts);
 
+  const walletMarketTradesScopeKey = useMemo(
+    () =>
+      `${(opts.wallet || '').trim().toLowerCase()}|${(opts.marketId || '').trim()}|${(opts.scopedClobTokenIds || []).join('|')}`,
+    [opts.wallet, opts.marketId, opts.scopedClobTokenIds?.join('|') ?? ''],
+  );
+
+  useLayoutEffect(() => {
+    resetSidebarOnchainWalletMarketTradesScope(walletMarketTradesScopeKey);
+  }, [walletMarketTradesScopeKey]);
+
   useEffect(() => {
     setSidebarOnchainWalletPositions(walletPositions);
   }, [walletPositions]);
@@ -27,8 +38,15 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
   }, [gridWalletPositions]);
 
   useEffect(() => {
-    setSidebarOnchainWalletMarketTrades(walletMarketTrades);
-  }, [walletMarketTrades]);
+    const scopedIds = new Set(
+      (opts.scopedClobTokenIds || []).map((x) => String(x || '').trim()).filter(Boolean),
+    );
+    const rows =
+      scopedIds.size === 0
+        ? []
+        : walletMarketTrades.filter((t) => scopedIds.has(String(t.tokenId || '').trim()));
+    setSidebarOnchainWalletMarketTrades(rows, walletMarketTradesScopeKey);
+  }, [walletMarketTrades, walletMarketTradesScopeKey, opts.scopedClobTokenIds?.join('|') ?? '']);
 
   useEffect(() => {
     registerSidebarOnchainRefreshFns({

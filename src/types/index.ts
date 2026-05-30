@@ -292,7 +292,8 @@ export type PanelType =
   | 'chat'
   | 'spot-orderbook'
   | 'gex'
-  | 'wallet-history';
+  | 'wallet-history'
+  | 'pair-trading';
 
 export interface PanelConfig {
   id: string;

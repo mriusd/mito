@@ -1,5 +1,5 @@
 import type { Market, Position } from '../types';
-import { normalizeClobTokenId, outcomeTokenBelongsToSelectedMarket } from '../utils/format';
+import { normalizeClobTokenId, getPositionClobTokenId, outcomeTokenBelongsToSelectedMarket } from '../utils/format';
 import type { WSPosition } from '../hooks/useOnchainTradesWS';
 
 export const SIDEBAR_POSITION_DUST_SIZE = 0.01;
@@ -14,7 +14,7 @@ export function mergeSidebarPositionsWsRest(
 ): { asset: string; size: number; avgPrice: number }[] {
   const byTok = new Map<string, { asset: string; size: number; avgPrice: number }>();
   for (const p of restMarket) {
-    const key = normalizeClobTokenId(p.asset);
+    const key = normalizeClobTokenId(getPositionClobTokenId(p));
     if (!key) continue;
     byTok.set(key, {
       asset: String(p.asset || '').trim() || key,
@@ -46,7 +46,7 @@ export function resolveLegPositionForToken(
   const tidKey = normalizeClobTokenId(tokenId);
   if (!tidKey) return null;
 
-  const rest = positions.find((p) => normalizeClobTokenId(p.asset) === tidKey);
+  const rest = positions.find((p) => normalizeClobTokenId(getPositionClobTokenId(p)) === tidKey);
   let size = 0;
   let restAvg = 0;
   if (rest) {
@@ -81,7 +81,7 @@ export function computeSidebarMyPositions(
     .filter((p) => outcomeTokenBelongsToSelectedMarket(p.tokenId, selectedMarket, marketLookup))
     .map((p) => ({ tokenId: p.tokenId, size: p.size, avgPrice: p.avgPrice }));
   const restMarket = positions.filter((p) =>
-    outcomeTokenBelongsToSelectedMarket(String(p.asset || '').trim(), selectedMarket, marketLookup),
+    outcomeTokenBelongsToSelectedMarket(getPositionClobTokenId(p), selectedMarket, marketLookup),
   );
   return mergeSidebarPositionsWsRest(restMarket, wsMarketRows);
 }

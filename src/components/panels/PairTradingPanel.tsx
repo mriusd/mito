@@ -12,7 +12,7 @@ import { isMarketExpired } from '../../lib/marketExpiry';
 import { triggerWalletRefresh } from '../../lib/clobClient';
 import { cancelExistingSellOrdersForToken } from '../../lib/cancelExistingSellOrdersForToken';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
-import { useSidebarOnchainWalletPositions } from '../../lib/sidebarOnchainTradesStore';
+import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
 import type { SidebarObAggStep } from '../../lib/sidebarOrderbookAggregate';
 import { sidebarObAggregateLevels } from '../../lib/sidebarOrderbookAggregate';
 import { readSavedObAggStep, LS_SIDEBAR_OB_AGG_STEP } from '../../lib/sidebarObAggStep';
@@ -810,7 +810,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const signingMode = useAppStore((s) => s.signingMode);
   const pkAddress = useAppStore((s) => s.pkAddress);
-  const onchainWsPositions = useSidebarOnchainWalletPositions();
+  const onchainWsPositions = useSidebarOnchainGridWalletPositions();
   const { isConnected } = useAccount();
   const tradingWallet = useTradingWalletAddress();
 

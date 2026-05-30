@@ -70,7 +70,7 @@ function wsPositionsSig(rows: WSPosition[]): string {
   if (rows.length === 0) return '';
   return rows
     .slice(0, 8)
-    .map((p) => `${p.tokenId}:${p.size}:${p.avgPrice}`)
+    .map((p) => `${p.tokenId}:${p.size}:${p.avgPrice}:${p.feesPaid ?? ''}`)
     .join('|');
 }
 

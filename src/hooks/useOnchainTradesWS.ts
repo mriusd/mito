@@ -276,6 +276,7 @@ export interface WSPosition {
   tokenId: string;
   size: number;
   avgPrice: number;
+  feesPaid?: number;
   title?: string;
   slug?: string;
   eventSlug?: string;
@@ -293,6 +294,7 @@ function mapRawWSPosition(p: Record<string, unknown>): WSPosition | null {
     tokenId,
     size,
     avgPrice: Number(p.avgPrice || 0),
+    feesPaid: p.feesPaid != null ? Number(p.feesPaid) : undefined,
     title: typeof p.title === 'string' ? p.title : undefined,
     slug: typeof p.slug === 'string' ? p.slug : undefined,
     eventSlug: typeof p.eventSlug === 'string' ? p.eventSlug : undefined,
@@ -1311,6 +1313,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
           tokenId: String(p.tokenId || ''),
           size: Number(p.size || 0),
           avgPrice: Number(p.avgPrice || 0),
+          feesPaid: p.feesPaid != null ? Number(p.feesPaid) : undefined,
           title: p.title,
           slug: p.slug,
           eventSlug: p.eventSlug,

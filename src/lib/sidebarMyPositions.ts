@@ -1,4 +1,4 @@
-import type { Market, Position } from '../types';
+import type { Market, Position, Trade } from '../types';
 import { normalizeClobTokenId, getPositionClobTokenId, outcomeTokenBelongsToSelectedMarket } from '../utils/format';
 import type { WSPosition } from '../hooks/useOnchainTradesWS';
 
@@ -67,6 +67,32 @@ export function resolveLegPositionForToken(
 
   const avgPrice = restAvg > 0 ? restAvg : wsAvg;
   return { size, avgPrice };
+}
+
+/** Σ ledger/API fees for one outcome token (pair leg fees column). */
+export function resolveFeesPaidForToken(
+  tokenId: string,
+  liveTradesSource: string,
+  onchainWsPositions: WSPosition[],
+  trades: Trade[] = [],
+): number | null {
+  const tidKey = normalizeClobTokenId(tokenId);
+  if (!tidKey) return null;
+  if (liveTradesSource === 'onchain') {
+    const ws = onchainWsPositions.find((p) => normalizeClobTokenId(p.tokenId) === tidKey);
+    if (ws && ws.feesPaid != null && Number.isFinite(ws.feesPaid)) return ws.feesPaid;
+  }
+  let sum = 0;
+  let matched = false;
+  for (const t of trades) {
+    const tKey = normalizeClobTokenId(t.asset || t.asset_id || t.token_id || '');
+    if (tKey !== tidKey) continue;
+    matched = true;
+    const f = parseFloat(t.fee || '0');
+    if (Number.isFinite(f) && f > 0) sum += f;
+  }
+  if (liveTradesSource !== 'onchain' || matched) return sum;
+  return null;
 }
 
 export function computeSidebarMyPositions(

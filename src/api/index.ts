@@ -892,6 +892,7 @@ export interface OnchainMarketPositionRow {
   tokenId: string;
   size: number;
   avgPrice: number;
+  feesPaid?: number;
   /** `markets.question` */
   title?: string;
   slug?: string;

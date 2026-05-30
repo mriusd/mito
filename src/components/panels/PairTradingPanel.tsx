@@ -28,6 +28,7 @@ type PairLeg = 'UP' | 'DOWN';
 type PairSlot = 'left' | 'right';
 
 const PAIR_LIMIT_MAX_CENTS = 99;
+const PAIR_LIMIT_MIN_CENTS = 1;
 const PAIR_LIMIT_DELTA_DEFAULT_CENTS = 10;
 const CLOB_MIN_EXPIRY_SEC = 90;
 
@@ -258,6 +259,17 @@ function pairLimitFromAskPrice(askPrice: number | null, offsetCents: number): { 
   if (!Number.isFinite(offsetCents) || offsetCents < 0) return null;
   const cents = Math.min(askPrice * 100 + offsetCents, PAIR_LIMIT_MAX_CENTS);
   return { price: cents / 100, cents };
+}
+
+function pairLimitFromBidPrice(bidPrice: number | null, offsetCents: number): { price: number; cents: number } | null {
+  if (bidPrice == null || !Number.isFinite(bidPrice) || bidPrice <= 0) return null;
+  if (!Number.isFinite(offsetCents) || offsetCents < 0) return null;
+  const cents = Math.max(bidPrice * 100 - offsetCents, PAIR_LIMIT_MIN_CENTS);
+  return { price: cents / 100, cents };
+}
+
+function formatPnlUsd(pnlUsd: number): string {
+  return `${pnlUsd >= 0 ? '+' : ''}$${pnlUsd.toFixed(2)}`;
 }
 
 function fmtCents(cents: number): string {
@@ -565,62 +577,106 @@ function buildPairLegPositionRow(
   };
 }
 
-function PairLegPositionsTable({ rows }: { rows: PairLegPositionRowData[] }) {
+function legTokenId(market: Market | null, leg: PairLeg): string {
+  const idx = leg === 'UP' ? 0 : 1;
+  return market?.clobTokenIds?.[idx]?.trim() ?? '';
+}
+
+function PairLegPositionHalf({ row }: { row: PairLegPositionRowData }) {
+  const flat = row.size <= 0;
   return (
-    <div className="mt-2 border-t border-gray-700/60 pt-2">
-      <div className="mb-1 text-[10px] font-semibold text-gray-400">Open positions</div>
-      <div className="overflow-x-auto">
-        <div className="min-w-[580px] grid grid-cols-[44px_44px_56px_56px_64px_1fr_64px] gap-x-2 gap-y-1 text-[9px]">
-          <div className="text-gray-500">Leg</div>
-          <div className="text-gray-500">Asset</div>
-          <div className="text-right text-gray-500">Size</div>
-          <div className="text-right text-gray-500">Entry</div>
-          <div className="text-right text-gray-500">Cost</div>
-          <div className="text-right text-gray-500">Exit (bid VWAP)</div>
-          <div className="text-right text-gray-500">PnL</div>
-          {rows.map((row) => (
-            <div key={row.leg} className="contents">
-              <PairLegPositionCells row={row} />
-            </div>
-          ))}
-        </div>
+    <div className="min-w-0 flex-1 rounded border border-gray-700/60 bg-gray-900/30 px-2 py-1.5 text-[9px]">
+      <div className="mb-1 flex items-center gap-1 border-b border-gray-700/50 pb-1">
+        <span className={`font-bold ${ASSET_COLORS[row.asset]}`}>{row.asset}</span>
+        <span
+          className={`rounded px-1 py-px text-[8px] font-bold ${
+            row.leg === 'UP' ? 'bg-green-900/60 text-green-300' : 'bg-red-900/60 text-red-300'
+          }`}
+        >
+          {row.leg}
+        </span>
+      </div>
+      <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
+        <span className="text-gray-500">Size</span>
+        <span className="text-right tabular-nums text-gray-200">{flat ? '—' : row.size.toFixed(0)}</span>
+        <span className="text-gray-500">Entry</span>
+        <span className="text-right tabular-nums text-gray-200">
+          {row.entryCents != null ? fmtCents(row.entryCents) : '—'}
+        </span>
+        <span className="text-gray-500">Cost</span>
+        <span className="text-right tabular-nums text-gray-200">
+          {row.costUsd != null ? `$${row.costUsd.toFixed(2)}` : '—'}
+        </span>
+        <span className="text-gray-500">Exit</span>
+        <span className="text-right tabular-nums text-emerald-300">
+          {flat || row.exitCents == null ? (
+            '—'
+          ) : (
+            <>
+              {fmtCents(row.exitCents)}
+              {row.exitUsd != null ? <span className="text-gray-400"> · ${row.exitUsd.toFixed(2)}</span> : null}
+              {row.exitPartial ? <span className="text-red-400"> · thin</span> : null}
+            </>
+          )}
+        </span>
+        <span className="text-gray-500">PnL</span>
+        <span
+          className={`text-right tabular-nums font-semibold ${
+            row.pnlUsd == null ? 'text-gray-200' : row.pnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
+          }`}
+        >
+          {flat || row.pnlUsd == null ? '—' : `${row.pnlUsd >= 0 ? '+' : ''}$${row.pnlUsd.toFixed(2)}`}
+        </span>
       </div>
     </div>
   );
 }
 
-function PairLegPositionCells({ row }: { row: PairLegPositionRowData }) {
-  const flat = row.size <= 0;
+function PairLegPositionsRow({
+  left,
+  right,
+  totalPnlUsd,
+  onClose,
+  closing,
+  closeDisabled,
+}: {
+  left: PairLegPositionRowData;
+  right: PairLegPositionRowData;
+  totalPnlUsd: number | null;
+  onClose: () => void;
+  closing: boolean;
+  closeDisabled: boolean;
+}) {
   return (
-    <>
-      <div className={row.leg === 'UP' ? 'font-bold text-green-300' : 'font-bold text-red-300'}>{row.leg}</div>
-      <div className={`font-bold ${ASSET_COLORS[row.asset]}`}>{row.asset}</div>
-      <div className="text-right tabular-nums text-gray-200">{flat ? '—' : row.size.toFixed(0)}</div>
-      <div className="text-right tabular-nums text-gray-200">
-        {row.entryCents != null ? fmtCents(row.entryCents) : '—'}
+    <div className="mt-2 border-t border-gray-700/60 pt-2">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <div className="text-[10px] font-semibold text-gray-400">Open positions</div>
+        <div className="flex items-center gap-2">
+          <div className="text-[10px] tabular-nums">
+            <span className="text-gray-500">Total PnL </span>
+            <span
+              className={`font-bold ${
+                totalPnlUsd == null ? 'text-gray-400' : totalPnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
+              }`}
+            >
+              {totalPnlUsd == null ? '—' : formatPnlUsd(totalPnlUsd)}
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={closeDisabled}
+            onClick={onClose}
+            className="h-6 shrink-0 rounded bg-red-700 px-2.5 text-[10px] font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {closing ? 'Closing…' : 'CLOSE'}
+          </button>
+        </div>
       </div>
-      <div className="text-right tabular-nums text-gray-200">
-        {row.costUsd != null ? `$${row.costUsd.toFixed(2)}` : '—'}
+      <div className="flex gap-2">
+        <PairLegPositionHalf row={left} />
+        <PairLegPositionHalf row={right} />
       </div>
-      <div className="text-right tabular-nums text-emerald-300">
-        {flat || row.exitCents == null ? (
-          '—'
-        ) : (
-          <>
-            {fmtCents(row.exitCents)}
-            {row.exitUsd != null ? <span className="text-gray-400"> · ${row.exitUsd.toFixed(2)}</span> : null}
-            {row.exitPartial ? <span className="text-red-400"> · thin</span> : null}
-          </>
-        )}
-      </div>
-      <div
-        className={`text-right tabular-nums font-semibold ${
-          row.pnlUsd == null ? 'text-gray-200' : row.pnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
-        }`}
-      >
-        {flat || row.pnlUsd == null ? '—' : `${row.pnlUsd >= 0 ? '+' : ''}$${row.pnlUsd.toFixed(2)}`}
-      </div>
-    </>
+    </div>
   );
 }
 
@@ -673,6 +729,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const [obAggStep, setObAggStep] = useState<SidebarObAggStep>(() => readSavedObAggStep());
   const [orderAmount, setOrderAmount] = useState('');
   const [placing, setPlacing] = useState(false);
+  const [closing, setClosing] = useState(false);
 
   const leftLeg: PairLeg = upSlot === 'left' ? 'UP' : 'DOWN';
   const rightLeg: PairLeg = upSlot === 'left' ? 'DOWN' : 'UP';
@@ -755,40 +812,134 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const pairAskInsufficient =
     hasShareAmount && upAskWalk != null && downAskWalk != null && (!upAskWalk.complete || !downAskWalk.complete);
 
-  const upLimit = pairLimitFromAskPrice(
-    hasShareAmount && upAskWalk ? upAskWalk.avgPrice : upBook.bestAsk,
-    priceDeltaCents,
-  );
-  const downLimit = pairLimitFromAskPrice(
-    hasShareAmount && downAskWalk ? downAskWalk.avgPrice : downBook.bestAsk,
-    priceDeltaCents,
-  );
-  const pairLimitCents =
-    upLimit != null && downLimit != null ? upLimit.cents + downLimit.cents : null;
-
   const estPairCostUsd =
     hasShareAmount && pairAskCents != null ? (pairAskCents / 100) * shares : null;
 
   const upTokenId = upMarket?.clobTokenIds?.[0]?.trim() ?? '';
   const downTokenId = downMarket?.clobTokenIds?.[1]?.trim() ?? '';
+  const leftTokenId = legTokenId(leftMarket, leftLeg);
+  const rightTokenId = legTokenId(rightMarket, rightLeg);
 
-  const pairLegPositionRows = useMemo(
-    () => [
-      buildPairLegPositionRow('UP', upAsset, upTokenId, upBook, positions, liveTradesSource, onchainWsPositions),
-      buildPairLegPositionRow('DOWN', downAsset, downTokenId, downBook, positions, liveTradesSource, onchainWsPositions),
-    ],
-    [
-      upAsset,
-      downAsset,
-      upTokenId,
-      downTokenId,
-      upBook,
-      downBook,
-      positions,
-      liveTradesSource,
-      onchainWsPositions,
-    ],
+  const leftPositionRow = useMemo(
+    () =>
+      buildPairLegPositionRow(
+        leftLeg,
+        leftAsset,
+        leftTokenId,
+        leftBook,
+        positions,
+        liveTradesSource,
+        onchainWsPositions,
+      ),
+    [leftLeg, leftAsset, leftTokenId, leftBook, positions, liveTradesSource, onchainWsPositions],
   );
+  const rightPositionRow = useMemo(
+    () =>
+      buildPairLegPositionRow(
+        rightLeg,
+        rightAsset,
+        rightTokenId,
+        rightBook,
+        positions,
+        liveTradesSource,
+        onchainWsPositions,
+      ),
+    [rightLeg, rightAsset, rightTokenId, rightBook, positions, liveTradesSource, onchainWsPositions],
+  );
+
+  const totalPnlUsd = useMemo(() => {
+    const parts = [leftPositionRow.pnlUsd, rightPositionRow.pnlUsd].filter((v): v is number => v != null);
+    if (parts.length === 0) return null;
+    return parts.reduce((sum, v) => sum + v, 0);
+  }, [leftPositionRow.pnlUsd, rightPositionRow.pnlUsd]);
+
+  const hasOpenPosition = leftPositionRow.size > 0 || rightPositionRow.size > 0;
+
+  const handleClosePair = useCallback(async () => {
+    if (!walletReady) {
+      showToast('Connect wallet first', 'error');
+      return;
+    }
+    if (!hasOpenPosition) {
+      showToast('No open positions', 'error');
+      return;
+    }
+
+    const legs = [
+      {
+        row: leftPositionRow,
+        market: leftMarket,
+        book: leftBook,
+        tokenId: leftTokenId,
+      },
+      {
+        row: rightPositionRow,
+        market: rightMarket,
+        book: rightBook,
+        tokenId: rightTokenId,
+      },
+    ];
+
+    setClosing(true);
+    try {
+      for (const { row, market, book, tokenId } of legs) {
+        if (row.size <= 0 || !tokenId || !market) continue;
+        if (isMarketExpired(market)) {
+          showToast(`${row.asset} ${row.leg}: market expired`, 'error');
+          return;
+        }
+
+        const size = Math.floor(row.size * 100) / 100;
+        if (size <= 0) continue;
+
+        const bidWalk = walkBidsForShares(book.rawBids, size);
+        if (!bidWalk?.complete) {
+          showToast(`${row.asset} ${row.leg}: not enough bid depth for ${size} shares`, 'error');
+          return;
+        }
+
+        const limitPx = pairLimitFromBidPrice(bidWalk.avgPrice, priceDeltaCents);
+        if (!limitPx) {
+          showToast(`${row.asset} ${row.leg}: no bid in book`, 'error');
+          return;
+        }
+
+        const result = await placeOrder({
+          tokenId,
+          side: 'SELL',
+          price: limitPx.price,
+          size,
+          expiration: 0,
+          orderInfo: `Pair SELL ${size} ${row.leg} ${row.asset} @ ${fmtCents(limitPx.cents)} (${timeframe})`,
+        });
+        if (!result.success) {
+          showToast(result.error || `${row.asset} ${row.leg} close failed`, 'error');
+          triggerWalletRefresh();
+          return;
+        }
+      }
+
+      showToast('Pair close orders placed', 'success');
+      triggerWalletRefresh();
+    } catch {
+      showToast('Pair close failed', 'error');
+    } finally {
+      setClosing(false);
+    }
+  }, [
+    walletReady,
+    hasOpenPosition,
+    leftPositionRow,
+    rightPositionRow,
+    leftMarket,
+    rightMarket,
+    leftBook,
+    rightBook,
+    leftTokenId,
+    rightTokenId,
+    priceDeltaCents,
+    timeframe,
+  ]);
 
   const handlePlacePair = useCallback(async () => {
     if (!walletReady) {
@@ -1050,17 +1201,6 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
             {pairAskInsufficient ? (
               <span className="ml-2 font-semibold text-red-400">insufficient ask depth</span>
             ) : null}
-            <span className="ml-2 text-gray-500">
-              Limit:{' '}
-              <span className="tabular-nums text-gray-300">
-                {pairLimitCents != null ? fmtCents(pairLimitCents) : '—'}
-              </span>
-              {upLimit != null && downLimit != null ? (
-                <span className="ml-1">
-                  ({upAsset} UP {fmtCents(upLimit.cents)} + {downAsset} DOWN {fmtCents(downLimit.cents)})
-                </span>
-              ) : null}
-            </span>
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -1109,7 +1249,14 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
             {placing ? 'Placing…' : 'Place Pair'}
           </button>
         </div>
-        <PairLegPositionsTable rows={pairLegPositionRows} />
+        <PairLegPositionsRow
+          left={leftPositionRow}
+          right={rightPositionRow}
+          totalPnlUsd={totalPnlUsd}
+          onClose={() => void handleClosePair()}
+          closing={closing}
+          closeDisabled={!walletReady || closing || placing || !hasOpenPosition}
+        />
       </div>
     </div>
   );

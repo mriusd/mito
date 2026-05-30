@@ -87,6 +87,12 @@ export function pickLiveUpDownMarketInTfBucket(marketsForTf: Market[] | undefine
   return list.length ? list[0]! : null;
 }
 
+/** Second soonest-ending future row in TF bucket (upcoming window after current live). */
+export function pickNextUpDownMarketInTfBucket(marketsForTf: Market[] | undefined, nowMs: number = Date.now()): Market | null {
+  const list = listFutureUpDownMarketsInTfBucket(marketsForTf, nowMs);
+  return list.length > 1 ? list[1]! : null;
+}
+
 /**
  * Up/Down target from Gamma `priceToBeat`: same order as UpDownMarketsPanel (row → lookup).
  * Also reads `upOrDownMarkets` bucket by id when the selected snapshot lacks `priceToBeat` but the store row was refreshed (e.g. after auto-switch at expiry).

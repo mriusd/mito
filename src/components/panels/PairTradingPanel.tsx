@@ -7,7 +7,7 @@ import { usePolymarketOB } from '../../hooks/usePolymarketOB';
 import { useExpiryNow } from '../../hooks/useExpiryNow';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { formatMarketCountdown } from '../../lib/marketCountdown';
-import { pickLiveUpDownMarketInTfBucket, normalizeClobTokenId, resolvedBinaryOutcomeLabel } from '../../utils/format';
+import { pickLiveUpDownMarketInTfBucket, pickNextUpDownMarketInTfBucket, normalizeClobTokenId, resolvedBinaryOutcomeLabel } from '../../utils/format';
 import { isMarketExpired } from '../../lib/marketExpiry';
 import { triggerWalletRefresh } from '../../lib/clobClient';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
@@ -26,6 +26,7 @@ type PairAsset = (typeof ASSETS)[number];
 type PairTimeframe = (typeof TIMEFRAMES)[number];
 type PairLeg = 'UP' | 'DOWN';
 type PairSlot = 'left' | 'right';
+type PairMarketSlot = 'current' | 'next';
 
 const PAIR_LIMIT_MAX_CENTS = 99;
 const PAIR_LIMIT_MIN_CENTS = 1;
@@ -85,6 +86,15 @@ function readStoredUpSlot(panelId: string): PairSlot {
     return saved === 'right' ? 'right' : 'left';
   } catch {
     return 'left';
+  }
+}
+
+function readStoredPairMarketSlot(panelId: string): PairMarketSlot {
+  try {
+    const saved = localStorage.getItem(`polybot-pair-trading-market-slot-${panelId}`);
+    return saved === 'next' ? 'next' : 'current';
+  } catch {
+    return 'current';
   }
 }
 
@@ -641,6 +651,7 @@ function PairLegPositionTableRow({ row }: { row: PairLegPositionRowData }) {
 function PairLegPositionsRow({
   left,
   right,
+  totalEntryCents,
   totalExitCents,
   totalPnlUsd,
   onClose,
@@ -649,6 +660,7 @@ function PairLegPositionsRow({
 }: {
   left: PairLegPositionRowData;
   right: PairLegPositionRowData;
+  totalEntryCents: number | null;
   totalExitCents: number | null;
   totalPnlUsd: number | null;
   onClose: () => void;
@@ -686,13 +698,22 @@ function PairLegPositionsRow({
             </tbody>
           </table>
         </div>
-        <div className="flex shrink-0 flex-col items-end justify-center gap-1.5 border-l border-gray-700/50 pl-3">
-          <div className="flex flex-col items-end gap-0.5">
-            <span className="text-[8px] text-gray-500">Total</span>
-            <div className="flex items-baseline gap-2 whitespace-nowrap">
-              <span className={`font-bold tabular-nums ${pairExitColorClass(totalExitCents)}`}>
-                {totalExitCents != null ? `${totalExitCents.toFixed(1)}¢` : '—'}
+        <div className="flex w-[7.5rem] shrink-0 flex-col gap-1.5 border-l border-gray-700/50 pl-3">
+          <div className="grid grid-cols-3 gap-1">
+            <div className="flex flex-col items-end gap-0.5">
+              <span className="text-[8px] text-gray-500">Entry</span>
+              <span className="font-bold tabular-nums text-gray-200">
+                {totalEntryCents != null ? fmtCents(totalEntryCents) : '—'}
               </span>
+            </div>
+            <div className="flex flex-col items-end gap-0.5">
+              <span className="text-[8px] text-gray-500">Exit</span>
+              <span className={`font-bold tabular-nums ${pairExitColorClass(totalExitCents)}`}>
+                {totalExitCents != null ? fmtCents(totalExitCents) : '—'}
+              </span>
+            </div>
+            <div className="flex flex-col items-end gap-0.5">
+              <span className="text-[8px] text-gray-500">PnL</span>
               <span
                 className={`font-bold tabular-nums ${
                   totalPnlUsd == null ? 'text-gray-400' : totalPnlUsd >= 0 ? 'text-green-400' : 'text-red-400'
@@ -706,7 +727,7 @@ function PairLegPositionsRow({
             type="button"
             disabled={closeDisabled}
             onClick={onClose}
-            className="h-5 shrink-0 rounded bg-red-700 px-2 text-[9px] font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+            className="h-5 w-full rounded bg-red-700 text-[9px] font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {closing ? 'Closing…' : 'CLOSE'}
           </button>
@@ -745,6 +766,31 @@ function LegToggle({
   );
 }
 
+function MarketSlotToggle({
+  slot,
+  onPick,
+}: {
+  slot: PairMarketSlot;
+  onPick: (slot: PairMarketSlot) => void;
+}) {
+  return (
+    <div className="inline-flex overflow-hidden rounded border border-gray-600 divide-x divide-gray-600 bg-gray-900/90">
+      {(['current', 'next'] as const).map((side) => (
+        <button
+          key={side}
+          type="button"
+          onClick={() => onPick(side)}
+          className={`px-1.5 py-0.5 text-[9px] font-semibold capitalize transition ${
+            slot === side ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          {side}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function PairTradingPanel({ panelId }: { panelId: string }) {
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
   const maxOrderSizeUsd = useAppStore((s) => s.maxOrderSizeUsd);
@@ -762,6 +808,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const [leftAsset, setLeftAsset] = useState<PairAsset>(() => readStoredPairAsset(panelId, 'left', 'BTC'));
   const [rightAsset, setRightAsset] = useState<PairAsset>(() => readStoredPairAsset(panelId, 'right', 'ETH'));
   const [upSlot, setUpSlot] = useState<PairSlot>(() => readStoredUpSlot(panelId));
+  const [marketSlot, setMarketSlot] = useState<PairMarketSlot>(() => readStoredPairMarketSlot(panelId));
   const [priceDeltaCents, setPriceDeltaCents] = useState<number>(() => readStoredPairPriceDelta(panelId));
   const [priceDeltaInput, setPriceDeltaInput] = useState<string>(() => String(readStoredPairPriceDelta(panelId)));
   const [obAggStep, setObAggStep] = useState<SidebarObAggStep>(() => readSavedObAggStep());
@@ -806,14 +853,22 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
     [panelId, priceDeltaCents],
   );
 
-  const leftMarket = useMemo(
-    () => pickLiveUpDownMarketInTfBucket(upOrDownMarkets[leftAsset as AssetSymbol]?.[timeframe]),
-    [upOrDownMarkets, leftAsset, timeframe],
+  const setMarketSlotPersist = useCallback(
+    (slot: PairMarketSlot) => {
+      setMarketSlot(slot);
+      localStorage.setItem(`polybot-pair-trading-market-slot-${panelId}`, slot);
+    },
+    [panelId],
   );
-  const rightMarket = useMemo(
-    () => pickLiveUpDownMarketInTfBucket(upOrDownMarkets[rightAsset as AssetSymbol]?.[timeframe]),
-    [upOrDownMarkets, rightAsset, timeframe],
-  );
+
+  const leftMarket = useMemo(() => {
+    const bucket = upOrDownMarkets[leftAsset as AssetSymbol]?.[timeframe];
+    return marketSlot === 'next' ? pickNextUpDownMarketInTfBucket(bucket) : pickLiveUpDownMarketInTfBucket(bucket);
+  }, [upOrDownMarkets, leftAsset, timeframe, marketSlot]);
+  const rightMarket = useMemo(() => {
+    const bucket = upOrDownMarkets[rightAsset as AssetSymbol]?.[timeframe];
+    return marketSlot === 'next' ? pickNextUpDownMarketInTfBucket(bucket) : pickLiveUpDownMarketInTfBucket(bucket);
+  }, [upOrDownMarkets, rightAsset, timeframe, marketSlot]);
 
   const leftBook = usePairLegOrderbook(leftMarket, leftLeg, obAggStep);
   const rightBook = usePairLegOrderbook(rightMarket, rightLeg, obAggStep);
@@ -916,6 +971,12 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
       trades,
     ],
   );
+
+  const totalEntryCents = useMemo(() => {
+    const parts = [leftPositionRow.entryCents, rightPositionRow.entryCents].filter((v): v is number => v != null);
+    if (parts.length === 0) return null;
+    return parts.reduce((sum, v) => sum + v, 0);
+  }, [leftPositionRow.entryCents, rightPositionRow.entryCents]);
 
   const totalExitCents = useMemo(() => {
     const parts = [leftPositionRow.exitCents, rightPositionRow.exitCents].filter((v): v is number => v != null);
@@ -1166,6 +1227,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
               ))}
             </select>
           </label>
+          <MarketSlotToggle slot={marketSlot} onPick={setMarketSlotPersist} />
           <label className="flex items-center gap-1 text-[9px] text-gray-500">
             Left
             <select
@@ -1301,6 +1363,7 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
         <PairLegPositionsRow
           left={leftPositionRow}
           right={rightPositionRow}
+          totalEntryCents={totalEntryCents}
           totalExitCents={totalExitCents}
           totalPnlUsd={totalPnlUsd}
           onClose={() => void handleClosePair()}

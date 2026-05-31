@@ -479,9 +479,9 @@ const PairTradingOrderbookColumn = memo(function PairTradingOrderbookColumn({
   const yesTokenId = market?.clobTokenIds?.[0]?.trim() ?? '';
   const noTokenId = market?.clobTokenIds?.[1]?.trim() ?? '';
 
-  const { sidebarUserBidPrices, sidebarUserAskPrices } = useMemo(() => {
+  const { bidPrices: sidebarUserBidPrices, askPrices: sidebarUserAskPrices } = useMemo(() => {
     if (!yesTokenId && !noTokenId) {
-      return { sidebarUserBidPrices: EMPTY_PRICE_SET, sidebarUserAskPrices: EMPTY_PRICE_SET };
+      return { bidPrices: EMPTY_PRICE_SET, askPrices: EMPTY_PRICE_SET };
     }
     const filtered = orders.filter((o) => !progOrderMap[o.id]);
     return buildSidebarUserOrderHighlightSets(filtered, yesTokenId, noTokenId, viewOutcome);

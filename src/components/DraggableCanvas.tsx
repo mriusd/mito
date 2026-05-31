@@ -52,6 +52,9 @@ const LazyPairTradingPanel = lazyWithChunkReload(() =>
 const LazyUpOrDownHUDPanel = lazyWithChunkReload(() =>
   import('./panels/UpOrDownHUDPanel').then((m) => ({ default: m.UpOrDownHUDPanel })),
 );
+const LazyMarkovPanel = lazyWithChunkReload(() =>
+  import('./panels/MarkovPanel').then((m) => ({ default: m.MarkovPanel })),
+);
 const LazyChatPanel = lazyWithChunkReload(() =>
   import('./panels/ChatPanel').then((m) => ({ default: m.ChatPanel })),
 );
@@ -191,6 +194,8 @@ function renderPanel(panel: PanelConfig): ReactNode {
       return <LazyGexPanel panelId={panel.id} />;
     case 'updown-hud':
       return <LazyUpOrDownHUDPanel panelId={panel.id} />;
+    case 'markov':
+      return <LazyMarkovPanel panelId={panel.id} />;
     case 'chat':
       return <LazyChatPanel />;
     case 'wallet-history':
@@ -351,6 +356,7 @@ export function DraggableCanvas() {
     'pair-trading': 'Pair Trading',
     'gex': 'Dealer GEX',
     'updown-hud': 'UpOrDown HUD',
+    'markov': 'Markov Chains',
     'signals': 'Signals', 'smart-money': 'Smart Money', 'chat': 'Chat', 'pnl': 'P&L',
     'arbs': 'Hedges', 'summary': 'Summary',
     'wallet-history': 'History',

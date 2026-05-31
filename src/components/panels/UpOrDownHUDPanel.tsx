@@ -10,6 +10,7 @@ import { BinanceChartPanel } from './BinanceChartPanel';
 import { MarketCellMidRow } from './MarketCellMidRow';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { getMarketProbability } from '../../utils/bsMath';
+import { useMarkovUpDown, markovNextUpProb } from '../../hooks/useMarkovUpDown';
 
 const ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
 const TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
@@ -85,6 +86,7 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const chainlinkPrices = useChainlinkPricesMap();
+  const markovModels = useMarkovUpDown();
 
   const sym = assetToSymbol(asset) as AssetSymbol;
   const livePrice = priceData[sym]?.price ?? 0;
@@ -205,6 +207,12 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
             <tr>
               <th className="px-2 py-1 text-center text-gray-400 font-bold border-b border-r border-gray-700 bg-gray-900">TF</th>
               <th className="px-1 py-0.5 text-center border-b border-r border-l border-gray-700 border-solid bg-gray-900 text-[9px] text-gray-400 font-semibold">Target</th>
+              <th
+                className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900 text-[9px] text-amber-400/90 font-semibold"
+                title="Markov chain: P(next market UP), live-conditioned on the current window's BS prob. o1 = 1st order, o2 = 2nd order."
+              >
+                MC
+              </th>
               <th className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/80 text-[9px] text-gray-400 font-semibold">Current</th>
               <th className="px-1 py-0.5 text-center border-b border-l border-r border-gray-700 border-solid bg-gray-900/70 text-[9px] text-gray-400 font-semibold">Next</th>
               <th className="px-1 py-0.5 text-right border-b border-l border-r border-gray-700 border-solid bg-gray-900/40 text-[9px] text-sky-400/90 font-semibold" title="Toxic Flow USDC (wallet usdc_in), thousands">
@@ -315,6 +323,36 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
                             )}
                           </div>
                         </td>
+                        {(() => {
+                          // MC: live-conditioned Markov P(next market UP). pUpCur = current
+                          // window's BS prob (mathYesProb); blended with the transition matrix.
+                          const tfModel = markovModels?.[asset]?.[tf];
+                          const { order1, order2 } = markovNextUpProb(tfModel, mathYesProb);
+                          const cls = (p: number | null) =>
+                            p == null
+                              ? 'text-gray-600'
+                              : Math.abs(p * 100 - 50) <= MATH_PROB_NEUTRAL_BAND
+                                ? 'text-gray-300/90'
+                                : p > 0.5
+                                  ? 'text-green-300'
+                                  : 'text-red-300';
+                          const fmt = (p: number | null) => (p == null ? '-' : (p * 100).toFixed(0));
+                          return (
+                            <td
+                              className="px-1 py-1 align-middle border-l border-r border-solid border-gray-700 text-center bg-gray-900/40 border-b border-gray-700/50 tabular-nums"
+                              title="Markov P(next UP), live-conditioned on current BS prob. o1 = 1st order, o2 = 2nd order."
+                            >
+                              <div className="flex flex-col items-center leading-tight">
+                                <span className={`text-[9px] font-bold ${cls(order1)}`}>
+                                  <span className="text-gray-500 font-normal">o1 </span>{fmt(order1)}
+                                </span>
+                                <span className={`text-[9px] font-bold ${cls(order2)}`}>
+                                  <span className="text-gray-500 font-normal">o2 </span>{fmt(order2)}
+                                </span>
+                              </div>
+                            </td>
+                          );
+                        })()}
                         <td
                           className={`px-0.5 py-1 text-center whitespace-nowrap border-l border-r border-solid border-gray-700 relative cursor-pointer hover:brightness-125 border-b border-gray-700/50 ${
                             selectedMarket?.id === current?.id ? 'bg-purple-600/35 z-10' : ''

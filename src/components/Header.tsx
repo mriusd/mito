@@ -58,6 +58,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'wallet-history', title: 'History' },
   { type: 'updown-overview', title: 'Up/Down Markets' },
   { type: 'updown-hud', title: 'UpOrDown HUD' },
+  { type: 'markov', title: 'Markov Chains' },
   { type: 'relative-chart', title: 'Relative Chart' },
   { type: 'perp-bot', title: 'Perp Bot', devOnly: true },
   { type: 'price-forecast', title: 'Price Forecast' },

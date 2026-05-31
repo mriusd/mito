@@ -289,6 +289,7 @@ export type PanelType =
   | 'price-forecast'
   | 'binance-chart'
   | 'updown-hud'
+  | 'markov'
   | 'chat'
   | 'spot-orderbook'
   | 'gex'

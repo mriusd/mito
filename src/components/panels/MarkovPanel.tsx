@@ -6,6 +6,7 @@ import { assetToSymbol } from '../../utils/format';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { getMarketProbability } from '../../utils/bsMath';
 import { useMarkovUpDown, markovNextUpProb, type MarkovTFModel } from '../../hooks/useMarkovUpDown';
+import { useLogregUpDown, type LrTFModel } from '../../hooks/useLogregUpDown';
 
 const ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
 const TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
@@ -53,6 +54,7 @@ function stationaryUp(m: MarkovTFModel): number | null {
 interface TFRow {
   tf: string;
   model: MarkovTFModel | undefined;
+  lr: LrTFModel | undefined;
   pUpCur: number | null;
   pred: ReturnType<typeof markovNextUpProb>;
 }
@@ -61,6 +63,7 @@ function computeTFRow(
   asset: AssetName,
   tf: string,
   models: ReturnType<typeof useMarkovUpDown>,
+  lrModels: ReturnType<typeof useLogregUpDown>,
   upOrDownMarkets: Record<string, Record<string, Market[]>>,
   chainlinkPrices: Partial<Record<AssetName, number>>,
   priceData: Record<string, { price?: number }>,
@@ -69,6 +72,7 @@ function computeTFRow(
   bsTimeOffsetHours: number,
 ): TFRow {
   const model = models?.[asset]?.[tf];
+  const lr = lrModels?.[asset]?.[tf];
   const assetMarkets = upOrDownMarkets[asset] || {};
   const sym = assetToSymbol(asset) as AssetSymbol;
   const current = getCurrentMarket(assetMarkets, tf);
@@ -86,12 +90,51 @@ function computeTFRow(
     if (p != null) pUpCur = p;
   }
   const pred = markovNextUpProb(model, pUpCur);
-  return { tf, model, pUpCur, pred };
+  return { tf, model, lr, pUpCur, pred };
+}
+
+// LrRow renders the logistic-regression prediction + its walk-forward backtest quality.
+function LrRow({ lr }: { lr: LrTFModel | undefined }) {
+  if (!lr) return null;
+  if (!lr.ok) {
+    return (
+      <div className="flex items-center gap-2 text-[9px] text-gray-600 border-t border-gray-700/50 pt-1">
+        <span className="font-bold text-amber-400/60">LR</span>
+        <span>insufficient data (n={lr.n})</span>
+      </div>
+    );
+  }
+  const bt = lr.backtest;
+  const edge = bt.edgeAcc * 100;
+  // Edge over the always-pick-majority baseline is the headline: is the model actually useful?
+  const edgeCls = edge >= 1 ? 'text-green-400' : edge <= -1 ? 'text-red-400' : 'text-gray-500';
+  const aucCls = bt.auc >= 0.55 ? 'text-green-400' : bt.auc <= 0.45 ? 'text-red-400' : 'text-gray-400';
+  return (
+    <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 text-[9px] border-t border-gray-700/50 pt-1">
+      <span className="font-bold text-amber-400">LR</span>
+      <span className="text-gray-500">
+        next <span className={`tabular-nums font-bold ${probColor(lr.prediction)}`}>{pct(lr.prediction)}</span>
+      </span>
+      <span className="ml-auto text-gray-500" title="Walk-forward out-of-sample accuracy">
+        acc <span className="tabular-nums text-gray-300">{(bt.accuracy * 100).toFixed(1)}</span>
+      </span>
+      <span className="text-gray-500" title="Accuracy minus always-pick-majority baseline">
+        edge <span className={`tabular-nums font-bold ${edgeCls}`}>{edge >= 0 ? '+' : ''}{edge.toFixed(1)}</span>
+      </span>
+      <span className="text-gray-500" title="ROC AUC (0.5 = no skill)">
+        auc <span className={`tabular-nums ${aucCls}`}>{bt.auc.toFixed(2)}</span>
+      </span>
+      <span className="text-gray-600" title={`Brier ${bt.brier.toFixed(3)} · logloss ${bt.logLoss.toFixed(3)} · ${bt.refits} refits`}>
+        n<span className="tabular-nums">{bt.n}</span>
+      </span>
+    </div>
+  );
 }
 
 function MarkovTFCard({
   tf,
   model,
+  lr,
   pUpCur,
   pred,
   compact,
@@ -124,7 +167,7 @@ function MarkovTFCard({
           {compact && (
             <>
               <span className="text-gray-500">base <span className={`tabular-nums ${probColor(base)}`}>{pct(base)}</span></span>
-              <span className="text-gray-500">lr <span className={`tabular-nums ${probColor(stat)}`}>{pct(stat)}</span></span>
+              <span className="text-gray-500">stat <span className={`tabular-nums ${probColor(stat)}`}>{pct(stat)}</span></span>
             </>
           )}
         </div>
@@ -143,6 +186,9 @@ function MarkovTFCard({
           </span>
         </div>
       </div>
+
+      <LrRow lr={lr} />
+
 
       <div className={`flex gap-2 min-w-0 ${compact ? 'flex-col' : 'flex-wrap'}`}>
         <div className="flex flex-col gap-0.5 min-w-0">
@@ -217,6 +263,7 @@ function MarkovPanelInner({ panelId }: { panelId: string }) {
   const [wide, setWide] = useState(false);
 
   const models = useMarkovUpDown();
+  const lrModels = useLogregUpDown();
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
   const priceData = useAppStore((s) => s.priceData);
   const volatilityData = useAppStore((s) => s.volatilityData);
@@ -248,12 +295,12 @@ function MarkovPanelInner({ panelId }: { panelId: string }) {
       cells[a] = {};
       for (const tf of TIMEFRAMES) {
         cells[a][tf] = computeTFRow(
-          a, tf, models, upOrDownMarkets, chainlinkPrices, priceData, volatilityData, volMultiplier, bsTimeOffsetHours,
+          a, tf, models, lrModels, upOrDownMarkets, chainlinkPrices, priceData, volatilityData, volMultiplier, bsTimeOffsetHours,
         );
       }
     }
     return cells;
-  }, [models, upOrDownMarkets, chainlinkPrices, priceData, volatilityData, volMultiplier, bsTimeOffsetHours]);
+  }, [models, lrModels, upOrDownMarkets, chainlinkPrices, priceData, volatilityData, volMultiplier, bsTimeOffsetHours]);
 
   const narrowRows = useMemo(
     () => TIMEFRAMES.map((tf) => gridCells[asset][tf]),

@@ -23,8 +23,6 @@ export const DEFAULT_UPDOWN_NEXT_HI_CENTS = 65;
 /** Matches `.updown-triangle-badge-flash` animation period in index.css. */
 export const UPDOWN_TRIANGLE_FLASH_MS = 1000;
 
-const SIDEBAR_NOTIFY_PLAY_SOUND_KEY = 'polybot-sidebar-notify-play-sound';
-
 const UPDOWN_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 const UPDOWN_TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
 
@@ -58,16 +56,6 @@ export function readNotifyUpDownNextHiCents(): number {
     return clampHiCents(Number.parseFloat(raw));
   } catch {
     return DEFAULT_UPDOWN_NEXT_HI_CENTS;
-  }
-}
-
-function readNotifyPlaySoundEnabled(): boolean {
-  try {
-    const v = localStorage.getItem(SIDEBAR_NOTIFY_PLAY_SOUND_KEY);
-    if (v === null) return false;
-    return v === '1';
-  } catch {
-    return false;
   }
 }
 
@@ -272,7 +260,6 @@ export function useUpDownNextMarketFlashWhaleSound(
     const pitchMul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider());
     const ringTimeS = readNotifyRingTimeS();
     const tick = () => {
-      if (!readNotifyPlaySoundEnabled()) return;
       const kind = whaleKindRef.current;
       if (!kind) return;
       void playTiltNotifySoundStrikes(kind, pitchMul, ringTimeS, 3);

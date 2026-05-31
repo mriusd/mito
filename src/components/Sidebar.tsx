@@ -2104,7 +2104,7 @@ export const Sidebar = memo(function Sidebar() {
         const cancel = await cancelExistingSellOrdersForToken(tokenId);
         if (!cancel.ok) return;
         if (cancel.replaced) replacedSell = true;
-      }
+    }
 
     let expiration = 0;
       if (spec.side === 'BUY') {

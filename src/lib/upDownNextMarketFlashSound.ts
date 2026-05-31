@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type { Market } from '../types';
 import { useExpiryNow } from '../hooks/useExpiryNow';
-import { useThrottledMarketLookupSubset } from '../hooks/useThrottledMarketLookupSubset';
-import { GRID_BID_ASK_THROTTLE_MS } from './bidAskMarketLookup';
+import { useLiveBidAskLookupSubset } from '../hooks/useLiveBidAskLookupSubset';
 import {
   getMarketNotifyMutedSnapshot,
   isMarketNotifyMuted,
@@ -199,7 +198,7 @@ export function useUpDownNextMarketFlashWhaleSound(
     return [...ids];
   }, [nextMarkets]);
 
-  const bidAskLookup = useThrottledMarketLookupSubset(lookupTokenIds, GRID_BID_ASK_THROTTLE_MS);
+  const bidAskLookup = useLiveBidAskLookupSubset(lookupTokenIds);
   const mutedMarketsKey = useSyncExternalStore(
     subscribeMarketNotifyMuted,
     getMarketNotifyMutedSnapshot,
@@ -234,17 +233,9 @@ export function useUpDownNextMarketFlashWhaleSound(
   }, [nextMarkets, bidAskLookup, mutedMarketsKey, alertEnabled, hiThreshold]);
 
   const prevHiKeysRef = useRef('');
-  const intervalRef = useRef<number | null>(null);
-  const whaleKindRef = useRef<'green' | 'red' | null>(null);
-  whaleKindRef.current = whaleKind;
 
   useEffect(() => {
     ensureTiltAudioUnlockListeners();
-
-    if (intervalRef.current != null) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
 
     if (!alertEnabled || !whaleKind || !hiKeysSig) {
       prevHiKeysRef.current = '';
@@ -252,28 +243,15 @@ export function useUpDownNextMarketFlashWhaleSound(
     }
 
     const prev = prevHiKeysRef.current;
-    const hasNewHi =
-      prev !== hiKeysSig &&
-      hiKeysSig.split('|').some((k) => k && !prev.split('|').filter(Boolean).includes(k));
+    const prevSet = new Set(prev.split('|').filter(Boolean));
+    const curKeys = hiKeysSig.split('|').filter(Boolean);
+    const hasNewHi = curKeys.some((k) => !prevSet.has(k));
     prevHiKeysRef.current = hiKeysSig;
+
+    if (!hasNewHi) return;
 
     const pitchMul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider());
     const ringTimeS = readNotifyRingTimeS();
-    const tick = () => {
-      const kind = whaleKindRef.current;
-      if (!kind) return;
-      void playTiltNotifySoundStrikes(kind, pitchMul, ringTimeS, 3);
-    };
-
-    if (hasNewHi) tick();
-
-    intervalRef.current = window.setInterval(tick, UPDOWN_TRIANGLE_FLASH_MS);
-
-    return () => {
-      if (intervalRef.current != null) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
+    void playTiltNotifySoundStrikes(whaleKind, pitchMul, ringTimeS, 3);
   }, [hiKeysSig, whaleKind, alertEnabled]);
 }

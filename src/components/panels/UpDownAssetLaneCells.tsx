@@ -7,7 +7,7 @@ import { normalizeClobTokenId } from '../../utils/format';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { nextMarketHiFlashSides, useUpDownNextHiSettings } from '../../lib/upDownNextMarketFlashSound';
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
-import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLookupSubset';
+import { useLiveBidAskLookupSubset } from '../../hooks/useLiveBidAskLookupSubset';
 import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
 import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { GRID_BID_ASK_THROTTLE_MS } from '../../lib/bidAskMarketLookup';
@@ -233,7 +233,7 @@ function UpDownAssetLaneCellsInner({
     return [...ids];
   }, [yesTokenId, noTokenId, futuresSlots]);
 
-  const bidAskLookup = useThrottledMarketLookupSubset(lookupTokenIds);
+  const bidAskLookup = useLiveBidAskLookupSubset(lookupTokenIds);
   const { alertEnabled: upDownNextHiAlertEnabled, hiThreshold: upDownNextHiThreshold } =
     useUpDownNextHiSettings();
 

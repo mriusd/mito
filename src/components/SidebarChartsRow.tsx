@@ -9,6 +9,7 @@ import { getOrderClobTokenId, outcomeTokenBelongsToSelectedMarket } from '../uti
 import type { ChartOrderReplaceParams } from '../lib/sidebarOrderbookAggregate';
 import { computeSidebarMyPositions, isSidebarDustPosition } from '../lib/sidebarMyPositions';
 import { useSidebarOnchainWalletPositions } from '../lib/sidebarOnchainTradesStore';
+import { SidebarPreviousMarketsRow } from './SidebarPreviousMarketsRow';
 
 const SidebarChartsRowChart = memo(function SidebarChartsRowChart({
   selectedMarket,
@@ -100,7 +101,7 @@ function SidebarChartsRowInner({
   onChartOrderReplace,
 }: SidebarChartsRowProps) {
   return (
-    <div className="sidebar-chart-row">
+    <div className="sidebar-chart-row flex flex-col min-h-0">
       <SidebarChartsRowChart
         selectedMarket={selectedMarket}
         orderOutcome={orderOutcome}
@@ -110,6 +111,7 @@ function SidebarChartsRowInner({
         marketLookup={marketLookup}
         onChartOrderReplace={onChartOrderReplace}
       />
+      <SidebarPreviousMarketsRow selectedMarket={selectedMarket} />
     </div>
   );
 }

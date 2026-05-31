@@ -166,8 +166,8 @@ function prepareObSideRows(
     const cumulativeSize = cumuls[i];
     const centsNum = Math.round(parseFloat(level.price) * 1000) / 10;
     const bpDisp = obAggStep === '0.1' ? centsNum.toFixed(1) : String(Math.round(centsNum));
-    const orderPk = sidebarObAggOrderPriceCents(centsNum, obAggStep);
-    const hl = sidebarUserPriceHitsBucket(userPrices, centsNum, obAggStep)
+    const orderPk = sidebarObAggOrderPriceCents(centsNum, obAggStep, side);
+    const hl = sidebarUserPriceHitsBucket(userPrices, centsNum, obAggStep, side)
       ? side === 'bid'
         ? 'bg-blue-900/50 font-bold'
         : 'bg-orange-900/50 font-bold'

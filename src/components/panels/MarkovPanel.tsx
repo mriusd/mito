@@ -151,6 +151,8 @@ function MarkovTFCard({
   const stat = stationaryUp(model);
   const prev = model.prev;
   const prev2 = model.prev2;
+  const prev3 = model.prev3;
+  const prev4 = model.prev4;
 
   return (
     <div className={`border border-gray-700/70 rounded p-2 flex flex-col gap-1.5 h-full ${compact ? 'min-w-0' : ''}`}>
@@ -173,16 +175,20 @@ function MarkovTFCard({
         </div>
         <div className={`flex items-center flex-wrap gap-x-2 gap-y-0.5 ${compact ? 'w-full' : ''}`}>
           <span className="text-gray-500">
-            state <span className="text-gray-200 font-bold tabular-nums">{arrow(prev2)}{arrow(prev)}</span>
+            state <span className="text-gray-200 font-bold tabular-nums">{arrow(prev4)}{arrow(prev3)}{arrow(prev2)}{arrow(prev)}</span>
           </span>
           <span className="text-gray-500">
             pUp <span className={`tabular-nums font-bold ${probColor(pUpCur)}`}>{pct(pUpCur)}</span>
           </span>
-          <span className={`flex items-center gap-1.5 font-bold ${compact ? '' : 'ml-auto'}`}>
+          <span className={`flex items-center gap-1 font-bold ${compact ? '' : 'ml-auto'}`}>
             <span className="text-gray-500 font-normal">o1</span>
             <span className={`tabular-nums ${probColor(pred.order1)}`}>{pct(pred.order1)}</span>
             <span className="text-gray-500 font-normal">o2</span>
             <span className={`tabular-nums ${probColor(pred.order2)}`}>{pct(pred.order2)}</span>
+            <span className="text-gray-500 font-normal">o3</span>
+            <span className={`tabular-nums ${probColor(pred.order3)}`}>{pct(pred.order3)}</span>
+            <span className="text-gray-500 font-normal">o4</span>
+            <span className={`tabular-nums ${probColor(pred.order4)}`}>{pct(pred.order4)}</span>
           </span>
         </div>
       </div>
@@ -247,6 +253,87 @@ function MarkovTFCard({
             )}
           </div>
         </div>
+
+        {/* 3rd/4th order: many cells — only in the roomy single-asset view. */}
+        {!compact && (
+          <>
+            <DeepOrderMatrix
+              title="3rd · P(up|p3,p2,p1)"
+              cells={deepCells(3, model.t3 as unknown as Nested, model.n3 as unknown as Nested)}
+              base={base}
+              activeCtx={[prev3, prev2, prev]}
+            />
+            <DeepOrderMatrix
+              title="4th · P(up|p4,p3,p2,p1)"
+              cells={deepCells(4, model.t4 as unknown as Nested, model.n4 as unknown as Nested)}
+              base={base}
+              activeCtx={[prev4, prev3, prev2, prev]}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type Nested = number | Nested[];
+
+interface DeepCell {
+  ctx: number[]; // [oldest ... newest] conditioning states
+  p: number;
+  n: number;
+}
+
+// deepCells flattens a nested [2]^order transition tensor into ordered context cells.
+function deepCells(order: number, t: Nested, nArr: Nested): DeepCell[] {
+  const out: DeepCell[] = [];
+  const walk = (tt: Nested, nn: Nested, ctx: number[]) => {
+    if (ctx.length === order) {
+      out.push({ ctx: [...ctx], p: tt as number, n: nn as number });
+      return;
+    }
+    for (let s = 0; s < 2; s++) {
+      walk((tt as Nested[])[s], (nn as Nested[])[s], [...ctx, s]);
+    }
+  };
+  walk(t, nArr, []);
+  return out;
+}
+
+function DeepOrderMatrix({
+  title,
+  cells,
+  base,
+  activeCtx,
+}: {
+  title: string;
+  cells: DeepCell[];
+  base: number;
+  activeCtx: number[];
+}) {
+  const ctxValid = activeCtx.every((s) => s === 0 || s === 1);
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <div className="text-[9px] text-gray-500 font-semibold">{title}</div>
+      <div className="grid grid-cols-4 gap-0.5">
+        {cells.map(({ ctx, p, n }) => {
+          const active = ctxValid && ctx.every((s, i) => s === activeCtx[i]);
+          const edge = (p - base) * 100;
+          const arrows = ctx.map((s) => (s === 1 ? '↑' : '↓')).join('');
+          return (
+            <div
+              key={ctx.join('')}
+              className={`flex items-center gap-0.5 rounded px-1 py-0.5 border min-w-0 ${
+                active ? 'border-amber-500/70 bg-amber-900/20' : 'border-gray-700 bg-gray-900/40'
+              }`}
+              title={`ctx ${arrows} (old→new) · n=${n} · edge ${edge >= 0 ? '+' : ''}${edge.toFixed(1)}pts`}
+            >
+              <span className="text-[8px] text-gray-500 tabular-nums shrink-0">{arrows}</span>
+              <span className={`text-[10px] font-bold tabular-nums ${probColor(p)}`}>{pct(p)}</span>
+              <span className="text-[7px] text-gray-600 tabular-nums ml-auto">{n}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -7,7 +7,6 @@ import { getMarketProbability } from '../utils/bsMath';
 import { useChainlinkPricesMap } from '../hooks/usePolymarketPrice';
 import { useMarkovUpDown, markovNextUpProb } from '../hooks/useMarkovUpDown';
 import {
-  MARKET_SQUARE_CLS,
   STATUS_CLS,
   marketSquareStatusFromOnchain,
   parseMarketEndMs,
@@ -15,6 +14,9 @@ import {
   marketSquareTooltip,
   tfDurationMs,
 } from '../lib/marketSquareUi';
+
+const SIDEBAR_PREV_SQUARE_CLS =
+  'inline-flex h-4 min-w-[1.15rem] items-center justify-center rounded-sm border px-0 text-[6px] font-bold tabular-nums leading-none transition-colors';
 
 function isResolvedOutcome(outcome: string): boolean {
   const o = outcome.trim().toUpperCase();
@@ -220,11 +222,11 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
   const nowMs = Date.now();
 
   return (
-    <div className="flex items-center gap-1 px-1 py-1 border-t border-gray-700/60 shrink-0">
+    <div className="flex items-center gap-0.5 px-1 py-0.5 border-t border-gray-700/60 shrink-0">
       {previous.length > 0 && (
         <>
-          <span className="text-[8px] text-gray-500 font-semibold shrink-0 pr-0.5">prev</span>
-          <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
+          <span className="text-[7px] text-gray-500 font-semibold shrink-0">prev</span>
+          <div className="flex min-w-0 items-center gap-px overflow-x-auto">
             {previous.map((m) => {
               const id = (m.conditionId || '').trim();
               const endMs = parseMarketEndMs(m);
@@ -239,8 +241,8 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
                 <button
                   key={id}
                   type="button"
-                  className={`${MARKET_SQUARE_CLS} ${STATUS_CLS[status]} hover:brightness-110 shrink-0 ${
-                    isSelected ? 'ring-1 ring-yellow-400 border-yellow-500/70 brightness-110' : ''
+                  className={`${SIDEBAR_PREV_SQUARE_CLS} ${STATUS_CLS[status]} hover:brightness-110 shrink-0 ${
+                    isSelected ? 'ring-1 ring-yellow-400/80 border-yellow-500/70 brightness-110' : ''
                   }`}
                   title={tip}
                   onClick={() => {

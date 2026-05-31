@@ -155,6 +155,10 @@ function MarkovTFCard({
   const prev2 = model.prev2;
   const prev3 = model.prev3 ?? -1;
   const prev4 = model.prev4 ?? -1;
+  const showT3 = hasMarkovTensor(model.t3, 3);
+  const showT4 = hasMarkovTensor(model.t4, 4);
+  const t3Cells = showT3 ? deepCells(3, model.t3 as unknown as Nested, model.n3 as unknown as Nested) : [];
+  const t4Cells = showT4 ? deepCells(4, model.t4 as unknown as Nested, model.n4 as unknown as Nested) : [];
 
   return (
     <div className={`border border-gray-700/70 rounded p-2 flex flex-col gap-1.5 h-full ${compact ? 'min-w-0' : ''}`}>
@@ -182,7 +186,7 @@ function MarkovTFCard({
           <span className="text-gray-500">
             pUp <span className={`tabular-nums font-bold ${probColor(pUpCur)}`}>{pct(pUpCur)}</span>
           </span>
-          <span className={`flex items-center gap-1 font-bold ${compact ? '' : 'ml-auto'}`}>
+          <span className={`flex flex-wrap items-center gap-x-1 gap-y-0.5 font-bold ${compact ? 'w-full' : 'ml-auto'}`}>
             <span className="text-gray-500 font-normal">o1</span>
             <span className={`tabular-nums ${probColor(pred.order1)}`}>{pct(pred.order1)}</span>
             <span className="text-gray-500 font-normal">o2</span>
@@ -256,22 +260,24 @@ function MarkovTFCard({
           </div>
         </div>
 
-        {/* 3rd/4th order: many cells — only in the roomy single-asset view. */}
-        {!compact && model.t3 && model.n3 && (
-            <DeepOrderMatrix
-              title="3rd · P(up|p3,p2,p1)"
-              cells={deepCells(3, model.t3 as unknown as Nested, model.n3 as unknown as Nested)}
-              base={base}
-              activeCtx={[prev3, prev2, prev]}
-            />
+        {/* 3rd/4th order — shown in both compact (wide grid) and single-asset views when API provides t3/t4. */}
+        {showT3 && (
+          <DeepOrderMatrix
+            title="3rd · P(up|p3,p2,p1)"
+            cells={t3Cells}
+            base={base}
+            activeCtx={[prev3, prev2, prev]}
+            compact={compact}
+          />
         )}
-        {!compact && model.t4 && model.n4 && (
-            <DeepOrderMatrix
-              title="4th · P(up|p4,p3,p2,p1)"
-              cells={deepCells(4, model.t4 as unknown as Nested, model.n4 as unknown as Nested)}
-              base={base}
-              activeCtx={[prev4, prev3, prev2, prev]}
-            />
+        {showT4 && (
+          <DeepOrderMatrix
+            title="4th · P(up|p4,p3,p2,p1)"
+            cells={t4Cells}
+            base={base}
+            activeCtx={[prev4, prev3, prev2, prev]}
+            compact={compact}
+          />
         )}
       </div>
     </div>
@@ -307,22 +313,31 @@ function deepCells(order: number, t: Nested | undefined, nArr: Nested | undefine
   return out;
 }
 
+function hasMarkovTensor(t: unknown, depth: number): boolean {
+  if (depth === 0) return typeof t === 'number' && Number.isFinite(t);
+  if (!Array.isArray(t) || t.length < 2) return false;
+  return hasMarkovTensor(t[0], depth - 1) && hasMarkovTensor(t[1], depth - 1);
+}
+
 function DeepOrderMatrix({
   title,
   cells,
   base,
   activeCtx,
+  compact,
 }: {
   title: string;
   cells: DeepCell[];
   base: number;
   activeCtx: number[];
+  compact?: boolean;
 }) {
+  if (cells.length === 0) return null;
   const ctxValid = activeCtx.every((s) => s === 0 || s === 1);
   return (
-    <div className="flex flex-col gap-0.5 min-w-0">
-      <div className="text-[9px] text-gray-500 font-semibold">{title}</div>
-      <div className="grid grid-cols-4 gap-0.5">
+    <div className="flex flex-col gap-0.5 min-w-0 w-full">
+      <div className={`text-gray-500 font-semibold ${compact ? 'text-[7px]' : 'text-[9px]'}`}>{title}</div>
+      <div className={`grid grid-cols-4 ${compact ? 'gap-px' : 'gap-0.5'}`}>
         {cells.map(({ ctx, p, n }) => {
           const active = ctxValid && ctx.every((s, i) => s === activeCtx[i]);
           const edge = (p - base) * 100;
@@ -330,14 +345,20 @@ function DeepOrderMatrix({
           return (
             <div
               key={ctx.join('')}
-              className={`flex items-center gap-0.5 rounded px-1 py-0.5 border min-w-0 ${
-                active ? 'border-amber-500/70 bg-amber-900/20' : 'border-gray-700 bg-gray-900/40'
-              }`}
+              className={`flex items-center gap-0.5 rounded border min-w-0 ${
+                compact ? 'px-0.5 py-px' : 'px-1 py-0.5'
+              } ${active ? 'border-amber-500/70 bg-amber-900/20' : 'border-gray-700 bg-gray-900/40'}`}
               title={`ctx ${arrows} (old→new) · n=${n} · edge ${edge >= 0 ? '+' : ''}${edge.toFixed(1)}pts`}
             >
-              <span className="text-[8px] text-gray-500 tabular-nums shrink-0">{arrows}</span>
-              <span className={`text-[10px] font-bold tabular-nums ${probColor(p)}`}>{pct(p)}</span>
-              <span className="text-[7px] text-gray-600 tabular-nums ml-auto">{n}</span>
+              <span className={`text-gray-500 tabular-nums shrink-0 ${compact ? 'text-[6px]' : 'text-[8px]'}`}>
+                {arrows}
+              </span>
+              <span className={`font-bold tabular-nums ${probColor(p)} ${compact ? 'text-[8px]' : 'text-[10px]'}`}>
+                {pct(p)}
+              </span>
+              {!compact && (
+                <span className="text-[7px] text-gray-600 tabular-nums ml-auto">{n}</span>
+              )}
             </div>
           );
         })}

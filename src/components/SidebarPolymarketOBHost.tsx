@@ -2,7 +2,7 @@ import { memo, useLayoutEffect, useMemo, useRef, useEffect, useState, useCallbac
 import type { Market, Position } from '../types';
 import { usePolymarketOB, type LiveTrade } from '../hooks/usePolymarketOB';
 import type { SidebarObAggStep } from '../lib/sidebarOrderbookAggregate';
-import { sidebarObAggregateLevels } from '../lib/sidebarOrderbookAggregate';
+import { sidebarObAggregateBook } from '../lib/sidebarOrderbookAggregate';
 import { readSavedObAggStep, LS_SIDEBAR_OB_AGG_STEP } from '../lib/sidebarObAggStep';
 import { bumpSidebarTopOfBookDigest } from '../lib/sidebarTopOfBookStore';
 import { setSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
@@ -151,9 +151,15 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
 
       const bidCap = obAggStep === '0.1' ? 50 : obAggStep === '1' ? 40 : 24;
       const askCap = bidCap;
+      const { bids: viewBids, asks: viewAsks } = sidebarObAggregateBook(
+        snapshotBids,
+        snapshotAsks,
+        obAggStep,
+        bidCap,
+      );
       return {
-        viewBids: sidebarObAggregateLevels(snapshotBids, obAggStep, 'bid', bidCap),
-        viewAsks: sidebarObAggregateLevels(snapshotAsks, obAggStep, 'ask', askCap),
+        viewBids,
+        viewAsks,
         refSnapshotBids: refBid,
         refSnapshotAsks: refAsk,
         yesBarBidUsd: yesBidForBar,

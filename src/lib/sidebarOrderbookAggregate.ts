@@ -91,6 +91,71 @@ export function sidebarObAggregateLevels(
   });
 }
 
+function bestRawBookPrice(levels: OBLevel[], side: 'bid' | 'ask'): number | null {
+  let best: number | null = null;
+  for (const l of levels) {
+    const p = parseFloat(l.price);
+    if (!Number.isFinite(p)) continue;
+    if (best == null) best = p;
+    else if (side === 'bid') best = Math.max(best, p);
+    else best = Math.min(best, p);
+  }
+  return best;
+}
+
+/** 5¢ bands label bid high / ask low — fold inner bid buckets down so top bid ≤ top ask when raw book isn't crossed. */
+export function reconcileStep5AggBook(
+  bids: SidebarObAggLevel[],
+  asks: SidebarObAggLevel[],
+  rawBids: OBLevel[],
+  rawAsks: OBLevel[],
+): { bids: SidebarObAggLevel[]; asks: SidebarObAggLevel[] } {
+  if (!bids.length || !asks.length) return { bids, asks };
+  const rawBestBid = bestRawBookPrice(rawBids, 'bid');
+  const rawBestAsk = bestRawBookPrice(rawAsks, 'ask');
+  if (rawBestBid == null || rawBestAsk == null || rawBestBid > rawBestAsk) return { bids, asks };
+
+  const topBidC = Math.round(parseFloat(bids[0]!.price) * 100);
+  const topAskC = Math.round(parseFloat(asks[0]!.price) * 100);
+  if (topBidC <= topAskC) return { bids, asks };
+
+  const touchC = topAskC;
+  const merged = new Map<number, { size: number; bandUsd: number }>();
+  for (const l of bids) {
+    const k = Math.round(parseFloat(l.price) * 100);
+    if (!Number.isFinite(k)) continue;
+    const target = k > touchC ? touchC : k;
+    const sz = parseFloat(l.size) || 0;
+    const band = typeof l.bandUsd === 'number' && Number.isFinite(l.bandUsd) ? l.bandUsd : 0;
+    const prev = merged.get(target) ?? { size: 0, bandUsd: 0 };
+    merged.set(target, { size: prev.size + sz, bandUsd: prev.bandUsd + band });
+  }
+  const keys = Array.from(merged.keys())
+    .sort((a, b) => b - a)
+    .slice(0, bids.length);
+  const newBids = keys.map((k) => {
+    const acc = merged.get(k)!;
+    return {
+      price: decimalFromBucketCents(k),
+      size: String(acc.size),
+      bandUsd: acc.bandUsd,
+    };
+  });
+  return { bids: newBids, asks };
+}
+
+export function sidebarObAggregateBook(
+  rawBids: OBLevel[],
+  rawAsks: OBLevel[],
+  step: SidebarObAggStep,
+  maxLevels: number,
+): { bids: SidebarObAggLevel[]; asks: SidebarObAggLevel[] } {
+  const bids = sidebarObAggregateLevels(rawBids, step, 'bid', maxLevels);
+  const asks = sidebarObAggregateLevels(rawAsks, step, 'ask', maxLevels);
+  if (step !== '5') return { bids, asks };
+  return reconcileStep5AggBook(bids, asks, rawBids, rawAsks);
+}
+
 export function sidebarUserPriceHitsBucket(
   sidePrices: Set<string>,
   bucketCents: number,

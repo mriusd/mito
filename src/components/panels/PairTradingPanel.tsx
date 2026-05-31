@@ -15,7 +15,7 @@ import { cancelExistingSellOrdersForToken } from '../../lib/cancelExistingSellOr
 import { resolveLegPositionForToken, resolveFeesPaidForToken } from '../../lib/sidebarMyPositions';
 import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
 import type { SidebarObAggStep } from '../../lib/sidebarOrderbookAggregate';
-import { buildSidebarUserOrderHighlightSets, sidebarObAggregateLevels } from '../../lib/sidebarOrderbookAggregate';
+import { buildSidebarUserOrderHighlightSets, sidebarObAggregateBook } from '../../lib/sidebarOrderbookAggregate';
 import { SidebarOrderbookBookGrid, type SidebarObLevel } from '../SidebarOrderbookBookGrid';
 import { SidebarDataSourceBadge } from '../SidebarDataSourceBadge';
 import { showToast } from '../../utils/toast';
@@ -414,11 +414,13 @@ function usePairLegOrderbook(market: Market | null, leg: PairLeg, obAggStep: Sid
         ? { bidUsdTotal: yesBidUsdTotal, askUsdTotal: yesAskUsdTotal }
         : { bidUsdTotal: noBidUsdTotal, askUsdTotal: noAskUsdTotal };
 
-    let viewBids = snapshotBids;
-    let viewAsks = snapshotAsks;
     const cap = obAggStep === '0.1' ? 50 : obAggStep === '1' ? 40 : 24;
-    viewBids = sidebarObAggregateLevels(snapshotBids, obAggStep, 'bid', cap);
-    viewAsks = sidebarObAggregateLevels(snapshotAsks, obAggStep, 'ask', cap);
+    const { bids: viewBids, asks: viewAsks } = sidebarObAggregateBook(
+      snapshotBids,
+      snapshotAsks,
+      obAggStep,
+      cap,
+    );
 
     const obLoading = activeObLoading && viewBids.length === 0 && viewAsks.length === 0;
     const rawAsks = orderOutcome === 'YES' ? yesAsks : noAsks;

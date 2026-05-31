@@ -1,6 +1,6 @@
 import type { CandleObSnapshot } from './candleObSnapshot';
 import { orderbookBookImbalance, obBookSideUsdTotal } from './orderbookBookImbalance';
-import { sidebarObAggregateLevels, type SidebarObAggStep } from './sidebarOrderbookAggregate';
+import { sidebarObAggregateBook, type SidebarObAggStep } from './sidebarOrderbookAggregate';
 
 export type ObLevel = { price: string; size: string };
 
@@ -25,8 +25,7 @@ export function prepareCandleObDisplay(ob: CandleObSnapshot, step: SidebarObAggS
   const noBidUsd = 0;
   const imbalance = candleObBookImbalance(ob);
   const cap = step === '0.1' ? 50 : step === '1' ? 40 : 24;
-  const displayBids = sidebarObAggregateLevels(rawBids, step, 'bid', cap);
-  const displayAsks = sidebarObAggregateLevels(rawAsks, step, 'ask', cap);
+  const { bids: displayBids, asks: displayAsks } = sidebarObAggregateBook(rawBids, rawAsks, step, cap);
   return {
     displayBids,
     displayAsks,

@@ -15,7 +15,7 @@ import { cancelExistingSellOrdersForToken } from '../../lib/cancelExistingSellOr
 import { resolveLegPositionForToken, resolveFeesPaidForToken } from '../../lib/sidebarMyPositions';
 import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
 import type { SidebarObAggStep } from '../../lib/sidebarOrderbookAggregate';
-import { sidebarObAggregateLevels } from '../../lib/sidebarOrderbookAggregate';
+import { buildSidebarUserOrderHighlightSets, sidebarObAggregateLevels } from '../../lib/sidebarOrderbookAggregate';
 import { SidebarOrderbookBookGrid, type SidebarObLevel } from '../SidebarOrderbookBookGrid';
 import { SidebarDataSourceBadge } from '../SidebarDataSourceBadge';
 import { showToast } from '../../utils/toast';
@@ -471,8 +471,21 @@ const PairTradingOrderbookColumn = memo(function PairTradingOrderbookColumn({
   obAggStep,
   book,
 }: PairTradingOrderbookColumnProps) {
+  const orders = useAppStore((s) => s.orders);
+  const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
   const expired = isMarketExpired(market);
   const resolvedOutcomeLabel = useMemo(() => resolvedBinaryOutcomeLabel(market, true), [market]);
+  const viewOutcome = leg === 'UP' ? 'YES' : 'NO';
+  const yesTokenId = market?.clobTokenIds?.[0]?.trim() ?? '';
+  const noTokenId = market?.clobTokenIds?.[1]?.trim() ?? '';
+
+  const { sidebarUserBidPrices, sidebarUserAskPrices } = useMemo(() => {
+    if (!yesTokenId && !noTokenId) {
+      return { sidebarUserBidPrices: EMPTY_PRICE_SET, sidebarUserAskPrices: EMPTY_PRICE_SET };
+    }
+    const filtered = orders.filter((o) => !progOrderMap[o.id]);
+    return buildSidebarUserOrderHighlightSets(filtered, yesTokenId, noTokenId, viewOutcome);
+  }, [orders, progOrderMap, yesTokenId, noTokenId, viewOutcome]);
 
   const overlayPrimary = !market
     ? { text: 'No live market', className: 'text-gray-400' }
@@ -509,8 +522,8 @@ const PairTradingOrderbookColumn = memo(function PairTradingOrderbookColumn({
           noBidUsd={book.noBarBidUsd}
           displayBidFullUsd={book.displayBidFullUsd}
           displayAskFullUsd={book.displayAskFullUsd}
-          sidebarUserBidPrices={EMPTY_PRICE_SET}
-          sidebarUserAskPrices={EMPTY_PRICE_SET}
+          sidebarUserBidPrices={sidebarUserBidPrices}
+          sidebarUserAskPrices={sidebarUserAskPrices}
           readOnly
           overlay={overlayPrimary}
         />

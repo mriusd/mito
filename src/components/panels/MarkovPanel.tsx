@@ -45,9 +45,11 @@ function arrow(state: number): string {
 }
 
 function stationaryUp(m: MarkovTFModel): number | null {
-  const denom = 1 - m.t1[1] + m.t1[0];
+  const t1 = m.t1;
+  if (!t1) return null;
+  const denom = 1 - t1[1] + t1[0];
   if (Math.abs(denom) < 1e-9) return null;
-  const piUp = m.t1[0] / denom;
+  const piUp = t1[0] / denom;
   return Number.isFinite(piUp) ? Math.max(0, Math.min(1, piUp)) : null;
 }
 
@@ -151,8 +153,8 @@ function MarkovTFCard({
   const stat = stationaryUp(model);
   const prev = model.prev;
   const prev2 = model.prev2;
-  const prev3 = model.prev3;
-  const prev4 = model.prev4;
+  const prev3 = model.prev3 ?? -1;
+  const prev4 = model.prev4 ?? -1;
 
   return (
     <div className={`border border-gray-700/70 rounded p-2 flex flex-col gap-1.5 h-full ${compact ? 'min-w-0' : ''}`}>
@@ -201,10 +203,10 @@ function MarkovTFCard({
           <div className="text-[9px] text-gray-500 font-semibold">1st · P(up|prev)</div>
           <div className="flex gap-1">
             {([0, 1] as const).map((s) => {
-              const p = model.t1[s];
-              const n = model.n1[s];
+              const p = model.t1?.[s];
+              const n = model.n1?.[s] ?? 0;
               const active = prev === s;
-              const edge = (p - base) * 100;
+              const edge = p != null ? (p - base) * 100 : 0;
               return (
                 <div
                   key={s}
@@ -230,10 +232,10 @@ function MarkovTFCard({
           <div className="grid grid-cols-2 gap-1">
             {([0, 1] as const).flatMap((p2) =>
               ([0, 1] as const).map((p1) => {
-                const p = model.t2[p2][p1];
-                const n = model.n2[p2][p1];
+                const p = model.t2?.[p2]?.[p1];
+                const n = model.n2?.[p2]?.[p1] ?? 0;
                 const active = prev2 === p2 && prev === p1;
-                const edge = (p - base) * 100;
+                const edge = p != null ? (p - base) * 100 : 0;
                 return (
                   <div
                     key={`${p2}-${p1}`}
@@ -255,21 +257,21 @@ function MarkovTFCard({
         </div>
 
         {/* 3rd/4th order: many cells — only in the roomy single-asset view. */}
-        {!compact && (
-          <>
+        {!compact && model.t3 && model.n3 && (
             <DeepOrderMatrix
               title="3rd · P(up|p3,p2,p1)"
               cells={deepCells(3, model.t3 as unknown as Nested, model.n3 as unknown as Nested)}
               base={base}
               activeCtx={[prev3, prev2, prev]}
             />
+        )}
+        {!compact && model.t4 && model.n4 && (
             <DeepOrderMatrix
               title="4th · P(up|p4,p3,p2,p1)"
               cells={deepCells(4, model.t4 as unknown as Nested, model.n4 as unknown as Nested)}
               base={base}
               activeCtx={[prev4, prev3, prev2, prev]}
             />
-          </>
         )}
       </div>
     </div>
@@ -285,15 +287,20 @@ interface DeepCell {
 }
 
 // deepCells flattens a nested [2]^order transition tensor into ordered context cells.
-function deepCells(order: number, t: Nested, nArr: Nested): DeepCell[] {
+function deepCells(order: number, t: Nested | undefined, nArr: Nested | undefined): DeepCell[] {
+  if (t == null || nArr == null) return [];
   const out: DeepCell[] = [];
   const walk = (tt: Nested, nn: Nested, ctx: number[]) => {
     if (ctx.length === order) {
       out.push({ ctx: [...ctx], p: tt as number, n: nn as number });
       return;
     }
+    const tArr = tt as Nested[];
+    const nNest = nn as Nested[];
+    if (!tArr || !nNest) return;
     for (let s = 0; s < 2; s++) {
-      walk((tt as Nested[])[s], (nn as Nested[])[s], [...ctx, s]);
+      if (tArr[s] == null || nNest[s] == null) continue;
+      walk(tArr[s], nNest[s], [...ctx, s]);
     }
   };
   walk(t, nArr, []);

@@ -26,7 +26,8 @@ export function mergeSidebarPositionsWsRest(
     const key = normalizeClobTokenId(row.tokenId);
     if (!key) continue;
     const prev = byTok.get(key);
-    const avgPrice = prev?.avgPrice && prev.avgPrice > 0 ? prev.avgPrice : row.avgPrice > 0 ? row.avgPrice : 0;
+    const avgPrice =
+      row.avgPrice > 0 ? row.avgPrice : prev?.avgPrice && prev.avgPrice > 0 ? prev.avgPrice : 0;
     byTok.set(key, {
       asset: row.tokenId.trim() || prev?.asset || key,
       size: row.size,
@@ -36,7 +37,7 @@ export function mergeSidebarPositionsWsRest(
   return [...byTok.values()];
 }
 
-/** Match sidebar merge for a single outcome token (pair legs, etc.). WS = live size; REST avg beats WS avg. */
+/** Match sidebar merge for a single outcome token (pair legs, etc.). Onchain WS wins size + avg when present. */
 export function resolveLegPositionForToken(
   tokenId: string,
   positions: Position[],
@@ -65,7 +66,7 @@ export function resolveLegPositionForToken(
 
   if (isSidebarDustPosition(size)) return null;
 
-  const avgPrice = restAvg > 0 ? restAvg : wsAvg;
+  const avgPrice = wsAvg > 0 ? wsAvg : restAvg;
   return { size, avgPrice };
 }
 

@@ -851,7 +851,7 @@ function positionTokenKey(id: string): string {
   }
 }
 
-/** Prefer on-chain WS sizes; drop REST row when WS shows closed; keep REST metadata when merging. */
+/** Prefer on-chain WS size/avg; drop REST row when WS shows closed; REST metadata when merging. */
 function mergeSidebarPositionsWsRest(
   rest: Position[],
   wsRows: Array<{ tokenId: string; size: number; avgPrice: number }>,
@@ -870,9 +870,8 @@ function mergeSidebarPositionsWsRest(
     if (w) {
       usedWs.add(k);
       if (w.size <= 0) continue;
-      const pAvg = p.avgPrice ?? 0;
-      const avg = pAvg > 0 ? pAvg : (w.avgPrice > 0 ? w.avgPrice : 0);
-      out.push({ ...p, size: w.size, avgPrice: avg });
+      const wAvg = w.avgPrice > 0 ? w.avgPrice : (p.avgPrice ?? 0);
+      out.push({ ...p, size: w.size, avgPrice: wAvg });
       continue;
     }
     if ((p.size || 0) > 0 && !p.redeemable) out.push(p);

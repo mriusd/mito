@@ -25,10 +25,10 @@ import {
 import { useExpiryNow } from '../hooks/useExpiryNow';
 
 const SIDEBAR_SQUARE_CLS =
-  'inline-flex h-4 min-w-[1.15rem] items-center justify-center rounded-sm border px-0 text-[6px] font-bold tabular-nums leading-none transition-colors';
+  'inline-flex h-5 min-w-[1.4rem] items-center justify-center rounded-sm border px-0 text-[7px] font-bold tabular-nums leading-none transition-colors';
 const SIDEBAR_LIVE_SQUARE_CLS =
   'border-pink-500/70 bg-pink-900/45 text-pink-100';
-const SIDEBAR_SELECTED_RING_CLS = 'ring-1 ring-yellow-400/80 border-yellow-500/70 brightness-110';
+const SIDEBAR_SELECTED_CLS = 'selected ring-2 ring-blue-500 ring-inset z-10';
 
 const PAST_COUNT = 5;
 const FUTURE_COUNT = 5;
@@ -318,8 +318,8 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
       <button
         key={id}
         type="button"
-        className={`${SIDEBAR_SQUARE_CLS} ${colorCls} hover:brightness-110 shrink-0 ${
-          isSelected ? SIDEBAR_SELECTED_RING_CLS : ''
+        className={`${SIDEBAR_SQUARE_CLS} ${colorCls} hover:brightness-110 shrink-0 relative ${
+          isSelected ? SIDEBAR_SELECTED_CLS : ''
         }`}
         title={squareTooltip(m, status)}
         onClick={() => setSelectedMarket(squareToSelectedMarket(m, marketLookup, upOrDownMarkets))}
@@ -331,7 +331,7 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
 
   return (
     <div className="flex items-center gap-0.5 px-1 py-0.5 border-t border-gray-700/60 shrink-0 min-w-0">
-      <div className="flex min-w-0 flex-1 items-center gap-px overflow-x-auto">
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
         {past.map((m) => renderSquare(m))}
         {liveMarket ? renderSquare(liveMarket, { live: true }) : null}
         {future.map((m) => renderSquare(m))}

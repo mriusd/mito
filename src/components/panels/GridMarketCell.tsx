@@ -2,7 +2,6 @@ import { memo, useMemo } from 'react';
 import type { AssetName, Market, Order } from '../../types';
 import { gammaImpliedNoBestBid, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
-import { GRID_BID_ASK_THROTTLE_MS } from '../../lib/bidAskMarketLookup';
 import { useThrottledBidAskPair } from '../../hooks/useThrottledBidAskPair';
 import { MarketCellMidRow } from './MarketCellMidRow';
 import { GridMarketCellLiveFx } from './GridMarketCellLiveFx';
@@ -64,7 +63,7 @@ function GridMarketCellInner({
   const yesTokenId = tokenIds[0] || '';
   const noTokenId = tokenIds[1] || '';
 
-  const ws = useThrottledBidAskPair(yesTokenId, noTokenId, GRID_BID_ASK_THROTTLE_MS);
+  const ws = useThrottledBidAskPair(yesTokenId, noTokenId);
   const ptb = market.priceToBeat ?? ws.yes?.priceToBeat;
   const strikeStr =
     deltaPriceStr ||

@@ -119,24 +119,46 @@ function mergeWsItemOntoMarket(seed: Market, item: BidAskWsItem): Market {
 
 const pendingPatch: Record<string, Market> = {};
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
-const bidAskLookupListeners = new Set<() => void>();
+const bidAskLookupLiveListeners = new Set<() => void>();
+const bidAskLookupGridFlushListeners = new Set<() => void>();
+let bidAskGridFlushDigest = 0;
 
-/** Fires on each WS bid/ask patch (before 1 Hz store flush) — for sidebar prob bar etc. */
+/** Fires on each WS bid/ask patch — sidebar live prob bar, unthrottled hooks. */
 export function subscribeBidAskMarketLookup(listener: () => void): () => void {
-  bidAskLookupListeners.add(listener);
+  bidAskLookupLiveListeners.add(listener);
   return () => {
-    bidAskLookupListeners.delete(listener);
+    bidAskLookupLiveListeners.delete(listener);
   };
 }
 
-function notifyBidAskMarketLookupListeners() {
-  for (const listener of bidAskLookupListeners) listener();
+/** Fires when pending patches flush to store (~2s) — grid cells only. */
+export function subscribeBidAskMarketLookupGridFlush(listener: () => void): () => void {
+  bidAskLookupGridFlushListeners.add(listener);
+  return () => {
+    bidAskLookupGridFlushListeners.delete(listener);
+  };
+}
+
+export function getBidAskGridFlushDigest(): number {
+  return bidAskGridFlushDigest;
+}
+
+function notifyBidAskMarketLookupLiveListeners() {
+  for (const listener of bidAskLookupLiveListeners) listener();
+}
+
+function notifyBidAskMarketLookupGridFlushListeners() {
+  bidAskGridFlushDigest += 1;
+  for (const listener of bidAskLookupGridFlushListeners) listener();
 }
 
 function flushPendingBidAskToStore() {
   flushTimer = null;
   const ids = Object.keys(pendingPatch);
-  if (ids.length === 0) return;
+  if (ids.length === 0) {
+    notifyBidAskMarketLookupGridFlushListeners();
+    return;
+  }
 
   const snapshot: Record<string, Market> = {};
   for (const id of ids) {
@@ -159,6 +181,7 @@ function flushPendingBidAskToStore() {
     if (!bumped) return {};
     return { marketLookup: merged };
   });
+  notifyBidAskMarketLookupGridFlushListeners();
 }
 
 function scheduleBidAskFlush() {
@@ -202,7 +225,7 @@ export function enqueueBidAskMarketPatches(items: BidAskWsItem[]) {
     pendingPatch[id] = next;
     touched = true;
   }
-  if (touched) notifyBidAskMarketLookupListeners();
+  if (touched) notifyBidAskMarketLookupLiveListeners();
   if (Object.keys(pendingPatch).length > 0) scheduleBidAskFlush();
 }
 

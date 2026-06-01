@@ -3,6 +3,10 @@ import { useAccount } from 'wagmi';
 import type { AssetSymbol, Market, Position, Trade } from '../../types';
 import { placeOrder } from '../../api';
 import { useAppStore } from '../../stores/appStore';
+import {
+  useThrottledGridOrders,
+  useThrottledGridPositions,
+} from '../../hooks/useThrottledGridWallet';
 import { usePolymarketOB } from '../../hooks/usePolymarketOB';
 import { useExpiryNow } from '../../hooks/useExpiryNow';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
@@ -850,20 +854,69 @@ function MarketSlotToggle({
   );
 }
 
+function useStablePairMarkets(
+  upOrDownMarkets: ReturnType<typeof useAppStore.getState>['upOrDownMarkets'],
+  leftAsset: PairAsset,
+  rightAsset: PairAsset,
+  timeframe: PairTimeframe,
+  marketSlot: PairMarketSlot,
+) {
+  const expiryNow = useExpiryNow();
+  const lastMarketRefreshAtRef = useRef(0);
+
+  const leftComputed = useMemo(() => {
+    const bucket = upOrDownMarkets[leftAsset as AssetSymbol]?.[timeframe];
+    return marketSlot === 'next'
+      ? pickNextUpDownMarketInTfBucket(bucket, expiryNow)
+      : pickLiveUpDownMarketInTfBucket(bucket, expiryNow);
+  }, [upOrDownMarkets, leftAsset, timeframe, marketSlot, expiryNow]);
+
+  const rightComputed = useMemo(() => {
+    const bucket = upOrDownMarkets[rightAsset as AssetSymbol]?.[timeframe];
+    return marketSlot === 'next'
+      ? pickNextUpDownMarketInTfBucket(bucket, expiryNow)
+      : pickLiveUpDownMarketInTfBucket(bucket, expiryNow);
+  }, [upOrDownMarkets, rightAsset, timeframe, marketSlot, expiryNow]);
+
+  const [stable, setStable] = useState(() => ({ left: leftComputed, right: rightComputed }));
+
+  useEffect(() => {
+    setStable((prev) => {
+      if (prev.left?.id === leftComputed?.id && prev.right?.id === rightComputed?.id) return prev;
+      return { left: leftComputed, right: rightComputed };
+    });
+  }, [leftComputed, rightComputed]);
+
+  useEffect(() => {
+    if (marketSlot !== 'current') return;
+
+    const needsRefresh = (asset: PairAsset) => {
+      const bucket = upOrDownMarkets[asset as AssetSymbol]?.[timeframe];
+      if (!bucket?.length) return false;
+      return pickLiveUpDownMarketInTfBucket(bucket, expiryNow) == null;
+    };
+
+    if (!needsRefresh(leftAsset) && !needsRefresh(rightAsset)) return;
+
+    const now = Date.now();
+    if (now - lastMarketRefreshAtRef.current < 2000) return;
+    lastMarketRefreshAtRef.current = now;
+    triggerMarketDataRefresh();
+  }, [expiryNow, marketSlot, leftAsset, rightAsset, timeframe, upOrDownMarkets]);
+
+  return stable;
+}
+
 export function PairTradingPanel({ panelId }: { panelId: string }) {
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
   const maxOrderSizeUsd = useAppStore((s) => s.maxOrderSizeUsd);
-  const positions = useAppStore((s) => s.positions);
-  const orders = useAppStore((s) => s.orders);
-  const trades = useAppStore((s) => s.trades);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
+  const trades = useAppStore((s) => s.trades);
   const signingMode = useAppStore((s) => s.signingMode);
   const pkAddress = useAppStore((s) => s.pkAddress);
   const onchainWsPositions = useSidebarOnchainGridWalletPositions();
   const { isConnected } = useAccount();
   const tradingWallet = useTradingWalletAddress();
-  const expiryNow = useExpiryNow();
-  const lastMarketRefreshAtRef = useRef(0);
 
   const [timeframe, setTimeframe] = useState<PairTimeframe>(() => readStoredPairTf(panelId));
   const [leftAsset, setLeftAsset] = useState<PairAsset>(() => readStoredPairAsset(panelId, 'left', 'BTC'));
@@ -877,9 +930,6 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
   const [placing, setPlacing] = useState(false);
   const [closing, setClosing] = useState(false);
   const [selling98c, setSelling98c] = useState(false);
-
-  const leftLeg: PairLeg = upSlot === 'left' ? 'UP' : 'DOWN';
-  const rightLeg: PairLeg = upSlot === 'left' ? 'DOWN' : 'UP';
 
   const walletReady =
     !!tradingWallet && (signingMode === 'privateKey' ? !!pkAddress : isConnected);
@@ -923,36 +973,209 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
     [panelId],
   );
 
-  const leftMarket = useMemo(() => {
-    const bucket = upOrDownMarkets[leftAsset as AssetSymbol]?.[timeframe];
-    return marketSlot === 'next'
-      ? pickNextUpDownMarketInTfBucket(bucket, expiryNow)
-      : pickLiveUpDownMarketInTfBucket(bucket, expiryNow);
-  }, [upOrDownMarkets, leftAsset, timeframe, marketSlot, expiryNow]);
-  const rightMarket = useMemo(() => {
-    const bucket = upOrDownMarkets[rightAsset as AssetSymbol]?.[timeframe];
-    return marketSlot === 'next'
-      ? pickNextUpDownMarketInTfBucket(bucket, expiryNow)
-      : pickLiveUpDownMarketInTfBucket(bucket, expiryNow);
-  }, [upOrDownMarkets, rightAsset, timeframe, marketSlot, expiryNow]);
+  const { left: leftMarket, right: rightMarket } = useStablePairMarkets(
+    upOrDownMarkets,
+    leftAsset,
+    rightAsset,
+    timeframe,
+    marketSlot,
+  );
 
-  useEffect(() => {
-    if (marketSlot !== 'current') return;
+  const leftLeg = upSlot === 'left' ? 'UP' : 'DOWN';
+  const rightLeg = upSlot === 'left' ? 'DOWN' : 'UP';
+  const upMarket = upSlot === 'left' ? leftMarket : rightMarket;
+  const downMarket = upSlot === 'left' ? rightMarket : leftMarket;
+  const upAsset = upSlot === 'left' ? leftAsset : rightAsset;
+  const downAsset = upSlot === 'left' ? rightAsset : leftAsset;
 
-    const needsRefresh = (asset: PairAsset) => {
-      const bucket = upOrDownMarkets[asset as AssetSymbol]?.[timeframe];
-      if (!bucket?.length) return false;
-      return pickLiveUpDownMarketInTfBucket(bucket, expiryNow) == null;
-    };
+  const selectClass =
+    'rounded border border-gray-600 bg-gray-900 px-1.5 py-0.5 text-[10px] font-semibold text-gray-200 focus:outline-none';
 
-    if (!needsRefresh(leftAsset) && !needsRefresh(rightAsset)) return;
+  return (
+    <div className="panel-wrapper flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-gray-800/50 p-3">
+      <div className="panel-header mb-1.5 flex shrink-0 items-start gap-2 cursor-grab">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <div className="text-[11px] font-bold text-emerald-400">Pair Trading</div>
+          <div className="no-drag flex flex-wrap items-center gap-2" onMouseDown={(e) => e.stopPropagation()}>
+          <label className="flex items-center gap-1 text-[9px] text-gray-500">
+            TF
+            <select
+              className={selectClass}
+              value={timeframe}
+              onChange={(e) => {
+                const next = e.target.value as PairTimeframe;
+                setTimeframe(next);
+                localStorage.setItem(`polybot-pair-trading-tf-${panelId}`, next);
+              }}
+            >
+              {TIMEFRAMES.map((tf) => (
+                <option key={tf} value={tf}>
+                  {tf}
+                </option>
+              ))}
+            </select>
+          </label>
+          <MarketSlotToggle slot={marketSlot} onPick={setMarketSlotPersist} />
+          <label className="flex items-center gap-1 text-[9px] text-gray-500">
+            Left
+            <select
+              className={selectClass}
+              value={leftAsset}
+              onChange={(e) => {
+                const next = e.target.value as PairAsset;
+                setLeftAsset(next);
+                localStorage.setItem(`polybot-pair-trading-left-${panelId}`, next);
+              }}
+            >
+              {ASSETS.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+            <LegToggle leg={leftLeg} onPick={(leg) => setUpSlotPersist(leg === 'UP' ? 'left' : 'right')} />
+          </label>
+          <label className="flex items-center gap-1 text-[9px] text-gray-500">
+            Right
+            <select
+              className={selectClass}
+              value={rightAsset}
+              onChange={(e) => {
+                const next = e.target.value as PairAsset;
+                setRightAsset(next);
+                localStorage.setItem(`polybot-pair-trading-right-${panelId}`, next);
+              }}
+            >
+              {ASSETS.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+            <LegToggle leg={rightLeg} onPick={(leg) => setUpSlotPersist(leg === 'UP' ? 'right' : 'left')} />
+          </label>
+          <div
+            className="inline-flex overflow-hidden rounded border border-gray-600 divide-x divide-gray-600 bg-gray-900/90"
+            title="Bid/ask grouping"
+          >
+            {(
+              [
+                { step: '0.1' as const, label: '0.1¢' },
+                { step: '1' as const, label: '1¢' },
+                { step: '5' as const, label: '5¢' },
+              ] as const
+            ).map(({ step, label }) => (
+              <button
+                key={step}
+                type="button"
+                onClick={() => setObAggStepPersist(step)}
+                className={`px-1.5 py-0.5 text-[9px] font-semibold tabular-nums transition ${
+                  obAggStep === step ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        </div>
+        <PairTradingExpiryCountdown
+          upMarket={upMarket}
+          downMarket={downMarket}
+          upAsset={upAsset}
+          downAsset={downAsset}
+        />
+      </div>
 
-    const now = Date.now();
-    if (now - lastMarketRefreshAtRef.current < 2000) return;
-    lastMarketRefreshAtRef.current = now;
-    triggerMarketDataRefresh();
-  }, [expiryNow, marketSlot, leftAsset, rightAsset, timeframe, upOrDownMarkets]);
+      <PairTradingPanelLiveSection
+        leftAsset={leftAsset}
+        rightAsset={rightAsset}
+        leftLeg={leftLeg}
+        rightLeg={rightLeg}
+        leftMarket={leftMarket}
+        rightMarket={rightMarket}
+        upSlot={upSlot}
+        timeframe={timeframe}
+        obAggStep={obAggStep}
+        priceDeltaCents={priceDeltaCents}
+        priceDeltaInput={priceDeltaInput}
+        setPriceDeltaInput={setPriceDeltaInput}
+        commitPriceDelta={commitPriceDelta}
+        orderAmount={orderAmount}
+        setOrderAmount={setOrderAmount}
+        maxOrderSizeUsd={maxOrderSizeUsd}
+        liveTradesSource={liveTradesSource}
+        trades={trades}
+        onchainWsPositions={onchainWsPositions}
+        walletReady={walletReady}
+        placing={placing}
+        setPlacing={setPlacing}
+        closing={closing}
+        setClosing={setClosing}
+        selling98c={selling98c}
+        setSelling98c={setSelling98c}
+      />
+    </div>
+  );
+}
 
+function PairTradingPanelLiveSection({
+  leftAsset,
+  rightAsset,
+  leftLeg,
+  rightLeg,
+  leftMarket,
+  rightMarket,
+  upSlot,
+  timeframe,
+  obAggStep,
+  priceDeltaCents,
+  priceDeltaInput,
+  setPriceDeltaInput,
+  commitPriceDelta,
+  orderAmount,
+  setOrderAmount,
+  maxOrderSizeUsd,
+  liveTradesSource,
+  trades,
+  onchainWsPositions,
+  walletReady,
+  placing,
+  setPlacing,
+  closing,
+  setClosing,
+  selling98c,
+  setSelling98c,
+}: {
+  leftAsset: PairAsset;
+  rightAsset: PairAsset;
+  leftLeg: PairLeg;
+  rightLeg: PairLeg;
+  leftMarket: Market | null;
+  rightMarket: Market | null;
+  upSlot: PairSlot;
+  timeframe: PairTimeframe;
+  obAggStep: SidebarObAggStep;
+  priceDeltaCents: number;
+  priceDeltaInput: string;
+  setPriceDeltaInput: (v: string) => void;
+  commitPriceDelta: (raw: string) => void;
+  orderAmount: string;
+  setOrderAmount: (v: string) => void;
+  maxOrderSizeUsd: number;
+  liveTradesSource: string;
+  trades: Trade[];
+  onchainWsPositions: { tokenId: string; size: number; avgPrice: number; feesPaid?: number }[];
+  walletReady: boolean;
+  placing: boolean;
+  setPlacing: (v: boolean) => void;
+  closing: boolean;
+  setClosing: (v: boolean) => void;
+  selling98c: boolean;
+  setSelling98c: (v: boolean) => void;
+}) {
+  const positions = useThrottledGridPositions(2000);
+  const orders = useThrottledGridOrders(2000);
   const leftBook = usePairLegOrderbook(leftMarket, leftLeg, obAggStep);
   const rightBook = usePairLegOrderbook(rightMarket, rightLeg, obAggStep);
 
@@ -1322,105 +1545,8 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
     priceDeltaCents,
   ]);
 
-  const selectClass =
-    'rounded border border-gray-600 bg-gray-900 px-1.5 py-0.5 text-[10px] font-semibold text-gray-200 focus:outline-none';
-
   return (
-    <div className="panel-wrapper flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-gray-800/50 p-3">
-      <div className="panel-header mb-1.5 flex shrink-0 items-start gap-2 cursor-grab">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <div className="text-[11px] font-bold text-emerald-400">Pair Trading</div>
-          <div className="no-drag flex flex-wrap items-center gap-2" onMouseDown={(e) => e.stopPropagation()}>
-          <label className="flex items-center gap-1 text-[9px] text-gray-500">
-            TF
-            <select
-              className={selectClass}
-              value={timeframe}
-              onChange={(e) => {
-                const next = e.target.value as PairTimeframe;
-                setTimeframe(next);
-                localStorage.setItem(`polybot-pair-trading-tf-${panelId}`, next);
-              }}
-            >
-              {TIMEFRAMES.map((tf) => (
-                <option key={tf} value={tf}>
-                  {tf}
-                </option>
-              ))}
-            </select>
-          </label>
-          <MarketSlotToggle slot={marketSlot} onPick={setMarketSlotPersist} />
-          <label className="flex items-center gap-1 text-[9px] text-gray-500">
-            Left
-            <select
-              className={selectClass}
-              value={leftAsset}
-              onChange={(e) => {
-                const next = e.target.value as PairAsset;
-                setLeftAsset(next);
-                localStorage.setItem(`polybot-pair-trading-left-${panelId}`, next);
-              }}
-            >
-              {ASSETS.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-            <LegToggle leg={leftLeg} onPick={(leg) => setUpSlotPersist(leg === 'UP' ? 'left' : 'right')} />
-          </label>
-          <label className="flex items-center gap-1 text-[9px] text-gray-500">
-            Right
-            <select
-              className={selectClass}
-              value={rightAsset}
-              onChange={(e) => {
-                const next = e.target.value as PairAsset;
-                setRightAsset(next);
-                localStorage.setItem(`polybot-pair-trading-right-${panelId}`, next);
-              }}
-            >
-              {ASSETS.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-            <LegToggle leg={rightLeg} onPick={(leg) => setUpSlotPersist(leg === 'UP' ? 'right' : 'left')} />
-          </label>
-          <div
-            className="inline-flex overflow-hidden rounded border border-gray-600 divide-x divide-gray-600 bg-gray-900/90"
-            title="Bid/ask grouping"
-          >
-            {(
-              [
-                { step: '0.1' as const, label: '0.1¢' },
-                { step: '1' as const, label: '1¢' },
-                { step: '5' as const, label: '5¢' },
-              ] as const
-            ).map(({ step, label }) => (
-              <button
-                key={step}
-                type="button"
-                onClick={() => setObAggStepPersist(step)}
-                className={`px-1.5 py-0.5 text-[9px] font-semibold tabular-nums transition ${
-                  obAggStep === step ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-200'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-        </div>
-        <PairTradingExpiryCountdown
-          upMarket={upMarket}
-          downMarket={downMarket}
-          upAsset={upAsset}
-          downAsset={downAsset}
-        />
-      </div>
-
+    <>
       <div className="flex min-h-0 flex-1 gap-2">
         <PairTradingOrderbookColumn asset={leftAsset} leg={leftLeg} market={leftMarket} obAggStep={obAggStep} book={leftBook} />
         <PairTradingOrderbookColumn asset={rightAsset} leg={rightLeg} market={rightMarket} obAggStep={obAggStep} book={rightBook} />
@@ -1496,6 +1622,6 @@ export function PairTradingPanel({ panelId }: { panelId: string }) {
           closeDisabled={!walletReady || closing || selling98c || placing || !hasOpenPosition}
         />
       </div>
-    </div>
+    </>
   );
 }

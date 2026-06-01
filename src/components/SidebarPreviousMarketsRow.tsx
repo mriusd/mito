@@ -8,12 +8,15 @@ import { useChainlinkPricesMap } from '../hooks/usePolymarketPrice';
 import { useMarkovUpDown, markovNextUpProb } from '../hooks/useMarkovUpDown';
 import {
   STATUS_CLS,
+  marketSquareStatusFromMarket,
   marketSquareStatusFromOnchain,
   parseMarketEndMs,
   squareLabelForTimeframe,
   marketSquareTooltip,
   tfDurationMs,
+  type MarketSquareStatus,
 } from '../lib/marketSquareUi';
+import { useExpiryNow } from '../hooks/useExpiryNow';
 
 const SIDEBAR_PREV_SQUARE_CLS =
   'inline-flex h-4 min-w-[1.15rem] items-center justify-center rounded-sm border px-0 text-[6px] font-bold tabular-nums leading-none transition-colors';
@@ -116,21 +119,82 @@ function onchainToMarket(m: OnchainMarketListItem): Market {
   };
 }
 
+type SquareMarket = OnchainMarketListItem | Market;
+
+function squareConditionId(m: SquareMarket): string {
+  if ('conditionId' in m && m.conditionId) return String(m.conditionId).trim();
+  return String((m as Market).id || '').trim();
+}
+
 function pickPreviousMarkets(
   batch: OnchainMarketListItem[],
+  storeMarkets: Market[],
   beforeEndMs: number,
   count: number,
-): OnchainMarketListItem[] {
-  const prev = batch
-    .filter((m) => {
-      const endMs = parseMarketEndMs(m);
-      if (!endMs || endMs >= beforeEndMs) return false;
-      const outcome = (m.outcome || '').trim().toUpperCase();
-      return outcome === 'YES' || outcome === 'UP' || outcome === 'NO' || outcome === 'DOWN';
-    })
+): SquareMarket[] {
+  const byId = new Map<string, SquareMarket>();
+  const add = (m: SquareMarket) => {
+    const endMs = parseMarketEndMs(m);
+    if (!endMs || endMs >= beforeEndMs) return;
+    const id = squareConditionId(m).toLowerCase();
+    if (!id) return;
+    const prev = byId.get(id);
+    if (prev) {
+      const prevEnd = parseMarketEndMs(prev);
+      if (prevEnd >= endMs) byId.set(id, m);
+      return;
+    }
+    byId.set(id, m);
+  };
+  for (const m of batch) add(m);
+  for (const m of storeMarkets) add(m);
+  return [...byId.values()]
     .sort((a, b) => parseMarketEndMs(b) - parseMarketEndMs(a))
+    .slice(0, count)
+    .reverse();
+}
+
+function pickFutureMarkets(storeMarkets: Market[], afterEndMs: number, count: number): Market[] {
+  const byId = new Map<string, Market>();
+  for (const m of storeMarkets) {
+    const endMs = parseMarketEndMs(m);
+    if (!endMs || endMs <= afterEndMs) continue;
+    const id = (m.id || m.conditionId || '').trim().toLowerCase();
+    if (!id) continue;
+    byId.set(id, m);
+  }
+  return [...byId.values()]
+    .sort((a, b) => parseMarketEndMs(a) - parseMarketEndMs(b))
     .slice(0, count);
-  return prev.reverse();
+}
+
+function isStoreMarket(m: SquareMarket): m is Market {
+  return typeof (m as Market).id === 'string' && (m as Market).id.length > 0;
+}
+
+function squareStatus(m: SquareMarket, timeframe: string, nowMs: number): MarketSquareStatus {
+  if (isStoreMarket(m)) return marketSquareStatusFromMarket(m, timeframe, nowMs);
+  return marketSquareStatusFromOnchain(m, timeframe, nowMs);
+}
+
+function squareTooltip(m: SquareMarket, status: MarketSquareStatus): string {
+  const conditionId = squareConditionId(m);
+  const question = ('question' in m ? m.question : '') ?? '';
+  const eventSlug = ('eventSlug' in m ? m.eventSlug : undefined) ?? undefined;
+  const endDate = ('endDate' in m ? m.endDate : '') ?? '';
+  return marketSquareTooltip({ conditionId, question, eventSlug, endDate }, status);
+}
+
+function squareToSelectedMarket(
+  m: SquareMarket,
+  marketLookup: Record<string, Market>,
+  upOrDownMarkets: Record<string, Record<string, Market[]>>,
+): Market {
+  const id = squareConditionId(m);
+  const hit = findMarketInStore(id, marketLookup, upOrDownMarkets);
+  if (hit) return hit;
+  if (isStoreMarket(m)) return m;
+  return onchainToMarket(m);
 }
 
 function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Market }) {
@@ -180,6 +244,8 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
     selectedMarket.endDate,
   ]);
 
+  const nowMs = useExpiryNow();
+
   const [batch, setBatch] = useState<OnchainMarketListItem[]>([]);
 
   useEffect(() => {
@@ -200,61 +266,64 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
     };
   }, [selectedMarket.id, isUpDown, asset, timeframe, selectedEndMs]);
 
-  const previous = useMemo(
-    () => (selectedEndMs ? pickPreviousMarkets(batch, selectedEndMs, 5) : []),
-    [batch, selectedEndMs],
-  );
-
   const storeTfMarkets = useMemo(() => {
     if (!asset || !timeframe) return [];
     return upOrDownMarkets[asset]?.[timeframe] ?? [];
   }, [asset, timeframe, upOrDownMarkets]);
 
+  const previous = useMemo(
+    () => (selectedEndMs ? pickPreviousMarkets(batch, storeTfMarkets, selectedEndMs, 5) : []),
+    [batch, storeTfMarkets, selectedEndMs],
+  );
+
+  const future = useMemo(
+    () => (selectedEndMs ? pickFutureMarkets(storeTfMarkets, selectedEndMs, 5) : []),
+    [storeTfMarkets, selectedEndMs],
+  );
+
   const prevResolved = useMemo(() => {
     if (!selectedEndMs || !timeframe) return true;
-    return immediatePredecessorResolved(batch, storeTfMarkets, selectedEndMs, timeframe, Date.now());
-  }, [batch, storeTfMarkets, selectedEndMs, timeframe]);
+    return immediatePredecessorResolved(batch, storeTfMarkets, selectedEndMs, timeframe, nowMs);
+  }, [batch, storeTfMarkets, selectedEndMs, timeframe, nowMs]);
 
   if (!isUpDown || !timeframe) return null;
-  if (previous.length === 0 && markovO4 == null && markovModels == null) return null;
+  if (previous.length === 0 && future.length === 0 && markovO4 == null && markovModels == null) return null;
 
   const selectedLc = (selectedMarket.conditionId || selectedMarket.id || '').trim().toLowerCase();
-  const nowMs = Date.now();
+
+  const renderSquare = (m: SquareMarket) => {
+    const id = squareConditionId(m);
+    const endMs = parseMarketEndMs(m);
+    const status = squareStatus(m, timeframe, nowMs);
+    const label = squareLabelForTimeframe(timeframe, endMs);
+    const isSelected = selectedLc === id.toLowerCase();
+    return (
+      <button
+        key={id}
+        type="button"
+        className={`${SIDEBAR_PREV_SQUARE_CLS} ${STATUS_CLS[status]} hover:brightness-110 shrink-0 ${
+          isSelected ? 'ring-1 ring-yellow-400/80 border-yellow-500/70 brightness-110' : ''
+        }`}
+        title={squareTooltip(m, status)}
+        onClick={() => setSelectedMarket(squareToSelectedMarket(m, marketLookup, upOrDownMarkets))}
+      >
+        {label}
+      </button>
+    );
+  };
 
   return (
     <div className="flex items-center gap-0.5 px-1 py-0.5 border-t border-gray-700/60 shrink-0">
       {previous.length > 0 && (
         <>
           <span className="text-[7px] text-gray-500 font-semibold shrink-0">prev</span>
-          <div className="flex min-w-0 items-center gap-px overflow-x-auto">
-            {previous.map((m) => {
-              const id = (m.conditionId || '').trim();
-              const endMs = parseMarketEndMs(m);
-              const status = marketSquareStatusFromOnchain(m, timeframe, nowMs);
-              const label = squareLabelForTimeframe(timeframe, endMs);
-              const isSelected = selectedLc === id.toLowerCase();
-              const tip = marketSquareTooltip(
-                { conditionId: id, question: m.question ?? '', eventSlug: m.eventSlug ?? '', endDate: m.endDate ?? '' },
-                status,
-              );
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  className={`${SIDEBAR_PREV_SQUARE_CLS} ${STATUS_CLS[status]} hover:brightness-110 shrink-0 ${
-                    isSelected ? 'ring-1 ring-yellow-400/80 border-yellow-500/70 brightness-110' : ''
-                  }`}
-                  title={tip}
-                  onClick={() => {
-                    const hit = findMarketInStore(id, marketLookup, upOrDownMarkets);
-                    setSelectedMarket(hit ?? onchainToMarket(m));
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+          <div className="flex min-w-0 items-center gap-px overflow-x-auto">{previous.map(renderSquare)}</div>
+        </>
+      )}
+      {future.length > 0 && (
+        <>
+          <span className="text-[7px] text-gray-500 font-semibold shrink-0">next</span>
+          <div className="flex min-w-0 items-center gap-px overflow-x-auto">{future.map(renderSquare)}</div>
         </>
       )}
       {(markovO4 != null || markovModels != null) && (

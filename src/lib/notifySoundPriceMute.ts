@@ -1,6 +1,11 @@
 import { getBidAskMarketRow } from './bidAskMarketLookup';
 
 export const SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY = 'polybot-sidebar-notify-sound-max-price-cents';
+export const NOTIFY_SOUND_MAX_PRICE_CHANGED_EVENT = 'polybot-notify-sound-max-price-changed';
+
+export function notifySoundMaxPriceChanged(): void {
+  window.dispatchEvent(new Event(NOTIFY_SOUND_MAX_PRICE_CHANGED_EVENT));
+}
 
 export function readNotifySoundMaxPriceCents(): number {
   try {

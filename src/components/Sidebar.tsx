@@ -52,6 +52,7 @@ import {
   TOXIC_X_WALLETS_LS_KEY,
 } from '../lib/toxicXWallets';
 import { persistTiltWhaleAmountUsd, readTiltWhaleAmountUsd } from '../lib/tiltWhaleAmountUsd';
+import { notifyTiltInsiderSettingsChanged } from '../lib/tiltInsiderNotify';
 import {
   bumpNotifyTiltMarketFiltersRevision,
   useNotifyTiltAppliesToSelectedMarket,
@@ -80,6 +81,7 @@ import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
 import {
   readNotifySoundMaxPriceCents,
   SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY,
+  notifySoundMaxPriceChanged,
 } from '../lib/notifySoundPriceMute';
 import {
   NOTIFY_BELL_MIN_STAKE_CHANGED_EVENT,
@@ -1048,6 +1050,7 @@ export const Sidebar = memo(function Sidebar() {
     } catch {
       /* ignore */
     }
+    notifyTiltInsiderSettingsChanged();
   }, [notifyInsiderWinRatePct]);
   useEffect(() => {
     try {
@@ -1055,6 +1058,7 @@ export const Sidebar = memo(function Sidebar() {
     } catch {
       /* ignore */
     }
+    notifyTiltInsiderSettingsChanged();
   }, [notifyInsiderMinStakeUsd]);
   useEffect(() => {
     try {
@@ -1150,6 +1154,7 @@ export const Sidebar = memo(function Sidebar() {
     } catch {
       /* */
     }
+    notifySoundMaxPriceChanged();
   }, [notifySoundMaxPriceCents]);
   useEffect(() => {
     try {

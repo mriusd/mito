@@ -53,6 +53,7 @@ import {
   ledgerWinRateFracFromStored,
   toxicRowResolvedStatsLow,
   isToxicFlowSwarmWallet,
+  toxicRowInsiderFlashEligible,
 } from '../lib/toxicFlowStakeCohort';
 import { ledgerHighWinRateFromLedgerInput, walletAddressColorClass } from '../lib/walletAddressColor';
 import { primeTiltAudioContextFromUserGesture } from '../lib/tiltNotifySound';
@@ -64,6 +65,18 @@ import {
   TILT_WHALE_AMOUNT_USD_CHANGED_EVENT,
   TILT_WHALE_AMOUNT_USD_LS_KEY,
 } from '../lib/tiltWhaleAmountUsd';
+import {
+  readTiltInsiderMinStakeUsd,
+  readTiltInsiderWinRatePct,
+  subscribeTiltInsiderNotify,
+} from '../lib/tiltInsiderNotify';
+import {
+  readNotifySoundMaxPriceCents,
+  SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY,
+  NOTIFY_SOUND_MAX_PRICE_CHANGED_EVENT,
+  wsQuoteMidCents,
+} from '../lib/notifySoundPriceMute';
+import { subscribeBidAskMarketLookup } from '../lib/bidAskMarketLookup';
 import { useNotifyTiltAppliesToSelectedMarket } from '../lib/notifyTiltMarketFilters';
 import { useAppStore } from '../stores/appStore';
 import { TOXIC_TABLE_ROW_CLS } from '../lib/toxicFlowTableAnimate';
@@ -85,6 +98,19 @@ function subscribeTiltWhaleAmountUsd(listener: () => void): () => void {
   window.addEventListener('storage', onStorage);
   return () => {
     window.removeEventListener(TILT_WHALE_AMOUNT_USD_CHANGED_EVENT, onCustom);
+    window.removeEventListener('storage', onStorage);
+  };
+}
+
+function subscribeNotifySoundMaxPriceCents(listener: () => void): () => void {
+  const onCustom = () => listener();
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY || e.key === null) listener();
+  };
+  window.addEventListener(NOTIFY_SOUND_MAX_PRICE_CHANGED_EVENT, onCustom);
+  window.addEventListener('storage', onStorage);
+  return () => {
+    window.removeEventListener(NOTIFY_SOUND_MAX_PRICE_CHANGED_EVENT, onCustom);
     window.removeEventListener('storage', onStorage);
   };
 }
@@ -237,11 +263,15 @@ function rowFmtInt(v: number): string {
 const ROW_PULSE_NONE = '';
 const ROW_PULSE_BELL = ' toxic-flow-bell-row-flash';
 const ROW_PULSE_WHALE = ' toxic-flow-high-stake-net-row-flash';
+const ROW_PULSE_INSIDER = ' toxic-flow-insider-row-flash';
 const ROW_PULSE_BELL_WHALE = ' toxic-flow-bell-high-stake-combo-row-flash';
+const ROW_PULSE_BELL_INSIDER = ' toxic-flow-bell-insider-row-flash';
 
-function rowPulseClassFor(bellActive: boolean, whaleFlash: boolean): string {
+function rowPulseClassFor(bellActive: boolean, whaleFlash: boolean, insiderFlash: boolean): string {
+  if (bellActive && insiderFlash) return ROW_PULSE_BELL_INSIDER;
   if (bellActive && whaleFlash) return ROW_PULSE_BELL_WHALE;
   if (bellActive) return ROW_PULSE_BELL;
+  if (insiderFlash) return ROW_PULSE_INSIDER;
   if (whaleFlash) return ROW_PULSE_WHALE;
   return ROW_PULSE_NONE;
 }
@@ -826,6 +856,11 @@ interface WalletTableBodyRowProps {
   xActive: boolean;
   /** Row flash when |Staked Net| USD ≥ this (Tilt notifications “Whale amount”). */
   tiltWhaleAmountUsd: number;
+  tiltInsiderWinRatePct: number;
+  tiltInsiderMinStakeUsd: number;
+  tiltInsiderYesTokenId: string;
+  tiltInsiderNoTokenId: string;
+  tiltInsiderMaxSoundMutePriceCents: number;
   tiltRowFlashEnabled?: boolean;
   toggleFavouriteWallet: (addr: string, nickname?: string) => void;
   toggleBellWallet: (addr: string) => void;
@@ -850,6 +885,11 @@ function WalletTableBodyRowImpl({
   bellActive,
   xActive,
   tiltWhaleAmountUsd,
+  tiltInsiderWinRatePct,
+  tiltInsiderMinStakeUsd,
+  tiltInsiderYesTokenId,
+  tiltInsiderNoTokenId,
+  tiltInsiderMaxSoundMutePriceCents,
   tiltRowFlashEnabled = true,
   toggleFavouriteWallet,
   toggleBellWallet,
@@ -916,14 +956,34 @@ function WalletTableBodyRowImpl({
   const stakeNetSigned = walletStakeNetSignedUsd(w);
   const stakeNetAbsUsd = walletStakeNetAbsUsd(w);
   const rowNearResolved = walletHasSharePriceAtOrAbove95Cents(w);
+  const swarmRow = isToxicFlowSwarmWallet(w.wallet);
+  const wk = (w.wallet || '').trim().toLowerCase();
   const tiltWhaleRowFlash =
     tiltRowFlashEnabled &&
     !rowNearResolved &&
     Number.isFinite(stakeNetAbsUsd) &&
     stakeNetAbsUsd >= tiltWhaleAmountUsd;
+  const tiltInsiderRowFlash =
+    tiltRowFlashEnabled &&
+    !rowNearResolved &&
+    !swarmRow &&
+    !xActive &&
+    toxicRowInsiderFlashEligible(
+      w,
+      tiltInsiderWinRatePct,
+      tiltInsiderMinStakeUsd,
+      tiltInsiderYesTokenId,
+      tiltInsiderNoTokenId,
+      new Set<string>(),
+      tiltInsiderMaxSoundMutePriceCents,
+    );
   const rowClass =
     walletRowClassForStakedNet(shadeRowByStakedNet, stakeNetSigned) +
-    rowPulseClassFor(bellActive && tiltRowFlashEnabled, tiltWhaleRowFlash) +
+    rowPulseClassFor(
+      bellActive && tiltRowFlashEnabled,
+      tiltWhaleRowFlash && !tiltInsiderRowFlash,
+      tiltInsiderRowFlash,
+    ) +
     (rowNearResolved ? ' toxic-flow-row-near-resolved' : '');
   const prevStakeNetRef = useRef<number | null>(null);
   const [stakedNetFlash, setStakedNetFlash] = useState<StakedNetFlashDir | null>(null);
@@ -938,8 +998,6 @@ function WalletTableBodyRowImpl({
     return () => window.clearTimeout(t);
   }, [stakeNetSigned]);
   const ledgerEmbed = w.walletLedgerSummary;
-  const swarmRow = isToxicFlowSwarmWallet(w.wallet);
-  const wk = (w.wallet || '').trim().toLowerCase();
   const selected = selectedWallet?.trim().toLowerCase() === wk;
   const { rowPnlFlow, rowPayout, payoutUnresolved, roiFmt } = marketViewCols
     ? walletMarketPayoutPnlRoiCells(w)
@@ -1096,6 +1154,11 @@ const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
     a.bellActive !== b.bellActive ||
     a.xActive !== b.xActive ||
     a.tiltWhaleAmountUsd !== b.tiltWhaleAmountUsd ||
+    a.tiltInsiderWinRatePct !== b.tiltInsiderWinRatePct ||
+    a.tiltInsiderMinStakeUsd !== b.tiltInsiderMinStakeUsd ||
+    a.tiltInsiderYesTokenId !== b.tiltInsiderYesTokenId ||
+    a.tiltInsiderNoTokenId !== b.tiltInsiderNoTokenId ||
+    a.tiltInsiderMaxSoundMutePriceCents !== b.tiltInsiderMaxSoundMutePriceCents ||
     a.tiltRowFlashEnabled !== b.tiltRowFlashEnabled ||
     a.stakedPct !== b.stakedPct ||
     a.cumStakedPct !== b.cumStakedPct ||
@@ -1214,9 +1277,31 @@ function WalletTableInner({
     readTiltWhaleAmountUsd,
     () => DEFAULT_TILT_WHALE_AMOUNT_USD,
   );
+  const tiltInsiderWinRatePct = useSyncExternalStore(
+    subscribeTiltInsiderNotify,
+    readTiltInsiderWinRatePct,
+    () => 75,
+  );
+  const tiltInsiderMinStakeUsd = useSyncExternalStore(
+    subscribeTiltInsiderNotify,
+    readTiltInsiderMinStakeUsd,
+    () => 1000,
+  );
+  const tiltInsiderMaxSoundMutePriceCents = useSyncExternalStore(
+    subscribeNotifySoundMaxPriceCents,
+    readNotifySoundMaxPriceCents,
+    () => 95,
+  );
   const tiltNotifyApplies = useNotifyTiltAppliesToSelectedMarket();
-  const tiltRowFlashEnabled = variant !== 'marketView' && tiltNotifyApplies;
+  const tiltRowFlashEnabled = variant !== 'marketView' && variant !== 'swarms' && tiltNotifyApplies;
   const selectedMarket = useAppStore((s) => s.selectedMarket);
+  const tiltInsiderYesTokenId = selectedMarket?.clobTokenIds?.[0] ?? '';
+  const tiltInsiderNoTokenId = selectedMarket?.clobTokenIds?.[1] ?? '';
+  useSyncExternalStore(
+    subscribeBidAskMarketLookup,
+    () => `${wsQuoteMidCents(tiltInsiderYesTokenId) ?? 'n'}|${wsQuoteMidCents(tiltInsiderNoTokenId) ?? 'n'}`,
+    () => '',
+  );
   const swarmUpDownMarket = useMemo(() => marketIsUpDown(selectedMarket), [selectedMarket]);
   const rows = wallets || [];
   const totalStakedDenom = useMemo(() => {
@@ -1507,6 +1592,11 @@ function WalletTableInner({
                 toggleBellWallet={toggleBellWallet}
                 toggleXWallet={toggleXWallet}
                 tiltWhaleAmountUsd={tiltWhaleAmountUsd}
+                tiltInsiderWinRatePct={tiltInsiderWinRatePct}
+                tiltInsiderMinStakeUsd={tiltInsiderMinStakeUsd}
+                tiltInsiderYesTokenId={tiltInsiderYesTokenId}
+                tiltInsiderNoTokenId={tiltInsiderNoTokenId}
+                tiltInsiderMaxSoundMutePriceCents={tiltInsiderMaxSoundMutePriceCents}
                 tiltRowFlashEnabled={tiltRowFlashEnabled}
                 onOpenWallet={onOpenWallet}
                 stakedPct={metrics.stakedPct}

@@ -877,6 +877,26 @@ export function toxicFlowWhaleRingPriceGatePasses(
   return false;
 }
 
+export function toxicRowInsiderFlashEligible(
+  w: WalletPosition,
+  minWinRatePct: number,
+  minStakeUsd: number,
+  yesTokenId: string,
+  noTokenId: string,
+  xSet: ReadonlySet<string>,
+  maxSoundMutePriceCents: number,
+): boolean {
+  if (toxicRowWalletIsXMarked(w, xSet)) return false;
+  const absUsd = walletStakeNetAbsUsd(w);
+  if (!Number.isFinite(absUsd) || absUsd < Math.max(0, minStakeUsd)) return false;
+  const wr = toxicRowSortWinRateFrac(w);
+  if (wr == null || !Number.isFinite(wr)) return false;
+  if (wr < Math.max(0, Math.min(1, minWinRatePct / 100))) return false;
+  const dirMid = walletDirectionWsMidCents(w, yesTokenId, noTokenId);
+  if (dirMid == null || dirMid > maxSoundMutePriceCents) return false;
+  return true;
+}
+
 /** Insider Ring: ≥1 toxic-flow wallet with WR ≥ min (%) and |Staked Net| ≥ min stake; directional WS mid ≤ mute cap. */
 export function toxicFlowInsiderRingGatePasses(
   data: ToxicFlowData | null | undefined,
@@ -890,18 +910,20 @@ export function toxicFlowInsiderRingGatePasses(
   if (!data || !Number.isFinite(minWinRatePct) || !Number.isFinite(minStakeUsd) || !Number.isFinite(maxSoundMutePriceCents)) {
     return false;
   }
-  const minFrac = Math.max(0, Math.min(1, minWinRatePct / 100));
-  const floor = Math.max(0, minStakeUsd);
   for (const w of toxicFlowWalletUniverse(data)) {
-    if (toxicRowWalletIsXMarked(w, xSet)) continue;
-    const absUsd = walletStakeNetAbsUsd(w);
-    if (!Number.isFinite(absUsd) || absUsd < floor) continue;
-    const wr = toxicRowSortWinRateFrac(w);
-    if (wr == null || !Number.isFinite(wr)) continue;
-    if (wr < minFrac) continue;
-    const dirMid = walletDirectionWsMidCents(w, yesTokenId, noTokenId);
-    if (dirMid == null || dirMid > maxSoundMutePriceCents) continue;
-    return true;
+    if (
+      toxicRowInsiderFlashEligible(
+        w,
+        minWinRatePct,
+        minStakeUsd,
+        yesTokenId,
+        noTokenId,
+        xSet,
+        maxSoundMutePriceCents,
+      )
+    ) {
+      return true;
+    }
   }
   return false;
 }

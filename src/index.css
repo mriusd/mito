@@ -787,16 +787,19 @@ input[type="range"].vol-slider::-moz-range-thumb {
 }
 .sidebar-readable-value {
   -webkit-text-stroke: 1px #000;
+  -webkit-text-fill-color: currentColor;
   paint-order: stroke fill;
 }
 .live-ob-bid {
   color: #10b981;
   -webkit-text-stroke: 1px #000;
+  -webkit-text-fill-color: currentColor;
   paint-order: stroke fill;
 }
 .live-ob-ask {
   color: #ef4444;
   -webkit-text-stroke: 1px #000;
+  -webkit-text-fill-color: currentColor;
   paint-order: stroke fill;
 }
 

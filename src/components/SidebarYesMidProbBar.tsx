@@ -69,7 +69,7 @@ export const SidebarYesMidProbBar = memo(function SidebarYesMidProbBar({
               {yMidOk.toFixed(1)}
             </span>
           ) : (
-            <span className="text-gray-600">–</span>
+            <span className="text-gray-600 sidebar-readable-value">–</span>
           )}
           <span className="text-gray-600 mx-0.5">/</span>
           <span className="text-gray-400 sidebar-readable-value">{m != null ? `${m.toFixed(1)} math` : '– math'}</span>

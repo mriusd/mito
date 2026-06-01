@@ -28,7 +28,7 @@ export const SidebarSpotVolSigmaLabel = memo(function SidebarSpotVolSigmaLabel({
   const volBelowMax = sidebarVolBelowMaxCap(vol, maxVol);
   const volClass =
     vol == null
-      ? 'text-gray-600'
+      ? 'text-gray-600 sidebar-readable-value'
       : maxVol <= 0
         ? 'text-amber-200/95 sidebar-readable-value'
         : vol > maxVol

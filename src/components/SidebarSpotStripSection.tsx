@@ -280,7 +280,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
   const reserveUpDownSpotHeight = row.mode === 'updown' && !row.pastExpiry;
 
   return (
-    <div className={`sidebar-section py-1 px-3${reserveUpDownSpotHeight ? ' min-h-[7.5rem]' : ''}`}>
+    <div className={`sidebar-section sidebar-target-section py-1 px-3${reserveUpDownSpotHeight ? ' min-h-[7.5rem]' : ''}`}>
       <div
         className="grid gap-x-3 gap-y-1.5 items-center w-full min-h-[3.625rem]"
         style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(6rem, 1fr) minmax(0, 1fr)' }}
@@ -327,7 +327,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
         </div>
         <div className="flex items-center justify-center min-h-[16px] min-w-0 text-[11px] font-bold tabular-nums px-px">
           {row.pastExpiry ? (
-            <span className="text-gray-500 tabular-nums text-[11px]" title="Time machine ahead of expiration">
+            <span className="text-gray-500 tabular-nums text-[11px] sidebar-readable-value" title="Time machine ahead of expiration">
               &gt;⏱
             </span>
           ) : row.mathCents !== null ? (
@@ -337,7 +337,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
               onPickPrice={onPickPrice}
             />
           ) : (
-            <span className="text-gray-600 text-[11px]">—</span>
+            <span className="text-gray-600 text-[11px] sidebar-readable-value">—</span>
           )}
         </div>
         <div className="flex items-center justify-end min-h-[16px] min-w-0">

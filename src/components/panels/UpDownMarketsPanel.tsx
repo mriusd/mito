@@ -44,6 +44,7 @@ function assetBorderStyle(
 const NEXT_MARKETS_COUNT_KEY = 'updown-next-markets-count';
 const ASSET_VISIBILITY_KEY = 'updown-panel-asset-visibility';
 const SHOW_TARGET_KEY = 'updown-show-target';
+const SHOW_TARGET_PROB_KEY = 'updown-show-target-prob';
 
 type AssetVisibility = Record<(typeof ASSETS)[number], boolean>;
 
@@ -77,6 +78,7 @@ function persistAssetVisibility(v: AssetVisibility) {
 
 function UpDownMarketsPanelInner() {
   const [showTarget, setShowTarget] = useState(() => localStorage.getItem(SHOW_TARGET_KEY) !== 'false');
+  const [showTargetProb, setShowTargetProb] = useState(() => localStorage.getItem(SHOW_TARGET_PROB_KEY) !== 'false');
   const [nextMarketsCountStr, setNextMarketsCountStr] = useState<string>(
     () => localStorage.getItem(NEXT_MARKETS_COUNT_KEY) ?? '1',
   );
@@ -110,6 +112,11 @@ function UpDownMarketsPanelInner() {
   const setShowTargetColumn = (on: boolean) => {
     setShowTarget(on);
     localStorage.setItem(SHOW_TARGET_KEY, on ? 'true' : 'false');
+  };
+
+  const setShowTargetProbColumn = (on: boolean) => {
+    setShowTargetProb(on);
+    localStorage.setItem(SHOW_TARGET_PROB_KEY, on ? 'true' : 'false');
   };
 
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
@@ -240,6 +247,19 @@ function UpDownMarketsPanelInner() {
             />
             <span>Show Target</span>
           </label>
+          <label
+            className="flex items-center gap-1 cursor-default text-[10px] text-gray-300 select-none"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              checked={showTargetProb}
+              onChange={(e) => setShowTargetProbColumn(e.target.checked)}
+              className="accent-blue-500 rounded"
+            />
+            <span>Show Prob %</span>
+          </label>
         </div>
       </div>
       <div className="overflow-x-auto overflow-y-hidden flex-1 min-h-0 flex flex-col">
@@ -302,6 +322,7 @@ function UpDownMarketsPanelInner() {
               sortedOpenByAssetTf={sortedOpenByAssetTf}
               nextMarketsCount={nextMarketsCount}
               showTarget={showTarget}
+              showTargetProb={showTargetProb}
               colsPerAsset={colsPerAsset}
               volBySym={volBySym}
               volMultiplier={volMultiplier}

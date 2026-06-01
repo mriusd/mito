@@ -59,6 +59,7 @@ export const UpDownTimeframeRow = memo(function UpDownTimeframeRow({
   sortedOpenByAssetTf,
   nextMarketsCount,
   showTarget,
+  showTargetProb,
   tfDupExpiry,
   colsPerAsset,
   volBySym,
@@ -77,6 +78,7 @@ export const UpDownTimeframeRow = memo(function UpDownTimeframeRow({
   >;
   nextMarketsCount: number;
   showTarget: boolean;
+  showTargetProb: boolean;
   tfDupExpiry: boolean;
   colsPerAsset: number;
   volBySym: Record<string, number>;
@@ -168,6 +170,7 @@ export const UpDownTimeframeRow = memo(function UpDownTimeframeRow({
             market={market}
             futuresSlots={futuresSlots}
             showTarget={showTarget}
+            showTargetProb={showTargetProb}
             isLastTfRow={isLastTfRow}
             nextMarketsCount={nextMarketsCount}
             vol={volBySym[sym]}
@@ -190,6 +193,7 @@ export const UpDownTimeframeRowsBody = memo(function UpDownTimeframeRowsBody({
   sortedOpenByAssetTf,
   nextMarketsCount,
   showTarget,
+  showTargetProb,
   colsPerAsset,
   volBySym,
   volMultiplier,
@@ -206,6 +210,7 @@ export const UpDownTimeframeRowsBody = memo(function UpDownTimeframeRowsBody({
   >;
   nextMarketsCount: number;
   showTarget: boolean;
+  showTargetProb: boolean;
   colsPerAsset: number;
   volBySym: Record<string, number>;
   volMultiplier: number;
@@ -257,6 +262,7 @@ export const UpDownTimeframeRowsBody = memo(function UpDownTimeframeRowsBody({
           sortedOpenByAssetTf={sortedOpenByAssetTf}
           nextMarketsCount={nextMarketsCount}
           showTarget={showTarget}
+          showTargetProb={showTargetProb}
           tfDupExpiry={timeframesWithSharedExpiry.has(tf)}
           colsPerAsset={colsPerAsset}
           volBySym={volBySym}

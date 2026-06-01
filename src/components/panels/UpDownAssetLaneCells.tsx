@@ -182,6 +182,7 @@ export type UpDownAssetLaneCellsProps = {
   market: Market;
   futuresSlots: (Market | null)[];
   showTarget: boolean;
+  showTargetProb: boolean;
   isLastTfRow: boolean;
   nextMarketsCount: number;
   vol: number;
@@ -200,6 +201,7 @@ function UpDownAssetLaneCellsInner({
   market,
   futuresSlots,
   showTarget,
+  showTargetProb,
   isLastTfRow,
   nextMarketsCount,
   vol,
@@ -316,7 +318,7 @@ function UpDownAssetLaneCellsInner({
         <span className="font-medium tabular-nums">
           {formatTargetStrikePrice(strikeTarget, TARGET_STRIKE_DECIMALS[asset] ?? 0)}
         </span>
-        {mathYesProb !== null && (
+        {showTargetProb && mathYesProb !== null && (
           <div className="inline-flex items-center gap-0.5 shrink-0">
             <div
               className={`inline-flex h-4 min-w-[2.75rem] shrink-0 items-center justify-center gap-0.5 rounded px-1 text-[8px] font-bold tabular-nums ${mathBadgeColorClass}`}
@@ -509,6 +511,7 @@ export const UpDownAssetLaneCells = memo(UpDownAssetLaneCellsInner, (a, b) => {
     a.asset !== b.asset ||
     a.tf !== b.tf ||
     a.showTarget !== b.showTarget ||
+    a.showTargetProb !== b.showTargetProb ||
     a.isLastTfRow !== b.isLastTfRow ||
     a.nextMarketsCount !== b.nextMarketsCount ||
     a.vol !== b.vol ||

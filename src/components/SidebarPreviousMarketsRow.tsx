@@ -9,6 +9,7 @@ import {
   parseMarketEndMs,
   squareLabelForTimeframe,
   marketSquareTooltip,
+  tfDurationMs,
   type MarketSquareStatus,
 } from '../lib/marketSquareUi';
 import { useExpiryNow } from '../hooks/useExpiryNow';
@@ -86,6 +87,12 @@ function squareConditionId(m: SquareMarket): string {
   return String((m as Market).id || '').trim();
 }
 
+function onchainMatchesUpDownTimeframe(m: OnchainMarketListItem, tf: string): boolean {
+  const dbTf = (m.timeframe || '').trim().toLowerCase();
+  if (dbTf === tf) return true;
+  return upDownTimeframeKeyFromMarket({ eventSlug: m.eventSlug, question: m.question }) === tf;
+}
+
 function mergeSquareMarkets(batch: OnchainMarketListItem[], storeMarkets: Market[]): SquareMarket[] {
   const byId = new Map<string, SquareMarket>();
   const add = (m: SquareMarket) => {
@@ -105,13 +112,56 @@ function mergeSquareMarkets(batch: OnchainMarketListItem[], storeMarkets: Market
   return [...byId.values()].sort((a, b) => parseMarketEndMs(a) - parseMarketEndMs(b));
 }
 
-function pickPastMarkets(all: SquareMarket[], anchorEndMs: number, count: number): SquareMarket[] {
-  return all
-    .filter((m) => {
+function pickPastMarkets(
+  all: SquareMarket[],
+  anchorEndMs: number,
+  timeframe: string,
+  count: number,
+  excludeIds?: ReadonlySet<string>,
+): SquareMarket[] {
+  const duration = tfDurationMs(timeframe);
+  if (!duration || !anchorEndMs) return [];
+
+  const tol = Math.max(Math.round(duration * 0.25), 45_000);
+  const used = new Set<string>();
+  const slots: SquareMarket[] = [];
+
+  for (let slot = 1; slot <= count; slot++) {
+    const expectedEnd = anchorEndMs - slot * duration;
+    let best: SquareMarket | null = null;
+    let bestDist = Infinity;
+    for (const m of all) {
+      const id = squareConditionId(m).toLowerCase();
+      if (!id || used.has(id) || excludeIds?.has(id)) continue;
       const endMs = parseMarketEndMs(m);
-      return endMs > 0 && endMs < anchorEndMs;
+      if (!endMs || endMs >= anchorEndMs) continue;
+      const dist = Math.abs(endMs - expectedEnd);
+      if (dist <= tol && dist < bestDist) {
+        bestDist = dist;
+        best = m;
+      }
+    }
+    if (best) {
+      used.add(squareConditionId(best).toLowerCase());
+      slots.push(best);
+    }
+  }
+
+  if (slots.length >= count) return slots.reverse();
+
+  const chronological = all
+    .filter((m) => {
+      const id = squareConditionId(m).toLowerCase();
+      const endMs = parseMarketEndMs(m);
+      return endMs > 0 && endMs < anchorEndMs && !excludeIds?.has(id);
     })
     .slice(-count);
+  if (slots.length === 0) return chronological;
+
+  const byId = new Map<string, SquareMarket>();
+  for (const m of chronological) byId.set(squareConditionId(m).toLowerCase(), m);
+  for (const m of slots) byId.set(squareConditionId(m).toLowerCase(), m);
+  return [...byId.values()].sort((a, b) => parseMarketEndMs(a) - parseMarketEndMs(b)).slice(-count);
 }
 
 function pickFutureMarkets(all: SquareMarket[], anchorEndMs: number, count: number): SquareMarket[] {
@@ -182,9 +232,11 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
       return;
     }
     let disposed = false;
-    void fetchOnchainMarkets({ asset, timeframe, expired_only: true, limit: 40, offset: 0 })
+    void fetchOnchainMarkets({ asset, expired_only: true, limit: 100, offset: 0 })
       .then((data) => {
-        if (!disposed) setBatch(data.markets ?? []);
+        if (disposed) return;
+        const markets = (data.markets ?? []).filter((m) => onchainMatchesUpDownTimeframe(m, timeframe));
+        setBatch(markets);
       })
       .catch(() => {
         if (!disposed) setBatch([]);
@@ -199,10 +251,12 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
     [batch, storeTfMarkets],
   );
 
-  const past = useMemo(
-    () => (liveEndMs ? pickPastMarkets(allSquareMarkets, liveEndMs, PAST_COUNT) : []),
-    [allSquareMarkets, liveEndMs],
-  );
+  const past = useMemo(() => {
+    if (!liveEndMs || !timeframe) return [];
+    const liveId = (liveMarket?.conditionId || liveMarket?.id || '').trim().toLowerCase();
+    const exclude = liveId ? new Set([liveId]) : undefined;
+    return pickPastMarkets(allSquareMarkets, liveEndMs, timeframe, PAST_COUNT, exclude);
+  }, [allSquareMarkets, liveEndMs, timeframe, liveMarket]);
 
   const future = useMemo(
     () => (liveEndMs ? pickFutureMarkets(allSquareMarkets, liveEndMs, FUTURE_COUNT) : []),

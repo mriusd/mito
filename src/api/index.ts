@@ -742,7 +742,7 @@ export interface OnchainMarketListItem {
 
 export async function fetchOnchainMarkets(params: {
   asset: string;
-  timeframe: string;
+  timeframe?: string;
   expired_only?: boolean;
   limit?: number;
   offset?: number;
@@ -755,7 +755,9 @@ export async function fetchOnchainMarkets(params: {
 }> {
   const qs = new URLSearchParams();
   qs.set('asset', params.asset);
-  qs.set('timeframe', params.timeframe);
+  if (params.timeframe != null && params.timeframe !== '') {
+    qs.set('timeframe', params.timeframe);
+  }
   if (params.expired_only === false) qs.set('expired_only', '0');
   else qs.set('expired_only', '1');
   if (params.limit != null) qs.set('limit', String(params.limit));

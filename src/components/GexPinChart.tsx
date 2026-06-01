@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { GexExpiryBucket } from '../lib/deribitGexFeed';
 
 function fmtPinAxis(v: number, compact: boolean): string {
@@ -9,6 +9,11 @@ function fmtPinAxis(v: number, compact: boolean): string {
   return v.toFixed(0);
 }
 
+function fmtPinHover(v: number): string {
+  if (v >= 1000) return `$${(v / 1000).toFixed(v >= 100000 ? 0 : 1)}k`;
+  return `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
 type GexPinChartProps = {
   expirations: GexExpiryBucket[];
   spot: number;
@@ -16,6 +21,7 @@ type GexPinChartProps = {
 };
 
 export function GexPinChart({ expirations, spot, compact = false }: GexPinChartProps) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const points = useMemo(() => {
     const now = Date.now();
     return expirations
@@ -78,9 +84,12 @@ export function GexPinChart({ expirations, spot, compact = false }: GexPinChartP
 
   const { W, H, padL, padT, plotW, plotH, linePath, spotY, yTicks, xLabels, points: pts, xAt, yAt } =
     geometry;
+  const hovered = hoverIdx != null ? pts[hoverIdx] : null;
+  const hoverX = hoverIdx != null ? xAt(hoverIdx) : 0;
+  const hoverY = hovered != null ? yAt(hovered.pin) : 0;
 
   return (
-    <div className={compact ? 'h-full w-full min-w-0' : 'mb-1.5 w-full'} title="Pin strike by expiry">
+    <div className={compact ? 'relative h-full w-full min-w-0' : 'relative mb-1.5 w-full'} title="Pin strike by expiry">
       {!compact ? (
         <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">
           Pin by expiry
@@ -91,6 +100,7 @@ export function GexPinChart({ expirations, spot, compact = false }: GexPinChartP
         className={`block w-full h-full min-h-0 min-w-0 ${compact ? '' : 'h-auto'}`}
         aria-label="Pin strike by expiration"
         preserveAspectRatio={compact ? 'none' : 'xMidYMid meet'}
+        onMouseLeave={() => setHoverIdx(null)}
       >
         {!compact ? (
           <rect x={padL} y={padT} width={plotW} height={plotH} fill="rgb(17 24 39 / 0.35)" rx="2" />
@@ -134,21 +144,32 @@ export function GexPinChart({ expirations, spot, compact = false }: GexPinChartP
           strokeWidth={compact ? 1 : 1.5}
           strokeLinejoin="round"
         />
-        {pts.map((p, i) => (
-          <circle
-            key={p.expiryMs}
-            cx={xAt(i)}
-            cy={yAt(p.pin)}
-            r={compact ? 1 : 2.2}
-            fill="rgb(250 204 21)"
-            stroke="rgb(17 24 39)"
-            strokeWidth="0.4"
-          >
-            <title>
-              {p.label}: {fmtPinAxis(p.pin, false)}
-            </title>
-          </circle>
-        ))}
+        {pts.map((p, i) => {
+          const cx = xAt(i);
+          const cy = yAt(p.pin);
+          const active = hoverIdx === i;
+          return (
+            <g key={p.expiryMs}>
+              <circle
+                cx={cx}
+                cy={cy}
+                r={compact ? 5 : 6}
+                fill="transparent"
+                className="cursor-pointer"
+                onMouseEnter={() => setHoverIdx(i)}
+              />
+              <circle
+                cx={cx}
+                cy={cy}
+                r={active ? (compact ? 2 : 3) : compact ? 1 : 2.2}
+                fill="rgb(250 204 21)"
+                stroke={active ? 'rgb(255 255 255)' : 'rgb(17 24 39)'}
+                strokeWidth={active ? 0.6 : 0.4}
+                pointerEvents="none"
+              />
+            </g>
+          );
+        })}
         {xLabels.map((p) => (
           <text
             key={p.expiryMs}
@@ -162,6 +183,18 @@ export function GexPinChart({ expirations, spot, compact = false }: GexPinChartP
           </text>
         ))}
       </svg>
+      {hovered ? (
+        <div
+          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded bg-gray-950/95 px-1 py-px text-[8px] font-bold tabular-nums text-yellow-300 shadow-sm ring-1 ring-gray-700/80"
+          style={{
+            left: `${(hoverX / W) * 100}%`,
+            top: `${(hoverY / H) * 100}%`,
+            marginTop: compact ? -2 : -4,
+          }}
+        >
+          {fmtPinHover(hovered.pin)}
+        </div>
+      ) : null}
       {!compact ? (
         <div className="text-[8px] text-gray-600 px-0.5">
           <span className="inline-block w-3 border-t border-dashed border-gray-500 align-middle mr-1" />

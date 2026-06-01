@@ -123,7 +123,7 @@ export const UpDownTimeframeRow = memo(function UpDownTimeframeRow({
   return (
     <tr className="hover:bg-gray-800/50">
       <td
-        className={`px-1 py-1 font-bold text-white border-b border-r border-gray-700 whitespace-nowrap relative ${
+        className={`px-1 py-1 font-bold text-white border-b border-r border-gray-700 whitespace-nowrap relative align-middle ${
           tfDupExpiry ? 'bg-red-950/70' : 'bg-gray-900'
         }`}
         title={tfDupExpiry ? 'This timeframe shares the same expiry instant as another row' : undefined}
@@ -152,7 +152,7 @@ export const UpDownTimeframeRow = memo(function UpDownTimeframeRow({
             <td
               key={asset}
               colSpan={colsPerAsset}
-              className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 text-gray-600 ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+              className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 text-gray-600 align-middle ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
             >
               -
             </td>

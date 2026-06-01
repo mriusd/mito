@@ -907,6 +907,37 @@ input[type="range"].vol-slider::-moz-range-thumb {
   -webkit-user-select: none;
 }
 
+/* Up/Down panel: stretch 5 TF rows to fill panel height */
+.updown-markets-panel-table {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.updown-markets-panel-table thead {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+  flex-shrink: 0;
+}
+.updown-markets-panel-table .updown-markets-panel-tbody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.updown-markets-panel-table .updown-markets-panel-tbody tr {
+  flex: 1;
+  min-height: 0;
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+.updown-markets-panel-table .updown-markets-panel-tbody td {
+  vertical-align: middle;
+}
+
 @media (max-width: 767px) {
   .panel-header {
     touch-action: manipulation;

@@ -191,7 +191,7 @@ function UpDownMarketsPanelInner() {
   useUpDownNextMarketFlashWhaleSound(sortedOpenByAssetTf, visibleAssets, nextMarketsCount);
 
   return (
-    <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
+    <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 h-full overflow-hidden">
       <div className="panel-header flex items-center gap-2 mb-2 cursor-grab flex-wrap">
         <h3 className="text-sm font-bold text-yellow-400">Up or Down Markets</h3>
         <div className="ml-auto flex items-center gap-3 cursor-default flex-wrap">
@@ -242,12 +242,12 @@ function UpDownMarketsPanelInner() {
           </label>
         </div>
       </div>
-      <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+      <div className="overflow-x-auto overflow-y-hidden flex-1 min-h-0 flex flex-col">
         {visibleAssets.length === 0 ? (
           <div className="text-center text-[10px] text-gray-500 py-8">Select at least one asset (BTC, ETH, SOL, XRP).</div>
         ) : (
-        <table className="w-full border-collapse text-xs">
-          <thead className="sticky top-0 z-10 bg-gray-900">
+        <table className="updown-markets-panel-table w-full h-full min-h-0 border-collapse text-xs">
+          <thead className="bg-gray-900">
             <tr>
               <th className="px-2 py-1 text-center text-gray-400 font-bold border-b border-r border-gray-700 bg-gray-900" rowSpan={2} />
               {visibleAssets.map((asset) => (
@@ -296,7 +296,7 @@ function UpDownMarketsPanelInner() {
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="updown-markets-panel-tbody">
             <UpDownTimeframeRowsBody
               visibleAssets={visibleAssets}
               sortedOpenByAssetTf={sortedOpenByAssetTf}

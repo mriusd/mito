@@ -1,91 +1,42 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import { fetchOnchainMarkets, type OnchainMarketListItem } from '../api';
 import { useAppStore } from '../stores/appStore';
-import type { AssetName, AssetSymbol, Market } from '../types';
+import type { Market } from '../types';
+import { extractAssetFromMarket, pickLiveUpDownMarketInTfBucket, upDownTimeframeKeyFromMarket } from '../utils/format';
 import {
-  assetToSymbol,
-  extractAssetFromMarket,
-  pickLiveUpDownMarketInTfBucket,
-  resolvedBinaryOutcomeLabel,
-  upDownTimeframeKeyFromMarket,
-} from '../utils/format';
-import { getMarketProbability } from '../utils/bsMath';
-import { useChainlinkPricesMap } from '../hooks/usePolymarketPrice';
-import { useMarkovUpDown, markovNextUpProb } from '../hooks/useMarkovUpDown';
-import {
-  STATUS_CLS,
   marketSquareStatusFromMarket,
   marketSquareStatusFromOnchain,
   parseMarketEndMs,
   squareLabelForTimeframe,
   marketSquareTooltip,
-  tfDurationMs,
   type MarketSquareStatus,
 } from '../lib/marketSquareUi';
 import { useExpiryNow } from '../hooks/useExpiryNow';
 
 const SIDEBAR_SQUARE_CLS =
-  'inline-flex h-5 min-w-[1.4rem] items-center justify-center rounded-sm border px-0 text-[7px] font-bold tabular-nums leading-none transition-colors';
-const SIDEBAR_LIVE_SQUARE_CLS =
-  'border-pink-500/70 bg-pink-900/45 text-pink-100';
-const SIDEBAR_SELECTED_CLS = 'selected ring-2 ring-blue-500 ring-inset z-10';
+  'inline-flex h-5 min-w-[1.4rem] items-center justify-center rounded-sm px-0 text-[7px] font-bold tabular-nums leading-none transition-colors';
+const SIDEBAR_LIVE_FILL_CLS = 'bg-pink-900/45 text-pink-100';
+const SIDEBAR_LIVE_BORDER_CLS = 'border border-pink-500/70';
+const SIDEBAR_SELECTED_BORDER_CLS = 'border-2 border-blue-500';
+
+const STATUS_FILL_CLS: Record<MarketSquareStatus, string> = {
+  resolved_yes: 'bg-green-900/45 text-green-100',
+  resolved_no: 'bg-red-900/45 text-red-100',
+  current: 'bg-orange-900/40 text-orange-100',
+  future: 'bg-gray-800/40 text-gray-500',
+  expired_unresolved: 'bg-yellow-900/40 text-yellow-100',
+};
+
+const STATUS_BORDER_CLS: Record<MarketSquareStatus, string> = {
+  resolved_yes: 'border border-green-600/55',
+  resolved_no: 'border border-red-600/55',
+  current: 'border border-orange-500/70',
+  future: 'border border-gray-600/80',
+  expired_unresolved: 'border border-yellow-500/70',
+};
 
 const PAST_COUNT = 5;
 const FUTURE_COUNT = 5;
-
-function isResolvedOutcome(outcome: string): boolean {
-  const o = outcome.trim().toUpperCase();
-  return o === 'YES' || o === 'UP' || o === 'NO' || o === 'DOWN';
-}
-
-function immediatePredecessorResolved(
-  batch: OnchainMarketListItem[],
-  storeMarkets: Market[],
-  liveEndMs: number,
-  timeframe: string,
-  nowMs: number,
-): boolean {
-  const duration = tfDurationMs(timeframe);
-  if (!duration || !liveEndMs) return true;
-  const expectedEnd = liveEndMs - duration;
-  const tol = duration * 0.25;
-
-  let bestOutcome = '';
-  let bestDist = Infinity;
-
-  const consider = (endMs: number, outcome: string) => {
-    if (!endMs) return;
-    const dist = Math.abs(endMs - expectedEnd);
-    if (dist <= tol && dist < bestDist) {
-      bestDist = dist;
-      bestOutcome = outcome;
-    }
-  };
-
-  for (const m of batch) {
-    consider(parseMarketEndMs(m), (m.outcome || '').trim());
-  }
-  for (const m of storeMarkets) {
-    const resolved = resolvedBinaryOutcomeLabel(m, true);
-    const outcome = resolved === 'UP' ? 'YES' : resolved === 'DOWN' ? 'NO' : '';
-    consider(parseMarketEndMs(m), outcome);
-  }
-
-  if (bestDist === Infinity) {
-    if (liveEndMs > nowMs && expectedEnd <= nowMs) return false;
-    return true;
-  }
-  return isResolvedOutcome(bestOutcome);
-}
-
-function probColor(p: number | null | undefined): string {
-  if (p == null || !Number.isFinite(p)) return 'text-gray-500';
-  if (Math.abs(p * 100 - 50) <= 1) return 'text-gray-300/90';
-  return p > 0.5 ? 'text-green-300' : 'text-red-300';
-}
-
-const pct = (p: number | null | undefined): string =>
-  p == null || !Number.isFinite(p) ? '-' : (p * 100).toFixed(0);
 
 function marketIsUpDown(market: Market | null | undefined): boolean {
   return !!(market?.question?.match(/up\s+or\s+down/i) || market?.eventSlug?.match(/up-or-down|updown/i));
@@ -205,12 +156,6 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const marketLookup = useAppStore((s) => s.marketLookup);
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
-  const priceData = useAppStore((s) => s.priceData);
-  const volatilityData = useAppStore((s) => s.volatilityData);
-  const volMultiplier = useAppStore((s) => s.volMultiplier);
-  const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
-  const chainlinkPrices = useChainlinkPricesMap();
-  const markovModels = useMarkovUpDown();
 
   const asset = extractAssetFromMarket(selectedMarket);
   const timeframe = upDownTimeframeKeyFromMarket(selectedMarket);
@@ -228,36 +173,6 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
   );
 
   const liveEndMs = liveMarket ? parseMarketEndMs(liveMarket) : 0;
-
-  const markovO4 = useMemo(() => {
-    if (!asset || !timeframe || !liveMarket) return null;
-    const model = markovModels?.[asset]?.[timeframe];
-    const sym = assetToSymbol(asset as AssetName) as AssetSymbol;
-    const cl = chainlinkPrices[asset as AssetName];
-    const binanceSpot = priceData[sym]?.price;
-    const preferChainlink = timeframe === '5m' || timeframe === '15m';
-    const liveSpot = preferChainlink
-      ? (cl != null && cl > 0 ? cl : (binanceSpot != null && binanceSpot > 0 ? binanceSpot : undefined))
-      : (binanceSpot != null && binanceSpot > 0 ? binanceSpot : undefined);
-    const strike = liveMarket.priceToBeat;
-    let pUpCur: number | null = null;
-    if (liveSpot != null && liveSpot > 0 && strike != null && liveMarket.endDate) {
-      const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
-      const p = getMarketProbability('>' + strike, liveSpot, liveMarket.endDate, sigma, bsTimeOffsetHours);
-      if (p != null) pUpCur = p;
-    }
-    return markovNextUpProb(model, pUpCur).order4;
-  }, [
-    asset,
-    timeframe,
-    liveMarket,
-    markovModels,
-    chainlinkPrices,
-    priceData,
-    volatilityData,
-    volMultiplier,
-    bsTimeOffsetHours,
-  ]);
 
   const [batch, setBatch] = useState<OnchainMarketListItem[]>([]);
 
@@ -294,15 +209,8 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
     [allSquareMarkets, liveEndMs],
   );
 
-  const prevResolved = useMemo(() => {
-    if (!liveEndMs || !timeframe) return true;
-    return immediatePredecessorResolved(batch, storeTfMarkets, liveEndMs, timeframe, nowMs);
-  }, [batch, storeTfMarkets, liveEndMs, timeframe, nowMs]);
-
   if (!isUpDown || !timeframe) return null;
-  if (!liveMarket && past.length === 0 && future.length === 0 && markovO4 == null && markovModels == null) {
-    return null;
-  }
+  if (!liveMarket && past.length === 0 && future.length === 0) return null;
 
   const selectedLc = (selectedMarket.conditionId || selectedMarket.id || '').trim().toLowerCase();
 
@@ -313,13 +221,18 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
     const status = isLive ? ('current' as const) : squareStatus(m, timeframe, nowMs);
     const label = squareLabelForTimeframe(timeframe, endMs);
     const isSelected = selectedLc === id.toLowerCase();
-    const colorCls = isLive ? SIDEBAR_LIVE_SQUARE_CLS : STATUS_CLS[status];
+    const fillCls = isLive ? SIDEBAR_LIVE_FILL_CLS : STATUS_FILL_CLS[status];
+    const borderCls = isSelected
+      ? SIDEBAR_SELECTED_BORDER_CLS
+      : isLive
+        ? SIDEBAR_LIVE_BORDER_CLS
+        : STATUS_BORDER_CLS[status];
     return (
       <button
         key={id}
         type="button"
-        className={`${SIDEBAR_SQUARE_CLS} ${colorCls} hover:brightness-110 shrink-0 relative ${
-          isSelected ? SIDEBAR_SELECTED_CLS : ''
+        className={`${SIDEBAR_SQUARE_CLS} ${fillCls} ${borderCls} hover:brightness-110 shrink-0 relative ${
+          isSelected ? 'selected z-10' : ''
         }`}
         title={squareTooltip(m, status)}
         onClick={() => setSelectedMarket(squareToSelectedMarket(m, marketLookup, upOrDownMarkets))}
@@ -336,25 +249,6 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
         {liveMarket ? renderSquare(liveMarket, { live: true }) : null}
         {future.map((m) => renderSquare(m))}
       </div>
-      {(markovO4 != null || markovModels != null) && (
-        <div
-          className="ml-auto flex items-center gap-1 shrink-0 pl-1 border-l border-gray-700/50"
-          title={
-            !prevResolved
-              ? 'Previous market not resolved — Markov state unknown'
-              : '4th-order Markov P(next market UP), live-conditioned on current BS prob'
-          }
-        >
-          <span className="text-[8px] text-amber-400/90 font-semibold">o4</span>
-          <span
-            className={`text-[10px] font-bold tabular-nums ${
-              !prevResolved ? 'text-gray-400' : probColor(markovO4)
-            }`}
-          >
-            {!prevResolved ? '?' : pct(markovO4)}
-          </span>
-        </div>
-      )}
     </div>
   );
 }

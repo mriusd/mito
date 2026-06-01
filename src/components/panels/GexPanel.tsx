@@ -7,6 +7,7 @@ import {
   type GexAssetSnapshot,
 } from '../../lib/deribitGexFeed';
 import { GexExpirationsTable } from '../GexExpirationsTable';
+import { GexPinChart } from '../GexPinChart';
 
 function readStoredGexAsset(panelId: string): GexAsset {
   const saved = localStorage.getItem(`polybot-gex-asset-${panelId}`);
@@ -153,45 +154,45 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
 
   return (
     <div className="mb-3 last:mb-0 border-b border-gray-800 pb-2 last:border-b-0">
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-[12px] font-bold text-white">{snap.asset}</span>
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.15fr)] grid-rows-[auto_auto_auto] gap-x-2 gap-y-0 text-[9px] leading-tight mb-1.5">
+        <div className="col-span-3 row-start-1 flex items-center gap-1.5 min-w-0 flex-wrap">
+          <span className="text-[11px] font-bold text-white leading-none">{snap.asset}</span>
           <GexFlashText
             value={snap.spot}
             mode="directional"
-            className="text-[10px] tabular-nums text-gray-400"
+            className="text-[10px] tabular-nums text-gray-400 leading-none"
             format={formatGexSpot}
           />
+          <span
+            ref={regimeRef}
+            className={`px-1 py-px rounded text-[8px] font-bold uppercase tracking-wide leading-none ${
+              negative ? 'bg-red-900/60 text-red-300' : 'bg-green-900/60 text-green-300'
+            }`}
+            title={
+              negative
+                ? 'Dealers short gamma → hedging amplifies moves. Easiest regime to push price.'
+                : 'Dealers long gamma → hedging dampens moves. Price tends to pin near big strikes.'
+            }
+          >
+            {negative ? 'NEG γ · unstable' : 'POS γ · pinned'}
+          </span>
         </div>
-        <span
-          ref={regimeRef}
-          className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide ${
-            negative ? 'bg-red-900/60 text-red-300' : 'bg-green-900/60 text-green-300'
-          }`}
-          title={
-            negative
-              ? 'Dealers short gamma → hedging amplifies moves. Easiest regime to push price.'
-              : 'Dealers long gamma → hedging dampens moves. Price tends to pin near big strikes.'
-          }
-        >
-          {negative ? 'NEG γ · unstable' : 'POS γ · pinned'}
-        </span>
-      </div>
-
-      <div className="grid grid-cols-3 gap-x-2 gap-y-0.5 text-[9px] mb-1.5">
-        <div className="flex justify-between">
-          <span className="text-gray-500">Net GEX/1%</span>
+        <div className="row-span-3 row-start-1 col-start-4 flex min-h-0 min-w-0 w-full self-stretch">
+          <GexPinChart expirations={snap.expirations} spot={snap.spot} compact />
+        </div>
+        <div className="row-start-2 flex justify-between gap-1 min-w-0 items-center">
+          <span className="text-gray-500 shrink-0">Net GEX/1%</span>
           <GexFlashValue
             value={snap.netGex}
             mode="directional"
-            className={`tabular-nums font-bold ${snap.netGex >= 0 ? 'text-green-400' : 'text-red-400'}`}
+            className={`tabular-nums font-bold truncate ${snap.netGex >= 0 ? 'text-green-400' : 'text-red-400'}`}
           >
             {(s) => s}
           </GexFlashValue>
         </div>
-        <div className="flex justify-between">
-          <span className="text-gray-500">γ-flip</span>
-          <span className="tabular-nums text-gray-200">
+        <div className="row-start-2 flex justify-between gap-1 min-w-0 items-center">
+          <span className="text-gray-500 shrink-0">γ-flip</span>
+          <span className="tabular-nums text-gray-200 truncate text-right">
             {snap.gammaFlip != null ? (
               <>
                 <GexFlashText value={snap.gammaFlip} format={fmtStrike} /> ({pctTo(snap.spot, snap.gammaFlip)})
@@ -201,32 +202,32 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
             )}
           </span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-gray-500">Put wall</span>
-          <span className="tabular-nums text-red-300/90">
+        <div className="row-start-2 flex justify-between gap-1 min-w-0 items-center">
+          <span className="text-gray-500 shrink-0">Put wall</span>
+          <span className="tabular-nums text-red-300/90 truncate text-right">
             <GexFlashText value={snap.putWall} format={fmtStrike} />{' '}
             <span className="text-gray-600">{pctTo(snap.spot, snap.putWall)}</span>
           </span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-gray-500">Call wall</span>
-          <span className="tabular-nums text-green-300/90">
+        <div className="row-start-3 flex justify-between gap-1 min-w-0 items-center">
+          <span className="text-gray-500 shrink-0">Call wall</span>
+          <span className="tabular-nums text-green-300/90 truncate text-right">
             <GexFlashText value={snap.callWall} format={fmtStrike} />{' '}
             <span className="text-gray-600">{pctTo(snap.spot, snap.callWall)}</span>
           </span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-gray-500">Pin</span>
-          <span className="tabular-nums text-yellow-300/90">
+        <div className="row-start-3 flex justify-between gap-1 min-w-0 items-center">
+          <span className="text-gray-500 shrink-0">Pin</span>
+          <span className="tabular-nums text-yellow-300/90 truncate text-right">
             <GexFlashText value={snap.pinStrike} format={fmtStrike} />{' '}
             <span className="text-gray-600">{pctTo(snap.spot, snap.pinStrike)}</span>
           </span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-gray-500">OI</span>
+        <div className="row-start-3 flex justify-between gap-1 min-w-0 items-center">
+          <span className="text-gray-500 shrink-0">OI</span>
           <GexFlashText
             value={snap.totalOi}
-            className="tabular-nums text-gray-300"
+            className="tabular-nums text-gray-300 truncate text-right"
             format={formatGexOi}
           />
         </div>

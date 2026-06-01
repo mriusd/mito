@@ -51,7 +51,7 @@ import {
   TOXIC_X_CHANGED_EVENT,
   TOXIC_X_WALLETS_LS_KEY,
 } from '../lib/toxicXWallets';
-import { persistTiltWhaleAmountUsd, readTiltWhaleAmountUsd } from '../lib/tiltWhaleAmountUsd';
+import { persistTiltWhaleAmountUsd, persistTiltWhaleMaxPriceCents, readTiltWhaleAmountUsd } from '../lib/tiltWhaleAmountUsd';
 import { notifyTiltInsiderSettingsChanged } from '../lib/tiltInsiderNotify';
 import {
   bumpNotifyTiltMarketFiltersRevision,
@@ -1090,11 +1090,7 @@ export const Sidebar = memo(function Sidebar() {
     window.dispatchEvent(new Event(NOTIFY_BELL_MIN_STAKE_CHANGED_EVENT));
   }, [notifyBellMinStakeUsd]);
   useEffect(() => {
-    try {
-      localStorage.setItem(SIDEBAR_NOTIFY_WHALE_MAX_PRICE_CENTS_KEY, String(notifyWhaleMaxPriceCents));
-    } catch {
-      /* ignore */
-    }
+    persistTiltWhaleMaxPriceCents(notifyWhaleMaxPriceCents);
   }, [notifyWhaleMaxPriceCents]);
   useEffect(() => {
     try {
@@ -2890,7 +2886,7 @@ export const Sidebar = memo(function Sidebar() {
                   />
                 </label>
                 <label className="flex items-center gap-2 shrink-0">
-                  <span className="text-gray-400 whitespace-nowrap">Max Whale Price (¢)</span>
+                  <span className="text-gray-400 whitespace-nowrap">Max Whale/Insider Price (¢)</span>
                   <NotifyDialogNumberInput
                     min={1}
                     max={99}

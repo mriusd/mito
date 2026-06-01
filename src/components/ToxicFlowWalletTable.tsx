@@ -61,9 +61,12 @@ import { toxicWalletDisplayLabel } from '../lib/toxicWalletDisplayLabel';
 import { useToxicWalletTag } from '../lib/toxicWalletTags';
 import {
   readTiltWhaleAmountUsd,
+  readTiltWhaleMaxPriceCents,
   DEFAULT_TILT_WHALE_AMOUNT_USD,
+  DEFAULT_TILT_WHALE_MAX_PRICE_CENTS,
   TILT_WHALE_AMOUNT_USD_CHANGED_EVENT,
   TILT_WHALE_AMOUNT_USD_LS_KEY,
+  TILT_WHALE_MAX_PRICE_CENTS_LS_KEY,
 } from '../lib/tiltWhaleAmountUsd';
 import {
   readTiltInsiderMinStakeUsd,
@@ -74,6 +77,7 @@ import {
   readNotifySoundMaxPriceCents,
   SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY,
   NOTIFY_SOUND_MAX_PRICE_CHANGED_EVENT,
+  isNotifySoundPriceMuted,
   wsQuoteMidCents,
 } from '../lib/notifySoundPriceMute';
 import { subscribeBidAskMarketLookup } from '../lib/bidAskMarketLookup';
@@ -92,7 +96,13 @@ import { fmtPriceShare, walletMarketUsdcInCell } from './WalletLatestMarketsTrad
 function subscribeTiltWhaleAmountUsd(listener: () => void): () => void {
   const onCustom = () => listener();
   const onStorage = (e: StorageEvent) => {
-    if (e.key === TILT_WHALE_AMOUNT_USD_LS_KEY || e.key === null) listener();
+    if (
+      e.key === TILT_WHALE_AMOUNT_USD_LS_KEY ||
+      e.key === TILT_WHALE_MAX_PRICE_CENTS_LS_KEY ||
+      e.key === null
+    ) {
+      listener();
+    }
   };
   window.addEventListener(TILT_WHALE_AMOUNT_USD_CHANGED_EVENT, onCustom);
   window.addEventListener('storage', onStorage);
@@ -858,6 +868,7 @@ interface WalletTableBodyRowProps {
   tiltWhaleAmountUsd: number;
   tiltInsiderWinRatePct: number;
   tiltInsiderMinStakeUsd: number;
+  tiltInsiderMaxEntryPriceCents: number;
   tiltInsiderYesTokenId: string;
   tiltInsiderNoTokenId: string;
   tiltInsiderMaxSoundMutePriceCents: number;
@@ -887,6 +898,7 @@ function WalletTableBodyRowImpl({
   tiltWhaleAmountUsd,
   tiltInsiderWinRatePct,
   tiltInsiderMinStakeUsd,
+  tiltInsiderMaxEntryPriceCents,
   tiltInsiderYesTokenId,
   tiltInsiderNoTokenId,
   tiltInsiderMaxSoundMutePriceCents,
@@ -968,14 +980,17 @@ function WalletTableBodyRowImpl({
     !rowNearResolved &&
     !swarmRow &&
     !xActive &&
+    !isNotifySoundPriceMuted(
+      tiltInsiderYesTokenId,
+      tiltInsiderNoTokenId,
+      tiltInsiderMaxSoundMutePriceCents,
+    ) &&
     toxicRowInsiderFlashEligible(
       w,
       tiltInsiderWinRatePct,
       tiltInsiderMinStakeUsd,
-      tiltInsiderYesTokenId,
-      tiltInsiderNoTokenId,
+      tiltInsiderMaxEntryPriceCents,
       new Set<string>(),
-      tiltInsiderMaxSoundMutePriceCents,
     );
   const rowClass =
     walletRowClassForStakedNet(shadeRowByStakedNet, stakeNetSigned) +
@@ -1156,6 +1171,7 @@ const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
     a.tiltWhaleAmountUsd !== b.tiltWhaleAmountUsd ||
     a.tiltInsiderWinRatePct !== b.tiltInsiderWinRatePct ||
     a.tiltInsiderMinStakeUsd !== b.tiltInsiderMinStakeUsd ||
+    a.tiltInsiderMaxEntryPriceCents !== b.tiltInsiderMaxEntryPriceCents ||
     a.tiltInsiderYesTokenId !== b.tiltInsiderYesTokenId ||
     a.tiltInsiderNoTokenId !== b.tiltInsiderNoTokenId ||
     a.tiltInsiderMaxSoundMutePriceCents !== b.tiltInsiderMaxSoundMutePriceCents ||
@@ -1276,6 +1292,11 @@ function WalletTableInner({
     subscribeTiltWhaleAmountUsd,
     readTiltWhaleAmountUsd,
     () => DEFAULT_TILT_WHALE_AMOUNT_USD,
+  );
+  const tiltInsiderMaxEntryPriceCents = useSyncExternalStore(
+    subscribeTiltWhaleAmountUsd,
+    readTiltWhaleMaxPriceCents,
+    () => DEFAULT_TILT_WHALE_MAX_PRICE_CENTS,
   );
   const tiltInsiderWinRatePct = useSyncExternalStore(
     subscribeTiltInsiderNotify,
@@ -1594,6 +1615,7 @@ function WalletTableInner({
                 tiltWhaleAmountUsd={tiltWhaleAmountUsd}
                 tiltInsiderWinRatePct={tiltInsiderWinRatePct}
                 tiltInsiderMinStakeUsd={tiltInsiderMinStakeUsd}
+                tiltInsiderMaxEntryPriceCents={tiltInsiderMaxEntryPriceCents}
                 tiltInsiderYesTokenId={tiltInsiderYesTokenId}
                 tiltInsiderNoTokenId={tiltInsiderNoTokenId}
                 tiltInsiderMaxSoundMutePriceCents={tiltInsiderMaxSoundMutePriceCents}

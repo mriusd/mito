@@ -3,7 +3,7 @@
  */
 
 import type { ToxicFlowCluster, ToxicFlowData, ToxicFlowSwarm, WalletPosition, WalletScoresLedgerEmbed, WalletSummary } from '../api';
-import { wsQuoteMidCents } from './notifySoundPriceMute';
+import { wsQuoteMidCents, isNotifySoundPriceMuted } from './notifySoundPriceMute';
 
 export const TOXIC_SWARM_WALLET_PREFIX = '__swarm:';
 
@@ -881,10 +881,8 @@ export function toxicRowInsiderFlashEligible(
   w: WalletPosition,
   minWinRatePct: number,
   minStakeUsd: number,
-  yesTokenId: string,
-  noTokenId: string,
+  maxEntryPriceCents: number,
   xSet: ReadonlySet<string>,
-  maxSoundMutePriceCents: number,
 ): boolean {
   if (toxicRowWalletIsXMarked(w, xSet)) return false;
   const absUsd = walletStakeNetAbsUsd(w);
@@ -892,12 +890,13 @@ export function toxicRowInsiderFlashEligible(
   const wr = toxicRowSortWinRateFrac(w);
   if (wr == null || !Number.isFinite(wr)) return false;
   if (wr < Math.max(0, Math.min(1, minWinRatePct / 100))) return false;
-  const dirMid = walletDirectionWsMidCents(w, yesTokenId, noTokenId);
-  if (dirMid == null || dirMid > maxSoundMutePriceCents) return false;
+  const pc = dominantStakedLegAvgPriceCents(w);
+  if (pc == null || !Number.isFinite(pc)) return false;
+  if (pc >= maxEntryPriceCents) return false;
   return true;
 }
 
-/** Insider Ring: ≥1 toxic-flow wallet with WR ≥ min (%) and |Staked Net| ≥ min stake; directional WS mid ≤ mute cap. */
+/** Insider Ring: ≥1 wallet meeting insider WR/stake with avg entry below max price; blocked when market WS mid mutes sounds. */
 export function toxicFlowInsiderRingGatePasses(
   data: ToxicFlowData | null | undefined,
   minWinRatePct: number,
@@ -905,23 +904,21 @@ export function toxicFlowInsiderRingGatePasses(
   yesTokenId: string,
   noTokenId: string,
   xSet: ReadonlySet<string> = new Set(),
+  maxEntryPriceCents: number,
   maxSoundMutePriceCents: number,
 ): boolean {
-  if (!data || !Number.isFinite(minWinRatePct) || !Number.isFinite(minStakeUsd) || !Number.isFinite(maxSoundMutePriceCents)) {
+  if (
+    !data ||
+    !Number.isFinite(minWinRatePct) ||
+    !Number.isFinite(minStakeUsd) ||
+    !Number.isFinite(maxEntryPriceCents) ||
+    !Number.isFinite(maxSoundMutePriceCents)
+  ) {
     return false;
   }
+  if (isNotifySoundPriceMuted(yesTokenId, noTokenId, maxSoundMutePriceCents)) return false;
   for (const w of toxicFlowWalletUniverse(data)) {
-    if (
-      toxicRowInsiderFlashEligible(
-        w,
-        minWinRatePct,
-        minStakeUsd,
-        yesTokenId,
-        noTokenId,
-        xSet,
-        maxSoundMutePriceCents,
-      )
-    ) {
+    if (toxicRowInsiderFlashEligible(w, minWinRatePct, minStakeUsd, maxEntryPriceCents, xSet)) {
       return true;
     }
   }

@@ -159,6 +159,7 @@ export const SidebarToxicStrips = memo(function SidebarToxicStrips({
         yesTokenId,
         noTokenId,
         toxicXSet,
+        notifyWhaleMaxPriceCents,
         notifySoundMaxPriceCents,
       );
     }

@@ -85,6 +85,25 @@ function getTimeLeftDisplay(endDate: string | null): { label: string; color: str
   return { label: `${d}d`, color: 'text-gray-400' };
 }
 
+function parseEndDateMs(endDate: string | null): number {
+  if (!endDate) return 0;
+  const t = Date.parse(endDate);
+  return Number.isFinite(t) ? t : 0;
+}
+
+function comparePositionsByExpiryDesc(
+  a: { endDate: string | null; tid: string },
+  b: { endDate: string | null; tid: string },
+): number {
+  const ea = parseEndDateMs(a.endDate);
+  const eb = parseEndDateMs(b.endDate);
+  if (ea === 0 && eb === 0) return a.tid.localeCompare(b.tid);
+  if (ea === 0) return 1;
+  if (eb === 0) return -1;
+  if (eb !== ea) return eb - ea;
+  return a.tid.localeCompare(b.tid);
+}
+
 function wsPositionsToPM(rows: WSPosition[], marketLookup: Record<string, Market>): Position[] {
   return rows.map((r) => {
     const m = marketLookup[r.tokenId];
@@ -499,7 +518,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
       const clickable = !!market;
       return { tid, asset, endDate, marketName: mktLabel, outcome, size, entryPrice, cost, currentPrice, currentValue, pnl, pnlPercent, marketId: market?.id ?? pos.market, clickable };
-    });
+    })
+    .sort(comparePositionsByExpiryDesc);
 
   // Process orders
   const processedOrders = orders
@@ -685,14 +705,14 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto min-h-0">
               <table className="w-full text-[10px] table-fixed">{posColgroup}<tbody>
-                {processedPositions.map((p, i) => {
+                {processedPositions.map((p) => {
                   const dd = getDateDisplay(p.endDate);
                   const pnlColor = p.pnl >= 0 ? 'text-green-400' : 'text-red-400';
                   const pnlSign = p.pnl >= 0 ? '+' : '-';
                   const exitChange = p.entryPrice > 0 ? ((p.currentPrice - p.entryPrice) / p.entryPrice) * 100 : 0;
                   const exitColor = exitChange > 20 ? 'text-green-400' : exitChange < -20 ? 'text-red-400' : 'text-yellow-400';
                   return (
-                    <tr key={i} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarket && selectedMarket.id === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
+                    <tr key={p.tid} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarket && selectedMarket.id === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
                       <td className={`py-1 px-1 ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
                       <td className={`py-1 px-1 ${dd.color}`}>{dd.label}</td>
                       <td className={`py-1 px-1 ${assetColorMap2[p.asset] || 'text-gray-300'} truncate`}>{p.marketName}</td>

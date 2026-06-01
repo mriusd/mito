@@ -46,6 +46,9 @@ const LazySpotOrderbookPanel = lazyWithChunkReload(() =>
 const LazyGexPanel = lazyWithChunkReload(() =>
   import('./panels/GexPanel').then((m) => ({ default: m.GexPanel })),
 );
+const LazyLiquidationMapPanel = lazyWithChunkReload(() =>
+  import('./panels/LiquidationMapPanel').then((m) => ({ default: m.LiquidationMapPanel })),
+);
 const LazyPairTradingPanel = lazyWithChunkReload(() =>
   import('./panels/PairTradingPanel').then((m) => ({ default: m.PairTradingPanel })),
 );
@@ -192,6 +195,8 @@ function renderPanel(panel: PanelConfig): ReactNode {
       return <LazyPairTradingPanel panelId={panel.id} />;
     case 'gex':
       return <LazyGexPanel panelId={panel.id} />;
+    case 'liq-map':
+      return <LazyLiquidationMapPanel panelId={panel.id} />;
     case 'updown-hud':
       return <LazyUpOrDownHUDPanel panelId={panel.id} />;
     case 'markov':
@@ -355,6 +360,7 @@ export function DraggableCanvas() {
     'spot-orderbook': 'Orderbook',
     'pair-trading': 'Pair Trading',
     'gex': 'Dealer GEX',
+    'liq-map': 'Liquidation Map',
     'updown-hud': 'UpOrDown HUD',
     'markov': 'Markov Chains',
     'signals': 'Signals', 'smart-money': 'Smart Money', 'chat': 'Chat', 'pnl': 'P&L',

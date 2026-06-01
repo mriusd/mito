@@ -293,6 +293,7 @@ export type PanelType =
   | 'chat'
   | 'spot-orderbook'
   | 'gex'
+  | 'liq-map'
   | 'wallet-history'
   | 'pair-trading';
 

@@ -119,6 +119,7 @@ const PANEL_MIN_PIXELS: Record<string, { minW: number; minH: number }> = {
   'spot-orderbook': { minW: 360, minH: 220 },
   'pair-trading': { minW: 720, minH: 420 },
   'gex': { minW: 300, minH: 280 },
+  'liq-map': { minW: 280, minH: 280 },
   'updown-hud': { minW: 620, minH: 420 },
   'signals': { minW: 300, minH: 150 },
   'smart-money': { minW: 320, minH: 180 },

@@ -188,7 +188,7 @@ const TOXIC_INLINE_WALLET_MS = 250;
 type Tab = ToxicFlowTabId;
 
 const TOXIC_FLOW_TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
-  { key: 'topHolders', label: 'Top Holders', icon: <Crown size={11} /> },
+  { key: 'topHolders', label: 'Top', icon: <Crown size={11} /> },
   { key: 'swarms', label: 'Swarms', icon: <Zap size={11} /> },
   { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
   { key: 'favourites', label: 'Favourites', icon: <Star size={11} /> },

@@ -48,12 +48,13 @@ export type LiqPanelSnapshot = {
 type FeedState = {
   snap: LiqPanelSnapshot | null;
   digest: number;
+  connected: boolean;
   ws: WebSocket | null;
   reconnectTimer: number | null;
   refCount: number;
 };
 
-const state: FeedState = { snap: null, digest: 0, ws: null, reconnectTimer: null, refCount: 0 };
+const state: FeedState = { snap: null, digest: 0, connected: false, ws: null, reconnectTimer: null, refCount: 0 };
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -137,10 +138,11 @@ function parseSnapshot(raw: unknown): LiqPanelSnapshot | null {
   const assetsIn = r.assets;
   if (!assetsIn || typeof assetsIn !== 'object') return null;
   const assets: LiqPanelSnapshot['assets'] = {};
-  for (const asset of LIQ_ASSETS) {
-    const parsed = parseAsset((assetsIn as Record<string, unknown>)[asset]);
-    if (parsed) assets[asset] = parsed;
+  for (const [key, val] of Object.entries(assetsIn as Record<string, unknown>)) {
+    const parsed = parseAsset(val);
+    if (parsed) assets[key.toUpperCase() as LiqAsset] = parsed;
   }
+  if (Object.keys(assets).length === 0) return null;
   return { assets, updatedAt: num(r.updatedAt) ?? Date.now() };
 }
 
@@ -150,6 +152,9 @@ function connect(): void {
   state.ws = ws;
 
   ws.onopen = () => {
+    state.connected = true;
+    state.digest += 1;
+    emit();
     if (state.reconnectTimer != null) {
       window.clearTimeout(state.reconnectTimer);
       state.reconnectTimer = null;
@@ -172,6 +177,9 @@ function connect(): void {
   };
   ws.onclose = () => {
     state.ws = null;
+    state.connected = false;
+    state.digest += 1;
+    emit();
     if (state.refCount <= 0 || state.reconnectTimer != null) return;
     state.reconnectTimer = window.setTimeout(() => {
       state.reconnectTimer = null;
@@ -192,8 +200,20 @@ function disconnect(): void {
     state.ws = null;
   }
   state.snap = null;
+  state.connected = false;
   state.digest += 1;
   emit();
+}
+
+export function useBinanceLiqConnected(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+    () => state.connected,
+    () => state.connected,
+  );
 }
 
 export function useBinanceLiqConnection(enabled = true): void {

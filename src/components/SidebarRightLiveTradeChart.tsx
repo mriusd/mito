@@ -1,7 +1,9 @@
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { fetchMarketOutcomeTokens } from '../api';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import type { Market } from '../types';
 import { extractAssetFromMarket } from '../utils/format';
+import { walletInfoChartMarketWithOutcomeTokens } from '../lib/walletInfoChartMarket';
 import { LiveTradeChart } from './LiveTradeChart';
 import {
   buildChartTradeMarkersFromLedgerFills,
@@ -99,13 +101,63 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   onChartOrderReplace,
   sidebarChartPositions,
 }: SidebarRightLiveTradeChartProps) {
-  const isUpDownMarket = marketIsUpDown(market);
-  const upDownAsset = isUpDownMarket ? extractAssetFromMarket(market) : null;
-  const upDownIntervalContext = useMemo(() => upDownIntervalContextFromMarket(market), [market]);
-  const upDownKlineDefaultInterval = useMemo(() => upDownKlineDefaultIntervalFromMarket(market), [market]);
-  const upDownStartTime = useMemo(() => upDownStartTimeFromMarket(market), [market]);
-  const yesTokenId = market.clobTokenIds?.[0] || '';
-  const noTokenId = market.clobTokenIds?.[1] || '';
+  const marketId = (market.conditionId || market.id || '').trim();
+  const storeYesTokenId = market.clobTokenIds?.[0]?.trim() || '';
+  const [fetchedYesTokenId, setFetchedYesTokenId] = useState('');
+  const [fetchedNoTokenId, setFetchedNoTokenId] = useState('');
+
+  useEffect(() => {
+    if (storeYesTokenId) {
+      setFetchedYesTokenId('');
+      setFetchedNoTokenId('');
+      return;
+    }
+    if (!marketId) {
+      setFetchedYesTokenId('');
+      setFetchedNoTokenId('');
+      return;
+    }
+    let cancelled = false;
+    setFetchedYesTokenId('');
+    setFetchedNoTokenId('');
+    void fetchMarketOutcomeTokens(marketId)
+      .then((tok) => {
+        if (cancelled) return;
+        setFetchedYesTokenId((tok?.tokenIdYes || '').trim());
+        setFetchedNoTokenId((tok?.tokenIdNo || '').trim());
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFetchedYesTokenId('');
+          setFetchedNoTokenId('');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [marketId, storeYesTokenId]);
+
+  const chartMarket = useMemo(() => {
+    if (storeYesTokenId) return market;
+    return walletInfoChartMarketWithOutcomeTokens(market, fetchedYesTokenId, fetchedNoTokenId);
+  }, [market, storeYesTokenId, fetchedYesTokenId, fetchedNoTokenId]);
+
+  const isUpDownMarket = marketIsUpDown(chartMarket ?? market);
+  const upDownAsset = isUpDownMarket ? extractAssetFromMarket(chartMarket ?? market) : null;
+  const upDownIntervalContext = useMemo(
+    () => upDownIntervalContextFromMarket(chartMarket ?? market),
+    [chartMarket, market],
+  );
+  const upDownKlineDefaultInterval = useMemo(
+    () => upDownKlineDefaultIntervalFromMarket(chartMarket ?? market),
+    [chartMarket, market],
+  );
+  const upDownStartTime = useMemo(
+    () => upDownStartTimeFromMarket(chartMarket ?? market),
+    [chartMarket, market],
+  );
+  const yesTokenId = chartMarket?.clobTokenIds?.[0] || '';
+  const noTokenId = chartMarket?.clobTokenIds?.[1] || '';
   const [internalChartOutcome, setInternalChartOutcome] = useState<'YES' | 'NO'>('YES');
   const syncedToOrder = !!(outcomeSync?.enabled && orderOutcome != null);
   const chartOutcome = syncedToOrder ? orderOutcome! : chartOutcomeProp ?? internalChartOutcome;
@@ -130,7 +182,8 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   }, [market.id, yesTokenId, noTokenId, chartOutcomeProp]);
 
   const tokenId = chartOutcome === 'YES' ? yesTokenId : noTokenId || yesTokenId;
-  const endTime = chartEndTime ?? (market.endDate ? new Date(market.endDate).getTime() : undefined);
+  const endTime =
+    chartEndTime ?? ((chartMarket ?? market).endDate ? new Date((chartMarket ?? market).endDate!).getTime() : undefined);
   const startTimeProp = chartStartTime ?? (upDownStartTime > 0 ? upDownStartTime : undefined);
   const yesLabel = isUpDownMarket ? 'UP' : 'YES';
   const noLabel = isUpDownMarket ? 'DOWN' : 'NO';
@@ -171,7 +224,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
     chartOutcome,
   ]);
 
-  if (!yesTokenId) return null;
+  if (!chartMarket || !yesTokenId) return null;
 
   const outcomeToggle = {
     value: chartOutcome,

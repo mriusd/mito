@@ -44,8 +44,8 @@ function fmtCountdown(expiryMs: number, nowMs: number): string {
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
-  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
-  if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`;
+  if (h > 0) return `${h}h${m}m`;
+  if (m > 0) return `${m}:${String(s).padStart(2, '0')}`;
   return `${s}s`;
 }
 
@@ -65,7 +65,9 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
 
   const upcoming = expirations.filter((row) => {
     const ms = row.expiryMs - now;
-    return ms > 0 && ms <= H72_MS;
+    if (ms <= 0) return false;
+    if (compact) return ms <= H72_MS;
+    return true;
   });
 
   if (upcoming.length === 0) return null;
@@ -76,13 +78,15 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
   const text = compact ? 'text-[8px]' : 'text-[9px]';
   return (
     <div className={compact ? 'mt-1.5' : 'mb-1.5'}>
-      <div className={`${text} font-semibold text-gray-400 uppercase tracking-wide mb-1`}>Next 72h expiries</div>
+      <div className={`${text} font-semibold text-gray-400 uppercase tracking-wide mb-1`}>
+        {compact ? 'Next 72h expiries' : 'Expiries'}
+      </div>
       <div className="overflow-x-auto">
         <table className={`w-full border-collapse ${text} tabular-nums`}>
           <thead>
             <tr className="text-gray-500 border-b border-gray-800">
               <th className="text-left py-0.5 pr-1 font-medium">Exp</th>
-              <th className="text-left py-0.5 px-0.5 font-medium">T−</th>
+              <th className="text-left py-0.5 pr-0.5 font-medium w-0">T−</th>
               <th className="text-right py-0.5 px-0.5 font-medium">Net/1%</th>
               <th className="text-center py-0.5 px-0.5 font-medium">γ</th>
               <th className="text-right py-0.5 px-0.5 font-medium">OI</th>
@@ -107,7 +111,7 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                 <tr key={row.expiryMs} className="border-b border-gray-800/60">
                   <td className="py-0.5 pr-1 text-gray-300 whitespace-nowrap font-semibold">{row.label}</td>
                   <td
-                    className={`py-0.5 px-0.5 whitespace-nowrap font-bold ${
+                    className={`py-0.5 pr-0.5 whitespace-nowrap font-bold tracking-tight ${
                       urgent ? 'text-amber-300' : 'text-cyan-300/90'
                     }`}
                   >
@@ -118,11 +122,11 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                   </td>
                   <td className="py-0.5 px-0.5 text-center">
                     <span
-                      className={`inline-block px-1 rounded text-[7px] font-bold uppercase ${
+                      className={`inline-block min-w-[1.1em] px-0.5 rounded text-[7px] font-bold ${
                         neg ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'
                       }`}
                     >
-                      {neg ? 'neg' : 'pos'}
+                      {neg ? 'N' : 'P'}
                     </span>
                   </td>
                   <td className="py-0.5 px-0.5 text-right text-gray-300">

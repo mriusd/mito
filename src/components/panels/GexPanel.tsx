@@ -1,11 +1,10 @@
-import { memo, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import {
   GEX_ASSETS,
   useDeribitGexConnection,
   useDeribitGexSnapshot,
   type GexAsset,
   type GexAssetSnapshot,
-  type GexStrikeBucket,
 } from '../../lib/deribitGexFeed';
 import { GexExpirationsTable } from '../GexExpirationsTable';
 
@@ -137,79 +136,8 @@ function GexFlashText({
   );
 }
 
-const StrikeRow = memo(function StrikeRow({
-  bucket,
-  spot,
-  maxAbs,
-}: {
-  bucket: GexStrikeBucket;
-  spot: number;
-  maxAbs: number;
-}) {
-  const frac = maxAbs > 0 ? Math.min(1, Math.abs(bucket.gex) / maxAbs) : 0;
-  const positive = bucket.gex >= 0;
-  const nearSpot = Math.abs(bucket.strike - spot) / spot < 0.012;
-  return (
-    <div className="flex items-center gap-1 h-[14px]">
-      <div
-        className={`w-[42px] shrink-0 text-right text-[9px] tabular-nums ${
-          nearSpot ? 'text-yellow-300 font-bold' : 'text-gray-400'
-        }`}
-      >
-        {fmtStrike(bucket.strike)}
-      </div>
-      <div className="relative flex-1 h-[11px] flex items-center">
-        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gray-700" />
-        <div className="absolute left-1/2 right-0 flex items-center justify-start">
-          {positive ? (
-            <div
-              className="h-[9px] bg-green-500/70 rounded-sm"
-              style={{ width: `${frac * 100}%` }}
-              title={fmtUsd(bucket.gex)}
-            />
-          ) : null}
-        </div>
-        <div className="absolute left-0 right-1/2 flex items-center justify-end">
-          {!positive ? (
-            <div
-              className="h-[9px] bg-red-500/70 rounded-sm"
-              style={{ width: `${frac * 100}%` }}
-              title={fmtUsd(bucket.gex)}
-            />
-          ) : null}
-        </div>
-      </div>
-      <GexFlashValue
-        value={bucket.gex}
-        mode="directional"
-        className={`w-[48px] shrink-0 text-[9px] tabular-nums text-right ${
-          positive ? 'text-green-400/90' : 'text-red-400/90'
-        }`}
-      >
-        {(s) => s}
-      </GexFlashValue>
-    </div>
-  );
-});
-
-const STRIKE_ROWS_PER_SIDE = 3;
-
-function topStrikesBySide(strikes: GexStrikeBucket[], perSide: number): GexStrikeBucket[] {
-  const positives = strikes
-    .filter((s) => s.gex >= 0)
-    .sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex))
-    .slice(0, perSide);
-  const negatives = strikes
-    .filter((s) => s.gex < 0)
-    .sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex))
-    .slice(0, perSide);
-  return [...negatives, ...positives].sort((a, b) => a.strike - b.strike);
-}
-
 function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
   const negative = snap.regime === 'negative';
-  const displayStrikes = topStrikesBySide(snap.strikes, STRIKE_ROWS_PER_SIDE);
-  const maxAbs = displayStrikes.reduce((m, s) => Math.max(m, Math.abs(s.gex)), 0);
   const regimeRef = useRef<HTMLSpanElement>(null);
   const prevRegimeRef = useRef<string | null>(null);
 
@@ -250,7 +178,7 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[9.5px] mb-1.5">
+      <div className="grid grid-cols-3 gap-x-2 gap-y-0.5 text-[9px] mb-1.5">
         <div className="flex justify-between">
           <span className="text-gray-500">Net GEX/1%</span>
           <GexFlashValue
@@ -305,15 +233,6 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
       </div>
 
       <GexExpirationsTable expirations={snap.expirations} spot={snap.spot} />
-
-      <div className="text-[8px] text-gray-500 mb-0.5 px-1">dealer $γ per 1% by strike (red=short/amplify · green=long/dampen)</div>
-      <div className="flex flex-col gap-px">
-        {displayStrikes.length === 0 ? (
-          <div className="text-[9px] text-gray-600 px-1">no strikes</div>
-        ) : (
-          displayStrikes.map((b) => <StrikeRow key={b.strike} bucket={b} spot={snap.spot} maxAbs={maxAbs} />)
-        )}
-      </div>
     </div>
   );
 }

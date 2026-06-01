@@ -191,11 +191,11 @@ const TOXIC_FLOW_TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'topHolders', label: 'Top', icon: <Crown size={11} /> },
   { key: 'swarms', label: 'Swarms', icon: <Zap size={11} /> },
   { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
-  { key: 'favourites', label: 'Favourites', icon: <Star size={11} /> },
+  { key: 'favourites', label: 'Stars', icon: <Star size={11} /> },
   { key: 'whales', label: 'Whales', icon: <Fish size={11} /> },
   {
     key: 'favWhales',
-    label: 'Fav + Whales',
+    label: 'Stars & Whales',
     icon: (
       <span className="inline-flex items-center gap-px">
         <Star size={10} className="fill-yellow-400 text-yellow-400" />

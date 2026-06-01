@@ -304,7 +304,7 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
         </div>
       </div>
 
-      <GexExpirationsTable expirations={snap.expirations} />
+      <GexExpirationsTable expirations={snap.expirations} spot={snap.spot} />
 
       <div className="text-[8px] text-gray-500 mb-0.5 px-1">dealer $γ per 1% by strike (red=short/amplify · green=long/dampen)</div>
       <div className="flex flex-col gap-px">

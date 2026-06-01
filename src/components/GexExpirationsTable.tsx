@@ -18,6 +18,25 @@ function fmtStrike(v: number | null | undefined): string {
   return v.toFixed(0);
 }
 
+function fmtPinFlipGap(
+  pin: number | null | undefined,
+  flip: number | null | undefined,
+): { text: string; tight: boolean } | null {
+  if (pin == null || flip == null || !Number.isFinite(pin) || !Number.isFinite(flip) || pin <= 0) {
+    return null;
+  }
+  const pct = ((flip - pin) / pin) * 100;
+  const s = pct >= 0 ? '+' : '';
+  return { text: `${s}${pct.toFixed(1)}%`, tight: Math.abs(pct) < 1 };
+}
+
+function pctFromSpot(spot: number, level: number | null | undefined): string {
+  if (level == null || !Number.isFinite(level) || spot <= 0) return '—';
+  const p = ((level - spot) / spot) * 100;
+  const s = p >= 0 ? '+' : '';
+  return `${s}${p.toFixed(1)}%`;
+}
+
 function fmtCountdown(expiryMs: number, nowMs: number): string {
   const ms = expiryMs - nowMs;
   if (ms <= 0) return '0s';
@@ -32,10 +51,11 @@ function fmtCountdown(expiryMs: number, nowMs: number): string {
 
 type GexExpirationsTableProps = {
   expirations: GexExpiryBucket[];
+  spot?: number;
   compact?: boolean;
 };
 
-export function GexExpirationsTable({ expirations, compact = false }: GexExpirationsTableProps) {
+export function GexExpirationsTable({ expirations, spot, compact = false }: GexExpirationsTableProps) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -49,6 +69,10 @@ export function GexExpirationsTable({ expirations, compact = false }: GexExpirat
   });
 
   if (upcoming.length === 0) return null;
+  const nearest = upcoming[0];
+  const nearestPin = nearest?.pinStrike;
+  const nearestFlip = nearest?.gammaFlip;
+  const nearestGap = fmtPinFlipGap(nearestPin, nearestFlip);
   const text = compact ? 'text-[8px]' : 'text-[9px]';
   return (
     <div className={compact ? 'mt-1.5' : 'mb-1.5'}>
@@ -66,7 +90,10 @@ export function GexExpirationsTable({ expirations, compact = false }: GexExpirat
                 <>
                   <th className="text-right py-0.5 px-0.5 font-medium">C/P</th>
                   <th className="text-right py-0.5 px-0.5 font-medium">Flip</th>
-                  <th className="text-right py-0.5 pl-0.5 font-medium">Pin</th>
+                  <th className="text-right py-0.5 px-0.5 font-medium">Pin</th>
+                  <th className="text-right py-0.5 pl-0.5 font-medium" title="Flip minus pin (% of pin)">
+                    P↔F
+                  </th>
                 </>
               ) : null}
             </tr>
@@ -75,6 +102,7 @@ export function GexExpirationsTable({ expirations, compact = false }: GexExpirat
             {upcoming.map((row) => {
               const neg = row.regime === 'negative';
               const urgent = row.expiryMs - now <= 60 * 60 * 1000;
+              const pinFlipGap = fmtPinFlipGap(row.pinStrike, row.gammaFlip);
               return (
                 <tr key={row.expiryMs} className="border-b border-gray-800/60">
                   <td className="py-0.5 pr-1 text-gray-300 whitespace-nowrap font-semibold">{row.label}</td>
@@ -108,6 +136,13 @@ export function GexExpirationsTable({ expirations, compact = false }: GexExpirat
                       </td>
                       <td className="py-0.5 px-0.5 text-right text-gray-300">{fmtStrike(row.gammaFlip)}</td>
                       <td className="py-0.5 pl-0.5 text-right text-yellow-300/90">{fmtStrike(row.pinStrike)}</td>
+                      <td
+                        className={`py-0.5 pl-0.5 text-right whitespace-nowrap ${
+                          pinFlipGap?.tight ? 'text-amber-300 font-bold' : 'text-gray-400'
+                        }`}
+                      >
+                        {pinFlipGap?.text ?? '—'}
+                      </td>
                     </>
                   ) : null}
                 </tr>
@@ -116,6 +151,19 @@ export function GexExpirationsTable({ expirations, compact = false }: GexExpirat
           </tbody>
         </table>
       </div>
+      {!compact && spot != null && spot > 0 && nearestGap ? (
+        <div className={`${text} text-gray-500 mt-1 px-0.5 leading-snug`}>
+          <span className="text-gray-400 font-semibold">{nearest.label}</span>
+          {' · '}
+          pin {fmtStrike(nearestPin)} ({pctFromSpot(spot, nearestPin)} spot)
+          {' · '}
+          flip {fmtStrike(nearestFlip)} ({pctFromSpot(spot, nearestFlip)} spot)
+          {' · '}
+          <span className={nearestGap.tight ? 'text-amber-300/90' : ''}>
+            pin→flip {nearestGap.text}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

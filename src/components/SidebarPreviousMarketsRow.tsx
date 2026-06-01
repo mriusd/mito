@@ -2,7 +2,13 @@ import { memo, useEffect, useMemo, useState } from 'react';
 import { fetchOnchainMarkets, type OnchainMarketListItem } from '../api';
 import { useAppStore } from '../stores/appStore';
 import type { AssetName, AssetSymbol, Market } from '../types';
-import { assetToSymbol, extractAssetFromMarket, resolvedBinaryOutcomeLabel, upDownTimeframeKeyFromMarket } from '../utils/format';
+import {
+  assetToSymbol,
+  extractAssetFromMarket,
+  pickLiveUpDownMarketInTfBucket,
+  resolvedBinaryOutcomeLabel,
+  upDownTimeframeKeyFromMarket,
+} from '../utils/format';
 import { getMarketProbability } from '../utils/bsMath';
 import { useChainlinkPricesMap } from '../hooks/usePolymarketPrice';
 import { useMarkovUpDown, markovNextUpProb } from '../hooks/useMarkovUpDown';
@@ -18,25 +24,30 @@ import {
 } from '../lib/marketSquareUi';
 import { useExpiryNow } from '../hooks/useExpiryNow';
 
-const SIDEBAR_PREV_SQUARE_CLS =
+const SIDEBAR_SQUARE_CLS =
   'inline-flex h-4 min-w-[1.15rem] items-center justify-center rounded-sm border px-0 text-[6px] font-bold tabular-nums leading-none transition-colors';
+const SIDEBAR_LIVE_SQUARE_CLS =
+  'border-pink-500/70 bg-pink-900/45 text-pink-100';
+const SIDEBAR_SELECTED_RING_CLS = 'ring-1 ring-yellow-400/80 border-yellow-500/70 brightness-110';
+
+const PAST_COUNT = 5;
+const FUTURE_COUNT = 5;
 
 function isResolvedOutcome(outcome: string): boolean {
   const o = outcome.trim().toUpperCase();
   return o === 'YES' || o === 'UP' || o === 'NO' || o === 'DOWN';
 }
 
-/** True when the market bucket immediately before `selectedEndMs` has a resolved YES/NO outcome. */
 function immediatePredecessorResolved(
   batch: OnchainMarketListItem[],
   storeMarkets: Market[],
-  selectedEndMs: number,
+  liveEndMs: number,
   timeframe: string,
   nowMs: number,
 ): boolean {
   const duration = tfDurationMs(timeframe);
-  if (!duration || !selectedEndMs) return true;
-  const expectedEnd = selectedEndMs - duration;
+  if (!duration || !liveEndMs) return true;
+  const expectedEnd = liveEndMs - duration;
   const tol = duration * 0.25;
 
   let bestOutcome = '';
@@ -56,14 +67,12 @@ function immediatePredecessorResolved(
   }
   for (const m of storeMarkets) {
     const resolved = resolvedBinaryOutcomeLabel(m, true);
-    const outcome =
-      resolved === 'UP' ? 'YES' : resolved === 'DOWN' ? 'NO' : '';
+    const outcome = resolved === 'UP' ? 'YES' : resolved === 'DOWN' ? 'NO' : '';
     consider(parseMarketEndMs(m), outcome);
   }
 
   if (bestDist === Infinity) {
-    // Current window live but adjacent bucket should have ended → treat as unresolved.
-    if (selectedEndMs > nowMs && expectedEnd <= nowMs) return false;
+    if (liveEndMs > nowMs && expectedEnd <= nowMs) return false;
     return true;
   }
   return isResolvedOutcome(bestOutcome);
@@ -126,45 +135,40 @@ function squareConditionId(m: SquareMarket): string {
   return String((m as Market).id || '').trim();
 }
 
-function pickPreviousMarkets(
-  batch: OnchainMarketListItem[],
-  storeMarkets: Market[],
-  beforeEndMs: number,
-  count: number,
-): SquareMarket[] {
+function mergeSquareMarkets(batch: OnchainMarketListItem[], storeMarkets: Market[]): SquareMarket[] {
   const byId = new Map<string, SquareMarket>();
   const add = (m: SquareMarket) => {
-    const endMs = parseMarketEndMs(m);
-    if (!endMs || endMs >= beforeEndMs) return;
     const id = squareConditionId(m).toLowerCase();
     if (!id) return;
     const prev = byId.get(id);
-    if (prev) {
-      const prevEnd = parseMarketEndMs(prev);
-      if (prevEnd >= endMs) byId.set(id, m);
+    if (!prev) {
+      byId.set(id, m);
       return;
     }
-    byId.set(id, m);
+    const prevEnd = parseMarketEndMs(prev);
+    const nextEnd = parseMarketEndMs(m);
+    if (nextEnd >= prevEnd) byId.set(id, m);
   };
   for (const m of batch) add(m);
   for (const m of storeMarkets) add(m);
-  return [...byId.values()]
-    .sort((a, b) => parseMarketEndMs(b) - parseMarketEndMs(a))
-    .slice(0, count)
-    .reverse();
+  return [...byId.values()].sort((a, b) => parseMarketEndMs(a) - parseMarketEndMs(b));
 }
 
-function pickFutureMarkets(storeMarkets: Market[], afterEndMs: number, count: number): Market[] {
-  const byId = new Map<string, Market>();
-  for (const m of storeMarkets) {
-    const endMs = parseMarketEndMs(m);
-    if (!endMs || endMs <= afterEndMs) continue;
-    const id = (m.id || m.conditionId || '').trim().toLowerCase();
-    if (!id) continue;
-    byId.set(id, m);
-  }
-  return [...byId.values()]
-    .sort((a, b) => parseMarketEndMs(a) - parseMarketEndMs(b))
+function pickPastMarkets(all: SquareMarket[], anchorEndMs: number, count: number): SquareMarket[] {
+  return all
+    .filter((m) => {
+      const endMs = parseMarketEndMs(m);
+      return endMs > 0 && endMs < anchorEndMs;
+    })
+    .slice(-count);
+}
+
+function pickFutureMarkets(all: SquareMarket[], anchorEndMs: number, count: number): SquareMarket[] {
+  return all
+    .filter((m) => {
+      const endMs = parseMarketEndMs(m);
+      return endMs > anchorEndMs;
+    })
     .slice(0, count);
 }
 
@@ -210,11 +214,23 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
 
   const asset = extractAssetFromMarket(selectedMarket);
   const timeframe = upDownTimeframeKeyFromMarket(selectedMarket);
-  const selectedEndMs = parseMarketEndMs(selectedMarket);
   const isUpDown = marketIsUpDown(selectedMarket);
+  const nowMs = useExpiryNow();
+
+  const storeTfMarkets = useMemo(() => {
+    if (!asset || !timeframe) return [];
+    return upOrDownMarkets[asset]?.[timeframe] ?? [];
+  }, [asset, timeframe, upOrDownMarkets]);
+
+  const liveMarket = useMemo(
+    () => pickLiveUpDownMarketInTfBucket(storeTfMarkets, nowMs),
+    [storeTfMarkets, nowMs],
+  );
+
+  const liveEndMs = liveMarket ? parseMarketEndMs(liveMarket) : 0;
 
   const markovO4 = useMemo(() => {
-    if (!asset || !timeframe) return null;
+    if (!asset || !timeframe || !liveMarket) return null;
     const model = markovModels?.[asset]?.[timeframe];
     const sym = assetToSymbol(asset as AssetName) as AssetSymbol;
     const cl = chainlinkPrices[asset as AssetName];
@@ -223,33 +239,30 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
     const liveSpot = preferChainlink
       ? (cl != null && cl > 0 ? cl : (binanceSpot != null && binanceSpot > 0 ? binanceSpot : undefined))
       : (binanceSpot != null && binanceSpot > 0 ? binanceSpot : undefined);
-    const strike = selectedMarket.priceToBeat;
+    const strike = liveMarket.priceToBeat;
     let pUpCur: number | null = null;
-    if (liveSpot != null && liveSpot > 0 && strike != null && selectedMarket.endDate) {
+    if (liveSpot != null && liveSpot > 0 && strike != null && liveMarket.endDate) {
       const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
-      const p = getMarketProbability('>' + strike, liveSpot, selectedMarket.endDate, sigma, bsTimeOffsetHours);
+      const p = getMarketProbability('>' + strike, liveSpot, liveMarket.endDate, sigma, bsTimeOffsetHours);
       if (p != null) pUpCur = p;
     }
     return markovNextUpProb(model, pUpCur).order4;
   }, [
     asset,
     timeframe,
+    liveMarket,
     markovModels,
     chainlinkPrices,
     priceData,
     volatilityData,
     volMultiplier,
     bsTimeOffsetHours,
-    selectedMarket.priceToBeat,
-    selectedMarket.endDate,
   ]);
-
-  const nowMs = useExpiryNow();
 
   const [batch, setBatch] = useState<OnchainMarketListItem[]>([]);
 
   useEffect(() => {
-    if (!isUpDown || !asset || !timeframe || !selectedEndMs) {
+    if (!isUpDown || !asset || !timeframe) {
       setBatch([]);
       return;
     }
@@ -264,45 +277,49 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
     return () => {
       disposed = true;
     };
-  }, [selectedMarket.id, isUpDown, asset, timeframe, selectedEndMs]);
+  }, [isUpDown, asset, timeframe]);
 
-  const storeTfMarkets = useMemo(() => {
-    if (!asset || !timeframe) return [];
-    return upOrDownMarkets[asset]?.[timeframe] ?? [];
-  }, [asset, timeframe, upOrDownMarkets]);
+  const allSquareMarkets = useMemo(
+    () => mergeSquareMarkets(batch, storeTfMarkets),
+    [batch, storeTfMarkets],
+  );
 
-  const previous = useMemo(
-    () => (selectedEndMs ? pickPreviousMarkets(batch, storeTfMarkets, selectedEndMs, 5) : []),
-    [batch, storeTfMarkets, selectedEndMs],
+  const past = useMemo(
+    () => (liveEndMs ? pickPastMarkets(allSquareMarkets, liveEndMs, PAST_COUNT) : []),
+    [allSquareMarkets, liveEndMs],
   );
 
   const future = useMemo(
-    () => (selectedEndMs ? pickFutureMarkets(storeTfMarkets, selectedEndMs, 5) : []),
-    [storeTfMarkets, selectedEndMs],
+    () => (liveEndMs ? pickFutureMarkets(allSquareMarkets, liveEndMs, FUTURE_COUNT) : []),
+    [allSquareMarkets, liveEndMs],
   );
 
   const prevResolved = useMemo(() => {
-    if (!selectedEndMs || !timeframe) return true;
-    return immediatePredecessorResolved(batch, storeTfMarkets, selectedEndMs, timeframe, nowMs);
-  }, [batch, storeTfMarkets, selectedEndMs, timeframe, nowMs]);
+    if (!liveEndMs || !timeframe) return true;
+    return immediatePredecessorResolved(batch, storeTfMarkets, liveEndMs, timeframe, nowMs);
+  }, [batch, storeTfMarkets, liveEndMs, timeframe, nowMs]);
 
   if (!isUpDown || !timeframe) return null;
-  if (previous.length === 0 && future.length === 0 && markovO4 == null && markovModels == null) return null;
+  if (!liveMarket && past.length === 0 && future.length === 0 && markovO4 == null && markovModels == null) {
+    return null;
+  }
 
   const selectedLc = (selectedMarket.conditionId || selectedMarket.id || '').trim().toLowerCase();
 
-  const renderSquare = (m: SquareMarket) => {
+  const renderSquare = (m: SquareMarket, opts?: { live?: boolean }) => {
     const id = squareConditionId(m);
     const endMs = parseMarketEndMs(m);
-    const status = squareStatus(m, timeframe, nowMs);
+    const isLive = opts?.live === true;
+    const status = isLive ? ('current' as const) : squareStatus(m, timeframe, nowMs);
     const label = squareLabelForTimeframe(timeframe, endMs);
     const isSelected = selectedLc === id.toLowerCase();
+    const colorCls = isLive ? SIDEBAR_LIVE_SQUARE_CLS : STATUS_CLS[status];
     return (
       <button
         key={id}
         type="button"
-        className={`${SIDEBAR_PREV_SQUARE_CLS} ${STATUS_CLS[status]} hover:brightness-110 shrink-0 ${
-          isSelected ? 'ring-1 ring-yellow-400/80 border-yellow-500/70 brightness-110' : ''
+        className={`${SIDEBAR_SQUARE_CLS} ${colorCls} hover:brightness-110 shrink-0 ${
+          isSelected ? SIDEBAR_SELECTED_RING_CLS : ''
         }`}
         title={squareTooltip(m, status)}
         onClick={() => setSelectedMarket(squareToSelectedMarket(m, marketLookup, upOrDownMarkets))}
@@ -313,19 +330,12 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
   };
 
   return (
-    <div className="flex items-center gap-0.5 px-1 py-0.5 border-t border-gray-700/60 shrink-0">
-      {previous.length > 0 && (
-        <>
-          <span className="text-[7px] text-gray-500 font-semibold shrink-0">prev</span>
-          <div className="flex min-w-0 items-center gap-px overflow-x-auto">{previous.map(renderSquare)}</div>
-        </>
-      )}
-      {future.length > 0 && (
-        <>
-          <span className="text-[7px] text-gray-500 font-semibold shrink-0">next</span>
-          <div className="flex min-w-0 items-center gap-px overflow-x-auto">{future.map(renderSquare)}</div>
-        </>
-      )}
+    <div className="flex items-center gap-0.5 px-1 py-0.5 border-t border-gray-700/60 shrink-0 min-w-0">
+      <div className="flex min-w-0 flex-1 items-center gap-px overflow-x-auto">
+        {past.map((m) => renderSquare(m))}
+        {liveMarket ? renderSquare(liveMarket, { live: true }) : null}
+        {future.map((m) => renderSquare(m))}
+      </div>
       {(markovO4 != null || markovModels != null) && (
         <div
           className="ml-auto flex items-center gap-1 shrink-0 pl-1 border-l border-gray-700/50"

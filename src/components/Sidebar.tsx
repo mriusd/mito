@@ -3427,7 +3427,7 @@ export const Sidebar = memo(function Sidebar() {
         >
       {/* Portfolio Summary */}
       {selectedMarket && (
-        <div className="sidebar-section bg-gray-800/80 py-1">
+        <div className="sidebar-section py-1">
           <div className="flex items-center gap-1 min-w-0">
             <div className="flex-1 min-w-0 truncate">
               {polymarketUrl ? (
@@ -4509,7 +4509,7 @@ export const Sidebar = memo(function Sidebar() {
           <button
             ref={toxicExpandHandleRef}
             type="button"
-            className={`sidebar-toxic-expand-handle relative hidden md:flex shrink-0 w-6 flex-col justify-center items-center border-l border-gray-700/55 bg-gray-800/95 text-gray-500 hover:text-gray-400 ${sidebarToxicEffective ? '' : holdersExpandTipOpen ? 'sidebar-expand-handle-tip-flash' : 'sidebar-expand-handle-idle-flash'}`}
+            className={`sidebar-toxic-expand-handle relative hidden md:flex shrink-0 w-6 flex-col justify-center items-center border-l border-gray-800/55 bg-gray-900/95 text-gray-500 hover:text-gray-400 ${sidebarToxicEffective ? '' : holdersExpandTipOpen ? 'sidebar-expand-handle-tip-flash' : 'sidebar-expand-handle-idle-flash'}`}
             title={sidebarToxicEffective ? 'Collapse holders panel' : 'Expand holders panel in sidebar'}
             aria-expanded={toxicSidebarExpanded}
             aria-label={sidebarToxicEffective ? 'Collapse holders panel' : 'Expand holders panel'}

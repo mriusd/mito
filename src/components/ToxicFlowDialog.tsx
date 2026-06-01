@@ -1676,7 +1676,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     ? 'flex flex-col flex-1 min-h-0 min-w-0 h-full w-full overflow-hidden bg-gray-900'
     : 'fixed inset-0 bg-black/60 z-[60010] flex items-center justify-center';
   const cardClass = embedded
-    ? 'bg-gray-800 flex flex-col flex-1 min-h-0 min-w-0 p-3 border-0 border-gray-700/50 w-full rounded-none shadow-none'
+    ? 'bg-gray-900 flex flex-col flex-1 min-h-0 min-w-0 p-3 border-0 border-gray-800/50 w-full rounded-none shadow-none'
     : inlineWalletSlot
       ? 'bg-gray-800 rounded-lg p-4 w-full mx-4 shadow-xl border border-gray-700 flex flex-col min-h-0'
       : 'bg-gray-800 rounded-lg p-4 max-w-4xl w-full mx-4 shadow-xl border border-gray-700 flex flex-col min-h-0';

@@ -240,7 +240,7 @@ tr.toxic-flow-row-near-resolved:hover {
 @keyframes sidebar-bg-flash-green {
   0%,
   100% {
-    background-color: #1f2937;
+    background-color: #111827;
   }
   50% {
     background-color: #1a3e32;
@@ -249,7 +249,7 @@ tr.toxic-flow-row-near-resolved:hover {
 @keyframes sidebar-bg-flash-red {
   0%,
   100% {
-    background-color: #1f2937;
+    background-color: #111827;
   }
   50% {
     background-color: #4f232a;
@@ -597,9 +597,9 @@ input[type="range"].vol-slider::-moz-range-thumb {
   left: 0;
   width: 288px;
   height: calc(100vh - 44px);
-  background: #1f2937;
-  border-right: 1px solid #374151;
-  border-top: 1px solid #374151;
+  background: #111827;
+  border-right: 1px solid #1f2937;
+  border-top: 1px solid #1f2937;
   border-top-right-radius: 8px;
   overflow-y: auto;
   z-index: 100;
@@ -692,7 +692,7 @@ input[type="range"].vol-slider::-moz-range-thumb {
     width: 100vw;
     height: min(82vh, calc(100vh - 16px));
     border-right: none;
-    border-left: 1px solid #374151;
+    border-left: 1px solid #1f2937;
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
     transform: translateY(100%);
@@ -710,7 +710,7 @@ input[type="range"].vol-slider::-moz-range-thumb {
     /* ~44px touch target; was 18px and hard to grab */
     height: 44px;
     box-sizing: border-box;
-    background: rgba(31, 41, 55, 0.98);
+    background: rgba(17, 24, 39, 0.98);
     touch-action: none;
   }
   .mobile-sidebar-drag-handle {
@@ -723,7 +723,7 @@ input[type="range"].vol-slider::-moz-range-thumb {
 }
 
 .sidebar-section {
-  border-bottom: 1px solid #374151;
+  border-bottom: 1px solid #1f2937;
   padding: 12px;
   user-select: none;
   -webkit-user-select: none;
@@ -737,7 +737,7 @@ input[type="range"].vol-slider::-moz-range-thumb {
   grid-template-columns: 1fr;
   gap: 0;
   align-items: start;
-  border-bottom: 1px solid #374151;
+  border-bottom: 1px solid #1f2937;
 }
 .sidebar-chart-row > * {
   min-width: 0;

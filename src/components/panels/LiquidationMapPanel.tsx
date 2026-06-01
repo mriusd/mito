@@ -59,7 +59,7 @@ export function LiquidationMapPanel({ panelId }: { panelId: string }) {
   return (
     <div className="panel-wrapper flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-gray-900/80 p-2">
       <div className="panel-header mb-1 flex items-center justify-between gap-2 shrink-0 cursor-grab">
-        <div className="text-[10px] font-bold text-yellow-400/90">Liquidation Map · Binance</div>
+        <div className="text-[10px] font-bold text-yellow-400/90">Liq Map · Binance</div>
         <div className="no-drag flex items-center gap-1" onMouseDown={(e) => e.stopPropagation()}>
           <div className="flex rounded border border-gray-700 overflow-hidden text-[9px] font-semibold">
             {(['estimate', 'events'] as const).map((m) => (

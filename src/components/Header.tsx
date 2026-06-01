@@ -66,7 +66,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'spot-orderbook', title: 'Orderbook' },
   { type: 'pair-trading', title: 'Pair Trading' },
   { type: 'gex', title: 'Dealer GEX' },
-  { type: 'liq-map', title: 'Liquidation Map' },
+  { type: 'liq-map', title: 'Liq Map' },
   { type: 'chat', title: 'Chat' },
 ];
 

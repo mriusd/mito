@@ -360,7 +360,7 @@ export function DraggableCanvas() {
     'spot-orderbook': 'Orderbook',
     'pair-trading': 'Pair Trading',
     'gex': 'Dealer GEX',
-    'liq-map': 'Liquidation Map',
+    'liq-map': 'Liq Map',
     'updown-hud': 'UpOrDown HUD',
     'markov': 'Markov Chains',
     'signals': 'Signals', 'smart-money': 'Smart Money', 'chat': 'Chat', 'pnl': 'P&L',

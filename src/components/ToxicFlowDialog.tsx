@@ -198,7 +198,7 @@ const TOXIC_FLOW_TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
     label: 'Stars & Whales',
     icon: (
       <span className="inline-flex items-center gap-px">
-        <Star size={10} className="fill-yellow-400 text-yellow-400" />
+        <Star size={10} className="fill-current text-current" />
         <Fish size={10} />
       </span>
     ),

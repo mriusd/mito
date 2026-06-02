@@ -130,7 +130,7 @@ function usesHourRowGrid(timeframe: string): boolean {
   return timeframe === '5m' || timeframe === '15m';
 }
 
-function hourRowResolvedCounts(
+function resolvedOutcomeCounts(
   markets: OnchainMarketListItem[],
   timeframe: string,
   nowMs: number,
@@ -143,6 +143,46 @@ function hourRowResolvedCounts(
     else if (st === 'resolved_no') no++;
   }
   return { yes, no, total: yes + no };
+}
+
+function allMarketsForDay(day: MarketGridDay): OnchainMarketListItem[] {
+  if (day.hourRows) return day.hourRows.flatMap((r) => r.markets);
+  if (day.oneHourGrid) {
+    return [...day.oneHourGrid.topRow, ...day.oneHourGrid.bottomRow].filter(
+      (m): m is OnchainMarketListItem => m != null,
+    );
+  }
+  return day.gridMarkets ?? [];
+}
+
+function ResolvedOutcomeCountLine({
+  counts,
+  showTotal,
+}: {
+  counts: { yes: number; no: number; total: number };
+  showTotal?: boolean;
+}) {
+  if (counts.total <= 0) return null;
+  return (
+    <span
+      className="text-[9px] font-semibold tabular-nums leading-none"
+      title={
+        showTotal
+          ? `${counts.yes} YES · ${counts.no} NO · ${counts.total} resolved`
+          : `${counts.yes} YES · ${counts.no} NO`
+      }
+    >
+      <span className="text-green-400">{counts.yes}</span>
+      <span className="text-gray-600">\</span>
+      <span className="text-red-400">{counts.no}</span>
+      {showTotal ? (
+        <>
+          <span className="text-gray-600">\</span>
+          <span className="text-gray-500">{counts.total}</span>
+        </>
+      ) : null}
+    </span>
+  );
 }
 
 function uses1hTwoRowGrid(timeframe: string): boolean {
@@ -377,8 +417,12 @@ const MarketViewMarketsGrid = memo(function MarketViewMarketsGrid({
     <div className="space-y-3">
       {days.map((day) => (
         <section key={day.dayKey}>
-          <div className="text-[10px] font-bold text-gray-300 mb-1.5 sticky top-0 z-[1] bg-gray-900 py-0.5">
-            {day.title}
+          <div className="flex items-baseline gap-2 text-[10px] font-bold text-gray-300 mb-1.5 sticky top-0 z-[1] bg-gray-900 py-0.5">
+            <span>{day.title}</span>
+            <ResolvedOutcomeCountLine
+              counts={resolvedOutcomeCounts(allMarketsForDay(day), timeframe, nowMs)}
+              showTotal
+            />
           </div>
           {is1hTwoRow && day.oneHourGrid ? (
             <div className="space-y-1">
@@ -402,18 +446,14 @@ const MarketViewMarketsGrid = memo(function MarketViewMarketsGrid({
           ) : isHourRows ? (
             <div className="space-y-1">
               {day.hourRows?.map((row) => {
-                const resolved = hourRowResolvedCounts(row.markets, timeframe, nowMs);
+                const resolved = resolvedOutcomeCounts(row.markets, timeframe, nowMs);
                 return (
                 <div key={`${day.dayKey}-${row.hour}`} className="flex items-start gap-1.5">
                   <div className="w-11 shrink-0 pt-1 text-[9px] text-gray-500 tabular-nums leading-tight">
                     <div>{row.hourLabel}</div>
-                    {resolved.total > 0 ? (
-                      <div className="text-[8px] font-semibold" title={`${resolved.yes} YES · ${resolved.no} NO`}>
-                        <span className="text-green-400">{resolved.yes}</span>
-                        <span className="text-gray-600">\</span>
-                        <span className="text-red-400">{resolved.no}</span>
-                      </div>
-                    ) : null}
+                    <div className="text-[8px]">
+                      <ResolvedOutcomeCountLine counts={resolved} />
+                    </div>
                   </div>
                   <div className="flex min-w-0 flex-1 flex-wrap gap-0.5">
                     {row.markets.map((m) => {

@@ -16,13 +16,15 @@ function fmtUsd(v: number): string {
   return `${sign}$${abs.toFixed(0)}`;
 }
 
-function fmtHoverPrice(v: number, spot: number): string {
+function fmtHoverPrice(v: number, spot: number, asset: string): string {
+  if (asset === 'XRP') return `$${v.toFixed(3)}`;
   if (spot >= 1000) return `$${(v / 1000).toFixed(2)}k`;
   if (v >= 1) return `$${v.toFixed(2)}`;
   return `$${v.toFixed(4)}`;
 }
 
-function fmtAxisPrice(v: number, span: number): string {
+function fmtAxisPrice(v: number, span: number, asset: string): string {
+  if (asset === 'XRP') return v.toFixed(3);
   if (v >= 1000) {
     const k = v / 1000;
     if (span <= 0.06) return `${k.toFixed(2)}K`;
@@ -33,7 +35,8 @@ function fmtAxisPrice(v: number, span: number): string {
   return v.toFixed(4);
 }
 
-function fmtSpotLabel(v: number): string {
+function fmtSpotLabel(v: number, asset: string): string {
+  if (asset === 'XRP') return v.toFixed(3);
   if (v >= 1000) return `${(v / 1000).toFixed(2)}K`;
   return v.toFixed(2);
 }
@@ -267,7 +270,7 @@ export function LiquidationMapChart({ snap, mode }: LiquidationMapChartProps) {
   return (
     <div className="relative w-full min-h-0 flex flex-col">
       <div className="text-center text-[10px] font-semibold text-gray-200 mb-0.5 shrink-0">
-        Current Price ({fmtSpotLabel(spot)})
+        Current Price ({fmtSpotLabel(spot, snap.asset)})
       </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
@@ -351,7 +354,7 @@ export function LiquidationMapChart({ snap, mode }: LiquidationMapChartProps) {
             className="fill-gray-500"
             style={{ fontSize: 7.5 }}
           >
-            {fmtAxisPrice(p, span)}
+            {fmtAxisPrice(p, span, snap.asset)}
           </text>
         ))}
         <text
@@ -407,7 +410,7 @@ export function LiquidationMapChart({ snap, mode }: LiquidationMapChartProps) {
             top: `${((hoverY - 8) / H) * 100}%`,
           }}
         >
-          {fmtHoverPrice(hovered.price, spot)} · {hovered.price <= spot ? 'long' : 'short'}{' '}
+          {fmtHoverPrice(hovered.price, spot, snap.asset)} · {hovered.price <= spot ? 'long' : 'short'}{' '}
           {fmtUsd(hoverVal)}
         </div>
       ) : null}

@@ -7,11 +7,11 @@ import { normalizeClobTokenId } from '../../utils/format';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { nextMarketHiFlashSides, useUpDownNextHiSettings } from '../../lib/upDownNextMarketFlashSound';
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
-import { useLiveBidAskLookupSubset } from '../../hooks/useLiveBidAskLookupSubset';
-import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
-import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
+import { useUpDownExpiryBarNow } from '../../lib/upDownExpiryBarTickStore';
+import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLookupSubset';
+import { useGridAssetLivePrice } from '../../lib/gridAssetLivePriceStore';
 import { GRID_BID_ASK_THROTTLE_MS } from '../../lib/bidAskMarketLookup';
-import { useExpiryNow } from '../../hooks/useExpiryNow';
+import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
 const ASSET_COLORS: Record<string, string> = {
@@ -88,7 +88,7 @@ const UpDownExpiryBar = memo(function UpDownExpiryBar({
   durationMs: number;
   className?: string;
 }) {
-  const now = useExpiryNow();
+  const now = useUpDownExpiryBarNow();
   const mEnd = new Date(endDate).getTime();
   const p = expiryProgress(now, mEnd, durationMs);
   return (
@@ -218,7 +218,7 @@ function UpDownAssetLaneCellsInner({
   const noTokenId = tokenIds[1] || '';
   const sym = (asset + 'USDT') as AssetSymbol;
   const duration = TF_DURATIONS_MS[tf] ?? 0;
-  const binanceSpot = useThrottledStorePrice(sym, GRID_BID_ASK_THROTTLE_MS);
+  const binanceSpot = useGridAssetLivePrice(sym);
   const chainlinkSpot = useThrottledChainlinkPricesMap(GRID_BID_ASK_THROTTLE_MS)[asset];
 
   const lookupTokenIds = useMemo(() => {
@@ -235,7 +235,7 @@ function UpDownAssetLaneCellsInner({
     return [...ids];
   }, [yesTokenId, noTokenId, futuresSlots]);
 
-  const bidAskLookup = useLiveBidAskLookupSubset(lookupTokenIds);
+  const bidAskLookup = useThrottledMarketLookupSubset(lookupTokenIds);
   const { alertEnabled: upDownNextHiAlertEnabled, hiThreshold: upDownNextHiThreshold } =
     useUpDownNextHiSettings();
 

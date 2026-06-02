@@ -28,7 +28,8 @@ function fmtUsd(v: number): string {
   return `${sign}$${abs.toFixed(0)}`;
 }
 
-function fmtPrice(v: number): string {
+function fmtPrice(v: number, asset: string): string {
+  if (asset === 'XRP') return v.toFixed(3);
   if (v >= 1000) return `${(v / 1000).toFixed(v >= 100000 ? 0 : 1)}k`;
   if (v >= 1) return v.toFixed(0);
   return v.toFixed(4);
@@ -106,7 +107,7 @@ export function LiquidationMapPanel({ panelId }: { panelId: string }) {
                   cluster.side === 'long' ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'
                 }`}
               >
-                {cluster.side} wall {fmtPrice(cluster.price)} ({fmtPct(cluster.pctToSpot)})
+                {cluster.side} wall {fmtPrice(cluster.price, asset)} ({fmtPct(cluster.pctToSpot)})
               </span>
             ) : null}
             <span className="text-gray-600 ml-auto tabular-nums">

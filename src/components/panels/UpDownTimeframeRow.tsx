@@ -55,6 +55,7 @@ function buildLane(
 
 export const UpDownTimeframeRow = memo(function UpDownTimeframeRow({
   tf,
+  expiryNowMs,
   visibleAssets,
   sortedOpenByAssetTf,
   nextMarketsCount,
@@ -72,6 +73,7 @@ export const UpDownTimeframeRow = memo(function UpDownTimeframeRow({
   liveTradesSource,
 }: {
   tf: (typeof TIMEFRAMES)[number];
+  expiryNowMs: number;
   visibleAssets: (typeof ASSETS)[number][];
   sortedOpenByAssetTf: Partial<
     Record<(typeof ASSETS)[number], Partial<Record<(typeof TIMEFRAMES)[number], Market[]>>>
@@ -90,7 +92,7 @@ export const UpDownTimeframeRow = memo(function UpDownTimeframeRow({
   onCellClick: (market: Market, outcome?: 'YES' | 'NO') => void;
   liveTradesSource: string;
 }) {
-  const now = useExpiryNow();
+  const now = expiryNowMs;
   const laneCacheRef = useRef(new Map<string, UpDownLane>());
 
   const laneByAsset = useMemo(() => {
@@ -258,6 +260,7 @@ export const UpDownTimeframeRowsBody = memo(function UpDownTimeframeRowsBody({
         <UpDownTimeframeRow
           key={tf}
           tf={tf}
+          expiryNowMs={now}
           visibleAssets={visibleAssets}
           sortedOpenByAssetTf={sortedOpenByAssetTf}
           nextMarketsCount={nextMarketsCount}

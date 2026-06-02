@@ -130,6 +130,21 @@ function usesHourRowGrid(timeframe: string): boolean {
   return timeframe === '5m' || timeframe === '15m';
 }
 
+function hourRowResolvedCounts(
+  markets: OnchainMarketListItem[],
+  timeframe: string,
+  nowMs: number,
+): { yes: number; no: number; total: number } {
+  let yes = 0;
+  let no = 0;
+  for (const m of markets) {
+    const st = marketSquareStatus(m, timeframe, nowMs);
+    if (st === 'resolved_yes') yes++;
+    else if (st === 'resolved_no') no++;
+  }
+  return { yes, no, total: yes + no };
+}
+
 function uses1hTwoRowGrid(timeframe: string): boolean {
   return timeframe === '1h';
 }
@@ -386,9 +401,20 @@ const MarketViewMarketsGrid = memo(function MarketViewMarketsGrid({
             </div>
           ) : isHourRows ? (
             <div className="space-y-1">
-              {day.hourRows?.map((row) => (
+              {day.hourRows?.map((row) => {
+                const resolved = hourRowResolvedCounts(row.markets, timeframe, nowMs);
+                return (
                 <div key={`${day.dayKey}-${row.hour}`} className="flex items-start gap-1.5">
-                  <div className="w-9 shrink-0 pt-1 text-[9px] text-gray-500 tabular-nums">{row.hourLabel}</div>
+                  <div className="w-11 shrink-0 pt-1 text-[9px] text-gray-500 tabular-nums leading-tight">
+                    <div>{row.hourLabel}</div>
+                    {resolved.total > 0 ? (
+                      <div className="text-[8px] font-semibold" title={`${resolved.yes} YES · ${resolved.no} NO`}>
+                        <span className="text-green-400">{resolved.yes}</span>
+                        <span className="text-gray-600">\</span>
+                        <span className="text-red-400">{resolved.no}</span>
+                      </div>
+                    ) : null}
+                  </div>
                   <div className="flex min-w-0 flex-1 flex-wrap gap-0.5">
                     {row.markets.map((m) => {
                       const id = (m.conditionId || '').trim();
@@ -406,7 +432,8 @@ const MarketViewMarketsGrid = memo(function MarketViewMarketsGrid({
                     })}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="flex flex-wrap gap-0.5">

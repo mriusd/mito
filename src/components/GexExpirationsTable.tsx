@@ -48,7 +48,7 @@ function PinBiasPill({ spot, pin }: { spot?: number; pin: number | null | undefi
   const up = bias === 'up';
   return (
     <span
-      className={`inline-block ml-0.5 px-0.5 rounded text-[7px] font-bold leading-none ${
+      className={`inline-block mr-0.5 px-0.5 rounded text-[7px] font-bold leading-none ${
         up ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'
       }`}
       title={up ? 'Pin above spot' : 'Pin below spot'}
@@ -161,8 +161,8 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                       </td>
                       <td className="py-0.5 px-0.5 text-right text-gray-300">{fmtGexStrike(row.gammaFlip)}</td>
                       <td className="py-0.5 pl-0.5 text-right text-yellow-300/90 whitespace-nowrap">
-                        {fmtGexStrike(row.pinStrike)}
                         <PinBiasPill spot={spot} pin={row.pinStrike} />
+                        {fmtGexStrike(row.pinStrike)}
                       </td>
                       <td
                         className={`py-0.5 pl-0.5 text-right whitespace-nowrap ${

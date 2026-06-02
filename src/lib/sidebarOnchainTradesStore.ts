@@ -50,6 +50,7 @@ const listeners = new Set<() => void>();
 let refreshWalletImpl: (() => void) | null = null;
 let refreshMarketTradesImpl: ((wallet: string, marketId: string) => void) | null = null;
 let subscribeWalletPnlImpl: ((wallet: string, from: string, to: string) => void) | null = null;
+let pendingWalletPnlSub: { wallet: string; from: string; to: string } | null = null;
 
 function notify(): void {
   for (const fn of listeners) fn();
@@ -108,6 +109,7 @@ export function resetSidebarOnchainTradesStore(): void {
   refreshWalletImpl = null;
   refreshMarketTradesImpl = null;
   subscribeWalletPnlImpl = null;
+  pendingWalletPnlSub = null;
   notify();
 }
 
@@ -117,6 +119,27 @@ export function clearSidebarOnchainWalletTrades(): void {
     ...snap,
     walletTrades: [],
     walletTradesDigest: snap.walletTradesDigest + 1,
+  };
+  notify();
+}
+
+/** Wallet switch — drop prior wallet rows/hydration before WS snapshot for new wallet. */
+export function resetSidebarOnchainWalletSession(): void {
+  snap = {
+    ...snap,
+    walletPositions: [],
+    walletPositionsDigest: snap.walletPositionsDigest + 1,
+    gridWalletPositions: [],
+    gridWalletPositionsDigest: snap.gridWalletPositionsDigest + 1,
+    walletTrades: [],
+    walletTradesDigest: snap.walletTradesDigest + 1,
+    walletHistory: [],
+    walletHistoryDigest: snap.walletHistoryDigest + 1,
+    walletPnlDaily: null,
+    walletPnlDailyDigest: snap.walletPnlDailyDigest + 1,
+    walletWsHydrated: false,
+    walletHistoryHydrated: false,
+    walletMarketTradesHydrated: false,
   };
   notify();
 }
@@ -136,6 +159,13 @@ export function registerSidebarOnchainRefreshFns(fns: {
   refreshWalletImpl = fns.refreshWallet;
   refreshMarketTradesImpl = fns.refreshMarketTrades;
   subscribeWalletPnlImpl = fns.subscribeWalletPnl;
+  if (subscribeWalletPnlImpl && pendingWalletPnlSub) {
+    subscribeWalletPnlImpl(
+      pendingWalletPnlSub.wallet,
+      pendingWalletPnlSub.from,
+      pendingWalletPnlSub.to,
+    );
+  }
 }
 
 export function refreshSidebarOnchainWallet(): void {
@@ -147,7 +177,17 @@ export function refreshSidebarOnchainMarketTrades(wallet: string, marketId: stri
 }
 
 export function refreshSidebarOnchainWalletPnl(wallet: string, from: string, to: string): void {
-  subscribeWalletPnlImpl?.(wallet.trim().toLowerCase(), from.trim(), to.trim());
+  const w = wallet.trim().toLowerCase();
+  const f = from.trim();
+  const t = to.trim();
+  if (!w || !f || !t) return;
+  pendingWalletPnlSub = { wallet: w, from: f, to: t };
+  const prev = snap.walletPnlDaily;
+  if (prev && (prev.from !== f || prev.to !== t)) {
+    snap = { ...snap, walletPnlDaily: null, walletPnlDailyDigest: snap.walletPnlDailyDigest + 1 };
+    notify();
+  }
+  subscribeWalletPnlImpl?.(w, f, t);
 }
 
 export function setSidebarOnchainLiveTrades(next: LiveTrade[]): void {
@@ -167,7 +207,13 @@ export function setSidebarOnchainWalletPositions(next: WSPosition[]): void {
 export function setSidebarOnchainGridWalletPositions(next: WSPosition[]): void {
   const sig = wsPositionsSig(next);
   const prevSig = wsPositionsSig(snap.gridWalletPositions);
-  if (sig === prevSig && next.length === snap.gridWalletPositions.length) return;
+  if (sig === prevSig && next.length === snap.gridWalletPositions.length) {
+    if (!snap.walletWsHydrated) {
+      snap = { ...snap, walletWsHydrated: true };
+      notify();
+    }
+    return;
+  }
   snap = { ...snap, gridWalletPositions: next, gridWalletPositionsDigest: snap.gridWalletPositionsDigest + 1, walletWsHydrated: true };
   notify();
 }

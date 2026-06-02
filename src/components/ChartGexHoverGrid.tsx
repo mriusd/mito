@@ -1,4 +1,5 @@
 import type { GexAssetSnapshot } from '../lib/deribitGexFeed';
+import { fmtGexStrike } from '../lib/deribitGexFeed';
 import { GexExpirationsTable } from './GexExpirationsTable';
 
 function fmtUsd(v: number): string {
@@ -8,12 +9,6 @@ function fmtUsd(v: number): string {
   if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
   if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
   return `${sign}$${abs.toFixed(0)}`;
-}
-
-function fmtStrike(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return '—';
-  if (v >= 1000) return `${(v / 1000).toFixed(v >= 100000 ? 0 : 1)}k`;
-  return v.toFixed(0);
 }
 
 function pctTo(spot: number, level: number | null | undefined): string {
@@ -47,24 +42,24 @@ export function ChartGexHoverGrid({ gex }: { gex: GexAssetSnapshot }) {
         <div className="flex justify-between">
           <span className="text-gray-500">γ-flip</span>
           <span className="tabular-nums text-gray-200">
-            {gex.gammaFlip != null ? `${fmtStrike(gex.gammaFlip)} (${pctTo(gex.spot, gex.gammaFlip)})` : '—'}
+            {gex.gammaFlip != null ? `${fmtGexStrike(gex.gammaFlip)} (${pctTo(gex.spot, gex.gammaFlip)})` : '—'}
           </span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Put wall</span>
-          <span className="tabular-nums text-red-300/90">{fmtStrike(gex.putWall)}</span>
+          <span className="tabular-nums text-red-300/90">{fmtGexStrike(gex.putWall)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Call wall</span>
-          <span className="tabular-nums text-green-300/90">{fmtStrike(gex.callWall)}</span>
+          <span className="tabular-nums text-green-300/90">{fmtGexStrike(gex.callWall)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Pin</span>
-          <span className="tabular-nums text-yellow-300/90">{fmtStrike(gex.pinStrike)}</span>
+          <span className="tabular-nums text-yellow-300/90">{fmtGexStrike(gex.pinStrike)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Spot</span>
-          <span className="tabular-nums text-gray-300">{fmtStrike(gex.spot)}</span>
+          <span className="tabular-nums text-gray-300">{fmtGexStrike(gex.spot)}</span>
         </div>
       </div>
       <GexExpirationsTable expirations={gex.expirations ?? []} compact />
@@ -76,7 +71,7 @@ export function ChartGexHoverGrid({ gex }: { gex: GexAssetSnapshot }) {
           return (
             <div key={b.strike} className="flex items-center gap-1 h-[12px]">
               <div className={`w-[40px] shrink-0 text-right text-[8px] tabular-nums ${nearSpot ? 'text-yellow-300 font-bold' : 'text-gray-400'}`}>
-                {fmtStrike(b.strike)}
+                {fmtGexStrike(b.strike)}
               </div>
               <div className="relative flex-1 h-[9px] flex items-center">
                 <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gray-700" />

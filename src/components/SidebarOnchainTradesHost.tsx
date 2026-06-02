@@ -1,10 +1,11 @@
 import { memo, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useOnchainTradesWS, type OnchainTradesWSOpts } from '../hooks/useOnchainTradesWS';
 import {
-  clearSidebarOnchainWalletTrades,
   registerSidebarOnchainRefreshFns,
+  refreshSidebarOnchainWallet,
   resetSidebarOnchainTradesStore,
   resetSidebarOnchainWalletMarketTradesScope,
+  resetSidebarOnchainWalletSession,
   setSidebarOnchainGridWalletPositions,
   setSidebarOnchainWalletHistory,
   setSidebarOnchainWalletMarketTrades,
@@ -40,7 +41,7 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
   }, [walletMarketTradesScopeKey]);
 
   useLayoutEffect(() => {
-    clearSidebarOnchainWalletTrades();
+    resetSidebarOnchainWalletSession();
   }, [walletKey]);
 
   useEffect(() => {
@@ -81,6 +82,11 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
       subscribeWalletPnl,
     });
   }, [refreshWallet, refreshWalletMarketTrades, subscribeWalletPnl]);
+
+  useEffect(() => {
+    if (!walletKey) return;
+    refreshSidebarOnchainWallet();
+  }, [walletKey]);
 
   useEffect(() => {
     return () => {

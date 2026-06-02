@@ -74,6 +74,11 @@ export function HistoryPanel() {
     void loadRest();
   }, [onchainMode, loadRest, refreshBump]);
 
+  useEffect(() => {
+    if (!onchainMode || !tradingWalletKey) return;
+    refreshSidebarOnchainWallet();
+  }, [onchainMode, tradingWalletKey]);
+
   const markets = useMemo(() => {
     if (!onchainMode) return restMarkets;
     return sortWalletPositionsByDisplayedDateDesc(wsHistory, marketById);

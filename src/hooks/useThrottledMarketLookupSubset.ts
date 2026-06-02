@@ -1,25 +1,10 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import type { Market } from '../types';
 import {
-  bidAskWsRowEqual,
   getBidAskMarketRow,
   getBidAskGridFlushDigest,
   subscribeBidAskMarketLookupGridFlush,
 } from '../lib/bidAskMarketLookup';
-
-function subsetEqual(prev: Record<string, Market>, next: Record<string, Market>): boolean {
-  const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
-  for (const id of keys) {
-    const p = prev[id];
-    const l = next[id];
-    if (p === l) continue;
-    if (p && l && bidAskWsRowEqual(p, l)) continue;
-    return false;
-  }
-  return true;
-}
-
-const subsetSnapshotCache = new Map<string, Record<string, Market>>();
 
 function readSubset(ids: readonly string[]): Record<string, Market> {
   const out: Record<string, Market> = {};
@@ -30,16 +15,20 @@ function readSubset(ids: readonly string[]): Record<string, Market> {
   return out;
 }
 
+type SubsetCacheEntry = { digest: number; snap: Record<string, Market> };
+const subsetSnapshotCache = new Map<string, SubsetCacheEntry>();
+
 function getGridMarketLookupSubsetSnapshot(idsKey: string, ids: readonly string[]): Record<string, Market> {
-  getBidAskGridFlushDigest();
-  const next = readSubset(ids);
-  const cached = subsetSnapshotCache.get(idsKey);
-  if (cached && subsetEqual(cached, next)) return cached;
-  subsetSnapshotCache.set(idsKey, next);
-  return next;
+  const digest = getBidAskGridFlushDigest();
+  const prev = subsetSnapshotCache.get(idsKey);
+  if (prev && prev.digest === digest) return prev.snap;
+
+  const snap = readSubset(ids);
+  subsetSnapshotCache.set(idsKey, { digest, snap });
+  return snap;
 }
 
-/** Grid subset on 2s store flush — not on every WS patch. */
+/** Grid subset on 2s store flush — snapshot tied to flush digest. */
 export function useThrottledMarketLookupSubset(tokenIds: readonly string[]): Record<string, Market> {
   const idsKey = tokenIds.join('\0');
   const ids = useMemo(() => tokenIds.filter(Boolean), [idsKey]);

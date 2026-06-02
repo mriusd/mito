@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { GexExpiryBucket } from '../lib/deribitGexFeed';
+import { fmtGexStrike } from '../lib/deribitGexFeed';
 
 const H72_MS = 72 * 60 * 60 * 1000;
 
@@ -10,12 +11,6 @@ function fmtUsd(v: number): string {
   if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
   if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
   return `${sign}$${abs.toFixed(0)}`;
-}
-
-function fmtStrike(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return '—';
-  if (v >= 1000) return `${(v / 1000).toFixed(v >= 100000 ? 0 : 1)}k`;
-  return v.toFixed(0);
 }
 
 function fmtPinFlipGap(
@@ -138,8 +133,8 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                         {row.callOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}/
                         {row.putOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </td>
-                      <td className="py-0.5 px-0.5 text-right text-gray-300">{fmtStrike(row.gammaFlip)}</td>
-                      <td className="py-0.5 pl-0.5 text-right text-yellow-300/90">{fmtStrike(row.pinStrike)}</td>
+                      <td className="py-0.5 px-0.5 text-right text-gray-300">{fmtGexStrike(row.gammaFlip)}</td>
+                      <td className="py-0.5 pl-0.5 text-right text-yellow-300/90">{fmtGexStrike(row.pinStrike)}</td>
                       <td
                         className={`py-0.5 pl-0.5 text-right whitespace-nowrap ${
                           pinFlipGap?.tight ? 'text-amber-300 font-bold' : 'text-gray-400'
@@ -159,9 +154,9 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
         <div className={`${text} text-gray-500 mt-1 px-0.5 leading-snug`}>
           <span className="text-gray-400 font-semibold">{nearest.label}</span>
           {' · '}
-          pin {fmtStrike(nearestPin)} ({pctFromSpot(spot, nearestPin)} spot)
+          pin {fmtGexStrike(nearestPin)} ({pctFromSpot(spot, nearestPin)} spot)
           {' · '}
-          flip {fmtStrike(nearestFlip)} ({pctFromSpot(spot, nearestFlip)} spot)
+          flip {fmtGexStrike(nearestFlip)} ({pctFromSpot(spot, nearestFlip)} spot)
           {' · '}
           <span className={nearestGap.tight ? 'text-amber-300/90' : ''}>
             pin→flip {nearestGap.text}

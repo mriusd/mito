@@ -172,14 +172,16 @@ export function PnLPanel() {
 
     if (
       liveTradesSource === 'onchain' &&
-      typeof onchainByDate === 'object' &&
       makerAddress?.trim()
     ) {
-      for (const dk of dates) {
-        const row = onchainByDate[dk];
-        if (row) {
-          dataByDate[dk] = { bought: row.bought, sold: row.sold };
+      if (typeof onchainByDate === 'object') {
+        for (const dk of dates) {
+          const row = onchainByDate[dk];
+          if (row) {
+            dataByDate[dk] = { bought: row.bought, sold: row.sold };
+          }
         }
+        return { dates, dataByDate };
       }
       return { dates, dataByDate };
     }

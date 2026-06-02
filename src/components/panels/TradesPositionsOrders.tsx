@@ -10,6 +10,7 @@ import { onchainFillKey } from '../../lib/tradeKeys';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import {
+  refreshSidebarOnchainWallet,
   useSidebarOnchainGridWalletPositions,
   useSidebarOnchainWalletTrades,
   useSidebarOnchainWalletWsHydrated,
@@ -206,6 +207,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     liveTradesSource === 'onchain' &&
     !!tradingWalletKey &&
     !onchainWsHydrated;
+
+  useEffect(() => {
+    if (liveTradesSource !== 'onchain' || !tradingWalletKey) return;
+    refreshSidebarOnchainWallet();
+  }, [liveTradesSource, tradingWalletKey]);
 
   const polymarketTokenKey = useMemo(() => {
     const s = new Set<string>();

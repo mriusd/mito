@@ -5,6 +5,7 @@ import {
   useDeribitGexSnapshot,
   type GexAsset,
   type GexAssetSnapshot,
+  fmtGexStrike,
 } from '../../lib/deribitGexFeed';
 import { GexExpirationsTable } from '../GexExpirationsTable';
 import { GexPinChart } from '../GexPinChart';
@@ -21,12 +22,6 @@ function fmtUsd(v: number): string {
   if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
   if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
   return `${sign}$${abs.toFixed(0)}`;
-}
-
-function fmtStrike(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return '—';
-  if (v >= 1000) return `${(v / 1000).toFixed(v >= 100000 ? 0 : 1)}k`;
-  return v.toFixed(0);
 }
 
 function pctTo(spot: number, level: number | null | undefined): string {
@@ -195,7 +190,7 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
           <span className="tabular-nums text-gray-200 truncate text-right">
             {snap.gammaFlip != null ? (
               <>
-                <GexFlashText value={snap.gammaFlip} format={fmtStrike} /> ({pctTo(snap.spot, snap.gammaFlip)})
+                <GexFlashText value={snap.gammaFlip} format={fmtGexStrike} /> ({pctTo(snap.spot, snap.gammaFlip)})
               </>
             ) : (
               '—'
@@ -205,21 +200,21 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
         <div className="row-start-2 flex justify-between gap-1 min-w-0 items-center">
           <span className="text-gray-500 shrink-0">Put wall</span>
           <span className="tabular-nums text-red-300/90 truncate text-right">
-            <GexFlashText value={snap.putWall} format={fmtStrike} />{' '}
+            <GexFlashText value={snap.putWall} format={fmtGexStrike} />{' '}
             <span className="text-gray-600">{pctTo(snap.spot, snap.putWall)}</span>
           </span>
         </div>
         <div className="row-start-3 flex justify-between gap-1 min-w-0 items-center">
           <span className="text-gray-500 shrink-0">Call wall</span>
           <span className="tabular-nums text-green-300/90 truncate text-right">
-            <GexFlashText value={snap.callWall} format={fmtStrike} />{' '}
+            <GexFlashText value={snap.callWall} format={fmtGexStrike} />{' '}
             <span className="text-gray-600">{pctTo(snap.spot, snap.callWall)}</span>
           </span>
         </div>
         <div className="row-start-3 flex justify-between gap-1 min-w-0 items-center">
           <span className="text-gray-500 shrink-0">Pin</span>
           <span className="tabular-nums text-yellow-300/90 truncate text-right">
-            <GexFlashText value={snap.pinStrike} format={fmtStrike} />{' '}
+            <GexFlashText value={snap.pinStrike} format={fmtGexStrike} />{' '}
             <span className="text-gray-600">{pctTo(snap.spot, snap.pinStrike)}</span>
           </span>
         </div>

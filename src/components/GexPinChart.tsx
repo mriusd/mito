@@ -1,17 +1,13 @@
 import { useMemo, useState } from 'react';
 import type { GexExpiryBucket } from '../lib/deribitGexFeed';
+import { fmtGexStrike } from '../lib/deribitGexFeed';
 
-function fmtPinAxis(v: number, compact: boolean): string {
-  if (v >= 1000) {
-    const k = v / 1000;
-    return compact ? `${k.toFixed(0)}k` : `${k.toFixed(v >= 100000 ? 0 : 1)}k`;
-  }
-  return v.toFixed(0);
+function fmtPinAxis(v: number): string {
+  return fmtGexStrike(v);
 }
 
 function fmtPinHover(v: number): string {
-  if (v >= 1000) return `$${(v / 1000).toFixed(v >= 100000 ? 0 : 1)}k`;
-  return `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  return fmtGexStrike(v);
 }
 
 type GexPinChartProps = {
@@ -67,7 +63,7 @@ export function GexPinChart({ expirations, spot, compact = false }: GexPinChartP
     const tickCount = compact ? 2 : 4;
     const yTicks = Array.from({ length: tickCount }, (_, i) => {
       const v = yMin + ((yMax - yMin) * i) / (tickCount - 1);
-      return { v, y: yAt(v), label: fmtPinAxis(v, compact) };
+      return { v, y: yAt(v), label: fmtPinAxis(v) };
     });
 
     const labelEvery = points.length <= 8 ? 1 : Math.ceil(points.length / 6);

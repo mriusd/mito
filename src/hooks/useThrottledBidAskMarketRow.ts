@@ -1,24 +1,25 @@
 import { useSyncExternalStore } from 'react';
 import type { Market } from '../types';
 import {
-  bidAskWsRowEqual,
   getBidAskMarketRow,
   getBidAskGridFlushDigest,
   subscribeBidAskMarketLookupGridFlush,
 } from '../lib/bidAskMarketLookup';
 
-const rowSnapshotCache = new Map<string, Market | undefined>();
+type RowCacheEntry = { digest: number; snap: Market | undefined };
+const rowSnapshotCache = new Map<string, RowCacheEntry>();
 
 function getGridBidAskMarketRowSnapshot(tokenId: string): Market | undefined {
-  getBidAskGridFlushDigest();
+  const digest = getBidAskGridFlushDigest();
   const tid = String(tokenId || '').trim();
   if (!tid) return undefined;
-  const next = getBidAskMarketRow(tid);
-  const cached = rowSnapshotCache.get(tid);
-  if (cached === next) return cached;
-  if (cached && next && bidAskWsRowEqual(cached, next)) return cached;
-  rowSnapshotCache.set(tid, next);
-  return next;
+
+  const prev = rowSnapshotCache.get(tid);
+  if (prev && prev.digest === digest) return prev.snap;
+
+  const snap = getBidAskMarketRow(tid);
+  rowSnapshotCache.set(tid, { digest, snap });
+  return snap;
 }
 
 /** WS market row on 2s store flush — grid stats; live bid/ask uses `useBidAskMarketRow`. */

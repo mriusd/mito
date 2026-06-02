@@ -53,6 +53,11 @@ export type GexPanelSnapshot = {
   updatedAt: number;
 };
 
+export function fmtGexStrike(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return '—';
+  return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
 type FeedState = {
   snap: GexPanelSnapshot | null;
   digest: number;

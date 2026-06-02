@@ -32,6 +32,32 @@ function pctFromSpot(spot: number, level: number | null | undefined): string {
   return `${s}${p.toFixed(1)}%`;
 }
 
+function pinVsSpotBias(
+  spot: number | undefined,
+  pin: number | null | undefined,
+): 'up' | 'down' | null {
+  if (spot == null || spot <= 0 || pin == null || !Number.isFinite(pin)) return null;
+  if (pin > spot) return 'up';
+  if (pin < spot) return 'down';
+  return null;
+}
+
+function PinBiasPill({ spot, pin }: { spot?: number; pin: number | null | undefined }) {
+  const bias = pinVsSpotBias(spot, pin);
+  if (bias == null) return null;
+  const up = bias === 'up';
+  return (
+    <span
+      className={`inline-block ml-0.5 px-0.5 rounded text-[7px] font-bold leading-none ${
+        up ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'
+      }`}
+      title={up ? 'Pin above spot' : 'Pin below spot'}
+    >
+      {up ? 'UP' : 'DOWN'}
+    </span>
+  );
+}
+
 function fmtCountdown(expiryMs: number, nowMs: number): string {
   const ms = expiryMs - nowMs;
   if (ms <= 0) return '0s';
@@ -134,7 +160,10 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                         {row.putOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </td>
                       <td className="py-0.5 px-0.5 text-right text-gray-300">{fmtGexStrike(row.gammaFlip)}</td>
-                      <td className="py-0.5 pl-0.5 text-right text-yellow-300/90">{fmtGexStrike(row.pinStrike)}</td>
+                      <td className="py-0.5 pl-0.5 text-right text-yellow-300/90 whitespace-nowrap">
+                        {fmtGexStrike(row.pinStrike)}
+                        <PinBiasPill spot={spot} pin={row.pinStrike} />
+                      </td>
                       <td
                         className={`py-0.5 pl-0.5 text-right whitespace-nowrap ${
                           pinFlipGap?.tight ? 'text-amber-300 font-bold' : 'text-gray-400'

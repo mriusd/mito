@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import { Triangle } from 'lucide-react';
-import { formatSpotObImpactUsd, formatSpotObMovePctLabel } from '../../lib/binanceSpotObImpact';
+import { formatSpotObImpactUsd, formatSpotObMidPrice, formatSpotObMovePctLabel } from '../../lib/binanceSpotObImpact';
 import {
   BINANCE_SPOT_OB_ASSETS,
   SPOT_OB_MOVE_PCT_LEVELS,
@@ -20,7 +20,6 @@ import {
   useOkxObMarketConnection,
   useOkxObPanels,
 } from '../../lib/okxSpotOrderbookFeed';
-import { formatPrice } from '../../utils/format';
 
 type ObExchange = 'binance' | 'okx';
 
@@ -188,7 +187,7 @@ const AssetRows = memo(function AssetRows({
           <div className="flex flex-col gap-0.5 min-w-0">
             <span className="text-[11px] font-bold text-white">{asset}</span>
             <span className="text-[9px] tabular-nums font-medium text-gray-400 truncate">
-              {mid != null ? formatPrice(mid, asset) : '—'}
+              {mid != null ? formatSpotObMidPrice(mid, asset) : '—'}
             </span>
           </div>
         </td>

@@ -14,14 +14,27 @@ export type SpotObImpact = { usd: number; depthCapped: boolean };
 
 export function formatSpotObMovePctLabel(pct: number): string {
   if (!Number.isFinite(pct)) return '—';
-  const s = pct >= 1 ? String(pct) : pct.toFixed(3).replace(/\.?0+$/, '');
+  const s = pct >= 1 ? pct.toFixed(1) : pct.toFixed(4).replace(/\.?0+$/, '');
   return `${s}%`;
 }
 
 export function formatSpotObImpactUsd(v: SpotObImpact | null): string {
   if (!v || !Number.isFinite(v.usd) || v.usd <= 0) return '—';
-  const core = `${(v.usd / 1_000_000).toFixed(1)}M`;
+  const core = `${(v.usd / 1_000_000).toFixed(2)}M`;
   return v.depthCapped ? `${core}+` : core;
+}
+
+/** Mid price in Orderbook panel — one extra decimal vs default formatPrice. */
+export function formatSpotObMidPrice(price: number, asset: string): string {
+  if (!Number.isFinite(price)) return '—';
+  const decimals = asset === 'XRP' ? 5 : 3;
+  return (
+    '$' +
+    price.toLocaleString('en-US', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    })
+  );
 }
 
 export function parseBinanceObLevels(raw: unknown): BinanceObLevel[] {

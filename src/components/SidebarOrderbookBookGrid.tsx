@@ -15,11 +15,9 @@ function obLevelUsd(level: SidebarObLevel): number {
 
 function fmtObLevelUsd(usd: number): string {
   if (!Number.isFinite(usd) || usd <= 0) return '$0';
-  if (usd < 10) return `$${usd.toFixed(2).replace(/\.?0+$/, '')}`;
-  const n = Math.round(usd);
-  if (n >= 1_000_000) return `$${Math.round(n / 1_000_000)}M`;
-  if (n >= 1000) return `$${Math.round(n / 1000)}k`;
-  return `$${n}`;
+  if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(2)}M`;
+  if (usd >= 1000) return `$${(usd / 1000).toFixed(2)}k`;
+  return `$${usd.toFixed(1)}`;
 }
 
 export type SidebarOrderbookBookGridProps = {
@@ -114,7 +112,7 @@ const SidebarObBookRow = memo(function SidebarObBookRow({
       </div>
       <span className={`relative z-[1] block min-w-0 w-full text-left ${priceCls}`}>{bpDisp}¢</span>
       <span className="relative z-[1] block min-w-0 w-full text-right live-ob-size tabular-nums sidebar-readable-value">
-        {levelSize.toFixed(0)}
+        {levelSize.toFixed(1)}
       </span>
       <span className="relative z-[1] block min-w-0 w-full text-right live-ob-usd tabular-nums sidebar-readable-value">
         {fmtObLevelUsd(cumulativeUsd)}

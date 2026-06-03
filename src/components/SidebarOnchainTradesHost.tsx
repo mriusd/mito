@@ -68,12 +68,25 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
     const scopedIds = new Set(
       (opts.scopedClobTokenIds || []).map((x) => String(x || '').trim()).filter(Boolean),
     );
+    const norm = (tid: string) => {
+      try {
+        return BigInt(tid).toString();
+      } catch {
+        return tid;
+      }
+    };
     const rows =
       scopedIds.size === 0
         ? []
-        : walletMarketTrades.filter((t) => scopedIds.has(String(t.tokenId || '').trim()));
+        : walletTrades.filter((t) => {
+            const k = norm(String(t.tokenId || '').trim());
+            for (const id of scopedIds) {
+              if (norm(id) === k) return true;
+            }
+            return false;
+          });
     setSidebarOnchainWalletMarketTrades(rows, walletMarketTradesScopeKey);
-  }, [walletMarketTrades, walletMarketTradesScopeKey, opts.scopedClobTokenIds?.join('|') ?? '']);
+  }, [walletTrades, walletMarketTradesScopeKey, opts.scopedClobTokenIds?.join('|') ?? '']);
 
   useEffect(() => {
     registerSidebarOnchainRefreshFns({

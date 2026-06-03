@@ -1029,7 +1029,6 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
           ws.send(JSON.stringify({ type: 'subscribeWallet', wallet: w }));
           if (m) {
             ws.send(JSON.stringify({ type: 'subscribeMarket', marketId: m }));
-            ws.send(JSON.stringify({ type: 'subscribeWalletMarket', wallet: w, marketId: m }));
           }
         }
         for (const k of walletMarketListenersRef.current.keys()) {
@@ -1187,19 +1186,6 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side),
             ).slice(0, WALLET_TRADES_CAP);
             setWalletTrades((prev) => (deduped.length === 0 && prev.length > 0 ? prev : deduped));
-            const pw = (walletRef.current || '').trim().toLowerCase();
-            const pm = marketRef.current ? canonicalConditionKey(marketRef.current) : '';
-            if (pw && pm && msgWallet === pw) {
-              const scopedIds = new Set(
-                (scopedClobTokenIdsRef.current || [])
-                  .map((x) => normalizeClobTokenKey(x))
-                  .filter(Boolean),
-              );
-              if (scopedIds.size > 0) {
-                const marketRows = deduped.filter((t) => scopedIds.has(normalizeClobTokenKey(t.tokenId)));
-                setWalletMarketTrades(marketRows.slice(0, WALLET_MARKET_TRADES_CAP));
-              }
-            }
           } else if (msg.type === 'walletHistory' && Array.isArray(msg.data)) {
             const msgWallet = String(msg.wallet || '').trim().toLowerCase();
             const mine = (walletRef.current || '').trim().toLowerCase();
@@ -1238,6 +1224,9 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               const tx = (row.txHash || '').toLowerCase();
               if (tx) dropWalletMarketPendingByTx(new Set([tx]));
               const pw = (walletRef.current || '').trim().toLowerCase();
+              if (pw && w === pw) {
+                setWalletTrades((prev) => prependWalletMarketTradeRow(prev, row, WALLET_TRADES_CAP).rows);
+              }
               const pm = marketRef.current ? canonicalConditionKey(marketRef.current) : '';
               if (pw && pm && w === pw && m === pm) {
                 setWalletMarketTrades((prev) => prependWalletMarketTradeRow(prev, row).rows);
@@ -1307,17 +1296,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     ws.send(JSON.stringify({ type: 'subscribeWalletMarket', wallet: w, marketId: m }));
   }, []);
 
-  useEffect(() => {
-    const w = (wallet || '').trim().toLowerCase();
-    const m = marketId ? canonicalConditionKey(marketId) : '';
-    primaryWalletMarketKeyRef.current = w && m ? walletMarketTradesKey(w, m) : null;
-    if (!w || !m) {
-      return;
-    }
-    sendSubscribeWalletMarket(w, m);
-  }, [wallet, marketId, wsConnected, sendSubscribeWalletMarket]);
-
-  /** Tape fanout uses client.marketID — subscribe without rescoping walletTrades snapshot (TPO). */
+  /** Tape fanout uses client.marketID — does not scope walletTrades (TPO stays full-wallet). */
   useEffect(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;

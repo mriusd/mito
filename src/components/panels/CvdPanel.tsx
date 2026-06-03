@@ -82,7 +82,7 @@ export function CvdPanel({ panelId }: { panelId: string }) {
           <CvdBarChart bars={selected.bars} />
         ) : (
           <div className="flex h-full items-center justify-center text-[10px] text-gray-500">
-            {connected ? 'Waiting for aggTrade…' : 'Connecting…'}
+            {connected ? 'Syncing…' : 'Connecting to Binance…'}
           </div>
         )}
       </div>

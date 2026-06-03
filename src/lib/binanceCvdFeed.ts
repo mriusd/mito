@@ -1,17 +1,8 @@
 import { useLayoutEffect, useSyncExternalStore } from 'react';
+import { WS_BASE } from './env';
 
 export const CVD_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 export type CvdAsset = (typeof CVD_ASSETS)[number];
-
-const BINANCE_SYMBOLS: Record<CvdAsset, string> = {
-  BTC: 'btcusdt',
-  ETH: 'ethusdt',
-  SOL: 'solusdt',
-  XRP: 'xrpusdt',
-};
-
-const BAR_MS = 5000;
-const MAX_BARS = 360;
 
 export type CvdBar = {
   t: number;
@@ -35,14 +26,6 @@ export type CvdPanelSnapshot = {
   updatedAt: number;
 };
 
-type AssetState = {
-  spot: number;
-  cumDeltaUsd: number;
-  curBucket: number;
-  cur: CvdBar;
-  bars: CvdBar[];
-};
-
 type FeedState = {
   snap: CvdPanelSnapshot | null;
   connected: boolean;
@@ -50,19 +33,7 @@ type FeedState = {
   ws: WebSocket | null;
   reconnectTimer: number | null;
   refCount: number;
-  byAsset: Record<CvdAsset, AssetState>;
-  bucketTimer: number | null;
 };
-
-function emptyAssetState(): AssetState {
-  return {
-    spot: 0,
-    cumDeltaUsd: 0,
-    curBucket: 0,
-    cur: { t: 0, buyUsd: 0, sellUsd: 0, deltaUsd: 0, cumDeltaUsd: 0, tradeCount: 0 },
-    bars: [],
-  };
-}
 
 const state: FeedState = {
   snap: null,
@@ -71,13 +42,6 @@ const state: FeedState = {
   ws: null,
   reconnectTimer: null,
   refCount: 0,
-  byAsset: {
-    BTC: emptyAssetState(),
-    ETH: emptyAssetState(),
-    SOL: emptyAssetState(),
-    XRP: emptyAssetState(),
-  },
-  bucketTimer: null,
 };
 
 const listeners = new Set<() => void>();
@@ -86,129 +50,91 @@ function emit(): void {
   for (const fn of listeners) fn();
 }
 
-function bucketOpen(tsMs: number): number {
-  return Math.floor(tsMs / BAR_MS) * BAR_MS;
+function num(x: unknown): number | null {
+  return typeof x === 'number' && Number.isFinite(x) ? x : null;
 }
 
-function rollAsset(st: AssetState, nowBucket: number): void {
-  if (st.curBucket === 0) {
-    st.curBucket = nowBucket;
-    st.cur = { t: nowBucket, buyUsd: 0, sellUsd: 0, deltaUsd: 0, cumDeltaUsd: 0, tradeCount: 0 };
-    return;
-  }
-  if (nowBucket <= st.curBucket) return;
-  st.cur.deltaUsd = st.cur.buyUsd - st.cur.sellUsd;
-  st.cumDeltaUsd += st.cur.deltaUsd;
-  st.cur.cumDeltaUsd = st.cumDeltaUsd;
-  st.bars.push({ ...st.cur });
-  if (st.bars.length > MAX_BARS) st.bars = st.bars.slice(-MAX_BARS);
-  st.curBucket = nowBucket;
-  st.cur = { t: nowBucket, buyUsd: 0, sellUsd: 0, deltaUsd: 0, cumDeltaUsd: 0, tradeCount: 0 };
+function parseBar(raw: unknown): CvdBar | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const t = num(r.t);
+  if (t == null) return null;
+  const buyUsd = num(r.buyUsd) ?? 0;
+  const sellUsd = num(r.sellUsd) ?? 0;
+  return {
+    t,
+    buyUsd,
+    sellUsd,
+    deltaUsd: num(r.deltaUsd) ?? buyUsd - sellUsd,
+    cumDeltaUsd: num(r.cumDeltaUsd) ?? 0,
+    tradeCount: num(r.tradeCount) ?? 0,
+  };
 }
 
-function buildSnapshot(): CvdPanelSnapshot {
+function parseAsset(raw: unknown): CvdAssetSnapshot | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const asset = String(r.asset ?? '').trim().toUpperCase();
+  if (!asset) return null;
+  const bars = Array.isArray(r.bars)
+    ? r.bars.map(parseBar).filter((x): x is CvdBar => x != null)
+    : [];
+  return {
+    asset,
+    spot: num(r.spot) ?? 0,
+    cumDeltaUsd: num(r.cumDeltaUsd) ?? 0,
+    bars,
+    updatedAt: num(r.updatedAt) ?? Date.now(),
+  };
+}
+
+function parseSnapshot(raw: unknown): CvdPanelSnapshot | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const assetsIn = r.assets;
+  if (!assetsIn || typeof assetsIn !== 'object') return null;
   const assets: CvdPanelSnapshot['assets'] = {};
-  const updatedAt = Date.now();
   for (const asset of CVD_ASSETS) {
-    const st = state.byAsset[asset];
-    const bars = [...st.bars];
-    if (st.curBucket > 0) {
-      const cur = { ...st.cur };
-      cur.deltaUsd = cur.buyUsd - cur.sellUsd;
-      cur.cumDeltaUsd = st.cumDeltaUsd + cur.deltaUsd;
-      bars.push(cur);
-    }
-    assets[asset] = {
-      asset,
-      spot: st.spot,
-      cumDeltaUsd: bars.length > 0 ? bars[bars.length - 1]!.cumDeltaUsd : st.cumDeltaUsd,
-      bars,
-      updatedAt,
-    };
+    const parsed = parseAsset((assetsIn as Record<string, unknown>)[asset]);
+    if (parsed) assets[asset] = parsed;
   }
-  return { assets, updatedAt };
-}
-
-function publish(): void {
-  state.snap = buildSnapshot();
-  state.digest += 1;
-  emit();
-}
-
-function onAggTrade(asset: CvdAsset, price: number, qty: number, buyerIsMaker: boolean, tsMs: number): void {
-  if (price <= 0 || qty <= 0) return;
-  const usd = price * qty;
-  if (usd <= 0) return;
-  const st = state.byAsset[asset];
-  const bucket = bucketOpen(tsMs);
-  st.spot = price;
-  rollAsset(st, bucket);
-  if (buyerIsMaker) st.cur.sellUsd += usd;
-  else st.cur.buyUsd += usd;
-  st.cur.tradeCount += 1;
-  publish();
-}
-
-function handleMessage(raw: string): void {
-  let env: { stream?: string; data?: Record<string, unknown> };
-  try {
-    env = JSON.parse(raw);
-  } catch {
-    return;
-  }
-  const data = env.data;
-  if (!data || data.e !== 'aggTrade') return;
-  const sym = String(data.s ?? '').toUpperCase();
-  const asset = CVD_ASSETS.find((a) => sym === `${a}USDT`);
-  if (!asset) return;
-  const price = Number(data.p);
-  const qty = Number(data.q);
-  const tsMs = Number(data.T) || Date.now();
-  const buyerIsMaker = data.m === true;
-  if (!Number.isFinite(price) || !Number.isFinite(qty)) return;
-  onAggTrade(asset, price, qty, buyerIsMaker, tsMs);
-}
-
-function tickBuckets(): void {
-  const nowBucket = bucketOpen(Date.now());
-  let changed = false;
-  for (const asset of CVD_ASSETS) {
-    const st = state.byAsset[asset];
-    if (st.curBucket > 0 && nowBucket > st.curBucket) {
-      rollAsset(st, nowBucket);
-      changed = true;
-    }
-  }
-  if (changed) publish();
-}
-
-function initBuckets(): void {
-  const b = bucketOpen(Date.now());
-  for (const asset of CVD_ASSETS) {
-    rollAsset(state.byAsset[asset], b);
-  }
+  if (Object.keys(assets).length === 0) return null;
+  return { assets, updatedAt: num(r.updatedAt) ?? Date.now() };
 }
 
 function connect(): void {
   if (state.ws != null) return;
-  const streams = CVD_ASSETS.map((a) => `${BINANCE_SYMBOLS[a]}@aggTrade`).join('/');
-  const ws = new WebSocket(`wss://stream.binance.com:9443/stream?streams=${streams}`);
+  const ws = new WebSocket(`${WS_BASE}/ws/binance-cvd`);
   state.ws = ws;
 
   ws.onopen = () => {
-    state.connected = true;
     if (state.reconnectTimer != null) {
       window.clearTimeout(state.reconnectTimer);
       state.reconnectTimer = null;
     }
-    initBuckets();
-    publish();
+  };
+  ws.onmessage = (event) => {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(String(event.data));
+    } catch {
+      return;
+    }
+    const msg = payload as { type?: unknown; data?: unknown };
+    if (msg.type === 'pong') return;
+    if (msg.type !== 'binanceCvd') return;
+    const snap = parseSnapshot(msg.data);
+    if (!snap) return;
+    state.snap = snap;
+    state.connected = true;
+    state.digest += 1;
     emit();
   };
-  ws.onmessage = (event) => handleMessage(String(event.data));
   ws.onclose = () => {
     state.ws = null;
     state.connected = false;
+    state.snap = null;
+    state.digest += 1;
     emit();
     if (state.refCount <= 0 || state.reconnectTimer != null) return;
     state.reconnectTimer = window.setTimeout(() => {
@@ -239,19 +165,10 @@ export function useBinanceCvdConnection(enabled = true): void {
   useLayoutEffect(() => {
     if (!enabled) return;
     state.refCount += 1;
-    if (state.refCount === 1) {
-      connect();
-      state.bucketTimer = window.setInterval(tickBuckets, 1000);
-    }
+    if (state.refCount === 1) connect();
     return () => {
       state.refCount -= 1;
-      if (state.refCount === 0) {
-        if (state.bucketTimer != null) {
-          window.clearInterval(state.bucketTimer);
-          state.bucketTimer = null;
-        }
-        disconnect();
-      }
+      if (state.refCount === 0) disconnect();
     };
   }, [enabled]);
 }

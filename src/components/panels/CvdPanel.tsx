@@ -35,7 +35,7 @@ export function CvdPanel({ panelId }: { panelId: string }) {
         <div className="text-[10px] font-bold text-yellow-400/90">CVD · Binance spot</div>
         <div className="no-drag flex items-center gap-1.5" onMouseDown={(e) => e.stopPropagation()}>
           <span className={`text-[8px] ${connected ? 'text-green-500' : 'text-gray-600'}`}>
-            {connected ? 'live' : '…'}
+            {connected ? 'mito' : '…'}
           </span>
           <select
             className="rounded border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-[10px] font-semibold text-gray-200 focus:outline-none"
@@ -82,7 +82,7 @@ export function CvdPanel({ panelId }: { panelId: string }) {
           <CvdBarChart bars={selected.bars} />
         ) : (
           <div className="flex h-full items-center justify-center text-[10px] text-gray-500">
-            {connected ? 'Syncing…' : 'Connecting to Binance…'}
+            {connected ? 'Waiting for mito CVD…' : 'Connecting to mito…'}
           </div>
         )}
       </div>

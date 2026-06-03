@@ -32,17 +32,36 @@ function pctFromSpot(spot: number, level: number | null | undefined): string {
   return `${s}${p.toFixed(1)}%`;
 }
 
+const PIN_AT_SPOT_DEV_PCT = 0.1;
+
+function spotPinDevPct(spot: number, pin: number): number {
+  return (Math.abs(spot - pin) / pin) * 100;
+}
+
 function pinVsSpotBias(
   spot: number | undefined,
   pin: number | null | undefined,
 ): 'up' | 'down' | null {
-  if (spot == null || spot <= 0 || pin == null || !Number.isFinite(pin)) return null;
+  if (spot == null || spot <= 0 || pin == null || !Number.isFinite(pin) || pin <= 0) return null;
+  if (spotPinDevPct(spot, pin) < PIN_AT_SPOT_DEV_PCT) return null;
   if (pin > spot) return 'up';
   if (pin < spot) return 'down';
   return null;
 }
 
 function PinBiasPill({ spot, pin }: { spot?: number; pin: number | null | undefined }) {
+  if (spot == null || spot <= 0 || pin == null || !Number.isFinite(pin) || pin <= 0) return null;
+  const devPct = spotPinDevPct(spot, pin);
+  if (devPct < PIN_AT_SPOT_DEV_PCT) {
+    return (
+      <span
+        className="inline-block mr-0.5 px-0.5 rounded text-[7px] font-bold leading-none bg-yellow-900/55 text-yellow-300"
+        title={`Spot within ${devPct.toFixed(2)}% of pin`}
+      >
+        PIN
+      </span>
+    );
+  }
   const bias = pinVsSpotBias(spot, pin);
   if (bias == null) return null;
   const up = bias === 'up';

@@ -78,9 +78,21 @@ export function sidebarObAggregateLevels(
     m.set(k, { size: prev.size + add, bandUsd: prev.bandUsd + obLevelBandUsd(l) });
   }
   let keys = Array.from(m.keys());
-  if (side === 'bid') keys.sort((a, b) => b - a);
-  else keys.sort((a, b) => a - b);
-  keys = keys.slice(0, maxLevels);
+  if (step === '1' && keys.length > 0) {
+    const lo = Math.min(...keys);
+    const hi = Math.max(...keys);
+    const dense: number[] = [];
+    if (side === 'bid') {
+      for (let c = hi; c >= lo && dense.length < maxLevels; c--) dense.push(c);
+    } else {
+      for (let c = lo; c <= hi && dense.length < maxLevels; c++) dense.push(c);
+    }
+    keys = dense;
+  } else {
+    if (side === 'bid') keys.sort((a, b) => b - a);
+    else keys.sort((a, b) => a - b);
+    keys = keys.slice(0, maxLevels);
+  }
   return keys.map((k) => {
     const acc = m.get(k) ?? { size: 0, bandUsd: 0 };
     return {

@@ -89,18 +89,42 @@ function walletMarketTradesHeadEqual(a: WSTrade[], b: WSTrade[]): boolean {
 
 function wsPositionsSig(rows: WSPosition[]): string {
   if (rows.length === 0) return '';
-  return rows
-    .slice(0, 8)
-    .map((p) => `${p.tokenId}:${p.size}:${p.avgPrice}:${p.feesPaid ?? ''}`)
-    .join('|');
+  const parts: string[] = [String(rows.length)];
+  const n = Math.min(rows.length, 48);
+  for (let i = 0; i < n; i++) {
+    const p = rows[i]!;
+    parts.push(`${p.tokenId}:${p.size}:${p.avgPrice}:${p.feesPaid ?? ''}`);
+  }
+  if (rows.length > n) parts.push(`+${rows.length - n}`);
+  return parts.join('|');
 }
 
 function walletHistorySig(rows: WalletPosition[]): string {
   if (rows.length === 0) return '';
-  return rows
-    .slice(0, 6)
-    .map((r) => `${r.marketId}:${r.tradeCount}:${r.lastTradeTime}:${r.usdcIn}:${r.usdcOut}`)
-    .join('|');
+  const parts: string[] = [String(rows.length)];
+  const n = Math.min(rows.length, 48);
+  for (let i = 0; i < n; i++) {
+    const r = rows[i]!;
+    parts.push(
+      `${r.marketId}:${r.tradeCount}:${r.lastTradeTime}:${r.usdcIn}:${r.usdcOut}:${r.lastUpdated ?? ''}`,
+    );
+  }
+  if (rows.length > n) parts.push(`+${rows.length - n}`);
+  return parts.join('|');
+}
+
+function walletTradesSig(rows: WSTrade[]): string {
+  if (rows.length === 0) return '';
+  const parts: string[] = [String(rows.length)];
+  const n = Math.min(rows.length, 24);
+  for (let i = 0; i < n; i++) {
+    const t = rows[i]!;
+    parts.push(
+      `${t.id || ''}:${t.txHash || ''}:${t.logIndex ?? ''}:${t.tokenId}:${t.side}:${t.size}:${t.price}:${t.blockTime}`,
+    );
+  }
+  if (rows.length > n) parts.push(`+${rows.length - n}`);
+  return parts.join('|');
 }
 
 export function resetSidebarOnchainTradesStore(): void {
@@ -220,7 +244,9 @@ export function setSidebarOnchainGridWalletPositions(next: WSPosition[]): void {
 
 export function setSidebarOnchainWalletTrades(next: WSTrade[]): void {
   if (next.length === 0 && snap.walletTrades.length > 0) return;
-  if (walletMarketTradesHeadEqual(snap.walletTrades, next)) {
+  const sig = walletTradesSig(next);
+  const prevSig = walletTradesSig(snap.walletTrades);
+  if (sig === prevSig && next.length === snap.walletTrades.length) {
     if (!snap.walletWsHydrated) {
       snap = { ...snap, walletWsHydrated: true };
       notify();
@@ -270,10 +296,23 @@ export function setSidebarOnchainWalletPnlDaily(next: WalletPnlDailyWS | null): 
   // shallow compare first keys for value changes when lengths match
   if (sig === prevSig && prev && next) {
     let same = true;
-    for (const k of Object.keys(next.tradeByDate)) {
-      const a = prev.tradeByDate[k];
-      const b = next.tradeByDate[k];
-      if (!a || !b || a.bought !== b.bought || a.sold !== b.sold) {
+    const dateKeys = new Set([
+      ...Object.keys(prev.tradeByDate),
+      ...Object.keys(next.tradeByDate),
+      ...Object.keys(prev.marketByDate),
+      ...Object.keys(next.marketByDate),
+    ]);
+    for (const k of dateKeys) {
+      const ta = prev.tradeByDate[k];
+      const tb = next.tradeByDate[k];
+      const ma = prev.marketByDate[k];
+      const mb = next.marketByDate[k];
+      if (
+        (ta?.bought ?? 0) !== (tb?.bought ?? 0) ||
+        (ta?.sold ?? 0) !== (tb?.sold ?? 0) ||
+        (ma?.bought ?? 0) !== (mb?.bought ?? 0) ||
+        (ma?.sold ?? 0) !== (mb?.sold ?? 0)
+      ) {
         same = false;
         break;
       }

@@ -4,6 +4,8 @@ import { useAppStore } from '../stores/appStore';
 /** Grid store flush for bid/ask + lookup fields — sidebar uses `getBidAskMarketRow` (unthrottled). */
 export const BID_ASK_LOOKUP_FLUSH_MS = 2000;
 export const GRID_BID_ASK_THROTTLE_MS = BID_ASK_LOOKUP_FLUSH_MS;
+/** Coalesce live WS bid/ask into grid flush listeners (faster yes/no on grid/updown without per-tick React). */
+export const GRID_BID_ASK_LIVE_COALESCE_MS = 500;
 
 /** Fields bid/ask WS batches can materially change vs prior store row — cheap equality gate. */
 const BIDASK_EQ_KEYS: (keyof Market)[] = [
@@ -119,6 +121,7 @@ function mergeWsItemOntoMarket(seed: Market, item: BidAskWsItem): Market {
 
 const pendingPatch: Record<string, Market> = {};
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let gridLiveCoalesceTimer: ReturnType<typeof setTimeout> | null = null;
 const bidAskLookupLiveListeners = new Set<() => void>();
 const bidAskLookupGridFlushListeners = new Set<() => void>();
 let bidAskGridFlushDigest = 0;
@@ -150,6 +153,14 @@ function notifyBidAskMarketLookupLiveListeners() {
 function notifyBidAskMarketLookupGridFlushListeners() {
   bidAskGridFlushDigest += 1;
   for (const listener of bidAskLookupGridFlushListeners) listener();
+}
+
+function scheduleGridLiveCoalesceNotify() {
+  if (gridLiveCoalesceTimer != null) return;
+  gridLiveCoalesceTimer = setTimeout(() => {
+    gridLiveCoalesceTimer = null;
+    notifyBidAskMarketLookupGridFlushListeners();
+  }, GRID_BID_ASK_LIVE_COALESCE_MS);
 }
 
 function flushPendingBidAskToStore() {
@@ -225,7 +236,10 @@ export function enqueueBidAskMarketPatches(items: BidAskWsItem[]) {
     pendingPatch[id] = next;
     touched = true;
   }
-  if (touched) notifyBidAskMarketLookupLiveListeners();
+  if (touched) {
+    notifyBidAskMarketLookupLiveListeners();
+    scheduleGridLiveCoalesceNotify();
+  }
   if (Object.keys(pendingPatch).length > 0) scheduleBidAskFlush();
 }
 
@@ -233,6 +247,10 @@ export function resetBidAskMarketLookupPending() {
   if (flushTimer != null) {
     clearTimeout(flushTimer);
     flushTimer = null;
+  }
+  if (gridLiveCoalesceTimer != null) {
+    clearTimeout(gridLiveCoalesceTimer);
+    gridLiveCoalesceTimer = null;
   }
   for (const k of Object.keys(pendingPatch)) delete pendingPatch[k];
 }

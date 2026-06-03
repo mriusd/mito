@@ -22,6 +22,7 @@ import { SigningDialog } from './components/SigningDialog';
 import { SignatureExplainerDialog } from './components/SignatureExplainerDialog';
 import { MobileScreenNotice } from './components/MobileScreenNotice';
 import { lazyWithChunkReload } from './utils/lazyWithChunkReload';
+import { buildMarketByIdRecord } from './components/WalletLatestMarketsTradedTable';
 import {
   adjacentMarketCell,
   findMarketCellEl,
@@ -151,10 +152,9 @@ function App() {
 
     const tryApply = () => {
       const st = useAppStore.getState();
-      const marketLookup = st.marketLookup;
-      const byId = new Map<string, (typeof st.selectedMarket)>();
-      for (const m of Object.values(marketLookup)) byId.set(m.id, m);
-      const m = byId.get(pendingLink.marketId);
+      const key = pendingLink.marketId.trim();
+      const byId = buildMarketByIdRecord(st.marketLookup);
+      const m = byId[key] ?? byId[key.toLowerCase()];
       if (!m) return;
 
       if (!st.selectedMarket || st.selectedMarket.id !== m.id) setSelectedMarket(m);

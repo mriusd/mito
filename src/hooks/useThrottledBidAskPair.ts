@@ -18,13 +18,19 @@ function gridPairCacheKey(yesTokenId: string, noTokenId: string): string {
 export function getGridBidAskPairSnapshot(yesTokenId: string, noTokenId: string): ThrottledBidAskPair {
   const digest = getBidAskGridFlushDigest();
   const key = gridPairCacheKey(yesTokenId, noTokenId);
+  const yes = yesTokenId ? getBidAskMarketRow(yesTokenId) : undefined;
+  const no = noTokenId ? getBidAskMarketRow(noTokenId) : undefined;
   const prev = pairSnapshotCache.get(key);
-  if (prev && prev.digest === digest) return prev.snap;
+  if (
+    prev &&
+    prev.digest === digest &&
+    prev.snap.yes === yes &&
+    prev.snap.no === no
+  ) {
+    return prev.snap;
+  }
 
-  const snap: ThrottledBidAskPair = {
-    yes: yesTokenId ? getBidAskMarketRow(yesTokenId) : undefined,
-    no: noTokenId ? getBidAskMarketRow(noTokenId) : undefined,
-  };
+  const snap: ThrottledBidAskPair = { yes, no };
   pairSnapshotCache.set(key, { digest, snap });
   return snap;
 }

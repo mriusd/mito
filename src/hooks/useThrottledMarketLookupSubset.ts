@@ -18,12 +18,21 @@ function readSubset(ids: readonly string[]): Record<string, Market> {
 type SubsetCacheEntry = { digest: number; snap: Record<string, Market> };
 const subsetSnapshotCache = new Map<string, SubsetCacheEntry>();
 
+function subsetSnapEqual(a: Record<string, Market>, b: Record<string, Market>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const id of keys) {
+    if (a[id] === b[id]) continue;
+    return false;
+  }
+  return true;
+}
+
 function getGridMarketLookupSubsetSnapshot(idsKey: string, ids: readonly string[]): Record<string, Market> {
   const digest = getBidAskGridFlushDigest();
-  const prev = subsetSnapshotCache.get(idsKey);
-  if (prev && prev.digest === digest) return prev.snap;
-
   const snap = readSubset(ids);
+  const prev = subsetSnapshotCache.get(idsKey);
+  if (prev && prev.digest === digest && subsetSnapEqual(prev.snap, snap)) return prev.snap;
+
   subsetSnapshotCache.set(idsKey, { digest, snap });
   return snap;
 }

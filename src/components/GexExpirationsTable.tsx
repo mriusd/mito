@@ -55,7 +55,7 @@ function PinBiasPill({ spot, pin }: { spot?: number; pin: number | null | undefi
   if (devPct < PIN_AT_SPOT_DEV_PCT) {
     return (
       <span
-        className="inline-block mr-0.5 px-0.5 rounded text-[7px] font-bold leading-none bg-yellow-900/55 text-yellow-300"
+        className="inline-block mr-0.5 px-0.5 rounded text-[7px] font-bold leading-none bg-blue-900/55 text-blue-300"
         title={`Spot within ${devPct.toFixed(2)}% of pin`}
       >
         PIN

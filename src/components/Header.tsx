@@ -67,6 +67,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'pair-trading', title: 'Pair Trading' },
   { type: 'gex', title: 'Dealer GEX' },
   { type: 'liq-map', title: 'Liq Map' },
+  { type: 'cvd', title: 'CVD' },
   { type: 'chat', title: 'Chat' },
 ];
 

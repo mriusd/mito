@@ -294,6 +294,7 @@ export type PanelType =
   | 'spot-orderbook'
   | 'gex'
   | 'liq-map'
+  | 'cvd'
   | 'wallet-history'
   | 'pair-trading';
 

@@ -3,13 +3,13 @@ import type { CvdBar } from '../lib/binanceCvdFeed';
 import { fmtCvdUsd } from '../lib/binanceCvdFeed';
 
 export function CvdBarChart({ bars }: { bars: readonly CvdBar[] }) {
-  const { maxVol, visible } = useMemo(() => {
+  const { maxDelta, visible } = useMemo(() => {
     const tail = bars.slice(-120);
     let max = 0;
     for (const b of tail) {
-      max = Math.max(max, b.buyUsd, b.sellUsd);
+      max = Math.max(max, Math.abs(b.deltaUsd));
     }
-    return { maxVol: max, visible: tail };
+    return { maxDelta: max, visible: tail };
   }, [bars]);
 
   if (visible.length === 0) {
@@ -24,8 +24,8 @@ export function CvdBarChart({ bars }: { bars: readonly CvdBar[] }) {
         <div className="absolute inset-x-0 top-1/2 h-px bg-gray-600/80" />
         <div className="flex h-full items-center gap-px px-1" style={{ minWidth: visible.length * (barW + 1) }}>
           {visible.map((b) => {
-            const buyH = maxVol > 0 ? (b.buyUsd / maxVol) * 50 : 0;
-            const sellH = maxVol > 0 ? (b.sellUsd / maxVol) * 50 : 0;
+            const up = b.deltaUsd >= 0;
+            const h = maxDelta > 0 ? (Math.abs(b.deltaUsd) / maxDelta) * 50 : 0;
             return (
               <div
                 key={b.t}
@@ -33,26 +33,28 @@ export function CvdBarChart({ bars }: { bars: readonly CvdBar[] }) {
                 style={{ width: barW }}
                 title={`${new Date(b.t).toLocaleTimeString()}\nBuy ${fmtCvdUsd(b.buyUsd)}\nSell ${fmtCvdUsd(b.sellUsd)}\nΔ ${fmtCvdUsd(b.deltaUsd)}`}
               >
-                <div className="flex-1 flex flex-col justify-end items-stretch">
-                  <div
-                    className="bg-green-500/85 rounded-t-sm min-h-0"
-                    style={{ height: `${buyH}%` }}
-                  />
-                </div>
-                <div className="flex-1 flex flex-col justify-start items-stretch">
-                  <div
-                    className="bg-red-500/85 rounded-b-sm min-h-0"
-                    style={{ height: `${sellH}%` }}
-                  />
-                </div>
+                {up ? (
+                  <div className="flex-1 flex flex-col justify-end items-stretch">
+                    <div className="bg-green-500/85 rounded-t-sm min-h-0" style={{ height: `${h}%` }} />
+                  </div>
+                ) : (
+                  <div className="flex-1" />
+                )}
+                {!up ? (
+                  <div className="flex-1 flex flex-col justify-start items-stretch">
+                    <div className="bg-red-500/85 rounded-b-sm min-h-0" style={{ height: `${h}%` }} />
+                  </div>
+                ) : (
+                  <div className="flex-1" />
+                )}
               </div>
             );
           })}
         </div>
       </div>
       <div className="flex justify-between text-[8px] text-gray-500 px-1 shrink-0">
-        <span>5s · buy ↑ / sell ↓</span>
-        <span className="tabular-nums">max {fmtCvdUsd(maxVol)}</span>
+        <span>5s · net Δ</span>
+        <span className="tabular-nums">max {fmtCvdUsd(maxDelta)}</span>
       </div>
     </div>
   );

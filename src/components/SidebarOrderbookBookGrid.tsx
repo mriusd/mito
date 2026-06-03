@@ -4,8 +4,6 @@ import type { SidebarObAggStep } from '../lib/sidebarOrderbookAggregate';
 import { sidebarObAggOrderPriceCents, sidebarUserPriceHitsBucket } from '../lib/sidebarOrderbookAggregate';
 import { SidebarBarMidMarker } from './SidebarBarMidMarker';
 
-import { obLevelBandUsd } from '../lib/orderbookBookImbalance';
-
 export type SidebarObLevel = { price: string; size: string; bandUsd?: number };
 
 function obLevelUsd(level: SidebarObLevel): number {
@@ -16,6 +14,8 @@ function obLevelUsd(level: SidebarObLevel): number {
 }
 
 function fmtObLevelUsd(usd: number): string {
+  if (!Number.isFinite(usd) || usd <= 0) return '$0';
+  if (usd < 10) return `$${usd.toFixed(2).replace(/\.?0+$/, '')}`;
   const n = Math.round(usd);
   if (n >= 1_000_000) return `$${Math.round(n / 1_000_000)}M`;
   if (n >= 1000) return `$${Math.round(n / 1000)}k`;
@@ -125,9 +125,9 @@ const SidebarObBookRow = memo(function SidebarObBookRow({
 
 type ObPreparedRow = Omit<ObBookRowProps, 'readOnly' | 'onClick'> & { onClick?: () => void };
 
-function obLevelUsdInBand(level: SidebarObLevel): number {
-  if (typeof level.bandUsd === 'number' && Number.isFinite(level.bandUsd)) return level.bandUsd;
-  return obLevelBandUsd(level);
+/** Row USD = actual size×price (band clamp 5–95¢ is for depth bar only). */
+function obLevelDisplayUsd(level: SidebarObLevel): number {
+  return obLevelUsd(level);
 }
 
 function prepareObSideRows(
@@ -147,7 +147,7 @@ function prepareObSideRows(
   for (const level of levels) {
     cumul += parseFloat(level.size) || 0;
     cumuls.push(cumul);
-    cumulUsd += obLevelUsdInBand(level);
+    cumulUsd += obLevelDisplayUsd(level);
     cumulUsds.push(cumulUsd);
   }
   const lastIdx = levels.length - 1;
@@ -156,7 +156,7 @@ function prepareObSideRows(
   let prevCumulUsd = 0;
   return levels.map((level, i) => {
     const levelSize = parseFloat(level.size) || 0;
-    const levelUsd = obLevelUsdInBand(level);
+    const levelUsd = obLevelDisplayUsd(level);
     let cumulativeUsd = cumulUsds[i];
     if (i === lastIdx && typeof sideFullUsd === 'number' && Number.isFinite(sideFullUsd) && sideFullUsd > 0) {
       cumulativeUsd = Math.max(cumulativeUsd, sideFullUsd);

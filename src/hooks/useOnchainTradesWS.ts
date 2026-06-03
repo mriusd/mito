@@ -999,9 +999,12 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       const m = marketRef.current?.trim();
       const tok = tokenRef.current?.trim();
       const wq = (walletRef.current || '').trim().toLowerCase();
-      if (wq) params.set('wallet', wq);
-      if (m) {
+      // Wallet URL stays market-agnostic — global walletTrades for TPO; tape via subscribeMarket on open.
+      if (wq) {
+        params.set('wallet', wq);
+      } else if (m) {
         params.set('market_id', canonicalConditionKey(m));
+        if (tok) params.set('token_id', tok);
       } else if (tok) {
         params.set('token_id', tok);
       }
@@ -1025,6 +1028,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
         if (w && ws?.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'subscribeWallet', wallet: w }));
           if (m) {
+            ws.send(JSON.stringify({ type: 'subscribeMarket', marketId: m }));
             ws.send(JSON.stringify({ type: 'subscribeWalletMarket', wallet: w, marketId: m }));
           }
         }
@@ -1312,6 +1316,18 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     }
     sendSubscribeWalletMarket(w, m);
   }, [wallet, marketId, wsConnected, sendSubscribeWalletMarket]);
+
+  /** Tape fanout uses client.marketID — subscribe without rescoping walletTrades snapshot (TPO). */
+  useEffect(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const m = marketRef.current?.trim();
+    if (m) {
+      ws.send(JSON.stringify({ type: 'subscribeMarket', marketId: m }));
+    } else {
+      ws.send(JSON.stringify({ type: 'unsubscribeMarket' }));
+    }
+  }, [marketId, wsConnected]);
 
   const subscribeWalletMarketTrades = useCallback(
     (wallet: string, marketId: string, listener: WalletMarketTradesListener) => {

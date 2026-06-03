@@ -771,8 +771,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   }, [wallet]);
 
   const walletLc = (wallet || '').trim().toLowerCase();
-  /** Reconnect WS on market change only when there is no wallet (public tape bridge). */
-  const marketOnlyConnectKey = walletLc ? '' : `${(marketId || '').trim()}|${(tokenId || '').trim()}`;
+  /** Reconnect when market/token scope changes — wallet-only URL gets no onchainTrade fanout (backend). */
+  const wsConnectKey = `${walletLc}|${canonicalConditionKey((marketId || '').trim())}|${(tokenId || '').trim()}`;
 
   useEffect(() => {
     tokenRef.current = (tokenId || '').trim() || null;
@@ -999,11 +999,9 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       const m = marketRef.current?.trim();
       const tok = tokenRef.current?.trim();
       const wq = (walletRef.current || '').trim().toLowerCase();
-      if (wq) {
-        params.set('wallet', wq);
-      } else if (m) {
+      if (wq) params.set('wallet', wq);
+      if (m) {
         params.set('market_id', canonicalConditionKey(m));
-        if (tok) params.set('token_id', tok);
       } else if (tok) {
         params.set('token_id', tok);
       }
@@ -1294,7 +1292,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       loadTapeFromAPIRef.current = null;
       cleanup();
     };
-  }, [wallet, marketOnlyConnectKey, walletMarketConnectBump, cleanup]);
+  }, [wallet, wsConnectKey, walletMarketConnectBump, cleanup]);
 
   const sendSubscribeWalletMarket = useCallback((wallet: string, marketId: string) => {
     const ws = wsRef.current;

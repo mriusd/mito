@@ -33,7 +33,10 @@ export type GexExpiryBucket = {
 export type GexAssetSnapshot = {
   asset: string;
   synced: boolean;
+  /** GEX eval price (= Deribit index). */
   spot: number;
+  /** Deribit composite index (btc_usd / eth_usd). */
+  deribitIndex?: number;
   netGex: number;
   gammaFlip?: number | null;
   regime: 'positive' | 'negative' | string;
@@ -107,12 +110,18 @@ function parseExpiry(raw: unknown): GexExpiryBucket | null {
   };
 }
 
+export function gexReferenceSpot(s: GexAssetSnapshot): number {
+  return s.deribitIndex ?? s.spot;
+}
+
 function parseAsset(raw: unknown): GexAssetSnapshot | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   const asset = String(r.asset ?? '').trim().toUpperCase();
-  const spot = num(r.spot);
-  if (!asset || spot == null) return null;
+  const idxRaw = num(r.deribit_index) ?? num(r.deribitIndex) ?? num(r.spot);
+  if (!asset || idxRaw == null) return null;
+  const deribitIndex = idxRaw;
+  const spot = deribitIndex;
   const strikes = Array.isArray(r.strikes)
     ? r.strikes.map(parseStrike).filter((x): x is GexStrikeBucket => x != null)
     : [];
@@ -134,6 +143,7 @@ function parseAsset(raw: unknown): GexAssetSnapshot | null {
     asset,
     synced: r.synced === true,
     spot,
+    deribitIndex,
     netGex: num(r.netGex) ?? 0,
     gammaFlip: num(r.gammaFlip),
     regime: r.regime === 'negative' ? 'negative' : 'positive',

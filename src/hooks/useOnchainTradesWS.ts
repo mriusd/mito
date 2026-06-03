@@ -578,6 +578,26 @@ function sortWalletMarketTradeRows(rows: WSTrade[]): WSTrade[] {
   });
 }
 
+/** Keep prev rows missing from snapshot (scoped WS refresh) and pending until confirmed. */
+function mergeWalletTradesSnapshot(
+  prev: WSTrade[],
+  snapshot: WSTrade[],
+  cap = WALLET_TRADES_CAP,
+): WSTrade[] {
+  if (snapshot.length === 0) return prev.slice(0, cap);
+  const snapKeys = new Set(snapshot.map((t) => walletMarketTradeRowKey(t)));
+  const confirmedTxs = new Set(
+    snapshot.map((t) => (t.txHash || '').toLowerCase()).filter(Boolean),
+  );
+  const pending = prev.filter(
+    (t) => t.pending && !confirmedTxs.has((t.txHash || '').toLowerCase()),
+  );
+  const extra = prev.filter((t) => !t.pending && !snapKeys.has(walletMarketTradeRowKey(t)));
+  return sortWalletMarketTradeRows(
+    dedupeWalletTradesByLedgerLeg([...pending, ...snapshot, ...extra], walletMarketTradeRowKey),
+  ).slice(0, cap);
+}
+
 function mergeWalletMarketSnapshotWithPending(
   prev: WSTrade[],
   snapshot: WSTrade[],
@@ -1185,7 +1205,11 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const deduped = dedupeWalletTradesByLedgerLeg(stamped, (t) =>
               t.id || walletTradeKey(t.txHash, t.logIndex, normalizeClobTokenKey(t.tokenId), t.side),
             ).slice(0, WALLET_TRADES_CAP);
-            setWalletTrades((prev) => (deduped.length === 0 && prev.length > 0 ? prev : deduped));
+            setWalletTrades((prev) => {
+              if (deduped.length === 0 && prev.length > 0) return prev;
+              if (prev.length === 0) return deduped;
+              return mergeWalletTradesSnapshot(prev, deduped, WALLET_TRADES_CAP);
+            });
           } else if (msg.type === 'walletHistory' && Array.isArray(msg.data)) {
             const msgWallet = String(msg.wallet || '').trim().toLowerCase();
             const mine = (walletRef.current || '').trim().toLowerCase();

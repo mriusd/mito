@@ -3,6 +3,7 @@ import {
   GEX_ASSETS,
   useDeribitGexConnection,
   useDeribitGexSnapshot,
+  gexReferenceSpot,
   type GexAsset,
   type GexAssetSnapshot,
   fmtGexStrike,
@@ -134,6 +135,7 @@ function GexFlashText({
 
 function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
   const negative = snap.regime === 'negative';
+  const idx = gexReferenceSpot(snap);
   const regimeRef = useRef<HTMLSpanElement>(null);
   const prevRegimeRef = useRef<string | null>(null);
 
@@ -153,11 +155,14 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
         <div className="col-span-3 row-start-1 flex items-center gap-1.5 min-w-0 flex-wrap">
           <span className="text-[11px] font-bold text-white leading-none">{snap.asset}</span>
           <GexFlashText
-            value={snap.spot}
+            value={idx}
             mode="directional"
             className="text-[10px] tabular-nums text-gray-400 leading-none"
             format={formatGexSpot}
           />
+          <span className="text-[8px] text-gray-600 leading-none" title="Deribit composite index (btc_usd / eth_usd)">
+            idx
+          </span>
           <span
             ref={regimeRef}
             className={`px-1 py-px rounded text-[8px] font-bold uppercase tracking-wide leading-none ${
@@ -173,7 +178,7 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
           </span>
         </div>
         <div className="row-span-3 row-start-1 col-start-4 flex min-h-0 min-w-0 w-full self-stretch">
-          <GexPinChart expirations={snap.expirations} spot={snap.spot} compact />
+          <GexPinChart expirations={snap.expirations} spot={idx} compact />
         </div>
         <div className="row-start-2 flex justify-between gap-1 min-w-0 items-center">
           <span className="text-gray-500 shrink-0">Net GEX/1%</span>
@@ -190,7 +195,7 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
           <span className="tabular-nums text-gray-200 truncate text-right">
             {snap.gammaFlip != null ? (
               <>
-                <GexFlashText value={snap.gammaFlip} format={fmtGexStrike} /> ({pctTo(snap.spot, snap.gammaFlip)})
+                <GexFlashText value={snap.gammaFlip} format={fmtGexStrike} /> ({pctTo(idx, snap.gammaFlip)})
               </>
             ) : (
               '—'
@@ -201,21 +206,21 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
           <span className="text-gray-500 shrink-0">Put wall</span>
           <span className="tabular-nums text-red-300/90 truncate text-right">
             <GexFlashText value={snap.putWall} format={fmtGexStrike} />{' '}
-            <span className="text-gray-600">{pctTo(snap.spot, snap.putWall)}</span>
+            <span className="text-gray-600">{pctTo(idx, snap.putWall)}</span>
           </span>
         </div>
         <div className="row-start-3 flex justify-between gap-1 min-w-0 items-center">
           <span className="text-gray-500 shrink-0">Call wall</span>
           <span className="tabular-nums text-green-300/90 truncate text-right">
             <GexFlashText value={snap.callWall} format={fmtGexStrike} />{' '}
-            <span className="text-gray-600">{pctTo(snap.spot, snap.callWall)}</span>
+            <span className="text-gray-600">{pctTo(idx, snap.callWall)}</span>
           </span>
         </div>
         <div className="row-start-3 flex justify-between gap-1 min-w-0 items-center">
           <span className="text-gray-500 shrink-0">Pin</span>
           <span className="tabular-nums text-yellow-300/90 truncate text-right">
             <GexFlashText value={snap.pinStrike} format={fmtGexStrike} />{' '}
-            <span className="text-gray-600">{pctTo(snap.spot, snap.pinStrike)}</span>
+            <span className="text-gray-600">{pctTo(idx, snap.pinStrike)}</span>
           </span>
         </div>
         <div className="row-start-3 flex justify-between gap-1 min-w-0 items-center">
@@ -228,7 +233,7 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
         </div>
       </div>
 
-      <GexExpirationsTable expirations={snap.expirations} spot={snap.spot} />
+      <GexExpirationsTable expirations={snap.expirations} spot={idx} />
     </div>
   );
 }

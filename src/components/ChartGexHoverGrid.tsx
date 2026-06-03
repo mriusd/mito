@@ -1,5 +1,5 @@
 import type { GexAssetSnapshot } from '../lib/deribitGexFeed';
-import { fmtGexStrike } from '../lib/deribitGexFeed';
+import { fmtGexStrike, gexReferenceSpot } from '../lib/deribitGexFeed';
 import { GexExpirationsTable } from './GexExpirationsTable';
 
 function fmtUsd(v: number): string {
@@ -19,6 +19,7 @@ function pctTo(spot: number, level: number | null | undefined): string {
 
 export function ChartGexHoverGrid({ gex }: { gex: GexAssetSnapshot }) {
   const negative = gex.regime === 'negative';
+  const idx = gexReferenceSpot(gex);
   const maxAbs = gex.strikes.reduce((m, s) => Math.max(m, Math.abs(s.gex)), 0);
   return (
     <div className="mt-2 pt-2 border-t border-gray-700">
@@ -42,7 +43,7 @@ export function ChartGexHoverGrid({ gex }: { gex: GexAssetSnapshot }) {
         <div className="flex justify-between">
           <span className="text-gray-500">γ-flip</span>
           <span className="tabular-nums text-gray-200">
-            {gex.gammaFlip != null ? `${fmtGexStrike(gex.gammaFlip)} (${pctTo(gex.spot, gex.gammaFlip)})` : '—'}
+            {gex.gammaFlip != null ? `${fmtGexStrike(gex.gammaFlip)} (${pctTo(idx, gex.gammaFlip)})` : '—'}
           </span>
         </div>
         <div className="flex justify-between">
@@ -58,8 +59,8 @@ export function ChartGexHoverGrid({ gex }: { gex: GexAssetSnapshot }) {
           <span className="tabular-nums text-yellow-300/90">{fmtGexStrike(gex.pinStrike)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-500">Spot</span>
-          <span className="tabular-nums text-gray-300">{fmtGexStrike(gex.spot)}</span>
+          <span className="text-gray-500">Deribit idx</span>
+          <span className="tabular-nums text-gray-300">{fmtGexStrike(idx)}</span>
         </div>
       </div>
       <GexExpirationsTable expirations={gex.expirations ?? []} compact />
@@ -67,7 +68,7 @@ export function ChartGexHoverGrid({ gex }: { gex: GexAssetSnapshot }) {
         {gex.strikes.map((b) => {
           const frac = maxAbs > 0 ? Math.min(1, Math.abs(b.gex) / maxAbs) : 0;
           const positive = b.gex >= 0;
-          const nearSpot = gex.spot > 0 && Math.abs(b.strike - gex.spot) / gex.spot < 0.012;
+          const nearSpot = idx > 0 && Math.abs(b.strike - idx) / idx < 0.012;
           return (
             <div key={b.strike} className="flex items-center gap-1 h-[12px]">
               <div className={`w-[40px] shrink-0 text-right text-[8px] tabular-nums ${nearSpot ? 'text-yellow-300 font-bold' : 'text-gray-400'}`}>

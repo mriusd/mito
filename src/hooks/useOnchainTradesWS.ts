@@ -771,8 +771,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   }, [wallet]);
 
   const walletLc = (wallet || '').trim().toLowerCase();
-  /** Reconnect when market/token scope changes — wallet-only URL gets no onchainTrade fanout (backend). */
-  const wsConnectKey = `${walletLc}|${canonicalConditionKey((marketId || '').trim())}|${(tokenId || '').trim()}`;
+  /** Reconnect on wallet or public tape token — market tape uses subscribeMarket (keeps TPO walletTrades global). */
+  const wsConnectKey = walletLc || `pub|${(tokenId || '').trim()}`;
 
   useEffect(() => {
     tokenRef.current = (tokenId || '').trim() || null;

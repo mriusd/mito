@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { fetchWalletPositions } from '../../api';
 import type { WalletPosition } from '../../api';
@@ -10,21 +10,21 @@ import {
   useSidebarOnchainWalletHistory,
   useSidebarOnchainWalletHistoryHydrated,
 } from '../../lib/sidebarOnchainTradesStore';
+import type { Market } from '../../types';
 import {
   WalletLatestMarketsTradedTable,
   buildMarketByIdRecord,
   sortWalletPositionsByDisplayedDateDesc,
 } from '../WalletLatestMarketsTradedTable';
-import { lazyWithChunkReload } from '../../utils/lazyWithChunkReload';
-
-const WalletInfoDialogLazy = lazyWithChunkReload(() =>
-  import('../ToxicFlowDialog').then((m) => ({ default: m.WalletInfoDialog })),
-);
 
 export function HistoryPanel() {
   const tradingWallet = useTradingWalletAddress();
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const marketLookup = useMarketLookupSnapshot();
+  const selectedMarket = useAppStore((s) => s.selectedMarket);
+  const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
+  const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
+  const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
   const wsHistory = useSidebarOnchainWalletHistory();
   const wsHistoryHydrated = useSidebarOnchainWalletHistoryHydrated();
   const onchainMode = liveTradesSource === 'onchain';
@@ -32,8 +32,6 @@ export function HistoryPanel() {
   const [restMarkets, setRestMarkets] = useState<WalletPosition[]>([]);
   const [restLoading, setRestLoading] = useState(false);
   const [refreshBump, setRefreshBump] = useState(0);
-  const [walletInfoOpen, setWalletInfoOpen] = useState(false);
-  const [walletInfoMarketId, setWalletInfoMarketId] = useState('');
   const loadEpochRef = useRef(0);
   const tradingWalletKey = tradingWallet.trim().toLowerCase();
 
@@ -43,8 +41,6 @@ export function HistoryPanel() {
     loadEpochRef.current += 1;
     setRestMarkets([]);
     setRestLoading(false);
-    setWalletInfoOpen(false);
-    setWalletInfoMarketId('');
   }, [tradingWalletKey]);
 
   const loadRest = useCallback(async (options?: { showLoading?: boolean }) => {
@@ -90,13 +86,28 @@ export function HistoryPanel() {
 
   const displayWallet = tradingWalletKey;
 
+  const selectedMarketId = useMemo(() => {
+    if (!selectedMarket) return undefined;
+    return (selectedMarket.conditionId || selectedMarket.id || '').trim() || undefined;
+  }, [selectedMarket?.conditionId, selectedMarket?.id]);
+
   const onHistoryRowClick = useCallback(
     (marketId: string) => {
-      if (!displayWallet || !marketId.trim()) return;
-      setWalletInfoMarketId(marketId.trim());
-      setWalletInfoOpen(true);
+      const mid = marketId.trim();
+      if (!mid) return;
+      const lc = mid.toLowerCase();
+      const market = marketById[mid] || marketById[lc];
+      if (!market) return;
+      const row = markets.find((m) => {
+        const rid = String(m.marketId || '').trim();
+        return rid === mid || rid.toLowerCase() === lc;
+      });
+      const outcome: 'YES' | 'NO' = row?.outcome === 0 ? 'NO' : 'YES';
+      setSelectedMarket(market as Market);
+      setSidebarOutcome(outcome);
+      setSidebarOpen(true);
     },
-    [displayWallet],
+    [marketById, markets, setSelectedMarket, setSidebarOutcome, setSidebarOpen],
   );
 
   const onRefresh = useCallback(
@@ -148,24 +159,11 @@ export function HistoryPanel() {
             loading={loading}
             horizontalCellPadding
             stickyHeader
-            selectedMarketId={walletInfoOpen ? walletInfoMarketId : undefined}
-            onRowClick={displayWallet ? onHistoryRowClick : undefined}
+            selectedMarketId={selectedMarketId}
+            onRowClick={onHistoryRowClick}
           />
         </div>
       </div>
-      {walletInfoOpen && displayWallet ? (
-        <Suspense fallback={null}>
-          <WalletInfoDialogLazy
-            open
-            wallet={displayWallet}
-            initialMarketId={walletInfoMarketId}
-            onClose={() => {
-              setWalletInfoOpen(false);
-              setWalletInfoMarketId('');
-            }}
-          />
-        </Suspense>
-      ) : null}
     </div>
   );
 }

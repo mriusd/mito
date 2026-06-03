@@ -15,6 +15,7 @@ import {
   WalletLatestMarketsTradedTable,
   buildMarketByIdRecord,
   sortWalletPositionsByDisplayedDateDesc,
+  walletNetInventorySidebarOutcome,
 } from '../WalletLatestMarketsTradedTable';
 
 export function HistoryPanel() {
@@ -102,9 +103,9 @@ export function HistoryPanel() {
         const rid = String(m.marketId || '').trim();
         return rid === mid || rid.toLowerCase() === lc;
       });
-      const outcome: 'YES' | 'NO' = row?.outcome === 0 ? 'NO' : 'YES';
+      const side = walletNetInventorySidebarOutcome(row);
       setSelectedMarket(market as Market);
-      setSidebarOutcome(outcome);
+      if (side) setSidebarOutcome(side);
       setSidebarOpen(true);
     },
     [marketById, markets, setSelectedMarket, setSidebarOutcome, setSidebarOpen],

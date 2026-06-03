@@ -69,6 +69,18 @@ function walletNet(w: WalletPosition): number {
   return walletInvY(w) - walletInvN(w);
 }
 
+const WALLET_NET_SIDE_EPS = 0.001;
+
+/** YES/NO sidebar tab from net inventory (invYes − invNo); null when flat. */
+export function walletNetInventorySidebarOutcome(
+  row: WalletPosition | null | undefined,
+): 'YES' | 'NO' | null {
+  if (!row) return null;
+  const net = walletNet(row);
+  if (Math.abs(net) < WALLET_NET_SIDE_EPS) return null;
+  return net > 0 ? 'YES' : 'NO';
+}
+
 function fmtUsd2En(absVal: number): string {
   if (!Number.isFinite(absVal)) return '–';
   return absVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

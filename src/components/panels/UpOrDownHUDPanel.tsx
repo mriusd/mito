@@ -3,7 +3,8 @@ import { useExpiryNow } from '../../hooks/useExpiryNow';
 import { useUpDownExpiryBarNow } from '../../lib/upDownExpiryBarTickStore';
 import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
-import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
+import { useBidAskLiveEpoch } from '../../hooks/useBidAskLiveEpoch';
+import { getBidAskMarketRow } from '../../lib/bidAskMarketLookup';
 import type { AssetName, AssetSymbol, Market } from '../../types';
 import { ASSET_COLORS } from '../../types';
 import { assetToSymbol, formatPolymarketVolumeK, formatPrice, getPolymarketVolumeUsd, getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
@@ -81,7 +82,7 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
   const laneNowMs = useUpDownExpiryBarNow();
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
-  const marketLookup = useMarketLookupSnapshot();
+  const bidAskLiveEpoch = useBidAskLiveEpoch();
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
@@ -113,12 +114,21 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
     return TIMEFRAMES.map((tf) => {
       const { current, next } = getCurrentAndNext(assetMarkets, tf);
       const yesToken = current?.clobTokenIds?.[0] || '';
-      const currentYes = current ? outcomeMidOrOneSideProb(yesToken, marketLookup, { bestBid: current.bestBid, bestAsk: current.bestAsk }) : null;
       const nextYesToken = next?.clobTokenIds?.[0] || '';
-      const nextYes = next ? outcomeMidOrOneSideProb(nextYesToken, marketLookup, { bestBid: next.bestBid, bestAsk: next.bestAsk }) : null;
+      const liveLookup: Record<string, Market> = {};
+      const yesRow = yesToken ? getBidAskMarketRow(yesToken) : undefined;
+      if (yesToken && yesRow) liveLookup[yesToken] = yesRow;
+      const nextRow = nextYesToken ? getBidAskMarketRow(nextYesToken) : undefined;
+      if (nextYesToken && nextRow) liveLookup[nextYesToken] = nextRow;
+      const currentYes = current
+        ? outcomeMidOrOneSideProb(yesToken, liveLookup, { bestBid: current.bestBid, bestAsk: current.bestAsk })
+        : null;
+      const nextYes = next
+        ? outcomeMidOrOneSideProb(nextYesToken, liveLookup, { bestBid: next.bestBid, bestAsk: next.bestAsk })
+        : null;
       return { tf, current, next, currentYes, nextYes };
     });
-  }, [assetMarkets, marketLookup]);
+  }, [assetMarkets, bidAskLiveEpoch]);
 
   const selectedMarketInPanel = useMemo(() => {
     const id = selectedMarket?.id;
@@ -233,8 +243,11 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
               const endMs = current?.endDate ? new Date(current.endDate).getTime() : 0;
               const tfProgress = expiryProgress(laneNowMs, endMs, duration);
               const volYesToken = current?.clobTokenIds?.[0] || '';
+              const volLookup = volYesToken
+                ? { [volYesToken]: getBidAskMarketRow(volYesToken) ?? current }
+                : {};
               const polymarketVol =
-                current && volYesToken ? getPolymarketVolumeUsd(current, volYesToken, marketLookup) : null;
+                current && volYesToken ? getPolymarketVolumeUsd(current, volYesToken, volLookup) : null;
               return (
                 <tr key={tf} className="hover:bg-gray-800/50">
                   <td className="px-1 py-1 font-bold text-white border-b border-r border-gray-700 whitespace-nowrap relative bg-gray-900">
@@ -249,7 +262,7 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
                   {(() => {
                     const sym = assetToSymbol(asset) as AssetSymbol;
                     const yesTokenId = current?.clobTokenIds?.[0] || '';
-                    const liveEntry = yesTokenId ? marketLookup[yesTokenId] : undefined;
+                    const liveEntry = yesTokenId ? getBidAskMarketRow(yesTokenId) : undefined;
                     const bestBid = liveEntry?.bestBid ?? current?.bestBid;
                     const cl = chainlinkPrices[asset];
                     const binanceSpot = priceData[sym]?.price;

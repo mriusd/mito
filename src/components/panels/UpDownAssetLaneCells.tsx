@@ -225,8 +225,10 @@ const UpDownFutureQuoteCell = memo(function UpDownFutureQuoteCell({
     () => bidAskLookupFromPair(nextYesTokenId, nextNoTokenId, pair),
     [nextYesTokenId, nextNoTokenId, pair.yes, pair.no],
   );
-  const nextGammaYes = { bestBid: nextMarket.bestBid, bestAsk: nextMarket.bestAsk };
-  const nextYesMid = outcomeMidOrOneSideProb(nextYesTokenId, lookup, nextGammaYes);
+  const nextYesMid = outcomeMidOrOneSideProb(nextYesTokenId, lookup, {
+    bestBid: lookup[nextYesTokenId]?.bestBid ?? nextMarket.bestBid,
+    bestAsk: lookup[nextYesTokenId]?.bestAsk ?? nextMarket.bestAsk,
+  });
   const nextNoProb = nextYesMid != null ? 1 - nextYesMid : null;
   const nextHi = upDownNextHiAlertEnabled
     ? nextMarketHiFlashSides(nextMarket, lookup, { liveOnly: true, hiThreshold: upDownNextHiThreshold })
@@ -393,8 +395,10 @@ function UpDownAssetLaneCellsInner({
           ? 'bg-green-900/55 text-green-200 border border-green-700/40'
           : 'bg-red-900/55 text-red-200 border border-red-700/40';
 
-  const gammaYes = { bestBid: market.bestBid, bestAsk: market.bestAsk };
-  const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, bidAskLookup, gammaYes);
+  const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, bidAskLookup, {
+    bestBid: bidAskLookup[yesTokenId]?.bestBid ?? market.bestBid,
+    bestAsk: bidAskLookup[yesTokenId]?.bestAsk ?? market.bestAsk,
+  });
   const noProb = yesMidProb != null ? 1 - yesMidProb : null;
   const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
   const noProbStr = noProb != null ? (noProb * 100).toFixed(1) : '-';

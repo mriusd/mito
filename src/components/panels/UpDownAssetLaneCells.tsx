@@ -8,7 +8,7 @@ import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { nextMarketHiFlashSides, useUpDownNextHiSettings } from '../../lib/upDownNextMarketFlashSound';
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
 import { useUpDownExpiryBarNow } from '../../lib/upDownExpiryBarTickStore';
-import { useLiveBidAskLookupSubset } from '../../hooks/useLiveBidAskLookupSubset';
+import { bidAskLookupFromPair, useLiveBidAskPair } from '../../hooks/useLiveBidAskPair';
 import { useGridAssetLivePrice } from '../../lib/gridAssetLivePriceStore';
 import { GRID_BID_ASK_THROTTLE_MS } from '../../lib/bidAskMarketLookup';
 import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
@@ -176,6 +176,119 @@ function UpDownCellOrderBadges({
   );
 }
 
+const UpDownFutureQuoteCell = memo(function UpDownFutureQuoteCell({
+  asset,
+  slotIdx,
+  nextMarketsCount,
+  isLastTfRow,
+  nextMarket,
+  duration,
+  positionTokenIds,
+  liveTradesSource,
+  orderLookup,
+  selectedMarketId,
+  onCellClick,
+  upDownNextHiAlertEnabled,
+  upDownNextHiThreshold,
+}: {
+  asset: string;
+  slotIdx: number;
+  nextMarketsCount: number;
+  isLastTfRow: boolean;
+  nextMarket: Market | null;
+  duration: number;
+  positionTokenIds: Set<string>;
+  liveTradesSource: string;
+  orderLookup: Record<string, import('../../types').Order[]>;
+  selectedMarketId?: string;
+  onCellClick: (market: Market, outcome?: 'YES' | 'NO') => void;
+  upDownNextHiAlertEnabled: boolean;
+  upDownNextHiThreshold: number;
+}) {
+  const isLastSlot = slotIdx === nextMarketsCount - 1;
+  const env = assetBorderStyle(asset, isLastSlot ? { R: true, B: isLastTfRow } : { B: isLastTfRow });
+  if (!nextMarket) {
+    return (
+      <td
+        className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-gray-600 text-[10px] whitespace-nowrap align-middle ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+        style={env}
+      >
+        -
+      </td>
+    );
+  }
+  const nextTokenIds = nextMarket.clobTokenIds || [];
+  const nextYesTokenId = nextTokenIds[0] || '';
+  const nextNoTokenId = nextTokenIds[1] || '';
+  const pair = useLiveBidAskPair(nextYesTokenId, nextNoTokenId);
+  const lookup = useMemo(
+    () => bidAskLookupFromPair(nextYesTokenId, nextNoTokenId, pair),
+    [nextYesTokenId, nextNoTokenId, pair.yes, pair.no],
+  );
+  const nextGammaYes = { bestBid: nextMarket.bestBid, bestAsk: nextMarket.bestAsk };
+  const nextYesMid = outcomeMidOrOneSideProb(nextYesTokenId, lookup, nextGammaYes);
+  const nextNoProb = nextYesMid != null ? 1 - nextYesMid : null;
+  const nextHi = upDownNextHiAlertEnabled
+    ? nextMarketHiFlashSides(nextMarket, lookup, { liveOnly: true, hiThreshold: upDownNextHiThreshold })
+    : { yesHi: false, noHi: false };
+  const nextHiPillBase =
+    'inline-flex min-h-[1.125rem] items-center justify-center rounded border px-0.5 text-[10px] font-extrabold tabular-nums text-white shrink-0';
+  const isNextSelected = selectedMarketId === nextMarket.id;
+  return (
+    <td
+      data-market-id={nextMarket.id}
+      className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap relative cursor-pointer hover:brightness-125 align-middle ${isNextSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+      style={env}
+      onClick={() => onCellClick(nextMarket)}
+      title={`Next market +${slotIdx + 1} in this lane`}
+    >
+      <UpDownCellPositionDots
+        yesTokenId={nextYesTokenId}
+        noTokenId={nextNoTokenId}
+        positionTokenIds={positionTokenIds}
+        liveTradesSource={liveTradesSource}
+      />
+      <MarketCellMidRow
+        className="text-gray-400"
+        left={
+          <span
+            className={
+              nextHi.yesHi
+                ? `${nextHiPillBase} updown-triangle-badge-flash cursor-pointer hover:brightness-110 bg-green-900/65 border-green-600/45`
+                : 'text-green-400 cursor-pointer hover:underline'
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              onCellClick(nextMarket, 'YES');
+            }}
+          >
+            {nextYesMid != null ? (nextYesMid * 100).toFixed(1) : '-'}
+          </span>
+        }
+        right={
+          <span
+            className={
+              nextHi.noHi
+                ? `${nextHiPillBase} updown-triangle-badge-flash cursor-pointer hover:brightness-110 bg-red-900/65 border-red-600/45`
+                : 'text-red-400 cursor-pointer hover:underline'
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              onCellClick(nextMarket, 'NO');
+            }}
+          >
+            {nextNoProb != null ? (nextNoProb * 100).toFixed(1) : '-'}
+          </span>
+        }
+      />
+      <UpDownCellOrderBadges yesTokenId={nextYesTokenId} noTokenId={nextNoTokenId} orderLookup={orderLookup} />
+      {nextMarket.endDate && duration > 0 && (
+        <UpDownExpiryBar endDate={nextMarket.endDate} durationMs={duration} className="absolute bottom-0 left-0 z-0 h-[2px] pointer-events-none" />
+      )}
+    </td>
+  );
+});
+
 export type UpDownAssetLaneCellsProps = {
   asset: string;
   tf: string;
@@ -221,21 +334,11 @@ function UpDownAssetLaneCellsInner({
   const binanceSpot = useGridAssetLivePrice(sym);
   const chainlinkSpot = useThrottledChainlinkPricesMap(GRID_BID_ASK_THROTTLE_MS)[asset];
 
-  const lookupTokenIds = useMemo(() => {
-    const ids = new Set<string>();
-    if (yesTokenId) ids.add(yesTokenId);
-    if (noTokenId) ids.add(noTokenId);
-    for (const fm of futuresSlots) {
-      if (!fm) continue;
-      for (const t of fm.clobTokenIds || []) {
-        const k = String(t || '').trim();
-        if (k) ids.add(k);
-      }
-    }
-    return [...ids];
-  }, [yesTokenId, noTokenId, futuresSlots]);
-
-  const bidAskLookup = useLiveBidAskLookupSubset(lookupTokenIds);
+  const currentPair = useLiveBidAskPair(yesTokenId, noTokenId);
+  const bidAskLookup = useMemo(
+    () => bidAskLookupFromPair(yesTokenId, noTokenId, currentPair),
+    [yesTokenId, noTokenId, currentPair.yes, currentPair.no],
+  );
   const { alertEnabled: upDownNextHiAlertEnabled, hiThreshold: upDownNextHiThreshold } =
     useUpDownNextHiSettings();
 
@@ -393,96 +496,24 @@ function UpDownAssetLaneCellsInner({
     </td>
   );
 
-  const futureCells = futuresSlots.map((nextMarket, slotIdx) => {
-    const isLastSlot = slotIdx === nextMarketsCount - 1;
-    const env = assetBorderStyle(asset, isLastSlot ? { R: true, B: isLastTfRow } : { B: isLastTfRow });
-    if (!nextMarket) {
-      return (
-        <td
-          key={`${asset}-next-${slotIdx}`}
-          className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-gray-600 text-[10px] whitespace-nowrap align-middle ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
-          style={env}
-        >
-          -
-        </td>
-      );
-    }
-    const nextTokenIds = nextMarket.clobTokenIds || [];
-    const nextYesTokenId = nextTokenIds[0] || '';
-    const nextGammaYes = { bestBid: nextMarket.bestBid, bestAsk: nextMarket.bestAsk };
-    const nextYesMid = outcomeMidOrOneSideProb(nextYesTokenId, bidAskLookup, nextGammaYes);
-    const nextNoProb = nextYesMid != null ? 1 - nextYesMid : null;
-    const nextNoTokenId = nextTokenIds[1] || '';
-    const nextHi = upDownNextHiAlertEnabled
-      ? nextMarketHiFlashSides(nextMarket, bidAskLookup, {
-          liveOnly: true,
-          hiThreshold: upDownNextHiThreshold,
-        })
-      : { yesHi: false, noHi: false };
-    const nextBidHi = nextHi.yesHi;
-    const nextNoHi = nextHi.noHi;
-    const nextHiPillBase =
-      'inline-flex min-h-[1.125rem] items-center justify-center rounded border px-0.5 text-[10px] font-extrabold tabular-nums text-white shrink-0';
-    const isNextSelected = selectedMarketId === nextMarket.id;
-    return (
-      <td
-        key={`${asset}-next-${slotIdx}`}
-        data-market-id={nextMarket.id}
-        className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap relative cursor-pointer hover:brightness-125 align-middle ${isNextSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
-        style={env}
-        onClick={() => onCellClick(nextMarket)}
-        title={`Next market +${slotIdx + 1} in this lane`}
-      >
-        <UpDownCellPositionDots
-          yesTokenId={nextYesTokenId}
-          noTokenId={nextNoTokenId}
-          positionTokenIds={positionTokenIds}
-          liveTradesSource={liveTradesSource}
-        />
-        <MarketCellMidRow
-          className="text-gray-400"
-          left={
-            <span
-              className={
-                nextBidHi
-                  ? `${nextHiPillBase} updown-triangle-badge-flash cursor-pointer hover:brightness-110 bg-green-900/65 border-green-600/45`
-                  : 'text-green-400 cursor-pointer hover:underline'
-              }
-              onClick={(e) => {
-                e.stopPropagation();
-                onCellClick(nextMarket, 'YES');
-              }}
-            >
-              {nextYesMid != null ? (nextYesMid * 100).toFixed(1) : '-'}
-            </span>
-          }
-          right={
-            <span
-              className={
-                nextNoHi
-                  ? `${nextHiPillBase} updown-triangle-badge-flash cursor-pointer hover:brightness-110 bg-red-900/65 border-red-600/45`
-                  : 'text-red-400 cursor-pointer hover:underline'
-              }
-              onClick={(e) => {
-                e.stopPropagation();
-                onCellClick(nextMarket, 'NO');
-              }}
-            >
-              {nextNoProb != null ? (nextNoProb * 100).toFixed(1) : '-'}
-            </span>
-          }
-        />
-        <UpDownCellOrderBadges
-          yesTokenId={nextYesTokenId}
-          noTokenId={nextNoTokenId}
-          orderLookup={orderLookup}
-        />
-        {nextMarket.endDate && duration > 0 && (
-          <UpDownExpiryBar endDate={nextMarket.endDate} durationMs={duration} className="absolute bottom-0 left-0 z-0 h-[2px] pointer-events-none" />
-        )}
-      </td>
-    );
-  });
+  const futureCells = futuresSlots.map((nextMarket, slotIdx) => (
+    <UpDownFutureQuoteCell
+      key={`${asset}-next-${slotIdx}`}
+      asset={asset}
+      slotIdx={slotIdx}
+      nextMarketsCount={nextMarketsCount}
+      isLastTfRow={isLastTfRow}
+      nextMarket={nextMarket}
+      duration={duration}
+      positionTokenIds={positionTokenIds}
+      liveTradesSource={liveTradesSource}
+      orderLookup={orderLookup}
+      selectedMarketId={selectedMarketId}
+      onCellClick={onCellClick}
+      upDownNextHiAlertEnabled={upDownNextHiAlertEnabled}
+      upDownNextHiThreshold={upDownNextHiThreshold}
+    />
+  ));
 
   return (
     <>

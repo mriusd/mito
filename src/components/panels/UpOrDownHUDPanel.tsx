@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, memo } from 'react';
+import { useExpiryNow } from '../../hooks/useExpiryNow';
+import { useUpDownExpiryBarNow } from '../../lib/upDownExpiryBarTickStore';
 import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
@@ -27,8 +29,17 @@ const MATH_VS_BID_NEUTRAL_PCT = 5;
 const MATH_VS_BID_FLASH_REL = 0.30;
 const TARGET_STRIKE_DECIMALS: Record<AssetName, number> = { BTC: 0, ETH: 1, SOL: 2, XRP: 4 };
 
-function formatCountdown(ms: number): string {
-  const rem = ms - Date.now();
+const HudTfCountdown = memo(function HudTfCountdown({ endMs }: { endMs: number }) {
+  const now = useExpiryNow();
+  if (endMs <= 0) return null;
+  const rem = endMs - now;
+  const color =
+    rem < 60_000 ? 'text-red-400' : rem < 300_000 ? 'text-yellow-400' : 'text-green-400';
+  return <span className={`text-[8px] font-normal ${color}`}>{formatCountdown(endMs, now)}</span>;
+});
+
+function formatCountdown(endMs: number, nowMs: number): string {
+  const rem = endMs - nowMs;
   if (rem <= 0) return '0s';
   const sec = Math.floor(rem / 1000);
   if (sec < 60) return `${sec}s`;
@@ -68,7 +79,7 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
     return 'BTC';
   });
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  const laneNowMs = useUpDownExpiryBarNow();
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
   const marketLookup = useMarketLookupSnapshot();
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
@@ -94,10 +105,6 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
   const headerPrice = (clPrice && clPrice > 0) ? clPrice : livePrice;
   const titleColor = ASSET_COLORS[asset] || 'text-white';
   const assetMarkets = upOrDownMarkets[asset] || {};
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
   useEffect(() => {
     localStorage.setItem(`polybot-updown-hud-asset-${panelId}`, asset);
   }, [panelId, asset]);
@@ -224,7 +231,7 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
             {rows.map(({ tf, current, next, currentYes, nextYes }) => {
               const duration = TF_DURATIONS_MS[tf] || 0;
               const endMs = current?.endDate ? new Date(current.endDate).getTime() : 0;
-              const tfProgress = expiryProgress(now, endMs, duration);
+              const tfProgress = expiryProgress(laneNowMs, endMs, duration);
               const volYesToken = current?.clobTokenIds?.[0] || '';
               const polymarketVol =
                 current && volYesToken ? getPolymarketVolumeUsd(current, volYesToken, marketLookup) : null;
@@ -233,9 +240,7 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
                   <td className="px-1 py-1 font-bold text-white border-b border-r border-gray-700 whitespace-nowrap relative bg-gray-900">
                     <div className="flex items-center justify-between gap-1">
                       <span>{tf}</span>
-                      <span className={`text-[8px] font-normal ${endMs > 0 && endMs - now < 60000 ? 'text-red-400' : endMs > 0 && endMs - now < 300000 ? 'text-yellow-400' : 'text-green-400'}`}>
-                        {endMs > 0 ? formatCountdown(endMs) : ''}
-                      </span>
+                      <HudTfCountdown endMs={endMs} />
                     </div>
                     {endMs > 0 && duration > 0 && (
                       <div className="absolute bottom-0 left-0 z-0 h-[2px] pointer-events-none" style={{ width: `${(tfProgress * 100).toFixed(1)}%`, backgroundColor: EXPIRY_BAR_BG }} />
@@ -492,7 +497,7 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
                     {next?.endDate && duration > 0 && (
                       <div
                         className="absolute bottom-0 left-0 z-0 h-[2px] pointer-events-none"
-                        style={{ width: `${(expiryProgress(now, new Date(next.endDate).getTime(), duration) * 100).toFixed(1)}%`, backgroundColor: EXPIRY_BAR_BG }}
+                        style={{ width: `${(expiryProgress(laneNowMs, new Date(next.endDate).getTime(), duration) * 100).toFixed(1)}%`, backgroundColor: EXPIRY_BAR_BG }}
                       />
                     )}
                   </td>

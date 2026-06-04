@@ -132,6 +132,33 @@ function parseAsset(raw: unknown): LiqAssetSnapshot | null {
   };
 }
 
+function liqAssetSnapEqual(a: LiqAssetSnapshot, b: LiqAssetSnapshot): boolean {
+  if (a.spot !== b.spot) return false;
+  if (a.totalOiUsd !== b.totalOiUsd) return false;
+  if (a.longShortRatio !== b.longShortRatio) return false;
+  if (a.eventCount !== b.eventCount) return false;
+  if (a.eventLongUsd !== b.eventLongUsd) return false;
+  if (a.eventShortUsd !== b.eventShortUsd) return false;
+  const ca = a.nearestCluster;
+  const cb = b.nearestCluster;
+  if (ca === cb) return true;
+  if (!ca || !cb) return false;
+  return ca.price === cb.price && ca.side === cb.side && ca.usd === cb.usd && ca.pctToSpot === cb.pctToSpot;
+}
+
+function liqPanelSnapshotEqual(prev: LiqPanelSnapshot | null, next: LiqPanelSnapshot | null): boolean {
+  if (prev === next) return true;
+  if (!prev || !next) return false;
+  for (const a of LIQ_ASSETS) {
+    const p = prev.assets[a];
+    const n = next.assets[a];
+    if (p === n) continue;
+    if (!p || !n) return false;
+    if (!liqAssetSnapEqual(p, n)) return false;
+  }
+  return true;
+}
+
 function parseSnapshot(raw: unknown): LiqPanelSnapshot | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -171,6 +198,7 @@ function connect(): void {
     if (msg.type !== 'binanceLiq') return;
     const snap = parseSnapshot(msg.data);
     if (!snap) return;
+    if (liqPanelSnapshotEqual(state.snap, snap)) return;
     state.snap = snap;
     state.digest += 1;
     emit();
@@ -236,5 +264,17 @@ export function useBinanceLiqSnapshot(): LiqPanelSnapshot | null {
     },
     () => state.snap,
     () => state.snap,
+  );
+}
+
+/** One asset lane — panel shell does not re-render on unrelated asset WS updates. */
+export function useBinanceLiqAssetSnapshot(asset: LiqAsset): LiqAssetSnapshot | null {
+  return useSyncExternalStore(
+    (cb) => {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+    () => state.snap?.assets[asset] ?? null,
+    () => state.snap?.assets[asset] ?? null,
   );
 }

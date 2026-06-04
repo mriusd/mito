@@ -4,7 +4,7 @@ import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import type { Market, Order, AssetSymbol } from '../../types';
 import { getMarketProbability } from '../../utils/bsMath';
 import { normalizeClobTokenId } from '../../utils/format';
-import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { noOutcomeBidAsk, outcomeBestBidProb } from '../../lib/outcomeQuote';
 import { nextMarketHiFlashSides, useUpDownNextHiSettings } from '../../lib/upDownNextMarketFlashSound';
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
 import { useUpDownExpiryBarNow } from '../../lib/upDownExpiryBarTickStore';
@@ -225,11 +225,13 @@ const UpDownFutureQuoteCell = memo(function UpDownFutureQuoteCell({
     () => bidAskLookupFromPair(nextYesTokenId, nextNoTokenId, pair),
     [nextYesTokenId, nextNoTokenId, pair.yes, pair.no],
   );
-  const nextYesMid = outcomeMidOrOneSideProb(nextYesTokenId, lookup, {
-    bestBid: lookup[nextYesTokenId]?.bestBid ?? nextMarket.bestBid,
-    bestAsk: lookup[nextYesTokenId]?.bestAsk ?? nextMarket.bestAsk,
+  const nextGamma = { bestBid: nextMarket.bestBid, bestAsk: nextMarket.bestAsk };
+  const nextYesBid = outcomeBestBidProb(nextYesTokenId, lookup, nextGamma);
+  const nextNoBook = noOutcomeBidAsk(nextYesTokenId, nextNoTokenId, lookup, nextGamma);
+  const nextNoBid = outcomeBestBidProb(nextNoTokenId, lookup, {
+    bestBid: nextNoBook.bestBid,
+    bestAsk: nextNoBook.bestAsk,
   });
-  const nextNoProb = nextYesMid != null ? 1 - nextYesMid : null;
   const nextHi = upDownNextHiAlertEnabled
     ? nextMarketHiFlashSides(nextMarket, lookup, { liveOnly: true, hiThreshold: upDownNextHiThreshold })
     : { yesHi: false, noHi: false };
@@ -264,7 +266,7 @@ const UpDownFutureQuoteCell = memo(function UpDownFutureQuoteCell({
               onCellClick(nextMarket, 'YES');
             }}
           >
-            {nextYesMid != null ? (nextYesMid * 100).toFixed(1) : '-'}
+            {nextYesBid != null ? (nextYesBid * 100).toFixed(1) : '-'}
           </span>
         }
         right={
@@ -279,7 +281,7 @@ const UpDownFutureQuoteCell = memo(function UpDownFutureQuoteCell({
               onCellClick(nextMarket, 'NO');
             }}
           >
-            {nextNoProb != null ? (nextNoProb * 100).toFixed(1) : '-'}
+            {nextNoBid != null ? (nextNoBid * 100).toFixed(1) : '-'}
           </span>
         }
       />
@@ -395,13 +397,15 @@ function UpDownAssetLaneCellsInner({
           ? 'bg-green-900/55 text-green-200 border border-green-700/40'
           : 'bg-red-900/55 text-red-200 border border-red-700/40';
 
-  const yesMidProb = outcomeMidOrOneSideProb(yesTokenId, bidAskLookup, {
-    bestBid: bidAskLookup[yesTokenId]?.bestBid ?? market.bestBid,
-    bestAsk: bidAskLookup[yesTokenId]?.bestAsk ?? market.bestAsk,
+  const gamma = { bestBid: market.bestBid, bestAsk: market.bestAsk };
+  const yesBid = outcomeBestBidProb(yesTokenId, bidAskLookup, gamma);
+  const noBook = noOutcomeBidAsk(yesTokenId, noTokenId, bidAskLookup, gamma);
+  const noBid = outcomeBestBidProb(noTokenId, bidAskLookup, {
+    bestBid: noBook.bestBid,
+    bestAsk: noBook.bestAsk,
   });
-  const noProb = yesMidProb != null ? 1 - yesMidProb : null;
-  const yesMidStr = yesMidProb != null ? (yesMidProb * 100).toFixed(1) : '-';
-  const noProbStr = noProb != null ? (noProb * 100).toFixed(1) : '-';
+  const yesMidStr = yesBid != null ? (yesBid * 100).toFixed(1) : '-';
+  const noProbStr = noBid != null ? (noBid * 100).toFixed(1) : '-';
   const isSelected = selectedMarketId === market.id;
   const provenSMS = yesTokenId ? (bidAskLookup[yesTokenId]?.provenSMS ?? 0) : 0;
   const smartMoneyBarPct = Math.max(2, Math.min(98, 50 + provenSMS * 50));

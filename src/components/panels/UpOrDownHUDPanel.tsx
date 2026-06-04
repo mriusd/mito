@@ -3,12 +3,11 @@ import { useExpiryNow } from '../../hooks/useExpiryNow';
 import { useUpDownExpiryBarNow } from '../../lib/upDownExpiryBarTickStore';
 import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
-import { useBidAskLiveEpoch } from '../../hooks/useBidAskLiveEpoch';
 import { getBidAskMarketRow } from '../../lib/bidAskMarketLookup';
+import { UpDownLiveMidCell } from './UpDownLiveMidCell';
 import type { AssetName, AssetSymbol, Market } from '../../types';
 import { ASSET_COLORS } from '../../types';
 import { assetToSymbol, formatPolymarketVolumeK, formatPrice, getPolymarketVolumeUsd, getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
-import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { BinanceChartPanel } from './BinanceChartPanel';
 import { MarketCellMidRow } from './MarketCellMidRow';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
@@ -82,7 +81,6 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
   const laneNowMs = useUpDownExpiryBarNow();
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
-  const bidAskLiveEpoch = useBidAskLiveEpoch();
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
@@ -113,22 +111,9 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
   const rows = useMemo(() => {
     return TIMEFRAMES.map((tf) => {
       const { current, next } = getCurrentAndNext(assetMarkets, tf);
-      const yesToken = current?.clobTokenIds?.[0] || '';
-      const nextYesToken = next?.clobTokenIds?.[0] || '';
-      const liveLookup: Record<string, Market> = {};
-      const yesRow = yesToken ? getBidAskMarketRow(yesToken) : undefined;
-      if (yesToken && yesRow) liveLookup[yesToken] = yesRow;
-      const nextRow = nextYesToken ? getBidAskMarketRow(nextYesToken) : undefined;
-      if (nextYesToken && nextRow) liveLookup[nextYesToken] = nextRow;
-      const currentYes = current
-        ? outcomeMidOrOneSideProb(yesToken, liveLookup, { bestBid: current.bestBid, bestAsk: current.bestAsk })
-        : null;
-      const nextYes = next
-        ? outcomeMidOrOneSideProb(nextYesToken, liveLookup, { bestBid: next.bestBid, bestAsk: next.bestAsk })
-        : null;
-      return { tf, current, next, currentYes, nextYes };
+      return { tf, current, next };
     });
-  }, [assetMarkets, bidAskLiveEpoch]);
+  }, [assetMarkets]);
 
   const selectedMarketInPanel = useMemo(() => {
     const id = selectedMarket?.id;
@@ -238,7 +223,7 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ tf, current, next, currentYes, nextYes }) => {
+            {rows.map(({ tf, current, next }) => {
               const duration = TF_DURATIONS_MS[tf] || 0;
               const endMs = current?.endDate ? new Date(current.endDate).getTime() : 0;
               const tfProgress = expiryProgress(laneNowMs, endMs, duration);
@@ -390,18 +375,11 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
                             />
                           )}
                           {current ? (
-                            <MarketCellMidRow
+                            <UpDownLiveMidCell
+                              market={current}
                               className="text-[9px] text-gray-400"
-                              left={
-                                <span className="text-green-400 cursor-pointer hover:underline" onClick={() => openMarket(current, 'YES')}>
-                                  {currentYes != null ? (currentYes * 100).toFixed(1) : '-'}
-                                </span>
-                              }
-                              right={
-                                <span className="text-red-400 cursor-pointer hover:underline" onClick={() => openMarket(current, 'NO')}>
-                                  {currentYes != null ? (100 - currentYes * 100).toFixed(1) : '-'}
-                                </span>
-                              }
+                              onYesClick={() => openMarket(current, 'YES')}
+                              onNoClick={() => openMarket(current, 'NO')}
                             />
                           ) : (
                             <span className="text-gray-600">-</span>
@@ -492,18 +470,11 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
                     }`}
                   >
                     {next ? (
-                      <MarketCellMidRow
+                      <UpDownLiveMidCell
+                        market={next}
                         className="text-gray-400"
-                        left={
-                          <span className="text-green-400 cursor-pointer hover:underline" onClick={() => openMarket(next, 'YES')}>
-                            {nextYes != null ? (nextYes * 100).toFixed(1) : '-'}
-                          </span>
-                        }
-                        right={
-                          <span className="text-red-400 cursor-pointer hover:underline" onClick={() => openMarket(next, 'NO')}>
-                            {nextYes != null ? (100 - nextYes * 100).toFixed(1) : '-'}
-                          </span>
-                        }
+                        onYesClick={() => openMarket(next, 'YES')}
+                        onNoClick={() => openMarket(next, 'NO')}
                       />
                     ) : (
                       <span className="text-gray-600">-</span>

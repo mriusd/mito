@@ -217,13 +217,79 @@ export function getBidAskMarketRow(tokenId: string): Market | undefined {
   return useAppStore.getState().marketLookup[id];
 }
 
+function pickWsFieldsFromMarket(old: Market): Partial<Market> {
+  const ws: Partial<Market> = {};
+  for (const k of BIDASK_EQ_KEYS) {
+    const v = old[k];
+    if (v !== undefined && v !== null) (ws as Record<string, unknown>)[k as string] = v;
+  }
+  return ws;
+}
+
+function cloneMarketForClobToken(m: Market, tokenId: string, prevLookup: Record<string, Market>): Market {
+  const tids = m.clobTokenIds || [];
+  const prev = prevLookup[tokenId];
+  const ws = prev ? pickWsFieldsFromMarket(prev) : {};
+  if (tids[1] === tokenId) {
+    return { ...m, ...ws, bestBid: undefined, bestAsk: undefined };
+  }
+  return { ...m, ...ws };
+}
+
+/** Seed row for WS bid/ask merge when token not yet in marketLookup (e.g. new up/down market). */
+export function resolveBidAskSeedMarket(assetId: string): Market | undefined {
+  const id = String(assetId || '').trim();
+  if (!id) return undefined;
+  const pending = pendingPatch[id];
+  if (pending) return pending;
+  const state = useAppStore.getState();
+  const fromLookup = state.marketLookup[id];
+  if (fromLookup) return fromLookup;
+
+  const scanList = (markets: Market[]): Market | undefined => {
+    for (const m of markets) {
+      const tids = m.clobTokenIds || [];
+      if (tids.includes(id)) return cloneMarketForClobToken(m, id, state.marketLookup);
+    }
+    return undefined;
+  };
+
+  for (const asset of Object.keys(state.upOrDownMarkets)) {
+    for (const tf of Object.keys(state.upOrDownMarkets[asset] || {})) {
+      const hit = scanList(state.upOrDownMarkets[asset][tf] || []);
+      if (hit) return hit;
+    }
+  }
+  for (const asset of Object.keys(state.aboveMarkets)) {
+    const hit = scanList(state.aboveMarkets[asset] || []);
+    if (hit) return hit;
+  }
+  for (const asset of Object.keys(state.priceOnMarkets)) {
+    const hit = scanList(state.priceOnMarkets[asset] || []);
+    if (hit) return hit;
+  }
+  for (const asset of Object.keys(state.weeklyHitMarkets)) {
+    const hit = scanList(state.weeklyHitMarkets[asset] || []);
+    if (hit) return hit;
+  }
+
+  return {
+    id: `ws:${id}`,
+    clobTokenIds: [id],
+    question: '',
+    endDate: '',
+    conditionId: '',
+    eventSlug: '',
+  };
+}
+
 export function enqueueBidAskMarketPatches(items: BidAskWsItem[]) {
   const lookup = useAppStore.getState().marketLookup;
   let touched = false;
   for (const item of items) {
     if (!item.assetId) continue;
     const id = item.assetId;
-    const seed = pendingPatch[id] ?? lookup[id];
+    const seed = resolveBidAskSeedMarket(id);
     if (!seed) continue;
     const next = mergeWsItemOntoMarket(seed, item);
     if (bidAskWsRowEqual(lookup[id], next)) {

@@ -296,6 +296,7 @@ export type PanelType =
   | 'liq-map'
   | 'cvd'
   | 'funding-rate'
+  | 'hyperliquid-outcomes'
   | 'wallet-history'
   | 'pair-trading';
 

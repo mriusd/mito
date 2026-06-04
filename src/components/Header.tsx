@@ -69,6 +69,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'liq-map', title: 'Liq Map' },
   { type: 'cvd', title: 'CVD' },
   { type: 'funding-rate', title: 'Funding Rate' },
+  { type: 'hyperliquid-outcomes', title: 'Hyperliquid Outcomes' },
   { type: 'chat', title: 'Chat' },
 ];
 

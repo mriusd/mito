@@ -73,6 +73,9 @@ const LazySmartMoneyPanel = lazyWithChunkReload(() =>
 const LazyHistoryPanel = lazyWithChunkReload(() =>
   import('./panels/HistoryPanel').then((m) => ({ default: m.HistoryPanel })),
 );
+const LazyHyperliquidOutcomesPanel = lazyWithChunkReload(() =>
+  import('./panels/HyperliquidOutcomesPanel').then((m) => ({ default: m.HyperliquidOutcomesPanel })),
+);
 
 const IS_DEV = import.meta.env.DEV;
 const LazyPerpBotPanel = IS_DEV
@@ -207,6 +210,8 @@ function renderPanel(panel: PanelConfig): ReactNode {
       return <LazyCvdPanel panelId={panel.id} />;
     case 'funding-rate':
       return <LazyFundingRatePanel />;
+    case 'hyperliquid-outcomes':
+      return <LazyHyperliquidOutcomesPanel />;
     case 'updown-hud':
       return <LazyUpOrDownHUDPanel panelId={panel.id} />;
     case 'markov':
@@ -373,6 +378,7 @@ export function DraggableCanvas() {
     'liq-map': 'Liq Map',
     cvd: 'CVD',
     'funding-rate': 'Funding Rate',
+    'hyperliquid-outcomes': 'Hyperliquid Outcomes',
     'updown-hud': 'UpOrDown HUD',
     'markov': 'Markov Chains',
     'signals': 'Signals', 'smart-money': 'Smart Money', 'chat': 'Chat', 'pnl': 'P&L',

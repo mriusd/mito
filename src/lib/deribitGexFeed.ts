@@ -28,6 +28,8 @@ export type GexExpiryBucket = {
   contracts: number;
   gammaFlip?: number | null;
   pinStrike?: number | null;
+  pinStrikeDown?: number | null;
+  pinStrikeUp?: number | null;
 };
 
 export type GexAssetSnapshot = {
@@ -107,6 +109,8 @@ function parseExpiry(raw: unknown): GexExpiryBucket | null {
     contracts: num(r.contracts) ?? 0,
     gammaFlip: num(r.gammaFlip),
     pinStrike: num(r.pinStrike),
+    pinStrikeDown: num(r.pinStrikeDown),
+    pinStrikeUp: num(r.pinStrikeUp),
   };
 }
 

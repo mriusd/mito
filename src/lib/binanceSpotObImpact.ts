@@ -24,10 +24,25 @@ export function formatSpotObImpactUsd(v: SpotObImpact | null): string {
   return v.depthCapped ? `${core}+` : core;
 }
 
-/** Mid price in Orderbook panel — one extra decimal vs default formatPrice. */
+function spotObMidPriceDecimals(asset: string): number {
+  switch (asset.toUpperCase()) {
+    case 'BTC':
+      return 0;
+    case 'ETH':
+      return 1;
+    case 'SOL':
+      return 2;
+    case 'XRP':
+      return 3;
+    default:
+      return 2;
+  }
+}
+
+/** Mid price in Orderbook panel asset column. */
 export function formatSpotObMidPrice(price: number, asset: string): string {
   if (!Number.isFinite(price)) return '—';
-  const decimals = asset === 'XRP' ? 5 : 3;
+  const decimals = spotObMidPriceDecimals(asset);
   return (
     '$' +
     price.toLocaleString('en-US', {

@@ -177,7 +177,8 @@ export function FundingRatePanel() {
         if (outer.type !== 'binanceFunding') return;
         const snap = parseFundingSnapshot(outer.data);
         if (!snap || loadGen !== loadGenRef.current) return;
-        applySnapshot(mapsRef.current, snap.assets, windowStart);
+        const wsWindowStart = Date.now() - WINDOW_MS[timeWindow];
+        applySnapshot(mapsRef.current, snap.assets, wsWindowStart);
         setLatestRates((prev) => {
           const next = { ...prev };
           for (const sym of FUNDING_ASSETS) {

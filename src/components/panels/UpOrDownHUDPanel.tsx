@@ -243,9 +243,10 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
               const endMs = current?.endDate ? new Date(current.endDate).getTime() : 0;
               const tfProgress = expiryProgress(laneNowMs, endMs, duration);
               const volYesToken = current?.clobTokenIds?.[0] || '';
-              const volLookup = volYesToken
-                ? { [volYesToken]: getBidAskMarketRow(volYesToken) ?? current }
-                : {};
+              const volLookup: Record<string, Market> = {};
+              if (current && volYesToken) {
+                volLookup[volYesToken] = getBidAskMarketRow(volYesToken) ?? current;
+              }
               const polymarketVol =
                 current && volYesToken ? getPolymarketVolumeUsd(current, volYesToken, volLookup) : null;
               return (
@@ -415,7 +416,7 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
                             const yesSell = yesOrders.filter(o => o.side === 'SELL');
                             const noBuy = noOrders.filter(o => o.side === 'BUY');
                             const noSell = noOrders.filter(o => o.side === 'SELL');
-                            const liveRow = yesTokenId ? marketLookup[yesTokenId] : undefined;
+                            const liveRow = yesTokenId ? getBidAskMarketRow(yesTokenId) : undefined;
                             const concRaw =
                               typeof liveRow?.concentration === 'number' && Number.isFinite(liveRow.concentration)
                                 ? liveRow.concentration

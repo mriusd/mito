@@ -9,9 +9,19 @@ import {
   type CvdAsset,
 } from '../../lib/binanceCvdFeed';
 
+const CVD_BAR_COUNT_OPTIONS = [30, 60, 90, 120, 180, 240] as const;
+type CvdBarCount = (typeof CVD_BAR_COUNT_OPTIONS)[number];
+
 function readStoredAsset(panelId: string): CvdAsset {
   const saved = localStorage.getItem(`polybot-cvd-asset-${panelId}`);
   return CVD_ASSETS.includes(saved as CvdAsset) ? (saved as CvdAsset) : 'BTC';
+}
+
+function readStoredBarCount(panelId: string): CvdBarCount {
+  const saved = Number(localStorage.getItem(`polybot-cvd-bars-${panelId}`));
+  return (CVD_BAR_COUNT_OPTIONS as readonly number[]).includes(saved)
+    ? (saved as CvdBarCount)
+    : 60;
 }
 
 function fmtSpot(v: number, asset: string): string {
@@ -25,6 +35,7 @@ export function CvdPanel({ panelId }: { panelId: string }) {
   const connected = useBinanceCvdConnected();
   const snap = useBinanceCvdSnapshot();
   const [asset, setAsset] = useState<CvdAsset>(() => readStoredAsset(panelId));
+  const [barCount, setBarCount] = useState<CvdBarCount>(() => readStoredBarCount(panelId));
 
   const selected = snap?.assets[asset] ?? null;
   const lastBar = selected?.bars[selected.bars.length - 1];
@@ -37,6 +48,22 @@ export function CvdPanel({ panelId }: { panelId: string }) {
           <span className={`text-[8px] ${connected ? 'text-green-500' : 'text-gray-600'}`}>
             {connected ? 'mito' : '…'}
           </span>
+          <select
+            className="rounded border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-[10px] font-semibold text-gray-200 focus:outline-none"
+            value={barCount}
+            title="Bars shown"
+            onChange={(e) => {
+              const next = Number(e.target.value) as CvdBarCount;
+              setBarCount(next);
+              localStorage.setItem(`polybot-cvd-bars-${panelId}`, String(next));
+            }}
+          >
+            {CVD_BAR_COUNT_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}b
+              </option>
+            ))}
+          </select>
           <select
             className="rounded border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-[10px] font-semibold text-gray-200 focus:outline-none"
             value={asset}
@@ -79,7 +106,7 @@ export function CvdPanel({ panelId }: { panelId: string }) {
 
       <div className="min-h-0 flex-1">
         {selected && selected.bars.length > 0 ? (
-          <CvdBarChart bars={selected.bars} />
+          <CvdBarChart bars={selected.bars} barCount={barCount} />
         ) : (
           <div className="flex h-full items-center justify-center text-[10px] text-gray-500">
             {connected ? 'Waiting for mito CVD…' : 'Connecting to mito…'}

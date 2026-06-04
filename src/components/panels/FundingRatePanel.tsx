@@ -280,7 +280,7 @@ export function FundingRatePanel() {
     }
 
     if (yMin < 0 && yMax > 0) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.85)';
       ctx.beginPath();
       ctx.moveTo(chartL, toY(0));
       ctx.lineTo(chartR, toY(0));

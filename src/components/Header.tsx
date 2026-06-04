@@ -68,6 +68,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'gex', title: 'Dealer GEX' },
   { type: 'liq-map', title: 'Liq Map' },
   { type: 'cvd', title: 'CVD' },
+  { type: 'funding-rate', title: 'Funding Rate' },
   { type: 'chat', title: 'Chat' },
 ];
 

@@ -9,6 +9,7 @@ import {
 } from '../../hooks/useThrottledGridWallet';
 import { usePolymarketOB } from '../../hooks/usePolymarketOB';
 import { useExpiryNow } from '../../hooks/useExpiryNow';
+import { useUpDownExpiryBarNow } from '../../lib/upDownExpiryBarTickStore';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { formatMarketCountdown } from '../../lib/marketCountdown';
 import { pickLiveUpDownMarketInTfBucket, pickNextUpDownMarketInTfBucket, resolvedBinaryOutcomeLabel } from '../../utils/format';
@@ -861,22 +862,22 @@ function useStablePairMarkets(
   timeframe: PairTimeframe,
   marketSlot: PairMarketSlot,
 ) {
-  const expiryNow = useExpiryNow();
+  const laneNow = useUpDownExpiryBarNow();
   const lastMarketRefreshAtRef = useRef(0);
 
   const leftComputed = useMemo(() => {
     const bucket = upOrDownMarkets[leftAsset as AssetSymbol]?.[timeframe];
     return marketSlot === 'next'
-      ? pickNextUpDownMarketInTfBucket(bucket, expiryNow)
-      : pickLiveUpDownMarketInTfBucket(bucket, expiryNow);
-  }, [upOrDownMarkets, leftAsset, timeframe, marketSlot, expiryNow]);
+      ? pickNextUpDownMarketInTfBucket(bucket, laneNow)
+      : pickLiveUpDownMarketInTfBucket(bucket, laneNow);
+  }, [upOrDownMarkets, leftAsset, timeframe, marketSlot, laneNow]);
 
   const rightComputed = useMemo(() => {
     const bucket = upOrDownMarkets[rightAsset as AssetSymbol]?.[timeframe];
     return marketSlot === 'next'
-      ? pickNextUpDownMarketInTfBucket(bucket, expiryNow)
-      : pickLiveUpDownMarketInTfBucket(bucket, expiryNow);
-  }, [upOrDownMarkets, rightAsset, timeframe, marketSlot, expiryNow]);
+      ? pickNextUpDownMarketInTfBucket(bucket, laneNow)
+      : pickLiveUpDownMarketInTfBucket(bucket, laneNow);
+  }, [upOrDownMarkets, rightAsset, timeframe, marketSlot, laneNow]);
 
   const [stable, setStable] = useState(() => ({ left: leftComputed, right: rightComputed }));
 
@@ -893,7 +894,7 @@ function useStablePairMarkets(
     const needsRefresh = (asset: PairAsset) => {
       const bucket = upOrDownMarkets[asset as AssetSymbol]?.[timeframe];
       if (!bucket?.length) return false;
-      return pickLiveUpDownMarketInTfBucket(bucket, expiryNow) == null;
+      return pickLiveUpDownMarketInTfBucket(bucket, laneNow) == null;
     };
 
     if (!needsRefresh(leftAsset) && !needsRefresh(rightAsset)) return;
@@ -902,7 +903,7 @@ function useStablePairMarkets(
     if (now - lastMarketRefreshAtRef.current < 2000) return;
     lastMarketRefreshAtRef.current = now;
     triggerMarketDataRefresh();
-  }, [expiryNow, marketSlot, leftAsset, rightAsset, timeframe, upOrDownMarkets]);
+  }, [laneNow, marketSlot, leftAsset, rightAsset, timeframe, upOrDownMarkets]);
 
   return stable;
 }

@@ -373,7 +373,6 @@ function MarkovPanelInner({ panelId }: { panelId: string }) {
     if (saved && ASSETS.includes(saved as AssetName)) return saved as AssetName;
     return 'BTC';
   });
-  const [, setNow] = useState(() => Date.now());
   const bodyRef = useRef<HTMLDivElement>(null);
   const [wide, setWide] = useState(false);
 
@@ -386,10 +385,6 @@ function MarkovPanelInner({ panelId }: { panelId: string }) {
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const chainlinkPrices = useChainlinkPricesMap();
 
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
   useEffect(() => {
     localStorage.setItem(`polybot-markov-asset-${panelId}`, asset);
   }, [panelId, asset]);

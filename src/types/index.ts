@@ -295,6 +295,7 @@ export type PanelType =
   | 'gex'
   | 'liq-map'
   | 'cvd'
+  | 'funding-rate'
   | 'wallet-history'
   | 'pair-trading';
 

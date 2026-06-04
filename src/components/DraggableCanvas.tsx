@@ -52,6 +52,9 @@ const LazyLiquidationMapPanel = lazyWithChunkReload(() =>
 const LazyCvdPanel = lazyWithChunkReload(() =>
   import('./panels/CvdPanel').then((m) => ({ default: m.CvdPanel })),
 );
+const LazyFundingRatePanel = lazyWithChunkReload(() =>
+  import('./panels/FundingRatePanel').then((m) => ({ default: m.FundingRatePanel })),
+);
 const LazyPairTradingPanel = lazyWithChunkReload(() =>
   import('./panels/PairTradingPanel').then((m) => ({ default: m.PairTradingPanel })),
 );
@@ -202,6 +205,8 @@ function renderPanel(panel: PanelConfig): ReactNode {
       return <LazyLiquidationMapPanel panelId={panel.id} />;
     case 'cvd':
       return <LazyCvdPanel panelId={panel.id} />;
+    case 'funding-rate':
+      return <LazyFundingRatePanel />;
     case 'updown-hud':
       return <LazyUpOrDownHUDPanel panelId={panel.id} />;
     case 'markov':
@@ -367,6 +372,7 @@ export function DraggableCanvas() {
     'gex': 'Dealer GEX',
     'liq-map': 'Liq Map',
     cvd: 'CVD',
+    'funding-rate': 'Funding Rate',
     'updown-hud': 'UpOrDown HUD',
     'markov': 'Markov Chains',
     'signals': 'Signals', 'smart-money': 'Smart Money', 'chat': 'Chat', 'pnl': 'P&L',

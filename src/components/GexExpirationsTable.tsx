@@ -130,11 +130,11 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
               <th className="text-right py-0.5 px-0.5 font-medium">Net/1%</th>
               <th className="text-center py-0.5 px-0.5 font-medium">γ</th>
               <th className="text-right py-0.5 px-0.5 font-medium">OI</th>
+              <th className="text-right py-0.5 px-0.5 font-medium">Pin</th>
               {!compact ? (
                 <>
                   <th className="text-right py-0.5 px-0.5 font-medium">C/P</th>
                   <th className="text-right py-0.5 px-0.5 font-medium">Flip</th>
-                  <th className="text-right py-0.5 px-0.5 font-medium">Pin</th>
                   <th className="text-right py-0.5 pl-0.5 font-medium" title="Flip minus pin (% of pin)">
                     P↔F
                   </th>
@@ -172,6 +172,10 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                   <td className="py-0.5 px-0.5 text-right text-gray-300">
                     {row.totalOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </td>
+                  <td className="py-0.5 px-0.5 text-right text-yellow-300/90 whitespace-nowrap">
+                    <PinBiasPill spot={spot} pin={row.pinStrike} />
+                    {fmtGexStrike(row.pinStrike)}
+                  </td>
                   {!compact ? (
                     <>
                       <td className="py-0.5 px-0.5 text-right text-gray-400 whitespace-nowrap">
@@ -179,10 +183,6 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                         {row.putOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </td>
                       <td className="py-0.5 px-0.5 text-right text-gray-300">{fmtGexStrike(row.gammaFlip)}</td>
-                      <td className="py-0.5 pl-0.5 text-right text-yellow-300/90 whitespace-nowrap">
-                        <PinBiasPill spot={spot} pin={row.pinStrike} />
-                        {fmtGexStrike(row.pinStrike)}
-                      </td>
                       <td
                         className={`py-0.5 pl-0.5 text-right whitespace-nowrap ${
                           pinFlipGap?.tight ? 'text-amber-300 font-bold' : 'text-gray-400'

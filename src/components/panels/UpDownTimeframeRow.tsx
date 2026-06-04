@@ -2,6 +2,7 @@ import { Fragment, memo, useMemo, useRef } from 'react';
 import type { Market } from '../../types';
 import { UpDownAssetLaneCells } from './UpDownAssetLaneCells';
 import { useExpiryNow } from '../../hooks/useExpiryNow';
+import { useUpDownExpiryBarNow } from '../../lib/upDownExpiryBarTickStore';
 
 const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 const TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
@@ -35,6 +36,18 @@ function expiryProgress(nowMs: number, endMs: number, durationMs: number): numbe
   return Math.max(0, Math.min(1, (nowMs - startMs) / durationMs));
 }
 
+/** 1 Hz tf label countdown only — not whole up/down row body. */
+const UpDownTfRowCountdown = memo(function UpDownTfRowCountdown({ endMs }: { endMs: number }) {
+  const now = useExpiryNow();
+  if (endMs <= 0) return null;
+  const rem = endMs - now;
+  const color =
+    rem < 60_000 ? 'text-red-400' : rem < 300_000 ? 'text-yellow-400' : 'text-green-400';
+  return (
+    <span className={`text-[8px] font-normal ${color}`}>{formatCountdown(endMs, now)}</span>
+  );
+});
+
 type UpDownLane = { current: Market | null; futures: (Market | null)[] };
 
 function buildLane(
@@ -55,7 +68,7 @@ function buildLane(
 
 export const UpDownTimeframeRow = memo(function UpDownTimeframeRow({
   tf,
-  expiryNowMs,
+  laneNowMs,
   visibleAssets,
   sortedOpenByAssetTf,
   nextMarketsCount,
@@ -73,7 +86,7 @@ export const UpDownTimeframeRow = memo(function UpDownTimeframeRow({
   liveTradesSource,
 }: {
   tf: (typeof TIMEFRAMES)[number];
-  expiryNowMs: number;
+  laneNowMs: number;
   visibleAssets: (typeof ASSETS)[number][];
   sortedOpenByAssetTf: Partial<
     Record<(typeof ASSETS)[number], Partial<Record<(typeof TIMEFRAMES)[number], Market[]>>>
@@ -92,7 +105,7 @@ export const UpDownTimeframeRow = memo(function UpDownTimeframeRow({
   onCellClick: (market: Market, outcome?: 'YES' | 'NO') => void;
   liveTradesSource: string;
 }) {
-  const now = expiryNowMs;
+  const now = laneNowMs;
   const laneCacheRef = useRef(new Map<string, UpDownLane>());
 
   const laneByAsset = useMemo(() => {
@@ -134,11 +147,7 @@ export const UpDownTimeframeRow = memo(function UpDownTimeframeRow({
       >
         <div className="flex items-center justify-between gap-1">
           <span>{tf}</span>
-          <span
-            className={`text-[8px] font-normal ${endMs > 0 && endMs - now < 60000 ? 'text-red-400' : endMs > 0 && endMs - now < 300000 ? 'text-yellow-400' : 'text-green-400'}`}
-          >
-            {endMs > 0 ? formatCountdown(endMs, now) : ''}
-          </span>
+          <UpDownTfRowCountdown endMs={endMs} />
         </div>
         {endMs > 0 && duration > 0 && (
           <div
@@ -223,7 +232,7 @@ export const UpDownTimeframeRowsBody = memo(function UpDownTimeframeRowsBody({
   onCellClick: (market: Market, outcome?: 'YES' | 'NO') => void;
   liveTradesSource: string;
 }) {
-  const now = useExpiryNow();
+  const laneNowMs = useUpDownExpiryBarNow();
 
   const timeframesWithSharedExpiry = useMemo(() => {
     const endMsByTf: Partial<Record<(typeof TIMEFRAMES)[number], number>> = {};
@@ -231,7 +240,7 @@ export const UpDownTimeframeRowsBody = memo(function UpDownTimeframeRowsBody({
       let endMs = 0;
       for (const a of visibleAssets) {
         const markets = sortedOpenByAssetTf[a]?.[tf] ?? [];
-        const currentIdx = markets.findIndex((m) => m.endDate && new Date(m.endDate).getTime() > now);
+        const currentIdx = markets.findIndex((m) => m.endDate && new Date(m.endDate).getTime() > laneNowMs);
         const m = currentIdx === -1 ? null : markets[currentIdx];
         if (m?.endDate) {
           endMs = new Date(m.endDate).getTime();
@@ -252,7 +261,7 @@ export const UpDownTimeframeRowsBody = memo(function UpDownTimeframeRowsBody({
       if (list.length >= 2) list.forEach((t) => dup.add(t));
     }
     return dup;
-  }, [visibleAssets, sortedOpenByAssetTf, now]);
+  }, [visibleAssets, sortedOpenByAssetTf, laneNowMs]);
 
   return (
     <>
@@ -260,7 +269,7 @@ export const UpDownTimeframeRowsBody = memo(function UpDownTimeframeRowsBody({
         <UpDownTimeframeRow
           key={tf}
           tf={tf}
-          expiryNowMs={now}
+          laneNowMs={laneNowMs}
           visibleAssets={visibleAssets}
           sortedOpenByAssetTf={sortedOpenByAssetTf}
           nextMarketsCount={nextMarketsCount}

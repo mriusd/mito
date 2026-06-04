@@ -12,7 +12,7 @@ import {
   tfDurationMs,
   type MarketSquareStatus,
 } from '../lib/marketSquareUi';
-import { useExpiryNow } from '../hooks/useExpiryNow';
+import { useUpDownExpiryBarNow } from '../lib/upDownExpiryBarTickStore';
 
 const SIDEBAR_SQUARE_CLS =
   'inline-flex h-5 min-w-[1.4rem] items-center justify-center rounded-sm px-0 text-[7px] font-bold tabular-nums leading-none transition-colors';
@@ -292,7 +292,7 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
   const asset = extractAssetFromMarket(selectedMarket);
   const timeframe = upDownTimeframeKeyFromMarket(selectedMarket);
   const isUpDown = marketIsUpDown(selectedMarket);
-  const nowMs = useExpiryNow();
+  const nowMs = useUpDownExpiryBarNow();
 
   const storeTfMarkets = useMemo(() => {
     if (!asset || !timeframe) return [];

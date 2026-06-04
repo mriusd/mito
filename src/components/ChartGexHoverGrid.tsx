@@ -63,7 +63,7 @@ export function ChartGexHoverGrid({ gex }: { gex: GexAssetSnapshot }) {
           <span className="tabular-nums text-gray-300">{fmtGexStrike(idx)}</span>
         </div>
       </div>
-      <GexExpirationsTable expirations={gex.expirations ?? []} compact />
+      <GexExpirationsTable expirations={gex.expirations ?? []} spot={idx} compact />
       <div className="flex flex-col gap-px">
         {gex.strikes.map((b) => {
           const frac = maxAbs > 0 ? Math.min(1, Math.abs(b.gex) / maxAbs) : 0;

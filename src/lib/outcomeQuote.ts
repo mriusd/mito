@@ -78,3 +78,35 @@ export function outcomeBestBidProb(
   if (hasQuoteSide(bb)) return bb!;
   return null;
 }
+
+/** TPO exit: best bid only — 0 when no bids (never ask/mid). */
+export function positionExitBidProb(
+  tokenId: string | undefined,
+  lookup: Record<string, Market>,
+): number {
+  const tid = String(tokenId || '').trim();
+  if (!tid) return 0;
+
+  const live = lookup[tid];
+  const gamma = live ? { bestBid: live.bestBid, bestAsk: live.bestAsk } : undefined;
+  const direct = outcomeBestBidProb(tid, lookup, gamma);
+  if (direct != null) return direct;
+
+  for (const row of Object.values(lookup)) {
+    const ids = row.clobTokenIds || [];
+    if (ids[0] === tid) {
+      const bb = outcomeBestBidProb(tid, lookup, { bestBid: row.bestBid, bestAsk: row.bestAsk });
+      return bb != null ? bb : 0;
+    }
+    if (ids[1] === tid) {
+      const noBook = noOutcomeBidAsk(ids[0], tid, lookup, {
+        bestBid: row.bestBid,
+        bestAsk: row.bestAsk,
+      });
+      const bb = noBook.bestBid;
+      return bb != null && bb > 0 ? bb : 0;
+    }
+  }
+
+  return 0;
+}

@@ -22,6 +22,14 @@ import {
 } from './AssetMarketTablePriceCol';
 import { AssetMarketTableScrollSync } from './AssetMarketTableScrollSync';
 import { polymarketSiteUrl } from '../../lib/polymarketSiteUrl';
+import {
+  fetchHyperliquidOutcomesSnapshot,
+  useHyperliquidOutcomesConnection,
+  useHyperliquidOutcomesSnapshot,
+} from '../../lib/hyperliquidOutcomesFeed';
+import { hlSnapshotToAssetGrid } from '../../lib/hlMarketsForAssetGrid';
+
+export type GridMarketSource = 'polymarket' | 'hyperliquid';
 
 const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
 const MANUAL_VOL_KEY_PREFIX = 'polybot-manual-vol-pct-';
@@ -170,11 +178,31 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   });
   const [showAbove, setShowAbove] = useState(() => localStorage.getItem(`polybot-show-above-${panelId}`) !== 'false');
   const [showBetween, setShowBetween] = useState(() => localStorage.getItem(`polybot-show-between-${panelId}`) !== 'false');
+  const [gridSource, setGridSource] = useState<GridMarketSource>(() => {
+    const saved = localStorage.getItem(`polybot-grid-source-${panelId}`);
+    return saved === 'hyperliquid' ? 'hyperliquid' : 'polymarket';
+  });
+  const [sourceDropdownOpen, setSourceDropdownOpen] = useState(false);
+  const isHl = gridSource === 'hyperliquid';
   const symbol = assetToSymbol(asset);
-  const aboveMarketsForAsset = useAppStore((s) => s.aboveMarkets[asset] ?? EMPTY_MARKETS);
-  const priceOnMarketsForAsset = useAppStore((s) => s.priceOnMarkets[asset] ?? EMPTY_MARKETS);
-  const weeklyHitMarketsForAsset = useAppStore((s) => s.weeklyHitMarkets[asset] ?? EMPTY_MARKETS);
-  const upOrDownMarketsForAsset = useAppStore((s) => s.upOrDownMarkets[asset] ?? EMPTY_UDM);
+  useHyperliquidOutcomesConnection(isHl);
+  const hlSnap = useHyperliquidOutcomesSnapshot();
+  useEffect(() => {
+    if (!isHl || hlSnap != null) return;
+    void fetchHyperliquidOutcomesSnapshot();
+  }, [isHl, hlSnap]);
+  const hlGrid = useMemo(
+    () => hlSnapshotToAssetGrid(hlSnap, asset),
+    [hlSnap, asset],
+  );
+  const pmAbove = useAppStore((s) => s.aboveMarkets[asset] ?? EMPTY_MARKETS);
+  const pmBetween = useAppStore((s) => s.priceOnMarkets[asset] ?? EMPTY_MARKETS);
+  const pmWeeklyHit = useAppStore((s) => s.weeklyHitMarkets[asset] ?? EMPTY_MARKETS);
+  const pmUpOrDown = useAppStore((s) => s.upOrDownMarkets[asset] ?? EMPTY_UDM);
+  const aboveMarketsForAsset = isHl ? hlGrid.above : pmAbove;
+  const priceOnMarketsForAsset = isHl ? hlGrid.between : pmBetween;
+  const weeklyHitMarketsForAsset = isHl ? EMPTY_MARKETS : pmWeeklyHit;
+  const upOrDownMarketsForAsset = isHl ? hlGrid.upOrDown : pmUpOrDown;
   const assetVol = useAppStore((s) => s.volatilityData[symbol] ?? 0.6);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const slot0 = useAppStore((s) => s.manualPriceSlots[symbol][0]);
@@ -362,11 +390,11 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   type GridTableData = ReturnType<typeof buildTableData>;
   const aboveGridData = useMemo(
     () => (aboveMarketsForAsset.length > 0 ? buildTableData(aboveMarketsForAsset, showPast) : null),
-    [aboveMarketsForAsset, showPast, pastFilterTick],
+    [aboveMarketsForAsset, showPast, pastFilterTick, hlSnap?.updatedAt],
   );
   const priceOnGridData = useMemo(
     () => (priceOnMarketsForAsset.length > 0 ? buildTableData(priceOnMarketsForAsset, showPast) : null),
-    [priceOnMarketsForAsset, showPast, pastFilterTick],
+    [priceOnMarketsForAsset, showPast, pastFilterTick, hlSnap?.updatedAt],
   );
 
   const renderWeeklyHitTable = () => {
@@ -619,7 +647,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       endDate={market.endDate || ''}
                       deltaPriceStr=""
                       isPast={isPast}
-                      skipDeltaBg={isPast}
+                      skipDeltaBg={isPast || isHl}
                       variant="updown"
                       minWidth={60}
                       signalsOnGrid={false}
@@ -648,6 +676,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
     tableType: string,
     cached?: GridTableData | null,
     scrollContainerRef?: RefObject<HTMLElement | null>,
+    hlGridMode = false,
   ) => {
     if (markets.length === 0) {
       return <div className="text-gray-500 text-center py-2 text-xs">No markets</div>;
@@ -679,16 +708,22 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                     key={d.slug}
                     className={`px-1 py-1 text-center border-b border-gray-700 min-w-[70px] bg-gray-900 ${isEnded ? 'opacity-50' : ''} ${isWeekend ? 'bg-purple-900/20' : ''} ${isDateHighlighted ? 'date-column-highlighted' : ''}`}
                   >
-                    <a
-                      href={polymarketSiteUrl(`event/${d.slug}`)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block hover:bg-gray-800/50 rounded p-0.5 transition"
-                    >
-                      <div className={`font-bold ${isWeekend ? 'text-purple-400' : 'text-white'} hover:text-blue-400 text-[10px]`}>
+                    {hlGridMode ? (
+                      <div className={`font-bold ${isWeekend ? 'text-purple-400' : 'text-white'} text-[10px]`}>
                         {['Su','Mo','Tu','We','Th','Fr','Sa'][dt.getDay()]} {formatDateShort(d.endDate)}
                       </div>
-                    </a>
+                    ) : (
+                      <a
+                        href={polymarketSiteUrl(`event/${d.slug}`)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block hover:bg-gray-800/50 rounded p-0.5 transition"
+                      >
+                        <div className={`font-bold ${isWeekend ? 'text-purple-400' : 'text-white'} hover:text-blue-400 text-[10px]`}>
+                          {['Su','Mo','Tu','We','Th','Fr','Sa'][dt.getDay()]} {formatDateShort(d.endDate)}
+                        </div>
+                      </a>
+                    )}
                   </th>
                 );
               })}
@@ -738,7 +773,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       isClosed={!!isClosed}
                       isWeekend={isWeekend}
                       variant={tableType === 'above' ? 'above' : 'between'}
-                      signalsOnGrid={signalsOnGrid}
+                      signalsOnGrid={!hlGridMode && signalsOnGrid}
                       yesDiff={sig?.yesDiff}
                       noDiff={sig?.noDiff}
                       isSelected={selectedMarketId === market.id}
@@ -749,6 +784,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       yesOrders={orderLookup[yesTokenId] ?? EMPTY_ORDERS}
                       noOrders={orderLookup[noTokenId] ?? EMPTY_ORDERS}
                       onCellClick={handleCellClick}
+                      skipDeltaBg={hlGridMode}
                     />
                   );
                   })}
@@ -758,7 +794,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
           </tbody>
         </table>
       </div>
-      {scrollContainerRef ? (
+      {scrollContainerRef && !hlGridMode ? (
         <AssetMarketTableScrollSync
           containerRef={scrollContainerRef}
           symbol={symbol}
@@ -798,9 +834,31 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
               </div>
             )}
           </span>
-          <AssetMarketTableVwapHint asset={asset} symbol={symbol} />
-          {/* Range slots */}
-          {[0, 1].map((i) => {
+          <span className="relative no-drag inline-flex items-center cursor-pointer select-none text-[10px] font-normal text-gray-300" onClick={() => setSourceDropdownOpen((v) => !v)}>
+            {isHl ? 'Hyperliquid' : 'Polymarket'}
+            <svg className="w-3 h-3 ml-0.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            {sourceDropdownOpen && (
+              <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[100px]">
+                {(['polymarket', 'hyperliquid'] as const).map((src) => (
+                  <div
+                    key={src}
+                    className={`px-3 py-1 text-xs font-bold hover:bg-gray-700 cursor-pointer ${src === gridSource ? 'text-white bg-gray-700' : 'text-gray-300'}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setGridSource(src);
+                      localStorage.setItem(`polybot-grid-source-${panelId}`, src);
+                      setSourceDropdownOpen(false);
+                    }}
+                  >
+                    {src === 'hyperliquid' ? 'Hyperliquid' : 'Polymarket'}
+                  </div>
+                ))}
+              </div>
+            )}
+          </span>
+          {!isHl && <AssetMarketTableVwapHint asset={asset} symbol={symbol} />}
+          {/* Range slots (Polymarket only) */}
+          {!isHl && [0, 1].map((i) => {
             const slotVal = i === 0 ? slot0 : slot1;
             const isActive = activeSlot === i;
             const colors = ['text-cyan-300', 'text-pink-400'];
@@ -874,7 +932,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
             </span>
           )}
           <HelpTooltip text={"Annualized volatility (σ) used for Black-Scholes probability calculations.\n\nThis value is fetched from Binance as the asset's historical realized volatility, then multiplied by the global volatility multiplier set in settings.\n\nHigher volatility means wider expected price distributions — strike prices further from the current price will have higher B-S probabilities. Lower volatility narrows the distribution, making distant strikes less likely.\n\nThis directly affects all B-S values shown across the dashboard: the flower, grid cells, signals, and hedges."} />
-          <AssetMarketTableStrikeRangeWrap markets={aboveMarketsForAsset} asset={asset} />
+          {!isHl && <AssetMarketTableStrikeRangeWrap markets={aboveMarketsForAsset} asset={asset} />}
           <HelpTooltip text={"This bar shows where the current asset price sits relative to the active market strike prices.\n\nThe gray ticks at the ends are the nearest strikes below and above spot; the vertical marker is the live price between them.\n\nThis gives a quick visual sense of how close the asset is to triggering different markets — the closer the live price is to a strike, the more sensitive that market's probability becomes to small price moves."} />
           <label className="no-drag inline-flex items-center gap-1 text-[10px] text-gray-400 cursor-pointer ml-1 font-normal">
             <input
@@ -887,7 +945,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
           </label>
           <HelpTooltip text={"Show past/expired markets in the grid. When enabled, markets that have already expired will remain visible so you can review past data and outcomes."} />
           {[['Up\\Down', showUpDown, setShowUpDown, `polybot-show-updown-${panelId}`] as const,
-            ['Hit', showHit, setShowHit, `polybot-show-hit-${panelId}`] as const,
+            ...(!isHl ? [['Hit', showHit, setShowHit, `polybot-show-hit-${panelId}`] as const] : []),
             ['Above', showAbove, setShowAbove, `polybot-show-above-${panelId}`] as const,
             ['Between', showBetween, setShowBetween, `polybot-show-between-${panelId}`] as const,
           ].map(([label, val, setter, key]) => (
@@ -950,15 +1008,15 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
           {showAbove && (
             <div className="flex-1 min-w-0 border border-emerald-500/40 rounded flex flex-col" ref={aboveContainerRef} style={{ position: 'relative' }}>
               <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-emerald-400 bg-gray-800/50 rounded-t py-0.5">Above <HelpTooltip text={"Above markets resolve YES if the asset price is above a specific strike price at the moment of expiry (noon ET).\n\nThese are the most common market type. Each row is a different strike price and each column is a different expiry date.\n\nThe YES probability increases as the live price moves further above the strike, and decreases as it falls below. At expiry, the market resolves to 100 (YES) or 0 (NO) based purely on where the price is at that moment."} /></div>
-              {renderTable(aboveMarketsForAsset, 'above', aboveGridData, aboveContainerRef)}
-              <PriceTicks containerRef={aboveContainerRef} symbol={symbol} />
+              {renderTable(aboveMarketsForAsset, 'above', aboveGridData, aboveContainerRef, isHl)}
+              {!isHl && <PriceTicks containerRef={aboveContainerRef} symbol={symbol} />}
             </div>
           )}
           {showBetween && (
             <div className="flex-1 min-w-0 border border-purple-500/40 rounded flex flex-col" ref={priceOnContainerRef} style={{ position: 'relative' }}>
               <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-purple-400 bg-gray-800/50 rounded-t py-0.5">Between <HelpTooltip text={"Between markets resolve YES if the asset price falls within a specific price range at the moment of expiry (noon ET).\n\nEach row shows a price range (e.g. 95k-100k). The market pays out if the price lands inside that range at expiry.\n\nB-S probability for these markets peaks when the price is near the center of the range and drops off toward the edges. Unlike Above markets, the max probability may not be at the range boundary — it can be in the middle."} /></div>
-              {renderTable(priceOnMarketsForAsset, 'price', priceOnGridData, priceOnContainerRef)}
-              <PriceTicks containerRef={priceOnContainerRef} symbol={symbol} />
+              {renderTable(priceOnMarketsForAsset, 'price', priceOnGridData, priceOnContainerRef, isHl)}
+              {!isHl && <PriceTicks containerRef={priceOnContainerRef} symbol={symbol} />}
             </div>
           )}
         </div>

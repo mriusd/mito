@@ -5,7 +5,7 @@ import {
   cancelOrder,
   type OnchainClaimRow,
 } from '../../api';
-import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { positionExitBidProb } from '../../lib/outcomeQuote';
 import { onchainFillKey } from '../../lib/tradeKeys';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
@@ -107,13 +107,7 @@ function comparePositionsByExpiryDesc(
 
 function wsPositionsToPM(rows: WSPosition[], marketLookup: Record<string, Market>): Position[] {
   return rows.map((r) => {
-    const m = marketLookup[r.tokenId];
-    const mid = outcomeMidOrOneSideProb(
-      r.tokenId,
-      marketLookup,
-      m ? { bestBid: m.bestBid, bestAsk: m.bestAsk } : {},
-    );
-    const cur = mid ?? m?.lastTradePrice ?? r.avgPrice;
+    const cur = positionExitBidProb(r.tokenId, marketLookup);
     return {
       asset: r.tokenId,
       size: r.size,
@@ -515,7 +509,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
       const size = pos.size || 0;
       const avg = pos.avgPrice || 0;
-      const cur = pos.curPrice || avg;
+      const cur = positionExitBidProb(tid, marketLookup);
       const entryPrice = avg * 100;
       const cost = avg * size;
       const currentValue = cur * size;

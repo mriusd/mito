@@ -5,6 +5,8 @@ import type { AssetName, Market } from '../types';
 export type HlCryptoLeg = {
   outcomeId: number;
   label: string;
+  legKind: 'between' | 'below' | 'above' | 'other';
+  strikeLabel: string;
   chancePct: number;
   yesMid: number;
   clobTokenIds: string[];
@@ -17,6 +19,9 @@ export type HlCryptoRow = {
   period: string;
   title: string;
   endDate: string;
+  eventSlug: string;
+  targetPrice?: string;
+  strikeLabel?: string;
   chancePct?: number;
   outcomeId?: number;
   clobTokenIds?: string[];
@@ -73,9 +78,16 @@ function parseLeg(raw: unknown): HlCryptoLeg | null {
   const clobTokenIds = Array.isArray(r.clobTokenIds)
     ? r.clobTokenIds.map((x) => String(x || '').trim()).filter(Boolean)
     : [];
+  const legKindRaw = String(r.legKind || '').trim();
+  const legKind =
+    legKindRaw === 'between' || legKindRaw === 'below' || legKindRaw === 'above'
+      ? legKindRaw
+      : 'other';
   return {
     outcomeId,
     label: String(r.label || ''),
+    legKind,
+    strikeLabel: String(r.strikeLabel || r.label || ''),
     chancePct: num(r.chancePct) ?? 0,
     yesMid: num(r.yesMid) ?? 0,
     clobTokenIds,
@@ -103,6 +115,9 @@ function parseRow(raw: unknown): HlCryptoRow | null {
     period: String(r.period || ''),
     title: String(r.title || ''),
     endDate: String(r.endDate || ''),
+    eventSlug: String(r.eventSlug || id),
+    targetPrice: r.targetPrice != null ? String(r.targetPrice) : undefined,
+    strikeLabel: r.strikeLabel != null ? String(r.strikeLabel) : undefined,
     chancePct: num(r.chancePct) ?? undefined,
     outcomeId: num(r.outcomeId) ?? undefined,
     clobTokenIds,

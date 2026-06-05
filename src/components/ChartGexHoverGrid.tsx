@@ -17,14 +17,14 @@ function pctTo(spot: number, level: number | null | undefined): string {
   return `${p >= 0 ? '+' : ''}${p.toFixed(1)}%`;
 }
 
-export function ChartGexHoverGrid({ gex }: { gex: GexAssetSnapshot }) {
+export function ChartGexHoverGrid({ gex, source = 'Deribit' }: { gex: GexAssetSnapshot; source?: string }) {
   const negative = gex.regime === 'negative';
   const idx = gexReferenceSpot(gex);
   const maxAbs = gex.strikes.reduce((m, s) => Math.max(m, Math.abs(s.gex)), 0);
   return (
     <div className="mt-2 pt-2 border-t border-gray-700">
       <div className="flex items-center justify-between mb-1">
-        <div className="text-[10px] font-bold text-gray-300">{gex.asset} Dealer GEX</div>
+        <div className="text-[10px] font-bold text-gray-300">{gex.asset} {source} GEX</div>
         <span
           className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide ${
             negative ? 'bg-red-900/60 text-red-300' : 'bg-green-900/60 text-green-300'
@@ -59,7 +59,7 @@ export function ChartGexHoverGrid({ gex }: { gex: GexAssetSnapshot }) {
           <span className="tabular-nums text-yellow-300/90">{fmtGexStrike(gex.pinStrike)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-500">Deribit idx</span>
+          <span className="text-gray-500">{source} idx</span>
           <span className="tabular-nums text-gray-300">{fmtGexStrike(idx)}</span>
         </div>
       </div>

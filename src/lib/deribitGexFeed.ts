@@ -4,26 +4,34 @@ import { WS_BASE } from './env';
 export const GEX_ASSETS = ['BTC', 'ETH'] as const;
 export type GexAsset = (typeof GEX_ASSETS)[number];
 
-export const GEX_SOURCES = ['deribit', 'binance', 'okx'] as const;
+export const GEX_FEED_SOURCES = ['deribit', 'binance', 'okx'] as const;
+export type GexFeedSource = (typeof GEX_FEED_SOURCES)[number];
+
+export const GEX_SOURCES = [...GEX_FEED_SOURCES, 'combined'] as const;
 export type GexSource = (typeof GEX_SOURCES)[number];
 
 export const GEX_SOURCE_LABELS: Record<GexSource, string> = {
   deribit: 'Deribit',
   binance: 'Binance',
   okx: 'OKX',
+  combined: 'Combined',
 };
 
-const GEX_WS_PATH: Record<GexSource, string> = {
+const GEX_WS_PATH: Record<GexFeedSource, string> = {
   deribit: '/ws/deribit-gex',
   binance: '/ws/binance-gex',
   okx: '/ws/okx-gex',
 };
 
-const GEX_MSG_TYPE: Record<GexSource, string> = {
+const GEX_MSG_TYPE: Record<GexFeedSource, string> = {
   deribit: 'deribitGex',
   binance: 'binanceGex',
   okx: 'okxGex',
 };
+
+const GEX_TOP_STRIKES = 18;
+const GEX_GRID_SPAN = 0.2;
+const GEX_GRID_STEPS = 81;
 
 export type GexStrikeBucket = {
   strike: number;
@@ -96,16 +104,18 @@ function makeFeedState(): FeedState {
   return { snap: null, digest: 0, ws: null, reconnectTimer: null, refCount: 0 };
 }
 
-const feeds: Record<GexSource, FeedState> = {
+const feeds: Record<GexFeedSource, FeedState> = {
   deribit: makeFeedState(),
   binance: makeFeedState(),
   okx: makeFeedState(),
 };
 
-const listeners = new Map<GexSource, Set<() => void>>();
+const listeners = new Map<GexFeedSource, Set<() => void>>();
+const combinedListeners = new Set<() => void>();
 
-function emit(source: GexSource): void {
+function emit(source: GexFeedSource): void {
   for (const fn of listeners.get(source) ?? []) fn();
+  for (const fn of combinedListeners) fn();
 }
 
 function num(x: unknown): number | null {
@@ -146,6 +156,257 @@ function parseExpiry(raw: unknown): GexExpiryBucket | null {
 
 export function gexReferenceSpot(s: GexAssetSnapshot): number {
   return s.deribitIndex ?? s.spot;
+}
+
+function interpolateProfileGex(profile: GexProfilePoint[], spot: number): number {
+  if (profile.length === 0) return 0;
+  const sorted = [...profile].sort((a, b) => a.spot - b.spot);
+  if (spot <= sorted[0].spot) return sorted[0].gex;
+  if (spot >= sorted[sorted.length - 1].spot) return sorted[sorted.length - 1].gex;
+  for (let i = 1; i < sorted.length; i++) {
+    const a = sorted[i - 1];
+    const b = sorted[i];
+    if (spot >= a.spot && spot <= b.spot) {
+      const denom = b.spot - a.spot;
+      if (denom === 0) return b.gex;
+      const t = (spot - a.spot) / denom;
+      return a.gex + t * (b.gex - a.gex);
+    }
+  }
+  return 0;
+}
+
+function buildCombinedProfile(snaps: GexAssetSnapshot[], refSpot: number): GexProfilePoint[] {
+  const lo = refSpot * (1 - GEX_GRID_SPAN);
+  const hi = refSpot * (1 + GEX_GRID_SPAN);
+  const step = (hi - lo) / (GEX_GRID_STEPS - 1);
+  const out: GexProfilePoint[] = [];
+  for (let i = 0; i < GEX_GRID_STEPS; i++) {
+    const s = lo + step * i;
+    let gex = 0;
+    for (const snap of snaps) {
+      gex += interpolateProfileGex(snap.profile, s);
+    }
+    out.push({ spot: s, gex });
+  }
+  return out;
+}
+
+function gammaFlipFromProfile(profile: GexProfilePoint[], refSpot: number): number | null {
+  let prev: GexProfilePoint | null = null;
+  let bestFlip: number | null = null;
+  let bestDist = Infinity;
+  for (const p of profile) {
+    if (
+      prev &&
+      ((prev.gex < 0 && p.gex >= 0) || (prev.gex > 0 && p.gex <= 0))
+    ) {
+      const denom = p.gex - prev.gex;
+      let flip = p.spot;
+      if (denom !== 0) {
+        flip = prev.spot + ((0 - prev.gex) * (p.spot - prev.spot)) / denom;
+      }
+      const d = Math.abs(flip - refSpot);
+      if (d < bestDist) {
+        bestDist = d;
+        bestFlip = flip;
+      }
+    }
+    prev = p;
+  }
+  return bestFlip;
+}
+
+function wallsFromStrikes(
+  all: GexStrikeBucket[],
+  spot: number,
+): { callWall: number | null; putWall: number | null; pinStrike: number | null } {
+  let callWall: number | null = null;
+  let putWall: number | null = null;
+  let pinStrike: number | null = null;
+  let bestCallAbs = 0;
+  let bestPutAbs = 0;
+  let bestPin = 0;
+  for (const b of all) {
+    const callAbs = b.gex > 0 ? b.gex : 0;
+    const putAbs = b.gex < 0 ? -b.gex : 0;
+    const pinTot = Math.abs(b.gex);
+    if (b.strike >= spot && callAbs > bestCallAbs) {
+      bestCallAbs = callAbs;
+      callWall = b.strike;
+    }
+    if (b.strike <= spot && putAbs > bestPutAbs) {
+      bestPutAbs = putAbs;
+      putWall = b.strike;
+    }
+    if (pinTot > bestPin) {
+      bestPin = pinTot;
+      pinStrike = b.strike;
+    }
+  }
+  return { callWall, putWall, pinStrike };
+}
+
+function oiWeightedStrike(strikes: { strike: number; oi: number }[]): number | null {
+  let sum = 0;
+  let w = 0;
+  for (const x of strikes) {
+    if (x.oi <= 0) continue;
+    sum += x.strike * x.oi;
+    w += x.oi;
+  }
+  return w > 0 ? sum / w : null;
+}
+
+/** Sum Deribit + Binance + OKX GEX into one asset snapshot. */
+export function combineGexAssetSnapshots(
+  parts: [GexAssetSnapshot | null | undefined, GexAssetSnapshot | null | undefined, GexAssetSnapshot | null | undefined],
+): GexAssetSnapshot | null {
+  const snaps = parts.filter((s): s is GexAssetSnapshot => s != null);
+  if (snaps.length === 0) return null;
+
+  const asset = snaps[0].asset;
+  const deribit = parts[0];
+  const refSpot =
+    (deribit ? gexReferenceSpot(deribit) : 0) ||
+    snaps.reduce((best, s) => (gexReferenceSpot(s) > 0 ? gexReferenceSpot(s) : best), 0);
+  if (refSpot <= 0) return null;
+
+  const byStrike = new Map<number, GexStrikeBucket>();
+  for (const snap of snaps) {
+    for (const b of snap.strikes) {
+      const prev = byStrike.get(b.strike);
+      if (!prev) {
+        byStrike.set(b.strike, { ...b });
+      } else {
+        prev.gex += b.gex;
+        prev.callOi += b.callOi;
+        prev.putOi += b.putOi;
+      }
+    }
+  }
+  const allStrikes = [...byStrike.values()];
+  const { callWall, putWall, pinStrike } = wallsFromStrikes(allStrikes, refSpot);
+  let strikes = [...allStrikes].sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex));
+  if (strikes.length > GEX_TOP_STRIKES) strikes = strikes.slice(0, GEX_TOP_STRIKES);
+  strikes.sort((a, b) => a.strike - b.strike);
+
+  type ExpAcc = {
+    expiryMs: number;
+    label: string;
+    hoursToExp: number;
+    netGex: number;
+    totalOi: number;
+    callOi: number;
+    putOi: number;
+    contracts: number;
+    pinWeighted: { strike: number; oi: number }[];
+    pinDownWeighted: { strike: number; oi: number }[];
+    pinUpWeighted: { strike: number; oi: number }[];
+    gammaFlipWeighted: { strike: number; oi: number }[];
+  };
+  const byLabel = new Map<string, ExpAcc>();
+  for (const snap of snaps) {
+    for (const exp of snap.expirations) {
+      let acc = byLabel.get(exp.label);
+      if (!acc) {
+        acc = {
+          expiryMs: exp.expiryMs,
+          label: exp.label,
+          hoursToExp: exp.hoursToExp,
+          netGex: 0,
+          totalOi: 0,
+          callOi: 0,
+          putOi: 0,
+          contracts: 0,
+          pinWeighted: [],
+          pinDownWeighted: [],
+          pinUpWeighted: [],
+          gammaFlipWeighted: [],
+        };
+        byLabel.set(exp.label, acc);
+      }
+      acc.netGex += exp.netGex;
+      acc.totalOi += exp.totalOi;
+      acc.callOi += exp.callOi;
+      acc.putOi += exp.putOi;
+      acc.contracts += exp.contracts;
+      acc.expiryMs = Math.min(acc.expiryMs, exp.expiryMs);
+      acc.hoursToExp = Math.min(acc.hoursToExp, exp.hoursToExp);
+      const w = exp.totalOi > 0 ? exp.totalOi : 1;
+      if (exp.pinStrike != null) acc.pinWeighted.push({ strike: exp.pinStrike, oi: w });
+      if (exp.pinStrikeDown != null) acc.pinDownWeighted.push({ strike: exp.pinStrikeDown, oi: w });
+      if (exp.pinStrikeUp != null) acc.pinUpWeighted.push({ strike: exp.pinStrikeUp, oi: w });
+      if (exp.gammaFlip != null) acc.gammaFlipWeighted.push({ strike: exp.gammaFlip, oi: w });
+    }
+  }
+  const expirations = [...byLabel.values()]
+    .sort((a, b) => a.expiryMs - b.expiryMs)
+    .map((acc) => ({
+      expiryMs: acc.expiryMs,
+      label: acc.label,
+      hoursToExp: acc.hoursToExp,
+      netGex: acc.netGex,
+      regime: acc.netGex >= 0 ? ('positive' as const) : ('negative' as const),
+      totalOi: acc.totalOi,
+      callOi: acc.callOi,
+      putOi: acc.putOi,
+      contracts: acc.contracts,
+      gammaFlip: oiWeightedStrike(acc.gammaFlipWeighted),
+      pinStrike: oiWeightedStrike(acc.pinWeighted),
+      pinStrikeDown: oiWeightedStrike(acc.pinDownWeighted),
+      pinStrikeUp: oiWeightedStrike(acc.pinUpWeighted),
+    }));
+
+  const netGex = snaps.reduce((s, x) => s + x.netGex, 0);
+  const profile = buildCombinedProfile(snaps, refSpot);
+  const gammaFlip = gammaFlipFromProfile(profile, refSpot);
+
+  return {
+    asset,
+    synced: snaps.every((s) => s.synced),
+    spot: refSpot,
+    deribitIndex: deribit ? gexReferenceSpot(deribit) : refSpot,
+    netGex,
+    gammaFlip,
+    regime: netGex >= 0 ? 'positive' : 'negative',
+    totalOi: snaps.reduce((s, x) => s + x.totalOi, 0),
+    callWall,
+    putWall,
+    pinStrike,
+    strikes,
+    expirations,
+    profile,
+    contracts: snaps.reduce((s, x) => s + x.contracts, 0),
+    updatedAt: Math.max(...snaps.map((s) => s.updatedAt)),
+  };
+}
+
+function buildCombinedPanelSnapshot(): GexPanelSnapshot | null {
+  const deribit = feeds.deribit.snap;
+  const binance = feeds.binance.snap;
+  const okx = feeds.okx.snap;
+  if (!deribit && !binance && !okx) return null;
+
+  const assets: GexPanelSnapshot['assets'] = {};
+  for (const asset of GEX_ASSETS) {
+    const merged = combineGexAssetSnapshots([
+      deribit?.assets[asset] ?? null,
+      binance?.assets[asset] ?? null,
+      okx?.assets[asset] ?? null,
+    ]);
+    if (merged) assets[asset] = merged;
+  }
+  if (Object.keys(assets).length === 0) return null;
+
+  return {
+    assets,
+    updatedAt: Math.max(
+      deribit?.updatedAt ?? 0,
+      binance?.updatedAt ?? 0,
+      okx?.updatedAt ?? 0,
+    ),
+  };
 }
 
 function parseAsset(raw: unknown): GexAssetSnapshot | null {
@@ -221,7 +482,7 @@ function parseSnapshot(raw: unknown): GexPanelSnapshot | null {
   return { assets, updatedAt: num(r.updatedAt) ?? Date.now() };
 }
 
-function connect(source: GexSource): void {
+function connect(source: GexFeedSource): void {
   const state = feeds[source];
   if (state.ws != null) return;
   const ws = new WebSocket(`${WS_BASE}${GEX_WS_PATH[source]}`);
@@ -259,7 +520,7 @@ function connect(source: GexSource): void {
   ws.onerror = () => ws.close();
 }
 
-function disconnect(source: GexSource): void {
+function disconnect(source: GexFeedSource): void {
   const state = feeds[source];
   if (state.reconnectTimer != null) {
     window.clearTimeout(state.reconnectTimer);
@@ -275,20 +536,43 @@ function disconnect(source: GexSource): void {
   emit(source);
 }
 
+function retainFeed(source: GexFeedSource): void {
+  const state = feeds[source];
+  state.refCount += 1;
+  if (state.refCount === 1) connect(source);
+}
+
+function releaseFeed(source: GexFeedSource): void {
+  const state = feeds[source];
+  state.refCount -= 1;
+  if (state.refCount === 0) disconnect(source);
+}
+
 export function useGexConnection(source: GexSource, enabled = true): void {
   useLayoutEffect(() => {
     if (!enabled) return;
-    const state = feeds[source];
-    state.refCount += 1;
-    if (state.refCount === 1) connect(source);
-    return () => {
-      state.refCount -= 1;
-      if (state.refCount === 0) disconnect(source);
-    };
+    if (source === 'combined') {
+      for (const s of GEX_FEED_SOURCES) retainFeed(s);
+      return () => {
+        for (const s of GEX_FEED_SOURCES) releaseFeed(s);
+      };
+    }
+    retainFeed(source);
+    return () => releaseFeed(source);
   }, [source, enabled]);
 }
 
 export function useGexSnapshot(source: GexSource): GexPanelSnapshot | null {
+  if (source === 'combined') {
+    return useSyncExternalStore(
+      (cb) => {
+        combinedListeners.add(cb);
+        return () => combinedListeners.delete(cb);
+      },
+      buildCombinedPanelSnapshot,
+      buildCombinedPanelSnapshot,
+    );
+  }
   return useSyncExternalStore(
     (cb) => {
       let set = listeners.get(source);

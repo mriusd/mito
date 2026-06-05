@@ -163,6 +163,8 @@ interface Candle {
   ob?: CandleObSnapshot;
   cexOb?: CexObCandleSnapshot;
   gex?: GexAssetSnapshot;
+  gexBinance?: GexAssetSnapshot;
+  gexOkx?: GexAssetSnapshot;
   enrichment?: CandleBsEnrichment;
 }
 
@@ -343,6 +345,8 @@ export function LiveTradeChart({
     ob?: CandleObSnapshot;
     cexOb?: CexObCandleSnapshot;
     gex?: GexAssetSnapshot;
+    gexBinance?: GexAssetSnapshot;
+    gexOkx?: GexAssetSnapshot;
     ohlcv: ChartObHoverOhlcv;
     enrichment?: CandleBsEnrichment;
   } | null>(null);
@@ -407,6 +411,8 @@ export function LiveTradeChart({
         const ob = parseCandleOb(k[12]);
         const cexOb = parseCexObSnapshot(k[17]) ?? prev?.cexOb;
         const gex = parseGexAssetSnapshot(k[18]) ?? prev?.gex;
+        const gexBinance = parseGexAssetSnapshot(k[22]) ?? prev?.gexBinance;
+        const gexOkx = parseGexAssetSnapshot(k[23]) ?? prev?.gexOkx;
         const enrichment = mergeCandleBsEnrichment(parseHttpKlineEnrichment(k), prev?.enrichment);
         map.set(openTime, {
           time: openTime,
@@ -418,6 +424,8 @@ export function LiveTradeChart({
           ...(ob ? { ob } : prev?.ob ? { ob: prev.ob } : {}),
           ...(cexOb ? { cexOb } : {}),
           ...(gex ? { gex } : {}),
+          ...(gexBinance ? { gexBinance } : {}),
+          ...(gexOkx ? { gexOkx } : {}),
           ...(enrichment ? { enrichment } : {}),
         });
       }
@@ -469,6 +477,8 @@ export function LiveTradeChart({
       const ob = parseCandleOb(k.ob) ?? prev?.ob;
       const cexOb = parseCexObSnapshot(k.cex_ob) ?? prev?.cexOb;
       const gex = parseGexAssetSnapshot(k.gex) ?? prev?.gex;
+      const gexBinance = parseGexAssetSnapshot(k.gex_binance) ?? prev?.gexBinance;
+      const gexOkx = parseGexAssetSnapshot(k.gex_okx) ?? prev?.gexOkx;
       const enrichment = mergeCandleBsEnrichment(parseCandleBsEnrichment(k), prev?.enrichment);
       candleMapRef.current.set(openTime, {
         time: openTime,
@@ -480,6 +490,8 @@ export function LiveTradeChart({
         ...(ob ? { ob } : {}),
         ...(cexOb ? { cexOb } : {}),
         ...(gex ? { gex } : {}),
+        ...(gexBinance ? { gexBinance } : {}),
+        ...(gexOkx ? { gexOkx } : {}),
         ...(enrichment ? { enrichment } : {}),
       });
       pruneCandleMap(candleMapRef.current, st, et, candleMs * 2);
@@ -1199,7 +1211,9 @@ export function LiveTradeChart({
       nearest?.ob != null && (nearest.ob.bids.length > 0 || nearest.ob.asks.length > 0);
     const hasCexOb = nearest?.cexOb != null;
     const hasGex = nearest?.gex != null;
-    if (!hasPolyOb && !hasCexOb && !hasGex) {
+    const hasGexBinance = nearest?.gexBinance != null;
+    const hasGexOkx = nearest?.gexOkx != null;
+    if (!hasPolyOb && !hasCexOb && !hasGex && !hasGexBinance && !hasGexOkx) {
       setHoverOb(null);
       return;
     }
@@ -1209,6 +1223,8 @@ export function LiveTradeChart({
       ...(hasPolyOb ? { ob: nearest!.ob } : {}),
       ...(hasCexOb ? { cexOb: nearest!.cexOb } : {}),
       ...(hasGex ? { gex: nearest!.gex } : {}),
+      ...(hasGexBinance ? { gexBinance: nearest!.gexBinance } : {}),
+      ...(hasGexOkx ? { gexOkx: nearest!.gexOkx } : {}),
       ohlcv: { o: nearest!.o, h: nearest!.h, l: nearest!.l, c: nearest!.c, v: nearest!.v },
       enrichment: nearest!.enrichment,
     });
@@ -1490,7 +1506,9 @@ export function LiveTradeChart({
                         />
                       ) : null}
                       {hoverOb.cexOb ? <ChartCexObHoverGrid snapshot={hoverOb.cexOb} /> : null}
-                      {hoverOb.gex ? <ChartGexHoverGrid gex={hoverOb.gex} /> : null}
+                      {hoverOb.gex ? <ChartGexHoverGrid gex={hoverOb.gex} source="Deribit" /> : null}
+                      {hoverOb.gexBinance ? <ChartGexHoverGrid gex={hoverOb.gexBinance} source="Binance" /> : null}
+                      {hoverOb.gexOkx ? <ChartGexHoverGrid gex={hoverOb.gexOkx} source="OKX" /> : null}
                     </>
                   );
                 })()}

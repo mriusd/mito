@@ -141,7 +141,7 @@ function GexFlashText({
   );
 }
 
-function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
+function AssetGex({ snap, source }: { snap: GexAssetSnapshot; source: GexSource }) {
   const negative = snap.regime === 'negative';
   const idx = gexReferenceSpot(snap);
   const regimeRef = useRef<HTMLSpanElement>(null);
@@ -168,8 +168,15 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
             className="text-[10px] tabular-nums text-gray-400 leading-none"
             format={formatGexSpot}
           />
-          <span className="text-[8px] text-gray-600 leading-none" title="Deribit composite index (btc_usd / eth_usd)">
-            idx
+          <span
+            className="text-[8px] text-gray-600 leading-none"
+            title={
+              source === 'combined'
+                ? 'Reference index (Deribit btc_usd / eth_usd) — GEX summed across Deribit, Binance, OKX'
+                : 'Deribit composite index (btc_usd / eth_usd)'
+            }
+          >
+            {source === 'combined' ? 'ref idx' : 'idx'}
           </span>
           <span
             ref={regimeRef}
@@ -293,10 +300,12 @@ export function GexPanel({ panelId }: { panelId: string }) {
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {selected ? (
-          <AssetGex key={`${source}-${asset}`} snap={selected} />
+          <AssetGex key={`${source}-${asset}`} snap={selected} source={source} />
         ) : (
           <div className="text-[10px] text-gray-500 p-2">
-            Connecting to {GEX_SOURCE_LABELS[source]} option chain…
+            {source === 'combined'
+              ? 'Connecting to Deribit, Binance, OKX option chains…'
+              : `Connecting to ${GEX_SOURCE_LABELS[source]} option chain…`}
           </div>
         )}
       </div>

@@ -409,6 +409,24 @@ function buildCombinedPanelSnapshot(): GexPanelSnapshot | null {
   };
 }
 
+let combinedSnapCache: GexPanelSnapshot | null = null;
+let combinedSnapDigest = '';
+
+function combinedFeedDigest(): string {
+  return `${feeds.deribit.digest}:${feeds.binance.digest}:${feeds.okx.digest}`;
+}
+
+/** Stable reference for useSyncExternalStore — rebuild only when a feed digest changes. */
+function getCombinedPanelSnapshot(): GexPanelSnapshot | null {
+  const digest = combinedFeedDigest();
+  if (digest === combinedSnapDigest) {
+    return combinedSnapCache;
+  }
+  combinedSnapDigest = digest;
+  combinedSnapCache = buildCombinedPanelSnapshot();
+  return combinedSnapCache;
+}
+
 function parseAsset(raw: unknown): GexAssetSnapshot | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -569,8 +587,8 @@ export function useGexSnapshot(source: GexSource): GexPanelSnapshot | null {
         combinedListeners.add(cb);
         return () => combinedListeners.delete(cb);
       },
-      buildCombinedPanelSnapshot,
-      buildCombinedPanelSnapshot,
+      getCombinedPanelSnapshot,
+      getCombinedPanelSnapshot,
     );
   }
   return useSyncExternalStore(

@@ -1,6 +1,4 @@
-import type { GexAssetSnapshot } from '../lib/deribitGexFeed';
-import { fmtGexStrike, gexReferenceSpot } from '../lib/deribitGexFeed';
-import { GexExpirationsTable } from './GexExpirationsTable';
+import type { GexAssetSnapshot, GexExpiryBucket } from '../lib/deribitGexFeed';
 
 function fmtUsd(v: number): string {
   const abs = Math.abs(v);
@@ -11,85 +9,91 @@ function fmtUsd(v: number): string {
   return `${sign}$${abs.toFixed(0)}`;
 }
 
-function pctTo(spot: number, level: number | null | undefined): string {
-  if (level == null || !Number.isFinite(level) || spot <= 0) return '';
-  const p = ((level - spot) / spot) * 100;
-  return `${p >= 0 ? '+' : ''}${p.toFixed(1)}%`;
+function fmtHours(h: number): string {
+  if (!Number.isFinite(h) || h <= 0) return '—';
+  if (h >= 48) return `${Math.round(h / 24)}d`;
+  if (h >= 1) return `${Math.round(h)}h`;
+  return `${Math.max(1, Math.round(h * 60))}m`;
+}
+
+function topExpiries(expirations: GexExpiryBucket[]): GexExpiryBucket[] {
+  return [...expirations].sort((a, b) => a.expiryMs - b.expiryMs).slice(0, 3);
 }
 
 export function ChartGexHoverGrid({ gex, source = 'Deribit' }: { gex: GexAssetSnapshot; source?: string }) {
   const negative = gex.regime === 'negative';
-  const idx = gexReferenceSpot(gex);
-  const maxAbs = gex.strikes.reduce((m, s) => Math.max(m, Math.abs(s.gex)), 0);
+  const expiries = topExpiries(gex.expirations ?? []);
+
   return (
     <div className="mt-2 pt-2 border-t border-gray-700">
       <div className="flex items-center justify-between mb-1">
-        <div className="text-[10px] font-bold text-gray-300">{gex.asset} {source} GEX</div>
+        <div className="text-[10px] font-bold text-gray-300">
+          {gex.asset} {source} GEX
+        </div>
         <span
           className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide ${
             negative ? 'bg-red-900/60 text-red-300' : 'bg-green-900/60 text-green-300'
           }`}
         >
-          {negative ? 'NEG γ · unstable' : 'POS γ · pinned'}
+          {negative ? 'NEG γ' : 'POS γ'}
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[9px] mb-1.5">
-        <div className="flex justify-between">
+      <div className="flex justify-between gap-3 text-[9px] mb-1">
+        <div className="flex justify-between gap-2 flex-1">
           <span className="text-gray-500">Net/1%</span>
           <span className={`tabular-nums font-bold ${gex.netGex >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {fmtUsd(gex.netGex)}
           </span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-gray-500">γ-flip</span>
-          <span className="tabular-nums text-gray-200">
-            {gex.gammaFlip != null ? `${fmtGexStrike(gex.gammaFlip)} (${pctTo(idx, gex.gammaFlip)})` : '—'}
+        <div className="flex justify-between gap-2 flex-1">
+          <span className="text-gray-500">OI</span>
+          <span className="tabular-nums text-gray-300">
+            {gex.totalOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-gray-500">Put wall</span>
-          <span className="tabular-nums text-red-300/90">{fmtGexStrike(gex.putWall)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-500">Call wall</span>
-          <span className="tabular-nums text-green-300/90">{fmtGexStrike(gex.callWall)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-500">Pin</span>
-          <span className="tabular-nums text-yellow-300/90">{fmtGexStrike(gex.pinStrike)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-500">{source} idx</span>
-          <span className="tabular-nums text-gray-300">{fmtGexStrike(idx)}</span>
-        </div>
       </div>
-      <GexExpirationsTable expirations={gex.expirations ?? []} spot={idx} compact />
-      <div className="flex flex-col gap-px">
-        {gex.strikes.map((b) => {
-          const frac = maxAbs > 0 ? Math.min(1, Math.abs(b.gex) / maxAbs) : 0;
-          const positive = b.gex >= 0;
-          const nearSpot = idx > 0 && Math.abs(b.strike - idx) / idx < 0.012;
-          return (
-            <div key={b.strike} className="flex items-center gap-1 h-[12px]">
-              <div className={`w-[40px] shrink-0 text-right text-[8px] tabular-nums ${nearSpot ? 'text-yellow-300 font-bold' : 'text-gray-400'}`}>
-                {fmtGexStrike(b.strike)}
-              </div>
-              <div className="relative flex-1 h-[9px] flex items-center">
-                <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gray-700" />
-                <div className="absolute left-1/2 right-0 flex justify-start">
-                  {positive ? <div className="h-[8px] bg-green-500/70 rounded-sm" style={{ width: `${frac * 100}%` }} /> : null}
-                </div>
-                <div className="absolute left-0 right-1/2 flex justify-end">
-                  {!positive ? <div className="h-[8px] bg-red-500/70 rounded-sm" style={{ width: `${frac * 100}%` }} /> : null}
-                </div>
-              </div>
-              <div className={`w-[44px] shrink-0 text-[8px] tabular-nums text-right ${positive ? 'text-green-400/90' : 'text-red-400/90'}`}>
-                {fmtUsd(b.gex)}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {expiries.length > 0 ? (
+        <div>
+          <div className="text-[8px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Top expiries</div>
+          <table className="w-full border-collapse text-[8px] tabular-nums">
+            <thead>
+              <tr className="text-gray-500 border-b border-gray-800">
+                <th className="text-left py-0.5 pr-1 font-medium">Exp</th>
+                <th className="text-left py-0.5 pr-1 font-medium">T−</th>
+                <th className="text-right py-0.5 px-0.5 font-medium">Net/1%</th>
+                <th className="text-center py-0.5 px-0.5 font-medium">γ</th>
+                <th className="text-right py-0.5 pl-0.5 font-medium">OI</th>
+              </tr>
+            </thead>
+            <tbody>
+              {expiries.map((row) => {
+                const neg = row.regime === 'negative';
+                return (
+                  <tr key={row.expiryMs} className="border-b border-gray-800/60">
+                    <td className="py-0.5 pr-1 text-gray-300 font-semibold whitespace-nowrap">{row.label}</td>
+                    <td className="py-0.5 pr-1 text-cyan-300/90 whitespace-nowrap">{fmtHours(row.hoursToExp)}</td>
+                    <td className={`py-0.5 px-0.5 text-right font-bold ${neg ? 'text-red-400' : 'text-green-400'}`}>
+                      {fmtUsd(row.netGex)}
+                    </td>
+                    <td className="py-0.5 px-0.5 text-center">
+                      <span
+                        className={`inline-block min-w-[1.1em] px-0.5 rounded text-[7px] font-bold ${
+                          neg ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'
+                        }`}
+                      >
+                        {neg ? 'N' : 'P'}
+                      </span>
+                    </td>
+                    <td className="py-0.5 pl-0.5 text-right text-gray-300">
+                      {row.totalOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
     </div>
   );
 }

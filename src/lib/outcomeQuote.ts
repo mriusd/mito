@@ -43,17 +43,28 @@ export function noOutcomeBidAsk(
   yesTokenId: string | undefined,
   noTokenId: string | undefined,
   lookup: Record<string, Market>,
-  gammaYes?: { bestBid?: number; bestAsk?: number }
+  gammaYes?: { bestBid?: number; bestAsk?: number },
+  opts?: { liveOnly?: boolean },
 ): { bestBid?: number; bestAsk?: number } {
   const yesLive = yesTokenId ? lookup[yesTokenId] : undefined;
-  const yesBid = pickSide(yesLive?.bestBid, gammaYes?.bestBid);
-  const yesAsk = pickSide(yesLive?.bestAsk, gammaYes?.bestAsk);
+  const liveOnly = !!(opts?.liveOnly && yesLive);
+  const yesBid = liveOnly
+    ? pickSideLiveOnly(yesLive?.bestBid)
+    : pickSide(yesLive?.bestBid, gammaYes?.bestBid);
+  const yesAsk = liveOnly
+    ? pickSideLiveOnly(yesLive?.bestAsk)
+    : pickSide(yesLive?.bestAsk, gammaYes?.bestAsk);
   const impliedNoBid = hasQuoteSide(yesAsk) ? 1 - yesAsk! : undefined;
   const impliedNoAsk = hasQuoteSide(yesBid) ? 1 - yesBid! : undefined;
 
   const noLive = noTokenId ? lookup[noTokenId] : undefined;
-  const noBid = pickSide(noLive?.bestBid, impliedNoBid);
-  const noAsk = pickSide(noLive?.bestAsk, impliedNoAsk);
+  const noLiveOnly = !!(opts?.liveOnly && noLive);
+  const noBid = noLiveOnly
+    ? pickSideLiveOnly(noLive?.bestBid)
+    : pickSide(noLive?.bestBid, impliedNoBid);
+  const noAsk = noLiveOnly
+    ? pickSideLiveOnly(noLive?.bestAsk)
+    : pickSide(noLive?.bestAsk, impliedNoAsk);
   return { bestBid: noBid, bestAsk: noAsk };
 }
 
@@ -71,12 +82,20 @@ export function gammaImpliedNoBestBid(gammaYesBook: { bestAsk?: number }): { bes
 export function outcomeBestBidProb(
   tokenId: string | undefined,
   lookup: Record<string, Market>,
-  gammaFallback?: { bestBid?: number; bestAsk?: number }
+  gammaFallback?: { bestBid?: number; bestAsk?: number },
+  opts?: { liveOnly?: boolean },
 ): number | null {
   const live = tokenId ? lookup[tokenId] : null;
-  const bb = pickSide(live?.bestBid, gammaFallback?.bestBid);
+  const bb =
+    opts?.liveOnly && live
+      ? pickSideLiveOnly(live.bestBid)
+      : pickSide(live?.bestBid, gammaFallback?.bestBid);
   if (hasQuoteSide(bb)) return bb!;
   return null;
+}
+
+function pickSideLiveOnly(liveSide: number | undefined): number | undefined {
+  return hasQuoteSide(liveSide) ? liveSide : undefined;
 }
 
 /** TPO exit: best bid only — 0 when no bids (never ask/mid). */

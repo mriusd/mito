@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import {
   GEX_ASSETS,
-  useDeribitGexConnection,
-  useDeribitGexSnapshot,
+  GEX_SOURCES,
+  GEX_SOURCE_LABELS,
+  useGexConnection,
+  useGexSnapshot,
   gexReferenceSpot,
   type GexAsset,
   type GexAssetSnapshot,
+  type GexSource,
   fmtGexStrike,
 } from '../../lib/deribitGexFeed';
 import { GexExpirationsTable } from '../GexExpirationsTable';
@@ -14,6 +17,11 @@ import { GexPinChart } from '../GexPinChart';
 function readStoredGexAsset(panelId: string): GexAsset {
   const saved = localStorage.getItem(`polybot-gex-asset-${panelId}`);
   return GEX_ASSETS.includes(saved as GexAsset) ? (saved as GexAsset) : 'BTC';
+}
+
+function readStoredGexSource(panelId: string): GexSource {
+  const saved = localStorage.getItem(`polybot-gex-source-${panelId}`);
+  return GEX_SOURCES.includes(saved as GexSource) ? (saved as GexSource) : 'deribit';
 }
 
 function fmtUsd(v: number): string {
@@ -239,17 +247,33 @@ function AssetGex({ snap }: { snap: GexAssetSnapshot }) {
 }
 
 export function GexPanel({ panelId }: { panelId: string }) {
-  useDeribitGexConnection(true);
-  const snap = useDeribitGexSnapshot();
+  const [source, setSource] = useState<GexSource>(() => readStoredGexSource(panelId));
   const [asset, setAsset] = useState<GexAsset>(() => readStoredGexAsset(panelId));
+  useGexConnection(source, true);
+  const snap = useGexSnapshot(source);
 
   const selected = snap?.assets[asset] ?? null;
 
   return (
     <div className="panel-wrapper flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-gray-800/50 p-3">
       <div className="panel-header mb-1.5 flex items-center justify-between gap-2 shrink-0 cursor-grab">
-        <div className="text-[11px] font-bold text-yellow-400">Dealer GEX (Deribit)</div>
-        <div className="no-drag" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="text-[11px] font-bold text-yellow-400">Dealer GEX ({GEX_SOURCE_LABELS[source]})</div>
+        <div className="no-drag flex items-center gap-1" onMouseDown={(e) => e.stopPropagation()}>
+          <select
+            className="rounded border border-gray-600 bg-gray-900 px-1.5 py-0.5 text-[10px] font-semibold text-gray-200 focus:outline-none"
+            value={source}
+            onChange={(e) => {
+              const next = e.target.value as GexSource;
+              setSource(next);
+              localStorage.setItem(`polybot-gex-source-${panelId}`, next);
+            }}
+          >
+            {GEX_SOURCES.map((s) => (
+              <option key={s} value={s}>
+                {GEX_SOURCE_LABELS[s]}
+              </option>
+            ))}
+          </select>
           <select
             className="rounded border border-gray-600 bg-gray-900 px-1.5 py-0.5 text-[10px] font-semibold text-gray-200 focus:outline-none"
             value={asset}
@@ -269,9 +293,11 @@ export function GexPanel({ panelId }: { panelId: string }) {
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {selected ? (
-          <AssetGex key={asset} snap={selected} />
+          <AssetGex key={`${source}-${asset}`} snap={selected} />
         ) : (
-          <div className="text-[10px] text-gray-500 p-2">Connecting to Deribit option chain…</div>
+          <div className="text-[10px] text-gray-500 p-2">
+            Connecting to {GEX_SOURCE_LABELS[source]} option chain…
+          </div>
         )}
       </div>
     </div>

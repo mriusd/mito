@@ -4,6 +4,27 @@ import { WS_BASE } from './env';
 export const GEX_ASSETS = ['BTC', 'ETH'] as const;
 export type GexAsset = (typeof GEX_ASSETS)[number];
 
+export const GEX_SOURCES = ['deribit', 'binance', 'okx'] as const;
+export type GexSource = (typeof GEX_SOURCES)[number];
+
+export const GEX_SOURCE_LABELS: Record<GexSource, string> = {
+  deribit: 'Deribit',
+  binance: 'Binance',
+  okx: 'OKX',
+};
+
+const GEX_WS_PATH: Record<GexSource, string> = {
+  deribit: '/ws/deribit-gex',
+  binance: '/ws/binance-gex',
+  okx: '/ws/okx-gex',
+};
+
+const GEX_MSG_TYPE: Record<GexSource, string> = {
+  deribit: 'deribitGex',
+  binance: 'binanceGex',
+  okx: 'okxGex',
+};
+
 export type GexStrikeBucket = {
   strike: number;
   gex: number;
@@ -71,11 +92,20 @@ type FeedState = {
   refCount: number;
 };
 
-const state: FeedState = { snap: null, digest: 0, ws: null, reconnectTimer: null, refCount: 0 };
-const listeners = new Set<() => void>();
+function makeFeedState(): FeedState {
+  return { snap: null, digest: 0, ws: null, reconnectTimer: null, refCount: 0 };
+}
 
-function emit(): void {
-  for (const fn of listeners) fn();
+const feeds: Record<GexSource, FeedState> = {
+  deribit: makeFeedState(),
+  binance: makeFeedState(),
+  okx: makeFeedState(),
+};
+
+const listeners = new Map<GexSource, Set<() => void>>();
+
+function emit(source: GexSource): void {
+  for (const fn of listeners.get(source) ?? []) fn();
 }
 
 function num(x: unknown): number | null {
@@ -191,9 +221,10 @@ function parseSnapshot(raw: unknown): GexPanelSnapshot | null {
   return { assets, updatedAt: num(r.updatedAt) ?? Date.now() };
 }
 
-function connect(): void {
+function connect(source: GexSource): void {
+  const state = feeds[source];
   if (state.ws != null) return;
-  const ws = new WebSocket(`${WS_BASE}/ws/deribit-gex`);
+  const ws = new WebSocket(`${WS_BASE}${GEX_WS_PATH[source]}`);
   state.ws = ws;
 
   ws.onopen = () => {
@@ -210,25 +241,26 @@ function connect(): void {
       return;
     }
     const msg = payload as { type?: unknown; data?: unknown };
-    if (msg.type !== 'deribitGex') return;
+    if (msg.type !== GEX_MSG_TYPE[source]) return;
     const snap = parseSnapshot(msg.data);
     if (!snap) return;
     state.snap = snap;
     state.digest += 1;
-    emit();
+    emit(source);
   };
   ws.onclose = () => {
     state.ws = null;
     if (state.refCount <= 0 || state.reconnectTimer != null) return;
     state.reconnectTimer = window.setTimeout(() => {
       state.reconnectTimer = null;
-      if (state.refCount > 0) connect();
+      if (state.refCount > 0) connect(source);
     }, 2000);
   };
   ws.onerror = () => ws.close();
 }
 
-function disconnect(): void {
+function disconnect(source: GexSource): void {
+  const state = feeds[source];
   if (state.reconnectTimer != null) {
     window.clearTimeout(state.reconnectTimer);
     state.reconnectTimer = null;
@@ -240,28 +272,42 @@ function disconnect(): void {
   }
   state.snap = null;
   state.digest += 1;
-  emit();
+  emit(source);
+}
+
+export function useGexConnection(source: GexSource, enabled = true): void {
+  useLayoutEffect(() => {
+    if (!enabled) return;
+    const state = feeds[source];
+    state.refCount += 1;
+    if (state.refCount === 1) connect(source);
+    return () => {
+      state.refCount -= 1;
+      if (state.refCount === 0) disconnect(source);
+    };
+  }, [source, enabled]);
+}
+
+export function useGexSnapshot(source: GexSource): GexPanelSnapshot | null {
+  return useSyncExternalStore(
+    (cb) => {
+      let set = listeners.get(source);
+      if (!set) {
+        set = new Set();
+        listeners.set(source, set);
+      }
+      set.add(cb);
+      return () => set!.delete(cb);
+    },
+    () => feeds[source].snap,
+    () => feeds[source].snap,
+  );
 }
 
 export function useDeribitGexConnection(enabled = true): void {
-  useLayoutEffect(() => {
-    if (!enabled) return;
-    state.refCount += 1;
-    if (state.refCount === 1) connect();
-    return () => {
-      state.refCount -= 1;
-      if (state.refCount === 0) disconnect();
-    };
-  }, [enabled]);
+  useGexConnection('deribit', enabled);
 }
 
 export function useDeribitGexSnapshot(): GexPanelSnapshot | null {
-  return useSyncExternalStore(
-    (cb) => {
-      listeners.add(cb);
-      return () => listeners.delete(cb);
-    },
-    () => state.snap,
-    () => state.snap,
-  );
+  return useGexSnapshot('deribit');
 }

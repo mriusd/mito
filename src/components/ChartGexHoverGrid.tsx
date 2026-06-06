@@ -1,4 +1,5 @@
 import type { GexAssetSnapshot, GexExpiryBucket } from '../lib/deribitGexFeed';
+import { gexPinStrikesDown, gexPinStrikesUp } from '../lib/deribitGexFeed';
 
 function fmtUsd(v: number): string {
   const abs = Math.abs(v);
@@ -71,9 +72,9 @@ export function ChartGexHoverGrid({ gex, source = 'Deribit' }: { gex: GexAssetSn
                 const showPinGex = idx === 0;
                 const pinRows: { gex: number | null; dim?: boolean }[] = showPinGex
                   ? [
-                      ...(row.pinStrikeDownGex != null ? [{ gex: row.pinStrikeDownGex, dim: true }] : []),
+                      ...gexPinStrikesDown(row).map((p) => ({ gex: p.gex, dim: true })),
                       { gex: row.netGex },
-                      ...(row.pinStrikeUpGex != null ? [{ gex: row.pinStrikeUpGex, dim: true }] : []),
+                      ...gexPinStrikesUp(row).map((p) => ({ gex: p.gex, dim: true })),
                     ]
                   : [{ gex: row.netGex }];
                 return pinRows.map((pinRow, pinIdx) => {

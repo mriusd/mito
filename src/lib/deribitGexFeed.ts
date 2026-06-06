@@ -45,6 +45,10 @@ export type GexProfilePoint = {
   gex: number;
 };
 
+export const GEX_PIN_LADDER_STEPS = 3;
+
+export type GexPinLevel = { strike: number; gex: number };
+
 export type GexExpiryBucket = {
   expiryMs: number;
   label: string;
@@ -57,6 +61,8 @@ export type GexExpiryBucket = {
   contracts: number;
   gammaFlip?: number | null;
   pinStrike?: number | null;
+  pinStrikesDown?: GexPinLevel[];
+  pinStrikesUp?: GexPinLevel[];
   pinStrikeDown?: number | null;
   pinStrikeUp?: number | null;
   pinStrikeDownGex?: number | null;
@@ -133,6 +139,57 @@ function parseStrike(raw: unknown): GexStrikeBucket | null {
   return { strike, gex, callOi: num(r.callOi) ?? 0, putOi: num(r.putOi) ?? 0 };
 }
 
+function parsePinLevel(raw: unknown): GexPinLevel | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const strike = num(r.strike);
+  const gex = num(r.gex);
+  if (strike == null || gex == null) return null;
+  return { strike, gex };
+}
+
+function parsePinLevels(raw: unknown): GexPinLevel[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = raw.map(parsePinLevel).filter((x): x is GexPinLevel => x != null);
+  return out.length > 0 ? out : undefined;
+}
+
+export function gexPinStrikesDown(row: GexExpiryBucket): GexPinLevel[] {
+  if (row.pinStrikesDown?.length) return row.pinStrikesDown;
+  if (row.pinStrikeDown != null) {
+    return [{ strike: row.pinStrikeDown, gex: row.pinStrikeDownGex ?? 0 }];
+  }
+  return [];
+}
+
+export function gexPinStrikesUp(row: GexExpiryBucket): GexPinLevel[] {
+  if (row.pinStrikesUp?.length) return row.pinStrikesUp;
+  if (row.pinStrikeUp != null) {
+    return [{ strike: row.pinStrikeUp, gex: row.pinStrikeUpGex ?? 0 }];
+  }
+  return [];
+}
+
+export function mergePinLadder(
+  lists: GexPinLevel[][],
+  pin: number | null | undefined,
+  below: boolean,
+): GexPinLevel[] {
+  if (pin == null || !Number.isFinite(pin)) return [];
+  const byStrike = new Map<number, number>();
+  for (const list of lists) {
+    for (const p of list) {
+      byStrike.set(p.strike, (byStrike.get(p.strike) ?? 0) + p.gex);
+    }
+  }
+  let levels = [...byStrike.entries()].map(([strike, gex]) => ({ strike, gex }));
+  levels = levels.filter((p) => (below ? p.strike < pin : p.strike > pin));
+  levels.sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex));
+  levels = levels.slice(0, GEX_PIN_LADDER_STEPS);
+  levels.sort((a, b) => (below ? b.strike - a.strike : a.strike - b.strike));
+  return levels;
+}
+
 function parseExpiry(raw: unknown): GexExpiryBucket | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -151,6 +208,8 @@ function parseExpiry(raw: unknown): GexExpiryBucket | null {
     contracts: num(r.contracts) ?? 0,
     gammaFlip: num(r.gammaFlip),
     pinStrike: num(r.pinStrike),
+    pinStrikesDown: parsePinLevels(r.pinStrikesDown),
+    pinStrikesUp: parsePinLevels(r.pinStrikesUp),
     pinStrikeDown: num(r.pinStrikeDown),
     pinStrikeUp: num(r.pinStrikeUp),
     pinStrikeDownGex: num(r.pinStrikeDownGex),
@@ -305,12 +364,8 @@ export function combineGexAssetSnapshots(
     putOi: number;
     contracts: number;
     pinWeighted: { strike: number; oi: number }[];
-    pinDownWeighted: { strike: number; oi: number }[];
-    pinUpWeighted: { strike: number; oi: number }[];
-    pinDownGexSum: number;
-    pinUpGexSum: number;
-    pinDownGexHas: boolean;
-    pinUpGexHas: boolean;
+    pinDownLadders: GexPinLevel[][];
+    pinUpLadders: GexPinLevel[][];
     gammaFlipWeighted: { strike: number; oi: number }[];
   };
   const byLabel = new Map<string, ExpAcc>();
@@ -328,12 +383,8 @@ export function combineGexAssetSnapshots(
           putOi: 0,
           contracts: 0,
           pinWeighted: [],
-          pinDownWeighted: [],
-          pinUpWeighted: [],
-          pinDownGexSum: 0,
-          pinUpGexSum: 0,
-          pinDownGexHas: false,
-          pinUpGexHas: false,
+          pinDownLadders: [],
+          pinUpLadders: [],
           gammaFlipWeighted: [],
         };
         byLabel.set(exp.label, acc);
@@ -347,38 +398,37 @@ export function combineGexAssetSnapshots(
       acc.hoursToExp = Math.min(acc.hoursToExp, exp.hoursToExp);
       const w = exp.totalOi > 0 ? exp.totalOi : 1;
       if (exp.pinStrike != null) acc.pinWeighted.push({ strike: exp.pinStrike, oi: w });
-      if (exp.pinStrikeDown != null) acc.pinDownWeighted.push({ strike: exp.pinStrikeDown, oi: w });
-      if (exp.pinStrikeUp != null) acc.pinUpWeighted.push({ strike: exp.pinStrikeUp, oi: w });
-      if (exp.pinStrikeDownGex != null) {
-        acc.pinDownGexSum += exp.pinStrikeDownGex;
-        acc.pinDownGexHas = true;
-      }
-      if (exp.pinStrikeUpGex != null) {
-        acc.pinUpGexSum += exp.pinStrikeUpGex;
-        acc.pinUpGexHas = true;
-      }
+      acc.pinDownLadders.push(gexPinStrikesDown(exp));
+      acc.pinUpLadders.push(gexPinStrikesUp(exp));
       if (exp.gammaFlip != null) acc.gammaFlipWeighted.push({ strike: exp.gammaFlip, oi: w });
     }
   }
   const expirations = [...byLabel.values()]
     .sort((a, b) => a.expiryMs - b.expiryMs)
-    .map((acc) => ({
-      expiryMs: acc.expiryMs,
-      label: acc.label,
-      hoursToExp: acc.hoursToExp,
-      netGex: acc.netGex,
-      regime: acc.netGex >= 0 ? ('positive' as const) : ('negative' as const),
-      totalOi: acc.totalOi,
-      callOi: acc.callOi,
-      putOi: acc.putOi,
-      contracts: acc.contracts,
-      gammaFlip: oiWeightedStrike(acc.gammaFlipWeighted),
-      pinStrike: oiWeightedStrike(acc.pinWeighted),
-      pinStrikeDown: oiWeightedStrike(acc.pinDownWeighted),
-      pinStrikeUp: oiWeightedStrike(acc.pinUpWeighted),
-      pinStrikeDownGex: acc.pinDownGexHas ? acc.pinDownGexSum : null,
-      pinStrikeUpGex: acc.pinUpGexHas ? acc.pinUpGexSum : null,
-    }));
+    .map((acc) => {
+      const pinStrike = oiWeightedStrike(acc.pinWeighted);
+      const pinStrikesDown = mergePinLadder(acc.pinDownLadders, pinStrike, true);
+      const pinStrikesUp = mergePinLadder(acc.pinUpLadders, pinStrike, false);
+      return {
+        expiryMs: acc.expiryMs,
+        label: acc.label,
+        hoursToExp: acc.hoursToExp,
+        netGex: acc.netGex,
+        regime: acc.netGex >= 0 ? ('positive' as const) : ('negative' as const),
+        totalOi: acc.totalOi,
+        callOi: acc.callOi,
+        putOi: acc.putOi,
+        contracts: acc.contracts,
+        gammaFlip: oiWeightedStrike(acc.gammaFlipWeighted),
+        pinStrike,
+        pinStrikesDown: pinStrikesDown.length > 0 ? pinStrikesDown : undefined,
+        pinStrikesUp: pinStrikesUp.length > 0 ? pinStrikesUp : undefined,
+        pinStrikeDown: pinStrikesDown[0]?.strike ?? null,
+        pinStrikeUp: pinStrikesUp[0]?.strike ?? null,
+        pinStrikeDownGex: pinStrikesDown[0]?.gex ?? null,
+        pinStrikeUpGex: pinStrikesUp[0]?.gex ?? null,
+      };
+    });
 
   const netGex = snaps.reduce((s, x) => s + x.netGex, 0);
   const profile = buildCombinedProfile(snaps, refSpot);

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { GexExpiryBucket } from '../lib/deribitGexFeed';
 import { fmtGexStrike, gexPinStrikesDown, gexPinStrikesUp } from '../lib/deribitGexFeed';
 
@@ -106,6 +107,47 @@ function pinRowKey(row: GexExpiryBucket, ref: PinRowRef): string {
   return `${row.expiryMs}-${ref.kind}-${ref.idx}`;
 }
 
+function hasPinLadder(row: GexExpiryBucket): boolean {
+  return gexPinStrikesDown(row).length > 0 || gexPinStrikesUp(row).length > 0;
+}
+
+function ExpiryLabelCell({
+  label,
+  expandable,
+  expanded,
+  onToggle,
+}: {
+  label: string;
+  expandable?: boolean;
+  expanded?: boolean;
+  onToggle?: () => void;
+}) {
+  return (
+    <span className="inline-flex items-center gap-0.5 min-w-0">
+      {expandable ? (
+        <button
+          type="button"
+          className="no-drag shrink-0 p-0 text-gray-500 hover:text-gray-300"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle?.();
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Collapse pin ladder' : 'Expand pin ladder'}
+        >
+          {expanded ? (
+            <ChevronDown size={10} strokeWidth={2} aria-hidden />
+          ) : (
+            <ChevronRight size={10} strokeWidth={2} aria-hidden />
+          )}
+        </button>
+      ) : null}
+      <span>{label}</span>
+    </span>
+  );
+}
+
 function fmtCountdown(expiryMs: number, nowMs: number): string {
   const ms = expiryMs - nowMs;
   if (ms <= 0) return '0s';
@@ -126,6 +168,7 @@ type GexExpirationsTableProps = {
 
 export function GexExpirationsTable({ expirations, spot, compact = false }: GexExpirationsTableProps) {
   const [now, setNow] = useState(() => Date.now());
+  const [pinLadderExpanded, setPinLadderExpanded] = useState(false);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -176,7 +219,8 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
               const neg = row.regime === 'negative';
               const urgent = row.expiryMs - now <= 60 * 60 * 1000;
               const pinFlipGap = fmtPinFlipGap(row.pinStrike, row.gammaFlip);
-              const splitNearestPins = !compact && index === 0 && nearestPinRows(row).length > 1;
+              const canPinLadder = !compact && index === 0 && hasPinLadder(row);
+              const splitNearestPins = canPinLadder && pinLadderExpanded;
 
               if (splitNearestPins) {
                 const pinKinds = nearestPinRows(row);
@@ -186,18 +230,21 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                   const pinGex = pinGexForRef(row, ref);
                   const pinGexNeg = pinGex != null && pinGex < 0;
                   const dim = ref.kind !== 'main';
+                  const dimCell = dim ? 'opacity-50' : '';
                   return (
-                    <tr
-                      key={pinRowKey(row, ref)}
-                      className={`border-b border-gray-800/60 ${dim ? 'opacity-50' : ''}`}
-                    >
+                    <tr key={pinRowKey(row, ref)} className="border-b border-gray-800/60">
                       {pinIdx === 0 ? (
                         <>
                           <td
                             rowSpan={rowSpan}
                             className="py-0.5 pr-1 text-gray-300 whitespace-nowrap font-semibold align-top"
                           >
-                            {row.label}
+                            <ExpiryLabelCell
+                              label={row.label}
+                              expandable={canPinLadder}
+                              expanded={pinLadderExpanded}
+                              onToggle={() => setPinLadderExpanded((v) => !v)}
+                            />
                           </td>
                           <td
                             rowSpan={rowSpan}
@@ -210,13 +257,13 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                         </>
                       ) : null}
                       <td
-                        className={`py-0.5 px-0.5 text-right font-bold ${
+                        className={`py-0.5 px-0.5 text-right font-bold ${dimCell} ${
                           pinGex == null ? 'text-gray-500' : pinGexNeg ? 'text-red-400' : 'text-green-400'
                         }`}
                       >
                         {pinGex != null ? fmtUsd(pinGex) : '—'}
                       </td>
-                      <td className="py-0.5 px-0.5 text-center">
+                      <td className={`py-0.5 px-0.5 text-center ${dimCell}`}>
                         <span
                           className={`inline-block min-w-[1.1em] px-0.5 rounded text-[7px] font-bold ${
                             neg ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'
@@ -231,7 +278,7 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                         </td>
                       ) : null}
                       <td
-                        className="py-0.5 px-0.5 text-right text-yellow-300/90 whitespace-nowrap"
+                        className={`py-0.5 px-0.5 text-right text-yellow-300/90 whitespace-nowrap ${dimCell}`}
                         title={ref.kind === 'down' ? 'Pin down' : ref.kind === 'up' ? 'Pin up' : 'Pin'}
                       >
                         <span className="inline-flex items-center justify-end gap-0.5 max-w-full">
@@ -267,7 +314,14 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
 
               return (
                 <tr key={row.expiryMs} className="border-b border-gray-800/60">
-                  <td className="py-0.5 pr-1 text-gray-300 whitespace-nowrap font-semibold">{row.label}</td>
+                  <td className="py-0.5 pr-1 text-gray-300 whitespace-nowrap font-semibold">
+                    <ExpiryLabelCell
+                      label={row.label}
+                      expandable={canPinLadder}
+                      expanded={pinLadderExpanded}
+                      onToggle={() => setPinLadderExpanded((v) => !v)}
+                    />
+                  </td>
                   <td
                     className={`py-0.5 pr-0.5 whitespace-nowrap font-bold tracking-tight ${
                       urgent ? 'text-amber-300' : 'text-cyan-300/90'

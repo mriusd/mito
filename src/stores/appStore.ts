@@ -10,6 +10,7 @@ import {
   tradesEqual,
   upOrDownMarketsEqual,
 } from '../lib/marketDataDedupe';
+import { GRID_WIDTH_SUBDIV } from '../lib/defaultLayouts';
 
 interface PriceData {
   price: number;
@@ -184,16 +185,46 @@ declare namespace ReactGridLayout {
 export type PersistedGridLayouts = ReactGridLayout.Layouts;
 
 // Bump this version to force-reset all users' saved layouts to fresh defaults
-const LAYOUT_VERSION = 8;
+const LAYOUT_VERSION = 9;
+
+function scaleSavedLayoutWidths(
+  layouts: Record<string, { x?: number; w?: number }[]>,
+  factor: number,
+): void {
+  for (const items of Object.values(layouts)) {
+    if (!Array.isArray(items)) continue;
+    for (const item of items) {
+      if (typeof item.x === 'number') item.x = Math.round(item.x * factor);
+      if (typeof item.w === 'number') item.w = Math.round(item.w * factor);
+    }
+  }
+}
 
 // Run version check once before any load functions
 (function checkLayoutVersion() {
-  const savedVersion = parseInt(localStorage.getItem('polybot-layout-version') || '0');
-  if (savedVersion < LAYOUT_VERSION) {
+  const savedVersion = parseInt(localStorage.getItem('polybot-layout-version') || '0', 10);
+  if (savedVersion >= LAYOUT_VERSION) return;
+
+  if (savedVersion === 8) {
+    try {
+      const raw = localStorage.getItem('polybot-react-layouts');
+      if (raw) {
+        const layouts = JSON.parse(raw) as Record<string, { x?: number; w?: number }[]>;
+        scaleSavedLayoutWidths(layouts, GRID_WIDTH_SUBDIV);
+        localStorage.setItem('polybot-react-layouts', JSON.stringify(layouts));
+      }
+    } catch {
+      /* ignore */
+    }
+    localStorage.setItem('polybot-layout-version', String(LAYOUT_VERSION));
+    return;
+  }
+
+  if (savedVersion > 0) {
     localStorage.removeItem('polybot-react-panels');
     localStorage.removeItem('polybot-react-layouts');
-    localStorage.setItem('polybot-layout-version', String(LAYOUT_VERSION));
   }
+  localStorage.setItem('polybot-layout-version', String(LAYOUT_VERSION));
 })();
 
 const DEFAULT_PANELS: PanelConfig[] = [

@@ -2,13 +2,15 @@
  * Default panel layouts for each screen-size breakpoint.
  *
  * Breakpoints (synced with Tailwind screens):
- *   2xl ≥ 2400px  — 36 columns
- *   xl  ≥ 1600px  — 28 columns
- *   lg  ≥ 1280px  — 24 columns
- *   md  ≥ 1024px  — 20 columns
- *   sm  ≥  768px  — 12 columns
- *   xs  ≥  640px  —  8 columns
- *   xxs <  640px  —  4 columns
+ *   2xl ≥ 2400px  — 72 columns
+ *   xl  ≥ 1600px  — 56 columns
+ *   lg  ≥ 1280px  — 48 columns
+ *   md  ≥ 1024px  — 40 columns
+ *   sm  ≥  768px  — 24 columns
+ *   xs  ≥  640px  — 16 columns
+ *   xxs <  640px  —  8 columns
+ *
+ * (2× width subdiv for finer horizontal resize steps.)
  *
  * Values use PERCENTAGES:
  *   x: % of total columns for horizontal offset
@@ -155,10 +157,17 @@ export const HEIGHT_VARIANTS: Record<string, { minHeight: number; tallKey: strin
   '2xl': { minHeight: 1500, tallKey: '2xl-tall' },
 };
 
-/** Column counts per layout breakpoint base key (must match react-grid `cols`). */
-export const GRID_COLS: Record<string, number> = {
+/** Finer horizontal resize steps: multiply logical column count for react-grid `cols`. */
+export const GRID_WIDTH_SUBDIV = 2;
+
+const BASE_GRID_COLS: Record<string, number> = {
   '2xl': 36, xl: 28, lg: 24, md: 20, sm: 12, xs: 8, xxs: 4,
 };
+
+/** Column counts per layout breakpoint base key (must match react-grid `cols`). */
+export const GRID_COLS: Record<string, number> = Object.fromEntries(
+  Object.entries(BASE_GRID_COLS).map(([k, v]) => [k, v * GRID_WIDTH_SUBDIV]),
+);
 
 const TOTAL_ROWS_ESTIMATE = 100;
 

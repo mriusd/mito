@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { GexExpiryBucket } from '../lib/deribitGexFeed';
-import { fmtGexStrike, gexPinStrikesDown, gexPinStrikesUp } from '../lib/deribitGexFeed';
+import {
+  fmtGexStrike,
+  fmtPinProb,
+  gexPinStrikesDown,
+  gexPinStrikesUp,
+  pinProbabilities,
+  pinRowKey,
+  type PinRowRef,
+} from '../lib/deribitGexFeed';
 
 const H72_MS = 72 * 60 * 60 * 1000;
 
@@ -78,8 +86,6 @@ function PinBiasPill({ spot, pin }: { spot?: number; pin: number | null | undefi
   );
 }
 
-type PinRowRef = { kind: 'main' } | { kind: 'down'; idx: number } | { kind: 'up'; idx: number };
-
 function nearestPinRows(row: GexExpiryBucket): PinRowRef[] {
   const downs = gexPinStrikesDown(row);
   const ups = gexPinStrikesUp(row);
@@ -100,11 +106,6 @@ function pinGexForRef(row: GexExpiryBucket, ref: PinRowRef): number | null {
   if (ref.kind === 'down') return gexPinStrikesDown(row)[ref.idx]?.gex ?? null;
   if (ref.kind === 'up') return gexPinStrikesUp(row)[ref.idx]?.gex ?? null;
   return row.netGex;
-}
-
-function pinRowKey(row: GexExpiryBucket, ref: PinRowRef): string {
-  if (ref.kind === 'main') return `${row.expiryMs}-main`;
-  return `${row.expiryMs}-${ref.kind}-${ref.idx}`;
 }
 
 function hasPinLadder(row: GexExpiryBucket): boolean {
@@ -221,11 +222,13 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
               const pinFlipGap = fmtPinFlipGap(row.pinStrike, row.gammaFlip);
               const canPinLadder = !compact && index === 0 && hasPinLadder(row);
               const splitNearestPins = canPinLadder && pinLadderExpanded;
+              const pinProbs = canPinLadder ? pinProbabilities(row) : null;
 
               if (splitNearestPins) {
                 const pinKinds = nearestPinRows(row);
                 const rowSpan = pinKinds.length;
                 return pinKinds.map((ref, pinIdx) => {
+                  const pinProb = pinProbs?.get(pinRowKey(row, ref));
                   const pin = pinForRef(row, ref);
                   const pinGex = pinGexForRef(row, ref);
                   const pinGexNeg = pinGex != null && pinGex < 0;
@@ -286,12 +289,21 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                           <span className={`tabular-nums ${ref.kind === 'main' ? 'font-semibold' : ''}`}>
                             {fmtGexStrike(pin)}
                           </span>
+                          {pinProb != null ? (
+                            <span
+                              className="text-gray-500 text-[7px] tabular-nums"
+                              title="P(main pin) ≈ |GEX at strike| / Σ|GEX| on ladder"
+                            >
+                              {fmtPinProb(pinProb)}
+                            </span>
+                          ) : null}
                         </span>
                       </td>
                       {pinIdx === 0 ? (
                         <>
                           <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-right text-gray-400 whitespace-nowrap align-top">
-                            {row.callOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}/
+                            {row.callOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            {'\\'}
                             {row.putOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </td>
                           <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-right text-gray-300 align-top">
@@ -311,6 +323,8 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                   );
                 });
               }
+
+              const mainPinProb = pinProbs?.get(pinRowKey(row, { kind: 'main' }));
 
               return (
                 <tr key={row.expiryMs} className="border-b border-gray-800/60">
@@ -348,12 +362,21 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                     <span className="inline-flex items-center justify-end gap-0.5 max-w-full">
                       <PinBiasPill spot={spot} pin={row.pinStrike} />
                       <span className="font-semibold tabular-nums">{fmtGexStrike(row.pinStrike)}</span>
+                      {mainPinProb != null ? (
+                        <span
+                          className="text-gray-500 text-[7px] tabular-nums"
+                          title="P(main pin) ≈ |GEX at strike| / Σ|GEX| on ladder"
+                        >
+                          {fmtPinProb(mainPinProb)}
+                        </span>
+                      ) : null}
                     </span>
                   </td>
                   {!compact ? (
                     <>
                       <td className="py-0.5 px-0.5 text-right text-gray-400 whitespace-nowrap">
-                        {row.callOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}/
+                        {row.callOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        {'\\'}
                         {row.putOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </td>
                       <td className="py-0.5 px-0.5 text-right text-gray-300">{fmtGexStrike(row.gammaFlip)}</td>

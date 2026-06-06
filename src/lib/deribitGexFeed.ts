@@ -61,6 +61,7 @@ export type GexExpiryBucket = {
   contracts: number;
   gammaFlip?: number | null;
   pinStrike?: number | null;
+  pinStrikeGex?: number | null;
   pinStrikesDown?: GexPinLevel[];
   pinStrikesUp?: GexPinLevel[];
   pinStrikeDown?: number | null;
@@ -170,6 +171,47 @@ export function gexPinStrikesUp(row: GexExpiryBucket): GexPinLevel[] {
   return [];
 }
 
+export function pinStrikeGexForRef(row: GexExpiryBucket, ref: PinRowRef): number | null {
+  if (ref.kind === 'down') return gexPinStrikesDown(row)[ref.idx]?.gex ?? null;
+  if (ref.kind === 'up') return gexPinStrikesUp(row)[ref.idx]?.gex ?? null;
+  return row.pinStrikeGex ?? null;
+}
+
+export type PinRowRef = { kind: 'main' } | { kind: 'down'; idx: number } | { kind: 'up'; idx: number };
+
+export function pinRowKey(row: GexExpiryBucket, ref: PinRowRef): string {
+  if (ref.kind === 'main') return `${row.expiryMs}-main`;
+  return `${row.expiryMs}-${ref.kind}-${ref.idx}`;
+}
+
+/** P(pin) ≈ |GEX at strike| / Σ|GEX| over the pin ladder (main + top down/up rungs). */
+export function pinProbabilities(row: GexExpiryBucket): Map<string, number> {
+  const refs: PinRowRef[] = [
+    ...gexPinStrikesDown(row).map((_, idx) => ({ kind: 'down' as const, idx })),
+    { kind: 'main' as const },
+    ...gexPinStrikesUp(row).map((_, idx) => ({ kind: 'up' as const, idx })),
+  ];
+  const weights = refs.map((ref) => {
+    const gex = pinStrikeGexForRef(row, ref);
+    return gex != null && Number.isFinite(gex) ? Math.abs(gex) : 0;
+  });
+  const total = weights.reduce((s, w) => s + w, 0);
+  const out = new Map<string, number>();
+  if (total <= 0) {
+    if (refs.length === 1) out.set(pinRowKey(row, refs[0]!), 1);
+    return out;
+  }
+  refs.forEach((ref, i) => out.set(pinRowKey(row, ref), weights[i]! / total));
+  return out;
+}
+
+export function fmtPinProb(p: number): string {
+  const pct = p * 100;
+  if (pct >= 10) return `${Math.round(pct)}%`;
+  if (pct >= 1) return `${pct.toFixed(1)}%`;
+  return pct > 0 ? `${pct.toFixed(1)}%` : '0%';
+}
+
 export function mergePinLadder(
   lists: GexPinLevel[][],
   pin: number | null | undefined,
@@ -208,6 +250,7 @@ function parseExpiry(raw: unknown): GexExpiryBucket | null {
     contracts: num(r.contracts) ?? 0,
     gammaFlip: num(r.gammaFlip),
     pinStrike: num(r.pinStrike),
+    pinStrikeGex: num(r.pinStrikeGex),
     pinStrikesDown: parsePinLevels(r.pinStrikesDown),
     pinStrikesUp: parsePinLevels(r.pinStrikesUp),
     pinStrikeDown: num(r.pinStrikeDown),
@@ -366,6 +409,8 @@ export function combineGexAssetSnapshots(
     pinWeighted: { strike: number; oi: number }[];
     pinDownLadders: GexPinLevel[][];
     pinUpLadders: GexPinLevel[][];
+    pinStrikeGexSum: number;
+    pinStrikeGexHas: boolean;
     gammaFlipWeighted: { strike: number; oi: number }[];
   };
   const byLabel = new Map<string, ExpAcc>();
@@ -385,6 +430,8 @@ export function combineGexAssetSnapshots(
           pinWeighted: [],
           pinDownLadders: [],
           pinUpLadders: [],
+          pinStrikeGexSum: 0,
+          pinStrikeGexHas: false,
           gammaFlipWeighted: [],
         };
         byLabel.set(exp.label, acc);
@@ -400,6 +447,10 @@ export function combineGexAssetSnapshots(
       if (exp.pinStrike != null) acc.pinWeighted.push({ strike: exp.pinStrike, oi: w });
       acc.pinDownLadders.push(gexPinStrikesDown(exp));
       acc.pinUpLadders.push(gexPinStrikesUp(exp));
+      if (exp.pinStrikeGex != null) {
+        acc.pinStrikeGexSum += exp.pinStrikeGex;
+        acc.pinStrikeGexHas = true;
+      }
       if (exp.gammaFlip != null) acc.gammaFlipWeighted.push({ strike: exp.gammaFlip, oi: w });
     }
   }
@@ -427,6 +478,7 @@ export function combineGexAssetSnapshots(
         pinStrikeUp: pinStrikesUp[0]?.strike ?? null,
         pinStrikeDownGex: pinStrikesDown[0]?.gex ?? null,
         pinStrikeUpGex: pinStrikesUp[0]?.gex ?? null,
+        pinStrikeGex: acc.pinStrikeGexHas ? acc.pinStrikeGexSum : null,
       };
     });
 

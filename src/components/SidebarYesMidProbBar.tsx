@@ -1,39 +1,35 @@
-import { memo, useSyncExternalStore } from 'react';
-import { getBidAskMarketRow, subscribeBidAskMarketLookup } from '../lib/bidAskMarketLookup';
-import type { Market } from '../types';
+import { memo, useMemo, useSyncExternalStore, type MutableRefObject } from 'react';
+import { yesMidCentsFromSidebarBook } from '../lib/sidebarYesMidFromBook';
+import {
+  getSidebarTopOfBookDigest,
+  subscribeSidebarTopOfBookDigest,
+} from '../lib/sidebarTopOfBookStore';
+import type { SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { HelpTooltip } from './HelpTooltip';
 import { SidebarBarMidMarker } from './SidebarBarMidMarker';
 
-function yesMidCentsFromWsRow(row: Market | undefined): number | null {
-  const bb = row?.bestBid;
-  const ba = row?.bestAsk;
-  const tb = bb != null && Number.isFinite(bb) ? bb * 100 : NaN;
-  const ta = ba != null && Number.isFinite(ba) ? ba * 100 : NaN;
-  let yesMidCents: number | null = null;
-  if (Number.isFinite(tb) && Number.isFinite(ta)) yesMidCents = (tb + ta) / 2;
-  else if (Number.isFinite(tb)) yesMidCents = tb;
-  else if (Number.isFinite(ta)) yesMidCents = ta;
-  if (yesMidCents == null) return null;
-  return Math.min(100, Math.max(0, yesMidCents));
-}
-
 export const SidebarYesMidProbBar = memo(function SidebarYesMidProbBar({
-  yesTokenId,
   yesMathCents,
+  sidebarBookRef,
   shellOnly = false,
 }: {
-  yesTokenId: string;
   yesMathCents: number | null;
+  sidebarBookRef: MutableRefObject<SidebarPolymarketBookSnapshot | null>;
   /** Reserve layout height before model YES / target is ready. */
   shellOnly?: boolean;
 }) {
-  const tid = yesTokenId.trim();
-  const wsRow = useSyncExternalStore(
-    subscribeBidAskMarketLookup,
-    () => getBidAskMarketRow(tid),
-    () => getBidAskMarketRow(tid),
+  const topOfBookDigest = useSyncExternalStore(
+    subscribeSidebarTopOfBookDigest,
+    getSidebarTopOfBookDigest,
+    getSidebarTopOfBookDigest,
   );
-  const yMidOk = shellOnly ? null : yesMidCentsFromWsRow(wsRow);
+
+  const yMidOk = useMemo(() => {
+    if (shellOnly) return null;
+    void topOfBookDigest;
+    return yesMidCentsFromSidebarBook(sidebarBookRef.current);
+  }, [shellOnly, topOfBookDigest, sidebarBookRef]);
+
   const m = yesMathCents;
   const delta = yMidOk != null && m != null ? yMidOk - m : null;
   const greenLeftPct =
@@ -42,8 +38,8 @@ export const SidebarYesMidProbBar = memo(function SidebarYesMidProbBar({
     shellOnly || m == null
       ? 'Waiting for target price and model YES probability'
       : yMidOk == null
-        ? `Model YES ${m.toFixed(1)}¢ — no WS best bid/ask for YES yet`
-        : `YES mid ${yMidOk.toFixed(1)}¢ (bid/ask WS) vs model ${m.toFixed(1)}¢ (Δ ${delta! >= 0 ? '+' : ''}${delta!.toFixed(1)}¢)`;
+        ? 'Model YES — no orderbook bid/ask yet'
+        : `YES mid ${yMidOk.toFixed(1)}¢ (live OB) vs model ${m.toFixed(1)}¢ (Δ ${delta! >= 0 ? '+' : ''}${delta!.toFixed(1)}¢)`;
 
   return (
     <div className="mt-2 pt-1.5 border-t border-gray-800/70 min-h-[2.375rem]" title={tip}>
@@ -52,9 +48,9 @@ export const SidebarYesMidProbBar = memo(function SidebarYesMidProbBar({
           Prob
           <HelpTooltip
             text={
-              'YES midpoint: average of live best bid and best ask from `/ws/chart` (YES token asset id).\n\n' +
-              'Not the sidebar CLOB ladder. Updates on each WS tick (not the 2s grid marketLookup throttle).\n\n' +
-              'Compared to Math (model YES). Green left grows when WS mid is above math.'
+              'Market YES midpoint from live sidebar orderbooks (same on YES/NO toggle).\n\n' +
+              'YES = 100¢ − NO book mid when NO leg quoted; else YES book mid.\n\n' +
+              'Compared to Math (model YES). Green left grows when market YES is above math.'
             }
           />
         </span>

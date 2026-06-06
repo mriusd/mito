@@ -18,6 +18,10 @@ const OB_DEEP_BOOK = 380;
 export type SidebarPolymarketBookSnapshot = {
   displayBids: OBLevel[];
   displayAsks: OBLevel[];
+  yesBids: OBLevel[];
+  yesAsks: OBLevel[];
+  noBids: OBLevel[];
+  noAsks: OBLevel[];
   polymarketLiveTrades: LiveTrade[];
   obLoading: boolean;
 };
@@ -98,11 +102,15 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   const polymarketLiveTrades = orderOutcome === 'YES' ? yesTrades : noTrades;
 
   const obStaleBookRef = useRef<{ bids: OBLevel[]; asks: OBLevel[] }>({ bids: [], asks: [] });
+  const yesStaleBookRef = useRef<{ bids: OBLevel[]; asks: OBLevel[] }>({ bids: [], asks: [] });
+  const noStaleBookRef = useRef<{ bids: OBLevel[]; asks: OBLevel[] }>({ bids: [], asks: [] });
   const yesUsdStaleRef = useRef({ bidUsdTotal: 0 });
   const noUsdStaleRef = useRef({ bidUsdTotal: 0 });
   const displayUsdStaleRef = useRef({ bidUsdTotal: 0, askUsdTotal: 0 });
   useLayoutEffect(() => {
     obStaleBookRef.current = { bids: [], asks: [] };
+    yesStaleBookRef.current = { bids: [], asks: [] };
+    noStaleBookRef.current = { bids: [], asks: [] };
     yesUsdStaleRef.current = { bidUsdTotal: 0 };
     noUsdStaleRef.current = { bidUsdTotal: 0 };
     displayUsdStaleRef.current = { bidUsdTotal: 0, askUsdTotal: 0 };
@@ -114,6 +122,16 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
         orderOutcome === 'YES' ? { bids: yesBids, asks: yesAsks } : { bids: noBids, asks: noAsks };
     }
   }, [activeObLoading, orderOutcome, yesBids, yesAsks, noBids, noAsks]);
+  useLayoutEffect(() => {
+    if (!yesObLoading) {
+      yesStaleBookRef.current = { bids: yesBids, asks: yesAsks };
+    }
+  }, [yesObLoading, yesBids, yesAsks]);
+  useLayoutEffect(() => {
+    if (!noObLoading) {
+      noStaleBookRef.current = { bids: noBids, asks: noAsks };
+    }
+  }, [noObLoading, noBids, noAsks]);
   useLayoutEffect(() => {
     if (!yesObLoading) {
       yesUsdStaleRef.current = { bidUsdTotal: yesBidUsdTotal };
@@ -192,24 +210,45 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
     setSidebarPolymarketTape(polymarketLiveTrades);
   }, [polymarketLiveTrades]);
 
+  const yesRefBids = (yesObLoading ? yesStaleBookRef.current.bids : yesBids).slice(0, OB_RAW_TOP_REF);
+  const yesRefAsks = (yesObLoading ? yesStaleBookRef.current.asks : yesAsks).slice(0, OB_RAW_TOP_REF);
+  const noRefBids = (noObLoading ? noStaleBookRef.current.bids : noBids).slice(0, OB_RAW_TOP_REF);
+  const noRefAsks = (noObLoading ? noStaleBookRef.current.asks : noAsks).slice(0, OB_RAW_TOP_REF);
+
   useLayoutEffect(() => {
     sidebarBookRef.current = {
       displayBids: refSnapshotBids,
       displayAsks: refSnapshotAsks,
+      yesBids: yesRefBids,
+      yesAsks: yesRefAsks,
+      noBids: noRefBids,
+      noAsks: noRefAsks,
       polymarketLiveTrades,
       obLoading,
     };
-  }, [sidebarBookRef, refSnapshotBids, refSnapshotAsks, polymarketLiveTrades, obLoading]);
+  }, [
+    sidebarBookRef,
+    refSnapshotBids,
+    refSnapshotAsks,
+    yesRefBids,
+    yesRefAsks,
+    noRefBids,
+    noRefAsks,
+    polymarketLiveTrades,
+    obLoading,
+  ]);
 
   useLayoutEffect(() => {
-    const firstAsk = snapshotAsks[0]?.price ?? '';
-    const lastBid = snapshotBids.length ? snapshotBids[snapshotBids.length - 1]?.price ?? '' : '';
-    const sig = `${firstAsk}|${lastBid}|${obLoading ? 1 : 0}`;
+    const yesBid = yesRefBids[0]?.price ?? '';
+    const noBid = noRefBids[0]?.price ?? '';
+    const dispAsk = snapshotAsks[0]?.price ?? '';
+    const dispBid = snapshotBids[0]?.price ?? '';
+    const sig = `${orderOutcome}|${yesBid}|${noBid}|${dispBid}|${dispAsk}|${obLoading ? 1 : 0}`;
     if (sig !== prevTopSig.current) {
       prevTopSig.current = sig;
       bumpSidebarTopOfBookDigest();
     }
-  }, [snapshotBids, snapshotAsks, obLoading]);
+  }, [orderOutcome, yesRefBids, noRefBids, snapshotBids, snapshotAsks, obLoading]);
 
   return (
     <SidebarLiveOrderbookSection

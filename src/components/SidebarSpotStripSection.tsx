@@ -405,8 +405,8 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
       </div>
       {reserveUpDownSpotHeight && (
         <SidebarYesMidProbBar
-          yesTokenId={selectedMarket?.clobTokenIds?.[0] || ''}
           yesMathCents={row.yesMathCents}
+          sidebarBookRef={sidebarBookRef}
           shellOnly={row.yesMathCents == null}
         />
       )}

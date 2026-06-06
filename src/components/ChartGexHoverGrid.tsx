@@ -1,5 +1,14 @@
 import type { GexAssetSnapshot, GexExpiryBucket } from '../lib/deribitGexFeed';
-import { gexPinStrikesDown, gexPinStrikesUp } from '../lib/deribitGexFeed';
+import {
+  fmtGexStrike,
+  fmtPinProb,
+  gexPinStrikesDown,
+  gexPinStrikesUp,
+  pinProbabilities,
+  pinRowKey,
+  pinRowOpacity,
+  type PinRowRef,
+} from '../lib/deribitGexFeed';
 
 function fmtUsd(v: number): string {
   const abs = Math.abs(v);
@@ -19,6 +28,38 @@ function fmtHours(h: number): string {
 
 function topExpiries(expirations: GexExpiryBucket[]): GexExpiryBucket[] {
   return [...expirations].sort((a, b) => a.expiryMs - b.expiryMs).slice(0, 3);
+}
+
+function hasPinLadder(row: GexExpiryBucket): boolean {
+  return gexPinStrikesDown(row).length > 0 || gexPinStrikesUp(row).length > 0;
+}
+
+type PinHoverRow = {
+  ref: PinRowRef;
+  gex: number | null;
+  strike: number | null | undefined;
+  dim?: boolean;
+};
+
+function pinHoverRows(row: GexExpiryBucket, expanded: boolean): PinHoverRow[] {
+  if (!expanded) {
+    return [{ ref: { kind: 'main' }, gex: row.netGex, strike: row.pinStrike }];
+  }
+  return [
+    ...gexPinStrikesDown(row).map((p, idx) => ({
+      ref: { kind: 'down' as const, idx },
+      gex: p.gex,
+      strike: p.strike,
+      dim: true,
+    })),
+    { ref: { kind: 'main' }, gex: row.netGex, strike: row.pinStrike },
+    ...gexPinStrikesUp(row).map((p, idx) => ({
+      ref: { kind: 'up' as const, idx },
+      gex: p.gex,
+      strike: p.strike,
+      dim: true,
+    })),
+  ];
 }
 
 export function ChartGexHoverGrid({ gex, source = 'Deribit' }: { gex: GexAssetSnapshot; source?: string }) {
@@ -63,52 +104,51 @@ export function ChartGexHoverGrid({ gex, source = 'Deribit' }: { gex: GexAssetSn
                 <th className="text-left py-0.5 pr-1 font-medium">T−</th>
                 <th className="text-right py-0.5 px-0.5 font-medium">Net/1%</th>
                 <th className="text-center py-0.5 px-0.5 font-medium">γ</th>
+                <th className="text-right py-0.5 px-0.5 font-medium">Pin</th>
                 <th className="text-right py-0.5 pl-0.5 font-medium">OI</th>
               </tr>
             </thead>
             <tbody>
               {expiries.map((row, idx) => {
                 const neg = row.regime === 'negative';
-                const showPinGex = idx === 0;
-                const pinRows: { gex: number | null; dim?: boolean }[] = showPinGex
-                  ? [
-                      ...gexPinStrikesDown(row).map((p) => ({ gex: p.gex, dim: true })),
-                      { gex: row.netGex },
-                      ...gexPinStrikesUp(row).map((p) => ({ gex: p.gex, dim: true })),
-                    ]
-                  : [{ gex: row.netGex }];
+                const expanded = idx === 0 && hasPinLadder(row);
+                const pinProbs = expanded ? pinProbabilities(row) : null;
+                const pinRows = pinHoverRows(row, expanded);
                 return pinRows.map((pinRow, pinIdx) => {
                   const pinNeg = pinRow.gex != null && pinRow.gex < 0;
+                  const pinProb = pinProbs?.get(pinRowKey(row, pinRow.ref));
+                  const rowOpacity = expanded ? pinRowOpacity(row, pinRow.ref, pinProbs) : 1;
+                  const pinCellStyle = rowOpacity < 1 ? { opacity: rowOpacity } : undefined;
                   return (
-                  <tr
-                    key={`${row.expiryMs}-${pinIdx}`}
-                    className={`border-b border-gray-800/60 ${pinRow.dim ? 'opacity-50' : ''}`}
-                  >
-                    {pinIdx === 0 ? (
-                      <>
-                        <td
-                          rowSpan={pinRows.length}
-                          className="py-0.5 pr-1 text-gray-300 font-semibold whitespace-nowrap align-top"
-                        >
-                          {row.label}
-                        </td>
-                        <td
-                          rowSpan={pinRows.length}
-                          className="py-0.5 pr-1 text-cyan-300/90 whitespace-nowrap align-top"
-                        >
-                          {fmtHours(row.hoursToExp)}
-                        </td>
-                      </>
-                    ) : null}
-                    <td
-                      className={`py-0.5 px-0.5 text-right font-bold ${
-                        pinRow.gex == null ? 'text-gray-500' : pinNeg ? 'text-red-400' : 'text-green-400'
-                      }`}
+                    <tr
+                      key={`${row.expiryMs}-${pinIdx}`}
+                      className={`border-b border-gray-800/60 ${pinRow.dim && rowOpacity >= 1 ? 'opacity-50' : ''}`}
                     >
-                      {pinRow.gex != null ? fmtUsd(pinRow.gex) : '—'}
-                    </td>
-                    {pinIdx === 0 ? (
-                      <>
+                      {pinIdx === 0 ? (
+                        <>
+                          <td
+                            rowSpan={pinRows.length}
+                            className="py-0.5 pr-1 text-gray-300 font-semibold whitespace-nowrap align-top"
+                          >
+                            {row.label}
+                          </td>
+                          <td
+                            rowSpan={pinRows.length}
+                            className="py-0.5 pr-1 text-cyan-300/90 whitespace-nowrap align-top"
+                          >
+                            {fmtHours(row.hoursToExp)}
+                          </td>
+                        </>
+                      ) : null}
+                      <td
+                        style={pinCellStyle}
+                        className={`py-0.5 px-0.5 text-right font-bold ${
+                          pinRow.gex == null ? 'text-gray-500' : pinNeg ? 'text-red-400' : 'text-green-400'
+                        }`}
+                      >
+                        {pinRow.gex != null ? fmtUsd(pinRow.gex) : '—'}
+                      </td>
+                      {pinIdx === 0 ? (
                         <td rowSpan={pinRows.length} className="py-0.5 px-0.5 text-center align-top">
                           <span
                             className={`inline-block min-w-[1.1em] px-0.5 rounded text-[7px] font-bold ${
@@ -118,12 +158,26 @@ export function ChartGexHoverGrid({ gex, source = 'Deribit' }: { gex: GexAssetSn
                             {neg ? 'N' : 'P'}
                           </span>
                         </td>
+                      ) : null}
+                      <td
+                        style={pinCellStyle}
+                        className="py-0.5 px-0.5 text-right text-yellow-300/90 whitespace-nowrap"
+                      >
+                        <span className="inline-flex items-center justify-end gap-0.5 max-w-full">
+                          {pinProb != null ? (
+                            <span className="text-gray-500 text-[7px] tabular-nums">{fmtPinProb(pinProb)}</span>
+                          ) : null}
+                          <span className={`tabular-nums ${pinRow.ref.kind === 'main' ? 'font-semibold' : ''}`}>
+                            {fmtGexStrike(pinRow.strike)}
+                          </span>
+                        </span>
+                      </td>
+                      {pinIdx === 0 ? (
                         <td rowSpan={pinRows.length} className="py-0.5 pl-0.5 text-right text-gray-300 align-top">
                           {row.totalOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </td>
-                      </>
-                    ) : null}
-                  </tr>
+                      ) : null}
+                    </tr>
                   );
                 });
               })}

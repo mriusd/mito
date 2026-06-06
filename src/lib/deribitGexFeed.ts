@@ -226,6 +226,39 @@ export function fmtPinProb(p: number): string {
   return pct > 0 ? `${pct.toFixed(1)}%` : '0%';
 }
 
+/** All pin strikes + signed GEX from one expiry (main + ladder). */
+export function gexPinLevelsForExpiry(exp: GexExpiryBucket): GexPinLevel[] {
+  const out: GexPinLevel[] = [];
+  if (exp.pinStrike != null && Number.isFinite(exp.pinStrike)) {
+    out.push({ strike: exp.pinStrike, gex: exp.pinStrikeGex ?? 0 });
+  }
+  out.push(...gexPinStrikesDown(exp), ...gexPinStrikesUp(exp));
+  return out;
+}
+
+/** Sum GEX per strike across feeds; main pin = strike with largest |GEX| (highest P(pin)). */
+export function combinedPinFromLevels(levels: GexPinLevel[]): {
+  pinStrike: number | null;
+  pinStrikeGex: number | null;
+} {
+  const byStrike = new Map<number, number>();
+  for (const p of levels) {
+    byStrike.set(p.strike, (byStrike.get(p.strike) ?? 0) + p.gex);
+  }
+  let pinStrike: number | null = null;
+  let pinStrikeGex: number | null = null;
+  let bestAbs = 0;
+  for (const [strike, gex] of byStrike) {
+    const abs = Math.abs(gex);
+    if (abs > bestAbs) {
+      bestAbs = abs;
+      pinStrike = strike;
+      pinStrikeGex = gex;
+    }
+  }
+  return { pinStrike, pinStrikeGex };
+}
+
 export function mergePinLadder(
   lists: GexPinLevel[][],
   pin: number | null | undefined,
@@ -242,7 +275,7 @@ export function mergePinLadder(
   levels = levels.filter((p) => (below ? p.strike < pin : p.strike > pin));
   levels.sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex));
   levels = levels.slice(0, GEX_PIN_LADDER_STEPS);
-  levels.sort((a, b) => (below ? b.strike - a.strike : a.strike - b.strike));
+  levels.sort((a, b) => a.strike - b.strike);
   return levels;
 }
 
@@ -420,11 +453,9 @@ export function combineGexAssetSnapshots(
     callOi: number;
     putOi: number;
     contracts: number;
-    pinWeighted: { strike: number; oi: number }[];
+    pinCandidates: GexPinLevel[];
     pinDownLadders: GexPinLevel[][];
     pinUpLadders: GexPinLevel[][];
-    pinStrikeGexSum: number;
-    pinStrikeGexHas: boolean;
     gammaFlipWeighted: { strike: number; oi: number }[];
   };
   const byLabel = new Map<string, ExpAcc>();
@@ -441,11 +472,9 @@ export function combineGexAssetSnapshots(
           callOi: 0,
           putOi: 0,
           contracts: 0,
-          pinWeighted: [],
+          pinCandidates: [],
           pinDownLadders: [],
           pinUpLadders: [],
-          pinStrikeGexSum: 0,
-          pinStrikeGexHas: false,
           gammaFlipWeighted: [],
         };
         byLabel.set(exp.label, acc);
@@ -458,20 +487,16 @@ export function combineGexAssetSnapshots(
       acc.expiryMs = Math.min(acc.expiryMs, exp.expiryMs);
       acc.hoursToExp = Math.min(acc.hoursToExp, exp.hoursToExp);
       const w = exp.totalOi > 0 ? exp.totalOi : 1;
-      if (exp.pinStrike != null) acc.pinWeighted.push({ strike: exp.pinStrike, oi: w });
+      acc.pinCandidates.push(...gexPinLevelsForExpiry(exp));
       acc.pinDownLadders.push(gexPinStrikesDown(exp));
       acc.pinUpLadders.push(gexPinStrikesUp(exp));
-      if (exp.pinStrikeGex != null) {
-        acc.pinStrikeGexSum += exp.pinStrikeGex;
-        acc.pinStrikeGexHas = true;
-      }
       if (exp.gammaFlip != null) acc.gammaFlipWeighted.push({ strike: exp.gammaFlip, oi: w });
     }
   }
   const expirations = [...byLabel.values()]
     .sort((a, b) => a.expiryMs - b.expiryMs)
     .map((acc) => {
-      const pinStrike = oiWeightedStrike(acc.pinWeighted);
+      const { pinStrike, pinStrikeGex } = combinedPinFromLevels(acc.pinCandidates);
       const pinStrikesDown = mergePinLadder(acc.pinDownLadders, pinStrike, true);
       const pinStrikesUp = mergePinLadder(acc.pinUpLadders, pinStrike, false);
       return {
@@ -488,11 +513,11 @@ export function combineGexAssetSnapshots(
         pinStrike,
         pinStrikesDown: pinStrikesDown.length > 0 ? pinStrikesDown : undefined,
         pinStrikesUp: pinStrikesUp.length > 0 ? pinStrikesUp : undefined,
-        pinStrikeDown: pinStrikesDown[0]?.strike ?? null,
+        pinStrikeDown: pinStrikesDown.at(-1)?.strike ?? null,
         pinStrikeUp: pinStrikesUp[0]?.strike ?? null,
-        pinStrikeDownGex: pinStrikesDown[0]?.gex ?? null,
+        pinStrikeDownGex: pinStrikesDown.at(-1)?.gex ?? null,
         pinStrikeUpGex: pinStrikesUp[0]?.gex ?? null,
-        pinStrikeGex: acc.pinStrikeGexHas ? acc.pinStrikeGexSum : null,
+        pinStrikeGex,
       };
     });
 

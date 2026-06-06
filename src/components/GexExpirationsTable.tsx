@@ -278,7 +278,7 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                         </span>
                       </td>
                       {pinIdx === 0 ? (
-                        <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-right text-gray-300 align-top">
+                        <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-right text-gray-300 align-middle">
                           {row.totalOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </td>
                       ) : null}
@@ -304,17 +304,17 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                       </td>
                       {pinIdx === 0 ? (
                         <>
-                          <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-right text-gray-400 whitespace-nowrap align-top">
+                          <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-right text-gray-400 whitespace-nowrap align-middle">
                             {row.callOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                             {'\\'}
                             {row.putOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </td>
-                          <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-right text-gray-300 align-top">
+                          <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-right text-gray-300 align-middle">
                             {fmtGexStrike(row.gammaFlip)}
                           </td>
                           <td
                             rowSpan={rowSpan}
-                            className={`py-0.5 pl-0.5 text-right whitespace-nowrap align-top ${
+                            className={`py-0.5 pl-0.5 text-right whitespace-nowrap align-middle ${
                               pinFlipGap?.tight ? 'text-amber-300 font-bold' : 'text-gray-400'
                             }`}
                           >

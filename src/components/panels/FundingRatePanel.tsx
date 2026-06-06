@@ -46,6 +46,11 @@ function readStoredInterval(): IntervalKey {
   return '1m';
 }
 
+function fundingRateTextClass(r: number | undefined): string {
+  if (r == null || !Number.isFinite(r) || r === 0) return 'text-gray-400';
+  return r > 0 ? 'text-emerald-400' : 'text-red-400';
+}
+
 function readStoredWindow(): TimeWindowKey {
   try {
     const v = localStorage.getItem(LS_WINDOW);
@@ -378,7 +383,9 @@ export function FundingRatePanel() {
             <span style={{ color: LINE_COLORS[sym] }} className="font-bold">
               {sym}
             </span>
-            <span className="tabular-nums text-gray-400">{fmtFundingRate(latestRates[sym] ?? 0)}</span>
+            <span className={`tabular-nums font-medium ${fundingRateTextClass(latestRates[sym])}`}>
+              {fmtFundingRate(latestRates[sym] ?? 0)}
+            </span>
           </span>
         ))}
       </div>

@@ -59,6 +59,8 @@ export type GexExpiryBucket = {
   pinStrike?: number | null;
   pinStrikeDown?: number | null;
   pinStrikeUp?: number | null;
+  pinStrikeDownGex?: number | null;
+  pinStrikeUpGex?: number | null;
 };
 
 export type GexAssetSnapshot = {
@@ -151,6 +153,8 @@ function parseExpiry(raw: unknown): GexExpiryBucket | null {
     pinStrike: num(r.pinStrike),
     pinStrikeDown: num(r.pinStrikeDown),
     pinStrikeUp: num(r.pinStrikeUp),
+    pinStrikeDownGex: num(r.pinStrikeDownGex),
+    pinStrikeUpGex: num(r.pinStrikeUpGex),
   };
 }
 
@@ -303,6 +307,10 @@ export function combineGexAssetSnapshots(
     pinWeighted: { strike: number; oi: number }[];
     pinDownWeighted: { strike: number; oi: number }[];
     pinUpWeighted: { strike: number; oi: number }[];
+    pinDownGexSum: number;
+    pinUpGexSum: number;
+    pinDownGexHas: boolean;
+    pinUpGexHas: boolean;
     gammaFlipWeighted: { strike: number; oi: number }[];
   };
   const byLabel = new Map<string, ExpAcc>();
@@ -322,6 +330,10 @@ export function combineGexAssetSnapshots(
           pinWeighted: [],
           pinDownWeighted: [],
           pinUpWeighted: [],
+          pinDownGexSum: 0,
+          pinUpGexSum: 0,
+          pinDownGexHas: false,
+          pinUpGexHas: false,
           gammaFlipWeighted: [],
         };
         byLabel.set(exp.label, acc);
@@ -337,6 +349,14 @@ export function combineGexAssetSnapshots(
       if (exp.pinStrike != null) acc.pinWeighted.push({ strike: exp.pinStrike, oi: w });
       if (exp.pinStrikeDown != null) acc.pinDownWeighted.push({ strike: exp.pinStrikeDown, oi: w });
       if (exp.pinStrikeUp != null) acc.pinUpWeighted.push({ strike: exp.pinStrikeUp, oi: w });
+      if (exp.pinStrikeDownGex != null) {
+        acc.pinDownGexSum += exp.pinStrikeDownGex;
+        acc.pinDownGexHas = true;
+      }
+      if (exp.pinStrikeUpGex != null) {
+        acc.pinUpGexSum += exp.pinStrikeUpGex;
+        acc.pinUpGexHas = true;
+      }
       if (exp.gammaFlip != null) acc.gammaFlipWeighted.push({ strike: exp.gammaFlip, oi: w });
     }
   }
@@ -356,6 +376,8 @@ export function combineGexAssetSnapshots(
       pinStrike: oiWeightedStrike(acc.pinWeighted),
       pinStrikeDown: oiWeightedStrike(acc.pinDownWeighted),
       pinStrikeUp: oiWeightedStrike(acc.pinUpWeighted),
+      pinStrikeDownGex: acc.pinDownGexHas ? acc.pinDownGexSum : null,
+      pinStrikeUpGex: acc.pinUpGexHas ? acc.pinUpGexSum : null,
     }));
 
   const netGex = snaps.reduce((s, x) => s + x.netGex, 0);

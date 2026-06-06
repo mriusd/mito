@@ -77,6 +77,28 @@ function PinBiasPill({ spot, pin }: { spot?: number; pin: number | null | undefi
   );
 }
 
+type NearestPinRowKind = 'down' | 'main' | 'up';
+
+function nearestPinRows(row: GexExpiryBucket): NearestPinRowKind[] {
+  const kinds: NearestPinRowKind[] = [];
+  if (row.pinStrikeDown != null) kinds.push('down');
+  kinds.push('main');
+  if (row.pinStrikeUp != null) kinds.push('up');
+  return kinds;
+}
+
+function pinForKind(row: GexExpiryBucket, kind: NearestPinRowKind): number | null | undefined {
+  if (kind === 'down') return row.pinStrikeDown;
+  if (kind === 'up') return row.pinStrikeUp;
+  return row.pinStrike;
+}
+
+function pinGexForKind(row: GexExpiryBucket, kind: NearestPinRowKind): number | null {
+  if (kind === 'down') return row.pinStrikeDownGex ?? null;
+  if (kind === 'up') return row.pinStrikeUpGex ?? null;
+  return row.netGex;
+}
+
 function fmtCountdown(expiryMs: number, nowMs: number): string {
   const ms = expiryMs - nowMs;
   if (ms <= 0) return '0s';
@@ -143,10 +165,103 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
             </tr>
           </thead>
           <tbody>
-            {upcoming.map((row) => {
+            {upcoming.map((row, index) => {
               const neg = row.regime === 'negative';
               const urgent = row.expiryMs - now <= 60 * 60 * 1000;
               const pinFlipGap = fmtPinFlipGap(row.pinStrike, row.gammaFlip);
+              const splitNearestPins = !compact && index === 0 && nearestPinRows(row).length > 1;
+
+              if (splitNearestPins) {
+                const pinKinds = nearestPinRows(row);
+                const rowSpan = pinKinds.length;
+                return pinKinds.map((kind, pinIdx) => {
+                  const pin = pinForKind(row, kind);
+                  const pinGex = pinGexForKind(row, kind);
+                  const pinGexNeg = pinGex != null && pinGex < 0;
+                  const dim = kind !== 'main';
+                  return (
+                    <tr
+                      key={`${row.expiryMs}-${kind}`}
+                      className={`border-b border-gray-800/60 ${dim ? 'opacity-50' : ''}`}
+                    >
+                      {pinIdx === 0 ? (
+                        <>
+                          <td
+                            rowSpan={rowSpan}
+                            className="py-0.5 pr-1 text-gray-300 whitespace-nowrap font-semibold align-top"
+                          >
+                            {row.label}
+                          </td>
+                          <td
+                            rowSpan={rowSpan}
+                            className={`py-0.5 pr-0.5 whitespace-nowrap font-bold tracking-tight align-top ${
+                              urgent ? 'text-amber-300' : 'text-cyan-300/90'
+                            }`}
+                          >
+                            {fmtCountdown(row.expiryMs, now)}
+                          </td>
+                        </>
+                      ) : null}
+                      <td
+                        className={`py-0.5 px-0.5 text-right font-bold ${
+                          pinGex == null ? 'text-gray-500' : pinGexNeg ? 'text-red-400' : 'text-green-400'
+                        }`}
+                      >
+                        {pinGex != null ? fmtUsd(pinGex) : '—'}
+                      </td>
+                      {pinIdx === 0 ? (
+                        <>
+                          <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-center align-top">
+                            <span
+                              className={`inline-block min-w-[1.1em] px-0.5 rounded text-[7px] font-bold ${
+                                neg ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'
+                              }`}
+                            >
+                              {neg ? 'N' : 'P'}
+                            </span>
+                          </td>
+                          <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-right text-gray-300 align-top">
+                            {row.totalOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </td>
+                        </>
+                      ) : null}
+                      <td
+                        className={`py-0.5 px-0.5 text-right whitespace-nowrap ${
+                          dim ? 'text-gray-500' : 'text-yellow-300/90'
+                        }`}
+                        title={kind === 'down' ? 'Pin down' : kind === 'up' ? 'Pin up' : 'Pin'}
+                      >
+                        <span className="inline-flex items-center justify-end gap-0.5 max-w-full">
+                          {kind === 'main' ? <PinBiasPill spot={spot} pin={pin} /> : null}
+                          <span className={`tabular-nums ${kind === 'main' ? 'font-semibold' : ''}`}>
+                            {fmtGexStrike(pin)}
+                          </span>
+                        </span>
+                      </td>
+                      {pinIdx === 0 ? (
+                        <>
+                          <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-right text-gray-400 whitespace-nowrap align-top">
+                            {row.callOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}/
+                            {row.putOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </td>
+                          <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-right text-gray-300 align-top">
+                            {fmtGexStrike(row.gammaFlip)}
+                          </td>
+                          <td
+                            rowSpan={rowSpan}
+                            className={`py-0.5 pl-0.5 text-right whitespace-nowrap align-top ${
+                              pinFlipGap?.tight ? 'text-amber-300 font-bold' : 'text-gray-400'
+                            }`}
+                          >
+                            {pinFlipGap?.text ?? '—'}
+                          </td>
+                        </>
+                      ) : null}
+                    </tr>
+                  );
+                });
+              }
+
               return (
                 <tr key={row.expiryMs} className="border-b border-gray-800/60">
                   <td className="py-0.5 pr-1 text-gray-300 whitespace-nowrap font-semibold">{row.label}</td>

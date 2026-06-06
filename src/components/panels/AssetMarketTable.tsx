@@ -580,9 +580,8 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
       rows[tf] = showPast ? [past, current] : [current];
     }
 
-    // Check if we have any data at all
-    const hasData = timeframes.some(tf => rows[tf].some((m: Market | null) => m !== null));
-    if (!hasData) return null;
+    const visibleTimeframes = timeframes.filter((tf) => rows[tf].some((m) => m !== null));
+    if (visibleTimeframes.length === 0) return null;
 
     return (
       <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
@@ -597,7 +596,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
             </tr>
           </thead>
           <tbody>
-            {timeframes.map(tf => {
+            {visibleTimeframes.map(tf => {
               const tfDurations: Record<string, number> = { '5m': 5*60*1000, '15m': 15*60*1000, '1h': 60*60*1000, '4h': 4*60*60*1000, '24h': 24*60*60*1000 };
               const duration = tfDurations[tf] || 0;
               const currentMarket = showPast ? rows[tf][1] : rows[tf][0];

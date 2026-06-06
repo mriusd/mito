@@ -66,29 +66,65 @@ export function ChartGexHoverGrid({ gex, source = 'Deribit' }: { gex: GexAssetSn
               </tr>
             </thead>
             <tbody>
-              {expiries.map((row) => {
+              {expiries.map((row, idx) => {
                 const neg = row.regime === 'negative';
-                return (
-                  <tr key={row.expiryMs} className="border-b border-gray-800/60">
-                    <td className="py-0.5 pr-1 text-gray-300 font-semibold whitespace-nowrap">{row.label}</td>
-                    <td className="py-0.5 pr-1 text-cyan-300/90 whitespace-nowrap">{fmtHours(row.hoursToExp)}</td>
-                    <td className={`py-0.5 px-0.5 text-right font-bold ${neg ? 'text-red-400' : 'text-green-400'}`}>
-                      {fmtUsd(row.netGex)}
+                const showPinGex = idx === 0;
+                const pinRows: { gex: number | null; dim?: boolean }[] = showPinGex
+                  ? [
+                      ...(row.pinStrikeDownGex != null ? [{ gex: row.pinStrikeDownGex, dim: true }] : []),
+                      { gex: row.netGex },
+                      ...(row.pinStrikeUpGex != null ? [{ gex: row.pinStrikeUpGex, dim: true }] : []),
+                    ]
+                  : [{ gex: row.netGex }];
+                return pinRows.map((pinRow, pinIdx) => {
+                  const pinNeg = pinRow.gex != null && pinRow.gex < 0;
+                  return (
+                  <tr
+                    key={`${row.expiryMs}-${pinIdx}`}
+                    className={`border-b border-gray-800/60 ${pinRow.dim ? 'opacity-50' : ''}`}
+                  >
+                    {pinIdx === 0 ? (
+                      <>
+                        <td
+                          rowSpan={pinRows.length}
+                          className="py-0.5 pr-1 text-gray-300 font-semibold whitespace-nowrap align-top"
+                        >
+                          {row.label}
+                        </td>
+                        <td
+                          rowSpan={pinRows.length}
+                          className="py-0.5 pr-1 text-cyan-300/90 whitespace-nowrap align-top"
+                        >
+                          {fmtHours(row.hoursToExp)}
+                        </td>
+                      </>
+                    ) : null}
+                    <td
+                      className={`py-0.5 px-0.5 text-right font-bold ${
+                        pinRow.gex == null ? 'text-gray-500' : pinNeg ? 'text-red-400' : 'text-green-400'
+                      }`}
+                    >
+                      {pinRow.gex != null ? fmtUsd(pinRow.gex) : '—'}
                     </td>
-                    <td className="py-0.5 px-0.5 text-center">
-                      <span
-                        className={`inline-block min-w-[1.1em] px-0.5 rounded text-[7px] font-bold ${
-                          neg ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'
-                        }`}
-                      >
-                        {neg ? 'N' : 'P'}
-                      </span>
-                    </td>
-                    <td className="py-0.5 pl-0.5 text-right text-gray-300">
-                      {row.totalOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </td>
+                    {pinIdx === 0 ? (
+                      <>
+                        <td rowSpan={pinRows.length} className="py-0.5 px-0.5 text-center align-top">
+                          <span
+                            className={`inline-block min-w-[1.1em] px-0.5 rounded text-[7px] font-bold ${
+                              neg ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'
+                            }`}
+                          >
+                            {neg ? 'N' : 'P'}
+                          </span>
+                        </td>
+                        <td rowSpan={pinRows.length} className="py-0.5 pl-0.5 text-right text-gray-300 align-top">
+                          {row.totalOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                      </>
+                    ) : null}
                   </tr>
-                );
+                  );
+                });
               })}
             </tbody>
           </table>

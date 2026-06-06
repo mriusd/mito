@@ -209,26 +209,20 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                       >
                         {pinGex != null ? fmtUsd(pinGex) : '—'}
                       </td>
-                      {pinIdx === 0 ? (
-                        <>
-                          <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-center align-top">
-                            <span
-                              className={`inline-block min-w-[1.1em] px-0.5 rounded text-[7px] font-bold ${
-                                neg ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'
-                              }`}
-                            >
-                              {neg ? 'N' : 'P'}
-                            </span>
-                          </td>
-                          <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-right text-gray-300 align-top">
-                            {row.totalOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          </td>
-                        </>
-                      ) : null}
+                      <td className="py-0.5 px-0.5 text-center">
+                        <span
+                          className={`inline-block min-w-[1.1em] px-0.5 rounded text-[7px] font-bold ${
+                            neg ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'
+                          }`}
+                        >
+                          {neg ? 'N' : 'P'}
+                        </span>
+                      </td>
+                      <td className="py-0.5 px-0.5 text-right text-gray-300">
+                        {row.totalOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </td>
                       <td
-                        className={`py-0.5 px-0.5 text-right whitespace-nowrap ${
-                          dim ? 'text-gray-500' : 'text-yellow-300/90'
-                        }`}
+                        className="py-0.5 px-0.5 text-right text-yellow-300/90 whitespace-nowrap"
                         title={kind === 'down' ? 'Pin down' : kind === 'up' ? 'Pin up' : 'Pin'}
                       >
                         <span className="inline-flex items-center justify-end gap-0.5 max-w-full">
@@ -238,25 +232,18 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                           </span>
                         </span>
                       </td>
-                      {pinIdx === 0 ? (
-                        <>
-                          <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-right text-gray-400 whitespace-nowrap align-top">
-                            {row.callOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}/
-                            {row.putOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          </td>
-                          <td rowSpan={rowSpan} className="py-0.5 px-0.5 text-right text-gray-300 align-top">
-                            {fmtGexStrike(row.gammaFlip)}
-                          </td>
-                          <td
-                            rowSpan={rowSpan}
-                            className={`py-0.5 pl-0.5 text-right whitespace-nowrap align-top ${
-                              pinFlipGap?.tight ? 'text-amber-300 font-bold' : 'text-gray-400'
-                            }`}
-                          >
-                            {pinFlipGap?.text ?? '—'}
-                          </td>
-                        </>
-                      ) : null}
+                      <td className="py-0.5 px-0.5 text-right text-gray-400 whitespace-nowrap">
+                        {row.callOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}/
+                        {row.putOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </td>
+                      <td className="py-0.5 px-0.5 text-right text-gray-300">{fmtGexStrike(row.gammaFlip)}</td>
+                      <td
+                        className={`py-0.5 pl-0.5 text-right whitespace-nowrap ${
+                          pinFlipGap?.tight ? 'text-amber-300 font-bold' : 'text-gray-400'
+                        }`}
+                      >
+                        {pinFlipGap?.text ?? '—'}
+                      </td>
                     </tr>
                   );
                 });
@@ -289,12 +276,12 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                   </td>
                   <td className="py-0.5 px-0.5 text-right text-yellow-300/90 whitespace-nowrap">
                     <span className="inline-flex items-center justify-end gap-0.5 max-w-full">
-                      <span className="text-gray-500 text-[8px] tabular-nums" title="Next pin down">
+                      <span className="text-yellow-300/90 text-[8px] tabular-nums" title="Next pin down">
                         {row.pinStrikeDown != null ? fmtGexStrike(row.pinStrikeDown) : '—'}
                       </span>
                       <PinBiasPill spot={spot} pin={row.pinStrike} />
                       <span className="font-semibold tabular-nums">{fmtGexStrike(row.pinStrike)}</span>
-                      <span className="text-gray-500 text-[8px] tabular-nums" title="Next pin up">
+                      <span className="text-yellow-300/90 text-[8px] tabular-nums" title="Next pin up">
                         {row.pinStrikeUp != null ? fmtGexStrike(row.pinStrikeUp) : '—'}
                       </span>
                     </span>

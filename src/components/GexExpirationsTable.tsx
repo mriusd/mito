@@ -8,6 +8,7 @@ import {
   gexPinStrikesUp,
   pinProbabilities,
   pinRowKey,
+  pinRowOpacity,
   type PinRowRef,
 } from '../lib/deribitGexFeed';
 
@@ -232,8 +233,8 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                   const pin = pinForRef(row, ref);
                   const pinGex = pinGexForRef(row, ref);
                   const pinGexNeg = pinGex != null && pinGex < 0;
-                  const dim = ref.kind !== 'main';
-                  const dimCell = dim ? 'opacity-50' : '';
+                  const rowOpacity = pinRowOpacity(row, ref, pinProbs);
+                  const pinCellStyle = rowOpacity < 1 ? { opacity: rowOpacity } : undefined;
                   return (
                     <tr key={pinRowKey(row, ref)} className="border-b border-gray-800/60">
                       {pinIdx === 0 ? (
@@ -260,13 +261,14 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                         </>
                       ) : null}
                       <td
-                        className={`py-0.5 px-0.5 text-right font-bold ${dimCell} ${
+                        style={pinCellStyle}
+                        className={`py-0.5 px-0.5 text-right font-bold ${
                           pinGex == null ? 'text-gray-500' : pinGexNeg ? 'text-red-400' : 'text-green-400'
                         }`}
                       >
                         {pinGex != null ? fmtUsd(pinGex) : '—'}
                       </td>
-                      <td className={`py-0.5 px-0.5 text-center ${dimCell}`}>
+                      <td style={pinCellStyle} className="py-0.5 px-0.5 text-center">
                         <span
                           className={`inline-block min-w-[1.1em] px-0.5 rounded text-[7px] font-bold ${
                             neg ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'
@@ -281,14 +283,12 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                         </td>
                       ) : null}
                       <td
-                        className={`py-0.5 px-0.5 text-right text-yellow-300/90 whitespace-nowrap ${dimCell}`}
+                        style={pinCellStyle}
+                        className="py-0.5 px-0.5 text-right text-yellow-300/90 whitespace-nowrap"
                         title={ref.kind === 'down' ? 'Pin down' : ref.kind === 'up' ? 'Pin up' : 'Pin'}
                       >
                         <span className="inline-flex items-center justify-end gap-0.5 max-w-full">
                           {ref.kind === 'main' ? <PinBiasPill spot={spot} pin={pin} /> : null}
-                          <span className={`tabular-nums ${ref.kind === 'main' ? 'font-semibold' : ''}`}>
-                            {fmtGexStrike(pin)}
-                          </span>
                           {pinProb != null ? (
                             <span
                               className="text-gray-500 text-[7px] tabular-nums"
@@ -297,6 +297,9 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                               {fmtPinProb(pinProb)}
                             </span>
                           ) : null}
+                          <span className={`tabular-nums ${ref.kind === 'main' ? 'font-semibold' : ''}`}>
+                            {fmtGexStrike(pin)}
+                          </span>
                         </span>
                       </td>
                       {pinIdx === 0 ? (
@@ -361,7 +364,6 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                   <td className="py-0.5 px-0.5 text-right text-yellow-300/90 whitespace-nowrap">
                     <span className="inline-flex items-center justify-end gap-0.5 max-w-full">
                       <PinBiasPill spot={spot} pin={row.pinStrike} />
-                      <span className="font-semibold tabular-nums">{fmtGexStrike(row.pinStrike)}</span>
                       {mainPinProb != null ? (
                         <span
                           className="text-gray-500 text-[7px] tabular-nums"
@@ -370,6 +372,7 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                           {fmtPinProb(mainPinProb)}
                         </span>
                       ) : null}
+                      <span className="font-semibold tabular-nums">{fmtGexStrike(row.pinStrike)}</span>
                     </span>
                   </td>
                   {!compact ? (

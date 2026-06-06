@@ -205,6 +205,20 @@ export function pinProbabilities(row: GexExpiryBucket): Map<string, number> {
   return out;
 }
 
+/** Main pin = 1; ladder rungs scale by P(pin) / P(main). */
+export function pinRowOpacity(
+  row: GexExpiryBucket,
+  ref: PinRowRef,
+  pinProbs: Map<string, number> | null,
+): number {
+  if (ref.kind === 'main') return 1;
+  if (!pinProbs) return 0.5;
+  const mainProb = pinProbs.get(pinRowKey(row, { kind: 'main' })) ?? 0;
+  const pinProb = pinProbs.get(pinRowKey(row, ref)) ?? 0;
+  if (mainProb <= 0) return 0.35;
+  return Math.min(1, pinProb / mainProb);
+}
+
 export function fmtPinProb(p: number): string {
   const pct = p * 100;
   if (pct >= 10) return `${Math.round(pct)}%`;

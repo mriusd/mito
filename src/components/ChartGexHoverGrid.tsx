@@ -43,7 +43,7 @@ type PinHoverRow = {
 
 function pinHoverRows(row: GexExpiryBucket, expanded: boolean): PinHoverRow[] {
   if (!expanded) {
-    return [{ ref: { kind: 'main' }, gex: row.netGex, strike: row.pinStrike }];
+    return [{ ref: { kind: 'main' }, gex: row.pinStrikeGex ?? row.netGex, strike: row.pinStrike }];
   }
   return [
     ...gexPinStrikesDown(row).map((p, idx) => ({
@@ -52,7 +52,7 @@ function pinHoverRows(row: GexExpiryBucket, expanded: boolean): PinHoverRow[] {
       strike: p.strike,
       dim: true,
     })),
-    { ref: { kind: 'main' }, gex: row.netGex, strike: row.pinStrike },
+    { ref: { kind: 'main' }, gex: row.pinStrikeGex ?? row.netGex, strike: row.pinStrike },
     ...gexPinStrikesUp(row).map((p, idx) => ({
       ref: { kind: 'up' as const, idx },
       gex: p.gex,

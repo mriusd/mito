@@ -279,6 +279,25 @@ export function mergePinLadder(
   return levels;
 }
 
+/** Combined ladder: sum GEX at each strike from every feed's main + rungs on one side of the pin. */
+export function mergeCombinedPinSide(
+  levels: GexPinLevel[],
+  pin: number | null | undefined,
+  below: boolean,
+): GexPinLevel[] {
+  if (pin == null || !Number.isFinite(pin)) return [];
+  const byStrike = new Map<number, number>();
+  for (const p of levels) {
+    if (below ? p.strike >= pin : p.strike <= pin) continue;
+    byStrike.set(p.strike, (byStrike.get(p.strike) ?? 0) + p.gex);
+  }
+  let out = [...byStrike.entries()].map(([strike, gex]) => ({ strike, gex }));
+  out.sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex));
+  out = out.slice(0, GEX_PIN_LADDER_STEPS);
+  out.sort((a, b) => a.strike - b.strike);
+  return out;
+}
+
 function parseExpiry(raw: unknown): GexExpiryBucket | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -453,15 +472,13 @@ export function combineGexAssetSnapshots(
     callOi: number;
     putOi: number;
     contracts: number;
-    pinCandidates: GexPinLevel[];
-    pinDownLadders: GexPinLevel[][];
-    pinUpLadders: GexPinLevel[][];
+    exps: GexExpiryBucket[];
     gammaFlipWeighted: { strike: number; oi: number }[];
   };
-  const byLabel = new Map<string, ExpAcc>();
+  const byExpiry = new Map<number, ExpAcc>();
   for (const snap of snaps) {
     for (const exp of snap.expirations) {
-      let acc = byLabel.get(exp.label);
+      let acc = byExpiry.get(exp.expiryMs);
       if (!acc) {
         acc = {
           expiryMs: exp.expiryMs,
@@ -472,33 +489,29 @@ export function combineGexAssetSnapshots(
           callOi: 0,
           putOi: 0,
           contracts: 0,
-          pinCandidates: [],
-          pinDownLadders: [],
-          pinUpLadders: [],
+          exps: [],
           gammaFlipWeighted: [],
         };
-        byLabel.set(exp.label, acc);
+        byExpiry.set(exp.expiryMs, acc);
       }
       acc.netGex += exp.netGex;
       acc.totalOi += exp.totalOi;
       acc.callOi += exp.callOi;
       acc.putOi += exp.putOi;
       acc.contracts += exp.contracts;
-      acc.expiryMs = Math.min(acc.expiryMs, exp.expiryMs);
       acc.hoursToExp = Math.min(acc.hoursToExp, exp.hoursToExp);
       const w = exp.totalOi > 0 ? exp.totalOi : 1;
-      acc.pinCandidates.push(...gexPinLevelsForExpiry(exp));
-      acc.pinDownLadders.push(gexPinStrikesDown(exp));
-      acc.pinUpLadders.push(gexPinStrikesUp(exp));
+      acc.exps.push(exp);
       if (exp.gammaFlip != null) acc.gammaFlipWeighted.push({ strike: exp.gammaFlip, oi: w });
     }
   }
-  const expirations = [...byLabel.values()]
+  const expirations = [...byExpiry.values()]
     .sort((a, b) => a.expiryMs - b.expiryMs)
     .map((acc) => {
-      const { pinStrike, pinStrikeGex } = combinedPinFromLevels(acc.pinCandidates);
-      const pinStrikesDown = mergePinLadder(acc.pinDownLadders, pinStrike, true);
-      const pinStrikesUp = mergePinLadder(acc.pinUpLadders, pinStrike, false);
+      const allPinLevels = acc.exps.flatMap(gexPinLevelsForExpiry);
+      const { pinStrike, pinStrikeGex } = combinedPinFromLevels(allPinLevels);
+      const pinStrikesDown = mergeCombinedPinSide(allPinLevels, pinStrike, true);
+      const pinStrikesUp = mergeCombinedPinSide(allPinLevels, pinStrike, false);
       return {
         expiryMs: acc.expiryMs,
         label: acc.label,

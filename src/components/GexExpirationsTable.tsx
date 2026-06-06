@@ -106,7 +106,7 @@ function pinForRef(row: GexExpiryBucket, ref: PinRowRef): number | null | undefi
 function pinGexForRef(row: GexExpiryBucket, ref: PinRowRef): number | null {
   if (ref.kind === 'down') return gexPinStrikesDown(row)[ref.idx]?.gex ?? null;
   if (ref.kind === 'up') return gexPinStrikesUp(row)[ref.idx]?.gex ?? null;
-  return row.netGex;
+  return row.pinStrikeGex ?? row.netGex;
 }
 
 function hasPinLadder(row: GexExpiryBucket): boolean {
@@ -162,20 +162,42 @@ function fmtCountdown(expiryMs: number, nowMs: number): string {
   return `${s}s`;
 }
 
+function pinLadderExpandedKey(panelId?: string): string {
+  return panelId ? `polybot-gex-pin-ladder-expanded-${panelId}` : 'polybot-gex-pin-ladder-expanded';
+}
+
+function readPinLadderExpanded(panelId?: string): boolean {
+  try {
+    return localStorage.getItem(pinLadderExpandedKey(panelId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
 type GexExpirationsTableProps = {
   expirations: GexExpiryBucket[];
   spot?: number;
   compact?: boolean;
+  panelId?: string;
 };
 
-export function GexExpirationsTable({ expirations, spot, compact = false }: GexExpirationsTableProps) {
+export function GexExpirationsTable({ expirations, spot, compact = false, panelId }: GexExpirationsTableProps) {
   const [now, setNow] = useState(() => Date.now());
-  const [pinLadderExpanded, setPinLadderExpanded] = useState(false);
+  const [pinLadderExpanded, setPinLadderExpanded] = useState(() => readPinLadderExpanded(panelId));
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (compact) return;
+    try {
+      localStorage.setItem(pinLadderExpandedKey(panelId), pinLadderExpanded ? '1' : '0');
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, [pinLadderExpanded, panelId, compact]);
 
   const upcoming = expirations.filter((row) => {
     const ms = row.expiryMs - now;

@@ -141,7 +141,7 @@ function GexFlashText({
   );
 }
 
-function AssetGex({ snap, source }: { snap: GexAssetSnapshot; source: GexSource }) {
+function AssetGex({ snap, source, panelId }: { snap: GexAssetSnapshot; source: GexSource; panelId: string }) {
   const negative = snap.regime === 'negative';
   const idx = gexReferenceSpot(snap);
   const regimeRef = useRef<HTMLSpanElement>(null);
@@ -248,7 +248,7 @@ function AssetGex({ snap, source }: { snap: GexAssetSnapshot; source: GexSource 
         </div>
       </div>
 
-      <GexExpirationsTable expirations={snap.expirations} spot={idx} />
+      <GexExpirationsTable expirations={snap.expirations} spot={idx} panelId={panelId} />
     </div>
   );
 }
@@ -300,7 +300,7 @@ export function GexPanel({ panelId }: { panelId: string }) {
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {selected ? (
-          <AssetGex key={`${source}-${asset}`} snap={selected} source={source} />
+          <AssetGex key={`${source}-${asset}`} snap={selected} source={source} panelId={panelId} />
         ) : (
           <div className="text-[10px] text-gray-500 p-2">
             {source === 'combined'

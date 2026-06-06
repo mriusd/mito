@@ -291,7 +291,7 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                           {ref.kind === 'main' ? <PinBiasPill spot={spot} pin={pin} /> : null}
                           {pinProb != null ? (
                             <span
-                              className="text-gray-500 text-[7px] tabular-nums"
+                              className="text-white text-[7px] tabular-nums"
                               title="P(main pin) ≈ |GEX at strike| / Σ|GEX| on ladder"
                             >
                               {fmtPinProb(pinProb)}
@@ -366,7 +366,7 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                       <PinBiasPill spot={spot} pin={row.pinStrike} />
                       {mainPinProb != null ? (
                         <span
-                          className="text-gray-500 text-[7px] tabular-nums"
+                          className="text-white text-[7px] tabular-nums"
                           title="P(main pin) ≈ |GEX at strike| / Σ|GEX| on ladder"
                         >
                           {fmtPinProb(mainPinProb)}

@@ -165,7 +165,7 @@ export function ChartGexHoverGrid({ gex, source = 'Deribit' }: { gex: GexAssetSn
                       >
                         <span className="inline-flex items-center justify-end gap-0.5 max-w-full">
                           {pinProb != null ? (
-                            <span className="text-gray-500 text-[7px] tabular-nums">{fmtPinProb(pinProb)}</span>
+                            <span className="text-white text-[7px] tabular-nums">{fmtPinProb(pinProb)}</span>
                           ) : null}
                           <span className={`tabular-nums ${pinRow.ref.kind === 'main' ? 'font-semibold' : ''}`}>
                             {fmtGexStrike(pinRow.strike)}

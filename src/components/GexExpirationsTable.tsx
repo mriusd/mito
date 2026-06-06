@@ -291,19 +291,9 @@ export function GexExpirationsTable({ expirations, spot, compact = false }: GexE
                     {row.totalOi.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </td>
                   <td className="py-0.5 px-0.5 text-right text-yellow-300/90 whitespace-nowrap">
-                    <span className="inline-flex items-center justify-end gap-0.5 max-w-full flex-wrap">
-                      {gexPinStrikesDown(row).map((p, i) => (
-                        <span key={`d-${p.strike}-${i}`} className="text-yellow-300/90 text-[8px] tabular-nums">
-                          {fmtGexStrike(p.strike)}
-                        </span>
-                      ))}
+                    <span className="inline-flex items-center justify-end gap-0.5 max-w-full">
                       <PinBiasPill spot={spot} pin={row.pinStrike} />
                       <span className="font-semibold tabular-nums">{fmtGexStrike(row.pinStrike)}</span>
-                      {gexPinStrikesUp(row).map((p, i) => (
-                        <span key={`u-${p.strike}-${i}`} className="text-yellow-300/90 text-[8px] tabular-nums">
-                          {fmtGexStrike(p.strike)}
-                        </span>
-                      ))}
                     </span>
                   </td>
                   {!compact ? (

@@ -1,10 +1,19 @@
 export type ChartObHoverOhlcv = {
+  timeMs: number;
   o: number;
   h: number;
   l: number;
   c: number;
   v: number;
 };
+
+function fmtCandleTime(timeMs: number, interval?: string): string {
+  const d = new Date(timeMs);
+  const hm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+  if (interval === '5s') return `${hm}:${String(d.getSeconds()).padStart(2, '0')}`;
+  const date = `${d.getMonth() + 1}/${d.getDate()}`;
+  return `${date} ${hm}`;
+}
 
 function fmtCandleVolume(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
@@ -18,12 +27,21 @@ function fmtCents(v: number): string {
   return `${v.toFixed(1)}¢`;
 }
 
-export function ChartObHoverOhlcvStrip({ ohlcv }: { ohlcv: ChartObHoverOhlcv }) {
+export function ChartObHoverOhlcvStrip({
+  ohlcv,
+  interval,
+}: {
+  ohlcv: ChartObHoverOhlcv;
+  interval?: string;
+}) {
   const isBull = ohlcv.c >= ohlcv.o;
   const color = isBull ? 'text-emerald-400' : 'text-red-400';
 
   return (
     <div className="mb-2 border-b border-gray-700/80 pb-2 px-0.5">
+      <div className="mb-1.5 text-[10px] font-semibold tabular-nums text-gray-300 text-center">
+        {fmtCandleTime(ohlcv.timeMs, interval)}
+      </div>
       <div className="grid grid-cols-5 gap-x-1 mb-1 text-[9px] font-medium text-gray-500">
         <span>O</span>
         <span>H</span>

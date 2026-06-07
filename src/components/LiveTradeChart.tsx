@@ -1225,7 +1225,14 @@ export function LiveTradeChart({
       ...(hasGex ? { gex: nearest!.gex } : {}),
       ...(hasGexBinance ? { gexBinance: nearest!.gexBinance } : {}),
       ...(hasGexOkx ? { gexOkx: nearest!.gexOkx } : {}),
-      ohlcv: { o: nearest!.o, h: nearest!.h, l: nearest!.l, c: nearest!.c, v: nearest!.v },
+      ohlcv: {
+        timeMs: nearest!.time,
+        o: nearest!.o,
+        h: nearest!.h,
+        l: nearest!.l,
+        c: nearest!.c,
+        v: nearest!.v,
+      },
       enrichment: nearest!.enrichment,
     });
   }, [paintChartHover, pickHoverCandle, candleObHover, chartOrderDragEnabled, orderDrag, hitTestOrderHandle]);
@@ -1484,7 +1491,7 @@ export function LiveTradeChart({
                     : null;
                   return (
                     <>
-                      <ChartObHoverOhlcvStrip ohlcv={hoverOb.ohlcv} />
+                      <ChartObHoverOhlcvStrip ohlcv={hoverOb.ohlcv} interval={interval} />
                       <ChartObHoverEnrichmentStrip
                         enrichment={hoverOb.enrichment}
                         priceDec={enrichmentPriceDec}

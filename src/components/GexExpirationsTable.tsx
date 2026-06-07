@@ -113,6 +113,66 @@ function hasPinLadder(row: GexExpiryBucket): boolean {
   return gexPinStrikesDown(row).length > 0 || gexPinStrikesUp(row).length > 0;
 }
 
+function pinProbMassAboveBelowSpot(
+  row: GexExpiryBucket,
+  spot: number,
+  pinProbs: Map<string, number>,
+): { above: number; below: number } {
+  let above = 0;
+  let below = 0;
+  for (const ref of nearestPinRows(row)) {
+    const prob = pinProbs.get(pinRowKey(row, ref)) ?? 0;
+    if (prob <= 0) continue;
+    const strike = pinForRef(row, ref);
+    if (strike == null || !Number.isFinite(strike)) continue;
+    if (strike > spot) above += prob;
+    else if (strike < spot) below += prob;
+  }
+  return { above, below };
+}
+
+function PinProbAboveSpot({
+  row,
+  spot,
+  pinProbs,
+}: {
+  row: GexExpiryBucket;
+  spot: number;
+  pinProbs: Map<string, number>;
+}) {
+  const { above } = pinProbMassAboveBelowSpot(row, spot, pinProbs);
+  if (above <= 0) return null;
+  return (
+    <div
+      className="mt-0.5 text-[7px] font-semibold tabular-nums text-green-400 leading-none"
+      title="Σ P(pin) for strikes above index"
+    >
+      <span aria-hidden>▲</span> {fmtPinProb(above)}
+    </div>
+  );
+}
+
+function PinProbBelowSpot({
+  row,
+  spot,
+  pinProbs,
+}: {
+  row: GexExpiryBucket;
+  spot: number;
+  pinProbs: Map<string, number>;
+}) {
+  const { below } = pinProbMassAboveBelowSpot(row, spot, pinProbs);
+  if (below <= 0) return null;
+  return (
+    <div
+      className="mt-0.5 text-[7px] font-semibold tabular-nums text-red-400 leading-none"
+      title="Σ P(pin) for strikes below index"
+    >
+      <span aria-hidden>▼</span> {fmtPinProb(below)}
+    </div>
+  );
+}
+
 function ExpiryLabelCell({
   label,
   expandable,
@@ -250,6 +310,7 @@ export function GexExpirationsTable({ expirations, spot, compact = false, panelI
               if (splitNearestPins) {
                 const pinKinds = nearestPinRows(row);
                 const rowSpan = pinKinds.length;
+                const showSpotPinMass = spot != null && spot > 0 && pinProbs != null;
                 return pinKinds.map((ref, pinIdx) => {
                   const pinProb = pinProbs?.get(pinRowKey(row, ref));
                   const pin = pinForRef(row, ref);
@@ -271,6 +332,9 @@ export function GexExpirationsTable({ expirations, spot, compact = false, panelI
                               expanded={pinLadderExpanded}
                               onToggle={() => setPinLadderExpanded((v) => !v)}
                             />
+                            {showSpotPinMass ? (
+                              <PinProbAboveSpot row={row} spot={spot!} pinProbs={pinProbs!} />
+                            ) : null}
                           </td>
                           <td
                             rowSpan={rowSpan}
@@ -279,6 +343,9 @@ export function GexExpirationsTable({ expirations, spot, compact = false, panelI
                             }`}
                           >
                             {fmtCountdown(row.expiryMs, now)}
+                            {showSpotPinMass ? (
+                              <PinProbBelowSpot row={row} spot={spot!} pinProbs={pinProbs!} />
+                            ) : null}
                           </td>
                         </>
                       ) : null}

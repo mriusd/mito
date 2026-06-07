@@ -131,7 +131,7 @@ function pinProbMassAboveBelowSpot(
   return { above, below };
 }
 
-function PinProbAboveSpot({
+function PinProbSpotMass({
   row,
   spot,
   pinProbs,
@@ -140,35 +140,20 @@ function PinProbAboveSpot({
   spot: number;
   pinProbs: Map<string, number>;
 }) {
-  const { above } = pinProbMassAboveBelowSpot(row, spot, pinProbs);
-  if (above <= 0) return null;
+  const { above, below } = pinProbMassAboveBelowSpot(row, spot, pinProbs);
+  if (above <= 0 && below <= 0) return null;
   return (
-    <div
-      className="mt-0.5 text-[7px] font-semibold tabular-nums text-green-400 leading-none"
-      title="Σ P(pin) for strikes above index"
-    >
-      <span aria-hidden>▲</span> {fmtPinProb(above)}
-    </div>
-  );
-}
-
-function PinProbBelowSpot({
-  row,
-  spot,
-  pinProbs,
-}: {
-  row: GexExpiryBucket;
-  spot: number;
-  pinProbs: Map<string, number>;
-}) {
-  const { below } = pinProbMassAboveBelowSpot(row, spot, pinProbs);
-  if (below <= 0) return null;
-  return (
-    <div
-      className="mt-0.5 text-[7px] font-semibold tabular-nums text-red-400 leading-none"
-      title="Σ P(pin) for strikes below index"
-    >
-      <span aria-hidden>▼</span> {fmtPinProb(below)}
+    <div className="inline-flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold tabular-nums leading-none">
+      {above > 0 ? (
+        <span className="text-green-400" title="Σ P(pin) for strikes above index">
+          <span aria-hidden>▲</span> {fmtPinProb(above)}
+        </span>
+      ) : null}
+      {below > 0 ? (
+        <span className="text-red-400" title="Σ P(pin) for strikes below index">
+          <span aria-hidden>▼</span> {fmtPinProb(below)}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -332,19 +317,18 @@ export function GexExpirationsTable({ expirations, spot, compact = false, panelI
                               expanded={pinLadderExpanded}
                               onToggle={() => setPinLadderExpanded((v) => !v)}
                             />
-                            {showSpotPinMass ? (
-                              <PinProbAboveSpot row={row} spot={spot!} pinProbs={pinProbs!} />
-                            ) : null}
                           </td>
                           <td
                             rowSpan={rowSpan}
-                            className={`py-0.5 pr-0.5 whitespace-nowrap font-bold tracking-tight align-top ${
+                            className={`relative py-0.5 pr-0.5 whitespace-nowrap font-bold tracking-tight align-top ${
                               urgent ? 'text-amber-300' : 'text-cyan-300/90'
                             }`}
                           >
-                            {fmtCountdown(row.expiryMs, now)}
+                            <span className="relative z-10">{fmtCountdown(row.expiryMs, now)}</span>
                             {showSpotPinMass ? (
-                              <PinProbBelowSpot row={row} spot={spot!} pinProbs={pinProbs!} />
+                              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                <PinProbSpotMass row={row} spot={spot!} pinProbs={pinProbs!} />
+                              </div>
                             ) : null}
                           </td>
                         </>
@@ -380,7 +364,7 @@ export function GexExpirationsTable({ expirations, spot, compact = false, panelI
                           {ref.kind === 'main' ? <PinBiasPill spot={spot} pin={pin} /> : null}
                           {pinProb != null ? (
                             <span
-                              className="text-white text-[7px] tabular-nums"
+                              className="text-white text-[9px] tabular-nums"
                               title="P(main pin) ≈ |GEX at strike| / Σ|GEX| on ladder"
                             >
                               {fmtPinProb(pinProb)}
@@ -455,7 +439,7 @@ export function GexExpirationsTable({ expirations, spot, compact = false, panelI
                       <PinBiasPill spot={spot} pin={row.pinStrike} />
                       {mainPinProb != null ? (
                         <span
-                          className="text-white text-[7px] tabular-nums"
+                          className="text-white text-[9px] tabular-nums"
                           title="P(main pin) ≈ |GEX at strike| / Σ|GEX| on ladder"
                         >
                           {fmtPinProb(mainPinProb)}

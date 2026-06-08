@@ -5,6 +5,7 @@ import {
   GEX_SOURCE_LABELS,
   useGexConnection,
   useGexSnapshot,
+  gexImpliedPrice,
   gexReferenceSpot,
   type GexAsset,
   type GexAssetSnapshot,
@@ -144,6 +145,7 @@ function GexFlashText({
 function AssetGex({ snap, source, panelId }: { snap: GexAssetSnapshot; source: GexSource; panelId: string }) {
   const negative = snap.regime === 'negative';
   const idx = gexReferenceSpot(snap);
+  const gexPos = gexImpliedPrice(snap);
   const regimeRef = useRef<HTMLSpanElement>(null);
   const prevRegimeRef = useRef<string | null>(null);
 
@@ -178,6 +180,16 @@ function AssetGex({ snap, source, panelId }: { snap: GexAssetSnapshot; source: G
           >
             {source === 'combined' ? 'ref idx' : 'idx'}
           </span>
+          {gexPos != null ? (
+            <span
+              className="inline-flex items-center gap-0.5 text-[10px] tabular-nums text-lime-400 leading-none"
+              title="|GEX|-weighted mean strike on nearest expiry pin ladder — options positioning center"
+            >
+              <span className="text-[8px] text-gray-600">pos</span>
+              <GexFlashText value={gexPos} format={formatGexSpot} />
+              <span className="text-[8px] text-gray-600">({pctTo(idx, gexPos)})</span>
+            </span>
+          ) : null}
           <span
             ref={regimeRef}
             className={`px-1 py-px rounded text-[8px] font-bold uppercase tracking-wide leading-none ${

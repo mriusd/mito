@@ -96,6 +96,47 @@ export type GexPanelSnapshot = {
   updatedAt: number;
 };
 
+/** |GEX|-weighted mean strike — dealer positioning center (uses mass, not signed net). */
+export function gexImpliedPriceFromLevels(levels: GexPinLevel[]): number | null {
+  let wSum = 0;
+  let wxSum = 0;
+  for (const p of levels) {
+    const w = Math.abs(p.gex);
+    if (!Number.isFinite(p.strike) || p.strike <= 0 || w <= 0) continue;
+    wSum += w;
+    wxSum += p.strike * w;
+  }
+  return wSum > 0 ? wxSum / wSum : null;
+}
+
+export function nearestLiveGexExpiry(
+  expirations: GexExpiryBucket[],
+  nowMs = Date.now(),
+): GexExpiryBucket | null {
+  return (
+    [...expirations]
+      .filter((e) => e.expiryMs > nowMs)
+      .sort((a, b) => a.expiryMs - b.expiryMs)[0] ?? null
+  );
+}
+
+/** Nearest expiry pin ladder (main + down/up rungs), |GEX|-weighted. */
+export function gexImpliedPriceFromNearestExpiry(snap: GexAssetSnapshot, nowMs = Date.now()): number | null {
+  const exp = nearestLiveGexExpiry(snap.expirations, nowMs);
+  if (!exp) return null;
+  return gexImpliedPriceFromLevels(gexPinLevelsForExpiry(exp));
+}
+
+/** Book-wide fallback from strike buckets when ladder empty. */
+export function gexImpliedPriceFromStrikes(strikes: GexStrikeBucket[]): number | null {
+  return gexImpliedPriceFromLevels(strikes.map((s) => ({ strike: s.strike, gex: s.gex })));
+}
+
+/** Implied positioning price from options GEX (nearest expiry ladder, else top strikes). */
+export function gexImpliedPrice(snap: GexAssetSnapshot, nowMs = Date.now()): number | null {
+  return gexImpliedPriceFromNearestExpiry(snap, nowMs) ?? gexImpliedPriceFromStrikes(snap.strikes);
+}
+
 export function fmtGexStrike(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return '—';
   return v.toLocaleString(undefined, { maximumFractionDigits: 0 });

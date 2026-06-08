@@ -8,8 +8,18 @@ import { API_BASE } from '../../lib/env';
 import { subscribeChartKline } from '../../lib/chartWsShared';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
+import {
+  gexImpliedPrice,
+  useGexConnection,
+  useGexSnapshot,
+  type GexAsset,
+} from '../../lib/deribitGexFeed';
 
 import { assetToSymbol, formatPrice } from '../../utils/format';
+
+const GEX_POS_COLOR = '#84cc16';
+const GEX_POS_LABEL = 'GEX pos';
+const GEX_CHART_ASSETS: GexAsset[] = ['BTC', 'ETH'];
 
 const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
 
@@ -399,6 +409,8 @@ function drawCandles(
   selectedRbsTf: UpDownTfKey | null,
   /** HUD: always fit full Y range to every RBS level (default chart keeps distant RBS out to avoid squashing). */
   includeAllRbsInYRange = false,
+  gexPosPrice: number | null = null,
+  showGexPos = false,
 ) {
   ctx.fillStyle = '#0f1419';
   ctx.fillRect(0, 0, w, h);
@@ -444,6 +456,12 @@ function drawCandles(
     if (includeAllRbsInYRange || (rl.price >= candleLo - nearSlack && rl.price <= candleHi + nearSlack)) {
       lo = Math.min(lo, rl.price);
       hi = Math.max(hi, rl.price);
+    }
+  }
+  if (showGexPos && gexPosPrice != null && Number.isFinite(gexPosPrice)) {
+    if (gexPosPrice >= candleLo - nearSlack && gexPosPrice <= candleHi + nearSlack) {
+      lo = Math.min(lo, gexPosPrice);
+      hi = Math.max(hi, gexPosPrice);
     }
   }
 
@@ -587,6 +605,31 @@ function drawCandles(
     }
   }
 
+  if (showGexPos && gexPosPrice != null && Number.isFinite(gexPosPrice)) {
+    const y = yPx(gexPosPrice);
+    if (y >= yTop - 1 && y <= yBot + 1) {
+      ctx.setLineDash([6, 3]);
+      ctx.strokeStyle = GEX_POS_COLOR;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(padL + cw, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const tag = GEX_POS_LABEL;
+      ctx.font = 'bold 9px ui-sans-serif, system-ui, sans-serif';
+      const tw = ctx.measureText(tag).width;
+      const tagX = padL + 4;
+      ctx.fillStyle = 'rgba(15,20,25,0.8)';
+      ctx.fillRect(tagX - 3, y - 7, tw + 6, 13);
+      ctx.fillStyle = GEX_POS_COLOR;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(tag, tagX, y);
+    }
+  }
+
   ctx.restore();
 
   // S/R target prices on Y-axis (left margin, aligned with each line)
@@ -618,6 +661,20 @@ function drawCandles(
       ctx.fillStyle = 'rgba(15,20,25,0.9)';
       ctx.fillRect(pillL, y - 5, ax - pillL + 2, 10);
       ctx.fillStyle = RBS_TF_COLOR[rl.tf];
+      ctx.fillText(txt, ax, y);
+    }
+  }
+
+  if (showGexPos && gexPosPrice != null && Number.isFinite(gexPosPrice)) {
+    const y = yPx(gexPosPrice);
+    if (y >= yTop && y <= yBot) {
+      const txt = formatSrStrike(gexPosPrice, asset);
+      const tw = ctx.measureText(txt).width;
+      const ax = padL - 4;
+      const pillL = Math.max(2, ax - tw - 4);
+      ctx.fillStyle = 'rgba(15,20,25,0.9)';
+      ctx.fillRect(pillL, y - 5, ax - pillL + 2, 10);
+      ctx.fillStyle = GEX_POS_COLOR;
       ctx.fillText(txt, ax, y);
     }
   }
@@ -702,6 +759,19 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     // Keep sane bounds: 0%..5%.
     return Math.max(0, Math.min(5, v));
   });
+  const gexChartSupported = asset === 'BTC' || asset === 'ETH';
+  const [gexPosEnabled, setGexPosEnabled] = useState(() => {
+    const raw = localStorage.getItem(`polybot-binance-gex-pos-${panelId}`);
+    return raw !== 'false';
+  });
+  useGexConnection('combined', gexChartSupported && gexPosEnabled);
+  const gexSnap = useGexSnapshot('combined');
+  const liveGexPos = useMemo(() => {
+    if (!gexChartSupported || !gexPosEnabled || !gexSnap) return null;
+    const snap = gexSnap.assets[asset as GexAsset];
+    if (!snap) return null;
+    return gexImpliedPrice(snap);
+  }, [gexChartSupported, gexPosEnabled, gexSnap, asset]);
   const [rbsSettingsMenuPos, setRbsSettingsMenuPos] = useState<{ left: number; top: number } | null>(null);
   const rbsSettingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const rbsSettingsMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1268,14 +1338,27 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawCandles(ctx, w, h, candles, timeframe, srLines, asset, rbsTfLines, selectedRbsTf, hudGateSupportLinesByExchange);
+      drawCandles(
+        ctx,
+        w,
+        h,
+        candles,
+        timeframe,
+        srLines,
+        asset,
+        rbsTfLines,
+        selectedRbsTf,
+        hudGateSupportLinesByExchange,
+        liveGexPos,
+        gexPosEnabled && gexChartSupported,
+      );
     };
 
     paint();
     const ro = new ResizeObserver(() => paint());
     ro.observe(container);
     return () => ro.disconnect();
-  }, [candles, timeframe, srLines, asset, rbsTfLines, selectedRbsTf, spotForChart, hudGateSupportLinesByExchange]);
+  }, [candles, timeframe, srLines, asset, rbsTfLines, selectedRbsTf, spotForChart, hudGateSupportLinesByExchange, liveGexPos, gexPosEnabled, gexChartSupported]);
 
   const titleColor = ASSET_COLORS[asset] || 'text-white';
 
@@ -1625,6 +1708,27 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
           </label>
           );
         })}
+        {gexChartSupported ? (
+          <label
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 transition"
+            title="|GEX|-weighted mean strike on nearest expiry pin ladder"
+          >
+            <input
+              type="checkbox"
+              checked={gexPosEnabled}
+              onChange={() => {
+                setGexPosEnabled((prev) => {
+                  const next = !prev;
+                  localStorage.setItem(`polybot-binance-gex-pos-${panelId}`, next ? '1' : '0');
+                  return next;
+                });
+              }}
+              className="rounded"
+              style={{ accentColor: GEX_POS_COLOR }}
+            />
+            <span style={{ color: GEX_POS_COLOR }}>{GEX_POS_LABEL}</span>
+          </label>
+        ) : null}
       </div>
     </div>
   );

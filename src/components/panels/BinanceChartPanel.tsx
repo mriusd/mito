@@ -762,7 +762,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   const gexChartSupported = asset === 'BTC' || asset === 'ETH';
   const [gexPosEnabled, setGexPosEnabled] = useState(() => {
     const raw = localStorage.getItem(`polybot-binance-gex-pos-${panelId}`);
-    return raw !== 'false';
+    return raw === 'true' || raw === '1';
   });
   useGexConnection('combined', gexChartSupported && gexPosEnabled);
   const gexSnap = useGexSnapshot('combined');
@@ -1719,7 +1719,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
               onChange={() => {
                 setGexPosEnabled((prev) => {
                   const next = !prev;
-                  localStorage.setItem(`polybot-binance-gex-pos-${panelId}`, next ? '1' : '0');
+                  localStorage.setItem(`polybot-binance-gex-pos-${panelId}`, next ? 'true' : 'false');
                   return next;
                 });
               }}

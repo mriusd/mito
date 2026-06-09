@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import {
   extractAssetFromMarket,
@@ -6,13 +6,11 @@ import {
   listPastUpDownMarketsInTfBucket,
   pickLiveUpDownMarketInTfBucket,
   pickNextMarketOnExpiry,
-  resolveUpDownStrikeSync,
   upDownTimeframeKeyFromMarket,
 } from '../utils/format';
 import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
 import { getExpiryTickNow, subscribeExpiryTick } from '../lib/expiryTickStore';
-import { fetchUpDownTargetFromCrypto, upDownCryptoTimeframe } from '../lib/upDownTargetFromCrypto';
-import { API_BASE } from '../lib/env';
+import { useUpDownStrikePrice } from '../hooks/useUpDownStrikePrice';
 import {
   setSidebarUpDownEndPicker,
   setSidebarUpDownLiveSameTfMarket,
@@ -27,17 +25,14 @@ export const SidebarUpDownTargetHost = memo(function SidebarUpDownTargetHost() {
   const autoSwitchNextMarketOnExpiry = useAppStore((s) => s.autoSwitchNextMarketOnExpiry);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
 
-  const marketLookup = useMemo(
-    () => useAppStore.getState().marketLookup,
-    [marketLookupEpoch],
-  );
-
   const isUpDownMarket = !!(
     selectedMarket?.question?.match(/up\s+or\s+down/i) ||
     selectedMarket?.eventSlug?.match(/up-or-down|updown/i)
   );
   const upDownAsset = isUpDownMarket && selectedMarket ? extractAssetFromMarket(selectedMarket) : null;
   const isMarketExpired = marketIsExpired(selectedMarket);
+
+  const strike = useUpDownStrikePrice(isUpDownMarket ? selectedMarket : null);
 
   const autoSwitchPrevSelectedIdRef = useRef<string | null>(null);
   const userPinnedExpiredMarketRef = useRef(false);
@@ -46,73 +41,13 @@ export const SidebarUpDownTargetHost = memo(function SidebarUpDownTargetHost() {
 
   const [endPickerPulse, setEndPickerPulse] = useState(0);
 
-  const syncUpDownStrike = useMemo(
-    () =>
-      isUpDownMarket && selectedMarket
-        ? resolveUpDownStrikeSync(selectedMarket, marketLookup, upOrDownMarkets)
-        : undefined,
-    [
-      isUpDownMarket,
-      selectedMarket,
-      selectedMarket?.id,
-      selectedMarket?.priceToBeat,
-      selectedMarket?.clobTokenIds,
-      marketLookup,
-      upOrDownMarkets,
-      lastUpdated,
-    ],
-  );
-
   useEffect(() => {
     if (!isUpDownMarket || !selectedMarket?.endDate) {
       setSidebarUpDownTargetPrice(null);
       return;
     }
-
-    const endMs = new Date(selectedMarket.endDate).getTime();
-    if (isNaN(endMs)) {
-      setSidebarUpDownTargetPrice(null);
-      return;
-    }
-
-    if (syncUpDownStrike != null && Number.isFinite(syncUpDownStrike)) {
-      setSidebarUpDownTargetPrice(syncUpDownStrike);
-      return;
-    }
-
-    setSidebarUpDownTargetPrice(null);
-
-    const slug = selectedMarket.eventSlug || '';
-    const q = selectedMarket.question || '';
-    const combined = `${slug} ${q}`;
-    const is5m = !!(combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i));
-
-    if (is5m) return;
-    if (!upDownCryptoTimeframe(combined)) return;
-
-    const asset = extractAssetFromMarket(selectedMarket);
-    let cancelled = false;
-    const tick = async () => {
-      if (cancelled) return;
-      const p = await fetchUpDownTargetFromCrypto(API_BASE, asset, endMs, combined);
-      if (!cancelled && p != null) setSidebarUpDownTargetPrice(p);
-    };
-    void tick();
-    const iv = setInterval(() => void tick(), 12_000);
-    const stopIv = setTimeout(() => clearInterval(iv), 150_000);
-    return () => {
-      cancelled = true;
-      clearInterval(iv);
-      clearTimeout(stopIv);
-    };
-  }, [
-    isUpDownMarket,
-    selectedMarket?.id,
-    selectedMarket?.endDate,
-    selectedMarket?.eventSlug,
-    selectedMarket?.question,
-    syncUpDownStrike,
-  ]);
+    setSidebarUpDownTargetPrice(strike ?? null);
+  }, [isUpDownMarket, selectedMarket?.id, selectedMarket?.endDate, strike]);
 
   useEffect(() => {
     if (!isUpDownMarket || !selectedMarket || !isMarketExpired || !upDownAsset) {

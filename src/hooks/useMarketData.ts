@@ -7,6 +7,7 @@ import {
 } from '../lib/marketDataDedupe';
 import { isWebMode } from '../lib/env';
 import type { Market } from '../types';
+import { resolveUpDownStrikeSync } from '../utils/format';
 
 const WS_FIELDS: (keyof Market)[] = [
   'bestBid', 'bestAsk', 'volume', 'sharesInExistence', 'marketNetDirection',
@@ -65,22 +66,21 @@ export function useMarketData() {
         ? { aboveMarkets, priceOnMarkets, weeklyHitMarkets, upOrDownMarkets, marketLookup: lookup }
         : {};
 
-      if (isWebMode) {
-        useAppStore.getState().setMarketData({
-          ...marketPatch,
-          tokenInfo: data.tokenInfo || {},
-          progOrderMap: data.progOrderMap || {},
-          marketCount: data.count || 0,
-          lastUpdated: data.lastUpdated || '',
-        });
-      } else {
-        useAppStore.getState().setMarketData({
-          ...marketPatch,
-          tokenInfo: data.tokenInfo || {},
-          progOrderMap: data.progOrderMap || {},
-          marketCount: data.count || 0,
-          lastUpdated: data.lastUpdated || '',
-        });
+      const patchPayload = {
+        ...marketPatch,
+        tokenInfo: data.tokenInfo || {},
+        progOrderMap: data.progOrderMap || {},
+        marketCount: data.count || 0,
+        lastUpdated: data.lastUpdated || '',
+      };
+      useAppStore.getState().setMarketData(patchPayload);
+
+      const sel = store.selectedMarket;
+      if (sel?.id && marketArraysChanged) {
+        const strike = resolveUpDownStrikeSync(sel, lookup, upOrDownMarkets);
+        if (strike != null && sel.priceToBeat !== strike) {
+          useAppStore.getState().setSelectedMarket({ ...sel, priceToBeat: strike });
+        }
       }
       useAppStore.getState().setBackendConnected(true);
       useAppStore.getState().setLoading(false);

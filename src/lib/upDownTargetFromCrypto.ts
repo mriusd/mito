@@ -3,8 +3,8 @@
  * of a window. The fiveminute variant for [windowStart, windowStart+5m] returns the same open sooner.
  */
 
-export function upDownCryptoTimeframe(combined: string): '15m' | '1h' | '4h' | '24h' | null {
-  if (combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i)) return null;
+export function upDownCryptoTimeframe(combined: string): '5m' | '15m' | '1h' | '4h' | '24h' | null {
+  if (combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i)) return '5m';
   if (combined.match(/updown-15m/i) || combined.match(/\b15[- ]?min/i)) return '15m';
   if (combined.match(/updown-4h/i) || combined.match(/\b4[- ]?h/i)) return '4h';
   if (combined.match(/up-or-down-on-/i) || combined.match(/\b24[- ]?h/i)) return '24h';
@@ -22,7 +22,10 @@ export async function fetchUpDownTargetFromCrypto(
 
   let variant = 'hourly';
   let intervalMs = 60 * 60 * 1000;
-  if (tf === '15m') {
+  if (tf === '5m') {
+    variant = 'fiveminute';
+    intervalMs = 5 * 60 * 1000;
+  } else if (tf === '15m') {
     variant = 'fifteen';
     intervalMs = 15 * 60 * 1000;
   } else if (tf === '4h') {

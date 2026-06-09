@@ -13,6 +13,7 @@ import { MarketCellMidRow } from './MarketCellMidRow';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { getMarketProbability } from '../../utils/bsMath';
 import { useMarkovUpDown, markovNextUpProb } from '../../hooks/useMarkovUpDown';
+import { useUpDownStrikePrice } from '../../hooks/useUpDownStrikePrice';
 
 const ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
 const TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
@@ -57,6 +58,250 @@ function expiryProgress(nowMs: number, endMs: number, durationMs: number): numbe
 function formatBadgePriceCents(v: number): string {
   return Number.isInteger(v) ? String(v) : v.toFixed(1);
 }
+
+const UpDownHudCurrentLaneBlock = memo(function UpDownHudCurrentLaneBlock({
+  asset,
+  tf,
+  titleColor,
+  current,
+  selectedMarketId,
+  positionTokenIds,
+  orderLookup,
+  liveTradesSource,
+  priceData,
+  volatilityData,
+  volMultiplier,
+  bsTimeOffsetHours,
+  chainlinkPrices,
+  markovModels,
+  onOpenMarket,
+}: {
+  asset: AssetName;
+  tf: string;
+  titleColor: string;
+  current: Market | null;
+  selectedMarketId?: string;
+  positionTokenIds: Set<string>;
+  orderLookup: Record<string, import('../../types').Order[]>;
+  liveTradesSource: string;
+  priceData: ReturnType<typeof useAppStore.getState>['priceData'];
+  volatilityData: ReturnType<typeof useAppStore.getState>['volatilityData'];
+  volMultiplier: number;
+  bsTimeOffsetHours: number;
+  chainlinkPrices: Partial<Record<AssetName, number>>;
+  markovModels: ReturnType<typeof useMarkovUpDown>;
+  onOpenMarket: (m: Market, side: 'YES' | 'NO') => void;
+}) {
+  const strike = useUpDownStrikePrice(current);
+  const sym = assetToSymbol(asset) as AssetSymbol;
+  const yesTokenId = current?.clobTokenIds?.[0] || '';
+  const liveEntry = yesTokenId ? getBidAskMarketRow(yesTokenId) : undefined;
+  const bestBid = liveEntry?.bestBid ?? current?.bestBid;
+  const cl = chainlinkPrices[asset];
+  const binanceSpot = priceData[sym]?.price;
+  const preferChainlink = tf === '5m' || tf === '15m';
+  const liveSpot = preferChainlink
+    ? (cl != null && cl > 0 ? cl : (binanceSpot != null && binanceSpot > 0 ? binanceSpot : undefined))
+    : (binanceSpot != null && binanceSpot > 0 ? binanceSpot : undefined);
+  let mathYesProb: number | null = null;
+  if (liveSpot != null && liveSpot > 0 && strike != null && current?.endDate) {
+    const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
+    const p = getMarketProbability('>' + strike, liveSpot, current.endDate, sigma, bsTimeOffsetHours);
+    if (p != null) mathYesProb = p;
+  }
+  let bidVsMath: 'bidAbove' | 'bidBelow' | 'tie' | null = null;
+  let triangleBadgeFlash = false;
+  if (mathYesProb !== null && bestBid != null && Number.isFinite(bestBid)) {
+    const gapPts = Math.abs(bestBid * 100 - mathYesProb * 100);
+    const d = bestBid - mathYesProb;
+    if (gapPts <= MATH_VS_BID_NEUTRAL_PCT) bidVsMath = 'tie';
+    else if (d > 0) bidVsMath = 'bidAbove';
+    else bidVsMath = 'bidBelow';
+    const flashDenom = Math.max(mathYesProb, 1e-9);
+    triangleBadgeFlash = Math.abs(bestBid - mathYesProb) / flashDenom >= MATH_VS_BID_FLASH_REL;
+  }
+  const mathPctRounded = mathYesProb !== null ? Math.round(mathYesProb * 100) : null;
+  const mathProbNeutral =
+    mathPctRounded !== null &&
+    mathPctRounded >= 50 - MATH_PROB_NEUTRAL_BAND &&
+    mathPctRounded <= 50 + MATH_PROB_NEUTRAL_BAND;
+  const mathBadgeColorClass =
+    mathPctRounded === null
+      ? 'bg-gray-800/70 text-gray-300 border border-gray-600/50'
+      : mathProbNeutral
+        ? 'bg-gray-800/40 text-gray-300/90 border border-gray-500/30'
+        : mathPctRounded > 50
+          ? 'bg-green-900/55 text-green-200 border border-green-700/40'
+          : 'bg-red-900/55 text-red-200 border border-red-700/40';
+  const wbUsdc =
+    typeof liveEntry?.winnerBias === 'number' && Number.isFinite(liveEntry.winnerBias)
+      ? liveEntry.winnerBias
+      : 0;
+  const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
+  const winnerBiasBarFlash = wbPct > 60 || wbPct < 40;
+  const smsRaw = liveEntry?.provenSMS ?? 0;
+  const smsPct = Math.max(2, Math.min(98, 50 + smsRaw * 50));
+  const tfModel = markovModels?.[asset]?.[tf];
+  const { order1, order2 } = markovNextUpProb(tfModel, mathYesProb);
+  const mcCls = (p: number | null) =>
+    p == null
+      ? 'text-gray-600'
+      : Math.abs(p * 100 - 50) <= MATH_PROB_NEUTRAL_BAND
+        ? 'text-gray-300/90'
+        : p > 0.5
+          ? 'text-green-300'
+          : 'text-red-300';
+  const mcFmt = (p: number | null) => (p == null ? '-' : (p * 100).toFixed(0));
+
+  return (
+    <>
+      <td className="px-1 py-1 align-middle border-l border-r border-solid border-gray-700 text-center text-[9px] whitespace-nowrap text-gray-300 bg-gray-900/50 border-b border-gray-700/50">
+        <div className="flex flex-row items-center justify-center gap-1 leading-none">
+          <span className={`font-medium tabular-nums ${titleColor}`}>
+            {strike != null
+              ? strike.toLocaleString(undefined, {
+                  minimumFractionDigits: TARGET_STRIKE_DECIMALS[asset],
+                  maximumFractionDigits: TARGET_STRIKE_DECIMALS[asset],
+                })
+              : '-'}
+          </span>
+          {mathYesProb !== null && (
+            <div className="inline-flex items-center gap-0.5 shrink-0">
+              <div className={`inline-flex h-4 min-w-[2.75rem] shrink-0 items-center justify-center gap-0.5 rounded px-1 text-[8px] font-bold tabular-nums ${mathBadgeColorClass}`}>
+                <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
+                <span>{(mathYesProb * 100).toFixed(0)}</span>
+              </div>
+              {bidVsMath !== null && (
+                <div
+                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                    bidVsMath === 'bidAbove'
+                      ? 'bg-green-900/65 border-green-600/45 text-green-100'
+                      : bidVsMath === 'bidBelow'
+                        ? 'bg-red-900/65 border-red-600/45 text-red-100'
+                        : 'bg-gray-800/40 border-gray-500/30 text-gray-300/90'
+                  } ${triangleBadgeFlash && bidVsMath !== 'tie' ? 'updown-triangle-badge-flash' : ''}`}
+                >
+                  {bidVsMath === 'bidAbove' && <Triangle className="h-2.5 w-2.5 fill-current stroke-current" strokeWidth={1.5} aria-hidden />}
+                  {bidVsMath === 'bidBelow' && <Triangle className="h-2.5 w-2.5 rotate-180 fill-current stroke-current" strokeWidth={1.5} aria-hidden />}
+                  {bidVsMath === 'tie' && <Minus className="h-2.5 w-2.5" strokeWidth={2.5} aria-hidden />}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </td>
+      <td
+        className="px-1 py-1 align-middle border-l border-r border-solid border-gray-700 text-center bg-gray-900/40 border-b border-gray-700/50 tabular-nums"
+        title="Markov P(next UP), live-conditioned on current BS prob. o1 = 1st order, o2 = 2nd order."
+      >
+        <div className="flex flex-col items-center leading-tight">
+          <span className={`text-[9px] font-bold ${mcCls(order1)}`}>
+            <span className="text-gray-500 font-normal">o1 </span>{mcFmt(order1)}
+          </span>
+          <span className={`text-[9px] font-bold ${mcCls(order2)}`}>
+            <span className="text-gray-500 font-normal">o2 </span>{mcFmt(order2)}
+          </span>
+        </div>
+      </td>
+      <td
+        className={`px-0.5 py-1 text-center whitespace-nowrap border-l border-r border-solid border-gray-700 relative cursor-pointer hover:brightness-125 border-b border-gray-700/50 ${
+          selectedMarketId === current?.id ? 'bg-purple-600/35 z-10' : ''
+        }`}
+      >
+        {current && current.clobTokenIds?.[0] && positionTokenIds.has(normalizeClobTokenId(current.clobTokenIds[0])) && (
+          <span
+            className="absolute left-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_3px_rgba(52,211,153,0.8)]"
+            title={liveTradesSource === 'onchain' ? 'YES position (on-chain)' : 'YES position'}
+          />
+        )}
+        {current && current.clobTokenIds?.[1] && positionTokenIds.has(normalizeClobTokenId(current.clobTokenIds[1])) && (
+          <span
+            className="absolute right-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-rose-400 shadow-[0_0_3px_rgba(251,113,133,0.8)]"
+            title={liveTradesSource === 'onchain' ? 'NO position (on-chain)' : 'NO position'}
+          />
+        )}
+        {current ? (
+          <UpDownLiveMidCell
+            market={current}
+            className="text-[9px] text-gray-400"
+            onYesClick={() => onOpenMarket(current, 'YES')}
+            onNoClick={() => onOpenMarket(current, 'NO')}
+          />
+        ) : (
+          <span className="text-gray-600">-</span>
+        )}
+        {current ? (() => {
+          const noTokenId = current.clobTokenIds?.[1] || '';
+          const yesOrders = orderLookup[yesTokenId] || [];
+          const noOrders = orderLookup[noTokenId] || [];
+          const yesBuy = yesOrders.filter((o) => o.side === 'BUY');
+          const yesSell = yesOrders.filter((o) => o.side === 'SELL');
+          const noBuy = noOrders.filter((o) => o.side === 'BUY');
+          const noSell = noOrders.filter((o) => o.side === 'SELL');
+          const concRaw =
+            typeof liveEntry?.concentration === 'number' && Number.isFinite(liveEntry.concentration)
+              ? liveEntry.concentration
+              : 0;
+          const concPct = Math.max(0, Math.min(100, concRaw * 100));
+          const cR = Math.round(Math.min(255, concRaw * 2 * 255));
+          const cG = Math.round(Math.min(255, (1 - concRaw) * 2 * 255));
+          const concColor = `rgb(${cR}, ${cG}, 0)`;
+          return (
+            <>
+              {yesBuy.length > 0 && (
+                <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
+                  {formatBadgePriceCents(Math.max(...yesBuy.map((o) => parseFloat(o.price || '0') * 100)))}
+                </div>
+              )}
+              {yesSell.length > 0 && (
+                <div
+                  className={`absolute left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm ${yesBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'}`}
+                  style={{ color: '#78350f' }}
+                >
+                  {formatBadgePriceCents(Math.min(...yesSell.map((o) => parseFloat(o.price || '0') * 100)))}
+                </div>
+              )}
+              {noBuy.length > 0 && (
+                <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
+                  {formatBadgePriceCents(Math.max(...noBuy.map((o) => parseFloat(o.price || '0') * 100)))}
+                </div>
+              )}
+              {noSell.length > 0 && (
+                <div
+                  className={`absolute right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm ${noBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'}`}
+                  style={{ color: '#78350f' }}
+                >
+                  {formatBadgePriceCents(Math.min(...noSell.map((o) => parseFloat(o.price || '0') * 100)))}
+                </div>
+              )}
+              <div
+                className="absolute left-0 bottom-0 w-[2px] pointer-events-none z-0 bg-gray-800/80 overflow-hidden"
+                style={{ height: '100%' }}
+                title={`Concentration (top wallets): ${concPct.toFixed(0)}%`}
+              >
+                <div className="absolute bottom-0 left-0 w-full transition-all" style={{ height: `${concPct}%`, backgroundColor: concColor }} />
+              </div>
+              <div
+                className={`absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-0 flex${winnerBiasBarFlash ? ' updown-winner-bias-bar-flash' : ''}`}
+                title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
+              >
+                <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
+                <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
+              </div>
+              <div
+                className="absolute bottom-[2px] left-0 right-0 h-[2px] pointer-events-none z-0 flex"
+                title={`Smart Money (proven wallets): ${(smsRaw * 100).toFixed(0)}%`}
+              >
+                <div className="bg-yellow-400/75 h-full shrink-0 transition-[width]" style={{ width: `${smsPct}%` }} />
+                <div className="bg-purple-400/75 h-full flex-1 min-w-0" />
+              </div>
+            </>
+          );
+        })() : null}
+      </td>
+    </>
+  );
+});
 
 function getCurrentAndNext(assetMarkets: Record<string, Market[]>, tf: string): { current: Market | null; next: Market | null } {
   const now = Date.now();
@@ -245,225 +490,23 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
                       <div className="absolute bottom-0 left-0 z-0 h-[2px] pointer-events-none" style={{ width: `${(tfProgress * 100).toFixed(1)}%`, backgroundColor: EXPIRY_BAR_BG }} />
                     )}
                   </td>
-                  {(() => {
-                    const sym = assetToSymbol(asset) as AssetSymbol;
-                    const yesTokenId = current?.clobTokenIds?.[0] || '';
-                    const liveEntry = yesTokenId ? getBidAskMarketRow(yesTokenId) : undefined;
-                    const bestBid = liveEntry?.bestBid ?? current?.bestBid;
-                    const cl = chainlinkPrices[asset];
-                    const binanceSpot = priceData[sym]?.price;
-                    const preferChainlink = tf === '5m' || tf === '15m';
-                    const liveSpot = preferChainlink
-                      ? (cl != null && cl > 0 ? cl : (binanceSpot != null && binanceSpot > 0 ? binanceSpot : undefined))
-                      : (binanceSpot != null && binanceSpot > 0 ? binanceSpot : undefined);
-                    const strike = current?.priceToBeat;
-                    let mathYesProb: number | null = null;
-                    if (liveSpot != null && liveSpot > 0 && strike != null && current?.endDate) {
-                      const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
-                      const p = getMarketProbability('>' + strike, liveSpot, current.endDate, sigma, bsTimeOffsetHours);
-                      if (p != null) mathYesProb = p;
-                    }
-                    let bidVsMath: 'bidAbove' | 'bidBelow' | 'tie' | null = null;
-                    let triangleBadgeFlash = false;
-                    if (mathYesProb !== null && bestBid != null && Number.isFinite(bestBid)) {
-                      const gapPts = Math.abs(bestBid * 100 - mathYesProb * 100);
-                      const d = bestBid - mathYesProb;
-                      if (gapPts <= MATH_VS_BID_NEUTRAL_PCT) bidVsMath = 'tie';
-                      else if (d > 0) bidVsMath = 'bidAbove';
-                      else bidVsMath = 'bidBelow';
-                      const flashDenom = Math.max(mathYesProb, 1e-9);
-                      triangleBadgeFlash = Math.abs(bestBid - mathYesProb) / flashDenom >= MATH_VS_BID_FLASH_REL;
-                    }
-                    const mathPctRounded = mathYesProb !== null ? Math.round(mathYesProb * 100) : null;
-                    const mathProbNeutral =
-                      mathPctRounded !== null &&
-                      mathPctRounded >= 50 - MATH_PROB_NEUTRAL_BAND &&
-                      mathPctRounded <= 50 + MATH_PROB_NEUTRAL_BAND;
-                    const mathBadgeColorClass =
-                      mathPctRounded === null
-                        ? 'bg-gray-800/70 text-gray-300 border border-gray-600/50'
-                        : mathProbNeutral
-                          ? 'bg-gray-800/40 text-gray-300/90 border border-gray-500/30'
-                          : mathPctRounded > 50
-                            ? 'bg-green-900/55 text-green-200 border border-green-700/40'
-                            : 'bg-red-900/55 text-red-200 border border-red-700/40';
-                    const wbUsdc =
-                      typeof liveEntry?.winnerBias === 'number' && Number.isFinite(liveEntry.winnerBias)
-                        ? liveEntry.winnerBias
-                        : 0;
-                    const wbPct = Math.max(2, Math.min(98, 50 + wbUsdc * 50));
-                    const winnerBiasBarFlash = wbPct > 60 || wbPct < 40;
-                    const smsRaw = liveEntry?.provenSMS ?? 0;
-                    const smsPct = Math.max(2, Math.min(98, 50 + smsRaw * 50));
-                    return (
-                      <>
-                        <td className="px-1 py-1 align-middle border-l border-r border-solid border-gray-700 text-center text-[9px] whitespace-nowrap text-gray-300 bg-gray-900/50 border-b border-gray-700/50">
-                          <div className="flex flex-row items-center justify-center gap-1 leading-none">
-                            <span className={`font-medium tabular-nums ${titleColor}`}>
-                              {strike != null ? strike.toLocaleString(undefined, { minimumFractionDigits: TARGET_STRIKE_DECIMALS[asset], maximumFractionDigits: TARGET_STRIKE_DECIMALS[asset] }) : '-'}
-                            </span>
-                            {mathYesProb !== null && (
-                              <div className="inline-flex items-center gap-0.5 shrink-0">
-                                <div className={`inline-flex h-4 min-w-[2.75rem] shrink-0 items-center justify-center gap-0.5 rounded px-1 text-[8px] font-bold tabular-nums ${mathBadgeColorClass}`}>
-                                  <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
-                                  <span>{(mathYesProb * 100).toFixed(0)}</span>
-                                </div>
-                                {bidVsMath !== null && (
-                                  <div
-                                    className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                                      bidVsMath === 'bidAbove'
-                                        ? 'bg-green-900/65 border-green-600/45 text-green-100'
-                                        : bidVsMath === 'bidBelow'
-                                          ? 'bg-red-900/65 border-red-600/45 text-red-100'
-                                          : 'bg-gray-800/40 border-gray-500/30 text-gray-300/90'
-                                    } ${triangleBadgeFlash && bidVsMath !== 'tie' ? 'updown-triangle-badge-flash' : ''}`}
-                                  >
-                                    {bidVsMath === 'bidAbove' && <Triangle className="h-2.5 w-2.5 fill-current stroke-current" strokeWidth={1.5} aria-hidden />}
-                                    {bidVsMath === 'bidBelow' && <Triangle className="h-2.5 w-2.5 rotate-180 fill-current stroke-current" strokeWidth={1.5} aria-hidden />}
-                                    {bidVsMath === 'tie' && <Minus className="h-2.5 w-2.5" strokeWidth={2.5} aria-hidden />}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        {(() => {
-                          // MC: live-conditioned Markov P(next market UP). pUpCur = current
-                          // window's BS prob (mathYesProb); blended with the transition matrix.
-                          const tfModel = markovModels?.[asset]?.[tf];
-                          const { order1, order2 } = markovNextUpProb(tfModel, mathYesProb);
-                          const cls = (p: number | null) =>
-                            p == null
-                              ? 'text-gray-600'
-                              : Math.abs(p * 100 - 50) <= MATH_PROB_NEUTRAL_BAND
-                                ? 'text-gray-300/90'
-                                : p > 0.5
-                                  ? 'text-green-300'
-                                  : 'text-red-300';
-                          const fmt = (p: number | null) => (p == null ? '-' : (p * 100).toFixed(0));
-                          return (
-                            <td
-                              className="px-1 py-1 align-middle border-l border-r border-solid border-gray-700 text-center bg-gray-900/40 border-b border-gray-700/50 tabular-nums"
-                              title="Markov P(next UP), live-conditioned on current BS prob. o1 = 1st order, o2 = 2nd order."
-                            >
-                              <div className="flex flex-col items-center leading-tight">
-                                <span className={`text-[9px] font-bold ${cls(order1)}`}>
-                                  <span className="text-gray-500 font-normal">o1 </span>{fmt(order1)}
-                                </span>
-                                <span className={`text-[9px] font-bold ${cls(order2)}`}>
-                                  <span className="text-gray-500 font-normal">o2 </span>{fmt(order2)}
-                                </span>
-                              </div>
-                            </td>
-                          );
-                        })()}
-                        <td
-                          className={`px-0.5 py-1 text-center whitespace-nowrap border-l border-r border-solid border-gray-700 relative cursor-pointer hover:brightness-125 border-b border-gray-700/50 ${
-                            selectedMarket?.id === current?.id ? 'bg-purple-600/35 z-10' : ''
-                          }`}
-                        >
-                          {current && current.clobTokenIds?.[0] && positionTokenIds.has(normalizeClobTokenId(current.clobTokenIds[0])) && (
-                            <span
-                              className="absolute left-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_3px_rgba(52,211,153,0.8)]"
-                              title={liveTradesSource === 'onchain' ? 'YES position (on-chain)' : 'YES position'}
-                            />
-                          )}
-                          {current && current.clobTokenIds?.[1] && positionTokenIds.has(normalizeClobTokenId(current.clobTokenIds[1])) && (
-                            <span
-                              className="absolute right-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-rose-400 shadow-[0_0_3px_rgba(251,113,133,0.8)]"
-                              title={liveTradesSource === 'onchain' ? 'NO position (on-chain)' : 'NO position'}
-                            />
-                          )}
-                          {current ? (
-                            <UpDownLiveMidCell
-                              market={current}
-                              className="text-[9px] text-gray-400"
-                              onYesClick={() => openMarket(current, 'YES')}
-                              onNoClick={() => openMarket(current, 'NO')}
-                            />
-                          ) : (
-                            <span className="text-gray-600">-</span>
-                          )}
-                          {(() => {
-                            if (!current) return null;
-                            const yesTokenId = current.clobTokenIds?.[0] || '';
-                            const noTokenId = current.clobTokenIds?.[1] || '';
-                            const yesOrders = orderLookup[yesTokenId] || [];
-                            const noOrders = orderLookup[noTokenId] || [];
-                            const yesBuy = yesOrders.filter(o => o.side === 'BUY');
-                            const yesSell = yesOrders.filter(o => o.side === 'SELL');
-                            const noBuy = noOrders.filter(o => o.side === 'BUY');
-                            const noSell = noOrders.filter(o => o.side === 'SELL');
-                            const liveRow = yesTokenId ? getBidAskMarketRow(yesTokenId) : undefined;
-                            const concRaw =
-                              typeof liveRow?.concentration === 'number' && Number.isFinite(liveRow.concentration)
-                                ? liveRow.concentration
-                                : 0;
-                            const concPct = Math.max(0, Math.min(100, concRaw * 100));
-                            const cR = Math.round(Math.min(255, concRaw * 2 * 255));
-                            const cG = Math.round(Math.min(255, (1 - concRaw) * 2 * 255));
-                            const concColor = `rgb(${cR}, ${cG}, 0)`;
-                            return (
-                              <>
-                                {yesBuy.length > 0 && (
-                                  <div className="absolute bottom-0 left-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tr-sm">
-                                    {formatBadgePriceCents(Math.max(...yesBuy.map(o => parseFloat(o.price || '0') * 100)))}
-                                  </div>
-                                )}
-                                {yesSell.length > 0 && (
-                                  <div
-                                    className={`absolute left-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tr-sm ${yesBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'}`}
-                                    style={{ color: '#78350f' }}
-                                  >
-                                    {formatBadgePriceCents(Math.min(...yesSell.map(o => parseFloat(o.price || '0') * 100)))}
-                                  </div>
-                                )}
-                                {noBuy.length > 0 && (
-                                  <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
-                                    {formatBadgePriceCents(Math.max(...noBuy.map(o => parseFloat(o.price || '0') * 100)))}
-                                  </div>
-                                )}
-                                {noSell.length > 0 && (
-                                  <div
-                                    className={`absolute right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm ${noBuy.length > 0 ? 'bottom-[9px]' : 'bottom-0'}`}
-                                    style={{ color: '#78350f' }}
-                                  >
-                                    {formatBadgePriceCents(Math.min(...noSell.map(o => parseFloat(o.price || '0') * 100)))}
-                                  </div>
-                                )}
-                                {/* Concentration — left vertical bar, grows upward */}
-                                <div
-                                  className="absolute left-0 bottom-0 w-[2px] pointer-events-none z-0 bg-gray-800/80 overflow-hidden"
-                                  style={{ height: '100%' }}
-                                  title={`Concentration (top wallets): ${concPct.toFixed(0)}%`}
-                                >
-                                  <div
-                                    className="absolute bottom-0 left-0 w-full transition-all"
-                                    style={{ height: `${concPct}%`, backgroundColor: concColor }}
-                                  />
-                                </div>
-                                {/* Winners $ (USDC bias) — horizontal bottom of market cell (outer stripe) */}
-                                <div
-                                  className={`absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-0 flex${winnerBiasBarFlash ? ' updown-winner-bias-bar-flash' : ''}`}
-                                  title={`Winners $ (USDC bias, top 30%): ${(wbUsdc * 100).toFixed(0)}%`}
-                                >
-                                  <div className="bg-cyan-400/75 h-full shrink-0 transition-[width]" style={{ width: `${wbPct}%` }} />
-                                  <div className="bg-pink-400/75 h-full flex-1 min-w-0" />
-                                </div>
-                                <div
-                                  className="absolute bottom-[2px] left-0 right-0 h-[2px] pointer-events-none z-0 flex"
-                                  title={`Smart Money (proven wallets): ${(smsRaw * 100).toFixed(0)}%`}
-                                >
-                                  <div className="bg-yellow-400/75 h-full shrink-0 transition-[width]" style={{ width: `${smsPct}%` }} />
-                                  <div className="bg-purple-400/75 h-full flex-1 min-w-0" />
-                                </div>
-                              </>
-                            );
-                          })()}
-                        </td>
-                      </>
-                    );
-                  })()}
+                  <UpDownHudCurrentLaneBlock
+                    asset={asset}
+                    tf={tf}
+                    titleColor={titleColor}
+                    current={current}
+                    selectedMarketId={selectedMarket?.id}
+                    positionTokenIds={positionTokenIds}
+                    orderLookup={orderLookup}
+                    liveTradesSource={liveTradesSource}
+                    priceData={priceData}
+                    volatilityData={volatilityData}
+                    volMultiplier={volMultiplier}
+                    bsTimeOffsetHours={bsTimeOffsetHours}
+                    chainlinkPrices={chainlinkPrices}
+                    markovModels={markovModels}
+                    onOpenMarket={openMarket}
+                  />
                   <td
                     className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 text-[10px] whitespace-nowrap cursor-pointer hover:brightness-125 relative border-b border-gray-700/50 ${
                       selectedMarket?.id === next?.id ? 'bg-purple-600/35 z-10' : 'bg-gray-900/30'

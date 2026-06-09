@@ -1,8 +1,9 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchOnchainMarkets, type OnchainMarketListItem } from '../api';
 import { useAppStore } from '../stores/appStore';
 import type { Market } from '../types';
 import { extractAssetFromMarket, pickLiveUpDownMarketInTfBucket, resolvedBinaryOutcomeLabel, upDownTimeframeKeyFromMarket } from '../utils/format';
+import { marketViewUsesGrid } from './MarketViewMarketsPanel';
 import {
   marketSquareStatusFromMarket,
   marketSquareStatusFromOnchain,
@@ -38,6 +39,51 @@ const STATUS_BORDER_CLS: Record<MarketSquareStatus, string> = {
 
 const PAST_COUNT = 5;
 const FUTURE_COUNT = 5;
+const ONCHAIN_BATCH_LIMIT = 100;
+const UNDECIDED_PREV_POLL_MS = 30_000;
+
+function mergeOnchainMarketsById(...groups: OnchainMarketListItem[][]): OnchainMarketListItem[] {
+  const byId = new Map<string, OnchainMarketListItem>();
+  for (const group of groups) {
+    for (const m of group) {
+      const id = (m.conditionId || '').trim().toLowerCase();
+      if (id) byId.set(id, m);
+    }
+  }
+  return [...byId.values()];
+}
+
+/** Same fetches as MarketViewDialog markets list (expired + open for grid TFs). */
+async function fetchSidebarOnchainMarkets(asset: string, timeframe: string): Promise<OnchainMarketListItem[]> {
+  if (marketViewUsesGrid(timeframe)) {
+    const expiredData = await fetchOnchainMarkets({
+      asset,
+      timeframe,
+      expired_only: true,
+      limit: ONCHAIN_BATCH_LIMIT,
+      offset: 0,
+    });
+    const expiredBatch = expiredData.markets ?? [];
+    const openData = await fetchOnchainMarkets({
+      asset,
+      timeframe,
+      expired_only: false,
+      limit: ONCHAIN_BATCH_LIMIT,
+      offset: 0,
+    });
+    const now = Date.now();
+    const openBatch = (openData.markets ?? []).filter((m) => parseMarketEndMs(m) > now);
+    return mergeOnchainMarketsById(openBatch, expiredBatch);
+  }
+  const data = await fetchOnchainMarkets({
+    asset,
+    timeframe,
+    expired_only: true,
+    limit: ONCHAIN_BATCH_LIMIT,
+    offset: 0,
+  });
+  return data.markets ?? [];
+}
 
 function marketIsUpDown(market: Market | null | undefined): boolean {
   return !!(market?.question?.match(/up\s+or\s+down/i) || market?.eventSlug?.match(/up-or-down|updown/i));
@@ -87,10 +133,15 @@ function squareConditionId(m: SquareMarket): string {
   return String((m as Market).id || '').trim();
 }
 
-function onchainMatchesUpDownTimeframe(m: OnchainMarketListItem, tf: string): boolean {
-  const dbTf = (m.timeframe || '').trim().toLowerCase();
-  if (dbTf === tf) return true;
-  return upDownTimeframeKeyFromMarket({ eventSlug: m.eventSlug, question: m.question }) === tf;
+function onchainResolvedOutcome(m: OnchainMarketListItem | undefined): string | null {
+  if (!m) return null;
+  const o = (m.outcome || '').trim().toUpperCase();
+  if (o === 'YES' || o === 'UP' || o === 'NO' || o === 'DOWN') return o;
+  return null;
+}
+
+function hasOnchainResolvedOutcome(m: SquareMarket): boolean {
+  return !isStoreMarket(m) && onchainResolvedOutcome(m as OnchainMarketListItem) != null;
 }
 
 function inferExpiredSquareStatusFromQuotes(
@@ -133,6 +184,13 @@ function mergeSquareMarkets(batch: OnchainMarketListItem[], storeMarkets: Market
       byId.set(id, m);
       return;
     }
+    const prevOnchain = hasOnchainResolvedOutcome(prev);
+    const nextOnchain = hasOnchainResolvedOutcome(m);
+    if (nextOnchain && !prevOnchain) {
+      byId.set(id, m);
+      return;
+    }
+    if (prevOnchain && !nextOnchain) return;
     const prevRank = squareMarketResolvedRank(prev);
     const nextRank = squareMarketResolvedRank(m);
     if (nextRank > prevRank) {
@@ -241,17 +299,29 @@ function squareStatus(
 ): MarketSquareStatus {
   const id = squareConditionId(m).toLowerCase();
   const endMs = parseMarketEndMs(m);
+  const expired = endMs > 0 && endMs <= nowMs;
+  const onchainHit = onchainById.get(id) ?? (!isStoreMarket(m) ? (m as OnchainMarketListItem) : undefined);
+
+  if (expired && onchainHit) {
+    const fromChain = marketSquareStatusFromOnchain(onchainHit, timeframe, nowMs);
+    if (fromChain !== 'expired_unresolved') return fromChain;
+  }
+
+  if (!expired) {
+    if (isStoreMarket(m)) {
+      const st = marketSquareStatusFromMarket(enrichStoreMarketFromLookup(m, marketLookup), timeframe, nowMs);
+      if (st !== 'expired_unresolved') return st;
+    }
+    return marketSquareStatusFromOnchain(onchainHit ?? (m as OnchainMarketListItem), timeframe, nowMs);
+  }
+
   const storeHit = findMarketInStore(id, marketLookup, upOrDownMarkets);
   if (storeHit) {
-    const st = marketSquareStatusFromMarket(enrichStoreMarketFromLookup(storeHit, marketLookup), timeframe, nowMs);
+    const enriched = enrichStoreMarketFromLookup(storeHit, marketLookup);
+    const st = marketSquareStatusFromMarket(enriched, timeframe, nowMs);
     if (st !== 'expired_unresolved') return st;
-    const inferred = inferExpiredSquareStatusFromQuotes(enrichStoreMarketFromLookup(storeHit, marketLookup), marketLookup, endMs, nowMs);
+    const inferred = inferExpiredSquareStatusFromQuotes(enriched, marketLookup, endMs, nowMs);
     if (inferred) return inferred;
-  }
-  const onchainHit = onchainById.get(id);
-  if (onchainHit) {
-    const st = marketSquareStatusFromOnchain(onchainHit, timeframe, nowMs);
-    if (st !== 'expired_unresolved') return st;
   }
   if (isStoreMarket(m)) {
     const enriched = enrichStoreMarketFromLookup(m, marketLookup);
@@ -261,7 +331,7 @@ function squareStatus(
     if (inferred) return inferred;
     return st;
   }
-  return marketSquareStatusFromOnchain(m, timeframe, nowMs);
+  return marketSquareStatusFromOnchain(onchainHit ?? (m as OnchainMarketListItem), timeframe, nowMs);
 }
 
 function squareTooltip(m: SquareMarket, status: MarketSquareStatus): string {
@@ -308,30 +378,22 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
 
   const [batch, setBatch] = useState<OnchainMarketListItem[]>([]);
 
+  const loadBatch = useCallback(async () => {
+    if (!asset || !timeframe) return;
+    try {
+      setBatch(await fetchSidebarOnchainMarkets(asset, timeframe));
+    } catch {
+      setBatch([]);
+    }
+  }, [asset, timeframe]);
+
   useEffect(() => {
     if (!isUpDown || !asset || !timeframe) {
       setBatch([]);
       return;
     }
-    let disposed = false;
-    const load = () => {
-      void fetchOnchainMarkets({ asset, expired_only: true, limit: 100, offset: 0 })
-        .then((data) => {
-          if (disposed) return;
-          const markets = (data.markets ?? []).filter((m) => onchainMatchesUpDownTimeframe(m, timeframe));
-          setBatch(markets);
-        })
-        .catch(() => {
-          if (!disposed) setBatch([]);
-        });
-    };
-    load();
-    const iv = window.setInterval(load, 15_000);
-    return () => {
-      disposed = true;
-      window.clearInterval(iv);
-    };
-  }, [isUpDown, asset, timeframe]);
+    void loadBatch();
+  }, [isUpDown, asset, timeframe, loadBatch]);
 
   const onchainById = useMemo(() => batchByConditionId(batch), [batch]);
 
@@ -351,6 +413,20 @@ function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Ma
     () => (liveEndMs ? pickFutureMarkets(allSquareMarkets, liveEndMs, FUTURE_COUNT) : []),
     [allSquareMarkets, liveEndMs],
   );
+
+  const immediatePrevUndecided = useMemo(() => {
+    if (!timeframe || past.length === 0) return false;
+    const prev = past[past.length - 1]!;
+    return (
+      squareStatus(prev, timeframe, nowMs, onchainById, marketLookup, upOrDownMarkets) === 'expired_unresolved'
+    );
+  }, [past, timeframe, nowMs, onchainById, marketLookup, upOrDownMarkets]);
+
+  useEffect(() => {
+    if (!isUpDown || !asset || !timeframe || !immediatePrevUndecided) return;
+    const iv = window.setInterval(() => void loadBatch(), UNDECIDED_PREV_POLL_MS);
+    return () => window.clearInterval(iv);
+  }, [isUpDown, asset, timeframe, immediatePrevUndecided, loadBatch]);
 
   if (!isUpDown || !timeframe) return null;
   if (!liveMarket && past.length === 0 && future.length === 0) return null;

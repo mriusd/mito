@@ -74,6 +74,34 @@ export function marketSquareStatusFromOnchain(
   return 'expired_unresolved';
 }
 
+function isDecisiveSettledOutcomePrices(m: Market): boolean {
+  const raw = m.outcomePrices as unknown;
+  let yesPrice: number | null = null;
+  let noPrice: number | null = null;
+  if (Array.isArray(raw) && raw.length >= 2) {
+    yesPrice = Number(raw[0]);
+    noPrice = Number(raw[1]);
+  } else if (typeof raw === 'string' && raw.trim()) {
+    const cleaned = raw.replace(/^\[/, '').replace(/\]$/, '');
+    const parts = cleaned.split(',').map((s) => Number(String(s).trim()));
+    if (parts.length >= 2) {
+      yesPrice = parts[0];
+      noPrice = parts[1];
+    }
+  }
+  if (
+    yesPrice == null ||
+    noPrice == null ||
+    !Number.isFinite(yesPrice) ||
+    !Number.isFinite(noPrice)
+  ) {
+    return false;
+  }
+  const hi = Math.max(yesPrice, noPrice);
+  const lo = Math.min(yesPrice, noPrice);
+  return hi >= 0.9 && lo <= 0.1;
+}
+
 export function marketSquareStatusFromMarket(
   m: Market,
   timeframe: string,
@@ -91,9 +119,11 @@ export function marketSquareStatusFromMarket(
   }
 
   const resolved = resolvedBinaryOutcomeLabel(m, true);
-  if (resolved === 'UP') return 'resolved_yes';
-  if (resolved === 'DOWN') return 'resolved_no';
-  if (m.closed) return 'expired_unresolved';
+  if (resolved === 'UP' || resolved === 'DOWN') {
+    if (isDecisiveSettledOutcomePrices(m)) {
+      return resolved === 'UP' ? 'resolved_yes' : 'resolved_no';
+    }
+  }
   return 'expired_unresolved';
 }
 

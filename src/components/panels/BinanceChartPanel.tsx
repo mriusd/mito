@@ -768,6 +768,10 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     // Keep sane bounds: 0%..5%.
     return Math.max(0, Math.min(5, v));
   });
+  const [rbs1hDevFlashEnabled, setRbs1hDevFlashEnabled] = useState(() => {
+    const raw = localStorage.getItem(`polybot-binance-rbs1h-dev-flash-${panelId}`);
+    return raw === '1' || raw === 'true';
+  });
   const [rbs1hDevSoundEnabled, setRbs1hDevSoundEnabled] = useState(() => {
     const raw = localStorage.getItem(`polybot-binance-rbs1h-dev-sound-${panelId}`);
     return raw === '1' || raw === 'true';
@@ -995,6 +999,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
 
   useEffect(() => {
     if (rbs1hDevSoundPct <= 0) return;
+    if (!rbs1hDevFlashEnabled && !rbs1hDevSoundEnabled) return;
 
     const tick = () => {
       const sp = spotForChartRef.current;
@@ -1003,7 +1008,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
       const dev = Math.abs(rbs1h - sp) / sp;
       if (dev < rbs1hDevSoundPct / 100) return;
       const kind = rbs1h >= sp ? 'green' : 'red';
-      triggerRbs1hDevFlash(kind);
+      if (rbs1hDevFlashEnabled) triggerRbs1hDevFlash(kind);
       if (rbs1hDevSoundEnabled) {
         const pitchMul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider());
         const ringTimeS = readNotifyRingTimeS();
@@ -1014,7 +1019,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     tick();
     const id = window.setInterval(tick, RBS1H_DEV_SOUND_RING_MS);
     return () => window.clearInterval(id);
-  }, [rbs1hDevSoundEnabled, rbs1hDevSoundPct, triggerRbs1hDevFlash]);
+  }, [rbs1hDevFlashEnabled, rbs1hDevSoundEnabled, rbs1hDevSoundPct, triggerRbs1hDevFlash]);
 
   const rbsArrowSignal = useMemo<{ dir: 'up' | 'down'; count: 1 | 2 | 3 | 4 | 5 } | null>(() => {
     const rp = rbsPrice;
@@ -1679,8 +1684,22 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
                   </div>
                 </div>
                 <div className="mt-1 border-t border-gray-700 pt-1">
-                  <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">Sound</div>
+                  <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">RBS notification</div>
                   <label className="mt-0.5 flex cursor-pointer items-center gap-2 py-0.5 text-[10px] text-gray-200 hover:text-white">
+                    <input
+                      type="checkbox"
+                      checked={rbs1hDevFlashEnabled}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setRbs1hDevFlashEnabled(on);
+                        localStorage.setItem(`polybot-binance-rbs1h-dev-flash-${panelId}`, on ? '1' : '0');
+                        if (on) triggerRbs1hDevFlash('green');
+                      }}
+                      className="accent-cyan-500 rounded"
+                    />
+                    <span>Chart flash</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 py-0.5 text-[10px] text-gray-200 hover:text-white">
                     <input
                       type="checkbox"
                       checked={rbs1hDevSoundEnabled}
@@ -1691,7 +1710,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
                         if (on) {
                           primeTiltAudioContextFromUserGesture();
                           const pitchMul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider());
-                          triggerRbs1hDevFlash('green');
+                          if (rbs1hDevFlashEnabled) triggerRbs1hDevFlash('green');
                           void playTiltNotifySoundStrikes('green', pitchMul, readNotifyRingTimeS(), 1);
                         }
                       }}
@@ -1724,7 +1743,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
                     />
                   </label>
                   <div className="mt-0.5 text-[8px] text-gray-500 leading-tight">
-                    Flash every 3s when |RBS1H − header spot| / spot ≥ threshold; sound when ring checked
+                    Every 3s when |RBS1H − header spot| / spot ≥ threshold
                   </div>
                 </div>
               </div>,

@@ -16,6 +16,16 @@ import {
 } from '../../lib/deribitGexFeed';
 
 import { assetToSymbol, formatPrice } from '../../utils/format';
+import {
+  ensureTiltAudioUnlockListeners,
+  pitchMulFromNotifyFreqSlider,
+  playTiltNotifySoundStrikes,
+  primeTiltAudioContextFromUserGesture,
+  readNotifyRingTimeS,
+  readNotifySoundFreqSlider,
+} from '../../lib/tiltNotifySound';
+
+const RBS1H_DEV_SOUND_RING_MS = 3000;
 
 const GEX_POS_COLOR = '#84cc16';
 const GEX_POS_LABEL = 'GEX pos';
@@ -757,6 +767,16 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     // Keep sane bounds: 0%..5%.
     return Math.max(0, Math.min(5, v));
   });
+  const [rbs1hDevSoundEnabled, setRbs1hDevSoundEnabled] = useState(() => {
+    const raw = localStorage.getItem(`polybot-binance-rbs1h-dev-sound-${panelId}`);
+    return raw === '1' || raw === 'true';
+  });
+  const [rbs1hDevSoundPct, setRbs1hDevSoundPct] = useState(() => {
+    const raw = localStorage.getItem(`polybot-binance-rbs1h-dev-sound-pct-${panelId}`);
+    const v = raw == null ? 0.15 : Number(raw);
+    if (!Number.isFinite(v)) return 0.15;
+    return Math.max(0, Math.min(10, v));
+  });
   const gexChartSupported = asset === 'BTC' || asset === 'ETH';
   const [gexPosEnabled, setGexPosEnabled] = useState(() => {
     const raw = localStorage.getItem(`polybot-binance-gex-pos-${panelId}`);
@@ -924,6 +944,62 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   const rbsUsedTfSet = useMemo(() => {
     return new Set<UpDownTfKey>(rbsResult.kind === 'price' ? rbsResult.usedTimeframes : []);
   }, [rbsResult]);
+
+  const rbs1hPrice = useMemo(() => {
+    if (spotForChart <= 0) return null;
+    const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
+    const forced1h: Record<UpDownTfKey, boolean> = { ...rbsTfEnabledForCompute, '1h': true };
+    const res = computeRBSPriceResult(
+      spotForChart,
+      sigma,
+      upOrDownMarkets[asset] || {},
+      marketLookup,
+      Date.now(),
+      forced1h,
+    );
+    if (res.kind !== 'price') return null;
+    const line = res.tfLines.find((l) => l.tf === '1h');
+    return line != null && Number.isFinite(line.price) && line.price > 0 ? line.price : null;
+  }, [
+    asset,
+    spotForChart,
+    volatilityData,
+    volMultiplier,
+    sym,
+    upOrDownMarkets,
+    marketLookup,
+    rbsTfEnabledForCompute,
+    rbsVolWeightAdjusted,
+  ]);
+
+  const spotForChartRef = useRef(spotForChart);
+  spotForChartRef.current = spotForChart;
+  const rbs1hPriceRef = useRef(rbs1hPrice);
+  rbs1hPriceRef.current = rbs1hPrice;
+
+  useEffect(() => {
+    ensureTiltAudioUnlockListeners();
+  }, []);
+
+  useEffect(() => {
+    if (!rbs1hDevSoundEnabled || rbs1hDevSoundPct <= 0) return;
+
+    const tick = () => {
+      const sp = spotForChartRef.current;
+      const rbs1h = rbs1hPriceRef.current;
+      if (sp <= 0 || !Number.isFinite(sp) || rbs1h == null || !Number.isFinite(rbs1h)) return;
+      const dev = Math.abs(rbs1h - sp) / sp;
+      if (dev < rbs1hDevSoundPct / 100) return;
+      const kind = rbs1h >= sp ? 'green' : 'red';
+      const pitchMul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider());
+      const ringTimeS = readNotifyRingTimeS();
+      void playTiltNotifySoundStrikes(kind, pitchMul, ringTimeS, 1);
+    };
+
+    tick();
+    const id = window.setInterval(tick, RBS1H_DEV_SOUND_RING_MS);
+    return () => window.clearInterval(id);
+  }, [rbs1hDevSoundEnabled, rbs1hDevSoundPct]);
 
   const rbsArrowSignal = useMemo<{ dir: 'up' | 'down'; count: 1 | 2 | 3 | 4 | 5 } | null>(() => {
     const rp = rbsPrice;
@@ -1585,6 +1661,55 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
                   </label>
                   <div className="mt-0.5 text-[8px] text-gray-500 leading-tight">
                     Start when |RBS - spot| / spot &gt;= threshold
+                  </div>
+                </div>
+                <div className="mt-1 border-t border-gray-700 pt-1">
+                  <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">Sound</div>
+                  <label className="mt-0.5 flex cursor-pointer items-center gap-2 py-0.5 text-[10px] text-gray-200 hover:text-white">
+                    <input
+                      type="checkbox"
+                      checked={rbs1hDevSoundEnabled}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setRbs1hDevSoundEnabled(on);
+                        localStorage.setItem(`polybot-binance-rbs1h-dev-sound-${panelId}`, on ? '1' : '0');
+                        if (on) {
+                          primeTiltAudioContextFromUserGesture();
+                          const pitchMul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider());
+                          void playTiltNotifySoundStrikes('green', pitchMul, readNotifyRingTimeS(), 1);
+                        }
+                      }}
+                      className="accent-cyan-500 rounded"
+                    />
+                    <span>RBS1H deviation ring</span>
+                  </label>
+                  <label className="flex items-center justify-between gap-2 py-0.5 text-[10px] text-gray-200">
+                    <span className="text-gray-400">Threshold %</span>
+                    <input
+                      type="number"
+                      step={0.01}
+                      min={0}
+                      max={10}
+                      disabled={!rbs1hDevSoundEnabled}
+                      value={Number.isFinite(rbs1hDevSoundPct) ? rbs1hDevSoundPct : 0.15}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw.trim() === '') return;
+                        const next = Number(raw);
+                        if (!Number.isFinite(next)) return;
+                        const clamped = Math.max(0, Math.min(10, next));
+                        setRbs1hDevSoundPct(clamped);
+                        localStorage.setItem(
+                          `polybot-binance-rbs1h-dev-sound-pct-${panelId}`,
+                          String(clamped),
+                        );
+                      }}
+                      className="w-[4.3rem] rounded border border-gray-700 bg-gray-900/70 px-1 py-0.5 text-right text-[10px] text-gray-100 shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40 disabled:opacity-40 [field-sizing:content]"
+                      aria-label="RBS1H deviation sound threshold percent"
+                    />
+                  </label>
+                  <div className="mt-0.5 text-[8px] text-gray-500 leading-tight">
+                    Ring every 3s when |RBS1H − header spot| / spot ≥ threshold
                   </div>
                 </div>
               </div>,

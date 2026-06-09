@@ -459,10 +459,8 @@ function drawCandles(
     }
   }
   if (showGexPos && gexPosPrice != null && Number.isFinite(gexPosPrice)) {
-    if (gexPosPrice >= candleLo - nearSlack && gexPosPrice <= candleHi + nearSlack) {
-      lo = Math.min(lo, gexPosPrice);
-      hi = Math.max(hi, gexPosPrice);
-    }
+    lo = Math.min(lo, gexPosPrice);
+    hi = Math.max(hi, gexPosPrice);
   }
 
   if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo === hi) {

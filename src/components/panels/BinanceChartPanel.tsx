@@ -16,6 +16,7 @@ import {
 } from '../../lib/deribitGexFeed';
 
 import { assetToSymbol, formatPrice } from '../../utils/format';
+import { CHART_VOLUME_SPIKE_FLASH_MS } from '../../lib/chartVolumeSpikeAlert';
 import {
   ensureTiltAudioUnlockListeners,
   pitchMulFromNotifyFreqSlider,
@@ -976,6 +977,17 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   spotForChartRef.current = spotForChart;
   const rbs1hPriceRef = useRef(rbs1hPrice);
   rbs1hPriceRef.current = rbs1hPrice;
+  const rbs1hFlashGenRef = useRef(0);
+  const [rbs1hDevFlashKind, setRbs1hDevFlashKind] = useState<'green' | 'red' | null>(null);
+
+  const triggerRbs1hDevFlash = useCallback((kind: 'green' | 'red') => {
+    const gen = rbs1hFlashGenRef.current + 1;
+    rbs1hFlashGenRef.current = gen;
+    setRbs1hDevFlashKind(kind);
+    window.setTimeout(() => {
+      if (rbs1hFlashGenRef.current === gen) setRbs1hDevFlashKind(null);
+    }, CHART_VOLUME_SPIKE_FLASH_MS);
+  }, []);
 
   useEffect(() => {
     ensureTiltAudioUnlockListeners();
@@ -993,13 +1005,14 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
       const kind = rbs1h >= sp ? 'green' : 'red';
       const pitchMul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider());
       const ringTimeS = readNotifyRingTimeS();
+      triggerRbs1hDevFlash(kind);
       void playTiltNotifySoundStrikes(kind, pitchMul, ringTimeS, 1);
     };
 
     tick();
     const id = window.setInterval(tick, RBS1H_DEV_SOUND_RING_MS);
     return () => window.clearInterval(id);
-  }, [rbs1hDevSoundEnabled, rbs1hDevSoundPct]);
+  }, [rbs1hDevSoundEnabled, rbs1hDevSoundPct, triggerRbs1hDevFlash]);
 
   const rbsArrowSignal = useMemo<{ dir: 'up' | 'down'; count: 1 | 2 | 3 | 4 | 5 } | null>(() => {
     const rp = rbsPrice;
@@ -1676,6 +1689,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
                         if (on) {
                           primeTiltAudioContextFromUserGesture();
                           const pitchMul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider());
+                          triggerRbs1hDevFlash('green');
                           void playTiltNotifySoundStrikes('green', pitchMul, readNotifyRingTimeS(), 1);
                         }
                       }}
@@ -1792,6 +1806,16 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
             role="img"
             aria-label={`${asset} candlestick chart (${priceSource === 'chainlink' ? 'Chainlink via polycandles' : 'Binance spot'})`}
           />
+          {rbs1hDevFlashKind ? (
+            <div
+              className={`pointer-events-none absolute inset-0 z-[5] ${
+                rbs1hDevFlashKind === 'green'
+                  ? 'live-trade-chart-volume-spike-flash-buy'
+                  : 'live-trade-chart-volume-spike-flash-sell'
+              }`}
+              aria-hidden
+            />
+          ) : null}
         </div>
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-0.5 text-[10px]">

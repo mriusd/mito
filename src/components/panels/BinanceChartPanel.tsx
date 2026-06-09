@@ -994,7 +994,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   }, []);
 
   useEffect(() => {
-    if (!rbs1hDevSoundEnabled || rbs1hDevSoundPct <= 0) return;
+    if (rbs1hDevSoundPct <= 0) return;
 
     const tick = () => {
       const sp = spotForChartRef.current;
@@ -1003,10 +1003,12 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
       const dev = Math.abs(rbs1h - sp) / sp;
       if (dev < rbs1hDevSoundPct / 100) return;
       const kind = rbs1h >= sp ? 'green' : 'red';
-      const pitchMul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider());
-      const ringTimeS = readNotifyRingTimeS();
       triggerRbs1hDevFlash(kind);
-      void playTiltNotifySoundStrikes(kind, pitchMul, ringTimeS, 1);
+      if (rbs1hDevSoundEnabled) {
+        const pitchMul = pitchMulFromNotifyFreqSlider(readNotifySoundFreqSlider());
+        const ringTimeS = readNotifyRingTimeS();
+        void playTiltNotifySoundStrikes(kind, pitchMul, ringTimeS, 1);
+      }
     };
 
     tick();
@@ -1704,7 +1706,6 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
                       step={0.01}
                       min={0}
                       max={10}
-                      disabled={!rbs1hDevSoundEnabled}
                       value={Number.isFinite(rbs1hDevSoundPct) ? rbs1hDevSoundPct : 0.15}
                       onChange={(e) => {
                         const raw = e.target.value;
@@ -1723,7 +1724,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
                     />
                   </label>
                   <div className="mt-0.5 text-[8px] text-gray-500 leading-tight">
-                    Ring every 3s when |RBS1H − header spot| / spot ≥ threshold
+                    Flash every 3s when |RBS1H − header spot| / spot ≥ threshold; sound when ring checked
                   </div>
                 </div>
               </div>,

@@ -51,8 +51,12 @@ export function useUpDownStrikePrice(market: Market | null | undefined): number 
     let cancelled = false;
     const tick = async () => {
       if (cancelled || isMarketExpired(market)) return;
-      const p = await fetchUpDownTargetFromCrypto(API_BASE, asset, endMs, combined);
-      if (!cancelled && p != null && Number.isFinite(p)) setAsyncStrike(p);
+      try {
+        const p = await fetchUpDownTargetFromCrypto(API_BASE, asset, endMs, combined);
+        if (!cancelled && p != null && Number.isFinite(p)) setAsyncStrike(p);
+      } catch {
+        /* network / CORS — retry on next poll */
+      }
     };
 
     void tick();

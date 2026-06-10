@@ -41,7 +41,7 @@ export async function fetchUpDownTargetFromCrypto(
   const endISO = new Date(endMs).toISOString();
   const q = (s: string) => encodeURIComponent(s);
   const url = (v: string, s: string, e: string) =>
-    `${apiBase}/api/polyproxy/site/api/crypto/crypto-price?symbol=${asset}&eventStartTime=${q(s)}&variant=${v}&endDate=${q(e)}`;
+    `${apiBase}/api/crypto-price?symbol=${asset}&eventStartTime=${q(s)}&variant=${v}&endDate=${q(e)}`;
 
   const parse = async (r: Response): Promise<number | null> => {
     if (!r.ok) return null;
@@ -54,10 +54,18 @@ export async function fetchUpDownTargetFromCrypto(
     }
   };
 
-  let p = await parse(await fetch(url(variant, startISO, endISO)));
+  const fetchOpen = async (v: string, s: string, e: string): Promise<number | null> => {
+    try {
+      return await parse(await fetch(url(v, s, e)));
+    } catch {
+      return null;
+    }
+  };
+
+  let p = await fetchOpen(variant, startISO, endISO);
   if (p != null) return p;
 
   const fiveEndMs = Math.min(startMs + 5 * 60 * 1000, endMs);
-  p = await parse(await fetch(url('fiveminute', startISO, new Date(fiveEndMs).toISOString())));
+  p = await fetchOpen('fiveminute', startISO, new Date(fiveEndMs).toISOString());
   return p;
 }

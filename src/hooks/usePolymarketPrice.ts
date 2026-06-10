@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { WS_BASE } from '../lib/env';
+import { API_BASE, WS_BASE } from '../lib/env';
 
 interface PriceState {
   price: number | null;
@@ -19,6 +19,11 @@ let refCount = 0;
 let pricesMap: ChainlinkPricesMap = {};
 const tsMap: Record<string, number> = {};
 const listeners = new Set<() => void>();
+let lastWsMsgAt = 0;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+const CHAINLINK_SPOT_POLL_MS = 2000;
+const CHAINLINK_WS_STALE_MS = 5000;
 
 function emit(): void {
   for (const fn of listeners) fn();
@@ -34,8 +39,12 @@ function connect(): void {
       const msg = JSON.parse(event.data) as { asset?: string; price?: number; timestamp?: number };
       if (typeof msg.asset !== 'string' || typeof msg.price !== 'number' || msg.price <= 0) return;
       const k = msg.asset.toUpperCase();
-      if (typeof msg.timestamp === 'number') tsMap[k] = msg.timestamp;
-      if (pricesMap[k] === msg.price) return;
+      lastWsMsgAt = Date.now();
+      const ts = typeof msg.timestamp === 'number' ? msg.timestamp : Date.now();
+      const prevTs = tsMap[k];
+      const prevPrice = pricesMap[k];
+      tsMap[k] = ts;
+      if (prevPrice === msg.price && prevTs === ts) return;
       pricesMap = { ...pricesMap, [k]: msg.price };
       emit();
     } catch {
@@ -57,6 +66,10 @@ function connect(): void {
 }
 
 function disconnect(): void {
+  if (pollTimer != null) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
   if (reconnectTimer != null) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -68,10 +81,48 @@ function disconnect(): void {
   }
 }
 
+async function pollChainlinkSpot(): Promise<void> {
+  if (refCount <= 0) return;
+  const stale = lastWsMsgAt > 0 && Date.now() - lastWsMsgAt > CHAINLINK_WS_STALE_MS;
+  if (!stale && lastWsMsgAt > 0) return;
+  try {
+    const r = await fetch(`${API_BASE}/api/chainlink-spot`);
+    if (!r.ok) return;
+    const body = (await r.json()) as Record<string, number>;
+    let changed = false;
+    const next = { ...pricesMap };
+    for (const [asset, price] of Object.entries(body)) {
+      if (typeof price !== 'number' || price <= 0 || !Number.isFinite(price)) continue;
+      const k = asset.toUpperCase();
+      if (next[k] === price) continue;
+      next[k] = price;
+      tsMap[k] = Date.now();
+      changed = true;
+    }
+    if (changed) {
+      pricesMap = next;
+      emit();
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function ensurePoll(): void {
+  if (pollTimer != null) return;
+  pollTimer = setInterval(() => {
+    void pollChainlinkSpot();
+  }, CHAINLINK_SPOT_POLL_MS);
+}
+
 function subscribe(onChange: () => void): () => void {
   listeners.add(onChange);
   refCount += 1;
-  if (refCount === 1) connect();
+  if (refCount === 1) {
+    connect();
+    ensurePoll();
+    void pollChainlinkSpot();
+  }
   return () => {
     listeners.delete(onChange);
     refCount -= 1;

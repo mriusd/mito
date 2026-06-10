@@ -27,6 +27,7 @@ import {
 } from '../../lib/tiltNotifySound';
 
 const RBS1H_DEV_SOUND_RING_MS = 3000;
+const CHAINLINK_KLINE_POLL_MS = 30_000;
 
 const GEX_POS_COLOR = '#84cc16';
 const GEX_POS_LABEL = 'GEX pos';
@@ -114,6 +115,28 @@ function mergeKlineIntoSeries(prev: Candle[], t: number, o: number, h: number, l
     next = [...prev, candle].sort((a, b) => a.t - b.t);
   }
   return next.filter((x) => x.t >= windowStart);
+}
+
+type WsKlineFields = {
+  t?: unknown;
+  o?: unknown;
+  h?: unknown;
+  l?: unknown;
+  c?: unknown;
+  s?: unknown;
+  i?: unknown;
+};
+
+function parseWsKlineFields(k: WsKlineFields): { t: number; o: number; h: number; l: number; c: number } | null {
+  const t = Number(k.t);
+  const o = parseFloat(String(k.o ?? ''));
+  const h = parseFloat(String(k.h ?? ''));
+  const l = parseFloat(String(k.l ?? ''));
+  const c = parseFloat(String(k.c ?? ''));
+  if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) {
+    return null;
+  }
+  return { t, o, h, l, c };
 }
 
 /** Binance spot kline stream (raw WS) */
@@ -1143,9 +1166,10 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     });
   }, [hudSyncIntervalFromMarket, forcedPriceSource, assetOverride, selectedMarket?.id, upOrDownMarkets, panelId]);
 
-  const fetchKlines = useCallback(async () => {
+  const fetchKlines = useCallback(async (opts?: { silent?: boolean }) => {
     const myVersion = ++fetchVersionRef.current;
-    setLoading(true);
+    const silent = opts?.silent === true;
+    if (!silent) setLoading(true);
     setLoadErr(null);
     try {
       const now = Date.now();
@@ -1225,9 +1249,12 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
       setLoadErr(e instanceof Error ? e.message : 'Failed to load klines');
     } finally {
       if (myVersion !== fetchVersionRef.current) return;
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [sym, timeframe, candleCount, priceSource, asset]);
+
+  const fetchKlinesRef = useRef(fetchKlines);
+  fetchKlinesRef.current = fetchKlines;
 
   useEffect(() => {
     void fetchKlines();
@@ -1328,44 +1355,78 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
 
     let disposed = false;
 
+    const applyChainlinkKline = (raw: WsKlineFields) => {
+      const subIvNow = polycandlesChartInterval(timeframeRef.current);
+      const sym = typeof raw.s === 'string' ? raw.s.trim() : '';
+      const iv = typeof raw.i === 'string' ? raw.i.trim() : '';
+      if (sym && sym !== clSym) return;
+      if (iv && iv !== subIvNow) return;
+      const parsed = parseWsKlineFields(raw);
+      if (!parsed || disposed || priceSourceRef.current !== 'chainlink') return;
+      setLoadErr(null);
+      const windowStart = candleWindowStart(
+        Date.now(),
+        candleCountRef.current,
+        timeframeRef.current,
+        'chainlink',
+      );
+      const { t, o, h, l, c } = parsed;
+      setCandles((prev) => mergeKlineIntoSeries(prev, t, o, h, l, c, windowStart));
+    };
+
     const unsub = subscribeChartKline(clSym, subIv, {
       onMessage: (msg) => {
-        if (msg.type !== 'klineStreamUpdate') return;
-        const k = msg.data?.data?.k as
-          | { t: number; o: string; h: string; l: string; c: string; s?: string; i?: string }
-          | undefined;
-        if (!k) return;
-        if (k.s !== clSym || k.i !== polycandlesChartInterval(timeframeRef.current)) return;
-        const tOpen = Number(k.t);
-        const o = parseFloat(k.o);
-        const h = parseFloat(k.h);
-        const l = parseFloat(k.l);
-        const c = parseFloat(k.c);
-        if (!Number.isFinite(tOpen) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return;
-        if (disposed || priceSourceRef.current !== 'chainlink') return;
-        // Any valid live candle means the stream is healthy; remove stale overlay.
-        setLoadErr(null);
-        const windowStart = candleWindowStart(
-          Date.now(),
-          candleCountRef.current,
-          timeframeRef.current,
-          'chainlink',
-        );
-        setCandles((prev) => mergeKlineIntoSeries(prev, tOpen, o, h, l, c, windowStart));
+        if (msg.type === 'klineStreamSnapshot') {
+          const klines = msg.data?.klines;
+          if (!Array.isArray(klines)) return;
+          for (const row of klines) {
+            if (row && typeof row === 'object') applyChainlinkKline(row as WsKlineFields);
+          }
+          return;
+        }
+        if (msg.type === 'klineStreamUpdate') {
+          const k = msg.data?.data?.k;
+          if (k && typeof k === 'object') applyChainlinkKline(k as WsKlineFields);
+          return;
+        }
+        if (msg.type === 'klineStreamDelete') {
+          const tRaw = msg.data?.data?.t;
+          const t = typeof tRaw === 'number' ? tRaw : Number(tRaw);
+          if (!Number.isFinite(t) || t <= 0 || disposed || priceSourceRef.current !== 'chainlink') return;
+          const windowStart = candleWindowStart(
+            Date.now(),
+            candleCountRef.current,
+            timeframeRef.current,
+            'chainlink',
+          );
+          setCandles((prev) => prev.filter((x) => x.t !== t && x.t >= windowStart));
+        }
       },
       onReconnect: () => {
         if (disposed) return;
-        // Backend just came back: clear stale fetch overlay and backfill history.
         setLoadErr(null);
-        void fetchKlines();
+        void fetchKlinesRef.current({ silent: true });
       },
     });
 
+    const onVisibility = () => {
+      if (disposed || document.visibilityState !== 'visible') return;
+      void fetchKlinesRef.current({ silent: true });
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    const pollId = window.setInterval(() => {
+      if (disposed) return;
+      void fetchKlinesRef.current({ silent: true });
+    }, CHAINLINK_KLINE_POLL_MS);
+
     return () => {
       disposed = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.clearInterval(pollId);
       unsub();
     };
-  }, [asset, timeframe, candleCount, priceSource]);
+  }, [asset, timeframe, priceSource]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {

@@ -16,6 +16,7 @@ import {
 } from '../../lib/deribitGexFeed';
 
 import { assetToSymbol, formatPrice } from '../../utils/format';
+import { getMarketProbability } from '../../utils/bsMath';
 import { CHART_VOLUME_SPIKE_FLASH_MS } from '../../lib/chartVolumeSpikeAlert';
 import {
   ensureTiltAudioUnlockListeners,
@@ -193,6 +194,24 @@ function invNormCDF(p: number): number {
 }
 
 function clampP(p: number) { return Math.min(0.98, Math.max(0.02, p)); }
+
+/** BS P(close > open) for the forming candle (strike = open, spot = current close). */
+function candleGreenBsProbability(
+  open: number,
+  close: number,
+  candleEndMs: number,
+  sigma: number,
+  bsTimeOffsetHours: number,
+  nowMs: number,
+): number | null {
+  if (open <= 0 || close <= 0 || !Number.isFinite(open) || !Number.isFinite(close)) return null;
+  if (nowMs >= candleEndMs) {
+    if (close > open) return 1;
+    if (close < open) return 0;
+    return 0.5;
+  }
+  return getMarketProbability('>' + open, close, new Date(candleEndMs).toISOString(), sigma, bsTimeOffsetHours);
+}
 
 const SR_TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
 
@@ -822,6 +841,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   const rbsSettingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const rbsSettingsMenuRef = useRef<HTMLDivElement | null>(null);
   const [candles, setCandles] = useState<Candle[]>([]);
+  const [candleBsProbTick, setCandleBsProbTick] = useState(0);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [chartHeaderStackControls, setChartHeaderStackControls] = useState(false);
@@ -855,6 +875,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   const marketLookup = useMarketLookupSubset(chartClobTokenIds);
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
+  const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const sym = assetToSymbol(asset);
   const livePrice = priceData[sym]?.price ?? 0;
   const chainlinkPrices = useChainlinkPricesMap();
@@ -865,6 +886,23 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     }
     return livePrice;
   }, [priceSource, chainlinkPrices, asset, livePrice]);
+
+  const candleGreenBsProb = useMemo(() => {
+    const close = spotForChart;
+    if (close <= 0 || !Number.isFinite(close)) return null;
+    const barMs = chartBarMsForWindow(timeframe, priceSource);
+    const nowMs = Date.now();
+    const bucketStart = Math.floor(nowMs / barMs) * barMs;
+    const cur = candles.find((c) => c.t === bucketStart);
+    if (!cur || cur.o <= 0 || !Number.isFinite(cur.o)) return null;
+    const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
+    return candleGreenBsProbability(cur.o, close, bucketStart + barMs, sigma, bsTimeOffsetHours, nowMs);
+  }, [candles, spotForChart, timeframe, priceSource, volatilityData, sym, volMultiplier, bsTimeOffsetHours, candleBsProbTick]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setCandleBsProbTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const hudExchangeSpotReady = useMemo(() => {
     if (!hudGateSupportLinesByExchange) return true;
@@ -1144,7 +1182,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     ro.observe(controls);
     measure();
     return () => ro.disconnect();
-  }, [asset, spotForChart, priceSource, timeframe, candleCount]);
+  }, [asset, spotForChart, priceSource, timeframe, candleCount, candleGreenBsProb]);
 
   useEffect(() => {
     if (!hudSyncIntervalFromMarket || !assetOverride) return;
@@ -1538,6 +1576,20 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
               <span className="font-bold">
                 {spotForChart > 0 ? formatPrice(spotForChart, asset) : '--'}
               </span>
+              {candleGreenBsProb != null && (
+                <span
+                  className={`text-[10px] font-semibold tabular-nums ${
+                    candleGreenBsProb > 0.55
+                      ? 'text-green-400'
+                      : candleGreenBsProb < 0.45
+                        ? 'text-red-400'
+                        : 'text-gray-400'
+                  }`}
+                  title="BS P(candle closes green: close > open)"
+                >
+                  BS↑{Math.round(candleGreenBsProb * 100)}%
+                </span>
+              )}
               {!assetOverride && (
                 <svg className="w-3 h-3 ml-0.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <polyline points="6 9 12 15 18 9" />

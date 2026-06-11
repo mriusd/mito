@@ -441,6 +441,44 @@ function formatSrStrike(p: number, asset: AssetName): string {
   return p.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
+type CandleOhlcSnap = { o: number; h: number; l: number; c: number };
+
+function drawCurrentOhlcOverlay(
+  ctx: CanvasRenderingContext2D,
+  padL: number,
+  padT: number,
+  ohlc: CandleOhlcSnap,
+  asset: AssetName,
+) {
+  const parts: { label: string; val: string; color: string }[] = [
+    { label: 'O', val: formatSrStrike(ohlc.o, asset), color: '#d1d5db' },
+    { label: 'H', val: formatSrStrike(ohlc.h, asset), color: '#d1d5db' },
+    { label: 'L', val: formatSrStrike(ohlc.l, asset), color: '#d1d5db' },
+    { label: 'C', val: formatSrStrike(ohlc.c, asset), color: ohlc.c >= ohlc.o ? CANDLE_BULL_BODY : CANDLE_BEAR_BODY },
+  ];
+  ctx.font = '9px ui-monospace, ui-sans-serif, system-ui, sans-serif';
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+  let tw = 0;
+  for (let i = 0; i < parts.length; i++) {
+    tw += ctx.measureText(parts[i].label).width + ctx.measureText(parts[i].val).width + (i < parts.length - 1 ? 10 : 0);
+  }
+  const x = padL + 6;
+  const y = padT + 5;
+  ctx.fillStyle = 'rgba(15,20,25,0.88)';
+  ctx.fillRect(x - 4, y - 2, tw + 8, 13);
+  let cx = x;
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    ctx.fillStyle = '#6b7280';
+    ctx.fillText(p.label, cx, y);
+    cx += ctx.measureText(p.label).width + 2;
+    ctx.fillStyle = p.color;
+    ctx.fillText(p.val, cx, y);
+    cx += ctx.measureText(p.val).width + (i < parts.length - 1 ? 8 : 0);
+  }
+}
+
 /** S/R and RBS lines only widen the Y scale if within this fraction of the candle range beyond the wicks (so distant strikes don’t squash candles). */
 const SR_RBS_NEAR_CANDLE_RANGE_FRAC = 0.15;
 
@@ -464,6 +502,7 @@ function drawCandles(
   includeAllRbsInYRange = false,
   gexPosPrice: number | null = null,
   showGexPos = false,
+  currentOhlc: CandleOhlcSnap | null = null,
 ) {
   ctx.fillStyle = '#0f1419';
   ctx.fillRect(0, 0, w, h);
@@ -751,6 +790,10 @@ function drawCandles(
     const cx = padL + i * slot + slot / 2;
     ctx.fillText(fmtT(t), cx, h - padB + 4);
   }
+
+  if (currentOhlc != null) {
+    drawCurrentOhlcOverlay(ctx, padL, padT, currentOhlc, asset);
+  }
 }
 
 interface BinanceChartPanelProps {
@@ -887,17 +930,36 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     return livePrice;
   }, [priceSource, chainlinkPrices, asset, livePrice]);
 
-  const candleGreenBsProb = useMemo(() => {
-    const close = spotForChart;
+  const currentCandleOhlc = useMemo((): CandleOhlcSnap | null => {
+    const barMs = chartBarMsForWindow(timeframe, priceSource);
+    const bucketStart = Math.floor(Date.now() / barMs) * barMs;
+    const cur = candles.find((c) => c.t === bucketStart);
+    if (!cur || cur.o <= 0 || !Number.isFinite(cur.o)) return null;
+    const close = spotForChart > 0 && Number.isFinite(spotForChart) ? spotForChart : cur.c;
     if (close <= 0 || !Number.isFinite(close)) return null;
+    return {
+      o: cur.o,
+      h: Math.max(cur.h, close),
+      l: Math.min(cur.l, close),
+      c: close,
+    };
+  }, [candles, spotForChart, timeframe, priceSource, candleBsProbTick]);
+
+  const candleGreenBsProb = useMemo(() => {
+    if (!currentCandleOhlc) return null;
     const barMs = chartBarMsForWindow(timeframe, priceSource);
     const nowMs = Date.now();
     const bucketStart = Math.floor(nowMs / barMs) * barMs;
-    const cur = candles.find((c) => c.t === bucketStart);
-    if (!cur || cur.o <= 0 || !Number.isFinite(cur.o)) return null;
     const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
-    return candleGreenBsProbability(cur.o, close, bucketStart + barMs, sigma, bsTimeOffsetHours, nowMs);
-  }, [candles, spotForChart, timeframe, priceSource, volatilityData, sym, volMultiplier, bsTimeOffsetHours, candleBsProbTick]);
+    return candleGreenBsProbability(
+      currentCandleOhlc.o,
+      currentCandleOhlc.c,
+      bucketStart + barMs,
+      sigma,
+      bsTimeOffsetHours,
+      nowMs,
+    );
+  }, [currentCandleOhlc, timeframe, priceSource, volatilityData, sym, volMultiplier, bsTimeOffsetHours, candleBsProbTick]);
 
   useEffect(() => {
     const id = window.setInterval(() => setCandleBsProbTick((n) => n + 1), 1000);
@@ -1544,6 +1606,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
         hudGateSupportLinesByExchange,
         liveGexPos,
         gexPosEnabled && gexChartSupported,
+        currentCandleOhlc,
       );
     };
 
@@ -1551,7 +1614,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     const ro = new ResizeObserver(() => paint());
     ro.observe(container);
     return () => ro.disconnect();
-  }, [candles, timeframe, srLines, asset, rbsTfLines, selectedRbsTf, spotForChart, hudGateSupportLinesByExchange, liveGexPos, gexPosEnabled, gexChartSupported]);
+  }, [candles, timeframe, srLines, asset, rbsTfLines, selectedRbsTf, spotForChart, hudGateSupportLinesByExchange, liveGexPos, gexPosEnabled, gexChartSupported, currentCandleOhlc]);
 
   const titleColor = ASSET_COLORS[asset] || 'text-white';
 
@@ -1566,14 +1629,14 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
         ) : (
           <h3
             ref={chartTitleRef}
-            className={`text-sm font-bold flex items-center gap-1 flex-wrap min-w-0 ${chartHeaderStackControls ? 'w-full shrink-0 basis-full' : 'flex-1'} ${titleColor}`}
+            className={`text-[11px] font-bold flex items-center gap-1 flex-wrap min-w-0 ${chartHeaderStackControls ? 'w-full shrink-0 basis-full' : 'flex-1'} ${titleColor}`}
           >
             <span
-              className={`relative binance-asset-dropdown-root no-drag inline-flex items-center select-none ${assetOverride ? 'cursor-default' : 'cursor-pointer'}`}
+              className={`relative binance-asset-dropdown-root no-drag inline-flex items-center gap-0.5 select-none ${assetOverride ? 'cursor-default' : 'cursor-pointer'}`}
               onClick={() => { if (!assetOverride) setAssetDropdownOpen(v => !v); }}
             >
-              {asset}:{' '}
-              <span className="font-bold">
+              <span className="text-[10px] font-semibold">{asset}</span>
+              <span className="text-[11px] font-bold tabular-nums">
                 {spotForChart > 0 ? formatPrice(spotForChart, asset) : '--'}
               </span>
               {candleGreenBsProb != null && (

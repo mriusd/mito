@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
-import { CirclePercent } from 'lucide-react';
+import { CirclePercent, Clock } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { getBsTriple, type BsTripleResult } from '../utils/bsMath';
 import { formatThousandsAsK } from '../utils/format';
 import type { AssetSymbol } from '../types';
+import { HelpTooltip } from './HelpTooltip';
 
 interface BsFlowerProps {
   asset: string;
@@ -13,6 +14,7 @@ interface BsFlowerProps {
   /** Weekly/monthly Hit markets: use first-passage barrier probability instead of terminal BS. */
   hitBarrierModel?: boolean;
   onPriceClick?: (cents: number) => void;
+  hideTimeMachine?: boolean;
 }
 
 const fmt = (v: number | null) => {
@@ -168,7 +170,7 @@ function extractSlotValues(
   return { v0L: s0L, v0R: s0R, v1L: s1L, v1R: s1R };
 }
 
-export function BsFlower({ asset, strike, endDate, isYes, hitBarrierModel = false, onPriceClick }: BsFlowerProps) {
+export function BsFlower({ asset, strike, endDate, isYes, hitBarrierModel = false, onPriceClick, hideTimeMachine = false }: BsFlowerProps) {
   // Store data for frontend BS
   const sym = (asset + 'USDT') as AssetSymbol;
   const vwapData = useAppStore((s) => s.vwapData);
@@ -178,6 +180,7 @@ export function BsFlower({ asset, strike, endDate, isYes, hitBarrierModel = fals
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const vwapCorrection = useAppStore((s) => s.vwapCorrection);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
+  const setBsTimeOffsetHours = useAppStore((s) => s.setBsTimeOffsetHours);
 
   // Compute frontend BS
   const feTriple: BsTripleResult | null = useMemo(() => {
@@ -219,8 +222,16 @@ export function BsFlower({ asset, strike, endDate, isYes, hitBarrierModel = fals
 
   if (timeMachinePastExpiry) {
     return (
-      <div className="text-[11px] text-gray-500" title="Time machine ahead of expiration">
-        <span className="font-bold">&gt;⏱</span>
+      <div className="text-[11px] space-y-1">
+        <div className="text-gray-500" title="Time machine ahead of expiration">
+          <span className="font-bold">&gt;⏱</span>
+        </div>
+        {!hideTimeMachine ? (
+          <BsTimeMachineSlider
+            bsTimeOffsetHours={bsTimeOffsetHours}
+            onChange={setBsTimeOffsetHours}
+          />
+        ) : null}
       </div>
     );
   }
@@ -259,6 +270,42 @@ export function BsFlower({ asset, strike, endDate, isYes, hitBarrierModel = fals
           />
         )}
       </div>
+      {!hideTimeMachine ? (
+        <BsTimeMachineSlider
+          bsTimeOffsetHours={bsTimeOffsetHours}
+          onChange={setBsTimeOffsetHours}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function BsTimeMachineSlider({
+  bsTimeOffsetHours,
+  onChange,
+}: {
+  bsTimeOffsetHours: number;
+  onChange: (hours: number) => void;
+}) {
+  return (
+    <div className="pt-1.5 mt-1 border-t border-gray-700/60">
+      <div className="flex items-center gap-1 mb-1">
+        <Clock className={`w-3 h-3 shrink-0 ${bsTimeOffsetHours > 0 ? 'text-yellow-400' : 'text-gray-500'}`} aria-hidden />
+        <span className={`text-[10px] ${bsTimeOffsetHours > 0 ? 'text-yellow-400 font-bold' : 'text-gray-500'}`}>
+          Time Machine +{bsTimeOffsetHours}h
+        </span>
+        <HelpTooltip text={"Time Machine — slide to see how B-S probability values will change in the future.\n\nSince Black-Scholes probabilities depend on the time remaining until expiration, this slider lets you fast-forward by up to 72 hours. As time to expiry shrinks, probabilities shift — markets near the strike become more sensitive and move toward 0 or 100.\n\nUse this to preview how your positions and potential entries will look as expiry approaches, helping you plan trades ahead of time."} />
+      </div>
+      <input
+        type="range"
+        min="0"
+        max="72"
+        value={bsTimeOffsetHours}
+        step="1"
+        className="vol-slider w-full"
+        onChange={(e) => onChange(parseInt(e.target.value, 10))}
+        aria-label="Time machine hours ahead"
+      />
     </div>
   );
 }

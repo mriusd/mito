@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { useAccount } from 'wagmi';
-import { RefreshCw, Clock, Settings, Plus, Github, Send, Star } from 'lucide-react';
+import { RefreshCw, Settings, Plus, Github, Send, Star } from 'lucide-react';
 import logoSvg from '../assets/logo.svg';
 import { HelpTooltip } from './HelpTooltip';
 import { useShallow } from 'zustand/react/shallow';
@@ -87,8 +87,6 @@ export function Header({ onRefresh }: HeaderProps) {
   const setVwapCandles = useAppStore((s) => s.setVwapCandles);
   const vwapCorrection = useAppStore((s) => s.vwapCorrection);
   const setVwapCorrection = useAppStore((s) => s.setVwapCorrection);
-  const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
-  const setBsTimeOffsetHours = useAppStore((s) => s.setBsTimeOffsetHours);
   const { cashBalance, totalVal } = useAppStore(
     useShallow((s) => {
       const cashBalance = s.cashBalance;
@@ -377,24 +375,6 @@ export function Header({ onRefresh }: HeaderProps) {
                     />
                     <span className="text-[9px] text-gray-500">%</span>
                   </div>
-                <div className="mt-2 pt-2 border-t border-gray-700/80">
-                <div className="flex items-center gap-1 mb-1">
-                  <Clock className={`w-3.5 h-3.5 ${bsTimeOffsetHours > 0 ? 'text-yellow-400' : 'text-gray-500'}`} />
-                  <span className={`text-[10px] ${bsTimeOffsetHours > 0 ? 'text-yellow-400 font-bold' : 'text-gray-500'}`}>
-                    Time Machine +{bsTimeOffsetHours}h
-                  </span>
-                  <HelpTooltip text={"Time Machine — slide to see how B-S probability values will change in the future.\n\nSince Black-Scholes probabilities depend on the time remaining until expiration, this slider lets you fast-forward by up to 72 hours. As time to expiry shrinks, probabilities shift — markets near the strike become more sensitive and move toward 0 or 100.\n\nUse this to preview how your positions and potential entries will look as expiry approaches, helping you plan trades ahead of time."} />
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="72"
-                  value={bsTimeOffsetHours}
-                  step="1"
-                  className="vol-slider w-full"
-                  onChange={(e) => setBsTimeOffsetHours(parseInt(e.target.value))}
-                />
-                </div>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input

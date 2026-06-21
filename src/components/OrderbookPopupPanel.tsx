@@ -136,7 +136,7 @@ export const OrderbookPopupPanel = forwardRef<HTMLDivElement, OrderbookPopupPane
 
       {asset && strike ? (
         <div className="mb-2 pb-2 border-b border-gray-600">
-          <BsFlower asset={asset} strike={strike} endDate={endDate} isYes={isYes} hitBarrierModel={obHitBarrierModel} />
+          <BsFlower asset={asset} strike={strike} endDate={endDate} isYes={isYes} hitBarrierModel={obHitBarrierModel} hideTimeMachine />
         </div>
       ) : null}
 

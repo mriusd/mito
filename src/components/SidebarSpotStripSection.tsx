@@ -295,9 +295,9 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
   const currentBadge =
     row.mode === 'weather'
       ? {
-          label: 'LOCAL',
+          label: 'GMT',
           className: 'bg-gray-600 text-gray-200',
-          title: 'Expires at local midnight for event city',
+          title: 'Expires at GMT midnight after event day',
         }
       : row.mode === 'updown'
       ? {

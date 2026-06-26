@@ -1,13 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { formatDateShort, getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
+import { formatDateShort, normalizeClobTokenId } from '../../utils/format';
 import type { Market, Order, WeatherCitySlug } from '../../types';
 import { WEATHER_CITIES } from '../../types';
 import { GridMarketCell } from './GridMarketCell';
 import {
+  useGridPositionLookup,
   useThrottledGridOrders,
-  useThrottledGridPositions,
-  useThrottledOnchainGridPositions,
 } from '../../hooks/useThrottledGridWallet';
 import { polymarketSiteUrl } from '../../lib/polymarketSiteUrl';
 
@@ -115,9 +114,7 @@ function WeatherMarketsTableInner({ panelId, initialCity = 'nyc' }: WeatherMarke
   const markets = useMemo(() => filterWeatherMarkets(allMarkets, metric), [allMarkets, metric]);
   const showPast = useAppStore((s) => s.showPast);
   const setShowPast = useAppStore((s) => s.setShowPast);
-  const positions = useThrottledGridPositions(2000);
-  const liveTradesSource = useAppStore((s) => s.liveTradesSource);
-  const onchainGridPositions = useThrottledOnchainGridPositions(2000);
+  const positionLookup = useGridPositionLookup(2000);
   const orders = useThrottledGridOrders(2000);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
@@ -138,24 +135,6 @@ function WeatherMarketsTableInner({ panelId, initialCity = 'nyc' }: WeatherMarke
     },
     [setSelectedMarket, setSidebarOpen, setSidebarOutcome],
   );
-
-  const positionLookup = useMemo(() => {
-    const lookup: Record<string, { size: number }> = {};
-    if (liveTradesSource === 'onchain') {
-      for (const p of onchainGridPositions) {
-        const k = normalizeClobTokenId(p.tokenId);
-        if (k && Math.abs(p.size) > 1e-9) lookup[k] = { size: Math.abs(p.size) };
-      }
-    } else {
-      for (const pos of positions) {
-        const tid = getPositionClobTokenId(pos);
-        const sz = pos.size || 0;
-        const k = normalizeClobTokenId(tid);
-        if (k && sz > 0) lookup[k] = { size: sz };
-      }
-    }
-    return lookup;
-  }, [liveTradesSource, onchainGridPositions, positions]);
 
   const orderLookup = useMemo(() => {
     const lookup: Record<string, typeof orders> = {};
@@ -332,6 +311,7 @@ function WeatherMarketsTableInner({ panelId, initialCity = 'nyc' }: WeatherMarke
                       noOrders={orderLookup[normalizeClobTokenId(noTokenId)] ?? EMPTY_ORDERS}
                           onCellClick={handleCellClick}
                           skipDeltaBg
+                          cellPyClass="py-1.5"
                         />
                       );
                     })}

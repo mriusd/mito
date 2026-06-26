@@ -32,6 +32,7 @@ export type GridMarketCellProps = {
   /** above/between show sell-order badges; hit shows highlighted position rows */
   variant: 'above' | 'between' | 'hit' | 'updown';
   skipDeltaBg?: boolean;
+  cellPyClass?: 'py-0.5' | 'py-1' | 'py-1.5' | 'py-2';
 };
 
 function GridMarketCellInner({
@@ -58,6 +59,7 @@ function GridMarketCellInner({
   onCellClick,
   variant,
   skipDeltaBg = false,
+  cellPyClass,
 }: GridMarketCellProps) {
   const tokenIds = market.clobTokenIds || [];
   const yesTokenId = tokenIds[0] || '';
@@ -113,11 +115,13 @@ function GridMarketCellInner({
   const rowBorder = 'border-b border-gray-700/50';
   const marketTitle = market.question || market.groupItemTitle || '';
   const strike = market.groupItemTitle || '';
+  const pyClass =
+    cellPyClass ?? (variant === 'above' || variant === 'between' ? 'py-0.5' : 'py-1');
 
   return (
     <td
       data-market-id={market.id}
-      className={`market-cell px-0.5 py-${variant === 'above' || variant === 'between' ? '0.5' : '1'} text-center ${rowBorder} ${bgColor} ${opacityClass} whitespace-nowrap ${borderClass} relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${isColHighlighted && !isSelected ? 'date-column-highlighted' : ''}`}
+      className={`market-cell px-0.5 ${pyClass} text-center ${rowBorder} ${bgColor} ${opacityClass} whitespace-nowrap ${borderClass} relative cursor-pointer hover:brightness-125 ${isSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${isColHighlighted && !isSelected ? 'date-column-highlighted' : ''}`}
       style={{
         minWidth,
         ...(isWeekend && !isSelected && !isColHighlighted ? { boxShadow: 'inset 0 0 0 100px rgba(147, 51, 234, 0.08)' } : {}),
@@ -247,6 +251,7 @@ export const GridMarketCell = memo(GridMarketCellInner, (a, b) => {
     a.noPosSize !== b.noPosSize ||
     a.variant !== b.variant ||
     a.skipDeltaBg !== b.skipDeltaBg ||
+    a.cellPyClass !== b.cellPyClass ||
     a.onCellClick !== b.onCellClick
   ) {
     return false;

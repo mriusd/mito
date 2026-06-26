@@ -531,7 +531,6 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const tid = getPositionClobTokenId(pos);
       const market = lookupMarketByTokenId(tid, marketLookup);
       let asset = market ? extractAssetFromMarket(market) || '' : normalizeDbUnderlying(pos.underlyingAsset);
-      if (!asset && market && isWeatherMarket(market)) asset = 'WEATHER';
       const endDate = market?.endDate || pos.endDate || null;
       const marketName = getMarketPriceCondition(null, tid, marketLookup);
       let mktLabel = formatTpoMarketLabel(asset, marketName);
@@ -540,15 +539,12 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         if (pos.title) {
           const combined = pos.eventSlug ? `${pos.title} ${pos.eventSlug}` : pos.title;
           const shortened = getMarketPriceCondition(combined);
-          if (/temperature in/i.test(combined)) asset = asset || 'WEATHER';
           const nameMap: Record<string, string> = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', ripple: 'XRP', xrp: 'XRP', btc: 'BTC', eth: 'ETH', sol: 'SOL' };
           const nameMatch = pos.title.match(/\b(Bitcoin|Ethereum|Solana|Ripple|BTC|ETH|SOL|XRP)\b/i);
           if (nameMatch) asset = asset || nameMap[nameMatch[1].toLowerCase()] || nameMatch[1].toUpperCase();
-          mktLabel = asset && asset !== 'WEATHER'
-            ? `${formatPriceShort(shortened, asset === 'ETH' ? 'ETH' : undefined)}`
-            : shortened;
+          mktLabel = formatTpoMarketLabel(asset, shortened);
         } else if (pos.slug) {
-          mktLabel = asset && asset !== 'WEATHER' ? `${asset} ${pos.slug}` : pos.slug;
+          mktLabel = formatTpoMarketLabel(asset, pos.slug);
         }
         if (pos.outcome) {
           const upper = pos.outcome.toUpperCase();
@@ -584,7 +580,6 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const tid = getOrderClobTokenId(order);
       const market = lookupMarketByTokenId(tid, marketLookup);
       let asset = market ? extractAssetFromMarket(market) || '' : '';
-      if (!asset && market && isWeatherMarket(market)) asset = 'WEATHER';
       const endDate = market?.endDate || null;
       const marketName = getMarketPriceCondition(null, tid, marketLookup);
       const mktLabel = formatTpoMarketLabel(asset, marketName);

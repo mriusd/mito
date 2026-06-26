@@ -6,7 +6,7 @@ import { formatMarketCountdown } from '../lib/marketCountdown';
 
 type Props = {
   endDate: string;
-  mode: 'updown' | 'generic';
+  mode: 'updown' | 'generic' | 'weather';
   liveUpDownSameTfMarket?: Market | null;
   onSwitchLiveMarket?: () => void;
 };

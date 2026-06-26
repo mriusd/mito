@@ -36,6 +36,11 @@ function normalizeDbUnderlying(raw: string | undefined): string {
   return m[k] || (raw.trim().length <= 6 ? raw.trim().toUpperCase() : '');
 }
 
+function formatTpoMarketLabel(asset: string, marketName: string): string {
+  if (!asset || asset === 'WEATHER') return marketName;
+  return `${asset} ${formatPriceShort(marketName, asset === 'ETH' ? 'ETH' : undefined)}`;
+}
+
 function formatElapsed(ms: number): string {
   const diff = Date.now() - ms;
   if (diff < 0) return '';
@@ -456,7 +461,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         endDate = new Date(tsNum).toISOString();
       }
       const marketName = getMarketPriceCondition(null, tid, marketLookup);
-      let mktLabel = asset ? `${asset} ${formatPriceShort(marketName, asset === 'ETH' ? 'ETH' : undefined)}` : marketName;
+      let mktLabel = formatTpoMarketLabel(asset, marketName);
       let outcome = getTokenOutcome(tid, marketLookup) || '';
 
       // Fallback to activity API fields when market not in lookup (expired markets)
@@ -529,7 +534,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       if (!asset && market && isWeatherMarket(market)) asset = 'WEATHER';
       const endDate = market?.endDate || pos.endDate || null;
       const marketName = getMarketPriceCondition(null, tid, marketLookup);
-      let mktLabel = asset ? `${asset} ${formatPriceShort(marketName, asset === 'ETH' ? 'ETH' : undefined)}` : marketName;
+      let mktLabel = formatTpoMarketLabel(asset, marketName);
       let outcome = getTokenOutcome(tid, marketLookup) || '';
       if (!market && (pos.title || pos.slug || pos.outcome || pos.outcomeIndex !== undefined || pos.underlyingAsset)) {
         if (pos.title) {
@@ -539,9 +544,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           const nameMap: Record<string, string> = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', ripple: 'XRP', xrp: 'XRP', btc: 'BTC', eth: 'ETH', sol: 'SOL' };
           const nameMatch = pos.title.match(/\b(Bitcoin|Ethereum|Solana|Ripple|BTC|ETH|SOL|XRP)\b/i);
           if (nameMatch) asset = asset || nameMap[nameMatch[1].toLowerCase()] || nameMatch[1].toUpperCase();
-          mktLabel = asset ? `${formatPriceShort(shortened, asset === 'ETH' ? 'ETH' : undefined)}` : shortened;
+          mktLabel = asset && asset !== 'WEATHER'
+            ? `${formatPriceShort(shortened, asset === 'ETH' ? 'ETH' : undefined)}`
+            : shortened;
         } else if (pos.slug) {
-          mktLabel = asset ? `${asset} ${pos.slug}` : pos.slug;
+          mktLabel = asset && asset !== 'WEATHER' ? `${asset} ${pos.slug}` : pos.slug;
         }
         if (pos.outcome) {
           const upper = pos.outcome.toUpperCase();
@@ -580,7 +587,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       if (!asset && market && isWeatherMarket(market)) asset = 'WEATHER';
       const endDate = market?.endDate || null;
       const marketName = getMarketPriceCondition(null, tid, marketLookup);
-      const mktLabel = asset ? `${asset} ${formatPriceShort(marketName, asset === 'ETH' ? 'ETH' : undefined)}` : marketName;
+      const mktLabel = formatTpoMarketLabel(asset, marketName);
       const outcome = getTokenOutcome(tid, marketLookup) || '';
       const price = parseFloat(order.price) * 100;
       const size = parseFloat(order.original_size || order.size);

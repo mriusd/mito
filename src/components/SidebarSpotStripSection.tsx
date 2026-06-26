@@ -7,7 +7,9 @@ import { useThrottledStorePrice } from '../hooks/useThrottledStorePrice';
 import {
   extractAssetFromMarket,
   formatPriceShort,
+  formatWeatherMarketLabel,
   getMarketPriceCondition,
+  isWeatherMarket,
   upDownMarketUsesChainlinkSpot,
 } from '../utils/format';
 import { getHitMarketProbability, getMarketProbability } from '../utils/bsMath';
@@ -16,6 +18,7 @@ import {
   useSidebarUpDownTargetPrice,
 } from '../lib/sidebarUpDownTargetStore';
 import { setSidebarSpotStripBsSnapshot } from '../lib/sidebarSpotStripStore';
+import { weatherMarketLocalMidnightExpiryMs } from '../lib/weatherMarketExpiry';
 import { SidebarMarketCountdownLabel } from './SidebarMarketCountdownLabel';
 import { SidebarSpotStripMathButton } from './SidebarSpotStripMathButton';
 import { SidebarSpotVolSigmaLabel } from './SidebarSpotVolSigmaLabel';
@@ -24,7 +27,7 @@ import { HelpTooltip } from './HelpTooltip';
 import type { SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 
 type SpotStripRow = {
-  mode: 'updown' | 'generic';
+  mode: 'updown' | 'generic' | 'weather';
   targetDisplay: string;
   priceDec: number;
   mathCents: number | null;
@@ -34,6 +37,7 @@ type SpotStripRow = {
   currentSource: 'chainlink' | 'binance';
   diff: { abs: number; pct: number; isUp: boolean } | null;
   hitModel?: boolean;
+  countdownEndDate?: string;
 };
 
 export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
@@ -79,6 +83,33 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
   const polyPrice = usePolymarketPrice(upDownSpotUsesChainlink ? upDownAsset : null);
 
   const row = useMemo((): SpotStripRow | null => {
+    if (isWeatherMarket(selectedMarket)) {
+      const expiryMs = weatherMarketLocalMidnightExpiryMs(selectedMarket);
+      const countdownEndDate =
+        expiryMs != null ? new Date(expiryMs).toISOString() : selectedMarket.endDate || '';
+      if (!countdownEndDate) return null;
+      const nowOffset = Date.now() + bsTimeOffsetHours * 3600000;
+      const pastExpiry = nowOffset >= new Date(countdownEndDate).getTime();
+      const targetDisplay =
+        formatWeatherMarketLabel(
+          selectedMarket.question,
+          selectedMarket.eventSlug,
+          selectedMarket.groupItemTitle,
+        ) || selectedMarket.groupItemTitle || '—';
+      return {
+        mode: 'weather',
+        targetDisplay,
+        priceDec: 0,
+        mathCents: null,
+        yesMathCents: null,
+        pastExpiry,
+        currentPrice: 0,
+        currentSource: 'binance',
+        diff: null,
+        countdownEndDate,
+      };
+    }
+
     if (!selectedMarket?.endDate) return null;
     const endDate = selectedMarket.endDate;
     const asset = extractAssetFromMarket(selectedMarket);
@@ -253,14 +284,22 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
   if (!row) return null;
 
   const mathTooltip =
-    row.mode === 'updown'
+    row.mode === 'weather'
+      ? ''
+      : row.mode === 'updown'
       ? 'Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the same spot as “Current” on the right: Polymarket Chainlink for 5m/15m windows, Binance spot for 1h/4h/24h. Inputs: target strike, time to expiry, implied volatility (σ).\n\nFor Up (YES): probability price is above the target at expiry. For Down (NO): below.\n\nCompare to the market price to spot mispricings.'
       : row.hitModel
         ? 'Fair-value probability for this Hit market (one-touch / first-passage under GBM): risk-neutral chance price touches the strike by expiry. Same Binance spot as “Current”, σ from settings.\n\nCompare to the order book to spot mispricings.'
         : 'Fair-value probability (terminal Black-Scholes–style) for this market’s strike vs spot.\n\nUses Binance spot, time to expiry, and σ. For YES/NO: YES uses model YES probability; NO uses 100% − YES.\n\nCompare to the market price to spot mispricings.';
 
   const currentBadge =
-    row.mode === 'updown'
+    row.mode === 'weather'
+      ? {
+          label: 'LOCAL',
+          className: 'bg-gray-600 text-gray-200',
+          title: 'Expires at local midnight for event city',
+        }
+      : row.mode === 'updown'
       ? {
           label: row.currentSource === 'chainlink' ? 'CL' : 'BINANCE',
           className: row.currentSource === 'chainlink' ? 'bg-blue-600 text-white' : 'bg-yellow-400 text-black',
@@ -289,7 +328,11 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
           Target
         </div>
         <div className="flex items-center justify-center gap-1 min-h-[15px] text-[9px] font-medium leading-none text-gray-500 min-w-0 px-px">
-          {row.pastExpiry ? (
+          {row.mode === 'weather' ? (
+            <span className="shrink-0 text-transparent select-none" aria-hidden>
+              Math
+            </span>
+          ) : row.pastExpiry ? (
             <>
               <CirclePercent className="h-[9px] w-[9px] shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
               <span className="shrink-0">Math</span>
@@ -311,13 +354,21 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
           )}
         </div>
         <div className="flex items-center justify-end gap-1.5 min-h-[15px] flex-nowrap text-[9px] font-medium leading-none text-gray-500 min-w-0">
-          <span className="shrink-0">Current</span>
-          <span
-            className={`shrink-0 px-0.5 rounded-sm text-[9px] font-bold leading-none py-px ${currentBadge.className}`}
-            title={currentBadge.title}
-          >
-            {currentBadge.label}
-          </span>
+          {row.mode === 'weather' ? (
+            <span className="shrink-0 text-transparent select-none" aria-hidden>
+              Current
+            </span>
+          ) : (
+            <>
+              <span className="shrink-0">Current</span>
+              <span
+                className={`shrink-0 px-0.5 rounded-sm text-[9px] font-bold leading-none py-px ${currentBadge.className}`}
+                title={currentBadge.title}
+              >
+                {currentBadge.label}
+              </span>
+            </>
+          )}
         </div>
 
         <div className="flex items-center justify-start min-h-[16px] min-w-0">
@@ -326,7 +377,9 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
           </span>
         </div>
         <div className="flex items-center justify-center min-h-[16px] min-w-0 text-[11px] font-bold tabular-nums px-px">
-          {row.pastExpiry ? (
+          {row.mode === 'weather' ? (
+            <span className="text-gray-600 text-[11px] sidebar-readable-value">—</span>
+          ) : row.pastExpiry ? (
             <span className="text-gray-500 tabular-nums text-[11px] sidebar-readable-value" title="Time machine ahead of expiration">
               &gt;⏱
             </span>
@@ -345,17 +398,19 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
             ref={currentPriceRef}
             className="text-[11px] font-bold tabular-nums text-white truncate max-w-full whitespace-nowrap sidebar-readable-value"
           >
-            {row.currentPrice
+            {row.mode === 'weather'
+              ? '—'
+              : row.currentPrice
               ? `$${row.currentPrice.toLocaleString(undefined, { minimumFractionDigits: row.priceDec, maximumFractionDigits: row.priceDec })}`
               : '...'}
           </span>
         </div>
 
         <div className="flex items-center justify-start min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
-          {selectedMarket?.endDate ? (
+          {row.countdownEndDate || selectedMarket?.endDate ? (
             <div className="flex items-center gap-1 min-w-0 whitespace-nowrap">
               <SidebarMarketCountdownLabel
-                endDate={selectedMarket.endDate}
+                endDate={row.countdownEndDate ?? selectedMarket.endDate ?? ''}
                 mode={row.mode}
                 liveUpDownSameTfMarket={liveUpDownSameTfMarket}
                 onSwitchLiveMarket={
@@ -372,12 +427,18 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
           )}
         </div>
         <div className="flex items-center justify-center min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none px-px">
-          <SidebarSpotVolSigmaLabel
-            notifyMaxVolatilityPct={notifyMaxVolatilityPct}
-            notifyVolatilityCandles={notifyVolatilityCandles}
-            sidebarChartKlineLabel={sidebarChartKlineLabel}
-            pastExpiry={row.pastExpiry}
-          />
+          {row.mode === 'weather' ? (
+            <span className="text-transparent select-none" aria-hidden>
+              σ
+            </span>
+          ) : (
+            <SidebarSpotVolSigmaLabel
+              notifyMaxVolatilityPct={notifyMaxVolatilityPct}
+              notifyVolatilityCandles={notifyVolatilityCandles}
+              sidebarChartKlineLabel={sidebarChartKlineLabel}
+              pastExpiry={row.pastExpiry}
+            />
+          )}
         </div>
         <div className="flex items-center justify-end min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
           {row.diff && row.currentPrice > 0 ? (

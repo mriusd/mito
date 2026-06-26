@@ -546,7 +546,7 @@ export function lookupMarketByTokenId(
 }
 
 export function isWeatherMarket(
-  market: Pick<Market, 'question' | 'eventSlug'> | null | undefined,
+  market: Pick<Market, 'question' | 'eventSlug'> | { question?: string; eventSlug?: string } | null | undefined,
 ): boolean {
   if (!market) return false;
   const combined = `${market.question || ''} ${market.eventSlug || ''}`.toLowerCase();

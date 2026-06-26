@@ -1751,7 +1751,13 @@ export const Sidebar = memo(function Sidebar() {
   };
 
   const marketName = selectedMarket
-    ? shortenMarketName(selectedMarket.question || selectedMarket.groupItemTitle, undefined, undefined, selectedMarket.eventSlug)
+    ? shortenMarketName(
+        selectedMarket.question || selectedMarket.groupItemTitle,
+        undefined,
+        undefined,
+        selectedMarket.eventSlug,
+        selectedMarket.groupItemTitle,
+      )
     : '';
 
   /** Market FAK path shared by type dropdown Market and close-position ✕. */

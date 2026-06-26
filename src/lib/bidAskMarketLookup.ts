@@ -272,6 +272,10 @@ export function resolveBidAskSeedMarket(assetId: string): Market | undefined {
     const hit = scanList(state.weeklyHitMarkets[asset] || []);
     if (hit) return hit;
   }
+  for (const city of Object.keys(state.weatherMarkets)) {
+    const hit = scanList(state.weatherMarkets[city] || []);
+    if (hit) return hit;
+  }
 
   return {
     id: `ws:${id}`,

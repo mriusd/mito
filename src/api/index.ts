@@ -1,4 +1,5 @@
 import type { MarketsResponse, Market, Position, SmartMoneySignalsResponse } from '../types';
+import { normalizeClobTokenId } from '../utils/format';
 import { isWebMode, API_BASE } from '../lib/env';
 import { placeOrderDirect, cancelOrderDirect, cancelOrdersDirect, signOrderOnly, submitSignedOrderDirect, resolveTradingMakerForActiveSigner } from '../lib/clobClient';
 import { useAppStore } from '../stores/appStore';
@@ -398,12 +399,17 @@ function addMarketToTokenLookup(
       ? { ...m, ...ws, bestBid: undefined, bestAsk: undefined }
       : { ...m, ...ws };
   };
+  const register = (id: string, leg: 'YES' | 'NO', clearBidAsk: boolean) => {
+    reuseOrClone(id, leg, clearBidAsk);
+    const norm = normalizeClobTokenId(id);
+    if (norm && norm !== id) reuseOrClone(norm, leg, clearBidAsk);
+  };
   if (tokenIds.length === 1) {
-    if (tokenIds[0]) reuseOrClone(tokenIds[0], 'YES', false);
+    if (tokenIds[0]) register(tokenIds[0], 'YES', false);
     return;
   }
-  if (tokenIds[0]) reuseOrClone(tokenIds[0], 'YES', false);
-  if (tokenIds[1]) reuseOrClone(tokenIds[1], 'NO', true);
+  if (tokenIds[0]) register(tokenIds[0], 'YES', false);
+  if (tokenIds[1]) register(tokenIds[1], 'NO', true);
 }
 
 /** Reuse prior lookup entry refs when market row content unchanged. */

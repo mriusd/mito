@@ -241,16 +241,67 @@ export function formatStrikePrice(price: number, asset?: AssetName): string {
   return price % 1 === 0 ? String(price) : price.toFixed(2).replace(/\.?0+$/, '');
 }
 
+const WEATHER_CITY_SLUG_LABELS: Record<string, string> = {
+  nyc: 'NYC',
+  london: 'London',
+  'hong-kong': 'Hong Kong',
+  chicago: 'Chicago',
+  miami: 'Miami',
+  seoul: 'Seoul',
+  tokyo: 'Tokyo',
+  paris: 'Paris',
+  dallas: 'Dallas',
+  atlanta: 'Atlanta',
+};
+
+function weatherCityLabelFromSlug(slug: string): string {
+  const key = slug.toLowerCase();
+  if (WEATHER_CITY_SLUG_LABELS[key]) return WEATHER_CITY_SLUG_LABELS[key];
+  return slug
+    .split('-')
+    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+    .join(' ');
+}
+
+/** e.g. "London ↑31°C" / "London ↓22°C" from Gamma weather question or slug + bucket title. */
+export function formatWeatherMarketLabel(
+  question: string | null | undefined,
+  eventSlug?: string | null,
+  groupItemTitle?: string | null,
+): string | null {
+  const q = (question || '').trim();
+  const qMatch = q.match(/Will the (highest|lowest) temperature in (.+?) be (?:between )?(.+?) on /i);
+  if (qMatch) {
+    const arrow = qMatch[1].toLowerCase() === 'highest' ? '↑' : '↓';
+    return `${qMatch[2].trim()} ${arrow}${qMatch[3].trim()}`;
+  }
+
+  const slug = (eventSlug || '').trim();
+  const slugMatch = slug.match(/(highest|lowest)-temperature-in-([a-z-]+)-on-/i);
+  const temp = (groupItemTitle || '').trim();
+  if (slugMatch && temp) {
+    const arrow = slugMatch[1].toLowerCase() === 'highest' ? '↑' : '↓';
+    return `${weatherCityLabelFromSlug(slugMatch[2])} ${arrow}${temp}`;
+  }
+
+  return null;
+}
+
 export function getMarketPriceCondition(question: string | null | undefined, tokenId?: string, marketLookup?: Record<string, Market>): string {
   let eventSlug = '';
-  if (!question && tokenId && marketLookup) {
-    const market = marketLookup[tokenId];
+  let groupItemTitle = '';
+  if (tokenId && marketLookup) {
+    const market = lookupMarketByTokenId(tokenId, marketLookup);
     if (market) {
-      question = market.question || market.eventTitle || '';
+      if (!question) question = market.question || market.eventTitle || '';
       eventSlug = market.eventSlug || '';
+      groupItemTitle = market.groupItemTitle || '';
     }
   }
   if (!question) return tokenId?.slice(0, 8) || '?';
+
+  const weatherLabel = formatWeatherMarketLabel(question, eventSlug, groupItemTitle);
+  if (weatherLabel) return weatherLabel;
 
   const strikeFmtAsset: AssetName | undefined = assetTickerFromQuestion(question) === 'ETH' ? 'ETH' : undefined;
 
@@ -296,12 +347,26 @@ export function getMarketPriceCondition(question: string | null | undefined, tok
   return question.slice(0, 15) + (question.length > 15 ? '…' : '');
 }
 
-export function shortenMarketName(question: string | null | undefined, tokenId?: string, marketLookup?: Record<string, Market>, eventSlug?: string): string {
+export function shortenMarketName(
+  question: string | null | undefined,
+  tokenId?: string,
+  marketLookup?: Record<string, Market>,
+  eventSlug?: string,
+  groupItemTitle?: string,
+): string {
   if (!question && tokenId && marketLookup) {
     const market = marketLookup[tokenId];
-    if (market) question = market.question || market.eventTitle || '';
+    if (market) {
+      question = market.question || market.eventTitle || '';
+      eventSlug = eventSlug || market.eventSlug;
+      groupItemTitle = groupItemTitle || market.groupItemTitle;
+    }
   }
   if (!question) return tokenId?.slice(0, 12) || 'Unknown';
+
+  const weatherLabel = formatWeatherMarketLabel(question, eventSlug, groupItemTitle);
+  if (weatherLabel) return weatherLabel;
+
   const combinedText = eventSlug ? `${question} ${eventSlug}` : question;
 
   const assetMatch = question.match(/\b(BTC|ETH|SOL|XRP|Bitcoin|Ethereum|Solana)\b/i);
@@ -434,11 +499,12 @@ export function shortenUpDownMarketListCell(
 }
 
 export function getTokenOutcome(tokenId: string, marketLookup: Record<string, Market>): string {
-  const market = marketLookup[tokenId];
+  const market = lookupMarketByTokenId(tokenId, marketLookup);
   if (!market) return '';
   const tokenIds = market.clobTokenIds || [];
-  if (tokenIds[0] === tokenId) return 'YES';
-  if (tokenIds[1] === tokenId) return 'NO';
+  const norm = normalizeClobTokenId(tokenId);
+  if (normalizeClobTokenId(tokenIds[0]) === norm) return 'YES';
+  if (normalizeClobTokenId(tokenIds[1]) === norm) return 'NO';
   return '';
 }
 
@@ -464,6 +530,33 @@ export function normalizeClobTokenId(id: string | null | undefined): string {
   } catch {
     return s;
   }
+}
+
+export function lookupMarketByTokenId(
+  tokenId: string | null | undefined,
+  marketLookup: Record<string, Market>,
+): Market | undefined {
+  const raw = String(tokenId || '').trim();
+  if (!raw) return undefined;
+  const direct = marketLookup[raw];
+  if (direct) return direct;
+  const norm = normalizeClobTokenId(raw);
+  if (norm && norm !== raw) return marketLookup[norm];
+  return undefined;
+}
+
+export function isWeatherMarket(
+  market: Pick<Market, 'question' | 'eventSlug' | 'category'> | null | undefined,
+): boolean {
+  if (!market) return false;
+  const combined = `${market.question || ''} ${market.eventSlug || ''} ${market.category || ''}`.toLowerCase();
+  return (
+    combined.includes('highest-temperature-in-')
+    || combined.includes('lowest-temperature-in-')
+    || combined.includes('highest temperature')
+    || combined.includes('lowest temperature')
+    || market.category?.toLowerCase() === 'weather'
+  );
 }
 
 /** Polymarket position row → outcome token id (Data API may use `asset`, `asset_id`, or `token_id`). */
@@ -653,6 +746,7 @@ export const ASSET_COLORS: Record<string, string> = {
   ETH: 'text-blue-400',
   SOL: 'text-purple-400',
   XRP: 'text-cyan-400',
+  WEATHER: 'text-sky-400',
 };
 
 export function formatDateShort(endDate: string): string {

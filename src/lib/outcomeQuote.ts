@@ -106,18 +106,29 @@ export function positionExitBidProb(
   const tid = String(tokenId || '').trim();
   if (!tid) return 0;
 
-  const live = lookup[tid];
+  const norm = (() => {
+    try {
+      return BigInt(tid).toString();
+    } catch {
+      return tid;
+    }
+  })();
+  const live = lookup[tid] || lookup[norm];
   const gamma = live ? { bestBid: live.bestBid, bestAsk: live.bestAsk } : undefined;
   const direct = outcomeBestBidProb(tid, lookup, gamma);
   if (direct != null) return direct;
 
   for (const row of Object.values(lookup)) {
     const ids = row.clobTokenIds || [];
-    if (ids[0] === tid) {
+    const yesId = ids[0] || '';
+    const noId = ids[1] || '';
+    const yesNorm = yesId ? (() => { try { return BigInt(yesId).toString(); } catch { return yesId; } })() : '';
+    const noNorm = noId ? (() => { try { return BigInt(noId).toString(); } catch { return noId; } })() : '';
+    if (yesId === tid || yesNorm === norm) {
       const bb = outcomeBestBidProb(tid, lookup, { bestBid: row.bestBid, bestAsk: row.bestAsk });
       return bb != null ? bb : 0;
     }
-    if (ids[1] === tid) {
+    if (noId === tid || noNorm === norm) {
       const noBook = noOutcomeBidAsk(ids[0], tid, lookup, {
         bestBid: row.bestBid,
         bestAsk: row.bestAsk,

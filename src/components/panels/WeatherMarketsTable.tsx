@@ -161,10 +161,10 @@ function WeatherMarketsTableInner({ panelId, initialCity = 'nyc' }: WeatherMarke
     const lookup: Record<string, typeof orders> = {};
     for (const ord of orders) {
       const tid = ord.asset_id || ord.token_id || '';
-      if (tid) {
-        if (!lookup[tid]) lookup[tid] = [];
-        lookup[tid].push(ord);
-      }
+      if (!tid) continue;
+      const key = normalizeClobTokenId(tid);
+      if (!lookup[key]) lookup[key] = [];
+      lookup[key].push(ord);
     }
     return lookup;
   }, [orders]);
@@ -328,8 +328,8 @@ function WeatherMarketsTableInner({ panelId, initialCity = 'nyc' }: WeatherMarke
                           bsTimeOffsetHours={0}
                           yesPosSize={yesPos?.size}
                           noPosSize={noPos?.size}
-                          yesOrders={orderLookup[yesTokenId] ?? EMPTY_ORDERS}
-                          noOrders={orderLookup[noTokenId] ?? EMPTY_ORDERS}
+                      yesOrders={orderLookup[normalizeClobTokenId(yesTokenId)] ?? EMPTY_ORDERS}
+                      noOrders={orderLookup[normalizeClobTokenId(noTokenId)] ?? EMPTY_ORDERS}
                           onCellClick={handleCellClick}
                           skipDeltaBg
                         />

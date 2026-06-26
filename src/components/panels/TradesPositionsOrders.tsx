@@ -22,7 +22,7 @@ import { appKit } from '../../lib/wallet';
 import { signingDialog } from '../SigningDialog';
 import type { Position, Trade } from '../../types';
 import { showToast } from '../../utils/toast';
-import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, getPositionClobTokenId, extractAssetFromMarket, formatPriceShort, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
+import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, getPositionClobTokenId, extractAssetFromMarket, formatPriceShort, lookupMarketByTokenId, isWeatherMarket, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
 import type { Market } from '../../types';
 
 const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
@@ -280,7 +280,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     : trades;
 
   const handleMarketClick = useCallback((tokenId: string) => {
-    const market = marketLookup[tokenId];
+    const market = lookupMarketByTokenId(tokenId, marketLookup);
     if (!market) return;
     const outcome = getTokenOutcome(tokenId, marketLookup);
     setSelectedMarket(market as Market);
@@ -371,13 +371,16 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
   const filterByAsset = (tokenId: string) => {
     if (assetFilter === 'ALL') return true;
-    const market = marketLookup[tokenId];
+    const market = lookupMarketByTokenId(tokenId, marketLookup);
     if (!market) return true;
-    return extractAssetFromMarket(market) === assetFilter;
+    const asset = extractAssetFromMarket(market);
+    if (asset) return asset === assetFilter;
+    if (isWeatherMarket(market)) return assetFilter === 'WEATHER';
+    return assetFilter === 'ALL';
   };
 
-  const assets = ['ALL', 'BTC', 'ETH', 'SOL', 'XRP'];
-  const assetColors: Record<string, string> = { ALL: 'text-white', BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
+  const assets = ['ALL', 'BTC', 'ETH', 'SOL', 'XRP', 'WEATHER'];
+  const assetColors: Record<string, string> = { ALL: 'text-white', BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400', WEATHER: 'text-sky-400' };
 
   const tabCls = (t: string) =>
     tab === t
@@ -398,12 +401,23 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     .filter((t) => {
       const tid = getTradeClobTokenId(t);
       if (assetFilter !== 'ALL') {
-        const market = marketLookup[tid];
+        const market = lookupMarketByTokenId(tid, marketLookup);
         if (market) {
-          if (extractAssetFromMarket(market) !== assetFilter) return false;
+          const asset = extractAssetFromMarket(market);
+          if (asset) {
+            if (asset !== assetFilter) return false;
+          } else if (isWeatherMarket(market)) {
+            if (assetFilter !== 'WEATHER') return false;
+          } else if (assetFilter !== 'ALL') {
+            return false;
+          }
         } else if (t.title) {
+          if (/temperature in/i.test(t.title)) {
+            if (assetFilter !== 'WEATHER') return false;
+          } else {
           const m = t.title.match(/\b(BTC|ETH|SOL|XRP)\b/i);
           if (!m || m[1].toUpperCase() !== assetFilter) return false;
+          }
         }
       }
       if (tradesSideFilter !== 'ALL' && t.side !== tradesSideFilter) return false;
@@ -411,7 +425,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     })
     .map((trade) => {
       const tid = getTradeClobTokenId(trade);
-      const market = marketLookup[tid];
+      const market = lookupMarketByTokenId(tid, marketLookup);
       let asset = market ? extractAssetFromMarket(market) || '' : '';
       let endDate = market?.endDate || null;
       if (!endDate && trade.timestamp) {
@@ -467,11 +481,17 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const tid = getPositionClobTokenId(p);
       if (!tid) return false;
       if (assetFilter === 'ALL') return true;
-      const market = marketLookup[tid];
-      if (market) return extractAssetFromMarket(market) === assetFilter;
+      const market = lookupMarketByTokenId(tid, marketLookup);
+      if (market) {
+        const asset = extractAssetFromMarket(market);
+        if (asset) return asset === assetFilter;
+        if (isWeatherMarket(market)) return assetFilter === 'WEATHER';
+        return false;
+      }
       const uA = normalizeDbUnderlying(p.underlyingAsset);
       if (uA && uA === assetFilter) return true;
       if (p.title) {
+        if (/temperature in/i.test(p.title)) return assetFilter === 'WEATHER';
         const m = p.title.match(/\b(BTC|ETH|SOL|XRP)\b/i);
         if (m) return m[1].toUpperCase() === assetFilter;
         const nameMap: Record<string, string> = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', ripple: 'XRP' };
@@ -482,8 +502,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     })
     .map((pos) => {
       const tid = getPositionClobTokenId(pos);
-      const market = marketLookup[tid];
+      const market = lookupMarketByTokenId(tid, marketLookup);
       let asset = market ? extractAssetFromMarket(market) || '' : normalizeDbUnderlying(pos.underlyingAsset);
+      if (!asset && market && isWeatherMarket(market)) asset = 'WEATHER';
       const endDate = market?.endDate || pos.endDate || null;
       const marketName = getMarketPriceCondition(null, tid, marketLookup);
       let mktLabel = asset ? `${asset} ${formatPriceShort(marketName, asset === 'ETH' ? 'ETH' : undefined)}` : marketName;
@@ -531,8 +552,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     })
     .map((order) => {
       const tid = getOrderClobTokenId(order);
-      const market = marketLookup[tid];
-      const asset = market ? extractAssetFromMarket(market) || '' : '';
+      const market = lookupMarketByTokenId(tid, marketLookup);
+      let asset = market ? extractAssetFromMarket(market) || '' : '';
+      if (!asset && market && isWeatherMarket(market)) asset = 'WEATHER';
       const endDate = market?.endDate || null;
       const marketName = getMarketPriceCondition(null, tid, marketLookup);
       const mktLabel = asset ? `${asset} ${formatPriceShort(marketName, asset === 'ETH' ? 'ETH' : undefined)}` : marketName;

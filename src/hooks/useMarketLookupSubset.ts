@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { Market } from '../types';
+import { normalizeClobTokenId } from '../utils/format';
 import { useAppStore } from '../stores/appStore';
 
 function sortedUniqIds(tokenIds: readonly string[]): string[] {
@@ -27,7 +28,7 @@ export function useMarketLookupSubset(tokenIds: readonly string[]): Record<strin
       const ml = state.marketLookup;
       const o: Record<string, Market> = {};
       for (const id of uniq) {
-        const m = ml[id];
+        const m = ml[id] || ml[normalizeClobTokenId(id)];
         if (m) o[id] = m;
       }
       return o;

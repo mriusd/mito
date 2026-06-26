@@ -132,6 +132,22 @@ export function weatherMarketCountdownEndDate(
   return String(market?.endDate || '').trim();
 }
 
+export function resolveMarketExpiryEndDate(
+  market:
+    | Pick<Market, 'endDate' | 'question' | 'eventSlug'>
+    | { endDate?: string; question?: string; eventSlug?: string }
+    | null
+    | undefined,
+  fallback = '',
+): string {
+  if (market && isWeatherMarket(market)) {
+    const weather = weatherMarketCountdownEndDate(market);
+    if (weather) return weather;
+  }
+  const raw = String(market?.endDate ?? fallback).trim();
+  return raw || String(fallback).trim();
+}
+
 export function effectiveMarketExpiryMs(
   market:
     | Pick<Market, 'endDate' | 'question' | 'eventSlug'>

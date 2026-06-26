@@ -23,6 +23,7 @@ import { signingDialog } from '../SigningDialog';
 import type { Position, Trade } from '../../types';
 import { showToast } from '../../utils/toast';
 import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, getPositionClobTokenId, extractAssetFromMarket, formatPriceShort, lookupMarketByTokenId, isWeatherMarket, normalizeClobTokenId, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
+import { resolveMarketExpiryEndDate } from '../../lib/weatherMarketExpiry';
 import type { Market } from '../../types';
 
 const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
@@ -454,7 +455,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const tid = getTradeClobTokenId(trade);
       const market = lookupMarketByTokenId(tid, marketLookup);
       let asset = market ? extractAssetFromMarket(market) || '' : '';
-      let endDate = market?.endDate || null;
+      let endDate = market ? resolveMarketExpiryEndDate(market, market.endDate || '') || null : null;
       if (!endDate && trade.timestamp) {
         let tsNum = typeof trade.timestamp === 'string' ? parseInt(trade.timestamp, 10) : (trade.timestamp as number);
         if (tsNum < 1e12) tsNum = tsNum * 1000;
@@ -531,7 +532,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const tid = getPositionClobTokenId(pos);
       const market = lookupMarketByTokenId(tid, marketLookup);
       let asset = market ? extractAssetFromMarket(market) || '' : normalizeDbUnderlying(pos.underlyingAsset);
-      const endDate = market?.endDate || pos.endDate || null;
+      const endDate = market
+        ? resolveMarketExpiryEndDate(market, pos.endDate || market.endDate || '') || null
+        : pos.endDate || null;
       const marketName = getMarketPriceCondition(null, tid, marketLookup);
       let mktLabel = formatTpoMarketLabel(asset, marketName);
       let outcome = getTokenOutcome(tid, marketLookup) || '';
@@ -580,7 +583,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const tid = getOrderClobTokenId(order);
       const market = lookupMarketByTokenId(tid, marketLookup);
       let asset = market ? extractAssetFromMarket(market) || '' : '';
-      const endDate = market?.endDate || null;
+      const endDate = market
+        ? resolveMarketExpiryEndDate(market, market.endDate || '') || null
+        : null;
       const marketName = getMarketPriceCondition(null, tid, marketLookup);
       const mktLabel = formatTpoMarketLabel(asset, marketName);
       const outcome = getTokenOutcome(tid, marketLookup) || '';

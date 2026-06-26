@@ -7,6 +7,7 @@ import {
   extractAssetFromMarket,
   assetTickerFromQuestion,
 } from '../utils/format';
+import { resolveMarketExpiryEndDate } from '../lib/weatherMarketExpiry';
 import { STAKED_NET_EPS, walletStakeNetSignedUsd } from '../lib/toxicFlowStakeCohort';
 
 /** Condition id + legacy id map (same shape as Sidebar marketById). */
@@ -28,11 +29,15 @@ export function walletPositionListSortMs(m: WalletPosition, marketById: Record<s
     return Number.isNaN(t) ? 0 : t;
   };
   const raw = (m.endDate || '').trim();
-  if (raw) {
-    const t = parse(raw);
+  const mk = marketById[m.marketId] || marketById[String(m.marketId || '').trim().toLowerCase()];
+  const resolved = resolveMarketExpiryEndDate(
+    mk ?? (m.eventSlug || m.question ? { eventSlug: m.eventSlug, question: m.question, endDate: m.endDate } : null),
+    raw || (mk?.endDate != null ? String(mk.endDate).trim() : ''),
+  );
+  if (resolved) {
+    const t = parse(resolved);
     if (t) return t;
   }
-  const mk = marketById[m.marketId] || marketById[String(m.marketId || '').trim().toLowerCase()];
   const mkEnd = mk?.endDate != null ? String(mk.endDate).trim() : '';
   if (mkEnd) {
     const t = parse(mkEnd);
@@ -221,7 +226,10 @@ const WalletLatestMarketsTradedRow = memo(function WalletLatestMarketsTradedRow(
 }) {
   const qFromApi = (m.question || '').trim();
   const title = qFromApi || mk?.question || mk?.groupItemTitle;
-  const endRaw = (m.endDate || '').trim() || (mk?.endDate ? String(mk.endDate).trim() : '');
+  const endRaw = resolveMarketExpiryEndDate(
+    mk ?? (m.eventSlug || m.question ? { eventSlug: m.eventSlug, question: m.question, endDate: m.endDate } : null),
+    (m.endDate || '').trim() || (mk?.endDate ? String(mk.endDate).trim() : ''),
+  );
   const marketName = title
     ? shortenUpDownMarketListCell(title, m.eventSlug || mk?.eventSlug || null, endRaw || null)
     : `${m.marketAsset || '-'} ${m.marketTimeframe || ''}`;

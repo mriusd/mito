@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { formatDateShort, normalizeClobTokenId } from '../../utils/format';
+import { resolveMarketExpiryEndDate } from '../../lib/weatherMarketExpiry';
 import type { Market, Order, WeatherCitySlug } from '../../types';
 import { WEATHER_CITIES } from '../../types';
 import { GridMarketCell } from './GridMarketCell';
@@ -41,6 +42,7 @@ function getTempSortValue(str: string): number {
 interface DateCol {
   slug: string;
   endDate: string;
+  expiryEndDate: string;
   title: string;
 }
 
@@ -56,7 +58,12 @@ function buildTableData(markets: Market[], includePast: boolean) {
     const slug = m.eventSlug || '';
     if (!slug) continue;
     if (!dateMap.has(slug)) {
-      dateMap.set(slug, { slug, endDate: m.endDate, title: m.eventTitle || '' });
+      dateMap.set(slug, {
+        slug,
+        endDate: m.endDate,
+        expiryEndDate: resolveMarketExpiryEndDate(m, m.endDate),
+        title: m.eventTitle || '',
+      });
     }
   }
 
@@ -70,17 +77,17 @@ function buildTableData(markets: Market[], includePast: boolean) {
 
   let dates = Array.from(dateMap.values())
     .filter((d) => {
-      const endTime = d.endDate ? new Date(d.endDate).getTime() : Infinity;
+      const endTime = d.expiryEndDate ? new Date(d.expiryEndDate).getTime() : Infinity;
       return endTime > oneDayAgo;
     })
     .sort((a, b) => {
-      const ta = a.endDate ? new Date(a.endDate).getTime() : Infinity;
-      const tb = b.endDate ? new Date(b.endDate).getTime() : Infinity;
+      const ta = a.expiryEndDate ? new Date(a.expiryEndDate).getTime() : Infinity;
+      const tb = b.expiryEndDate ? new Date(b.expiryEndDate).getTime() : Infinity;
       return ta - tb;
     });
 
   if (!includePast) {
-    dates = dates.filter((d) => !d.endDate || new Date(d.endDate).getTime() >= now);
+    dates = dates.filter((d) => !d.expiryEndDate || new Date(d.expiryEndDate).getTime() >= now);
   }
 
   const temps = Array.from(tempSet)
@@ -241,7 +248,7 @@ function WeatherMarketsTableInner({ panelId, initialCity = 'nyc' }: WeatherMarke
                   {gridData.dates.map((d) => {
                     const dt = new Date(d.endDate);
                     const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
-                    const isEnded = d.endDate && new Date(d.endDate).getTime() < Date.now();
+                    const isEnded = d.expiryEndDate && new Date(d.expiryEndDate).getTime() < Date.now();
                     return (
                       <th
                         key={d.slug}
@@ -270,7 +277,7 @@ function WeatherMarketsTableInner({ panelId, initialCity = 'nyc' }: WeatherMarke
                     </td>
                     {gridData.dates.map((d) => {
                       const market = gridData.marketLookup[tempStr + '_' + d.slug];
-                      const dateEnded = d.endDate && new Date(d.endDate).getTime() < Date.now();
+                      const dateEnded = d.expiryEndDate && new Date(d.expiryEndDate).getTime() < Date.now();
                       const dt = new Date(d.endDate);
                       const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
 
@@ -296,7 +303,7 @@ function WeatherMarketsTableInner({ panelId, initialCity = 'nyc' }: WeatherMarke
                           key={d.slug}
                           market={market}
                           asset="BTC"
-                          endDate={d.endDate}
+                          endDate={resolveMarketExpiryEndDate(market, d.expiryEndDate || d.endDate)}
                           deltaPriceStr=""
                           isClosed={!!(market.closed || dateEnded)}
                           isWeekend={isWeekend}

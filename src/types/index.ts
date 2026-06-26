@@ -300,7 +300,8 @@ export type PanelType =
   | 'hyperliquid-outcomes'
   | 'wallet-history'
   | 'pair-trading'
-  | 'weather-markets';
+  | 'weather-markets'
+  | 'weather-temperature';
 
 export type WeatherCitySlug =
   | 'nyc'

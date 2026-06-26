@@ -22,7 +22,7 @@ import { appKit } from '../../lib/wallet';
 import { signingDialog } from '../SigningDialog';
 import type { Position, Trade } from '../../types';
 import { showToast } from '../../utils/toast';
-import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, getPositionClobTokenId, extractAssetFromMarket, formatPriceShort, lookupMarketByTokenId, isWeatherMarket, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
+import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, getPositionClobTokenId, extractAssetFromMarket, formatPriceShort, lookupMarketByTokenId, isWeatherMarket, normalizeClobTokenId, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
 import type { Market } from '../../types';
 
 const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
@@ -175,6 +175,7 @@ function TpoAuthEmpty({
 
 function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const positions = useAppStore((s) => s.positions);
+  const weatherMarkets = useAppStore((s) => s.weatherMarkets);
   const orders = useAppStore((s) => s.orders);
   const trades = useAppStore((s) => s.trades);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
@@ -239,8 +240,15 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       if (t.tokenId) set.add(String(t.tokenId));
     }
     for (const t of selectedMarket?.clobTokenIds || []) if (t) set.add(String(t));
+    for (const ms of Object.values(weatherMarkets)) {
+      for (const m of ms) {
+        for (const tid of m.clobTokenIds || []) {
+          if (tid) set.add(String(tid));
+        }
+      }
+    }
     return [...set];
-  }, [polymarketTokenKey, onchainWsPositions, onchainWsTrades, selectedMarket?.id, selectedMarket?.clobTokenIds]);
+  }, [polymarketTokenKey, onchainWsPositions, onchainWsTrades, selectedMarket?.id, selectedMarket?.clobTokenIds, weatherMarkets]);
 
   const marketLookup = useMarketLookupSubset(tpoClobIds);
 
@@ -270,7 +278,21 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     });
   }, [onchainClaimRows]);
 
-  const positionsForTable = liveTradesSource === 'onchain' ? onchainPositionsAsPM : positions;
+  const positionsForTable = useMemo(() => {
+    if (liveTradesSource !== 'onchain') return positions;
+    const byToken = new Map<string, Position>();
+    for (const p of positions) {
+      const tid = getPositionClobTokenId(p);
+      if (!tid || (p.size || 0) <= 0) continue;
+      byToken.set(normalizeClobTokenId(tid), p);
+    }
+    for (const p of onchainPositionsAsPM) {
+      const tid = getPositionClobTokenId(p);
+      if (!tid || (p.size || 0) <= 0) continue;
+      byToken.set(normalizeClobTokenId(tid), p);
+    }
+    return [...byToken.values()];
+  }, [liveTradesSource, positions, onchainPositionsAsPM]);
   const tradesForTable = liveTradesSource === 'onchain'
     ? [...onchainTradesAsPM, ...onchainClaimsAsPM].sort((a, b) => {
         const ta = parseInt(a.timestamp || '0', 10);
@@ -513,6 +535,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         if (pos.title) {
           const combined = pos.eventSlug ? `${pos.title} ${pos.eventSlug}` : pos.title;
           const shortened = getMarketPriceCondition(combined);
+          if (/temperature in/i.test(combined)) asset = asset || 'WEATHER';
           const nameMap: Record<string, string> = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', ripple: 'XRP', xrp: 'XRP', btc: 'BTC', eth: 'ETH', sol: 'SOL' };
           const nameMatch = pos.title.match(/\b(Bitcoin|Ethereum|Solana|Ripple|BTC|ETH|SOL|XRP)\b/i);
           if (nameMatch) asset = asset || nameMap[nameMatch[1].toLowerCase()] || nameMatch[1].toUpperCase();
@@ -699,7 +722,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
         {/* Positions */}
         {tab === 'positions' && (
-          onchainPositionsLoading && liveTradesSource === 'onchain' && processedPositions.length === 0 ? (
+          onchainPositionsLoading && liveTradesSource === 'onchain' && positionsForTable.length === 0 ? (
             <div className="text-purple-300/90 text-center py-4">Loading on-chain positions…</div>
           ) : processedPositions.length === 0 ? (
             renderEmptyOrAuth(

@@ -51,6 +51,7 @@ interface AppState {
   priceOnMarkets: Record<string, Market[]>;
   weeklyHitMarkets: Record<string, Market[]>;
   upOrDownMarkets: Record<string, Record<string, Market[]>>;
+  weatherMarkets: Record<string, Market[]>;
   positions: Position[];
   orders: Order[];
   trades: Trade[];
@@ -135,7 +136,7 @@ interface AppState {
   setSignalMakerMode: (v: boolean) => void;
   setSignalPriceMode: (v: string) => void;
   setSignalsOnGrid: (v: boolean) => void;
-  setMarketData: (data: Partial<Pick<AppState, 'aboveMarkets' | 'priceOnMarkets' | 'weeklyHitMarkets' | 'upOrDownMarkets' | 'positions' | 'orders' | 'trades' | 'cashBalance' | 'makerAddress' | 'tokenInfo' | 'progOrderMap' | 'marketCount' | 'lastUpdated' | 'marketLookup'>>) => void;
+  setMarketData: (data: Partial<Pick<AppState, 'aboveMarkets' | 'priceOnMarkets' | 'weeklyHitMarkets' | 'upOrDownMarkets' | 'weatherMarkets' | 'positions' | 'orders' | 'trades' | 'cashBalance' | 'makerAddress' | 'tokenInfo' | 'progOrderMap' | 'marketCount' | 'lastUpdated' | 'marketLookup'>>) => void;
   setLoading: (v: boolean) => void;
   setBackendConnected: (v: boolean | null) => void;
   setArbs: (arbs: ArbOpportunity[]) => void;
@@ -399,6 +400,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   priceOnMarkets: {},
   weeklyHitMarkets: {},
   upOrDownMarkets: {},
+  weatherMarkets: {},
   positions: [],
   orders: [],
   trades: [],
@@ -599,6 +601,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       if (data.upOrDownMarkets !== undefined) {
         if (!upOrDownMarketsEqual(data.upOrDownMarkets, s.upOrDownMarkets)) put('upOrDownMarkets', data.upOrDownMarkets);
+      }
+      if (data.weatherMarkets !== undefined) {
+        if (!recordOfMarketArraysEqual(data.weatherMarkets, s.weatherMarkets)) put('weatherMarkets', data.weatherMarkets);
       }
       if (data.positions !== undefined) {
         if (!positionsEqual(data.positions, s.positions)) put('positions', data.positions);

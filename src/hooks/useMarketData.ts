@@ -50,20 +50,22 @@ export function useMarketData() {
       const priceOnMarkets = coalesceRecordOfMarketArrays(store.priceOnMarkets, data.priceOnMarkets || {});
       const weeklyHitMarkets = coalesceRecordOfMarketArrays(store.weeklyHitMarkets, data.weeklyHitMarkets || {});
       const upOrDownMarkets = coalesceUpOrDownMarkets(store.upOrDownMarkets, data.upOrDownMarkets || {});
+      const weatherMarkets = coalesceRecordOfMarketArrays(store.weatherMarkets, data.weatherMarkets || {});
       const marketArraysChanged =
         aboveMarkets !== store.aboveMarkets ||
         priceOnMarkets !== store.priceOnMarkets ||
         weeklyHitMarkets !== store.weeklyHitMarkets ||
-        upOrDownMarkets !== store.upOrDownMarkets;
+        upOrDownMarkets !== store.upOrDownMarkets ||
+        weatherMarkets !== store.weatherMarkets;
       const lookup = marketArraysChanged
         ? mergeWsFields(
-            buildMarketLookup(aboveMarkets, priceOnMarkets, weeklyHitMarkets, upOrDownMarkets, prevLookup),
+            buildMarketLookup(aboveMarkets, priceOnMarkets, weeklyHitMarkets, upOrDownMarkets, weatherMarkets, prevLookup),
             prevLookup,
           )
         : prevLookup;
 
       const marketPatch = marketArraysChanged
-        ? { aboveMarkets, priceOnMarkets, weeklyHitMarkets, upOrDownMarkets, marketLookup: lookup }
+        ? { aboveMarkets, priceOnMarkets, weeklyHitMarkets, upOrDownMarkets, weatherMarkets, marketLookup: lookup }
         : {};
 
       const patchPayload = {

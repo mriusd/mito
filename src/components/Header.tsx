@@ -70,6 +70,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'cvd', title: 'CVD' },
   { type: 'funding-rate', title: 'Funding Rate' },
   { type: 'hyperliquid-outcomes', title: 'Hyperliquid Outcomes' },
+  { type: 'weather-markets', title: 'Weather Markets', multi: true },
   { type: 'chat', title: 'Chat' },
 ];
 

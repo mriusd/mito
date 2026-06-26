@@ -412,6 +412,7 @@ export function buildMarketLookup(
   priceOnMarkets: Record<string, Market[]>,
   weeklyHitMarkets: Record<string, Market[]> = {},
   upOrDownMarkets: Record<string, Record<string, Market[]>> = {},
+  weatherMarkets: Record<string, Market[]> = {},
   prevLookup?: Record<string, Market>,
 ): Record<string, Market> {
   const lookup: Record<string, Market> = {};
@@ -436,6 +437,11 @@ export function buildMarketLookup(
       for (const m of upOrDownMarkets[assetName][tf] || []) {
         addMarketToTokenLookup(lookup, prev, m);
       }
+    }
+  }
+  for (const city of Object.keys(weatherMarkets)) {
+    for (const m of weatherMarkets[city] || []) {
+      addMarketToTokenLookup(lookup, prev, m);
     }
   }
   if (!prev) return lookup;

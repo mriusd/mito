@@ -546,16 +546,15 @@ export function lookupMarketByTokenId(
 }
 
 export function isWeatherMarket(
-  market: Pick<Market, 'question' | 'eventSlug' | 'category'> | null | undefined,
+  market: Pick<Market, 'question' | 'eventSlug'> | null | undefined,
 ): boolean {
   if (!market) return false;
-  const combined = `${market.question || ''} ${market.eventSlug || ''} ${market.category || ''}`.toLowerCase();
+  const combined = `${market.question || ''} ${market.eventSlug || ''}`.toLowerCase();
   return (
     combined.includes('highest-temperature-in-')
     || combined.includes('lowest-temperature-in-')
     || combined.includes('highest temperature')
     || combined.includes('lowest temperature')
-    || market.category?.toLowerCase() === 'weather'
   );
 }
 

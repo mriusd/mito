@@ -118,6 +118,7 @@ export type SidebarMergeEligible = {
   canOpenDialog: boolean;
   maxMerge: number;
   conditionId: string;
+  yesTokenId: string;
 };
 
 export function computeSidebarMergeEligible(
@@ -126,7 +127,7 @@ export function computeSidebarMergeEligible(
   mergeFunderWallet: string,
 ): SidebarMergeEligible {
   if (!selectedMarket?.clobTokenIds || selectedMarket.clobTokenIds.length < 2) {
-    return { showButton: false, canOpenDialog: false, maxMerge: 0, conditionId: '' };
+    return { showButton: false, canOpenDialog: false, maxMerge: 0, conditionId: '', yesTokenId: '' };
   }
   const yesT = selectedMarket.clobTokenIds[0] || '';
   const noT = selectedMarket.clobTokenIds[1] || '';
@@ -135,7 +136,7 @@ export function computeSidebarMergeEligible(
   const yesSz = yesP?.size || 0;
   const noSz = noP?.size || 0;
   if (yesSz <= 0 || noSz <= 0) {
-    return { showButton: false, canOpenDialog: false, maxMerge: 0, conditionId: '' };
+    return { showButton: false, canOpenDialog: false, maxMerge: 0, conditionId: '', yesTokenId: '' };
   }
   let conditionId = (selectedMarket.conditionId || '').trim();
   if (!conditionId && yesP && typeof (yesP as { conditionId?: string }).conditionId === 'string') {
@@ -143,5 +144,5 @@ export function computeSidebarMergeEligible(
   }
   const maxMerge = Math.min(yesSz, noSz);
   const canOpenDialog = Boolean(conditionId && mergeFunderWallet.trim());
-  return { showButton: true, canOpenDialog, maxMerge, conditionId };
+  return { showButton: true, canOpenDialog, maxMerge, conditionId, yesTokenId: yesT };
 }

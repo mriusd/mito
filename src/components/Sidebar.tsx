@@ -2693,6 +2693,7 @@ export const Sidebar = memo(function Sidebar() {
         conditionId: mergeDialogParams.conditionId,
         amount,
         funderAddress: mergeFunderWallet,
+        tokenId: mergeDialogParams.yesTokenId,
       });
       if (res.success) {
         showToast('Merge confirmed', 'success');
@@ -2712,7 +2713,7 @@ export const Sidebar = memo(function Sidebar() {
       }
       return res;
     },
-    [mergeDialogParams?.conditionId, mergeFunderWallet, liveTradesSource, refreshMyMarketTrades],
+    [mergeDialogParams?.conditionId, mergeDialogParams?.yesTokenId, mergeFunderWallet, liveTradesSource, refreshMyMarketTrades],
   );
 
   return (

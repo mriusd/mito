@@ -32,6 +32,7 @@ const POLYGON_CHAIN_ID = 137;
 /** PM relayer — browser CORS allowed (localhost, data.mito.trade, polymarket.com). */
 const RELAYER_URL = 'https://relayer-v2.polymarket.com';
 const BUILDER_SIGN_URL = `${API_BASE}/api/builder-sign`.replace(/([^:]\/)\/+/g, '$1');
+const CLOB_URL = 'https://clob.polymarket.com';
 
 function relayerSigner(signer: ethers.Signer): JsonRpcSigner | ethers.Wallet {
   return signer as JsonRpcSigner | ethers.Wallet;
@@ -116,8 +117,10 @@ async function executeDirectCtfMerge(
   signer: ethers.Signer,
   condHex: string,
   amountWei: ethers.BigNumber,
+  negRisk: boolean,
 ): Promise<string> {
-  const ctfContract = new ethers.Contract(CTF_ADDRESS, CTF_ABI, signer);
+  const target = negRisk ? mergeCollateralAdapter(true) : CTF_ADDRESS;
+  const ctfContract = new ethers.Contract(target, CTF_ABI, signer);
   const gas = await polygonGasOverrides(mergeReadProvider(signer));
   const tx = await ctfContract.mergePositions(USDC_ADDRESS, PARENT_ZERO, condHex, MERGE_PARTITION, amountWei, gas);
   const receipt = await tx.wait();
@@ -168,6 +171,7 @@ async function executeGaslessSafeOrProxyMerge(
   funderAddress: string,
   mergeData: string,
   sigType: SignatureTypeV2,
+  negRisk: boolean,
 ): Promise<string> {
   const builderConfig = relayBuilderConfig();
   if (!builderConfig.isValid()) {
@@ -184,8 +188,9 @@ async function executeGaslessSafeOrProxyMerge(
     }
   }
 
+  const mergeTarget = negRisk ? mergeCollateralAdapter(true) : CTF_ADDRESS;
   signingDialog.setStep('sign', 'active');
-  const response = await client.execute([{ to: CTF_ADDRESS, data: mergeData, value: '0' }], 'Merge positions');
+  const response = await client.execute([{ to: mergeTarget, data: mergeData, value: '0' }], 'Merge positions');
   signingDialog.setStep('sign', 'done');
 
   signingDialog.setStep('submit', 'active');
@@ -198,13 +203,38 @@ async function executeGaslessSafeOrProxyMerge(
   return result.transactionHash;
 }
 
+async function fetchNegRiskForToken(tokenId: string): Promise<boolean> {
+  const tid = tokenId.trim();
+  if (!tid) throw new Error('token id required for merge');
+  const resp = await fetch(`${CLOB_URL}/neg-risk?token_id=${encodeURIComponent(tid)}`);
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(text || `neg-risk lookup failed (${resp.status})`);
+  }
+  const data = (await resp.json()) as { neg_risk?: boolean };
+  return data.neg_risk === true;
+}
+
 export async function executeMergePositions(params: {
   conditionId: string;
   amount: number;
   funderAddress: string;
   negRisk?: boolean;
+  /** YES outcome token; used to resolve neg-risk when negRisk omitted */
+  tokenId?: string;
 }): Promise<{ success: true; txHash: string } | { success: false; error: string }> {
-  const { conditionId, amount, funderAddress, negRisk = false } = params;
+  const { conditionId, amount, funderAddress, tokenId } = params;
+  let negRisk = params.negRisk;
+  if (negRisk == null) {
+    if (!tokenId?.trim()) {
+      return { success: false, error: 'token id required for merge' };
+    }
+    try {
+      negRisk = await fetchNegRiskForToken(tokenId);
+    } catch (e) {
+      return { success: false, error: formatMergeError(e) };
+    }
+  }
   if (!amount || amount <= 0) return { success: false, error: 'Amount must be positive' };
   if (!funderAddress?.trim()) return { success: false, error: 'Proxy wallet not set' };
 
@@ -237,7 +267,7 @@ export async function executeMergePositions(params: {
     if (funder === signerAddr) {
       signingDialog.setStep('sign', 'active');
       signingDialog.setStep('submit', 'active');
-      txHash = await executeDirectCtfMerge(signer, condHex, amountWei);
+      txHash = await executeDirectCtfMerge(signer, condHex, amountWei, negRisk);
       signingDialog.setStep('sign', 'done');
       signingDialog.setStep('submit', 'done');
       signingDialog.close();
@@ -251,7 +281,7 @@ export async function executeMergePositions(params: {
         sigType === SignatureTypeV2.POLY_PROXY
       ) {
         const mergeData = packMergeCalldata(condHex, amountWei, false);
-        txHash = await executeGaslessSafeOrProxyMerge(signer, funderAddress, mergeData, sigType);
+        txHash = await executeGaslessSafeOrProxyMerge(signer, funderAddress, mergeData, sigType, negRisk);
       } else {
         throw new Error(`Unsupported wallet type for gasless merge (${sigType})`);
       }

@@ -17,7 +17,21 @@ export type WeatherObservationsResponse = {
   lowTemp?: number;
 };
 
-const WEATHER_COM_API_KEY = String(import.meta.env.VITE_WEATHER_COM_API_KEY || '').trim();
+const SYNOPTIC_TIMESERIES_URL =
+  'https://api.synopticdata.com/v2/stations/timeseries?STID=EGLC&showemptystations=1&recent=4320&complete=1&token=7c76618b66c74aee913bdbae4b448bdd&obtimezone=local';
+
+const SYNOPTIC_STIDS: Record<WeatherCitySlug, string> = {
+  nyc: 'NYC',
+  london: 'EGLC',
+  'hong-kong': 'VHHH',
+  chicago: 'MDW',
+  miami: 'MIA',
+  seoul: 'RKSS',
+  tokyo: 'RJTT',
+  paris: 'CDG',
+  dallas: 'DFW',
+  atlanta: 'ATL',
+};
 
 const WEATHER_CITY_TIMEZONES: Record<WeatherCitySlug, string> = {
   nyc: 'America/New_York',
@@ -30,19 +44,6 @@ const WEATHER_CITY_TIMEZONES: Record<WeatherCitySlug, string> = {
   paris: 'Europe/Paris',
   dallas: 'America/Chicago',
   atlanta: 'America/New_York',
-};
-
-const WEATHER_COM_LOCATIONS: Record<WeatherCitySlug, string> = {
-  nyc: 'KNYC:9:US',
-  london: 'EGLC:9:GB',
-  'hong-kong': 'VHHH:9:HK',
-  chicago: 'KMDW:9:US',
-  miami: 'KMIA:9:US',
-  seoul: 'RKSS:9:KR',
-  tokyo: 'RJTT:9:JP',
-  paris: 'LFPG:9:FR',
-  dallas: 'KDFW:9:US',
-  atlanta: 'KATL:9:US',
 };
 
 function getZonedYMDHMS(ms: number, timeZone: string) {
@@ -111,53 +112,114 @@ function cityDayBounds(city: WeatherCitySlug, date: string) {
   return { dayStartMs, dayEndMs: dayStartMs + 24 * 60 * 60 * 1000, timezone: tz };
 }
 
+function synopticUrlForCity(stid: string): string {
+  return SYNOPTIC_TIMESERIES_URL.replace('STID=EGLC', `STID=${encodeURIComponent(stid)}`);
+}
+
+function parseSynopticLocalTime(isoLocal: string, timeZone: string): number | null {
+  const m = isoLocal.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const target = {
+    year: parseInt(m[1], 10),
+    month: parseInt(m[2], 10),
+    day: parseInt(m[3], 10),
+    hour: parseInt(m[4], 10),
+    minute: parseInt(m[5], 10),
+    second: parseInt(m[6], 10),
+  };
+  let lo = Date.UTC(target.year, target.month - 1, target.day - 1);
+  let hi = Date.UTC(target.year, target.month - 1, target.day + 1);
+  for (let t = lo; t <= hi; t += 1000) {
+    const p = getZonedYMDHMS(t, timeZone);
+    if (
+      p.year === target.year &&
+      p.month === target.month &&
+      p.day === target.day &&
+      p.hour === target.hour &&
+      p.minute === target.minute &&
+      p.second === target.second
+    ) {
+      return t;
+    }
+  }
+  return null;
+}
+
+function airTempKey(observations: Record<string, unknown>): string | null {
+  for (const key of Object.keys(observations)) {
+    if (key.startsWith('air_temp_set_')) return key;
+  }
+  return null;
+}
+
 export async function fetchWeatherObservations(
   city: WeatherCitySlug,
   date: string,
 ): Promise<WeatherObservationsResponse> {
-  if (!WEATHER_COM_API_KEY) {
-    throw new Error('VITE_WEATHER_COM_API_KEY not set');
-  }
   const dateParam = date.replace(/-/g, '');
   const bounds = cityDayBounds(city, dateParam);
-  const locationId = WEATHER_COM_LOCATIONS[city];
-  if (!bounds || !locationId) {
+  const stid = SYNOPTIC_STIDS[city];
+  if (!bounds || !stid) {
     throw new Error(`unknown city: ${city}`);
   }
 
-  const url =
-    `https://api.weather.com/v1/location/${encodeURIComponent(locationId)}/observations/historical.json` +
-    `?apiKey=${encodeURIComponent(WEATHER_COM_API_KEY)}&units=m&startDate=${dateParam}&endDate=${dateParam}`;
-
-  const resp = await fetch(url);
+  const resp = await fetch(synopticUrlForCity(stid));
   if (!resp.ok) {
     const text = await resp.text();
-    throw new Error(text || `weather.com ${resp.status}`);
+    throw new Error(text || `synoptic ${resp.status}`);
   }
 
   const raw = (await resp.json()) as {
-    observations?: Array<{ valid_time_gmt?: number; temp?: number }>;
+    SUMMARY?: { RESPONSE_CODE?: number; RESPONSE_MESSAGE?: string };
+    STATION?: Array<{
+      TIMEZONE?: string;
+      OBSERVATIONS?: Record<string, unknown>;
+    }>;
   };
+
+  if (raw.SUMMARY?.RESPONSE_CODE !== 1) {
+    throw new Error(raw.SUMMARY?.RESPONSE_MESSAGE || 'synoptic request failed');
+  }
+
+  const station = raw.STATION?.[0];
+  const observations = station?.OBSERVATIONS;
+  if (!observations) {
+    throw new Error('synoptic returned no observations');
+  }
+
+  const tempKey = airTempKey(observations);
+  if (!tempKey) {
+    throw new Error('synoptic returned no air temperature');
+  }
+
+  const timeZone = station.TIMEZONE || bounds.timezone;
+  const dateTimes = observations.date_time;
+  const temps = observations[tempKey];
+  if (!Array.isArray(dateTimes) || !Array.isArray(temps)) {
+    throw new Error('synoptic observation shape invalid');
+  }
 
   const points: WeatherObservationPoint[] = [];
   let high: number | undefined;
   let low: number | undefined;
 
-  for (const o of raw.observations || []) {
-    const sec = o.valid_time_gmt;
-    if (sec == null || sec <= 0 || o.temp == null || !Number.isFinite(o.temp)) continue;
-    const timeMs = sec * 1000;
+  for (let i = 0; i < dateTimes.length; i++) {
+    const dt = dateTimes[i];
+    const temp = temps[i];
+    if (typeof dt !== 'string' || temp == null || !Number.isFinite(temp)) continue;
+    const timeMs = parseSynopticLocalTime(dt, timeZone);
+    if (timeMs == null) continue;
     if (timeMs < bounds.dayStartMs || timeMs >= bounds.dayEndMs) continue;
-    points.push({ timeMs, temp: o.temp });
-    if (high == null || o.temp > high) high = o.temp;
-    if (low == null || o.temp < low) low = o.temp;
+    points.push({ timeMs, temp: Number(temp) });
+    if (high == null || temp > high) high = Number(temp);
+    if (low == null || temp < low) low = Number(temp);
   }
   points.sort((a, b) => a.timeMs - b.timeMs);
 
   return {
     city,
     date: dateParam,
-    locationId,
+    locationId: stid,
     timezone: bounds.timezone,
     dayStartMs: bounds.dayStartMs,
     dayEndMs: bounds.dayEndMs,

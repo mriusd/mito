@@ -12,6 +12,10 @@ const CITY_SLUGS = new Set<string>(WEATHER_CITIES.map((c) => c.slug));
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LINE_COLOR = '#38bdf8';
 
+function floorTempDeg(temp: number): number {
+  return Math.floor(temp);
+}
+
 function readStoredCity(panelId: string): WeatherCitySlug {
   const saved = localStorage.getItem(`polybot-weather-temp-city-${panelId}`);
   if (saved && CITY_SLUGS.has(saved)) return saved as WeatherCitySlug;
@@ -59,7 +63,7 @@ function TemperatureChart({
     const chartT = padT;
     const chartB = h - padB;
 
-    const points = data.points;
+    const points = data.points.map((p) => ({ ...p, temp: floorTempDeg(p.temp) }));
     if (points.length === 0) {
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
       ctx.font = '11px monospace';
@@ -98,7 +102,7 @@ function TemperatureChart({
       ctx.stroke();
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`${Math.round(v)}°`, chartL - 4, y);
+      ctx.fillText(`${Math.floor(v)}°`, chartL - 4, y);
     }
 
     for (let hour = 0; hour <= 24; hour += 6) {
@@ -244,7 +248,7 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
           </label>
           {data?.highTemp != null && data.lowTemp != null ? (
             <span className="ml-auto text-[10px] font-normal tabular-nums text-gray-400">
-              H {Math.round(data.highTemp)}° · L {Math.round(data.lowTemp)}°
+              H {floorTempDeg(data.highTemp)}° · L {floorTempDeg(data.lowTemp)}°
             </span>
           ) : null}
         </h3>

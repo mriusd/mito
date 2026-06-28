@@ -1,8 +1,8 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { formatDateShort, formatElapsedSinceMs, tradeElapsedColorClass } from '../../utils/format';
+import { formatDateShort, formatElapsedSinceMs, getOrderClobTokenId, normalizeClobTokenId, tradeElapsedColorClass } from '../../utils/format';
 import { useWalletTradeElapsedMs } from '../../lib/walletTradeElapsedStore';
-import type { Market, WeatherCitySlug } from '../../types';
+import type { Market, Order, WeatherCitySlug } from '../../types';
 import { WEATHER_CITIES } from '../../types';
 import {
   buildTableData,
@@ -24,7 +24,7 @@ import {
   getBidAskGridFlushDigest,
   subscribeBidAskMarketLookupGridFlush,
 } from '../../lib/bidAskMarketLookup';
-import { useThrottledGridPositions } from '../../hooks/useThrottledGridWallet';
+import { useThrottledGridOrders, useThrottledGridPositions } from '../../hooks/useThrottledGridWallet';
 import type { Position } from '../../types';
 import type { WSPosition } from '../../hooks/useOnchainTradesWS';
 
@@ -75,6 +75,54 @@ function marketEntryYesFrac(
   return null;
 }
 
+type TempOddsOrderMark = { frac: number; outcome: 'YES' | 'NO'; side: Order['side'] };
+
+function orderYesMark(order: Order, yesTokenId: string, noTokenId: string): TempOddsOrderMark | null {
+  const tid = normalizeClobTokenId(getOrderClobTokenId(order));
+  const yesKey = normalizeClobTokenId(yesTokenId);
+  const noKey = normalizeClobTokenId(noTokenId);
+  const price = parseFloat(order.price);
+  if (!Number.isFinite(price) || price <= 0) return null;
+  if (tid && yesKey && tid === yesKey) {
+    const frac = yesChartEntryFrac(price, 'YES');
+    if (frac != null) return { frac, outcome: 'YES', side: order.side };
+  }
+  if (tid && noKey && tid === noKey) {
+    const frac = yesChartEntryFrac(price, 'NO');
+    if (frac != null) return { frac, outcome: 'NO', side: order.side };
+  }
+  return null;
+}
+
+function marketOrderYesMarks(
+  yesTokenId: string,
+  noTokenId: string,
+  orderLookup: Record<string, Order[]>,
+): TempOddsOrderMark[] {
+  const yesKey = normalizeClobTokenId(yesTokenId);
+  const noKey = normalizeClobTokenId(noTokenId);
+  const seen = new Set<Order>();
+  const marks: TempOddsOrderMark[] = [];
+  for (const order of [...(orderLookup[yesKey] ?? []), ...(orderLookup[noKey] ?? [])]) {
+    if (seen.has(order)) continue;
+    seen.add(order);
+    const mark = orderYesMark(order, yesTokenId, noTokenId);
+    if (mark) marks.push(mark);
+  }
+  return marks;
+}
+
+function buildOrderLookup(orders: Order[]): Record<string, Order[]> {
+  const lookup: Record<string, Order[]> = {};
+  for (const ord of orders) {
+    const key = normalizeClobTokenId(getOrderClobTokenId(ord));
+    if (!key) continue;
+    if (!lookup[key]) lookup[key] = [];
+    lookup[key].push(ord);
+  }
+  return lookup;
+}
+
 function getMarketYesProb(market: Market): number | null {
   const tokenIds = market.clobTokenIds || [];
   const yesTokenId = tokenIds[0] || '';
@@ -98,6 +146,7 @@ type TempOddsBucket = {
   pct: number | null;
   modelPct: number | null;
   entry: { frac: number; outcome: 'YES' | 'NO' } | null;
+  orderMarks: TempOddsOrderMark[];
 };
 
 function buildTempOddsBuckets(
@@ -106,6 +155,7 @@ function buildTempOddsBuckets(
   liveTradesSource: string,
   onchainWsPositions: WSPosition[],
   modelBuckets: Record<string, number> | null | undefined,
+  orderLookup: Record<string, Order[]>,
 ): { entries: TempOddsBucket[]; maxPct: number } {
   const entries: TempOddsBucket[] = buckets.map(({ temp, label, market }) => {
     const yesTokenId = market.clobTokenIds?.[0] || '';
@@ -117,6 +167,7 @@ function buildTempOddsBuckets(
       pct: getMarketYesProb(market),
       modelPct: lookupModelBucketProb(modelBuckets, temp),
       entry: marketEntryYesFrac(yesTokenId, noTokenId, positions, liveTradesSource, onchainWsPositions),
+      orderMarks: marketOrderYesMarks(yesTokenId, noTokenId, orderLookup),
     };
   });
   const maxPct = Math.max(
@@ -133,6 +184,7 @@ function useTempOddsBuckets(
   liveTradesSource: string,
   onchainWsPositions: WSPosition[],
   modelBuckets: Record<string, number> | null | undefined,
+  orderLookup: Record<string, Order[]>,
 ) {
   const digest = useSyncExternalStore(
     subscribeBidAskMarketLookupGridFlush,
@@ -140,8 +192,8 @@ function useTempOddsBuckets(
     getBidAskGridFlushDigest,
   );
   return useMemo(
-    () => buildTempOddsBuckets(buckets, positions, liveTradesSource, onchainWsPositions, modelBuckets),
-    [buckets, positions, liveTradesSource, onchainWsPositions, modelBuckets, digest],
+    () => buildTempOddsBuckets(buckets, positions, liveTradesSource, onchainWsPositions, modelBuckets, orderLookup),
+    [buckets, positions, liveTradesSource, onchainWsPositions, modelBuckets, orderLookup, digest],
   );
 }
 
@@ -155,6 +207,7 @@ interface TempOddsBarProps {
   modelBarColor: string;
   selected: boolean;
   entry: { frac: number; outcome: 'YES' | 'NO' } | null;
+  orderMarks: TempOddsOrderMark[];
   marketTitle: string;
   onClick: () => void;
   showProb?: boolean;
@@ -171,6 +224,7 @@ function TempOddsBar({
   modelBarColor,
   selected,
   entry,
+  orderMarks,
   marketTitle,
   onClick,
   showProb = true,
@@ -183,13 +237,16 @@ function TempOddsBar({
     entry != null && maxPct > 0 ? Math.min(trackPx, Math.max(0, (entry.frac / maxPct) * trackPx)) : null;
   const entryTip =
     entry != null ? `Entry ${(entry.frac * 100).toFixed(1)}¢ (${entry.outcome})` : undefined;
+  const orderTips = orderMarks.map(
+    (m) => `Order ${(m.frac * 100).toFixed(1)}¢ (${m.outcome} ${m.side})`,
+  );
 
   return (
     <button
       type="button"
       className={`no-drag flex flex-col items-center justify-end flex-1 min-w-0 h-full px-0.5 group ${selected ? 'ring-1 ring-white/40 rounded' : ''}`}
       onClick={onClick}
-      title={[marketTitle, entryTip].filter(Boolean).join(' · ')}
+      title={[marketTitle, entryTip, ...orderTips].filter(Boolean).join(' · ')}
     >
       {showProb ? (
         <span className="text-[9px] text-gray-400 mb-0.5 tabular-nums shrink-0 min-h-[12px] leading-none flex w-full gap-0.5">
@@ -217,6 +274,18 @@ function TempOddsBar({
               />
             ) : null}
           </div>
+          {orderMarks.map((mark, i) => {
+            const bottomPx =
+              maxPct > 0 ? Math.min(trackPx, Math.max(0, (mark.frac / maxPct) * trackPx)) : null;
+            if (bottomPx == null) return null;
+            return (
+              <div
+                key={`order-${i}-${mark.frac}-${mark.side}`}
+                className="absolute left-0 right-0 h-[2px] z-[11] pointer-events-none bg-yellow-400 shadow-[0_0_2px_rgba(0,0,0,0.85)]"
+                style={{ bottom: bottomPx }}
+              />
+            );
+          })}
           {entryBottomPx != null ? (
             <div
               className="absolute left-0 right-0 h-[2px] z-10 pointer-events-none bg-white shadow-[0_0_2px_rgba(0,0,0,0.85)]"
@@ -245,6 +314,7 @@ interface TempOddsChartProps {
   liveTradesSource: string;
   onchainWsPositions: WSPosition[];
   modelBuckets: Record<string, number> | null | undefined;
+  orderLookup: Record<string, Order[]>;
 }
 
 function TempOddsChart({
@@ -258,6 +328,7 @@ function TempOddsChart({
   liveTradesSource,
   onchainWsPositions,
   modelBuckets,
+  orderLookup,
 }: TempOddsChartProps) {
   const plotRef = useRef<HTMLDivElement>(null);
   const [trackPx, setTrackPx] = useState(0);
@@ -279,6 +350,7 @@ function TempOddsChart({
     liveTradesSource,
     onchainWsPositions,
     modelBuckets,
+    orderLookup,
   );
 
   useLayoutEffect(() => {
@@ -313,7 +385,7 @@ function TempOddsChart({
             </div>
             <div ref={plotRef} className="flex-1 min-h-[40px] flex items-end gap-0.5">
               {trackPx > 0
-                ? entries.map(({ temp, label, market, pct, modelPct, entry }) => (
+                ? entries.map(({ temp, label, market, pct, modelPct, entry, orderMarks }) => (
                     <TempOddsBar
                       key={temp}
                       label={label}
@@ -325,6 +397,7 @@ function TempOddsChart({
                       modelBarColor={modelBarColor}
                       selected={selectedMarketId === market.id}
                       entry={entry}
+                      orderMarks={orderMarks}
                       marketTitle={market.groupItemTitle || label}
                       onClick={() => onBarClick(market)}
                       showProb={false}
@@ -379,7 +452,14 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
+  const progOrderMap = useAppStore((s) => s.progOrderMap);
   const positions = useThrottledGridPositions(2000);
+  const orders = useThrottledGridOrders(2000);
+  const myOrders = useMemo(
+    () => orders.filter((o) => !progOrderMap[o.id]),
+    [orders, progOrderMap],
+  );
+  const orderLookup = useMemo(() => buildOrderLookup(myOrders), [myOrders]);
   const onchainWsPositions = useSidebarOnchainGridWalletPositions();
   const nowMs = useWalletTradeElapsedMs();
 
@@ -580,6 +660,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               liveTradesSource={liveTradesSource}
               onchainWsPositions={onchainWsPositions}
               modelBuckets={modelPayload?.lowest_temperature?.bucket_probabilities_1c}
+              orderLookup={orderLookup}
             />
             <TempOddsChart
               barColor="bg-red-400/90"
@@ -592,6 +673,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               liveTradesSource={liveTradesSource}
               onchainWsPositions={onchainWsPositions}
               modelBuckets={modelPayload?.highest_temperature?.bucket_probabilities_1c}
+              orderLookup={orderLookup}
             />
           </>
         )}

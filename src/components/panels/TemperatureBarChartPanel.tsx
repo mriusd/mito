@@ -367,6 +367,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   );
   const [pastFilterTick, setPastFilterTick] = useState(0);
   const [modelPayload, setModelPayload] = useState<WeatherProbabilitiesPayload | null>(null);
+  const [modelFetchedAtMs, setModelFetchedAtMs] = useState(0);
 
   const cityMeta = WEATHER_CITIES.find((c) => c.slug === city) ?? WEATHER_CITIES[0];
   const allMarkets = useAppStore((s) => s.weatherMarkets[city] ?? EMPTY_MARKETS);
@@ -383,11 +384,14 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const nowMs = useWalletTradeElapsedMs();
 
   const predictionUpdatedMs = useMemo(() => {
+    if (modelPayload?.updated_at) return modelPayload.updated_at * 1000;
     const ts = modelPayload?.analysis_timestamp;
-    if (!ts) return 0;
-    const ms = Date.parse(ts);
-    return Number.isFinite(ms) ? ms : 0;
-  }, [modelPayload?.analysis_timestamp]);
+    if (ts) {
+      const ms = Date.parse(ts);
+      if (Number.isFinite(ms) && ms <= Date.now()) return ms;
+    }
+    return modelFetchedAtMs;
+  }, [modelPayload?.updated_at, modelPayload?.analysis_timestamp, modelFetchedAtMs]);
 
   const predictionAgeLabel = useMemo(() => {
     if (predictionUpdatedMs <= 0) return null;
@@ -457,17 +461,21 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   useEffect(() => {
     if (!selectedDateCol) {
       setModelPayload(null);
+      setModelFetchedAtMs(0);
       return;
     }
     const date = weatherEventDateISOFromSlug(selectedDateCol.slug);
     if (!date) {
       setModelPayload(null);
+      setModelFetchedAtMs(0);
       return;
     }
     let cancelled = false;
     fetchWeatherProbabilities(city, date)
       .then((payload) => {
-        if (!cancelled) setModelPayload(payload);
+        if (cancelled) return;
+        setModelPayload(payload);
+        if (payload) setModelFetchedAtMs(Date.now());
       })
       .catch((err) => {
         console.error('[weather-probabilities]', err);
@@ -489,11 +497,12 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 h-full flex flex-col min-h-0">
-      <div className="panel-header shrink-0 mb-2 flex items-center gap-2 flex-wrap">
-        <span
-          className="relative no-drag inline-flex items-center cursor-pointer select-none text-sm font-bold text-sky-400"
-          onClick={() => setCityDropdownOpen((v) => !v)}
-        >
+      <div className="panel-header shrink-0 mb-2 flex flex-col gap-1.5">
+        <div className="flex items-center gap-2 w-full min-w-0">
+          <span
+            className="relative no-drag inline-flex items-center cursor-pointer select-none text-sm font-bold text-sky-400 shrink-0"
+            onClick={() => setCityDropdownOpen((v) => !v)}
+          >
           {cityMeta.label}
           <svg className="w-3 h-3 ml-0.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="6 9 12 15 18 9" />
@@ -516,7 +525,14 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               ))}
             </div>
           )}
-        </span>
+          </span>
+
+          {predictionAgeLabel ? (
+            <span className={`ml-auto shrink-0 text-[10px] font-normal tabular-nums ${predictionAgeClass}`}>
+              {predictionAgeLabel}
+            </span>
+          ) : null}
+        </div>
 
         {dateColumns.length > 0 && (
           <div className="no-drag flex flex-wrap gap-1">
@@ -544,12 +560,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
             })}
           </div>
         )}
-
-        {predictionAgeLabel ? (
-          <span className={`ml-auto text-[10px] font-normal tabular-nums ${predictionAgeClass}`}>
-            {predictionAgeLabel}
-          </span>
-        ) : null}
       </div>
 
       <div className="panel-body flex-1 min-h-0 flex gap-2">

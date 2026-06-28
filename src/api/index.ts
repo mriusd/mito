@@ -1197,6 +1197,7 @@ export interface WeatherTemperatureProbabilities {
 export interface WeatherProbabilitiesPayload {
   target_date: string;
   analysis_timestamp?: string;
+  updated_at?: number;
   highest_temperature?: WeatherTemperatureProbabilities;
   lowest_temperature?: WeatherTemperatureProbabilities;
   overall_rationale?: string;

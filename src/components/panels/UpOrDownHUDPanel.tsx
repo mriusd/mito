@@ -262,7 +262,7 @@ const UpDownHudCurrentLaneBlock = memo(function UpDownHudCurrentLaneBlock({
                 </div>
               )}
               {noBuy.length > 0 && (
-                <div className="absolute bottom-0 right-0 bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
+                <div className="absolute bottom-0 right-0 bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm" style={{ color: '#78350f' }}>
                   {formatBadgePriceCents(Math.max(...noBuy.map((o) => parseFloat(o.price || '0') * 100)))}
                 </div>
               )}

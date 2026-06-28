@@ -193,7 +193,7 @@ function GridMarketCellInner({
         </div>
       )}
       {noBuyOrders.length > 0 && (
-        <div className="absolute bottom-0 right-0 z-[5] bg-blue-600 text-white text-[7px] px-[2px] leading-none font-bold rounded-tl-sm">
+        <div className="absolute bottom-0 right-0 z-[5] bg-yellow-400 text-[7px] px-[2px] leading-none font-bold rounded-tl-sm" style={{ color: '#78350f' }}>
           {(Math.max(...noBuyOrders.map((o) => parseFloat(o.price || '0') * 100))).toFixed(1)}
         </div>
       )}

@@ -78,6 +78,16 @@ function marketEntryYesFrac(
 
 type TempOddsOrderMark = { frac: number; outcome: 'YES' | 'NO'; side: Order['side'] };
 
+function tempEntryMarkClass(outcome: 'YES' | 'NO'): string {
+  return outcome === 'YES' ? 'bg-green-400' : 'bg-red-400';
+}
+
+function tempOrderMarkClass(mark: TempOddsOrderMark): string {
+  if (mark.side === 'BUY' && mark.outcome === 'YES') return 'bg-blue-500';
+  if (mark.side === 'BUY' && mark.outcome === 'NO') return 'bg-yellow-400';
+  return 'bg-gray-400';
+}
+
 function orderYesMark(order: Order, yesTokenId: string, noTokenId: string): TempOddsOrderMark | null {
   const tid = normalizeClobTokenId(getOrderClobTokenId(order));
   const yesKey = normalizeClobTokenId(yesTokenId);
@@ -281,15 +291,15 @@ function TempOddsBar({
             if (bottomPx == null) return null;
             return (
               <div
-                key={`order-${i}-${mark.frac}-${mark.side}`}
-                className="absolute left-0 right-0 h-[2px] z-[11] pointer-events-none bg-yellow-400 shadow-[0_0_2px_rgba(0,0,0,0.85)]"
+                key={`order-${i}-${mark.frac}-${mark.side}-${mark.outcome}`}
+                className={`absolute left-0 right-0 h-[2px] z-[11] pointer-events-none shadow-[0_0_2px_rgba(0,0,0,0.85)] ${tempOrderMarkClass(mark)}`}
                 style={{ bottom: bottomPx }}
               />
             );
           })}
-          {entryBottomPx != null ? (
+          {entryBottomPx != null && entry != null ? (
             <div
-              className="absolute left-0 right-0 h-[2px] z-10 pointer-events-none bg-white shadow-[0_0_2px_rgba(0,0,0,0.85)]"
+              className={`absolute left-0 right-0 h-[2px] z-10 pointer-events-none shadow-[0_0_2px_rgba(0,0,0,0.85)] ${tempEntryMarkClass(entry.outcome)}`}
               style={{ bottom: entryBottomPx }}
             />
           ) : null}

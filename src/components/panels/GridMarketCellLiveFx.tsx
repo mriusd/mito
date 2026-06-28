@@ -9,27 +9,6 @@ const fmtSz = (sz: number) => {
   return v >= 1000 ? (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : v.toLocaleString();
 };
 
-function isPriceConditionTrue(priceStr: string, live: number): boolean {
-  if (live <= 0) return false;
-  const cleaned = priceStr.replace(/\$/g, '').replace(/,/g, '');
-  if (cleaned.startsWith('>')) {
-    const val = parseFloat(cleaned.substring(1));
-    return !isNaN(val) && live > val;
-  }
-  if (cleaned.startsWith('<')) {
-    const val = parseFloat(cleaned.substring(1));
-    return !isNaN(val) && live < val;
-  }
-  if (cleaned.includes('-')) {
-    const parts = cleaned.split('-');
-    const lo = parseFloat(parts[0]);
-    const hi = parseFloat(parts[1]);
-    return !isNaN(lo) && !isNaN(hi) && live >= lo && live <= hi;
-  }
-  const threshold = parseFloat(cleaned);
-  return !isNaN(threshold) && live >= threshold;
-}
-
 function deltaBgStyle(
   priceStr: string,
   yesMidProb: number | null,
@@ -88,18 +67,10 @@ export const GridMarketCellLiveFx = memo(function GridMarketCellLiveFx({
   isClosed,
   isPast,
   skipDelta,
-  variant,
   yesPosSize,
   noPosSize,
 }: GridMarketCellLiveFxProps) {
   const livePrice = useGridAssetLivePrice(assetToSymbol(asset));
-
-  const conditionMet =
-    variant === 'above' || variant === 'between'
-      ? isPriceConditionTrue(strikeStr, livePrice)
-      : false;
-  const yesWinning = conditionMet;
-  const noWinning = !conditionMet && livePrice > 0;
 
   const gridDeltaBg = !skipDelta && !isClosed && !isPast
     ? deltaBgStyle(strikeStr, yesMidProb, endDate, livePrice, adjVol, bsTimeOffsetHours, isHit)
@@ -113,28 +84,12 @@ export const GridMarketCellLiveFx = memo(function GridMarketCellLiveFx({
       {(yesPosSize != null || noPosSize != null) && (
         <div className="relative z-[2] mt-0.5 text-[9px] border-t border-gray-600/50 pt-0.5">
           {yesPosSize != null && (
-            <div className={`text-green-300 text-center ${
-              variant === 'hit'
-                ? 'bg-yellow-500/40 px-1 rounded font-bold'
-                : yesWinning
-                  ? 'bg-green-500/40 px-1 rounded font-bold'
-                  : livePrice > 0
-                    ? 'bg-red-500/40 px-1 rounded'
-                    : ''
-            }`}>
+            <div className="text-green-300 text-center bg-green-500/40 px-1 rounded font-bold">
               {fmtSz(yesPosSize)}
             </div>
           )}
           {noPosSize != null && (
-            <div className={`text-red-300 text-center ${
-              variant === 'hit'
-                ? 'bg-yellow-500/40 px-1 rounded font-bold'
-                : noWinning
-                  ? 'bg-green-500/40 px-1 rounded font-bold'
-                  : livePrice > 0
-                    ? 'bg-red-500/40 px-1 rounded'
-                    : ''
-            }`}>
+            <div className="text-red-300 text-center bg-red-500/40 px-1 rounded font-bold">
               {fmtSz(noPosSize)}
             </div>
           )}

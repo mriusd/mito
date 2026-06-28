@@ -3,6 +3,7 @@ import { WEATHER_CITIES, type WeatherCitySlug } from '../../types';
 import {
   fetchWeatherObservations,
   formatWeatherChartHour,
+  isWeatherDateToday,
   weatherDateInputValue,
   type WeatherObservationsResponse,
 } from '../../lib/weatherObservations';
@@ -166,23 +167,31 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError('');
-    void fetchWeatherObservations(city, date)
-      .then((resp) => {
-        if (cancelled) return;
-        setData(resp);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setData(null);
-        setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+
+    const load = () => {
+      setLoading(true);
+      setError('');
+      void fetchWeatherObservations(city, date)
+        .then((resp) => {
+          if (cancelled) return;
+          setData(resp);
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setData(null);
+          setError(e instanceof Error ? e.message : String(e));
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    };
+
+    load();
+    const pollMs = isWeatherDateToday(date) ? 60_000 : 0;
+    const pollId = pollMs > 0 ? window.setInterval(load, pollMs) : undefined;
     return () => {
       cancelled = true;
+      if (pollId != null) window.clearInterval(pollId);
     };
   }, [city, date]);
 

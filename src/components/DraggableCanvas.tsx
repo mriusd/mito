@@ -82,6 +82,9 @@ const LazyWeatherMarketsTable = lazyWithChunkReload(() =>
 const LazyTemperaturePanel = lazyWithChunkReload(() =>
   import('./panels/TemperaturePanel').then((m) => ({ default: m.TemperaturePanel })),
 );
+const LazyTemperatureBarChartPanel = lazyWithChunkReload(() =>
+  import('./panels/TemperatureBarChartPanel').then((m) => ({ default: m.TemperatureBarChartPanel })),
+);
 
 const IS_DEV = import.meta.env.DEV;
 const LazyPerpBotPanel = IS_DEV
@@ -230,6 +233,8 @@ function renderPanel(panel: PanelConfig): ReactNode {
       return <LazyWeatherMarketsTable panelId={panel.id} />;
     case 'weather-temperature':
       return <LazyTemperaturePanel panelId={panel.id} />;
+    case 'weather-temp-bars':
+      return <LazyTemperatureBarChartPanel panelId={panel.id} />;
     default:
       return <div className="text-gray-500 p-4">Unknown panel: {panel.type}</div>;
   }
@@ -396,6 +401,7 @@ export function DraggableCanvas() {
     'wallet-history': 'History',
     'weather-markets': 'Weather Markets',
     'weather-temperature': 'Temperature',
+    'weather-temp-bars': 'Temp Odds',
   };
 
   // Auto-include panels defined in the current breakpoint layout but missing from panels list

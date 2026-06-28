@@ -72,6 +72,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'hyperliquid-outcomes', title: 'Hyperliquid Outcomes' },
   { type: 'weather-markets', title: 'Weather Markets', multi: true },
   { type: 'weather-temperature', title: 'Temperature', multi: true },
+  { type: 'weather-temp-bars', title: 'Temp Odds', multi: true },
   { type: 'chat', title: 'Chat' },
 ];
 

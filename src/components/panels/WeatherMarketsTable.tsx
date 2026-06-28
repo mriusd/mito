@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { formatDateShort, normalizeClobTokenId } from '../../utils/format';
 import { resolveMarketExpiryEndDate } from '../../lib/weatherMarketExpiry';
+import { buildTableData, filterWeatherMarkets, type WeatherMetric } from '../../lib/weatherMarketsGrid';
 import type { Market, Order, WeatherCitySlug } from '../../types';
 import { WEATHER_CITIES } from '../../types';
 import { GridMarketCell } from './GridMarketCell';
@@ -14,88 +15,6 @@ import { polymarketSiteUrl } from '../../lib/polymarketSiteUrl';
 const EMPTY_MARKETS: Market[] = [];
 const EMPTY_ORDERS: Order[] = [];
 const CITY_SLUGS = new Set<string>(WEATHER_CITIES.map((c) => c.slug));
-type WeatherMetric = 'high' | 'low';
-
-function filterWeatherMarkets(markets: Market[], metric: WeatherMetric): Market[] {
-  const needle = metric === 'high' ? 'highest-temperature' : 'lowest-temperature';
-  return markets.filter((m) => (m.eventSlug || '').includes(needle));
-}
-
-function getTempSortValue(str: string): number {
-  const s = str.replace(/°[FC]/gi, '').trim();
-  if (/ or below$/i.test(s) || / or lower$/i.test(s)) {
-    const n = parseFloat(s.replace(/ or below| or lower/gi, ''));
-    return (Number.isFinite(n) ? n : 0) - 0.5;
-  }
-  if (/ or higher$/i.test(s) || / or above$/i.test(s)) {
-    const n = parseFloat(s.replace(/ or higher| or above/gi, ''));
-    return (Number.isFinite(n) ? n : 0) + 10_000;
-  }
-  if (s.includes('-')) {
-    const n = parseFloat(s.split('-')[0]);
-    return Number.isFinite(n) ? n : 0;
-  }
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
-}
-
-interface DateCol {
-  slug: string;
-  endDate: string;
-  expiryEndDate: string;
-  title: string;
-}
-
-function buildTableData(markets: Market[], includePast: boolean) {
-  const now = Date.now();
-  const oneDayAgo = now - 24 * 60 * 60 * 1000;
-
-  const dateMap = new Map<string, DateCol>();
-  const tempSet = new Set<string>();
-  const marketLookup: Record<string, Market> = {};
-
-  for (const m of markets) {
-    const slug = m.eventSlug || '';
-    if (!slug) continue;
-    if (!dateMap.has(slug)) {
-      dateMap.set(slug, {
-        slug,
-        endDate: m.endDate,
-        expiryEndDate: resolveMarketExpiryEndDate(m, m.endDate),
-        title: m.eventTitle || '',
-      });
-    }
-  }
-
-  for (const m of markets) {
-    const slug = m.eventSlug || '';
-    const temp = m.groupItemTitle || '';
-    if (!slug || !temp) continue;
-    tempSet.add(temp);
-    marketLookup[temp + '_' + slug] = m;
-  }
-
-  let dates = Array.from(dateMap.values())
-    .filter((d) => {
-      const endTime = d.expiryEndDate ? new Date(d.expiryEndDate).getTime() : Infinity;
-      return endTime > oneDayAgo;
-    })
-    .sort((a, b) => {
-      const ta = a.expiryEndDate ? new Date(a.expiryEndDate).getTime() : Infinity;
-      const tb = b.expiryEndDate ? new Date(b.expiryEndDate).getTime() : Infinity;
-      return ta - tb;
-    });
-
-  if (!includePast) {
-    dates = dates.filter((d) => !d.expiryEndDate || new Date(d.expiryEndDate).getTime() >= now);
-  }
-
-  const temps = Array.from(tempSet)
-    .filter((temp) => dates.some((d) => marketLookup[temp + '_' + d.slug]))
-    .sort((a, b) => getTempSortValue(a) - getTempSortValue(b));
-
-  return { dates, temps, marketLookup };
-}
 
 interface WeatherMarketsTableProps {
   panelId: string;

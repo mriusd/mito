@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { formatDateShort } from '../../utils/format';
+import { formatDateShort, formatElapsedSinceMs, tradeElapsedColorClass } from '../../utils/format';
+import { useWalletTradeElapsedMs } from '../../lib/walletTradeElapsedStore';
 import type { Market, WeatherCitySlug } from '../../types';
 import { WEATHER_CITIES } from '../../types';
 import {
@@ -191,24 +192,31 @@ function TempOddsBar({
       title={[marketTitle, entryTip].filter(Boolean).join(' · ')}
     >
       {showProb ? (
-        <span className="text-[9px] text-gray-400 mb-0.5 tabular-nums shrink-0 min-h-[12px] leading-none">
-          {pct != null ? `${Math.round(pct * 100)}%` : '—'}
+        <span className="text-[9px] text-gray-400 mb-0.5 tabular-nums shrink-0 min-h-[12px] leading-none flex w-full gap-0.5">
+          <span className="flex-1 text-center opacity-60">
+            {modelPct != null ? `${Math.round(modelPct * 100)}%` : '—'}
+          </span>
+          <span className="flex-1 text-center">{pct != null ? `${Math.round(pct * 100)}%` : '—'}</span>
         </span>
       ) : null}
       <div className="relative w-full shrink-0 flex-1 min-h-0 flex items-end">
-        <div className="relative w-full" style={{ height: trackPx }}>
-          {modelBarPx > 0 ? (
-            <div
-              className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${modelBarColor}`}
-              style={{ height: modelBarPx }}
-            />
-          ) : null}
-          {barPx > 0 ? (
-            <div
-              className={`absolute bottom-0 left-0 right-0 rounded-t-sm transition-opacity group-hover:opacity-90 ${barColor}`}
-              style={{ height: barPx }}
-            />
-          ) : null}
+        <div className="relative w-full flex gap-0.5 items-end" style={{ height: trackPx }}>
+          <div className="relative flex-1 min-w-0 h-full">
+            {modelBarPx > 0 ? (
+              <div
+                className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${modelBarColor}`}
+                style={{ height: modelBarPx }}
+              />
+            ) : null}
+          </div>
+          <div className="relative flex-1 min-w-0 h-full">
+            {barPx > 0 ? (
+              <div
+                className={`absolute bottom-0 left-0 right-0 rounded-t-sm transition-opacity group-hover:opacity-90 ${barColor}`}
+                style={{ height: barPx }}
+              />
+            ) : null}
+          </div>
           {entryBottomPx != null ? (
             <div
               className="absolute left-0 right-0 h-[2px] z-10 pointer-events-none bg-white shadow-[0_0_2px_rgba(0,0,0,0.85)]"
@@ -291,12 +299,15 @@ function TempOddsChart({
         ) : (
           <div className="flex flex-col flex-1 min-h-0 gap-1">
             <div className="flex shrink-0 gap-0.5 min-h-[12px]">
-              {entries.map(({ temp, pct }) => (
+              {entries.map(({ temp, pct, modelPct }) => (
                 <div
                   key={`prob-${temp}`}
-                  className="flex-1 min-w-0 text-center text-[9px] text-gray-400 tabular-nums leading-none"
+                  className="flex-1 min-w-0 flex gap-0.5 text-[9px] text-gray-400 tabular-nums leading-none"
                 >
-                  {pct != null ? `${Math.round(pct * 100)}%` : '—'}
+                  <span className="flex-1 text-center opacity-60">
+                    {modelPct != null ? `${Math.round(modelPct * 100)}%` : '—'}
+                  </span>
+                  <span className="flex-1 text-center">{pct != null ? `${Math.round(pct * 100)}%` : '—'}</span>
                 </div>
               ))}
             </div>
@@ -369,6 +380,25 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const positions = useThrottledGridPositions(2000);
   const onchainWsPositions = useSidebarOnchainGridWalletPositions();
+  const nowMs = useWalletTradeElapsedMs();
+
+  const predictionUpdatedMs = useMemo(() => {
+    const ts = modelPayload?.analysis_timestamp;
+    if (!ts) return 0;
+    const ms = Date.parse(ts);
+    return Number.isFinite(ms) ? ms : 0;
+  }, [modelPayload?.analysis_timestamp]);
+
+  const predictionAgeLabel = useMemo(() => {
+    if (predictionUpdatedMs <= 0) return null;
+    return formatElapsedSinceMs(predictionUpdatedMs, nowMs) || null;
+  }, [predictionUpdatedMs, nowMs]);
+
+  const predictionAgeClass = useMemo(() => {
+    if (predictionUpdatedMs <= 0) return 'text-gray-500';
+    const ageSec = Math.max(0, Math.floor((nowMs - predictionUpdatedMs) / 1000));
+    return tradeElapsedColorClass(ageSec);
+  }, [predictionUpdatedMs, nowMs]);
 
   useEffect(() => {
     if (showPast) return;
@@ -514,6 +544,12 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
             })}
           </div>
         )}
+
+        {predictionAgeLabel ? (
+          <span className={`ml-auto text-[10px] font-normal tabular-nums ${predictionAgeClass}`}>
+            {predictionAgeLabel}
+          </span>
+        ) : null}
       </div>
 
       <div className="panel-body flex-1 min-h-0 flex gap-2">

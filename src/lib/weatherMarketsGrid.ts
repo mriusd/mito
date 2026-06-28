@@ -63,9 +63,88 @@ export function lookupModelBucketProb(
   if (!buckets) return null;
   const label = compactTempBucketLabel(temp);
   if (label in buckets) return buckets[label]!;
+
+  const intMatch = label.match(/^(\d+)$/);
+  if (intMatch) {
+    const n = parseInt(intMatch[1], 10);
+    const hi = `${n}-${n + 1}`;
+    if (hi in buckets) return buckets[hi]!;
+    const lo = `${n - 1}-${n}`;
+    if (lo in buckets) return buckets[lo]!;
+  }
+
+  const ltMatch = label.match(/^<(\d+)$/);
+  if (ltMatch) {
+    const t = parseInt(ltMatch[1], 10);
+    for (const k of [`<${t}`, `<${t + 1}`, `<${t + 2}`]) {
+      if (k in buckets) return buckets[k]!;
+    }
+    return sumModelProbAtOrBelow(buckets, t);
+  }
+
+  const gtMatch = label.match(/^>(\d+)$/);
+  if (gtMatch) {
+    const t = parseInt(gtMatch[1], 10);
+    for (let d = 0; d <= 6; d++) {
+      const k = `>${t - d}`;
+      if (k in buckets) return buckets[k]!;
+    }
+    return sumModelProbAbove(buckets, t);
+  }
+
   const bare = temp.replace(/°[FC]/gi, '').replace(/\s+/g, '');
   if (bare in buckets) return buckets[bare]!;
   return null;
+}
+
+function sumModelProbAtOrBelow(buckets: Record<string, number>, threshold: number): number | null {
+  let total = 0;
+  let found = false;
+  for (const [key, p] of Object.entries(buckets)) {
+    if (!Number.isFinite(p)) continue;
+    if (key.startsWith('<')) {
+      const x = parseInt(key.slice(1), 10);
+      if (Number.isFinite(x) && x <= threshold + 1) {
+        total += p;
+        found = true;
+      }
+      continue;
+    }
+    if (key.startsWith('>')) continue;
+    const m = key.match(/^(\d+)-(\d+)$/);
+    if (!m) continue;
+    const lo = parseInt(m[1], 10);
+    if (Number.isFinite(lo) && lo <= threshold) {
+      total += p;
+      found = true;
+    }
+  }
+  return found ? total : null;
+}
+
+function sumModelProbAbove(buckets: Record<string, number>, threshold: number): number | null {
+  let total = 0;
+  let found = false;
+  for (const [key, p] of Object.entries(buckets)) {
+    if (!Number.isFinite(p)) continue;
+    if (key.startsWith('>')) {
+      const x = parseInt(key.slice(1), 10);
+      if (Number.isFinite(x) && x >= threshold - 1) {
+        total += p;
+        found = true;
+      }
+      continue;
+    }
+    if (key.startsWith('<')) continue;
+    const m = key.match(/^(\d+)-(\d+)$/);
+    if (!m) continue;
+    const hi = parseInt(m[2], 10);
+    if (Number.isFinite(hi) && hi >= threshold) {
+      total += p;
+      found = true;
+    }
+  }
+  return found ? total : null;
 }
 
 export interface DateCol {

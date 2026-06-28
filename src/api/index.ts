@@ -1183,3 +1183,43 @@ export async function editChatMessage(id: number, address: string, message: stri
   if (!resp.ok) throw new Error('Failed to edit message');
   return resp.json();
 }
+
+export interface WeatherTemperatureProbabilities {
+  expected_value_c?: number;
+  median_c?: number;
+  std_c?: number;
+  percentiles?: Record<string, number>;
+  bucket_probabilities_1c?: Record<string, number>;
+  distribution_notes?: string;
+  confidence?: number;
+}
+
+export interface WeatherProbabilitiesPayload {
+  target_date: string;
+  analysis_timestamp?: string;
+  highest_temperature?: WeatherTemperatureProbabilities;
+  lowest_temperature?: WeatherTemperatureProbabilities;
+  overall_rationale?: string;
+  data_quality_notes?: string;
+}
+
+export async function fetchWeatherProbabilities(
+  city: string,
+  date: string,
+): Promise<WeatherProbabilitiesPayload | null> {
+  const resp = await fetch(
+    `${BASE}/api/weather-probabilities/${encodeURIComponent(city)}?date=${encodeURIComponent(date)}`,
+  );
+  if (resp.status === 404) return null;
+  if (!resp.ok) throw new Error(`weather probabilities ${resp.status}`);
+  return resp.json();
+}
+
+export async function postWeatherProbabilities(city: string, payload: WeatherProbabilitiesPayload): Promise<void> {
+  const resp = await fetch(`${BASE}/api/weather-probabilities/${encodeURIComponent(city)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) throw new Error(`post weather probabilities ${resp.status}`);
+}

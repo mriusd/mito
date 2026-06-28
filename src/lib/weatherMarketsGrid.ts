@@ -40,6 +40,34 @@ export function compactTempBucketLabel(temp: string): string {
   return s.replace(/\s+/g, '');
 }
 
+const WEATHER_EVENT_MONTHS = [
+  'january', 'february', 'march', 'april', 'may', 'june',
+  'july', 'august', 'september', 'october', 'november', 'december',
+] as const;
+
+/** Event day YYYY-MM-DD from slug like highest-temperature-in-london-on-june-28-2026. */
+export function weatherEventDateISOFromSlug(eventSlug: string): string | null {
+  const m = eventSlug.match(/-on-([a-z]+)-(\d+)-(\d{4})/i);
+  if (!m) return null;
+  const mi = WEATHER_EVENT_MONTHS.indexOf(m[1].toLowerCase() as (typeof WEATHER_EVENT_MONTHS)[number]);
+  if (mi < 0) return null;
+  const day = m[2].padStart(2, '0');
+  const month = String(mi + 1).padStart(2, '0');
+  return `${m[3]}-${month}-${day}`;
+}
+
+export function lookupModelBucketProb(
+  buckets: Record<string, number> | undefined | null,
+  temp: string,
+): number | null {
+  if (!buckets) return null;
+  const label = compactTempBucketLabel(temp);
+  if (label in buckets) return buckets[label]!;
+  const bare = temp.replace(/°[FC]/gi, '').replace(/\s+/g, '');
+  if (bare in buckets) return buckets[bare]!;
+  return null;
+}
+
 export interface DateCol {
   slug: string;
   endDate: string;

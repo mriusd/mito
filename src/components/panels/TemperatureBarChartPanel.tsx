@@ -8,10 +8,13 @@ import {
   compactTempBucketLabel,
   filterWeatherMarkets,
   findDateColForEndDate,
+  lookupModelBucketProb,
   mergeWeatherDateColumns,
+  weatherEventDateISOFromSlug,
   type DateCol,
   type WeatherGridData,
 } from '../../lib/weatherMarketsGrid';
+import { fetchWeatherProbabilities, type WeatherProbabilitiesPayload } from '../../api';
 import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
 import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
@@ -92,6 +95,7 @@ type TempOddsBucket = {
   label: string;
   market: Market;
   pct: number | null;
+  modelPct: number | null;
   entry: { frac: number; outcome: 'YES' | 'NO' } | null;
 };
 
@@ -100,6 +104,7 @@ function buildTempOddsBuckets(
   positions: Position[],
   liveTradesSource: string,
   onchainWsPositions: WSPosition[],
+  modelBuckets: Record<string, number> | null | undefined,
 ): { entries: TempOddsBucket[]; maxPct: number } {
   const entries: TempOddsBucket[] = buckets.map(({ temp, label, market }) => {
     const yesTokenId = market.clobTokenIds?.[0] || '';
@@ -109,10 +114,15 @@ function buildTempOddsBuckets(
       label,
       market,
       pct: getMarketYesProb(market),
+      modelPct: lookupModelBucketProb(modelBuckets, temp),
       entry: marketEntryYesFrac(yesTokenId, noTokenId, positions, liveTradesSource, onchainWsPositions),
     };
   });
-  const maxPct = Math.max(0.001, ...entries.map((e) => e.pct ?? 0));
+  const maxPct = Math.max(
+    0.001,
+    ...entries.map((e) => e.pct ?? 0),
+    ...entries.map((e) => e.modelPct ?? 0),
+  );
   return { entries, maxPct };
 }
 
@@ -121,6 +131,7 @@ function useTempOddsBuckets(
   positions: Position[],
   liveTradesSource: string,
   onchainWsPositions: WSPosition[],
+  modelBuckets: Record<string, number> | null | undefined,
 ) {
   const digest = useSyncExternalStore(
     subscribeBidAskMarketLookupGridFlush,
@@ -128,17 +139,19 @@ function useTempOddsBuckets(
     getBidAskGridFlushDigest,
   );
   return useMemo(
-    () => buildTempOddsBuckets(buckets, positions, liveTradesSource, onchainWsPositions),
-    [buckets, positions, liveTradesSource, onchainWsPositions, digest],
+    () => buildTempOddsBuckets(buckets, positions, liveTradesSource, onchainWsPositions, modelBuckets),
+    [buckets, positions, liveTradesSource, onchainWsPositions, modelBuckets, digest],
   );
 }
 
 interface TempOddsBarProps {
   label: string;
   pct: number | null;
+  modelPct: number | null;
   maxPct: number;
   trackPx: number;
   barColor: string;
+  modelBarColor: string;
   selected: boolean;
   entry: { frac: number; outcome: 'YES' | 'NO' } | null;
   marketTitle: string;
@@ -150,9 +163,11 @@ interface TempOddsBarProps {
 function TempOddsBar({
   label,
   pct,
+  modelPct,
   maxPct,
   trackPx,
   barColor,
+  modelBarColor,
   selected,
   entry,
   marketTitle,
@@ -161,6 +176,8 @@ function TempOddsBar({
   showLabel = true,
 }: TempOddsBarProps) {
   const barPx = pct != null && maxPct > 0 ? Math.max(2, (pct / maxPct) * trackPx) : 0;
+  const modelBarPx =
+    modelPct != null && maxPct > 0 ? Math.max(2, (modelPct / maxPct) * trackPx) : 0;
   const entryBottomPx =
     entry != null && maxPct > 0 ? Math.min(trackPx, Math.max(0, (entry.frac / maxPct) * trackPx)) : null;
   const entryTip =
@@ -180,6 +197,12 @@ function TempOddsBar({
       ) : null}
       <div className="relative w-full shrink-0 flex-1 min-h-0 flex items-end">
         <div className="relative w-full" style={{ height: trackPx }}>
+          {modelBarPx > 0 ? (
+            <div
+              className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${modelBarColor}`}
+              style={{ height: modelBarPx }}
+            />
+          ) : null}
           {barPx > 0 ? (
             <div
               className={`absolute bottom-0 left-0 right-0 rounded-t-sm transition-opacity group-hover:opacity-90 ${barColor}`}
@@ -204,9 +227,8 @@ function TempOddsBar({
 }
 
 interface TempOddsChartProps {
-  title: string;
-  titleColor: string;
   barColor: string;
+  modelBarColor: string;
   grid: WeatherGridData | null;
   dateCol: DateCol | undefined;
   selectedMarketId: string;
@@ -214,12 +236,12 @@ interface TempOddsChartProps {
   positions: Position[];
   liveTradesSource: string;
   onchainWsPositions: WSPosition[];
+  modelBuckets: Record<string, number> | null | undefined;
 }
 
 function TempOddsChart({
-  title,
-  titleColor,
   barColor,
+  modelBarColor,
   grid,
   dateCol,
   selectedMarketId,
@@ -227,6 +249,7 @@ function TempOddsChart({
   positions,
   liveTradesSource,
   onchainWsPositions,
+  modelBuckets,
 }: TempOddsChartProps) {
   const plotRef = useRef<HTMLDivElement>(null);
   const [trackPx, setTrackPx] = useState(0);
@@ -247,6 +270,7 @@ function TempOddsChart({
     positions,
     liveTradesSource,
     onchainWsPositions,
+    modelBuckets,
   );
 
   useLayoutEffect(() => {
@@ -261,7 +285,6 @@ function TempOddsChart({
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0">
-      <span className={`text-xs font-bold ${titleColor} shrink-0 mb-2 block`}>{title}</span>
       <div className="flex flex-col flex-1 min-h-0 border border-gray-700/80 rounded-lg bg-gray-900/40 p-2">
         {entries.length === 0 ? (
           <div className="flex-1 flex items-center justify-center text-gray-600 text-[10px]">No markets</div>
@@ -279,14 +302,16 @@ function TempOddsChart({
             </div>
             <div ref={plotRef} className="flex-1 min-h-[40px] flex items-end gap-0.5">
               {trackPx > 0
-                ? entries.map(({ temp, label, market, pct, entry }) => (
+                ? entries.map(({ temp, label, market, pct, modelPct, entry }) => (
                     <TempOddsBar
                       key={temp}
                       label={label}
                       pct={pct}
+                      modelPct={modelPct}
                       maxPct={maxPct}
                       trackPx={trackPx}
                       barColor={barColor}
+                      modelBarColor={modelBarColor}
                       selected={selectedMarketId === market.id}
                       entry={entry}
                       marketTitle={market.groupItemTitle || label}
@@ -330,6 +355,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     localStorage.getItem(`polybot-weather-temp-bars-date-${panelId}`),
   );
   const [pastFilterTick, setPastFilterTick] = useState(0);
+  const [modelPayload, setModelPayload] = useState<WeatherProbabilitiesPayload | null>(null);
 
   const cityMeta = WEATHER_CITIES.find((c) => c.slug === city) ?? WEATHER_CITIES[0];
   const allMarkets = useAppStore((s) => s.weatherMarkets[city] ?? EMPTY_MARKETS);
@@ -398,6 +424,30 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     [lowGrid, selectedDateCol],
   );
 
+  useEffect(() => {
+    if (!selectedDateCol) {
+      setModelPayload(null);
+      return;
+    }
+    const date = weatherEventDateISOFromSlug(selectedDateCol.slug);
+    if (!date) {
+      setModelPayload(null);
+      return;
+    }
+    let cancelled = false;
+    fetchWeatherProbabilities(city, date)
+      .then((payload) => {
+        if (!cancelled) setModelPayload(payload);
+      })
+      .catch((err) => {
+        console.error('[weather-probabilities]', err);
+        if (!cancelled) setModelPayload(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [city, selectedDateCol]);
+
   const handleBarClick = useCallback(
     (market: Market) => {
       setSelectedMarket(market);
@@ -409,7 +459,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 h-full flex flex-col min-h-0">
-      <div className="panel-header shrink-0 mb-2 space-y-1.5">
+      <div className="panel-header shrink-0 mb-2 flex items-center gap-2 flex-wrap">
         <span
           className="relative no-drag inline-flex items-center cursor-pointer select-none text-sm font-bold text-sky-400"
           onClick={() => setCityDropdownOpen((v) => !v)}
@@ -474,9 +524,8 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
         ) : (
           <>
             <TempOddsChart
-              title="Low Temp"
-              titleColor="text-cyan-400"
               barColor="bg-cyan-400/90"
+              modelBarColor="bg-cyan-400/40"
               grid={lowGrid}
               dateCol={lowDateCol}
               selectedMarketId={selectedMarketId}
@@ -484,11 +533,11 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               positions={positions}
               liveTradesSource={liveTradesSource}
               onchainWsPositions={onchainWsPositions}
+              modelBuckets={modelPayload?.lowest_temperature?.bucket_probabilities_1c}
             />
             <TempOddsChart
-              title="High Temp"
-              titleColor="text-red-400"
               barColor="bg-red-400/90"
+              modelBarColor="bg-red-400/40"
               grid={highGrid}
               dateCol={highDateCol}
               selectedMarketId={selectedMarketId}
@@ -496,6 +545,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               positions={positions}
               liveTradesSource={liveTradesSource}
               onchainWsPositions={onchainWsPositions}
+              modelBuckets={modelPayload?.highest_temperature?.bucket_probabilities_1c}
             />
           </>
         )}

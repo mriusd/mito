@@ -1,3 +1,4 @@
+import { RefreshCw } from 'lucide-react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { formatDateShort, formatElapsedSinceMs, getOrderClobTokenId, normalizeClobTokenId, tradeElapsedColorClass } from '../../utils/format';
@@ -441,6 +442,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const [pastFilterTick, setPastFilterTick] = useState(0);
   const [modelPayload, setModelPayload] = useState<WeatherProbabilitiesPayload | null>(null);
   const [modelFetchedAtMs, setModelFetchedAtMs] = useState(0);
+  const [modelRefreshing, setModelRefreshing] = useState(false);
 
   const cityMeta = WEATHER_CITIES.find((c) => c.slug === city) ?? WEATHER_CITIES[0];
   const allMarkets = useAppStore((s) => s.weatherMarkets[city] ?? EMPTY_MARKETS);
@@ -538,7 +540,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     [lowGrid, selectedDateCol],
   );
 
-  useEffect(() => {
+  const refreshModelProbabilities = useCallback(async () => {
     if (!selectedDateCol) {
       setModelPayload(null);
       setModelFetchedAtMs(0);
@@ -550,21 +552,22 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
       setModelFetchedAtMs(0);
       return;
     }
-    let cancelled = false;
-    fetchWeatherProbabilities(city, date)
-      .then((payload) => {
-        if (cancelled) return;
-        setModelPayload(payload);
-        if (payload) setModelFetchedAtMs(Date.now());
-      })
-      .catch((err) => {
-        console.error('[weather-probabilities]', err);
-        if (!cancelled) setModelPayload(null);
-      });
-    return () => {
-      cancelled = true;
-    };
+    setModelRefreshing(true);
+    try {
+      const payload = await fetchWeatherProbabilities(city, date);
+      setModelPayload(payload);
+      if (payload) setModelFetchedAtMs(Date.now());
+    } catch (err) {
+      console.error('[weather-probabilities]', err);
+      setModelPayload(null);
+    } finally {
+      setModelRefreshing(false);
+    }
   }, [city, selectedDateCol]);
+
+  useEffect(() => {
+    void refreshModelProbabilities();
+  }, [refreshModelProbabilities]);
 
   const handleBarClick = useCallback(
     (market: Market) => {
@@ -577,12 +580,11 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 h-full flex flex-col min-h-0">
-      <div className="panel-header shrink-0 mb-2 flex flex-col gap-1.5">
-        <div className="flex items-center gap-2 w-full min-w-0">
-          <span
-            className="relative no-drag inline-flex items-center cursor-pointer select-none text-sm font-bold text-sky-400 shrink-0"
-            onClick={() => setCityDropdownOpen((v) => !v)}
-          >
+      <div className="panel-header shrink-0 mb-2 no-drag flex items-center gap-2 min-w-0 overflow-x-auto">
+        <span
+          className="relative inline-flex shrink-0 items-center cursor-pointer select-none text-sm font-bold text-sky-400"
+          onClick={() => setCityDropdownOpen((v) => !v)}
+        >
           {cityMeta.label}
           <svg className="w-3 h-3 ml-0.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="6 9 12 15 18 9" />
@@ -605,17 +607,10 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               ))}
             </div>
           )}
-          </span>
+        </span>
 
-          {predictionAgeLabel ? (
-            <span className={`ml-auto shrink-0 text-[10px] font-normal tabular-nums ${predictionAgeClass}`}>
-              {predictionAgeLabel}
-            </span>
-          ) : null}
-        </div>
-
-        {dateColumns.length > 0 && (
-          <div className="no-drag flex flex-wrap gap-1">
+        {dateColumns.length > 0 ? (
+          <div className="flex shrink-0 items-center gap-1">
             {dateColumns.map((d) => {
               const key = dateStorageKey(d.endDate);
               const selected =
@@ -628,7 +623,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
                   key={key}
                   type="button"
                   onClick={() => selectDate(d)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold tabular-nums border transition-colors ${
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold tabular-nums border transition-colors whitespace-nowrap ${
                     selected
                       ? 'bg-sky-600/50 border-sky-500 text-white'
                       : 'bg-gray-800/80 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
@@ -639,7 +634,24 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               );
             })}
           </div>
-        )}
+        ) : null}
+
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
+          {predictionAgeLabel ? (
+            <span className={`text-[10px] font-normal tabular-nums whitespace-nowrap ${predictionAgeClass}`}>
+              {predictionAgeLabel}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void refreshModelProbabilities()}
+            disabled={modelRefreshing || !selectedDateCol}
+            className="inline-flex items-center justify-center rounded border border-gray-700 bg-gray-800/80 p-0.5 text-gray-400 hover:bg-gray-700 hover:text-gray-200 disabled:opacity-40"
+            title="Refresh predictions"
+          >
+            <RefreshCw className={`h-3 w-3 ${modelRefreshing ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
       <div className="panel-body flex-1 min-h-0 flex gap-2">

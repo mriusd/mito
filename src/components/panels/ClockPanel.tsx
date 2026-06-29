@@ -15,10 +15,17 @@ const FALLBACK_TIMEZONES = [
   'Asia/Tokyo',
 ] as const;
 
-const TIMEZONES: string[] =
-  typeof Intl !== 'undefined' && 'supportedValuesOf' in Intl
-    ? [...Intl.supportedValuesOf('timeZone')].sort((a, b) => a.localeCompare(b))
-    : [...FALLBACK_TIMEZONES];
+function loadTimeZones(): string[] {
+  const intl = Intl as typeof Intl & {
+    supportedValuesOf?: (key: 'timeZone') => string[];
+  };
+  if (typeof intl.supportedValuesOf === 'function') {
+    return [...intl.supportedValuesOf('timeZone')].sort((a, b) => a.localeCompare(b));
+  }
+  return [...FALLBACK_TIMEZONES];
+}
+
+const TIMEZONES: string[] = loadTimeZones();
 
 const DEFAULT_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 

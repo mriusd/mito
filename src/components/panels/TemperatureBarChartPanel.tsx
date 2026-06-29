@@ -1,5 +1,6 @@
 import { RefreshCw } from 'lucide-react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useAppStore } from '../../stores/appStore';
 import { formatDateShort, formatElapsedSinceMs, getOrderClobTokenId, normalizeClobTokenId, tradeElapsedColorClass } from '../../utils/format';
 import { useWalletTradeElapsedMs } from '../../lib/walletTradeElapsedStore';
@@ -648,6 +649,9 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     return initialCity;
   });
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
+  const [cityMenuPos, setCityMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const cityBtnRef = useRef<HTMLButtonElement>(null);
+  const cityMenuRef = useRef<HTMLDivElement>(null);
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(() =>
     localStorage.getItem(`polybot-weather-temp-bars-date-${panelId}`),
   );
@@ -657,6 +661,36 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const [modelRefreshing, setModelRefreshing] = useState(false);
 
   const cityMeta = WEATHER_CITIES.find((c) => c.slug === city) ?? WEATHER_CITIES[0];
+
+  const closeCityMenu = useCallback(() => {
+    setCityDropdownOpen(false);
+    setCityMenuPos(null);
+  }, []);
+
+  const toggleCityMenu = useCallback(() => {
+    if (cityDropdownOpen) {
+      closeCityMenu();
+      return;
+    }
+    const el = cityBtnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setCityMenuPos({ top: r.bottom + 4, left: r.left });
+    setCityDropdownOpen(true);
+  }, [cityDropdownOpen, closeCityMenu]);
+
+  useEffect(() => {
+    if (!cityDropdownOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (cityBtnRef.current?.contains(t)) return;
+      if (cityMenuRef.current?.contains(t)) return;
+      closeCityMenu();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [cityDropdownOpen, closeCityMenu]);
+
   const allMarkets = useAppStore((s) => s.weatherMarkets[city] ?? EMPTY_MARKETS);
   const highMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'high'), [allMarkets]);
   const lowMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'low'), [allMarkets]);
@@ -792,37 +826,24 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 h-full flex flex-col min-h-0">
-      <div className="panel-header shrink-0 mb-2 no-drag flex items-center gap-2 min-w-0 overflow-x-auto">
-        <span
-          className="relative inline-flex shrink-0 items-center cursor-pointer select-none text-sm font-bold text-sky-400"
-          onClick={() => setCityDropdownOpen((v) => !v)}
+      <div className="panel-header relative z-30 mb-2 flex shrink-0 cursor-grab items-center gap-2 min-w-0">
+        <span className="shrink-0 text-xs font-bold text-gray-500">Temp Odds</span>
+
+        <button
+          ref={cityBtnRef}
+          type="button"
+          className="no-drag relative inline-flex shrink-0 items-center text-sm font-bold text-sky-400"
+          onClick={toggleCityMenu}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           {cityMeta.label}
           <svg className="w-3 h-3 ml-0.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="6 9 12 15 18 9" />
           </svg>
-          {cityDropdownOpen && (
-            <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[120px] max-h-48 overflow-y-auto">
-              {WEATHER_CITIES.map((c) => (
-                <div
-                  key={c.slug}
-                  className={`px-3 py-1 text-xs font-bold hover:bg-gray-700 cursor-pointer ${c.slug === city ? 'text-white bg-gray-700' : 'text-gray-300'}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCity(c.slug);
-                    localStorage.setItem(`polybot-weather-temp-bars-city-${panelId}`, c.slug);
-                    setCityDropdownOpen(false);
-                  }}
-                >
-                  {c.label}
-                </div>
-              ))}
-            </div>
-          )}
-        </span>
+        </button>
 
         {dateColumns.length > 0 ? (
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {dateColumns.map((d) => {
               const key = dateStorageKey(d.endDate);
               const selected =
@@ -835,10 +856,10 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
                   key={key}
                   type="button"
                   onClick={() => selectDate(d)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold tabular-nums border transition-colors whitespace-nowrap ${
+                  className={`whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-bold tabular-nums transition-colors ${
                     selected
-                      ? 'bg-sky-600/50 border-sky-500 text-white'
-                      : 'bg-gray-800/80 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                      ? 'border-sky-500 bg-sky-600/50 text-white'
+                      : 'border-gray-700 bg-gray-800/80 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
                   } ${isEnded ? 'opacity-50' : ''} ${isWeekend && !selected ? 'text-purple-400' : ''}`}
                 >
                   {formatDateHeader(d.endDate)}
@@ -850,7 +871,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
           {predictionAgeLabel ? (
-            <span className={`text-[10px] font-normal tabular-nums whitespace-nowrap ${predictionAgeClass}`}>
+            <span className={`whitespace-nowrap text-[10px] font-normal tabular-nums ${predictionAgeClass}`}>
               {predictionAgeLabel}
             </span>
           ) : null}
@@ -858,13 +879,39 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
             type="button"
             onClick={() => void refreshModelProbabilities()}
             disabled={modelRefreshing || !selectedDateCol}
-            className="inline-flex items-center justify-center rounded border border-gray-700 bg-gray-800/80 p-0.5 text-gray-400 hover:bg-gray-700 hover:text-gray-200 disabled:opacity-40"
+            className="no-drag inline-flex items-center justify-center rounded border border-gray-700 bg-gray-800/80 p-0.5 text-gray-400 hover:bg-gray-700 hover:text-gray-200 disabled:opacity-40"
             title="Refresh predictions"
           >
             <RefreshCw className={`h-3 w-3 ${modelRefreshing ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
+
+      {cityDropdownOpen && cityMenuPos && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              ref={cityMenuRef}
+              className="fixed z-[9999] max-h-48 min-w-[120px] overflow-y-auto rounded border border-gray-600 bg-gray-800 shadow-lg"
+              style={{ top: cityMenuPos.top, left: cityMenuPos.left }}
+            >
+              {WEATHER_CITIES.map((c) => (
+                <button
+                  key={c.slug}
+                  type="button"
+                  className={`block w-full cursor-pointer px-3 py-1 text-left text-xs font-bold hover:bg-gray-700 ${c.slug === city ? 'bg-gray-700 text-white' : 'text-gray-300'}`}
+                  onClick={() => {
+                    setCity(c.slug);
+                    localStorage.setItem(`polybot-weather-temp-bars-city-${panelId}`, c.slug);
+                    closeCityMenu();
+                  }}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
 
       <div className="panel-body flex-1 min-h-0 flex gap-2">
         {allMarkets.length === 0 ? (

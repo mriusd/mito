@@ -302,7 +302,8 @@ export type PanelType =
   | 'pair-trading'
   | 'weather-markets'
   | 'weather-temperature'
-  | 'weather-temp-bars';
+  | 'weather-temp-bars'
+  | 'clock';
 
 export type WeatherCitySlug =
   | 'nyc'

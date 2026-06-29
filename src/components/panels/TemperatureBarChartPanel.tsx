@@ -4,6 +4,9 @@ import { createPortal } from 'react-dom';
 import { useAppStore } from '../../stores/appStore';
 import { formatDateShort, formatElapsedSinceMs, getOrderClobTokenId, normalizeClobTokenId, tradeElapsedColorClass } from '../../utils/format';
 import { useWalletTradeElapsedMs } from '../../lib/walletTradeElapsedStore';
+import { useExpiryNow } from '../../hooks/useExpiryNow';
+import { formatMarketCountdown } from '../../lib/marketCountdown';
+import { weatherMarketExpiryMsForEvent } from '../../lib/weatherMarketExpiry';
 import type { Market, Order, WeatherCitySlug } from '../../types';
 import { WEATHER_CITIES } from '../../types';
 import {
@@ -777,6 +780,25 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     [panelId],
   );
 
+  const expiryNow = useExpiryNow();
+  const marketExpiryMs = useMemo(() => {
+    if (!selectedDateCol?.slug) return null;
+    return weatherMarketExpiryMsForEvent(city, selectedDateCol.slug);
+  }, [city, selectedDateCol?.slug]);
+
+  const expiryCountdown = useMemo(() => {
+    if (marketExpiryMs == null) return null;
+    return formatMarketCountdown(new Date(marketExpiryMs).toISOString(), expiryNow);
+  }, [marketExpiryMs, expiryNow]);
+
+  const expiryCountdownClass = useMemo(() => {
+    if (!expiryCountdown?.text) return 'text-gray-500';
+    if (expiryCountdown.text === 'Expired') return 'text-red-400';
+    if (expiryCountdown.remaining < 60000) return 'text-red-400';
+    if (expiryCountdown.remaining > 300000) return 'text-green-400';
+    return 'text-yellow-400';
+  }, [expiryCountdown]);
+
   const highDateCol = useMemo(
     () => (highGrid && selectedDateCol ? findDateColForEndDate(highGrid.dates, selectedDateCol.endDate) : undefined),
     [highGrid, selectedDateCol],
@@ -870,6 +892,14 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
         ) : null}
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
+          {expiryCountdown?.text ? (
+            <span
+              className={`whitespace-nowrap text-[10px] font-normal tabular-nums ${expiryCountdownClass}`}
+              title="Time until market expiry (local midnight after event day)"
+            >
+              {expiryCountdown.text}
+            </span>
+          ) : null}
           {predictionAgeLabel ? (
             <span className={`whitespace-nowrap text-[10px] font-normal tabular-nums ${predictionAgeClass}`}>
               {predictionAgeLabel}

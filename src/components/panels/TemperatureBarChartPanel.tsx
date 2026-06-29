@@ -1,5 +1,5 @@
 import { RefreshCw } from 'lucide-react';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { formatDateShort, formatElapsedSinceMs, getOrderClobTokenId, normalizeClobTokenId, tradeElapsedColorClass } from '../../utils/format';
 import { useWalletTradeElapsedMs } from '../../lib/walletTradeElapsedStore';
@@ -17,7 +17,7 @@ import {
   type WeatherGridData,
 } from '../../lib/weatherMarketsGrid';
 import { fetchWeatherProbabilities, type WeatherProbabilitiesPayload } from '../../api';
-import { outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
+import { outcomeBestAskProb, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
 import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
 import { getGridBidAskPairSnapshot } from '../../hooks/useThrottledBidAskPair';
@@ -88,6 +88,123 @@ function tempOrderMarkClass(mark: TempOddsOrderMark): string {
   return 'bg-gray-400';
 }
 
+const MARK_LINE =
+  'absolute h-[2px] pointer-events-none shadow-[0_0_2px_rgba(0,0,0,0.85)]';
+
+function fracLevelKey(frac: number): string {
+  return (frac * 10000).toFixed(0);
+}
+
+function fracToBottomPx(frac: number, maxPct: number, trackPx: number): number {
+  if (maxPct <= 0) return 0;
+  return Math.min(trackPx, Math.max(0, (frac / maxPct) * trackPx));
+}
+
+type TempLevelMark =
+  | { kind: 'entry'; outcome: 'YES' | 'NO' }
+  | { kind: 'order'; mark: TempOddsOrderMark; index: number };
+
+type TempLevelGroup = { frac: number; items: TempLevelMark[] };
+
+function buildTempLevelGroups(
+  entry: { frac: number; outcome: 'YES' | 'NO' } | null,
+  orderMarks: TempOddsOrderMark[],
+): TempLevelGroup[] {
+  const byLevel = new Map<string, TempLevelGroup>();
+  const push = (frac: number, item: TempLevelMark) => {
+    const key = fracLevelKey(frac);
+    const group = byLevel.get(key);
+    if (group) group.items.push(item);
+    else byLevel.set(key, { frac, items: [item] });
+  };
+  if (entry != null) {
+    push(entry.frac, { kind: 'entry', outcome: entry.outcome });
+  }
+  orderMarks.forEach((mark, index) => {
+    push(mark.frac, { kind: 'order', mark, index });
+  });
+  return [...byLevel.values()];
+}
+
+function renderTempLevelMarks(
+  groups: TempLevelGroup[],
+  maxPct: number,
+  trackPx: number,
+): ReactNode[] {
+  const out: ReactNode[] = [];
+  for (const { frac, items } of groups) {
+    const bottomPx = fracToBottomPx(frac, maxPct, trackPx);
+    const levelKey = fracLevelKey(frac);
+    const entryItem = items.find((i) => i.kind === 'entry');
+    const orderItems = items.filter((i): i is Extract<TempLevelMark, { kind: 'order' }> => i.kind === 'order');
+
+    if (entryItem && orderItems.length > 0) {
+      out.push(
+        <div
+          key={`${levelKey}-entry`}
+          className={`${MARK_LINE} z-10 ${tempEntryMarkClass(entryItem.outcome)}`}
+          style={{ bottom: bottomPx, left: 0, width: '50%' }}
+        />,
+      );
+      const sliceW = 50 / orderItems.length;
+      orderItems.forEach((o, j) => {
+        out.push(
+          <div
+            key={`${levelKey}-order-${o.index}-${o.mark.side}-${o.mark.outcome}`}
+            className={`${MARK_LINE} z-[11] ${tempOrderMarkClass(o.mark)}`}
+            style={{ bottom: bottomPx, left: `${50 + j * sliceW}%`, width: `${sliceW}%` }}
+          />,
+        );
+      });
+      continue;
+    }
+
+    if (items.length === 1) {
+      const item = items[0];
+      if (item.kind === 'entry') {
+        out.push(
+          <div
+            key={`${levelKey}-entry`}
+            className={`${MARK_LINE} z-10 ${tempEntryMarkClass(item.outcome)}`}
+            style={{ bottom: bottomPx, left: 0, width: '100%' }}
+          />,
+        );
+      } else {
+        out.push(
+          <div
+            key={`${levelKey}-order-${item.index}`}
+            className={`${MARK_LINE} z-[11] ${tempOrderMarkClass(item.mark)}`}
+            style={{ bottom: bottomPx, left: 0, width: '100%' }}
+          />,
+        );
+      }
+      continue;
+    }
+
+    const sliceW = 100 / items.length;
+    items.forEach((item, j) => {
+      if (item.kind === 'entry') {
+        out.push(
+          <div
+            key={`${levelKey}-entry-${j}`}
+            className={`${MARK_LINE} z-10 ${tempEntryMarkClass(item.outcome)}`}
+            style={{ bottom: bottomPx, left: `${j * sliceW}%`, width: `${sliceW}%` }}
+          />,
+        );
+      } else {
+        out.push(
+          <div
+            key={`${levelKey}-order-${item.index}-${j}`}
+            className={`${MARK_LINE} z-[11] ${tempOrderMarkClass(item.mark)}`}
+            style={{ bottom: bottomPx, left: `${j * sliceW}%`, width: `${sliceW}%` }}
+          />,
+        );
+      }
+    });
+  }
+  return out;
+}
+
 function orderYesMark(order: Order, yesTokenId: string, noTokenId: string): TempOddsOrderMark | null {
   const tid = normalizeClobTokenId(getOrderClobTokenId(order));
   const yesKey = normalizeClobTokenId(yesTokenId);
@@ -134,7 +251,18 @@ function buildOrderLookup(orders: Order[]): Record<string, Order[]> {
   return lookup;
 }
 
-function getMarketYesProb(market: Market): number | null {
+function spreadBarColor(barColor: string): string {
+  if (barColor.includes('/')) return barColor.replace(/\/\d+/, '/40');
+  return `${barColor}/40`;
+}
+
+type MarketYesQuote = {
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+};
+
+function getMarketYesQuote(market: Market): MarketYesQuote {
   const tokenIds = market.clobTokenIds || [];
   const yesTokenId = tokenIds[0] || '';
   const noTokenId = tokenIds[1] || '';
@@ -142,18 +270,94 @@ function getMarketYesProb(market: Market): number | null {
   const lookup: Record<string, Market> = {};
   if (yesTokenId) lookup[yesTokenId] = (ws.yes as Market | undefined) ?? market;
   if (noTokenId && ws.no) lookup[noTokenId] = ws.no;
-  const prob = outcomeMidOrOneSideProb(yesTokenId, lookup, {
-    bestBid: market.bestBid,
-    bestAsk: market.bestAsk,
-  });
-  if (prob == null || !Number.isFinite(prob)) return null;
-  return Math.max(0, Math.min(1, prob));
+  const gamma = { bestBid: market.bestBid, bestAsk: market.bestAsk };
+  const bid = outcomeBestBidProb(yesTokenId, lookup, gamma);
+  const ask = outcomeBestAskProb(yesTokenId, lookup, gamma);
+  const mid = outcomeMidOrOneSideProb(yesTokenId, lookup, gamma);
+  return { bid, ask, mid };
+}
+
+function quoteScaleLevels(quote: MarketYesQuote): number[] {
+  return [quote.bid, quote.ask, quote.mid].filter((v): v is number => v != null);
+}
+
+function renderMarketSpreadBar(
+  quote: MarketYesQuote,
+  maxPct: number,
+  trackPx: number,
+  barColor: string,
+): ReactNode {
+  const bidPx = quote.bid != null ? fracToBottomPx(quote.bid, maxPct, trackPx) : 0;
+  const askPx = quote.ask != null ? fracToBottomPx(quote.ask, maxPct, trackPx) : 0;
+  const midPx = quote.mid != null ? fracToBottomPx(quote.mid, maxPct, trackPx) : null;
+  const spreadColor = spreadBarColor(barColor);
+  const hasSpread = quote.bid != null && quote.ask != null && askPx > bidPx + 0.5;
+  const topPx = Math.max(bidPx, askPx, midPx ?? 0);
+  if (topPx <= 0) return null;
+
+  const nodes: ReactNode[] = [];
+
+  if (hasSpread) {
+    if (bidPx > 0) {
+      nodes.push(
+        <div
+          key="bid"
+          className={`absolute bottom-0 left-0 right-0 pointer-events-none ${barColor}`}
+          style={{ height: bidPx }}
+        />,
+      );
+    }
+    nodes.push(
+      <div
+        key="spread"
+        className={`absolute left-0 right-0 rounded-t-sm pointer-events-none ${spreadColor}`}
+        style={{ bottom: bidPx, height: askPx - bidPx }}
+      />,
+    );
+  } else if (quote.bid != null && bidPx > 0) {
+    nodes.push(
+      <div
+        key="bid-only"
+        className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${barColor}`}
+        style={{ height: bidPx }}
+      />,
+    );
+  } else if (quote.ask != null && askPx > 0) {
+    nodes.push(
+      <div
+        key="ask-only"
+        className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${spreadColor}`}
+        style={{ height: askPx }}
+      />,
+    );
+  } else if (midPx != null && midPx > 0) {
+    nodes.push(
+      <div
+        key="mid-only"
+        className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${barColor}`}
+        style={{ height: midPx }}
+      />,
+    );
+  }
+
+  if (midPx != null && topPx > 2) {
+    nodes.push(
+      <div
+        key="mid-gap"
+        className="absolute left-0 right-0 z-[5] pointer-events-none bg-gray-900"
+        style={{ bottom: midPx - 1, height: 2 }}
+      />,
+    );
+  }
+
+  return nodes;
 }
 
 type TempOddsBucket = {
   temp: string;
   label: string;
   market: Market;
+  quote: MarketYesQuote;
   pct: number | null;
   modelPct: number | null;
   entry: { frac: number; outcome: 'YES' | 'NO' } | null;
@@ -171,11 +375,13 @@ function buildTempOddsBuckets(
   const entries: TempOddsBucket[] = buckets.map(({ temp, label, market }) => {
     const yesTokenId = market.clobTokenIds?.[0] || '';
     const noTokenId = market.clobTokenIds?.[1] || '';
+    const quote = getMarketYesQuote(market);
     return {
       temp,
       label,
       market,
-      pct: getMarketYesProb(market),
+      quote,
+      pct: quote.mid,
       modelPct: lookupModelBucketProb(modelBuckets, temp),
       entry: marketEntryYesFrac(yesTokenId, noTokenId, positions, liveTradesSource, onchainWsPositions),
       orderMarks: marketOrderYesMarks(yesTokenId, noTokenId, orderLookup),
@@ -183,8 +389,7 @@ function buildTempOddsBuckets(
   });
   const maxPct = Math.max(
     0.001,
-    ...entries.map((e) => e.pct ?? 0),
-    ...entries.map((e) => e.modelPct ?? 0),
+    ...entries.flatMap((e) => [...quoteScaleLevels(e.quote), e.modelPct ?? 0]),
   );
   return { entries, maxPct };
 }
@@ -210,6 +415,7 @@ function useTempOddsBuckets(
 
 interface TempOddsBarProps {
   label: string;
+  quote: MarketYesQuote;
   pct: number | null;
   modelPct: number | null;
   maxPct: number;
@@ -227,6 +433,7 @@ interface TempOddsBarProps {
 
 function TempOddsBar({
   label,
+  quote,
   pct,
   modelPct,
   maxPct,
@@ -241,23 +448,39 @@ function TempOddsBar({
   showProb = true,
   showLabel = true,
 }: TempOddsBarProps) {
-  const barPx = pct != null && maxPct > 0 ? Math.max(2, (pct / maxPct) * trackPx) : 0;
   const modelBarPx =
     modelPct != null && maxPct > 0 ? Math.max(2, (modelPct / maxPct) * trackPx) : 0;
-  const entryBottomPx =
-    entry != null && maxPct > 0 ? Math.min(trackPx, Math.max(0, (entry.frac / maxPct) * trackPx)) : null;
+  const levelMarkGroups = useMemo(
+    () => buildTempLevelGroups(entry, orderMarks),
+    [entry, orderMarks],
+  );
+  const levelMarks = useMemo(
+    () => renderTempLevelMarks(levelMarkGroups, maxPct, trackPx),
+    [levelMarkGroups, maxPct, trackPx],
+  );
+  const marketBar = useMemo(
+    () => renderMarketSpreadBar(quote, maxPct, trackPx, barColor),
+    [quote, maxPct, trackPx, barColor],
+  );
   const entryTip =
     entry != null ? `Entry ${(entry.frac * 100).toFixed(1)}¢ (${entry.outcome})` : undefined;
   const orderTips = orderMarks.map(
     (m) => `Order ${(m.frac * 100).toFixed(1)}¢ (${m.outcome} ${m.side})`,
   );
+  const quoteTip = [
+    quote.bid != null ? `Bid ${Math.round(quote.bid * 100)}%` : null,
+    quote.mid != null ? `Mid ${Math.round(quote.mid * 100)}%` : null,
+    quote.ask != null ? `Ask ${Math.round(quote.ask * 100)}%` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <button
       type="button"
       className={`no-drag flex flex-col items-center justify-end flex-1 min-w-0 h-full px-0.5 group ${selected ? 'ring-1 ring-white/40 rounded' : ''}`}
       onClick={onClick}
-      title={[marketTitle, entryTip, ...orderTips].filter(Boolean).join(' · ')}
+      title={[marketTitle, quoteTip, entryTip, ...orderTips].filter(Boolean).join(' · ')}
     >
       {showProb ? (
         <span className="text-[9px] text-gray-400 mb-0.5 tabular-nums shrink-0 min-h-[12px] leading-none flex w-full gap-0.5">
@@ -278,31 +501,9 @@ function TempOddsBar({
             ) : null}
           </div>
           <div className="relative flex-1 min-w-0 h-full">
-            {barPx > 0 ? (
-              <div
-                className={`absolute bottom-0 left-0 right-0 rounded-t-sm transition-opacity group-hover:opacity-90 ${barColor}`}
-                style={{ height: barPx }}
-              />
-            ) : null}
+            {marketBar}
           </div>
-          {orderMarks.map((mark, i) => {
-            const bottomPx =
-              maxPct > 0 ? Math.min(trackPx, Math.max(0, (mark.frac / maxPct) * trackPx)) : null;
-            if (bottomPx == null) return null;
-            return (
-              <div
-                key={`order-${i}-${mark.frac}-${mark.side}-${mark.outcome}`}
-                className={`absolute left-0 right-0 h-[2px] z-[11] pointer-events-none shadow-[0_0_2px_rgba(0,0,0,0.85)] ${tempOrderMarkClass(mark)}`}
-                style={{ bottom: bottomPx }}
-              />
-            );
-          })}
-          {entryBottomPx != null && entry != null ? (
-            <div
-              className={`absolute left-0 right-0 h-[2px] z-10 pointer-events-none shadow-[0_0_2px_rgba(0,0,0,0.85)] ${tempEntryMarkClass(entry.outcome)}`}
-              style={{ bottom: entryBottomPx }}
-            />
-          ) : null}
+          {levelMarks}
         </div>
       </div>
       {showLabel ? (
@@ -396,10 +597,11 @@ function TempOddsChart({
             </div>
             <div ref={plotRef} className="flex-1 min-h-[40px] flex items-end gap-0.5">
               {trackPx > 0
-                ? entries.map(({ temp, label, market, pct, modelPct, entry, orderMarks }) => (
+                ? entries.map(({ temp, label, market, quote, pct, modelPct, entry, orderMarks }) => (
                     <TempOddsBar
                       key={temp}
                       label={label}
+                      quote={quote}
                       pct={pct}
                       modelPct={modelPct}
                       maxPct={maxPct}
@@ -673,7 +875,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           <>
             <TempOddsChart
               barColor="bg-cyan-400/90"
-              modelBarColor="bg-cyan-400/40"
+              modelBarColor="bg-teal-400/50"
               grid={lowGrid}
               dateCol={lowDateCol}
               selectedMarketId={selectedMarketId}
@@ -686,7 +888,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
             />
             <TempOddsChart
               barColor="bg-red-400/90"
-              modelBarColor="bg-red-400/40"
+              modelBarColor="bg-amber-400/50"
               grid={highGrid}
               dateCol={highDateCol}
               selectedMarketId={selectedMarketId}

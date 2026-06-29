@@ -78,6 +78,22 @@ export function gammaImpliedNoBestBid(gammaYesBook: { bestAsk?: number }): { bes
   return hasQuoteSide(implied) ? { bestBid: implied } : undefined;
 }
 
+/** Best ask on outcome token as implied probability [0,1]; live book + optional Gamma fallback. */
+export function outcomeBestAskProb(
+  tokenId: string | undefined,
+  lookup: Record<string, Market>,
+  gammaFallback?: { bestBid?: number; bestAsk?: number },
+  opts?: { liveOnly?: boolean },
+): number | null {
+  const live = tokenId ? lookup[tokenId] : null;
+  const ba =
+    opts?.liveOnly && live
+      ? pickSideLiveOnly(live.bestAsk)
+      : pickSide(live?.bestAsk, gammaFallback?.bestAsk);
+  if (hasQuoteSide(ba)) return ba!;
+  return null;
+}
+
 /** Best bid on outcome token as implied probability [0,1]; live book + optional Gamma fallback (same pick rules as mid). */
 export function outcomeBestBidProb(
   tokenId: string | undefined,

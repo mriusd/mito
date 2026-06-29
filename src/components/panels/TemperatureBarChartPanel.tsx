@@ -251,11 +251,6 @@ function buildOrderLookup(orders: Order[]): Record<string, Order[]> {
   return lookup;
 }
 
-function spreadBarColor(barColor: string): string {
-  if (barColor.includes('/')) return barColor.replace(/\/\d+/, '/40');
-  return `${barColor}/40`;
-}
-
 type MarketYesQuote = {
   bid: number | null;
   ask: number | null;
@@ -286,11 +281,11 @@ function renderMarketSpreadBar(
   maxPct: number,
   trackPx: number,
   barColor: string,
+  barSpreadColor: string,
 ): ReactNode {
   const bidPx = quote.bid != null ? fracToBottomPx(quote.bid, maxPct, trackPx) : 0;
   const askPx = quote.ask != null ? fracToBottomPx(quote.ask, maxPct, trackPx) : 0;
   const midPx = quote.mid != null ? fracToBottomPx(quote.mid, maxPct, trackPx) : null;
-  const spreadColor = spreadBarColor(barColor);
   const hasSpread = quote.bid != null && quote.ask != null && askPx > bidPx + 0.5;
   const topPx = Math.max(bidPx, askPx, midPx ?? 0);
   if (topPx <= 0) return null;
@@ -310,7 +305,7 @@ function renderMarketSpreadBar(
     nodes.push(
       <div
         key="spread"
-        className={`absolute left-0 right-0 rounded-t-sm pointer-events-none ${spreadColor}`}
+        className={`absolute left-0 right-0 rounded-t-sm pointer-events-none ${barSpreadColor}`}
         style={{ bottom: bidPx, height: askPx - bidPx }}
       />,
     );
@@ -326,7 +321,7 @@ function renderMarketSpreadBar(
     nodes.push(
       <div
         key="ask-only"
-        className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${spreadColor}`}
+        className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${barSpreadColor}`}
         style={{ height: askPx }}
       />,
     );
@@ -421,6 +416,7 @@ interface TempOddsBarProps {
   maxPct: number;
   trackPx: number;
   barColor: string;
+  barSpreadColor: string;
   modelBarColor: string;
   selected: boolean;
   entry: { frac: number; outcome: 'YES' | 'NO' } | null;
@@ -439,6 +435,7 @@ function TempOddsBar({
   maxPct,
   trackPx,
   barColor,
+  barSpreadColor,
   modelBarColor,
   selected,
   entry,
@@ -459,8 +456,8 @@ function TempOddsBar({
     [levelMarkGroups, maxPct, trackPx],
   );
   const marketBar = useMemo(
-    () => renderMarketSpreadBar(quote, maxPct, trackPx, barColor),
-    [quote, maxPct, trackPx, barColor],
+    () => renderMarketSpreadBar(quote, maxPct, trackPx, barColor, barSpreadColor),
+    [quote, maxPct, trackPx, barColor, barSpreadColor],
   );
   const entryTip =
     entry != null ? `Entry ${(entry.frac * 100).toFixed(1)}¢ (${entry.outcome})` : undefined;
@@ -517,6 +514,7 @@ function TempOddsBar({
 
 interface TempOddsChartProps {
   barColor: string;
+  barSpreadColor: string;
   modelBarColor: string;
   grid: WeatherGridData | null;
   dateCol: DateCol | undefined;
@@ -531,6 +529,7 @@ interface TempOddsChartProps {
 
 function TempOddsChart({
   barColor,
+  barSpreadColor,
   modelBarColor,
   grid,
   dateCol,
@@ -607,6 +606,7 @@ function TempOddsChart({
                       maxPct={maxPct}
                       trackPx={trackPx}
                       barColor={barColor}
+                      barSpreadColor={barSpreadColor}
                       modelBarColor={modelBarColor}
                       selected={selectedMarketId === market.id}
                       entry={entry}
@@ -875,6 +875,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           <>
             <TempOddsChart
               barColor="bg-cyan-400/90"
+              barSpreadColor="bg-cyan-400/40"
               modelBarColor="bg-teal-400/50"
               grid={lowGrid}
               dateCol={lowDateCol}
@@ -888,6 +889,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
             />
             <TempOddsChart
               barColor="bg-red-400/90"
+              barSpreadColor="bg-red-400/40"
               modelBarColor="bg-amber-400/50"
               grid={highGrid}
               dateCol={highDateCol}

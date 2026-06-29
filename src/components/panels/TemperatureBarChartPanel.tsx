@@ -83,7 +83,7 @@ function tempEntryMarkClass(outcome: 'YES' | 'NO'): string {
 }
 
 function tempOrderMarkClass(mark: TempOddsOrderMark): string {
-  if (mark.side === 'BUY' && mark.outcome === 'YES') return 'bg-blue-500';
+  if (mark.side === 'BUY' && mark.outcome === 'YES') return 'bg-purple-600';
   if (mark.side === 'BUY' && mark.outcome === 'NO') return 'bg-yellow-400';
   return 'bg-gray-400';
 }

@@ -510,6 +510,20 @@ export function DraggableCanvas() {
     [handleUserLayoutChange],
   );
 
+  useEffect(() => {
+    const endStuckLayoutGesture = () => {
+      layoutInteractingRef.current = false;
+    };
+    window.addEventListener('pointerup', endStuckLayoutGesture, true);
+    window.addEventListener('pointercancel', endStuckLayoutGesture, true);
+    window.addEventListener('blur', endStuckLayoutGesture);
+    return () => {
+      window.removeEventListener('pointerup', endStuckLayoutGesture, true);
+      window.removeEventListener('pointercancel', endStuckLayoutGesture, true);
+      window.removeEventListener('blur', endStuckLayoutGesture);
+    };
+  }, []);
+
   const handleRemovePanel = useCallback(
     (id: string) => {
       // Find the panel type before removing

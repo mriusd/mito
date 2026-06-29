@@ -22,6 +22,8 @@ export function HelpTooltip({ text, openOnHover = false, children, wrapClassName
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const dragStartYRef = useRef<number | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sheetOffsetRef = useRef(sheetOffset);
+  sheetOffsetRef.current = sheetOffset;
 
   const clearCloseTimer = useCallback(() => {
     if (closeTimerRef.current) {
@@ -74,10 +76,28 @@ export function HelpTooltip({ text, openOnHover = false, children, wrapClassName
   }, [clearCloseTimer]);
 
   useEffect(() => {
+    if (!sheetDragging) return;
+    const end = () => {
+      if (!sheetDragging) return;
+      const offset = sheetOffsetRef.current;
+      const shouldClose = offset > 90;
+      setSheetDragging(false);
+      dragStartYRef.current = null;
+      if (shouldClose) closeMobileSheet();
+      else setSheetOffset(0);
+    };
+    window.addEventListener('pointerup', end, true);
+    window.addEventListener('pointercancel', end, true);
+    return () => {
+      window.removeEventListener('pointerup', end, true);
+      window.removeEventListener('pointercancel', end, true);
+    };
+  }, [sheetDragging]);
+
+  useEffect(() => {
     if (!open) return;
     if (isMobile) return;
     updatePos();
-    // Re-position after popup renders so we can read its actual width
     const raf = requestAnimationFrame(updatePos);
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;

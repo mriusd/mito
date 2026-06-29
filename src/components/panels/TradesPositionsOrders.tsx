@@ -328,6 +328,28 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const [assetFilter, setAssetFilter] = useState(
     localStorage.getItem('polymarket-table-asset-filter') || 'ALL'
   );
+  type PosSortCol = 'expiry' | 'pnl' | 'pnlPct';
+  const [posSortCol, setPosSortCol] = useState<PosSortCol>(() => {
+    const v = localStorage.getItem(`polymarket-tpo-pos-sort-col-${panelId}`);
+    return v === 'pnl' || v === 'pnlPct' ? v : 'expiry';
+  });
+  const [posSortDir, setPosSortDir] = useState<1 | -1>(() => {
+    const v = parseInt(localStorage.getItem(`polymarket-tpo-pos-sort-dir-${panelId}`) || '-1', 10);
+    return v === 1 ? 1 : -1;
+  });
+
+  const togglePosSort = (col: 'pnl' | 'pnlPct') => {
+    if (posSortCol === col) {
+      const nd = (posSortDir === 1 ? -1 : 1) as 1 | -1;
+      setPosSortDir(nd);
+      localStorage.setItem(`polymarket-tpo-pos-sort-dir-${panelId}`, String(nd));
+      return;
+    }
+    setPosSortCol(col);
+    setPosSortDir(-1);
+    localStorage.setItem(`polymarket-tpo-pos-sort-col-${panelId}`, col);
+    localStorage.setItem(`polymarket-tpo-pos-sort-dir-${panelId}`, '-1');
+  };
 
   const handleSetTab = (t: 'trades' | 'positions' | 'orders') => {
     setTab(t);
@@ -568,8 +590,18 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
       const clickable = !!market;
       return { tid, asset, endDate, marketName: mktLabel, outcome, size, entryPrice, cost, currentPrice, currentValue, pnl, pnlPercent, marketId: market?.id ?? pos.market, clickable };
-    })
-    .sort(comparePositionsByExpiryDesc);
+    });
+
+  const displayPositions = useMemo(() => {
+    const rows = [...processedPositions];
+    if (posSortCol === 'pnl') {
+      return rows.sort((a, b) => (a.pnl - b.pnl) * posSortDir);
+    }
+    if (posSortCol === 'pnlPct') {
+      return rows.sort((a, b) => (a.pnlPercent - b.pnlPercent) * posSortDir);
+    }
+    return rows.sort(comparePositionsByExpiryDesc);
+  }, [processedPositions, posSortCol, posSortDir]);
 
   // Process orders
   const processedOrders = orders
@@ -608,6 +640,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const tPnlSign = totalPnl >= 0 ? '+' : '';
 
   const hCls = 'text-gray-500 py-1 px-1';
+  const hSortCls = `${hCls} cursor-pointer hover:text-white select-none no-drag`;
+  const posSortArrow = (col: PosSortCol) =>
+    posSortCol === col ? (posSortDir === 1 ? ' ▲' : ' ▼') : '';
 
   const trColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'22%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'12%'}}/></colgroup>;
   const posColgroup = <colgroup><col style={{width:'5%'}}/><col style={{width:'8%'}}/><col style={{width:'16%'}}/><col style={{width:'5%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'10%'}}/><col style={{width:'8%'}}/><col style={{width:'10%'}}/><col style={{width:'11%'}}/><col style={{width:'11%'}}/></colgroup>;
@@ -751,13 +786,25 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               <th className={`${hCls} text-right`}>Cost</th>
               <th className={`${hCls} text-right`}>Exit</th>
               <th className={`${hCls} text-right`}>Val</th>
-              <th className={`${hCls} text-right`}>PnL$</th>
-              <th className={`${hCls} text-right`}>PnL%</th>
+              <th
+                className={`${hSortCls} text-right`}
+                onClick={() => togglePosSort('pnl')}
+                title="Sort by PnL $"
+              >
+                PnL${posSortArrow('pnl')}
+              </th>
+              <th
+                className={`${hSortCls} text-right`}
+                onClick={() => togglePosSort('pnlPct')}
+                title="Sort by PnL %"
+              >
+                PnL%{posSortArrow('pnlPct')}
+              </th>
             </tr></thead></table>
             {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto min-h-0">
               <table className="w-full text-[10px] table-fixed">{posColgroup}<tbody>
-                {processedPositions.map((p) => {
+                {displayPositions.map((p) => {
                   const dd = getDateDisplay(p.endDate);
                   const pnlColor = p.pnl >= 0 ? 'text-green-400' : 'text-red-400';
                   const pnlSign = p.pnl >= 0 ? '+' : '-';

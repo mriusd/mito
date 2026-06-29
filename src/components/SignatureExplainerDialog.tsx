@@ -40,6 +40,10 @@ function close() {
   notify();
 }
 
+export function dismissSignatureExplainer(): void {
+  close();
+}
+
 // Show a pre-signature explainer, then run the async action while showing a spinner.
 // Resolves true on success, false on cancel or error.
 export function showSignatureExplainer(
@@ -97,7 +101,14 @@ export function SignatureExplainerDialog() {
   if (!state.visible) return null;
 
   return (
-    <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60">
+    <div
+      className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && state.phase !== 'signing') {
+          dismissSignatureExplainer();
+        }
+      }}
+    >
       <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 max-w-sm w-full mx-4 shadow-2xl">
         <div className="flex items-center gap-2 mb-3">
           <svg className="w-5 h-5 text-blue-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -108,9 +119,18 @@ export function SignatureExplainerDialog() {
         <p className="text-xs text-gray-300 whitespace-pre-line mb-4">{state.message}</p>
 
         {state.phase === 'signing' && (
-          <div className="flex items-center gap-2 py-2">
-            <Spinner />
-            <span className="text-xs text-blue-300">Waiting for wallet signature...</span>
+          <div className="flex items-center justify-between gap-2 py-2">
+            <div className="flex items-center gap-2">
+              <Spinner />
+              <span className="text-xs text-blue-300">Waiting for wallet signature...</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => dismissSignatureExplainer()}
+              className="px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded text-[10px] font-medium transition"
+            >
+              Cancel
+            </button>
           </div>
         )}
 

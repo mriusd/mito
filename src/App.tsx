@@ -32,6 +32,7 @@ import {
 } from './lib/marketGridKeyboard';
 import { pickLiveUpDownMarketInTfBucket } from './utils/format';
 import { setMarketDataRefreshFn } from './lib/marketDataRefresh';
+import { installUiInteractionRecovery } from './lib/uiInteractionRecovery';
 
 const SidebarLazy = lazyWithChunkReload(() =>
   import('./components/Sidebar').then((m) => ({ default: m.Sidebar })),
@@ -103,6 +104,8 @@ function App() {
     setMarketDataRefreshFn(refreshData);
     return () => setMarketDataRefreshFn(null);
   }, [refreshData]);
+
+  useEffect(() => installUiInteractionRecovery(), []);
 
   const handleRefresh = useCallback(async () => {
     await Promise.all([refreshData(), refreshWalletData()]);

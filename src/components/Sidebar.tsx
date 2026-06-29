@@ -161,6 +161,7 @@ import {
 } from '../lib/sidebarHistoryTip';
 import { readToxicFlowRowActionsTipDismissed } from '../lib/toxicFlowRowActionsTip';
 import { isOnboardingBlockingUiOpen, subscribeOnboardingBlockingUi } from '../lib/onboardingBlockingUi';
+import { subscribeUiEscapeDismiss } from '../lib/uiInteractionRecovery';
 import { getBidAskMarketRow } from '../lib/bidAskMarketLookup';
 import {
   ArrowRight,
@@ -2517,6 +2518,39 @@ export const Sidebar = memo(function Sidebar() {
       mobileDragStartYRef.current = null;
     }
   }, [sidebarOpen]);
+
+  useEffect(() => {
+    if (!mobileDragging) return;
+    const end = () => {
+      setMobileDragging(false);
+      setMobileDragOffset(0);
+      mobileDragStartYRef.current = null;
+    };
+    window.addEventListener('pointerup', end, true);
+    window.addEventListener('pointercancel', end, true);
+    return () => {
+      window.removeEventListener('pointerup', end, true);
+      window.removeEventListener('pointercancel', end, true);
+    };
+  }, [mobileDragging]);
+
+  useEffect(
+    () =>
+      subscribeUiEscapeDismiss(() => {
+        setNotifyDialogOpen(false);
+        setCustomDialogOpen(false);
+        setCrossingConfirmOpen(false);
+        setVolatilityConfirmOpen(false);
+        setMergeDialogOpen(false);
+        setHoldersExpandTipOpen(false);
+        setHistoryTipOpen(false);
+        setNotifyGearTipOpen(false);
+        setMobileDragging(false);
+        setMobileDragOffset(0);
+        mobileDragStartYRef.current = null;
+      }),
+    [],
+  );
 
   const canShowEmbeddedToxic =
     !isMobileSheet && !!selectedMarket && (selectedMarket.conditionId || '').trim().length > 0;

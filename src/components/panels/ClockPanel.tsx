@@ -2,7 +2,8 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'rea
 
 const CLOCK_FONT =
   'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace';
-const TICK_MS = 250;
+const MEASURE_TEXT = '88:88';
+const TICK_MS = 1000;
 
 const FALLBACK_TIMEZONES = [
   'UTC',
@@ -36,14 +37,21 @@ function readStoredTimezone(panelId: string): string {
   return TIMEZONES[0] || 'UTC';
 }
 
-function formatClockTime(date: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
+function formatClockParts(date: Date, timeZone: string): { hours: string; minutes: string; second: number } {
+  const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone,
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
+    second: 'numeric',
     hour12: false,
-  }).format(date);
+  }).formatToParts(date);
+  const get = (t: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === t)?.value ?? '00';
+  return {
+    hours: get('hour'),
+    minutes: get('minute'),
+    second: parseInt(get('second'), 10) || 0,
+  };
 }
 
 function measureFitFontSize(text: string, maxW: number, maxH: number): number {
@@ -70,7 +78,11 @@ function ClockPanelInner({ panelId }: { panelId: string }) {
   const [fontPx, setFontPx] = useState(48);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  const timeText = useMemo(() => formatClockTime(now, timeZone), [now, timeZone]);
+  const { hours, minutes, second } = useMemo(
+    () => formatClockParts(now, timeZone),
+    [now, timeZone],
+  );
+  const colonVisible = second % 2 === 0;
 
   useEffect(() => {
     const sync = () => setNow(new Date());
@@ -86,14 +98,14 @@ function ClockPanelInner({ panelId }: { panelId: string }) {
     const measure = () => {
       const w = el.clientWidth;
       const h = el.clientHeight;
-      setFontPx(measureFitFontSize(timeText, w, h));
+      setFontPx(measureFitFontSize(MEASURE_TEXT, w, h));
     };
 
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [timeText]);
+  }, [timeZone]);
 
   return (
     <div className="panel-wrapper flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-gray-800/50 p-3">
@@ -127,7 +139,9 @@ function ClockPanelInner({ panelId }: { panelId: string }) {
           className="select-none whitespace-nowrap font-mono font-bold tabular-nums leading-none text-white"
           style={{ fontSize: `${fontPx}px` }}
         >
-          {timeText}
+          {hours}
+          <span className={colonVisible ? 'opacity-100' : 'opacity-0'}>:</span>
+          {minutes}
         </div>
       </div>
     </div>

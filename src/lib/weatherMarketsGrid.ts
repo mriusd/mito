@@ -64,6 +64,26 @@ export function lookupModelBucketProb(
   const label = compactTempBucketLabel(temp);
   if (label in buckets) return buckets[label]!;
 
+  // The model emits 1-degree integer buckets keyed by floor(value). Markets may
+  // bucket those into ranges (e.g. "84-85") or open tails (e.g. "<75", ">94"),
+  // so aggregate the integer buckets that fall inside the market outcome.
+  const intKeys: number[] = [];
+  for (const k of Object.keys(buckets)) {
+    const n = Number(k);
+    if (Number.isInteger(n)) intKeys.push(n);
+  }
+  const sumRange = (lo: number, hi: number): number | null => {
+    let sum = 0;
+    let found = false;
+    for (const n of intKeys) {
+      if (n >= lo && n <= hi) {
+        sum += buckets[String(n)]!;
+        found = true;
+      }
+    }
+    return found ? sum : null;
+  };
+
   const intMatch = label.match(/^(\d+)$/);
   if (intMatch) {
     const n = parseInt(intMatch[1], 10);
@@ -71,20 +91,22 @@ export function lookupModelBucketProb(
     if (hi in buckets) return buckets[hi]!;
     const lo = `${n - 1}-${n}`;
     if (lo in buckets) return buckets[lo]!;
+    return null;
+  }
+
+  const rangeMatch = label.match(/^(\d+)-(\d+)$/);
+  if (rangeMatch) {
+    return sumRange(parseInt(rangeMatch[1], 10), parseInt(rangeMatch[2], 10));
   }
 
   const ltMatch = label.match(/^<(\d+)$/);
   if (ltMatch) {
-    const t = parseInt(ltMatch[1], 10);
-    if (`<${t}` in buckets) return buckets[`<${t}`]!;
-    return null;
+    return sumRange(Number.NEGATIVE_INFINITY, parseInt(ltMatch[1], 10));
   }
 
   const gtMatch = label.match(/^>(\d+)$/);
   if (gtMatch) {
-    const t = parseInt(gtMatch[1], 10);
-    if (`>${t}` in buckets) return buckets[`>${t}`]!;
-    return null;
+    return sumRange(parseInt(gtMatch[1], 10), Number.POSITIVE_INFINITY);
   }
 
   const bare = temp.replace(/°[FC]/gi, '').replace(/\s+/g, '');

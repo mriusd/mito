@@ -5,6 +5,7 @@ import { resolveMarketExpiryEndDate } from '../../lib/weatherMarketExpiry';
 import { buildTableData, filterWeatherMarkets, type WeatherGridData, type WeatherMetric } from '../../lib/weatherMarketsGrid';
 import type { Market, Order, WeatherCitySlug } from '../../types';
 import { WEATHER_CITIES } from '../../types';
+import { isWeatherCitySlug, mergeWeatherCityOptions } from '../../lib/weatherCities';
 import { GridMarketCell } from './GridMarketCell';
 import {
   useGridPositionLookup,
@@ -14,7 +15,6 @@ import { polymarketSiteUrl } from '../../lib/polymarketSiteUrl';
 
 const EMPTY_MARKETS: Market[] = [];
 const EMPTY_ORDERS: Order[] = [];
-const CITY_SLUGS = new Set<string>(WEATHER_CITIES.map((c) => c.slug));
 const METRICS: WeatherMetric[] = ['low', 'high'];
 
 interface WeatherMarketsTableProps {
@@ -148,13 +148,18 @@ function WeatherGridTable({
 function WeatherMarketsTableInner({ panelId, initialCity = 'nyc' }: WeatherMarketsTableProps) {
   const [city, setCity] = useState<WeatherCitySlug>(() => {
     const saved = localStorage.getItem(`polybot-weather-city-${panelId}`);
-    if (saved && CITY_SLUGS.has(saved)) return saved as WeatherCitySlug;
+    if (saved && isWeatherCitySlug(saved)) return saved;
     return initialCity;
   });
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
   const [pastFilterTick, setPastFilterTick] = useState(0);
 
-  const cityMeta = WEATHER_CITIES.find((c) => c.slug === city) ?? WEATHER_CITIES[0];
+  const weatherMarketsByCity = useAppStore((s) => s.weatherMarkets);
+  const cityOptions = useMemo(
+    () => mergeWeatherCityOptions(Object.keys(weatherMarketsByCity)),
+    [weatherMarketsByCity],
+  );
+  const cityMeta = cityOptions.find((c) => c.slug === city) ?? cityOptions[0] ?? WEATHER_CITIES[0];
   const allMarkets = useAppStore((s) => s.weatherMarkets[city] ?? EMPTY_MARKETS);
   const highMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'high'), [allMarkets]);
   const lowMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'low'), [allMarkets]);
@@ -221,7 +226,7 @@ function WeatherMarketsTableInner({ panelId, initialCity = 'nyc' }: WeatherMarke
             </svg>
             {cityDropdownOpen && (
               <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[120px] max-h-48 overflow-y-auto">
-                {WEATHER_CITIES.map((c) => (
+                {cityOptions.map((c) => (
                   <div
                     key={c.slug}
                     className={`px-3 py-1 text-xs font-bold hover:bg-gray-700 cursor-pointer ${c.slug === city ? 'text-white bg-gray-700' : 'text-gray-300'}`}

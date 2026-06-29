@@ -305,30 +305,18 @@ export type PanelType =
   | 'weather-temp-bars'
   | 'clock';
 
-export type WeatherCitySlug =
-  | 'nyc'
-  | 'london'
-  | 'hong-kong'
-  | 'chicago'
-  | 'miami'
-  | 'seoul'
-  | 'tokyo'
-  | 'paris'
-  | 'dallas'
-  | 'atlanta';
-
-export const WEATHER_CITIES: { slug: WeatherCitySlug; label: string }[] = [
-  { slug: 'nyc', label: 'NYC' },
-  { slug: 'london', label: 'London' },
-  { slug: 'hong-kong', label: 'Hong Kong' },
-  { slug: 'chicago', label: 'Chicago' },
-  { slug: 'miami', label: 'Miami' },
-  { slug: 'seoul', label: 'Seoul' },
-  { slug: 'tokyo', label: 'Tokyo' },
-  { slug: 'paris', label: 'Paris' },
-  { slug: 'dallas', label: 'Dallas' },
-  { slug: 'atlanta', label: 'Atlanta' },
-];
+export type {
+  WeatherCityMeta,
+  WeatherCitySlug,
+} from '../lib/weatherCities';
+export {
+  WEATHER_CITIES,
+  WEATHER_CITY_SLUGS,
+  isWeatherCitySlug,
+  mergeWeatherCityOptions,
+  weatherCityLabel,
+  weatherCityTimezone,
+} from '../lib/weatherCities';
 
 export interface PanelConfig {
   id: string;

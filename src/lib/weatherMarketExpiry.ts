@@ -1,4 +1,10 @@
-import type { Market, WeatherCitySlug } from '../types';
+import type { Market } from '../types';
+import {
+  WEATHER_CITIES,
+  isWeatherCitySlug,
+  weatherCityTimezone,
+  type WeatherCitySlug,
+} from './weatherCities';
 import { isWeatherMarket } from '../utils/format';
 
 const MONTH_NAMES = [
@@ -6,18 +12,9 @@ const MONTH_NAMES = [
   'july', 'august', 'september', 'october', 'november', 'december',
 ];
 
-export const WEATHER_CITY_TIMEZONES: Record<WeatherCitySlug, string> = {
-  nyc: 'America/New_York',
-  london: 'Europe/London',
-  'hong-kong': 'Asia/Hong_Kong',
-  chicago: 'America/Chicago',
-  miami: 'America/New_York',
-  seoul: 'Asia/Seoul',
-  tokyo: 'Asia/Tokyo',
-  paris: 'Europe/Paris',
-  dallas: 'America/Chicago',
-  atlanta: 'America/New_York',
-};
+export const WEATHER_CITY_TIMEZONES: Record<string, string> = Object.fromEntries(
+  WEATHER_CITIES.map((c) => [c.slug, c.timezone]),
+);
 
 type ParsedWeatherEventDay = { year: number; month: number; day: number };
 
@@ -36,8 +33,8 @@ export function parseWeatherCityFromSlug(eventSlug: string): WeatherCitySlug | n
   const m = eventSlug.match(/(?:highest|lowest)-temperature-in-([a-z-]+)-on-/i);
   if (!m) return null;
   const city = m[1].toLowerCase();
-  if (city in WEATHER_CITY_TIMEZONES) return city as WeatherCitySlug;
-  return null;
+  if (isWeatherCitySlug(city)) return city;
+  return city;
 }
 
 function parseWeatherEventDay(
@@ -103,13 +100,26 @@ export function zonedLocalMidnightUtcMs(year: number, month: number, day: number
   return utcMs;
 }
 
-function weatherTimezoneForEvent(eventSlug: string, cityOverride?: WeatherCitySlug | null): string {
-  if (cityOverride && WEATHER_CITY_TIMEZONES[cityOverride]) {
-    return WEATHER_CITY_TIMEZONES[cityOverride];
+function weatherTimezoneForMarket(
+  market: { eventSlug?: string; question?: string },
+  cityOverride?: WeatherCitySlug | null,
+): string {
+  if (cityOverride) return weatherCityTimezone(cityOverride);
+  const fromSlug = parseWeatherCityFromSlug(market.eventSlug || '');
+  if (fromSlug) return weatherCityTimezone(fromSlug);
+  const q = (market.question || '').toLowerCase();
+  for (const c of WEATHER_CITIES) {
+    const label = c.label.toLowerCase();
+    const slugWords = c.slug.replace(/-/g, ' ');
+    if (q.includes(`in ${label} `) || q.includes(`in ${label}?`) || q.includes(`in ${slugWords} `)) {
+      return c.timezone;
+    }
   }
-  const citySlug = parseWeatherCityFromSlug(eventSlug);
-  if (citySlug) return WEATHER_CITY_TIMEZONES[citySlug];
   return 'UTC';
+}
+
+function weatherTimezoneForEvent(eventSlug: string, cityOverride?: WeatherCitySlug | null): string {
+  return weatherTimezoneForMarket({ eventSlug, question: '' }, cityOverride);
 }
 
 /** Weather markets resolve at 00:00 local time on the day after the event calendar date. */
@@ -132,10 +142,9 @@ export function weatherMarketLocalMidnightExpiryMs(
     | undefined,
 ): number | null {
   if (!market || !isWeatherMarket(market)) return null;
-  const slug = (market.eventSlug || '').trim();
   const parsed = parseWeatherEventDay(market);
   if (!parsed) return null;
-  const timeZone = weatherTimezoneForEvent(slug);
+  const timeZone = weatherTimezoneForMarket(market);
   const expiryDay = addCalendarDaysUtc(parsed.year, parsed.month, parsed.day, 1);
   return zonedLocalMidnightUtcMs(expiryDay.year, expiryDay.month, expiryDay.day, timeZone);
 }

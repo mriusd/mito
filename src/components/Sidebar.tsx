@@ -78,7 +78,7 @@ import {
   SIDEBAR_TRADE_SOUND_VOLUME_KEY,
 } from '../lib/tiltNotifySound';
 import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
-import { effectiveMarketExpiryMs, resolveMarketExpiryEndDate } from '../lib/weatherMarketExpiry';
+import { effectiveMarketExpiryMs } from '../lib/weatherMarketExpiry';
 import {
   readNotifySoundMaxPriceCents,
   SIDEBAR_NOTIFY_SOUND_MAX_PRICE_CENTS_KEY,
@@ -1711,12 +1711,15 @@ export const Sidebar = memo(function Sidebar() {
     return Math.floor(n * 60);
   };
 
-  const computeLimitExpiration = (marketEndDate?: string): { expiration: number; invalidLead: boolean } => {
+  const computeLimitExpiration = (
+    market?: Pick<Market, 'endDate' | 'question' | 'eventSlug'> | null,
+  ): { expiration: number; invalidLead: boolean } => {
     const CLOB_MIN_EXPIRY_SEC = 90; // CLOB requires expiration >= now + 60s; use 90s buffer
     const expLeadSec = getOrderExpiryLeadSeconds();
     const nowSec = Math.floor(Date.now() / 1000);
-    if (marketEndDate) {
-      const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
+    const endMs = effectiveMarketExpiryMs(market);
+    if (endMs != null) {
+      const endTimeSec = Math.floor(endMs / 1000);
       if (expLeadSec <= 0) {
         return { expiration: 0, invalidLead: false };
       }
@@ -1727,13 +1730,26 @@ export const Sidebar = memo(function Sidebar() {
       }
       return { expiration, invalidLead };
     }
+    const marketEndDate = String(market?.endDate || '').trim();
+    if (marketEndDate) {
+      const endTimeSec = Math.floor(new Date(marketEndDate).getTime() / 1000);
+      if (expLeadSec <= 0) {
+        return { expiration: 0, invalidLead: false };
+      }
+      const expiration = endTimeSec - expLeadSec;
+      const invalidLead = (endTimeSec - nowSec) <= expLeadSec;
+      if (expiration - nowSec < CLOB_MIN_EXPIRY_SEC) {
+        return { expiration: 0, invalidLead };
+      }
+      return { expiration, invalidLead };
+    }
     return { expiration: nowSec + 86400, invalidLead: false };
   };
 
   const formatPreExpiryLead = (orderExpiration?: string): string | null => {
-    if (!orderExpiration || !selectedMarket?.endDate) return null;
-    const endMs = new Date(selectedMarket.endDate).getTime();
-    if (!Number.isFinite(endMs)) return null;
+    if (!orderExpiration || !selectedMarket) return null;
+    const endMs = effectiveMarketExpiryMs(selectedMarket);
+    if (endMs == null) return null;
 
     const raw = Number(orderExpiration);
     if (!Number.isFinite(raw) || raw <= 0) return null;
@@ -1874,7 +1890,7 @@ export const Sidebar = memo(function Sidebar() {
     if (orderSide === 'SELL') {
       expiration = 0;
     } else {
-      const exp = computeLimitExpiration(resolveMarketExpiryEndDate(selectedMarket, selectedMarket.endDate || ''));
+      const exp = computeLimitExpiration(selectedMarket);
       expiration = exp.expiration;
       if (exp.invalidLead) {
         showToast('Lead time to expiration already passed for this market', 'error');
@@ -1946,7 +1962,7 @@ export const Sidebar = memo(function Sidebar() {
     if (side === 'SELL') {
       expiration = 0;
     } else {
-      const exp = computeLimitExpiration(resolveMarketExpiryEndDate(selectedMarket, selectedMarket.endDate || ''));
+      const exp = computeLimitExpiration(selectedMarket);
       expiration = exp.expiration;
       if (exp.invalidLead) {
         showToast('Lead time to expiration already passed for this market', 'error');
@@ -2116,7 +2132,7 @@ export const Sidebar = memo(function Sidebar() {
 
     let expiration = 0;
       if (spec.side === 'BUY') {
-      const exp = computeLimitExpiration(resolveMarketExpiryEndDate(selectedMarket, selectedMarket.endDate || ''));
+      const exp = computeLimitExpiration(selectedMarket);
       expiration = exp.expiration;
       if (exp.invalidLead) {
         showToast('Lead time to expiration already passed for this market', 'error');
@@ -2263,9 +2279,7 @@ export const Sidebar = memo(function Sidebar() {
       signingDialog.setStep('sign', 'active');
       let expiration = 0;
       if (side === 'BUY') {
-        const exp = computeLimitExpiration(
-          selectedMarket ? resolveMarketExpiryEndDate(selectedMarket, selectedMarket.endDate || '') : '',
-        );
+        const exp = computeLimitExpiration(selectedMarket);
         expiration = exp.expiration;
         if (exp.invalidLead) {
           showToast('Lead time to expiration already passed for this market', 'error');

@@ -9,6 +9,7 @@ import { formatMarketCountdown } from '../../lib/marketCountdown';
 import { weatherMarketExpiryMsForEvent } from '../../lib/weatherMarketExpiry';
 import type { Market, Order, WeatherCitySlug } from '../../types';
 import { WEATHER_CITIES } from '../../types';
+import { isWeatherCitySlug, mergeWeatherCityOptions } from '../../lib/weatherCities';
 import {
   buildTableData,
   compactTempBucketLabel,
@@ -34,7 +35,12 @@ import type { Position } from '../../types';
 import type { WSPosition } from '../../hooks/useOnchainTradesWS';
 
 const EMPTY_MARKETS: Market[] = [];
-const CITY_SLUGS = new Set<string>(WEATHER_CITIES.map((c) => c.slug));
+
+function readStoredCity(panelId: string, fallback: WeatherCitySlug): WeatherCitySlug {
+  const saved = localStorage.getItem(`polybot-weather-temp-bars-city-${panelId}`);
+  if (saved && isWeatherCitySlug(saved)) return saved;
+  return fallback;
+}
 const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'] as const;
 
 function formatDateHeader(endDate: string): string {
@@ -647,9 +653,7 @@ interface TemperatureBarChartPanelProps {
 
 function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: TemperatureBarChartPanelProps) {
   const [city, setCity] = useState<WeatherCitySlug>(() => {
-    const saved = localStorage.getItem(`polybot-weather-temp-bars-city-${panelId}`);
-    if (saved && CITY_SLUGS.has(saved)) return saved as WeatherCitySlug;
-    return initialCity;
+    return readStoredCity(panelId, initialCity);
   });
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
   const [cityMenuPos, setCityMenuPos] = useState<{ top: number; left: number } | null>(null);
@@ -662,8 +666,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const [modelPayload, setModelPayload] = useState<WeatherProbabilitiesPayload | null>(null);
   const [modelFetchedAtMs, setModelFetchedAtMs] = useState(0);
   const [modelRefreshing, setModelRefreshing] = useState(false);
-
-  const cityMeta = WEATHER_CITIES.find((c) => c.slug === city) ?? WEATHER_CITIES[0];
 
   const closeCityMenu = useCallback(() => {
     setCityDropdownOpen(false);
@@ -695,6 +697,12 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   }, [cityDropdownOpen, closeCityMenu]);
 
   const allMarkets = useAppStore((s) => s.weatherMarkets[city] ?? EMPTY_MARKETS);
+  const weatherMarketsByCity = useAppStore((s) => s.weatherMarkets);
+  const cityOptions = useMemo(
+    () => mergeWeatherCityOptions(Object.keys(weatherMarketsByCity)),
+    [weatherMarketsByCity],
+  );
+  const cityMeta = cityOptions.find((c) => c.slug === city) ?? cityOptions[0] ?? WEATHER_CITIES[0];
   const highMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'high'), [allMarkets]);
   const lowMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'low'), [allMarkets]);
   const showPast = useAppStore((s) => s.showPast);
@@ -924,7 +932,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               className="fixed z-[9999] max-h-48 min-w-[120px] overflow-y-auto rounded border border-gray-600 bg-gray-800 shadow-lg"
               style={{ top: cityMenuPos.top, left: cityMenuPos.left }}
             >
-              {WEATHER_CITIES.map((c) => (
+              {cityOptions.map((c) => (
                 <button
                   key={c.slug}
                   type="button"

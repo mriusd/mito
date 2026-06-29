@@ -1,5 +1,7 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useAppStore } from '../../stores/appStore';
 import { WEATHER_CITIES, type WeatherCitySlug } from '../../types';
+import { isWeatherCitySlug, mergeWeatherCityOptions } from '../../lib/weatherCities';
 import {
   fetchWeatherObservations,
   formatWeatherChartHour,
@@ -8,7 +10,6 @@ import {
   type WeatherObservationsResponse,
 } from '../../lib/weatherObservations';
 
-const CITY_SLUGS = new Set<string>(WEATHER_CITIES.map((c) => c.slug));
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LINE_COLOR = '#38bdf8';
 
@@ -18,7 +19,7 @@ function floorTempDeg(temp: number): number {
 
 function readStoredCity(panelId: string): WeatherCitySlug {
   const saved = localStorage.getItem(`polybot-weather-temp-city-${panelId}`);
-  if (saved && CITY_SLUGS.has(saved)) return saved as WeatherCitySlug;
+  if (saved && isWeatherCitySlug(saved)) return saved;
   return 'london';
 }
 
@@ -167,7 +168,12 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const cityMeta = WEATHER_CITIES.find((c) => c.slug === city) ?? WEATHER_CITIES[0];
+  const weatherMarketsByCity = useAppStore((s) => s.weatherMarkets);
+  const cityOptions = useMemo(
+    () => mergeWeatherCityOptions(Object.keys(weatherMarketsByCity)),
+    [weatherMarketsByCity],
+  );
+  const cityMeta = cityOptions.find((c) => c.slug === city) ?? cityOptions[0] ?? WEATHER_CITIES[0];
 
   useEffect(() => {
     let cancelled = false;
@@ -215,7 +221,7 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
             </svg>
             {cityOpen && (
               <div className="absolute left-0 top-full z-50 mt-1 max-h-48 min-w-[120px] overflow-y-auto rounded border border-gray-600 bg-gray-800 shadow-lg">
-                {WEATHER_CITIES.map((c) => (
+                {cityOptions.map((c) => (
                   <div
                     key={c.slug}
                     className={`cursor-pointer px-3 py-1 text-xs font-bold hover:bg-gray-700 ${c.slug === city ? 'bg-gray-700 text-white' : 'text-gray-300'}`}

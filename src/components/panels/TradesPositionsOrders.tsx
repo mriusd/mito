@@ -821,7 +821,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                       <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.cost).toLocaleString()}</td>
                       <td className={`py-1 px-1 text-right ${exitColor}`}>{p.currentPrice.toFixed(1)}¢</td>
                       <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.currentValue).toLocaleString()}</td>
-                      <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}${Math.round(Math.abs(p.pnl)).toLocaleString()}</td>
+                      <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(p.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                       <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>
                     </tr>
                   );
@@ -838,7 +838,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 <td className="py-1 px-1 text-right text-white">${Math.round(totalCost).toLocaleString()}</td>
                 <td className="py-1 px-1 text-right text-gray-400">{avgExit.toFixed(1)}¢</td>
                 <td className="py-1 px-1 text-right text-white">${Math.round(totalValue).toLocaleString()}</td>
-                <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}${Math.round(Math.abs(totalPnl)).toLocaleString()}</td>
+                <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}${Math.abs(totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}{Math.round(Math.abs(avgPnlPct))}%</td>
               </tr>
             </tbody></table>

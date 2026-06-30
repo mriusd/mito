@@ -70,6 +70,29 @@ export function weatherCityTimezone(slug: string): string {
   return WEATHER_CITIES.find((c) => c.slug === slug)?.timezone ?? 'UTC';
 }
 
+/** US Polymarket weather markets use °F; fallback when bucket titles not loaded yet. */
+const WEATHER_FAHRENHEIT_CITY_SLUGS = new Set<string>([
+  'atlanta',
+  'austin',
+  'chicago',
+  'dallas',
+  'denver',
+  'houston',
+  'los-angeles',
+  'miami',
+  'nyc',
+  'san-francisco',
+  'seattle',
+]);
+
+export function weatherCityTempUnit(slug: string, marketTitles: string[] = []): 'C' | 'F' {
+  for (const t of marketTitles) {
+    if (/°F/i.test(t)) return 'F';
+    if (/°C/i.test(t)) return 'C';
+  }
+  return WEATHER_FAHRENHEIT_CITY_SLUGS.has(slug.trim().toLowerCase()) ? 'F' : 'C';
+}
+
 export function formatWeatherCityLocalClock(ms: number, timeZone: string): string {
   return new Intl.DateTimeFormat('en-GB', {
     timeZone,

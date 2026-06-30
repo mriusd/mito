@@ -13,6 +13,7 @@ import {
   formatWeatherCityLocalClock,
   isWeatherCitySlug,
   mergeWeatherCityOptions,
+  weatherCityTempUnit,
   weatherCityWundergroundHourlyUrl,
 } from '../../lib/weatherCities';
 import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
@@ -41,7 +42,7 @@ import {
   type WeatherObservationsResponse,
   type WeatherTempUnit,
 } from '../../lib/weatherObservations';
-import { TempUnitToggle, TemperatureChart, useWeatherTempUnit } from '../TemperatureChart';
+import { TempUnitToggle, TemperatureChart } from '../TemperatureChart';
 import { outcomeBestAskProb, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
 import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
@@ -757,7 +758,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const [obsData, setObsData] = useState<WeatherObservationsResponse | null>(null);
   const [obsLoading, setObsLoading] = useState(false);
   const obsFetchGenRef = useRef(0);
-  const [tempUnit, setTempUnit] = useWeatherTempUnit();
+  const [tempUnitOverride, setTempUnitOverride] = useState<WeatherTempUnit | null>(null);
 
   const closeCityMenu = useCallback(() => {
     setCityDropdownOpen(false);
@@ -789,6 +790,16 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   }, [cityDropdownOpen, closeCityMenu]);
 
   const allMarkets = useAppStore((s) => s.weatherMarkets[city] ?? EMPTY_MARKETS);
+  const cityTempUnit = useMemo(
+    () => weatherCityTempUnit(city, allMarkets.map((m) => m.groupItemTitle || '')),
+    [city, allMarkets],
+  );
+  const tempUnit = tempUnitOverride ?? cityTempUnit;
+
+  useEffect(() => {
+    setTempUnitOverride(null);
+  }, [city]);
+
   const weatherMarketsByCity = useAppStore((s) => s.weatherMarkets);
   const weatherCityFavorites = useWeatherCityFavorites();
   const cityOptions = useMemo(
@@ -1058,7 +1069,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           </a>
         ) : null}
 
-        <TempUnitToggle unit={tempUnit} onChange={setTempUnit} />
+        <TempUnitToggle unit={tempUnit} onChange={setTempUnitOverride} />
 
         <span
           className="shrink-0 text-[10px] font-normal tabular-nums text-gray-400"

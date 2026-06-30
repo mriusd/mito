@@ -76,13 +76,14 @@ export function TemperatureChart({
 
     const padL = 36;
     const padR = 8;
-    const padT = 8;
-    const padB = 22;
+    const padT = 22;
+    const padB = 34;
     const chartL = padL;
     const chartR = w - padR;
     const chartT = padT;
     const chartB = h - padB;
     const unitSuffix = unit === 'F' ? '°F' : '°C';
+    const labelOffset = 7;
 
     const points = data.points.map((p) => ({
       ...p,
@@ -92,7 +93,8 @@ export function TemperatureChart({
       ...p,
       temp: floorDisplayTemp(p.temp, unit),
     }));
-    if (points.length === 0 && forecastPoints.length === 0) {
+    const allPoints = [...points, ...forecastPoints];
+    if (allPoints.length === 0) {
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
       ctx.font = '11px monospace';
       ctx.textAlign = 'center';
@@ -101,9 +103,13 @@ export function TemperatureChart({
       return;
     }
 
-    let yMin = Infinity;
-    let yMax = -Infinity;
-    for (const p of [...points, ...forecastPoints]) {
+    let minPoint = allPoints[0];
+    let maxPoint = allPoints[0];
+    let yMin = minPoint.temp;
+    let yMax = maxPoint.temp;
+    for (const p of allPoints) {
+      if (p.temp < minPoint.temp) minPoint = p;
+      if (p.temp > maxPoint.temp) maxPoint = p;
       yMin = Math.min(yMin, p.temp);
       yMax = Math.max(yMax, p.temp);
     }
@@ -144,8 +150,16 @@ export function TemperatureChart({
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       const labelMs = dayStart + hour * 3600000;
-      ctx.fillText(formatWeatherChartHour(labelMs, data.timezone), x, chartB + 3);
+      ctx.fillText(formatWeatherChartHour(labelMs, data.timezone), x, chartB + 4);
     }
+
+    const drawExtremeLabel = (x: number, y: number, text: string, above: boolean) => {
+      ctx.font = '9px monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = above ? 'bottom' : 'top';
+      ctx.fillText(text, x, above ? y - labelOffset : y + labelOffset);
+    };
 
     ctx.strokeStyle = LINE_COLOR;
     ctx.lineWidth = 2;
@@ -198,6 +212,17 @@ export function TemperatureChart({
         ctx.arc(x, y, 2, 0, Math.PI * 2);
         ctx.stroke();
       }
+    }
+
+    const minX = toX(minPoint.timeMs);
+    const minY = toY(minPoint.temp);
+    const maxX = toX(maxPoint.timeMs);
+    const maxY = toY(maxPoint.temp);
+    drawExtremeLabel(minX, minY, `${minPoint.temp}${unitSuffix}`, false);
+    if (maxPoint.temp !== minPoint.temp || maxPoint.timeMs !== minPoint.timeMs) {
+      drawExtremeLabel(maxX, maxY, `${maxPoint.temp}${unitSuffix}`, true);
+    } else {
+      drawExtremeLabel(maxX, maxY - labelOffset * 2, `${maxPoint.temp}${unitSuffix}`, true);
     }
   }, [data, unit]);
 

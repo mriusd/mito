@@ -1,12 +1,12 @@
-import { ExternalLink, RefreshCw } from 'lucide-react';
+import { ExternalLink, Link2, Link2Off, RefreshCw } from 'lucide-react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../../stores/appStore';
-import { formatElapsedSinceMs, getOrderClobTokenId, normalizeClobTokenId, tradeElapsedColorClass } from '../../utils/format';
+import { formatElapsedSinceMs, getOrderClobTokenId, isWeatherMarket, normalizeClobTokenId, tradeElapsedColorClass } from '../../utils/format';
 import { useWalletTradeElapsedMs } from '../../lib/walletTradeElapsedStore';
 import { useExpiryNow } from '../../hooks/useExpiryNow';
 import { formatMarketCountdown } from '../../lib/marketCountdown';
-import { weatherMarketExpiryMsForEvent } from '../../lib/weatherMarketExpiry';
+import { parseWeatherCityFromSlug, weatherMarketExpiryMsForEvent } from '../../lib/weatherMarketExpiry';
 import type { Market, Order, WeatherCitySlug } from '../../types';
 import { WEATHER_CITIES } from '../../types';
 import {
@@ -56,6 +56,21 @@ import type { Position } from '../../types';
 import type { WSPosition } from '../../hooks/useOnchainTradesWS';
 
 const EMPTY_MARKETS: Market[] = [];
+
+function readStoredLinkSidebar(panelId: string): boolean {
+  return localStorage.getItem(`polybot-weather-temp-bars-link-sidebar-${panelId}`) === '1';
+}
+
+function weatherMarketCityAndDate(
+  market: Market | null | undefined,
+): { city: WeatherCitySlug; dateIso: string } | null {
+  if (!market || !isWeatherMarket(market)) return null;
+  const city = parseWeatherCityFromSlug(market.eventSlug || '');
+  if (!city || !isWeatherCitySlug(city)) return null;
+  const dateIso = weatherEventDateISOFromSlug(market.eventSlug || '');
+  if (!dateIso) return null;
+  return { city, dateIso };
+}
 
 function readStoredCity(panelId: string, fallback: WeatherCitySlug): WeatherCitySlug {
   const saved = localStorage.getItem(`polybot-weather-temp-bars-city-${panelId}`);
@@ -517,16 +532,19 @@ function TempOddsBar({
     .filter(Boolean)
     .join(' · ');
 
+  const frameClass =
+    selected && forecastHighlight
+      ? 'rounded ring-2 ring-amber-400/90 outline outline-2 outline-white/75 -outline-offset-1'
+      : forecastHighlight
+        ? 'rounded ring-2 ring-amber-400/90'
+        : selected
+          ? 'rounded ring-2 ring-white/70'
+          : '';
+
   return (
     <button
       type="button"
-      className={`no-drag flex flex-col items-center justify-end flex-1 min-w-0 h-full px-0.5 group ${
-        forecastHighlight
-          ? 'ring-2 ring-amber-400/90 rounded'
-          : selected
-            ? 'ring-1 ring-white/40 rounded'
-            : ''
-      }`}
+      className={`no-drag flex flex-col items-center justify-end flex-1 min-w-0 h-full px-0.5 group ${frameClass}`}
       onClick={onClick}
       title={[marketTitle, quoteTip, entryTip, ...orderTips, forecastHighlight ? 'WU hourly forecast' : null]
         .filter(Boolean)
@@ -559,7 +577,11 @@ function TempOddsBar({
       {showLabel ? (
         <span
           className={`text-[8px] mt-1 truncate max-w-full leading-tight shrink-0 min-h-[10px] ${
-            forecastHighlight ? 'font-bold text-amber-300' : 'text-gray-500'
+            forecastHighlight
+              ? `font-bold text-amber-300${selected ? ' underline decoration-white/70 underline-offset-2' : ''}`
+              : selected
+                ? 'font-semibold text-white/90'
+                : 'text-gray-500'
           }`}
         >
           {label}
@@ -684,14 +706,19 @@ function TempOddsChart({
                 : null}
             </div>
             <div className="flex shrink-0 gap-0.5 min-h-[10px]">
-              {entries.map(({ temp, label }) => {
+              {entries.map(({ temp, label, market }) => {
                 const forecastHighlight =
                   forecastTempC != null && weatherTempBucketMatchesCelsius(temp, forecastTempC);
+                const selected = selectedMarketId === market.id;
                 return (
                 <div
                   key={`lbl-${temp}`}
                   className={`flex-1 min-w-0 text-center text-[8px] truncate leading-tight ${
-                    forecastHighlight ? 'font-bold text-amber-300' : 'text-gray-500'
+                    forecastHighlight
+                      ? `font-bold text-amber-300${selected ? ' underline decoration-white/70 underline-offset-2' : ''}`
+                      : selected
+                        ? 'font-semibold text-white/90'
+                        : 'text-gray-500'
                   }`}
                 >
                   {label}
@@ -759,6 +786,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const [obsLoading, setObsLoading] = useState(false);
   const obsFetchGenRef = useRef(0);
   const [tempUnitOverride, setTempUnitOverride] = useState<WeatherTempUnit | null>(null);
+  const [linkSidebar, setLinkSidebar] = useState(() => readStoredLinkSidebar(panelId));
 
   const closeCityMenu = useCallback(() => {
     setCityDropdownOpen(false);
@@ -827,7 +855,8 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
-  const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
+  const selectedMarket = useAppStore((s) => s.selectedMarket);
+  const selectedMarketId = selectedMarket?.id ?? '';
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const progOrderMap = useAppStore((s) => s.progOrderMap);
   const positions = useThrottledGridPositions(2000);
@@ -870,24 +899,55 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
         return Number.isFinite(t) && String(t) === selectedDateKey;
       });
       if (legacyHit) return legacyHit;
+      if (linkSidebar) return undefined;
     }
     return dateColumns[0];
-  }, [dateColumns, selectedDateKey]);
+  }, [dateColumns, selectedDateKey, linkSidebar]);
 
   useEffect(() => {
-    if (!selectedDateCol) return;
+    if (!selectedDateCol || linkSidebar) return;
     const key = weatherDateColKey(selectedDateCol);
     setSelectedDateKey((prev) => (prev === key ? prev : key));
     localStorage.setItem(`polybot-weather-temp-bars-date-${panelId}`, key);
-  }, [selectedDateCol, panelId]);
+  }, [selectedDateCol, panelId, linkSidebar]);
+
+  const unlinkSidebar = useCallback(() => {
+    setLinkSidebar(false);
+    localStorage.setItem(`polybot-weather-temp-bars-link-sidebar-${panelId}`, '0');
+  }, [panelId]);
+
+  const toggleLinkSidebar = useCallback(() => {
+    setLinkSidebar((prev) => {
+      const next = !prev;
+      localStorage.setItem(`polybot-weather-temp-bars-link-sidebar-${panelId}`, next ? '1' : '0');
+      return next;
+    });
+  }, [panelId]);
+
+  useEffect(() => {
+    if (!linkSidebar) return;
+    const ctx = weatherMarketCityAndDate(selectedMarket);
+    if (!ctx) return;
+    setCity((prev) => {
+      if (prev === ctx.city) return prev;
+      localStorage.setItem(`polybot-weather-temp-bars-city-${panelId}`, ctx.city);
+      return ctx.city;
+    });
+    setSelectedDateKey((prev) => {
+      if (prev === ctx.dateIso) return prev;
+      localStorage.setItem(`polybot-weather-temp-bars-date-${panelId}`, ctx.dateIso);
+      return ctx.dateIso;
+    });
+  }, [linkSidebar, selectedMarket, panelId]);
 
   const selectDate = useCallback(
     (d: DateCol) => {
+      if (linkSidebar) unlinkSidebar();
       const key = weatherDateColKey(d);
       setSelectedDateKey(key);
       localStorage.setItem(`polybot-weather-temp-bars-date-${panelId}`, key);
     },
-    [panelId],
+    [linkSidebar, panelId, unlinkSidebar],
   );
 
   const modelContextKey = useMemo(
@@ -1069,6 +1129,31 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           </a>
         ) : null}
 
+        <button
+          type="button"
+          title={
+            linkSidebar
+              ? 'Linked to sidebar weather market — click to unlink'
+              : 'Link city and date to sidebar weather market'
+          }
+          aria-pressed={linkSidebar}
+          aria-label={linkSidebar ? 'Unlink from sidebar market' : 'Link to sidebar weather market'}
+          className={`no-drag inline-flex shrink-0 items-center rounded p-0.5 transition ${
+            linkSidebar ? 'text-cyan-400 hover:text-cyan-300' : 'text-gray-600 hover:text-gray-400'
+          }`}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleLinkSidebar();
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {linkSidebar ? (
+            <Link2 className="h-3 w-3" strokeWidth={2.25} aria-hidden />
+          ) : (
+            <Link2Off className="h-3 w-3" strokeWidth={2.25} aria-hidden />
+          )}
+        </button>
+
         <TempUnitToggle unit={tempUnit} onChange={setTempUnitOverride} />
 
         <span
@@ -1142,6 +1227,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
                 selectedSlug={city}
                 starredCount={starredCityCount}
                 onSelect={(slug) => {
+                  if (linkSidebar) unlinkSidebar();
                   setCity(slug);
                   localStorage.setItem(`polybot-weather-temp-bars-city-${panelId}`, slug);
                   closeCityMenu();

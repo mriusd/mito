@@ -6,6 +6,11 @@ export type WeatherObservationPoint = {
   temp: number;
 };
 
+export type WeatherForecastHistoryBatch = {
+  issuedAtMs: number;
+  points: WeatherObservationPoint[];
+};
+
 export type WeatherObservationsResponse = {
   city: string;
   date: string;
@@ -15,6 +20,7 @@ export type WeatherObservationsResponse = {
   dayEndMs: number;
   points: WeatherObservationPoint[];
   forecastPoints?: WeatherObservationPoint[];
+  forecastHistory?: WeatherForecastHistoryBatch[];
   highTemp?: number;
   lowTemp?: number;
   forecastHighC?: number;

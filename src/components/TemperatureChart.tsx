@@ -11,6 +11,7 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LINE_COLOR = '#38bdf8';
 const FORECAST_COLOR = 'rgba(56, 189, 248, 0.65)';
+const FORECAST_HISTORY_BASE = 'rgba(56, 189, 248,';
 
 export function TempUnitToggle({
   unit,
@@ -93,7 +94,18 @@ export function TemperatureChart({
       ...p,
       temp: floorDisplayTemp(p.temp, unit),
     }));
-    const allPoints = [...points, ...forecastPoints];
+    const forecastHistory = (data.forecastHistory ?? []).map((batch) => ({
+      issuedAtMs: batch.issuedAtMs,
+      points: batch.points.map((p) => ({
+        ...p,
+        temp: floorDisplayTemp(p.temp, unit),
+      })),
+    }));
+    const allPoints = [
+      ...points,
+      ...forecastPoints,
+      ...forecastHistory.flatMap((b) => b.points),
+    ];
     if (allPoints.length === 0) {
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
       ctx.font = '11px monospace';
@@ -161,6 +173,49 @@ export function TemperatureChart({
       ctx.fillText(text, x, above ? y - labelOffset : y + labelOffset);
     };
 
+    const drawForecastLine = (
+      linePoints: { timeMs: number; temp: number }[],
+      color: string,
+      lineWidth: number,
+      dash: number[],
+      dotRadius: number,
+      strokeDots: boolean,
+    ) => {
+      if (linePoints.length === 0) return;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.setLineDash(dash);
+      ctx.beginPath();
+      if (points.length > 0) {
+        const last = points[points.length - 1];
+        ctx.moveTo(toX(last.timeMs), toY(last.temp));
+      } else {
+        const first = linePoints[0];
+        ctx.moveTo(toX(first.timeMs), toY(first.temp));
+      }
+      for (const p of linePoints) {
+        ctx.lineTo(toX(p.timeMs), toY(p.temp));
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (strokeDots) {
+        ctx.strokeStyle = color;
+        for (const p of linePoints) {
+          ctx.beginPath();
+          ctx.arc(toX(p.timeMs), toY(p.temp), dotRadius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    };
+
+    if (forecastHistory.length > 0) {
+      const n = forecastHistory.length;
+      forecastHistory.forEach((batch, i) => {
+        const opacity = 0.12 + (0.28 * (i + 1)) / (n + 1);
+        drawForecastLine(batch.points, `${FORECAST_HISTORY_BASE}${opacity})`, 1.5, [3, 5], 1.5, false);
+      });
+    }
+
     ctx.strokeStyle = LINE_COLOR;
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
@@ -187,31 +242,7 @@ export function TemperatureChart({
     }
 
     if (forecastPoints.length > 0) {
-      ctx.strokeStyle = FORECAST_COLOR;
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 4]);
-      ctx.beginPath();
-      if (points.length > 0) {
-        const last = points[points.length - 1];
-        ctx.moveTo(toX(last.timeMs), toY(last.temp));
-      } else {
-        const first = forecastPoints[0];
-        ctx.moveTo(toX(first.timeMs), toY(first.temp));
-      }
-      for (const p of forecastPoints) {
-        ctx.lineTo(toX(p.timeMs), toY(p.temp));
-      }
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      ctx.strokeStyle = FORECAST_COLOR;
-      for (const p of forecastPoints) {
-        const x = toX(p.timeMs);
-        const y = toY(p.temp);
-        ctx.beginPath();
-        ctx.arc(x, y, 2, 0, Math.PI * 2);
-        ctx.stroke();
-      }
+      drawForecastLine(forecastPoints, FORECAST_COLOR, 2, [5, 4], 2, true);
     }
 
     const minX = toX(minPoint.timeMs);

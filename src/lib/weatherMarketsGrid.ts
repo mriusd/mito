@@ -114,6 +114,45 @@ export function lookupModelBucketProb(
   return null;
 }
 
+/** Stable key for weather event calendar day (slug), not UTC endDate. */
+export function weatherDateColKey(d: DateCol): string {
+  const fromSlug = weatherEventDateISOFromSlug(d.slug);
+  if (fromSlug) return fromSlug;
+  const t = new Date(d.endDate).getTime();
+  return Number.isFinite(t) ? String(t) : d.slug;
+}
+
+const WEATHER_TAB_DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'] as const;
+const WEATHER_TAB_MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'] as const;
+
+/** Tab header from event slug day (avoids UTC endDate shifting Seoul etc.). */
+export function formatWeatherDateColHeader(d: DateCol): string {
+  const iso = weatherEventDateISOFromSlug(d.slug);
+  if (iso) {
+    const [y, mo, day] = iso.split('-').map((x) => parseInt(x, 10));
+    if (Number.isFinite(y) && Number.isFinite(mo) && Number.isFinite(day)) {
+      const dow = new Date(Date.UTC(y, mo - 1, day, 12, 0, 0)).getUTCDay();
+      return `${WEATHER_TAB_DAY_LABELS[dow]} ${WEATHER_TAB_MONTHS[mo - 1]} ${day}`;
+    }
+  }
+  const dt = new Date(d.endDate);
+  if (!Number.isFinite(dt.getTime())) return '';
+  return `${WEATHER_TAB_DAY_LABELS[dt.getDay()]} ${WEATHER_TAB_MONTHS[dt.getMonth()]} ${dt.getDate()}`;
+}
+
+export function isWeatherDateColWeekend(d: DateCol): boolean {
+  const iso = weatherEventDateISOFromSlug(d.slug);
+  if (iso) {
+    const [y, mo, day] = iso.split('-').map((x) => parseInt(x, 10));
+    if (Number.isFinite(y) && Number.isFinite(mo) && Number.isFinite(day)) {
+      const dow = new Date(Date.UTC(y, mo - 1, day, 12, 0, 0)).getUTCDay();
+      return dow === 0 || dow === 6;
+    }
+  }
+  const dt = new Date(d.endDate);
+  return dt.getDay() === 0 || dt.getDay() === 6;
+}
+
 export interface DateCol {
   slug: string;
   endDate: string;
@@ -178,15 +217,11 @@ export function buildTableData(markets: Market[], includePast: boolean): Weather
   return { dates, temps, marketLookup };
 }
 
-/** Merge high/low event dates by calendar day (endDate UTC date key). */
+/** Merge high/low event dates by calendar event day (slug), not UTC endDate. */
 export function mergeWeatherDateColumns(highDates: DateCol[], lowDates: DateCol[]): DateCol[] {
   const byKey = new Map<string, DateCol>();
-  const keyOf = (d: DateCol) => {
-    const t = new Date(d.endDate).getTime();
-    return Number.isFinite(t) ? String(t) : d.slug;
-  };
   for (const d of [...highDates, ...lowDates]) {
-    const k = keyOf(d);
+    const k = weatherDateColKey(d);
     const prev = byKey.get(k);
     if (!prev || new Date(d.expiryEndDate).getTime() < new Date(prev.expiryEndDate).getTime()) {
       byKey.set(k, d);
@@ -199,8 +234,12 @@ export function mergeWeatherDateColumns(highDates: DateCol[], lowDates: DateCol[
   });
 }
 
-export function findDateColForEndDate(dates: DateCol[], targetEndDate: string): DateCol | undefined {
-  const target = new Date(targetEndDate).getTime();
-  if (!Number.isFinite(target)) return dates[0];
-  return dates.find((d) => new Date(d.endDate).getTime() === target) ?? dates[0];
+export function findDateColForEndDate(dates: DateCol[], target: DateCol): DateCol | undefined {
+  if (dates.length === 0) return undefined;
+  const key = weatherDateColKey(target);
+  const byKey = dates.find((d) => weatherDateColKey(d) === key);
+  if (byKey) return byKey;
+  const targetMs = new Date(target.endDate).getTime();
+  if (!Number.isFinite(targetMs)) return undefined;
+  return dates.find((d) => new Date(d.endDate).getTime() === targetMs);
 }

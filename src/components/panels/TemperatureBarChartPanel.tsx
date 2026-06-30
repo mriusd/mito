@@ -2,7 +2,7 @@ import { RefreshCw } from 'lucide-react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../../stores/appStore';
-import { formatDateShort, formatElapsedSinceMs, getOrderClobTokenId, normalizeClobTokenId, tradeElapsedColorClass } from '../../utils/format';
+import { formatElapsedSinceMs, getOrderClobTokenId, normalizeClobTokenId, tradeElapsedColorClass } from '../../utils/format';
 import { useWalletTradeElapsedMs } from '../../lib/walletTradeElapsedStore';
 import { useExpiryNow } from '../../hooks/useExpiryNow';
 import { formatMarketCountdown } from '../../lib/marketCountdown';
@@ -17,8 +17,11 @@ import {
   compactTempBucketLabel,
   filterWeatherMarkets,
   findDateColForEndDate,
+  formatWeatherDateColHeader,
+  isWeatherDateColWeekend,
   lookupModelBucketProb,
   mergeWeatherDateColumns,
+  weatherDateColKey,
   weatherEventDateISOFromSlug,
   type DateCol,
   type WeatherGridData,
@@ -42,18 +45,6 @@ function readStoredCity(panelId: string, fallback: WeatherCitySlug): WeatherCity
   const saved = localStorage.getItem(`polybot-weather-temp-bars-city-${panelId}`);
   if (saved && isWeatherCitySlug(saved)) return saved;
   return fallback;
-}
-const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'] as const;
-
-function formatDateHeader(endDate: string): string {
-  const dt = new Date(endDate);
-  if (!Number.isFinite(dt.getTime())) return '';
-  return `${DAY_LABELS[dt.getDay()]} ${formatDateShort(endDate)}`;
-}
-
-function dateStorageKey(endDate: string): string {
-  const t = new Date(endDate).getTime();
-  return Number.isFinite(t) ? String(t) : endDate;
 }
 
 function weatherModelContextKey(city: WeatherCitySlug, dateCol: DateCol | undefined): string {
@@ -783,22 +774,27 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const selectedDateCol = useMemo(() => {
     if (dateColumns.length === 0) return undefined;
     if (selectedDateKey) {
-      const hit = dateColumns.find((d) => dateStorageKey(d.endDate) === selectedDateKey);
+      const hit = dateColumns.find((d) => weatherDateColKey(d) === selectedDateKey);
       if (hit) return hit;
+      const legacyHit = dateColumns.find((d) => {
+        const t = new Date(d.endDate).getTime();
+        return Number.isFinite(t) && String(t) === selectedDateKey;
+      });
+      if (legacyHit) return legacyHit;
     }
     return dateColumns[0];
   }, [dateColumns, selectedDateKey]);
 
   useEffect(() => {
     if (!selectedDateCol) return;
-    const key = dateStorageKey(selectedDateCol.endDate);
+    const key = weatherDateColKey(selectedDateCol);
     setSelectedDateKey((prev) => (prev === key ? prev : key));
     localStorage.setItem(`polybot-weather-temp-bars-date-${panelId}`, key);
   }, [selectedDateCol, panelId]);
 
   const selectDate = useCallback(
     (d: DateCol) => {
-      const key = dateStorageKey(d.endDate);
+      const key = weatherDateColKey(d);
       setSelectedDateKey(key);
       localStorage.setItem(`polybot-weather-temp-bars-date-${panelId}`, key);
     },
@@ -852,11 +848,11 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   }, [expiryCountdown]);
 
   const highDateCol = useMemo(
-    () => (highGrid && selectedDateCol ? findDateColForEndDate(highGrid.dates, selectedDateCol.endDate) : undefined),
+    () => (highGrid && selectedDateCol ? findDateColForEndDate(highGrid.dates, selectedDateCol) : undefined),
     [highGrid, selectedDateCol],
   );
   const lowDateCol = useMemo(
-    () => (lowGrid && selectedDateCol ? findDateColForEndDate(lowGrid.dates, selectedDateCol.endDate) : undefined),
+    () => (lowGrid && selectedDateCol ? findDateColForEndDate(lowGrid.dates, selectedDateCol) : undefined),
     [lowGrid, selectedDateCol],
   );
 
@@ -930,12 +926,11 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
         {dateColumns.length > 0 ? (
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {dateColumns.map((d) => {
-              const key = dateStorageKey(d.endDate);
+              const key = weatherDateColKey(d);
               const selected =
-                !!selectedDateCol && key === dateStorageKey(selectedDateCol.endDate);
+                !!selectedDateCol && key === weatherDateColKey(selectedDateCol);
               const isEnded = d.expiryEndDate && new Date(d.expiryEndDate).getTime() < Date.now();
-              const dt = new Date(d.endDate);
-              const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+              const isWeekend = isWeatherDateColWeekend(d);
               return (
                 <button
                   key={key}
@@ -947,7 +942,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
                       : 'border-gray-700 bg-gray-800/80 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
                   } ${isEnded ? 'opacity-50' : ''} ${isWeekend && !selected ? 'text-purple-400' : ''}`}
                 >
-                  {formatDateHeader(d.endDate)}
+                  {formatWeatherDateColHeader(d)}
                 </button>
               );
             })}

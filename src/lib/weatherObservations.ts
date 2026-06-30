@@ -14,8 +14,20 @@ export type WeatherObservationsResponse = {
   dayStartMs: number;
   dayEndMs: number;
   points: WeatherObservationPoint[];
+  forecastPoints?: WeatherObservationPoint[];
   highTemp?: number;
   lowTemp?: number;
+  forecastHighC?: number;
+  forecastLowC?: number;
+  forecastUpdatedAt?: number;
+};
+
+export type WeatherForecastSummary = {
+  city: string;
+  date: string;
+  forecastHighC?: number;
+  forecastLowC?: number;
+  forecastUpdatedAt?: number;
 };
 
 function parseDateYmd(date: string): string {
@@ -37,6 +49,21 @@ export async function fetchWeatherObservations(
   if (!resp.ok) {
     const text = await resp.text();
     throw new Error(text || `weather observations ${resp.status}`);
+  }
+  return resp.json();
+}
+
+export async function fetchWeatherForecastSummary(
+  city: WeatherCitySlug,
+  date: string,
+): Promise<WeatherForecastSummary> {
+  const dateParam = parseDateYmd(date);
+  const resp = await fetch(
+    `${API_BASE}/api/weather-forecast/${encodeURIComponent(city)}?date=${encodeURIComponent(dateParam)}`,
+  );
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(text || `weather forecast ${resp.status}`);
   }
   return resp.json();
 }

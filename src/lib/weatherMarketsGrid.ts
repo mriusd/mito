@@ -114,6 +114,33 @@ export function lookupModelBucketProb(
   return null;
 }
 
+/** True when a market temp bucket (groupItemTitle) contains the forecast value. */
+export function weatherTempBucketMatchesCelsius(temp: string, tempCelsius: number): boolean {
+  if (!Number.isFinite(tempCelsius)) return false;
+  const unit: 'C' | 'F' = /°F/i.test(temp) ? 'F' : 'C';
+  const v = Math.floor(unit === 'F' ? (tempCelsius * 9) / 5 + 32 : tempCelsius);
+  const s = temp.replace(/°[FC]/gi, '').trim();
+
+  if (/ or below/i.test(s) || / or lower/i.test(s)) {
+    const n = Math.floor(parseFloat(s.replace(/ or below| or lower/gi, '')));
+    return Number.isFinite(n) && v <= n;
+  }
+  if (/ or higher/i.test(s) || / or above/i.test(s)) {
+    const n = Math.floor(parseFloat(s.replace(/ or higher| or above/gi, '')));
+    return Number.isFinite(n) && v >= n;
+  }
+  if (s.includes('-')) {
+    const parts = s.split('-');
+    if (parts.length === 2) {
+      const lo = Math.floor(parseFloat(parts[0].trim()));
+      const hi = Math.floor(parseFloat(parts[1].trim()));
+      if (Number.isFinite(lo) && Number.isFinite(hi)) return v >= lo && v <= hi;
+    }
+  }
+  const n = Math.floor(parseFloat(s));
+  return Number.isFinite(n) && v === n;
+}
+
 /** Stable key for weather event calendar day (slug), not UTC endDate. */
 export function weatherDateColKey(d: DateCol): string {
   const fromSlug = weatherEventDateISOFromSlug(d.slug);

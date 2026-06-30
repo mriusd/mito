@@ -28,10 +28,18 @@ import {
   mergeWeatherDateColumns,
   weatherDateColKey,
   weatherEventDateISOFromSlug,
+  weatherTempBucketMatchesCelsius,
   type DateCol,
   type WeatherGridData,
 } from '../../lib/weatherMarketsGrid';
 import { fetchWeatherProbabilities, type WeatherProbabilitiesPayload } from '../../api';
+import {
+  fetchWeatherObservations,
+  isWeatherDateTodayInTimezone,
+  type WeatherObservationsResponse,
+  type WeatherTempUnit,
+} from '../../lib/weatherObservations';
+import { TempUnitToggle, TemperatureChart, useWeatherTempUnit } from '../TemperatureChart';
 import { outcomeBestAskProb, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
 import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
@@ -457,6 +465,7 @@ interface TempOddsBarProps {
   onClick: () => void;
   showProb?: boolean;
   showLabel?: boolean;
+  forecastHighlight?: boolean;
 }
 
 function TempOddsBar({
@@ -476,6 +485,7 @@ function TempOddsBar({
   onClick,
   showProb = true,
   showLabel = true,
+  forecastHighlight = false,
 }: TempOddsBarProps) {
   const modelBarPx =
     modelPct != null && maxPct > 0 ? Math.max(2, (modelPct / maxPct) * trackPx) : 0;
@@ -507,9 +517,17 @@ function TempOddsBar({
   return (
     <button
       type="button"
-      className={`no-drag flex flex-col items-center justify-end flex-1 min-w-0 h-full px-0.5 group ${selected ? 'ring-1 ring-white/40 rounded' : ''}`}
+      className={`no-drag flex flex-col items-center justify-end flex-1 min-w-0 h-full px-0.5 group ${
+        forecastHighlight
+          ? 'ring-2 ring-amber-400/90 rounded'
+          : selected
+            ? 'ring-1 ring-white/40 rounded'
+            : ''
+      }`}
       onClick={onClick}
-      title={[marketTitle, quoteTip, entryTip, ...orderTips].filter(Boolean).join(' · ')}
+      title={[marketTitle, quoteTip, entryTip, ...orderTips, forecastHighlight ? 'WU hourly forecast' : null]
+        .filter(Boolean)
+        .join(' · ')}
     >
       {showProb ? (
         <span className="text-[9px] text-gray-400 mb-0.5 tabular-nums shrink-0 min-h-[12px] leading-none flex w-full gap-0.5">
@@ -536,7 +554,11 @@ function TempOddsBar({
         </div>
       </div>
       {showLabel ? (
-        <span className="text-[8px] text-gray-500 mt-1 truncate max-w-full leading-tight shrink-0 min-h-[10px]">
+        <span
+          className={`text-[8px] mt-1 truncate max-w-full leading-tight shrink-0 min-h-[10px] ${
+            forecastHighlight ? 'font-bold text-amber-300' : 'text-gray-500'
+          }`}
+        >
           {label}
         </span>
       ) : null}
@@ -557,6 +579,7 @@ interface TempOddsChartProps {
   onchainWsPositions: WSPosition[];
   modelBuckets: Record<string, number> | null | undefined;
   orderLookup: Record<string, Order[]>;
+  forecastTempC: number | null;
 }
 
 function TempOddsChart({
@@ -572,6 +595,7 @@ function TempOddsChart({
   onchainWsPositions,
   modelBuckets,
   orderLookup,
+  forecastTempC,
 }: TempOddsChartProps) {
   const plotRef = useRef<HTMLDivElement>(null);
   const [trackPx, setTrackPx] = useState(0);
@@ -628,7 +652,10 @@ function TempOddsChart({
             </div>
             <div ref={plotRef} className="flex-1 min-h-[40px] flex items-end gap-0.5">
               {trackPx > 0
-                ? entries.map(({ temp, label, market, quote, pct, modelPct, entry, orderMarks }) => (
+                ? entries.map(({ temp, label, market, quote, pct, modelPct, entry, orderMarks }) => {
+                    const forecastHighlight =
+                      forecastTempC != null && weatherTempBucketMatchesCelsius(temp, forecastTempC);
+                    return (
                     <TempOddsBar
                       key={temp}
                       label={label}
@@ -647,21 +674,56 @@ function TempOddsChart({
                       onClick={() => onBarClick(market)}
                       showProb={false}
                       showLabel={false}
+                      forecastHighlight={forecastHighlight}
                     />
-                  ))
+                    );
+                  })
                 : null}
             </div>
             <div className="flex shrink-0 gap-0.5 min-h-[10px]">
-              {entries.map(({ temp, label }) => (
+              {entries.map(({ temp, label }) => {
+                const forecastHighlight =
+                  forecastTempC != null && weatherTempBucketMatchesCelsius(temp, forecastTempC);
+                return (
                 <div
                   key={`lbl-${temp}`}
-                  className="flex-1 min-w-0 text-center text-[8px] text-gray-500 truncate leading-tight"
+                  className={`flex-1 min-w-0 text-center text-[8px] truncate leading-tight ${
+                    forecastHighlight ? 'font-bold text-amber-300' : 'text-gray-500'
+                  }`}
                 >
                   {label}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TempOddsTemperatureChart({
+  data,
+  loading,
+  unit,
+}: {
+  data: WeatherObservationsResponse | null;
+  loading: boolean;
+  unit: WeatherTempUnit;
+}) {
+  return (
+    <div className="flex flex-col flex-1 min-w-0 min-h-0 border border-gray-700/80 rounded-lg bg-gray-900/40 p-2">
+      <div className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-sky-400/80 mb-1">
+        Hourly
+      </div>
+      <div className="flex-1 min-h-0">
+        {loading ? (
+          <div className="flex h-full items-center justify-center text-[10px] text-gray-500">Loading…</div>
+        ) : data ? (
+          <TemperatureChart data={data} unit={unit} />
+        ) : (
+          <div className="flex h-full items-center justify-center text-[10px] text-gray-500">No data</div>
         )}
       </div>
     </div>
@@ -690,6 +752,10 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const [modelFetchedAtMs, setModelFetchedAtMs] = useState(0);
   const [modelRefreshing, setModelRefreshing] = useState(false);
   const modelFetchGenRef = useRef(0);
+  const [obsData, setObsData] = useState<WeatherObservationsResponse | null>(null);
+  const [obsLoading, setObsLoading] = useState(false);
+  const obsFetchGenRef = useRef(0);
+  const [tempUnit, setTempUnit] = useWeatherTempUnit();
 
   const closeCityMenu = useCallback(() => {
     setCityDropdownOpen(false);
@@ -866,6 +932,11 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     [lowGrid, selectedDateCol],
   );
 
+  const selectedObsDate = useMemo(() => {
+    if (!selectedDateCol) return null;
+    return weatherEventDateISOFromSlug(selectedDateCol.slug);
+  }, [selectedDateCol]);
+
   const refreshModelProbabilities = useCallback(async () => {
     const ctx = modelContextKey;
     if (!ctx) {
@@ -905,6 +976,40 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   useEffect(() => {
     void refreshModelProbabilities();
   }, [refreshModelProbabilities]);
+
+  useEffect(() => {
+    if (!selectedObsDate) {
+      setObsData(null);
+      return;
+    }
+    let cancelled = false;
+    const gen = ++obsFetchGenRef.current;
+
+    const load = () => {
+      setObsLoading(true);
+      void fetchWeatherObservations(city, selectedObsDate)
+        .then((resp) => {
+          if (cancelled || obsFetchGenRef.current !== gen) return;
+          setObsData(resp);
+        })
+        .catch((e) => {
+          if (cancelled || obsFetchGenRef.current !== gen) return;
+          console.error('[weather-observations]', e);
+          setObsData(null);
+        })
+        .finally(() => {
+          if (!cancelled && obsFetchGenRef.current === gen) setObsLoading(false);
+        });
+    };
+
+    load();
+    const pollMs = isWeatherDateTodayInTimezone(selectedObsDate, cityMeta.timezone) ? 60_000 : 0;
+    const pollId = pollMs > 0 ? window.setInterval(load, pollMs) : undefined;
+    return () => {
+      cancelled = true;
+      if (pollId != null) window.clearInterval(pollId);
+    };
+  }, [city, selectedObsDate, cityMeta.timezone]);
 
   const handleBarClick = useCallback(
     (market: Market) => {
@@ -946,6 +1051,8 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
             <ExternalLink className="h-3 w-3" aria-hidden />
           </a>
         ) : null}
+
+        <TempUnitToggle unit={tempUnit} onChange={setTempUnit} />
 
         <span
           className="shrink-0 text-[10px] font-normal tabular-nums text-gray-400"
@@ -1048,6 +1155,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               onchainWsPositions={onchainWsPositions}
               modelBuckets={modelPayload?.lowest_temperature?.bucket_probabilities_1c}
               orderLookup={orderLookup}
+              forecastTempC={obsData?.forecastLowC ?? null}
             />
             <TempOddsChart
               barColor="bg-red-400/90"
@@ -1062,7 +1170,9 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               onchainWsPositions={onchainWsPositions}
               modelBuckets={modelPayload?.highest_temperature?.bucket_probabilities_1c}
               orderLookup={orderLookup}
+              forecastTempC={obsData?.forecastHighC ?? null}
             />
+            <TempOddsTemperatureChart data={obsData} loading={obsLoading} unit={tempUnit} />
           </>
         )}
       </div>

@@ -9,7 +9,12 @@ import { formatMarketCountdown } from '../../lib/marketCountdown';
 import { weatherMarketExpiryMsForEvent } from '../../lib/weatherMarketExpiry';
 import type { Market, Order, WeatherCitySlug } from '../../types';
 import { WEATHER_CITIES } from '../../types';
-import { isWeatherCitySlug, mergeWeatherCityOptions, weatherCityWundergroundHourlyUrl } from '../../lib/weatherCities';
+import {
+  formatWeatherCityLocalClock,
+  isWeatherCitySlug,
+  mergeWeatherCityOptions,
+  weatherCityWundergroundHourlyUrl,
+} from '../../lib/weatherCities';
 import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
 import { WeatherCityMenu } from '../WeatherCityMenu';
 import {
@@ -732,6 +737,11 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     return n;
   }, [cityOptions, weatherCityFavorites]);
   const cityMeta = cityOptions.find((c) => c.slug === city) ?? cityOptions[0] ?? WEATHER_CITIES[0];
+  const expiryNow = useExpiryNow();
+  const cityLocalClock = useMemo(
+    () => formatWeatherCityLocalClock(expiryNow, cityMeta.timezone),
+    [expiryNow, cityMeta.timezone],
+  );
   const wundergroundHourlyUrl = useMemo(() => weatherCityWundergroundHourlyUrl(city), [city]);
   const highMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'high'), [allMarkets]);
   const lowMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'low'), [allMarkets]);
@@ -829,7 +839,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     return tradeElapsedColorClass(ageSec);
   }, [predictionUpdatedMs, nowMs]);
 
-  const expiryNow = useExpiryNow();
   const marketExpiryMs = useMemo(() => {
     if (!selectedDateCol?.slug) return null;
     return weatherMarketExpiryMsForEvent(city, selectedDateCol.slug);
@@ -937,6 +946,13 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
             <ExternalLink className="h-3 w-3" aria-hidden />
           </a>
         ) : null}
+
+        <span
+          className="shrink-0 text-[10px] font-normal tabular-nums text-gray-400"
+          title={`Local time (${cityMeta.timezone.replace(/_/g, ' ')})`}
+        >
+          {cityLocalClock}
+        </span>
 
         {dateColumns.length > 0 ? (
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">

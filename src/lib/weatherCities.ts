@@ -70,6 +70,15 @@ export function weatherCityTimezone(slug: string): string {
   return WEATHER_CITIES.find((c) => c.slug === slug)?.timezone ?? 'UTC';
 }
 
+export function formatWeatherCityLocalClock(ms: number, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(ms));
+}
+
 export function weatherCityLabel(slug: string): string {
   const hit = WEATHER_CITIES.find((c) => c.slug === slug);
   if (hit) return hit.label;

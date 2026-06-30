@@ -88,10 +88,14 @@ export function weatherCityLabel(slug: string): string {
     .join(' ');
 }
 
-export function weatherCityWundergroundHourlyUrl(slug: string): string | null {
+export function weatherCityWundergroundHourlyUrl(slug: string, dateYmd?: string | null): string | null {
   const icao = WEATHER_CITIES.find((c) => c.slug === slug.trim().toLowerCase())?.icao?.trim();
   if (!icao) return null;
-  return `https://www.wunderground.com/hourly/${icao.toUpperCase()}`;
+  const base = `https://www.wunderground.com/hourly/${icao.toUpperCase()}`;
+  if (!dateYmd) return base;
+  const raw = dateYmd.replace(/-/g, '');
+  if (!/^\d{8}$/.test(raw)) return base;
+  return `${base}/date/${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
 }
 
 /** Catalog cities plus any extra slugs from loaded market data. */

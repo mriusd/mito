@@ -810,7 +810,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     () => formatWeatherCityLocalClock(expiryNow, cityMeta.timezone),
     [expiryNow, cityMeta.timezone],
   );
-  const wundergroundHourlyUrl = useMemo(() => weatherCityWundergroundHourlyUrl(city), [city]);
   const highMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'high'), [allMarkets]);
   const lowMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'low'), [allMarkets]);
   const showPast = useAppStore((s) => s.showPast);
@@ -938,6 +937,11 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     if (!selectedDateCol) return null;
     return weatherEventDateISOFromSlug(selectedDateCol.slug);
   }, [selectedDateCol]);
+
+  const wundergroundHourlyUrl = useMemo(
+    () => weatherCityWundergroundHourlyUrl(city, selectedObsDate),
+    [city, selectedObsDate],
+  );
 
   const refreshModelProbabilities = useCallback(async () => {
     const ctx = modelContextKey;

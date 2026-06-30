@@ -48,6 +48,43 @@ export function weatherDateInputValue(d = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
+function zonedYmdParts(d: Date, timeZone: string): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const n = (t: Intl.DateTimeFormatPartTypes) =>
+    parseInt(parts.find((p) => p.type === t)?.value ?? '0', 10);
+  return { year: n('year'), month: n('month'), day: n('day') };
+}
+
+function formatYmd(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** Calendar date YYYY-MM-DD in the given IANA timezone. */
+export function weatherDateInputValueInTimezone(timeZone: string, d = new Date()): string {
+  const { year, month, day } = zonedYmdParts(d, timeZone);
+  return formatYmd(year, month, day);
+}
+
+/** Calendar date in timezone, offset by whole local days (e.g. +1 = tomorrow). */
+export function weatherDateInputValuePlusDaysInTimezone(
+  timeZone: string,
+  deltaDays: number,
+  d = new Date(),
+): string {
+  const { year, month, day } = zonedYmdParts(d, timeZone);
+  const shifted = new Date(Date.UTC(year, month - 1, day + deltaDays));
+  return formatYmd(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, shifted.getUTCDate());
+}
+
+export function isWeatherDateTodayInTimezone(date: string, timeZone: string): boolean {
+  return date === weatherDateInputValueInTimezone(timeZone);
+}
+
 export function formatWeatherChartHour(ms: number, timeZone: string): string {
   return new Intl.DateTimeFormat('en-GB', {
     timeZone,

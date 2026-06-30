@@ -1,16 +1,17 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { WEATHER_CITIES, type WeatherCitySlug } from '../../types';
-import { isWeatherCitySlug, mergeWeatherCityOptions } from '../../lib/weatherCities';
+import { isWeatherCitySlug, mergeWeatherCityOptions, weatherCityTimezone } from '../../lib/weatherCities';
 import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
 import { WeatherCityMenu } from '../WeatherCityMenu';
 import {
   fetchWeatherObservations,
   floorDisplayTemp,
   formatWeatherChartHour,
-  isWeatherDateToday,
+  isWeatherDateTodayInTimezone,
   readWeatherTempUnit,
-  weatherDateInputValue,
+  weatherDateInputValueInTimezone,
+  weatherDateInputValuePlusDaysInTimezone,
   writeWeatherTempUnit,
   type WeatherObservationsResponse,
   type WeatherTempUnit,
@@ -48,8 +49,10 @@ function readStoredCity(panelId: string): WeatherCitySlug {
   return 'london';
 }
 
-function readStoredDate(panelId: string): string {
-  return localStorage.getItem(`polybot-weather-temp-date-${panelId}`) || weatherDateInputValue();
+function readStoredDate(panelId: string, timeZone: string): string {
+  const saved = localStorage.getItem(`polybot-weather-temp-date-${panelId}`);
+  if (saved) return saved;
+  return weatherDateInputValueInTimezone(timeZone);
 }
 
 function TemperatureChart({
@@ -193,7 +196,9 @@ function TemperatureChart({
 
 function TemperaturePanelInner({ panelId }: { panelId: string }) {
   const [city, setCity] = useState<WeatherCitySlug>(() => readStoredCity(panelId));
-  const [date, setDate] = useState(() => readStoredDate(panelId));
+  const [date, setDate] = useState(() =>
+    readStoredDate(panelId, weatherCityTimezone(readStoredCity(panelId))),
+  );
   const [cityOpen, setCityOpen] = useState(false);
   const [tempUnit, setTempUnit] = useState<WeatherTempUnit>(() => readWeatherTempUnit());
   const [data, setData] = useState<WeatherObservationsResponse | null>(null);
@@ -218,6 +223,14 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
     return n;
   }, [cityOptions, weatherCityFavorites]);
   const cityMeta = cityOptions.find((c) => c.slug === city) ?? cityOptions[0] ?? WEATHER_CITIES[0];
+  const maxDate = useMemo(
+    () => weatherDateInputValuePlusDaysInTimezone(cityMeta.timezone, 1),
+    [cityMeta.timezone],
+  );
+
+  useEffect(() => {
+    setDate((prev) => (prev > maxDate ? weatherDateInputValueInTimezone(cityMeta.timezone) : prev));
+  }, [cityMeta.timezone, maxDate]);
 
   useEffect(() => {
     if (!cityOpen) return;
@@ -253,15 +266,13 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
     };
 
     load();
-    const pollMs = isWeatherDateToday(date) ? 60_000 : 0;
+    const pollMs = isWeatherDateTodayInTimezone(date, cityMeta.timezone) ? 60_000 : 0;
     const pollId = pollMs > 0 ? window.setInterval(load, pollMs) : undefined;
     return () => {
       cancelled = true;
       if (pollId != null) window.clearInterval(pollId);
     };
-  }, [city, date]);
-
-  const maxDate = weatherDateInputValue();
+  }, [city, date, cityMeta.timezone]);
 
   return (
     <div className="panel-wrapper flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-gray-800/50 p-3">

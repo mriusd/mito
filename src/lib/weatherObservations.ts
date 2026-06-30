@@ -60,3 +60,28 @@ export function formatWeatherChartHour(ms: number, timeZone: string): string {
 export function isWeatherDateToday(date: string): boolean {
   return date === weatherDateInputValue();
 }
+
+export type WeatherTempUnit = 'C' | 'F';
+
+const TEMP_UNIT_STORAGE_KEY = 'polybot-weather-temp-unit';
+
+export function readWeatherTempUnit(): WeatherTempUnit {
+  try {
+    return localStorage.getItem(TEMP_UNIT_STORAGE_KEY) === 'F' ? 'F' : 'C';
+  } catch {
+    return 'C';
+  }
+}
+
+export function writeWeatherTempUnit(unit: WeatherTempUnit): void {
+  localStorage.setItem(TEMP_UNIT_STORAGE_KEY, unit);
+}
+
+export function celsiusToDisplayTemp(celsius: number, unit: WeatherTempUnit): number {
+  if (unit === 'F') return (celsius * 9) / 5 + 32;
+  return celsius;
+}
+
+export function floorDisplayTemp(celsius: number, unit: WeatherTempUnit): number {
+  return Math.floor(celsiusToDisplayTemp(celsius, unit));
+}

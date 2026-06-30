@@ -1,4 +1,4 @@
-import { RefreshCw } from 'lucide-react';
+import { ExternalLink, RefreshCw } from 'lucide-react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../../stores/appStore';
@@ -9,7 +9,7 @@ import { formatMarketCountdown } from '../../lib/marketCountdown';
 import { weatherMarketExpiryMsForEvent } from '../../lib/weatherMarketExpiry';
 import type { Market, Order, WeatherCitySlug } from '../../types';
 import { WEATHER_CITIES } from '../../types';
-import { isWeatherCitySlug, mergeWeatherCityOptions } from '../../lib/weatherCities';
+import { isWeatherCitySlug, mergeWeatherCityOptions, weatherCityWundergroundHourlyUrl } from '../../lib/weatherCities';
 import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
 import { WeatherCityMenu } from '../WeatherCityMenu';
 import {
@@ -732,6 +732,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     return n;
   }, [cityOptions, weatherCityFavorites]);
   const cityMeta = cityOptions.find((c) => c.slug === city) ?? cityOptions[0] ?? WEATHER_CITIES[0];
+  const wundergroundHourlyUrl = useMemo(() => weatherCityWundergroundHourlyUrl(city), [city]);
   const highMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'high'), [allMarkets]);
   const lowMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'low'), [allMarkets]);
   const showPast = useAppStore((s) => s.showPast);
@@ -922,6 +923,20 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
             <polyline points="6 9 12 15 18 9" />
           </svg>
         </button>
+
+        {wundergroundHourlyUrl ? (
+          <a
+            href={wundergroundHourlyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="no-drag inline-flex shrink-0 items-center rounded p-0.5 text-gray-400 hover:text-sky-300"
+            title="Weather Underground hourly"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <ExternalLink className="h-3 w-3" aria-hidden />
+          </a>
+        ) : null}
 
         {dateColumns.length > 0 ? (
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">

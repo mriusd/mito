@@ -79,6 +79,12 @@ export function weatherCityLabel(slug: string): string {
     .join(' ');
 }
 
+export function weatherCityWundergroundHourlyUrl(slug: string): string | null {
+  const icao = WEATHER_CITIES.find((c) => c.slug === slug.trim().toLowerCase())?.icao?.trim();
+  if (!icao) return null;
+  return `https://www.wunderground.com/hourly/${icao.toUpperCase()}`;
+}
+
 /** Catalog cities plus any extra slugs from loaded market data. */
 export function mergeWeatherCityOptions(extraSlugs: string[] = []): WeatherCityMeta[] {
   const map = new Map<string, WeatherCityMeta>(WEATHER_CITIES.map((c) => [c.slug, c]));

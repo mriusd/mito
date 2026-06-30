@@ -49,7 +49,10 @@ export function WeatherCityMenu({
               <button
                 type="button"
                 className={`no-drag min-w-0 flex-1 cursor-pointer py-1 pr-2 text-left text-xs font-bold ${selected ? 'text-white' : 'text-gray-300'}`}
-                onClick={() => onSelect(c.slug)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect(c.slug);
+                }}
               >
                 {c.label}
               </button>

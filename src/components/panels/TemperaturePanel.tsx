@@ -6,17 +6,40 @@ import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weath
 import { WeatherCityMenu } from '../WeatherCityMenu';
 import {
   fetchWeatherObservations,
+  floorDisplayTemp,
   formatWeatherChartHour,
   isWeatherDateToday,
+  readWeatherTempUnit,
   weatherDateInputValue,
+  writeWeatherTempUnit,
   type WeatherObservationsResponse,
+  type WeatherTempUnit,
 } from '../../lib/weatherObservations';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LINE_COLOR = '#38bdf8';
 
-function floorTempDeg(temp: number): number {
-  return Math.floor(temp);
+function TempUnitToggle({
+  unit,
+  onChange,
+}: {
+  unit: WeatherTempUnit;
+  onChange: (unit: WeatherTempUnit) => void;
+}) {
+  const btn = (u: WeatherTempUnit) =>
+    unit === u
+      ? 'px-1.5 py-0.5 text-[9px] font-bold bg-gray-600 text-white'
+      : 'px-1.5 py-0.5 text-[9px] font-bold text-gray-400 hover:text-gray-200';
+  return (
+    <div className="no-drag inline-flex overflow-hidden rounded border border-gray-600 divide-x divide-gray-600 bg-gray-900/90">
+      <button type="button" className={btn('C')} onClick={() => onChange('C')}>
+        °C
+      </button>
+      <button type="button" className={btn('F')} onClick={() => onChange('F')}>
+        °F
+      </button>
+    </div>
+  );
 }
 
 function readStoredCity(panelId: string): WeatherCitySlug {
@@ -31,8 +54,10 @@ function readStoredDate(panelId: string): string {
 
 function TemperatureChart({
   data,
+  unit,
 }: {
   data: WeatherObservationsResponse;
+  unit: WeatherTempUnit;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -65,8 +90,12 @@ function TemperatureChart({
     const chartR = w - padR;
     const chartT = padT;
     const chartB = h - padB;
+    const unitSuffix = unit === 'F' ? '°F' : '°C';
 
-    const points = data.points.map((p) => ({ ...p, temp: floorTempDeg(p.temp) }));
+    const points = data.points.map((p) => ({
+      ...p,
+      temp: floorDisplayTemp(p.temp, unit),
+    }));
     if (points.length === 0) {
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
       ctx.font = '11px monospace';
@@ -105,7 +134,7 @@ function TemperatureChart({
       ctx.stroke();
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`${Math.floor(v)}°`, chartL - 4, y);
+      ctx.fillText(`${Math.floor(v)}${unitSuffix}`, chartL - 4, y);
     }
 
     for (let hour = 0; hour <= 24; hour += 6) {
@@ -143,7 +172,7 @@ function TemperatureChart({
       ctx.arc(x, y, 2.5, 0, Math.PI * 2);
       ctx.fill();
     }
-  }, [data]);
+  }, [data, unit]);
 
   useLayoutEffect(() => {
     draw();
@@ -166,9 +195,12 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
   const [city, setCity] = useState<WeatherCitySlug>(() => readStoredCity(panelId));
   const [date, setDate] = useState(() => readStoredDate(panelId));
   const [cityOpen, setCityOpen] = useState(false);
+  const [tempUnit, setTempUnit] = useState<WeatherTempUnit>(() => readWeatherTempUnit());
   const [data, setData] = useState<WeatherObservationsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const cityBtnRef = useRef<HTMLButtonElement>(null);
+  const cityMenuRef = useRef<HTMLDivElement>(null);
 
   const weatherMarketsByCity = useAppStore((s) => s.weatherMarkets);
   const weatherCityFavorites = useWeatherCityFavorites();
@@ -186,6 +218,18 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
     return n;
   }, [cityOptions, weatherCityFavorites]);
   const cityMeta = cityOptions.find((c) => c.slug === city) ?? cityOptions[0] ?? WEATHER_CITIES[0];
+
+  useEffect(() => {
+    if (!cityOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (cityBtnRef.current?.contains(t)) return;
+      if (cityMenuRef.current?.contains(t)) return;
+      setCityOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [cityOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -223,8 +267,10 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
     <div className="panel-wrapper flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-gray-800/50 p-3">
       <div className="panel-header mb-2 shrink-0">
         <h3 className="mb-2 flex flex-wrap items-center gap-2 text-sm font-bold text-sky-400">
-          <span
-            className="relative no-drag inline-flex cursor-pointer select-none items-center"
+          <button
+            ref={cityBtnRef}
+            type="button"
+            className="no-drag relative inline-flex cursor-pointer select-none items-center"
             onClick={() => setCityOpen((v) => !v)}
           >
             {cityMeta.label}
@@ -232,7 +278,11 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
               <polyline points="6 9 12 15 18 9" />
             </svg>
             {cityOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 max-h-48 min-w-[140px] overflow-y-auto rounded border border-gray-600 bg-gray-800 shadow-lg">
+              <div
+                ref={cityMenuRef}
+                className="absolute left-0 top-full z-50 mt-1 max-h-48 min-w-[140px] overflow-y-auto rounded border border-gray-600 bg-gray-800 shadow-lg"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
                 <WeatherCityMenu
                   cities={cityOptions}
                   selectedSlug={city}
@@ -245,7 +295,14 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
                 />
               </div>
             )}
-          </span>
+          </button>
+          <TempUnitToggle
+            unit={tempUnit}
+            onChange={(u) => {
+              setTempUnit(u);
+              writeWeatherTempUnit(u);
+            }}
+          />
           <label className="no-drag inline-flex items-center gap-1 text-[10px] font-normal text-gray-300">
             <span className="text-gray-500">Date</span>
             <input
@@ -262,7 +319,8 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
           </label>
           {data?.highTemp != null && data.lowTemp != null ? (
             <span className="ml-auto text-[10px] font-normal tabular-nums text-gray-400">
-              H {floorTempDeg(data.highTemp)}° · L {floorTempDeg(data.lowTemp)}°
+              H {floorDisplayTemp(data.highTemp, tempUnit)}{tempUnit === 'F' ? '°F' : '°C'} · L{' '}
+              {floorDisplayTemp(data.lowTemp, tempUnit)}{tempUnit === 'F' ? '°F' : '°C'}
             </span>
           ) : null}
         </h3>
@@ -274,7 +332,7 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
         ) : error ? (
           <div className="flex h-full items-center justify-center px-2 text-center text-xs text-red-400">{error}</div>
         ) : data ? (
-          <TemperatureChart data={data} />
+          <TemperatureChart data={data} unit={tempUnit} />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-gray-500">No data</div>
         )}

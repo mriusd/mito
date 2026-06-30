@@ -149,3 +149,21 @@ export function celsiusToDisplayTemp(celsius: number, unit: WeatherTempUnit): nu
 export function floorDisplayTemp(celsius: number, unit: WeatherTempUnit): number {
   return Math.floor(celsiusToDisplayTemp(celsius, unit));
 }
+
+/** Low bucket highlight: observed min if colder than forecast. */
+export function weatherHighlightLowC(data: WeatherObservationsResponse | null | undefined): number | null {
+  if (!data) return null;
+  const obs = data.lowTemp;
+  const fc = data.forecastLowC;
+  if (obs != null && fc != null) return Math.min(obs, fc);
+  return obs ?? fc ?? null;
+}
+
+/** High bucket highlight: observed max if warmer than forecast. */
+export function weatherHighlightHighC(data: WeatherObservationsResponse | null | undefined): number | null {
+  if (!data) return null;
+  const obs = data.highTemp;
+  const fc = data.forecastHighC;
+  if (obs != null && fc != null) return Math.max(obs, fc);
+  return obs ?? fc ?? null;
+}

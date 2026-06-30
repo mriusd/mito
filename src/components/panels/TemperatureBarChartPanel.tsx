@@ -36,6 +36,8 @@ import { fetchWeatherProbabilities, type WeatherProbabilitiesPayload } from '../
 import {
   fetchWeatherObservations,
   isWeatherDateTodayInTimezone,
+  weatherHighlightHighC,
+  weatherHighlightLowC,
   type WeatherObservationsResponse,
   type WeatherTempUnit,
 } from '../../lib/weatherObservations';
@@ -1155,7 +1157,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               onchainWsPositions={onchainWsPositions}
               modelBuckets={modelPayload?.lowest_temperature?.bucket_probabilities_1c}
               orderLookup={orderLookup}
-              forecastTempC={obsData?.forecastLowC ?? null}
+              forecastTempC={weatherHighlightLowC(obsData)}
             />
             <TempOddsChart
               barColor="bg-red-400/90"
@@ -1170,7 +1172,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               onchainWsPositions={onchainWsPositions}
               modelBuckets={modelPayload?.highest_temperature?.bucket_probabilities_1c}
               orderLookup={orderLookup}
-              forecastTempC={obsData?.forecastHighC ?? null}
+              forecastTempC={weatherHighlightHighC(obsData)}
             />
             <TempOddsTemperatureChart data={obsData} loading={obsLoading} unit={tempUnit} />
           </>

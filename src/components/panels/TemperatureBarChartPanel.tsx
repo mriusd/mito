@@ -10,6 +10,8 @@ import { weatherMarketExpiryMsForEvent } from '../../lib/weatherMarketExpiry';
 import type { Market, Order, WeatherCitySlug } from '../../types';
 import { WEATHER_CITIES } from '../../types';
 import { isWeatherCitySlug, mergeWeatherCityOptions } from '../../lib/weatherCities';
+import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
+import { WeatherCityMenu } from '../WeatherCityMenu';
 import {
   buildTableData,
   compactTempBucketLabel,
@@ -52,6 +54,30 @@ function formatDateHeader(endDate: string): string {
 function dateStorageKey(endDate: string): string {
   const t = new Date(endDate).getTime();
   return Number.isFinite(t) ? String(t) : endDate;
+}
+
+function weatherModelContextKey(city: WeatherCitySlug, dateCol: DateCol | undefined): string {
+  if (!dateCol) return '';
+  const date = weatherEventDateISOFromSlug(dateCol.slug);
+  if (!date) return '';
+  return `${city}\0${date}`;
+}
+
+function weatherPayloadUpdatedMs(
+  payload: WeatherProbabilitiesPayload | null,
+  fetchedAtMs: number,
+): number {
+  if (!payload) return 0;
+  if (payload.updated_at != null && Number.isFinite(payload.updated_at)) {
+    const ms = payload.updated_at > 1e12 ? payload.updated_at : payload.updated_at * 1000;
+    if (Number.isFinite(ms) && ms > 0 && ms <= Date.now()) return ms;
+  }
+  const ts = payload.analysis_timestamp;
+  if (ts) {
+    const ms = Date.parse(ts);
+    if (Number.isFinite(ms) && ms > 0 && ms <= Date.now()) return ms;
+  }
+  return fetchedAtMs;
 }
 
 function yesChartEntryFrac(avgPrice: number, outcome: 'YES' | 'NO'): number | null {
@@ -664,8 +690,10 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   );
   const [pastFilterTick, setPastFilterTick] = useState(0);
   const [modelPayload, setModelPayload] = useState<WeatherProbabilitiesPayload | null>(null);
+  const [modelPayloadKey, setModelPayloadKey] = useState('');
   const [modelFetchedAtMs, setModelFetchedAtMs] = useState(0);
   const [modelRefreshing, setModelRefreshing] = useState(false);
+  const modelFetchGenRef = useRef(0);
 
   const closeCityMenu = useCallback(() => {
     setCityDropdownOpen(false);
@@ -698,10 +726,20 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
 
   const allMarkets = useAppStore((s) => s.weatherMarkets[city] ?? EMPTY_MARKETS);
   const weatherMarketsByCity = useAppStore((s) => s.weatherMarkets);
+  const weatherCityFavorites = useWeatherCityFavorites();
   const cityOptions = useMemo(
-    () => mergeWeatherCityOptions(Object.keys(weatherMarketsByCity)),
-    [weatherMarketsByCity],
+    () => sortWeatherCityOptions(mergeWeatherCityOptions(Object.keys(weatherMarketsByCity)), weatherCityFavorites),
+    [weatherMarketsByCity, weatherCityFavorites],
   );
+  const starredCityCount = useMemo(() => {
+    const fav = new Set(weatherCityFavorites);
+    let n = 0;
+    for (const c of cityOptions) {
+      if (!fav.has(c.slug)) break;
+      n += 1;
+    }
+    return n;
+  }, [cityOptions, weatherCityFavorites]);
   const cityMeta = cityOptions.find((c) => c.slug === city) ?? cityOptions[0] ?? WEATHER_CITIES[0];
   const highMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'high'), [allMarkets]);
   const lowMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'low'), [allMarkets]);
@@ -721,27 +759,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const orderLookup = useMemo(() => buildOrderLookup(myOrders), [myOrders]);
   const onchainWsPositions = useSidebarOnchainGridWalletPositions();
   const nowMs = useWalletTradeElapsedMs();
-
-  const predictionUpdatedMs = useMemo(() => {
-    if (modelPayload?.updated_at) return modelPayload.updated_at * 1000;
-    const ts = modelPayload?.analysis_timestamp;
-    if (ts) {
-      const ms = Date.parse(ts);
-      if (Number.isFinite(ms) && ms <= Date.now()) return ms;
-    }
-    return modelFetchedAtMs;
-  }, [modelPayload?.updated_at, modelPayload?.analysis_timestamp, modelFetchedAtMs]);
-
-  const predictionAgeLabel = useMemo(() => {
-    if (predictionUpdatedMs <= 0) return null;
-    return formatElapsedSinceMs(predictionUpdatedMs, nowMs) || null;
-  }, [predictionUpdatedMs, nowMs]);
-
-  const predictionAgeClass = useMemo(() => {
-    if (predictionUpdatedMs <= 0) return 'text-gray-500';
-    const ageSec = Math.max(0, Math.floor((nowMs - predictionUpdatedMs) / 1000));
-    return tradeElapsedColorClass(ageSec);
-  }, [predictionUpdatedMs, nowMs]);
 
   useEffect(() => {
     if (showPast) return;
@@ -788,6 +805,33 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     [panelId],
   );
 
+  const modelContextKey = useMemo(
+    () => weatherModelContextKey(city, selectedDateCol),
+    [city, selectedDateCol],
+  );
+
+  useEffect(() => {
+    setModelPayload(null);
+    setModelPayloadKey('');
+    setModelFetchedAtMs(0);
+  }, [modelContextKey]);
+
+  const predictionUpdatedMs = useMemo(() => {
+    if (!modelPayload || modelPayloadKey !== modelContextKey || !modelContextKey) return 0;
+    return weatherPayloadUpdatedMs(modelPayload, modelFetchedAtMs);
+  }, [modelPayload, modelPayloadKey, modelContextKey, modelFetchedAtMs]);
+
+  const predictionAgeLabel = useMemo(() => {
+    if (predictionUpdatedMs <= 0) return null;
+    return formatElapsedSinceMs(predictionUpdatedMs, nowMs) || null;
+  }, [predictionUpdatedMs, nowMs]);
+
+  const predictionAgeClass = useMemo(() => {
+    if (predictionUpdatedMs <= 0) return 'text-gray-500';
+    const ageSec = Math.max(0, Math.floor((nowMs - predictionUpdatedMs) / 1000));
+    return tradeElapsedColorClass(ageSec);
+  }, [predictionUpdatedMs, nowMs]);
+
   const expiryNow = useExpiryNow();
   const marketExpiryMs = useMemo(() => {
     if (!selectedDateCol?.slug) return null;
@@ -817,29 +861,40 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   );
 
   const refreshModelProbabilities = useCallback(async () => {
-    if (!selectedDateCol) {
+    const ctx = modelContextKey;
+    if (!ctx) {
       setModelPayload(null);
+      setModelPayloadKey('');
       setModelFetchedAtMs(0);
       return;
     }
-    const date = weatherEventDateISOFromSlug(selectedDateCol.slug);
-    if (!date) {
+    const sep = ctx.indexOf('\0');
+    const fetchCity = ctx.slice(0, sep) as WeatherCitySlug;
+    const date = ctx.slice(sep + 1);
+    if (!fetchCity || !date) {
       setModelPayload(null);
+      setModelPayloadKey('');
       setModelFetchedAtMs(0);
       return;
     }
+    const gen = ++modelFetchGenRef.current;
     setModelRefreshing(true);
     try {
-      const payload = await fetchWeatherProbabilities(city, date);
+      const payload = await fetchWeatherProbabilities(fetchCity, date);
+      if (modelFetchGenRef.current !== gen) return;
       setModelPayload(payload);
-      if (payload) setModelFetchedAtMs(Date.now());
+      setModelPayloadKey(payload ? ctx : '');
+      setModelFetchedAtMs(payload ? Date.now() : 0);
     } catch (err) {
+      if (modelFetchGenRef.current !== gen) return;
       console.error('[weather-probabilities]', err);
       setModelPayload(null);
+      setModelPayloadKey('');
+      setModelFetchedAtMs(0);
     } finally {
-      setModelRefreshing(false);
+      if (modelFetchGenRef.current === gen) setModelRefreshing(false);
     }
-  }, [city, selectedDateCol]);
+  }, [modelContextKey]);
 
   useEffect(() => {
     void refreshModelProbabilities();
@@ -929,23 +984,19 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
         ? createPortal(
             <div
               ref={cityMenuRef}
-              className="fixed z-[9999] max-h-48 min-w-[120px] overflow-y-auto rounded border border-gray-600 bg-gray-800 shadow-lg"
+              className="fixed z-[9999] max-h-48 min-w-[140px] overflow-y-auto rounded border border-gray-600 bg-gray-800 shadow-lg"
               style={{ top: cityMenuPos.top, left: cityMenuPos.left }}
             >
-              {cityOptions.map((c) => (
-                <button
-                  key={c.slug}
-                  type="button"
-                  className={`block w-full cursor-pointer px-3 py-1 text-left text-xs font-bold hover:bg-gray-700 ${c.slug === city ? 'bg-gray-700 text-white' : 'text-gray-300'}`}
-                  onClick={() => {
-                    setCity(c.slug);
-                    localStorage.setItem(`polybot-weather-temp-bars-city-${panelId}`, c.slug);
-                    closeCityMenu();
-                  }}
-                >
-                  {c.label}
-                </button>
-              ))}
+              <WeatherCityMenu
+                cities={cityOptions}
+                selectedSlug={city}
+                starredCount={starredCityCount}
+                onSelect={(slug) => {
+                  setCity(slug);
+                  localStorage.setItem(`polybot-weather-temp-bars-city-${panelId}`, slug);
+                  closeCityMenu();
+                }}
+              />
             </div>,
             document.body,
           )

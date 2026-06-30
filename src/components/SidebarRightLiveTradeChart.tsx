@@ -3,6 +3,7 @@ import { fetchMarketOutcomeTokens } from '../api';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import type { Market } from '../types';
 import { extractAssetFromMarket } from '../utils/format';
+import { effectiveMarketExpiryMs } from '../lib/weatherMarketExpiry';
 import { walletInfoChartMarketWithOutcomeTokens } from '../lib/walletInfoChartMarket';
 import { LiveTradeChart } from './LiveTradeChart';
 import {
@@ -182,8 +183,13 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   }, [market.id, yesTokenId, noTokenId, chartOutcomeProp]);
 
   const tokenId = chartOutcome === 'YES' ? yesTokenId : noTokenId || yesTokenId;
-  const endTime =
-    chartEndTime ?? ((chartMarket ?? market).endDate ? new Date((chartMarket ?? market).endDate!).getTime() : undefined);
+  const endTime = useMemo(() => {
+    if (chartEndTime != null) return chartEndTime;
+    const m = chartMarket ?? market;
+    const expiryMs = effectiveMarketExpiryMs(m);
+    if (expiryMs != null) return expiryMs;
+    return m.endDate ? new Date(m.endDate).getTime() : undefined;
+  }, [chartEndTime, chartMarket, market]);
   const startTimeProp = chartStartTime ?? (upDownStartTime > 0 ? upDownStartTime : undefined);
   const yesLabel = isUpDownMarket ? 'UP' : 'YES';
   const noLabel = isUpDownMarket ? 'DOWN' : 'NO';

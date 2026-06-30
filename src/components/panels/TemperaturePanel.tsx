@@ -2,6 +2,8 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { useAppStore } from '../../stores/appStore';
 import { WEATHER_CITIES, type WeatherCitySlug } from '../../types';
 import { isWeatherCitySlug, mergeWeatherCityOptions } from '../../lib/weatherCities';
+import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
+import { WeatherCityMenu } from '../WeatherCityMenu';
 import {
   fetchWeatherObservations,
   formatWeatherChartHour,
@@ -169,10 +171,20 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
   const [error, setError] = useState('');
 
   const weatherMarketsByCity = useAppStore((s) => s.weatherMarkets);
+  const weatherCityFavorites = useWeatherCityFavorites();
   const cityOptions = useMemo(
-    () => mergeWeatherCityOptions(Object.keys(weatherMarketsByCity)),
-    [weatherMarketsByCity],
+    () => sortWeatherCityOptions(mergeWeatherCityOptions(Object.keys(weatherMarketsByCity)), weatherCityFavorites),
+    [weatherMarketsByCity, weatherCityFavorites],
   );
+  const starredCityCount = useMemo(() => {
+    const fav = new Set(weatherCityFavorites);
+    let n = 0;
+    for (const c of cityOptions) {
+      if (!fav.has(c.slug)) break;
+      n += 1;
+    }
+    return n;
+  }, [cityOptions, weatherCityFavorites]);
   const cityMeta = cityOptions.find((c) => c.slug === city) ?? cityOptions[0] ?? WEATHER_CITIES[0];
 
   useEffect(() => {
@@ -220,21 +232,17 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
               <polyline points="6 9 12 15 18 9" />
             </svg>
             {cityOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 max-h-48 min-w-[120px] overflow-y-auto rounded border border-gray-600 bg-gray-800 shadow-lg">
-                {cityOptions.map((c) => (
-                  <div
-                    key={c.slug}
-                    className={`cursor-pointer px-3 py-1 text-xs font-bold hover:bg-gray-700 ${c.slug === city ? 'bg-gray-700 text-white' : 'text-gray-300'}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCity(c.slug);
-                      localStorage.setItem(`polybot-weather-temp-city-${panelId}`, c.slug);
-                      setCityOpen(false);
-                    }}
-                  >
-                    {c.label}
-                  </div>
-                ))}
+              <div className="absolute left-0 top-full z-50 mt-1 max-h-48 min-w-[140px] overflow-y-auto rounded border border-gray-600 bg-gray-800 shadow-lg">
+                <WeatherCityMenu
+                  cities={cityOptions}
+                  selectedSlug={city}
+                  starredCount={starredCityCount}
+                  onSelect={(slug) => {
+                    setCity(slug);
+                    localStorage.setItem(`polybot-weather-temp-city-${panelId}`, slug);
+                    setCityOpen(false);
+                  }}
+                />
               </div>
             )}
           </span>

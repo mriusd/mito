@@ -1,7 +1,14 @@
+import { geoGraticule, geoPath, geoEquirectangular } from 'd3-geo';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { WEATHER_CITIES, type WeatherCitySlug } from '../../lib/weatherCities';
 import { WEATHER_CITY_COORDS } from '../../lib/weatherCityCoords';
-import { selectTempOddsCity } from '../../lib/weatherTempOddsControl';
+import {
+  isNightAt,
+  solarHourAtLongitude,
+  subsolarPoint,
+  utcOffsetLabel,
+} from '../../lib/weatherMapSun';
+import { onTempOddsCitySelect, selectTempOddsCity } from '../../lib/weatherTempOddsControl';
 
 type GeoPolygon = number[][][];
 type GeoMultiPolygon = number[][][][];
@@ -26,11 +33,15 @@ type MapLayout = {
   h: number;
   width: number;
   height: number;
+  mapTop: number;
 };
 
 const LAND_GEOJSON_URL = `${import.meta.env.BASE_URL}ne_110m_land.geojson`;
 const DOT_RADIUS = 4;
 const HIT_RADIUS = 10;
+const MAP_TOP_LABEL_H = 16;
+const GRATICULE_STEP = 15;
+const TZ_LON_STEP = 15;
 
 let landGeoJsonPromise: Promise<LandGeoJSON> | null = null;
 
@@ -44,11 +55,32 @@ function loadLandGeoJSON(): Promise<LandGeoJSON> {
   return landGeoJsonPromise;
 }
 
-function projectLonLat(lon: number, lat: number, layout: MapLayout) {
+function makeLayout(width: number, height: number): MapLayout {
+  const pad = 6;
   return {
-    x: layout.pad + ((lon + 180) / 360) * layout.w,
-    y: layout.pad + ((90 - lat) / 180) * layout.h,
+    pad,
+    w: width - pad * 2,
+    h: height - pad * 2 - MAP_TOP_LABEL_H,
+    width,
+    height,
+    mapTop: pad + MAP_TOP_LABEL_H,
   };
+}
+
+function makeProjection(layout: MapLayout) {
+  return geoEquirectangular().fitExtent(
+    [
+      [layout.pad, layout.mapTop],
+      [layout.pad + layout.w, layout.mapTop + layout.h],
+    ],
+    { type: 'Sphere' },
+  );
+}
+
+function projectLonLat(lon: number, lat: number, layout: MapLayout) {
+  const proj = makeProjection(layout);
+  const p = proj([lon, lat]);
+  return { x: p?.[0] ?? 0, y: p?.[1] ?? 0 };
 }
 
 function drawLand(ctx: CanvasRenderingContext2D, land: LandGeoJSON, layout: MapLayout) {
@@ -79,6 +111,79 @@ function drawRings(ctx: CanvasRenderingContext2D, rings: GeoPolygon, layout: Map
   ctx.fill();
 }
 
+function drawGraticule(ctx: CanvasRenderingContext2D, layout: MapLayout) {
+  const projection = makeProjection(layout);
+  const path = geoPath(projection).context(ctx);
+  const graticule = geoGraticule().step([GRATICULE_STEP, GRATICULE_STEP]);
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  path(graticule());
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+  for (const line of graticule.lines()) {
+    ctx.beginPath();
+    path(line);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawTimezoneMeridians(ctx: CanvasRenderingContext2D, layout: MapLayout) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(251, 191, 36, 0.12)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 4]);
+  for (let lon = -180; lon <= 180; lon += TZ_LON_STEP) {
+    const top = projectLonLat(lon, 90, layout);
+    const bottom = projectLonLat(lon, -90, layout);
+    ctx.beginPath();
+    ctx.moveTo(top.x, top.y);
+    ctx.lineTo(bottom.x, bottom.y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawNightOverlay(ctx: CanvasRenderingContext2D, layout: MapLayout, date: Date) {
+  const x0 = layout.pad;
+  const y0 = layout.mapTop;
+  const step = 3;
+  ctx.fillStyle = 'rgba(5, 8, 20, 0.62)';
+  for (let py = 0; py < layout.h; py += step) {
+    const lat = 90 - (py / layout.h) * 180;
+    for (let px = 0; px < layout.w; px += step) {
+      const lon = (px / layout.w) * 360 - 180;
+      if (isNightAt(lat, lon, date)) {
+        ctx.fillRect(x0 + px, y0 + py, step, step);
+      }
+    }
+  }
+}
+
+function drawDayGlow(ctx: CanvasRenderingContext2D, layout: MapLayout, date: Date) {
+  const sub = subsolarPoint(date);
+  const { x, y } = projectLonLat(sub.lon, sub.lat, layout);
+  const r = Math.max(28, layout.w * 0.08);
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, 'rgba(250, 204, 21, 0.18)');
+  g.addColorStop(0.45, 'rgba(250, 204, 21, 0.06)');
+  g.addColorStop(1, 'rgba(250, 204, 21, 0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#fde047';
+  ctx.beginPath();
+  ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function nearestCity(
   cities: MapCity[],
   layout: MapLayout,
@@ -98,16 +203,45 @@ function nearestCity(
   return best;
 }
 
+function lonBandCenterPercent(lon: number, layout: MapLayout): number {
+  const { x } = projectLonLat(lon + TZ_LON_STEP / 2, 0, layout);
+  return (x / layout.width) * 100;
+}
+
+function buildTimezoneMeridians(): number[] {
+  const lons: number[] = [];
+  for (let lon = -180; lon < 180; lon += TZ_LON_STEP) {
+    lons.push(lon);
+  }
+  return lons;
+}
+
 function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const layoutRef = useRef<MapLayout | null>(null);
   const hoverSlugRef = useRef<WeatherCitySlug | null>(null);
+  const selectedSlugRef = useRef<WeatherCitySlug | null>(null);
   const [land, setLand] = useState<LandGeoJSON | null>(null);
   const [loadError, setLoadError] = useState('');
   const [drawTick, setDrawTick] = useState(0);
   const [hoverTip, setHoverTip] = useState<{ x: number; y: number; label: string } | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [layoutSnapshot, setLayoutSnapshot] = useState<MapLayout | null>(null);
   const bumpDraw = useCallback(() => setDrawTick((n) => n + 1), []);
+
+  const meridians = useMemo(() => buildTimezoneMeridians(), []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => onTempOddsCitySelect(({ city }) => {
+    if (selectedSlugRef.current === city) return;
+    selectedSlugRef.current = city;
+    bumpDraw();
+  }), [bumpDraw]);
 
   const cities = useMemo<MapCity[]>(
     () =>
@@ -151,32 +285,52 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const pad = 6;
-    const layout: MapLayout = {
-      pad,
-      w: width - pad * 2,
-      h: height - pad * 2,
-      width,
-      height,
-    };
+    const layout = makeLayout(width, height);
     layoutRef.current = layout;
+    setLayoutSnapshot((prev) =>
+      prev?.width === layout.width && prev?.height === layout.height ? prev : layout,
+    );
 
-    ctx.fillStyle = '#0b1018';
-    ctx.fillRect(0, 0, width, height);
+    const date = new Date(nowMs);
+
+    ctx.fillStyle = '#0c4a6e';
+    ctx.fillRect(layout.pad, layout.mapTop, layout.w, layout.h);
 
     if (land) {
       drawLand(ctx, land, layout);
     }
 
+    drawNightOverlay(ctx, layout, date);
+    drawDayGlow(ctx, layout, date);
+
+    drawGraticule(ctx, layout);
+    drawTimezoneMeridians(ctx, layout);
+
     const hoverSlug = hoverSlugRef.current;
+    const selectedSlug = selectedSlugRef.current;
     for (const city of cities) {
       const { x, y } = projectLonLat(city.lon, city.lat, layout);
-      const active = hoverSlug === city.slug;
+      const hovered = hoverSlug === city.slug;
+      const selected = selectedSlug === city.slug;
+      const night = isNightAt(city.lat, city.lon, date);
+      const r = selected ? DOT_RADIUS + 2 : hovered ? DOT_RADIUS + 1.5 : DOT_RADIUS;
       ctx.beginPath();
-      ctx.arc(x, y, active ? DOT_RADIUS + 1.5 : DOT_RADIUS, 0, Math.PI * 2);
-      ctx.fillStyle = active ? '#fde047' : '#facc15';
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = night
+        ? selected || hovered
+          ? '#fde047'
+          : '#eab308'
+        : selected || hovered
+          ? '#fff176'
+          : '#facc15';
       ctx.fill();
-      if (active) {
+      if (selected) {
+        ctx.beginPath();
+        ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      } else if (hovered) {
         ctx.strokeStyle = 'rgba(255,255,255,0.85)';
         ctx.lineWidth = 1.5;
         ctx.stroke();
@@ -190,7 +344,7 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
       ctx.textBaseline = 'middle';
       ctx.fillText('Map load failed', width / 2, height / 2);
     }
-  }, [cities, land, loadError]);
+  }, [cities, land, loadError, nowMs]);
 
   useLayoutEffect(() => {
     draw();
@@ -241,10 +395,14 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
       const my = e.clientY - rect.top;
       const hit = nearestCity(cities, layout, mx, my);
       if (!hit) return;
+      selectedSlugRef.current = hit.slug;
+      bumpDraw();
       selectTempOddsCity(hit.slug, { linkSidebar: true });
     },
-    [cities],
+    [bumpDraw, cities],
   );
+
+  const now = new Date(nowMs);
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-2 h-full flex flex-col min-h-0">
@@ -259,6 +417,20 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
         onPointerLeave={onPointerLeave}
         onClick={onClick}
       >
+        {layoutSnapshot ? (
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-4 border-b border-amber-500/20 bg-gray-950/90">
+            {meridians.map((lon) => (
+              <div
+                key={lon}
+                className="absolute top-0 -translate-x-1/2 whitespace-nowrap text-[7px] leading-4 tabular-nums text-amber-200/90"
+                style={{ left: `${lonBandCenterPercent(lon, layoutSnapshot)}%` }}
+                title={`${utcOffsetLabel(lon)} · solar ${String(solarHourAtLongitude(lon + TZ_LON_STEP / 2, now)).padStart(2, '0')}:00`}
+              >
+                {String(solarHourAtLongitude(lon + TZ_LON_STEP / 2, now)).padStart(2, '0')}
+              </div>
+            ))}
+          </div>
+        ) : null}
         <canvas ref={canvasRef} className="block h-full w-full rounded border border-gray-700/80" />
         {hoverTip ? (
           <div

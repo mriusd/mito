@@ -15,7 +15,6 @@ import {
   mergeWeatherCityOptions,
   weatherCityTempUnit,
   weatherCityResolutionUrl,
-  weatherCityTempSource,
 } from '../../lib/weatherCities';
 import { onTempOddsCitySelect, selectTempOddsCity } from '../../lib/weatherTempOddsControl';
 import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
@@ -1033,10 +1032,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     () => weatherCityResolutionUrl(city, selectedObsDate),
     [city, selectedObsDate],
   );
-  const resolutionTitle =
-    obsData?.source === 'weathergov' || weatherCityTempSource(city) === 'weathergov'
-      ? 'NOAA weather.gov timeseries'
-      : 'Weather Underground hourly';
+  const resolutionTitle = 'Weather Underground hourly';
 
   const refreshModelProbabilities = useCallback(async () => {
     const ctx = modelContextKey;

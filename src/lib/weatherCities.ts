@@ -121,12 +121,6 @@ export function weatherCityTempSource(slug: string): WeatherTempSource {
 }
 
 export function weatherCityResolutionUrl(slug: string, dateYmd?: string | null): string | null {
-  const city = WEATHER_CITIES.find((c) => c.slug === slug.trim().toLowerCase());
-  const icao = city?.icao?.trim();
-  if (!icao) return null;
-  if (weatherCityTempSource(slug) === 'weathergov') {
-    return `https://www.weather.gov/wrh/timeseries?site=${icao.toUpperCase()}&units=metric`;
-  }
   return weatherCityWundergroundHourlyUrl(slug, dateYmd);
 }
 

@@ -42,8 +42,10 @@ const HIT_RADIUS = 16;
 const MAP_TOP_LABEL_H = 16;
 const GRATICULE_STEP = 15;
 const TZ_LON_STEP = 15;
+const NIGHT_OVERLAY_STEP = 6;
 
 let landGeoJsonPromise: Promise<LandGeoJSON> | null = null;
+let nightOverlayCache: { key: string; canvas: HTMLCanvasElement } | null = null;
 
 function loadLandGeoJSON(): Promise<LandGeoJSON> {
   if (!landGeoJsonPromise) {
@@ -149,20 +151,35 @@ function drawTimezoneMeridians(ctx: CanvasRenderingContext2D, layout: MapLayout)
   ctx.restore();
 }
 
-function drawNightOverlay(ctx: CanvasRenderingContext2D, layout: MapLayout, date: Date) {
-  const x0 = layout.pad;
-  const y0 = layout.mapTop;
-  const step = 3;
+function buildNightOverlayCanvas(w: number, h: number, date: Date): HTMLCanvasElement {
+  const minuteKey = Math.floor(date.getTime() / 60_000);
+  const key = `${w}x${h}:${minuteKey}`;
+  if (nightOverlayCache?.key === key) return nightOverlayCache.canvas;
+
+  const overlay = document.createElement('canvas');
+  overlay.width = w;
+  overlay.height = h;
+  const ctx = overlay.getContext('2d');
+  if (!ctx) return overlay;
+
   ctx.fillStyle = 'rgba(5, 8, 20, 0.62)';
-  for (let py = 0; py < layout.h; py += step) {
-    const lat = 90 - (py / layout.h) * 180;
-    for (let px = 0; px < layout.w; px += step) {
-      const lon = (px / layout.w) * 360 - 180;
+  for (let py = 0; py < h; py += NIGHT_OVERLAY_STEP) {
+    const lat = 90 - (py / h) * 180;
+    for (let px = 0; px < w; px += NIGHT_OVERLAY_STEP) {
+      const lon = (px / w) * 360 - 180;
       if (isNightAt(lat, lon, date)) {
-        ctx.fillRect(x0 + px, y0 + py, step, step);
+        ctx.fillRect(px, py, NIGHT_OVERLAY_STEP, NIGHT_OVERLAY_STEP);
       }
     }
   }
+
+  nightOverlayCache = { key, canvas: overlay };
+  return overlay;
+}
+
+function drawNightOverlay(ctx: CanvasRenderingContext2D, layout: MapLayout, date: Date) {
+  const overlay = buildNightOverlayCanvas(layout.w, layout.h, date);
+  ctx.drawImage(overlay, layout.pad, layout.mapTop);
 }
 
 function drawDayGlow(ctx: CanvasRenderingContext2D, layout: MapLayout, date: Date) {
@@ -222,13 +239,13 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
   const layoutRef = useRef<MapLayout | null>(null);
   const hoverSlugRef = useRef<WeatherCitySlug | null>(null);
   const selectedSlugRef = useRef<WeatherCitySlug | null>(null);
+  const hoverTipRef = useRef<{ x: number; y: number; label: string } | null>(null);
+  const drawRafRef = useRef(0);
   const [land, setLand] = useState<LandGeoJSON | null>(null);
   const [loadError, setLoadError] = useState('');
-  const [drawTick, setDrawTick] = useState(0);
   const [hoverTip, setHoverTip] = useState<{ x: number; y: number; label: string } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [layoutSnapshot, setLayoutSnapshot] = useState<MapLayout | null>(null);
-  const bumpDraw = useCallback(() => setDrawTick((n) => n + 1), []);
 
   const meridians = useMemo(() => buildTimezoneMeridians(), []);
 
@@ -236,12 +253,6 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
     const id = window.setInterval(() => setNowMs(Date.now()), 60_000);
     return () => window.clearInterval(id);
   }, []);
-
-  useEffect(() => onTempOddsCitySelect(({ city }) => {
-    if (selectedSlugRef.current === city) return;
-    selectedSlugRef.current = city;
-    bumpDraw();
-  }), [bumpDraw]);
 
   const cities = useMemo<MapCity[]>(
     () =>
@@ -287,9 +298,6 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
 
     const layout = makeLayout(width, height);
     layoutRef.current = layout;
-    setLayoutSnapshot((prev) =>
-      prev?.width === layout.width && prev?.height === layout.height ? prev : layout,
-    );
 
     const date = new Date(nowMs);
 
@@ -346,17 +354,31 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
     }
   }, [cities, land, loadError, nowMs]);
 
-  useLayoutEffect(() => {
-    draw();
-  }, [draw, drawTick]);
+  const scheduleDraw = useCallback(() => {
+    if (drawRafRef.current) return;
+    drawRafRef.current = requestAnimationFrame(() => {
+      drawRafRef.current = 0;
+      draw();
+    });
+  }, [draw]);
 
-  const cityPositions = useMemo(() => {
-    if (!layoutSnapshot) return [];
-    return cities.map((city) => ({
-      ...city,
-      ...projectLonLat(city.lon, city.lat, layoutSnapshot),
-    }));
-  }, [cities, layoutSnapshot, drawTick]);
+  const syncLayoutSnapshot = useCallback((width: number, height: number) => {
+    const layout = makeLayout(width, height);
+    layoutRef.current = layout;
+    setLayoutSnapshot((prev) =>
+      prev?.width === layout.width && prev?.height === layout.height ? prev : layout,
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    scheduleDraw();
+  }, [scheduleDraw]);
+
+  useEffect(() => {
+    return () => {
+      if (drawRafRef.current) cancelAnimationFrame(drawRafRef.current);
+    };
+  }, []);
 
   const pickCityAt = useCallback(
     (mx: number, my: number) => {
@@ -370,31 +392,64 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
   const setHoveredCity = useCallback(
     (hit: MapCity | null, mx: number, my: number) => {
       const slug = hit?.slug ?? null;
-      if (hoverSlugRef.current === slug) {
-        setHoverTip(hit ? { x: mx, y: my, label: hit.label } : null);
+      const nextTip = hit ? { x: mx, y: my, label: hit.label } : null;
+      const prevTip = hoverTipRef.current;
+      const slugChanged = hoverSlugRef.current !== slug;
+
+      if (!slugChanged && nextTip && prevTip) {
+        if (
+          prevTip.label === nextTip.label &&
+          Math.hypot(prevTip.x - nextTip.x, prevTip.y - nextTip.y) < 3
+        ) {
+          return;
+        }
+        hoverTipRef.current = nextTip;
+        setHoverTip(nextTip);
         return;
       }
+
       hoverSlugRef.current = slug;
-      setHoverTip(hit ? { x: mx, y: my, label: hit.label } : null);
-      bumpDraw();
+      hoverTipRef.current = nextTip;
+      setHoverTip(nextTip);
+      if (slugChanged) scheduleDraw();
     },
-    [bumpDraw],
+    [scheduleDraw],
   );
 
   const selectCity = useCallback(
     (slug: WeatherCitySlug) => {
       selectedSlugRef.current = slug;
-      bumpDraw();
+      scheduleDraw();
       selectTempOddsCity(slug, { linkSidebar: true });
     },
-    [bumpDraw],
+    [scheduleDraw],
   );
 
   useEffect(() => {
-    const ro = new ResizeObserver(() => bumpDraw());
-    if (containerRef.current) ro.observe(containerRef.current);
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onResize = () => {
+      nightOverlayCache = null;
+      syncLayoutSnapshot(el.clientWidth, el.clientHeight);
+      scheduleDraw();
+    };
+
+    onResize();
+    const ro = new ResizeObserver(onResize);
+    ro.observe(el);
     return () => ro.disconnect();
-  }, [bumpDraw]);
+  }, [scheduleDraw, syncLayoutSnapshot]);
+
+  useEffect(
+    () =>
+      onTempOddsCitySelect(({ city }) => {
+        if (selectedSlugRef.current === city) return;
+        selectedSlugRef.current = city;
+        scheduleDraw();
+      }),
+    [scheduleDraw],
+  );
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -408,11 +463,12 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
   );
 
   const onPointerLeave = useCallback(() => {
-    if (!hoverSlugRef.current) return;
+    if (!hoverSlugRef.current && !hoverTipRef.current) return;
     hoverSlugRef.current = null;
+    hoverTipRef.current = null;
     setHoverTip(null);
-    bumpDraw();
-  }, [bumpDraw]);
+    scheduleDraw();
+  }, [scheduleDraw]);
 
   const onClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -435,10 +491,7 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
         <span className="text-xs font-bold text-gray-500">Weather Map</span>
         <span className="text-[10px] text-gray-500">click city → Temp Odds</span>
       </div>
-      <div
-        ref={containerRef}
-        className="no-drag relative min-h-0 flex-1"
-      >
+      <div ref={containerRef} className="no-drag relative min-h-0 flex-1">
         {layoutSnapshot ? (
           <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-4 border-b border-amber-500/20 bg-gray-950/90">
             {meridians.map((lon) => (
@@ -462,29 +515,7 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
           onPointerMove={onPointerMove}
           onPointerLeave={onPointerLeave}
           onClick={onClick}
-        >
-          {cityPositions.map((city) => (
-            <button
-              key={city.slug}
-              type="button"
-              aria-label={city.label}
-              className="no-drag absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-0 bg-transparent p-0"
-              style={{
-                left: city.x,
-                top: city.y,
-                width: HIT_RADIUS * 2,
-                height: HIT_RADIUS * 2,
-              }}
-              onPointerEnter={(e) => {
-                setHoveredCity(city, e.clientX - (containerRef.current?.getBoundingClientRect().left ?? 0), e.clientY - (containerRef.current?.getBoundingClientRect().top ?? 0));
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                selectCity(city.slug);
-              }}
-            />
-          ))}
-        </div>
+        />
         {hoverTip ? (
           <div
             className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded border border-gray-600 bg-gray-900/95 px-1.5 py-0.5 text-[10px] text-gray-100 shadow-md"

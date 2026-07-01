@@ -178,7 +178,7 @@ function drawDayGlow(ctx: CanvasRenderingContext2D, layout: MapLayout, date: Dat
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = '#fde047';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
   ctx.beginPath();
   ctx.arc(x, y, 3.5, 0, Math.PI * 2);
   ctx.fill();

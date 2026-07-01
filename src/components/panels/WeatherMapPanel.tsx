@@ -61,8 +61,8 @@ function makeLayout(width: number, height: number): MapLayout {
   const pad = 6;
   return {
     pad,
-    w: width - pad * 2,
-    h: height - pad * 2 - MAP_TOP_LABEL_H,
+    w: Math.max(1, width - pad * 2),
+    h: Math.max(1, height - pad * 2 - MAP_TOP_LABEL_H),
     width,
     height,
     mapTop: pad + MAP_TOP_LABEL_H,
@@ -240,6 +240,7 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
   const hoverSlugRef = useRef<WeatherCitySlug | null>(null);
   const selectedSlugRef = useRef<WeatherCitySlug | null>(null);
   const hoverTipRef = useRef<{ x: number; y: number; label: string } | null>(null);
+  const drawRef = useRef<() => void>(() => {});
   const drawRafRef = useRef(0);
   const [land, setLand] = useState<LandGeoJSON | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -354,13 +355,15 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
     }
   }, [cities, land, loadError, nowMs]);
 
+  drawRef.current = draw;
+
   const scheduleDraw = useCallback(() => {
-    if (drawRafRef.current) return;
+    if (drawRafRef.current) cancelAnimationFrame(drawRafRef.current);
     drawRafRef.current = requestAnimationFrame(() => {
       drawRafRef.current = 0;
-      draw();
+      drawRef.current();
     });
-  }, [draw]);
+  }, []);
 
   const syncLayoutSnapshot = useCallback((width: number, height: number) => {
     const layout = makeLayout(width, height);
@@ -372,7 +375,11 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
 
   useLayoutEffect(() => {
     scheduleDraw();
-  }, [scheduleDraw]);
+  }, [draw, scheduleDraw]);
+
+  useEffect(() => {
+    scheduleDraw();
+  }, [land, loadError, nowMs, scheduleDraw]);
 
   useEffect(() => {
     return () => {

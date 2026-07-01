@@ -16,7 +16,7 @@ import {
   weatherCityTempUnit,
   weatherCityWundergroundHourlyUrl,
 } from '../../lib/weatherCities';
-import { onTempOddsCitySelect } from '../../lib/weatherTempOddsControl';
+import { onTempOddsCitySelect, selectTempOddsCity } from '../../lib/weatherTempOddsControl';
 import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
 import { WeatherCityMenu } from '../WeatherCityMenu';
 import {
@@ -153,6 +153,8 @@ const MARK_LINE =
 function fracLevelKey(frac: number): string {
   return (frac * 10000).toFixed(0);
 }
+
+const TEMP_ODDS_BAR_MAX_PCT = 1;
 
 function fracToBottomPx(frac: number, maxPct: number, trackPx: number): number {
   if (maxPct <= 0) return 0;
@@ -441,10 +443,7 @@ function buildTempOddsBuckets(
       orderMarks: marketOrderYesMarks(yesTokenId, noTokenId, orderLookup),
     };
   });
-  const maxPct = Math.max(
-    0.001,
-    ...entries.flatMap((e) => [...quoteScaleLevels(e.quote), e.modelPct ?? 0]),
-  );
+  const maxPct = TEMP_ODDS_BAR_MAX_PCT;
   return { entries, maxPct };
 }
 
@@ -507,7 +506,7 @@ function TempOddsBar({
   forecastHighlight = false,
 }: TempOddsBarProps) {
   const modelBarPx =
-    modelPct != null && maxPct > 0 ? Math.max(2, (modelPct / maxPct) * trackPx) : 0;
+    modelPct != null && maxPct > 0 ? (modelPct / maxPct) * trackPx : 0;
   const levelMarkGroups = useMemo(
     () => buildTempLevelGroups(entry, orderMarks),
     [entry, orderMarks],
@@ -802,6 +801,11 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
       }),
     [panelId],
   );
+
+  useEffect(() => {
+    if (!linkSidebar) return;
+    selectTempOddsCity(city, { linkSidebar: true });
+  }, [city, linkSidebar]);
 
   const closeCityMenu = useCallback(() => {
     setCityDropdownOpen(false);

@@ -234,13 +234,14 @@ export function TemperatureChart({
       dash: number[],
       dotRadius: number,
       strokeDots: boolean,
+      anchorToLastObs: boolean,
     ) => {
       if (linePoints.length === 0) return;
       ctx.strokeStyle = color;
       ctx.lineWidth = lineWidth;
       ctx.setLineDash(dash);
       ctx.beginPath();
-      if (points.length > 0) {
+      if (anchorToLastObs && points.length > 0) {
         const last = points[points.length - 1];
         ctx.moveTo(toX(last.timeMs), toY(last.temp));
       } else {
@@ -266,7 +267,15 @@ export function TemperatureChart({
       const n = forecastHistory.length;
       forecastHistory.forEach((batch, i) => {
         const opacity = 0.12 + (0.28 * (i + 1)) / (n + 1);
-        drawForecastLine(batch.points, `${FORECAST_HISTORY_BASE}${opacity})`, 1.5, [3, 5], 1.5, false);
+        drawForecastLine(
+          batch.points,
+          `${FORECAST_HISTORY_BASE}${opacity})`,
+          1.5,
+          [3, 5],
+          1.5,
+          false,
+          false,
+        );
       });
     }
 
@@ -296,7 +305,7 @@ export function TemperatureChart({
     }
 
     if (forecastPoints.length > 0) {
-      drawForecastLine(forecastPoints, FORECAST_COLOR, 2, [5, 4], 2, true);
+      drawForecastLine(forecastPoints, FORECAST_COLOR, 2, [5, 4], 2, true, true);
     }
 
     const minX = toX(minPoint.timeMs);

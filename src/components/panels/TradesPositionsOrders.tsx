@@ -650,8 +650,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
-      <div className="panel-header flex items-center gap-1 mb-2 cursor-grab">
-        <div className="no-drag flex items-center gap-1 flex-wrap">
+      <div className="panel-header flex min-w-0 items-center gap-1 mb-2 cursor-grab">
+        <span className="shrink-0 text-[10px] font-bold text-gray-500 select-none">TPO</span>
+        <div className="no-drag flex min-w-0 flex-1 flex-wrap items-center gap-1">
           <button onClick={() => handleSetTab('positions')} className={tabCls('positions')}>
             Positions <span className="text-xs text-gray-500">({processedPositions.length})</span>
           </button>
@@ -700,7 +701,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             </div>
           )}
         </div>
-        <span className="flex-1" />
+        <span className="min-w-6 w-6 shrink-0 self-stretch cursor-grab" aria-hidden />
         {liveTradesSource === 'onchain' && (
           <span className="text-[9px] font-bold text-purple-300/90 shrink-0" title="Positions & trades from backend rollups (wallet_market_positions / wallet_fill_ledger)">
             CHAIN

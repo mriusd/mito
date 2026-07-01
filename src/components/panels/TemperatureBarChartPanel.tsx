@@ -1179,7 +1179,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
         </span>
 
         {dateColumns.length > 0 ? (
-          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          <div className="no-drag flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {dateColumns.map((d) => {
               const key = weatherDateColKey(d);
               const selected =
@@ -1202,7 +1202,11 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               );
             })}
           </div>
-        ) : null}
+        ) : (
+          <span className="min-w-6 flex-1 basis-6 self-stretch" aria-hidden />
+        )}
+
+        <span className="min-w-6 w-6 shrink-0 self-stretch cursor-grab" aria-hidden />
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
           {expiryCountdown?.text ? (

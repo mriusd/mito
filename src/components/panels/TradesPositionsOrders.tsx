@@ -328,17 +328,18 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const [assetFilter, setAssetFilter] = useState(
     localStorage.getItem('polymarket-table-asset-filter') || 'ALL'
   );
-  type PosSortCol = 'expiry' | 'pnl' | 'pnlPct';
+  type PosSortCol = 'expiry' | 'entry' | 'cost' | 'exit' | 'val' | 'pnl' | 'pnlPct';
   const [posSortCol, setPosSortCol] = useState<PosSortCol>(() => {
     const v = localStorage.getItem(`polymarket-tpo-pos-sort-col-${panelId}`);
-    return v === 'pnl' || v === 'pnlPct' ? v : 'expiry';
+    if (v === 'pnl' || v === 'pnlPct' || v === 'entry' || v === 'cost' || v === 'exit' || v === 'val') return v;
+    return 'expiry';
   });
   const [posSortDir, setPosSortDir] = useState<1 | -1>(() => {
     const v = parseInt(localStorage.getItem(`polymarket-tpo-pos-sort-dir-${panelId}`) || '-1', 10);
     return v === 1 ? 1 : -1;
   });
 
-  const togglePosSort = (col: 'pnl' | 'pnlPct') => {
+  const togglePosSort = (col: PosSortCol) => {
     if (posSortCol === col) {
       const nd = (posSortDir === 1 ? -1 : 1) as 1 | -1;
       setPosSortDir(nd);
@@ -594,13 +595,28 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
   const displayPositions = useMemo(() => {
     const rows = [...processedPositions];
+    if (posSortCol === 'entry') {
+      return rows.sort((a, b) => (a.entryPrice - b.entryPrice) * posSortDir);
+    }
+    if (posSortCol === 'cost') {
+      return rows.sort((a, b) => (a.cost - b.cost) * posSortDir);
+    }
+    if (posSortCol === 'exit') {
+      return rows.sort((a, b) => (a.currentPrice - b.currentPrice) * posSortDir);
+    }
+    if (posSortCol === 'val') {
+      return rows.sort((a, b) => (a.currentValue - b.currentValue) * posSortDir);
+    }
     if (posSortCol === 'pnl') {
       return rows.sort((a, b) => (a.pnl - b.pnl) * posSortDir);
     }
     if (posSortCol === 'pnlPct') {
       return rows.sort((a, b) => (a.pnlPercent - b.pnlPercent) * posSortDir);
     }
-    return rows.sort(comparePositionsByExpiryDesc);
+    return rows.sort((a, b) => {
+      const cmp = comparePositionsByExpiryDesc(a, b);
+      return posSortDir === -1 ? cmp : -cmp;
+    });
   }, [processedPositions, posSortCol, posSortDir]);
 
   // Process orders
@@ -779,14 +795,44 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             {/* Fixed header */}
             <table className="w-full text-[10px] table-fixed">{posColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
               <th className={`${hCls} text-left`}>Asset</th>
-              <th className={`${hCls} text-left whitespace-nowrap`}>Date</th>
+              <th
+                className={`${hSortCls} text-left whitespace-nowrap`}
+                onClick={() => togglePosSort('expiry')}
+                title="Sort by expiry date"
+              >
+                Date{posSortArrow('expiry')}
+              </th>
               <th className={`${hCls} text-left`}>Market</th>
               <th className={`${hCls} text-left`}>Y/N</th>
               <th className={`${hCls} text-right`}>Size</th>
-              <th className={`${hCls} text-right`}>Entry</th>
-              <th className={`${hCls} text-right`}>Cost</th>
-              <th className={`${hCls} text-right`}>Exit</th>
-              <th className={`${hCls} text-right`}>Val</th>
+              <th
+                className={`${hSortCls} text-right`}
+                onClick={() => togglePosSort('entry')}
+                title="Sort by entry price"
+              >
+                Entry{posSortArrow('entry')}
+              </th>
+              <th
+                className={`${hSortCls} text-right`}
+                onClick={() => togglePosSort('cost')}
+                title="Sort by cost"
+              >
+                Cost{posSortArrow('cost')}
+              </th>
+              <th
+                className={`${hSortCls} text-right`}
+                onClick={() => togglePosSort('exit')}
+                title="Sort by exit price"
+              >
+                Exit{posSortArrow('exit')}
+              </th>
+              <th
+                className={`${hSortCls} text-right`}
+                onClick={() => togglePosSort('val')}
+                title="Sort by position value"
+              >
+                Val{posSortArrow('val')}
+              </th>
               <th
                 className={`${hSortCls} text-right`}
                 onClick={() => togglePosSort('pnl')}

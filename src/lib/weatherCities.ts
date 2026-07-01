@@ -6,7 +6,11 @@ export type WeatherCityMeta = {
   timezone: string;
   /** Polymarket resolution station ICAO (WU history/hourly). */
   icao?: string;
+  /** NOAA WRH timeseries instead of WU (istanbul, tel-aviv). */
+  tempSource?: WeatherTempSource;
 };
+
+export type WeatherTempSource = 'wu' | 'weathergov';
 
 /** Polymarket daily temperature cities (slug matches event slug segment). */
 export const WEATHER_CITIES: WeatherCityMeta[] = [
@@ -25,9 +29,9 @@ export const WEATHER_CITIES: WeatherCityMeta[] = [
   { slug: 'denver', label: 'Denver', timezone: 'America/Denver', icao: 'KBKF' },
   { slug: 'guangzhou', label: 'Guangzhou', timezone: 'Asia/Shanghai', icao: 'ZGGG' },
   { slug: 'helsinki', label: 'Helsinki', timezone: 'Europe/Helsinki', icao: 'EFHK' },
-  { slug: 'hong-kong', label: 'Hong Kong', timezone: 'Asia/Hong_Kong', icao: 'VHHH' },
+  { slug: 'hong-kong', label: 'Hong Kong', timezone: 'Asia/Hong_Kong', icao: 'VHHH', tempSource: 'weathergov' },
   { slug: 'houston', label: 'Houston', timezone: 'America/Chicago', icao: 'KHOU' },
-  { slug: 'istanbul', label: 'Istanbul', timezone: 'Europe/Istanbul', icao: 'LTFM' },
+  { slug: 'istanbul', label: 'Istanbul', timezone: 'Europe/Istanbul', icao: 'LTFM', tempSource: 'weathergov' },
   { slug: 'jeddah', label: 'Jeddah', timezone: 'Asia/Riyadh', icao: 'OEJN' },
   { slug: 'karachi', label: 'Karachi', timezone: 'Asia/Karachi', icao: 'OPKC' },
   { slug: 'kuala-lumpur', label: 'Kuala Lumpur', timezone: 'Asia/Kuala_Lumpur', icao: 'WMKK' },
@@ -39,7 +43,7 @@ export const WEATHER_CITIES: WeatherCityMeta[] = [
   { slug: 'mexico-city', label: 'Mexico City', timezone: 'America/Mexico_City', icao: 'MMMX' },
   { slug: 'miami', label: 'Miami', timezone: 'America/New_York', icao: 'KMIA' },
   { slug: 'milan', label: 'Milan', timezone: 'Europe/Rome', icao: 'LIMC' },
-  { slug: 'moscow', label: 'Moscow', timezone: 'Europe/Moscow', icao: 'UUWW' },
+  { slug: 'moscow', label: 'Moscow', timezone: 'Europe/Moscow', icao: 'UUWW', tempSource: 'weathergov' },
   { slug: 'munich', label: 'Munich', timezone: 'Europe/Berlin', icao: 'EDDM' },
   { slug: 'nyc', label: 'NYC', timezone: 'America/New_York', icao: 'KLGA' },
   { slug: 'panama-city', label: 'Panama City', timezone: 'America/Panama', icao: 'MPMG' },
@@ -53,7 +57,7 @@ export const WEATHER_CITIES: WeatherCityMeta[] = [
   { slug: 'shenzhen', label: 'Shenzhen', timezone: 'Asia/Shanghai', icao: 'ZGSZ' },
   { slug: 'singapore', label: 'Singapore', timezone: 'Asia/Singapore', icao: 'WSSS' },
   { slug: 'taipei', label: 'Taipei', timezone: 'Asia/Taipei', icao: 'RCSS' },
-  { slug: 'tel-aviv', label: 'Tel Aviv', timezone: 'Asia/Jerusalem', icao: 'LLBG' },
+  { slug: 'tel-aviv', label: 'Tel Aviv', timezone: 'Asia/Jerusalem', icao: 'LLBG', tempSource: 'weathergov' },
   { slug: 'tokyo', label: 'Tokyo', timezone: 'Asia/Tokyo', icao: 'RJTT' },
   { slug: 'toronto', label: 'Toronto', timezone: 'America/Toronto', icao: 'CYYZ' },
   { slug: 'warsaw', label: 'Warsaw', timezone: 'Europe/Warsaw', icao: 'EPWA' },
@@ -110,6 +114,20 @@ export function weatherCityLabel(slug: string): string {
     .split('-')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
+}
+
+export function weatherCityTempSource(slug: string): WeatherTempSource {
+  return WEATHER_CITIES.find((c) => c.slug === slug.trim().toLowerCase())?.tempSource ?? 'wu';
+}
+
+export function weatherCityResolutionUrl(slug: string, dateYmd?: string | null): string | null {
+  const city = WEATHER_CITIES.find((c) => c.slug === slug.trim().toLowerCase());
+  const icao = city?.icao?.trim();
+  if (!icao) return null;
+  if (weatherCityTempSource(slug) === 'weathergov') {
+    return `https://www.weather.gov/wrh/timeseries?site=${icao.toUpperCase()}&units=metric`;
+  }
+  return weatherCityWundergroundHourlyUrl(slug, dateYmd);
 }
 
 export function weatherCityWundergroundHourlyUrl(slug: string, dateYmd?: string | null): string | null {

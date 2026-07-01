@@ -14,7 +14,8 @@ import {
   isWeatherCitySlug,
   mergeWeatherCityOptions,
   weatherCityTempUnit,
-  weatherCityWundergroundHourlyUrl,
+  weatherCityResolutionUrl,
+  weatherCityTempSource,
 } from '../../lib/weatherCities';
 import { onTempOddsCitySelect, selectTempOddsCity } from '../../lib/weatherTempOddsControl';
 import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
@@ -1028,10 +1029,14 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     return weatherEventDateISOFromSlug(selectedDateCol.slug);
   }, [selectedDateCol]);
 
-  const wundergroundHourlyUrl = useMemo(
-    () => weatherCityWundergroundHourlyUrl(city, selectedObsDate),
+  const resolutionUrl = useMemo(
+    () => weatherCityResolutionUrl(city, selectedObsDate),
     [city, selectedObsDate],
   );
+  const resolutionTitle =
+    obsData?.source === 'weathergov' || weatherCityTempSource(city) === 'weathergov'
+      ? 'NOAA weather.gov timeseries'
+      : 'Weather Underground hourly';
 
   const refreshModelProbabilities = useCallback(async () => {
     const ctx = modelContextKey;
@@ -1134,13 +1139,13 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           </svg>
         </button>
 
-        {wundergroundHourlyUrl ? (
+        {resolutionUrl ? (
           <a
-            href={wundergroundHourlyUrl}
+            href={resolutionUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="no-drag inline-flex shrink-0 items-center rounded p-0.5 text-gray-400 hover:text-sky-300"
-            title="Weather Underground hourly"
+            title={resolutionTitle}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >

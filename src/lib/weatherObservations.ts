@@ -1,5 +1,6 @@
 import { API_BASE } from './env';
 import type { WeatherCitySlug } from '../types';
+import type { WeatherTempSource } from './weatherCities';
 
 export type WeatherObservationPoint = {
   timeMs: number;
@@ -14,6 +15,7 @@ export type WeatherForecastHistoryBatch = {
 export type WeatherObservationsResponse = {
   city: string;
   date: string;
+  source?: WeatherTempSource;
   locationId: string;
   timezone: string;
   dayStartMs: number;

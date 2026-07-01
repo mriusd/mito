@@ -16,6 +16,7 @@ export type WeatherObservationsResponse = {
   city: string;
   date: string;
   source?: WeatherTempSource;
+  forecastSource?: 'wunderground';
   locationId: string;
   timezone: string;
   dayStartMs: number;

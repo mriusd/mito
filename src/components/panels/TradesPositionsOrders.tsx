@@ -5,7 +5,7 @@ import {
   cancelOrder,
   type OnchainClaimRow,
 } from '../../api';
-import { positionExitBidProb } from '../../lib/outcomeQuote';
+import { positionExitBidProb, outcomeBidAskProb } from '../../lib/outcomeQuote';
 import { onchainFillKey } from '../../lib/tradeKeys';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
@@ -40,6 +40,11 @@ function normalizeDbUnderlying(raw: string | undefined): string {
 function formatTpoMarketLabel(asset: string, marketName: string): string {
   if (!asset || asset === 'WEATHER') return marketName;
   return `${asset} ${formatPriceShort(marketName, asset === 'ETH' ? 'ETH' : undefined)}`;
+}
+
+function formatQuoteCents(prob: number | null | undefined): string {
+  if (prob == null || !Number.isFinite(prob) || prob <= 0) return '-';
+  return `${(prob * 100).toFixed(1)}¢`;
 }
 
 function formatElapsed(ms: number): string {
@@ -582,7 +587,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
       const size = pos.size || 0;
       const avg = pos.avgPrice || 0;
-      const cur = positionExitBidProb(tid, marketLookup);
+      const { bid: bidProb, ask: askProb } = outcomeBidAskProb(tid, marketLookup);
+      const cur = bidProb ?? 0;
       const entryPrice = avg * 100;
       const cost = avg * size;
       const currentValue = cur * size;
@@ -590,7 +596,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const pnl = currentValue - cost;
       const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
       const clickable = !!market;
-      return { tid, asset, endDate, marketName: mktLabel, outcome, size, entryPrice, cost, currentPrice, currentValue, pnl, pnlPercent, marketId: market?.id ?? pos.market, clickable };
+      return { tid, asset, endDate, marketName: mktLabel, outcome, size, entryPrice, cost, currentPrice, currentValue, bidProb, askProb, pnl, pnlPercent, marketId: market?.id ?? pos.market, clickable };
     });
 
   const displayPositions = useMemo(() => {
@@ -641,7 +647,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const size = parseFloat(order.original_size || order.size);
       const filled = parseFloat(order.size_matched || '0');
       const value = parseFloat(order.price) * size;
-      return { id: order.id, tid, asset, endDate, marketName: mktLabel, outcome, side: order.side, price, size, filled, value, marketId: market?.id };
+      const { bid: bidProb, ask: askProb } = outcomeBidAskProb(tid, marketLookup);
+      return { id: order.id, tid, asset, endDate, marketName: mktLabel, outcome, side: order.side, price, size, filled, value, bidProb, askProb, marketId: market?.id };
     });
 
   // Position totals
@@ -661,8 +668,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     posSortCol === col ? (posSortDir === 1 ? ' ▲' : ' ▼') : '';
 
   const trColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'22%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'12%'}}/></colgroup>;
-  const posColgroup = <colgroup><col style={{width:'5%'}}/><col style={{width:'8%'}}/><col style={{width:'16%'}}/><col style={{width:'5%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'10%'}}/><col style={{width:'8%'}}/><col style={{width:'10%'}}/><col style={{width:'11%'}}/><col style={{width:'11%'}}/></colgroup>;
-  const ordColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'22%'}}/><col style={{width:'8%'}}/><col style={{width:'6%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'12%'}}/><col style={{width:'7%'}}/></colgroup>;
+  const posColgroup = <colgroup><col style={{width:'5%'}}/><col style={{width:'7%'}}/><col style={{width:'14%'}}/><col style={{width:'4%'}}/><col style={{width:'7%'}}/><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'6%'}}/><col style={{width:'9%'}}/><col style={{width:'9%'}}/><col style={{width:'9%'}}/></colgroup>;
+  const ordColgroup = <colgroup><col style={{width:'6%'}}/><col style={{width:'7%'}}/><col style={{width:'18%'}}/><col style={{width:'6%'}}/><col style={{width:'5%'}}/><col style={{width:'8%'}}/><col style={{width:'6%'}}/><col style={{width:'6%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'6%'}}/></colgroup>;
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
@@ -826,6 +833,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               >
                 Exit{posSortArrow('exit')}
               </th>
+              <th className={`${hCls} text-right`}>Bid</th>
+              <th className={`${hCls} text-right`}>Ask</th>
               <th
                 className={`${hSortCls} text-right`}
                 onClick={() => togglePosSort('val')}
@@ -867,6 +876,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                       <td className="py-1 px-1 text-right text-gray-300">{p.entryPrice.toFixed(1)}¢</td>
                       <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.cost).toLocaleString()}</td>
                       <td className={`py-1 px-1 text-right ${exitColor}`}>{p.currentPrice.toFixed(1)}¢</td>
+                      <td className="py-1 px-1 text-right text-green-300/90">{formatQuoteCents(p.bidProb)}</td>
+                      <td className="py-1 px-1 text-right text-red-300/90">{formatQuoteCents(p.askProb)}</td>
                       <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.currentValue).toLocaleString()}</td>
                       <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(p.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                       <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>
@@ -884,6 +895,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 <td className="py-1 px-1 text-right text-gray-400">{avgEntry.toFixed(1)}¢</td>
                 <td className="py-1 px-1 text-right text-white">${Math.round(totalCost).toLocaleString()}</td>
                 <td className="py-1 px-1 text-right text-gray-400">{avgExit.toFixed(1)}¢</td>
+                <td className="py-1 px-1"></td>
+                <td className="py-1 px-1"></td>
                 <td className="py-1 px-1 text-right text-white">${Math.round(totalValue).toLocaleString()}</td>
                 <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}${Math.abs(totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}{Math.round(Math.abs(avgPnlPct))}%</td>
@@ -905,6 +918,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               <th className={`${hCls} text-left`}>Side</th>
               <th className={`${hCls} text-left`}>Y/N</th>
               <th className={`${hCls} text-right`}>Price</th>
+              <th className={`${hCls} text-right`}>Bid</th>
+              <th className={`${hCls} text-right`}>Ask</th>
               <th className={`${hCls} text-right`}>Size</th>
               <th className={`${hCls} text-right`}>Filled</th>
               <th className={`${hCls} text-right`}>Value</th>
@@ -924,6 +939,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                       <td className={`py-1 px-1 font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
                       <td className={`py-1 px-1 font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
                       <td className="py-1 px-1 text-right text-white">{o.price.toFixed(1)}¢</td>
+                      <td className="py-1 px-1 text-right text-green-300/90">{formatQuoteCents(o.bidProb)}</td>
+                      <td className="py-1 px-1 text-right text-red-300/90">{formatQuoteCents(o.askProb)}</td>
                       <td className="py-1 px-1 text-right text-gray-300">{Math.round(o.size).toLocaleString()}</td>
                       <td className="py-1 px-1 text-right text-gray-500">{Math.round(o.filled).toLocaleString()}</td>
                       <td className="py-1 px-1 text-right text-gray-300">${Math.round(o.value).toLocaleString()}</td>

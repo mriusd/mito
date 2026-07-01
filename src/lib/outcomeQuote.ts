@@ -119,8 +119,16 @@ export function positionExitBidProb(
   tokenId: string | undefined,
   lookup: Record<string, Market>,
 ): number {
+  return outcomeBidAskProb(tokenId, lookup).bid ?? 0;
+}
+
+/** Live best bid/ask for an outcome CLOB token (YES or NO), with complete-market implied NO quotes. */
+export function outcomeBidAskProb(
+  tokenId: string | undefined,
+  lookup: Record<string, Market>,
+): { bid: number | null; ask: number | null } {
   const tid = String(tokenId || '').trim();
-  if (!tid) return 0;
+  if (!tid) return { bid: null, ask: null };
 
   const norm = (() => {
     try {
@@ -131,8 +139,11 @@ export function positionExitBidProb(
   })();
   const live = lookup[tid] || lookup[norm];
   const gamma = live ? { bestBid: live.bestBid, bestAsk: live.bestAsk } : undefined;
-  const direct = outcomeBestBidProb(tid, lookup, gamma);
-  if (direct != null) return direct;
+  const directBid = outcomeBestBidProb(tid, lookup, gamma);
+  const directAsk = outcomeBestAskProb(tid, lookup, gamma);
+  if (directBid != null || directAsk != null) {
+    return { bid: directBid, ask: directAsk };
+  }
 
   for (const row of Object.values(lookup)) {
     const ids = row.clobTokenIds || [];
@@ -140,19 +151,23 @@ export function positionExitBidProb(
     const noId = ids[1] || '';
     const yesNorm = yesId ? (() => { try { return BigInt(yesId).toString(); } catch { return yesId; } })() : '';
     const noNorm = noId ? (() => { try { return BigInt(noId).toString(); } catch { return noId; } })() : '';
+    const gammaRow = { bestBid: row.bestBid, bestAsk: row.bestAsk };
     if (yesId === tid || yesNorm === norm) {
-      const bb = outcomeBestBidProb(tid, lookup, { bestBid: row.bestBid, bestAsk: row.bestAsk });
-      return bb != null ? bb : 0;
+      return {
+        bid: outcomeBestBidProb(tid, lookup, gammaRow),
+        ask: outcomeBestAskProb(tid, lookup, gammaRow),
+      };
     }
     if (noId === tid || noNorm === norm) {
-      const noBook = noOutcomeBidAsk(ids[0], tid, lookup, {
-        bestBid: row.bestBid,
-        bestAsk: row.bestAsk,
-      });
-      const bb = noBook.bestBid;
-      return bb != null && bb > 0 ? bb : 0;
+      const noBook = noOutcomeBidAsk(ids[0], tid, lookup, gammaRow);
+      const bid = noBook.bestBid;
+      const ask = noBook.bestAsk;
+      return {
+        bid: bid != null && bid > 0 ? bid : null,
+        ask: ask != null && ask > 0 ? ask : null,
+      };
     }
   }
 
-  return 0;
+  return { bid: null, ask: null };
 }

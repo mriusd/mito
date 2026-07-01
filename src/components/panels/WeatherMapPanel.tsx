@@ -38,7 +38,7 @@ type MapLayout = {
 
 const LAND_GEOJSON_URL = `${import.meta.env.BASE_URL}ne_110m_land.geojson`;
 const DOT_RADIUS = 4;
-const HIT_RADIUS = 10;
+const HIT_RADIUS = 16;
 const MAP_TOP_LABEL_H = 16;
 const GRATICULE_STEP = 15;
 const TZ_LON_STEP = 15;
@@ -191,11 +191,11 @@ function nearestCity(
   my: number,
 ): MapCity | null {
   let best: MapCity | null = null;
-  let bestD = HIT_RADIUS;
+  let bestD = Infinity;
   for (const city of cities) {
     const { x, y } = projectLonLat(city.lon, city.lat, layout);
     const d = Math.hypot(mx - x, my - y);
-    if (d <= bestD) {
+    if (d <= HIT_RADIUS && d < bestD) {
       best = city;
       bestD = d;
     }
@@ -350,6 +350,46 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
     draw();
   }, [draw, drawTick]);
 
+  const cityPositions = useMemo(() => {
+    if (!layoutSnapshot) return [];
+    return cities.map((city) => ({
+      ...city,
+      ...projectLonLat(city.lon, city.lat, layoutSnapshot),
+    }));
+  }, [cities, layoutSnapshot, drawTick]);
+
+  const pickCityAt = useCallback(
+    (mx: number, my: number) => {
+      const layout = layoutRef.current;
+      if (!layout) return null;
+      return nearestCity(cities, layout, mx, my);
+    },
+    [cities],
+  );
+
+  const setHoveredCity = useCallback(
+    (hit: MapCity | null, mx: number, my: number) => {
+      const slug = hit?.slug ?? null;
+      if (hoverSlugRef.current === slug) {
+        setHoverTip(hit ? { x: mx, y: my, label: hit.label } : null);
+        return;
+      }
+      hoverSlugRef.current = slug;
+      setHoverTip(hit ? { x: mx, y: my, label: hit.label } : null);
+      bumpDraw();
+    },
+    [bumpDraw],
+  );
+
+  const selectCity = useCallback(
+    (slug: WeatherCitySlug) => {
+      selectedSlugRef.current = slug;
+      bumpDraw();
+      selectTempOddsCity(slug, { linkSidebar: true });
+    },
+    [bumpDraw],
+  );
+
   useEffect(() => {
     const ro = new ResizeObserver(() => bumpDraw());
     if (containerRef.current) ro.observe(containerRef.current);
@@ -358,24 +398,13 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      const layout = layoutRef.current;
-      if (!layout) return;
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
-      const hit = nearestCity(cities, layout, mx, my);
-      const slug = hit?.slug ?? null;
-      if (hoverSlugRef.current === slug) {
-        if (hit) setHoverTip({ x: mx, y: my, label: hit.label });
-        else setHoverTip(null);
-        return;
-      }
-      hoverSlugRef.current = slug;
-      setHoverTip(hit ? { x: mx, y: my, label: hit.label } : null);
-      bumpDraw();
+      setHoveredCity(pickCityAt(mx, my), mx, my);
     },
-    [bumpDraw, cities],
+    [pickCityAt, setHoveredCity],
   );
 
   const onPointerLeave = useCallback(() => {
@@ -387,19 +416,15 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
 
   const onClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      const layout = layoutRef.current;
-      if (!layout) return;
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
-      const hit = nearestCity(cities, layout, mx, my);
+      const hit = pickCityAt(mx, my);
       if (!hit) return;
-      selectedSlugRef.current = hit.slug;
-      bumpDraw();
-      selectTempOddsCity(hit.slug, { linkSidebar: true });
+      selectCity(hit.slug);
     },
-    [bumpDraw, cities],
+    [pickCityAt, selectCity],
   );
 
   const now = new Date(nowMs);
@@ -412,10 +437,7 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
       </div>
       <div
         ref={containerRef}
-        className="no-drag relative min-h-0 flex-1 cursor-crosshair"
-        onPointerMove={onPointerMove}
-        onPointerLeave={onPointerLeave}
-        onClick={onClick}
+        className="no-drag relative min-h-0 flex-1"
       >
         {layoutSnapshot ? (
           <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-4 border-b border-amber-500/20 bg-gray-950/90">
@@ -431,7 +453,38 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
             ))}
           </div>
         ) : null}
-        <canvas ref={canvasRef} className="block h-full w-full rounded border border-gray-700/80" />
+        <canvas
+          ref={canvasRef}
+          className="pointer-events-none block h-full w-full rounded border border-gray-700/80"
+        />
+        <div
+          className="absolute inset-0 z-[2] cursor-crosshair"
+          onPointerMove={onPointerMove}
+          onPointerLeave={onPointerLeave}
+          onClick={onClick}
+        >
+          {cityPositions.map((city) => (
+            <button
+              key={city.slug}
+              type="button"
+              aria-label={city.label}
+              className="no-drag absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-0 bg-transparent p-0"
+              style={{
+                left: city.x,
+                top: city.y,
+                width: HIT_RADIUS * 2,
+                height: HIT_RADIUS * 2,
+              }}
+              onPointerEnter={(e) => {
+                setHoveredCity(city, e.clientX - (containerRef.current?.getBoundingClientRect().left ?? 0), e.clientY - (containerRef.current?.getBoundingClientRect().top ?? 0));
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                selectCity(city.slug);
+              }}
+            />
+          ))}
+        </div>
         {hoverTip ? (
           <div
             className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded border border-gray-600 bg-gray-900/95 px-1.5 py-0.5 text-[10px] text-gray-100 shadow-md"

@@ -14,8 +14,8 @@ const PAD_R = 8;
 const PAD_T = 22;
 const PAD_B = 34;
 const LINE_COLOR = '#38bdf8';
-const FORECAST_COLOR = 'rgba(56, 189, 248, 0.65)';
-const FORECAST_HISTORY_BASE = 'rgba(56, 189, 248,';
+const FORECAST_COLOR = 'rgba(156, 163, 175, 0.9)';
+const FORECAST_HISTORY_BASE = 'rgba(156, 163, 175,';
 
 type ChartPoint = { timeMs: number; temp: number; kind: 'obs' | 'forecast' };
 

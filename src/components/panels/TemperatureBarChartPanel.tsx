@@ -535,9 +535,9 @@ function TempOddsBar({
 
   const frameClass =
     selected && forecastHighlight
-      ? 'rounded ring-2 ring-gray-400/80 outline outline-2 outline-white/75 -outline-offset-1'
+      ? 'rounded ring-2 ring-amber-400/90 outline outline-2 outline-white/75 -outline-offset-1'
       : forecastHighlight
-        ? 'rounded ring-2 ring-gray-400/80'
+        ? 'rounded ring-2 ring-amber-400/90'
         : selected
           ? 'rounded ring-2 ring-white/70'
           : '';
@@ -579,7 +579,7 @@ function TempOddsBar({
         <span
           className={`text-[8px] mt-1 truncate max-w-full leading-tight shrink-0 min-h-[10px] ${
             forecastHighlight
-              ? `font-bold text-gray-300${selected ? ' underline decoration-white/70 underline-offset-2' : ''}`
+              ? `font-bold text-amber-300${selected ? ' underline decoration-white/70 underline-offset-2' : ''}`
               : selected
                 ? 'font-semibold text-white/90'
                 : 'text-gray-500'
@@ -716,7 +716,7 @@ function TempOddsChart({
                   key={`lbl-${temp}`}
                   className={`flex-1 min-w-0 text-center text-[8px] truncate leading-tight ${
                     forecastHighlight
-                      ? `font-bold text-gray-300${selected ? ' underline decoration-white/70 underline-offset-2' : ''}`
+                      ? `font-bold text-amber-300${selected ? ' underline decoration-white/70 underline-offset-2' : ''}`
                       : selected
                         ? 'font-semibold text-white/90'
                         : 'text-gray-500'

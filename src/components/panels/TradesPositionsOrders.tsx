@@ -333,10 +333,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const [assetFilter, setAssetFilter] = useState(
     localStorage.getItem('polymarket-table-asset-filter') || 'ALL'
   );
-  type PosSortCol = 'expiry' | 'entry' | 'cost' | 'exit' | 'val' | 'pnl' | 'pnlPct';
+  type PosSortCol = 'expiry' | 'entry' | 'cost' | 'bid' | 'ask' | 'val' | 'pnl' | 'pnlPct';
   const [posSortCol, setPosSortCol] = useState<PosSortCol>(() => {
     const v = localStorage.getItem(`polymarket-tpo-pos-sort-col-${panelId}`);
-    if (v === 'pnl' || v === 'pnlPct' || v === 'entry' || v === 'cost' || v === 'exit' || v === 'val') return v;
+    if (v === 'exit') return 'bid';
+    if (v === 'pnl' || v === 'pnlPct' || v === 'entry' || v === 'cost' || v === 'bid' || v === 'ask' || v === 'val') return v;
     return 'expiry';
   });
   const [posSortDir, setPosSortDir] = useState<1 | -1>(() => {
@@ -607,8 +608,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     if (posSortCol === 'cost') {
       return rows.sort((a, b) => (a.cost - b.cost) * posSortDir);
     }
-    if (posSortCol === 'exit') {
+    if (posSortCol === 'bid') {
       return rows.sort((a, b) => (a.currentPrice - b.currentPrice) * posSortDir);
+    }
+    if (posSortCol === 'ask') {
+      return rows.sort((a, b) => ((a.askProb ?? 0) - (b.askProb ?? 0)) * posSortDir);
     }
     if (posSortCol === 'val') {
       return rows.sort((a, b) => (a.currentValue - b.currentValue) * posSortDir);
@@ -668,7 +672,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     posSortCol === col ? (posSortDir === 1 ? ' ▲' : ' ▼') : '';
 
   const trColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'22%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'12%'}}/></colgroup>;
-  const posColgroup = <colgroup><col style={{width:'5%'}}/><col style={{width:'7%'}}/><col style={{width:'14%'}}/><col style={{width:'4%'}}/><col style={{width:'7%'}}/><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'6%'}}/><col style={{width:'9%'}}/><col style={{width:'9%'}}/><col style={{width:'9%'}}/></colgroup>;
+  const posColgroup = <colgroup><col style={{width:'5%'}}/><col style={{width:'7%'}}/><col style={{width:'15%'}}/><col style={{width:'4%'}}/><col style={{width:'7%'}}/><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'9%'}}/><col style={{width:'9%'}}/><col style={{width:'9%'}}/></colgroup>;
   const ordColgroup = <colgroup><col style={{width:'6%'}}/><col style={{width:'7%'}}/><col style={{width:'18%'}}/><col style={{width:'6%'}}/><col style={{width:'5%'}}/><col style={{width:'8%'}}/><col style={{width:'6%'}}/><col style={{width:'6%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'6%'}}/></colgroup>;
 
   return (
@@ -828,13 +832,18 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               </th>
               <th
                 className={`${hSortCls} text-right`}
-                onClick={() => togglePosSort('exit')}
-                title="Sort by exit price"
+                onClick={() => togglePosSort('bid')}
+                title="Sort by bid"
               >
-                Exit{posSortArrow('exit')}
+                Bid{posSortArrow('bid')}
               </th>
-              <th className={`${hCls} text-right`}>Bid</th>
-              <th className={`${hCls} text-right`}>Ask</th>
+              <th
+                className={`${hSortCls} text-right`}
+                onClick={() => togglePosSort('ask')}
+                title="Sort by ask"
+              >
+                Ask{posSortArrow('ask')}
+              </th>
               <th
                 className={`${hSortCls} text-right`}
                 onClick={() => togglePosSort('val')}
@@ -876,7 +885,6 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                       <td className="py-1 px-1 text-right text-gray-300">{p.entryPrice.toFixed(1)}¢</td>
                       <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.cost).toLocaleString()}</td>
                       <td className={`py-1 px-1 text-right ${exitColor}`}>{p.currentPrice.toFixed(1)}¢</td>
-                      <td className="py-1 px-1 text-right text-green-300/90">{formatQuoteCents(p.bidProb)}</td>
                       <td className="py-1 px-1 text-right text-red-300/90">{formatQuoteCents(p.askProb)}</td>
                       <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.currentValue).toLocaleString()}</td>
                       <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(p.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -895,7 +903,6 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 <td className="py-1 px-1 text-right text-gray-400">{avgEntry.toFixed(1)}¢</td>
                 <td className="py-1 px-1 text-right text-white">${Math.round(totalCost).toLocaleString()}</td>
                 <td className="py-1 px-1 text-right text-gray-400">{avgExit.toFixed(1)}¢</td>
-                <td className="py-1 px-1"></td>
                 <td className="py-1 px-1"></td>
                 <td className="py-1 px-1 text-right text-white">${Math.round(totalValue).toLocaleString()}</td>
                 <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}${Math.abs(totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>

@@ -1135,20 +1135,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           </svg>
         </button>
 
-        {resolutionUrl ? (
-          <a
-            href={resolutionUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="no-drag inline-flex shrink-0 items-center rounded p-0.5 text-gray-400 hover:text-sky-300"
-            title={resolutionTitle}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <ExternalLink className="h-3 w-3" aria-hidden />
-          </a>
-        ) : null}
-
         <button
           type="button"
           title={
@@ -1226,6 +1212,19 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
             <span className={`whitespace-nowrap text-[10px] font-normal tabular-nums ${predictionAgeClass}`}>
               {predictionAgeLabel}
             </span>
+          ) : null}
+          {resolutionUrl ? (
+            <a
+              href={resolutionUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="no-drag inline-flex items-center justify-center rounded border border-gray-700 bg-gray-800/80 p-0.5 text-gray-400 hover:bg-gray-700 hover:text-sky-300"
+              title={resolutionTitle}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <ExternalLink className="h-3 w-3" aria-hidden />
+            </a>
           ) : null}
           <button
             type="button"

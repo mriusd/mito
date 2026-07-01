@@ -303,6 +303,7 @@ export type PanelType =
   | 'weather-markets'
   | 'weather-temperature'
   | 'weather-temp-bars'
+  | 'weather-map'
   | 'clock';
 
 export type {

@@ -16,6 +16,7 @@ import {
   weatherCityTempUnit,
   weatherCityWundergroundHourlyUrl,
 } from '../../lib/weatherCities';
+import { onTempOddsCitySelect } from '../../lib/weatherTempOddsControl';
 import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
 import { WeatherCityMenu } from '../WeatherCityMenu';
 import {
@@ -787,6 +788,20 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const obsFetchGenRef = useRef(0);
   const [tempUnitOverride, setTempUnitOverride] = useState<WeatherTempUnit | null>(null);
   const [linkSidebar, setLinkSidebar] = useState(() => readStoredLinkSidebar(panelId));
+
+  useEffect(
+    () =>
+      onTempOddsCitySelect(({ city: nextCity, linkSidebar: link }) => {
+        if (!isWeatherCitySlug(nextCity)) return;
+        setCity(nextCity);
+        localStorage.setItem(`polybot-weather-temp-bars-city-${panelId}`, nextCity);
+        if (link) {
+          setLinkSidebar(true);
+          localStorage.setItem(`polybot-weather-temp-bars-link-sidebar-${panelId}`, '1');
+        }
+      }),
+    [panelId],
+  );
 
   const closeCityMenu = useCallback(() => {
     setCityDropdownOpen(false);

@@ -85,6 +85,9 @@ const LazyTemperaturePanel = lazyWithChunkReload(() =>
 const LazyTemperatureBarChartPanel = lazyWithChunkReload(() =>
   import('./panels/TemperatureBarChartPanel').then((m) => ({ default: m.TemperatureBarChartPanel })),
 );
+const LazyWeatherMapPanel = lazyWithChunkReload(() =>
+  import('./panels/WeatherMapPanel').then((m) => ({ default: m.WeatherMapPanel })),
+);
 const LazyClockPanel = lazyWithChunkReload(() =>
   import('./panels/ClockPanel').then((m) => ({ default: m.ClockPanel })),
 );
@@ -238,6 +241,8 @@ function renderPanel(panel: PanelConfig): ReactNode {
       return <LazyTemperaturePanel panelId={panel.id} />;
     case 'weather-temp-bars':
       return <LazyTemperatureBarChartPanel panelId={panel.id} />;
+    case 'weather-map':
+      return <LazyWeatherMapPanel panelId={panel.id} />;
     case 'clock':
       return <LazyClockPanel panelId={panel.id} />;
     default:
@@ -407,6 +412,7 @@ export function DraggableCanvas() {
     'weather-markets': 'Weather Markets',
     'weather-temperature': 'Temperature',
     'weather-temp-bars': 'Temp Odds',
+    'weather-map': 'Weather Map',
     clock: 'Clock',
   };
 

@@ -125,6 +125,7 @@ const PANEL_MIN_PIXELS: Record<string, { minW: number; minH: number }> = {
   'weather-markets': { minW: 640, minH: 280 },
   'weather-temperature': { minW: 360, minH: 240 },
   'weather-temp-bars': { minW: 720, minH: 260 },
+  'weather-map': { minW: 360, minH: 220 },
   clock: { minW: 200, minH: 120 },
   'gex': { minW: 300, minH: 280 },
   'liq-map': { minW: 320, minH: 320 },

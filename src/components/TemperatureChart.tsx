@@ -166,7 +166,7 @@ export function TemperatureChart({
       return;
     }
 
-    const labelPoints = [...points, ...forecastPoints];
+    const labelPoints = points.length > 0 ? points : forecastPoints;
     let minPoint = labelPoints[0] ?? allPoints[0];
     let maxPoint = labelPoints[0] ?? allPoints[0];
     let yMin = allPoints[0].temp;

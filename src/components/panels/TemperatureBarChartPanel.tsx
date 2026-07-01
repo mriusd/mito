@@ -961,12 +961,11 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
 
   const selectDate = useCallback(
     (d: DateCol) => {
-      if (linkSidebar) unlinkSidebar();
       const key = weatherDateColKey(d);
       setSelectedDateKey(key);
       localStorage.setItem(`polybot-weather-temp-bars-date-${panelId}`, key);
     },
-    [linkSidebar, panelId, unlinkSidebar],
+    [panelId],
   );
 
   const modelContextKey = useMemo(
@@ -1135,30 +1134,19 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           </svg>
         </button>
 
-        <button
-          type="button"
-          title={
-            linkSidebar
-              ? 'Linked to sidebar weather market — click to unlink'
-              : 'Link city and date to sidebar weather market'
-          }
-          aria-pressed={linkSidebar}
-          aria-label={linkSidebar ? 'Unlink from sidebar market' : 'Link to sidebar weather market'}
-          className={`no-drag inline-flex shrink-0 items-center rounded p-0.5 transition ${
-            linkSidebar ? 'text-cyan-400 hover:text-cyan-300' : 'text-gray-600 hover:text-gray-400'
-          }`}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleLinkSidebar();
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          {linkSidebar ? (
-            <Link2 className="h-3 w-3" strokeWidth={2.25} aria-hidden />
-          ) : (
-            <Link2Off className="h-3 w-3" strokeWidth={2.25} aria-hidden />
-          )}
-        </button>
+        {resolutionUrl ? (
+          <a
+            href={resolutionUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="no-drag inline-flex shrink-0 items-center rounded p-0.5 text-gray-400 hover:text-sky-300"
+            title={resolutionTitle}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <ExternalLink className="h-3 w-3" aria-hidden />
+          </a>
+        ) : null}
 
         <TempUnitToggle unit={tempUnit} onChange={setTempUnitOverride} />
 
@@ -1213,19 +1201,30 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               {predictionAgeLabel}
             </span>
           ) : null}
-          {resolutionUrl ? (
-            <a
-              href={resolutionUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="no-drag inline-flex items-center justify-center rounded border border-gray-700 bg-gray-800/80 p-0.5 text-gray-400 hover:bg-gray-700 hover:text-sky-300"
-              title={resolutionTitle}
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <ExternalLink className="h-3 w-3" aria-hidden />
-            </a>
-          ) : null}
+          <button
+            type="button"
+            title={
+              linkSidebar
+                ? 'Linked to sidebar weather market — click to unlink'
+                : 'Link city and date to sidebar weather market'
+            }
+            aria-pressed={linkSidebar}
+            aria-label={linkSidebar ? 'Unlink from sidebar market' : 'Link to sidebar weather market'}
+            className={`no-drag inline-flex items-center justify-center rounded border border-gray-700 bg-gray-800/80 p-0.5 transition ${
+              linkSidebar ? 'text-cyan-400 hover:bg-gray-700 hover:text-cyan-300' : 'text-gray-600 hover:bg-gray-700 hover:text-gray-400'
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleLinkSidebar();
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {linkSidebar ? (
+              <Link2 className="h-3 w-3" strokeWidth={2.25} aria-hidden />
+            ) : (
+              <Link2Off className="h-3 w-3" strokeWidth={2.25} aria-hidden />
+            )}
+          </button>
           <button
             type="button"
             onClick={() => void refreshModelProbabilities()}

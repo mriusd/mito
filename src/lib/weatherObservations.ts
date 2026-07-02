@@ -159,17 +159,20 @@ export function floorDisplayTemp(celsius: number, unit: WeatherTempUnit): number
   return Math.floor(celsiusToDisplayTemp(celsius, unit));
 }
 
-/** Low bucket highlight: observed min if colder than forecast. */
+/** Temp Odds low bucket highlight: colder of forecast low vs observed low. */
 export function weatherHighlightLowC(data: WeatherObservationsResponse | null | undefined): number | null {
   if (!data) return null;
   const obs = data.lowTemp;
   const fc = data.forecastLowC;
   if (obs != null && fc != null) return Math.min(obs, fc);
-  return obs ?? fc ?? null;
+  return fc ?? obs ?? null;
 }
 
-/** High bucket highlight: observed daily max (resolution source). */
+/** Temp Odds high bucket highlight: forecast daily high; obs if already warmer. */
 export function weatherHighlightHighC(data: WeatherObservationsResponse | null | undefined): number | null {
   if (!data) return null;
-  return data.highTemp ?? null;
+  const obs = data.highTemp;
+  const fc = data.forecastHighC;
+  if (obs != null && fc != null) return Math.max(obs, fc);
+  return fc ?? obs ?? null;
 }

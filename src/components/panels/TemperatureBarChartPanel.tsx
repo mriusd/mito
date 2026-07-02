@@ -16,7 +16,7 @@ import {
   weatherCityTempUnit,
   weatherCityResolutionUrl,
 } from '../../lib/weatherCities';
-import { onTempOddsCitySelect, selectTempOddsCity } from '../../lib/weatherTempOddsControl';
+import { onTempOddsCitySelect, selectTempOddsCity, selectTempOddsDate } from '../../lib/weatherTempOddsControl';
 import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
 import { WeatherCityMenu } from '../WeatherCityMenu';
 import {
@@ -1027,6 +1027,10 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     return weatherEventDateISOFromSlug(selectedDateCol.slug);
   }, [selectedDateCol]);
 
+  useEffect(() => {
+    selectTempOddsDate(selectedObsDate);
+  }, [selectedObsDate]);
+
   const resolutionUrl = useMemo(
     () => weatherCityResolutionUrl(city, selectedObsDate),
     [city, selectedObsDate],
@@ -1081,26 +1085,40 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     let cancelled = false;
     const gen = ++obsFetchGenRef.current;
 
-    const load = () => {
-      setObsLoading(true);
-      void fetchWeatherObservations(city, selectedObsDate)
+    const load = (opts?: { history?: boolean; silent?: boolean }) => {
+      if (!opts?.silent) setObsLoading(true);
+      void fetchWeatherObservations(city, selectedObsDate, { history: opts?.history })
         .then((resp) => {
           if (cancelled || obsFetchGenRef.current !== gen) return;
+          if (opts?.history) {
+            setObsData((prev) => (prev ? { ...prev, forecastHistory: resp.forecastHistory } : resp));
+            return;
+          }
           setObsData(resp);
         })
         .catch((e) => {
           if (cancelled || obsFetchGenRef.current !== gen) return;
-          console.error('[weather-observations]', e);
-          setObsData(null);
+          if (!opts?.history) {
+            console.error('[weather-observations]', e);
+            setObsData(null);
+          }
         })
         .finally(() => {
-          if (!cancelled && obsFetchGenRef.current === gen) setObsLoading(false);
+          if (!cancelled && obsFetchGenRef.current === gen && !opts?.silent && !opts?.history) {
+            setObsLoading(false);
+          }
         });
     };
 
     load();
+    void fetchWeatherObservations(city, selectedObsDate, { history: true })
+      .then((resp) => {
+        if (cancelled || obsFetchGenRef.current !== gen) return;
+        setObsData((prev) => (prev ? { ...prev, forecastHistory: resp.forecastHistory } : resp));
+      })
+      .catch(() => {});
     const pollMs = isWeatherDateTodayInTimezone(selectedObsDate, cityMeta.timezone) ? 60_000 : 0;
-    const pollId = pollMs > 0 ? window.setInterval(load, pollMs) : undefined;
+    const pollId = pollMs > 0 ? window.setInterval(() => load({ silent: true }), pollMs) : undefined;
     return () => {
       cancelled = true;
       if (pollId != null) window.clearInterval(pollId);

@@ -8,7 +8,11 @@ import {
   subsolarPoint,
   utcOffsetLabel,
 } from '../../lib/weatherMapSun';
-import { onTempOddsCitySelect, selectTempOddsCity } from '../../lib/weatherTempOddsControl';
+import { onTempOddsCitySelect, onTempOddsDateSelect, getTempOddsSelectedDate, selectTempOddsCity } from '../../lib/weatherTempOddsControl';
+import { buildWeatherCityExposureByDate, type WeatherCityExposure } from '../../lib/weatherMapExposure';
+import { useThrottledGridOrders, useThrottledGridPositions } from '../../hooks/useThrottledGridWallet';
+import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
+import { useAppStore } from '../../stores/appStore';
 
 type GeoPolygon = number[][][];
 type GeoMultiPolygon = number[][][][];
@@ -201,6 +205,18 @@ function drawDayGlow(ctx: CanvasRenderingContext2D, layout: MapLayout, date: Dat
   ctx.fill();
 }
 
+function cityDotFill(
+  exposure: WeatherCityExposure | undefined,
+  night: boolean,
+  hovered: boolean,
+  selected: boolean,
+): string {
+  if (exposure === 'position') return selected || hovered ? '#4ade80' : '#22c55e';
+  if (exposure === 'order') return selected || hovered ? '#c084fc' : '#a855f7';
+  if (night) return selected || hovered ? '#fde047' : '#eab308';
+  return selected || hovered ? '#fff176' : '#facc15';
+}
+
 function nearestCity(
   cities: MapCity[],
   layout: MapLayout,
@@ -247,6 +263,28 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
   const [hoverTip, setHoverTip] = useState<{ x: number; y: number; label: string } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [layoutSnapshot, setLayoutSnapshot] = useState<MapLayout | null>(null);
+
+  const [tempOddsDateIso, setTempOddsDateIso] = useState<string | null>(() => getTempOddsSelectedDate());
+  const weatherMarkets = useAppStore((s) => s.weatherMarkets);
+  const liveTradesSource = useAppStore((s) => s.liveTradesSource);
+  const progOrderMap = useAppStore((s) => s.progOrderMap);
+  const positions = useThrottledGridPositions(2000);
+  const orders = useThrottledGridOrders(2000);
+  const onchainWsPositions = useSidebarOnchainGridWalletPositions();
+
+  const cityExposure = useMemo(() => {
+    const myOrders = orders.filter((o) => !progOrderMap[o.id]);
+    return buildWeatherCityExposureByDate(
+      weatherMarkets,
+      tempOddsDateIso,
+      positions,
+      myOrders,
+      liveTradesSource,
+      onchainWsPositions,
+    );
+  }, [weatherMarkets, tempOddsDateIso, positions, orders, progOrderMap, liveTradesSource, onchainWsPositions]);
+
+  useEffect(() => onTempOddsDateSelect(setTempOddsDateIso), []);
 
   const meridians = useMemo(() => buildTimezoneMeridians(), []);
 
@@ -322,16 +360,11 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
       const hovered = hoverSlug === city.slug;
       const selected = selectedSlug === city.slug;
       const night = isNightAt(city.lat, city.lon, date);
+      const exposure = cityExposure.get(city.slug);
       const r = selected ? DOT_RADIUS + 2 : hovered ? DOT_RADIUS + 1.5 : DOT_RADIUS;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = night
-        ? selected || hovered
-          ? '#fde047'
-          : '#eab308'
-        : selected || hovered
-          ? '#fff176'
-          : '#facc15';
+      ctx.fillStyle = cityDotFill(exposure, night, hovered, selected);
       ctx.fill();
       if (selected) {
         ctx.beginPath();
@@ -353,7 +386,7 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
       ctx.textBaseline = 'middle';
       ctx.fillText('Map load failed', width / 2, height / 2);
     }
-  }, [cities, land, loadError, nowMs]);
+  }, [cities, land, loadError, nowMs, cityExposure]);
 
   drawRef.current = draw;
 
@@ -496,7 +529,7 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-2 h-full flex flex-col min-h-0">
       <div className="panel-header mb-1 flex shrink-0 cursor-grab items-center gap-2">
         <span className="text-xs font-bold text-gray-500">Weather Map</span>
-        <span className="text-[10px] text-gray-500">click city → Temp Odds</span>
+        <span className="text-[10px] text-gray-500">click city → Temp Odds · green=pos purple=order</span>
       </div>
       <div ref={containerRef} className="no-drag relative min-h-0 flex-1">
         {layoutSnapshot ? (

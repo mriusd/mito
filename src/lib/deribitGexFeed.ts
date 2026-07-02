@@ -1,5 +1,6 @@
 import { useLayoutEffect, useSyncExternalStore } from 'react';
 import { WS_BASE } from './env';
+import { onBackendReconnect } from './backendReconnect';
 
 export const GEX_ASSETS = ['BTC', 'ETH'] as const;
 export type GexAsset = (typeof GEX_ASSETS)[number];
@@ -830,3 +831,11 @@ export function useDeribitGexConnection(enabled = true): void {
 export function useDeribitGexSnapshot(): GexPanelSnapshot | null {
   return useGexSnapshot('deribit');
 }
+
+onBackendReconnect(() => {
+  for (const source of GEX_FEED_SOURCES) {
+    if (feeds[source].refCount <= 0) continue;
+    disconnect(source);
+    connect(source);
+  }
+});

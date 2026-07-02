@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { WS_BASE } from '../lib/env';
+import { onBackendReconnect } from '../lib/backendReconnect';
 
 export type SyncHeadState = {
   lastProcessedBlock: number;
@@ -79,8 +80,18 @@ export function useSyncHeadWS(): SyncHeadState | null {
 
     connect();
 
+    const offReconnect = onBackendReconnect(() => {
+      if (stopped) return;
+      try {
+        ws?.close();
+      } catch {
+        /* ignore */
+      }
+    });
+
     return () => {
       stopped = true;
+      offReconnect();
       if (reconnectTimer) clearTimeout(reconnectTimer);
       try {
         ws?.close();

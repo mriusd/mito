@@ -1,5 +1,6 @@
 import { useLayoutEffect, useSyncExternalStore } from 'react';
 import { WS_BASE } from './env';
+import { onBackendReconnect } from './backendReconnect';
 
 export const LIQ_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 export type LiqAsset = (typeof LIQ_ASSETS)[number];
@@ -278,3 +279,16 @@ export function useBinanceLiqAssetSnapshot(asset: LiqAsset): LiqAssetSnapshot | 
     () => state.snap?.assets[asset] ?? null,
   );
 }
+
+onBackendReconnect(() => {
+  if (state.refCount <= 0) return;
+  if (state.ws != null) {
+    try {
+      state.ws.close();
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  connect();
+});

@@ -3,6 +3,7 @@ import { setSidebarOnchainLiveTrades } from '../lib/sidebarOnchainTradesStore';
 import { fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
 import type { WalletPosition } from '../api';
 import { API_BASE, WS_BASE } from '../lib/env';
+import { onBackendReconnect } from '../lib/backendReconnect';
 import { dedupeWalletTradesByLedgerLeg, onchainFillKey, walletTradeKey } from '../lib/tradeKeys';
 import type { LiveTrade } from './usePolymarketOB';
 
@@ -1294,8 +1295,16 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
 
     connect();
 
+    const offReconnect = onBackendReconnect(() => {
+      if (disposed) return;
+      attempt = 0;
+      cleanup();
+      connect();
+    });
+
     return () => {
       disposed = true;
+      offReconnect();
       clearInterval(pendingSweepRef);
       if (walletMarketRefreshTimerRef.current) {
         clearTimeout(walletMarketRefreshTimerRef.current);
@@ -1491,7 +1500,7 @@ export function useWalletMarketTradesWS(
   useEffect(() => {
     const sync = () => setSharedReady(getOnchainTradesWSShared() != null);
     sync();
-    const id = window.setInterval(sync, 200);
+    const id = window.setInterval(sync, 1000);
     return () => window.clearInterval(id);
   }, []);
 

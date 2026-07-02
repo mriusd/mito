@@ -5,7 +5,7 @@ import {
   coalesceRecordOfMarketArrays,
   coalesceUpOrDownMarkets,
 } from '../lib/marketDataDedupe';
-import { isWebMode } from '../lib/env';
+import { notifyBackendReconnect } from '../lib/backendReconnect';
 import type { Market } from '../types';
 import { resolveUpDownStrikeSync } from '../utils/format';
 
@@ -84,8 +84,10 @@ export function useMarketData() {
           useAppStore.getState().setSelectedMarket({ ...sel, priceToBeat: strike });
         }
       }
+      const wasDown = useAppStore.getState().backendConnected === false;
       useAppStore.getState().setBackendConnected(true);
       useAppStore.getState().setLoading(false);
+      if (wasDown) notifyBackendReconnect();
     } catch (err) {
       console.error('Failed to fetch markets:', err);
       useAppStore.getState().setBackendConnected(false);
@@ -96,17 +98,13 @@ export function useMarketData() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load data on mount
+  const backendConnected = useAppStore((s) => s.backendConnected);
   useEffect(() => {
+    const ms = backendConnected === false ? 3000 : 30000;
     refreshData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Auto-refresh every 30s
-  useEffect(() => {
-    const interval = setInterval(refreshData, 30000);
+    const interval = setInterval(refreshData, ms);
     return () => clearInterval(interval);
-  }, [refreshData]);
+  }, [backendConnected, refreshData]);
 
   return { refreshData };
 }

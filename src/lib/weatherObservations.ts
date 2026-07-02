@@ -1,4 +1,5 @@
 import { API_BASE } from './env';
+import { fetchBackend } from './fetchBackend';
 import type { WeatherCitySlug } from '../types';
 import type { WeatherTempSource } from './weatherCities';
 
@@ -16,7 +17,7 @@ export type WeatherObservationsResponse = {
   city: string;
   date: string;
   source?: WeatherTempSource;
-  forecastSource?: 'wunderground';
+  forecastSource?: 'open-meteo' | 'wunderground';
   locationId: string;
   timezone: string;
   dayStartMs: number;
@@ -47,13 +48,21 @@ function parseDateYmd(date: string): string {
   return raw;
 }
 
+export type WeatherObsFetchOptions = {
+  /** Past forecast lines — heavy; load after chart paints. */
+  history?: boolean;
+};
+
 export async function fetchWeatherObservations(
   city: WeatherCitySlug,
   date: string,
+  options?: WeatherObsFetchOptions,
 ): Promise<WeatherObservationsResponse> {
   const dateParam = parseDateYmd(date);
-  const resp = await fetch(
-    `${API_BASE}/api/weather-observations/${encodeURIComponent(city)}?date=${encodeURIComponent(dateParam)}`,
+  const qs = new URLSearchParams({ date: dateParam });
+  if (options?.history) qs.set('history', '1');
+  const resp = await fetchBackend(
+    `${API_BASE}/api/weather-observations/${encodeURIComponent(city)}?${qs.toString()}`,
   );
   if (!resp.ok) {
     const text = await resp.text();
@@ -67,7 +76,7 @@ export async function fetchWeatherForecastSummary(
   date: string,
 ): Promise<WeatherForecastSummary> {
   const dateParam = parseDateYmd(date);
-  const resp = await fetch(
+  const resp = await fetchBackend(
     `${API_BASE}/api/weather-forecast/${encodeURIComponent(city)}?date=${encodeURIComponent(dateParam)}`,
   );
   if (!resp.ok) {

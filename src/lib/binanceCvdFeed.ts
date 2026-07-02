@@ -1,5 +1,6 @@
 import { useLayoutEffect, useSyncExternalStore } from 'react';
 import { WS_BASE } from './env';
+import { onBackendReconnect } from './backendReconnect';
 
 export const CVD_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 export type CvdAsset = (typeof CVD_ASSETS)[number];
@@ -203,3 +204,16 @@ export function fmtCvdUsd(v: number): string {
   if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
   return `${sign}$${abs.toFixed(0)}`;
 }
+
+onBackendReconnect(() => {
+  if (state.refCount <= 0) return;
+  if (state.ws != null) {
+    try {
+      state.ws.close();
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  connect();
+});

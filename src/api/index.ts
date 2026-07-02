@@ -1,6 +1,7 @@
 import type { MarketsResponse, Market, Position, SmartMoneySignalsResponse } from '../types';
 import { normalizeClobTokenId } from '../utils/format';
 import { isWebMode, API_BASE } from '../lib/env';
+import { fetchBackend } from '../lib/fetchBackend';
 import { placeOrderDirect, cancelOrderDirect, cancelOrdersDirect, signOrderOnly, submitSignedOrderDirect, resolveTradingMakerForActiveSigner } from '../lib/clobClient';
 import { useAppStore } from '../stores/appStore';
 
@@ -18,25 +19,25 @@ async function tradingProxyWalletForOrder(): Promise<string | { error: string }>
 }
 
 export async function fetchMarkets(): Promise<MarketsResponse> {
-  const resp = await fetch(`${BASE}/api/markets`);
+  const resp = await fetchBackend(`${BASE}/api/markets`);
   if (!resp.ok) throw new Error('Failed to fetch markets');
   return resp.json();
 }
 
 export async function fetchSettings(): Promise<Record<string, unknown>> {
-  const resp = await fetch(`${BASE}/api/settings`);
+  const resp = await fetchBackend(`${BASE}/api/settings`);
   if (!resp.ok) throw new Error('Failed to fetch settings');
   return resp.json();
 }
 
 export async function fetchSmartMoneySignals(): Promise<SmartMoneySignalsResponse> {
-  const resp = await fetch(`${BASE}/api/smart-money-signals`);
+  const resp = await fetchBackend(`${BASE}/api/smart-money-signals`);
   if (!resp.ok) throw new Error('Failed to fetch smart money signals');
   return resp.json();
 }
 
 export async function saveSetting(key: string, value: unknown): Promise<void> {
-  await fetch(`${BASE}/api/settings`, {
+  await fetchBackend(`${BASE}/api/settings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key, value }),
@@ -44,7 +45,7 @@ export async function saveSetting(key: string, value: unknown): Promise<void> {
 }
 
 export async function saveRange(asset: string, slot: number, low: number | null, high: number | null): Promise<boolean> {
-  const resp = await fetch(`${BASE}/api/ranges`, {
+  const resp = await fetchBackend(`${BASE}/api/ranges`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ asset, slot, low, high }),
@@ -68,7 +69,7 @@ export async function placeOrder(params: {
     if (typeof proxy !== 'string') return { success: false, error: proxy.error };
     return placeOrderDirect({ ...params, proxyWallet: proxy });
   }
-  const resp = await fetch(`${BASE}/api/place-order`, {
+  const resp = await fetchBackend(`${BASE}/api/place-order`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
@@ -82,7 +83,7 @@ export async function cancelOrder(orderId: string): Promise<{ success: boolean; 
     if (typeof proxy !== 'string') return { success: false, error: proxy.error };
     return cancelOrderDirect(orderId, proxy);
   }
-  const resp = await fetch(`${BASE}/api/cancel-order`, {
+  const resp = await fetchBackend(`${BASE}/api/cancel-order`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ orderId }),
@@ -128,22 +129,22 @@ export async function submitSignedOrder(signedPayload: any): Promise<{ success: 
 }
 
 export async function fetchArbProgs(status = 'active,filled,closed'): Promise<unknown> {
-  const resp = await fetch(`${BASE}/api/arb/prog?status=${status}`);
+  const resp = await fetchBackend(`${BASE}/api/arb/prog?status=${status}`);
   return resp.json();
 }
 
 export async function fetchProgsByToken(tokenIds: string[]): Promise<{ progs?: unknown[] }> {
-  const resp = await fetch(`${BASE}/api/arb/progs-by-token?tokenIds=${encodeURIComponent(tokenIds.join(','))}`);
+  const resp = await fetchBackend(`${BASE}/api/arb/progs-by-token?tokenIds=${encodeURIComponent(tokenIds.join(','))}`);
   return resp.json();
 }
 
 export async function fetchArbSummary(): Promise<unknown> {
-  const resp = await fetch(`${BASE}/api/arb/summary`);
+  const resp = await fetchBackend(`${BASE}/api/arb/summary`);
   return resp.json();
 }
 
 export async function syncArbPositions(polyPositions: unknown[]): Promise<unknown> {
-  const resp = await fetch(`${BASE}/api/arb/sync`, {
+  const resp = await fetchBackend(`${BASE}/api/arb/sync`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ polyPositions }),
@@ -152,7 +153,7 @@ export async function syncArbPositions(polyPositions: unknown[]): Promise<unknow
 }
 
 export async function closeArbPosition(progId: number, reason: string, revenue: number): Promise<unknown> {
-  const resp = await fetch(`${BASE}/api/arb/close`, {
+  const resp = await fetchBackend(`${BASE}/api/arb/close`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ progId, reason, revenue }),
@@ -174,7 +175,7 @@ export async function createProgArb(payload: {
   autoSellSpread?: number;
   minEdge?: number;
 }): Promise<{ success: boolean; id?: number; merged?: boolean; error?: string; orders?: { price: number }[]; orderErrors?: string[] }> {
-  const resp = await fetch(`${BASE}/api/arb/prog`, {
+  const resp = await fetchBackend(`${BASE}/api/arb/prog`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -183,12 +184,12 @@ export async function createProgArb(payload: {
 }
 
 export async function cancelProgArb(progId: number): Promise<{ success: boolean; error?: string }> {
-  const resp = await fetch(`${BASE}/api/arb/prog/${progId}/cancel`, { method: 'POST' });
+  const resp = await fetchBackend(`${BASE}/api/arb/prog/${progId}/cancel`, { method: 'POST' });
   return resp.json();
 }
 
 export async function rebidProg(progId: number, legIndex: number, price: number): Promise<unknown> {
-  const resp = await fetch(`${BASE}/api/arb/prog/${progId}/rebid`, {
+  const resp = await fetchBackend(`${BASE}/api/arb/prog/${progId}/rebid`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ legIndex, price }),
@@ -197,53 +198,53 @@ export async function rebidProg(progId: number, legIndex: number, price: number)
 }
 
 export async function fetchProgTrades(progId: number): Promise<{ prog?: unknown; trades?: unknown[]; progOrders?: unknown[]; rawTrades?: unknown[] }> {
-  const resp = await fetch(`${BASE}/api/arb/prog/${progId}/trades`);
+  const resp = await fetchBackend(`${BASE}/api/arb/prog/${progId}/trades`);
   return resp.json();
 }
 
 export async function fetchProgErrors(progId: number): Promise<{ errors?: unknown[] }> {
-  const resp = await fetch(`${BASE}/api/arb/prog/${progId}/errors`);
+  const resp = await fetchBackend(`${BASE}/api/arb/prog/${progId}/errors`);
   return resp.json();
 }
 
 export async function updateProgSize(progId: number, size?: number, dollarSize?: number): Promise<boolean> {
   const body = dollarSize !== undefined ? { dollarSize } : { size };
-  const resp = await fetch(`${BASE}/api/arb/prog/${progId}/size`, {
+  const resp = await fetchBackend(`${BASE}/api/arb/prog/${progId}/size`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   return resp.ok;
 }
 
 export async function updateProgExpiry(progId: number, expiryMinutes: number): Promise<boolean> {
-  const resp = await fetch(`${BASE}/api/arb/prog/${progId}/expiry`, {
+  const resp = await fetchBackend(`${BASE}/api/arb/prog/${progId}/expiry`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expiryMinutes }),
   });
   return resp.ok;
 }
 
 export async function updateProgAutoSell(progId: number, payload: { autoSell: boolean; mode?: string; price?: number | null; spread?: number | null }): Promise<boolean> {
-  const resp = await fetch(`${BASE}/api/arb/prog/${progId}/autosell`, {
+  const resp = await fetchBackend(`${BASE}/api/arb/prog/${progId}/autosell`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   return resp.ok;
 }
 
 export async function updateProgLoop(progId: number, loop: boolean): Promise<boolean> {
-  const resp = await fetch(`${BASE}/api/arb/prog/${progId}/loop`, {
+  const resp = await fetchBackend(`${BASE}/api/arb/prog/${progId}/loop`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ loop }),
   });
   return resp.ok;
 }
 
 export async function updateProgAnchor(progId: number, legIndex: number, anchor: string | null): Promise<boolean> {
-  const resp = await fetch(`${BASE}/api/arb/prog/${progId}/anchor`, {
+  const resp = await fetchBackend(`${BASE}/api/arb/prog/${progId}/anchor`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ legIndex, anchor }),
   });
   return resp.ok;
 }
 
 export async function fetchPnlSummary(): Promise<{ pnlMap: Record<string, unknown> }> {
-  const resp = await fetch(`${BASE}/api/arb/pnl-summary`);
+  const resp = await fetchBackend(`${BASE}/api/arb/pnl-summary`);
   return resp.json();
 }
 
@@ -268,12 +269,12 @@ export interface DrilldownProg {
 }
 
 export async function fetchPnlDrilldown(asset: string, endDate: string): Promise<{ progs: DrilldownProg[] }> {
-  const resp = await fetch(`${BASE}/api/arb/pnl-drilldown?asset=${encodeURIComponent(asset)}&endDate=${encodeURIComponent(endDate)}`);
+  const resp = await fetchBackend(`${BASE}/api/arb/pnl-drilldown?asset=${encodeURIComponent(asset)}&endDate=${encodeURIComponent(endDate)}`);
   return resp.json();
 }
 
 export async function fetchPnlDrilldownAll(): Promise<{ progs: DrilldownProg[] }> {
-  const resp = await fetch(`${BASE}/api/arb/pnl-drilldown-all`);
+  const resp = await fetchBackend(`${BASE}/api/arb/pnl-drilldown-all`);
   return resp.json();
 }
 
@@ -325,7 +326,7 @@ export async function fetchBsLive(asset: string, strike: string, endDate?: strin
   try {
     const params = new URLSearchParams({ asset, strike });
     if (endDate) params.set('endDate', endDate);
-    const resp = await fetch(`${BASE}/api/bs-live?${params}`);
+    const resp = await fetchBackend(`${BASE}/api/bs-live?${params}`);
     if (!resp.ok) return null;
     return resp.json();
   } catch {
@@ -334,7 +335,7 @@ export async function fetchBsLive(asset: string, strike: string, endDate?: strin
 }
 
 export async function fetchPriceHistory(tokenId: string, interval = 'max', fidelity = '60'): Promise<{ history: { t: number; p: number }[] }> {
-  const resp = await fetch(`${BASE}/api/market-trades/${tokenId}?interval=${interval}&fidelity=${fidelity}`);
+  const resp = await fetchBackend(`${BASE}/api/market-trades/${tokenId}?interval=${interval}&fidelity=${fidelity}`);
   if (!resp.ok) return { history: [] };
   return resp.json();
 }
@@ -668,7 +669,7 @@ export interface ToxicFlowData {
 }
 
 export async function fetchToxicFlow(marketId: string): Promise<ToxicFlowData> {
-  const resp = await fetch(`${BASE}/api/toxic-flow?market_id=${encodeURIComponent(marketId)}`);
+  const resp = await fetchBackend(`${BASE}/api/toxic-flow?market_id=${encodeURIComponent(marketId)}`);
   if (!resp.ok) throw new Error('Failed to fetch toxic flow');
   return resp.json();
 }
@@ -722,7 +723,7 @@ export function marketTotalStakedAbsUsd(legs: MarketStakedLegsResponse | null | 
 }
 
 export async function fetchMarketStakedLegs(marketId: string): Promise<MarketStakedLegsResponse> {
-  const resp = await fetch(`${BASE}/api/market-staked-legs?market_id=${encodeURIComponent(marketId)}`);
+  const resp = await fetchBackend(`${BASE}/api/market-staked-legs?market_id=${encodeURIComponent(marketId)}`);
   if (!resp.ok) throw new Error('Failed to fetch market staked legs');
   return resp.json();
 }
@@ -734,7 +735,7 @@ export type MarketOutcomeTokensResponse = {
 };
 
 export async function fetchMarketOutcomeTokens(marketId: string): Promise<MarketOutcomeTokensResponse | null> {
-  const resp = await fetch(`${BASE}/api/market-outcome-tokens?market_id=${encodeURIComponent(marketId)}`);
+  const resp = await fetchBackend(`${BASE}/api/market-outcome-tokens?market_id=${encodeURIComponent(marketId)}`);
   if (resp.status === 404) return null;
   if (!resp.ok) throw new Error(`Failed to fetch market outcome tokens: ${resp.status}`);
   return resp.json();
@@ -774,7 +775,7 @@ export async function fetchOnchainMarkets(params: {
   else qs.set('expired_only', '1');
   if (params.limit != null) qs.set('limit', String(params.limit));
   if (params.offset != null) qs.set('offset', String(params.offset));
-  const resp = await fetch(`${BASE}/api/onchain-markets?${qs.toString()}`);
+  const resp = await fetchBackend(`${BASE}/api/onchain-markets?${qs.toString()}`);
   if (!resp.ok) throw new Error('Failed to fetch onchain markets');
   return resp.json();
 }
@@ -800,7 +801,7 @@ export async function fetchMarketWalletPositions(params: {
   if (params.offset != null) qs.set('offset', String(params.offset));
   if (params.sort) qs.set('sort', params.sort);
   if (params.order) qs.set('order', params.order);
-  const resp = await fetch(`${BASE}/api/market-wallet-positions?${qs.toString()}`);
+  const resp = await fetchBackend(`${BASE}/api/market-wallet-positions?${qs.toString()}`);
   if (!resp.ok) throw new Error('Failed to fetch market wallet positions');
   return resp.json();
 }
@@ -839,7 +840,7 @@ export async function fetchWalletPositions(params: {
   if (params.expired_only) qs.set('expired_only', '1');
   if (params.ledger) qs.set('ledger', '1');
   if (params.order) qs.set('order', params.order);
-  const resp = await fetch(`${BASE}/api/wallet-positions?${qs.toString()}`);
+  const resp = await fetchBackend(`${BASE}/api/wallet-positions?${qs.toString()}`);
   if (!resp.ok) throw new Error('Failed to fetch wallet positions');
   return resp.json();
 }
@@ -897,7 +898,7 @@ export async function fetchOnchainFills(params: { market_id?: string; wallet?: s
   if (params.token_id) qs.set('token_id', params.token_id);
   if (params.limit) qs.set('limit', String(params.limit));
   if (params.offset) qs.set('offset', String(params.offset));
-  const resp = await fetch(`${BASE}/api/onchain-fills?${qs.toString()}`);
+  const resp = await fetchBackend(`${BASE}/api/onchain-fills?${qs.toString()}`);
   if (!resp.ok) throw new Error('Failed to fetch on-chain fills');
   return resp.json();
 }
@@ -927,7 +928,7 @@ export async function fetchOnchainMarketPositions(params: {
   qs.set('token_ids', params.token_ids.join(','));
   qs.set('wallet', params.wallet);
   if (params.active_only) qs.set('active_only', '1');
-  const resp = await fetch(`${BASE}/api/onchain-market-positions?${qs.toString()}`);
+  const resp = await fetchBackend(`${BASE}/api/onchain-market-positions?${qs.toString()}`);
   if (!resp.ok) throw new Error('Failed to fetch on-chain market positions');
   return resp.json();
 }
@@ -957,7 +958,7 @@ export async function fetchOnchainMarketTrades(params: { token_ids: string[]; wa
   qs.set('wallet', params.wallet);
   if (params.limit) qs.set('limit', String(params.limit));
   if (params.offset) qs.set('offset', String(params.offset));
-  const resp = await fetch(`${BASE}/api/onchain-market-trades?${qs.toString()}`);
+  const resp = await fetchBackend(`${BASE}/api/onchain-market-trades?${qs.toString()}`);
   if (!resp.ok) throw new Error('Failed to fetch on-chain market trades');
   return resp.json();
 }
@@ -980,7 +981,7 @@ export async function fetchOnchainClaims(params: { wallet: string; limit?: numbe
   qs.set('wallet', params.wallet);
   if (params.limit) qs.set('limit', String(params.limit));
   if (params.offset) qs.set('offset', String(params.offset));
-  const resp = await fetch(`${BASE}/api/onchain-claims?${qs.toString()}`);
+  const resp = await fetchBackend(`${BASE}/api/onchain-claims?${qs.toString()}`);
   if (!resp.ok) throw new Error('Failed to fetch on-chain claims');
   return resp.json();
 }
@@ -1016,7 +1017,7 @@ export async function fetchWalletPnlDaily(params: {
   qs.set('hit', params.hit ? '1' : '0');
   qs.set('above', params.above ? '1' : '0');
   qs.set('between', params.between ? '1' : '0');
-  const resp = await fetch(`${BASE}/api/wallet-pnl-daily?${qs.toString()}`);
+  const resp = await fetchBackend(`${BASE}/api/wallet-pnl-daily?${qs.toString()}`);
   if (!resp.ok) throw new Error('Failed to fetch wallet P&L (on-chain)');
   return resp.json();
 }
@@ -1081,7 +1082,7 @@ export function walletSummaryFromLedgerEmbed(rowWallet: string, embed: WalletSco
 }
 
 export async function fetchWalletSummary(wallet: string): Promise<WalletSummary | null> {
-  const resp = await fetch(`${BASE}/api/wallet-summary?wallet=${wallet.toLowerCase()}`);
+  const resp = await fetchBackend(`${BASE}/api/wallet-summary?wallet=${wallet.toLowerCase()}`);
   if (!resp.ok) return null;
   const data = await resp.json();
   return data.found ? data : null;
@@ -1137,7 +1138,7 @@ export async function fetchChatMessages(limit = 100, before?: number): Promise<C
 }
 
 export async function postChatMessage(address: string, nickname: string, message: string): Promise<ChatMessage> {
-  const resp = await fetch(`${BASE}/api/chat`, {
+  const resp = await fetchBackend(`${BASE}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ address, nickname, message }),
@@ -1148,14 +1149,14 @@ export async function postChatMessage(address: string, nickname: string, message
 
 export async function deleteChatMessage(id: number, address: string): Promise<void> {
   const body = JSON.stringify({ id, address });
-  let resp = await fetch(`${BASE}/api/chat`, {
+  let resp = await fetchBackend(`${BASE}/api/chat`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body,
   });
   // Some deployed backends/proxies block DELETE; fallback to POST endpoint.
   if (resp.status === 405) {
-    resp = await fetch(`${BASE}/api/chat/delete`, {
+    resp = await fetchBackend(`${BASE}/api/chat/delete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
@@ -1167,14 +1168,14 @@ export async function deleteChatMessage(id: number, address: string): Promise<vo
 export async function editChatMessage(id: number, address: string, message: string): Promise<ChatMessage> {
   const body = JSON.stringify({ id, address, message });
   // Use POST compat endpoint first to avoid CORS preflight failures on PATCH.
-  let resp = await fetch(`${BASE}/api/chat/edit`, {
+  let resp = await fetchBackend(`${BASE}/api/chat/edit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body,
   });
   // Optional fallback for environments where only PATCH /api/chat is available.
   if (resp.status === 404 || resp.status === 405) {
-    resp = await fetch(`${BASE}/api/chat`, {
+    resp = await fetchBackend(`${BASE}/api/chat`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body,
@@ -1217,7 +1218,7 @@ export async function fetchWeatherProbabilities(
 }
 
 export async function postWeatherProbabilities(city: string, payload: WeatherProbabilitiesPayload): Promise<void> {
-  const resp = await fetch(`${BASE}/api/weather-probabilities/${encodeURIComponent(city)}`, {
+  const resp = await fetchBackend(`${BASE}/api/weather-probabilities/${encodeURIComponent(city)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

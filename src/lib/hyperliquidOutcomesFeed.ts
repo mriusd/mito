@@ -1,5 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { API_BASE, WS_BASE } from './env';
+import { fetchBackend } from './fetchBackend';
+import { onBackendReconnect } from './backendReconnect';
 import type { AssetName, Market } from '../types';
 
 export type HlCryptoLeg = {
@@ -255,7 +257,7 @@ function applySnapshot(snap: HlOutcomesSnapshot | null): HlOutcomesSnapshot | nu
 }
 
 export async function fetchHyperliquidOutcomesSnapshot(): Promise<HlOutcomesSnapshot | null> {
-  const res = await fetch(`${API_BASE}/api/hyperliquid-outcomes`);
+  const res = await fetchBackend(`${API_BASE}/api/hyperliquid-outcomes`, undefined, 8000);
   if (!res.ok) return null;
   const json: unknown = await res.json();
   const msg = json as { type?: string; data?: unknown };
@@ -265,3 +267,16 @@ export async function fetchHyperliquidOutcomesSnapshot(): Promise<HlOutcomesSnap
       : parseHlOutcomesSnapshot(json);
   return applySnapshot(snap);
 }
+
+onBackendReconnect(() => {
+  if (state.refCount <= 0) return;
+  if (state.ws != null) {
+    try {
+      state.ws.close();
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  connect();
+});

@@ -79,27 +79,39 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
   useEffect(() => {
     let cancelled = false;
 
-    const load = () => {
-      setLoading(true);
-      setError('');
-      void fetchWeatherObservations(city, date)
+    const load = (opts?: { history?: boolean; silent?: boolean }) => {
+      if (!opts?.silent) {
+        setLoading(true);
+        setError('');
+      }
+      void fetchWeatherObservations(city, date, { history: opts?.history })
         .then((resp) => {
           if (cancelled) return;
+          if (opts?.history) {
+            setData((prev) => (prev ? { ...prev, forecastHistory: resp.forecastHistory } : resp));
+            return;
+          }
           setData(resp);
         })
         .catch((e) => {
-          if (cancelled) return;
+          if (cancelled || opts?.history) return;
           setData(null);
           setError(e instanceof Error ? e.message : String(e));
         })
         .finally(() => {
-          if (!cancelled) setLoading(false);
+          if (!cancelled && !opts?.silent && !opts?.history) setLoading(false);
         });
     };
 
     load();
+    void fetchWeatherObservations(city, date, { history: true })
+      .then((resp) => {
+        if (cancelled) return;
+        setData((prev) => (prev ? { ...prev, forecastHistory: resp.forecastHistory } : resp));
+      })
+      .catch(() => {});
     const pollMs = isWeatherDateTodayInTimezone(date, cityMeta.timezone) ? 60_000 : 0;
-    const pollId = pollMs > 0 ? window.setInterval(load, pollMs) : undefined;
+    const pollId = pollMs > 0 ? window.setInterval(() => load({ silent: true }), pollMs) : undefined;
     return () => {
       cancelled = true;
       if (pollId != null) window.clearInterval(pollId);

@@ -1,4 +1,5 @@
 import { WS_BASE } from './env';
+import { onBackendReconnect } from './backendReconnect';
 
 // Single shared /ws/chart socket for the whole app. Every consumer (live trade
 // chart, chainlink/volatility charts, binance chart panel, bid/ask lookup)
@@ -194,3 +195,16 @@ export function subscribeChartBidAsk(onMessage: (msg: ChartWsMsg) => void): () =
     if (totalSubs() === 0) teardown();
   };
 }
+
+onBackendReconnect(() => {
+  if (totalSubs() === 0) return;
+  if (ws != null) {
+    try {
+      ws.close();
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  connect();
+});

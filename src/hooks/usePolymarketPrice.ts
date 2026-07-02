@@ -1,5 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { API_BASE, WS_BASE } from '../lib/env';
+import { fetchBackend } from '../lib/fetchBackend';
+import { onBackendReconnect } from '../lib/backendReconnect';
 
 interface PriceState {
   price: number | null;
@@ -86,7 +88,7 @@ async function pollChainlinkSpot(): Promise<void> {
   const stale = lastWsMsgAt > 0 && Date.now() - lastWsMsgAt > CHAINLINK_WS_STALE_MS;
   if (!stale && lastWsMsgAt > 0) return;
   try {
-    const r = await fetch(`${API_BASE}/api/chainlink-spot`);
+    const r = await fetchBackend(`${API_BASE}/api/chainlink-spot`, undefined, 4000);
     if (!r.ok) return;
     const body = (await r.json()) as Record<string, number>;
     let changed = false;
@@ -192,3 +194,16 @@ export function useThrottledChainlinkPricesMap(ms = 1000): ChainlinkPricesMap {
 
   return prices;
 }
+
+onBackendReconnect(() => {
+  if (refCount <= 0) return;
+  if (ws != null) {
+    try {
+      ws.close();
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  connect();
+});

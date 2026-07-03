@@ -6,6 +6,7 @@ import {
   type OnchainClaimRow,
 } from '../../api';
 import { positionExitBidProb, outcomeBidAskProb } from '../../lib/outcomeQuote';
+import { positionBidExitTier, POSITION_BID_EXIT_TAILWIND } from '../../lib/positionBidExitTier';
 import { onchainFillKey } from '../../lib/tradeKeys';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
@@ -873,8 +874,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                   const dd = getDateDisplay(p.endDate);
                   const pnlColor = p.pnl >= 0 ? 'text-green-400' : 'text-red-400';
                   const pnlSign = p.pnl >= 0 ? '+' : '-';
-                  const exitChange = p.entryPrice > 0 ? ((p.currentPrice - p.entryPrice) / p.entryPrice) * 100 : 0;
-                  const exitColor = exitChange > 20 ? 'text-green-400' : exitChange < -20 ? 'text-red-400' : 'text-yellow-400';
+                  const exitColor = POSITION_BID_EXIT_TAILWIND[positionBidExitTier(p.entryPrice, p.currentPrice)];
                   return (
                     <tr key={p.tid} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarket && selectedMarket.id === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
                       <td className={`py-1 px-1 ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>

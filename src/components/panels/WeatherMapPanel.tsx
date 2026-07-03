@@ -8,6 +8,7 @@ import {
   subsolarPoint,
   utcOffsetLabel,
 } from '../../lib/weatherMapSun';
+import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
 import { onTempOddsCitySelect, onTempOddsDateSelect, getTempOddsSelectedDate, selectTempOddsCity } from '../../lib/weatherTempOddsControl';
 import { buildWeatherCityExposureByDate, type WeatherCityExposure } from '../../lib/weatherMapExposure';
 import { useThrottledGridOrders, useThrottledGridPositions } from '../../hooks/useThrottledGridWallet';
@@ -207,14 +208,19 @@ function drawDayGlow(ctx: CanvasRenderingContext2D, layout: MapLayout, date: Dat
 
 function cityDotFill(
   exposure: WeatherCityExposure | undefined,
-  night: boolean,
   hovered: boolean,
   selected: boolean,
 ): string {
-  if (exposure === 'position') return selected || hovered ? '#4ade80' : '#22c55e';
-  if (exposure === 'order') return selected || hovered ? '#c084fc' : '#a855f7';
-  if (night) return selected || hovered ? '#fde047' : '#eab308';
-  return selected || hovered ? '#fff176' : '#facc15';
+  if (!exposure || exposure.kind === 'none') {
+    return selected || hovered ? '#e5e7eb' : '#ffffff';
+  }
+  if (exposure.kind === 'order') {
+    return selected || hovered ? '#c084fc' : '#a855f7';
+  }
+  const tier = exposure.tier;
+  if (tier === 'green') return selected || hovered ? '#4ade80' : '#22c55e';
+  if (tier === 'red') return selected || hovered ? '#f87171' : '#ef4444';
+  return selected || hovered ? '#fde047' : '#eab308';
 }
 
 function nearestCity(
@@ -268,6 +274,7 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
   const weatherMarkets = useAppStore((s) => s.weatherMarkets);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const progOrderMap = useAppStore((s) => s.progOrderMap);
+  const marketLookup = useMarketLookupSnapshot();
   const positions = useThrottledGridPositions(2000);
   const orders = useThrottledGridOrders(2000);
   const onchainWsPositions = useSidebarOnchainGridWalletPositions();
@@ -281,8 +288,9 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
       myOrders,
       liveTradesSource,
       onchainWsPositions,
+      marketLookup,
     );
-  }, [weatherMarkets, tempOddsDateIso, positions, orders, progOrderMap, liveTradesSource, onchainWsPositions]);
+  }, [weatherMarkets, tempOddsDateIso, positions, orders, progOrderMap, liveTradesSource, onchainWsPositions, marketLookup]);
 
   useEffect(() => onTempOddsDateSelect(setTempOddsDateIso), []);
 
@@ -359,12 +367,11 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
       const { x, y } = projectLonLat(city.lon, city.lat, layout);
       const hovered = hoverSlug === city.slug;
       const selected = selectedSlug === city.slug;
-      const night = isNightAt(city.lat, city.lon, date);
       const exposure = cityExposure.get(city.slug);
       const r = selected ? DOT_RADIUS + 2 : hovered ? DOT_RADIUS + 1.5 : DOT_RADIUS;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = cityDotFill(exposure, night, hovered, selected);
+      ctx.fillStyle = cityDotFill(exposure, hovered, selected);
       ctx.fill();
       if (selected) {
         ctx.beginPath();
@@ -529,7 +536,7 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-2 h-full flex flex-col min-h-0">
       <div className="panel-header mb-1 flex shrink-0 cursor-grab items-center gap-2">
         <span className="text-xs font-bold text-gray-500">Weather Map</span>
-        <span className="text-[10px] text-gray-500">click city → Temp Odds · green=pos purple=order</span>
+        <span className="text-[10px] text-gray-500">click city → Temp Odds · pos=green/yellow/red · purple=order · white=none</span>
       </div>
       <div ref={containerRef} className="no-drag relative min-h-0 flex-1">
         {layoutSnapshot ? (

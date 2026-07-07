@@ -21,7 +21,7 @@ import { hasCredsForWallet, ensureCredsForWallet, triggerWalletRefresh } from '.
 import { isWebMode } from '../../lib/env';
 import { appKit } from '../../lib/wallet';
 import { signingDialog } from '../SigningDialog';
-import type { Position, Trade } from '../../types';
+import type { Position, Trade, Order } from '../../types';
 import { showToast } from '../../utils/toast';
 import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, getPositionClobTokenId, extractAssetFromMarket, formatPriceShort, lookupMarketByTokenId, isWeatherMarket, normalizeClobTokenId, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
 import { resolveMarketExpiryEndDate } from '../../lib/weatherMarketExpiry';
@@ -115,6 +115,21 @@ function comparePositionsByExpiryDesc(
   if (eb === 0) return -1;
   if (eb !== ea) return eb - ea;
   return a.tid.localeCompare(b.tid);
+}
+
+function buildSellOrderPriceByToken(orders: Order[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const o of orders) {
+    if ((o.side || '').toUpperCase() !== 'SELL') continue;
+    const tid = normalizeClobTokenId(getOrderClobTokenId(o));
+    if (!tid) continue;
+    const price = parseFloat(o.price);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const priceCents = price * 100;
+    const prev = map.get(tid);
+    if (prev == null || priceCents < prev) map.set(tid, priceCents);
+  }
+  return map;
 }
 
 function wsPositionsToPM(rows: WSPosition[], marketLookup: Record<string, Market>): Position[] {
@@ -263,6 +278,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   }, [polymarketTokenKey, onchainWsPositions, onchainWsTrades, selectedMarket?.id, selectedMarket?.clobTokenIds, weatherMarkets]);
 
   const marketLookup = useMarketLookupSubset(tpoClobIds);
+
+  const sellOrderPriceByToken = useMemo(() => buildSellOrderPriceByToken(orders), [orders]);
 
   const onchainPositionsAsPM = useMemo(
     () => wsPositionsToPM(onchainWsPositions, marketLookup),
@@ -597,8 +614,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const currentPrice = cur * 100;
       const pnl = currentValue - cost;
       const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
+      const sellPrice = sellOrderPriceByToken.get(normalizeClobTokenId(tid)) ?? null;
       const clickable = !!market;
-      return { tid, asset, endDate, marketName: mktLabel, outcome, size, entryPrice, cost, currentPrice, currentValue, bidProb, askProb, pnl, pnlPercent, marketId: market?.id ?? pos.market, clickable };
+      return { tid, asset, endDate, marketName: mktLabel, outcome, size, entryPrice, cost, currentPrice, currentValue, bidProb, askProb, sellPrice, pnl, pnlPercent, marketId: market?.id ?? pos.market, clickable };
     });
 
   const displayPositions = useMemo(() => {
@@ -673,7 +691,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     posSortCol === col ? (posSortDir === 1 ? ' ▲' : ' ▼') : '';
 
   const trColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'22%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'12%'}}/></colgroup>;
-  const posColgroup = <colgroup><col style={{width:'5%'}}/><col style={{width:'7%'}}/><col style={{width:'15%'}}/><col style={{width:'4%'}}/><col style={{width:'7%'}}/><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'9%'}}/><col style={{width:'9%'}}/><col style={{width:'9%'}}/></colgroup>;
+  const posColgroup = <colgroup><col style={{width:'5%'}}/><col style={{width:'7%'}}/><col style={{width:'14%'}}/><col style={{width:'4%'}}/><col style={{width:'6%'}}/><col style={{width:'7%'}}/><col style={{width:'7%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'6%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/></colgroup>;
   const ordColgroup = <colgroup><col style={{width:'6%'}}/><col style={{width:'7%'}}/><col style={{width:'18%'}}/><col style={{width:'6%'}}/><col style={{width:'5%'}}/><col style={{width:'8%'}}/><col style={{width:'6%'}}/><col style={{width:'6%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'6%'}}/></colgroup>;
 
   return (
@@ -845,6 +863,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               >
                 Ask{posSortArrow('ask')}
               </th>
+              <th className={`${hCls} text-right`} title="Resting sell limit price">
+                Sell
+              </th>
               <th
                 className={`${hSortCls} text-right`}
                 onClick={() => togglePosSort('val')}
@@ -886,6 +907,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                       <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.cost).toLocaleString()}</td>
                       <td className={`py-1 px-1 text-right ${exitColor}`}>{p.currentPrice.toFixed(1)}¢</td>
                       <td className="py-1 px-1 text-right text-red-300/90">{formatQuoteCents(p.askProb)}</td>
+                      <td className="py-1 px-1 text-right text-red-400">{p.sellPrice != null ? `${p.sellPrice.toFixed(1)}¢` : '-'}</td>
                       <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.currentValue).toLocaleString()}</td>
                       <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(p.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                       <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>
@@ -903,6 +925,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 <td className="py-1 px-1 text-right text-gray-400">{avgEntry.toFixed(1)}¢</td>
                 <td className="py-1 px-1 text-right text-white">${Math.round(totalCost).toLocaleString()}</td>
                 <td className="py-1 px-1 text-right text-gray-400">{avgExit.toFixed(1)}¢</td>
+                <td className="py-1 px-1"></td>
                 <td className="py-1 px-1"></td>
                 <td className="py-1 px-1 text-right text-white">${Math.round(totalValue).toLocaleString()}</td>
                 <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}${Math.abs(totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>

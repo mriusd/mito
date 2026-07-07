@@ -908,7 +908,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                   return (
                     <tr key={i} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${t.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarket && selectedMarket.id === t.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => t.clickable && handleMarketClick(t.tid)}>
                       <td className={`py-1 px-1 ${assetColorMap[t.asset] || 'text-gray-400'} font-bold`}>{t.asset}</td>
-                      <td className={`py-1 px-1 ${t.dateColor}`}>{t.dateLabel}</td>
+                      <td className={`py-1 px-1 whitespace-nowrap ${t.dateColor}`}>{t.dateLabel}</td>
                       <td className={`py-1 px-1 ${assetColorMap2[t.asset] || 'text-gray-300'} truncate`}>{t.marketName}</td>
                       <td className={`py-1 px-1 font-bold ${
                         t.side === 'BUY' ? 'text-green-400'
@@ -1020,7 +1020,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                   return (
                     <tr key={p.tid} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarket && selectedMarket.id === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
                       <td className={`py-1 px-1 ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
-                      <td className={`py-1 px-1 ${p.dateColor}`}>{p.dateLabel}</td>
+                      <td className={`py-1 px-1 whitespace-nowrap ${p.dateColor}`}>{p.dateLabel}</td>
                       <td className={`py-1 px-1 ${assetColorMap2[p.asset] || 'text-gray-300'} truncate`}>{p.marketName}</td>
                       <td className={`py-1 px-1 font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
                       <td className="py-1 px-1 text-right text-gray-300">{Math.floor(p.size).toLocaleString()}</td>
@@ -1097,7 +1097,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                   return (
                     <tr key={o.id} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${selectedMarket && selectedMarket.id === o.marketId ? 'bg-blue-900/40' : ''}`}>
                       <td className={`py-1 px-1 ${assetColorMap[o.asset] || 'text-gray-400'} font-bold`}>{o.asset}</td>
-                      <td className={`py-1 px-1 ${dd.color}`}>{dd.label}</td>
+                      <td className={`py-1 px-1 whitespace-nowrap ${dd.color}`}>{dd.label}</td>
                       <td className={`py-1 px-1 ${assetColorMap2[o.asset] || 'text-gray-300'} truncate cursor-pointer hover:underline`} onClick={() => handleMarketClick(o.tid)}>{o.marketName}</td>
                       <td className={`py-1 px-1 font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
                       <td className={`py-1 px-1 font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>

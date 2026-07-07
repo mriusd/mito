@@ -10,6 +10,7 @@ import {
 } from '../../lib/sidebarOnchainTradesStore';
 import { triggerWalletRefresh } from '../../lib/clobClient';
 import type { Trade } from '../../types';
+import { fetchWalletActivityForDateRange } from '../../api/polymarket';
 import { effectiveMarketExpiryMs } from '../../lib/weatherMarketExpiry';
 import { getTradeClobTokenId } from '../../utils/format';
 
@@ -85,6 +86,7 @@ export function PnLPanel() {
 
   const [calendarBump, setCalendarBump] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [pmRangeTrades, setPmRangeTrades] = useState<Trade[] | null>(null);
   useEffect(() => {
     const id = window.setInterval(() => setCalendarBump((b) => b + 1), 5 * 60 * 1000);
     return () => window.clearInterval(id);
@@ -147,6 +149,26 @@ export function PnLPanel() {
     refreshSidebarOnchainWalletPnl(w, dateWindow.fromStr, dateWindow.toStr);
   }, [makerAddress, liveTradesSource, dateWindow.fromStr, dateWindow.toStr]);
 
+  useEffect(() => {
+    const w = makerAddress?.trim();
+    if (!w || liveTradesSource !== 'polymarket') {
+      setPmRangeTrades(null);
+      return;
+    }
+    let cancelled = false;
+    setPmRangeTrades(null);
+    void fetchWalletActivityForDateRange(w, dateWindow.fromStr, dateWindow.toStr)
+      .then((rows) => {
+        if (!cancelled) setPmRangeTrades(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setPmRangeTrades([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [makerAddress, liveTradesSource, dateWindow.fromStr, dateWindow.toStr]);
+
   const onchainByDate = useMemo((): Record<string, { bought: number; sold: number }> | 'pending' | 'inactive' => {
     const w = makerAddress?.trim();
     if (!w || liveTradesSource !== 'onchain') return 'inactive';
@@ -162,6 +184,9 @@ export function PnLPanel() {
       if (liveTradesSource === 'onchain') {
         refreshSidebarOnchainWalletPnl(w, dateWindow.fromStr, dateWindow.toStr);
         refreshSidebarOnchainWallet();
+      } else if (liveTradesSource === 'polymarket') {
+        void fetchWalletActivityForDateRange(w, dateWindow.fromStr, dateWindow.toStr).then(setPmRangeTrades);
+        triggerWalletRefresh();
       } else {
         triggerWalletRefresh();
       }
@@ -195,7 +220,7 @@ export function PnLPanel() {
       return { dates, dataByDate };
     }
 
-    for (const trade of trades) {
+    for (const trade of liveTradesSource === 'polymarket' && pmRangeTrades ? pmRangeTrades : trades) {
       const timeMs = getTradeTimeMs(trade);
       if (timeMs === 0) continue;
       const tid = getTradeClobTokenId(trade);
@@ -239,7 +264,7 @@ export function PnLPanel() {
     }
 
     return { dates, dataByDate };
-  }, [dateWindow, onchainByDate, makerAddress, liveTradesSource, trades, marketLookup, bucketMode, marketTypeFilter]);
+  }, [dateWindow, onchainByDate, makerAddress, liveTradesSource, trades, pmRangeTrades, marketLookup, bucketMode, marketTypeFilter]);
 
   const todayKey = getDateKey(new Date());
 

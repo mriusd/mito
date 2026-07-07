@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { API_BASE } from '../lib/env';
+import { fetchBackend } from '../lib/fetchBackend';
 
 // Logistic-regression up/down model served by polycandles /api/logreg-updown.
 export interface LrBacktest {
@@ -37,7 +38,7 @@ export function useLogregUpDown(): LrModelMap | null {
     let timer: ReturnType<typeof setInterval> | null = null;
 
     const load = () => {
-      void fetch(`${API_BASE}/api/logreg-updown`)
+      void fetchBackend(`${API_BASE}/api/logreg-updown`)
         .then((r) => (r.ok ? r.json() : null))
         .then((data: LrModelMap | null) => {
           if (!disposed && data && typeof data === 'object') setModels(data);

@@ -12,6 +12,7 @@ import {
   type SignedOrder,
 } from '@polymarket/clob-client-v2';
 import { API_BASE, POLYGON_ETHERS_NETWORK, POLYGON_JSONRPC_URL, vitePolyBuilderCode } from './env';
+import { fetchBackend } from './fetchBackend';
 import { refreshSidebarOnchainWallet } from './sidebarOnchainTradesStore';
 import { inferPolymarketClobSignatureType, resolvePolymarketMakerAddress } from './polymarketTradingMaker';
 import { fetchProxyWallet } from '../api/polymarket';
@@ -263,7 +264,7 @@ export async function refreshOpenOrdersInStore(proxyWallet: string): Promise<voi
 export async function sendCredsToBackend(): Promise<boolean> {
   const signer = await getEthersSigner();
   const address = (await signer.getAddress()).toLowerCase();
-  const resp = await fetch(`${API_BASE}/api/polyproxy/gamma/users?address=${address}`);
+  const resp = await fetchBackend(`${API_BASE}/api/polyproxy/gamma/users?address=${address}`);
   const users = await resp.json();
   const gammaPw = users?.[0]?.proxyWallet != null ? String(users[0].proxyWallet) : null;
   const proxyWallet = resolvePolymarketMakerAddress(address, gammaPw);

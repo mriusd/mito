@@ -1,5 +1,6 @@
 import { useLayoutEffect, useSyncExternalStore } from 'react';
 import { WS_BASE } from './env';
+import { backendWsRetryDelayMs } from './fetchBackend';
 import { SPOT_OB_MOVE_PCT_LEVELS } from './binanceSpotObImpact';
 import type {
   BinanceObAssetPanel,
@@ -135,7 +136,7 @@ function connectMarket(market: BinanceObMarket): void {
     st.reconnectTimer = window.setTimeout(() => {
       st.reconnectTimer = null;
       if (st.refCount > 0) connectMarket(market);
-    }, 1500);
+    }, backendWsRetryDelayMs(1500));
   };
 
   ws.onerror = () => {
@@ -154,7 +155,7 @@ function scheduleReconnect(market: BinanceObMarket): void {
   st.reconnectTimer = window.setTimeout(() => {
     st.reconnectTimer = null;
     if (st.refCount > 0) connectMarket(market);
-  }, 1500);
+  }, backendWsRetryDelayMs(1500));
 }
 
 function disconnectMarket(market: BinanceObMarket): void {

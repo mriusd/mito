@@ -86,8 +86,11 @@ export function walletInfoChartMarketWithOutcomeTokens(
   tokenIdYes: string,
   tokenIdNo: string,
 ): Market | null {
+  if (!market) return null;
+  const storeYes = market.clobTokenIds?.[0]?.trim() || '';
+  if (storeYes) return market;
   const yes = tokenIdYes.trim();
-  if (!market || !yes) return null;
+  if (!yes) return null;
   const no = tokenIdNo.trim();
   return {
     ...market,

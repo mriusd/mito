@@ -40,7 +40,8 @@ export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
 
   useEffect(() => {
     const mid = selectedMarketId.trim();
-    if (!open || !mid) {
+    const hasStoreTokens = !!selectedMarketMeta?.clobTokenIds?.[0]?.trim();
+    if (!open || !mid || hasStoreTokens) {
       setChartOutcomeTokens(null);
       return;
     }
@@ -52,7 +53,7 @@ export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
     return () => {
       cancelled = true;
     };
-  }, [open, selectedMarketId]);
+  }, [open, selectedMarketId, selectedMarketMeta?.clobTokenIds]);
 
   useEffect(() => {
     userChartOverrideRef.current = false;

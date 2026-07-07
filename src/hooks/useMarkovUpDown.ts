@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { API_BASE } from '../lib/env';
+import { fetchBackend } from '../lib/fetchBackend';
 
 // Markov up/down model served by polycandles /api/markov-updown.
 // Outcome index convention: 0 = DOWN, 1 = UP.
@@ -37,7 +38,7 @@ export function useMarkovUpDown(): MarkovModelMap | null {
     let timer: ReturnType<typeof setInterval> | null = null;
 
     const load = () => {
-      void fetch(`${API_BASE}/api/markov-updown`)
+      void fetchBackend(`${API_BASE}/api/markov-updown`)
         .then((r) => (r.ok ? r.json() : null))
         .then((data: MarkovModelMap | null) => {
           if (!disposed && data && typeof data === 'object') setModels(data);

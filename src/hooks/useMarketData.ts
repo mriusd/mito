@@ -5,6 +5,7 @@ import {
   coalesceRecordOfMarketArrays,
   coalesceUpOrDownMarkets,
 } from '../lib/marketDataDedupe';
+import { fetchBackend, markBackendRecovered } from '../lib/fetchBackend';
 import { notifyBackendReconnect } from '../lib/backendReconnect';
 import type { Market } from '../types';
 import { resolveUpDownStrikeSync } from '../utils/format';
@@ -38,6 +39,8 @@ function mergeWsFields(fresh: Record<string, Market>, prev: Record<string, Marke
 
 export function useMarketData() {
   const refreshingRef = useRef(false);
+  /** Consecutive probe successes while down — require 2 before declaring recovery (backend may serve /api/markets before WS/DB endpoints are warm). */
+  const recoverySuccessesRef = useRef(0);
 
   const refreshData = useCallback(async () => {
     if (refreshingRef.current) return;
@@ -85,11 +88,18 @@ export function useMarketData() {
         }
       }
       const wasDown = useAppStore.getState().backendConnected === false;
+      if (wasDown) {
+        recoverySuccessesRef.current += 1;
+        if (recoverySuccessesRef.current < 2) return;
+      }
+      recoverySuccessesRef.current = 0;
+      markBackendRecovered();
       useAppStore.getState().setBackendConnected(true);
       useAppStore.getState().setLoading(false);
       if (wasDown) notifyBackendReconnect();
     } catch (err) {
       console.error('Failed to fetch markets:', err);
+      recoverySuccessesRef.current = 0;
       useAppStore.getState().setBackendConnected(false);
       useAppStore.getState().setLoading(false);
     } finally {

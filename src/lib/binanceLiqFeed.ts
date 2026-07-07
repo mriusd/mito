@@ -1,5 +1,6 @@
 import { useLayoutEffect, useSyncExternalStore } from 'react';
 import { WS_BASE } from './env';
+import { backendWsRetryDelayMs } from './fetchBackend';
 import { onBackendReconnect } from './backendReconnect';
 
 export const LIQ_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
@@ -213,7 +214,7 @@ function connect(): void {
     state.reconnectTimer = window.setTimeout(() => {
       state.reconnectTimer = null;
       if (state.refCount > 0) connect();
-    }, 2000);
+    }, backendWsRetryDelayMs(2000));
   };
   ws.onerror = () => ws.close();
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { WS_BASE } from '../lib/env';
+import { backendWsRetryDelayMs } from '../lib/fetchBackend';
 import { onBackendReconnect } from '../lib/backendReconnect';
 
 export type SyncHeadState = {
@@ -28,7 +29,7 @@ export function useSyncHeadWS(): SyncHeadState | null {
       try {
         ws = new WebSocket(`${WS_BASE}/ws/sync-head`);
       } catch {
-        reconnectTimer = setTimeout(connect, 2500);
+        reconnectTimer = setTimeout(connect, backendWsRetryDelayMs(2500));
         return;
       }
 
@@ -74,7 +75,7 @@ export function useSyncHeadWS(): SyncHeadState | null {
 
       ws.onclose = () => {
         if (stopped) return;
-        reconnectTimer = setTimeout(connect, 2500);
+        reconnectTimer = setTimeout(connect, backendWsRetryDelayMs(2500));
       };
     };
 

@@ -5,6 +5,7 @@ import { useAppStore } from '../../stores/appStore';
 import type { AssetName, Market } from '../../types';
 import { ASSET_COLORS } from '../../types';
 import { API_BASE } from '../../lib/env';
+import { fetchBackend } from '../../lib/fetchBackend';
 import { subscribeChartKline } from '../../lib/chartWsShared';
 import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
@@ -1290,7 +1291,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
             limit: '1000',
           });
           if (endTime !== undefined) params.set('endTime', String(endTime));
-          const res = await fetch(`${API_BASE}/api/v3/klines?${params}`);
+          const res = await fetchBackend(`${API_BASE}/api/v3/klines?${params}`);
           if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
           const rows = await res.json();
           if (!Array.isArray(rows) || rows.length === 0) break;

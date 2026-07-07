@@ -3,7 +3,8 @@ import { fetchMarketOutcomeTokens } from '../api';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import type { Market } from '../types';
 import { extractAssetFromMarket } from '../utils/format';
-import { effectiveMarketExpiryMs } from '../lib/weatherMarketExpiry';
+import { effectiveMarketExpiryMs, weatherMarketChartStartMs } from '../lib/weatherMarketExpiry';
+import { isWeatherMarket } from '../utils/format';
 import { walletInfoChartMarketWithOutcomeTokens } from '../lib/walletInfoChartMarket';
 import { LiveTradeChart } from './LiveTradeChart';
 import {
@@ -157,6 +158,11 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
     () => upDownStartTimeFromMarket(chartMarket ?? market),
     [chartMarket, market],
   );
+  const weatherStartTime = useMemo(() => {
+    const m = chartMarket ?? market;
+    if (!isWeatherMarket(m)) return 0;
+    return weatherMarketChartStartMs(m) ?? 0;
+  }, [chartMarket, market]);
   const yesTokenId = chartMarket?.clobTokenIds?.[0] || '';
   const noTokenId = chartMarket?.clobTokenIds?.[1] || '';
   const [internalChartOutcome, setInternalChartOutcome] = useState<'YES' | 'NO'>('YES');
@@ -190,7 +196,9 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
     if (expiryMs != null) return expiryMs;
     return m.endDate ? new Date(m.endDate).getTime() : undefined;
   }, [chartEndTime, chartMarket, market]);
-  const startTimeProp = chartStartTime ?? (upDownStartTime > 0 ? upDownStartTime : undefined);
+  const startTimeProp =
+    chartStartTime ??
+    (upDownStartTime > 0 ? upDownStartTime : weatherStartTime > 0 ? weatherStartTime : undefined);
   const yesLabel = isUpDownMarket ? 'UP' : 'YES';
   const noLabel = isUpDownMarket ? 'DOWN' : 'NO';
 

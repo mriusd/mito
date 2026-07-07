@@ -49,8 +49,8 @@ const listeners = new Set<() => void>();
 
 let refreshWalletImpl: (() => void) | null = null;
 let refreshMarketTradesImpl: ((wallet: string, marketId: string) => void) | null = null;
-let subscribeWalletPnlImpl: ((wallet: string, from: string, to: string) => void) | null = null;
-let pendingWalletPnlSub: { wallet: string; from: string; to: string } | null = null;
+let subscribeWalletPnlImpl: ((wallet: string, from: string, to: string, tz: string) => void) | null = null;
+let pendingWalletPnlSub: { wallet: string; from: string; to: string; tz: string } | null = null;
 
 function notify(): void {
   for (const fn of listeners) fn();
@@ -178,7 +178,7 @@ export function resetSidebarOnchainWalletMarketTradesScope(scopeKey: string): vo
 export function registerSidebarOnchainRefreshFns(fns: {
   refreshWallet: (() => void) | null;
   refreshMarketTrades: ((wallet: string, marketId: string) => void) | null;
-  subscribeWalletPnl: ((wallet: string, from: string, to: string) => void) | null;
+  subscribeWalletPnl: ((wallet: string, from: string, to: string, tz: string) => void) | null;
 }): void {
   refreshWalletImpl = fns.refreshWallet;
   refreshMarketTradesImpl = fns.refreshMarketTrades;
@@ -188,6 +188,7 @@ export function registerSidebarOnchainRefreshFns(fns: {
       pendingWalletPnlSub.wallet,
       pendingWalletPnlSub.from,
       pendingWalletPnlSub.to,
+      pendingWalletPnlSub.tz,
     );
   }
 }
@@ -200,18 +201,19 @@ export function refreshSidebarOnchainMarketTrades(wallet: string, marketId: stri
   refreshMarketTradesImpl?.(wallet, marketId);
 }
 
-export function refreshSidebarOnchainWalletPnl(wallet: string, from: string, to: string): void {
+export function refreshSidebarOnchainWalletPnl(wallet: string, from: string, to: string, tz?: string): void {
   const w = wallet.trim().toLowerCase();
   const f = from.trim();
   const t = to.trim();
+  const z = (tz || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC').trim();
   if (!w || !f || !t) return;
-  pendingWalletPnlSub = { wallet: w, from: f, to: t };
+  pendingWalletPnlSub = { wallet: w, from: f, to: t, tz: z };
   const prev = snap.walletPnlDaily;
   if (prev && (prev.from !== f || prev.to !== t)) {
     snap = { ...snap, walletPnlDaily: null, walletPnlDailyDigest: snap.walletPnlDailyDigest + 1 };
     notify();
   }
-  subscribeWalletPnlImpl?.(w, f, t);
+  subscribeWalletPnlImpl?.(w, f, t, z);
 }
 
 export function setSidebarOnchainLiveTrades(next: LiveTrade[]): void {

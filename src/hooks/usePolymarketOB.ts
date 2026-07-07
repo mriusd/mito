@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { API_BASE } from '../lib/env';
+import { fetchBackend } from '../lib/fetchBackend';
 import { obBookSideUsdTotal } from '../lib/orderbookBookImbalance';
 import { polymarketTradeKey } from '../lib/tradeKeys';
 
@@ -211,7 +212,7 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
       })
       .catch(() => {});
 
-    fetch(`${API_BASE}/api/trades/${tid}?limit=100`)
+    fetchBackend(`${API_BASE}/api/trades/${tid}?limit=100`)
       .then((r) => r.json())
       .then((data: { price: number; size: number; side: string; timestamp: number }[] | null) => {
         if (tokenIdRef.current !== tid || !data || !Array.isArray(data)) return;

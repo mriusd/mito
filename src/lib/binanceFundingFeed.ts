@@ -1,4 +1,5 @@
 import { API_BASE, WS_BASE } from './env';
+import { fetchBackend } from './fetchBackend';
 
 export const FUNDING_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 export type FundingAsset = (typeof FUNDING_ASSETS)[number];
@@ -83,7 +84,7 @@ export async function fetchFundingSnapshot(
 ): Promise<FundingPanelSnapshot | null> {
   const params = new URLSearchParams({ interval, startTime: String(startTime) });
   if (endTime != null) params.set('endTime', String(endTime));
-  const res = await fetch(`${API_BASE}/api/binance-funding-rates?${params}`);
+  const res = await fetchBackend(`${API_BASE}/api/binance-funding-rates?${params}`);
   if (!res.ok) return null;
   const json: unknown = await res.json();
   return parseFundingSnapshot(json);

@@ -3,6 +3,7 @@ import { setSidebarOnchainLiveTrades } from '../lib/sidebarOnchainTradesStore';
 import { fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
 import type { WalletPosition } from '../api';
 import { API_BASE, WS_BASE } from '../lib/env';
+import { fetchBackend } from '../lib/fetchBackend';
 import { onBackendReconnect } from '../lib/backendReconnect';
 import { dedupeWalletTradesByLedgerLeg, onchainFillKey, walletTradeKey } from '../lib/tradeKeys';
 import type { LiveTrade } from './usePolymarketOB';
@@ -375,7 +376,7 @@ export type WalletMarketTradesListener = {
 export type OnchainTradesWSShared = {
   subscribeWalletMarketTrades: (wallet: string, marketId: string, listener: WalletMarketTradesListener) => () => void;
   refreshWalletMarketTrades: (wallet: string, marketId: string) => void;
-  subscribeWalletPnl: (wallet: string, from: string, to: string) => void;
+  subscribeWalletPnl: (wallet: string, from: string, to: string, tz: string) => void;
   wsConnected: boolean;
 };
 
@@ -708,7 +709,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   /** Coalesce bursty onchainTrade WS messages to one React update per frame. */
   const pendingTapeBatchRef = useRef<LiveTrade[]>([]);
   const tapeBatchRafRef = useRef<number | null>(null);
-  const lastPnlSubRef = useRef<{ wallet: string; from: string; to: string } | null>(null);
+  const lastPnlSubRef = useRef<{ wallet: string; from: string; to: string; tz: string } | null>(null);
   const loadTapeFromAPIRef = useRef<(() => void) | null>(null);
 
   // Fast market-scoped REST before WS snapshot (WS trades are last-100 global, often misses this market).
@@ -911,7 +912,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       qs.set('limit', '400');
       if (m) qs.set('market_id', canonicalConditionKey(m));
       if (t) qs.set('token_id', t);
-      void fetch(`${API_BASE}/api/onchain-fills?${qs.toString()}`)
+      void fetchBackend(`${API_BASE}/api/onchain-fills?${qs.toString()}`)
         .then((r) => r.json())
         .then((res) => {
           if (serial !== effectSerialRef.current) return;
@@ -1060,7 +1061,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
         }
         const pnl = lastPnlSubRef.current;
         if (pnl && ws?.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'subscribeWalletPnl', wallet: pnl.wallet, from: pnl.from, to: pnl.to }));
+          ws.send(JSON.stringify({ type: 'subscribeWalletPnl', wallet: pnl.wallet, from: pnl.from, to: pnl.to, tz: pnl.tz }));
         }
       };
 
@@ -1420,15 +1421,16 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     [sendSubscribeWalletMarket],
   );
 
-  const subscribeWalletPnl = useCallback((wallet: string, from: string, to: string) => {
+  const subscribeWalletPnl = useCallback((wallet: string, from: string, to: string, tz: string) => {
     const w = wallet.trim().toLowerCase();
     const f = from.trim();
     const t = to.trim();
+    const z = (tz || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC').trim();
     if (!w || !f || !t) return;
-    lastPnlSubRef.current = { wallet: w, from: f, to: t };
+    lastPnlSubRef.current = { wallet: w, from: f, to: t, tz: z };
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: 'subscribeWalletPnl', wallet: w, from: f, to: t }));
+    ws.send(JSON.stringify({ type: 'subscribeWalletPnl', wallet: w, from: f, to: t, tz: z }));
   }, []);
 
   const refreshWallet = useCallback(() => {
@@ -1440,7 +1442,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     void refetchWalletFromApi();
     const pnl = lastPnlSubRef.current;
     if (pnl) {
-      subscribeWalletPnl(pnl.wallet, pnl.from, pnl.to);
+      subscribeWalletPnl(pnl.wallet, pnl.from, pnl.to, pnl.tz);
     }
   }, [refetchWalletFromApi, subscribeWalletPnl]);
 

@@ -4,6 +4,7 @@ import { MessageCircle, Pencil, Send } from 'lucide-react';
 import { deleteChatMessage, editChatMessage, fetchChatMessages, postChatMessage } from '../../api';
 import type { ChatMessage } from '../../api';
 import { API_BASE } from '../../lib/env';
+import { fetchBackend } from '../../lib/fetchBackend';
 
 // Cache nickname from Polymarket profile
 const nicknameCache: Record<string, string> = {};
@@ -14,7 +15,7 @@ async function fetchPolymarketNickname(address: string): Promise<string> {
   try {
     // Gamma API is CORS-restricted in browser contexts; always use backend proxy.
     const url = `${API_BASE}/api/polyproxy/gamma/public-profile?address=${address}`;
-    const resp = await fetch(url);
+    const resp = await fetchBackend(url);
     if (!resp.ok) return '';
     const data = await resp.json();
     const name = data.username || data.name || '';

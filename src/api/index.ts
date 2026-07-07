@@ -19,7 +19,7 @@ async function tradingProxyWalletForOrder(): Promise<string | { error: string }>
 }
 
 export async function fetchMarkets(): Promise<MarketsResponse> {
-  const resp = await fetchBackend(`${BASE}/api/markets`);
+  const resp = await fetchBackend(`${BASE}/api/markets`, undefined, { probe: true, timeoutMs: 5000 });
   if (!resp.ok) throw new Error('Failed to fetch markets');
   return resp.json();
 }
@@ -1007,6 +1007,7 @@ export async function fetchWalletPnlDaily(params: {
   hit: boolean;
   above: boolean;
   between: boolean;
+  tz?: string;
 }): Promise<WalletPnlDailyResponse> {
   const qs = new URLSearchParams();
   qs.set('wallet', params.wallet.toLowerCase());
@@ -1017,6 +1018,7 @@ export async function fetchWalletPnlDaily(params: {
   qs.set('hit', params.hit ? '1' : '0');
   qs.set('above', params.above ? '1' : '0');
   qs.set('between', params.between ? '1' : '0');
+  if (params.tz) qs.set('tz', params.tz);
   const resp = await fetchBackend(`${BASE}/api/wallet-pnl-daily?${qs.toString()}`);
   if (!resp.ok) throw new Error('Failed to fetch wallet P&L (on-chain)');
   return resp.json();

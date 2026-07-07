@@ -1,5 +1,6 @@
 import { useLayoutEffect, useSyncExternalStore } from 'react';
 import { WS_BASE } from './env';
+import { backendWsRetryDelayMs } from './fetchBackend';
 import { onBackendReconnect } from './backendReconnect';
 
 export const GEX_ASSETS = ['BTC', 'ETH'] as const;
@@ -751,7 +752,7 @@ function connect(source: GexFeedSource): void {
     state.reconnectTimer = window.setTimeout(() => {
       state.reconnectTimer = null;
       if (state.refCount > 0) connect(source);
-    }, 2000);
+    }, backendWsRetryDelayMs(2000));
   };
   ws.onerror = () => ws.close();
 }

@@ -177,6 +177,19 @@ export function resolveMarketExpiryEndDate(
   return raw || String(fallback).trim();
 }
 
+/** Chart window start for weather markets — trades often begin days before event day. */
+export function weatherMarketChartStartMs(
+  market:
+    | Pick<Market, 'eventSlug' | 'question' | 'endDate'>
+    | { endDate?: string; question?: string; eventSlug?: string }
+    | null
+    | undefined,
+): number | null {
+  const expiryMs = effectiveMarketExpiryMs(market);
+  if (expiryMs == null || !market || !isWeatherMarket(market)) return null;
+  return expiryMs - 14 * 24 * 60 * 60 * 1000;
+}
+
 export function effectiveMarketExpiryMs(
   market:
     | Pick<Market, 'endDate' | 'question' | 'eventSlug'>

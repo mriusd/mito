@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { API_BASE, WS_BASE } from '../lib/env';
-import { fetchBackend } from '../lib/fetchBackend';
+import { backendWsRetryDelayMs, fetchBackend } from '../lib/fetchBackend';
 import { onBackendReconnect } from '../lib/backendReconnect';
 
 interface PriceState {
@@ -63,7 +63,7 @@ function connect(): void {
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       if (refCount > 0) connect();
-    }, 3000);
+    }, backendWsRetryDelayMs(3000));
   };
 }
 

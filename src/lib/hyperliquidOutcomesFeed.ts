@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { API_BASE, WS_BASE } from './env';
-import { fetchBackend } from './fetchBackend';
+import { backendWsRetryDelayMs, fetchBackend } from './fetchBackend';
 import { onBackendReconnect } from './backendReconnect';
 import type { AssetName, Market } from '../types';
 
@@ -192,7 +192,7 @@ function connect(): void {
     state.reconnectTimer = window.setTimeout(() => {
       state.reconnectTimer = null;
       if (state.refCount > 0) connect();
-    }, 2000);
+    }, backendWsRetryDelayMs(2000));
   };
   ws.onerror = () => ws.close();
 }

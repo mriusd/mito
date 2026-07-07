@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { API_BASE } from '../lib/env';
+import { fetchBackend } from '../lib/fetchBackend';
 import { subscribeChartKline } from '../lib/chartWsShared';
 import {
   SIDEBAR_CHART_INTERVAL_MS,
@@ -128,7 +129,7 @@ export function ChainlinkChart({
     let disposed = false;
 
     const params = new URLSearchParams({ symbol: clSymbol, interval, limit: '100' });
-    void fetch(`${API_BASE}/api/v3/klines?${params}`)
+    void fetchBackend(`${API_BASE}/api/v3/klines?${params}`)
       .then((r) => r.json())
       .then((klines: unknown[][]) => {
         if (disposed || !Array.isArray(klines)) {

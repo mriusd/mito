@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link2, Link2Off } from 'lucide-react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import { API_BASE } from '../lib/env';
+import { fetchBackend } from '../lib/fetchBackend';
 import { subscribeChartKline } from '../lib/chartWsShared';
 import { resolveLiveTradeChartWindow } from '../lib/walletInfoChartMarket';
 import {
@@ -436,14 +437,14 @@ export function LiveTradeChart({
 
     const loadKlines = () => {
       const applyHistory = () =>
-        fetch(`${API_BASE}/api/v3/klines/history?${klineQuery}`)
+        fetchBackend(`${API_BASE}/api/v3/klines/history?${klineQuery}`)
           .then((r) => r.json())
           .then((hist: any[][]) => {
             if (cancelled) return;
             if (Array.isArray(hist) && hist.length > 0) applyKlines(hist);
           });
 
-      return fetch(`${API_BASE}/api/v3/klines?${klineQuery}`)
+      return fetchBackend(`${API_BASE}/api/v3/klines?${klineQuery}`)
         .then((r) => r.json())
         .then((klines: any[][]) => {
           if (cancelled) return;

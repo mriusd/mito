@@ -41,6 +41,37 @@ export async function fetchWalletActivity(address: string, limit = 100): Promise
   return Array.isArray(data) ? data : [];
 }
 
+/** All activity rows in a local-calendar date range (paginated; for P&L panel). */
+export async function fetchWalletActivityForDateRange(
+  address: string,
+  fromStr: string,
+  toStr: string,
+): Promise<Trade[]> {
+  const startMs = new Date(`${fromStr}T00:00:00`).getTime();
+  const endMs = new Date(`${toStr}T23:59:59`).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return [];
+  const start = Math.floor(startMs / 1000);
+  const end = Math.floor(endMs / 1000);
+  const PAGE_SIZE = 500;
+  const MAX_OFFSET = 10_000;
+  let all: Trade[] = [];
+  let offset = 0;
+  while (offset <= MAX_OFFSET) {
+    const resp = await fetch(
+      dataUrl(
+        `activity?user=${encodeURIComponent(address)}&limit=${PAGE_SIZE}&offset=${offset}&start=${start}&end=${end}`,
+      ),
+    );
+    if (!resp.ok) break;
+    const page = await resp.json();
+    if (!Array.isArray(page) || page.length === 0) break;
+    all = all.concat(page);
+    if (page.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return all;
+}
+
 // Fetch open orders from Polymarket CLOB (public endpoint for reading orders by market)
 // Note: user-specific open orders require auth via CLOB API - we read from data API activity instead
 export async function fetchWalletOpenOrders(address: string): Promise<Order[]> {

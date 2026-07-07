@@ -1,10 +1,25 @@
-export const BACKEND_RECONNECT_EVENT = 'polybot:backend-reconnect';
+const listeners = new Set<() => void>();
+
+/** Min gap between reconnect storms — a storm tears down every WS + refetches all panels. */
+const MIN_NOTIFY_GAP_MS = 15_000;
+let lastNotifyAt = 0;
 
 export function notifyBackendReconnect(): void {
-  window.dispatchEvent(new Event(BACKEND_RECONNECT_EVENT));
+  const now = Date.now();
+  if (now - lastNotifyAt < MIN_NOTIFY_GAP_MS) return;
+  lastNotifyAt = now;
+  let i = 0;
+  for (const fn of listeners) {
+    const delay = i * 50;
+    i += 1;
+    if (delay === 0) queueMicrotask(fn);
+    else window.setTimeout(fn, delay);
+  }
 }
 
 export function onBackendReconnect(listener: () => void): () => void {
-  window.addEventListener(BACKEND_RECONNECT_EVENT, listener);
-  return () => window.removeEventListener(BACKEND_RECONNECT_EVENT, listener);
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }

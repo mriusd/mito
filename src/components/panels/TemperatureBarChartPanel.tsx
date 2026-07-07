@@ -91,6 +91,13 @@ function readStoredLinkSidebar(panelId: string): boolean {
   return localStorage.getItem(`polybot-weather-temp-bars-link-sidebar-${panelId}`) === '1';
 }
 
+type TempOddsChartMode = 'low' | 'high';
+
+function readStoredTempOddsChartMode(panelId: string): TempOddsChartMode {
+  const v = localStorage.getItem(`polybot-weather-temp-bars-chart-mode-${panelId}`);
+  return v === 'high' ? 'high' : 'low';
+}
+
 function weatherMarketCityAndDate(
   market: Market | null | undefined,
 ): { city: WeatherCitySlug; dateIso: string } | null {
@@ -824,6 +831,15 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const obsFetchGenRef = useRef(0);
   const [tempUnitOverride, setTempUnitOverride] = useState<WeatherTempUnit | null>(null);
   const [linkSidebar, setLinkSidebar] = useState(() => readStoredLinkSidebar(panelId));
+  const [chartMode, setChartMode] = useState<TempOddsChartMode>(() => readStoredTempOddsChartMode(panelId));
+
+  const setTempOddsChartMode = useCallback(
+    (mode: TempOddsChartMode) => {
+      setChartMode(mode);
+      localStorage.setItem(`polybot-weather-temp-bars-chart-mode-${panelId}`, mode);
+    },
+    [panelId],
+  );
 
   useEffect(
     () =>
@@ -1062,6 +1078,9 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
 
   const lowBarMarkets = useMemo(() => barMarketsForGrid(lowGrid, lowDateCol), [lowGrid, lowDateCol]);
   const highBarMarkets = useMemo(() => barMarketsForGrid(highGrid, highDateCol), [highGrid, highDateCol]);
+  const activeBarMarkets = chartMode === 'low' ? lowBarMarkets : highBarMarkets;
+  const activeGrid = chartMode === 'low' ? lowGrid : highGrid;
+  const activeDateCol = chartMode === 'low' ? lowDateCol : highDateCol;
 
   useEffect(() => {
     const id = selectedMarketId;
@@ -1069,18 +1088,16 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
       setBarSelectionId('');
       return;
     }
-    if (lowBarMarkets.some((m) => m.id === id) || highBarMarkets.some((m) => m.id === id)) {
+    if (activeBarMarkets.some((m) => m.id === id)) {
       setBarSelectionId(id);
     }
-  }, [selectedMarketId, lowBarMarkets, highBarMarkets]);
+  }, [selectedMarketId, activeBarMarkets]);
 
   useEffect(() => {
     if (!barSelectionId) return;
-    if (lowBarMarkets.some((m) => m.id === barSelectionId) || highBarMarkets.some((m) => m.id === barSelectionId)) {
-      return;
-    }
+    if (activeBarMarkets.some((m) => m.id === barSelectionId)) return;
     setBarSelectionId('');
-  }, [barSelectionId, lowBarMarkets, highBarMarkets]);
+  }, [barSelectionId, activeBarMarkets]);
 
   useEffect(() => {
     bumpCustomSidebarButtonsStore();
@@ -1213,15 +1230,10 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
       if (dir == null) return;
 
       const inPanel = panelRef.current?.contains(document.activeElement) ?? false;
-      const inLow = lowBarMarkets.some((m) => m.id === barSelectionId);
-      const inHigh = highBarMarkets.some((m) => m.id === barSelectionId);
+      const inActive = activeBarMarkets.some((m) => m.id === barSelectionId);
+      if (!inActive && !inPanel) return;
 
-      let markets: Market[] | null = null;
-      if (inLow) markets = lowBarMarkets;
-      else if (inHigh) markets = highBarMarkets;
-      else if (inPanel) markets = highBarMarkets.length > 0 ? highBarMarkets : lowBarMarkets;
-      else return;
-
+      const markets = activeBarMarkets;
       if (markets.length === 0) return;
 
       let idx = markets.findIndex((m) => m.id === barSelectionId);
@@ -1241,7 +1253,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
 
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [barSelectionId, lowBarMarkets, highBarMarkets, setSelectedMarket, setSidebarOpen, setSidebarOutcome, syncSelectedBarFocus]);
+  }, [barSelectionId, activeBarMarkets, setSelectedMarket, setSidebarOpen, setSidebarOutcome, syncSelectedBarFocus]);
 
   return (
     <div
@@ -1282,6 +1294,31 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
         ) : null}
 
         <TempUnitToggle unit={tempUnit} onChange={setTempUnitOverride} />
+
+        <div className="no-drag inline-flex overflow-hidden rounded border border-gray-600 divide-x divide-gray-600 bg-gray-900/90">
+          <button
+            type="button"
+            title="Low temp markets"
+            className={`px-1.5 py-0.5 text-[9px] font-bold ${
+              chartMode === 'low' ? 'bg-cyan-700/80 text-white' : 'text-gray-400 hover:text-cyan-300'
+            }`}
+            onClick={() => setTempOddsChartMode('low')}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            Low Temp
+          </button>
+          <button
+            type="button"
+            title="High temp markets"
+            className={`px-1.5 py-0.5 text-[9px] font-bold ${
+              chartMode === 'high' ? 'bg-red-700/80 text-white' : 'text-gray-400 hover:text-red-300'
+            }`}
+            onClick={() => setTempOddsChartMode('high')}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            High Temp
+          </button>
+        </div>
 
         <span
           className="shrink-0 text-[10px] font-normal tabular-nums text-gray-400"
@@ -1400,36 +1437,31 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           <div className="text-gray-500 text-center py-2 text-xs w-full">No active markets</div>
         ) : (
           <>
-            <TempOddsChart
-              barColor="bg-cyan-400/90"
-              barSpreadColor="bg-cyan-400/40"
-              modelBarColor="bg-teal-400/50"
-              grid={lowGrid}
-              dateCol={lowDateCol}
-              selectedMarketId={barSelectionId}
-              onBarClick={handleBarClick}
-              positions={positions}
-              liveTradesSource={liveTradesSource}
-              onchainWsPositions={onchainWsPositions}
-              modelBuckets={modelPayload?.lowest_temperature?.bucket_probabilities_1c}
-              orderLookup={orderLookup}
-              forecastTempC={weatherHighlightLowC(obsData)}
-            />
-            <TempOddsChart
-              barColor="bg-red-400/90"
-              barSpreadColor="bg-red-400/40"
-              modelBarColor="bg-amber-400/50"
-              grid={highGrid}
-              dateCol={highDateCol}
-              selectedMarketId={barSelectionId}
-              onBarClick={handleBarClick}
-              positions={positions}
-              liveTradesSource={liveTradesSource}
-              onchainWsPositions={onchainWsPositions}
-              modelBuckets={modelPayload?.highest_temperature?.bucket_probabilities_1c}
-              orderLookup={orderLookup}
-              forecastTempC={weatherHighlightHighC(obsData)}
-            />
+            {activeGrid && activeDateCol ? (
+              <TempOddsChart
+                barColor={chartMode === 'low' ? 'bg-cyan-400/90' : 'bg-red-400/90'}
+                barSpreadColor={chartMode === 'low' ? 'bg-cyan-400/40' : 'bg-red-400/40'}
+                modelBarColor={chartMode === 'low' ? 'bg-teal-400/50' : 'bg-amber-400/50'}
+                grid={activeGrid}
+                dateCol={activeDateCol}
+                selectedMarketId={barSelectionId}
+                onBarClick={handleBarClick}
+                positions={positions}
+                liveTradesSource={liveTradesSource}
+                onchainWsPositions={onchainWsPositions}
+                modelBuckets={
+                  chartMode === 'low'
+                    ? modelPayload?.lowest_temperature?.bucket_probabilities_1c
+                    : modelPayload?.highest_temperature?.bucket_probabilities_1c
+                }
+                orderLookup={orderLookup}
+                forecastTempC={chartMode === 'low' ? weatherHighlightLowC(obsData) : weatherHighlightHighC(obsData)}
+              />
+            ) : (
+              <div className="flex flex-1 min-w-0 items-center justify-center text-xs text-gray-500">
+                No {chartMode === 'low' ? 'low' : 'high'} temp markets
+              </div>
+            )}
             <TempOddsTemperatureChart data={obsData} loading={obsLoading} unit={tempUnit} />
           </>
         )}

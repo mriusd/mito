@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import {
   customButtonTitle,
@@ -12,23 +12,25 @@ function readOrderAmount(): string {
 }
 
 type Props = {
-  anchorEl: HTMLElement | null;
+  /** Bar plot row — popup stays centered above this, not per-bar. */
+  anchorRef: RefObject<HTMLElement | null>;
 };
 
-export function TempOddsCustomButtonsPopup({ anchorEl }: Props) {
+export function TempOddsCustomButtonsPopup({ anchorRef }: Props) {
   const buttons = useCustomSidebarButtons();
   const [rect, setRect] = useState<DOMRect | null>(null);
   const orderAmount = readOrderAmount();
 
   useLayoutEffect(() => {
-    if (!anchorEl || buttons.length === 0) {
+    const anchor = anchorRef.current;
+    if (!anchor || buttons.length === 0) {
       setRect(null);
       return;
     }
-    const update = () => setRect(anchorEl.getBoundingClientRect());
+    const update = () => setRect(anchor.getBoundingClientRect());
     update();
     const ro = new ResizeObserver(update);
-    ro.observe(anchorEl);
+    ro.observe(anchor);
     window.addEventListener('scroll', update, true);
     window.addEventListener('resize', update);
     return () => {
@@ -36,9 +38,9 @@ export function TempOddsCustomButtonsPopup({ anchorEl }: Props) {
       window.removeEventListener('scroll', update, true);
       window.removeEventListener('resize', update);
     };
-  }, [anchorEl, buttons.length]);
+  }, [anchorRef, buttons.length]);
 
-  if (!anchorEl || buttons.length === 0 || !rect || typeof document === 'undefined') return null;
+  if (!anchorRef.current || buttons.length === 0 || !rect || typeof document === 'undefined') return null;
   if (rect.width <= 0 || rect.height <= 0) return null;
 
   const compact = buttons.length > 4;

@@ -146,8 +146,11 @@ import {
   SIDEBAR_CUSTOM_BUTTONS_KEY,
   bumpCustomSidebarButtonsStore,
   customButtonTitle,
+  customOrderExpiryLeadSeconds,
   readCustomSidebarButtons,
   type CustomSidebarButton,
+  type CustomSidebarExpirySource,
+  type CustomSidebarExpiryUnit,
   type CustomSidebarOrderOutcome,
   type CustomSidebarOrderSpec,
   type CustomSidebarPriceMode,
@@ -667,6 +670,9 @@ type CustomOrderDraft = {
   price: string;
   maxSell: boolean;
   outcome: CustomSidebarOrderOutcome;
+  expirySource: CustomSidebarExpirySource;
+  expiryLead: string;
+  expiryUnit: CustomSidebarExpiryUnit;
 };
 
 const DEFAULT_CUSTOM_ORDER_DRAFT = (): CustomOrderDraft => ({
@@ -675,6 +681,9 @@ const DEFAULT_CUSTOM_ORDER_DRAFT = (): CustomOrderDraft => ({
   price: '',
   maxSell: false,
   outcome: 'AUTO',
+  expirySource: 'SIDEBAR',
+  expiryLead: '180',
+  expiryUnit: 'm',
 });
 
 function normalizeCustomSidebarPriceMode(raw: unknown): CustomSidebarPriceMode {
@@ -1612,9 +1621,10 @@ export const Sidebar = memo(function Sidebar() {
 
   const computeLimitExpiration = (
     market?: Pick<Market, 'endDate' | 'question' | 'eventSlug'> | null,
+    expLeadSecOverride?: number,
   ): { expiration: number; invalidLead: boolean } => {
     const CLOB_MIN_EXPIRY_SEC = 90; // CLOB requires expiration >= now + 60s; use 90s buffer
-    const expLeadSec = getOrderExpiryLeadSeconds();
+    const expLeadSec = expLeadSecOverride ?? getOrderExpiryLeadSeconds();
     const nowSec = Math.floor(Date.now() / 1000);
     const endMs = effectiveMarketExpiryMs(market);
     if (endMs != null) {
@@ -1911,12 +1921,30 @@ export const Sidebar = memo(function Sidebar() {
         showToast('BS offset cannot be negative', 'error');
         return;
       }
+      if (draft.side === 'BUY' && draft.expirySource === 'CUSTOM') {
+        const expiryLead = parseFloat(draft.expiryLead);
+        if (!Number.isFinite(expiryLead) || expiryLead < 0) {
+          showToast('Invalid T-EXP lead time', 'error');
+          return;
+        }
+      }
       orders.push({
         side: draft.side,
         priceMode: draft.priceMode,
         priceValue,
         maxSell: draft.side === 'SELL' ? draft.maxSell : false,
         outcome: draft.outcome,
+        ...(draft.side === 'BUY'
+          ? {
+              expirySource: draft.expirySource,
+              ...(draft.expirySource === 'CUSTOM'
+                ? {
+                    expiryLead: parseFloat(draft.expiryLead),
+                    expiryUnit: draft.expiryUnit,
+                  }
+                : {}),
+            }
+          : {}),
       });
     }
     if (orders.length === 0) {
@@ -1972,6 +2000,9 @@ export const Sidebar = memo(function Sidebar() {
         price: String(o.priceValue),
         maxSell: !!o.maxSell,
         outcome: o.outcome,
+        expirySource: o.expirySource === 'CUSTOM' ? 'CUSTOM' : 'SIDEBAR',
+        expiryLead: String(o.expiryLead ?? '180'),
+        expiryUnit: o.expiryUnit ?? 'm',
       })),
     );
     setCustomLabel(btn.label);
@@ -2031,7 +2062,8 @@ export const Sidebar = memo(function Sidebar() {
 
     let expiration = 0;
       if (spec.side === 'BUY') {
-      const exp = computeLimitExpiration(selectedMarket);
+      const expLeadSec = customOrderExpiryLeadSeconds(spec, getOrderExpiryLeadSeconds());
+      const exp = computeLimitExpiration(selectedMarket, expLeadSec);
       expiration = exp.expiration;
       if (exp.invalidLead) {
         showToast('Lead time to expiration already passed for this market', 'error');
@@ -4587,6 +4619,48 @@ export const Sidebar = memo(function Sidebar() {
                     />
                     <span className="text-gray-400 w-3 shrink-0 text-center">{customOrderPriceInputSuffix(draft.priceMode)}</span>
                   </div>
+                  {draft.side === 'BUY' && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400 w-16 shrink-0">T-EXP</span>
+                      <select
+                        value={draft.expirySource}
+                        onChange={(e) =>
+                          updateCustomOrderDraft(index, {
+                            expirySource: e.target.value as CustomSidebarExpirySource,
+                          })
+                        }
+                        className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white min-w-0 flex-[1.2]"
+                      >
+                        <option value="SIDEBAR">Sidebar</option>
+                        <option value="CUSTOM">Custom</option>
+                      </select>
+                      {draft.expirySource === 'CUSTOM' ? (
+                        <>
+                          <input
+                            value={draft.expiryLead}
+                            onChange={(e) => updateCustomOrderDraft(index, { expiryLead: e.target.value })}
+                            type="number"
+                            min="0"
+                            step="10"
+                            className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-16 tabular-nums"
+                          />
+                          <select
+                            value={draft.expiryUnit}
+                            onChange={(e) =>
+                              updateCustomOrderDraft(index, {
+                                expiryUnit: e.target.value as CustomSidebarExpiryUnit,
+                              })
+                            }
+                            className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white w-14"
+                          >
+                            <option value="s">s</option>
+                            <option value="m">m</option>
+                            <option value="h">h</option>
+                          </select>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
                   {draft.side === 'SELL' && (
                 <label className="flex items-center gap-2 ml-[4.5rem] text-gray-300">
                       <input

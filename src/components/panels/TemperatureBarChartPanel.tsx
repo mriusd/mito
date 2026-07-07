@@ -17,7 +17,7 @@ import {
   weatherCityResolutionUrl,
 } from '../../lib/weatherCities';
 import { onTempOddsCitySelect, selectTempOddsCity, selectTempOddsDate } from '../../lib/weatherTempOddsControl';
-import { bumpCustomSidebarButtonsStore, useCustomSidebarButtons } from '../../lib/sidebarCustomButtons';
+import { bumpCustomSidebarButtonsStore } from '../../lib/sidebarCustomButtons';
 import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
 import { WeatherCityMenu } from '../WeatherCityMenu';
 import {
@@ -675,6 +675,11 @@ function TempOddsChart({
     orderLookup,
   );
 
+  const hasBarSelection = useMemo(
+    () => !!selectedMarketId && entries.some((e) => e.market.id === selectedMarketId),
+    [entries, selectedMarketId],
+  );
+
   useLayoutEffect(() => {
     const el = plotRef.current;
     if (!el) return;
@@ -759,6 +764,7 @@ function TempOddsChart({
           </div>
         )}
       </div>
+      {hasBarSelection ? <TempOddsCustomButtonsPopup anchorRef={plotRef} /> : null}
     </div>
   );
 }
@@ -797,8 +803,6 @@ interface TemperatureBarChartPanelProps {
 
 function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: TemperatureBarChartPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const customButtons = useCustomSidebarButtons();
-  const [selectedBarEl, setSelectedBarEl] = useState<HTMLElement | null>(null);
   const [city, setCity] = useState<WeatherCitySlug>(() => {
     return readStoredCity(panelId, initialCity);
   });
@@ -1082,21 +1086,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     bumpCustomSidebarButtonsStore();
   }, []);
 
-  useLayoutEffect(() => {
-    const panel = panelRef.current;
-    if (!panel || !barSelectionId || customButtons.length === 0) {
-      setSelectedBarEl(null);
-      return;
-    }
-    const sync = () => {
-      setSelectedBarEl(panel.querySelector('[data-temp-odds-bar-selected]') as HTMLElement | null);
-    };
-    sync();
-    const ro = new ResizeObserver(sync);
-    ro.observe(panel);
-    return () => ro.disconnect();
-  }, [barSelectionId, customButtons.length, lowBarMarkets, highBarMarkets, selectedDateCol, city]);
-
   const selectedObsDate = useMemo(() => {
     if (!selectedDateCol) return null;
     return weatherEventDateISOFromSlug(selectedDateCol.slug);
@@ -1200,9 +1189,9 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     };
   }, [city, selectedObsDate, cityMeta.timezone]);
 
-  const syncSelectedBarEl = useCallback(() => {
+  const syncSelectedBarFocus = useCallback(() => {
     const el = panelRef.current?.querySelector('[data-temp-odds-bar-selected]') as HTMLButtonElement | null;
-    setSelectedBarEl(el);
+    el?.focus({ preventScroll: true });
     return el;
   }, []);
 
@@ -1212,9 +1201,9 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
       setSelectedMarket(market);
       setSidebarOutcome('YES');
       setSidebarOpen(true);
-      queueMicrotask(() => syncSelectedBarEl()?.focus({ preventScroll: true }));
+      queueMicrotask(() => syncSelectedBarFocus());
     },
-    [setSelectedMarket, setSidebarOpen, setSidebarOutcome, syncSelectedBarEl],
+    [setSelectedMarket, setSidebarOpen, setSidebarOutcome, syncSelectedBarFocus],
   );
 
   useEffect(() => {
@@ -1247,12 +1236,12 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
       setSelectedMarket(next);
       setSidebarOutcome('YES');
       setSidebarOpen(true);
-      queueMicrotask(() => syncSelectedBarEl()?.focus({ preventScroll: true }));
+      queueMicrotask(() => syncSelectedBarFocus());
     };
 
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [barSelectionId, lowBarMarkets, highBarMarkets, setSelectedMarket, setSidebarOpen, setSidebarOutcome, syncSelectedBarEl]);
+  }, [barSelectionId, lowBarMarkets, highBarMarkets, setSelectedMarket, setSidebarOpen, setSidebarOutcome, syncSelectedBarFocus]);
 
   return (
     <div
@@ -1445,9 +1434,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           </>
         )}
       </div>
-      {selectedBarEl && customButtons.length > 0 ? (
-        <TempOddsCustomButtonsPopup anchorEl={selectedBarEl} />
-      ) : null}
     </div>
   );
 }

@@ -6,6 +6,11 @@ export type CustomSidebarOrderOutcome = 'YES' | 'NO' | 'AUTO';
 
 export type CustomSidebarPriceMode = 'FIXED' | 'BS_MINUS_C' | 'BS_PLUS_C' | 'BS_MINUS_PCT' | 'BS_PLUS_PCT';
 
+export type CustomSidebarExpiryUnit = 's' | 'm' | 'h';
+
+/** SIDEBAR = sidebar T-EXP at click time; CUSTOM = per-order lead before market end. */
+export type CustomSidebarExpirySource = 'SIDEBAR' | 'CUSTOM';
+
 export type CustomSidebarOrderSpec = {
   side: 'BUY' | 'SELL';
   priceMode: CustomSidebarPriceMode;
@@ -14,6 +19,9 @@ export type CustomSidebarOrderSpec = {
   maxSell: boolean;
   /** AUTO = use sidebar Place Order YES/NO toggle. */
   outcome: CustomSidebarOrderOutcome;
+  expirySource?: CustomSidebarExpirySource;
+  expiryLead?: number;
+  expiryUnit?: CustomSidebarExpiryUnit;
 };
 
 export type CustomSidebarButton = {
@@ -22,6 +30,36 @@ export type CustomSidebarButton = {
   color: string;
   orders: CustomSidebarOrderSpec[];
 };
+
+function normalizeCustomSidebarExpiryUnit(raw: unknown): CustomSidebarExpiryUnit {
+  const s = String(raw || 'm');
+  return s === 's' || s === 'h' ? s : 'm';
+}
+
+function normalizeCustomSidebarExpirySource(raw: unknown): CustomSidebarExpirySource {
+  return String(raw || 'SIDEBAR').toUpperCase() === 'CUSTOM' ? 'CUSTOM' : 'SIDEBAR';
+}
+
+export function customOrderExpiryLeadSeconds(
+  spec: CustomSidebarOrderSpec,
+  sidebarLeadSec: number,
+): number {
+  if (spec.side !== 'BUY' || spec.expirySource !== 'CUSTOM') return sidebarLeadSec;
+  const lead = spec.expiryLead;
+  if (lead == null || !Number.isFinite(lead) || lead < 0) return sidebarLeadSec;
+  const unit = spec.expiryUnit ?? 'm';
+  if (unit === 's') return Math.floor(lead);
+  if (unit === 'h') return Math.floor(lead * 3600);
+  return Math.floor(lead * 60);
+}
+
+export function customOrderExpiryLabel(spec: CustomSidebarOrderSpec): string | null {
+  if (spec.side !== 'BUY') return null;
+  if (spec.expirySource !== 'CUSTOM') return 'sidebar T-EXP';
+  const unit = spec.expiryUnit ?? 'm';
+  const lead = spec.expiryLead ?? 0;
+  return `${lead}${unit}`;
+}
 
 function normalizeCustomSidebarPriceMode(raw: unknown): CustomSidebarPriceMode {
   const s = String(raw || 'FIXED').toUpperCase();
@@ -61,12 +99,25 @@ function normalizeCustomSidebarOrderSpec(raw: unknown): CustomSidebarOrderSpec |
   const outcomeRaw = String(o.outcome || 'AUTO').toUpperCase();
   const outcome: CustomSidebarOrderOutcome =
     outcomeRaw === 'YES' ? 'YES' : outcomeRaw === 'NO' ? 'NO' : 'AUTO';
+  const expirySource = normalizeCustomSidebarExpirySource(o.expirySource);
+  const expiryUnit = normalizeCustomSidebarExpiryUnit(o.expiryUnit);
+  const expiryLeadRaw = o.expiryLead;
+  const expiryLead =
+    expiryLeadRaw != null && Number.isFinite(Number(expiryLeadRaw)) ? Number(expiryLeadRaw) : undefined;
   return {
     side,
     priceMode,
     priceValue,
     maxSell: side === 'SELL' ? !!o.maxSell : false,
     outcome,
+    ...(side === 'BUY'
+      ? {
+          expirySource,
+          ...(expirySource === 'CUSTOM' && expiryLead != null && expiryLead >= 0
+            ? { expiryLead, expiryUnit }
+            : {}),
+        }
+      : {}),
   };
 }
 
@@ -74,7 +125,9 @@ export function customButtonTitle(btn: CustomSidebarButton, orderAmount: string)
   return btn.orders
     .map((o) => {
       const outLabel = o.outcome === 'AUTO' ? '↔' : o.outcome;
-      return `${o.side} ${o.maxSell ? 'MAX' : orderAmount || '?'} ${outLabel} @ ${customOrderPriceLabel(o)}`;
+      const expLabel = customOrderExpiryLabel(o);
+      const expSuffix = expLabel ? ` · ${expLabel}` : '';
+      return `${o.side} ${o.maxSell ? 'MAX' : orderAmount || '?'} ${outLabel} @ ${customOrderPriceLabel(o)}${expSuffix}`;
     })
     .join(' + ');
 }

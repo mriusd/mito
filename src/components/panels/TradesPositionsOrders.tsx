@@ -60,16 +60,39 @@ function formatElapsed(ms: number): string {
   return `${Math.floor(hr / 24)}d`;
 }
 
+function getLocalDateKey(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function tpoDateColumnColor(dateIso: string | null, weekend = false): string {
+  if (!dateIso) return 'text-gray-400';
+  const today = getLocalDateKey();
+  const tomorrow = getLocalDateKey(new Date(Date.now() + 86_400_000));
+  if (dateIso === today) return 'text-yellow-400 font-bold';
+  if (dateIso === tomorrow) return 'text-red-400 font-bold';
+  if (weekend) return 'text-purple-400';
+  return 'text-gray-400';
+}
+
 function getDateDisplay(endDate: string | null): { label: string; color: string } {
   if (!endDate) return { label: '-', color: 'text-gray-400' };
-  const dt = new Date(endDate);
-  const hoursLeft = (dt.getTime() - Date.now()) / (1000 * 60 * 60);
-  const isToday = hoursLeft > 0 && hoursLeft < 24;
-  const isTmr = !isToday && hoursLeft > 0 && hoursLeft < 48;
+  let dateIso: string | null = /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : null;
+  if (!dateIso) {
+    const ms = Date.parse(endDate);
+    if (!Number.isFinite(ms)) return { label: '-', color: 'text-gray-400' };
+    dateIso = getLocalDateKey(new Date(ms));
+  }
+  const [y, mo, d] = dateIso.split('-').map((x) => parseInt(x, 10));
+  const dt = new Date(y, mo - 1, d);
   const dayAbbr = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][dt.getDay()];
-  if (isToday) return { label: 'TODAY', color: 'text-red-400 font-bold' };
-  if (isTmr) return { label: 'TMR', color: 'text-yellow-400 font-bold' };
-  return { label: `${dayAbbr} ${dt.getDate()}`, color: 'text-gray-400' };
+  const weekend = dt.getDay() === 0 || dt.getDay() === 6;
+  return {
+    label: `${dayAbbr} ${d}`,
+    color: tpoDateColumnColor(dateIso, weekend),
+  };
 }
 
 function resolveTpoRowDate(
@@ -83,9 +106,15 @@ function resolveTpoRowDate(
   };
   const weather = formatWeatherEventDateLabel(meta);
   if (weather) {
+    const [y, mo, day] = weather.eventDateIso.split('-').map((x) => parseInt(x, 10));
+    const dow = new Date(Date.UTC(y, mo - 1, day, 12, 0, 0)).getUTCDay();
+    const isWeekend = dow === 0 || dow === 6;
     return {
       sortDate: weather.eventDateIso,
-      display: { label: weather.label, color: weather.color },
+      display: {
+        label: weather.label,
+        color: tpoDateColumnColor(weather.eventDateIso, isWeekend),
+      },
       isWeather: true,
     };
   }

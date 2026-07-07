@@ -235,11 +235,9 @@ export function formatWeatherEventDateLabel(
   if (!iso) return null;
   const [y, mo, day] = iso.split('-').map((x) => parseInt(x, 10));
   if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(day)) return null;
-  const dow = new Date(Date.UTC(y, mo - 1, day, 12, 0, 0)).getUTCDay();
-  const isWeekend = dow === 0 || dow === 6;
   return {
     label: `${day} ${TPO_WEATHER_MONTHS[mo - 1]}`,
-    color: isWeekend ? 'text-purple-400' : 'text-gray-400',
+    color: 'text-gray-400',
     eventDateIso: iso,
   };
 }

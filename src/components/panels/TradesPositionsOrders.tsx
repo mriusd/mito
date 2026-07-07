@@ -24,7 +24,7 @@ import { signingDialog } from '../SigningDialog';
 import type { Position, Trade, Order } from '../../types';
 import { showToast } from '../../utils/toast';
 import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, getPositionClobTokenId, extractAssetFromMarket, formatPriceShort, lookupMarketByTokenId, isWeatherMarket, normalizeClobTokenId, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
-import { resolveMarketExpiryEndDate } from '../../lib/weatherMarketExpiry';
+import { formatWeatherEventDateLabel, tpoMarketSortDateIso } from '../../lib/weatherMarketExpiry';
 import type { Market } from '../../types';
 
 const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
@@ -70,6 +70,31 @@ function getDateDisplay(endDate: string | null): { label: string; color: string 
   if (isToday) return { label: 'TODAY', color: 'text-red-400 font-bold' };
   if (isTmr) return { label: 'TMR', color: 'text-yellow-400 font-bold' };
   return { label: `${dayAbbr} ${dt.getDate()}`, color: 'text-gray-400' };
+}
+
+function resolveTpoRowDate(
+  market: Market | null | undefined,
+  fallback: { question?: string; eventSlug?: string; endDate?: string | null },
+): { sortDate: string | null; display: { label: string; color: string }; isWeather: boolean } {
+  const meta = market ?? {
+    question: fallback.question,
+    eventSlug: fallback.eventSlug,
+    endDate: fallback.endDate ?? undefined,
+  };
+  const weather = formatWeatherEventDateLabel(meta);
+  if (weather) {
+    return {
+      sortDate: weather.eventDateIso,
+      display: { label: weather.label, color: weather.color },
+      isWeather: true,
+    };
+  }
+  const sortDate = tpoMarketSortDateIso(market ?? null, fallback.endDate ?? null);
+  return {
+    sortDate,
+    display: getDateDisplay(sortDate),
+    isWeather: false,
+  };
 }
 
 function getTimeLeftDisplay(endDate: string | null): { label: string; color: string } {
@@ -525,11 +550,22 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const tid = getTradeClobTokenId(trade);
       const market = lookupMarketByTokenId(tid, marketLookup);
       let asset = market ? extractAssetFromMarket(market) || '' : '';
-      let endDate = market ? resolveMarketExpiryEndDate(market, market.endDate || '') || null : null;
+      const tradeFallback = {
+        question: trade.title,
+        eventSlug: trade.eventSlug || trade.slug,
+        endDate: null as string | null,
+      };
+      const rowDate = resolveTpoRowDate(market, tradeFallback);
+      let endDate = rowDate.sortDate;
+      let dateLabel = rowDate.display.label;
+      let dateColor = rowDate.display.color;
       if (!endDate && trade.timestamp) {
         let tsNum = typeof trade.timestamp === 'string' ? parseInt(trade.timestamp, 10) : (trade.timestamp as number);
         if (tsNum < 1e12) tsNum = tsNum * 1000;
         endDate = new Date(tsNum).toISOString();
+        const dd = getDateDisplay(endDate);
+        dateLabel = dd.label;
+        dateColor = dd.color;
       }
       const marketName = getMarketPriceCondition(null, tid, marketLookup);
       let mktLabel = formatTpoMarketLabel(asset, marketName);
@@ -569,7 +605,23 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       }
       const fee = parseFloat(trade.fee || '0');
       const clickable = !!market;
-      return { tid, asset, endDate, marketName: mktLabel, outcome, side, price, size, value, fee, timeMs, marketId: market?.id, clickable };
+      return {
+        tid,
+        asset,
+        endDate,
+        dateLabel: endDate ? dateLabel : '-',
+        dateColor: endDate ? dateColor : 'text-gray-400',
+        marketName: mktLabel,
+        outcome,
+        side,
+        price,
+        size,
+        value,
+        fee,
+        timeMs,
+        marketId: market?.id,
+        clickable,
+      };
     });
 
   // Process positions
@@ -602,9 +654,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const tid = getPositionClobTokenId(pos);
       const market = lookupMarketByTokenId(tid, marketLookup);
       let asset = market ? extractAssetFromMarket(market) || '' : normalizeDbUnderlying(pos.underlyingAsset);
-      const endDate = market
-        ? resolveMarketExpiryEndDate(market, pos.endDate || market.endDate || '') || null
-        : pos.endDate || null;
+      const posFallback = {
+        question: pos.title,
+        eventSlug: pos.eventSlug || pos.slug,
+        endDate: pos.endDate || null,
+      };
+      const rowDate = resolveTpoRowDate(market, posFallback);
+      const endDate = rowDate.sortDate;
       const marketName = getMarketPriceCondition(null, tid, marketLookup);
       let mktLabel = formatTpoMarketLabel(asset, marketName);
       let outcome = getTokenOutcome(tid, marketLookup) || '';
@@ -639,7 +695,27 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
       const sellPrice = sellOrderPriceByToken.get(normalizeClobTokenId(tid)) ?? null;
       const clickable = !!market;
-      return { tid, asset, endDate, marketName: mktLabel, outcome, size, entryPrice, cost, currentPrice, currentValue, bidProb, askProb, sellPrice, pnl, pnlPercent, marketId: market?.id ?? pos.market, clickable };
+      return {
+        tid,
+        asset,
+        endDate,
+        dateLabel: endDate ? rowDate.display.label : '-',
+        dateColor: endDate ? rowDate.display.color : 'text-gray-400',
+        marketName: mktLabel,
+        outcome,
+        size,
+        entryPrice,
+        cost,
+        currentPrice,
+        currentValue,
+        bidProb,
+        askProb,
+        sellPrice,
+        pnl,
+        pnlPercent,
+        marketId: market?.id ?? pos.market,
+        clickable,
+      };
     });
 
   const displayPositions = useMemo(() => {
@@ -683,9 +759,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const tid = getOrderClobTokenId(order);
       const market = lookupMarketByTokenId(tid, marketLookup);
       let asset = market ? extractAssetFromMarket(market) || '' : '';
-      const endDate = market
-        ? resolveMarketExpiryEndDate(market, market.endDate || '') || null
-        : null;
+      const rowDate = resolveTpoRowDate(market, { question: order.outcome, eventSlug: market?.eventSlug, endDate: market?.endDate ?? null });
+      const endDate = rowDate.sortDate;
       const marketName = getMarketPriceCondition(null, tid, marketLookup);
       const mktLabel = formatTpoMarketLabel(asset, marketName);
       const outcome = getTokenOutcome(tid, marketLookup) || '';
@@ -694,7 +769,25 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const filled = parseFloat(order.size_matched || '0');
       const value = parseFloat(order.price) * size;
       const { bid: bidProb, ask: askProb } = outcomeBidAskProb(tid, marketLookup);
-      return { id: order.id, tid, asset, endDate, marketName: mktLabel, outcome, side: order.side, price, size, filled, value, bidProb, askProb, marketId: market?.id };
+      return {
+        id: order.id,
+        tid,
+        asset,
+        endDate,
+        dateLabel: endDate ? rowDate.display.label : '-',
+        dateColor: endDate ? rowDate.display.color : 'text-gray-400',
+        isWeather: rowDate.isWeather,
+        marketName: mktLabel,
+        outcome,
+        side: order.side,
+        price,
+        size,
+        filled,
+        value,
+        bidProb,
+        askProb,
+        marketId: market?.id,
+      };
     });
 
   const displayOrders = useMemo(() => {
@@ -810,13 +903,12 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             <div className="flex-1 overflow-y-auto min-h-0">
               <table className="w-full text-[10px] table-fixed">{trColgroup}<tbody>
                 {processedTrades.slice(0, 100).map((t, i) => {
-                  const dd = getDateDisplay(t.endDate);
                   const ageMs = t.timeMs > 0 ? Date.now() - t.timeMs : Infinity;
                   const timeColor = ageMs < 15 * 60000 ? 'text-green-400' : ageMs < 60 * 60000 ? 'text-yellow-400' : 'text-gray-400';
                   return (
                     <tr key={i} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${t.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarket && selectedMarket.id === t.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => t.clickable && handleMarketClick(t.tid)}>
                       <td className={`py-1 px-1 ${assetColorMap[t.asset] || 'text-gray-400'} font-bold`}>{t.asset}</td>
-                      <td className={`py-1 px-1 ${dd.color}`}>{dd.label}</td>
+                      <td className={`py-1 px-1 ${t.dateColor}`}>{t.dateLabel}</td>
                       <td className={`py-1 px-1 ${assetColorMap2[t.asset] || 'text-gray-300'} truncate`}>{t.marketName}</td>
                       <td className={`py-1 px-1 font-bold ${
                         t.side === 'BUY' ? 'text-green-400'
@@ -922,14 +1014,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             <div className="flex-1 overflow-y-auto min-h-0">
               <table className="w-full text-[10px] table-fixed">{posColgroup}<tbody>
                 {displayPositions.map((p) => {
-                  const dd = getDateDisplay(p.endDate);
                   const pnlColor = p.pnl >= 0 ? 'text-green-400' : 'text-red-400';
                   const pnlSign = p.pnl >= 0 ? '+' : '-';
                   const exitColor = POSITION_BID_EXIT_TAILWIND[positionBidExitTier(p.entryPrice, p.currentPrice)];
                   return (
                     <tr key={p.tid} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarket && selectedMarket.id === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
                       <td className={`py-1 px-1 ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
-                      <td className={`py-1 px-1 ${dd.color}`}>{dd.label}</td>
+                      <td className={`py-1 px-1 ${p.dateColor}`}>{p.dateLabel}</td>
                       <td className={`py-1 px-1 ${assetColorMap2[p.asset] || 'text-gray-300'} truncate`}>{p.marketName}</td>
                       <td className={`py-1 px-1 font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
                       <td className="py-1 px-1 text-right text-gray-300">{Math.floor(p.size).toLocaleString()}</td>
@@ -1000,8 +1091,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             <div className="flex-1 overflow-y-auto min-h-0">
               <table className="w-full text-[10px] table-fixed">{ordColgroup}<tbody>
                 {displayOrders.map((o) => {
-                  // Show time-left in the Orders tab (e.g. "2.5h") instead of TODAY/TMR labels.
-                  const dd = getTimeLeftDisplay(o.endDate);
+                  const dd = o.isWeather
+                    ? { label: o.dateLabel, color: o.dateColor }
+                    : getTimeLeftDisplay(o.endDate);
                   return (
                     <tr key={o.id} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${selectedMarket && selectedMarket.id === o.marketId ? 'bg-blue-900/40' : ''}`}>
                       <td className={`py-1 px-1 ${assetColorMap[o.asset] || 'text-gray-400'} font-bold`}>{o.asset}</td>

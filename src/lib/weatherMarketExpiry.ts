@@ -225,6 +225,43 @@ export function weatherEventBucketDateISO(
   return `${parsed.year}-${String(parsed.month).padStart(2, '0')}-${String(parsed.day).padStart(2, '0')}`;
 }
 
+const TPO_WEATHER_DOW = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'] as const;
+const TPO_WEATHER_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+/** TPO Date column for weather — event day from slug (no TODAY/TMR, no UTC endDate shift). */
+export function formatWeatherEventDateLabel(
+  market: { eventSlug?: string; question?: string; endDate?: string } | null | undefined,
+): { label: string; color: string; eventDateIso: string } | null {
+  const iso = weatherEventBucketDateISO(market);
+  if (!iso) return null;
+  const [y, mo, day] = iso.split('-').map((x) => parseInt(x, 10));
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(day)) return null;
+  const dow = new Date(Date.UTC(y, mo - 1, day, 12, 0, 0)).getUTCDay();
+  const isWeekend = dow === 0 || dow === 6;
+  return {
+    label: `${TPO_WEATHER_DOW[dow]} ${day} ${TPO_WEATHER_MONTHS[mo - 1]}`,
+    color: isWeekend ? 'text-purple-400' : 'text-gray-400',
+    eventDateIso: iso,
+  };
+}
+
+/** Sort/display date key for TPO rows — weather uses event day ISO, others use resolved expiry. */
+export function tpoMarketSortDateIso(
+  market: { endDate?: string; question?: string; eventSlug?: string } | null | undefined,
+  fallbackEndDate?: string | null,
+): string | null {
+  if (market && isWeatherMarket(market)) {
+    return weatherEventBucketDateISO(market);
+  }
+  const raw = market
+    ? resolveMarketExpiryEndDate(market, market.endDate || fallbackEndDate || '') || null
+    : fallbackEndDate || null;
+  if (!raw) return null;
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) return null;
+  return getLocalDateKeyFromMs(ms);
+}
+
 /** YYYY-MM-DD bucket key for P&L Market Expiry mode (weather = event day from slug, like Temp Odds tabs). */
 export function marketExpiryBucketDateKey(
   market:

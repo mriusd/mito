@@ -6,7 +6,7 @@ import {
   type OnchainClaimRow,
 } from '../../api';
 import { positionExitBidProb, outcomeBidAskProb } from '../../lib/outcomeQuote';
-import { positionBidExitTier, POSITION_BID_EXIT_TAILWIND } from '../../lib/positionBidExitTier';
+import { positionBidExitTier, positionSellPriceColorStyle, POSITION_BID_EXIT_TAILWIND } from '../../lib/positionBidExitTier';
 import { onchainFillKey } from '../../lib/tradeKeys';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
@@ -376,6 +376,29 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     localStorage.setItem(`polymarket-tpo-pos-sort-dir-${panelId}`, '-1');
   };
 
+  type OrdSortCol = 'price';
+  const [ordSortCol, setOrdSortCol] = useState<OrdSortCol | null>(() => {
+    const v = localStorage.getItem(`polymarket-tpo-ord-sort-col-${panelId}`);
+    return v === 'price' ? 'price' : null;
+  });
+  const [ordSortDir, setOrdSortDir] = useState<1 | -1>(() => {
+    const v = parseInt(localStorage.getItem(`polymarket-tpo-ord-sort-dir-${panelId}`) || '-1', 10);
+    return v === 1 ? 1 : -1;
+  });
+
+  const toggleOrdSort = (col: OrdSortCol) => {
+    if (ordSortCol === col) {
+      const nd = (ordSortDir === 1 ? -1 : 1) as 1 | -1;
+      setOrdSortDir(nd);
+      localStorage.setItem(`polymarket-tpo-ord-sort-dir-${panelId}`, String(nd));
+      return;
+    }
+    setOrdSortCol(col);
+    setOrdSortDir(-1);
+    localStorage.setItem(`polymarket-tpo-ord-sort-col-${panelId}`, col);
+    localStorage.setItem(`polymarket-tpo-ord-sort-dir-${panelId}`, '-1');
+  };
+
   const handleSetTab = (t: 'trades' | 'positions' | 'orders') => {
     setTab(t);
     localStorage.setItem(`polymarket-pos-orders-tab-${panelId}`, t);
@@ -674,6 +697,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       return { id: order.id, tid, asset, endDate, marketName: mktLabel, outcome, side: order.side, price, size, filled, value, bidProb, askProb, marketId: market?.id };
     });
 
+  const displayOrders = useMemo(() => {
+    if (ordSortCol !== 'price') return processedOrders;
+    return [...processedOrders].sort((a, b) => (a.price - b.price) * ordSortDir);
+  }, [processedOrders, ordSortCol, ordSortDir]);
+
   // Position totals
   const totalSize = processedPositions.reduce((s, p) => s + p.size, 0);
   const totalCost = processedPositions.reduce((s, p) => s + p.cost, 0);
@@ -689,6 +717,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const hSortCls = `${hCls} cursor-pointer hover:text-white select-none no-drag`;
   const posSortArrow = (col: PosSortCol) =>
     posSortCol === col ? (posSortDir === 1 ? ' ▲' : ' ▼') : '';
+  const ordSortArrow = (col: OrdSortCol) =>
+    ordSortCol === col ? (ordSortDir === 1 ? ' ▲' : ' ▼') : '';
 
   const trColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'22%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'12%'}}/></colgroup>;
   const posColgroup = <colgroup><col style={{width:'5%'}}/><col style={{width:'7%'}}/><col style={{width:'14%'}}/><col style={{width:'4%'}}/><col style={{width:'6%'}}/><col style={{width:'7%'}}/><col style={{width:'7%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'6%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/></colgroup>;
@@ -907,7 +937,12 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                       <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.cost).toLocaleString()}</td>
                       <td className={`py-1 px-1 text-right ${exitColor}`}>{p.currentPrice.toFixed(1)}¢</td>
                       <td className="py-1 px-1 text-right text-red-300/90">{formatQuoteCents(p.askProb)}</td>
-                      <td className="py-1 px-1 text-right text-purple-400">{p.sellPrice != null ? `${p.sellPrice.toFixed(1)}¢` : '-'}</td>
+                      <td
+                        className={`py-1 px-1 text-right ${p.sellPrice == null ? 'text-gray-400' : ''}`}
+                        style={p.sellPrice != null ? positionSellPriceColorStyle(p.currentPrice, p.sellPrice) : undefined}
+                      >
+                        {p.sellPrice != null ? `${p.sellPrice.toFixed(1)}¢` : '-'}
+                      </td>
                       <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.currentValue).toLocaleString()}</td>
                       <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(p.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                       <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>
@@ -947,7 +982,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               <th className={`${hCls} text-left`}>Market</th>
               <th className={`${hCls} text-left`}>Side</th>
               <th className={`${hCls} text-left`}>Y/N</th>
-              <th className={`${hCls} text-right`}>Price</th>
+              <th
+                className={`${hSortCls} text-right`}
+                onClick={() => toggleOrdSort('price')}
+                title="Sort by price"
+              >
+                Price{ordSortArrow('price')}
+              </th>
               <th className={`${hCls} text-right`}>Bid</th>
               <th className={`${hCls} text-right`}>Ask</th>
               <th className={`${hCls} text-right`}>Size</th>
@@ -958,7 +999,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto min-h-0">
               <table className="w-full text-[10px] table-fixed">{ordColgroup}<tbody>
-                {processedOrders.map((o) => {
+                {displayOrders.map((o) => {
                   // Show time-left in the Orders tab (e.g. "2.5h") instead of TODAY/TMR labels.
                   const dd = getTimeLeftDisplay(o.endDate);
                   return (

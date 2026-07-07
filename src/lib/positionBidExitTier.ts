@@ -14,3 +14,15 @@ export const POSITION_BID_EXIT_TAILWIND: Record<PositionBidExitTier, string> = {
   yellow: 'text-yellow-400',
   red: 'text-red-400',
 };
+
+/** TPO Sell column: red (bid=0) → yellow → green (bid=sell). */
+export function positionSellPriceColorStyle(
+  bidCents: number,
+  sellCents: number,
+): { color: string } {
+  if (!Number.isFinite(sellCents) || sellCents <= 0) return { color: 'hsl(0, 75%, 58%)' };
+  const bid = Number.isFinite(bidCents) && bidCents > 0 ? bidCents : 0;
+  const ratio = Math.min(1, Math.max(0, bid / sellCents));
+  const hue = ratio * 120;
+  return { color: `hsl(${hue}, 75%, 58%)` };
+}

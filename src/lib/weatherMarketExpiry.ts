@@ -205,3 +205,40 @@ export function effectiveMarketExpiryMs(
   const ms = new Date(raw).getTime();
   return Number.isFinite(ms) ? ms : null;
 }
+
+/** YYYY-MM-DD bucket key for P&L Market Expiry mode (weather = city local expiry day). */
+export function marketExpiryBucketDateKey(
+  market:
+    | Pick<Market, 'endDate' | 'question' | 'eventSlug'>
+    | { endDate?: string; question?: string; eventSlug?: string }
+    | null
+    | undefined,
+): string | null {
+  if (!market) return null;
+  if (isWeatherMarket(market)) {
+    const ms = weatherMarketLocalMidnightExpiryMs(market);
+    if (ms == null) return null;
+    const tz = weatherTimezoneForMarket(market);
+    return zonedDateKeyFromMs(ms, tz);
+  }
+  const ms = effectiveMarketExpiryMs(market);
+  if (ms == null) return null;
+  return getLocalDateKeyFromMs(ms);
+}
+
+function zonedDateKeyFromMs(ms: number, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(ms));
+}
+
+function getLocalDateKeyFromMs(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}

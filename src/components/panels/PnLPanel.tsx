@@ -11,7 +11,7 @@ import {
 import { triggerWalletRefresh } from '../../lib/clobClient';
 import type { Trade } from '../../types';
 import { fetchWalletActivityForDateRange } from '../../api/polymarket';
-import { effectiveMarketExpiryMs } from '../../lib/weatherMarketExpiry';
+import { marketExpiryBucketDateKey } from '../../lib/weatherMarketExpiry';
 import { getTradeClobTokenId } from '../../utils/format';
 
 const PNL_BUCKET_KEY = 'polybot-pnl-bucket-mode';
@@ -33,14 +33,6 @@ function getDateKey(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
-}
-
-function getUtcDateKeyFromMs(ms: number): string {
-  const d = new Date(ms);
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
 }
 
 const DAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'] as const;
@@ -236,12 +228,9 @@ export function PnLPanel() {
       if (bucketMode === 'trade') {
         dateKey = getDateKey(new Date(timeMs));
       } else {
-        const endMs = effectiveMarketExpiryMs(
+        dateKey = marketExpiryBucketDateKey(
           market ?? { question: fallbackQuestion, eventSlug: fallbackEventSlug },
         );
-        if (endMs != null) {
-          dateKey = getUtcDateKeyFromMs(endMs);
-        }
         if (!dateKey) {
           dateKey = getDateKey(new Date(timeMs));
         }

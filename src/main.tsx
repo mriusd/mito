@@ -6,6 +6,7 @@ import { wagmiAdapter } from './lib/wallet'
 import { initAmplitudeIfProd } from './lib/initAmplitude'
 import './index.css'
 import App from './App.tsx'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 initAmplitudeIfProd()
 
@@ -15,7 +16,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <WagmiProvider config={wagmiAdapter.wagmiConfig}>
       <QueryClientProvider client={queryClient}>
-        <App />
+        <ErrorBoundary name="root">
+          <App />
+        </ErrorBoundary>
       </QueryClientProvider>
     </WagmiProvider>
   </StrictMode>,

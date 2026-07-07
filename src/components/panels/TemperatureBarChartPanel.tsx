@@ -17,6 +17,7 @@ import {
   weatherCityResolutionUrl,
 } from '../../lib/weatherCities';
 import { onTempOddsCitySelect, selectTempOddsCity, selectTempOddsDate } from '../../lib/weatherTempOddsControl';
+import { bumpCustomSidebarButtonsStore, useCustomSidebarButtons } from '../../lib/sidebarCustomButtons';
 import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
 import { WeatherCityMenu } from '../WeatherCityMenu';
 import {
@@ -44,6 +45,7 @@ import {
   type WeatherTempUnit,
 } from '../../lib/weatherObservations';
 import { TempUnitToggle, TemperatureChart } from '../TemperatureChart';
+import { TempOddsCustomButtonsPopup } from '../TempOddsCustomButtonsPopup';
 import { outcomeBestAskProb, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
 import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
@@ -57,6 +59,33 @@ import type { Position } from '../../types';
 import type { WSPosition } from '../../hooks/useOnchainTradesWS';
 
 const EMPTY_MARKETS: Market[] = [];
+
+function barMarketsForGrid(grid: WeatherGridData | null, dateCol: DateCol | undefined): Market[] {
+  if (!grid || !dateCol) return [];
+  return grid.temps
+    .map((temp) => grid.marketLookup[temp + '_' + dateCol.slug])
+    .filter((m): m is Market => !!m);
+}
+
+function isTypingTarget(el: EventTarget | null): boolean {
+  if (!el || !(el instanceof HTMLElement)) return false;
+  const tag = el.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (el.isContentEditable) return true;
+  return !!el.closest('input, textarea, select, [contenteditable="true"]');
+}
+
+function shouldIgnoreTempOddsKey(e: KeyboardEvent): boolean {
+  if (e.metaKey || e.ctrlKey || e.altKey) return true;
+  if (isTypingTarget(e.target)) return true;
+  return false;
+}
+
+function tempOddsBarDirFromKey(key: string): -1 | 1 | null {
+  if (key === 'ArrowLeft' || key === 'a' || key === 'A') return -1;
+  if (key === 'ArrowRight' || key === 'd' || key === 'D') return 1;
+  return null;
+}
 
 function readStoredLinkSidebar(panelId: string): boolean {
   return localStorage.getItem(`polybot-weather-temp-bars-link-sidebar-${panelId}`) === '1';
@@ -544,6 +573,7 @@ function TempOddsBar({
   return (
     <button
       type="button"
+      {...(selected ? { 'data-temp-odds-bar-selected': '' } : {})}
       className={`no-drag flex flex-col items-center justify-end flex-1 min-w-0 h-full px-0.5 group ${frameClass}`}
       onClick={onClick}
       title={[marketTitle, quoteTip, entryTip, ...orderTips, forecastHighlight ? 'WU hourly forecast' : null]
@@ -656,7 +686,7 @@ function TempOddsChart({
   }, [buckets.length]);
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 min-h-0">
+    <div className="relative flex flex-col flex-1 min-w-0 min-h-0">
       <div className="flex flex-col flex-1 min-h-0 border border-gray-700/80 rounded-lg bg-gray-900/40 p-2">
         {entries.length === 0 ? (
           <div className="flex-1 flex items-center justify-center text-gray-600 text-[10px]">No markets</div>
@@ -675,7 +705,7 @@ function TempOddsChart({
                 </div>
               ))}
             </div>
-            <div ref={plotRef} className="flex-1 min-h-[40px] flex items-end gap-0.5">
+            <div ref={plotRef} className="flex-1 min-h-[40px] flex items-end gap-0.5 overflow-visible">
               {trackPx > 0
                 ? entries.map(({ temp, label, market, quote, pct, modelPct, entry, orderMarks }) => {
                     const forecastHighlight =
@@ -766,6 +796,9 @@ interface TemperatureBarChartPanelProps {
 }
 
 function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: TemperatureBarChartPanelProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const customButtons = useCustomSidebarButtons();
+  const [selectedBarEl, setSelectedBarEl] = useState<HTMLElement | null>(null);
   const [city, setCity] = useState<WeatherCitySlug>(() => {
     return readStoredCity(panelId, initialCity);
   });
@@ -1022,6 +1055,35 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     [lowGrid, selectedDateCol],
   );
 
+  const lowBarMarkets = useMemo(() => barMarketsForGrid(lowGrid, lowDateCol), [lowGrid, lowDateCol]);
+  const highBarMarkets = useMemo(() => barMarketsForGrid(highGrid, highDateCol), [highGrid, highDateCol]);
+
+  useEffect(() => {
+    bumpCustomSidebarButtonsStore();
+  }, []);
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel || !selectedMarketId || customButtons.length === 0) {
+      setSelectedBarEl(null);
+      return;
+    }
+    const sync = () => {
+      setSelectedBarEl(panel.querySelector('[data-temp-odds-bar-selected]') as HTMLElement | null);
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(panel);
+    return () => ro.disconnect();
+  }, [
+    selectedMarketId,
+    customButtons.length,
+    lowBarMarkets,
+    highBarMarkets,
+    selectedDateCol,
+    city,
+  ]);
+
   const selectedObsDate = useMemo(() => {
     if (!selectedDateCol) return null;
     return weatherEventDateISOFromSlug(selectedDateCol.slug);
@@ -1130,12 +1192,54 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
       setSelectedMarket(market);
       setSidebarOutcome('YES');
       setSidebarOpen(true);
+      queueMicrotask(() => {
+        const el = panelRef.current?.querySelector('[data-temp-odds-bar-selected]') as HTMLElement | null;
+        setSelectedBarEl(el);
+      });
     },
     [setSelectedMarket, setSidebarOpen, setSidebarOutcome],
   );
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (shouldIgnoreTempOddsKey(e)) return;
+      const dir = tempOddsBarDirFromKey(e.key);
+      if (dir == null) return;
+
+      const inPanel = panelRef.current?.contains(document.activeElement) ?? false;
+      const inLow = lowBarMarkets.some((m) => m.id === selectedMarketId);
+      const inHigh = highBarMarkets.some((m) => m.id === selectedMarketId);
+
+      let markets: Market[] | null = null;
+      if (inLow) markets = lowBarMarkets;
+      else if (inHigh) markets = highBarMarkets;
+      else if (inPanel) markets = highBarMarkets.length > 0 ? highBarMarkets : lowBarMarkets;
+      else return;
+
+      if (markets.length === 0) return;
+
+      let idx = markets.findIndex((m) => m.id === selectedMarketId);
+      if (idx === -1) idx = dir === 1 ? -1 : markets.length;
+      const nextIdx = idx + dir;
+      if (nextIdx < 0 || nextIdx >= markets.length) return;
+
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      handleBarClick(markets[nextIdx]!);
+    };
+
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [selectedMarketId, lowBarMarkets, highBarMarkets, handleBarClick]);
+
   return (
-    <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 h-full flex flex-col min-h-0">
+    <div
+      ref={panelRef}
+      tabIndex={-1}
+      data-temp-odds-panel=""
+      className="panel-wrapper bg-gray-800/50 rounded-lg p-3 h-full flex flex-col min-h-0 outline-none"
+      onMouseDown={() => panelRef.current?.focus({ preventScroll: true })}
+    >
       <div className="panel-header relative z-30 mb-2 flex shrink-0 cursor-grab items-center gap-2 min-w-0">
         <span className="shrink-0 text-xs font-bold text-gray-500">Temp Odds</span>
 
@@ -1319,6 +1423,9 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           </>
         )}
       </div>
+      {selectedBarEl && customButtons.length > 0 ? (
+        <TempOddsCustomButtonsPopup anchorEl={selectedBarEl} />
+      ) : null}
     </div>
   );
 }

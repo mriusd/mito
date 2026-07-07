@@ -22,6 +22,7 @@ import { SigningDialog } from './components/SigningDialog';
 import { SignatureExplainerDialog } from './components/SignatureExplainerDialog';
 import { MobileScreenNotice } from './components/MobileScreenNotice';
 import { lazyWithChunkReload } from './utils/lazyWithChunkReload';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { buildMarketByIdRecord } from './components/WalletLatestMarketsTradedTable';
 import {
   adjacentMarketCell,
@@ -241,6 +242,9 @@ function App() {
       if (shouldIgnoreGridKeyEvent(e)) return;
       const dir = gridDirFromKey(e.key);
       if (!dir) return;
+      if ((dir === 'left' || dir === 'right') && document.activeElement?.closest('[data-temp-odds-panel]')) {
+        return;
+      }
 
       const cell = findMarketCellEl(sm.id);
       if (!cell) return;
@@ -296,9 +300,11 @@ function App() {
 
       {/* Right Sidebar — lazy chunk until desktop (always) or mobile (open / market selected) */}
       {mountSidebarChunk && (
-        <Suspense fallback={null}>
-          <SidebarLazy />
-        </Suspense>
+        <ErrorBoundary name="sidebar">
+          <Suspense fallback={null}>
+            <SidebarLazy />
+          </Suspense>
+        </ErrorBoundary>
       )}
 
       {/* Orderbook hover popup */}

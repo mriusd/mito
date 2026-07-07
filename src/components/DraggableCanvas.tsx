@@ -4,6 +4,7 @@ import 'react-grid-layout/css/styles.css';
 import { X } from 'lucide-react';
 import { useAppStore, type PersistedGridLayouts } from '../stores/appStore';
 import { lazyWithChunkReload } from '../utils/lazyWithChunkReload';
+import { ErrorBoundary } from './ErrorBoundary';
 import type { PanelConfig, PanelType } from '../types';
 import BREAKPOINT_LAYOUTS, { HEIGHT_VARIANTS, GRID_COLS } from '../lib/defaultLayouts';
 
@@ -672,7 +673,9 @@ export function DraggableCanvas() {
                 <X className="w-3 h-3" />
               )}
             </button>
-            <Suspense fallback={null}>{renderPanel(panel)}</Suspense>
+            <ErrorBoundary name={panel.type}>
+              <Suspense fallback={null}>{renderPanel(panel)}</Suspense>
+            </ErrorBoundary>
           </div>
         ))}
       </GridLayout>

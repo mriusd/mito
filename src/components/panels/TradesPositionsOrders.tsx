@@ -907,7 +907,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                       <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.cost).toLocaleString()}</td>
                       <td className={`py-1 px-1 text-right ${exitColor}`}>{p.currentPrice.toFixed(1)}¢</td>
                       <td className="py-1 px-1 text-right text-red-300/90">{formatQuoteCents(p.askProb)}</td>
-                      <td className="py-1 px-1 text-right text-red-400">{p.sellPrice != null ? `${p.sellPrice.toFixed(1)}¢` : '-'}</td>
+                      <td className="py-1 px-1 text-right text-purple-400">{p.sellPrice != null ? `${p.sellPrice.toFixed(1)}¢` : '-'}</td>
                       <td className="py-1 px-1 text-right text-gray-300">${Math.round(p.currentValue).toLocaleString()}</td>
                       <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(p.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                       <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>

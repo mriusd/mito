@@ -574,7 +574,7 @@ function TempOddsBar({
     <button
       type="button"
       {...(selected ? { 'data-temp-odds-bar-selected': '' } : {})}
-      className={`no-drag flex flex-col items-center justify-end flex-1 min-w-0 h-full px-0.5 group ${frameClass}`}
+      className={`no-drag flex flex-col items-center justify-end flex-1 min-w-0 h-full px-0.5 group outline-none focus:outline-none ${frameClass}`}
       onClick={onClick}
       title={[marketTitle, quoteTip, entryTip, ...orderTips, forecastHighlight ? 'WU hourly forecast' : null]
         .filter(Boolean)
@@ -909,6 +909,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const selectedMarketId = selectedMarket?.id ?? '';
+  const [barSelectionId, setBarSelectionId] = useState('');
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const progOrderMap = useAppStore((s) => s.progOrderMap);
   const positions = useThrottledGridPositions(2000);
@@ -1059,12 +1060,31 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const highBarMarkets = useMemo(() => barMarketsForGrid(highGrid, highDateCol), [highGrid, highDateCol]);
 
   useEffect(() => {
+    const id = selectedMarketId;
+    if (!id) {
+      setBarSelectionId('');
+      return;
+    }
+    if (lowBarMarkets.some((m) => m.id === id) || highBarMarkets.some((m) => m.id === id)) {
+      setBarSelectionId(id);
+    }
+  }, [selectedMarketId, lowBarMarkets, highBarMarkets]);
+
+  useEffect(() => {
+    if (!barSelectionId) return;
+    if (lowBarMarkets.some((m) => m.id === barSelectionId) || highBarMarkets.some((m) => m.id === barSelectionId)) {
+      return;
+    }
+    setBarSelectionId('');
+  }, [barSelectionId, lowBarMarkets, highBarMarkets]);
+
+  useEffect(() => {
     bumpCustomSidebarButtonsStore();
   }, []);
 
   useLayoutEffect(() => {
     const panel = panelRef.current;
-    if (!panel || !selectedMarketId || customButtons.length === 0) {
+    if (!panel || !barSelectionId || customButtons.length === 0) {
       setSelectedBarEl(null);
       return;
     }
@@ -1075,14 +1095,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     const ro = new ResizeObserver(sync);
     ro.observe(panel);
     return () => ro.disconnect();
-  }, [
-    selectedMarketId,
-    customButtons.length,
-    lowBarMarkets,
-    highBarMarkets,
-    selectedDateCol,
-    city,
-  ]);
+  }, [barSelectionId, customButtons.length, lowBarMarkets, highBarMarkets, selectedDateCol, city]);
 
   const selectedObsDate = useMemo(() => {
     if (!selectedDateCol) return null;
@@ -1187,17 +1200,21 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     };
   }, [city, selectedObsDate, cityMeta.timezone]);
 
+  const syncSelectedBarEl = useCallback(() => {
+    const el = panelRef.current?.querySelector('[data-temp-odds-bar-selected]') as HTMLButtonElement | null;
+    setSelectedBarEl(el);
+    return el;
+  }, []);
+
   const handleBarClick = useCallback(
     (market: Market) => {
+      setBarSelectionId(market.id);
       setSelectedMarket(market);
       setSidebarOutcome('YES');
       setSidebarOpen(true);
-      queueMicrotask(() => {
-        const el = panelRef.current?.querySelector('[data-temp-odds-bar-selected]') as HTMLElement | null;
-        setSelectedBarEl(el);
-      });
+      queueMicrotask(() => syncSelectedBarEl()?.focus({ preventScroll: true }));
     },
-    [setSelectedMarket, setSidebarOpen, setSidebarOutcome],
+    [setSelectedMarket, setSidebarOpen, setSidebarOutcome, syncSelectedBarEl],
   );
 
   useEffect(() => {
@@ -1207,8 +1224,8 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
       if (dir == null) return;
 
       const inPanel = panelRef.current?.contains(document.activeElement) ?? false;
-      const inLow = lowBarMarkets.some((m) => m.id === selectedMarketId);
-      const inHigh = highBarMarkets.some((m) => m.id === selectedMarketId);
+      const inLow = lowBarMarkets.some((m) => m.id === barSelectionId);
+      const inHigh = highBarMarkets.some((m) => m.id === barSelectionId);
 
       let markets: Market[] | null = null;
       if (inLow) markets = lowBarMarkets;
@@ -1218,19 +1235,24 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
 
       if (markets.length === 0) return;
 
-      let idx = markets.findIndex((m) => m.id === selectedMarketId);
+      let idx = markets.findIndex((m) => m.id === barSelectionId);
       if (idx === -1) idx = dir === 1 ? -1 : markets.length;
       const nextIdx = idx + dir;
       if (nextIdx < 0 || nextIdx >= markets.length) return;
 
       e.preventDefault();
       e.stopImmediatePropagation();
-      handleBarClick(markets[nextIdx]!);
+      const next = markets[nextIdx]!;
+      setBarSelectionId(next.id);
+      setSelectedMarket(next);
+      setSidebarOutcome('YES');
+      setSidebarOpen(true);
+      queueMicrotask(() => syncSelectedBarEl()?.focus({ preventScroll: true }));
     };
 
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [selectedMarketId, lowBarMarkets, highBarMarkets, handleBarClick]);
+  }, [barSelectionId, lowBarMarkets, highBarMarkets, setSelectedMarket, setSidebarOpen, setSidebarOutcome, syncSelectedBarEl]);
 
   return (
     <div
@@ -1395,7 +1417,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               modelBarColor="bg-teal-400/50"
               grid={lowGrid}
               dateCol={lowDateCol}
-              selectedMarketId={selectedMarketId}
+              selectedMarketId={barSelectionId}
               onBarClick={handleBarClick}
               positions={positions}
               liveTradesSource={liveTradesSource}
@@ -1410,7 +1432,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               modelBarColor="bg-amber-400/50"
               grid={highGrid}
               dateCol={highDateCol}
-              selectedMarketId={selectedMarketId}
+              selectedMarketId={barSelectionId}
               onBarClick={handleBarClick}
               positions={positions}
               liveTradesSource={liveTradesSource}

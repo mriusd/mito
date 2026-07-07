@@ -206,7 +206,26 @@ export function effectiveMarketExpiryMs(
   return Number.isFinite(ms) ? ms : null;
 }
 
-/** YYYY-MM-DD bucket key for P&L Market Expiry mode (weather = city local expiry day). */
+/** Event day YYYY-MM-DD from slug like highest-temperature-in-london-on-july-7-2026. */
+export function weatherEventBucketDateISO(
+  market: { eventSlug?: string; question?: string; endDate?: string } | null | undefined,
+): string | null {
+  const slug = (market?.eventSlug || '').trim();
+  const m = slug.match(/-on-([a-z]+)-(\d+)-(\d{4})/i);
+  if (m) {
+    const monthIdx = MONTH_NAMES.indexOf(m[1].toLowerCase());
+    if (monthIdx >= 0) {
+      const day = m[2].padStart(2, '0');
+      const month = String(monthIdx + 1).padStart(2, '0');
+      return `${m[3]}-${month}-${day}`;
+    }
+  }
+  const parsed = parseWeatherEventDay(market || {});
+  if (!parsed) return null;
+  return `${parsed.year}-${String(parsed.month).padStart(2, '0')}-${String(parsed.day).padStart(2, '0')}`;
+}
+
+/** YYYY-MM-DD bucket key for P&L Market Expiry mode (weather = event day from slug, like Temp Odds tabs). */
 export function marketExpiryBucketDateKey(
   market:
     | Pick<Market, 'endDate' | 'question' | 'eventSlug'>
@@ -216,23 +235,11 @@ export function marketExpiryBucketDateKey(
 ): string | null {
   if (!market) return null;
   if (isWeatherMarket(market)) {
-    const ms = weatherMarketLocalMidnightExpiryMs(market);
-    if (ms == null) return null;
-    const tz = weatherTimezoneForMarket(market);
-    return zonedDateKeyFromMs(ms, tz);
+    return weatherEventBucketDateISO(market);
   }
   const ms = effectiveMarketExpiryMs(market);
   if (ms == null) return null;
   return getLocalDateKeyFromMs(ms);
-}
-
-function zonedDateKeyFromMs(ms: number, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(ms));
 }
 
 function getLocalDateKeyFromMs(ms: number): string {

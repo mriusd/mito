@@ -1293,6 +1293,9 @@ export const Sidebar = memo(function Sidebar() {
   const [volatilityConfirmOpen, setVolatilityConfirmOpen] = useState(false);
   const [volatilityConfirmMessage, setVolatilityConfirmMessage] = useState('');
   const volatilityConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
+  const [closePositionMarketConfirmOpen, setClosePositionMarketConfirmOpen] = useState(false);
+  const [closePositionMarketConfirmInput, setClosePositionMarketConfirmInput] = useState('');
+  const closePositionMarketConfirmResolver = useRef<((confirmed: boolean) => void) | null>(null);
   // Inline signing step display when dialog is hidden
   const [signingState, setSigningState] = useState(signingDialog.getState());
   useEffect(() => signingDialog.subscribe(setSigningState), []);
@@ -1421,6 +1424,22 @@ export const Sidebar = memo(function Sidebar() {
     setVolatilityConfirmOpen(false);
     const resolver = volatilityConfirmResolver.current;
     volatilityConfirmResolver.current = null;
+    if (resolver) resolver(confirmed);
+  }, []);
+
+  const requestClosePositionMarketConfirm = useCallback(() => {
+    return new Promise<boolean>((resolve) => {
+      closePositionMarketConfirmResolver.current = resolve;
+      setClosePositionMarketConfirmInput('');
+      setClosePositionMarketConfirmOpen(true);
+    });
+  }, []);
+
+  const closeClosePositionMarketConfirm = useCallback((confirmed: boolean) => {
+    setClosePositionMarketConfirmOpen(false);
+    setClosePositionMarketConfirmInput('');
+    const resolver = closePositionMarketConfirmResolver.current;
+    closePositionMarketConfirmResolver.current = null;
     if (resolver) resolver(confirmed);
   }, []);
 
@@ -2305,6 +2324,8 @@ export const Sidebar = memo(function Sidebar() {
       const tid = String(tokenId || '').trim();
       const size = Math.floor(rawSize * 100) / 100;
       if (!tid || !selectedMarket || !size || size <= 0) return;
+      const confirmed = await requestClosePositionMarketConfirm();
+      if (!confirmed) return;
       const displayBids = sidebarBookRef.current?.displayBids ?? [];
       const displayAsks = sidebarBookRef.current?.displayAsks ?? [];
       const sidebarBookToken = selectedMarket.clobTokenIds?.[orderOutcome === 'YES' ? 0 : 1] || '';
@@ -2357,6 +2378,7 @@ export const Sidebar = memo(function Sidebar() {
       liveTradesSource,
       refreshMyMarketTrades,
       submitSidebarMarketFak,
+      requestClosePositionMarketConfirm,
     ],
   );
 
@@ -2483,6 +2505,9 @@ export const Sidebar = memo(function Sidebar() {
         setCustomDialogOpen(false);
         setCrossingConfirmOpen(false);
         setVolatilityConfirmOpen(false);
+        setClosePositionMarketConfirmOpen(false);
+        closePositionMarketConfirmResolver.current?.(false);
+        closePositionMarketConfirmResolver.current = null;
         setMergeDialogOpen(false);
         setHoldersExpandTipOpen(false);
         setHistoryTipOpen(false);
@@ -4721,6 +4746,44 @@ export const Sidebar = memo(function Sidebar() {
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => closeCrossingConfirm(false)} className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-xs font-medium">Cancel</button>
               <button onClick={() => closeCrossingConfirm(true)} className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-xs font-bold text-black">Continue</button>
+            </div>
+          </div>
+        </div>
+      ), document.body)}
+      {closePositionMarketConfirmOpen && typeof document !== 'undefined' && createPortal((
+        <div className="fixed inset-0 z-[61000] bg-black/70 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) closeClosePositionMarketConfirm(false); }}>
+          <div className="w-full max-w-sm mx-4 rounded-lg border border-red-500/40 bg-gray-900 p-4">
+            <div className="text-sm font-bold text-red-300 mb-2">Market sell entire position</div>
+            <div className="text-xs text-gray-200 space-y-2">
+              <p>
+                This submits a market order (FAK) to sell your full position. It may execute well below the current best bid if liquidity is thin.
+              </p>
+              <p className="text-amber-200/90">
+                We recommend using a limit order instead — use the ¢ buttons below the position.
+              </p>
+            </div>
+            <input
+              type="text"
+              value={closePositionMarketConfirmInput}
+              onChange={(e) => setClosePositionMarketConfirmInput(e.target.value)}
+              placeholder="Type MARKET"
+              className="mt-3 w-full rounded bg-gray-800 border border-gray-600 px-2 py-1.5 text-xs text-white outline-none focus:border-red-400"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && closePositionMarketConfirmInput === 'MARKET') {
+                  closeClosePositionMarketConfirm(true);
+                }
+              }}
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => closeClosePositionMarketConfirm(false)} className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-xs font-medium">Cancel</button>
+              <button
+                onClick={() => closeClosePositionMarketConfirm(true)}
+                disabled={closePositionMarketConfirmInput !== 'MARKET'}
+                className="px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold text-white"
+              >
+                Confirm
+              </button>
             </div>
           </div>
         </div>

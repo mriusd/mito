@@ -396,6 +396,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const [tab, setTab] = useState<'trades' | 'positions' | 'orders'>(
     (localStorage.getItem(`polymarket-pos-orders-tab-${panelId}`) as 'trades' | 'positions' | 'orders') || 'trades'
   );
+  const [tradesSideFilter, setTradesSideFilter] = useState(
+    localStorage.getItem('polymarket-trades-side-filter') || 'ALL'
+  );
   const [ordersFilter, setOrdersFilter] = useState(
     localStorage.getItem('polymarket-orders-filter') || 'ALL'
   );
@@ -547,6 +550,31 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
   // Process trades
   const processedTrades = tradesForTable
+    .filter((t) => {
+      const tid = getTradeClobTokenId(t);
+      if (assetFilter !== 'ALL') {
+        const market = lookupMarketByTokenId(tid, marketLookup);
+        if (market) {
+          const asset = extractAssetFromMarket(market);
+          if (asset) {
+            if (asset !== assetFilter) return false;
+          } else if (isWeatherMarket(market)) {
+            if (assetFilter !== 'WEATHER') return false;
+          } else if (assetFilter !== 'ALL') {
+            return false;
+          }
+        } else if (t.title) {
+          if (/temperature in/i.test(t.title)) {
+            if (assetFilter !== 'WEATHER') return false;
+          } else {
+          const m = t.title.match(/\b(BTC|ETH|SOL|XRP)\b/i);
+          if (!m || m[1].toUpperCase() !== assetFilter) return false;
+          }
+        }
+      }
+      if (tradesSideFilter !== 'ALL' && t.side !== tradesSideFilter) return false;
+      return true;
+    })
     .map((trade) => {
       const tid = getTradeClobTokenId(trade);
       const market = lookupMarketByTokenId(tid, marketLookup);
@@ -833,6 +861,21 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             Trades <span className="text-xs text-gray-500">({processedTrades.length})</span>
           </button>
 
+          {tab === 'trades' && (
+            <div className="flex gap-1 items-center">
+              <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]">
+                {(['ALL', 'BUY', 'SELL'] as const).map((s) => (
+                  <button key={s} onClick={() => { setTradesSideFilter(s); localStorage.setItem('polymarket-trades-side-filter', s); }}
+                    className={filterBtnCls(tradesSideFilter === s, s === 'BUY' ? 'green' : s === 'SELL' ? 'red' : 'gray')}>{s}</button>
+                ))}
+              </div>
+              <select value={assetFilter} onChange={(e) => { setAssetFilter(e.target.value); localStorage.setItem('polymarket-table-asset-filter', e.target.value); }}
+                className={`bg-gray-700 text-[9px] font-bold rounded px-1 py-0.5 border border-gray-600 ${assetColors[assetFilter]}`} style={{ outline: 'none' }}>
+                {assets.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+          )}
+
           {tab === 'positions' && (
             <select value={assetFilter} onChange={(e) => { setAssetFilter(e.target.value); localStorage.setItem('polymarket-table-asset-filter', e.target.value); }}
               className={`bg-gray-700 text-[9px] font-bold rounded px-1 py-0.5 border border-gray-600 ${assetColors[assetFilter]}`} style={{ outline: 'none' }}>
@@ -841,14 +884,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           )}
 
           {tab === 'orders' && (
-            <div className="flex gap-0.5 items-center flex-wrap">
-              <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5">
+            <div className="flex gap-1 items-center">
+              <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]">
                 {(['ALL', 'BUY', 'SELL'] as const).map((s) => (
                   <button key={s} onClick={() => { setOrdersFilter(s); localStorage.setItem('polymarket-orders-filter', s); }}
                     className={filterBtnCls(ordersFilter === s, s === 'BUY' ? 'green' : s === 'SELL' ? 'red' : 'gray')}>{s}</button>
                 ))}
               </div>
-              <span className="mx-1 text-gray-600">|</span>
               <select value={assetFilter} onChange={(e) => { setAssetFilter(e.target.value); localStorage.setItem('polymarket-table-asset-filter', e.target.value); }}
                 className={`bg-gray-700 text-[9px] font-bold rounded px-1 py-0.5 border border-gray-600 ${assetColors[assetFilter]}`} style={{ outline: 'none' }}>
                 {assets.map((a) => <option key={a} value={a}>{a}</option>)}

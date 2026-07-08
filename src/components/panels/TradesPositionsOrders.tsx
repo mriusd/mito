@@ -835,7 +835,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const tPnlColor = totalPnl >= 0 ? 'text-green-400' : 'text-red-400';
   const tPnlSign = totalPnl >= 0 ? '+' : '';
 
-  const hCls = 'text-gray-500 py-1 px-1';
+  const hCls = 'text-gray-500 py-1 px-1 truncate max-w-0';
   const hSortCls = `${hCls} cursor-pointer hover:text-white select-none no-drag`;
   const posSortArrow = (col: PosSortCol) =>
     posSortCol === col ? (posSortDir === 1 ? ' ▲' : ' ▼') : '';
@@ -917,7 +917,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             {/* Fixed header */}
             <table className="w-full text-[10px] table-fixed">{trColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
               <th className={`${hCls} text-left`}>Asset</th>
-              <th className={`${hCls} text-left whitespace-nowrap`}>Date</th>
+              <th className={`${hCls} text-left`}>Date</th>
               <th className={`${hCls} text-left`}>Market</th>
               <th className={`${hCls} text-left`}>Side</th>
               <th className={`${hCls} text-left`}>Y/N</th>
@@ -976,7 +976,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             <table className="w-full text-[10px] table-fixed">{posColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
               <th className={`${hCls} text-left`}>Asset</th>
               <th
-                className={`${hSortCls} text-left whitespace-nowrap`}
+                className={`${hSortCls} text-left`}
                 onClick={() => togglePosSort('expiry')}
                 title="Sort by expiry date"
               >
@@ -1097,7 +1097,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             {/* Fixed header */}
             <table className="w-full text-[10px] table-fixed">{ordColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
               <th className={`${hCls} text-left`}>Asset</th>
-              <th className={`${hCls} text-left whitespace-nowrap`}>Date</th>
+              <th className={`${hCls} text-left`}>Date</th>
               <th className={`${hCls} text-left`}>Market</th>
               <th className={`${hCls} text-left`}>Side</th>
               <th className={`${hCls} text-left`}>Y/N</th>

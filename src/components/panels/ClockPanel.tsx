@@ -109,39 +109,41 @@ function ClockPanelInner({ panelId }: { panelId: string }) {
 
   return (
     <div className="panel-wrapper flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-gray-800/50 p-3">
-      <div className="panel-header mb-1 flex shrink-0 cursor-grab items-center justify-between gap-2">
-        <div className="text-[11px] font-bold text-violet-300">Clock</div>
-        <div className="no-drag min-w-0" onMouseDown={(e) => e.stopPropagation()}>
-          <select
-            className="max-w-[min(100%,16rem)] truncate rounded border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-[10px] font-semibold text-gray-200 focus:outline-none"
-            value={timeZone}
-            title="Timezone"
-            onChange={(e) => {
-              const next = e.target.value;
-              setTimeZone(next);
-              localStorage.setItem(`polybot-clock-tz-${panelId}`, next);
-            }}
-          >
-            {TIMEZONES.map((tz) => (
-              <option key={tz} value={tz}>
-                {tz.replace(/_/g, ' ')}
-              </option>
-            ))}
-          </select>
+      <div className="panel-header mb-0 flex min-h-0 flex-1 cursor-grab flex-col">
+        <div className="mb-1 flex shrink-0 items-center justify-between gap-2">
+          <div className="text-[11px] font-bold text-violet-300">Clock</div>
+          <div className="no-drag min-w-0" onMouseDown={(e) => e.stopPropagation()}>
+            <select
+              className="max-w-[min(100%,16rem)] truncate rounded border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-[10px] font-semibold text-gray-200 focus:outline-none"
+              value={timeZone}
+              title="Timezone"
+              onChange={(e) => {
+                const next = e.target.value;
+                setTimeZone(next);
+                localStorage.setItem(`polybot-clock-tz-${panelId}`, next);
+              }}
+            >
+              {TIMEZONES.map((tz) => (
+                <option key={tz} value={tz}>
+                  {tz.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-      </div>
 
-      <div
-        ref={bodyRef}
-        className="panel-body flex min-h-0 flex-1 items-center justify-center overflow-hidden"
-      >
         <div
-          className="select-none whitespace-nowrap font-mono font-bold tabular-nums leading-none text-white"
-          style={{ fontSize: `${fontPx}px` }}
+          ref={bodyRef}
+          className="panel-body flex min-h-0 flex-1 items-center justify-center overflow-hidden"
         >
-          {hours}
-          <span className={colonVisible ? 'opacity-100' : 'opacity-0'}>:</span>
-          {minutes}
+          <div
+            className="select-none whitespace-nowrap font-mono font-bold tabular-nums leading-none text-white"
+            style={{ fontSize: `${fontPx}px` }}
+          >
+            {hours}
+            <span className={colonVisible ? 'opacity-100' : 'opacity-0'}>:</span>
+            {minutes}
+          </div>
         </div>
       </div>
     </div>

@@ -21,12 +21,9 @@ export function getGridBidAskPairSnapshot(yesTokenId: string, noTokenId: string)
   const yes = yesTokenId ? getBidAskMarketRow(yesTokenId) : undefined;
   const no = noTokenId ? getBidAskMarketRow(noTokenId) : undefined;
   const prev = pairSnapshotCache.get(key);
-  if (
-    prev &&
-    prev.digest === digest &&
-    prev.snap.yes === yes &&
-    prev.snap.no === no
-  ) {
+  // Keep same snap object when row refs unchanged — digest bumps must not wake every cell.
+  if (prev && prev.snap.yes === yes && prev.snap.no === no) {
+    if (prev.digest !== digest) pairSnapshotCache.set(key, { digest, snap: prev.snap });
     return prev.snap;
   }
 

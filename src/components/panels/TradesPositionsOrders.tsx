@@ -8,7 +8,7 @@ import {
 import { positionExitBidProb, outcomeBidAskProb } from '../../lib/outcomeQuote';
 import { positionBidExitTier, positionSellPriceColorStyle, POSITION_BID_EXIT_TAILWIND } from '../../lib/positionBidExitTier';
 import { onchainFillKey } from '../../lib/tradeKeys';
-import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
+import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLookupSubset';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import {
   refreshSidebarOnchainWallet,
@@ -256,7 +256,6 @@ function TpoAuthEmpty({
 
 function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const positions = useAppStore((s) => s.positions);
-  const weatherMarkets = useAppStore((s) => s.weatherMarkets);
   const orders = useAppStore((s) => s.orders);
   const trades = useAppStore((s) => s.trades);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
@@ -265,7 +264,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const pkRevision = useAppStore((s) => s.pkRevision);
   const { address, isConnected } = useAccount();
   const makerAddress = useTradingWalletAddress();
-  const selectedMarket = useAppStore((s) => s.selectedMarket);
+  const selectedMarketId = useAppStore((s) => s.selectedMarket?.id);
+  const selectedMarketClobTokenIds = useAppStore((s) => s.selectedMarket?.clobTokenIds);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
@@ -320,18 +320,12 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     for (const t of onchainWsTrades) {
       if (t.tokenId) set.add(String(t.tokenId));
     }
-    for (const t of selectedMarket?.clobTokenIds || []) if (t) set.add(String(t));
-    for (const ms of Object.values(weatherMarkets)) {
-      for (const m of ms) {
-        for (const tid of m.clobTokenIds || []) {
-          if (tid) set.add(String(tid));
-        }
-      }
-    }
+    for (const t of selectedMarketClobTokenIds || []) if (t) set.add(String(t));
     return [...set];
-  }, [polymarketTokenKey, onchainWsPositions, onchainWsTrades, selectedMarket?.id, selectedMarket?.clobTokenIds, weatherMarkets]);
+  }, [polymarketTokenKey, onchainWsPositions, onchainWsTrades, selectedMarketClobTokenIds]);
 
-  const marketLookup = useMarketLookupSubset(tpoClobIds);
+  // Grid flush (~2s) — live bid/ask must not rebuild whole TPO table every tick.
+  const marketLookup = useThrottledMarketLookupSubset(tpoClobIds);
 
   const sellOrderPriceByToken = useMemo(() => buildSellOrderPriceByToken(orders), [orders]);
 
@@ -376,13 +370,15 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     }
     return [...byToken.values()];
   }, [liveTradesSource, positions, onchainPositionsAsPM]);
-  const tradesForTable = liveTradesSource === 'onchain'
-    ? [...onchainTradesAsPM, ...onchainClaimsAsPM].sort((a, b) => {
-        const ta = parseInt(a.timestamp || '0', 10);
-        const tb = parseInt(b.timestamp || '0', 10);
-        return tb - ta;
-      })
-    : trades;
+
+  const tradesForTable = useMemo(() => {
+    if (liveTradesSource !== 'onchain') return trades;
+    return [...onchainTradesAsPM, ...onchainClaimsAsPM].sort((a, b) => {
+      const ta = parseInt(a.timestamp || '0', 10);
+      const tb = parseInt(b.timestamp || '0', 10);
+      return tb - ta;
+    });
+  }, [liveTradesSource, trades, onchainTradesAsPM, onchainClaimsAsPM]);
 
   const handleMarketClick = useCallback((tokenId: string) => {
     const market = lookupMarketByTokenId(tokenId, marketLookup);
@@ -521,16 +517,6 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     }
   };
 
-  const filterByAsset = (tokenId: string) => {
-    if (assetFilter === 'ALL') return true;
-    const market = lookupMarketByTokenId(tokenId, marketLookup);
-    if (!market) return true;
-    const asset = extractAssetFromMarket(market);
-    if (asset) return asset === assetFilter;
-    if (isWeatherMarket(market)) return assetFilter === 'WEATHER';
-    return assetFilter === 'ALL';
-  };
-
   const assets = ['ALL', 'BTC', 'ETH', 'SOL', 'XRP', 'WEATHER'];
   const assetColors: Record<string, string> = { ALL: 'text-white', BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400', WEATHER: 'text-sky-400' };
 
@@ -549,7 +535,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   };
 
   // Process trades
-  const processedTrades = tradesForTable
+  const processedTrades = useMemo(() => tradesForTable
     .filter((t) => {
       const tid = getTradeClobTokenId(t);
       if (assetFilter !== 'ALL') {
@@ -651,10 +637,10 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         marketId: market?.id,
         clickable,
       };
-    });
+    }), [tradesForTable, assetFilter, tradesSideFilter, marketLookup]);
 
   // Process positions
-  const processedPositions = positionsForTable
+  const processedPositions = useMemo(() => positionsForTable
     .filter((p) => {
       if ((p.size || 0) <= 0) return false;
       const tid = getPositionClobTokenId(p);
@@ -745,7 +731,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         marketId: market?.id ?? pos.market,
         clickable,
       };
-    });
+    }), [positionsForTable, assetFilter, marketLookup, sellOrderPriceByToken]);
 
   const displayPositions = useMemo(() => {
     const rows = [...processedPositions];
@@ -777,10 +763,21 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   }, [processedPositions, posSortCol, posSortDir]);
 
   // Process orders
-  const processedOrders = orders
+  const processedOrders = useMemo(() => orders
     .filter((o) => {
       const tid = getOrderClobTokenId(o);
-      if (!filterByAsset(tid)) return false;
+      if (assetFilter !== 'ALL') {
+        const market = lookupMarketByTokenId(tid, marketLookup);
+        if (!market) return true;
+        const asset = extractAssetFromMarket(market);
+        if (asset) {
+          if (asset !== assetFilter) return false;
+        } else if (isWeatherMarket(market)) {
+          if (assetFilter !== 'WEATHER') return false;
+        } else {
+          return false;
+        }
+      }
       if (ordersFilter !== 'ALL' && o.side !== ordersFilter) return false;
       return true;
     })
@@ -817,7 +814,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         askProb,
         marketId: market?.id,
       };
-    });
+    }), [orders, assetFilter, ordersFilter, marketLookup]);
 
   const displayOrders = useMemo(() => {
     if (ordSortCol !== 'price') return processedOrders;
@@ -825,13 +822,21 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   }, [processedOrders, ordSortCol, ordSortDir]);
 
   // Position totals
-  const totalSize = processedPositions.reduce((s, p) => s + p.size, 0);
-  const totalCost = processedPositions.reduce((s, p) => s + p.cost, 0);
-  const totalValue = processedPositions.reduce((s, p) => s + p.currentValue, 0);
-  const totalPnl = totalValue - totalCost;
-  const avgEntry = totalSize > 0 ? (totalCost / totalSize) * 100 : 0;
-  const avgExit = totalSize > 0 ? (totalValue / totalSize) * 100 : 0;
-  const avgPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+  const { totalSize, totalCost, totalValue, totalPnl, avgEntry, avgExit, avgPnlPct } = useMemo(() => {
+    const totalSize = processedPositions.reduce((s, p) => s + p.size, 0);
+    const totalCost = processedPositions.reduce((s, p) => s + p.cost, 0);
+    const totalValue = processedPositions.reduce((s, p) => s + p.currentValue, 0);
+    const totalPnl = totalValue - totalCost;
+    return {
+      totalSize,
+      totalCost,
+      totalValue,
+      totalPnl,
+      avgEntry: totalSize > 0 ? (totalCost / totalSize) * 100 : 0,
+      avgExit: totalSize > 0 ? (totalValue / totalSize) * 100 : 0,
+      avgPnlPct: totalCost > 0 ? (totalPnl / totalCost) * 100 : 0,
+    };
+  }, [processedPositions]);
   const tPnlColor = totalPnl >= 0 ? 'text-green-400' : 'text-red-400';
   const tPnlSign = totalPnl >= 0 ? '+' : '';
 
@@ -934,7 +939,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                   const ageMs = t.timeMs > 0 ? Date.now() - t.timeMs : Infinity;
                   const timeColor = ageMs < 15 * 60000 ? 'text-green-400' : ageMs < 60 * 60000 ? 'text-yellow-400' : 'text-gray-400';
                   return (
-                    <tr key={i} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${t.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarket && selectedMarket.id === t.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => t.clickable && handleMarketClick(t.tid)}>
+                    <tr key={i} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${t.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === t.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => t.clickable && handleMarketClick(t.tid)}>
                       <td className={`py-1 px-1 ${assetColorMap[t.asset] || 'text-gray-400'} font-bold`}>{t.asset}</td>
                       <td className={`py-1 px-1 whitespace-nowrap ${t.dateColor}`}>{t.dateLabel}</td>
                       <td className={`py-1 px-1 ${assetColorMap2[t.asset] || 'text-gray-300'} truncate`}>{t.marketName}</td>
@@ -1046,7 +1051,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                   const pnlSign = p.pnl >= 0 ? '+' : '-';
                   const exitColor = POSITION_BID_EXIT_TAILWIND[positionBidExitTier(p.entryPrice, p.currentPrice)];
                   return (
-                    <tr key={p.tid} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarket && selectedMarket.id === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
+                    <tr key={p.tid} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
                       <td className={`py-1 px-1 ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
                       <td className={`py-1 px-1 whitespace-nowrap ${p.dateColor}`}>{p.dateLabel}</td>
                       <td className={`py-1 px-1 ${assetColorMap2[p.asset] || 'text-gray-300'} truncate`}>{p.marketName}</td>
@@ -1123,7 +1128,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     ? { label: o.dateLabel, color: o.dateColor }
                     : getTimeLeftDisplay(o.endDate);
                   return (
-                    <tr key={o.id} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${selectedMarket && selectedMarket.id === o.marketId ? 'bg-blue-900/40' : ''}`}>
+                    <tr key={o.id} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${selectedMarketId === o.marketId ? 'bg-blue-900/40' : ''}`}>
                       <td className={`py-1 px-1 ${assetColorMap[o.asset] || 'text-gray-400'} font-bold`}>{o.asset}</td>
                       <td className={`py-1 px-1 whitespace-nowrap ${dd.color}`}>{dd.label}</td>
                       <td className={`py-1 px-1 ${assetColorMap2[o.asset] || 'text-gray-300'} truncate cursor-pointer hover:underline`} onClick={() => handleMarketClick(o.tid)}>{o.marketName}</td>

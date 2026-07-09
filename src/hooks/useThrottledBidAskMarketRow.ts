@@ -14,10 +14,13 @@ function getGridBidAskMarketRowSnapshot(tokenId: string): Market | undefined {
   const tid = String(tokenId || '').trim();
   if (!tid) return undefined;
 
-  const prev = rowSnapshotCache.get(tid);
-  if (prev && prev.digest === digest) return prev.snap;
-
   const snap = getBidAskMarketRow(tid);
+  const prev = rowSnapshotCache.get(tid);
+  if (prev && prev.snap === snap) {
+    if (prev.digest !== digest) rowSnapshotCache.set(tid, { digest, snap: prev.snap });
+    return prev.snap;
+  }
+
   rowSnapshotCache.set(tid, { digest, snap });
   return snap;
 }

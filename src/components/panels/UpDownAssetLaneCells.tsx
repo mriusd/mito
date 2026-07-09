@@ -1,6 +1,5 @@
 import { memo, useMemo } from 'react';
 import type { CSSProperties } from 'react';
-import { CirclePercent, Minus, Triangle } from 'lucide-react';
 import type { Market, Order, AssetSymbol } from '../../types';
 import { getMarketProbability } from '../../utils/bsMath';
 import { normalizeClobTokenId } from '../../utils/format';
@@ -8,7 +7,8 @@ import { noOutcomeBidAsk, outcomeBestBidProb } from '../../lib/outcomeQuote';
 import { nextMarketHiFlashSides, useUpDownNextHiSettings } from '../../lib/upDownNextMarketFlashSound';
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
 import { useUpDownExpiryBarNow } from '../../lib/upDownExpiryBarTickStore';
-import { bidAskLookupFromPair, useLiveBidAskPair } from '../../hooks/useLiveBidAskPair';
+import { bidAskLookupFromPair } from '../../hooks/useLiveBidAskPair';
+import { useThrottledBidAskPair } from '../../hooks/useThrottledBidAskPair';
 import { useGridAssetLivePrice } from '../../lib/gridAssetLivePriceStore';
 import { GRID_BID_ASK_THROTTLE_MS } from '../../lib/bidAskMarketLookup';
 import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
@@ -27,6 +27,38 @@ const ASSET_BORDER_COLOR: Record<string, string> = {
   SOL: 'rgba(192, 132, 252, 0.9)',
   XRP: 'rgba(34, 211, 238, 0.9)',
 };
+
+function IconPct({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 10 10" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.6">
+      <circle cx="3" cy="3" r="1.2" />
+      <circle cx="7" cy="7" r="1.2" />
+      <path d="M7.5 2.5 2.5 7.5" />
+    </svg>
+  );
+}
+
+function IconTri({ className, down }: { className?: string; down?: boolean }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 10 10"
+      aria-hidden
+      fill="currentColor"
+      style={down ? { transform: 'rotate(180deg)' } : undefined}
+    >
+      <path d="M5 1.5 9 8.5H1z" />
+    </svg>
+  );
+}
+
+function IconMinus({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 10 10" aria-hidden fill="none" stroke="currentColor" strokeWidth="2.2">
+      <path d="M2 5h6" />
+    </svg>
+  );
+}
 
 const TF_DURATIONS_MS: Record<string, number> = {
   '5m': 5 * 60 * 1000,
@@ -220,7 +252,7 @@ const UpDownFutureQuoteCell = memo(function UpDownFutureQuoteCell({
   const nextTokenIds = nextMarket.clobTokenIds || [];
   const nextYesTokenId = nextTokenIds[0] || '';
   const nextNoTokenId = nextTokenIds[1] || '';
-  const pair = useLiveBidAskPair(nextYesTokenId, nextNoTokenId);
+  const pair = useThrottledBidAskPair(nextYesTokenId, nextNoTokenId);
   const lookup = useMemo(
     () => bidAskLookupFromPair(nextYesTokenId, nextNoTokenId, pair),
     [nextYesTokenId, nextNoTokenId, pair.yes, pair.no],
@@ -338,7 +370,7 @@ function UpDownAssetLaneCellsInner({
   const binanceSpot = useGridAssetLivePrice(sym);
   const chainlinkSpot = useThrottledChainlinkPricesMap(GRID_BID_ASK_THROTTLE_MS)[asset];
 
-  const currentPair = useLiveBidAskPair(yesTokenId, noTokenId);
+  const currentPair = useThrottledBidAskPair(yesTokenId, noTokenId);
   const bidAskLookup = useMemo(
     () => bidAskLookupFromPair(yesTokenId, noTokenId, currentPair),
     [yesTokenId, noTokenId, currentPair.yes, currentPair.no],
@@ -434,7 +466,7 @@ function UpDownAssetLaneCellsInner({
             <div
               className={`inline-flex h-4 min-w-[2.75rem] shrink-0 items-center justify-center gap-0.5 rounded px-1 text-[8px] font-bold tabular-nums ${mathBadgeColorClass}`}
             >
-              <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
+              <IconPct className="h-2.5 w-2.5 shrink-0 opacity-90" />
               <span>{(mathYesProb * 100).toFixed(0)}</span>
             </div>
             {bidVsMath !== null && (
@@ -447,13 +479,9 @@ function UpDownAssetLaneCellsInner({
                       : 'bg-gray-800/40 border-gray-500/30 text-gray-300/90'
                 } ${triangleBadgeFlash ? 'updown-triangle-badge-flash' : ''}`}
               >
-                {bidVsMath === 'bidAbove' && (
-                  <Triangle className="h-2.5 w-2.5 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
-                )}
-                {bidVsMath === 'bidBelow' && (
-                  <Triangle className="h-2.5 w-2.5 rotate-180 fill-current stroke-current" strokeWidth={1.5} aria-hidden />
-                )}
-                {bidVsMath === 'tie' && <Minus className="h-2.5 w-2.5" strokeWidth={2.5} aria-hidden />}
+                {bidVsMath === 'bidAbove' && <IconTri className="h-2.5 w-2.5" />}
+                {bidVsMath === 'bidBelow' && <IconTri className="h-2.5 w-2.5" down />}
+                {bidVsMath === 'tie' && <IconMinus className="h-2.5 w-2.5" />}
               </div>
             )}
           </div>

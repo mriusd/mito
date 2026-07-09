@@ -31,7 +31,11 @@ function getGridMarketLookupSubsetSnapshot(idsKey: string, ids: readonly string[
   const digest = getBidAskGridFlushDigest();
   const snap = readSubset(ids);
   const prev = subsetSnapshotCache.get(idsKey);
-  if (prev && prev.digest === digest && subsetSnapEqual(prev.snap, snap)) return prev.snap;
+  // Digest bump alone must not allocate new subset — only when our token rows change.
+  if (prev && subsetSnapEqual(prev.snap, snap)) {
+    if (prev.digest !== digest) subsetSnapshotCache.set(idsKey, { digest, snap: prev.snap });
+    return prev.snap;
+  }
 
   subsetSnapshotCache.set(idsKey, { digest, snap });
   return snap;

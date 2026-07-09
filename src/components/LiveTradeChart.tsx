@@ -948,6 +948,26 @@ export function LiveTradeChart({
       }
     }
 
+    // Max high / min low — small right-side ticks (same style as last price)
+    let rangeMaxH = -Infinity;
+    let rangeMinL = Infinity;
+    for (const c of candles) {
+      if (c.time < minT - candleMs || c.time > maxT + candleMs) continue;
+      if (Number.isFinite(c.h) && c.h > rangeMaxH) rangeMaxH = c.h;
+      if (Number.isFinite(c.l) && c.l < rangeMinL) rangeMinL = c.l;
+    }
+    if (Number.isFinite(rangeMaxH) && Number.isFinite(rangeMinL) && rangeMaxH >= rangeMinL) {
+      ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      const maxLabelY = Math.max(chartTop + 8, Math.min(chartBot - 8, toY(rangeMaxH)));
+      const minLabelY = Math.max(chartTop + 8, Math.min(chartBot - 8, toY(rangeMinL)));
+      ctx.fillStyle = '#34d399';
+      ctx.fillText(`H ${rangeMaxH.toFixed(1)}¢`, chartRight - 2, maxLabelY);
+      ctx.fillStyle = '#f87171';
+      ctx.fillText(`L ${rangeMinL.toFixed(1)}¢`, chartRight - 2, minLabelY);
+    }
+
     const lastPrice = candles[candles.length - 1].c;
     const lastY = toY(lastPrice);
     if (!hidePriceLines) {

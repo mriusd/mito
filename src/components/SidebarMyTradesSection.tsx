@@ -2,6 +2,7 @@ import { memo, useMemo } from 'react';
 import type { Market } from '../types';
 import { useAppStore } from '../stores/appStore';
 import {
+  formatElapsedSinceMs,
   getTokenOutcome,
   getTradeClobTokenId,
   outcomeTokenBelongsToSelectedMarket,
@@ -10,10 +11,25 @@ import {
 import { mySidebarTradeRowKey, useMyTradeRowRingSound } from '../lib/myTradeRowRing';
 import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
 import { useSidebarOnchainWalletMarketTrades } from '../lib/sidebarOnchainTradesStore';
+import { useWalletTradeElapsedMs } from '../lib/walletTradeElapsedStore';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 
 function tradeFilledSizeShares(trade: { size: string; size_filled?: string }): number {
   return parseFloat(trade.size_filled ?? trade.size);
+}
+
+function tradeTimeMs(trade: {
+  timestamp?: string | number;
+  match_time?: string | number;
+  created_at?: string | number;
+  matchTime?: string | number;
+}): number {
+  const ts = trade.match_time ?? trade.timestamp ?? trade.created_at ?? trade.matchTime ?? '';
+  if (!ts) return 0;
+  let t = typeof ts === 'string' ? parseInt(ts, 10) : ts;
+  if (!Number.isFinite(t) || t <= 0) return 0;
+  if (t < 1e12) t = t * 1000;
+  return t;
 }
 
 export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
@@ -35,6 +51,7 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
 }) {
   const trades = useAppStore((s) => s.trades);
   const wsMarketTrades = useSidebarOnchainWalletMarketTrades();
+  const nowMs = useWalletTradeElapsedMs();
 
   const myTrades = useMemo(() => {
     if (liveTradesSource !== 'onchain') {
@@ -119,6 +136,7 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
                 <th className="text-right font-medium">Price</th>
                 <th className="text-right font-medium">Fee</th>
                 <th className="text-right font-medium">Cost</th>
+                <th className="text-right font-medium">Time</th>
               </tr>
             </thead>
             <tbody>
@@ -140,6 +158,10 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
                       ? cost
                       : 0;
                 const tradeFee = parseFloat(trade.fee || '0');
+                const timeMs = tradeTimeMs(trade);
+                const ageMs = timeMs > 0 ? nowMs - timeMs : Infinity;
+                const timeColor =
+                  ageMs < 15 * 60000 ? 'text-green-400' : ageMs < 60 * 60000 ? 'text-yellow-400' : 'text-gray-400';
                 const dirTone =
                   side === 'BUY'
                     ? 'text-emerald-400'
@@ -168,6 +190,9 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
                       }`}
                     >
                       {signedCost >= 0 ? '+' : '-'}${Math.abs(signedCost).toFixed(2)}
+                    </td>
+                    <td className={`py-0.5 text-right tabular-nums ${timeColor}`}>
+                      {timeMs > 0 ? formatElapsedSinceMs(timeMs, nowMs) : ''}
                     </td>
                   </tr>
                 );

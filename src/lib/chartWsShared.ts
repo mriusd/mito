@@ -1,5 +1,6 @@
 import { WS_BASE } from './env';
 import { onBackendReconnect } from './backendReconnect';
+import { backendWsRetryDelayMs, markBackendDownFromWs } from './fetchBackend';
 
 // Single shared /ws/chart socket for the whole app. Every consumer (live trade
 // chart, chainlink/volatility charts, binance chart panel, bid/ask lookup)
@@ -40,6 +41,7 @@ const streamKey = (symbol: string, interval: string) =>
 let ws: WebSocket | null = null;
 let pingIv: ReturnType<typeof setInterval> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let onReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let attempt = 0;
 
 const klineSubs = new Map<string, KlineEntry>();
@@ -53,6 +55,17 @@ function totalSubs(): number {
 
 function rawSend(obj: unknown): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function fireOnReconnectDebounced(): void {
+  if (onReconnectTimer != null) clearTimeout(onReconnectTimer);
+  // Coalesce kline HTTP refetches — many panels subscribe; don't stampede REST on open.
+  onReconnectTimer = setTimeout(() => {
+    onReconnectTimer = null;
+    for (const e of klineSubs.values()) {
+      for (const h of e.handlers) h.onReconnect?.();
+    }
+  }, 750);
 }
 
 function connect(): void {
@@ -71,11 +84,7 @@ function connect(): void {
     pingIv = setInterval(() => {
       if (sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify({ type: 'ping' }));
     }, 30_000);
-    if (wasReconnect) {
-      for (const e of klineSubs.values()) {
-        for (const h of e.handlers) h.onReconnect?.();
-      }
-    }
+    if (wasReconnect) fireOnReconnectDebounced();
   };
 
   sock.onmessage = (event) => {
@@ -115,7 +124,8 @@ function connect(): void {
     }
     if (totalSubs() === 0) return;
     if (reconnectTimer != null) return;
-    const delay = Math.min(30_000, 800 * 2 ** Math.min(attempt, 8));
+    markBackendDownFromWs();
+    const delay = backendWsRetryDelayMs(Math.min(30_000, 800 * 2 ** Math.min(attempt, 8)));
     attempt += 1;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
@@ -128,6 +138,10 @@ function teardown(): void {
   if (reconnectTimer != null) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
+  }
+  if (onReconnectTimer != null) {
+    clearTimeout(onReconnectTimer);
+    onReconnectTimer = null;
   }
   if (pingIv != null) {
     clearInterval(pingIv);

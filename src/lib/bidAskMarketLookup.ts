@@ -236,6 +236,64 @@ function cloneMarketForClobToken(m: Market, tokenId: string, prevLookup: Record<
   return { ...m, ...ws };
 }
 
+/** Token → market seed — rebuilt when market arrays change. Avoids O(all markets) per WS item. */
+let seedIndex: Map<string, Market> | null = null;
+let seedIndexGen = 0;
+let lastSeedIndexGen = -1;
+
+function bumpSeedIndex(): void {
+  seedIndexGen += 1;
+  seedIndex = null;
+}
+
+function indexMarketList(map: Map<string, Market>, markets: Market[]): void {
+  for (const m of markets) {
+    for (const tid of m.clobTokenIds || []) {
+      const id = String(tid || '').trim();
+      if (id && !map.has(id)) map.set(id, m);
+    }
+  }
+}
+
+function getOrBuildSeedIndex(): Map<string, Market> {
+  if (seedIndex && lastSeedIndexGen === seedIndexGen) return seedIndex;
+  const state = useAppStore.getState();
+  const map = new Map<string, Market>();
+  for (const asset of Object.keys(state.upOrDownMarkets)) {
+    for (const tf of Object.keys(state.upOrDownMarkets[asset] || {})) {
+      indexMarketList(map, state.upOrDownMarkets[asset][tf] || []);
+    }
+  }
+  for (const asset of Object.keys(state.aboveMarkets)) {
+    indexMarketList(map, state.aboveMarkets[asset] || []);
+  }
+  for (const asset of Object.keys(state.priceOnMarkets)) {
+    indexMarketList(map, state.priceOnMarkets[asset] || []);
+  }
+  for (const asset of Object.keys(state.weeklyHitMarkets)) {
+    indexMarketList(map, state.weeklyHitMarkets[asset] || []);
+  }
+  for (const city of Object.keys(state.weatherMarkets)) {
+    indexMarketList(map, state.weatherMarkets[city] || []);
+  }
+  seedIndex = map;
+  lastSeedIndexGen = seedIndexGen;
+  return map;
+}
+
+// Invalidate seed index when market buckets change (not on every bid/ask flush).
+useAppStore.subscribe((state, prev) => {
+  if (
+    state.upOrDownMarkets !== prev.upOrDownMarkets ||
+    state.aboveMarkets !== prev.aboveMarkets ||
+    state.priceOnMarkets !== prev.priceOnMarkets ||
+    state.weeklyHitMarkets !== prev.weeklyHitMarkets ||
+    state.weatherMarkets !== prev.weatherMarkets
+  ) {
+    bumpSeedIndex();
+  }
+});
+
 /** Seed row for WS bid/ask merge when token not yet in marketLookup (e.g. new up/down market). */
 export function resolveBidAskSeedMarket(assetId: string): Market | undefined {
   const id = String(assetId || '').trim();
@@ -246,36 +304,8 @@ export function resolveBidAskSeedMarket(assetId: string): Market | undefined {
   const fromLookup = state.marketLookup[id];
   if (fromLookup) return fromLookup;
 
-  const scanList = (markets: Market[]): Market | undefined => {
-    for (const m of markets) {
-      const tids = m.clobTokenIds || [];
-      if (tids.includes(id)) return cloneMarketForClobToken(m, id, state.marketLookup);
-    }
-    return undefined;
-  };
-
-  for (const asset of Object.keys(state.upOrDownMarkets)) {
-    for (const tf of Object.keys(state.upOrDownMarkets[asset] || {})) {
-      const hit = scanList(state.upOrDownMarkets[asset][tf] || []);
-      if (hit) return hit;
-    }
-  }
-  for (const asset of Object.keys(state.aboveMarkets)) {
-    const hit = scanList(state.aboveMarkets[asset] || []);
-    if (hit) return hit;
-  }
-  for (const asset of Object.keys(state.priceOnMarkets)) {
-    const hit = scanList(state.priceOnMarkets[asset] || []);
-    if (hit) return hit;
-  }
-  for (const asset of Object.keys(state.weeklyHitMarkets)) {
-    const hit = scanList(state.weeklyHitMarkets[asset] || []);
-    if (hit) return hit;
-  }
-  for (const city of Object.keys(state.weatherMarkets)) {
-    const hit = scanList(state.weatherMarkets[city] || []);
-    if (hit) return hit;
-  }
+  const seed = getOrBuildSeedIndex().get(id);
+  if (seed) return cloneMarketForClobToken(seed, id, state.marketLookup);
 
   return {
     id: `ws:${id}`,
@@ -287,7 +317,21 @@ export function resolveBidAskSeedMarket(assetId: string): Market | undefined {
   };
 }
 
-export function enqueueBidAskMarketPatches(items: BidAskWsItem[]) {
+const BIDASK_BATCH_CHUNK = 80;
+let bidAskChunkQueue: BidAskWsItem[] = [];
+let bidAskChunkRaf: number | null = null;
+
+function processBidAskChunk(): void {
+  bidAskChunkRaf = null;
+  if (bidAskChunkQueue.length === 0) return;
+  const chunk = bidAskChunkQueue.splice(0, BIDASK_BATCH_CHUNK);
+  applyBidAskMarketPatches(chunk);
+  if (bidAskChunkQueue.length > 0) {
+    bidAskChunkRaf = requestAnimationFrame(processBidAskChunk);
+  }
+}
+
+function applyBidAskMarketPatches(items: BidAskWsItem[]) {
   const lookup = useAppStore.getState().marketLookup;
   let touched = false;
   for (const item of items) {
@@ -313,6 +357,19 @@ export function enqueueBidAskMarketPatches(items: BidAskWsItem[]) {
   if (Object.keys(pendingPatch).length > 0) scheduleBidAskFlush();
 }
 
+export function enqueueBidAskMarketPatches(items: BidAskWsItem[]) {
+  if (items.length === 0) return;
+  // Small live ticks: apply sync. Huge reconnect dumps: chunk across frames.
+  if (items.length <= BIDASK_BATCH_CHUNK && bidAskChunkQueue.length === 0) {
+    applyBidAskMarketPatches(items);
+    return;
+  }
+  bidAskChunkQueue.push(...items);
+  if (bidAskChunkRaf == null) {
+    bidAskChunkRaf = requestAnimationFrame(processBidAskChunk);
+  }
+}
+
 export function resetBidAskMarketLookupPending() {
   if (flushTimer != null) {
     clearTimeout(flushTimer);
@@ -322,5 +379,10 @@ export function resetBidAskMarketLookupPending() {
     clearTimeout(gridLiveCoalesceTimer);
     gridLiveCoalesceTimer = null;
   }
+  if (bidAskChunkRaf != null) {
+    cancelAnimationFrame(bidAskChunkRaf);
+    bidAskChunkRaf = null;
+  }
+  bidAskChunkQueue = [];
   for (const k of Object.keys(pendingPatch)) delete pendingPatch[k];
 }

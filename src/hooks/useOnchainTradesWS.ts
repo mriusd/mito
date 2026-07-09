@@ -3,7 +3,7 @@ import { setSidebarOnchainLiveTrades } from '../lib/sidebarOnchainTradesStore';
 import { fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
 import type { WalletPosition } from '../api';
 import { API_BASE, WS_BASE } from '../lib/env';
-import { fetchBackend } from '../lib/fetchBackend';
+import { fetchBackend, backendWsRetryDelayMs, markBackendDownFromWs } from '../lib/fetchBackend';
 import { onBackendReconnect } from '../lib/backendReconnect';
 import { dedupeWalletTradesByLedgerLeg, onchainFillKey, walletTradeKey } from '../lib/tradeKeys';
 import type { LiveTrade } from './usePolymarketOB';
@@ -1287,8 +1287,9 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
         ) {
           return;
         }
+        markBackendDownFromWs();
         if (attempt >= 2) startPollingFallback();
-        const delay = Math.min(30000, 1000 * 2 ** Math.min(attempt, 5));
+        const delay = backendWsRetryDelayMs(Math.min(30000, 1000 * 2 ** Math.min(attempt, 5)));
         attempt += 1;
         reconnectRef.current = setTimeout(connect, delay);
       };
@@ -1300,7 +1301,15 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       if (disposed) return;
       attempt = 0;
       cleanup();
-      connect();
+      if (
+        !marketRef.current?.trim() &&
+        !tokenRef.current?.trim() &&
+        !(walletRef.current || '').trim().toLowerCase() &&
+        walletMarketListenersRef.current.size === 0
+      ) {
+        return;
+      }
+      reconnectRef.current = setTimeout(connect, backendWsRetryDelayMs(500));
     });
 
     return () => {

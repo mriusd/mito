@@ -34,6 +34,11 @@ export function markBackendRecovered(): void {
   circuitOpenUntil = 0;
 }
 
+/** WS close / refused — open circuit so feeds back off during backend restart. */
+export function markBackendDownFromWs(): void {
+  openBackendCircuit();
+}
+
 function openBackendCircuit(): void {
   circuitOpenUntil = Date.now() + CIRCUIT_OPEN_MS;
   const store = useAppStore.getState();

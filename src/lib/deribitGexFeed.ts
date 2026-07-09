@@ -837,6 +837,12 @@ onBackendReconnect(() => {
   for (const source of GEX_FEED_SOURCES) {
     if (feeds[source].refCount <= 0) continue;
     disconnect(source);
-    connect(source);
+    // disconnect() clears onclose — schedule soft reconnect (staggered by notifyBackendReconnect).
+    const state = feeds[source];
+    if (state.reconnectTimer != null) continue;
+    state.reconnectTimer = window.setTimeout(() => {
+      state.reconnectTimer = null;
+      if (state.refCount > 0) connect(source);
+    }, backendWsRetryDelayMs(2000));
   }
 });

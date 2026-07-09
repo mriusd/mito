@@ -958,14 +958,14 @@ export function LiveTradeChart({
     }
     if (Number.isFinite(rangeMaxH) && Number.isFinite(rangeMinL) && rangeMaxH >= rangeMinL) {
       ctx.font = 'bold 9px monospace';
-      ctx.textAlign = 'right';
+      ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       const maxLabelY = Math.max(chartTop + 8, Math.min(chartBot - 8, toY(rangeMaxH)));
       const minLabelY = Math.max(chartTop + 8, Math.min(chartBot - 8, toY(rangeMinL)));
       ctx.fillStyle = '#34d399';
-      ctx.fillText(`H ${rangeMaxH.toFixed(1)}¢`, chartRight - 2, maxLabelY);
+      ctx.fillText(`H ${rangeMaxH.toFixed(1)}¢`, chartLeft + 2, maxLabelY);
       ctx.fillStyle = '#f87171';
-      ctx.fillText(`L ${rangeMinL.toFixed(1)}¢`, chartRight - 2, minLabelY);
+      ctx.fillText(`L ${rangeMinL.toFixed(1)}¢`, chartLeft + 2, minLabelY);
     }
 
     const lastPrice = candles[candles.length - 1].c;

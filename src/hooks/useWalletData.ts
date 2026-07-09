@@ -65,7 +65,7 @@ export function useWalletData() {
       try {
         const [positions, trades, orders, balance] = await Promise.all([
           fetchWalletPositions(makerLocked),
-          fetchWalletActivity(makerLocked, 100),
+          fetchWalletActivity(makerLocked, 500),
           fetchOpenOrdersDirect(makerLocked),
           fetchWalletBalance(makerLocked),
         ]);

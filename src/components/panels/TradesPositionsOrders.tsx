@@ -930,7 +930,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto min-h-0">
               <table className="w-full text-[10px] table-fixed">{trColgroup}<tbody>
-                {processedTrades.slice(0, 100).map((t, i) => {
+                {processedTrades.slice(0, 500).map((t, i) => {
                   const ageMs = t.timeMs > 0 ? Date.now() - t.timeMs : Infinity;
                   const timeColor = ageMs < 15 * 60000 ? 'text-green-400' : ageMs < 60 * 60000 ? 'text-yellow-400' : 'text-gray-400';
                   return (

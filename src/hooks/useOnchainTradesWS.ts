@@ -10,7 +10,7 @@ import type { LiveTrade } from './usePolymarketOB';
 
 /** Cap sidebar / chart tape arrays — 3500 rows × lucide-SVG anchors held hundreds of MB of detached DOM after a few market switches. */
 const MAX_TRADES = 400;
-const WALLET_TRADES_CAP = 400;
+const WALLET_TRADES_CAP = 500;
 const WALLET_MARKET_TRADES_CAP = 500;
 /** Mempool pending rows — unbounded retention blew multi-GB heaps overnight. */
 const PENDING_TTL_MS = 12 * 60 * 1000;

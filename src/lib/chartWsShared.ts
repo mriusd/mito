@@ -46,15 +46,22 @@ let attempt = 0;
 
 const klineSubs = new Map<string, KlineEntry>();
 const bidAskSubs = new Set<(msg: ChartWsMsg) => void>();
+/** Extra CLOB tokens for live bid/ask (TPO positions etc.) — resent on reconnect. */
+let bidAskExtraTokenIds: string[] = [];
 
 function totalSubs(): number {
   let n = bidAskSubs.size;
   for (const e of klineSubs.values()) n += e.handlers.size;
+  if (bidAskExtraTokenIds.length > 0) n += 1;
   return n;
 }
 
 function rawSend(obj: unknown): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function sendBidAskExtraTokens(): void {
+  rawSend({ type: 'subscribeBidAskTokens', data: { tokenIds: bidAskExtraTokenIds } });
 }
 
 function fireOnReconnectDebounced(): void {
@@ -79,6 +86,9 @@ function connect(): void {
     attempt = 0;
     for (const e of klineSubs.values()) {
       sock.send(JSON.stringify({ type: 'subscribeKlineStream', data: { symbol: e.symbol, interval: e.interval } }));
+    }
+    if (bidAskExtraTokenIds.length > 0) {
+      sock.send(JSON.stringify({ type: 'subscribeBidAskTokens', data: { tokenIds: bidAskExtraTokenIds } }));
     }
     if (pingIv != null) clearInterval(pingIv);
     pingIv = setInterval(() => {
@@ -208,6 +218,20 @@ export function subscribeChartBidAsk(onMessage: (msg: ChartWsMsg) => void): () =
     bidAskSubs.delete(onMessage);
     if (totalSubs() === 0) teardown();
   };
+}
+
+/** Ask polycandles collector to watch these CLOB tokens for live bid/ask (TPO etc.). */
+export function setChartBidAskExtraTokens(tokenIds: readonly string[]): void {
+  const next = [...new Set(tokenIds.map((t) => String(t || '').trim()).filter(Boolean))].sort();
+  const prev = bidAskExtraTokenIds;
+  if (prev.length === next.length && prev.every((v, i) => v === next[i])) return;
+  bidAskExtraTokenIds = next;
+  if (ws == null) {
+    if (next.length > 0 || bidAskSubs.size > 0 || klineSubs.size > 0) connect();
+    return;
+  }
+  sendBidAskExtraTokens();
+  if (totalSubs() === 0) teardown();
 }
 
 onBackendReconnect(() => {

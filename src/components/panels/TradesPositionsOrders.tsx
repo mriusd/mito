@@ -9,7 +9,9 @@ import { positionExitBidProb, outcomeBidAskProb } from '../../lib/outcomeQuote';
 import { positionBidExitTier, positionSellPriceColorStyle, POSITION_BID_EXIT_TAILWIND } from '../../lib/positionBidExitTier';
 import { onchainFillKey } from '../../lib/tradeKeys';
 import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLookupSubset';
+import { useLiveBidAskLookupSubset } from '../../hooks/useLiveBidAskLookupSubset';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
+import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
 import {
   refreshSidebarOnchainWallet,
   useSidebarOnchainGridWalletPositions,
@@ -324,14 +326,20 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     return [...set];
   }, [polymarketTokenKey, onchainWsPositions, onchainWsTrades, selectedMarketClobTokenIds]);
 
-  // Grid flush (~2s) — live bid/ask must not rebuild whole TPO table every tick.
+  // Grid flush (~2s) for labels/metadata; live WS for Bid/Ask/Val.
   const marketLookup = useThrottledMarketLookupSubset(tpoClobIds);
+  const liveQuoteLookup = useLiveBidAskLookupSubset(tpoClobIds);
+
+  useEffect(() => {
+    setChartBidAskExtraTokens(tpoClobIds);
+  }, [tpoClobIds]);
+  useEffect(() => () => setChartBidAskExtraTokens([]), []);
 
   const sellOrderPriceByToken = useMemo(() => buildSellOrderPriceByToken(orders), [orders]);
 
   const onchainPositionsAsPM = useMemo(
-    () => wsPositionsToPM(onchainWsPositions, marketLookup),
-    [onchainWsPositions, marketLookup],
+    () => wsPositionsToPM(onchainWsPositions, liveQuoteLookup),
+    [onchainWsPositions, liveQuoteLookup],
   );
 
   const onchainTradesAsPM = useMemo(() => wsTradesToPM(onchainWsTrades), [onchainWsTrades]);
@@ -700,7 +708,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
       const size = pos.size || 0;
       const avg = pos.avgPrice || 0;
-      const { bid: bidProb, ask: askProb } = outcomeBidAskProb(tid, marketLookup);
+      const { bid: bidProb, ask: askProb } = outcomeBidAskProb(tid, liveQuoteLookup);
       const cur = bidProb ?? 0;
       const mid =
         bidProb == null || bidProb === 0
@@ -737,7 +745,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         marketId: market?.id ?? pos.market,
         clickable,
       };
-    }), [positionsForTable, assetFilter, marketLookup, sellOrderPriceByToken]);
+    }), [positionsForTable, assetFilter, marketLookup, liveQuoteLookup, sellOrderPriceByToken]);
 
   const displayPositions = useMemo(() => {
     const rows = [...processedPositions];
@@ -800,7 +808,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const size = parseFloat(order.original_size || order.size);
       const filled = parseFloat(order.size_matched || '0');
       const value = parseFloat(order.price) * size;
-      const { bid: bidProb, ask: askProb } = outcomeBidAskProb(tid, marketLookup);
+      const { bid: bidProb, ask: askProb } = outcomeBidAskProb(tid, liveQuoteLookup);
       return {
         id: order.id,
         tid,
@@ -820,7 +828,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         askProb,
         marketId: market?.id,
       };
-    }), [orders, assetFilter, ordersFilter, marketLookup]);
+    }), [orders, assetFilter, ordersFilter, marketLookup, liveQuoteLookup]);
 
   const displayOrders = useMemo(() => {
     if (ordSortCol !== 'price') return processedOrders;

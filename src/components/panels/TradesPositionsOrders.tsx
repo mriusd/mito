@@ -703,9 +703,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const { bid: bidProb, ask: askProb } = outcomeBidAskProb(tid, marketLookup);
       const cur = bidProb ?? 0;
       const mid =
-        bidProb != null && askProb != null
-          ? (bidProb + askProb) / 2
-          : bidProb ?? askProb ?? 0;
+        bidProb != null && bidProb === 0
+          ? 0
+          : bidProb != null && askProb != null
+            ? (bidProb + askProb) / 2
+            : bidProb ?? askProb ?? 0;
       const entryPrice = avg * 100;
       const cost = avg * size;
       const currentValue = mid * size;

@@ -886,7 +886,10 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
   const hCls = 'text-gray-500 py-1 px-1 whitespace-nowrap truncate max-w-0';
   const hSortCls = `${hCls} cursor-pointer hover:text-white select-none no-drag`;
+  const nHCls = 'text-gray-500 py-1 px-1 whitespace-nowrap';
+  const nHSortCls = `${nHCls} cursor-pointer hover:text-white select-none no-drag`;
   const cCls = 'py-1 px-1 whitespace-nowrap truncate';
+  const nCls = 'py-1 px-1 whitespace-nowrap';
   const posSortArrow = (col: PosSortCol) =>
     posSortCol === col ? (posSortDir === 1 ? ' ▲' : ' ▼') : '';
   const ordSortArrow = (col: OrdSortCol) =>
@@ -1013,11 +1016,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               <th className={`${hCls} text-left`}>Market</th>
               <th className={`${hCls} text-left`}>Side</th>
               <th className={`${hCls} text-left`}>Y/N</th>
-              <th className={`${hCls} text-right`}>Size</th>
-              <th className={`${hCls} text-right`}>Price</th>
-              <th className={`${hCls} text-right`}>Value</th>
-              <th className={`${hCls} text-right`}>Fee</th>
-              <th className={`${hCls} text-right`}>Time</th>
+              <th className={`${nHCls} text-right`}>Size</th>
+              <th className={`${nHCls} text-right`}>Price</th>
+              <th className={`${nHCls} text-right`}>Value</th>
+              <th className={`${nHCls} text-right`}>Fee</th>
+              <th className={`${nHCls} text-right`}>Time</th>
             </tr></thead></table>
             <TpoVirtualTableBody count={displayTrades.length} colgroup={trColgroup}>
               {(i) => {
@@ -1037,11 +1040,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                               : 'text-red-400'
                     }`}>{t.side}</td>
                     <td className={`${cCls} font-bold ${t.outcome === 'YES' || t.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{t.outcome || '-'}</td>
-                    <td className={`${cCls} text-right text-gray-300`}>{t.side === 'CLAIM' ? '—' : Math.round(t.size).toLocaleString()}</td>
-                    <td className={`${cCls} text-right text-gray-300`}>{t.side === 'CLAIM' ? '—' : `${t.price.toFixed(1)}¢`}</td>
-                    <td className={`${cCls} text-right ${t.side === 'CLAIM' ? 'text-blue-300 font-bold' : 'text-gray-300'}`}>${t.value.toFixed(2)}</td>
-                    <td className={`${cCls} text-right text-yellow-400/80`}>{t.fee > 0 ? `$${t.fee.toFixed(2)}` : '-'}</td>
-                    <td className={`${cCls} text-right ${timeColor}`}>{t.timeMs > 0 ? formatElapsed(t.timeMs) : ''}</td>
+                    <td className={`${nCls} text-right text-gray-300`}>{t.side === 'CLAIM' ? '—' : Math.round(t.size).toLocaleString()}</td>
+                    <td className={`${nCls} text-right text-gray-300`}>{t.side === 'CLAIM' ? '—' : `${t.price.toFixed(1)}¢`}</td>
+                    <td className={`${nCls} text-right ${t.side === 'CLAIM' ? 'text-blue-300 font-bold' : 'text-gray-300'}`}>${t.value.toFixed(2)}</td>
+                    <td className={`${nCls} text-right text-yellow-400/80`}>{t.fee > 0 ? `$${t.fee.toFixed(2)}` : '-'}</td>
+                    <td className={`${nCls} text-right ${timeColor}`}>{t.timeMs > 0 ? formatElapsed(t.timeMs) : ''}</td>
                   </tr>
                 );
               }}
@@ -1075,59 +1078,59 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               <th className={`${hCls} text-left`}>Market</th>
               <th className={`${hCls} text-left`}>Y/N</th>
               <th
-                className={`${hSortCls} text-right`}
+                className={`${nHSortCls} text-right`}
                 onClick={() => togglePosSort('size')}
                 title="Sort by size"
               >
                 Size{posSortArrow('size')}
               </th>
               <th
-                className={`${hSortCls} text-right`}
+                className={`${nHSortCls} text-right`}
                 onClick={() => togglePosSort('entry')}
                 title="Sort by entry price"
               >
                 Entry{posSortArrow('entry')}
               </th>
               <th
-                className={`${hSortCls} text-right`}
+                className={`${nHSortCls} text-right`}
                 onClick={() => togglePosSort('cost')}
                 title="Sort by cost"
               >
                 Cost{posSortArrow('cost')}
               </th>
               <th
-                className={`${hSortCls} text-right`}
+                className={`${nHSortCls} text-right`}
                 onClick={() => togglePosSort('bid')}
                 title="Sort by bid"
               >
                 Bid{posSortArrow('bid')}
               </th>
               <th
-                className={`${hSortCls} text-right`}
+                className={`${nHSortCls} text-right`}
                 onClick={() => togglePosSort('ask')}
                 title="Sort by ask"
               >
                 Ask{posSortArrow('ask')}
               </th>
-              <th className={`${hCls} text-right`} title="Resting sell limit price">
+              <th className={`${nHCls} text-right`} title="Resting sell limit price">
                 Sell
               </th>
               <th
-                className={`${hSortCls} text-right`}
+                className={`${nHSortCls} text-right`}
                 onClick={() => togglePosSort('val')}
                 title="Sort by position value"
               >
                 Val{posSortArrow('val')}
               </th>
               <th
-                className={`${hSortCls} text-right`}
+                className={`${nHSortCls} text-right`}
                 onClick={() => togglePosSort('pnl')}
                 title="Sort by PnL $"
               >
                 PnL${posSortArrow('pnl')}
               </th>
               <th
-                className={`${hSortCls} text-right`}
+                className={`${nHSortCls} text-right`}
                 onClick={() => togglePosSort('pnlPct')}
                 title="Sort by PnL %"
               >
@@ -1147,22 +1150,22 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${cCls} ${p.dateColor}`}>{p.dateLabel}</td>
                     <td className={`${cCls} ${assetColorMap2[p.asset] || 'text-gray-300'}`}>{p.marketName}</td>
                     <td className={`${cCls} font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
-                    <td className={`${cCls} text-right text-gray-300`}>{Math.floor(p.size).toLocaleString()}</td>
-                    <td className={`${cCls} text-right text-gray-300`}>{p.entryPrice.toFixed(1)}¢</td>
-                    <td className={`${cCls} text-right text-red-400`}>-${p.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td className={`${cCls} text-right ${hasBid ? exitColor : 'text-gray-400'}`}>
+                    <td className={`${nCls} text-right text-gray-300`}>{Math.floor(p.size).toLocaleString()}</td>
+                    <td className={`${nCls} text-right text-gray-300`}>{p.entryPrice.toFixed(1)}¢</td>
+                    <td className={`${nCls} text-right text-red-400`}>-${p.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className={`${nCls} text-right ${hasBid ? exitColor : 'text-gray-400'}`}>
                       {hasBid ? `${p.currentPrice.toFixed(1)}¢` : '-'}
                     </td>
-                    <td className={`${cCls} text-right text-red-300/90`}>{formatQuoteCents(p.askProb)}</td>
+                    <td className={`${nCls} text-right text-red-300/90`}>{formatQuoteCents(p.askProb)}</td>
                     <td
-                      className={`${cCls} text-right ${p.sellPrice == null ? 'text-gray-400' : ''}`}
+                      className={`${nCls} text-right ${p.sellPrice == null ? 'text-gray-400' : ''}`}
                       style={p.sellPrice != null ? positionSellPriceColorStyle(p.currentPrice, p.sellPrice) : undefined}
                     >
                       {p.sellPrice != null ? `${p.sellPrice.toFixed(1)}¢` : '-'}
                     </td>
-                    <td className={`${cCls} text-right text-gray-300`}>${p.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td className={`${cCls} text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(p.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td className={`${cCls} text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>
+                    <td className={`${nCls} text-right text-gray-300`}>${p.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className={`${nCls} text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(p.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className={`${nCls} text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>
                   </tr>
                 );
               }}
@@ -1172,15 +1175,15 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               <tr className="border-t-2 border-gray-600 font-bold">
                 <td className={`${cCls} text-white`}>Total</td>
                 <td className={cCls}></td><td className={cCls}></td><td className={cCls}></td>
-                <td className={`${cCls} text-right text-white`}>{Math.floor(totalSize).toLocaleString()}</td>
-                <td className={`${cCls} text-right text-gray-400`}>{avgEntry.toFixed(1)}¢</td>
-                <td className={`${cCls} text-right text-red-400`}>-${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td className={`${cCls} text-right text-gray-400`}>{avgExit.toFixed(1)}¢</td>
+                <td className={`${nCls} text-right text-white`}>{Math.floor(totalSize).toLocaleString()}</td>
+                <td className={`${nCls} text-right text-gray-400`}>{avgEntry.toFixed(1)}¢</td>
+                <td className={`${nCls} text-right text-red-400`}>-${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td className={`${nCls} text-right text-gray-400`}>{avgExit.toFixed(1)}¢</td>
                 <td className={cCls}></td>
                 <td className={cCls}></td>
-                <td className={`${cCls} text-right text-white`}>${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td className={`${cCls} text-right ${tPnlColor} font-bold`}>{tPnlSign}${Math.abs(totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td className={`${cCls} text-right ${tPnlColor} font-bold`}>{tPnlSign}{Math.round(Math.abs(avgPnlPct))}%</td>
+                <td className={`${nCls} text-right text-white`}>${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td className={`${nCls} text-right ${tPnlColor} font-bold`}>{tPnlSign}${Math.abs(totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td className={`${nCls} text-right ${tPnlColor} font-bold`}>{tPnlSign}{Math.round(Math.abs(avgPnlPct))}%</td>
               </tr>
             </tbody></table>
           </div>)
@@ -1199,16 +1202,16 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               <th className={`${hCls} text-left`}>Side</th>
               <th className={`${hCls} text-left`}>Y/N</th>
               <th
-                className={`${hSortCls} text-right`}
+                className={`${nHSortCls} text-right`}
                 onClick={() => toggleOrdSort('price')}
                 title="Sort by price"
               >
                 Price{ordSortArrow('price')}
               </th>
-              <th className={`${hCls} text-right`}>Size</th>
-              <th className={`${hCls} text-right`}>Filled</th>
-              <th className={`${hCls} text-right`}>Value</th>
-              <th className={`${hCls} text-center`}></th>
+              <th className={`${nHCls} text-right`}>Size</th>
+              <th className={`${nHCls} text-right`}>Filled</th>
+              <th className={`${nHCls} text-right`}>Value</th>
+              <th className={`${nHCls} text-center`}></th>
             </tr></thead></table>
             <TpoVirtualTableBody count={displayOrders.length} colgroup={ordColgroup}>
               {(i) => {
@@ -1223,11 +1226,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${cCls} ${assetColorMap2[o.asset] || 'text-gray-300'} cursor-pointer hover:underline`} onClick={() => handleMarketClick(o.tid)}>{o.marketName}</td>
                     <td className={`${cCls} font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
                     <td className={`${cCls} font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
-                    <td className={`${cCls} text-right text-white`}>{o.price.toFixed(1)}¢</td>
-                    <td className={`${cCls} text-right text-gray-300`}>{Math.round(o.size).toLocaleString()}</td>
-                    <td className={`${cCls} text-right text-gray-500`}>{Math.round(o.filled).toLocaleString()}</td>
-                    <td className={`${cCls} text-right text-gray-300`}>${Math.round(o.value).toLocaleString()}</td>
-                    <td className={`${cCls} text-center`}>
+                    <td className={`${nCls} text-right text-white`}>{o.price.toFixed(1)}¢</td>
+                    <td className={`${nCls} text-right text-gray-300`}>{Math.round(o.size).toLocaleString()}</td>
+                    <td className={`${nCls} text-right text-gray-500`}>{Math.round(o.filled).toLocaleString()}</td>
+                    <td className={`${nCls} text-right text-gray-300`}>${Math.round(o.value).toLocaleString()}</td>
+                    <td className={`${nCls} text-center`}>
                       <button
                         onClick={() => !cancellingOrderIds.has(o.id) && handleCancelOrder(o.id)}
                         disabled={cancellingOrderIds.has(o.id)}

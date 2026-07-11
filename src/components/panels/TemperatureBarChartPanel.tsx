@@ -1,5 +1,5 @@
 import { ExternalLink, Link2, Link2Off, RefreshCw } from 'lucide-react';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../../stores/appStore';
 import { formatElapsedSinceMs, getOrderClobTokenId, isWeatherMarket, normalizeClobTokenId, tradeElapsedColorClass } from '../../utils/format';
@@ -49,11 +49,8 @@ import { TempOddsCustomButtonsPopup } from '../TempOddsCustomButtonsPopup';
 import { outcomeBestAskProb, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
 import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
-import { getGridBidAskPairSnapshot } from '../../hooks/useThrottledBidAskPair';
-import {
-  getBidAskGridFlushDigest,
-  subscribeBidAskMarketLookupGridFlush,
-} from '../../lib/bidAskMarketLookup';
+import { getBidAskMarketRow, subscribeBidAskMarketLookup } from '../../lib/bidAskMarketLookup';
+import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
 import { useThrottledGridOrders, useThrottledGridPositions } from '../../hooks/useThrottledGridWallet';
 import type { Position } from '../../types';
 import type { WSPosition } from '../../hooks/useOnchainTradesWS';
@@ -358,10 +355,11 @@ function getMarketYesQuote(market: Market): MarketYesQuote {
   const tokenIds = market.clobTokenIds || [];
   const yesTokenId = tokenIds[0] || '';
   const noTokenId = tokenIds[1] || '';
-  const ws = getGridBidAskPairSnapshot(yesTokenId, noTokenId);
+  const yesLive = yesTokenId ? getBidAskMarketRow(yesTokenId) : undefined;
+  const noLive = noTokenId ? getBidAskMarketRow(noTokenId) : undefined;
   const lookup: Record<string, Market> = {};
-  if (yesTokenId) lookup[yesTokenId] = (ws.yes as Market | undefined) ?? market;
-  if (noTokenId && ws.no) lookup[noTokenId] = ws.no;
+  if (yesTokenId) lookup[yesTokenId] = yesLive ?? market;
+  if (noTokenId && noLive) lookup[noTokenId] = noLive;
   const gamma = { bestBid: market.bestBid, bestAsk: market.bestAsk };
   const bid = outcomeBestBidProb(yesTokenId, lookup, gamma);
   const ask = outcomeBestAskProb(yesTokenId, lookup, gamma);
@@ -491,14 +489,40 @@ function useTempOddsBuckets(
   modelBuckets: Record<string, number> | null | undefined,
   orderLookup: Record<string, Order[]>,
 ) {
-  const digest = useSyncExternalStore(
-    subscribeBidAskMarketLookupGridFlush,
-    getBidAskGridFlushDigest,
-    getBidAskGridFlushDigest,
-  );
+  const [quoteTick, setQuoteTick] = useState(0);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsub = subscribeBidAskMarketLookup(() => {
+      if (timer != null) return;
+      timer = setTimeout(() => {
+        timer = null;
+        setQuoteTick((n) => n + 1);
+      }, 250);
+    });
+    return () => {
+      unsub();
+      if (timer != null) clearTimeout(timer);
+    };
+  }, []);
+
+  const quoteTokenIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const { market } of buckets) {
+      for (const tid of market.clobTokenIds || []) {
+        if (tid) ids.push(String(tid));
+      }
+    }
+    return ids;
+  }, [buckets]);
+
+  useEffect(() => {
+    setChartBidAskExtraTokens('temp-odds', quoteTokenIds);
+  }, [quoteTokenIds]);
+  useEffect(() => () => setChartBidAskExtraTokens('temp-odds', []), []);
+
   return useMemo(
     () => buildTempOddsBuckets(buckets, positions, liveTradesSource, onchainWsPositions, modelBuckets, orderLookup),
-    [buckets, positions, liveTradesSource, onchainWsPositions, modelBuckets, orderLookup, digest],
+    [buckets, positions, liveTradesSource, onchainWsPositions, modelBuckets, orderLookup, quoteTick],
   );
 }
 

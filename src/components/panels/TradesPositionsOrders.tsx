@@ -330,10 +330,26 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const marketLookup = useThrottledMarketLookupSubset(tpoClobIds);
   const liveQuoteLookup = useLiveBidAskLookupSubset(tpoClobIds);
 
+  const tpoQuoteTokenIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of positions) {
+      const tid = getPositionClobTokenId(p);
+      if (tid) set.add(tid);
+    }
+    for (const r of onchainWsPositions) {
+      if (r.tokenId) set.add(String(r.tokenId));
+    }
+    for (const o of orders) {
+      const t = o.asset_id || o.token_id;
+      if (t) set.add(String(t));
+    }
+    return [...set];
+  }, [positions, onchainWsPositions, orders]);
+
   useEffect(() => {
-    setChartBidAskExtraTokens(tpoClobIds);
-  }, [tpoClobIds]);
-  useEffect(() => () => setChartBidAskExtraTokens([]), []);
+    setChartBidAskExtraTokens('tpo', tpoQuoteTokenIds);
+  }, [tpoQuoteTokenIds]);
+  useEffect(() => () => setChartBidAskExtraTokens('tpo', []), []);
 
   const sellOrderPriceByToken = useMemo(() => buildSellOrderPriceByToken(orders), [orders]);
 

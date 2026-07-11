@@ -46,7 +46,8 @@ let attempt = 0;
 
 const klineSubs = new Map<string, KlineEntry>();
 const bidAskSubs = new Set<(msg: ChartWsMsg) => void>();
-/** Extra CLOB tokens for live bid/ask (TPO positions etc.) — resent on reconnect. */
+/** Extra CLOB tokens for live bid/ask — union of named sources (TPO, temp-odds, …). */
+const bidAskExtraSources = new Map<string, string[]>();
 let bidAskExtraTokenIds: string[] = [];
 
 function totalSubs(): number {
@@ -58,6 +59,14 @@ function totalSubs(): number {
 
 function rawSend(obj: unknown): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function rebuildBidAskExtraUnion(): string[] {
+  const set = new Set<string>();
+  for (const ids of bidAskExtraSources.values()) {
+    for (const id of ids) set.add(id);
+  }
+  return [...set].sort();
 }
 
 function sendBidAskExtraTokens(): void {
@@ -220,14 +229,30 @@ export function subscribeChartBidAsk(onMessage: (msg: ChartWsMsg) => void): () =
   };
 }
 
-/** Ask polycandles collector to watch these CLOB tokens for live bid/ask (TPO etc.). */
-export function setChartBidAskExtraTokens(tokenIds: readonly string[]): void {
+/** Ask polycandles collector to watch these CLOB tokens for live bid/ask. Named sources are unioned. */
+export function setChartBidAskExtraTokens(source: string, tokenIds: readonly string[]): void {
+  const key = String(source || '').trim() || 'default';
   const next = [...new Set(tokenIds.map((t) => String(t || '').trim()).filter(Boolean))].sort();
+  const prevSrc = bidAskExtraSources.get(key);
+  if (
+    next.length === 0
+      ? !prevSrc?.length
+      : prevSrc &&
+        prevSrc.length === next.length &&
+        prevSrc.every((v, i) => v === next[i])
+  ) {
+    if (next.length === 0) bidAskExtraSources.delete(key);
+    return;
+  }
+  if (next.length === 0) bidAskExtraSources.delete(key);
+  else bidAskExtraSources.set(key, next);
+
+  const union = rebuildBidAskExtraUnion();
   const prev = bidAskExtraTokenIds;
-  if (prev.length === next.length && prev.every((v, i) => v === next[i])) return;
-  bidAskExtraTokenIds = next;
+  if (prev.length === union.length && prev.every((v, i) => v === union[i])) return;
+  bidAskExtraTokenIds = union;
   if (ws == null) {
-    if (next.length > 0 || bidAskSubs.size > 0 || klineSubs.size > 0) connect();
+    if (union.length > 0 || bidAskSubs.size > 0 || klineSubs.size > 0) connect();
     return;
   }
   sendBidAskExtraTokens();

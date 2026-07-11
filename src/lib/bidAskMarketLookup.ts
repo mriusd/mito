@@ -122,6 +122,7 @@ function mergeWsItemOntoMarket(seed: Market, item: BidAskWsItem): Market {
 const pendingPatch: Record<string, Market> = {};
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let gridLiveCoalesceTimer: ReturnType<typeof setTimeout> | null = null;
+let liveNotifyRaf: number | null = null;
 const bidAskLookupLiveListeners = new Set<() => void>();
 const bidAskLookupGridFlushListeners = new Set<() => void>();
 let bidAskGridFlushDigest = 0;
@@ -148,6 +149,15 @@ export function getBidAskGridFlushDigest(): number {
 
 function notifyBidAskMarketLookupLiveListeners() {
   for (const listener of bidAskLookupLiveListeners) listener();
+}
+
+/** Coalesce live React notifies to one per frame — huge bidAskBatch dumps must not freeze UI. */
+function scheduleLiveNotify() {
+  if (liveNotifyRaf != null) return;
+  liveNotifyRaf = requestAnimationFrame(() => {
+    liveNotifyRaf = null;
+    notifyBidAskMarketLookupLiveListeners();
+  });
 }
 
 function notifyBidAskMarketLookupGridFlushListeners() {
@@ -320,18 +330,32 @@ export function resolveBidAskSeedMarket(assetId: string): Market | undefined {
 const BIDASK_BATCH_CHUNK = 80;
 let bidAskChunkQueue: BidAskWsItem[] = [];
 let bidAskChunkRaf: number | null = null;
+let bidAskChunkDrainTouched = false;
 
 function processBidAskChunk(): void {
   bidAskChunkRaf = null;
   if (bidAskChunkQueue.length === 0) return;
   const chunk = bidAskChunkQueue.splice(0, BIDASK_BATCH_CHUNK);
-  applyBidAskMarketPatches(chunk);
-  if (bidAskChunkQueue.length > 0) {
+  const more = bidAskChunkQueue.length > 0;
+  // Defer live React notify until queue drained — mid-dump setState freezes clicks.
+  if (applyBidAskMarketPatches(chunk, { notifyLive: false })) {
+    bidAskChunkDrainTouched = true;
+  }
+  if (more) {
     bidAskChunkRaf = requestAnimationFrame(processBidAskChunk);
+    return;
+  }
+  if (bidAskChunkDrainTouched) {
+    bidAskChunkDrainTouched = false;
+    scheduleLiveNotify();
   }
 }
 
-function applyBidAskMarketPatches(items: BidAskWsItem[]) {
+function applyBidAskMarketPatches(
+  items: BidAskWsItem[],
+  opts?: { notifyLive?: boolean },
+): boolean {
+  const notifyLive = opts?.notifyLive !== false;
   const lookup = useAppStore.getState().marketLookup;
   let touched = false;
   for (const item of items) {
@@ -351,10 +375,11 @@ function applyBidAskMarketPatches(items: BidAskWsItem[]) {
     touched = true;
   }
   if (touched) {
-    notifyBidAskMarketLookupLiveListeners();
+    if (notifyLive) scheduleLiveNotify();
     scheduleGridLiveCoalesceNotify();
   }
   if (Object.keys(pendingPatch).length > 0) scheduleBidAskFlush();
+  return touched;
 }
 
 export function enqueueBidAskMarketPatches(items: BidAskWsItem[]) {
@@ -379,10 +404,15 @@ export function resetBidAskMarketLookupPending() {
     clearTimeout(gridLiveCoalesceTimer);
     gridLiveCoalesceTimer = null;
   }
+  if (liveNotifyRaf != null) {
+    cancelAnimationFrame(liveNotifyRaf);
+    liveNotifyRaf = null;
+  }
   if (bidAskChunkRaf != null) {
     cancelAnimationFrame(bidAskChunkRaf);
     bidAskChunkRaf = null;
   }
   bidAskChunkQueue = [];
+  bidAskChunkDrainTouched = false;
   for (const k of Object.keys(pendingPatch)) delete pendingPatch[k];
 }

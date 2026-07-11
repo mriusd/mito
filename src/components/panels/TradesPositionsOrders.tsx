@@ -1097,6 +1097,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 const pnlColor = p.pnl >= 0 ? 'text-green-400' : 'text-red-400';
                 const pnlSign = p.pnl >= 0 ? '+' : '-';
                 const exitColor = POSITION_BID_EXIT_TAILWIND[positionBidExitTier(p.entryPrice, p.currentPrice)];
+                const hasBid = p.bidProb != null && Number.isFinite(p.bidProb) && p.bidProb > 0;
                 return (
                   <tr key={p.tid} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
                     <td className={`py-1 px-1 ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
@@ -1105,8 +1106,10 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`py-1 px-1 font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
                     <td className="py-1 px-1 text-right text-gray-300">{Math.floor(p.size).toLocaleString()}</td>
                     <td className="py-1 px-1 text-right text-gray-300">{p.entryPrice.toFixed(1)}¢</td>
-                    <td className="py-1 px-1 text-right text-gray-300">${p.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td className={`py-1 px-1 text-right ${exitColor}`}>{p.currentPrice.toFixed(1)}¢</td>
+                    <td className="py-1 px-1 text-right text-red-400">-${p.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className={`py-1 px-1 text-right ${hasBid ? exitColor : 'text-gray-400'}`}>
+                      {hasBid ? `${p.currentPrice.toFixed(1)}¢` : '-'}
+                    </td>
                     <td className="py-1 px-1 text-right text-red-300/90">{formatQuoteCents(p.askProb)}</td>
                     <td
                       className={`py-1 px-1 text-right ${p.sellPrice == null ? 'text-gray-400' : ''}`}
@@ -1128,7 +1131,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 <td className="py-1 px-1"></td><td className="py-1 px-1"></td><td className="py-1 px-1"></td>
                 <td className="py-1 px-1 text-right text-white">{Math.floor(totalSize).toLocaleString()}</td>
                 <td className="py-1 px-1 text-right text-gray-400">{avgEntry.toFixed(1)}¢</td>
-                <td className="py-1 px-1 text-right text-white">${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td className="py-1 px-1 text-right text-red-400">-${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td className="py-1 px-1 text-right text-gray-400">{avgExit.toFixed(1)}¢</td>
                 <td className="py-1 px-1"></td>
                 <td className="py-1 px-1"></td>

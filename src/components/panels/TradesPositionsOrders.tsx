@@ -12,6 +12,7 @@ import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLo
 import { useLiveBidAskLookupSubset } from '../../hooks/useLiveBidAskLookupSubset';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
+import { TpoVirtualTableBody } from './TpoVirtualTableBody';
 import {
   refreshSidebarOnchainWallet,
   useSidebarOnchainGridWalletPositions,
@@ -297,13 +298,24 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const tid = getPositionClobTokenId(p);
       if (tid) s.add(tid);
     }
+    // Cap order/trade token keys — 5k+ open orders must not explode live lookup / subset builds.
+    let orderN = 0;
     for (const o of orders) {
+      if (orderN >= 200) break;
       const t = o.asset_id || o.token_id;
-      if (t) s.add(t);
+      if (t) {
+        s.add(t);
+        orderN += 1;
+      }
     }
+    let tradeN = 0;
     for (const t of trades) {
+      if (tradeN >= 200) break;
       const id = t.asset_id || t.asset || t.token_id;
-      if (id) s.add(id);
+      if (id) {
+        s.add(id);
+        tradeN += 1;
+      }
     }
     return Array.from(s).sort().join(',');
   }, [positions, orders, trades]);
@@ -319,18 +331,14 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     for (const r of onchainWsPositions) {
       if (r.tokenId) set.add(String(r.tokenId));
     }
-    for (const t of onchainWsTrades) {
+    for (const t of onchainWsTrades.slice(0, 200)) {
       if (t.tokenId) set.add(String(t.tokenId));
     }
     for (const t of selectedMarketClobTokenIds || []) if (t) set.add(String(t));
     return [...set];
   }, [polymarketTokenKey, onchainWsPositions, onchainWsTrades, selectedMarketClobTokenIds]);
 
-  // Grid flush (~2s) for labels/metadata; live WS for Bid/Ask/Val.
-  const marketLookup = useThrottledMarketLookupSubset(tpoClobIds);
-  const liveQuoteLookup = useLiveBidAskLookupSubset(tpoClobIds);
-
-  const tpoQuoteTokenIds = useMemo(() => {
+  const tpoLiveQuoteIds = useMemo(() => {
     const set = new Set<string>();
     for (const p of positions) {
       const tid = getPositionClobTokenId(p);
@@ -339,16 +347,17 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     for (const r of onchainWsPositions) {
       if (r.tokenId) set.add(String(r.tokenId));
     }
-    for (const o of orders) {
-      const t = o.asset_id || o.token_id;
-      if (t) set.add(String(t));
-    }
+    for (const t of selectedMarketClobTokenIds || []) if (t) set.add(String(t));
     return [...set];
-  }, [positions, onchainWsPositions, orders]);
+  }, [positions, onchainWsPositions, selectedMarketClobTokenIds]);
+
+  // Grid flush (~2s) for labels/metadata; live WS only for position quotes (not 5k orders).
+  const marketLookup = useThrottledMarketLookupSubset(tpoClobIds);
+  const liveQuoteLookup = useLiveBidAskLookupSubset(tpoLiveQuoteIds);
 
   useEffect(() => {
-    setChartBidAskExtraTokens('tpo', tpoQuoteTokenIds);
-  }, [tpoQuoteTokenIds]);
+    setChartBidAskExtraTokens('tpo', tpoLiveQuoteIds);
+  }, [tpoLiveQuoteIds]);
   useEffect(() => () => setChartBidAskExtraTokens('tpo', []), []);
 
   const sellOrderPriceByToken = useMemo(() => buildSellOrderPriceByToken(orders), [orders]);
@@ -792,64 +801,66 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     });
   }, [processedPositions, posSortCol, posSortDir]);
 
-  // Process orders
-  const processedOrders = useMemo(() => orders
-    .filter((o) => {
-      const tid = getOrderClobTokenId(o);
-      if (assetFilter !== 'ALL') {
-        const market = lookupMarketByTokenId(tid, marketLookup);
-        if (!market) return true;
-        const asset = extractAssetFromMarket(market);
-        if (asset) {
-          if (asset !== assetFilter) return false;
-        } else if (isWeatherMarket(market)) {
-          if (assetFilter !== 'WEATHER') return false;
-        } else {
-          return false;
+  // Process orders — no live quote dep (5k orders × quote ticks freezes UI).
+  const processedOrders = useMemo(() => {
+    const fullLookup = useAppStore.getState().marketLookup;
+    return orders
+      .filter((o) => {
+        const tid = getOrderClobTokenId(o);
+        if (assetFilter !== 'ALL') {
+          const market = lookupMarketByTokenId(tid, fullLookup);
+          if (!market) return true;
+          const asset = extractAssetFromMarket(market);
+          if (asset) {
+            if (asset !== assetFilter) return false;
+          } else if (isWeatherMarket(market)) {
+            if (assetFilter !== 'WEATHER') return false;
+          } else {
+            return false;
+          }
         }
-      }
-      if (ordersFilter !== 'ALL' && o.side !== ordersFilter) return false;
-      return true;
-    })
-    .map((order) => {
-      const tid = getOrderClobTokenId(order);
-      const market = lookupMarketByTokenId(tid, marketLookup);
-      let asset = market ? extractAssetFromMarket(market) || '' : '';
-      const rowDate = resolveTpoRowDate(market, { question: order.outcome, eventSlug: market?.eventSlug, endDate: market?.endDate ?? null });
-      const endDate = rowDate.sortDate;
-      const marketName = getMarketPriceCondition(null, tid, marketLookup);
-      const mktLabel = formatTpoMarketLabel(asset, marketName);
-      const outcome = getTokenOutcome(tid, marketLookup) || '';
-      const price = parseFloat(order.price) * 100;
-      const size = parseFloat(order.original_size || order.size);
-      const filled = parseFloat(order.size_matched || '0');
-      const value = parseFloat(order.price) * size;
-      const { bid: bidProb, ask: askProb } = outcomeBidAskProb(tid, liveQuoteLookup);
-      return {
-        id: order.id,
-        tid,
-        asset,
-        endDate,
-        dateLabel: endDate ? rowDate.display.label : '-',
-        dateColor: endDate ? rowDate.display.color : 'text-gray-400',
-        isWeather: rowDate.isWeather,
-        marketName: mktLabel,
-        outcome,
-        side: order.side,
-        price,
-        size,
-        filled,
-        value,
-        bidProb,
-        askProb,
-        marketId: market?.id,
-      };
-    }), [orders, assetFilter, ordersFilter, marketLookup, liveQuoteLookup]);
+        if (ordersFilter !== 'ALL' && o.side !== ordersFilter) return false;
+        return true;
+      })
+      .map((order) => {
+        const tid = getOrderClobTokenId(order);
+        const market = lookupMarketByTokenId(tid, fullLookup);
+        let asset = market ? extractAssetFromMarket(market) || '' : '';
+        const rowDate = resolveTpoRowDate(market, { question: order.outcome, eventSlug: market?.eventSlug, endDate: market?.endDate ?? null });
+        const endDate = rowDate.sortDate;
+        const marketName = getMarketPriceCondition(null, tid, fullLookup);
+        const mktLabel = formatTpoMarketLabel(asset, marketName);
+        const outcome = getTokenOutcome(tid, fullLookup) || '';
+        const price = parseFloat(order.price) * 100;
+        const size = parseFloat(order.original_size || order.size);
+        const filled = parseFloat(order.size_matched || '0');
+        const value = parseFloat(order.price) * size;
+        return {
+          id: order.id,
+          tid,
+          asset,
+          endDate,
+          dateLabel: endDate ? rowDate.display.label : '-',
+          dateColor: endDate ? rowDate.display.color : 'text-gray-400',
+          isWeather: rowDate.isWeather,
+          marketName: mktLabel,
+          outcome,
+          side: order.side,
+          price,
+          size,
+          filled,
+          value,
+          marketId: market?.id,
+        };
+      });
+  }, [orders, assetFilter, ordersFilter]);
 
   const displayOrders = useMemo(() => {
     if (ordSortCol !== 'price') return processedOrders;
     return [...processedOrders].sort((a, b) => (a.price - b.price) * ordSortDir);
   }, [processedOrders, ordSortCol, ordSortDir]);
+
+  const displayTrades = useMemo(() => processedTrades.slice(0, 500), [processedTrades]);
 
   // Position totals
   const { totalSize, totalCost, totalValue, totalPnl, avgEntry, avgExit, avgPnlPct } = useMemo(() => {
@@ -879,7 +890,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
   const trColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'22%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'12%'}}/></colgroup>;
   const posColgroup = <colgroup><col style={{width:'5%'}}/><col style={{width:'7%'}}/><col style={{width:'14%'}}/><col style={{width:'4%'}}/><col style={{width:'6%'}}/><col style={{width:'7%'}}/><col style={{width:'7%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'6%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/></colgroup>;
-  const ordColgroup = <colgroup><col style={{width:'6%'}}/><col style={{width:'7%'}}/><col style={{width:'18%'}}/><col style={{width:'6%'}}/><col style={{width:'5%'}}/><col style={{width:'8%'}}/><col style={{width:'6%'}}/><col style={{width:'6%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'6%'}}/></colgroup>;
+  const ordColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'22%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/></colgroup>;
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
@@ -962,35 +973,33 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               <th className={`${hCls} text-right`}>Fee</th>
               <th className={`${hCls} text-right`}>Time</th>
             </tr></thead></table>
-            {/* Scrollable body */}
-            <div className="flex-1 overflow-y-auto min-h-0">
-              <table className="w-full text-[10px] table-fixed">{trColgroup}<tbody>
-                {processedTrades.slice(0, 500).map((t, i) => {
-                  const ageMs = t.timeMs > 0 ? Date.now() - t.timeMs : Infinity;
-                  const timeColor = ageMs < 15 * 60000 ? 'text-green-400' : ageMs < 60 * 60000 ? 'text-yellow-400' : 'text-gray-400';
-                  return (
-                    <tr key={i} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${t.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === t.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => t.clickable && handleMarketClick(t.tid)}>
-                      <td className={`py-1 px-1 ${assetColorMap[t.asset] || 'text-gray-400'} font-bold`}>{t.asset}</td>
-                      <td className={`py-1 px-1 whitespace-nowrap ${t.dateColor}`}>{t.dateLabel}</td>
-                      <td className={`py-1 px-1 ${assetColorMap2[t.asset] || 'text-gray-300'} truncate`}>{t.marketName}</td>
-                      <td className={`py-1 px-1 font-bold ${
-                        t.side === 'BUY' ? 'text-green-400'
-                          : t.side === 'CLAIM' || t.side === 'REDEEM' ? 'text-blue-400'
-                            : t.side === 'SPLIT' ? 'text-purple-400'
-                              : t.side === 'MERGE' ? 'text-amber-400'
-                                : 'text-red-400'
-                      }`}>{t.side}</td>
-                      <td className={`py-1 px-1 font-bold ${t.outcome === 'YES' || t.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{t.outcome || '-'}</td>
-                      <td className="py-1 px-1 text-right text-gray-300">{t.side === 'CLAIM' ? '—' : Math.round(t.size).toLocaleString()}</td>
-                      <td className="py-1 px-1 text-right text-gray-300">{t.side === 'CLAIM' ? '—' : `${t.price.toFixed(1)}¢`}</td>
-                      <td className={`py-1 px-1 text-right ${t.side === 'CLAIM' ? 'text-blue-300 font-bold' : 'text-gray-300'}`}>${t.value.toFixed(2)}</td>
-                      <td className="py-1 px-1 text-right text-yellow-400/80">{t.fee > 0 ? `$${t.fee.toFixed(2)}` : '-'}</td>
-                      <td className={`py-1 px-1 text-right ${timeColor}`}>{t.timeMs > 0 ? formatElapsed(t.timeMs) : ''}</td>
-                    </tr>
-                  );
-                })}
-              </tbody></table>
-            </div>
+            <TpoVirtualTableBody count={displayTrades.length} colgroup={trColgroup}>
+              {(i) => {
+                const t = displayTrades[i];
+                const ageMs = t.timeMs > 0 ? Date.now() - t.timeMs : Infinity;
+                const timeColor = ageMs < 15 * 60000 ? 'text-green-400' : ageMs < 60 * 60000 ? 'text-yellow-400' : 'text-gray-400';
+                return (
+                  <tr key={i} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${t.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === t.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => t.clickable && handleMarketClick(t.tid)}>
+                    <td className={`py-1 px-1 ${assetColorMap[t.asset] || 'text-gray-400'} font-bold`}>{t.asset}</td>
+                    <td className={`py-1 px-1 whitespace-nowrap ${t.dateColor}`}>{t.dateLabel}</td>
+                    <td className={`py-1 px-1 ${assetColorMap2[t.asset] || 'text-gray-300'} truncate`}>{t.marketName}</td>
+                    <td className={`py-1 px-1 font-bold ${
+                      t.side === 'BUY' ? 'text-green-400'
+                        : t.side === 'CLAIM' || t.side === 'REDEEM' ? 'text-blue-400'
+                          : t.side === 'SPLIT' ? 'text-purple-400'
+                            : t.side === 'MERGE' ? 'text-amber-400'
+                              : 'text-red-400'
+                    }`}>{t.side}</td>
+                    <td className={`py-1 px-1 font-bold ${t.outcome === 'YES' || t.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{t.outcome || '-'}</td>
+                    <td className="py-1 px-1 text-right text-gray-300">{t.side === 'CLAIM' ? '—' : Math.round(t.size).toLocaleString()}</td>
+                    <td className="py-1 px-1 text-right text-gray-300">{t.side === 'CLAIM' ? '—' : `${t.price.toFixed(1)}¢`}</td>
+                    <td className={`py-1 px-1 text-right ${t.side === 'CLAIM' ? 'text-blue-300 font-bold' : 'text-gray-300'}`}>${t.value.toFixed(2)}</td>
+                    <td className="py-1 px-1 text-right text-yellow-400/80">{t.fee > 0 ? `$${t.fee.toFixed(2)}` : '-'}</td>
+                    <td className={`py-1 px-1 text-right ${timeColor}`}>{t.timeMs > 0 ? formatElapsed(t.timeMs) : ''}</td>
+                  </tr>
+                );
+              }}
+            </TpoVirtualTableBody>
           </div>)
         )}
 
@@ -1073,38 +1082,36 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 PnL%{posSortArrow('pnlPct')}
               </th>
             </tr></thead></table>
-            {/* Scrollable body */}
-            <div className="flex-1 overflow-y-auto min-h-0">
-              <table className="w-full text-[10px] table-fixed">{posColgroup}<tbody>
-                {displayPositions.map((p) => {
-                  const pnlColor = p.pnl >= 0 ? 'text-green-400' : 'text-red-400';
-                  const pnlSign = p.pnl >= 0 ? '+' : '-';
-                  const exitColor = POSITION_BID_EXIT_TAILWIND[positionBidExitTier(p.entryPrice, p.currentPrice)];
-                  return (
-                    <tr key={p.tid} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
-                      <td className={`py-1 px-1 ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
-                      <td className={`py-1 px-1 whitespace-nowrap ${p.dateColor}`}>{p.dateLabel}</td>
-                      <td className={`py-1 px-1 ${assetColorMap2[p.asset] || 'text-gray-300'} truncate`}>{p.marketName}</td>
-                      <td className={`py-1 px-1 font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
-                      <td className="py-1 px-1 text-right text-gray-300">{Math.floor(p.size).toLocaleString()}</td>
-                      <td className="py-1 px-1 text-right text-gray-300">{p.entryPrice.toFixed(1)}¢</td>
-                      <td className="py-1 px-1 text-right text-gray-300">${p.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td className={`py-1 px-1 text-right ${exitColor}`}>{p.currentPrice.toFixed(1)}¢</td>
-                      <td className="py-1 px-1 text-right text-red-300/90">{formatQuoteCents(p.askProb)}</td>
-                      <td
-                        className={`py-1 px-1 text-right ${p.sellPrice == null ? 'text-gray-400' : ''}`}
-                        style={p.sellPrice != null ? positionSellPriceColorStyle(p.currentPrice, p.sellPrice) : undefined}
-                      >
-                        {p.sellPrice != null ? `${p.sellPrice.toFixed(1)}¢` : '-'}
-                      </td>
-                      <td className="py-1 px-1 text-right text-gray-300">${p.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(p.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>
-                    </tr>
-                  );
-                })}
-              </tbody></table>
-            </div>
+            <TpoVirtualTableBody count={displayPositions.length} colgroup={posColgroup}>
+              {(i) => {
+                const p = displayPositions[i];
+                const pnlColor = p.pnl >= 0 ? 'text-green-400' : 'text-red-400';
+                const pnlSign = p.pnl >= 0 ? '+' : '-';
+                const exitColor = POSITION_BID_EXIT_TAILWIND[positionBidExitTier(p.entryPrice, p.currentPrice)];
+                return (
+                  <tr key={p.tid} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
+                    <td className={`py-1 px-1 ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
+                    <td className={`py-1 px-1 whitespace-nowrap ${p.dateColor}`}>{p.dateLabel}</td>
+                    <td className={`py-1 px-1 ${assetColorMap2[p.asset] || 'text-gray-300'} truncate`}>{p.marketName}</td>
+                    <td className={`py-1 px-1 font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
+                    <td className="py-1 px-1 text-right text-gray-300">{Math.floor(p.size).toLocaleString()}</td>
+                    <td className="py-1 px-1 text-right text-gray-300">{p.entryPrice.toFixed(1)}¢</td>
+                    <td className="py-1 px-1 text-right text-gray-300">${p.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className={`py-1 px-1 text-right ${exitColor}`}>{p.currentPrice.toFixed(1)}¢</td>
+                    <td className="py-1 px-1 text-right text-red-300/90">{formatQuoteCents(p.askProb)}</td>
+                    <td
+                      className={`py-1 px-1 text-right ${p.sellPrice == null ? 'text-gray-400' : ''}`}
+                      style={p.sellPrice != null ? positionSellPriceColorStyle(p.currentPrice, p.sellPrice) : undefined}
+                    >
+                      {p.sellPrice != null ? `${p.sellPrice.toFixed(1)}¢` : '-'}
+                    </td>
+                    <td className="py-1 px-1 text-right text-gray-300">${p.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(p.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>
+                  </tr>
+                );
+              }}
+            </TpoVirtualTableBody>
             {/* Fixed footer */}
             <table className="w-full text-[10px] table-fixed">{posColgroup}<tbody>
               <tr className="border-t-2 border-gray-600 font-bold">
@@ -1143,46 +1150,40 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               >
                 Price{ordSortArrow('price')}
               </th>
-              <th className={`${hCls} text-right`}>Bid</th>
-              <th className={`${hCls} text-right`}>Ask</th>
               <th className={`${hCls} text-right`}>Size</th>
               <th className={`${hCls} text-right`}>Filled</th>
               <th className={`${hCls} text-right`}>Value</th>
               <th className={`${hCls} text-center`}></th>
             </tr></thead></table>
-            {/* Scrollable body */}
-            <div className="flex-1 overflow-y-auto min-h-0">
-              <table className="w-full text-[10px] table-fixed">{ordColgroup}<tbody>
-                {displayOrders.map((o) => {
-                  const dd = o.isWeather
-                    ? { label: o.dateLabel, color: o.dateColor }
-                    : getTimeLeftDisplay(o.endDate);
-                  return (
-                    <tr key={o.id} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${selectedMarketId === o.marketId ? 'bg-blue-900/40' : ''}`}>
-                      <td className={`py-1 px-1 ${assetColorMap[o.asset] || 'text-gray-400'} font-bold`}>{o.asset}</td>
-                      <td className={`py-1 px-1 whitespace-nowrap ${dd.color}`}>{dd.label}</td>
-                      <td className={`py-1 px-1 ${assetColorMap2[o.asset] || 'text-gray-300'} truncate cursor-pointer hover:underline`} onClick={() => handleMarketClick(o.tid)}>{o.marketName}</td>
-                      <td className={`py-1 px-1 font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
-                      <td className={`py-1 px-1 font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
-                      <td className="py-1 px-1 text-right text-white">{o.price.toFixed(1)}¢</td>
-                      <td className="py-1 px-1 text-right text-green-300/90">{formatQuoteCents(o.bidProb)}</td>
-                      <td className="py-1 px-1 text-right text-red-300/90">{formatQuoteCents(o.askProb)}</td>
-                      <td className="py-1 px-1 text-right text-gray-300">{Math.round(o.size).toLocaleString()}</td>
-                      <td className="py-1 px-1 text-right text-gray-500">{Math.round(o.filled).toLocaleString()}</td>
-                      <td className="py-1 px-1 text-right text-gray-300">${Math.round(o.value).toLocaleString()}</td>
-                      <td className="py-1 px-1 text-center">
-                        <button
-                          onClick={() => !cancellingOrderIds.has(o.id) && handleCancelOrder(o.id)}
-                          disabled={cancellingOrderIds.has(o.id)}
-                          className="w-4 h-4 rounded-sm inline-flex items-center justify-center bg-red-600 hover:bg-red-500 disabled:bg-red-600/50"
-                          title="Cancel order"
-                        >{cancellingOrderIds.has(o.id) ? <span className="cancel-spinner"/> : <span className="text-black text-[10px] font-bold leading-none">✕</span>}</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody></table>
-            </div>
+            <TpoVirtualTableBody count={displayOrders.length} colgroup={ordColgroup}>
+              {(i) => {
+                const o = displayOrders[i];
+                const dd = o.isWeather
+                  ? { label: o.dateLabel, color: o.dateColor }
+                  : getTimeLeftDisplay(o.endDate);
+                return (
+                  <tr key={o.id} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${selectedMarketId === o.marketId ? 'bg-blue-900/40' : ''}`}>
+                    <td className={`py-1 px-1 ${assetColorMap[o.asset] || 'text-gray-400'} font-bold`}>{o.asset}</td>
+                    <td className={`py-1 px-1 whitespace-nowrap ${dd.color}`}>{dd.label}</td>
+                    <td className={`py-1 px-1 ${assetColorMap2[o.asset] || 'text-gray-300'} truncate cursor-pointer hover:underline`} onClick={() => handleMarketClick(o.tid)}>{o.marketName}</td>
+                    <td className={`py-1 px-1 font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
+                    <td className={`py-1 px-1 font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
+                    <td className="py-1 px-1 text-right text-white">{o.price.toFixed(1)}¢</td>
+                    <td className="py-1 px-1 text-right text-gray-300">{Math.round(o.size).toLocaleString()}</td>
+                    <td className="py-1 px-1 text-right text-gray-500">{Math.round(o.filled).toLocaleString()}</td>
+                    <td className="py-1 px-1 text-right text-gray-300">${Math.round(o.value).toLocaleString()}</td>
+                    <td className="py-1 px-1 text-center">
+                      <button
+                        onClick={() => !cancellingOrderIds.has(o.id) && handleCancelOrder(o.id)}
+                        disabled={cancellingOrderIds.has(o.id)}
+                        className="w-4 h-4 rounded-sm inline-flex items-center justify-center bg-red-600 hover:bg-red-500 disabled:bg-red-600/50"
+                        title="Cancel order"
+                      >{cancellingOrderIds.has(o.id) ? <span className="cancel-spinner"/> : <span className="text-black text-[10px] font-bold leading-none">✕</span>}</button>
+                    </td>
+                  </tr>
+                );
+              }}
+            </TpoVirtualTableBody>
           </div>)
         )}
       </div>

@@ -106,6 +106,41 @@ function weatherMarketCityAndDate(
   return { city, dateIso };
 }
 
+function weatherMarketTempOddsMode(market: Market | null | undefined): TempOddsChartMode | null {
+  if (!market) return null;
+  const slug = `${market.eventSlug || ''} ${market.question || ''}`.toLowerCase();
+  if (slug.includes('lowest-temperature') || slug.includes('lowest temperature')) return 'low';
+  if (slug.includes('highest-temperature') || slug.includes('highest temperature')) return 'high';
+  return null;
+}
+
+/** Match sidebar/TPO selection to a Temp Odds bar market (id, condition, or YES token). */
+function weatherBarMarketMatches(
+  bar: Market,
+  selectedId: string,
+  selected: Market | null | undefined,
+): boolean {
+  if (selectedId && bar.id === selectedId) return true;
+  if (!selected) return false;
+  if (bar.id && selected.id && bar.id === selected.id) return true;
+  const bc = (bar.conditionId || '').trim().toLowerCase();
+  const sc = (selected.conditionId || '').trim().toLowerCase();
+  if (bc && sc && bc === sc) return true;
+  const bt = normalizeClobTokenId(bar.clobTokenIds?.[0] || '');
+  const st0 = normalizeClobTokenId(selected.clobTokenIds?.[0] || '');
+  const st1 = normalizeClobTokenId(selected.clobTokenIds?.[1] || '');
+  if (bt && (bt === st0 || bt === st1)) return true;
+  return false;
+}
+
+function findWeatherBarMarket(
+  markets: Market[],
+  selectedId: string,
+  selected: Market | null | undefined,
+): Market | undefined {
+  return markets.find((m) => weatherBarMarketMatches(m, selectedId, selected));
+}
+
 function readStoredCity(panelId: string, fallback: WeatherCitySlug): WeatherCitySlug {
   const saved = localStorage.getItem(`polybot-weather-temp-bars-city-${panelId}`);
   if (saved && isWeatherCitySlug(saved)) return saved;
@@ -1025,6 +1060,8 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     if (!linkSidebar) return;
     const ctx = weatherMarketCityAndDate(selectedMarket);
     if (!ctx) return;
+    const mode = weatherMarketTempOddsMode(selectedMarket);
+    if (mode) setTempOddsChartMode(mode);
     setCity((prev) => {
       if (prev === ctx.city) return prev;
       localStorage.setItem(`polybot-weather-temp-bars-city-${panelId}`, ctx.city);
@@ -1035,7 +1072,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
       localStorage.setItem(`polybot-weather-temp-bars-date-${panelId}`, ctx.dateIso);
       return ctx.dateIso;
     });
-  }, [linkSidebar, selectedMarket, panelId]);
+  }, [linkSidebar, selectedMarket, panelId, setTempOddsChartMode]);
 
   const selectDate = useCallback(
     (d: DateCol) => {
@@ -1108,20 +1145,39 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
 
   useEffect(() => {
     const id = selectedMarketId;
-    if (!id) {
+    if (!id && !selectedMarket) {
       setBarSelectionId('');
       return;
     }
-    if (activeBarMarkets.some((m) => m.id === id)) {
-      setBarSelectionId(id);
+    const inActive = findWeatherBarMarket(activeBarMarkets, id, selectedMarket);
+    if (inActive) {
+      setBarSelectionId(inActive.id);
+      return;
     }
-  }, [selectedMarketId, activeBarMarkets]);
+    const otherMarkets = chartMode === 'low' ? highBarMarkets : lowBarMarkets;
+    const inOther = findWeatherBarMarket(otherMarkets, id, selectedMarket);
+    if (inOther) {
+      setTempOddsChartMode(chartMode === 'low' ? 'high' : 'low');
+      setBarSelectionId(inOther.id);
+      return;
+    }
+  }, [
+    selectedMarketId,
+    selectedMarket,
+    activeBarMarkets,
+    highBarMarkets,
+    lowBarMarkets,
+    chartMode,
+    setTempOddsChartMode,
+  ]);
 
   useEffect(() => {
     if (!barSelectionId) return;
-    if (activeBarMarkets.some((m) => m.id === barSelectionId)) return;
+    if (findWeatherBarMarket(activeBarMarkets, barSelectionId, selectedMarket)) return;
+    // Keep highlight while city/date/mode catch up after TPO click.
+    if (selectedMarketId && weatherMarketCityAndDate(selectedMarket)) return;
     setBarSelectionId('');
-  }, [barSelectionId, activeBarMarkets]);
+  }, [barSelectionId, activeBarMarkets, selectedMarketId, selectedMarket]);
 
   useEffect(() => {
     bumpCustomSidebarButtonsStore();

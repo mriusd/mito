@@ -892,9 +892,51 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const ordSortArrow = (col: OrdSortCol) =>
     ordSortCol === col ? (ordSortDir === 1 ? ' ▲' : ' ▼') : '';
 
-  const trColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'22%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'10%'}}/><col style={{width:'9%'}}/><col style={{width:'12%'}}/></colgroup>;
-  const posColgroup = <colgroup><col style={{width:'5%'}}/><col style={{width:'7%'}}/><col style={{width:'14%'}}/><col style={{width:'4%'}}/><col style={{width:'6%'}}/><col style={{width:'7%'}}/><col style={{width:'7%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'6%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/><col style={{width:'8%'}}/></colgroup>;
-  const ordColgroup = <colgroup><col style={{width:'7%'}}/><col style={{width:'8%'}}/><col style={{width:'22%'}}/><col style={{width:'7%'}}/><col style={{width:'6%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/></colgroup>;
+  const trColgroup = (
+    <colgroup>
+      <col style={{ width: '7%' }} />
+      <col style={{ width: '8%' }} />
+      <col style={{ width: '22%' }} />
+      <col style={{ width: '7%' }} />
+      <col style={{ width: '6%' }} />
+      <col style={{ width: '10%', minWidth: 48 }} />
+      <col style={{ width: '9%', minWidth: 44 }} />
+      <col style={{ width: '10%', minWidth: 56 }} />
+      <col style={{ width: '9%', minWidth: 44 }} />
+      <col style={{ width: '12%', minWidth: 48 }} />
+    </colgroup>
+  );
+  const posColgroup = (
+    <colgroup>
+      <col style={{ width: '5%' }} />
+      <col style={{ width: '7%' }} />
+      <col style={{ width: '14%' }} />
+      <col style={{ width: '4%' }} />
+      <col style={{ width: '6%', minWidth: 48 }} />
+      <col style={{ width: '7%', minWidth: 44 }} />
+      <col style={{ width: '7%', minWidth: 56 }} />
+      <col style={{ width: '7%', minWidth: 44 }} />
+      <col style={{ width: '6%', minWidth: 44 }} />
+      <col style={{ width: '6%', minWidth: 44 }} />
+      <col style={{ width: '8%', minWidth: 56 }} />
+      <col style={{ width: '8%', minWidth: 56 }} />
+      <col style={{ width: '8%', minWidth: 48 }} />
+    </colgroup>
+  );
+  const ordColgroup = (
+    <colgroup>
+      <col style={{ width: '7%' }} />
+      <col style={{ width: '8%' }} />
+      <col style={{ width: '22%' }} />
+      <col style={{ width: '7%' }} />
+      <col style={{ width: '6%' }} />
+      <col style={{ width: '10%', minWidth: 44 }} />
+      <col style={{ width: '10%', minWidth: 48 }} />
+      <col style={{ width: '10%', minWidth: 48 }} />
+      <col style={{ width: '10%', minWidth: 56 }} />
+      <col style={{ width: '10%', minWidth: 28 }} />
+    </colgroup>
+  );
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">

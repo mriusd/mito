@@ -434,7 +434,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const [assetFilter, setAssetFilter] = useState(
     localStorage.getItem('polymarket-table-asset-filter') || 'ALL'
   );
-  type PosSortCol = 'expiry' | 'entry' | 'cost' | 'bid' | 'ask' | 'val' | 'pnl' | 'pnlPct';
+  type PosSortCol = 'expiry' | 'size' | 'entry' | 'cost' | 'bid' | 'ask' | 'val' | 'pnl' | 'pnlPct';
   const [posSortCol, setPosSortCol] = useState<PosSortCol>(() => {
     const v = localStorage.getItem(`polymarket-tpo-pos-sort-col-${panelId}`);
     if (v === 'exit') return 'bid';
@@ -774,6 +774,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
   const displayPositions = useMemo(() => {
     const rows = [...processedPositions];
+    if (posSortCol === 'size') {
+      return rows.sort((a, b) => (a.size - b.size) * posSortDir);
+    }
     if (posSortCol === 'entry') {
       return rows.sort((a, b) => (a.entryPrice - b.entryPrice) * posSortDir);
     }
@@ -1028,7 +1031,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               </th>
               <th className={`${hCls} text-left`}>Market</th>
               <th className={`${hCls} text-left`}>Y/N</th>
-              <th className={`${hCls} text-right`}>Size</th>
+              <th
+                className={`${hSortCls} text-right`}
+                onClick={() => togglePosSort('size')}
+                title="Sort by size"
+              >
+                Size{posSortArrow('size')}
+              </th>
               <th
                 className={`${hSortCls} text-right`}
                 onClick={() => togglePosSort('entry')}

@@ -1012,7 +1012,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             <div className="text-purple-300/90 text-center py-4">Loading on-chain trades…</div>
           ) : processedTrades.length === 0 ? (
             renderEmptyOrAuth(<div className="text-gray-500 text-center py-4">No trades</div>)
-          ) : (<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-auto">
+          ) : (<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-auto overflow-y-hidden">
             <div className="flex flex-col flex-1 min-h-0 w-full" style={{ minWidth: TR_MIN_W }}>
             {/* Fixed header */}
             <table className="w-full text-[10px] table-fixed" style={{ minWidth: TR_MIN_W }}>{trColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
@@ -1070,7 +1070,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                   : 'No positions'}
               </div>,
             )
-          ) : (<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-auto">
+          ) : (<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-auto overflow-y-hidden">
             <div className="flex flex-col flex-1 min-h-0 w-full" style={{ minWidth: POS_MIN_W }}>
             {/* Fixed header */}
             <table className="w-full text-[10px] table-fixed" style={{ minWidth: POS_MIN_W }}>{posColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
@@ -1201,7 +1201,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         {tab === 'orders' && (
           processedOrders.length === 0 ? (
             renderEmptyOrAuth(<div className="text-gray-500 text-center py-4">No open orders</div>)
-          ) : (<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-auto">
+          ) : (<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-auto overflow-y-hidden">
             <div className="flex flex-col flex-1 min-h-0 w-full" style={{ minWidth: ORD_MIN_W }}>
             {/* Fixed header */}
             <table className="w-full text-[10px] table-fixed" style={{ minWidth: ORD_MIN_W }}>{ordColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">

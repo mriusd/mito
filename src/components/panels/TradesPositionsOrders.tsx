@@ -884,8 +884,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const tPnlColor = totalPnl >= 0 ? 'text-green-400' : 'text-red-400';
   const tPnlSign = totalPnl >= 0 ? '+' : '';
 
-  const hCls = 'text-gray-500 py-1 px-1 truncate max-w-0';
+  const hCls = 'text-gray-500 py-1 px-1 whitespace-nowrap truncate max-w-0';
   const hSortCls = `${hCls} cursor-pointer hover:text-white select-none no-drag`;
+  const cCls = 'py-1 px-1 whitespace-nowrap truncate';
   const posSortArrow = (col: PosSortCol) =>
     posSortCol === col ? (posSortDir === 1 ? ' ▲' : ' ▼') : '';
   const ordSortArrow = (col: OrdSortCol) =>
@@ -983,22 +984,22 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 const timeColor = ageMs < 15 * 60000 ? 'text-green-400' : ageMs < 60 * 60000 ? 'text-yellow-400' : 'text-gray-400';
                 return (
                   <tr key={i} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${t.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === t.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => t.clickable && handleMarketClick(t.tid)}>
-                    <td className={`py-1 px-1 ${assetColorMap[t.asset] || 'text-gray-400'} font-bold`}>{t.asset}</td>
-                    <td className={`py-1 px-1 whitespace-nowrap ${t.dateColor}`}>{t.dateLabel}</td>
-                    <td className={`py-1 px-1 ${assetColorMap2[t.asset] || 'text-gray-300'} truncate`}>{t.marketName}</td>
-                    <td className={`py-1 px-1 font-bold ${
+                    <td className={`${cCls} ${assetColorMap[t.asset] || 'text-gray-400'} font-bold`}>{t.asset}</td>
+                    <td className={`${cCls} ${t.dateColor}`}>{t.dateLabel}</td>
+                    <td className={`${cCls} ${assetColorMap2[t.asset] || 'text-gray-300'}`}>{t.marketName}</td>
+                    <td className={`${cCls} font-bold ${
                       t.side === 'BUY' ? 'text-green-400'
                         : t.side === 'CLAIM' || t.side === 'REDEEM' ? 'text-blue-400'
                           : t.side === 'SPLIT' ? 'text-purple-400'
                             : t.side === 'MERGE' ? 'text-amber-400'
                               : 'text-red-400'
                     }`}>{t.side}</td>
-                    <td className={`py-1 px-1 font-bold ${t.outcome === 'YES' || t.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{t.outcome || '-'}</td>
-                    <td className="py-1 px-1 text-right text-gray-300">{t.side === 'CLAIM' ? '—' : Math.round(t.size).toLocaleString()}</td>
-                    <td className="py-1 px-1 text-right text-gray-300">{t.side === 'CLAIM' ? '—' : `${t.price.toFixed(1)}¢`}</td>
-                    <td className={`py-1 px-1 text-right ${t.side === 'CLAIM' ? 'text-blue-300 font-bold' : 'text-gray-300'}`}>${t.value.toFixed(2)}</td>
-                    <td className="py-1 px-1 text-right text-yellow-400/80">{t.fee > 0 ? `$${t.fee.toFixed(2)}` : '-'}</td>
-                    <td className={`py-1 px-1 text-right ${timeColor}`}>{t.timeMs > 0 ? formatElapsed(t.timeMs) : ''}</td>
+                    <td className={`${cCls} font-bold ${t.outcome === 'YES' || t.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{t.outcome || '-'}</td>
+                    <td className={`${cCls} text-right text-gray-300`}>{t.side === 'CLAIM' ? '—' : Math.round(t.size).toLocaleString()}</td>
+                    <td className={`${cCls} text-right text-gray-300`}>{t.side === 'CLAIM' ? '—' : `${t.price.toFixed(1)}¢`}</td>
+                    <td className={`${cCls} text-right ${t.side === 'CLAIM' ? 'text-blue-300 font-bold' : 'text-gray-300'}`}>${t.value.toFixed(2)}</td>
+                    <td className={`${cCls} text-right text-yellow-400/80`}>{t.fee > 0 ? `$${t.fee.toFixed(2)}` : '-'}</td>
+                    <td className={`${cCls} text-right ${timeColor}`}>{t.timeMs > 0 ? formatElapsed(t.timeMs) : ''}</td>
                   </tr>
                 );
               }}
@@ -1100,26 +1101,26 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 const hasBid = p.bidProb != null && Number.isFinite(p.bidProb) && p.bidProb > 0;
                 return (
                   <tr key={p.tid} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
-                    <td className={`py-1 px-1 ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
-                    <td className={`py-1 px-1 whitespace-nowrap ${p.dateColor}`}>{p.dateLabel}</td>
-                    <td className={`py-1 px-1 ${assetColorMap2[p.asset] || 'text-gray-300'} truncate`}>{p.marketName}</td>
-                    <td className={`py-1 px-1 font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
-                    <td className="py-1 px-1 text-right text-gray-300">{Math.floor(p.size).toLocaleString()}</td>
-                    <td className="py-1 px-1 text-right text-gray-300">{p.entryPrice.toFixed(1)}¢</td>
-                    <td className="py-1 px-1 text-right text-red-400">-${p.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td className={`py-1 px-1 text-right ${hasBid ? exitColor : 'text-gray-400'}`}>
+                    <td className={`${cCls} ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
+                    <td className={`${cCls} ${p.dateColor}`}>{p.dateLabel}</td>
+                    <td className={`${cCls} ${assetColorMap2[p.asset] || 'text-gray-300'}`}>{p.marketName}</td>
+                    <td className={`${cCls} font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
+                    <td className={`${cCls} text-right text-gray-300`}>{Math.floor(p.size).toLocaleString()}</td>
+                    <td className={`${cCls} text-right text-gray-300`}>{p.entryPrice.toFixed(1)}¢</td>
+                    <td className={`${cCls} text-right text-red-400`}>-${p.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className={`${cCls} text-right ${hasBid ? exitColor : 'text-gray-400'}`}>
                       {hasBid ? `${p.currentPrice.toFixed(1)}¢` : '-'}
                     </td>
-                    <td className="py-1 px-1 text-right text-red-300/90">{formatQuoteCents(p.askProb)}</td>
+                    <td className={`${cCls} text-right text-red-300/90`}>{formatQuoteCents(p.askProb)}</td>
                     <td
-                      className={`py-1 px-1 text-right ${p.sellPrice == null ? 'text-gray-400' : ''}`}
+                      className={`${cCls} text-right ${p.sellPrice == null ? 'text-gray-400' : ''}`}
                       style={p.sellPrice != null ? positionSellPriceColorStyle(p.currentPrice, p.sellPrice) : undefined}
                     >
                       {p.sellPrice != null ? `${p.sellPrice.toFixed(1)}¢` : '-'}
                     </td>
-                    <td className="py-1 px-1 text-right text-gray-300">${p.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(p.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td className={`py-1 px-1 text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>
+                    <td className={`${cCls} text-right text-gray-300`}>${p.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className={`${cCls} text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(p.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className={`${cCls} text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>
                   </tr>
                 );
               }}
@@ -1127,17 +1128,17 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             {/* Fixed footer */}
             <table className="w-full text-[10px] table-fixed">{posColgroup}<tbody>
               <tr className="border-t-2 border-gray-600 font-bold">
-                <td className="py-1 px-1 text-white">Total</td>
-                <td className="py-1 px-1"></td><td className="py-1 px-1"></td><td className="py-1 px-1"></td>
-                <td className="py-1 px-1 text-right text-white">{Math.floor(totalSize).toLocaleString()}</td>
-                <td className="py-1 px-1 text-right text-gray-400">{avgEntry.toFixed(1)}¢</td>
-                <td className="py-1 px-1 text-right text-red-400">-${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td className="py-1 px-1 text-right text-gray-400">{avgExit.toFixed(1)}¢</td>
-                <td className="py-1 px-1"></td>
-                <td className="py-1 px-1"></td>
-                <td className="py-1 px-1 text-right text-white">${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}${Math.abs(totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td className={`py-1 px-1 text-right ${tPnlColor} font-bold`}>{tPnlSign}{Math.round(Math.abs(avgPnlPct))}%</td>
+                <td className={`${cCls} text-white`}>Total</td>
+                <td className={cCls}></td><td className={cCls}></td><td className={cCls}></td>
+                <td className={`${cCls} text-right text-white`}>{Math.floor(totalSize).toLocaleString()}</td>
+                <td className={`${cCls} text-right text-gray-400`}>{avgEntry.toFixed(1)}¢</td>
+                <td className={`${cCls} text-right text-red-400`}>-${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td className={`${cCls} text-right text-gray-400`}>{avgExit.toFixed(1)}¢</td>
+                <td className={cCls}></td>
+                <td className={cCls}></td>
+                <td className={`${cCls} text-right text-white`}>${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td className={`${cCls} text-right ${tPnlColor} font-bold`}>{tPnlSign}${Math.abs(totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td className={`${cCls} text-right ${tPnlColor} font-bold`}>{tPnlSign}{Math.round(Math.abs(avgPnlPct))}%</td>
               </tr>
             </tbody></table>
           </div>)
@@ -1175,16 +1176,16 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                   : getTimeLeftDisplay(o.endDate);
                 return (
                   <tr key={o.id} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${selectedMarketId === o.marketId ? 'bg-blue-900/40' : ''}`}>
-                    <td className={`py-1 px-1 ${assetColorMap[o.asset] || 'text-gray-400'} font-bold`}>{o.asset}</td>
-                    <td className={`py-1 px-1 whitespace-nowrap ${dd.color}`}>{dd.label}</td>
-                    <td className={`py-1 px-1 ${assetColorMap2[o.asset] || 'text-gray-300'} truncate cursor-pointer hover:underline`} onClick={() => handleMarketClick(o.tid)}>{o.marketName}</td>
-                    <td className={`py-1 px-1 font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
-                    <td className={`py-1 px-1 font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
-                    <td className="py-1 px-1 text-right text-white">{o.price.toFixed(1)}¢</td>
-                    <td className="py-1 px-1 text-right text-gray-300">{Math.round(o.size).toLocaleString()}</td>
-                    <td className="py-1 px-1 text-right text-gray-500">{Math.round(o.filled).toLocaleString()}</td>
-                    <td className="py-1 px-1 text-right text-gray-300">${Math.round(o.value).toLocaleString()}</td>
-                    <td className="py-1 px-1 text-center">
+                    <td className={`${cCls} ${assetColorMap[o.asset] || 'text-gray-400'} font-bold`}>{o.asset}</td>
+                    <td className={`${cCls} ${dd.color}`}>{dd.label}</td>
+                    <td className={`${cCls} ${assetColorMap2[o.asset] || 'text-gray-300'} cursor-pointer hover:underline`} onClick={() => handleMarketClick(o.tid)}>{o.marketName}</td>
+                    <td className={`${cCls} font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
+                    <td className={`${cCls} font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
+                    <td className={`${cCls} text-right text-white`}>{o.price.toFixed(1)}¢</td>
+                    <td className={`${cCls} text-right text-gray-300`}>{Math.round(o.size).toLocaleString()}</td>
+                    <td className={`${cCls} text-right text-gray-500`}>{Math.round(o.filled).toLocaleString()}</td>
+                    <td className={`${cCls} text-right text-gray-300`}>${Math.round(o.value).toLocaleString()}</td>
+                    <td className={`${cCls} text-center`}>
                       <button
                         onClick={() => !cancellingOrderIds.has(o.id) && handleCancelOrder(o.id)}
                         disabled={cancellingOrderIds.has(o.id)}

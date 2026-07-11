@@ -895,54 +895,58 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const ordSortArrow = (col: OrdSortCol) =>
     ordSortCol === col ? (ordSortDir === 1 ? ' ▲' : ' ▼') : '';
 
+  // Pixel cols + minWidth: table scrolls horizontally on mobile instead of overlapping.
+  const TR_MIN_W = 572;
+  const POS_MIN_W = 716;
+  const ORD_MIN_W = 556;
   const trColgroup = (
     <colgroup>
-      <col style={{ width: '7%' }} />
-      <col style={{ width: '8%' }} />
-      <col style={{ width: '22%' }} />
-      <col style={{ width: '7%' }} />
-      <col style={{ width: '6%' }} />
-      <col style={{ width: '10%', minWidth: 48 }} />
-      <col style={{ width: '9%', minWidth: 44 }} />
-      <col style={{ width: '10%', minWidth: 56 }} />
-      <col style={{ width: '9%', minWidth: 44 }} />
-      <col style={{ width: '12%', minWidth: 48 }} />
+      <col style={{ width: 44 }} />
+      <col style={{ width: 56 }} />
+      <col style={{ width: 140 }} />
+      <col style={{ width: 44 }} />
+      <col style={{ width: 32 }} />
+      <col style={{ width: 52 }} />
+      <col style={{ width: 48 }} />
+      <col style={{ width: 56 }} />
+      <col style={{ width: 48 }} />
+      <col style={{ width: 52 }} />
     </colgroup>
   );
   const posColgroup = (
     <colgroup>
-      <col style={{ width: '5%' }} />
-      <col style={{ width: '7%' }} />
-      <col style={{ width: '14%' }} />
-      <col style={{ width: '4%' }} />
-      <col style={{ width: '6%', minWidth: 48 }} />
-      <col style={{ width: '7%', minWidth: 44 }} />
-      <col style={{ width: '7%', minWidth: 56 }} />
-      <col style={{ width: '7%', minWidth: 44 }} />
-      <col style={{ width: '6%', minWidth: 44 }} />
-      <col style={{ width: '6%', minWidth: 44 }} />
-      <col style={{ width: '8%', minWidth: 56 }} />
-      <col style={{ width: '8%', minWidth: 56 }} />
-      <col style={{ width: '8%', minWidth: 48 }} />
+      <col style={{ width: 40 }} />
+      <col style={{ width: 52 }} />
+      <col style={{ width: 120 }} />
+      <col style={{ width: 28 }} />
+      <col style={{ width: 52 }} />
+      <col style={{ width: 48 }} />
+      <col style={{ width: 60 }} />
+      <col style={{ width: 48 }} />
+      <col style={{ width: 48 }} />
+      <col style={{ width: 48 }} />
+      <col style={{ width: 60 }} />
+      <col style={{ width: 60 }} />
+      <col style={{ width: 52 }} />
     </colgroup>
   );
   const ordColgroup = (
     <colgroup>
-      <col style={{ width: '7%' }} />
-      <col style={{ width: '8%' }} />
-      <col style={{ width: '22%' }} />
-      <col style={{ width: '7%' }} />
-      <col style={{ width: '6%' }} />
-      <col style={{ width: '10%', minWidth: 44 }} />
-      <col style={{ width: '10%', minWidth: 48 }} />
-      <col style={{ width: '10%', minWidth: 48 }} />
-      <col style={{ width: '10%', minWidth: 56 }} />
-      <col style={{ width: '10%', minWidth: 28 }} />
+      <col style={{ width: 44 }} />
+      <col style={{ width: 56 }} />
+      <col style={{ width: 140 }} />
+      <col style={{ width: 44 }} />
+      <col style={{ width: 32 }} />
+      <col style={{ width: 48 }} />
+      <col style={{ width: 52 }} />
+      <col style={{ width: 52 }} />
+      <col style={{ width: 56 }} />
+      <col style={{ width: 32 }} />
     </colgroup>
   );
 
   return (
-    <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0">
+    <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 min-w-0">
       <div className="panel-header flex min-w-0 items-center gap-1 mb-2 cursor-grab">
         <span className="shrink-0 text-[10px] font-bold text-gray-500 select-none">TPO</span>
         <div className="no-drag flex min-w-0 flex-1 flex-wrap items-center gap-1">
@@ -1001,18 +1005,19 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         )}
       </div>
 
-      <div className="panel-body text-[10px] flex-1 min-h-0 flex flex-col">
+      <div className="panel-body text-[10px] flex-1 min-h-0 min-w-0 flex flex-col">
         {/* Trades */}
         {tab === 'trades' && (
           onchainTradesLoading && liveTradesSource === 'onchain' && processedTrades.length === 0 ? (
             <div className="text-purple-300/90 text-center py-4">Loading on-chain trades…</div>
           ) : processedTrades.length === 0 ? (
             renderEmptyOrAuth(<div className="text-gray-500 text-center py-4">No trades</div>)
-          ) : (<div className="flex flex-col flex-1 min-h-0">
+          ) : (<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-auto">
+            <div className="flex flex-col flex-1 min-h-0 w-full" style={{ minWidth: TR_MIN_W }}>
             {/* Fixed header */}
-            <table className="w-full text-[10px] table-fixed">{trColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
+            <table className="w-full text-[10px] table-fixed" style={{ minWidth: TR_MIN_W }}>{trColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
               <th className={`${hCls} text-left`}>Asset</th>
-              <th className={`${hCls} text-left`}>Date</th>
+              <th className={`${nHCls} text-left`}>Date</th>
               <th className={`${hCls} text-left`}>Market</th>
               <th className={`${hCls} text-left`}>Side</th>
               <th className={`${hCls} text-left`}>Y/N</th>
@@ -1022,7 +1027,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               <th className={`${nHCls} text-right`}>Fee</th>
               <th className={`${nHCls} text-right`}>Time</th>
             </tr></thead></table>
-            <TpoVirtualTableBody count={displayTrades.length} colgroup={trColgroup}>
+            <TpoVirtualTableBody count={displayTrades.length} colgroup={trColgroup} minWidth={TR_MIN_W}>
               {(i) => {
                 const t = displayTrades[i];
                 const ageMs = t.timeMs > 0 ? Date.now() - t.timeMs : Infinity;
@@ -1030,7 +1035,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 return (
                   <tr key={i} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${t.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === t.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => t.clickable && handleMarketClick(t.tid)}>
                     <td className={`${cCls} ${assetColorMap[t.asset] || 'text-gray-400'} font-bold`}>{t.asset}</td>
-                    <td className={`${cCls} ${t.dateColor}`}>{t.dateLabel}</td>
+                    <td className={`${nCls} ${t.dateColor}`}>{t.dateLabel}</td>
                     <td className={`${cCls} ${assetColorMap2[t.asset] || 'text-gray-300'}`}>{t.marketName}</td>
                     <td className={`${cCls} font-bold ${
                       t.side === 'BUY' ? 'text-green-400'
@@ -1049,6 +1054,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 );
               }}
             </TpoVirtualTableBody>
+            </div>
           </div>)
         )}
 
@@ -1064,12 +1070,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                   : 'No positions'}
               </div>,
             )
-          ) : (<div className="flex flex-col flex-1 min-h-0">
+          ) : (<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-auto">
+            <div className="flex flex-col flex-1 min-h-0 w-full" style={{ minWidth: POS_MIN_W }}>
             {/* Fixed header */}
-            <table className="w-full text-[10px] table-fixed">{posColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
+            <table className="w-full text-[10px] table-fixed" style={{ minWidth: POS_MIN_W }}>{posColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
               <th className={`${hCls} text-left`}>Asset</th>
               <th
-                className={`${hSortCls} text-left`}
+                className={`${nHSortCls} text-left`}
                 onClick={() => togglePosSort('expiry')}
                 title="Sort by expiry date"
               >
@@ -1137,7 +1144,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 PnL%{posSortArrow('pnlPct')}
               </th>
             </tr></thead></table>
-            <TpoVirtualTableBody count={displayPositions.length} colgroup={posColgroup}>
+            <TpoVirtualTableBody count={displayPositions.length} colgroup={posColgroup} minWidth={POS_MIN_W}>
               {(i) => {
                 const p = displayPositions[i];
                 const pnlColor = p.pnl >= 0 ? 'text-green-400' : 'text-red-400';
@@ -1147,7 +1154,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 return (
                   <tr key={p.tid} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
                     <td className={`${cCls} ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
-                    <td className={`${cCls} ${p.dateColor}`}>{p.dateLabel}</td>
+                    <td className={`${nCls} ${p.dateColor}`}>{p.dateLabel}</td>
                     <td className={`${cCls} ${assetColorMap2[p.asset] || 'text-gray-300'}`}>{p.marketName}</td>
                     <td className={`${cCls} font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
                     <td className={`${nCls} text-right text-gray-300`}>{Math.floor(p.size).toLocaleString()}</td>
@@ -1171,7 +1178,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               }}
             </TpoVirtualTableBody>
             {/* Fixed footer */}
-            <table className="w-full text-[10px] table-fixed">{posColgroup}<tbody>
+            <table className="w-full text-[10px] table-fixed" style={{ minWidth: POS_MIN_W }}>{posColgroup}<tbody>
               <tr className="border-t-2 border-gray-600 font-bold">
                 <td className={`${cCls} text-white`}>Total</td>
                 <td className={cCls}></td><td className={cCls}></td><td className={cCls}></td>
@@ -1186,6 +1193,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 <td className={`${nCls} text-right ${tPnlColor} font-bold`}>{tPnlSign}{Math.round(Math.abs(avgPnlPct))}%</td>
               </tr>
             </tbody></table>
+            </div>
           </div>)
         )}
 
@@ -1193,11 +1201,12 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         {tab === 'orders' && (
           processedOrders.length === 0 ? (
             renderEmptyOrAuth(<div className="text-gray-500 text-center py-4">No open orders</div>)
-          ) : (<div className="flex flex-col flex-1 min-h-0">
+          ) : (<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-auto">
+            <div className="flex flex-col flex-1 min-h-0 w-full" style={{ minWidth: ORD_MIN_W }}>
             {/* Fixed header */}
-            <table className="w-full text-[10px] table-fixed">{ordColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
+            <table className="w-full text-[10px] table-fixed" style={{ minWidth: ORD_MIN_W }}>{ordColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
               <th className={`${hCls} text-left`}>Asset</th>
-              <th className={`${hCls} text-left`}>Date</th>
+              <th className={`${nHCls} text-left`}>Date</th>
               <th className={`${hCls} text-left`}>Market</th>
               <th className={`${hCls} text-left`}>Side</th>
               <th className={`${hCls} text-left`}>Y/N</th>
@@ -1213,7 +1222,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               <th className={`${nHCls} text-right`}>Value</th>
               <th className={`${nHCls} text-center`}></th>
             </tr></thead></table>
-            <TpoVirtualTableBody count={displayOrders.length} colgroup={ordColgroup}>
+            <TpoVirtualTableBody count={displayOrders.length} colgroup={ordColgroup} minWidth={ORD_MIN_W}>
               {(i) => {
                 const o = displayOrders[i];
                 const dd = o.isWeather
@@ -1222,7 +1231,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 return (
                   <tr key={o.id} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${selectedMarketId === o.marketId ? 'bg-blue-900/40' : ''}`}>
                     <td className={`${cCls} ${assetColorMap[o.asset] || 'text-gray-400'} font-bold`}>{o.asset}</td>
-                    <td className={`${cCls} ${dd.color}`}>{dd.label}</td>
+                    <td className={`${nCls} ${dd.color}`}>{dd.label}</td>
                     <td className={`${cCls} ${assetColorMap2[o.asset] || 'text-gray-300'} cursor-pointer hover:underline`} onClick={() => handleMarketClick(o.tid)}>{o.marketName}</td>
                     <td className={`${cCls} font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
                     <td className={`${cCls} font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
@@ -1242,6 +1251,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 );
               }}
             </TpoVirtualTableBody>
+            </div>
           </div>)
         )}
       </div>

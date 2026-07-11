@@ -7,12 +7,15 @@ const TPO_ROW_PX = 24;
 export function TpoVirtualTableBody({
   count,
   colgroup,
+  minWidth,
   estimateSize = TPO_ROW_PX,
   overscan = 12,
   children,
 }: {
   count: number;
   colgroup: ReactNode;
+  /** Keep body table as wide as header/footer (mobile scroll). */
+  minWidth?: number;
   estimateSize?: number;
   overscan?: number;
   children: (index: number) => ReactNode;
@@ -25,10 +28,18 @@ export function TpoVirtualTableBody({
     overscan,
   });
   const items = virtualizer.getVirtualItems();
+  const tableWidth = minWidth != null ? Math.max(minWidth, 0) : undefined;
 
   return (
-    <div ref={parentRef} className="flex-1 overflow-y-auto min-h-0">
-      <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
+    <div ref={parentRef} className="flex-1 overflow-y-auto min-h-0 min-w-0">
+      <div
+        style={{
+          height: virtualizer.getTotalSize(),
+          position: 'relative',
+          width: '100%',
+          minWidth: tableWidth,
+        }}
+      >
         {items.length > 0 ? (
           <table
             className="w-full text-[10px] table-fixed"
@@ -37,6 +48,7 @@ export function TpoVirtualTableBody({
               top: 0,
               left: 0,
               width: '100%',
+              minWidth: tableWidth,
               transform: `translateY(${items[0]?.start ?? 0}px)`,
             }}
           >

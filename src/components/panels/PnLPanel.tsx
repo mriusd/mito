@@ -343,9 +343,9 @@ export function PnLPanel() {
               return (
                 <th
                   key={dk}
-                  className={`px-1.5 py-1 text-center border-b border-l border-gray-700 bg-gray-900 font-bold ${isWeekend ? 'bg-purple-900/20' : ''}`}
+                  className={`px-1.5 py-1 text-center border-b border-l border-gray-700 bg-gray-900 font-bold whitespace-nowrap ${isWeekend ? 'bg-purple-900/20' : ''}`}
                 >
-                  <div className={`flex flex-col sm:flex-row items-center justify-center leading-tight gap-0.5 sm:gap-1 text-[10px] sm:whitespace-nowrap ${textCls}`}>
+                  <div className={`flex flex-row items-center justify-center leading-tight gap-1 text-[10px] whitespace-nowrap ${textCls}`}>
                     <span>{DAY_NAMES[dt.getDay()]}</span>
                     <span>{dt.getDate()} {MONTH_NAMES[dt.getMonth()]}</span>
                   </div>
@@ -361,7 +361,7 @@ export function PnLPanel() {
             {dates.map((dk) => {
               const v = dataByDate[dk]?.bought || 0;
               return (
-                <td key={dk} className={`px-2 py-1 text-right border-b border-l border-gray-700 ${v > 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                <td key={dk} className={`px-2 py-1 text-right border-b border-l border-gray-700 whitespace-nowrap ${v > 0 ? 'text-red-400' : 'text-gray-600'}`}>
                   {v > 0 ? fmtUsd(-v) : '-'}
                 </td>
               );
@@ -373,7 +373,7 @@ export function PnLPanel() {
             {dates.map((dk) => {
               const v = dataByDate[dk]?.sold || 0;
               return (
-                <td key={dk} className={`px-2 py-1 text-right border-b border-l border-gray-700 ${v > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                <td key={dk} className={`px-2 py-1 text-right border-b border-l border-gray-700 whitespace-nowrap ${v > 0 ? 'text-green-400' : 'text-gray-600'}`}>
                   {v > 0 ? fmtUsd(v) : '-'}
                 </td>
               );
@@ -388,7 +388,7 @@ export function PnLPanel() {
               const net = s - b;
               const color = net === 0 ? 'text-gray-600' : net > 0 ? 'text-green-400' : 'text-red-400';
               return (
-                <td key={dk} className={`px-2 py-1 text-right border-b border-l border-gray-700 font-bold ${color}`}>
+                <td key={dk} className={`px-2 py-1 text-right border-b border-l border-gray-700 font-bold whitespace-nowrap ${color}`}>
                   {net === 0 ? '-' : fmtUsd(net)}
                 </td>
               );

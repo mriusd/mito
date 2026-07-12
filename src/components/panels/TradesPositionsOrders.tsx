@@ -338,21 +338,27 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     return [...set];
   }, [polymarketTokenKey, onchainWsPositions, onchainWsTrades, selectedMarketClobTokenIds]);
 
-  const tpoLiveQuoteIds = useMemo(() => {
-    const set = new Set<string>();
-    for (const p of positions) {
-      const tid = getPositionClobTokenId(p);
-      if (tid) set.add(tid);
-    }
-    for (const r of onchainWsPositions) {
-      if (r.tokenId) set.add(String(r.tokenId));
-    }
-    for (const t of selectedMarketClobTokenIds || []) if (t) set.add(String(t));
-    return [...set];
-  }, [positions, onchainWsPositions, selectedMarketClobTokenIds]);
-
   // Grid flush (~2s) for labels/metadata; live WS only for position quotes (not 5k orders).
   const marketLookup = useThrottledMarketLookupSubset(tpoClobIds);
+
+  // Include YES+NO legs so NO positions can imply from YES book (and vice versa).
+  const tpoLiveQuoteIds = useMemo(() => {
+    const set = new Set<string>();
+    const addTid = (tid: string | null | undefined) => {
+      const t = String(tid || '').trim();
+      if (!t) return;
+      set.add(t);
+      const m = lookupMarketByTokenId(t, marketLookup);
+      for (const id of m?.clobTokenIds || []) {
+        if (id) set.add(String(id));
+      }
+    };
+    for (const p of positions) addTid(getPositionClobTokenId(p));
+    for (const r of onchainWsPositions) addTid(r.tokenId);
+    for (const t of selectedMarketClobTokenIds || []) addTid(t);
+    return [...set];
+  }, [positions, onchainWsPositions, selectedMarketClobTokenIds, marketLookup]);
+
   const liveQuoteLookup = useLiveBidAskLookupSubset(tpoLiveQuoteIds);
 
   useEffect(() => {

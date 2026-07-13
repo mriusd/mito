@@ -869,7 +869,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     return [...processedOrders].sort((a, b) => (a.price - b.price) * ordSortDir);
   }, [processedOrders, ordSortCol, ordSortDir]);
 
-  const displayTrades = useMemo(() => processedTrades.slice(0, 500), [processedTrades]);
+  const displayTrades = useMemo(() => processedTrades.slice(0, 1000), [processedTrades]);
 
   // Position totals
   const { totalSize, totalCost, totalValue, totalPnl, avgEntry, avgExit, avgPnlPct } = useMemo(() => {

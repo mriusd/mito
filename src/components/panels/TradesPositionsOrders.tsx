@@ -3,7 +3,9 @@ import { useAccount } from 'wagmi';
 import { useAppStore } from '../../stores/appStore';
 import {
   cancelOrder,
+  fetchOnchainWalletTrades,
   type OnchainClaimRow,
+  type OnchainMarketTradeRow,
 } from '../../api';
 import { positionExitBidProb, outcomeBidAskProb } from '../../lib/outcomeQuote';
 import { positionBidExitTier, positionSellPriceColorStyle, POSITION_BID_EXIT_TAILWIND } from '../../lib/positionBidExitTier';
@@ -230,6 +232,29 @@ function wsTradesToPM(rows: WSTrade[]): Trade[] {
   });
 }
 
+function ledgerTradesToPM(rows: OnchainMarketTradeRow[]): Trade[] {
+  return rows.map((t) => {
+    const tsMs = t.blockTime > 1e12 ? t.blockTime : t.blockTime * 1000;
+    const id = onchainFillKey(t.txHash, t.logIndex);
+    return {
+      id: id || `token:${t.tokenId}:${tsMs}`,
+      asset_id: t.tokenId,
+      token_id: t.tokenId,
+      side: t.side as Trade['side'],
+      price: String(t.price),
+      size: String(t.size),
+      fee: String(t.fee || 0),
+      timestamp: String(tsMs),
+      ...(t.outcome ? { outcome: t.outcome } : {}),
+      ...(t.title ? { title: t.title } : {}),
+      ...(t.slug ? { slug: t.slug } : {}),
+      ...(t.eventSlug ? { eventSlug: t.eventSlug } : {}),
+    };
+  });
+}
+
+const TPO_TRADES_PAGE = 500;
+
 function TpoAuthEmpty({
   mode,
   onLogIn,
@@ -411,15 +436,6 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     return [...byToken.values()];
   }, [liveTradesSource, positions, onchainPositionsAsPM]);
 
-  const tradesForTable = useMemo(() => {
-    if (liveTradesSource !== 'onchain') return trades;
-    return [...onchainTradesAsPM, ...onchainClaimsAsPM].sort((a, b) => {
-      const ta = parseInt(a.timestamp || '0', 10);
-      const tb = parseInt(b.timestamp || '0', 10);
-      return tb - ta;
-    });
-  }, [liveTradesSource, trades, onchainTradesAsPM, onchainClaimsAsPM]);
-
   const handleMarketClick = useCallback((tokenId: string) => {
     const market = lookupMarketByTokenId(tokenId, marketLookup);
     if (!market) return;
@@ -435,6 +451,82 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const [tradesSideFilter, setTradesSideFilter] = useState(
     localStorage.getItem('polymarket-trades-side-filter') || 'ALL'
   );
+  const [tradesOffset, setTradesOffset] = useState(0);
+  const [pagedLedgerTrades, setPagedLedgerTrades] = useState<OnchainMarketTradeRow[]>([]);
+  const [tradesTotal, setTradesTotal] = useState(0);
+  const [tradesPageLoading, setTradesPageLoading] = useState(false);
+
+  // On-chain TPO trades: server page + optional side (BUY/SELL) so SELL not buried past last 1000 mixed fills.
+  useEffect(() => {
+    if (liveTradesSource !== 'onchain') return;
+    const w = makerAddress.trim().toLowerCase();
+    if (!w) {
+      setPagedLedgerTrades([]);
+      setTradesTotal(0);
+      return;
+    }
+    let cancelled = false;
+    setTradesPageLoading(true);
+    const side =
+      tradesSideFilter === 'BUY' || tradesSideFilter === 'SELL'
+        ? tradesSideFilter
+        : undefined;
+    void fetchOnchainWalletTrades({
+      wallet: w,
+      side,
+      limit: TPO_TRADES_PAGE,
+      offset: tradesOffset,
+    })
+      .then((r) => {
+        if (cancelled) return;
+        setPagedLedgerTrades(r.trades || []);
+        setTradesTotal(Number(r.total) || 0);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPagedLedgerTrades([]);
+        setTradesTotal(0);
+      })
+      .finally(() => {
+        if (!cancelled) setTradesPageLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [liveTradesSource, makerAddress, tradesSideFilter, tradesOffset]);
+
+  const pagedTradesAsPM = useMemo(() => ledgerTradesToPM(pagedLedgerTrades), [pagedLedgerTrades]);
+
+  const tradesForTable = useMemo(() => {
+    if (liveTradesSource !== 'onchain') return trades;
+    // Older pages: REST only. Newest page: merge live WS so new fills appear immediately.
+    if (tradesOffset > 0) return pagedTradesAsPM;
+    const sideOk = (side: string) =>
+      tradesSideFilter === 'ALL' || side === tradesSideFilter;
+    const live = onchainTradesAsPM.filter((t) => sideOk(t.side || ''));
+    const claims = tradesSideFilter === 'ALL' ? onchainClaimsAsPM : [];
+    const seen = new Set<string>();
+    const out: Trade[] = [];
+    for (const t of [...live, ...pagedTradesAsPM, ...claims]) {
+      const k = t.id || `${t.asset_id || t.token_id}:${t.timestamp}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(t);
+    }
+    return out.sort((a, b) => {
+      const ta = parseInt(a.timestamp || '0', 10);
+      const tb = parseInt(b.timestamp || '0', 10);
+      return tb - ta;
+    });
+  }, [
+    liveTradesSource,
+    trades,
+    tradesOffset,
+    tradesSideFilter,
+    pagedTradesAsPM,
+    onchainTradesAsPM,
+    onchainClaimsAsPM,
+  ]);
   const [ordersFilter, setOrdersFilter] = useState(
     localStorage.getItem('polymarket-orders-filter') || 'ALL'
   );
@@ -870,7 +962,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     return [...processedOrders].sort((a, b) => (a.price - b.price) * ordSortDir);
   }, [processedOrders, ordSortCol, ordSortDir]);
 
-  const displayTrades = useMemo(() => processedTrades.slice(0, 1000), [processedTrades]);
+  const displayTrades = processedTrades;
 
   // Position totals
   const { totalSize, totalCost, totalValue, totalPnl, avgEntry, avgExit, avgPnlPct } = useMemo(() => {
@@ -964,21 +1056,54 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             Orders <span className="text-xs text-gray-500">({processedOrders.length})</span>
           </button>
           <button onClick={() => handleSetTab('trades')} className={tabCls('trades')}>
-            Trades <span className="text-xs text-gray-500">({processedTrades.length})</span>
+            Trades{' '}
+            <span className="text-xs text-gray-500">
+              ({liveTradesSource === 'onchain' ? tradesTotal : processedTrades.length})
+            </span>
           </button>
 
           {tab === 'trades' && (
-            <div className="flex gap-1 items-center">
+            <div className="flex gap-1 items-center flex-wrap">
               <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]">
                 {(['ALL', 'BUY', 'SELL'] as const).map((s) => (
-                  <button key={s} onClick={() => { setTradesSideFilter(s); localStorage.setItem('polymarket-trades-side-filter', s); }}
-                    className={filterBtnCls(tradesSideFilter === s, s === 'BUY' ? 'green' : s === 'SELL' ? 'red' : 'gray')}>{s}</button>
+                  <button
+                    key={s}
+                    onClick={() => {
+                      setTradesSideFilter(s);
+                      setTradesOffset(0);
+                      localStorage.setItem('polymarket-trades-side-filter', s);
+                    }}
+                    className={filterBtnCls(tradesSideFilter === s, s === 'BUY' ? 'green' : s === 'SELL' ? 'red' : 'gray')}
+                  >{s}</button>
                 ))}
               </div>
               <select value={assetFilter} onChange={(e) => { setAssetFilter(e.target.value); localStorage.setItem('polymarket-table-asset-filter', e.target.value); }}
                 className={`bg-gray-700 text-[9px] font-bold rounded px-1 py-0.5 border border-gray-600 ${assetColors[assetFilter]}`} style={{ outline: 'none' }}>
                 {assets.map((a) => <option key={a} value={a}>{a}</option>)}
               </select>
+              {liveTradesSource === 'onchain' && (
+                <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px] text-gray-400">
+                  <button
+                    type="button"
+                    disabled={tradesOffset <= 0 || tradesPageLoading}
+                    onClick={() => setTradesOffset((o) => Math.max(0, o - TPO_TRADES_PAGE))}
+                    className="px-1.5 py-0.5 rounded-sm font-semibold hover:text-white hover:bg-gray-700 disabled:opacity-40 disabled:pointer-events-none"
+                    title="Newer fills"
+                  >Newer</button>
+                  <span className="px-1 tabular-nums whitespace-nowrap">
+                    {tradesTotal === 0
+                      ? '0'
+                      : `${tradesOffset + 1}–${Math.min(tradesOffset + TPO_TRADES_PAGE, tradesTotal)} / ${tradesTotal}`}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={tradesOffset + TPO_TRADES_PAGE >= tradesTotal || tradesPageLoading}
+                    onClick={() => setTradesOffset((o) => o + TPO_TRADES_PAGE)}
+                    className="px-1.5 py-0.5 rounded-sm font-semibold hover:text-white hover:bg-gray-700 disabled:opacity-40 disabled:pointer-events-none"
+                    title="Older fills"
+                  >Older</button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1015,10 +1140,18 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       <div className="panel-body text-[10px] flex-1 min-h-0 min-w-0 flex flex-col">
         {/* Trades */}
         {tab === 'trades' && (
-          onchainTradesLoading && liveTradesSource === 'onchain' && processedTrades.length === 0 ? (
+          liveTradesSource === 'onchain' && tradesPageLoading && processedTrades.length === 0 ? (
+            <div className="text-purple-300/90 text-center py-4">Loading on-chain trades…</div>
+          ) : onchainTradesLoading && liveTradesSource === 'onchain' && processedTrades.length === 0 && !makerAddress.trim() ? (
             <div className="text-purple-300/90 text-center py-4">Loading on-chain trades…</div>
           ) : processedTrades.length === 0 ? (
-            renderEmptyOrAuth(<div className="text-gray-500 text-center py-4">No trades</div>)
+            renderEmptyOrAuth(
+              <div className="text-gray-500 text-center py-4">
+                {liveTradesSource === 'onchain' && tradesTotal > 0
+                  ? 'No trades on this page — try Older / Newer'
+                  : 'No trades'}
+              </div>,
+            )
           ) : (<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-auto overflow-y-hidden">
             <div className="flex flex-col flex-1 min-h-0 w-full" style={{ minWidth: TR_MIN_W }}>
             {/* Fixed header */}

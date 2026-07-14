@@ -963,6 +963,23 @@ export async function fetchOnchainMarketTrades(params: { token_ids: string[]; wa
   return resp.json();
 }
 
+/** Full-wallet fill history (TPO trades browse). Optional side = BUY|SELL|… */
+export async function fetchOnchainWalletTrades(params: {
+  wallet: string;
+  side?: 'ALL' | 'BUY' | 'SELL' | 'SPLIT' | 'MERGE' | 'REDEEM';
+  limit?: number;
+  offset?: number;
+}): Promise<{ trades: OnchainMarketTradeRow[]; count: number; total: number; limit: number; offset: number }> {
+  const qs = new URLSearchParams();
+  qs.set('wallet', params.wallet);
+  if (params.side && params.side !== 'ALL') qs.set('side', params.side);
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.offset != null) qs.set('offset', String(params.offset));
+  const resp = await fetchBackend(`${BASE}/api/onchain-wallet-trades?${qs.toString()}`);
+  if (!resp.ok) throw new Error('Failed to fetch on-chain wallet trades');
+  return resp.json();
+}
+
 // --- On-chain claims (PayoutRedemption) ---
 
 export interface OnchainClaimRow {

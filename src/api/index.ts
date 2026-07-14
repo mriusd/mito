@@ -936,9 +936,11 @@ export async function fetchOnchainMarketPositions(params: {
 export interface OnchainMarketTradeRow {
   txHash: string;
   logIndex: number;
-  blockNumber: number;
+  blockNumber?: number;
   blockTime: number;
   tokenId: string;
+  /** Condition id when known */
+  marketId?: string;
   /** BUY | SELL | SPLIT | MERGE | REDEEM (from wallet_fill_ledger.action) */
   side: 'BUY' | 'SELL' | 'SPLIT' | 'MERGE' | 'REDEEM';
   /** YES | NO when applicable (ledger outcome side) */

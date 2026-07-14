@@ -3,6 +3,7 @@ import { useAccount } from 'wagmi';
 import { useAppStore } from '../../stores/appStore';
 import {
   cancelOrder,
+  fetchMarketOutcomeTokens,
   fetchOnchainWalletTrades,
   type OnchainClaimRow,
   type OnchainMarketTradeRow,
@@ -22,7 +23,7 @@ import {
   useSidebarOnchainWalletTrades,
   useSidebarOnchainWalletWsHydrated,
 } from '../../lib/sidebarOnchainTradesStore';
-import type { WSPosition, WSTrade } from '../../hooks/useOnchainTradesWS';
+import { canonicalConditionKey, type WSPosition, type WSTrade } from '../../hooks/useOnchainTradesWS';
 import { hasCredsForWallet, ensureCredsForWallet, triggerWalletRefresh } from '../../lib/clobClient';
 import { isWebMode } from '../../lib/env';
 import { appKit } from '../../lib/wallet';
@@ -215,6 +216,7 @@ function wsTradesToPM(rows: WSTrade[]): Trade[] {
   return rows.map((t) => {
     const tsMs = t.blockTime > 1e12 ? t.blockTime : t.blockTime * 1000;
     const id = onchainFillKey(t.txHash, t.logIndex) || t.id;
+    const mid = (t.marketId || '').trim();
     return {
       id: id || `token:${t.tokenId}:${tsMs}`,
       asset_id: t.tokenId,
@@ -224,6 +226,7 @@ function wsTradesToPM(rows: WSTrade[]): Trade[] {
       size: String(t.size),
       fee: String(t.fee || 0),
       timestamp: String(tsMs),
+      ...(mid ? { market: mid, conditionId: mid } : {}),
       ...(t.outcome ? { outcome: t.outcome } : {}),
       ...(t.title ? { title: t.title } : {}),
       ...(t.slug ? { slug: t.slug } : {}),
@@ -236,6 +239,7 @@ function ledgerTradesToPM(rows: OnchainMarketTradeRow[]): Trade[] {
   return rows.map((t) => {
     const tsMs = t.blockTime > 1e12 ? t.blockTime : t.blockTime * 1000;
     const id = onchainFillKey(t.txHash, t.logIndex);
+    const mid = (t.marketId || '').trim();
     return {
       id: id || `token:${t.tokenId}:${tsMs}`,
       asset_id: t.tokenId,
@@ -245,6 +249,7 @@ function ledgerTradesToPM(rows: OnchainMarketTradeRow[]): Trade[] {
       size: String(t.size),
       fee: String(t.fee || 0),
       timestamp: String(tsMs),
+      ...(mid ? { market: mid, conditionId: mid } : {}),
       ...(t.outcome ? { outcome: t.outcome } : {}),
       ...(t.title ? { title: t.title } : {}),
       ...(t.slug ? { slug: t.slug } : {}),
@@ -252,6 +257,14 @@ function ledgerTradesToPM(rows: OnchainMarketTradeRow[]): Trade[] {
     };
   });
 }
+
+type TpoSelectHint = {
+  marketId?: string | null;
+  title?: string | null;
+  eventSlug?: string | null;
+  endDate?: string | null;
+  outcome?: string | null;
+};
 
 const TPO_TRADES_PAGE = 500;
 
@@ -293,7 +306,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const pkRevision = useAppStore((s) => s.pkRevision);
   const { address, isConnected } = useAccount();
   const makerAddress = useTradingWalletAddress();
-  const selectedMarketId = useAppStore((s) => s.selectedMarket?.id);
+  const selectedMarketId = useAppStore((s) => s.selectedMarket?.conditionId || s.selectedMarket?.id);
   const selectedMarketClobTokenIds = useAppStore((s) => s.selectedMarket?.clobTokenIds);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
@@ -436,13 +449,52 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     return [...byToken.values()];
   }, [liveTradesSource, positions, onchainPositionsAsPM]);
 
-  const handleMarketClick = useCallback((tokenId: string) => {
-    const market = lookupMarketByTokenId(tokenId, marketLookup);
-    if (!market) return;
-    const outcome = getTokenOutcome(tokenId, marketLookup);
-    setSelectedMarket(market as Market);
-    setSidebarOutcome((outcome === 'NO' ? 'NO' : 'YES') as 'YES' | 'NO');
-    setSidebarOpen(true);
+  const handleMarketClick = useCallback(async (tokenId: string, hint?: TpoSelectHint) => {
+    const tid = String(tokenId || '').trim();
+    if (!tid) return;
+    const fromLookup = lookupMarketByTokenId(tid, marketLookup);
+    const outcomeHint = (hint?.outcome || '').toUpperCase();
+    const sideFromHint = outcomeHint === 'NO' || outcomeHint === 'DOWN' ? 'NO' : 'YES';
+    const mid = canonicalConditionKey(
+      String(hint?.marketId || fromLookup?.conditionId || fromLookup?.id || '').trim(),
+    );
+
+    const open = (market: Market, side: 'YES' | 'NO') => {
+      setSelectedMarket(market);
+      setSidebarOutcome(side);
+      setSidebarOpen(true);
+    };
+
+    if (fromLookup) {
+      const outcome = getTokenOutcome(tid, marketLookup);
+      open(fromLookup as Market, outcome === 'NO' ? 'NO' : sideFromHint);
+      return;
+    }
+
+    // Expired / off-grid: build selectable stub; enrich YES/NO tokens when condition id known.
+    let yes = sideFromHint === 'YES' ? tid : '';
+    let no = sideFromHint === 'NO' ? tid : '';
+    if (mid) {
+      try {
+        const toks = await fetchMarketOutcomeTokens(mid);
+        if (toks?.tokenIdYes) yes = toks.tokenIdYes;
+        if (toks?.tokenIdNo) no = toks.tokenIdNo;
+      } catch {
+        /* stub with known token only */
+      }
+    }
+    const clobTokenIds = [yes || tid, no].filter(Boolean);
+    if (clobTokenIds.length === 1) clobTokenIds.push('');
+    const stub: Market = {
+      id: mid || tid,
+      conditionId: mid || undefined,
+      question: (hint?.title || '').trim() || tid,
+      eventSlug: hint?.eventSlug || undefined,
+      endDate: (hint?.endDate || '').trim(),
+      closed: true,
+      clobTokenIds,
+    };
+    open(stub, sideFromHint);
   }, [marketLookup, setSelectedMarket, setSidebarOutcome, setSidebarOpen]);
 
   const [tab, setTab] = useState<'trades' | 'positions' | 'orders'>(
@@ -751,7 +803,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         timeMs = t;
       }
       const fee = parseFloat(trade.fee || '0');
-      const clickable = !!market;
+      const conditionId = market?.conditionId || market?.id || trade.conditionId || trade.market || '';
+      const clickable = !!tid && side !== 'CLAIM';
       return {
         tid,
         asset,
@@ -766,7 +819,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         value,
         fee,
         timeMs,
-        marketId: market?.id,
+        marketId: conditionId || market?.id,
+        title: trade.title || market?.question || '',
+        eventSlug: trade.eventSlug || trade.slug || market?.eventSlug || '',
         clickable,
       };
     }), [tradesForTable, assetFilter, tradesSideFilter, marketLookup]);
@@ -847,7 +902,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const pnl = currentValue - cost;
       const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
       const sellPrice = sellOrderPriceByToken.get(normalizeClobTokenId(tid)) ?? null;
-      const clickable = !!market;
+      const conditionId = market?.conditionId || market?.id || pos.conditionId || pos.market || '';
+      const clickable = !!tid;
       return {
         tid,
         asset,
@@ -866,7 +922,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         sellPrice,
         pnl,
         pnlPercent,
-        marketId: market?.id ?? pos.market,
+        marketId: conditionId || market?.id || pos.market,
+        title: pos.title || market?.question || '',
+        eventSlug: pos.eventSlug || pos.slug || market?.eventSlug || '',
         clickable,
       };
     }), [positionsForTable, assetFilter, marketLookup, liveQuoteLookup, sellOrderPriceByToken]);
@@ -1173,7 +1231,17 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 const ageMs = t.timeMs > 0 ? Date.now() - t.timeMs : Infinity;
                 const timeColor = ageMs < 15 * 60000 ? 'text-green-400' : ageMs < 60 * 60000 ? 'text-yellow-400' : 'text-gray-400';
                 return (
-                  <tr key={i} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${t.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === t.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => t.clickable && handleMarketClick(t.tid)}>
+                  <tr
+                    key={i}
+                    className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${t.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === t.marketId ? 'bg-blue-900/40' : ''}`}
+                    onClick={() => t.clickable && void handleMarketClick(t.tid, {
+                      marketId: t.marketId,
+                      title: t.title,
+                      eventSlug: t.eventSlug,
+                      endDate: t.endDate,
+                      outcome: t.outcome,
+                    })}
+                  >
                     <td className={`${cCls} ${assetColorMap[t.asset] || 'text-gray-400'} font-bold`}>{t.asset}</td>
                     <td className={`${nCls} ${t.dateColor}`}>{t.dateLabel}</td>
                     <td className={`${cCls} ${assetColorMap2[t.asset] || 'text-gray-300'}`}>{t.marketName}</td>
@@ -1292,7 +1360,17 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 const exitColor = POSITION_BID_EXIT_TAILWIND[positionBidExitTier(p.entryPrice, p.currentPrice)];
                 const hasBid = p.bidProb != null && Number.isFinite(p.bidProb) && p.bidProb > 0;
                 return (
-                  <tr key={p.tid} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === p.marketId ? 'bg-blue-900/40' : ''}`} onClick={() => p.clickable && handleMarketClick(p.tid)}>
+                  <tr
+                    key={p.tid}
+                    className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === p.marketId ? 'bg-blue-900/40' : ''}`}
+                    onClick={() => p.clickable && void handleMarketClick(p.tid, {
+                      marketId: p.marketId,
+                      title: p.title,
+                      eventSlug: p.eventSlug,
+                      endDate: p.endDate,
+                      outcome: p.outcome,
+                    })}
+                  >
                     <td className={`${cCls} ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
                     <td className={`${nCls} ${p.dateColor}`}>{p.dateLabel}</td>
                     <td className={`${cCls} ${assetColorMap2[p.asset] || 'text-gray-300'}`}>{p.marketName}</td>
@@ -1372,7 +1450,10 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                   <tr key={o.id} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${selectedMarketId === o.marketId ? 'bg-blue-900/40' : ''}`}>
                     <td className={`${cCls} ${assetColorMap[o.asset] || 'text-gray-400'} font-bold`}>{o.asset}</td>
                     <td className={`${nCls} ${dd.color}`}>{dd.label}</td>
-                    <td className={`${cCls} ${assetColorMap2[o.asset] || 'text-gray-300'} cursor-pointer hover:underline`} onClick={() => handleMarketClick(o.tid)}>{o.marketName}</td>
+                    <td
+                      className={`${cCls} ${assetColorMap2[o.asset] || 'text-gray-300'} cursor-pointer hover:underline`}
+                      onClick={() => void handleMarketClick(o.tid)}
+                    >{o.marketName}</td>
                     <td className={`${cCls} font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
                     <td className={`${cCls} font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
                     <td className={`${nCls} text-right text-white`}>{o.price.toFixed(1)}¢</td>

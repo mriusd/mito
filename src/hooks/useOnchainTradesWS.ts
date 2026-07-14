@@ -353,6 +353,8 @@ export interface WSTrade {
   /** true = LIMIT/approx price from calldata fast path; replaced by trace broadcast. */
   priceApproximate?: boolean;
   tokenId: string;
+  /** Condition id when known */
+  marketId?: string;
   side: 'BUY' | 'SELL' | 'SPLIT' | 'MERGE' | 'REDEEM';
   outcome?: string;
   size: number;
@@ -497,6 +499,7 @@ function dropWalletMarketPendingByTx(txHashes: Set<string>): void {
 
 function mapRawWSTrade(t: {
   tokenId?: string;
+  marketId?: string;
   side?: string;
   outcome?: string;
   size?: number;
@@ -516,8 +519,10 @@ function mapRawWSTrade(t: {
   const logIndex = Number.isFinite(Number(t.logIndex)) ? Number(t.logIndex) : undefined;
   const txHash = t.txHash;
   if (!tokenId && side !== 'SPLIT' && side !== 'MERGE') return null;
+  const marketId = String(t.marketId || '').trim() || undefined;
   const row: WSTrade = {
     tokenId,
+    ...(marketId ? { marketId } : {}),
     side,
     outcome: t.outcome ? String(t.outcome) : undefined,
     size: Number(t.size || 0),

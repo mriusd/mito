@@ -10,8 +10,10 @@ import type { LiveTrade } from './usePolymarketOB';
 
 /** Cap sidebar / chart tape arrays — 3500 rows × lucide-SVG anchors held hundreds of MB of detached DOM after a few market switches. */
 const MAX_TRADES = 400;
-const WALLET_TRADES_CAP = 500;
-const WALLET_MARKET_TRADES_CAP = 500;
+/** Full-wallet TPO trades list. */
+const WALLET_TRADES_CAP = 1000;
+/** Per-market My Trades / wallet dialog — fetch all fills for that market. */
+const WALLET_MARKET_TRADES_CAP = 5000;
 /** Mempool pending rows — unbounded retention blew multi-GB heaps overnight. */
 const PENDING_TTL_MS = 12 * 60 * 1000;
 const MAX_PENDING_PER_SCOPE = 40;
@@ -712,18 +714,22 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   const lastPnlSubRef = useRef<{ wallet: string; from: string; to: string; tz: string } | null>(null);
   const loadTapeFromAPIRef = useRef<(() => void) | null>(null);
 
-  // Fast market-scoped REST before WS snapshot (WS trades are last-100 global, often misses this market).
+  // Fast market-scoped REST before WS snapshot (global walletTrades can miss older fills on this market).
   useEffect(() => {
     const w = (wallet || '').trim().toLowerCase();
     const ids = (scopedClobTokenIds || []).map((x) => String(x || '').trim()).filter(Boolean);
-    if (!w || ids.length === 0) return;
+    if (!w || ids.length === 0) {
+      setWalletMarketTrades([]);
+      return;
+    }
+    setWalletMarketTrades([]);
     const serial = ++prefetchSerialRef.current;
     let cancelled = false;
     void (async () => {
       try {
         const [pr, tr] = await Promise.all([
           fetchOnchainMarketPositions({ token_ids: ids, wallet: w }),
-          fetchOnchainMarketTrades({ token_ids: ids, wallet: w, limit: 1500 }),
+          fetchOnchainMarketTrades({ token_ids: ids, wallet: w, limit: WALLET_MARKET_TRADES_CAP }),
         ]);
         if (cancelled || serial !== prefetchSerialRef.current) return;
         setWalletPositions(
@@ -1051,6 +1057,10 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
           ws.send(JSON.stringify({ type: 'subscribeWallet', wallet: w }));
           if (m) {
             ws.send(JSON.stringify({ type: 'subscribeMarket', marketId: m }));
+            primaryWalletMarketKeyRef.current = walletMarketTradesKey(w, canonicalConditionKey(m));
+            ws.send(JSON.stringify({ type: 'subscribeWalletMarket', wallet: w, marketId: m }));
+          } else {
+            primaryWalletMarketKeyRef.current = null;
           }
         }
         for (const k of walletMarketListenersRef.current.keys()) {
@@ -1344,12 +1354,18 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const m = marketRef.current?.trim();
+    const w = (walletRef.current || '').trim().toLowerCase();
     if (m) {
       ws.send(JSON.stringify({ type: 'subscribeMarket', marketId: m }));
+      if (w) {
+        primaryWalletMarketKeyRef.current = walletMarketTradesKey(w, canonicalConditionKey(m));
+        ws.send(JSON.stringify({ type: 'subscribeWalletMarket', wallet: w, marketId: m }));
+      }
     } else {
+      primaryWalletMarketKeyRef.current = null;
       ws.send(JSON.stringify({ type: 'unsubscribeMarket' }));
     }
-  }, [marketId, wsConnected]);
+  }, [marketId, wallet, wsConnected]);
 
   const subscribeWalletMarketTrades = useCallback(
     (wallet: string, marketId: string, listener: WalletMarketTradesListener) => {
@@ -1398,7 +1414,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     try {
       const [pr, tr] = await Promise.all([
         fetchOnchainMarketPositions({ token_ids: ids, wallet: w }),
-        fetchOnchainMarketTrades({ token_ids: ids, wallet: w, limit: 1500 }),
+        fetchOnchainMarketTrades({ token_ids: ids, wallet: w, limit: WALLET_MARKET_TRADES_CAP }),
       ]);
       const mappedPositions = (pr.positions || [])
         .map((p) => ({

@@ -81,7 +81,7 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
   }, [liveTradesSource, trades, selectedMarket, marketLookup, wsMarketTrades]);
 
   const myTradesDisplay = useMemo(
-    () => (liveTradesSource === 'onchain' ? myTrades.slice(0, 100) : myTrades.slice(0, 20)),
+    () => (liveTradesSource === 'onchain' ? myTrades : myTrades.slice(0, 20)),
     [liveTradesSource, myTrades],
   );
 

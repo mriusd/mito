@@ -64,29 +64,10 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
     setSidebarOnchainWalletPnlDaily(walletPnlDaily);
   }, [walletPnlDaily]);
 
+  // Market-scoped REST/WS rows (not a filter of global TPO walletTrades).
   useEffect(() => {
-    const scopedIds = new Set(
-      (opts.scopedClobTokenIds || []).map((x) => String(x || '').trim()).filter(Boolean),
-    );
-    const norm = (tid: string) => {
-      try {
-        return BigInt(tid).toString();
-      } catch {
-        return tid;
-      }
-    };
-    const rows =
-      scopedIds.size === 0
-        ? []
-        : walletTrades.filter((t) => {
-            const k = norm(String(t.tokenId || '').trim());
-            for (const id of scopedIds) {
-              if (norm(id) === k) return true;
-            }
-            return false;
-          });
-    setSidebarOnchainWalletMarketTrades(rows, walletMarketTradesScopeKey);
-  }, [walletTrades, walletMarketTradesScopeKey, opts.scopedClobTokenIds?.join('|') ?? '']);
+    setSidebarOnchainWalletMarketTrades(walletMarketTrades, walletMarketTradesScopeKey);
+  }, [walletMarketTrades, walletMarketTradesScopeKey]);
 
   useEffect(() => {
     registerSidebarOnchainRefreshFns({

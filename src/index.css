@@ -820,6 +820,20 @@ input[type="range"].vol-slider::-moz-range-thumb {
   -webkit-text-fill-color: currentColor;
   paint-order: stroke fill;
 }
+.tpo-color-digits {
+  letter-spacing: 0.02em;
+}
+.tpo-digit-stroke {
+  -webkit-text-stroke: 1.15px #000;
+  -webkit-text-fill-color: currentColor;
+  paint-order: stroke fill;
+  text-shadow:
+    0 0 1px #000,
+    0.5px 0 0 #000,
+    -0.5px 0 0 #000,
+    0 0.5px 0 #000,
+    0 -0.5px 0 #000;
+}
 .live-ob-bid {
   color: #10b981;
   -webkit-text-stroke: 1px #000;

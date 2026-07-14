@@ -13,6 +13,7 @@ import { useLiveBidAskLookupSubset } from '../../hooks/useLiveBidAskLookupSubset
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
 import { TpoVirtualTableBody } from './TpoVirtualTableBody';
+import { TpoColorCodedSize } from './TpoColorCodedSize';
 import {
   refreshSidebarOnchainWallet,
   useSidebarOnchainGridWalletPositions,
@@ -1051,7 +1052,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                               : 'text-red-400'
                     }`}>{t.side}</td>
                     <td className={`${cCls} font-bold ${t.outcome === 'YES' || t.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{t.outcome || '-'}</td>
-                    <td className={`${nCls} text-right text-gray-300`}>{t.side === 'CLAIM' ? '—' : Math.round(t.size).toLocaleString()}</td>
+                    <td className={`${nCls} text-right`}>{t.side === 'CLAIM' ? '—' : <TpoColorCodedSize value={Math.round(t.size)} />}</td>
                     <td className={`${nCls} text-right text-gray-300`}>{t.side === 'CLAIM' ? '—' : `${t.price.toFixed(1)}¢`}</td>
                     <td className={`${nCls} text-right ${t.side === 'CLAIM' ? 'text-blue-300 font-bold' : 'text-gray-300'}`}>${t.value.toFixed(2)}</td>
                     <td className={`${nCls} text-right text-yellow-400/80`}>{t.fee > 0 ? `$${t.fee.toFixed(2)}` : '-'}</td>
@@ -1163,7 +1164,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${nCls} ${p.dateColor}`}>{p.dateLabel}</td>
                     <td className={`${cCls} ${assetColorMap2[p.asset] || 'text-gray-300'}`}>{p.marketName}</td>
                     <td className={`${cCls} font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
-                    <td className={`${nCls} text-right text-gray-300`}>{Math.floor(p.size).toLocaleString()}</td>
+                    <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.floor(p.size)} /></td>
                     <td className={`${nCls} text-right text-gray-300`}>{p.entryPrice.toFixed(1)}¢</td>
                     <td className={`${nCls} text-right text-red-400`}>-${p.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td className={`${nCls} text-right ${hasBid ? exitColor : 'text-gray-400'}`}>
@@ -1188,7 +1189,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               <tr className="border-t-2 border-gray-600 font-bold">
                 <td className={`${cCls} text-white`}>Total</td>
                 <td className={cCls}></td><td className={cCls}></td><td className={cCls}></td>
-                <td className={`${nCls} text-right text-white`}>{Math.floor(totalSize).toLocaleString()}</td>
+                <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.floor(totalSize)} /></td>
                 <td className={`${nCls} text-right text-gray-400`}>{avgEntry.toFixed(1)}¢</td>
                 <td className={`${nCls} text-right text-red-400`}>-${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td className={`${nCls} text-right text-gray-400`}>{avgExit.toFixed(1)}¢</td>
@@ -1242,7 +1243,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${cCls} font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
                     <td className={`${cCls} font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
                     <td className={`${nCls} text-right text-white`}>{o.price.toFixed(1)}¢</td>
-                    <td className={`${nCls} text-right text-gray-300`}>{Math.round(o.size).toLocaleString()}</td>
+                    <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.round(o.size)} /></td>
                     <td className={`${nCls} text-right text-gray-500`}>{Math.round(o.filled).toLocaleString()}</td>
                     <td className={`${nCls} text-right text-gray-300`}>${Math.round(o.value).toLocaleString()}</td>
                     <td className={`${nCls} text-center`}>

@@ -1356,9 +1356,14 @@ export const Sidebar = memo(function Sidebar() {
   }, [selectedMarket?.clobTokenIds]);
   const selectedConditionId = useMemo(() => {
     if (liveTradesSource !== 'onchain' || !selectedMarket) return null;
-    const m = (selectedMarket.conditionId ?? selectedMarket.id ?? '').trim();
-    return m || null;
-  }, [liveTradesSource, selectedMarket?.conditionId, selectedMarket?.id]);
+    const cond = (selectedMarket.conditionId || '').trim();
+    if (cond) return cond;
+    const id = (selectedMarket.id || '').trim();
+    if (!id || id.startsWith('expired:') || id.startsWith('token:')) return null;
+    const toks = (selectedMarket.clobTokenIds || []).map((t) => String(t || '').trim()).filter(Boolean);
+    if (toks.includes(id)) return null;
+    return id;
+  }, [liveTradesSource, selectedMarket?.conditionId, selectedMarket?.id, selectedMarket?.clobTokenIds]);
   const refreshMyMarketTrades = useCallback(() => {
     const w = (walletForLivePositions || '').trim().toLowerCase();
     const m = selectedConditionId;

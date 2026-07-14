@@ -471,7 +471,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       return;
     }
 
-    // Expired / off-grid: build selectable stub; enrich YES/NO tokens when condition id known.
+    // Expired / off-grid: stub market. Always keep clicked token (ledger id may differ from CTF pair).
     let yes = sideFromHint === 'YES' ? tid : '';
     let no = sideFromHint === 'NO' ? tid : '';
     if (mid) {
@@ -483,10 +483,23 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         /* stub with known token only */
       }
     }
-    const clobTokenIds = [yes || tid, no].filter(Boolean);
-    if (clobTokenIds.length === 1) clobTokenIds.push('');
+    const tokSet = new Set<string>();
+    for (const x of [yes, no, tid]) {
+      const s = String(x || '').trim();
+      if (s) tokSet.add(s);
+    }
+    const clobTokenIds = [...tokSet];
+    // Prefer YES/NO slot order when we know both legs.
+    if (yes && no) {
+      clobTokenIds.length = 0;
+      clobTokenIds.push(yes, no);
+      if (![yes, no].some((x) => x === tid || normalizeClobTokenId(x) === normalizeClobTokenId(tid))) {
+        clobTokenIds.push(tid);
+      }
+    }
+    // Never use raw token id as conditionId — that breaks subscribeWalletMarket / My Trades.
     const stub: Market = {
-      id: mid || tid,
+      id: mid || `expired:${tid}`,
       conditionId: mid || undefined,
       question: (hint?.title || '').trim() || tid,
       eventSlug: hint?.eventSlug || undefined,

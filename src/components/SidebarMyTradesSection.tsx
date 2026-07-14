@@ -5,6 +5,7 @@ import {
   formatElapsedSinceMs,
   getTokenOutcome,
   getTradeClobTokenId,
+  normalizeClobTokenId,
   outcomeTokenBelongsToSelectedMarket,
   tradeMatchesSelectedMarket,
 } from '../utils/format';
@@ -12,6 +13,7 @@ import { mySidebarTradeRowKey, useMyTradeRowRingSound } from '../lib/myTradeRowR
 import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
 import { useSidebarOnchainWalletMarketTrades } from '../lib/sidebarOnchainTradesStore';
 import { useWalletTradeElapsedMs } from '../lib/walletTradeElapsedStore';
+import { canonicalConditionKey } from '../hooks/useOnchainTradesWS';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 
 function tradeFilledSizeShares(trade: { size: string; size_filled?: string }): number {
@@ -57,12 +59,24 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
     if (liveTradesSource !== 'onchain') {
       return trades.filter((t) => tradeMatchesSelectedMarket(t, selectedMarket, marketLookup));
     }
+    const selCond = canonicalConditionKey(
+      String(selectedMarket.conditionId || selectedMarket.id || '').trim(),
+    );
+    const selToks = new Set(
+      (selectedMarket.clobTokenIds || [])
+        .map((t) => normalizeClobTokenId(String(t || '').trim()))
+        .filter(Boolean),
+    );
     return wsMarketTrades
-      .filter(
-        (f) =>
-          !f.pending &&
-          outcomeTokenBelongsToSelectedMarket(String(f.tokenId || '').trim(), selectedMarket, marketLookup),
-      )
+      .filter((f) => {
+        if (f.pending) return false;
+        const tid = String(f.tokenId || '').trim();
+        if (outcomeTokenBelongsToSelectedMarket(tid, selectedMarket, marketLookup)) return true;
+        // Expired stubs / WS market snapshots: match by condition id or normalized token.
+        const fillCond = canonicalConditionKey(String(f.marketId || '').trim());
+        if (selCond && fillCond && selCond === fillCond && !selCond.startsWith('expired:')) return true;
+        return !!tid && selToks.has(normalizeClobTokenId(tid));
+      })
       .slice()
       .sort((a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0))
       .map((f) => ({

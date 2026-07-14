@@ -570,9 +570,18 @@ export function outcomeTokenBelongsToSelectedMarket(
   marketLookup: Record<string, Market>,
 ): boolean {
   if (!tokenId || !selected?.clobTokenIds?.length) return false;
-  if (!selected.clobTokenIds.includes(tokenId)) return false;
-  const row = marketLookup[tokenId];
-  if (row?.id && selected.id && row.id !== selected.id) return false;
+  const nt = normalizeClobTokenId(tokenId);
+  const inSelected = selected.clobTokenIds.some((id) => {
+    const s = String(id || '').trim();
+    return s === tokenId || normalizeClobTokenId(s) === nt;
+  });
+  if (!inSelected) return false;
+  const row = marketLookup[tokenId] || marketLookup[nt];
+  if (row?.id && selected.id && row.id !== selected.id) {
+    const rowCond = String(row.conditionId || row.id).trim().toLowerCase();
+    const selCond = String(selected.conditionId || selected.id).trim().toLowerCase();
+    if (rowCond && selCond && rowCond !== selCond) return false;
+  }
   return true;
 }
 

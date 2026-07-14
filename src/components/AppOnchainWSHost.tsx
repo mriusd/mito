@@ -16,9 +16,15 @@ export const AppOnchainWSHost = memo(function AppOnchainWSHost() {
 
   const marketId = useMemo(() => {
     if (!active || !selectedMarket) return null;
-    const m = (selectedMarket.conditionId ?? selectedMarket.id ?? '').trim();
-    return m || null;
-  }, [active, selectedMarket?.conditionId, selectedMarket?.id]);
+    // Prefer real condition id only — never token id / expired: stubs (breaks wallet+market trades WS).
+    const cond = (selectedMarket.conditionId || '').trim();
+    if (cond) return cond;
+    const id = (selectedMarket.id || '').trim();
+    if (!id || id.startsWith('expired:') || id.startsWith('token:')) return null;
+    const toks = (selectedMarket.clobTokenIds || []).map((t) => String(t || '').trim()).filter(Boolean);
+    if (toks.includes(id)) return null;
+    return id;
+  }, [active, selectedMarket?.conditionId, selectedMarket?.id, selectedMarket?.clobTokenIds]);
 
   const scopedClobPair = useMemo(() => {
     if (!selectedMarket?.clobTokenIds?.length) return null;

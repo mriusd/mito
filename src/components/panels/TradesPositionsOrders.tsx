@@ -67,6 +67,14 @@ function formatElapsed(ms: number): string {
   return `${Math.floor(hr / 24)}d`;
 }
 
+function elapsedTimeColor(ms: number): string {
+  const ageMs = ms > 0 ? Date.now() - ms : Infinity;
+  if (ageMs < 60_000) return 'text-purple-400';
+  if (ageMs < 15 * 60_000) return 'text-green-400';
+  if (ageMs < 60 * 60_000) return 'text-yellow-400';
+  return 'text-gray-400';
+}
+
 function parseTsMs(ts: string | number | null | undefined): number {
   if (ts == null || ts === '') return 0;
   if (typeof ts === 'number') {
@@ -1300,8 +1308,6 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             <TpoVirtualTableBody count={displayTrades.length} colgroup={trColgroup} minWidth={TR_MIN_W}>
               {(i) => {
                 const t = displayTrades[i];
-                const ageMs = t.timeMs > 0 ? Date.now() - t.timeMs : Infinity;
-                const timeColor = ageMs < 15 * 60000 ? 'text-green-400' : ageMs < 60 * 60000 ? 'text-yellow-400' : 'text-gray-400';
                 return (
                   <tr
                     key={i}
@@ -1329,7 +1335,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${nCls} text-right text-gray-300`}>{t.side === 'CLAIM' ? '—' : `${t.price.toFixed(1)}¢`}</td>
                     <td className={`${nCls} text-right ${t.side === 'CLAIM' ? 'text-blue-300 font-bold' : 'text-gray-300'}`}>${t.value.toFixed(2)}</td>
                     <td className={`${nCls} text-right text-yellow-400/80`}>{t.fee > 0 ? `$${t.fee.toFixed(2)}` : '-'}</td>
-                    <td className={`${nCls} text-right ${timeColor}`}>{t.timeMs > 0 ? formatElapsed(t.timeMs) : ''}</td>
+                    <td className={`${nCls} text-right ${elapsedTimeColor(t.timeMs)}`}>{t.timeMs > 0 ? formatElapsed(t.timeMs) : ''}</td>
                   </tr>
                 );
               }}
@@ -1525,8 +1531,6 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 const dd = o.isWeather
                   ? { label: o.dateLabel, color: o.dateColor }
                   : getTimeLeftDisplay(o.endDate);
-                const ageMs = o.timeMs > 0 ? Date.now() - o.timeMs : Infinity;
-                const timeColor = ageMs < 15 * 60000 ? 'text-green-400' : ageMs < 60 * 60000 ? 'text-yellow-400' : 'text-gray-400';
                 return (
                   <tr key={o.id} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${selectedMarketId === o.marketId ? 'bg-blue-900/40' : ''}`}>
                     <td className={`${cCls} ${assetColorMap[o.asset] || 'text-gray-400'} font-bold`}>{o.asset}</td>
@@ -1541,7 +1545,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.round(o.size)} /></td>
                     <td className={`${nCls} text-right text-gray-500`}>{Math.round(o.filled).toLocaleString()}</td>
                     <td className={`${nCls} text-right text-gray-300`}>${Math.round(o.value).toLocaleString()}</td>
-                    <td className={`${nCls} text-right ${timeColor}`}>{o.timeMs > 0 ? formatElapsed(o.timeMs) : ''}</td>
+                    <td className={`${nCls} text-right ${elapsedTimeColor(o.timeMs)}`}>{o.timeMs > 0 ? formatElapsed(o.timeMs) : ''}</td>
                     <td className={`${nCls} text-center`}>
                       <button
                         onClick={() => !cancellingOrderIds.has(o.id) && handleCancelOrder(o.id)}

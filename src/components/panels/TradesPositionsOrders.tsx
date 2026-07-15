@@ -67,6 +67,29 @@ function formatElapsed(ms: number): string {
   return `${Math.floor(hr / 24)}d`;
 }
 
+function parseTsMs(ts: string | number | null | undefined): number {
+  if (ts == null || ts === '') return 0;
+  if (typeof ts === 'number') {
+    if (!Number.isFinite(ts) || ts <= 0) return 0;
+    return ts < 1e12 ? ts * 1000 : ts;
+  }
+  const n = parseInt(ts, 10);
+  if (Number.isFinite(n) && String(n) === String(ts).trim()) {
+    return n < 1e12 ? n * 1000 : n;
+  }
+  const parsed = Date.parse(/^\d{4}-\d{2}-\d{2}/.test(ts) && !ts.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(ts)
+    ? `${ts}Z`
+    : ts);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function compareTimeMs(a: number, b: number, dir: 1 | -1): number {
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  return (a - b) * dir;
+}
+
 function getLocalDateKey(d: Date = new Date()): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -623,10 +646,10 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     localStorage.setItem(`polymarket-tpo-pos-sort-dir-${panelId}`, '-1');
   };
 
-  type OrdSortCol = 'price';
+  type OrdSortCol = 'price' | 'time';
   const [ordSortCol, setOrdSortCol] = useState<OrdSortCol | null>(() => {
     const v = localStorage.getItem(`polymarket-tpo-ord-sort-col-${panelId}`);
-    return v === 'price' ? 'price' : null;
+    return v === 'price' || v === 'time' ? v : null;
   });
   const [ordSortDir, setOrdSortDir] = useState<1 | -1>(() => {
     const v = parseInt(localStorage.getItem(`polymarket-tpo-ord-sort-dir-${panelId}`) || '-1', 10);
@@ -644,6 +667,29 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     setOrdSortDir(-1);
     localStorage.setItem(`polymarket-tpo-ord-sort-col-${panelId}`, col);
     localStorage.setItem(`polymarket-tpo-ord-sort-dir-${panelId}`, '-1');
+  };
+
+  type TradeSortCol = 'time';
+  const [tradeSortCol, setTradeSortCol] = useState<TradeSortCol | null>(() => {
+    const v = localStorage.getItem(`polymarket-tpo-tr-sort-col-${panelId}`);
+    return v === 'time' ? 'time' : null;
+  });
+  const [tradeSortDir, setTradeSortDir] = useState<1 | -1>(() => {
+    const v = parseInt(localStorage.getItem(`polymarket-tpo-tr-sort-dir-${panelId}`) || '-1', 10);
+    return v === 1 ? 1 : -1;
+  });
+
+  const toggleTradeSort = (col: TradeSortCol) => {
+    if (tradeSortCol === col) {
+      const nd = (tradeSortDir === 1 ? -1 : 1) as 1 | -1;
+      setTradeSortDir(nd);
+      localStorage.setItem(`polymarket-tpo-tr-sort-dir-${panelId}`, String(nd));
+      return;
+    }
+    setTradeSortCol(col);
+    setTradeSortDir(-1);
+    localStorage.setItem(`polymarket-tpo-tr-sort-col-${panelId}`, col);
+    localStorage.setItem(`polymarket-tpo-tr-sort-dir-${panelId}`, '-1');
   };
 
   const handleSetTab = (t: 'trades' | 'positions' | 'orders') => {
@@ -808,13 +854,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
       const side = isClaim ? 'CLAIM' : trade.side;
       const value = isClaim ? (trade.usdcSize || size) : (trade.usdcSize || rawPrice * size);
-      const ts = trade.match_time ?? trade.timestamp ?? trade.created_at ?? trade.matchTime ?? '';
-      let timeMs = 0;
-      if (ts) {
-        let t = typeof ts === 'string' ? parseInt(ts, 10) : ts;
-        if (t < 1e12) t = t * 1000;
-        timeMs = t;
-      }
+      const timeMs = parseTsMs(trade.match_time ?? trade.timestamp ?? trade.created_at ?? trade.matchTime);
       const fee = parseFloat(trade.fee || '0');
       const conditionId = market?.conditionId || market?.id || trade.conditionId || trade.market || '';
       const clickable = !!tid && side !== 'CLAIM';
@@ -1008,6 +1048,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         const size = parseFloat(order.original_size || order.size);
         const filled = parseFloat(order.size_matched || '0');
         const value = parseFloat(order.price) * size;
+        const timeMs = parseTsMs(order.created_at);
         return {
           id: order.id,
           tid,
@@ -1023,17 +1064,26 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           size,
           filled,
           value,
+          timeMs,
           marketId: market?.id,
         };
       });
   }, [orders, assetFilter, ordersFilter]);
 
   const displayOrders = useMemo(() => {
-    if (ordSortCol !== 'price') return processedOrders;
-    return [...processedOrders].sort((a, b) => (a.price - b.price) * ordSortDir);
+    if (ordSortCol === 'price') {
+      return [...processedOrders].sort((a, b) => (a.price - b.price) * ordSortDir);
+    }
+    if (ordSortCol === 'time') {
+      return [...processedOrders].sort((a, b) => compareTimeMs(a.timeMs, b.timeMs, ordSortDir));
+    }
+    return processedOrders;
   }, [processedOrders, ordSortCol, ordSortDir]);
 
-  const displayTrades = processedTrades;
+  const displayTrades = useMemo(() => {
+    if (tradeSortCol !== 'time') return processedTrades;
+    return [...processedTrades].sort((a, b) => compareTimeMs(a.timeMs, b.timeMs, tradeSortDir));
+  }, [processedTrades, tradeSortCol, tradeSortDir]);
 
   // Position totals
   const { totalSize, totalCost, totalValue, totalPnl, avgEntry, avgExit, avgPnlPct } = useMemo(() => {
@@ -1064,11 +1114,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     posSortCol === col ? (posSortDir === 1 ? ' ▲' : ' ▼') : '';
   const ordSortArrow = (col: OrdSortCol) =>
     ordSortCol === col ? (ordSortDir === 1 ? ' ▲' : ' ▼') : '';
+  const tradeSortArrow = (col: TradeSortCol) =>
+    tradeSortCol === col ? (tradeSortDir === 1 ? ' ▲' : ' ▼') : '';
 
   // Pixel cols + minWidth: table scrolls horizontally on mobile instead of overlapping.
   const TR_MIN_W = 572;
   const POS_MIN_W = 716;
-  const ORD_MIN_W = 556;
+  const ORD_MIN_W = 608;
   const trColgroup = (
     <colgroup>
       <col style={{ width: 44 }} />
@@ -1111,6 +1163,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       <col style={{ width: 52 }} />
       <col style={{ width: 52 }} />
       <col style={{ width: 56 }} />
+      <col style={{ width: 52 }} />
       <col style={{ width: 32 }} />
     </colgroup>
   );
@@ -1236,7 +1289,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               <th className={`${nHCls} text-right`}>Price</th>
               <th className={`${nHCls} text-right`}>Value</th>
               <th className={`${nHCls} text-right`}>Fee</th>
-              <th className={`${nHCls} text-right`}>Time</th>
+              <th
+                className={`${nHSortCls} text-right`}
+                onClick={() => toggleTradeSort('time')}
+                title="Sort by time"
+              >
+                Time{tradeSortArrow('time')}
+              </th>
             </tr></thead></table>
             <TpoVirtualTableBody count={displayTrades.length} colgroup={trColgroup} minWidth={TR_MIN_W}>
               {(i) => {
@@ -1451,6 +1510,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               <th className={`${nHCls} text-right`}>Size</th>
               <th className={`${nHCls} text-right`}>Filled</th>
               <th className={`${nHCls} text-right`}>Value</th>
+              <th
+                className={`${nHSortCls} text-right`}
+                onClick={() => toggleOrdSort('time')}
+                title="Sort by time since placement"
+              >
+                Time{ordSortArrow('time')}
+              </th>
               <th className={`${nHCls} text-center`}></th>
             </tr></thead></table>
             <TpoVirtualTableBody count={displayOrders.length} colgroup={ordColgroup} minWidth={ORD_MIN_W}>
@@ -1459,6 +1525,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 const dd = o.isWeather
                   ? { label: o.dateLabel, color: o.dateColor }
                   : getTimeLeftDisplay(o.endDate);
+                const ageMs = o.timeMs > 0 ? Date.now() - o.timeMs : Infinity;
+                const timeColor = ageMs < 15 * 60000 ? 'text-green-400' : ageMs < 60 * 60000 ? 'text-yellow-400' : 'text-gray-400';
                 return (
                   <tr key={o.id} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${selectedMarketId === o.marketId ? 'bg-blue-900/40' : ''}`}>
                     <td className={`${cCls} ${assetColorMap[o.asset] || 'text-gray-400'} font-bold`}>{o.asset}</td>
@@ -1473,6 +1541,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.round(o.size)} /></td>
                     <td className={`${nCls} text-right text-gray-500`}>{Math.round(o.filled).toLocaleString()}</td>
                     <td className={`${nCls} text-right text-gray-300`}>${Math.round(o.value).toLocaleString()}</td>
+                    <td className={`${nCls} text-right ${timeColor}`}>{o.timeMs > 0 ? formatElapsed(o.timeMs) : ''}</td>
                     <td className={`${nCls} text-center`}>
                       <button
                         onClick={() => !cancellingOrderIds.has(o.id) && handleCancelOrder(o.id)}

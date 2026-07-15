@@ -1118,14 +1118,14 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     tradeSortCol === col ? (tradeSortDir === 1 ? ' ▲' : ' ▼') : '';
 
   // Pixel cols + minWidth: table scrolls horizontally on mobile instead of overlapping.
-  const TR_MIN_W = 572;
+  const TR_MIN_W = 530;
   const POS_MIN_W = 716;
-  const ORD_MIN_W = 608;
+  const ORD_MIN_W = 566;
   const trColgroup = (
     <colgroup>
       <col style={{ width: 44 }} />
       <col style={{ width: 56 }} />
-      <col style={{ width: 140 }} />
+      <col style={{ width: 98 }} />
       <col style={{ width: 44 }} />
       <col style={{ width: 32 }} />
       <col style={{ width: 52 }} />
@@ -1156,7 +1156,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     <colgroup>
       <col style={{ width: 44 }} />
       <col style={{ width: 56 }} />
-      <col style={{ width: 140 }} />
+      <col style={{ width: 98 }} />
       <col style={{ width: 44 }} />
       <col style={{ width: 32 }} />
       <col style={{ width: 48 }} />

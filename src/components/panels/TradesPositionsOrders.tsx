@@ -257,6 +257,7 @@ function wsTradesToPM(rows: WSTrade[]): Trade[] {
       size: String(t.size),
       fee: String(t.fee || 0),
       timestamp: String(tsMs),
+      ...(Number.isFinite(t.deltaUsd) ? { usdcSize: Math.abs(t.deltaUsd!) } : {}),
       ...(mid ? { market: mid, conditionId: mid } : {}),
       ...(t.outcome ? { outcome: t.outcome } : {}),
       ...(t.title ? { title: t.title } : {}),
@@ -280,6 +281,7 @@ function ledgerTradesToPM(rows: OnchainMarketTradeRow[]): Trade[] {
       size: String(t.size),
       fee: String(t.fee || 0),
       timestamp: String(tsMs),
+      ...(Number.isFinite(t.deltaUsd) ? { usdcSize: Math.abs(t.deltaUsd!) } : {}),
       ...(mid ? { market: mid, conditionId: mid } : {}),
       ...(t.outcome ? { outcome: t.outcome } : {}),
       ...(t.title ? { title: t.title } : {}),
@@ -298,6 +300,14 @@ type TpoSelectHint = {
 };
 
 const TPO_TRADES_PAGE = 500;
+
+/** SELL filter also shows exit-like CTF actions. */
+function tradeSideMatchesFilter(side: string, filter: string): boolean {
+  if (filter === 'ALL') return true;
+  const s = (side || '').toUpperCase();
+  if (filter === 'SELL') return s === 'SELL' || s === 'MERGE' || s === 'REDEEM' || s === 'CLAIM';
+  return s === filter;
+}
 
 function TpoAuthEmpty({
   mode,
@@ -564,7 +574,10 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     let cancelled = false;
     setTradesPageLoading(true);
     const side =
-      tradesSideFilter === 'BUY' || tradesSideFilter === 'SELL'
+      tradesSideFilter === 'BUY' ||
+      tradesSideFilter === 'SELL' ||
+      tradesSideFilter === 'MERGE' ||
+      tradesSideFilter === 'REDEEM'
         ? tradesSideFilter
         : undefined;
     void fetchOnchainWalletTrades({
@@ -597,10 +610,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     if (liveTradesSource !== 'onchain') return trades;
     // Older pages: REST only. Newest page: merge live WS so new fills appear immediately.
     if (tradesOffset > 0) return pagedTradesAsPM;
-    const sideOk = (side: string) =>
-      tradesSideFilter === 'ALL' || side === tradesSideFilter;
-    const live = onchainTradesAsPM.filter((t) => sideOk(t.side || ''));
-    const claims = tradesSideFilter === 'ALL' ? onchainClaimsAsPM : [];
+    const live = onchainTradesAsPM.filter((t) => tradeSideMatchesFilter(t.side || '', tradesSideFilter));
+    const claims =
+      tradesSideFilter === 'ALL' || tradesSideFilter === 'SELL' ? onchainClaimsAsPM : [];
     const seen = new Set<string>();
     const out: Trade[] = [];
     for (const t of [...live, ...pagedTradesAsPM, ...claims]) {
@@ -776,10 +788,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       ? 'px-2 py-0.5 rounded text-xs font-bold bg-gray-600 text-white'
       : 'px-2 py-0.5 rounded text-xs font-bold bg-gray-800 text-gray-500 hover:text-gray-300';
 
-  const filterBtnCls = (active: boolean, color: 'green' | 'red' | 'gray') => {
+  const filterBtnCls = (active: boolean, color: 'green' | 'red' | 'blue' | 'gray') => {
     if (active) {
       if (color === 'green') return 'px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-green-600 text-white shadow-[0_0_8px_rgba(22,163,74,0.35)]';
       if (color === 'red') return 'px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-red-600 text-white shadow-[0_0_8px_rgba(220,38,38,0.35)]';
+      if (color === 'blue') return 'px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-blue-600 text-white shadow-[0_0_8px_rgba(37,99,235,0.35)]';
       return 'px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-500 text-white';
     }
     return 'px-2 py-0.5 rounded-sm text-[9px] font-semibold text-gray-400 hover:text-white hover:bg-gray-700';
@@ -809,7 +822,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           }
         }
       }
-      if (tradesSideFilter !== 'ALL' && t.side !== tradesSideFilter) return false;
+      if (!tradeSideMatchesFilter(t.side || '', tradesSideFilter)) return false;
       return true;
     })
     .map((trade) => {
@@ -1197,7 +1210,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           {tab === 'trades' && (
             <div className="flex gap-1 items-center flex-wrap">
               <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]">
-                {(['ALL', 'BUY', 'SELL'] as const).map((s) => (
+                {(['ALL', 'BUY', 'SELL', 'MERGE', 'REDEEM'] as const).map((s) => (
                   <button
                     key={s}
                     onClick={() => {
@@ -1205,7 +1218,10 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                       setTradesOffset(0);
                       localStorage.setItem('polymarket-trades-side-filter', s);
                     }}
-                    className={filterBtnCls(tradesSideFilter === s, s === 'BUY' ? 'green' : s === 'SELL' ? 'red' : 'gray')}
+                    className={filterBtnCls(
+                      tradesSideFilter === s,
+                      s === 'BUY' ? 'green' : s === 'SELL' || s === 'MERGE' ? 'red' : s === 'REDEEM' ? 'blue' : 'gray',
+                    )}
                   >{s}</button>
                 ))}
               </div>

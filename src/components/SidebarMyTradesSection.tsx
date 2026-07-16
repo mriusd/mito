@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import type { Market } from '../types';
 import { useAppStore } from '../stores/appStore';
 import {
@@ -16,6 +16,8 @@ import { useWalletTradeElapsedMs } from '../lib/walletTradeElapsedStore';
 import { canonicalConditionKey } from '../hooks/useOnchainTradesWS';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 
+const GROUP_LS_KEY = 'sidebar-my-trades-group';
+
 function tradeFilledSizeShares(trade: { size: string; size_filled?: string }): number {
   return parseFloat(trade.size_filled ?? trade.size);
 }
@@ -32,6 +34,70 @@ function tradeTimeMs(trade: {
   if (!Number.isFinite(t) || t <= 0) return 0;
   if (t < 1e12) t = t * 1000;
   return t;
+}
+
+type MyTradeRow = {
+  asset_id?: string;
+  token_id?: string;
+  side: string;
+  price: string;
+  size: string;
+  fee?: string;
+  timestamp?: number | string;
+  txHash?: string;
+  logIndex?: number;
+  created_at?: string;
+  matchTime?: string;
+  size_filled?: string;
+};
+
+type DisplayTradeRow = MyTradeRow & {
+  rowKey: string;
+  flashKeys: string[];
+  groupedCount: number;
+};
+
+function groupMyTrades(trades: MyTradeRow[]): DisplayTradeRow[] {
+  const groups = new Map<string, DisplayTradeRow>();
+  for (const trade of trades) {
+    const side = String(trade.side || '').toUpperCase() || '-';
+    const rawPrice = parseFloat(trade.price);
+    const priceKey = Number.isFinite(rawPrice) ? rawPrice.toFixed(6) : String(trade.price || '');
+    const tid = normalizeClobTokenId(getTradeClobTokenId(trade) || String(trade.asset_id || trade.token_id || '').trim());
+    const gKey = `${side}|${priceKey}|${tid}`;
+    const size = tradeFilledSizeShares(trade);
+    const fee = parseFloat(trade.fee || '0');
+    const timeMs = tradeTimeMs(trade);
+    const memberKey = mySidebarTradeRowKey(trade);
+    const prev = groups.get(gKey);
+    if (!prev) {
+      groups.set(gKey, {
+        ...trade,
+        side,
+        price: Number.isFinite(rawPrice) ? String(rawPrice) : trade.price,
+        size: String(Number.isFinite(size) ? size : 0),
+        fee: String(Number.isFinite(fee) && fee > 0 ? fee : 0),
+        timestamp: timeMs > 0 ? timeMs : trade.timestamp,
+        rowKey: `grp:${gKey}`,
+        flashKeys: memberKey ? [memberKey] : [],
+        groupedCount: 1,
+      });
+      continue;
+    }
+    const prevSize = tradeFilledSizeShares(prev);
+    const prevFee = parseFloat(prev.fee || '0');
+    const prevTime = tradeTimeMs(prev);
+    prev.size = String((Number.isFinite(prevSize) ? prevSize : 0) + (Number.isFinite(size) ? size : 0));
+    prev.fee = String((Number.isFinite(prevFee) ? prevFee : 0) + (Number.isFinite(fee) && fee > 0 ? fee : 0));
+    prev.groupedCount += 1;
+    if (memberKey) prev.flashKeys.push(memberKey);
+    if (timeMs > prevTime) {
+      prev.timestamp = timeMs;
+      prev.txHash = trade.txHash;
+      prev.logIndex = trade.logIndex;
+    }
+  }
+  return Array.from(groups.values()).sort((a, b) => tradeTimeMs(b) - tradeTimeMs(a));
 }
 
 export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
@@ -54,10 +120,11 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
   const trades = useAppStore((s) => s.trades);
   const wsMarketTrades = useSidebarOnchainWalletMarketTrades();
   const nowMs = useWalletTradeElapsedMs();
+  const [groupOn, setGroupOn] = useState(() => localStorage.getItem(GROUP_LS_KEY) === '1');
 
   const myTrades = useMemo(() => {
     if (liveTradesSource !== 'onchain') {
-      return trades.filter((t) => tradeMatchesSelectedMarket(t, selectedMarket, marketLookup));
+      return trades.filter((t) => tradeMatchesSelectedMarket(t, selectedMarket, marketLookup)) as MyTradeRow[];
     }
     const selCond = canonicalConditionKey(
       String(selectedMarket.conditionId || selectedMarket.id || '').trim(),
@@ -99,6 +166,21 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
     [liveTradesSource, myTrades],
   );
 
+  const tableRows = useMemo((): DisplayTradeRow[] => {
+    if (!groupOn) {
+      return myTradesDisplay.map((trade, i) => {
+        const k = mySidebarTradeRowKey(trade);
+        return {
+          ...trade,
+          rowKey: k || `my-trade-${i}`,
+          flashKeys: k ? [k] : [],
+          groupedCount: 1,
+        };
+      });
+    }
+    return groupMyTrades(myTradesDisplay);
+  }, [groupOn, myTradesDisplay]);
+
   const myTradesPnl = useMemo(() => {
     let totalSellCost = 0;
     let totalBuyCost = 0;
@@ -118,6 +200,7 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
       ? `${selectedMarket?.conditionId || selectedMarket?.id}|${(walletForLivePositions || '').toLowerCase()}|${liveTradesSource}`
       : null;
 
+  // Ring/flash from raw fills so grouping never suppresses new-trade sound.
   const myTradeFlashKeys = useMyTradeRowRingSound(
     myTradesDisplay,
     myTradeScopeKey,
@@ -132,13 +215,26 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
         <div className="flex items-center gap-1.5 min-w-0">
           <span>My Trades</span>
           <SidebarDataSourceBadge source={liveTradesSource === 'onchain' ? 'onchain' : 'polymarket'} />
+          <label className="flex items-center gap-1 cursor-pointer select-none text-[10px] text-gray-500 hover:text-gray-300">
+            <input
+              type="checkbox"
+              className="rounded accent-amber-500"
+              checked={groupOn}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setGroupOn(on);
+                localStorage.setItem(GROUP_LS_KEY, on ? '1' : '0');
+              }}
+            />
+            <span>Group</span>
+          </label>
         </div>
         <span className={myTradesPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
           PnL {myTradesPnl >= 0 ? '+' : ''}${Math.abs(myTradesPnl).toFixed(2)}
         </span>
       </div>
       <div className="max-h-48 overflow-y-auto text-[11px]">
-        {myTradesDisplay.length === 0 ? (
+        {tableRows.length === 0 ? (
           <div className="text-gray-600">No trades</div>
         ) : (
           <table className="w-full table-fixed border-separate border-spacing-y-0.5">
@@ -154,9 +250,8 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
               </tr>
             </thead>
             <tbody>
-              {myTradesDisplay.map((trade, i) => {
-                const rowKey = mySidebarTradeRowKey(trade) || `my-trade-${i}`;
-                const isFlashing = myTradeFlashKeys.has(rowKey);
+              {tableRows.map((trade) => {
+                const isFlashing = trade.flashKeys.some((k) => myTradeFlashKeys.has(k));
                 const tid = getTradeClobTokenId(trade) || String(trade.asset_id || trade.token_id || '').trim();
                 const outcome = getTokenOutcome(tid, marketLookup);
                 const sideLabel = isUpDownMarket ? (outcome === 'YES' ? 'UP' : 'DOWN') : outcome;
@@ -186,8 +281,9 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
                         : 'text-rose-400';
                 return (
                   <tr
-                    key={rowKey}
+                    key={trade.rowKey}
                     className={`text-gray-300${isFlashing ? ' my-trade-row-flash' : ''}`}
+                    title={trade.groupedCount > 1 ? `${trade.groupedCount} fills @ same price` : undefined}
                   >
                     <td className={`py-0.5 ${dirTone}`}>{side || '-'}</td>
                     <td className={outcome === 'YES' ? 'py-0.5 text-emerald-400' : 'py-0.5 text-rose-400'}>{sideLabel}</td>

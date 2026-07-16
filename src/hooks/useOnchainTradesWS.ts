@@ -518,7 +518,7 @@ function mapRawWSTrade(t: {
   const side = normalizeLedgerAction(t.side);
   const logIndex = Number.isFinite(Number(t.logIndex)) ? Number(t.logIndex) : undefined;
   const txHash = t.txHash;
-  if (!tokenId && side !== 'SPLIT' && side !== 'MERGE') return null;
+  if (!tokenId && side !== 'SPLIT' && side !== 'MERGE' && side !== 'REDEEM') return null;
   const marketId = String(t.marketId || '').trim() || undefined;
   const row: WSTrade = {
     tokenId,

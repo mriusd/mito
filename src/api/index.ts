@@ -948,6 +948,8 @@ export interface OnchainMarketTradeRow {
   size: number;
   price: number;
   fee: number;
+  /** USDC delta from ledger (useful for MERGE/REDEEM value) */
+  deltaUsd?: number;
   /** From `markets` join (Polymarket question) */
   title?: string;
   slug?: string;

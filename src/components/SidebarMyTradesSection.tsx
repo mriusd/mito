@@ -55,40 +55,87 @@ type DisplayTradeRow = MyTradeRow & {
   rowKey: string;
   flashKeys: string[];
   groupedCount: number;
+  /** Sum of fill notionals (price*size); used for Cost when grouped. */
+  notional: number;
 };
 
-function groupMyTrades(trades: MyTradeRow[]): DisplayTradeRow[] {
+/** Round probability to 0.1¢ (not whole cents). e.g. 0.00145 → 0.1¢ key. */
+function roundPriceToTenthCent(rawPrice: number): number {
+  if (!Number.isFinite(rawPrice)) return NaN;
+  return Math.round(rawPrice * 1000) / 1000;
+}
+
+/** Group key = ¢ with 1 decimal place (0.1¢ steps). */
+function tradeGroupPriceKey(rawPrice: number): string {
+  const p = roundPriceToTenthCent(rawPrice);
+  if (!Number.isFinite(p)) return '';
+  return (p * 100).toFixed(1);
+}
+
+function tradeOutcomeGroupKey(
+  tid: string,
+  selectedMarket: Market,
+  marketLookup: Record<string, Market>,
+): string {
+  const fromLookup = getTokenOutcome(tid, marketLookup);
+  if (fromLookup) return fromLookup;
+  const toks = selectedMarket.clobTokenIds || [];
+  if (toks[0] && normalizeClobTokenId(toks[0]) === tid) return 'YES';
+  if (toks[1] && normalizeClobTokenId(toks[1]) === tid) return 'NO';
+  return tid || '-';
+}
+
+function groupMyTrades(
+  trades: MyTradeRow[],
+  selectedMarket: Market,
+  marketLookup: Record<string, Market>,
+): DisplayTradeRow[] {
   const groups = new Map<string, DisplayTradeRow>();
   for (const trade of trades) {
     const side = String(trade.side || '').toUpperCase() || '-';
     const rawPrice = parseFloat(trade.price);
-    const priceKey = Number.isFinite(rawPrice) ? rawPrice.toFixed(6) : String(trade.price || '');
-    const tid = normalizeClobTokenId(getTradeClobTokenId(trade) || String(trade.asset_id || trade.token_id || '').trim());
-    const gKey = `${side}|${priceKey}|${tid}`;
-    const size = tradeFilledSizeShares(trade);
+    const priceKey = tradeGroupPriceKey(rawPrice);
+    const tid = normalizeClobTokenId(
+      getTradeClobTokenId(trade) || String(trade.asset_id || trade.token_id || '').trim(),
+    );
+    const outcome = tradeOutcomeGroupKey(tid, selectedMarket, marketLookup);
+    // Dir + display ¢ + YES/NO — ignore float noise / token-id formatting.
+    const gKey = `${side}|${priceKey}|${outcome}`;
+    const sizeRaw = tradeFilledSizeShares(trade);
+    const size = Number.isFinite(sizeRaw) ? sizeRaw : 0;
     const fee = parseFloat(trade.fee || '0');
+    const feeAdd = Number.isFinite(fee) && fee > 0 ? fee : 0;
+    const notional = (Number.isFinite(rawPrice) ? rawPrice : 0) * size;
     const timeMs = tradeTimeMs(trade);
     const memberKey = mySidebarTradeRowKey(trade);
     const prev = groups.get(gKey);
     if (!prev) {
+      const canonPrice = roundPriceToTenthCent(rawPrice);
       groups.set(gKey, {
         ...trade,
         side,
-        price: Number.isFinite(rawPrice) ? String(rawPrice) : trade.price,
-        size: String(Number.isFinite(size) ? size : 0),
-        fee: String(Number.isFinite(fee) && fee > 0 ? fee : 0),
+        price: Number.isFinite(canonPrice) ? String(canonPrice) : trade.price,
+        size: String(size),
+        fee: String(feeAdd),
         timestamp: timeMs > 0 ? timeMs : trade.timestamp,
         rowKey: `grp:${gKey}`,
         flashKeys: memberKey ? [memberKey] : [],
         groupedCount: 1,
+        notional,
       });
       continue;
     }
-    const prevSize = tradeFilledSizeShares(prev);
+    const prevSizeRaw = tradeFilledSizeShares(prev);
+    const prevSize = Number.isFinite(prevSizeRaw) ? prevSizeRaw : 0;
     const prevFee = parseFloat(prev.fee || '0');
     const prevTime = tradeTimeMs(prev);
-    prev.size = String((Number.isFinite(prevSize) ? prevSize : 0) + (Number.isFinite(size) ? size : 0));
-    prev.fee = String((Number.isFinite(prevFee) ? prevFee : 0) + (Number.isFinite(fee) && fee > 0 ? fee : 0));
+    const nextSize = prevSize + size;
+    prev.size = String(nextSize);
+    prev.notional += notional;
+    // Keep row price on the 0.1¢ bucket (size-weighted avg snapped to 1 decimal ¢).
+    const avg = nextSize > 0 ? prev.notional / nextSize : parseFloat(prev.price);
+    prev.price = String(roundPriceToTenthCent(avg));
+    prev.fee = String((Number.isFinite(prevFee) ? prevFee : 0) + feeAdd);
     prev.groupedCount += 1;
     if (memberKey) prev.flashKeys.push(memberKey);
     if (timeMs > prevTime) {
@@ -170,16 +217,20 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
     if (!groupOn) {
       return myTradesDisplay.map((trade, i) => {
         const k = mySidebarTradeRowKey(trade);
+        const rawPrice = parseFloat(trade.price);
+        const size = tradeFilledSizeShares(trade);
         return {
           ...trade,
           rowKey: k || `my-trade-${i}`,
           flashKeys: k ? [k] : [],
           groupedCount: 1,
+          notional:
+            (Number.isFinite(rawPrice) ? rawPrice : 0) * (Number.isFinite(size) ? size : 0),
         };
       });
     }
-    return groupMyTrades(myTradesDisplay);
-  }, [groupOn, myTradesDisplay]);
+    return groupMyTrades(myTradesDisplay, selectedMarket, marketLookup);
+  }, [groupOn, myTradesDisplay, selectedMarket, marketLookup]);
 
   const myTradesPnl = useMemo(() => {
     let totalSellCost = 0;
@@ -237,7 +288,16 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
         {tableRows.length === 0 ? (
           <div className="text-gray-600">No trades</div>
         ) : (
-          <table className="w-full table-fixed border-separate border-spacing-y-0.5">
+          <table className="w-full border-separate border-spacing-y-0.5">
+            <colgroup>
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '18%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '16%' }} />
+              <col style={{ width: '14%' }} />
+            </colgroup>
             <thead>
               <tr className="text-[10px] uppercase tracking-wide text-gray-500">
                 <th className="text-left font-medium">Dir</th>
@@ -259,7 +319,7 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
                 const size = tradeFilledSizeShares(trade);
                 const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
                 const side = isClaim ? 'CLAIM' : trade.side;
-                const cost = Number.isFinite(rawPrice) && Number.isFinite(size) ? rawPrice * size : 0;
+                const cost = Number.isFinite(trade.notional) ? trade.notional : 0;
                 const signedCost =
                   side === 'BUY' || side === 'SPLIT'
                     ? -cost
@@ -285,13 +345,19 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
                     className={`text-gray-300${isFlashing ? ' my-trade-row-flash' : ''}`}
                     title={trade.groupedCount > 1 ? `${trade.groupedCount} fills @ same price` : undefined}
                   >
-                    <td className={`py-0.5 ${dirTone}`}>{side || '-'}</td>
-                    <td className={outcome === 'YES' ? 'py-0.5 text-emerald-400' : 'py-0.5 text-rose-400'}>{sideLabel}</td>
-                    <td className="py-0.5 text-right">{Number.isFinite(size) ? size.toFixed(2) : '-'}</td>
-                    <td className="py-0.5 text-right">{Number.isFinite(rawPrice) ? `${(rawPrice * 100).toFixed(1)}¢` : '-'}</td>
-                    <td className="py-0.5 text-right text-yellow-400/80">{tradeFee > 0 ? `$${tradeFee.toFixed(2)}` : '-'}</td>
+                    <td className={`py-0.5 pr-1 ${dirTone}`}>{side || '-'}</td>
+                    <td className={`py-0.5 pr-1 ${outcome === 'YES' ? 'text-emerald-400' : 'text-rose-400'}`}>{sideLabel}</td>
+                    <td className="py-0.5 pr-1 text-right tabular-nums whitespace-nowrap">
+                      {Number.isFinite(size) ? size.toFixed(2) : '-'}
+                    </td>
+                    <td className="py-0.5 pr-1 text-right tabular-nums whitespace-nowrap">
+                      {Number.isFinite(rawPrice) ? `${(rawPrice * 100).toFixed(1)}¢` : '-'}
+                    </td>
+                    <td className="py-0.5 pr-1 text-right tabular-nums whitespace-nowrap text-yellow-400/80">
+                      {tradeFee > 0 ? `$${tradeFee.toFixed(2)}` : '-'}
+                    </td>
                     <td
-                      className={`py-0.5 text-right ${
+                      className={`py-0.5 pr-1 text-right tabular-nums whitespace-nowrap ${
                         side === 'BUY' || side === 'SPLIT'
                           ? 'text-rose-400'
                           : side === 'SELL' || side === 'MERGE' || side === 'REDEEM'
@@ -301,7 +367,7 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
                     >
                       {signedCost >= 0 ? '+' : '-'}${Math.abs(signedCost).toFixed(2)}
                     </td>
-                    <td className={`py-0.5 text-right tabular-nums ${timeColor}`}>
+                    <td className={`py-0.5 text-right tabular-nums whitespace-nowrap ${timeColor}`}>
                       {timeMs > 0 ? formatElapsedSinceMs(timeMs, nowMs) : ''}
                     </td>
                   </tr>

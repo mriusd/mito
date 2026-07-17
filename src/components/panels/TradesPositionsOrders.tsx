@@ -1530,7 +1530,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${nCls} text-right text-white`}>{o.price.toFixed(1)}¢</td>
                     <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.round(o.size)} /></td>
                     <td className={`${nCls} text-right text-gray-500`}>{Math.round(o.filled).toLocaleString()}</td>
-                    <td className={`${nCls} text-right text-gray-300`}>${Math.round(o.value).toLocaleString()}</td>
+                    <td className={`${nCls} text-right text-gray-300`}>${o.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td className={`${nCls} text-right ${elapsedTimeColor(o.timeMs)}`}>{o.timeMs > 0 ? formatElapsed(o.timeMs) : ''}</td>
                     <td className={`${nCls} text-center`}>
                       <button

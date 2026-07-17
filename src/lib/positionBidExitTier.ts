@@ -15,14 +15,22 @@ export const POSITION_BID_EXIT_TAILWIND: Record<PositionBidExitTier, string> = {
   red: 'text-red-400',
 };
 
+/** TPO Sell column tint 0..1: red (bid=0) → green (bid≥sell). -1 = no sell order. */
+export function positionSellPriceTintScore(
+  bidCents: number,
+  sellCents: number | null | undefined,
+): number {
+  if (sellCents == null || !Number.isFinite(sellCents) || sellCents <= 0) return -1;
+  const bid = Number.isFinite(bidCents) && bidCents > 0 ? bidCents : 0;
+  return Math.min(1, Math.max(0, bid / sellCents));
+}
+
 /** TPO Sell column: red (bid=0) → yellow → green (bid=sell). */
 export function positionSellPriceColorStyle(
   bidCents: number,
   sellCents: number,
 ): { color: string } {
-  if (!Number.isFinite(sellCents) || sellCents <= 0) return { color: 'hsl(0, 75%, 58%)' };
-  const bid = Number.isFinite(bidCents) && bidCents > 0 ? bidCents : 0;
-  const ratio = Math.min(1, Math.max(0, bid / sellCents));
-  const hue = ratio * 120;
+  const ratio = positionSellPriceTintScore(bidCents, sellCents);
+  const hue = (ratio < 0 ? 0 : ratio) * 120;
   return { color: `hsl(${hue}, 75%, 58%)` };
 }

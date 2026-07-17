@@ -9,7 +9,7 @@ import {
   type OnchainMarketTradeRow,
 } from '../../api';
 import { positionExitBidProb, outcomeBidAskProb } from '../../lib/outcomeQuote';
-import { positionBidExitTier, positionSellPriceColorStyle, POSITION_BID_EXIT_TAILWIND } from '../../lib/positionBidExitTier';
+import { positionBidExitTier, positionSellPriceColorStyle, positionSellPriceTintScore, POSITION_BID_EXIT_TAILWIND } from '../../lib/positionBidExitTier';
 import { onchainFillKey } from '../../lib/tradeKeys';
 import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLookupSubset';
 import { useLiveBidAskLookupSubset } from '../../hooks/useLiveBidAskLookupSubset';
@@ -637,11 +637,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const [assetFilter, setAssetFilter] = useState(
     localStorage.getItem('polymarket-table-asset-filter') || 'ALL'
   );
-  type PosSortCol = 'expiry' | 'size' | 'entry' | 'cost' | 'bid' | 'ask' | 'val' | 'pnl' | 'pnlPct';
+  type PosSortCol = 'expiry' | 'size' | 'entry' | 'cost' | 'bid' | 'ask' | 'sell' | 'val' | 'pnl' | 'pnlPct';
   const [posSortCol, setPosSortCol] = useState<PosSortCol>(() => {
     const v = localStorage.getItem(`polymarket-tpo-pos-sort-col-${panelId}`);
     if (v === 'exit') return 'bid';
-    if (v === 'pnl' || v === 'pnlPct' || v === 'entry' || v === 'cost' || v === 'bid' || v === 'ask' || v === 'val') return v;
+    if (v === 'pnl' || v === 'pnlPct' || v === 'entry' || v === 'cost' || v === 'bid' || v === 'ask' || v === 'sell' || v === 'val') return v;
     return 'expiry';
   });
   const [posSortDir, setPosSortDir] = useState<1 | -1>(() => {
@@ -1015,6 +1015,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     }
     if (posSortCol === 'ask') {
       return rows.sort((a, b) => ((a.askProb ?? 0) - (b.askProb ?? 0)) * posSortDir);
+    }
+    if (posSortCol === 'sell') {
+      // Tint score: greener (bid≈sell) higher. Default dir -1 → green at top.
+      return rows.sort((a, b) => (
+        positionSellPriceTintScore(a.currentPrice, a.sellPrice)
+        - positionSellPriceTintScore(b.currentPrice, b.sellPrice)
+      ) * posSortDir);
     }
     if (posSortCol === 'val') {
       return rows.sort((a, b) => (a.currentValue - b.currentValue) * posSortDir);
@@ -1391,8 +1398,12 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               >
                 Ask{posSortArrow('ask')}
               </th>
-              <th className={`${nHCls} text-right`} title="Resting sell limit price">
-                Sell
+              <th
+                className={`${nHSortCls} text-right`}
+                onClick={() => togglePosSort('sell')}
+                title="Sort by sell tint (desc = greener first)"
+              >
+                Sell{posSortArrow('sell')}
               </th>
               <th
                 className={`${nHSortCls} text-right`}
@@ -1472,7 +1483,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 <td className={cCls}></td>
                 <td className={`${nCls} text-right text-white`}>${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td className={`${nCls} text-right ${tPnlColor} font-bold`}>{tPnlSign}${Math.abs(totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td className={`${nCls} text-right ${tPnlColor} font-bold`}>{tPnlSign}{Math.round(Math.abs(avgPnlPct))}%</td>
+                <td className={`${nCls} text-right ${tPnlColor} font-bold`}>{avgPnlPct >= 0 ? '+' : '-'}{Math.round(Math.abs(avgPnlPct))}%</td>
               </tr>
             </tbody></table>
             </div>

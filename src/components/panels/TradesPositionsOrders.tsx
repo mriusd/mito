@@ -16,7 +16,7 @@ import { useLiveBidAskLookupSubset } from '../../hooks/useLiveBidAskLookupSubset
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
 import { TpoVirtualTableBody } from './TpoVirtualTableBody';
-import { TpoColorCodedSize } from './TpoColorCodedSize';
+import { TpoColorCodedSize, TpoColorCodedText } from './TpoColorCodedSize';
 import {
   refreshSidebarOnchainWallet,
   useSidebarOnchainGridWalletPositions,
@@ -1325,8 +1325,12 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     }`}>{t.side}</td>
                     <td className={`${cCls} font-bold ${t.outcome === 'YES' || t.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{t.outcome || '-'}</td>
                     <td className={`${nCls} text-right`}>{t.side === 'CLAIM' ? '—' : <TpoColorCodedSize value={Math.round(t.size)} />}</td>
-                    <td className={`${nCls} text-right text-gray-300`}>{t.side === 'CLAIM' ? '—' : `${t.price.toFixed(1)}¢`}</td>
-                    <td className={`${nCls} text-right ${t.side === 'CLAIM' ? 'text-blue-300 font-bold' : 'text-gray-300'}`}>${t.value.toFixed(2)}</td>
+                    <td className={`${nCls} text-right`}>{t.side === 'CLAIM' ? '—' : <TpoColorCodedText text={`${t.price.toFixed(1)}¢`} />}</td>
+                    <td className={`${nCls} text-right`}>
+                      {t.side === 'CLAIM'
+                        ? <span className="text-blue-300 font-bold">${t.value.toFixed(2)}</span>
+                        : <TpoColorCodedText text={`$${t.value.toFixed(2)}`} />}
+                    </td>
                     <td className={`${nCls} text-right text-yellow-400/80`}>{t.fee > 0 ? `$${t.fee.toFixed(2)}` : '-'}</td>
                     <td className={`${nCls} text-right ${elapsedTimeColor(t.timeMs)}`}>{t.timeMs > 0 ? formatElapsed(t.timeMs) : ''}</td>
                   </tr>
@@ -1538,10 +1542,14 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     >{o.marketName}</td>
                     <td className={`${cCls} font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
                     <td className={`${cCls} font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
-                    <td className={`${nCls} text-right text-white`}>{o.price.toFixed(1)}¢</td>
+                    <td className={`${nCls} text-right`}><TpoColorCodedText text={`${o.price.toFixed(1)}¢`} /></td>
                     <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.round(o.size)} /></td>
                     <td className={`${nCls} text-right text-gray-500`}>{Math.round(o.filled).toLocaleString()}</td>
-                    <td className={`${nCls} text-right text-gray-300`}>${o.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className={`${nCls} text-right`}>
+                      <TpoColorCodedText
+                        text={`$${o.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                      />
+                    </td>
                     <td className={`${nCls} text-right ${elapsedTimeColor(o.timeMs)}`}>{o.timeMs > 0 ? formatElapsed(o.timeMs) : ''}</td>
                     <td className={`${nCls} text-center`}>
                       <button

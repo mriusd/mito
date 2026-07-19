@@ -12,15 +12,17 @@ const LEAD_DIGIT_HEX = [
   '#e7e5e4', // 9 stone-200
 ] as const;
 
-/** Locale-formatted size: only first digit colored; rest pale gray + black stroke. */
-export function TpoColorCodedSize({ value }: { value: number }) {
-  if (!Number.isFinite(value)) return <>—</>;
-  const text = Math.trunc(value).toLocaleString();
+/**
+ * Color first significant digit (1–9); leading 0s stay gray.
+ * Rest of digits pale gray + black stroke; punctuation muted.
+ */
+export function TpoColorCodedText({ text }: { text: string }) {
+  if (!text) return <>—</>;
   let coloredFirst = false;
   return (
     <span className="tpo-color-digits font-mono font-bold tabular-nums text-gray-300">
       {[...text].map((ch, i) => {
-        if (ch >= '0' && ch <= '9') {
+        if (ch >= '1' && ch <= '9') {
           if (!coloredFirst) {
             coloredFirst = true;
             return (
@@ -39,6 +41,13 @@ export function TpoColorCodedSize({ value }: { value: number }) {
             </span>
           );
         }
+        if (ch === '0') {
+          return (
+            <span key={i} className="tpo-digit-stroke text-gray-300">
+              {ch}
+            </span>
+          );
+        }
         return (
           <span key={i} className="text-gray-500">
             {ch}
@@ -47,4 +56,10 @@ export function TpoColorCodedSize({ value }: { value: number }) {
       })}
     </span>
   );
+}
+
+/** Locale-formatted integer size: first significant digit colored. */
+export function TpoColorCodedSize({ value }: { value: number }) {
+  if (!Number.isFinite(value)) return <>—</>;
+  return <TpoColorCodedText text={Math.trunc(value).toLocaleString()} />;
 }

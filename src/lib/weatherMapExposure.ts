@@ -104,8 +104,9 @@ export function buildWeatherCityExposureByDate(
 }
 
 /**
- * Max best-bid across all temp-bucket outcome tokens for each city on `dateIso`.
- * Higher = more certain outcome (greener on map). Missing quotes omitted.
+ * Max YES best-bid across temp buckets for each city on `dateIso`.
+ * YES only (clobTokenIds[0]) — NO side often sits near 99¢ and is not certainty.
+ * Higher = more certain YES bucket (greener on map).
  */
 export function buildWeatherCityMaxBidByDate(
   weatherMarkets: Record<string, Market[]>,
@@ -121,19 +122,19 @@ export function buildWeatherCityMaxBidByDate(
     for (const market of markets) {
       const eventDate = weatherEventDateISOFromSlug(market.eventSlug || '');
       if (eventDate !== dateIso) continue;
-      for (const tokenId of market.clobTokenIds || []) {
-        const { bid } = outcomeBidAskProb(tokenId, marketLookup);
-        if (bid == null || !(bid > 0)) continue;
-        any = true;
-        if (bid > maxBid) maxBid = bid;
-      }
+      const yesTokenId = market.clobTokenIds?.[0];
+      if (!yesTokenId) continue;
+      const { bid } = outcomeBidAskProb(yesTokenId, marketLookup);
+      if (bid == null || !(bid > 0)) continue;
+      any = true;
+      if (bid > maxBid) maxBid = bid;
     }
     if (any) out.set(citySlug, maxBid);
   }
   return out;
 }
 
-/** CLOB token ids for weather markets on `dateIso` (bid/ask subscribe). */
+/** YES CLOB token ids for weather markets on `dateIso` (bid/ask subscribe). */
 export function weatherMapQuoteTokenIdsForDate(
   weatherMarkets: Record<string, Market[]>,
   dateIso: string | null,
@@ -144,12 +145,10 @@ export function weatherMapQuoteTokenIdsForDate(
   for (const markets of Object.values(weatherMarkets)) {
     for (const market of markets) {
       if (weatherEventDateISOFromSlug(market.eventSlug || '') !== dateIso) continue;
-      for (const tokenId of market.clobTokenIds || []) {
-        const t = String(tokenId || '').trim();
-        if (!t || seen.has(t)) continue;
-        seen.add(t);
-        ids.push(t);
-      }
+      const t = String(market.clobTokenIds?.[0] || '').trim();
+      if (!t || seen.has(t)) continue;
+      seen.add(t);
+      ids.push(t);
     }
   }
   return ids;

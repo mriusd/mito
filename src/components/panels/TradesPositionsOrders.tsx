@@ -1455,7 +1455,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${cCls} ${assetColorMap2[p.asset] || 'text-gray-300'}`}>{p.marketName}</td>
                     <td className={`${cCls} font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
                     <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.floor(p.size)} /></td>
-                    <td className={`${nCls} text-right text-gray-300`}>{p.entryPrice.toFixed(1)}¢</td>
+                    <td className={`${nCls} text-right`}><TpoColorCodedText text={`${p.entryPrice.toFixed(1)}¢`} /></td>
                     <td className={`${nCls} text-right text-red-400`}>-${p.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td className={`${nCls} text-right ${hasBid ? exitColor : 'text-gray-400'}`}>
                       {hasBid ? `${p.currentPrice.toFixed(1)}¢` : '-'}
@@ -1480,7 +1480,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 <td className={`${cCls} text-white`}>Total</td>
                 <td className={cCls}></td><td className={cCls}></td><td className={cCls}></td>
                 <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.floor(totalSize)} /></td>
-                <td className={`${nCls} text-right text-gray-400`}>{avgEntry.toFixed(1)}¢</td>
+                <td className={`${nCls} text-right`}><TpoColorCodedText text={`${avgEntry.toFixed(1)}¢`} /></td>
                 <td className={`${nCls} text-right text-red-400`}>-${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td className={`${nCls} text-right text-gray-400`}>{avgExit.toFixed(1)}¢</td>
                 <td className={cCls}></td>

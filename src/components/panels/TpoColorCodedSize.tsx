@@ -13,7 +13,7 @@ const LEAD_DIGIT_HEX = [
 ] as const;
 
 /**
- * Color first significant digit (1–9); leading 0s stay gray.
+ * First significant digit (1–9) colored; leading 0s gray (digit-0 hue).
  * Rest of digits pale gray + black stroke; punctuation muted.
  */
 export function TpoColorCodedText({ text }: { text: string }) {
@@ -42,6 +42,18 @@ export function TpoColorCodedText({ text }: { text: string }) {
           );
         }
         if (ch === '0') {
+          // Leading zeros (before first 1–9): gray digit hue. Later zeros: pale.
+          if (!coloredFirst) {
+            return (
+              <span
+                key={i}
+                className="tpo-digit-stroke"
+                style={{ color: LEAD_DIGIT_HEX[0] }}
+              >
+                {ch}
+              </span>
+            );
+          }
           return (
             <span key={i} className="tpo-digit-stroke text-gray-300">
               {ch}

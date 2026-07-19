@@ -10,10 +10,18 @@ import {
 } from '../../lib/weatherMapSun';
 import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
 import { onTempOddsCitySelect, onTempOddsDateSelect, getTempOddsSelectedDate, selectTempOddsCity } from '../../lib/weatherTempOddsControl';
-import { buildWeatherCityExposureByDate, type WeatherCityExposure } from '../../lib/weatherMapExposure';
+import {
+  buildWeatherCityExposureByDate,
+  buildWeatherCityMaxBidByDate,
+  weatherMapQuoteTokenIdsForDate,
+  type WeatherCityExposure,
+} from '../../lib/weatherMapExposure';
 import { useThrottledGridOrders, useThrottledGridPositions } from '../../hooks/useThrottledGridWallet';
 import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
 import { useAppStore } from '../../stores/appStore';
+import { getBidAskMarketRow, subscribeBidAskMarketLookupGridFlush } from '../../lib/bidAskMarketLookup';
+import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
+import type { Market } from '../../types';
 
 type GeoPolygon = number[][][];
 type GeoMultiPolygon = number[][][][];
@@ -206,7 +214,12 @@ function drawDayGlow(ctx: CanvasRenderingContext2D, layout: MapLayout, date: Dat
   ctx.fill();
 }
 
-function cityDotFill(
+type WeatherMapColorMode = 'state' | 'certainty';
+
+const WEATHER_MAP_COLOR_MODE_LS = 'polybot-weather-map-color-mode';
+
+/** Old: position PnL tier / open order / none. */
+function cityDotFillByState(
   exposure: WeatherCityExposure | undefined,
   hovered: boolean,
   selected: boolean,
@@ -221,6 +234,21 @@ function cityDotFill(
   if (tier === 'green') return selected || hovered ? '#4ade80' : '#22c55e';
   if (tier === 'red') return selected || hovered ? '#f87171' : '#ef4444';
   return selected || hovered ? '#fde047' : '#eab308';
+}
+
+/** Max-bid certainty: red (low) → yellow → green (high). No quote = gray. */
+function cityDotFillByMaxBid(
+  maxBid: number | undefined,
+  hovered: boolean,
+  selected: boolean,
+): string {
+  if (maxBid == null || !(maxBid > 0) || !Number.isFinite(maxBid)) {
+    return selected || hovered ? '#e5e7eb' : '#9ca3af';
+  }
+  const t = Math.min(1, Math.max(0, maxBid));
+  const hue = t * 120;
+  const light = selected || hovered ? 58 : 48;
+  return `hsl(${hue}, 75%, ${light}%)`;
 }
 
 function nearestCity(
@@ -271,6 +299,12 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
   const [layoutSnapshot, setLayoutSnapshot] = useState<MapLayout | null>(null);
 
   const [tempOddsDateIso, setTempOddsDateIso] = useState<string | null>(() => getTempOddsSelectedDate());
+  const [colorMode, setColorMode] = useState<WeatherMapColorMode>(() => {
+    const v = localStorage.getItem(WEATHER_MAP_COLOR_MODE_LS);
+    return v === 'certainty' ? 'certainty' : 'state';
+  });
+  const colorModeRef = useRef(colorMode);
+  colorModeRef.current = colorMode;
   const weatherMarkets = useAppStore((s) => s.weatherMarkets);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const progOrderMap = useAppStore((s) => s.progOrderMap);
@@ -291,6 +325,29 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
       marketLookup,
     );
   }, [weatherMarkets, tempOddsDateIso, positions, orders, progOrderMap, liveTradesSource, onchainWsPositions, marketLookup]);
+
+  const quoteTokenIds = useMemo(
+    () => weatherMapQuoteTokenIdsForDate(weatherMarkets, tempOddsDateIso),
+    [weatherMarkets, tempOddsDateIso],
+  );
+
+  const [quoteTick, setQuoteTick] = useState(0);
+  useEffect(() => {
+    setChartBidAskExtraTokens('weather-map', quoteTokenIds);
+    return () => setChartBidAskExtraTokens('weather-map', []);
+  }, [quoteTokenIds]);
+  useEffect(() => subscribeBidAskMarketLookupGridFlush(() => setQuoteTick((n) => n + 1)), []);
+
+  const cityMaxBid = useMemo(() => {
+    const liveLookup: Record<string, Market> = { ...marketLookup };
+    for (const tid of quoteTokenIds) {
+      const row = getBidAskMarketRow(tid);
+      if (row) liveLookup[tid] = row;
+    }
+    return buildWeatherCityMaxBidByDate(weatherMarkets, tempOddsDateIso, liveLookup);
+    // quoteTick forces recompute when bid/ask flush
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- quoteTick is the live pulse
+  }, [weatherMarkets, tempOddsDateIso, marketLookup, quoteTokenIds, quoteTick]);
 
   useEffect(() => onTempOddsDateSelect(setTempOddsDateIso), []);
 
@@ -363,15 +420,20 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
 
     const hoverSlug = hoverSlugRef.current;
     const selectedSlug = selectedSlugRef.current;
+    const mode = colorModeRef.current;
     for (const city of cities) {
       const { x, y } = projectLonLat(city.lon, city.lat, layout);
       const hovered = hoverSlug === city.slug;
       const selected = selectedSlug === city.slug;
+      const maxBid = cityMaxBid.get(city.slug);
       const exposure = cityExposure.get(city.slug);
       const r = selected ? DOT_RADIUS + 2 : hovered ? DOT_RADIUS + 1.5 : DOT_RADIUS;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = cityDotFill(exposure, hovered, selected);
+      ctx.fillStyle =
+        mode === 'certainty'
+          ? cityDotFillByMaxBid(maxBid, hovered, selected)
+          : cityDotFillByState(exposure, hovered, selected);
       ctx.fill();
       if (selected) {
         ctx.beginPath();
@@ -380,6 +442,8 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
         ctx.lineWidth = 2;
         ctx.stroke();
       } else if (hovered) {
+        ctx.beginPath();
+        ctx.arc(x, y, r + 2, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(255,255,255,0.85)';
         ctx.lineWidth = 1.5;
         ctx.stroke();
@@ -393,7 +457,7 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
       ctx.textBaseline = 'middle';
       ctx.fillText('Map load failed', width / 2, height / 2);
     }
-  }, [cities, land, loadError, nowMs, cityExposure]);
+  }, [cities, land, loadError, nowMs, cityMaxBid, cityExposure, colorMode]);
 
   drawRef.current = draw;
 
@@ -439,7 +503,10 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
   const setHoveredCity = useCallback(
     (hit: MapCity | null, mx: number, my: number) => {
       const slug = hit?.slug ?? null;
-      const nextTip = hit ? { x: mx, y: my, label: hit.label } : null;
+      const maxBid = hit ? cityMaxBid.get(hit.slug) : undefined;
+      const bidLbl =
+        maxBid != null && maxBid > 0 ? ` · max bid ${(maxBid * 100).toFixed(1)}¢` : '';
+      const nextTip = hit ? { x: mx, y: my, label: `${hit.label}${bidLbl}` } : null;
       const prevTip = hoverTipRef.current;
       const slugChanged = hoverSlugRef.current !== slug;
 
@@ -460,7 +527,7 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
       setHoverTip(nextTip);
       if (slugChanged) scheduleDraw();
     },
-    [scheduleDraw],
+    [scheduleDraw, cityMaxBid],
   );
 
   const selectCity = useCallback(
@@ -534,9 +601,37 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-2 h-full flex flex-col min-h-0">
-      <div className="panel-header mb-1 flex shrink-0 cursor-grab items-center gap-2">
+      <div className="panel-header mb-1 flex shrink-0 cursor-grab items-center gap-2 flex-wrap">
         <span className="text-xs font-bold text-gray-500">Weather Map</span>
-        <span className="text-[10px] text-gray-500">click city → Temp Odds · pos=green/yellow/red · purple=order · white=none</span>
+        <div className="no-drag inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]">
+          {([
+            { id: 'state' as const, label: 'State', title: 'Position PnL / open order' },
+            { id: 'certainty' as const, label: 'Certainty', title: 'Max bid across buckets (red→green)' },
+          ]).map(({ id, label, title }) => (
+            <button
+              key={id}
+              type="button"
+              title={title}
+              onClick={() => {
+                setColorMode(id);
+                localStorage.setItem(WEATHER_MAP_COLOR_MODE_LS, id);
+              }}
+              className={
+                colorMode === id
+                  ? 'px-2 py-0.5 rounded-sm font-semibold bg-gray-500 text-white'
+                  : 'px-2 py-0.5 rounded-sm font-semibold text-gray-400 hover:text-white hover:bg-gray-700'
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="text-[10px] text-gray-500">
+          click city → Temp Odds
+          {colorMode === 'certainty'
+            ? ' · max bid certainty (red→green)'
+            : ' · pos=green/yellow/red · purple=order · white=none'}
+        </span>
       </div>
       <div ref={containerRef} className="no-drag relative min-h-0 flex-1">
         {layoutSnapshot ? (

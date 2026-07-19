@@ -102,3 +102,55 @@ export function buildWeatherCityExposureByDate(
 
   return out;
 }
+
+/**
+ * Max best-bid across all temp-bucket outcome tokens for each city on `dateIso`.
+ * Higher = more certain outcome (greener on map). Missing quotes omitted.
+ */
+export function buildWeatherCityMaxBidByDate(
+  weatherMarkets: Record<string, Market[]>,
+  dateIso: string | null,
+  marketLookup: Record<string, Market>,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!dateIso) return out;
+
+  for (const [citySlug, markets] of Object.entries(weatherMarkets)) {
+    let maxBid = 0;
+    let any = false;
+    for (const market of markets) {
+      const eventDate = weatherEventDateISOFromSlug(market.eventSlug || '');
+      if (eventDate !== dateIso) continue;
+      for (const tokenId of market.clobTokenIds || []) {
+        const { bid } = outcomeBidAskProb(tokenId, marketLookup);
+        if (bid == null || !(bid > 0)) continue;
+        any = true;
+        if (bid > maxBid) maxBid = bid;
+      }
+    }
+    if (any) out.set(citySlug, maxBid);
+  }
+  return out;
+}
+
+/** CLOB token ids for weather markets on `dateIso` (bid/ask subscribe). */
+export function weatherMapQuoteTokenIdsForDate(
+  weatherMarkets: Record<string, Market[]>,
+  dateIso: string | null,
+): string[] {
+  if (!dateIso) return [];
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const markets of Object.values(weatherMarkets)) {
+    for (const market of markets) {
+      if (weatherEventDateISOFromSlug(market.eventSlug || '') !== dateIso) continue;
+      for (const tokenId of market.clobTokenIds || []) {
+        const t = String(tokenId || '').trim();
+        if (!t || seen.has(t)) continue;
+        seen.add(t);
+        ids.push(t);
+      }
+    }
+  }
+  return ids;
+}

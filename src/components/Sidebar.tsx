@@ -27,6 +27,7 @@ import {
   getOrderClobTokenId,
   getTokenOutcome,
   getTradeClobTokenId,
+  orderMatchesSelectedMarket,
   outcomeTokenBelongsToSelectedMarket,
   shortenMarketName,
   tradeMatchesSelectedMarket,
@@ -1493,7 +1494,7 @@ export const Sidebar = memo(function Sidebar() {
   }, [selectedMarket, marketLookup]);
 
   const { myOrders, progOrders } = useMemo(() => {
-    const all = orders.filter((o) => outcomeTokenBelongsToSelectedMarket(getOrderClobTokenId(o), selectedMarket, marketLookup));
+    const all = orders.filter((o) => orderMatchesSelectedMarket(o, selectedMarket, marketLookup));
     const sideRank = (side: string | undefined) => {
       const s = (side || '').toUpperCase();
       if (s === 'BUY') return 0;

@@ -563,7 +563,23 @@ export function getPositionClobTokenId(p: Pick<Position, 'asset' | 'asset_id' | 
   return String(p.asset ?? p.asset_id ?? p.token_id ?? '').trim();
 }
 
-/** True if this outcome token is one of the selected market's CLOB ids and lookup agrees on Gamma `market.id` when present. */
+/** Normalize condition id for compare (0x + lowercase + 64-hex pad when hex). */
+export function normalizeConditionIdKey(id: string | null | undefined): string {
+  let h = String(id || '').trim().toLowerCase();
+  if (!h) return '';
+  if (h.startsWith('expired:')) return h;
+  if (!h.startsWith('0x')) h = `0x${h}`;
+  const body = h.slice(2);
+  if (!/^[0-9a-f]+$/.test(body) || body.length > 64) return h;
+  if (body.length < 64) return `0x${body.padStart(64, '0')}`;
+  return h;
+}
+
+/**
+ * True if outcome token is one of selected market's CLOB ids.
+ * Only rejects when both sides have a real conditionId and they disagree
+ * (do not compare Gamma numeric `id` vs condition id — that hid My Orders).
+ */
 export function outcomeTokenBelongsToSelectedMarket(
   tokenId: string,
   selected: Market | null | undefined,
@@ -577,12 +593,27 @@ export function outcomeTokenBelongsToSelectedMarket(
   });
   if (!inSelected) return false;
   const row = marketLookup[tokenId] || marketLookup[nt];
-  if (row?.id && selected.id && row.id !== selected.id) {
-    const rowCond = String(row.conditionId || row.id).trim().toLowerCase();
-    const selCond = String(selected.conditionId || selected.id).trim().toLowerCase();
-    if (rowCond && selCond && rowCond !== selCond) return false;
-  }
+  const rowCond = normalizeConditionIdKey(row?.conditionId);
+  const selCond = normalizeConditionIdKey(selected.conditionId);
+  if (rowCond && selCond && rowCond !== selCond) return false;
   return true;
+}
+
+export function orderMatchesSelectedMarket(
+  o: Pick<Order, 'asset_id' | 'token_id' | 'market'>,
+  selected: Market | null | undefined,
+  marketLookup: Record<string, Market>,
+): boolean {
+  if (!selected) return false;
+  const tid = getOrderClobTokenId(o);
+  if (tid && outcomeTokenBelongsToSelectedMarket(tid, selected, marketLookup)) return true;
+  // Fallback when asset_id missing / stub tokens: match CLOB condition id on order.market.
+  const orderCond = normalizeConditionIdKey(o.market);
+  const selCond = normalizeConditionIdKey(selected.conditionId || selected.id);
+  if (orderCond && selCond && orderCond === selCond && !selCond.startsWith('expired:')) {
+    return true;
+  }
+  return false;
 }
 
 export function tradeMatchesSelectedMarket(
@@ -593,8 +624,9 @@ export function tradeMatchesSelectedMarket(
   const tid = getTradeClobTokenId(t);
   if (!tid) return false;
   if (!outcomeTokenBelongsToSelectedMarket(tid, selected, marketLookup)) return false;
-  const cond = String(t.conditionId ?? '').trim();
-  if (cond && selected?.id && cond !== selected.id) return false;
+  const cond = normalizeConditionIdKey(t.conditionId);
+  const selCond = normalizeConditionIdKey(selected?.conditionId || selected?.id);
+  if (cond && selCond && !selCond.startsWith('expired:') && cond !== selCond) return false;
   return true;
 }
 

@@ -662,10 +662,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     localStorage.setItem(`polymarket-tpo-pos-sort-dir-${panelId}`, '-1');
   };
 
-  type OrdSortCol = 'price' | 'time';
+  type OrdSortCol = 'date' | 'side' | 'outcome' | 'price' | 'size' | 'filled' | 'value' | 'time';
+  const ORD_SORT_COLS: OrdSortCol[] = ['date', 'side', 'outcome', 'price', 'size', 'filled', 'value', 'time'];
   const [ordSortCol, setOrdSortCol] = useState<OrdSortCol | null>(() => {
     const v = localStorage.getItem(`polymarket-tpo-ord-sort-col-${panelId}`);
-    return v === 'price' || v === 'time' ? v : null;
+    return ORD_SORT_COLS.includes(v as OrdSortCol) ? (v as OrdSortCol) : null;
   });
   const [ordSortDir, setOrdSortDir] = useState<1 | -1>(() => {
     const v = parseInt(localStorage.getItem(`polymarket-tpo-ord-sort-dir-${panelId}`) || '-1', 10);
@@ -1072,7 +1073,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         const size = parseFloat(order.original_size || order.size);
         const filled = parseFloat(order.size_matched || '0');
         const value = parseFloat(order.price) * size;
-        const timeMs = parseTsMs(order.created_at);
+        const timeMs = parseTsMs(
+          order.created_at
+          ?? (order as { timestamp?: string }).timestamp
+          ?? (order as { createdAt?: string | number }).createdAt,
+        );
         return {
           id: order.id,
           tid,
@@ -1084,10 +1089,10 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           marketName: mktLabel,
           outcome,
           side: order.side,
-          price,
-          size,
-          filled,
-          value,
+          price: Number.isFinite(price) ? price : 0,
+          size: Number.isFinite(size) ? size : 0,
+          filled: Number.isFinite(filled) ? filled : 0,
+          value: Number.isFinite(value) ? value : 0,
           timeMs,
           marketId: market?.id,
         };
@@ -1095,13 +1100,53 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   }, [orders, assetFilter, ordersFilter]);
 
   const displayOrders = useMemo(() => {
-    if (ordSortCol === 'price') {
-      return [...processedOrders].sort((a, b) => (a.price - b.price) * ordSortDir);
-    }
-    if (ordSortCol === 'time') {
-      return [...processedOrders].sort((a, b) => compareTimeMs(a.timeMs, b.timeMs, ordSortDir));
-    }
-    return processedOrders;
+    if (!ordSortCol) return processedOrders;
+    const dir = ordSortDir;
+    const sideRank = (s: string) => ((s || '').toUpperCase() === 'BUY' ? 0 : (s || '').toUpperCase() === 'SELL' ? 1 : 2);
+    const ynRank = (s: string) => {
+      const u = (s || '').toUpperCase();
+      if (u === 'YES' || u === 'UP') return 0;
+      if (u === 'NO' || u === 'DOWN') return 1;
+      return 2;
+    };
+    return [...processedOrders].sort((a, b) => {
+      let cmp = 0;
+      switch (ordSortCol) {
+        case 'date':
+          cmp = comparePositionsByExpiryDesc(
+            { endDate: a.endDate, tid: a.tid },
+            { endDate: b.endDate, tid: b.tid },
+          );
+          // comparePositionsByExpiryDesc is already newest-first; flip for dir.
+          cmp = dir === -1 ? cmp : -cmp;
+          break;
+        case 'side':
+          cmp = (sideRank(a.side) - sideRank(b.side)) * dir;
+          break;
+        case 'outcome':
+          cmp = (ynRank(a.outcome) - ynRank(b.outcome)) * dir;
+          break;
+        case 'price':
+          cmp = (a.price - b.price) * dir;
+          break;
+        case 'size':
+          cmp = (a.size - b.size) * dir;
+          break;
+        case 'filled':
+          cmp = (a.filled - b.filled) * dir;
+          break;
+        case 'value':
+          cmp = (a.value - b.value) * dir;
+          break;
+        case 'time':
+          cmp = compareTimeMs(a.timeMs, b.timeMs, dir);
+          break;
+        default:
+          cmp = 0;
+      }
+      if (cmp !== 0) return cmp;
+      return String(a.id).localeCompare(String(b.id));
+    });
   }, [processedOrders, ordSortCol, ordSortDir]);
 
   const displayTrades = useMemo(() => {
@@ -1503,10 +1548,28 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             {/* Fixed header */}
             <table className="w-full text-[10px] table-fixed" style={{ minWidth: ORD_MIN_W }}>{ordColgroup}<thead><tr className="text-gray-500 border-b border-gray-700">
               <th className={`${hCls} text-left`}>Asset</th>
-              <th className={`${nHCls} text-left`}>Date</th>
+              <th
+                className={`${nHSortCls} text-left`}
+                onClick={() => toggleOrdSort('date')}
+                title="Sort by date / expiry"
+              >
+                Date{ordSortArrow('date')}
+              </th>
               <th className={`${hCls} text-left`}>Market</th>
-              <th className={`${hCls} text-left`}>Side</th>
-              <th className={`${hCls} text-left`}>Y/N</th>
+              <th
+                className={`${hSortCls} text-left`}
+                onClick={() => toggleOrdSort('side')}
+                title="Sort by side"
+              >
+                Side{ordSortArrow('side')}
+              </th>
+              <th
+                className={`${hSortCls} text-left`}
+                onClick={() => toggleOrdSort('outcome')}
+                title="Sort by YES/NO"
+              >
+                Y/N{ordSortArrow('outcome')}
+              </th>
               <th
                 className={`${nHSortCls} text-right`}
                 onClick={() => toggleOrdSort('price')}
@@ -1514,9 +1577,27 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               >
                 Price{ordSortArrow('price')}
               </th>
-              <th className={`${nHCls} text-right`}>Size</th>
-              <th className={`${nHCls} text-right`}>Filled</th>
-              <th className={`${nHCls} text-right`}>Value</th>
+              <th
+                className={`${nHSortCls} text-right`}
+                onClick={() => toggleOrdSort('size')}
+                title="Sort by size"
+              >
+                Size{ordSortArrow('size')}
+              </th>
+              <th
+                className={`${nHSortCls} text-right`}
+                onClick={() => toggleOrdSort('filled')}
+                title="Sort by filled"
+              >
+                Filled{ordSortArrow('filled')}
+              </th>
+              <th
+                className={`${nHSortCls} text-right`}
+                onClick={() => toggleOrdSort('value')}
+                title="Sort by value"
+              >
+                Value{ordSortArrow('value')}
+              </th>
               <th
                 className={`${nHSortCls} text-right`}
                 onClick={() => toggleOrdSort('time')}

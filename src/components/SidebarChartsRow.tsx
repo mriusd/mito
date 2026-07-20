@@ -5,7 +5,7 @@ import { useSidebarMyTradesChartMarkers } from '../hooks/useSidebarMyTradesChart
 import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 import { useSidebarOrderHighlightSets } from '../lib/sidebarOrderHighlightStore';
 import { useAppStore } from '../stores/appStore';
-import { getOrderClobTokenId, outcomeTokenBelongsToSelectedMarket } from '../utils/format';
+import { orderMatchesSelectedMarket } from '../utils/format';
 import type { ChartOrderReplaceParams } from '../lib/sidebarOrderbookAggregate';
 import { computeSidebarMyPositions, isSidebarDustPosition } from '../lib/sidebarMyPositions';
 import { useSidebarOnchainWalletPositions } from '../lib/sidebarOnchainTradesStore';
@@ -47,9 +47,7 @@ const SidebarChartsRowChart = memo(function SidebarChartsRowChart({
   const sidebarChartOrders = useMemo(
     () =>
       orders.filter(
-        (o) =>
-          !progOrderMap[o.id] &&
-          outcomeTokenBelongsToSelectedMarket(getOrderClobTokenId(o), selectedMarket, marketLookup),
+        (o) => !progOrderMap[o.id] && orderMatchesSelectedMarket(o, selectedMarket, marketLookup),
       ),
     [orders, progOrderMap, selectedMarket, marketLookup],
   );

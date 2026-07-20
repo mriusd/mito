@@ -254,12 +254,11 @@ const loadLayouts = (): ReactGridLayout.Layouts | null => {
 
 const MANUAL_PRICE_SLOTS_KEY = 'polybot-manual-price-slots-v1';
 
-const emptyManualSlots = (): Record<AssetSymbol, [PriceRange | null, PriceRange | null]> => ({
-  BTCUSDT: [null, null],
-  ETHUSDT: [null, null],
-  SOLUSDT: [null, null],
-  XRPUSDT: [null, null],
-});
+const emptyManualSlots = (): Record<AssetSymbol, [PriceRange | null, PriceRange | null]> => {
+  const out = {} as Record<AssetSymbol, [PriceRange | null, PriceRange | null]>;
+  for (const sym of SYMBOLS) out[sym] = [null, null];
+  return out;
+};
 
 function parseStoredRange(raw: unknown): PriceRange | null {
   if (raw === null || raw === undefined) return null;
@@ -338,37 +337,28 @@ function loadVwapCorrection(): number {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  priceData: {
-    BTCUSDT: { price: 0 },
-    ETHUSDT: { price: 0 },
-    SOLUSDT: { price: 0 },
-    XRPUSDT: { price: 0 },
-  },
-  vwapData: {
-    BTCUSDT: { price: 0, ts: 0 },
-    ETHUSDT: { price: 0, ts: 0 },
-    SOLUSDT: { price: 0, ts: 0 },
-    XRPUSDT: { price: 0, ts: 0 },
-  },
+  priceData: Object.fromEntries(SYMBOLS.map((s) => [s, { price: 0 }])) as Record<AssetSymbol, { price: number }>,
+  vwapData: Object.fromEntries(SYMBOLS.map((s) => [s, { price: 0, ts: 0 }])) as Record<AssetSymbol, { price: number; ts: number }>,
   volatilityData: {
     BTCUSDT: 0.60,
     ETHUSDT: 0.70,
     SOLUSDT: 0.90,
     XRPUSDT: 0.80,
+    WTIUSDT: 0.35,
+    NGUSDT: 0.55,
+    SPYUSDT: 0.18,
+    AAPLUSDT: 0.28,
+    GOOGLUSDT: 0.30,
+    NVDAUSDT: 0.45,
+    AMZNUSDT: 0.32,
   },
   manualPriceSlots: loadManualPriceSlots(),
-  activeRangeSlot: {
-    BTCUSDT: parseInt(localStorage.getItem('polymarket-active-range-BTCUSDT') || '0'),
-    ETHUSDT: parseInt(localStorage.getItem('polymarket-active-range-ETHUSDT') || '0'),
-    SOLUSDT: parseInt(localStorage.getItem('polymarket-active-range-SOLUSDT') || '0'),
-    XRPUSDT: parseInt(localStorage.getItem('polymarket-active-range-XRPUSDT') || '0'),
-  },
-  useLivePrice: {
-    BTCUSDT: localStorage.getItem('polymarket-use-live-BTCUSDT') === 'true',
-    ETHUSDT: localStorage.getItem('polymarket-use-live-ETHUSDT') === 'true',
-    SOLUSDT: localStorage.getItem('polymarket-use-live-SOLUSDT') === 'true',
-    XRPUSDT: localStorage.getItem('polymarket-use-live-XRPUSDT') === 'true',
-  },
+  activeRangeSlot: Object.fromEntries(
+    SYMBOLS.map((s) => [s, parseInt(localStorage.getItem(`polymarket-active-range-${s}`) || '0')]),
+  ) as Record<AssetSymbol, number>,
+  useLivePrice: Object.fromEntries(
+    SYMBOLS.map((s) => [s, localStorage.getItem(`polymarket-use-live-${s}`) === 'true']),
+  ) as Record<AssetSymbol, boolean>,
   volMultiplier: parseFloat(localStorage.getItem('polymarket-vol-mult') || '1'),
   vwapCandles: loadVwapCandles(),
   vwapCorrection: loadVwapCorrection(),

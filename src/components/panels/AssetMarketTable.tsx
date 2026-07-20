@@ -31,7 +31,10 @@ import { hlSnapshotToAssetGrid } from '../../lib/hlMarketsForAssetGrid';
 
 export type GridMarketSource = 'polymarket' | 'hyperliquid';
 
-const ALL_ASSETS: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
+const ALL_ASSETS: AssetName[] = [
+  'BTC', 'ETH', 'SOL', 'XRP',
+  'WTI', 'NG', 'SPY', 'AAPL', 'GOOGL', 'NVDA', 'AMZN',
+];
 const MANUAL_VOL_KEY_PREFIX = 'polybot-manual-vol-pct-';
 const EMPTY_ORDERS: Order[] = [];
 const EMPTY_MARKETS: Market[] = [];
@@ -260,6 +263,13 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
     ETH: 'text-blue-400',
     SOL: 'text-purple-400',
     XRP: 'text-cyan-400',
+    WTI: 'text-amber-500',
+    NG: 'text-lime-400',
+    SPY: 'text-emerald-400',
+    AAPL: 'text-gray-200',
+    GOOGL: 'text-blue-300',
+    NVDA: 'text-green-400',
+    AMZN: 'text-orange-300',
   };
   const titleColor = colorMap[asset] || 'text-yellow-400';
 

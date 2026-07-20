@@ -1,14 +1,67 @@
-export type AssetSymbol = 'BTCUSDT' | 'ETHUSDT' | 'SOLUSDT' | 'XRPUSDT';
-export type AssetName = 'BTC' | 'ETH' | 'SOL' | 'XRP';
+export type AssetSymbol =
+  | 'BTCUSDT'
+  | 'ETHUSDT'
+  | 'SOLUSDT'
+  | 'XRPUSDT'
+  | 'WTIUSDT'
+  | 'NGUSDT'
+  | 'SPYUSDT'
+  | 'AAPLUSDT'
+  | 'GOOGLUSDT'
+  | 'NVDAUSDT'
+  | 'AMZNUSDT';
+export type AssetName =
+  | 'BTC'
+  | 'ETH'
+  | 'SOL'
+  | 'XRP'
+  | 'WTI'
+  | 'NG'
+  | 'SPY'
+  | 'AAPL'
+  | 'GOOGL'
+  | 'NVDA'
+  | 'AMZN';
 
-export const SYMBOLS: AssetSymbol[] = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT'];
-export const ASSET_NAMES: AssetName[] = ['BTC', 'ETH', 'SOL', 'XRP'];
+export const SYMBOLS: AssetSymbol[] = [
+  'BTCUSDT',
+  'ETHUSDT',
+  'SOLUSDT',
+  'XRPUSDT',
+  'WTIUSDT',
+  'NGUSDT',
+  'SPYUSDT',
+  'AAPLUSDT',
+  'GOOGLUSDT',
+  'NVDAUSDT',
+  'AMZNUSDT',
+];
+export const ASSET_NAMES: AssetName[] = [
+  'BTC',
+  'ETH',
+  'SOL',
+  'XRP',
+  'WTI',
+  'NG',
+  'SPY',
+  'AAPL',
+  'GOOGL',
+  'NVDA',
+  'AMZN',
+];
 
 export const ASSET_COLORS: Record<AssetName, string> = {
   BTC: 'text-orange-400',
   ETH: 'text-blue-400',
   SOL: 'text-purple-400',
   XRP: 'text-cyan-400',
+  WTI: 'text-amber-500',
+  NG: 'text-lime-400',
+  SPY: 'text-emerald-400',
+  AAPL: 'text-gray-200',
+  GOOGL: 'text-blue-300',
+  NVDA: 'text-green-400',
+  AMZN: 'text-orange-300',
 };
 
 export interface PriceRange {

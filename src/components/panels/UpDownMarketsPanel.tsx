@@ -129,16 +129,14 @@ function UpDownMarketsPanelInner() {
   const onchainGridPositions = useThrottledOnchainGridPositions(GRID_BID_ASK_THROTTLE_MS);
   const orders = useThrottledGridOrders(GRID_BID_ASK_THROTTLE_MS);
   const progOrderMap = useAppStore((s) => s.progOrderMap);
-  const btcVol = useAppStore((s) => s.volatilityData.BTCUSDT ?? 0.6);
-  const ethVol = useAppStore((s) => s.volatilityData.ETHUSDT ?? 0.6);
-  const solVol = useAppStore((s) => s.volatilityData.SOLUSDT ?? 0.6);
-  const xrpVol = useAppStore((s) => s.volatilityData.XRPUSDT ?? 0.6);
-  const volBySym = useMemo((): Record<AssetSymbol, number> => ({
-    BTCUSDT: btcVol,
-    ETHUSDT: ethVol,
-    SOLUSDT: solVol,
-    XRPUSDT: xrpVol,
-  }), [btcVol, ethVol, solVol, xrpVol]);
+  const volatilityData = useAppStore((s) => s.volatilityData);
+  const volBySym = useMemo((): Record<AssetSymbol, number> => {
+    const out = {} as Record<AssetSymbol, number>;
+    for (const sym of ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'WTIUSDT', 'NGUSDT', 'SPYUSDT', 'AAPLUSDT', 'GOOGLUSDT', 'NVDAUSDT', 'AMZNUSDT'] as AssetSymbol[]) {
+      out[sym] = volatilityData[sym] ?? 0.6;
+    }
+    return out;
+  }, [volatilityData]);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
 

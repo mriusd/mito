@@ -632,6 +632,23 @@ export function tradeMatchesSelectedMarket(
 
 export function extractAssetFromMarket(market: Market): AssetName | '' {
   const question = market.question || market.groupItemTitle || '';
+  const slug = (market.eventSlug || market.slug || '').toLowerCase();
+  const hay = `${question} ${slug}`;
+  // Tickers / names before short crypto tokens that appear inside longer words.
+  if (/\bWTI\b/i.test(hay) || slug.startsWith('wti-') || slug.includes('-wti-')) return 'WTI';
+  if (
+    /\bNatural Gas\b/i.test(question)
+    || /\bNATGAS\b/i.test(hay)
+    || (/\bNG\b/.test(question) && /gas|natural/i.test(hay))
+    || slug.startsWith('ng-')
+    || slug.includes('what-price-will-ng-')
+    || slug.includes('will-ng-hit-')
+  ) return 'NG';
+  if (/\bSPY\b/i.test(hay) || /S&P 500/i.test(question) || slug.startsWith('spy-')) return 'SPY';
+  if (/\bAAPL\b/i.test(hay) || /\bApple\b/i.test(question) || slug.startsWith('aapl-')) return 'AAPL';
+  if (/\bGOOGL?\b/i.test(hay) || /\b(?:Google|Alphabet)\b/i.test(question) || slug.startsWith('googl-')) return 'GOOGL';
+  if (/\bNVDA\b/i.test(hay) || /\bNVIDIA\b/i.test(question) || slug.startsWith('nvda-')) return 'NVDA';
+  if (/\bAMZN\b/i.test(hay) || /\bAmazon\b/i.test(question) || slug.startsWith('amzn-')) return 'AMZN';
   if (question.includes('Bitcoin') || question.includes('BTC')) return 'BTC';
   if (question.includes('Ethereum') || question.includes('ETH')) return 'ETH';
   if (question.includes('Solana') || question.includes('SOL')) return 'SOL';
@@ -786,6 +803,13 @@ export const ASSET_COLORS: Record<string, string> = {
   ETH: 'text-blue-400',
   SOL: 'text-purple-400',
   XRP: 'text-cyan-400',
+  WTI: 'text-amber-500',
+  NG: 'text-lime-400',
+  SPY: 'text-emerald-400',
+  AAPL: 'text-gray-200',
+  GOOGL: 'text-blue-300',
+  NVDA: 'text-green-400',
+  AMZN: 'text-orange-300',
   WEATHER: 'text-sky-400',
 };
 

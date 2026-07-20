@@ -212,7 +212,7 @@ function buildDailyAnchors(
     if (endMs <= now) return false;
     const title = m.groupItemTitle || '';
     if (title.includes('↓')) {
-      const target = parseFloat(title.replace(/[↑↓,\s]/g, '')) || 0;
+      const target = parseFloat(title.replace(/[↑↓,$\s]/g, '')) || 0;
       if (target <= 0) return false;
     }
     return true;

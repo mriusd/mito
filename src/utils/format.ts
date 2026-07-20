@@ -225,13 +225,20 @@ export function formatThousandsAsK(price: number, asset?: AssetName): string {
  * Gamma often uses "$80k"; naive [\d,.]+ capture stops before "k" — include k in capture and multiply here.
  */
 export function parseStrikeTokenToNumber(raw: string): number {
-  const s = raw.replace(/,/g, '').trim();
+  // RWA hit/above titles often look like "↑ $130" / "$83".
+  const s = raw.replace(/[↑↓$,\s]/g, '').trim();
   if (!s) return NaN;
   const multK = /[kK]$/.test(s);
   const core = multK ? s.slice(0, -1) : s;
   const n = parseFloat(core);
   if (!Number.isFinite(n)) return NaN;
   return multK ? n * 1000 : n;
+}
+
+/** Numeric strike from Hit row title (`↑ $130`, `↓62,500`, …). */
+export function parseHitStrikeNumber(title: string): number {
+  const n = parseStrikeTokenToNumber(title || '');
+  return Number.isFinite(n) ? n : 0;
 }
 
 export function formatStrikePrice(price: number, asset?: AssetName): string {

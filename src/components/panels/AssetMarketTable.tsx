@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo, type RefObject } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { formatPrice, assetToSymbol, formatDateShort, getPositionClobTokenId, normalizeClobTokenId, formatPriceShort, formatThousandsAsK, parseStrikeTokenToNumber } from '../../utils/format';
+import { formatPrice, assetToSymbol, formatDateShort, getPositionClobTokenId, normalizeClobTokenId, formatPriceShort, formatThousandsAsK, parseStrikeTokenToNumber, parseHitStrikeNumber } from '../../utils/format';
 import { saveRange } from '../../api';
 import { showToast } from '../../utils/toast';
 import { PriceTicks } from '../PriceTicks';
@@ -416,7 +416,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
     const activeMarkets = weeklyHitMarketsForAsset.filter(m => {
       const title = m.groupItemTitle || '';
       if (title.includes('↓')) {
-        const target = parseFloat(title.replace(/[↑↓,\s]/g, '')) || 0;
+        const target = parseHitStrikeNumber(title);
         if (target <= 0) return false;
       }
       const endTime = m.endDate ? new Date(m.endDate).getTime() : 0;
@@ -447,7 +447,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
     });
 
     // Sort markets within each event by price ascending
-    const hitPrice = (t: string) => parseFloat(t.replace(/[↑↓,\s]/g, '')) || 0;
+    const hitPrice = (t: string) => parseHitStrikeNumber(t);
     for (const ev of events) {
       ev.markets.sort((a, b) => hitPrice(a.groupItemTitle || '0') - hitPrice(b.groupItemTitle || '0'));
     }

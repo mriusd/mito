@@ -3,6 +3,7 @@ import { useAccount } from 'wagmi';
 import './lib/wallet';
 import { useAppStore } from './stores/appStore';
 import { useBinanceWS } from './hooks/useBinanceWS';
+import { useRwaSpotPrices } from './hooks/useRwaSpotPrices';
 import { useMarketData } from './hooks/useMarketData';
 import { invalidateClobMemoryCreds } from './lib/clobClient';
 import { clearWalletAccountSlice } from './lib/clearWalletAccountSlice';
@@ -95,6 +96,7 @@ function App() {
   }, []);
 
   useBinanceWS();
+  useRwaSpotPrices();
   useVwapAndVolatility();
   useSignalsAndArbs();
   useBidAskWS();

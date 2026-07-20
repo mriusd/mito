@@ -198,7 +198,7 @@ export function formatPolymarketVolumeSidebar(usd: number | null): string {
 }
 
 export function formatPrice(price: number, asset?: AssetName): string {
-  const decimals = asset === 'XRP' ? 4 : 2;
+  const decimals = asset === 'XRP' ? 4 : asset === 'NG' ? 3 : 2;
   return '$' + price.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 

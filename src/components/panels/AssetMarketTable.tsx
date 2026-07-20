@@ -446,18 +446,21 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
       return new Date(a.endDate).getTime() - new Date(b.endDate).getTime();
     });
 
-    // Sort markets within each event by price ascending
+    // HIGH (↑) above LOW (↓); within each side, higher strike on top.
     const hitPrice = (t: string) => parseHitStrikeNumber(t);
+    const hitRowRank = (t: string) => {
+      const low = (t || '').includes('↓') ? 1 : 0;
+      return low * 1e12 - hitPrice(t);
+    };
     for (const ev of events) {
-      ev.markets.sort((a, b) => hitPrice(a.groupItemTitle || '0') - hitPrice(b.groupItemTitle || '0'));
+      ev.markets.sort((a, b) => hitRowRank(a.groupItemTitle || '') - hitRowRank(b.groupItemTitle || ''));
     }
 
-    // Collect unique prices across all events, sorted ascending
     const priceSet = new Set<string>();
     for (const ev of events) {
       for (const m of ev.markets) priceSet.add(m.groupItemTitle || '');
     }
-    const prices = Array.from(priceSet).sort((a, b) => hitPrice(a) - hitPrice(b));
+    const prices = Array.from(priceSet).sort((a, b) => hitRowRank(a) - hitRowRank(b));
 
     // Build lookup: price -> eventSlug -> market
     const hitLookup: Record<string, Record<string, Market>> = {};

@@ -28,7 +28,10 @@ const EXPIRY_BAR_BG = 'rgba(6, 182, 212, 0.6)';
 const MATH_PROB_NEUTRAL_BAND = 1;
 const MATH_VS_BID_NEUTRAL_PCT = 5;
 const MATH_VS_BID_FLASH_REL = 0.30;
-const TARGET_STRIKE_DECIMALS: Record<AssetName, number> = { BTC: 0, ETH: 1, SOL: 2, XRP: 4 };
+const TARGET_STRIKE_DECIMALS: Partial<Record<AssetName, number>> = {
+  BTC: 0, ETH: 1, SOL: 2, XRP: 4,
+  WTI: 2, NG: 3, SPY: 2, AAPL: 2, GOOGL: 2, NVDA: 2, AMZN: 2,
+};
 
 const HudTfCountdown = memo(function HudTfCountdown({ endMs }: { endMs: number }) {
   const now = useExpiryNow();

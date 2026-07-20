@@ -632,7 +632,7 @@ export function tradeMatchesSelectedMarket(
 
 export function extractAssetFromMarket(market: Market): AssetName | '' {
   const question = market.question || market.groupItemTitle || '';
-  const slug = (market.eventSlug || market.slug || '').toLowerCase();
+  const slug = (market.eventSlug || '').toLowerCase();
   const hay = `${question} ${slug}`;
   // Tickers / names before short crypto tokens that appear inside longer words.
   if (/\bWTI\b/i.test(hay) || slug.startsWith('wti-') || slug.includes('-wti-')) return 'WTI';

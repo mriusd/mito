@@ -430,11 +430,18 @@ function drawSrLabelTriangle(
   ctx.fill();
 }
 
-const SR_PRICE_DECIMALS: Record<AssetName, number> = {
+const SR_PRICE_DECIMALS: Partial<Record<AssetName, number>> = {
   BTC: 0,
   ETH: 1,
   SOL: 2,
   XRP: 4,
+  WTI: 2,
+  NG: 3,
+  SPY: 2,
+  AAPL: 2,
+  GOOGL: 2,
+  NVDA: 2,
+  AMZN: 2,
 };
 
 function formatSrStrike(p: number, asset: AssetName): string {

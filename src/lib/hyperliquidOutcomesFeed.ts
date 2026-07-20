@@ -64,10 +64,13 @@ function num(x: unknown): number | null {
   return typeof x === 'number' && Number.isFinite(x) ? x : null;
 }
 
+const HL_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
+type HlAssetName = (typeof HL_ASSETS)[number];
+
 function parseAsset(raw: unknown): AssetName {
   const assetRaw = String(raw || 'BTC').trim().toUpperCase();
-  if ((['BTC', 'ETH', 'SOL', 'XRP'] as const).includes(assetRaw as AssetName)) {
-    return assetRaw as AssetName;
+  if ((HL_ASSETS as readonly string[]).includes(assetRaw)) {
+    return assetRaw as HlAssetName;
   }
   return 'BTC';
 }

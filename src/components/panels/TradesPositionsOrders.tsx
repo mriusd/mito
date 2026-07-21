@@ -500,7 +500,21 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     for (const p of onchainPositionsAsPM) {
       const tid = getPositionClobTokenId(p);
       if (!tid || (p.size || 0) <= 0) continue;
-      byToken.set(normalizeClobTokenId(tid), p);
+      const key = normalizeClobTokenId(tid);
+      const prev = byToken.get(key);
+      // Onchain size/avg win; keep Data API title/slug when WS meta blank (Other markets).
+      if (prev && !(p.title || '').trim() && (prev.title || '').trim()) {
+        byToken.set(key, {
+          ...p,
+          title: prev.title,
+          slug: p.slug || prev.slug,
+          eventSlug: p.eventSlug || prev.eventSlug,
+          endDate: p.endDate || prev.endDate,
+          outcome: p.outcome || prev.outcome,
+        });
+      } else {
+        byToken.set(key, p);
+      }
     }
     return [...byToken.values()];
   }, [liveTradesSource, positions, onchainPositionsAsPM]);
@@ -944,7 +958,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       };
       const rowDate = resolveTpoRowDate(market, posFallback);
       const endDate = rowDate.sortDate;
-      const marketName = getMarketPriceCondition(null, tid, marketLookup);
+      // Prefer WS/Data API title — lookup often misses Other markets (shows tokenId[:8]).
+      const marketName = getMarketPriceCondition(pos.title || market?.question, tid, marketLookup);
       let mktLabel = formatTpoMarketLabel(asset, marketName);
       let outcome = getTokenOutcome(tid, marketLookup) || '';
       if (!market && (pos.title || pos.slug || pos.outcome || pos.outcomeIndex !== undefined || pos.underlyingAsset)) {
@@ -964,6 +979,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         } else if (pos.outcomeIndex !== undefined) {
           outcome = pos.outcomeIndex === 0 ? 'YES' : 'NO';
         }
+      } else if (pos.title && (!market?.question || /^\d{6,}$/.test(marketName))) {
+        const combined = pos.eventSlug ? `${pos.title} ${pos.eventSlug}` : pos.title;
+        mktLabel = formatTpoMarketLabel(asset, getMarketPriceCondition(combined));
       }
 
       const size = pos.size || 0;

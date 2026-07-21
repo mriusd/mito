@@ -141,8 +141,13 @@ export function PnLPanel() {
     const w = makerAddress?.trim();
     if (!w || liveTradesSource !== 'onchain') return 'inactive';
     if (!wsPnl || wsPnl.from !== dateWindow.fromStr || wsPnl.to !== dateWindow.toStr) return 'pending';
-    return bucketMode === 'market' ? wsPnl.marketByDate : wsPnl.tradeByDate;
-  }, [makerAddress, liveTradesSource, wsPnl, dateWindow.fromStr, dateWindow.toStr, bucketMode]);
+    if (assetCategoryFilter === 'ALL') {
+      return bucketMode === 'market' ? wsPnl.marketByDate : wsPnl.tradeByDate;
+    }
+    const byCat = bucketMode === 'market' ? wsPnl.marketByDateByCategory : wsPnl.tradeByDateByCategory;
+    // Empty object when category map missing (old server) or no fills — toggle still changes view.
+    return byCat?.[assetCategoryFilter] ?? {};
+  }, [makerAddress, liveTradesSource, wsPnl, dateWindow.fromStr, dateWindow.toStr, bucketMode, assetCategoryFilter]);
 
   const handleRefresh = useCallback(() => {
     const w = makerAddress?.trim().toLowerCase();

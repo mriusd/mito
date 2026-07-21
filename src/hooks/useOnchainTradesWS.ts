@@ -395,11 +395,18 @@ const onchainTradesWSSharedStable: OnchainTradesWSShared = {
   wsConnected: false,
 };
 
+export type WalletPnlDayBucket = { bought: number; sold: number };
+export type WalletPnlByDate = Record<string, WalletPnlDayBucket>;
+export type WalletPnlCategory = 'CRYPTO' | 'WEATHER' | 'OTHER';
+
 export type WalletPnlDailyWS = {
   from: string;
   to: string;
-  tradeByDate: Record<string, { bought: number; sold: number }>;
-  marketByDate: Record<string, { bought: number; sold: number }>;
+  tradeByDate: WalletPnlByDate;
+  marketByDate: WalletPnlByDate;
+  /** Present after polycandles deploy — per Crypto/Weather/Other day buckets. */
+  tradeByDateByCategory?: Partial<Record<WalletPnlCategory, WalletPnlByDate>>;
+  marketByDateByCategory?: Partial<Record<WalletPnlCategory, WalletPnlByDate>>;
 };
 
 export function getOnchainTradesWSShared(): OnchainTradesWSShared | null {
@@ -1242,6 +1249,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               to: String(msg.to || ''),
               tradeByDate: (msg.tradeByDate as WalletPnlDailyWS['tradeByDate']) || {},
               marketByDate: (msg.marketByDate as WalletPnlDailyWS['marketByDate']) || {},
+              tradeByDateByCategory: (msg.tradeByDateByCategory as WalletPnlDailyWS['tradeByDateByCategory']) || undefined,
+              marketByDateByCategory: (msg.marketByDateByCategory as WalletPnlDailyWS['marketByDateByCategory']) || undefined,
             });
           } else if (msg.type === 'walletMarketTrades' && Array.isArray(msg.data)) {
             const w = String(msg.wallet || '').trim().toLowerCase();

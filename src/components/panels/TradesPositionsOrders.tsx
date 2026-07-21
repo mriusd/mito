@@ -30,7 +30,22 @@ import { appKit } from '../../lib/wallet';
 import { signingDialog } from '../SigningDialog';
 import type { Position, Trade, Order } from '../../types';
 import { showToast } from '../../utils/toast';
-import { getMarketPriceCondition, getTokenOutcome, getTradeClobTokenId, getOrderClobTokenId, getPositionClobTokenId, extractAssetFromMarket, formatPriceShort, lookupMarketByTokenId, isWeatherMarket, normalizeClobTokenId, ASSET_COLORS as assetColorMap2 } from '../../utils/format';
+import {
+  getMarketPriceCondition,
+  getTokenOutcome,
+  getTradeClobTokenId,
+  getOrderClobTokenId,
+  getPositionClobTokenId,
+  extractAssetFromMarket,
+  formatPriceShort,
+  lookupMarketByTokenId,
+  isWeatherMarket,
+  normalizeClobTokenId,
+  classifyMarketAssetCategory,
+  marketAssetCategoryMatches,
+  ASSET_COLORS as assetColorMap2,
+  type MarketAssetCategoryFilter,
+} from '../../utils/format';
 import { formatWeatherEventDateLabel, tpoMarketSortDateIso } from '../../lib/weatherMarketExpiry';
 import type { Market } from '../../types';
 
@@ -637,6 +652,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const [assetFilter, setAssetFilter] = useState(
     localStorage.getItem('polymarket-table-asset-filter') || 'ALL'
   );
+  const POS_CATEGORY_OPTS: MarketAssetCategoryFilter[] = ['ALL', 'CRYPTO', 'WEATHER', 'OTHER'];
+  const [posCategoryFilter, setPosCategoryFilter] = useState<MarketAssetCategoryFilter>(() => {
+    const v = localStorage.getItem(`polymarket-tpo-pos-category-${panelId}`);
+    return POS_CATEGORY_OPTS.includes(v as MarketAssetCategoryFilter)
+      ? (v as MarketAssetCategoryFilter)
+      : 'ALL';
+  });
   type PosSortCol = 'expiry' | 'size' | 'entry' | 'cost' | 'bid' | 'ask' | 'sell' | 'val' | 'pnl' | 'pnlPct';
   const [posSortCol, setPosSortCol] = useState<PosSortCol>(() => {
     const v = localStorage.getItem(`polymarket-tpo-pos-sort-col-${panelId}`);
@@ -903,25 +925,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       if ((p.size || 0) <= 0) return false;
       const tid = getPositionClobTokenId(p);
       if (!tid) return false;
-      if (assetFilter === 'ALL') return true;
       const market = lookupMarketByTokenId(tid, marketLookup);
-      if (market) {
-        const asset = extractAssetFromMarket(market);
-        if (asset) return asset === assetFilter;
-        if (isWeatherMarket(market)) return assetFilter === 'WEATHER';
-        return false;
-      }
-      const uA = normalizeDbUnderlying(p.underlyingAsset);
-      if (uA && uA === assetFilter) return true;
-      if (p.title) {
-        if (/temperature in/i.test(p.title)) return assetFilter === 'WEATHER';
-        const m = p.title.match(/\b(BTC|ETH|SOL|XRP)\b/i);
-        if (m) return m[1].toUpperCase() === assetFilter;
-        const nameMap: Record<string, string> = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', ripple: 'XRP' };
-        const nm = p.title.match(/\b(Bitcoin|Ethereum|Solana|Ripple)\b/i);
-        if (nm) return (nameMap[nm[1].toLowerCase()] || '') === assetFilter;
-      }
-      return true;
+      const cat = classifyMarketAssetCategory(market, {
+        title: p.title,
+        eventSlug: p.eventSlug || p.slug,
+        underlyingAsset: p.underlyingAsset,
+      });
+      return marketAssetCategoryMatches(posCategoryFilter, cat);
     })
     .map((pos) => {
       const tid = getPositionClobTokenId(pos);
@@ -998,7 +1008,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         eventSlug: pos.eventSlug || pos.slug || market?.eventSlug || '',
         clickable,
       };
-    }), [positionsForTable, assetFilter, marketLookup, liveQuoteLookup, sellOrderPriceByToken]);
+    }), [positionsForTable, posCategoryFilter, marketLookup, liveQuoteLookup, sellOrderPriceByToken]);
 
   const displayPositions = useMemo(() => {
     const rows = [...processedPositions];
@@ -1280,10 +1290,30 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           )}
 
           {tab === 'positions' && (
-            <select value={assetFilter} onChange={(e) => { setAssetFilter(e.target.value); localStorage.setItem('polymarket-table-asset-filter', e.target.value); }}
-              className={`bg-gray-700 text-[9px] font-bold rounded px-1 py-0.5 border border-gray-600 ${assetColors[assetFilter]}`} style={{ outline: 'none' }}>
-              {assets.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
+            <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]">
+              {POS_CATEGORY_OPTS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  title={
+                    c === 'ALL' ? 'All positions'
+                      : c === 'CRYPTO' ? 'BTC / ETH / SOL / XRP'
+                        : c === 'WEATHER' ? 'Weather / temperature'
+                          : 'RWA, events, and other'
+                  }
+                  onClick={() => {
+                    setPosCategoryFilter(c);
+                    localStorage.setItem(`polymarket-tpo-pos-category-${panelId}`, c);
+                  }}
+                  className={filterBtnCls(
+                    posCategoryFilter === c,
+                    c === 'CRYPTO' ? 'green' : c === 'WEATHER' ? 'blue' : c === 'OTHER' ? 'red' : 'gray',
+                  )}
+                >
+                  {c === 'CRYPTO' ? 'Crypto' : c === 'WEATHER' ? 'Weather' : c === 'OTHER' ? 'Other' : 'All'}
+                </button>
+              ))}
+            </div>
           )}
 
           {tab === 'orders' && (

@@ -3,7 +3,7 @@ import { setSidebarOnchainLiveTrades } from '../lib/sidebarOnchainTradesStore';
 import { fetchOnchainMarketPositions, fetchOnchainMarketTrades } from '../api';
 import type { WalletPosition } from '../api';
 import { API_BASE, WS_BASE } from '../lib/env';
-import { fetchBackend, backendWsRetryDelayMs, markBackendDownFromWs } from '../lib/fetchBackend';
+import { fetchBackend, backendWsRetryDelayMs, markBackendDownFromWs, markBackendWsUp } from '../lib/fetchBackend';
 import { onBackendReconnect } from '../lib/backendReconnect';
 import { dedupeWalletTradesByLedgerLeg, onchainFillKey, walletTradeKey } from '../lib/tradeKeys';
 import type { LiveTrade } from './usePolymarketOB';
@@ -1049,6 +1049,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       wsRef.current = ws;
 
       ws.onopen = () => {
+        markBackendWsUp();
         attempt = 0;
         setWsConnected(true);
         stopPolling();

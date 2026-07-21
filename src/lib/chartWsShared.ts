@@ -1,6 +1,6 @@
 import { WS_BASE } from './env';
 import { onBackendReconnect } from './backendReconnect';
-import { backendWsRetryDelayMs, markBackendDownFromWs } from './fetchBackend';
+import { backendWsRetryDelayMs, markBackendDownFromWs, markBackendWsUp } from './fetchBackend';
 
 // Single shared /ws/chart socket for the whole app. Every consumer (live trade
 // chart, chainlink/volatility charts, binance chart panel, bid/ask lookup)
@@ -91,6 +91,7 @@ function connect(): void {
 
   sock.onopen = () => {
     if (ws !== sock) return;
+    markBackendWsUp();
     const wasReconnect = attempt > 0;
     attempt = 0;
     for (const e of klineSubs.values()) {

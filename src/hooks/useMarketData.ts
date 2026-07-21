@@ -5,7 +5,7 @@ import {
   coalesceRecordOfMarketArrays,
   coalesceUpOrDownMarkets,
 } from '../lib/marketDataDedupe';
-import { fetchBackend, markBackendRecovered } from '../lib/fetchBackend';
+import { markBackendDownFromHttp, markBackendRecovered } from '../lib/fetchBackend';
 import { notifyBackendReconnect } from '../lib/backendReconnect';
 import type { Market } from '../types';
 import { resolveUpDownStrikeSync } from '../utils/format';
@@ -100,7 +100,8 @@ export function useMarketData() {
     } catch (err) {
       console.error('Failed to fetch markets:', err);
       recoverySuccessesRef.current = 0;
-      useAppStore.getState().setBackendConnected(false);
+      // One slow/failed /api/markets must not flash the banner — strike logic in fetchBackend.
+      markBackendDownFromHttp();
       useAppStore.getState().setLoading(false);
     } finally {
       refreshingRef.current = false;

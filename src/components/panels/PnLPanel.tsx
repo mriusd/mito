@@ -12,10 +12,16 @@ import { triggerWalletRefresh } from '../../lib/clobClient';
 import type { Trade } from '../../types';
 import { fetchWalletActivityForDateRange } from '../../api/polymarket';
 import { marketExpiryBucketDateKey } from '../../lib/weatherMarketExpiry';
-import { getTradeClobTokenId } from '../../utils/format';
+import {
+  getTradeClobTokenId,
+  classifyMarketAssetCategory,
+  marketAssetCategoryMatches,
+  type MarketAssetCategoryFilter,
+} from '../../utils/format';
 
 const PNL_BUCKET_KEY = 'polybot-pnl-bucket-mode';
-const PNL_MARKET_TYPE_FILTER_KEY = 'polybot-pnl-market-type-filter';
+const PNL_ASSET_CATEGORY_KEY = 'polybot-pnl-asset-category';
+const PNL_CATEGORY_OPTS: MarketAssetCategoryFilter[] = ['ALL', 'CRYPTO', 'WEATHER', 'OTHER'];
 
 function getTradeTimeMs(trade: Trade): number {
   const ts = (trade as { match_time?: string }).match_time || trade.timestamp || trade.created_at || trade.matchTime || '';
@@ -50,24 +56,6 @@ function fmtUsd(v: number): string {
 }
 
 type PnlBucketMode = 'trade' | 'market';
-type PnlMarketType = 'updown' | 'hit' | 'above' | 'between';
-type PnlMarketTypeFilter = Record<PnlMarketType, boolean>;
-
-const DEFAULT_MARKET_TYPE_FILTER: PnlMarketTypeFilter = {
-  updown: true,
-  hit: true,
-  above: true,
-  between: true,
-};
-
-function classifyMarketType(question: string | null | undefined, eventSlug?: string | null): PnlMarketType | null {
-  const combined = `${question || ''} ${eventSlug || ''}`.toLowerCase();
-  if (/(up\s+or\s+down|updown)/i.test(combined)) return 'updown';
-  if (/(reach\s+\$?|dip\s+to\s+\$?| hit\b)/i.test(combined)) return 'hit';
-  if (/\bbetween\b.+\band\b/i.test(combined)) return 'between';
-  if (/(above\s+\$?|greater than|more than|over\s+\$?|less than|below|under)/i.test(combined)) return 'above';
-  return null;
-}
 
 export function PnLPanel() {
   const trades = useAppStore((s) => s.trades);
@@ -106,20 +94,11 @@ export function PnLPanel() {
     const saved = localStorage.getItem(PNL_BUCKET_KEY);
     return saved === 'market' ? 'market' : 'trade';
   });
-  const [marketTypeFilter, setMarketTypeFilter] = useState<PnlMarketTypeFilter>(() => {
-    try {
-      const raw = localStorage.getItem(PNL_MARKET_TYPE_FILTER_KEY);
-      if (!raw) return { ...DEFAULT_MARKET_TYPE_FILTER };
-      const parsed = JSON.parse(raw) as Partial<PnlMarketTypeFilter>;
-      return {
-        updown: parsed.updown !== false,
-        hit: parsed.hit !== false,
-        above: parsed.above !== false,
-        between: parsed.between !== false,
-      };
-    } catch {
-      return { ...DEFAULT_MARKET_TYPE_FILTER };
-    }
+  const [assetCategoryFilter, setAssetCategoryFilter] = useState<MarketAssetCategoryFilter>(() => {
+    const v = localStorage.getItem(PNL_ASSET_CATEGORY_KEY);
+    return PNL_CATEGORY_OPTS.includes(v as MarketAssetCategoryFilter)
+      ? (v as MarketAssetCategoryFilter)
+      : 'ALL';
   });
 
   const setBucket = useCallback((mode: PnlBucketMode) => {
@@ -127,12 +106,9 @@ export function PnLPanel() {
     localStorage.setItem(PNL_BUCKET_KEY, mode);
   }, []);
 
-  const toggleMarketType = useCallback((k: PnlMarketType) => {
-    setMarketTypeFilter((prev) => {
-      const next = { ...prev, [k]: !prev[k] };
-      localStorage.setItem(PNL_MARKET_TYPE_FILTER_KEY, JSON.stringify(next));
-      return next;
-    });
+  const setAssetCategory = useCallback((c: MarketAssetCategoryFilter) => {
+    setAssetCategoryFilter(c);
+    localStorage.setItem(PNL_ASSET_CATEGORY_KEY, c);
   }, []);
 
   useEffect(() => {
@@ -219,10 +195,11 @@ export function PnLPanel() {
       const market = tid ? marketLookup[tid] : undefined;
       const fallbackQuestion = (trade as Trade).title || market?.question || market?.groupItemTitle || market?.eventTitle;
       const fallbackEventSlug = (trade as Trade).eventSlug || (trade as Trade).slug || market?.eventSlug;
-      const mType = classifyMarketType(fallbackQuestion, fallbackEventSlug);
-      // If market type cannot be classified (missing lookup/meta), keep the trade
-      // so P&L totals stay complete.
-      if (mType != null && !marketTypeFilter[mType]) continue;
+      const cat = classifyMarketAssetCategory(market, {
+        title: fallbackQuestion,
+        eventSlug: fallbackEventSlug,
+      });
+      if (!marketAssetCategoryMatches(assetCategoryFilter, cat)) continue;
 
       let dateKey: string | null = null;
       if (bucketMode === 'trade') {
@@ -253,7 +230,7 @@ export function PnLPanel() {
     }
 
     return { dates, dataByDate };
-  }, [dateWindow, onchainByDate, makerAddress, liveTradesSource, trades, pmRangeTrades, marketLookup, bucketMode, marketTypeFilter]);
+  }, [dateWindow, onchainByDate, makerAddress, liveTradesSource, trades, pmRangeTrades, marketLookup, bucketMode, assetCategoryFilter]);
 
   const todayKey = getDateKey(new Date());
 
@@ -306,23 +283,37 @@ export function PnLPanel() {
               Market Expiry
             </button>
           </div>
-          <div className="flex items-center justify-end gap-x-2 gap-y-0.5 text-[9px] text-gray-300">
-            <label className="inline-flex items-center gap-1">
-              <input type="checkbox" className="rounded accent-cyan-500" checked={marketTypeFilter.updown} onChange={() => toggleMarketType('updown')} />
-              <span>Up or Down</span>
-            </label>
-            <label className="inline-flex items-center gap-1">
-              <input type="checkbox" className="rounded accent-cyan-500" checked={marketTypeFilter.hit} onChange={() => toggleMarketType('hit')} />
-              <span>Hit</span>
-            </label>
-            <label className="inline-flex items-center gap-1">
-              <input type="checkbox" className="rounded accent-cyan-500" checked={marketTypeFilter.above} onChange={() => toggleMarketType('above')} />
-              <span>Above</span>
-            </label>
-            <label className="inline-flex items-center gap-1">
-              <input type="checkbox" className="rounded accent-cyan-500" checked={marketTypeFilter.between} onChange={() => toggleMarketType('between')} />
-              <span>Between</span>
-            </label>
+          <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px] font-bold">
+            {PNL_CATEGORY_OPTS.map((c) => {
+              const active = assetCategoryFilter === c;
+              const label = c === 'CRYPTO' ? 'Crypto' : c === 'WEATHER' ? 'Weather' : c === 'OTHER' ? 'Other' : 'All';
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  title={
+                    c === 'ALL' ? 'All markets'
+                      : c === 'CRYPTO' ? 'BTC / ETH / SOL / XRP'
+                        : c === 'WEATHER' ? 'Weather / temperature'
+                          : 'RWA, events, and other'
+                  }
+                  className={`px-1.5 py-0.5 rounded transition ${
+                    active
+                      ? c === 'CRYPTO'
+                        ? 'bg-green-800/80 text-green-200'
+                        : c === 'WEATHER'
+                          ? 'bg-sky-800/80 text-sky-200'
+                          : c === 'OTHER'
+                            ? 'bg-amber-800/70 text-amber-100'
+                            : 'bg-gray-600 text-white'
+                      : 'text-gray-400 hover:text-gray-200'
+                  }`}
+                  onClick={() => setAssetCategory(c)}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>

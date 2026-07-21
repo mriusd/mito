@@ -69,9 +69,21 @@ function PnlDrilldownGlobal() {
   return <PnlDrilldownDialog open={open} asset={asset} endDates={endDates} onClose={close} />;
 }
 
+/** Delay before showing red banner — avoids flash on brief WS/probe blips. */
+const SERVER_DOWN_BANNER_DELAY_MS = 8_000;
+
 function App() {
   const loading = useAppStore((s) => s.loading);
   const backendConnected = useAppStore((s) => s.backendConnected);
+  const [showServerDownBanner, setShowServerDownBanner] = useState(false);
+  useEffect(() => {
+    if (backendConnected !== false) {
+      setShowServerDownBanner(false);
+      return;
+    }
+    const t = window.setTimeout(() => setShowServerDownBanner(true), SERVER_DOWN_BANNER_DELAY_MS);
+    return () => window.clearTimeout(t);
+  }, [backendConnected]);
   const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
   const selectedMarketConditionId = useAppStore((s) => s.selectedMarket?.conditionId?.trim() ?? '');
   const sidebarOutcome = useAppStore((s) => s.sidebarOutcome);
@@ -333,7 +345,7 @@ function App() {
       {/* Toast container */}
       <div id="toastContainer" className="toast-container" />
 
-      {backendConnected === false && (
+      {showServerDownBanner && (
         <div
           className="server-down-banner fixed top-0 left-0 right-0 z-[350] border-b border-red-700/70 bg-red-950/95 px-3 py-2 text-center shadow-lg pointer-events-auto"
           role="alert"

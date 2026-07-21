@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { WS_BASE } from '../lib/env';
-import { backendWsRetryDelayMs, markBackendDownFromWs } from '../lib/fetchBackend';
+import { backendWsRetryDelayMs, markBackendDownFromWs, markBackendWsUp } from '../lib/fetchBackend';
 import { onBackendReconnect } from '../lib/backendReconnect';
 
 export type SyncHeadState = {
@@ -71,6 +71,10 @@ export function useSyncHeadWS(): SyncHeadState | null {
         reconnectTimer = setTimeout(connect, backendWsRetryDelayMs(2500));
         return;
       }
+
+      ws.onopen = () => {
+        markBackendWsUp();
+      };
 
       ws.onmessage = (ev) => {
         try {

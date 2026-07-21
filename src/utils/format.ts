@@ -310,14 +310,23 @@ export function getMarketPriceCondition(question: string | null | undefined, tok
   const weatherLabel = formatWeatherMarketLabel(question, eventSlug, groupItemTitle);
   if (weatherLabel) return weatherLabel;
 
-  const strikeFmtAsset: AssetName | undefined = assetTickerFromQuestion(question) === 'ETH' ? 'ETH' : undefined;
+  const strikeFmtAsset: AssetName | undefined = assetTickerFromQuestion(question, eventSlug) === 'ETH' ? 'ETH' : undefined;
 
-  // Weekly hit: "Will Bitcoin reach $84,000 March 9-15?" or "Will Bitcoin dip to $62,000 March 9-15?"
-  const hitReachMatch = question.match(/reach\s+\$?([\d,.]+[kK]?)/i);
+  // Weekly/monthly hit — crypto "reach/dip" + RWA "hit (HIGH|LOW) $X"
+  const hitReachMatch =
+    question.match(/reach\s+\$?([\d,.]+[kK]?)/i)
+    || question.match(/hit\s*\(\s*HIGH\s*\)\s*\$?([\d,.]+[kK]?)/i);
   if (hitReachMatch) return `Hit ↑${formatStrikePrice(parseStrikeTokenToNumber(hitReachMatch[1]), strikeFmtAsset)}`;
 
-  const hitDipMatch = question.match(/dip\s+to\s+\$?([\d,.]+[kK]?)/i);
+  const hitDipMatch =
+    question.match(/dip\s+to\s+\$?([\d,.]+[kK]?)/i)
+    || question.match(/hit\s*\(\s*LOW\s*\)\s*\$?([\d,.]+[kK]?)/i);
   if (hitDipMatch) return `Hit ↓${formatStrikePrice(parseStrikeTokenToNumber(hitDipMatch[1]), strikeFmtAsset)}`;
+
+  // groupItemTitle already has ↑/$130 style (RWA) or ↑ 62,500 (crypto)
+  if (groupItemTitle && /[↑↓]/.test(groupItemTitle)) {
+    return formatPriceShort(groupItemTitle, strikeFmtAsset).replace(/^(↑|↓)/, 'Hit $1');
+  }
 
   // Up or Down markets
   const combined = eventSlug ? `${question} ${eventSlug}` : question;
@@ -376,22 +385,36 @@ export function shortenMarketName(
 
   const combinedText = eventSlug ? `${question} ${eventSlug}` : question;
 
-  const assetMatch = question.match(/\b(BTC|ETH|SOL|XRP|Bitcoin|Ethereum|Solana)\b/i);
-  const asset = assetMatch ? assetMatch[1].toUpperCase().replace('BITCOIN', 'BTC').replace('ETHEREUM', 'ETH').replace('SOLANA', 'SOL') : '';
+  const asset = assetTickerFromQuestion(question, eventSlug);
   const strikeFmtAssetShort: AssetName | undefined = asset === 'ETH' ? 'ETH' : undefined;
 
   const dateMatch = question.match(/(?:on|by)\s+(\w+)\s+(\d+)/i);
   const dateStr = dateMatch ? `${dateMatch[1].slice(0, 3).toUpperCase()} ${dateMatch[2]}` : '';
 
-  // Weekly hit: "Will Bitcoin reach $84,000 March 9-15?"
+  // Weekly hit: "Will Bitcoin reach $84,000 March 9-15?" / monthly "in July"
   const hitDateMatch = question.match(/(\w+)\s+(\d+)-(\d+)\s*\?/i);
-  const hitDateStr = hitDateMatch ? `${hitDateMatch[1].slice(0, 3).toUpperCase()} ${hitDateMatch[2]}-${hitDateMatch[3]}` : '';
+  const hitMonthMatch = !hitDateMatch ? question.match(/\bin\s+(\w+)(?:\s+\d{4})?\s*\??/i) : null;
+  const hitDateStr = hitDateMatch
+    ? `${hitDateMatch[1].slice(0, 3).toUpperCase()} ${hitDateMatch[2]}-${hitDateMatch[3]}`
+    : hitMonthMatch
+      ? hitMonthMatch[1].slice(0, 3).toUpperCase()
+      : '';
 
-  const hitReachMatch = question.match(/reach\s+\$?([\d,.]+[kK]?)/i);
+  const hitReachMatch =
+    question.match(/reach\s+\$?([\d,.]+[kK]?)/i)
+    || question.match(/hit\s*\(\s*HIGH\s*\)\s*\$?([\d,.]+[kK]?)/i);
   if (hitReachMatch) return `${asset} Hit ↑${formatStrikePrice(parseStrikeTokenToNumber(hitReachMatch[1]), strikeFmtAssetShort)} ${hitDateStr}`.trim();
 
-  const hitDipMatch = question.match(/dip\s+to\s+\$?([\d,.]+[kK]?)/i);
+  const hitDipMatch =
+    question.match(/dip\s+to\s+\$?([\d,.]+[kK]?)/i)
+    || question.match(/hit\s*\(\s*LOW\s*\)\s*\$?([\d,.]+[kK]?)/i);
   if (hitDipMatch) return `${asset} Hit ↓${formatStrikePrice(parseStrikeTokenToNumber(hitDipMatch[1]), strikeFmtAssetShort)} ${hitDateStr}`.trim();
+
+  if (groupItemTitle && /[↑↓]/.test(groupItemTitle)) {
+    const arrow = groupItemTitle.includes('↓') ? '↓' : '↑';
+    const n = parseHitStrikeNumber(groupItemTitle);
+    if (n > 0) return `${asset} Hit ${arrow}${formatStrikePrice(n, strikeFmtAssetShort)} ${hitDateStr}`.trim();
+  }
 
   // Up or Down: various patterns like "go up or down", "be up or down", "up or down on", slug-based titles
   const upDownMatch = combinedText.match(/up\s+or\s+down/i) || combinedText.match(/updown/i);
@@ -448,8 +471,19 @@ export function shortenMarketName(
   return question.slice(0, 25) + (question.length > 25 ? '...' : '');
 }
 
-/** BTC / ETH / SOL / XRP from question wording (same rules as {@link shortenMarketName}). */
-export function assetTickerFromQuestion(question: string | null | undefined): string {
+/** Asset ticker from question/slug (crypto + RWA) — same rules as {@link shortenMarketName}. */
+export function assetTickerFromQuestion(
+  question: string | null | undefined,
+  eventSlug?: string | null,
+): string {
+  const fromMkt = extractAssetFromMarket({
+    id: '',
+    question: question || '',
+    eventSlug: eventSlug || undefined,
+    endDate: '',
+    clobTokenIds: [],
+  });
+  if (fromMkt) return fromMkt;
   const assetMatch = (question || '').match(/\b(BTC|ETH|SOL|XRP|Bitcoin|Ethereum|Solana)\b/i);
   if (!assetMatch) return '';
   return assetMatch[1].toUpperCase().replace('BITCOIN', 'BTC').replace('ETHEREUM', 'ETH').replace('SOLANA', 'SOL');
@@ -563,6 +597,49 @@ export function isWeatherMarket(
     || combined.includes('highest temperature')
     || combined.includes('lowest temperature')
   );
+}
+
+/** TPO Positions / PnL category filter. */
+export type MarketAssetCategory = 'CRYPTO' | 'WEATHER' | 'OTHER';
+export type MarketAssetCategoryFilter = 'ALL' | MarketAssetCategory;
+
+const CRYPTO_CATEGORY_TICKERS = new Set(['BTC', 'ETH', 'SOL', 'XRP']);
+
+/**
+ * Bucket a market/position into Crypto (BTC/ETH/SOL/XRP), Weather, or Other (RWA, events, …).
+ */
+export function classifyMarketAssetCategory(
+  market: Pick<Market, 'question' | 'eventSlug' | 'groupItemTitle'> | null | undefined,
+  fallback?: { title?: string | null; eventSlug?: string | null; underlyingAsset?: string | null },
+): MarketAssetCategory {
+  const question = market?.question || market?.groupItemTitle || fallback?.title || '';
+  const eventSlug = market?.eventSlug || fallback?.eventSlug || '';
+  const probe = market || { question, eventSlug };
+  if (isWeatherMarket(probe) || /temperature in/i.test(question)) return 'WEATHER';
+
+  let asset: string = market ? extractAssetFromMarket(market as Market) : '';
+  if (!asset && fallback?.underlyingAsset) {
+    const u = String(fallback.underlyingAsset).trim().toUpperCase();
+    if (CRYPTO_CATEGORY_TICKERS.has(u)) asset = u;
+  }
+  if (!asset) {
+    const m = question.match(/\b(BTC|ETH|SOL|XRP|Bitcoin|Ethereum|Solana)\b/i);
+    if (m) {
+      asset = m[1].toUpperCase()
+        .replace('BITCOIN', 'BTC')
+        .replace('ETHEREUM', 'ETH')
+        .replace('SOLANA', 'SOL');
+    }
+  }
+  if (asset && CRYPTO_CATEGORY_TICKERS.has(asset)) return 'CRYPTO';
+  return 'OTHER';
+}
+
+export function marketAssetCategoryMatches(
+  filter: MarketAssetCategoryFilter,
+  category: MarketAssetCategory,
+): boolean {
+  return filter === 'ALL' || filter === category;
 }
 
 /** Polymarket position row → outcome token id (Data API may use `asset`, `asset_id`, or `token_id`). */
@@ -720,8 +797,11 @@ export function hitStrikeMetaForBs(m: Market): { bsPriceStr: string; isReachHit:
   const q = (m.question || '').trim();
   const reach =
     q.match(/reach\s+\$?([\d,.]+[kK]?)/i)
+    || q.match(/hit\s*\(\s*HIGH\s*\)\s*\$?([\d,.]+[kK]?)/i)
     || q.match(/\bhit\s+\$?([\d,.]+[kK]?)/i);
-  const dip = q.match(/dip\s+to\s+\$?([\d,.]+[kK]?)/i);
+  const dip =
+    q.match(/dip\s+to\s+\$?([\d,.]+[kK]?)/i)
+    || q.match(/hit\s*\(\s*LOW\s*\)\s*\$?([\d,.]+[kK]?)/i);
   const norm = (cap: string) => cap.replace(/,/g, '').trim();
   if (reach && !dip) {
     return { bsPriceStr: '>' + norm(reach[1]), isReachHit: true, isDipHit: false };
@@ -752,7 +832,8 @@ export function hitStrikeMetaForBs(m: Market): { bsPriceStr: string; isReachHit:
 }
 
 export function hitDisplayStrike(groupTitle: string, bsPriceStr: string, isReachHit: boolean): string {
-  if (groupTitle) return groupTitle;
+  // Normalize RWA `↑ $130` to crypto-style `↑130` / `↑62.5k`.
+  if (groupTitle) return formatPriceShort(groupTitle);
   const n = bsPriceStr.replace(/^[<>]/, '');
   return isReachHit ? `${n}↑` : `${n}↓`;
 }

@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import type { AssetName } from '../../types';
-import { assetToSymbol, formatPriceShort, formatThousandsAsK, parseStrikeTokenToNumber } from '../../utils/format';
+import { assetToSymbol, formatPriceShort, parseStrikeTokenToNumber } from '../../utils/format';
 import { useGridAssetLivePrice } from '../../lib/gridAssetLivePriceStore';
 
 function isPriceConditionTrue(priceStr: string, live: number): boolean {
@@ -40,10 +40,8 @@ export const AssetMarketTableHitPriceCol = memo(function AssetMarketTableHitPric
   hitPrice: (t: string) => number;
 }) {
   const livePrice = useGridAssetLivePrice(assetToSymbol(asset));
-  const arrow = priceStr.includes('↑') ? '↑' : priceStr.includes('↓') ? '↓' : '';
   const num = hitPrice(priceStr);
   const priceShortAsset = asset === 'ETH' ? 'ETH' : undefined;
-  const fmt = num >= 1000 ? formatThousandsAsK(num, priceShortAsset) : String(num);
   const pct = livePrice > 0 && num > 0 ? ((num - livePrice) / livePrice) * 100 : 0;
   const pctSign = pct >= 0 ? '+' : '';
   const isAtPrice = livePrice > 0 && Math.abs(pct) < 0.5;
@@ -55,7 +53,7 @@ export const AssetMarketTableHitPriceCol = memo(function AssetMarketTableHitPric
       data-price-high={hitPrice(priceStr)}
     >
       <div className="flex flex-col leading-tight">
-        <span>{arrow}{fmt}</span>
+        <span>{formatPriceShort(priceStr, priceShortAsset)}</span>
         {!isAtPrice && pct !== 0 && (
           <span className="text-gray-400 text-[11px]">{pctSign}{pct.toFixed(0)}%</span>
         )}

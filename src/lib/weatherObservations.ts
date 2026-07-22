@@ -6,6 +6,7 @@ import type { WeatherTempSource } from './weatherCities';
 export type WeatherObservationPoint = {
   timeMs: number;
   temp: number;
+  humidity?: number;
 };
 
 export type WeatherForecastHistoryBatch = {

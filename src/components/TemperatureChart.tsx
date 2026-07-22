@@ -10,14 +10,23 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PAD_L = 36;
-const PAD_R = 8;
+const PAD_R = 36;
 const PAD_T = 22;
 const PAD_B = 34;
-const LINE_COLOR = '#38bdf8';
-const FORECAST_COLOR = 'rgba(156, 163, 175, 0.9)';
-const FORECAST_HISTORY_BASE = 'rgba(156, 163, 175,';
+const TEMP_LINE = '#ef4444';
+const TEMP_FORECAST = 'rgba(239, 68, 68, 0.45)';
+const TEMP_FORECAST_HISTORY_BASE = 'rgba(239, 68, 68,';
+const HUMIDITY_LINE = '#3b82f6';
+const HUMIDITY_FORECAST = 'rgba(59, 130, 246, 0.45)';
+const HUMIDITY_FORECAST_HISTORY_BASE = 'rgba(59, 130, 246,';
 
-type ChartPoint = { timeMs: number; temp: number; kind: 'obs' | 'forecast' };
+type ChartPoint = {
+  timeMs: number;
+  temp: number;
+  humidity?: number;
+  kind: 'obs' | 'forecast';
+  series: 'temp' | 'humidity';
+};
 
 type ChartLayout = {
   chartL: number;
@@ -27,14 +36,23 @@ type ChartLayout = {
   dayStart: number;
   yMin: number;
   yMax: number;
+  hMin: number;
+  hMax: number;
   timezone: string;
   unitSuffix: string;
   points: ChartPoint[];
   forecastPoints: ChartPoint[];
+  humidityPoints: ChartPoint[];
+  humidityForecastPoints: ChartPoint[];
 };
 
 function nearestChartPoint(layout: ChartLayout, mx: number): ChartPoint | null {
-  const candidates = [...layout.points, ...layout.forecastPoints];
+  const candidates = [
+    ...layout.points,
+    ...layout.forecastPoints,
+    ...layout.humidityPoints,
+    ...layout.humidityForecastPoints,
+  ];
   if (candidates.length === 0) return null;
   const span = layout.chartR - layout.chartL;
   if (span <= 0) return candidates[0];
@@ -54,9 +72,23 @@ function nearestChartPoint(layout: ChartLayout, mx: number): ChartPoint | null {
 function chartCoords(layout: ChartLayout, p: ChartPoint) {
   const toX = (timeMs: number) =>
     layout.chartL + ((timeMs - layout.dayStart) / DAY_MS) * (layout.chartR - layout.chartL);
-  const toY = (temp: number) =>
-    layout.chartB - ((temp - layout.yMin) / (layout.yMax - layout.yMin)) * (layout.chartB - layout.chartT);
-  return { x: toX(p.timeMs), y: toY(p.temp) };
+  const toY =
+    p.series === 'humidity'
+      ? (v: number) =>
+          layout.chartB -
+          ((v - layout.hMin) / (layout.hMax - layout.hMin)) * (layout.chartB - layout.chartT)
+      : (v: number) =>
+          layout.chartB -
+          ((v - layout.yMin) / (layout.yMax - layout.yMin)) * (layout.chartB - layout.chartT);
+  const value = p.series === 'humidity' ? (p.humidity ?? 0) : p.temp;
+  return { x: toX(p.timeMs), y: toY(value) };
+}
+
+function pointColor(p: ChartPoint): string {
+  if (p.series === 'humidity') {
+    return p.kind === 'forecast' ? HUMIDITY_FORECAST : HUMIDITY_LINE;
+  }
+  return p.kind === 'forecast' ? TEMP_FORECAST : TEMP_LINE;
 }
 
 export function TempUnitToggle({
@@ -124,27 +156,45 @@ export function TemperatureChart({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    const padL = PAD_L;
-    const padR = PAD_R;
-    const padT = PAD_T;
-    const padB = PAD_B;
-    const chartL = padL;
-    const chartR = w - padR;
-    const chartT = padT;
-    const chartB = h - padB;
+    const chartL = PAD_L;
+    const chartR = w - PAD_R;
+    const chartT = PAD_T;
+    const chartB = h - PAD_B;
     const unitSuffix = unit === 'F' ? '°F' : '°C';
     const labelOffset = 7;
 
     const points: ChartPoint[] = data.points.map((p) => ({
       timeMs: p.timeMs,
       temp: floorDisplayTemp(p.temp, unit),
+      humidity: p.humidity,
       kind: 'obs' as const,
+      series: 'temp' as const,
     }));
     const forecastPoints: ChartPoint[] = (data.forecastPoints ?? []).map((p) => ({
       timeMs: p.timeMs,
       temp: floorDisplayTemp(p.temp, unit),
+      humidity: p.humidity,
       kind: 'forecast' as const,
+      series: 'temp' as const,
     }));
+    const humidityPoints: ChartPoint[] = data.points
+      .filter((p) => p.humidity != null)
+      .map((p) => ({
+        timeMs: p.timeMs,
+        temp: floorDisplayTemp(p.temp, unit),
+        humidity: p.humidity,
+        kind: 'obs' as const,
+        series: 'humidity' as const,
+      }));
+    const humidityForecastPoints: ChartPoint[] = (data.forecastPoints ?? [])
+      .filter((p) => p.humidity != null)
+      .map((p) => ({
+        timeMs: p.timeMs,
+        temp: floorDisplayTemp(p.temp, unit),
+        humidity: p.humidity,
+        kind: 'forecast' as const,
+        series: 'humidity' as const,
+      }));
     const forecastHistory = (data.forecastHistory ?? []).map((batch) => ({
       issuedAtMs: batch.issuedAtMs,
       points: batch.points.map((p) => ({
@@ -152,12 +202,25 @@ export function TemperatureChart({
         temp: floorDisplayTemp(p.temp, unit),
       })),
     }));
-    const allPoints = [
+    const allTempPoints = [
       ...points,
       ...forecastPoints,
-      ...forecastHistory.flatMap((b) => b.points),
+      ...forecastHistory.flatMap((b) =>
+        b.points.map((p) => ({
+          timeMs: p.timeMs,
+          temp: p.temp,
+          humidity: p.humidity,
+          kind: 'forecast' as const,
+          series: 'temp' as const,
+        })),
+      ),
     ];
-    if (allPoints.length === 0) {
+    const allHumidityValues = [
+      ...humidityPoints.map((p) => p.humidity ?? 0),
+      ...humidityForecastPoints.map((p) => p.humidity ?? 0),
+      ...forecastHistory.flatMap((b) => b.points.map((p) => p.humidity).filter((v) => v != null)),
+    ] as number[];
+    if (allTempPoints.length === 0 && allHumidityValues.length === 0) {
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
       ctx.font = '11px monospace';
       ctx.textAlign = 'center';
@@ -167,16 +230,16 @@ export function TemperatureChart({
     }
 
     const primaryCurve = [...points, ...forecastPoints];
-    const labelPoints = primaryCurve.length > 0 ? primaryCurve : allPoints;
+    const labelPoints = primaryCurve.length > 0 ? primaryCurve : allTempPoints;
     let minPoint = labelPoints[0];
     let maxPoint = labelPoints[0];
-    let yMin = allPoints[0].temp;
-    let yMax = allPoints[0].temp;
+    let yMin = allTempPoints[0]?.temp ?? 0;
+    let yMax = allTempPoints[0]?.temp ?? 0;
     for (const p of labelPoints) {
       if (p.temp < minPoint.temp) minPoint = p;
       if (p.temp > maxPoint.temp) maxPoint = p;
     }
-    for (const p of allPoints) {
+    for (const p of allTempPoints) {
       yMin = Math.min(yMin, p.temp);
       yMax = Math.max(yMax, p.temp);
     }
@@ -184,11 +247,27 @@ export function TemperatureChart({
     yMin -= padY;
     yMax += padY;
 
+    let hMin = 0;
+    let hMax = 100;
+    if (allHumidityValues.length > 0) {
+      hMin = Math.min(...allHumidityValues);
+      hMax = Math.max(...allHumidityValues);
+      const padH = Math.max(2, (hMax - hMin) * 0.12);
+      hMin = Math.max(0, hMin - padH);
+      hMax = Math.min(100, hMax + padH);
+      if (hMax - hMin < 10) {
+        hMin = Math.max(0, hMin - 5);
+        hMax = Math.min(100, hMax + 5);
+      }
+    }
+
     const dayStart = data.dayStartMs;
     const toX = (timeMs: number) =>
       chartL + ((timeMs - dayStart) / DAY_MS) * (chartR - chartL);
-    const toY = (temp: number) =>
+    const toYTemp = (temp: number) =>
       chartB - ((temp - yMin) / (yMax - yMin)) * (chartB - chartT);
+    const toYHumidity = (humidity: number) =>
+      chartB - ((humidity - hMin) / (hMax - hMin)) * (chartB - chartT);
 
     ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.lineWidth = 1;
@@ -196,14 +275,25 @@ export function TemperatureChart({
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     for (let g = 0; g <= 4; g++) {
       const v = yMin + ((yMax - yMin) * g) / 4;
-      const y = toY(v);
+      const y = toYTemp(v);
       ctx.beginPath();
       ctx.moveTo(chartL, y);
       ctx.lineTo(chartR, y);
       ctx.stroke();
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.55)';
       ctx.fillText(`${Math.floor(v)}${unitSuffix}`, chartL - 4, y);
+    }
+    if (allHumidityValues.length > 0) {
+      for (let g = 0; g <= 4; g++) {
+        const v = hMin + ((hMax - hMin) * g) / 4;
+        const y = toYHumidity(v);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.55)';
+        ctx.fillText(`${Math.round(v)}%`, chartR + 4, y);
+      }
     }
 
     for (let hour = 0; hour <= 24; hour += 6) {
@@ -228,29 +318,29 @@ export function TemperatureChart({
       ctx.fillText(text, x, above ? y - labelOffset : y + labelOffset);
     };
 
-    const drawForecastLine = (
-      linePoints: { timeMs: number; temp: number }[],
+    const drawSeriesLine = (
+      linePoints: { timeMs: number; value: number }[],
+      toY: (v: number) => number,
       color: string,
       lineWidth: number,
       dash: number[],
       dotRadius: number,
       strokeDots: boolean,
-      anchorToLastObs: boolean,
+      anchorToLastObs: { timeMs: number; value: number } | null,
     ) => {
       if (linePoints.length === 0) return;
       ctx.strokeStyle = color;
       ctx.lineWidth = lineWidth;
       ctx.setLineDash(dash);
       ctx.beginPath();
-      if (anchorToLastObs && points.length > 0) {
-        const last = points[points.length - 1];
-        ctx.moveTo(toX(last.timeMs), toY(last.temp));
+      if (anchorToLastObs) {
+        ctx.moveTo(toX(anchorToLastObs.timeMs), toY(anchorToLastObs.value));
       } else {
         const first = linePoints[0];
-        ctx.moveTo(toX(first.timeMs), toY(first.temp));
+        ctx.moveTo(toX(first.timeMs), toY(first.value));
       }
       for (const p of linePoints) {
-        ctx.lineTo(toX(p.timeMs), toY(p.temp));
+        ctx.lineTo(toX(p.timeMs), toY(p.value));
       }
       ctx.stroke();
       ctx.setLineDash([]);
@@ -258,7 +348,7 @@ export function TemperatureChart({
         ctx.strokeStyle = color;
         for (const p of linePoints) {
           ctx.beginPath();
-          ctx.arc(toX(p.timeMs), toY(p.temp), dotRadius, 0, Math.PI * 2);
+          ctx.arc(toX(p.timeMs), toY(p.value), dotRadius, 0, Math.PI * 2);
           ctx.stroke();
         }
       }
@@ -268,19 +358,74 @@ export function TemperatureChart({
       const n = forecastHistory.length;
       forecastHistory.forEach((batch, i) => {
         const opacity = 0.12 + (0.28 * (i + 1)) / (n + 1);
-        drawForecastLine(
-          batch.points,
-          `${FORECAST_HISTORY_BASE}${opacity})`,
+        drawSeriesLine(
+          batch.points.map((p) => ({ timeMs: p.timeMs, value: p.temp })),
+          toYTemp,
+          `${TEMP_FORECAST_HISTORY_BASE}${opacity})`,
           1.5,
           [3, 5],
           1.5,
           false,
-          false,
+          null,
         );
+        const humPts = batch.points
+          .filter((p) => p.humidity != null)
+          .map((p) => ({ timeMs: p.timeMs, value: p.humidity as number }));
+        if (humPts.length > 0) {
+          drawSeriesLine(
+            humPts,
+            toYHumidity,
+            `${HUMIDITY_FORECAST_HISTORY_BASE}${opacity})`,
+            1.5,
+            [3, 5],
+            1.5,
+            false,
+            null,
+          );
+        }
       });
     }
 
-    ctx.strokeStyle = LINE_COLOR;
+    if (humidityPoints.length > 0) {
+      ctx.strokeStyle = HUMIDITY_LINE;
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      for (let i = 0; i < humidityPoints.length; i++) {
+        const x = toX(humidityPoints[i].timeMs);
+        const y = toYHumidity(humidityPoints[i].humidity ?? 0);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.fillStyle = HUMIDITY_LINE;
+      for (const p of humidityPoints) {
+        ctx.beginPath();
+        ctx.arc(toX(p.timeMs), toYHumidity(p.humidity ?? 0), 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    if (humidityForecastPoints.length > 0) {
+      const lastHumObs =
+        humidityPoints.length > 0 ? humidityPoints[humidityPoints.length - 1] : null;
+      drawSeriesLine(
+        humidityForecastPoints.map((p) => ({ timeMs: p.timeMs, value: p.humidity ?? 0 })),
+        toYHumidity,
+        HUMIDITY_FORECAST,
+        2,
+        [5, 4],
+        2,
+        true,
+        lastHumObs
+          ? { timeMs: lastHumObs.timeMs, value: lastHumObs.humidity ?? 0 }
+          : null,
+      );
+    }
+
+    ctx.strokeStyle = TEMP_LINE;
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
@@ -289,16 +434,16 @@ export function TemperatureChart({
       ctx.beginPath();
       for (let i = 0; i < points.length; i++) {
         const x = toX(points[i].timeMs);
-        const y = toY(points[i].temp);
+        const y = toYTemp(points[i].temp);
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
 
-      ctx.fillStyle = LINE_COLOR;
+      ctx.fillStyle = TEMP_LINE;
       for (const p of points) {
         const x = toX(p.timeMs);
-        const y = toY(p.temp);
+        const y = toYTemp(p.temp);
         ctx.beginPath();
         ctx.arc(x, y, 2.5, 0, Math.PI * 2);
         ctx.fill();
@@ -306,18 +451,30 @@ export function TemperatureChart({
     }
 
     if (forecastPoints.length > 0) {
-      drawForecastLine(forecastPoints, FORECAST_COLOR, 2, [5, 4], 2, true, true);
+      const lastObs = points.length > 0 ? points[points.length - 1] : null;
+      drawSeriesLine(
+        forecastPoints.map((p) => ({ timeMs: p.timeMs, value: p.temp })),
+        toYTemp,
+        TEMP_FORECAST,
+        2,
+        [5, 4],
+        2,
+        true,
+        lastObs ? { timeMs: lastObs.timeMs, value: lastObs.temp } : null,
+      );
     }
 
-    const minX = toX(minPoint.timeMs);
-    const minY = toY(minPoint.temp);
-    const maxX = toX(maxPoint.timeMs);
-    const maxY = toY(maxPoint.temp);
-    drawExtremeLabel(minX, minY, `${minPoint.temp}${unitSuffix}`, false);
-    if (maxPoint.temp !== minPoint.temp || maxPoint.timeMs !== minPoint.timeMs) {
-      drawExtremeLabel(maxX, maxY, `${maxPoint.temp}${unitSuffix}`, true);
-    } else {
-      drawExtremeLabel(maxX, maxY - labelOffset * 2, `${maxPoint.temp}${unitSuffix}`, true);
+    if (labelPoints.length > 0) {
+      const minX = toX(minPoint.timeMs);
+      const minY = toYTemp(minPoint.temp);
+      const maxX = toX(maxPoint.timeMs);
+      const maxY = toYTemp(maxPoint.temp);
+      drawExtremeLabel(minX, minY, `${minPoint.temp}${unitSuffix}`, false);
+      if (maxPoint.temp !== minPoint.temp || maxPoint.timeMs !== minPoint.timeMs) {
+        drawExtremeLabel(maxX, maxY, `${maxPoint.temp}${unitSuffix}`, true);
+      } else {
+        drawExtremeLabel(maxX, maxY - labelOffset * 2, `${maxPoint.temp}${unitSuffix}`, true);
+      }
     }
 
     layoutRef.current = {
@@ -328,10 +485,14 @@ export function TemperatureChart({
       dayStart,
       yMin,
       yMax,
+      hMin,
+      hMax,
       timezone: data.timezone,
       unitSuffix,
       points,
       forecastPoints,
+      humidityPoints,
+      humidityForecastPoints,
     };
 
     const hover = hoverRef.current;
@@ -345,7 +506,7 @@ export function TemperatureChart({
       ctx.lineTo(x, chartB);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = hover.kind === 'forecast' ? FORECAST_COLOR : LINE_COLOR;
+      ctx.fillStyle = pointColor(hover);
       ctx.beginPath();
       ctx.arc(x, y, 4, 0, Math.PI * 2);
       ctx.fill();
@@ -367,6 +528,17 @@ export function TemperatureChart({
     setHoverTip(null);
   }, [data, unit]);
 
+  const hoverText = useCallback((hit: ChartPoint, layout: ChartLayout) => {
+    const parts = [formatWeatherChartHour(hit.timeMs, layout.timezone)];
+    if (hit.series === 'humidity') {
+      parts.push(`${Math.round(hit.humidity ?? 0)}% RH`);
+    } else {
+      parts.push(`${hit.temp}${layout.unitSuffix}`);
+      if (hit.humidity != null) parts.push(`${Math.round(hit.humidity)}% RH`);
+    }
+    return parts.join(' · ');
+  }, []);
+
   const onPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const container = containerRef.current;
@@ -385,24 +557,17 @@ export function TemperatureChart({
       }
       const hit = nearestChartPoint(layout, mx);
       if (!hit) return;
+      const text = hoverText(hit, layout);
       const prev = hoverRef.current;
-      if (prev?.timeMs === hit.timeMs && prev.kind === hit.kind) {
-        setHoverTip({
-          x: mx,
-          y: my,
-          text: `${formatWeatherChartHour(hit.timeMs, layout.timezone)} · ${hit.temp}${layout.unitSuffix}`,
-        });
+      if (prev?.timeMs === hit.timeMs && prev.kind === hit.kind && prev.series === hit.series) {
+        setHoverTip({ x: mx, y: my, text });
         return;
       }
       hoverRef.current = hit;
-      setHoverTip({
-        x: mx,
-        y: my,
-        text: `${formatWeatherChartHour(hit.timeMs, layout.timezone)} · ${hit.temp}${layout.unitSuffix}`,
-      });
+      setHoverTip({ x: mx, y: my, text });
       bumpDraw();
     },
-    [bumpDraw],
+    [bumpDraw, hoverText],
   );
 
   const onPointerLeave = useCallback(() => {

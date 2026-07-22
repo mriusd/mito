@@ -7,6 +7,7 @@ export type WeatherObservationPoint = {
   timeMs: number;
   temp: number;
   humidity?: number;
+  dewpoint?: number;
 };
 
 export type WeatherForecastHistoryBatch = {

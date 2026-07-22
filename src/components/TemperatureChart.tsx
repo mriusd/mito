@@ -19,13 +19,17 @@ const TEMP_FORECAST_HISTORY_BASE = 'rgba(239, 68, 68,';
 const HUMIDITY_LINE = '#3b82f6';
 const HUMIDITY_FORECAST = 'rgba(59, 130, 246, 0.45)';
 const HUMIDITY_FORECAST_HISTORY_BASE = 'rgba(59, 130, 246,';
+const DEW_LINE = '#eab308';
+const DEW_FORECAST = 'rgba(234, 179, 8, 0.45)';
+const DEW_FORECAST_HISTORY_BASE = 'rgba(234, 179, 8,';
 
 type ChartPoint = {
   timeMs: number;
   temp: number;
   humidity?: number;
+  dewpoint?: number;
   kind: 'obs' | 'forecast';
-  series: 'temp' | 'humidity';
+  series: 'temp' | 'humidity' | 'dewpoint';
 };
 
 type ChartLayout = {
@@ -44,6 +48,8 @@ type ChartLayout = {
   forecastPoints: ChartPoint[];
   humidityPoints: ChartPoint[];
   humidityForecastPoints: ChartPoint[];
+  dewpointPoints: ChartPoint[];
+  dewpointForecastPoints: ChartPoint[];
 };
 
 function nearestChartPoint(layout: ChartLayout, mx: number): ChartPoint | null {
@@ -52,6 +58,8 @@ function nearestChartPoint(layout: ChartLayout, mx: number): ChartPoint | null {
     ...layout.forecastPoints,
     ...layout.humidityPoints,
     ...layout.humidityForecastPoints,
+    ...layout.dewpointPoints,
+    ...layout.dewpointForecastPoints,
   ];
   if (candidates.length === 0) return null;
   const span = layout.chartR - layout.chartL;
@@ -80,13 +88,17 @@ function chartCoords(layout: ChartLayout, p: ChartPoint) {
       : (v: number) =>
           layout.chartB -
           ((v - layout.yMin) / (layout.yMax - layout.yMin)) * (layout.chartB - layout.chartT);
-  const value = p.series === 'humidity' ? (p.humidity ?? 0) : p.temp;
+  const value =
+    p.series === 'humidity' ? (p.humidity ?? 0) : p.series === 'dewpoint' ? (p.dewpoint ?? 0) : p.temp;
   return { x: toX(p.timeMs), y: toY(value) };
 }
 
 function pointColor(p: ChartPoint): string {
   if (p.series === 'humidity') {
     return p.kind === 'forecast' ? HUMIDITY_FORECAST : HUMIDITY_LINE;
+  }
+  if (p.series === 'dewpoint') {
+    return p.kind === 'forecast' ? DEW_FORECAST : DEW_LINE;
   }
   return p.kind === 'forecast' ? TEMP_FORECAST : TEMP_LINE;
 }
@@ -167,6 +179,7 @@ export function TemperatureChart({
       timeMs: p.timeMs,
       temp: floorDisplayTemp(p.temp, unit),
       humidity: p.humidity,
+      dewpoint: p.dewpoint != null ? floorDisplayTemp(p.dewpoint, unit) : undefined,
       kind: 'obs' as const,
       series: 'temp' as const,
     }));
@@ -174,6 +187,7 @@ export function TemperatureChart({
       timeMs: p.timeMs,
       temp: floorDisplayTemp(p.temp, unit),
       humidity: p.humidity,
+      dewpoint: p.dewpoint != null ? floorDisplayTemp(p.dewpoint, unit) : undefined,
       kind: 'forecast' as const,
       series: 'temp' as const,
     }));
@@ -195,11 +209,30 @@ export function TemperatureChart({
         kind: 'forecast' as const,
         series: 'humidity' as const,
       }));
+    const dewpointPoints: ChartPoint[] = data.points
+      .filter((p) => p.dewpoint != null)
+      .map((p) => ({
+        timeMs: p.timeMs,
+        temp: floorDisplayTemp(p.temp, unit),
+        dewpoint: floorDisplayTemp(p.dewpoint!, unit),
+        kind: 'obs' as const,
+        series: 'dewpoint' as const,
+      }));
+    const dewpointForecastPoints: ChartPoint[] = (data.forecastPoints ?? [])
+      .filter((p) => p.dewpoint != null)
+      .map((p) => ({
+        timeMs: p.timeMs,
+        temp: floorDisplayTemp(p.temp, unit),
+        dewpoint: floorDisplayTemp(p.dewpoint!, unit),
+        kind: 'forecast' as const,
+        series: 'dewpoint' as const,
+      }));
     const forecastHistory = (data.forecastHistory ?? []).map((batch) => ({
       issuedAtMs: batch.issuedAtMs,
       points: batch.points.map((p) => ({
         ...p,
         temp: floorDisplayTemp(p.temp, unit),
+        dewpoint: p.dewpoint != null ? floorDisplayTemp(p.dewpoint, unit) : undefined,
       })),
     }));
     const allTempPoints = [
@@ -215,12 +248,20 @@ export function TemperatureChart({
         })),
       ),
     ];
+    const allTempAxisValues = [
+      ...allTempPoints.map((p) => p.temp),
+      ...dewpointPoints.map((p) => p.dewpoint ?? 0),
+      ...dewpointForecastPoints.map((p) => p.dewpoint ?? 0),
+      ...forecastHistory.flatMap((b) =>
+        b.points.map((p) => p.dewpoint).filter((v): v is number => v != null),
+      ),
+    ];
     const allHumidityValues = [
       ...humidityPoints.map((p) => p.humidity ?? 0),
       ...humidityForecastPoints.map((p) => p.humidity ?? 0),
       ...forecastHistory.flatMap((b) => b.points.map((p) => p.humidity).filter((v) => v != null)),
     ] as number[];
-    if (allTempPoints.length === 0 && allHumidityValues.length === 0) {
+    if (allTempAxisValues.length === 0 && allHumidityValues.length === 0) {
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
       ctx.font = '11px monospace';
       ctx.textAlign = 'center';
@@ -233,15 +274,15 @@ export function TemperatureChart({
     const labelPoints = primaryCurve.length > 0 ? primaryCurve : allTempPoints;
     let minPoint = labelPoints[0];
     let maxPoint = labelPoints[0];
-    let yMin = allTempPoints[0]?.temp ?? 0;
-    let yMax = allTempPoints[0]?.temp ?? 0;
+    let yMin = allTempAxisValues[0] ?? 0;
+    let yMax = allTempAxisValues[0] ?? 0;
     for (const p of labelPoints) {
       if (p.temp < minPoint.temp) minPoint = p;
       if (p.temp > maxPoint.temp) maxPoint = p;
     }
-    for (const p of allTempPoints) {
-      yMin = Math.min(yMin, p.temp);
-      yMax = Math.max(yMax, p.temp);
+    for (const v of allTempAxisValues) {
+      yMin = Math.min(yMin, v);
+      yMax = Math.max(yMax, v);
     }
     const padY = Math.max(1, (yMax - yMin) * 0.12);
     yMin -= padY;
@@ -383,7 +424,61 @@ export function TemperatureChart({
             null,
           );
         }
+        const dewPts = batch.points
+          .filter((p) => p.dewpoint != null)
+          .map((p) => ({ timeMs: p.timeMs, value: p.dewpoint as number }));
+        if (dewPts.length > 0) {
+          drawSeriesLine(
+            dewPts,
+            toYTemp,
+            `${DEW_FORECAST_HISTORY_BASE}${opacity})`,
+            1.5,
+            [3, 5],
+            1.5,
+            false,
+            null,
+          );
+        }
       });
+    }
+
+    if (dewpointPoints.length > 0) {
+      ctx.strokeStyle = DEW_LINE;
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      for (let i = 0; i < dewpointPoints.length; i++) {
+        const x = toX(dewpointPoints[i].timeMs);
+        const y = toYTemp(dewpointPoints[i].dewpoint ?? 0);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.fillStyle = DEW_LINE;
+      for (const p of dewpointPoints) {
+        ctx.beginPath();
+        ctx.arc(toX(p.timeMs), toYTemp(p.dewpoint ?? 0), 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    if (dewpointForecastPoints.length > 0) {
+      const lastDewObs =
+        dewpointPoints.length > 0 ? dewpointPoints[dewpointPoints.length - 1] : null;
+      drawSeriesLine(
+        dewpointForecastPoints.map((p) => ({ timeMs: p.timeMs, value: p.dewpoint ?? 0 })),
+        toYTemp,
+        DEW_FORECAST,
+        2,
+        [5, 4],
+        2,
+        true,
+        lastDewObs
+          ? { timeMs: lastDewObs.timeMs, value: lastDewObs.dewpoint ?? 0 }
+          : null,
+      );
     }
 
     if (humidityPoints.length > 0) {
@@ -493,6 +588,8 @@ export function TemperatureChart({
       forecastPoints,
       humidityPoints,
       humidityForecastPoints,
+      dewpointPoints,
+      dewpointForecastPoints,
     };
 
     const hover = hoverRef.current;
@@ -532,9 +629,12 @@ export function TemperatureChart({
     const parts = [formatWeatherChartHour(hit.timeMs, layout.timezone)];
     if (hit.series === 'humidity') {
       parts.push(`${Math.round(hit.humidity ?? 0)}% RH`);
+    } else if (hit.series === 'dewpoint') {
+      parts.push(`dew ${hit.dewpoint}${layout.unitSuffix}`);
     } else {
       parts.push(`${hit.temp}${layout.unitSuffix}`);
       if (hit.humidity != null) parts.push(`${Math.round(hit.humidity)}% RH`);
+      if (hit.dewpoint != null) parts.push(`dew ${hit.dewpoint}${layout.unitSuffix}`);
     }
     return parts.join(' · ');
   }, []);

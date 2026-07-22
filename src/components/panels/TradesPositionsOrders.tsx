@@ -433,7 +433,6 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     return [...set];
   }, [polymarketTokenKey, onchainWsPositions, onchainWsTrades, selectedMarketClobTokenIds]);
 
-  // Grid flush (~2s) for labels/metadata; live WS only for position quotes (not 5k orders).
   const marketLookup = useThrottledMarketLookupSubset(tpoClobIds);
 
   // Include YES+NO legs so NO positions can imply from YES book (and vice versa).
@@ -450,11 +449,21 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     };
     for (const p of positions) addTid(getPositionClobTokenId(p));
     for (const r of onchainWsPositions) addTid(r.tokenId);
+    let orderN = 0;
+    for (const o of orders) {
+      if (orderN >= 200) break;
+      addTid(getOrderClobTokenId(o));
+      orderN += 1;
+    }
     for (const t of selectedMarketClobTokenIds || []) addTid(t);
     return [...set];
-  }, [positions, onchainWsPositions, selectedMarketClobTokenIds, marketLookup]);
+  }, [positions, orders, onchainWsPositions, selectedMarketClobTokenIds, marketLookup]);
 
   const liveQuoteLookup = useLiveBidAskLookupSubset(tpoLiveQuoteIds);
+  const tpoQuoteLookup = useMemo(
+    () => ({ ...marketLookup, ...liveQuoteLookup }),
+    [marketLookup, liveQuoteLookup],
+  );
 
   useEffect(() => {
     setChartBidAskExtraTokens('tpo', tpoLiveQuoteIds);
@@ -1217,7 +1226,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   // Pixel cols + minWidth: table scrolls horizontally on mobile instead of overlapping.
   const TR_MIN_W = 530;
   const POS_MIN_W = 716;
-  const ORD_MIN_W = 566;
+  const ORD_MIN_W = 662;
   const trColgroup = (
     <colgroup>
       <col style={{ width: 44 }} />
@@ -1256,6 +1265,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       <col style={{ width: 98 }} />
       <col style={{ width: 44 }} />
       <col style={{ width: 32 }} />
+      <col style={{ width: 48 }} />
+      <col style={{ width: 48 }} />
       <col style={{ width: 48 }} />
       <col style={{ width: 52 }} />
       <col style={{ width: 52 }} />
@@ -1625,6 +1636,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               >
                 Price{ordSortArrow('price')}
               </th>
+              <th className={`${nHCls} text-right`}>Bid</th>
+              <th className={`${nHCls} text-right`}>Ask</th>
               <th
                 className={`${nHSortCls} text-right`}
                 onClick={() => toggleOrdSort('size')}
@@ -1658,6 +1671,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             <TpoVirtualTableBody count={displayOrders.length} colgroup={ordColgroup} minWidth={ORD_MIN_W}>
               {(i) => {
                 const o = displayOrders[i];
+                const { bid: bidProb, ask: askProb } = outcomeBidAskProb(o.tid, tpoQuoteLookup);
                 const dd = o.isWeather
                   ? { label: o.dateLabel, color: o.dateColor }
                   : getTimeLeftDisplay(o.endDate);
@@ -1672,6 +1686,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${cCls} font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
                     <td className={`${cCls} font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
                     <td className={`${nCls} text-right`}><TpoColorCodedText text={`${o.price.toFixed(1)}¢`} /></td>
+                    <td className={`${nCls} text-right text-green-300/90`}>{formatQuoteCents(bidProb)}</td>
+                    <td className={`${nCls} text-right text-red-300/90`}>{formatQuoteCents(askProb)}</td>
                     <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.round(o.size)} /></td>
                     <td className={`${nCls} text-right text-gray-500`}>{Math.round(o.filled).toLocaleString()}</td>
                     <td className={`${nCls} text-right`}>

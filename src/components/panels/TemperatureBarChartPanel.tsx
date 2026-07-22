@@ -1052,12 +1052,19 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     });
   }, [panelId]);
 
+  const prevLinkedMarketIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!linkSidebar) return;
     const ctx = weatherMarketCityAndDate(selectedMarket);
     if (!ctx) return;
-    const mode = weatherMarketTempOddsMode(selectedMarket);
-    if (mode) setTempOddsChartMode(mode);
+    const marketId = selectedMarket?.id ?? null;
+    const selectionChanged = marketId !== prevLinkedMarketIdRef.current;
+    prevLinkedMarketIdRef.current = marketId;
+    if (selectionChanged) {
+      const mode = weatherMarketTempOddsMode(selectedMarket);
+      if (mode) setTempOddsChartMode(mode);
+    }
     setCity((prev) => {
       if (prev === ctx.city) return prev;
       localStorage.setItem(`polybot-weather-temp-bars-city-${panelId}`, ctx.city);
@@ -1138,9 +1145,14 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const activeBarMarkets = chartMode === 'low' ? lowBarMarkets : highBarMarkets;
   const activeGrid = chartMode === 'low' ? lowGrid : highGrid;
   const activeDateCol = chartMode === 'low' ? lowDateCol : highDateCol;
+  const prevBarSelectionKeyRef = useRef('');
 
   useEffect(() => {
     const id = selectedMarketId;
+    const selectionKey = id || selectedMarket?.id || '';
+    const selectionChanged = selectionKey !== prevBarSelectionKeyRef.current;
+    prevBarSelectionKeyRef.current = selectionKey;
+
     if (!id && !selectedMarket) {
       setBarSelectionId('');
       return;
@@ -1150,12 +1162,14 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
       setBarSelectionId(inActive.id);
       return;
     }
+    setBarSelectionId('');
+    if (!selectionChanged) return;
+
     const otherMarkets = chartMode === 'low' ? highBarMarkets : lowBarMarkets;
     const inOther = findWeatherBarMarket(otherMarkets, id, selectedMarket);
     if (inOther) {
       setTempOddsChartMode(chartMode === 'low' ? 'high' : 'low');
       setBarSelectionId(inOther.id);
-      return;
     }
   }, [
     selectedMarketId,

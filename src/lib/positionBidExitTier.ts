@@ -30,7 +30,34 @@ export function positionSellPriceColorStyle(
   bidCents: number,
   sellCents: number,
 ): { color: string } {
-  const ratio = positionSellPriceTintScore(bidCents, sellCents);
-  const hue = (ratio < 0 ? 0 : ratio) * 120;
+  return quoteClosenessColorStyle(positionSellPriceTintScore(bidCents, sellCents));
+}
+
+/** TPO Orders BUY: redder when limit far below bid; greener at/above bid. */
+export function orderBuyToBidTintScore(
+  orderCents: number,
+  bidCents: number | null | undefined,
+): number {
+  if (bidCents == null || !Number.isFinite(bidCents) || bidCents <= 0) return -1;
+  if (!Number.isFinite(orderCents) || orderCents <= 0) return -1;
+  if (orderCents >= bidCents) return 1;
+  return orderCents / bidCents;
+}
+
+/** TPO Orders SELL: redder when limit far above ask; greener at/below ask. */
+export function orderSellToAskTintScore(
+  orderCents: number,
+  askCents: number | null | undefined,
+): number {
+  if (askCents == null || !Number.isFinite(askCents) || askCents <= 0) return -1;
+  if (!Number.isFinite(orderCents) || orderCents <= 0) return -1;
+  if (orderCents <= askCents) return 1;
+  return askCents / orderCents;
+}
+
+/** 0 = red → 1 = green on HSL hue scale. score < 0 uses red. */
+export function quoteClosenessColorStyle(score: number): { color: string } {
+  const ratio = score < 0 ? 0 : Math.min(1, score);
+  const hue = ratio * 120;
   return { color: `hsl(${hue}, 75%, 58%)` };
 }

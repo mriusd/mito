@@ -9,7 +9,7 @@ import {
   type OnchainMarketTradeRow,
 } from '../../api';
 import { positionExitBidProb, outcomeBidAskProb } from '../../lib/outcomeQuote';
-import { positionBidExitTier, positionSellPriceColorStyle, positionSellPriceTintScore, POSITION_BID_EXIT_TAILWIND } from '../../lib/positionBidExitTier';
+import { positionBidExitTier, positionSellPriceColorStyle, positionSellPriceTintScore, POSITION_BID_EXIT_TAILWIND, orderBuyToBidTintScore, orderSellToAskTintScore, quoteClosenessColorStyle } from '../../lib/positionBidExitTier';
 import { onchainFillKey } from '../../lib/tradeKeys';
 import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLookupSubset';
 import { useLiveBidAskLookupSubset } from '../../hooks/useLiveBidAskLookupSubset';
@@ -1672,6 +1672,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               {(i) => {
                 const o = displayOrders[i];
                 const { bid: bidProb, ask: askProb } = outcomeBidAskProb(o.tid, tpoQuoteLookup);
+                const bidCents = bidProb != null && bidProb > 0 ? bidProb * 100 : null;
+                const askCents = askProb != null && askProb > 0 ? askProb * 100 : null;
+                const side = (o.side || '').toUpperCase();
+                const bidTint = side === 'BUY' ? orderBuyToBidTintScore(o.price, bidCents) : -1;
+                const askTint = side === 'SELL' ? orderSellToAskTintScore(o.price, askCents) : -1;
                 const dd = o.isWeather
                   ? { label: o.dateLabel, color: o.dateColor }
                   : getTimeLeftDisplay(o.endDate);
@@ -1686,8 +1691,18 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${cCls} font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
                     <td className={`${cCls} font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
                     <td className={`${nCls} text-right`}><TpoColorCodedText text={`${o.price.toFixed(1)}¢`} /></td>
-                    <td className={`${nCls} text-right text-green-300/90`}>{formatQuoteCents(bidProb)}</td>
-                    <td className={`${nCls} text-right text-red-300/90`}>{formatQuoteCents(askProb)}</td>
+                    <td
+                      className={`${nCls} text-right ${bidTint < 0 ? 'text-green-300/90' : ''}`}
+                      style={bidTint >= 0 ? quoteClosenessColorStyle(bidTint) : undefined}
+                    >
+                      {formatQuoteCents(bidProb)}
+                    </td>
+                    <td
+                      className={`${nCls} text-right ${askTint < 0 ? 'text-red-300/90' : ''}`}
+                      style={askTint >= 0 ? quoteClosenessColorStyle(askTint) : undefined}
+                    >
+                      {formatQuoteCents(askProb)}
+                    </td>
                     <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.round(o.size)} /></td>
                     <td className={`${nCls} text-right text-gray-500`}>{Math.round(o.filled).toLocaleString()}</td>
                     <td className={`${nCls} text-right`}>

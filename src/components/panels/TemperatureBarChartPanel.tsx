@@ -17,7 +17,6 @@ import {
   weatherCityResolutionUrl,
 } from '../../lib/weatherCities';
 import { onTempOddsCitySelect, selectTempOddsCity, selectTempOddsDate } from '../../lib/weatherTempOddsControl';
-import { bumpCustomSidebarButtonsStore } from '../../lib/sidebarCustomButtons';
 import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
 import { WeatherCityMenu } from '../WeatherCityMenu';
 import {
@@ -45,7 +44,6 @@ import {
   type WeatherTempUnit,
 } from '../../lib/weatherObservations';
 import { TempUnitToggle, TemperatureChart } from '../TemperatureChart';
-import { TempOddsCustomButtonsPopup } from '../TempOddsCustomButtonsPopup';
 import { outcomeBestAskProb, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
 import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
@@ -741,11 +739,6 @@ function TempOddsChart({
     orderLookup,
   );
 
-  const hasBarSelection = useMemo(
-    () => !!selectedMarketId && entries.some((e) => e.market.id === selectedMarketId),
-    [entries, selectedMarketId],
-  );
-
   useLayoutEffect(() => {
     const el = plotRef.current;
     if (!el) return;
@@ -830,7 +823,6 @@ function TempOddsChart({
           </div>
         )}
       </div>
-      {hasBarSelection ? <TempOddsCustomButtonsPopup anchorRef={plotRef} /> : null}
     </div>
   );
 }
@@ -1178,10 +1170,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     if (selectedMarketId && weatherMarketCityAndDate(selectedMarket)) return;
     setBarSelectionId('');
   }, [barSelectionId, activeBarMarkets, selectedMarketId, selectedMarket]);
-
-  useEffect(() => {
-    bumpCustomSidebarButtonsStore();
-  }, []);
 
   const selectedObsDate = useMemo(() => {
     if (!selectedDateCol) return null;

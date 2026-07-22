@@ -2,6 +2,9 @@ import type { WeatherCitySlug } from './weatherCities';
 
 export const WEATHER_TEMP_ODDS_CITY_EVENT = 'polybot-weather-temp-odds-city';
 export const WEATHER_TEMP_ODDS_DATE_EVENT = 'polybot-weather-temp-odds-date';
+export const WEATHER_TEMP_ODDS_METRIC_EVENT = 'polybot-weather-temp-odds-metric';
+
+export type WeatherTempOddsMetric = 'high' | 'low';
 
 export type WeatherTempOddsCityEventDetail = {
   city: WeatherCitySlug;
@@ -9,9 +12,30 @@ export type WeatherTempOddsCityEventDetail = {
 };
 
 let lastTempOddsDateIso: string | null = null;
+let lastTempOddsMetric: WeatherTempOddsMetric = 'high';
 
 export function getTempOddsSelectedDate(): string | null {
   return lastTempOddsDateIso;
+}
+
+export function getTempOddsSelectedMetric(): WeatherTempOddsMetric {
+  return lastTempOddsMetric;
+}
+
+export function selectTempOddsMetric(metric: WeatherTempOddsMetric) {
+  if (lastTempOddsMetric === metric) return;
+  lastTempOddsMetric = metric;
+  window.dispatchEvent(
+    new CustomEvent<WeatherTempOddsMetric>(WEATHER_TEMP_ODDS_METRIC_EVENT, { detail: metric }),
+  );
+}
+
+export function onTempOddsMetricSelect(handler: (metric: WeatherTempOddsMetric) => void): () => void {
+  const listener = (ev: Event) => {
+    handler((ev as CustomEvent<WeatherTempOddsMetric>).detail ?? 'high');
+  };
+  window.addEventListener(WEATHER_TEMP_ODDS_METRIC_EVENT, listener);
+  return () => window.removeEventListener(WEATHER_TEMP_ODDS_METRIC_EVENT, listener);
 }
 
 export function selectTempOddsDate(dateIso: string | null) {

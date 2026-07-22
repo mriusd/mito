@@ -3,7 +3,7 @@ import { getOrderClobTokenId, normalizeClobTokenId } from '../utils/format';
 import { outcomeBidAskProb } from './outcomeQuote';
 import { positionBidExitTier, type PositionBidExitTier } from './positionBidExitTier';
 import { resolveLegPositionForToken } from './sidebarMyPositions';
-import { weatherEventDateISOFromSlug } from './weatherMarketsGrid';
+import { filterWeatherMarkets, weatherEventDateISOFromSlug, type WeatherMetric } from './weatherMarketsGrid';
 import type { WSPosition } from '../hooks/useOnchainTradesWS';
 
 export type WeatherCityExposure =
@@ -50,7 +50,7 @@ function marketHasOpenOrder(market: Market, lookup: Record<string, Order[]>): bo
   return false;
 }
 
-/** Per-city exposure for Temp Odds selected date. Position color = highest-PnL leg Bid-tier. */
+/** Per-city exposure for Temp Odds selected date + metric (high/low temp). */
 export function buildWeatherCityExposureByDate(
   weatherMarkets: Record<string, Market[]>,
   dateIso: string | null,
@@ -59,6 +59,7 @@ export function buildWeatherCityExposureByDate(
   liveTradesSource: string,
   onchainWsPositions: WSPosition[],
   marketLookup: Record<string, Market>,
+  metric: WeatherMetric | null = null,
 ): Map<string, WeatherCityExposure> {
   const out = new Map<string, WeatherCityExposure>();
   if (!dateIso) return out;
@@ -68,8 +69,9 @@ export function buildWeatherCityExposureByDate(
   for (const [citySlug, markets] of Object.entries(weatherMarkets)) {
     let bestPos: { pnl: number; tier: PositionBidExitTier } | null = null;
     let hasOrder = false;
+    const scoped = metric != null ? filterWeatherMarkets(markets, metric) : markets;
 
-    for (const market of markets) {
+    for (const market of scoped) {
       const eventDate = weatherEventDateISOFromSlug(market.eventSlug || '');
       if (eventDate !== dateIso) continue;
 
@@ -112,6 +114,7 @@ export function buildWeatherCityMaxBidByDate(
   weatherMarkets: Record<string, Market[]>,
   dateIso: string | null,
   marketLookup: Record<string, Market>,
+  metric: WeatherMetric | null = null,
 ): Map<string, number> {
   const out = new Map<string, number>();
   if (!dateIso) return out;
@@ -119,7 +122,8 @@ export function buildWeatherCityMaxBidByDate(
   for (const [citySlug, markets] of Object.entries(weatherMarkets)) {
     let maxBid = 0;
     let any = false;
-    for (const market of markets) {
+    const scoped = metric != null ? filterWeatherMarkets(markets, metric) : markets;
+    for (const market of scoped) {
       const eventDate = weatherEventDateISOFromSlug(market.eventSlug || '');
       if (eventDate !== dateIso) continue;
       const yesTokenId = market.clobTokenIds?.[0];
@@ -138,12 +142,14 @@ export function buildWeatherCityMaxBidByDate(
 export function weatherMapQuoteTokenIdsForDate(
   weatherMarkets: Record<string, Market[]>,
   dateIso: string | null,
+  metric: WeatherMetric | null = null,
 ): string[] {
   if (!dateIso) return [];
   const ids: string[] = [];
   const seen = new Set<string>();
   for (const markets of Object.values(weatherMarkets)) {
-    for (const market of markets) {
+    const scoped = metric != null ? filterWeatherMarkets(markets, metric) : markets;
+    for (const market of scoped) {
       if (weatherEventDateISOFromSlug(market.eventSlug || '') !== dateIso) continue;
       const t = String(market.clobTokenIds?.[0] || '').trim();
       if (!t || seen.has(t)) continue;

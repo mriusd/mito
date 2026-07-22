@@ -16,7 +16,7 @@ import {
   weatherCityTempUnit,
   weatherCityResolutionUrl,
 } from '../../lib/weatherCities';
-import { onTempOddsCitySelect, selectTempOddsCity, selectTempOddsDate } from '../../lib/weatherTempOddsControl';
+import { onTempOddsCitySelect, selectTempOddsCity, selectTempOddsDate, selectTempOddsMetric } from '../../lib/weatherTempOddsControl';
 import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
 import { WeatherCityMenu } from '../WeatherCityMenu';
 import {
@@ -891,6 +891,10 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     },
     [panelId],
   );
+
+  useEffect(() => {
+    selectTempOddsMetric(chartMode);
+  }, [chartMode]);
 
   useEffect(
     () =>

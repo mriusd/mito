@@ -9,7 +9,7 @@ import {
   utcOffsetLabel,
 } from '../../lib/weatherMapSun';
 import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
-import { onTempOddsCitySelect, onTempOddsDateSelect, getTempOddsSelectedDate, selectTempOddsCity } from '../../lib/weatherTempOddsControl';
+import { onTempOddsCitySelect, onTempOddsDateSelect, onTempOddsMetricSelect, getTempOddsSelectedDate, getTempOddsSelectedMetric, selectTempOddsCity } from '../../lib/weatherTempOddsControl';
 import {
   buildWeatherCityExposureByDate,
   buildWeatherCityMaxBidByDate,
@@ -299,6 +299,7 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
   const [layoutSnapshot, setLayoutSnapshot] = useState<MapLayout | null>(null);
 
   const [tempOddsDateIso, setTempOddsDateIso] = useState<string | null>(() => getTempOddsSelectedDate());
+  const [tempOddsMetric, setTempOddsMetric] = useState(() => getTempOddsSelectedMetric());
   const [colorMode, setColorMode] = useState<WeatherMapColorMode>(() => {
     const v = localStorage.getItem(WEATHER_MAP_COLOR_MODE_LS);
     return v === 'certainty' ? 'certainty' : 'state';
@@ -323,12 +324,13 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
       liveTradesSource,
       onchainWsPositions,
       marketLookup,
+      tempOddsMetric,
     );
-  }, [weatherMarkets, tempOddsDateIso, positions, orders, progOrderMap, liveTradesSource, onchainWsPositions, marketLookup]);
+  }, [weatherMarkets, tempOddsDateIso, tempOddsMetric, positions, orders, progOrderMap, liveTradesSource, onchainWsPositions, marketLookup]);
 
   const quoteTokenIds = useMemo(
-    () => weatherMapQuoteTokenIdsForDate(weatherMarkets, tempOddsDateIso),
-    [weatherMarkets, tempOddsDateIso],
+    () => weatherMapQuoteTokenIdsForDate(weatherMarkets, tempOddsDateIso, tempOddsMetric),
+    [weatherMarkets, tempOddsDateIso, tempOddsMetric],
   );
 
   const [quoteTick, setQuoteTick] = useState(0);
@@ -344,12 +346,13 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
       const row = getBidAskMarketRow(tid);
       if (row) liveLookup[tid] = row;
     }
-    return buildWeatherCityMaxBidByDate(weatherMarkets, tempOddsDateIso, liveLookup);
+    return buildWeatherCityMaxBidByDate(weatherMarkets, tempOddsDateIso, liveLookup, tempOddsMetric);
     // quoteTick forces recompute when bid/ask flush
     // eslint-disable-next-line react-hooks/exhaustive-deps -- quoteTick is the live pulse
-  }, [weatherMarkets, tempOddsDateIso, marketLookup, quoteTokenIds, quoteTick]);
+  }, [weatherMarkets, tempOddsDateIso, tempOddsMetric, marketLookup, quoteTokenIds, quoteTick]);
 
   useEffect(() => onTempOddsDateSelect(setTempOddsDateIso), []);
+  useEffect(() => onTempOddsMetricSelect(setTempOddsMetric), []);
 
   const meridians = useMemo(() => buildTimezoneMeridians(), []);
 

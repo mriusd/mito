@@ -691,7 +691,7 @@ function TempOddsBar({
       {...(selected ? { 'data-temp-odds-bar-selected': '' } : {})}
       className={`no-drag flex flex-col items-center justify-end flex-1 min-w-0 h-full px-0.5 group outline-none focus:outline-none ${frameClass}`}
       onClick={onClick}
-      title={[marketTitle, quoteTip, entryTip, ...orderTips, forecastHighlight ? 'WU hourly forecast' : null]
+      title={[entryTip, marketTitle, quoteTip, ...orderTips, forecastHighlight ? 'WU hourly forecast' : null]
         .filter(Boolean)
         .join(' · ')}
     >
@@ -803,7 +803,6 @@ function TempOddsChart({
       key: string;
       frac: number;
       barIndex: number;
-      label: string;
       borderClass: string;
     };
     const out: Guide[] = [];
@@ -814,7 +813,6 @@ function TempOddsChart({
           key: `${e.temp}-${i}-${m.outcome}-${m.price}`,
           frac: m.frac,
           barIndex,
-          label: formatTempOrderPriceLabel(m.price),
           borderClass: tempOrderMarkBorderClass(m),
         });
       });
@@ -840,7 +838,6 @@ function TempOddsChart({
         ) : (
           <div className="flex flex-col flex-1 min-h-0 gap-1">
             <div className="flex shrink-0 gap-0.5 min-h-[12px]">
-              <div className="w-7 shrink-0" aria-hidden />
               {entries.map(({ temp, pct, modelPct }) => (
                 <div
                   key={`prob-${temp}`}
@@ -854,22 +851,6 @@ function TempOddsChart({
               ))}
             </div>
             <div className="relative flex min-h-0 flex-1 items-stretch gap-0">
-              <div className="relative w-7 shrink-0 self-stretch pointer-events-none">
-                {trackPx > 0
-                  ? buyOrderGuides.map((g) => {
-                      const bottomPx = fracToBottomPx(g.frac, maxPct, trackPx);
-                      return (
-                        <span
-                          key={`buy-lbl-${g.key}`}
-                          className={`absolute right-0.5 -translate-y-1/2 text-[8px] font-semibold tabular-nums leading-none ${g.borderClass}`}
-                          style={{ bottom: bottomPx }}
-                        >
-                          {g.label}
-                        </span>
-                      );
-                    })
-                  : null}
-              </div>
               <div
                 ref={plotRef}
                 className="relative flex h-full min-h-0 min-w-0 flex-1 items-stretch gap-0.5 overflow-visible"
@@ -902,30 +883,26 @@ function TempOddsChart({
                       );
                     })
                   : null}
+                {trackPx > 0 && buyOrderGuides.length > 0 ? (
+                  <div className="absolute inset-0 z-[12] pointer-events-none overflow-visible">
+                    {buyOrderGuides.map((g) => {
+                      const bottomPx = fracToBottomPx(g.frac, maxPct, trackPx);
+                      const n = entries.length;
+                      const widthPct = n > 0 ? (g.barIndex / n) * 100 : 0;
+                      if (widthPct <= 0) return null;
+                      return (
+                        <div
+                          key={`buy-dot-${g.key}`}
+                          className={`absolute left-0 h-0 border-t-2 border-dotted ${g.borderClass}`}
+                          style={{ bottom: bottomPx, width: `${widthPct}%` }}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
-              {trackPx > 0 && buyOrderGuides.length > 0 ? (
-                <div className="absolute inset-0 z-[12] pointer-events-none overflow-visible">
-                  {buyOrderGuides.map((g) => {
-                    const bottomPx = fracToBottomPx(g.frac, maxPct, trackPx);
-                    const n = entries.length;
-                    // Gutter (w-7) + share of plot up to the bar's left edge.
-                    const width =
-                      n > 0
-                        ? `calc(1.75rem + (100% - 1.75rem) * ${g.barIndex} / ${n})`
-                        : '1.75rem';
-                    return (
-                      <div
-                        key={`buy-dot-${g.key}`}
-                        className={`absolute left-0 h-0 border-t-2 border-dotted ${g.borderClass}`}
-                        style={{ bottom: bottomPx, width }}
-                      />
-                    );
-                  })}
-                </div>
-              ) : null}
             </div>
             <div className="flex shrink-0 gap-0.5 min-h-[10px]">
-              <div className="w-7 shrink-0" aria-hidden />
               {entries.map(({ temp, label, market }) => {
                 const forecastHighlight =
                   forecastTempC != null && weatherTempBucketMatchesCelsius(temp, forecastTempC);

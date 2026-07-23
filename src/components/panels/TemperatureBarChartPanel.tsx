@@ -231,7 +231,7 @@ function tempOrderMarkBorderClass(mark: TempOddsOrderMark): string {
 function formatTempOrderPriceLabel(price: number): string {
   const cents = price > 1 ? price : price * 100;
   if (!Number.isFinite(cents)) return '';
-  return `${Math.round(cents)}¢`;
+  return `${cents.toFixed(1)}¢`;
 }
 
 const MARK_LINE =

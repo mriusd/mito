@@ -840,7 +840,8 @@ function TempOddsTemperatureChart({
   const last = data?.points?.length ? data.points[data.points.length - 1] : null;
   const obsUnit = data?.obsTempUnit ?? 'C';
   const unitSuffix = unit === 'F' ? '°F' : '°C';
-  const headerParts: { text: string; color: string }[] = [];
+  type HeaderPart = { text: string; color: string; windDirDeg?: number };
+  const headerParts: HeaderPart[] = [];
   if (last) {
     headerParts.push({
       text: `${floorDisplayTemp(last.temp, obsUnit, unit)}${unitSuffix}`,
@@ -857,14 +858,15 @@ function TempOddsTemperatureChart({
     }
     if (last.windSpeedKt != null || last.windDirDeg != null) {
       const spd = last.windSpeedKt ?? 0;
-      let windText = 'calm';
-      if (spd > 0) {
-        windText =
-          last.windDirDeg != null
-            ? `${Math.round(last.windDirDeg)}° ${Math.round(spd)}kt`
-            : `${Math.round(spd)}kt`;
+      if (spd <= 0) {
+        headerParts.push({ text: 'calm', color: '#2dd4bf' });
+      } else {
+        headerParts.push({
+          text: `${Math.round(spd)}kt`,
+          color: '#2dd4bf',
+          windDirDeg: last.windDirDeg,
+        });
       }
-      headerParts.push({ text: windText, color: '#eab308' });
     }
   }
 
@@ -873,11 +875,22 @@ function TempOddsTemperatureChart({
       <div className="mb-1 flex shrink-0 items-baseline gap-2">
         <div className="text-[9px] font-bold uppercase tracking-wide text-sky-400/80">Hourly</div>
         {headerParts.length > 0 ? (
-          <div className="ml-auto flex min-w-0 items-baseline gap-1 truncate text-[10px] font-normal tabular-nums">
+          <div className="ml-auto flex min-w-0 items-center gap-1 truncate text-[10px] font-normal tabular-nums">
             {headerParts.map((p, i) => (
-              <span key={`${p.color}-${i}`} className="inline-flex items-baseline gap-1">
+              <span key={`${p.color}-${i}`} className="inline-flex items-center gap-1">
                 {i > 0 ? <span className="text-gray-600">·</span> : null}
-                <span style={{ color: p.color }}>{p.text}</span>
+                <span className="inline-flex items-center gap-0.5" style={{ color: p.color }}>
+                  {p.windDirDeg != null ? (
+                    <span
+                      className="inline-block text-[11px] leading-none"
+                      style={{ transform: `rotate(${p.windDirDeg + 180}deg)` }}
+                      aria-hidden
+                    >
+                      ↑
+                    </span>
+                  ) : null}
+                  <span>{p.text}</span>
+                </span>
               </span>
             ))}
           </div>

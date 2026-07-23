@@ -120,13 +120,13 @@ function drawWindMarker(
   const speed = speedKt ?? 0;
   const textColor =
     style === 'latest'
-      ? '#eab308'
+      ? '#2dd4bf'
       : style === 'forecast'
         ? 'rgba(255,255,255,0.22)'
         : 'rgba(255,255,255,0.45)';
   const strokeColor =
     style === 'latest'
-      ? '#eab308'
+      ? '#2dd4bf'
       : style === 'forecast'
         ? 'rgba(255,255,255,0.28)'
         : 'rgba(255,255,255,0.55)';

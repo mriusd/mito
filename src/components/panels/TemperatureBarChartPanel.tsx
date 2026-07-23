@@ -37,6 +37,7 @@ import {
 import { fetchWeatherProbabilities, type WeatherProbabilitiesPayload } from '../../api';
 import {
   fetchWeatherObservations,
+  floorDisplayTemp,
   isWeatherDateTodayInTimezone,
   weatherHighlightHighC,
   weatherHighlightLowC,
@@ -836,10 +837,34 @@ function TempOddsTemperatureChart({
   loading: boolean;
   unit: WeatherTempUnit;
 }) {
+  const last = data?.points?.length ? data.points[data.points.length - 1] : null;
+  const obsUnit = data?.obsTempUnit ?? 'C';
+  const unitSuffix = unit === 'F' ? '°F' : '°C';
+  let lastReadout: string | null = null;
+  if (last) {
+    const parts = [`${floorDisplayTemp(last.temp, obsUnit, unit)}${unitSuffix}`];
+    if (last.humidity != null) parts.push(`${Math.round(last.humidity)}%`);
+    if (last.dewpoint != null) {
+      parts.push(`dp ${floorDisplayTemp(last.dewpoint, obsUnit, unit)}${unitSuffix}`);
+    }
+    if (last.windSpeedKt != null || last.windDirDeg != null) {
+      const spd = last.windSpeedKt ?? 0;
+      if (spd <= 0) parts.push('calm');
+      else if (last.windDirDeg != null) parts.push(`${Math.round(last.windDirDeg)}° ${Math.round(spd)}kt`);
+      else parts.push(`${Math.round(spd)}kt`);
+    }
+    lastReadout = parts.join(' · ');
+  }
+
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0 border border-gray-700/80 rounded-lg bg-gray-900/40 p-2">
-      <div className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-sky-400/80 mb-1">
-        Hourly
+      <div className="mb-1 flex shrink-0 items-baseline gap-2">
+        <div className="text-[9px] font-bold uppercase tracking-wide text-sky-400/80">Hourly</div>
+        {lastReadout ? (
+          <div className="ml-auto truncate text-[10px] font-normal tabular-nums text-gray-300">
+            {lastReadout}
+          </div>
+        ) : null}
       </div>
       <div className="flex-1 min-h-0">
         {loading ? (

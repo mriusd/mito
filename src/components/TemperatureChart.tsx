@@ -106,19 +106,31 @@ function pointColor(p: ChartPoint): string {
   return p.kind === 'forecast' ? TEMP_FORECAST : TEMP_LINE;
 }
 
+type WindMarkerStyle = 'obs' | 'forecast' | 'latest';
+
 function drawWindMarker(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   dirDeg: number | undefined,
   speedKt: number | undefined,
-  dimmed = false,
+  style: WindMarkerStyle = 'obs',
 ) {
   if (speedKt == null && dirDeg == null) return;
   const speed = speedKt ?? 0;
-  const textColor = dimmed ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.45)';
-  const strokeColor = dimmed ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.55)';
-  ctx.font = '8px monospace';
+  const textColor =
+    style === 'latest'
+      ? '#eab308'
+      : style === 'forecast'
+        ? 'rgba(255,255,255,0.22)'
+        : 'rgba(255,255,255,0.45)';
+  const strokeColor =
+    style === 'latest'
+      ? '#eab308'
+      : style === 'forecast'
+        ? 'rgba(255,255,255,0.28)'
+        : 'rgba(255,255,255,0.55)';
+  ctx.font = style === 'latest' ? 'bold 8px monospace' : '8px monospace';
   ctx.fillStyle = textColor;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
@@ -133,7 +145,7 @@ function drawWindMarker(
     ctx.translate(x, y);
     ctx.rotate(angle);
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = style === 'latest' ? 1.6 : 1.2;
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(0, len * 0.45);
@@ -146,6 +158,24 @@ function drawWindMarker(
     ctx.restore();
   }
   ctx.fillText(`${Math.round(speed)}kt`, x, y + 6);
+}
+
+/** One wind sample per local hour — latest point that has wind in that hour. */
+function hourlyWindPoints<T extends { timeMs: number; windDirDeg?: number; windSpeedKt?: number }>(
+  points: T[],
+  dayStartMs: number,
+): T[] {
+  const byHour = new Map<number, T>();
+  for (const p of points) {
+    if (p.windDirDeg == null && p.windSpeedKt == null) continue;
+    const hour = Math.floor((p.timeMs - dayStartMs) / 3600000);
+    if (hour < 0 || hour > 24) continue;
+    const prev = byHour.get(hour);
+    if (!prev || p.timeMs >= prev.timeMs) byHour.set(hour, p);
+  }
+  return [...byHour.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, p]) => p);
 }
 
 function windHoverText(dirDeg: number | undefined, speedKt: number | undefined): string | null {
@@ -421,11 +451,25 @@ export function TemperatureChart({
     }
 
     const windY = chartB + WIND_ROW_Y;
-    for (const p of data.points) {
-      drawWindMarker(ctx, toX(p.timeMs), windY, p.windDirDeg, p.windSpeedKt, false);
+    const hourlyObsWind = hourlyWindPoints(data.points, dayStart);
+    const hourlyFcWind = hourlyWindPoints(data.forecastPoints ?? [], dayStart);
+    for (const p of hourlyObsWind) {
+      drawWindMarker(ctx, toX(p.timeMs), windY, p.windDirDeg, p.windSpeedKt, 'obs');
     }
-    for (const p of data.forecastPoints ?? []) {
-      drawWindMarker(ctx, toX(p.timeMs), windY, p.windDirDeg, p.windSpeedKt, true);
+    for (const p of hourlyFcWind) {
+      drawWindMarker(ctx, toX(p.timeMs), windY, p.windDirDeg, p.windSpeedKt, 'forecast');
+    }
+    const latestWind =
+      hourlyObsWind.length > 0 ? hourlyObsWind[hourlyObsWind.length - 1] : null;
+    if (latestWind) {
+      drawWindMarker(
+        ctx,
+        toX(latestWind.timeMs),
+        windY,
+        latestWind.windDirDeg,
+        latestWind.windSpeedKt,
+        'latest',
+      );
     }
 
     const drawExtremeLabel = (x: number, y: number, text: string, above: boolean) => {

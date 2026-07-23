@@ -12,7 +12,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const PAD_L = 36;
 const PAD_R = 36;
 const PAD_T = 22;
-const PAD_B = 34;
+const PAD_B = 52;
+const WIND_ROW_Y = 22;
 const TEMP_LINE = '#ef4444';
 const TEMP_FORECAST = 'rgba(239, 68, 68, 0.45)';
 const TEMP_FORECAST_HISTORY_BASE = 'rgba(239, 68, 68,';
@@ -28,6 +29,8 @@ type ChartPoint = {
   temp: number;
   humidity?: number;
   dewpoint?: number;
+  windDirDeg?: number;
+  windSpeedKt?: number;
   kind: 'obs' | 'forecast';
   series: 'temp' | 'humidity' | 'dewpoint';
 };
@@ -101,6 +104,53 @@ function pointColor(p: ChartPoint): string {
     return p.kind === 'forecast' ? DEW_FORECAST : DEW_LINE;
   }
   return p.kind === 'forecast' ? TEMP_FORECAST : TEMP_LINE;
+}
+
+function drawWindMarker(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  dirDeg: number | undefined,
+  speedKt: number | undefined,
+) {
+  if (speedKt == null && dirDeg == null) return;
+  const speed = speedKt ?? 0;
+  ctx.font = '8px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  if (speed <= 0) {
+    ctx.fillText('calm', x, y - 4);
+    return;
+  }
+  if (dirDeg != null) {
+    const len = Math.min(10, 6 + speed * 0.3);
+    const angle = ((dirDeg + 90) * Math.PI) / 180;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, len * 0.45);
+    ctx.lineTo(0, -len * 0.55);
+    ctx.moveTo(0, -len * 0.55);
+    ctx.lineTo(-3, -len * 0.25);
+    ctx.moveTo(0, -len * 0.55);
+    ctx.lineTo(3, -len * 0.25);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.fillText(`${Math.round(speed)}kt`, x, y + 6);
+}
+
+function windHoverText(dirDeg: number | undefined, speedKt: number | undefined): string | null {
+  if (speedKt == null && dirDeg == null) return null;
+  const speed = speedKt ?? 0;
+  if (speed <= 0) return 'calm';
+  if (dirDeg != null) return `wind ${Math.round(dirDeg)}° ${Math.round(speed)}kt`;
+  return `${Math.round(speed)}kt`;
 }
 
 export function TempUnitToggle({
@@ -184,6 +234,8 @@ export function TemperatureChart({
       temp: fmtObs(p.temp),
       humidity: p.humidity,
       dewpoint: p.dewpoint != null ? fmtObs(p.dewpoint) : undefined,
+      windDirDeg: p.windDirDeg,
+      windSpeedKt: p.windSpeedKt,
       kind: 'obs' as const,
       series: 'temp' as const,
     }));
@@ -201,6 +253,8 @@ export function TemperatureChart({
         timeMs: p.timeMs,
         temp: fmtObs(p.temp),
         humidity: p.humidity,
+        windDirDeg: p.windDirDeg,
+        windSpeedKt: p.windSpeedKt,
         kind: 'obs' as const,
         series: 'humidity' as const,
       }));
@@ -219,6 +273,8 @@ export function TemperatureChart({
         timeMs: p.timeMs,
         temp: fmtObs(p.temp),
         dewpoint: fmtObs(p.dewpoint!),
+        windDirDeg: p.windDirDeg,
+        windSpeedKt: p.windSpeedKt,
         kind: 'obs' as const,
         series: 'dewpoint' as const,
       }));
@@ -353,6 +409,11 @@ export function TemperatureChart({
       ctx.textBaseline = 'top';
       const labelMs = dayStart + hour * 3600000;
       ctx.fillText(formatWeatherChartHour(labelMs, data.timezone), x, chartB + 4);
+    }
+
+    const windY = chartB + WIND_ROW_Y;
+    for (const p of data.points) {
+      drawWindMarker(ctx, toX(p.timeMs), windY, p.windDirDeg, p.windSpeedKt);
     }
 
     const drawExtremeLabel = (x: number, y: number, text: string, above: boolean) => {
@@ -633,12 +694,18 @@ export function TemperatureChart({
     const parts = [formatWeatherChartHour(hit.timeMs, layout.timezone)];
     if (hit.series === 'humidity') {
       parts.push(`${Math.round(hit.humidity ?? 0)}% RH`);
+      const wind = windHoverText(hit.windDirDeg, hit.windSpeedKt);
+      if (wind) parts.push(wind);
     } else if (hit.series === 'dewpoint') {
       parts.push(`dew ${hit.dewpoint}${layout.unitSuffix}`);
+      const wind = windHoverText(hit.windDirDeg, hit.windSpeedKt);
+      if (wind) parts.push(wind);
     } else {
       parts.push(`${hit.temp}${layout.unitSuffix}`);
       if (hit.humidity != null) parts.push(`${Math.round(hit.humidity)}% RH`);
       if (hit.dewpoint != null) parts.push(`dew ${hit.dewpoint}${layout.unitSuffix}`);
+      const wind = windHoverText(hit.windDirDeg, hit.windSpeedKt);
+      if (wind) parts.push(wind);
     }
     return parts.join(' · ');
   }, []);

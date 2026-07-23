@@ -8,6 +8,8 @@ export type WeatherObservationPoint = {
   temp: number;
   humidity?: number;
   dewpoint?: number;
+  windDirDeg?: number;
+  windSpeedKt?: number;
 };
 
 export type WeatherForecastHistoryBatch = {

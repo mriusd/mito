@@ -702,8 +702,8 @@ function TempOddsBar({
           <span className="flex-1 text-center">{pct != null ? `${(pct * 100).toFixed(1)}%` : '—'}</span>
         </span>
       ) : null}
-      <div className="relative w-full shrink-0 flex-1 min-h-0 flex items-end">
-        <div className="relative w-full flex gap-0.5 items-end" style={{ height: trackPx }}>
+      <div className="relative w-full flex-1 min-h-0 flex items-end">
+        <div className="relative w-full h-full flex gap-0.5 items-end">
           <div className="relative flex-1 min-w-0 h-full">
             {modelBarPx > 0 ? (
               <div
@@ -852,11 +852,8 @@ function TempOddsChart({
                 </div>
               ))}
             </div>
-            <div className="relative flex flex-1 min-h-[40px] items-end gap-0">
-              <div
-                className="relative w-7 shrink-0 pointer-events-none"
-                style={trackPx > 0 ? { height: trackPx } : undefined}
-              >
+            <div className="relative flex min-h-0 flex-1 items-stretch gap-0">
+              <div className="relative w-7 shrink-0 self-stretch pointer-events-none">
                 {trackPx > 0
                   ? buyOrderGuides.map((g) => {
                       const bottomPx = fracToBottomPx(g.frac, maxPct, trackPx);
@@ -872,7 +869,10 @@ function TempOddsChart({
                     })
                   : null}
               </div>
-              <div ref={plotRef} className="relative flex-1 min-w-0 min-h-[40px] flex items-end gap-0.5 overflow-visible">
+              <div
+                ref={plotRef}
+                className="relative flex h-full min-h-0 min-w-0 flex-1 items-stretch gap-0.5 overflow-visible"
+              >
                 {trackPx > 0
                   ? entries.map(({ temp, label, market, quote, pct, modelPct, entry, orderMarks }) => {
                       const forecastHighlight =

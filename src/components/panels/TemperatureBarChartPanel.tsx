@@ -229,6 +229,7 @@ function tempOrderMarkBorderClass(mark: TempOddsOrderMark): string {
 }
 
 function formatTempOrderPriceLabel(price: number): string {
+  // cents with 1 decimal for order guide labels
   const cents = price > 1 ? price : price * 100;
   if (!Number.isFinite(cents)) return '';
   return `${cents.toFixed(1)}¢`;

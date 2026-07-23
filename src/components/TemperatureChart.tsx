@@ -636,6 +636,50 @@ export function TemperatureChart({
       );
     }
 
+    const drawLastObsValue = (
+      x: number,
+      y: number,
+      text: string,
+      color: string,
+      above: boolean,
+    ) => {
+      ctx.font = 'bold 10px monospace';
+      ctx.fillStyle = color;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = above ? 'bottom' : 'top';
+      ctx.fillText(text, x + 5, above ? y - 4 : y + 4);
+    };
+    if (points.length > 0) {
+      const last = points[points.length - 1];
+      drawLastObsValue(
+        toX(last.timeMs),
+        toYTemp(last.temp),
+        `${last.temp}${unitSuffix}`,
+        TEMP_LINE,
+        true,
+      );
+    }
+    if (humidityPoints.length > 0) {
+      const last = humidityPoints[humidityPoints.length - 1];
+      drawLastObsValue(
+        toX(last.timeMs),
+        toYHumidity(last.humidity ?? 0),
+        `${Math.round(last.humidity ?? 0)}%`,
+        HUMIDITY_LINE,
+        false,
+      );
+    }
+    if (dewpointPoints.length > 0) {
+      const last = dewpointPoints[dewpointPoints.length - 1];
+      drawLastObsValue(
+        toX(last.timeMs),
+        toYTemp(last.dewpoint ?? 0),
+        `${last.dewpoint}${unitSuffix}`,
+        DEW_LINE,
+        false,
+      );
+    }
+
     if (labelPoints.length > 0) {
       const minX = toX(minPoint.timeMs);
       const minY = toYTemp(minPoint.temp);

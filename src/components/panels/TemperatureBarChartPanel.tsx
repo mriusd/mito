@@ -222,12 +222,6 @@ function tempOrderMarkClass(mark: TempOddsOrderMark): string {
   return 'bg-gray-400';
 }
 
-function tempOrderMarkBorderClass(mark: TempOddsOrderMark): string {
-  if (mark.side === 'BUY' && mark.outcome === 'YES') return 'border-purple-600 text-purple-300';
-  if (mark.side === 'BUY' && mark.outcome === 'NO') return 'border-yellow-400 text-yellow-300';
-  return 'border-gray-400 text-gray-300';
-}
-
 function formatTempOrderPriceLabel(price: number): string {
   // cents with 1 decimal for order guide labels
   const cents = price > 1 ? price : price * 100;
@@ -796,30 +790,6 @@ function TempOddsChart({
     obsBoundC,
   );
 
-  const buyOrderGuides = useMemo(() => {
-    const n = entries.length;
-    if (n === 0) return [];
-    type Guide = {
-      key: string;
-      frac: number;
-      barIndex: number;
-      borderClass: string;
-    };
-    const out: Guide[] = [];
-    entries.forEach((e, barIndex) => {
-      e.orderMarks.forEach((m, i) => {
-        if (m.side !== 'BUY') return;
-        out.push({
-          key: `${e.temp}-${i}-${m.outcome}-${m.price}`,
-          frac: m.frac,
-          barIndex,
-          borderClass: tempOrderMarkBorderClass(m),
-        });
-      });
-    });
-    return out;
-  }, [entries]);
-
   useLayoutEffect(() => {
     const el = plotRef.current;
     if (!el) return;
@@ -883,23 +853,6 @@ function TempOddsChart({
                       );
                     })
                   : null}
-                {trackPx > 0 && buyOrderGuides.length > 0 ? (
-                  <div className="absolute inset-0 z-[12] pointer-events-none overflow-visible">
-                    {buyOrderGuides.map((g) => {
-                      const bottomPx = fracToBottomPx(g.frac, maxPct, trackPx);
-                      const n = entries.length;
-                      const widthPct = n > 0 ? (g.barIndex / n) * 100 : 0;
-                      if (widthPct <= 0) return null;
-                      return (
-                        <div
-                          key={`buy-dot-${g.key}`}
-                          className={`absolute left-0 h-0 border-t-2 border-dotted ${g.borderClass}`}
-                          style={{ bottom: bottomPx, width: `${widthPct}%` }}
-                        />
-                      );
-                    })}
-                  </div>
-                ) : null}
               </div>
             </div>
             <div className="flex shrink-0 gap-0.5 min-h-[10px]">

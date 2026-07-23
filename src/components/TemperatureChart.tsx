@@ -112,11 +112,14 @@ function drawWindMarker(
   y: number,
   dirDeg: number | undefined,
   speedKt: number | undefined,
+  dimmed = false,
 ) {
   if (speedKt == null && dirDeg == null) return;
   const speed = speedKt ?? 0;
+  const textColor = dimmed ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.45)';
+  const strokeColor = dimmed ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.55)';
   ctx.font = '8px monospace';
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.fillStyle = textColor;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   if (speed <= 0) {
@@ -129,7 +132,7 @@ function drawWindMarker(
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
-    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.strokeStyle = strokeColor;
     ctx.lineWidth = 1.2;
     ctx.lineCap = 'round';
     ctx.beginPath();
@@ -244,6 +247,8 @@ export function TemperatureChart({
       temp: fmtFc(p.temp),
       humidity: p.humidity,
       dewpoint: p.dewpoint != null ? fmtFc(p.dewpoint) : undefined,
+      windDirDeg: p.windDirDeg,
+      windSpeedKt: p.windSpeedKt,
       kind: 'forecast' as const,
       series: 'temp' as const,
     }));
@@ -264,6 +269,8 @@ export function TemperatureChart({
         timeMs: p.timeMs,
         temp: fmtFc(p.temp),
         humidity: p.humidity,
+        windDirDeg: p.windDirDeg,
+        windSpeedKt: p.windSpeedKt,
         kind: 'forecast' as const,
         series: 'humidity' as const,
       }));
@@ -284,6 +291,8 @@ export function TemperatureChart({
         timeMs: p.timeMs,
         temp: fmtFc(p.temp),
         dewpoint: fmtFc(p.dewpoint!),
+        windDirDeg: p.windDirDeg,
+        windSpeedKt: p.windSpeedKt,
         kind: 'forecast' as const,
         series: 'dewpoint' as const,
       }));
@@ -413,7 +422,10 @@ export function TemperatureChart({
 
     const windY = chartB + WIND_ROW_Y;
     for (const p of data.points) {
-      drawWindMarker(ctx, toX(p.timeMs), windY, p.windDirDeg, p.windSpeedKt);
+      drawWindMarker(ctx, toX(p.timeMs), windY, p.windDirDeg, p.windSpeedKt, false);
+    }
+    for (const p of data.forecastPoints ?? []) {
+      drawWindMarker(ctx, toX(p.timeMs), windY, p.windDirDeg, p.windSpeedKt, true);
     }
 
     const drawExtremeLabel = (x: number, y: number, text: string, above: boolean) => {

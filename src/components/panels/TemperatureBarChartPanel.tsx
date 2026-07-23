@@ -840,29 +840,46 @@ function TempOddsTemperatureChart({
   const last = data?.points?.length ? data.points[data.points.length - 1] : null;
   const obsUnit = data?.obsTempUnit ?? 'C';
   const unitSuffix = unit === 'F' ? '°F' : '°C';
-  let lastReadout: string | null = null;
+  const headerParts: { text: string; color: string }[] = [];
   if (last) {
-    const parts = [`${floorDisplayTemp(last.temp, obsUnit, unit)}${unitSuffix}`];
-    if (last.humidity != null) parts.push(`${Math.round(last.humidity)}%`);
+    headerParts.push({
+      text: `${floorDisplayTemp(last.temp, obsUnit, unit)}${unitSuffix}`,
+      color: '#ef4444',
+    });
+    if (last.humidity != null) {
+      headerParts.push({ text: `${Math.round(last.humidity)}%`, color: '#3b82f6' });
+    }
     if (last.dewpoint != null) {
-      parts.push(`dp ${floorDisplayTemp(last.dewpoint, obsUnit, unit)}${unitSuffix}`);
+      headerParts.push({
+        text: `dp ${floorDisplayTemp(last.dewpoint, obsUnit, unit)}${unitSuffix}`,
+        color: '#eab308',
+      });
     }
     if (last.windSpeedKt != null || last.windDirDeg != null) {
       const spd = last.windSpeedKt ?? 0;
-      if (spd <= 0) parts.push('calm');
-      else if (last.windDirDeg != null) parts.push(`${Math.round(last.windDirDeg)}° ${Math.round(spd)}kt`);
-      else parts.push(`${Math.round(spd)}kt`);
+      let windText = 'calm';
+      if (spd > 0) {
+        windText =
+          last.windDirDeg != null
+            ? `${Math.round(last.windDirDeg)}° ${Math.round(spd)}kt`
+            : `${Math.round(spd)}kt`;
+      }
+      headerParts.push({ text: windText, color: '#eab308' });
     }
-    lastReadout = parts.join(' · ');
   }
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0 border border-gray-700/80 rounded-lg bg-gray-900/40 p-2">
       <div className="mb-1 flex shrink-0 items-baseline gap-2">
         <div className="text-[9px] font-bold uppercase tracking-wide text-sky-400/80">Hourly</div>
-        {lastReadout ? (
-          <div className="ml-auto truncate text-[10px] font-normal tabular-nums text-gray-300">
-            {lastReadout}
+        {headerParts.length > 0 ? (
+          <div className="ml-auto flex min-w-0 items-baseline gap-1 truncate text-[10px] font-normal tabular-nums">
+            {headerParts.map((p, i) => (
+              <span key={`${p.color}-${i}`} className="inline-flex items-baseline gap-1">
+                {i > 0 ? <span className="text-gray-600">·</span> : null}
+                <span style={{ color: p.color }}>{p.text}</span>
+              </span>
+            ))}
           </div>
         ) : null}
       </div>

@@ -157,7 +157,7 @@ function drawWindMarker(
     ctx.stroke();
     ctx.restore();
   }
-  ctx.fillText(`${Math.round(speed)}kt`, x, y + 6);
+  ctx.fillText(`${Math.round(speed)}`, x, y + 6);
 }
 
 /** One wind sample per local hour — latest point that has wind in that hour. */
@@ -182,8 +182,8 @@ function windHoverText(dirDeg: number | undefined, speedKt: number | undefined):
   if (speedKt == null && dirDeg == null) return null;
   const speed = speedKt ?? 0;
   if (speed <= 0) return 'calm';
-  if (dirDeg != null) return `wind ${Math.round(dirDeg)}° ${Math.round(speed)}kt`;
-  return `${Math.round(speed)}kt`;
+  if (dirDeg != null) return `wind ${Math.round(dirDeg)}° ${Math.round(speed)}`;
+  return `${Math.round(speed)}`;
 }
 
 export function TempUnitToggle({

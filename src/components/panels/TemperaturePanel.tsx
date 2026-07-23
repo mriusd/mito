@@ -168,8 +168,8 @@ function TemperaturePanelInner({ panelId }: { panelId: string }) {
           </label>
           {data?.highTemp != null && data.lowTemp != null ? (
             <span className="ml-auto text-[10px] font-normal tabular-nums text-gray-400">
-              H {floorDisplayTemp(data.highTemp, tempUnit)}{tempUnit === 'F' ? '°F' : '°C'} · L{' '}
-              {floorDisplayTemp(data.lowTemp, tempUnit)}{tempUnit === 'F' ? '°F' : '°C'}
+              H {floorDisplayTemp(data.highTemp, data.obsTempUnit ?? 'C', tempUnit)}{tempUnit === 'F' ? '°F' : '°C'} · L{' '}
+              {floorDisplayTemp(data.lowTemp, data.obsTempUnit ?? 'C', tempUnit)}{tempUnit === 'F' ? '°F' : '°C'}
             </span>
           ) : null}
         </h3>

@@ -174,20 +174,24 @@ export function TemperatureChart({
     const chartB = h - PAD_B;
     const unitSuffix = unit === 'F' ? '°F' : '°C';
     const labelOffset = 7;
+    const obsUnit = data.obsTempUnit ?? 'C';
+    const fcUnit: WeatherTempUnit = 'C';
+    const fmtObs = (v: number) => floorDisplayTemp(v, obsUnit, unit);
+    const fmtFc = (v: number) => floorDisplayTemp(v, fcUnit, unit);
 
     const points: ChartPoint[] = data.points.map((p) => ({
       timeMs: p.timeMs,
-      temp: floorDisplayTemp(p.temp, unit),
+      temp: fmtObs(p.temp),
       humidity: p.humidity,
-      dewpoint: p.dewpoint != null ? floorDisplayTemp(p.dewpoint, unit) : undefined,
+      dewpoint: p.dewpoint != null ? fmtObs(p.dewpoint) : undefined,
       kind: 'obs' as const,
       series: 'temp' as const,
     }));
     const forecastPoints: ChartPoint[] = (data.forecastPoints ?? []).map((p) => ({
       timeMs: p.timeMs,
-      temp: floorDisplayTemp(p.temp, unit),
+      temp: fmtFc(p.temp),
       humidity: p.humidity,
-      dewpoint: p.dewpoint != null ? floorDisplayTemp(p.dewpoint, unit) : undefined,
+      dewpoint: p.dewpoint != null ? fmtFc(p.dewpoint) : undefined,
       kind: 'forecast' as const,
       series: 'temp' as const,
     }));
@@ -195,7 +199,7 @@ export function TemperatureChart({
       .filter((p) => p.humidity != null)
       .map((p) => ({
         timeMs: p.timeMs,
-        temp: floorDisplayTemp(p.temp, unit),
+        temp: fmtObs(p.temp),
         humidity: p.humidity,
         kind: 'obs' as const,
         series: 'humidity' as const,
@@ -204,7 +208,7 @@ export function TemperatureChart({
       .filter((p) => p.humidity != null)
       .map((p) => ({
         timeMs: p.timeMs,
-        temp: floorDisplayTemp(p.temp, unit),
+        temp: fmtFc(p.temp),
         humidity: p.humidity,
         kind: 'forecast' as const,
         series: 'humidity' as const,
@@ -213,8 +217,8 @@ export function TemperatureChart({
       .filter((p) => p.dewpoint != null)
       .map((p) => ({
         timeMs: p.timeMs,
-        temp: floorDisplayTemp(p.temp, unit),
-        dewpoint: floorDisplayTemp(p.dewpoint!, unit),
+        temp: fmtObs(p.temp),
+        dewpoint: fmtObs(p.dewpoint!),
         kind: 'obs' as const,
         series: 'dewpoint' as const,
       }));
@@ -222,8 +226,8 @@ export function TemperatureChart({
       .filter((p) => p.dewpoint != null)
       .map((p) => ({
         timeMs: p.timeMs,
-        temp: floorDisplayTemp(p.temp, unit),
-        dewpoint: floorDisplayTemp(p.dewpoint!, unit),
+        temp: fmtFc(p.temp),
+        dewpoint: fmtFc(p.dewpoint!),
         kind: 'forecast' as const,
         series: 'dewpoint' as const,
       }));
@@ -231,8 +235,8 @@ export function TemperatureChart({
       issuedAtMs: batch.issuedAtMs,
       points: batch.points.map((p) => ({
         ...p,
-        temp: floorDisplayTemp(p.temp, unit),
-        dewpoint: p.dewpoint != null ? floorDisplayTemp(p.dewpoint, unit) : undefined,
+        temp: fmtFc(p.temp),
+        dewpoint: p.dewpoint != null ? fmtFc(p.dewpoint) : undefined,
       })),
     }));
     const allTempPoints = [

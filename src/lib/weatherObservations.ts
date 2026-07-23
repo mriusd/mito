@@ -32,6 +32,8 @@ export type WeatherObservationsResponse = {
   forecastHighC?: number;
   forecastLowC?: number;
   forecastUpdatedAt?: number;
+  /** Native unit for obs temps/dew points (forecast stays °C). */
+  obsTempUnit?: WeatherTempUnit;
 };
 
 export type WeatherForecastSummary = {
@@ -166,14 +168,34 @@ export function celsiusToDisplayTemp(celsius: number, unit: WeatherTempUnit): nu
   return celsius;
 }
 
-export function floorDisplayTemp(celsius: number, unit: WeatherTempUnit): number {
-  return Math.floor(celsiusToDisplayTemp(celsius, unit));
+export function storedTempToDisplay(
+  stored: number,
+  storedUnit: WeatherTempUnit,
+  displayUnit: WeatherTempUnit,
+): number {
+  if (storedUnit === displayUnit) return stored;
+  if (storedUnit === 'F' && displayUnit === 'C') return ((stored - 32) * 5) / 9;
+  return celsiusToDisplayTemp(stored, 'F');
+}
+
+export function obsTempToCelsius(temp: number, obsUnit: WeatherTempUnit = 'C'): number {
+  if (obsUnit === 'F') return ((temp - 32) * 5) / 9;
+  return temp;
+}
+
+export function floorDisplayTemp(
+  stored: number,
+  storedUnit: WeatherTempUnit,
+  displayUnit: WeatherTempUnit,
+): number {
+  return Math.floor(storedTempToDisplay(stored, storedUnit, displayUnit));
 }
 
 /** Temp Odds low bucket highlight: colder of forecast low vs observed low. */
 export function weatherHighlightLowC(data: WeatherObservationsResponse | null | undefined): number | null {
   if (!data) return null;
-  const obs = data.lowTemp;
+  const obsUnit = data.obsTempUnit ?? 'C';
+  const obs = data.lowTemp != null ? obsTempToCelsius(data.lowTemp, obsUnit) : null;
   const fc = data.forecastLowC;
   if (obs != null && fc != null) return Math.min(obs, fc);
   return fc ?? obs ?? null;
@@ -182,7 +204,8 @@ export function weatherHighlightLowC(data: WeatherObservationsResponse | null | 
 /** Temp Odds high bucket highlight: forecast daily high; obs if already warmer. */
 export function weatherHighlightHighC(data: WeatherObservationsResponse | null | undefined): number | null {
   if (!data) return null;
-  const obs = data.highTemp;
+  const obsUnit = data.obsTempUnit ?? 'C';
+  const obs = data.highTemp != null ? obsTempToCelsius(data.highTemp, obsUnit) : null;
   const fc = data.forecastHighC;
   if (obs != null && fc != null) return Math.max(obs, fc);
   return fc ?? obs ?? null;

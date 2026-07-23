@@ -31,14 +31,17 @@ import {
   weatherDateColKey,
   weatherEventDateISOFromSlug,
   weatherTempBucketMatchesCelsius,
+  weatherTempBucketRuledOutByObs,
   type DateCol,
   type WeatherGridData,
+  type WeatherMetric,
 } from '../../lib/weatherMarketsGrid';
 import { fetchWeatherProbabilities, type WeatherProbabilitiesPayload } from '../../api';
 import {
   fetchWeatherObservations,
   floorDisplayTemp,
   isWeatherDateTodayInTimezone,
+  obsTempToCelsius,
   weatherHighlightHighC,
   weatherHighlightLowC,
   type WeatherObservationsResponse,
@@ -495,18 +498,24 @@ function buildTempOddsBuckets(
   onchainWsPositions: WSPosition[],
   modelBuckets: Record<string, number> | null | undefined,
   orderLookup: Record<string, Order[]>,
+  metric: WeatherMetric,
+  obsBoundC: number | null,
 ): { entries: TempOddsBucket[]; maxPct: number } {
   const entries: TempOddsBucket[] = buckets.map(({ temp, label, market }) => {
     const yesTokenId = market.clobTokenIds?.[0] || '';
     const noTokenId = market.clobTokenIds?.[1] || '';
     const quote = getMarketYesQuote(market);
+    let modelPct = lookupModelBucketProb(modelBuckets, temp);
+    if (weatherTempBucketRuledOutByObs(temp, metric, obsBoundC)) {
+      modelPct = 0;
+    }
     return {
       temp,
       label,
       market,
       quote,
       pct: quote.mid,
-      modelPct: lookupModelBucketProb(modelBuckets, temp),
+      modelPct,
       entry: marketEntryYesFrac(yesTokenId, noTokenId, positions, liveTradesSource, onchainWsPositions),
       orderMarks: marketOrderYesMarks(yesTokenId, noTokenId, orderLookup),
     };
@@ -522,6 +531,8 @@ function useTempOddsBuckets(
   onchainWsPositions: WSPosition[],
   modelBuckets: Record<string, number> | null | undefined,
   orderLookup: Record<string, Order[]>,
+  metric: WeatherMetric,
+  obsBoundC: number | null,
 ) {
   const [quoteTick, setQuoteTick] = useState(0);
   useEffect(() => {
@@ -555,8 +566,28 @@ function useTempOddsBuckets(
   useEffect(() => () => setChartBidAskExtraTokens('temp-odds', []), []);
 
   return useMemo(
-    () => buildTempOddsBuckets(buckets, positions, liveTradesSource, onchainWsPositions, modelBuckets, orderLookup),
-    [buckets, positions, liveTradesSource, onchainWsPositions, modelBuckets, orderLookup, quoteTick],
+    () =>
+      buildTempOddsBuckets(
+        buckets,
+        positions,
+        liveTradesSource,
+        onchainWsPositions,
+        modelBuckets,
+        orderLookup,
+        metric,
+        obsBoundC,
+      ),
+    [
+      buckets,
+      positions,
+      liveTradesSource,
+      onchainWsPositions,
+      modelBuckets,
+      orderLookup,
+      metric,
+      obsBoundC,
+      quoteTick,
+    ],
   );
 }
 
@@ -700,6 +731,8 @@ interface TempOddsChartProps {
   modelBuckets: Record<string, number> | null | undefined;
   orderLookup: Record<string, Order[]>;
   forecastTempC: number | null;
+  metric: WeatherMetric;
+  obsBoundC: number | null;
 }
 
 function TempOddsChart({
@@ -716,6 +749,8 @@ function TempOddsChart({
   modelBuckets,
   orderLookup,
   forecastTempC,
+  metric,
+  obsBoundC,
 }: TempOddsChartProps) {
   const plotRef = useRef<HTMLDivElement>(null);
   const [trackPx, setTrackPx] = useState(0);
@@ -738,6 +773,8 @@ function TempOddsChart({
     onchainWsPositions,
     modelBuckets,
     orderLookup,
+    metric,
+    obsBoundC,
   );
 
   useLayoutEffect(() => {
@@ -840,7 +877,12 @@ function TempOddsTemperatureChart({
   const last = data?.points?.length ? data.points[data.points.length - 1] : null;
   const obsUnit = data?.obsTempUnit ?? 'C';
   const unitSuffix = unit === 'F' ? '°F' : '°C';
-  type HeaderPart = { text: string; color: string; windDirDeg?: number };
+  type HeaderPart = {
+    text: string;
+    color: string;
+    windDirDeg?: number;
+    windVariable?: boolean;
+  };
   const headerParts: HeaderPart[] = [];
   if (last) {
     headerParts.push({
@@ -865,6 +907,7 @@ function TempOddsTemperatureChart({
           text: `${Math.round(spd)}kt`,
           color: '#2dd4bf',
           windDirDeg: last.windDirDeg,
+          windVariable: last.windDirDeg == null,
         });
       }
     }
@@ -887,6 +930,10 @@ function TempOddsTemperatureChart({
                       aria-hidden
                     >
                       ↑
+                    </span>
+                  ) : p.windVariable ? (
+                    <span className="inline-block text-[10px] leading-none" aria-hidden>
+                      ○
                     </span>
                   ) : null}
                   <span>{p.text}</span>
@@ -1597,6 +1644,18 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
                 }
                 orderLookup={orderLookup}
                 forecastTempC={chartMode === 'low' ? weatherHighlightLowC(obsData) : weatherHighlightHighC(obsData)}
+                metric={chartMode}
+                obsBoundC={
+                  obsData == null
+                    ? null
+                    : chartMode === 'low'
+                      ? obsData.lowTemp != null
+                        ? obsTempToCelsius(obsData.lowTemp, obsData.obsTempUnit ?? 'C')
+                        : null
+                      : obsData.highTemp != null
+                        ? obsTempToCelsius(obsData.highTemp, obsData.obsTempUnit ?? 'C')
+                        : null
+                }
               />
             ) : (
               <div className="flex flex-1 min-w-0 items-center justify-center text-xs text-gray-500">

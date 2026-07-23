@@ -56,6 +56,44 @@ export function weatherEventDateISOFromSlug(eventSlug: string): string | null {
   return `${m[3]}-${month}-${day}`;
 }
 
+/**
+ * High: bucket impossible once observed high already floors above it.
+ * Low: bucket impossible once observed low already floors below it.
+ * `obsBoundCelsius` is the observed extreme in °C (converted to bucket unit inside).
+ */
+export function weatherTempBucketRuledOutByObs(
+  temp: string,
+  metric: WeatherMetric,
+  obsBoundCelsius: number | null | undefined,
+): boolean {
+  if (obsBoundCelsius == null || !Number.isFinite(obsBoundCelsius)) return false;
+  const unit: 'C' | 'F' = /°F/i.test(temp) ? 'F' : 'C';
+  const obsFloor = Math.floor(unit === 'F' ? (obsBoundCelsius * 9) / 5 + 32 : obsBoundCelsius);
+  const label = compactTempBucketLabel(temp);
+
+  if (metric === 'high') {
+    const lt = label.match(/^<(\d+)$/);
+    if (lt) return parseInt(lt[1], 10) < obsFloor;
+    const gt = label.match(/^>(\d+)$/);
+    if (gt) return false;
+    const range = label.match(/^(\d+)-(\d+)$/);
+    if (range) return parseInt(range[2], 10) < obsFloor;
+    const n = label.match(/^(\d+)$/);
+    if (n) return parseInt(n[1], 10) < obsFloor;
+    return false;
+  }
+
+  const lt = label.match(/^<(\d+)$/);
+  if (lt) return false;
+  const gt = label.match(/^>(\d+)$/);
+  if (gt) return parseInt(gt[1], 10) > obsFloor;
+  const range = label.match(/^(\d+)-(\d+)$/);
+  if (range) return parseInt(range[1], 10) > obsFloor;
+  const n = label.match(/^(\d+)$/);
+  if (n) return parseInt(n[1], 10) > obsFloor;
+  return false;
+}
+
 export function lookupModelBucketProb(
   buckets: Record<string, number> | undefined | null,
   temp: string,

@@ -138,15 +138,15 @@ function drawWindMarker(
     ctx.fillText('calm', x, y - 4);
     return;
   }
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = style === 'latest' ? 1.6 : 1.2;
+  ctx.lineCap = 'round';
   if (dirDeg != null) {
     const len = Math.min(10, 6 + speed * 0.3);
     const angle = ((dirDeg + 90) * Math.PI) / 180;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = style === 'latest' ? 1.6 : 1.2;
-    ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(0, len * 0.45);
     ctx.lineTo(0, -len * 0.55);
@@ -156,6 +156,11 @@ function drawWindMarker(
     ctx.lineTo(3, -len * 0.25);
     ctx.stroke();
     ctx.restore();
+  } else {
+    // Variable / missing direction (e.g. VRB)
+    ctx.beginPath();
+    ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+    ctx.stroke();
   }
   ctx.fillText(`${Math.round(speed)}`, x, y + 6);
 }

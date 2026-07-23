@@ -241,7 +241,8 @@ function fracLevelKey(frac: number): string {
   return (frac * 10000).toFixed(0);
 }
 
-const TEMP_ODDS_BAR_MAX_PCT = 1;
+const TEMP_ODDS_BAR_MAX_PCT = 1; // bar scale max (1 = 100%)
+
 
 function fracToBottomPx(frac: number, maxPct: number, trackPx: number): number {
   if (maxPct <= 0) return 0;

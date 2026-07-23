@@ -135,7 +135,10 @@ function drawWindMarker(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   if (speed <= 0) {
-    ctx.fillText('calm', x, y - 4);
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = textColor;
+    ctx.fill();
     return;
   }
   ctx.strokeStyle = strokeColor;
@@ -186,9 +189,9 @@ function hourlyWindPoints<T extends { timeMs: number; windDirDeg?: number; windS
 function windHoverText(dirDeg: number | undefined, speedKt: number | undefined): string | null {
   if (speedKt == null && dirDeg == null) return null;
   const speed = speedKt ?? 0;
-  if (speed <= 0) return 'calm';
+  if (speed <= 0) return 'wind calm';
   if (dirDeg != null) return `wind ${Math.round(dirDeg)}° ${Math.round(speed)}`;
-  return `${Math.round(speed)}`;
+  return `wind ${Math.round(speed)}`;
 }
 
 export function TempUnitToggle({

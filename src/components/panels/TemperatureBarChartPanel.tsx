@@ -205,7 +205,12 @@ function marketEntryYesFrac(
   return null;
 }
 
-type TempOddsOrderMark = { frac: number; outcome: 'YES' | 'NO'; side: Order['side'] };
+type TempOddsOrderMark = {
+  frac: number;
+  outcome: 'YES' | 'NO';
+  side: Order['side'];
+  price: number;
+};
 
 function tempEntryMarkClass(outcome: 'YES' | 'NO'): string {
   return outcome === 'YES' ? 'bg-green-400' : 'bg-red-400';
@@ -215,6 +220,18 @@ function tempOrderMarkClass(mark: TempOddsOrderMark): string {
   if (mark.side === 'BUY' && mark.outcome === 'YES') return 'bg-purple-600';
   if (mark.side === 'BUY' && mark.outcome === 'NO') return 'bg-yellow-400';
   return 'bg-gray-400';
+}
+
+function tempOrderMarkBorderClass(mark: TempOddsOrderMark): string {
+  if (mark.side === 'BUY' && mark.outcome === 'YES') return 'border-purple-600 text-purple-300';
+  if (mark.side === 'BUY' && mark.outcome === 'NO') return 'border-yellow-400 text-yellow-300';
+  return 'border-gray-400 text-gray-300';
+}
+
+function formatTempOrderPriceLabel(price: number): string {
+  const cents = price > 1 ? price : price * 100;
+  if (!Number.isFinite(cents)) return '';
+  return `${Math.round(cents)}¢`;
 }
 
 const MARK_LINE =
@@ -344,11 +361,11 @@ function orderYesMark(order: Order, yesTokenId: string, noTokenId: string): Temp
   if (!Number.isFinite(price) || price <= 0) return null;
   if (tid && yesKey && tid === yesKey) {
     const frac = yesChartEntryFrac(price, 'YES');
-    if (frac != null) return { frac, outcome: 'YES', side: order.side };
+    if (frac != null) return { frac, outcome: 'YES', side: order.side, price };
   }
   if (tid && noKey && tid === noKey) {
     const frac = yesChartEntryFrac(price, 'NO');
-    if (frac != null) return { frac, outcome: 'NO', side: order.side };
+    if (frac != null) return { frac, outcome: 'NO', side: order.side, price };
   }
   return null;
 }
@@ -647,7 +664,7 @@ function TempOddsBar({
   const entryTip =
     entry != null ? `Entry ${(entry.frac * 100).toFixed(1)}¢ (${entry.outcome})` : undefined;
   const orderTips = orderMarks.map(
-    (m) => `Order ${(m.frac * 100).toFixed(1)}¢ (${m.outcome} ${m.side})`,
+    (m) => `Order ${formatTempOrderPriceLabel(m.price)} (${m.outcome} ${m.side})`,
   );
   const quoteTip = [
     quote.bid != null ? `Bid ${Math.round(quote.bid * 100)}%` : null,
@@ -679,9 +696,9 @@ function TempOddsBar({
       {showProb ? (
         <span className="text-[9px] text-gray-400 mb-0.5 tabular-nums shrink-0 min-h-[12px] leading-none flex w-full gap-0.5">
           <span className="flex-1 text-center opacity-60">
-            {modelPct != null ? `${Math.round(modelPct * 100)}%` : '—'}
+            {modelPct != null ? `${(modelPct * 100).toFixed(1)}%` : '—'}
           </span>
-          <span className="flex-1 text-center">{pct != null ? `${Math.round(pct * 100)}%` : '—'}</span>
+          <span className="flex-1 text-center">{pct != null ? `${(pct * 100).toFixed(1)}%` : '—'}</span>
         </span>
       ) : null}
       <div className="relative w-full shrink-0 flex-1 min-h-0 flex items-end">
@@ -777,6 +794,32 @@ function TempOddsChart({
     obsBoundC,
   );
 
+  const buyOrderGuides = useMemo(() => {
+    const n = entries.length;
+    if (n === 0) return [];
+    type Guide = {
+      key: string;
+      frac: number;
+      barIndex: number;
+      label: string;
+      borderClass: string;
+    };
+    const out: Guide[] = [];
+    entries.forEach((e, barIndex) => {
+      e.orderMarks.forEach((m, i) => {
+        if (m.side !== 'BUY') return;
+        out.push({
+          key: `${e.temp}-${i}-${m.outcome}-${m.price}`,
+          frac: m.frac,
+          barIndex,
+          label: formatTempOrderPriceLabel(m.price),
+          borderClass: tempOrderMarkBorderClass(m),
+        });
+      });
+    });
+    return out;
+  }, [entries]);
+
   useLayoutEffect(() => {
     const el = plotRef.current;
     if (!el) return;
@@ -795,49 +838,92 @@ function TempOddsChart({
         ) : (
           <div className="flex flex-col flex-1 min-h-0 gap-1">
             <div className="flex shrink-0 gap-0.5 min-h-[12px]">
+              <div className="w-7 shrink-0" aria-hidden />
               {entries.map(({ temp, pct, modelPct }) => (
                 <div
                   key={`prob-${temp}`}
                   className="flex-1 min-w-0 flex gap-0.5 text-[9px] text-gray-400 tabular-nums leading-none"
                 >
                   <span className="flex-1 text-center opacity-60">
-                    {modelPct != null ? `${Math.round(modelPct * 100)}%` : '—'}
+                    {modelPct != null ? `${(modelPct * 100).toFixed(1)}%` : '—'}
                   </span>
-                  <span className="flex-1 text-center">{pct != null ? `${Math.round(pct * 100)}%` : '—'}</span>
+                  <span className="flex-1 text-center">{pct != null ? `${(pct * 100).toFixed(1)}%` : '—'}</span>
                 </div>
               ))}
             </div>
-            <div ref={plotRef} className="flex-1 min-h-[40px] flex items-end gap-0.5 overflow-visible">
-              {trackPx > 0
-                ? entries.map(({ temp, label, market, quote, pct, modelPct, entry, orderMarks }) => {
-                    const forecastHighlight =
-                      forecastTempC != null && weatherTempBucketMatchesCelsius(temp, forecastTempC);
+            <div className="relative flex flex-1 min-h-[40px] items-end gap-0">
+              <div
+                className="relative w-7 shrink-0 pointer-events-none"
+                style={trackPx > 0 ? { height: trackPx } : undefined}
+              >
+                {trackPx > 0
+                  ? buyOrderGuides.map((g) => {
+                      const bottomPx = fracToBottomPx(g.frac, maxPct, trackPx);
+                      return (
+                        <span
+                          key={`buy-lbl-${g.key}`}
+                          className={`absolute right-0.5 -translate-y-1/2 text-[8px] font-semibold tabular-nums leading-none ${g.borderClass}`}
+                          style={{ bottom: bottomPx }}
+                        >
+                          {g.label}
+                        </span>
+                      );
+                    })
+                  : null}
+              </div>
+              <div ref={plotRef} className="relative flex-1 min-w-0 min-h-[40px] flex items-end gap-0.5 overflow-visible">
+                {trackPx > 0
+                  ? entries.map(({ temp, label, market, quote, pct, modelPct, entry, orderMarks }) => {
+                      const forecastHighlight =
+                        forecastTempC != null && weatherTempBucketMatchesCelsius(temp, forecastTempC);
+                      return (
+                      <TempOddsBar
+                        key={temp}
+                        label={label}
+                        quote={quote}
+                        pct={pct}
+                        modelPct={modelPct}
+                        maxPct={maxPct}
+                        trackPx={trackPx}
+                        barColor={barColor}
+                        barSpreadColor={barSpreadColor}
+                        modelBarColor={modelBarColor}
+                        selected={selectedMarketId === market.id}
+                        entry={entry}
+                        orderMarks={orderMarks}
+                        marketTitle={market.groupItemTitle || label}
+                        onClick={() => onBarClick(market)}
+                        showProb={false}
+                        showLabel={false}
+                        forecastHighlight={forecastHighlight}
+                      />
+                      );
+                    })
+                  : null}
+              </div>
+              {trackPx > 0 && buyOrderGuides.length > 0 ? (
+                <div className="absolute inset-0 z-[12] pointer-events-none overflow-visible">
+                  {buyOrderGuides.map((g) => {
+                    const bottomPx = fracToBottomPx(g.frac, maxPct, trackPx);
+                    const n = entries.length;
+                    // Gutter (w-7) + share of plot up to the bar's left edge.
+                    const width =
+                      n > 0
+                        ? `calc(1.75rem + (100% - 1.75rem) * ${g.barIndex} / ${n})`
+                        : '1.75rem';
                     return (
-                    <TempOddsBar
-                      key={temp}
-                      label={label}
-                      quote={quote}
-                      pct={pct}
-                      modelPct={modelPct}
-                      maxPct={maxPct}
-                      trackPx={trackPx}
-                      barColor={barColor}
-                      barSpreadColor={barSpreadColor}
-                      modelBarColor={modelBarColor}
-                      selected={selectedMarketId === market.id}
-                      entry={entry}
-                      orderMarks={orderMarks}
-                      marketTitle={market.groupItemTitle || label}
-                      onClick={() => onBarClick(market)}
-                      showProb={false}
-                      showLabel={false}
-                      forecastHighlight={forecastHighlight}
-                    />
+                      <div
+                        key={`buy-dot-${g.key}`}
+                        className={`absolute left-0 h-0 border-t-2 border-dotted ${g.borderClass}`}
+                        style={{ bottom: bottomPx, width }}
+                      />
                     );
-                  })
-                : null}
+                  })}
+                </div>
+              ) : null}
             </div>
             <div className="flex shrink-0 gap-0.5 min-h-[10px]">
+              <div className="w-7 shrink-0" aria-hidden />
               {entries.map(({ temp, label, market }) => {
                 const forecastHighlight =
                   forecastTempC != null && weatherTempBucketMatchesCelsius(temp, forecastTempC);
@@ -882,6 +968,7 @@ function TempOddsTemperatureChart({
     color: string;
     windDirDeg?: number;
     windVariable?: boolean;
+    windCalm?: boolean;
   };
   const headerParts: HeaderPart[] = [];
   if (last) {
@@ -901,7 +988,7 @@ function TempOddsTemperatureChart({
     if (last.windSpeedKt != null || last.windDirDeg != null) {
       const spd = last.windSpeedKt ?? 0;
       if (spd <= 0) {
-        headerParts.push({ text: 'calm', color: '#2dd4bf' });
+        headerParts.push({ text: '', color: '#2dd4bf', windCalm: true });
       } else {
         headerParts.push({
           text: `${Math.round(spd)}kt`,
@@ -923,7 +1010,11 @@ function TempOddsTemperatureChart({
               <span key={`${p.color}-${i}`} className="inline-flex items-center gap-1">
                 {i > 0 ? <span className="text-gray-600">·</span> : null}
                 <span className="inline-flex items-center gap-0.5" style={{ color: p.color }}>
-                  {p.windDirDeg != null ? (
+                  {p.windCalm ? (
+                    <span className="inline-block text-[10px] leading-none" aria-label="calm" title="calm">
+                      ●
+                    </span>
+                  ) : p.windDirDeg != null ? (
                     <span
                       className="inline-block text-[11px] leading-none"
                       style={{ transform: `rotate(${p.windDirDeg + 180}deg)` }}
@@ -936,7 +1027,7 @@ function TempOddsTemperatureChart({
                       ○
                     </span>
                   ) : null}
-                  <span>{p.text}</span>
+                  {p.text ? <span>{p.text}</span> : null}
                 </span>
               </span>
             ))}

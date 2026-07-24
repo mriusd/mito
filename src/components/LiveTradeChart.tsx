@@ -298,12 +298,20 @@ export function LiveTradeChart({
     const chart = getChart();
     if (!chart) return;
     const opt = chart.getOption() as {
-      dataZoom?: { start?: number; end?: number }[];
+      dataZoom?: { start?: number; end?: number; xAxisIndex?: number | number[]; yAxisIndex?: number | number[] }[];
     };
-    const dz = opt.dataZoom?.[0];
-    if (dz && typeof dz.start === 'number' && typeof dz.end === 'number') {
-      dataZoomRef.current = { start: dz.start, end: dz.end };
+    const zooms = opt.dataZoom || [];
+    const xDz = zooms.find((z) => z.xAxisIndex != null) || zooms[0];
+    const yDz = zooms.find((z) => z.yAxisIndex != null);
+    const next: LiveTradeDataZoomState = {
+      start: typeof xDz?.start === 'number' ? xDz.start : dataZoomRef.current?.start ?? 0,
+      end: typeof xDz?.end === 'number' ? xDz.end : dataZoomRef.current?.end ?? 100,
+    };
+    if (typeof yDz?.start === 'number' && typeof yDz?.end === 'number') {
+      next.yStart = yDz.start;
+      next.yEnd = yDz.end;
     }
+    dataZoomRef.current = next;
     syncOrderHandles();
   }, [getChart, syncOrderHandles]);
 

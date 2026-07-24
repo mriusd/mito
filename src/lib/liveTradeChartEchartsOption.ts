@@ -21,6 +21,9 @@ const OB_HEATMAP_TAIL_OPACITY_WEIGHT = 0.1;
 export type LiveTradeDataZoomState = {
   start: number;
   end: number;
+  /** Price-axis zoom window (0–100%). */
+  yStart?: number;
+  yEnd?: number;
 };
 
 export type BuildLiveTradeChartOptionArgs = {
@@ -391,16 +394,30 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
         xAxisIndex: [0, 1],
         start: dzStart,
         end: dzEnd,
+        // Filter out-of-window candles so price Y rescales to visible OHLC.
+        filterMode: 'filter',
         zoomOnMouseWheel: true,
         moveOnMouseMove: true,
         moveOnMouseWheel: false,
         preventDefaultMouseMove: true,
       },
       {
+        type: 'inside',
+        yAxisIndex: [0],
+        start: dataZoom?.yStart ?? 0,
+        end: dataZoom?.yEnd ?? 100,
+        filterMode: 'none',
+        // Shift+wheel (or pinch on Y) zooms price scale; plain wheel stays on time.
+        zoomOnMouseWheel: 'shift',
+        moveOnMouseMove: true,
+        moveOnMouseWheel: false,
+      },
+      {
         type: 'slider',
         xAxisIndex: [0, 1],
         start: dzStart,
         end: dzEnd,
+        filterMode: 'filter',
         height: 12,
         bottom: 2,
         borderColor: 'rgba(255,255,255,0.12)',
@@ -445,9 +462,18 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
     yAxis: [
       {
         type: 'value',
-        min: 0,
-        max: 100,
-        interval: 10,
+        scale: true,
+        // Fit visible candles (after X dataZoom filter); pad + clamp to 0–100¢.
+        min: (ext: { min: number; max: number }) => {
+          const span = Math.max(0.5, (ext.max ?? 0) - (ext.min ?? 0));
+          const pad = Math.max(0.5, span * 0.08);
+          return Math.max(0, (ext.min ?? 0) - pad);
+        },
+        max: (ext: { min: number; max: number }) => {
+          const span = Math.max(0.5, (ext.max ?? 0) - (ext.min ?? 0));
+          const pad = Math.max(0.5, span * 0.08);
+          return Math.min(100, (ext.max ?? 100) + pad);
+        },
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
@@ -455,7 +481,7 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
           color: 'rgba(255,255,255,0.3)',
           fontSize: 9,
           fontFamily: 'monospace',
-          formatter: (v: number) => `${v}¢`,
+          formatter: (v: number) => `${Number(v).toFixed(v % 1 === 0 ? 0 : 1)}¢`,
         },
       },
       {

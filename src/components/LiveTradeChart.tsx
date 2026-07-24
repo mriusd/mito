@@ -169,6 +169,7 @@ export function LiveTradeChart({
   const [volumeSpikeFlashSide, setVolumeSpikeFlashSide] = useState<ChartVolumeSpikeSide | null>(null);
   const lastVolumeSpikeBarRef = useRef<number | null>(null);
   const volumeSpikeFlashGenRef = useRef(0);
+  const [hoverOhlcv, setHoverOhlcv] = useState<ChartObHoverOhlcv | null>(null);
   const [hoverOb, setHoverOb] = useState<{
     clientX: number;
     clientY: number;
@@ -423,32 +424,45 @@ export function LiveTradeChart({
         const onHandle = !!hitTestOrderHandle(mx, my);
         setOrderHandleHover(onHandle);
         if (onHandle) {
+          setHoverOhlcv(null);
           setHoverOb(null);
           return;
         }
       }
       if (orderDrag) {
-        setHoverOb(null);
-        return;
-      }
-
-      if (!candleObHover) {
+        setHoverOhlcv(null);
         setHoverOb(null);
         return;
       }
 
       const idx = findCandleIndexAtPixel(chart, mx);
       if (idx == null || idx < 0 || idx >= candles.length) {
+        setHoverOhlcv(null);
         setHoverOb(null);
         return;
       }
       const nearest = candles[idx];
+      const ohlcv: ChartObHoverOhlcv = {
+        timeMs: nearest.time,
+        o: nearest.o,
+        h: nearest.h,
+        l: nearest.l,
+        c: nearest.c,
+        v: nearest.v,
+      };
+      setHoverOhlcv(ohlcv);
+
+      if (!candleObHover) {
+        setHoverOb(null);
+        return;
+      }
+
       const hasPolyOb =
-        nearest?.ob != null && (nearest.ob.bids.length > 0 || nearest.ob.asks.length > 0);
-      const hasCexOb = nearest?.cexOb != null;
-      const hasGex = nearest?.gex != null;
-      const hasGexBinance = nearest?.gexBinance != null;
-      const hasGexOkx = nearest?.gexOkx != null;
+        nearest.ob != null && (nearest.ob.bids.length > 0 || nearest.ob.asks.length > 0);
+      const hasCexOb = nearest.cexOb != null;
+      const hasGex = nearest.gex != null;
+      const hasGexBinance = nearest.gexBinance != null;
+      const hasGexOkx = nearest.gexOkx != null;
       if (!hasPolyOb && !hasCexOb && !hasGex && !hasGexBinance && !hasGexOkx) {
         setHoverOb(null);
         return;
@@ -461,14 +475,7 @@ export function LiveTradeChart({
         ...(hasGex ? { gex: nearest.gex } : {}),
         ...(hasGexBinance ? { gexBinance: nearest.gexBinance } : {}),
         ...(hasGexOkx ? { gexOkx: nearest.gexOkx } : {}),
-        ohlcv: {
-          timeMs: nearest.time,
-          o: nearest.o,
-          h: nearest.h,
-          l: nearest.l,
-          c: nearest.c,
-          v: nearest.v,
-        },
+        ohlcv,
         enrichment: nearest.enrichment,
       });
     },
@@ -476,6 +483,7 @@ export function LiveTradeChart({
   );
 
   const handleMouseLeave = useCallback(() => {
+    setHoverOhlcv(null);
     setHoverOb(null);
     setOrderHandleHover(false);
   }, []);
@@ -492,6 +500,7 @@ export function LiveTradeChart({
   useEffect(() => {
     lastVolumeSpikeBarRef.current = null;
     setVolumeSpikeFlashSide(null);
+    setHoverOhlcv(null);
     setHoverOb(null);
     dataZoomRef.current = null;
     setDataZoomTick((n) => n + 1);
@@ -703,6 +712,24 @@ export function LiveTradeChart({
             finished: syncOrderHandles,
           }}
         />
+        {hoverOhlcv ? (
+          <div
+            className="pointer-events-none absolute left-9 top-1 z-[5] text-[9px] font-bold font-mono tabular-nums whitespace-nowrap"
+            style={{ color: hoverOhlcv.c >= hoverOhlcv.o ? '#10b981' : '#ef4444' }}
+          >
+            {`O ${hoverOhlcv.o.toFixed(1)}  H ${hoverOhlcv.h.toFixed(1)}  L ${hoverOhlcv.l.toFixed(1)}  C ${hoverOhlcv.c.toFixed(1)}  V ${
+              hoverOhlcv.v >= 1_000_000
+                ? `${(hoverOhlcv.v / 1_000_000).toFixed(2)}M`
+                : hoverOhlcv.v >= 1_000
+                  ? `${(hoverOhlcv.v / 1_000).toFixed(1)}K`
+                  : hoverOhlcv.v >= 100
+                    ? hoverOhlcv.v.toFixed(0)
+                    : hoverOhlcv.v >= 1
+                      ? hoverOhlcv.v.toFixed(1)
+                      : hoverOhlcv.v.toFixed(2)
+            }`}
+          </div>
+        ) : null}
         {orderHandles.map((h) => {
           const lv = displayChartOrderLevels?.find((l) => l.orderId === h.orderId);
           const color = lv?.direction === 'long' ? '#2563eb' : '#facc15';

@@ -12,6 +12,7 @@ import {
   parseHttpKlineEnrichment,
   type CandleBsEnrichment,
 } from '../lib/chartCandleEnrichment';
+import { parseCandleWeather, type CandleWeatherSnapshot } from '../lib/candleWeatherSnapshot';
 
 const MAX_CHART_CANDLES = 2500;
 
@@ -28,6 +29,7 @@ export type LiveTradeCandle = {
   gexBinance?: GexAssetSnapshot;
   gexOkx?: GexAssetSnapshot;
   enrichment?: CandleBsEnrichment;
+  weather?: CandleWeatherSnapshot;
 };
 
 function toPrice(raw: number, isNo: boolean): number {
@@ -102,6 +104,7 @@ export function useLiveTradeCandles({
         const gex = parseGexAssetSnapshot(k[18]) ?? prev?.gex;
         const gexBinance = parseGexAssetSnapshot(k[22]) ?? prev?.gexBinance;
         const gexOkx = parseGexAssetSnapshot(k[23]) ?? prev?.gexOkx;
+        const weather = parseCandleWeather(k[24]) ?? prev?.weather;
         const enrichment = mergeCandleBsEnrichment(parseHttpKlineEnrichment(k), prev?.enrichment);
         map.set(openTime, {
           time: openTime,
@@ -115,6 +118,7 @@ export function useLiveTradeCandles({
           ...(gex ? { gex } : {}),
           ...(gexBinance ? { gexBinance } : {}),
           ...(gexOkx ? { gexOkx } : {}),
+          ...(weather ? { weather } : {}),
           ...(enrichment ? { enrichment } : {}),
         });
       }
@@ -170,6 +174,7 @@ export function useLiveTradeCandles({
       const gex = parseGexAssetSnapshot(k.gex) ?? prev?.gex;
       const gexBinance = parseGexAssetSnapshot(k.gex_binance) ?? prev?.gexBinance;
       const gexOkx = parseGexAssetSnapshot(k.gex_okx) ?? prev?.gexOkx;
+      const weather = parseCandleWeather(k.weather) ?? prev?.weather;
       const enrichment = mergeCandleBsEnrichment(parseCandleBsEnrichment(k), prev?.enrichment);
       candleMapRef.current.set(openTime, {
         time: openTime,
@@ -183,6 +188,7 @@ export function useLiveTradeCandles({
         ...(gex ? { gex } : {}),
         ...(gexBinance ? { gexBinance } : {}),
         ...(gexOkx ? { gexOkx } : {}),
+        ...(weather ? { weather } : {}),
         ...(enrichment ? { enrichment } : {}),
       });
       pruneCandleMap(candleMapRef.current, st, et, candleMs * 2);

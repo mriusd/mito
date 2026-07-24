@@ -601,16 +601,29 @@ function mergeWalletTradesSnapshot(
   cap = WALLET_TRADES_CAP,
 ): WSTrade[] {
   if (snapshot.length === 0) return prev.slice(0, cap);
-  const snapKeys = new Set(snapshot.map((t) => walletMarketTradeRowKey(t)));
+  // Preserve titles when a later snapshot omits them (DB join miss / blank onchain_markets).
+  const prevByKey = new Map(prev.map((t) => [walletMarketTradeRowKey(t), t]));
+  const enrichedSnap = snapshot.map((t) => {
+    const key = walletMarketTradeRowKey(t);
+    const old = prevByKey.get(key);
+    if (!old) return t;
+    return {
+      ...t,
+      title: (t.title || '').trim() || old.title,
+      slug: (t.slug || '').trim() || old.slug,
+      eventSlug: (t.eventSlug || '').trim() || old.eventSlug,
+    };
+  });
+  const snapKeys = new Set(enrichedSnap.map((t) => walletMarketTradeRowKey(t)));
   const confirmedTxs = new Set(
-    snapshot.map((t) => (t.txHash || '').toLowerCase()).filter(Boolean),
+    enrichedSnap.map((t) => (t.txHash || '').toLowerCase()).filter(Boolean),
   );
   const pending = prev.filter(
     (t) => t.pending && !confirmedTxs.has((t.txHash || '').toLowerCase()),
   );
   const extra = prev.filter((t) => !t.pending && !snapKeys.has(walletMarketTradeRowKey(t)));
   return sortWalletMarketTradeRows(
-    dedupeWalletTradesByLedgerLeg([...pending, ...snapshot, ...extra], walletMarketTradeRowKey),
+    dedupeWalletTradesByLedgerLeg([...pending, ...enrichedSnap, ...extra], walletMarketTradeRowKey),
   ).slice(0, cap);
 }
 

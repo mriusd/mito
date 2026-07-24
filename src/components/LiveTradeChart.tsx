@@ -36,7 +36,9 @@ import { ChartObHoverEnrichmentStrip } from './ChartObHoverEnrichmentStrip';
 import { ChartObHoverOhlcvStrip, type ChartObHoverOhlcv } from './ChartObHoverOhlcvStrip';
 import { ChartCexObHoverGrid } from './ChartCexObHoverGrid';
 import { ChartGexHoverGrid } from './ChartGexHoverGrid';
+import { ChartWeatherHoverPanel } from './ChartWeatherHoverPanel';
 import { useLiveTradeCandles } from '../hooks/useLiveTradeCandles';
+import type { CandleWeatherSnapshot } from '../lib/candleWeatherSnapshot';
 import {
   buildLiveTradeChartOption,
   centsFromPixelY,
@@ -178,6 +180,7 @@ export function LiveTradeChart({
     gex?: GexAssetSnapshot;
     gexBinance?: GexAssetSnapshot;
     gexOkx?: GexAssetSnapshot;
+    weather?: CandleWeatherSnapshot;
     ohlcv: ChartObHoverOhlcv;
     enrichment?: CandleBsEnrichment;
   } | null>(null);
@@ -463,7 +466,8 @@ export function LiveTradeChart({
       const hasGex = nearest.gex != null;
       const hasGexBinance = nearest.gexBinance != null;
       const hasGexOkx = nearest.gexOkx != null;
-      if (!hasPolyOb && !hasCexOb && !hasGex && !hasGexBinance && !hasGexOkx) {
+      const hasWeather = nearest.weather != null && interval === '5m';
+      if (!hasPolyOb && !hasCexOb && !hasGex && !hasGexBinance && !hasGexOkx && !hasWeather) {
         setHoverOb(null);
         return;
       }
@@ -475,11 +479,12 @@ export function LiveTradeChart({
         ...(hasGex ? { gex: nearest.gex } : {}),
         ...(hasGexBinance ? { gexBinance: nearest.gexBinance } : {}),
         ...(hasGexOkx ? { gexOkx: nearest.gexOkx } : {}),
+        ...(hasWeather ? { weather: nearest.weather } : {}),
         ohlcv,
         enrichment: nearest.enrichment,
       });
     },
-    [getChart, candleObHover, chartOrderDragEnabled, orderDrag, hitTestOrderHandle, candles],
+    [getChart, candleObHover, chartOrderDragEnabled, orderDrag, hitTestOrderHandle, candles, interval],
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -782,7 +787,7 @@ export function LiveTradeChart({
                 style={{
                   left: hoverObPos?.left ?? hoverOb.clientX + 10,
                   top: hoverObPos?.top ?? Math.max(10, hoverOb.clientY - 100),
-                  width: 320,
+                  width: hoverOb.weather ? 480 : 320,
                   maxHeight: '80vh',
                   overflowY: 'auto',
                 }}
@@ -825,6 +830,7 @@ export function LiveTradeChart({
                         <ChartGexHoverGrid gex={hoverOb.gexBinance} source="Binance" />
                       ) : null}
                       {hoverOb.gexOkx ? <ChartGexHoverGrid gex={hoverOb.gexOkx} source="OKX" /> : null}
+                      {hoverOb.weather ? <ChartWeatherHoverPanel weather={hoverOb.weather} /> : null}
                     </>
                   );
                 })()}

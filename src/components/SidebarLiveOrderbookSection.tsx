@@ -64,6 +64,18 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
     [outcomeMarket, isUpDownMarket],
   );
 
+  /** Display-book mid in ¢: (bestBid+bestAsk)/2, or best side alone if one missing. */
+  const midCents = useMemo(() => {
+    const bid = parseFloat(displayBids[0]?.price ?? '');
+    const ask = parseFloat(displayAsks[0]?.price ?? '');
+    const bidOk = Number.isFinite(bid) && bid > 0;
+    const askOk = Number.isFinite(ask) && ask > 0;
+    if (bidOk && askOk) return ((bid + ask) / 2) * 100;
+    if (bidOk) return bid * 100;
+    if (askOk) return ask * 100;
+    return null;
+  }, [displayBids, displayAsks]);
+
   const overlayPrimary = resolvedOutcomeLabel
     ? { text: `Outcome: ${resolvedOutcomeLabel}`, className: 'text-emerald-400 font-bold' }
     : isMarketExpired
@@ -88,6 +100,15 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
         </button>
         <span className="shrink-0">Live Orderbook</span>
         <SidebarDataSourceBadge source="polymarket" />
+        {midCents != null ? (
+          <span
+            className="min-w-0 truncate text-[10px] tabular-nums text-gray-300"
+            title="Mid = (best bid + best ask) / 2 for displayed book"
+          >
+            <span className="text-gray-500">Mid</span>{' '}
+            <span className="font-semibold text-gray-200">{midCents.toFixed(1)}¢</span>
+          </span>
+        ) : null}
         <div
           className="ml-auto shrink-0 inline-flex rounded border border-gray-600 overflow-hidden divide-x divide-gray-600 bg-gray-900/90"
           title="Bid/ask grouping"

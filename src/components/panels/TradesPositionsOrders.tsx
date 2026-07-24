@@ -888,18 +888,24 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         dateLabel = dd.label;
         dateColor = dd.color;
       }
-      const marketName = getMarketPriceCondition(null, tid, marketLookup);
+      // Prefer trade.title (WS/REST) — same as positions. Lookup alone loses titles a few
+      // seconds after refresh when marketLookup has a token row with empty question.
+      const tradeTitle = (trade.title || '').trim();
+      const marketQuestion = (market?.question || market?.eventTitle || '').trim();
+      const marketName = getMarketPriceCondition(
+        tradeTitle || marketQuestion || null,
+        tid,
+        marketLookup,
+      );
       let mktLabel = formatTpoMarketLabel(asset, marketName);
       let outcome = getTokenOutcome(tid, marketLookup) || '';
 
-      // Fallback to activity API fields when market not in lookup (expired markets)
-      if (!market && trade.title) {
-        // Combine title + eventSlug for better pattern matching (slug has timeframe like "updown-5m")
-        const combined = trade.eventSlug ? `${trade.title} ${trade.eventSlug}` : trade.title;
+      // Activity / WS title when lookup missing or question blank (expired / off-cache markets)
+      if (tradeTitle && (!market || !marketQuestion || /^\d{6,}$/.test(marketName) || marketName === '?' || marketName.length <= 8)) {
+        const combined = trade.eventSlug ? `${tradeTitle} ${trade.eventSlug}` : tradeTitle;
         const shortened = getMarketPriceCondition(combined);
-        // Extract asset from full name in title
         const nameMap: Record<string, string> = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', ripple: 'XRP', xrp: 'XRP', btc: 'BTC', eth: 'ETH', sol: 'SOL' };
-        const nameMatch = trade.title.match(/\b(Bitcoin|Ethereum|Solana|Ripple|BTC|ETH|SOL|XRP)\b/i);
+        const nameMatch = tradeTitle.match(/\b(Bitcoin|Ethereum|Solana|Ripple|BTC|ETH|SOL|XRP)\b/i);
         if (nameMatch) asset = nameMap[nameMatch[1].toLowerCase()] || nameMatch[1].toUpperCase();
         mktLabel = asset ? `${formatPriceShort(shortened, asset === 'ETH' ? 'ETH' : undefined)}` : shortened;
         if (trade.outcome) {

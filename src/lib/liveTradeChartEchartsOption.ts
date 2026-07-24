@@ -382,8 +382,40 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
   return {
     backgroundColor: '#1a1a2e',
     animation: false,
-    tooltip: { show: false },
-    axisPointer: { show: false },
+    // Crosshair only — no tooltip box (OHLC strip already on chart).
+    tooltip: {
+      show: true,
+      trigger: 'axis',
+      showContent: false,
+      axisPointer: {
+        type: 'cross',
+        snap: false,
+        animation: false,
+        crossStyle: {
+          color: 'rgba(255,255,255,0.45)',
+          width: 1,
+          type: 'dashed',
+        },
+        lineStyle: {
+          color: 'rgba(255,255,255,0.35)',
+          width: 1,
+          type: 'dashed',
+        },
+        label: {
+          show: true,
+          backgroundColor: 'rgba(30, 41, 59, 0.95)',
+          borderColor: 'rgba(148, 163, 184, 0.5)',
+          borderWidth: 1,
+          color: '#e2e8f0',
+          fontSize: 10,
+          fontFamily: 'monospace',
+          padding: [3, 5],
+        },
+      },
+    },
+    axisPointer: {
+      link: [{ xAxisIndex: [0, 1] }],
+    },
     grid: [
       { left: 36, right: 8, top: 4, bottom: 28 },
       { left: 36, right: 8, top: '72%', bottom: 16, height: '18%' },
@@ -446,6 +478,11 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
         },
         min: 'dataMin',
         max: 'dataMax',
+        axisPointer: {
+          label: {
+            formatter: (p) => fmtTimeLabel(Number(p.value), interval),
+          },
+        },
       },
       {
         type: 'category',
@@ -457,6 +494,7 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
         axisLabel: { show: false },
         min: 'dataMin',
         max: 'dataMax',
+        axisPointer: { label: { show: false } },
       },
     ],
     yAxis: [
@@ -483,6 +521,15 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
           fontFamily: 'monospace',
           formatter: (v: number) => `${Number(v).toFixed(v % 1 === 0 ? 0 : 1)}¢`,
         },
+        axisPointer: {
+          label: {
+            formatter: (p) => {
+              const n = Number(p.value);
+              if (!Number.isFinite(n)) return '';
+              return `${n.toFixed(1)}¢`;
+            },
+          },
+        },
       },
       {
         type: 'value',
@@ -492,6 +539,7 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
         axisTick: { show: false },
         axisLabel: { show: false },
         splitLine: { show: false },
+        axisPointer: { show: false, label: { show: false } },
       },
     ],
     series,

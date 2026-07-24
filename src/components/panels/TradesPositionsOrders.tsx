@@ -499,16 +499,17 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   }, [onchainClaimRows]);
 
   const positionsForTable = useMemo(() => {
-    if (liveTradesSource !== 'onchain') return positions;
+    const openLeg = (p: Position) => (p.size || 0) > 0 && !p.redeemable;
+    if (liveTradesSource !== 'onchain') return positions.filter(openLeg);
     const byToken = new Map<string, Position>();
     for (const p of positions) {
       const tid = getPositionClobTokenId(p);
-      if (!tid || (p.size || 0) <= 0) continue;
+      if (!tid || !openLeg(p)) continue;
       byToken.set(normalizeClobTokenId(tid), p);
     }
     for (const p of onchainPositionsAsPM) {
       const tid = getPositionClobTokenId(p);
-      if (!tid || (p.size || 0) <= 0) continue;
+      if (!tid || !openLeg(p)) continue;
       const key = normalizeClobTokenId(tid);
       const prev = byToken.get(key);
       // Onchain size/avg win; keep Data API title/slug when WS meta blank (Other markets).
@@ -520,6 +521,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           eventSlug: p.eventSlug || prev.eventSlug,
           endDate: p.endDate || prev.endDate,
           outcome: p.outcome || prev.outcome,
+          redeemable: prev.redeemable,
         });
       } else {
         byToken.set(key, p);
@@ -948,10 +950,10 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       };
     }), [tradesForTable, assetFilter, tradesSideFilter, marketLookup]);
 
-  // Process positions
+  // Process positions — unresolved + size > 0 only.
   const processedPositions = useMemo(() => positionsForTable
     .filter((p) => {
-      if ((p.size || 0) <= 0) return false;
+      if ((p.size || 0) <= 0 || p.redeemable) return false;
       const tid = getPositionClobTokenId(p);
       if (!tid) return false;
       const market = lookupMarketByTokenId(tid, marketLookup);

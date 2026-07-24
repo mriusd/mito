@@ -1055,6 +1055,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       // Wallet URL stays market-agnostic — global walletTrades for TPO; tape via subscribeMarket on open.
       if (wq) {
         params.set('wallet', wq);
+        // TPO / HUD: open inventory only (hide resolved / past end_date).
+        params.set('active_only', '1');
       } else if (m) {
         params.set('market_id', canonicalConditionKey(m));
         if (tok) params.set('token_id', tok);

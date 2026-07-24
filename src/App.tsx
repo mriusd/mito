@@ -35,6 +35,18 @@ import {
 import { pickLiveUpDownMarketInTfBucket } from './utils/format';
 import { setMarketDataRefreshFn } from './lib/marketDataRefresh';
 import { installUiInteractionRecovery } from './lib/uiInteractionRecovery';
+import {
+  isWsBidAskStubMarket,
+  resolveCanonicalMarketForToken,
+} from './lib/bidAskMarketLookup';
+
+/** URL ?market= — Gamma numeric id preferred; never write quote-only `ws:` stubs. */
+function marketIdForUrl(m: { id?: string; conditionId?: string } | null | undefined): string {
+  if (!m) return '';
+  const id = String(m.id || '').trim();
+  if (id && !id.startsWith('ws:') && !id.startsWith('expired:')) return id;
+  return String(m.conditionId || '').trim();
+}
 
 const SidebarLazy = lazyWithChunkReload(() =>
   import('./components/Sidebar').then((m) => ({ default: m.Sidebar })),
@@ -57,7 +69,11 @@ function useMountSidebarLazyChunk(): boolean {
 
 function parseMarketLinkFromUrl(): { marketId: string; side: 'YES' | 'NO' } | null {
   const params = new URLSearchParams(window.location.search);
-  const marketId = params.get('market') || '';
+  let marketId = (params.get('market') || '').trim();
+  if (!marketId) return null;
+  // Legacy broken links wrote quote stubs as ws:<tokenId>.
+  if (marketId.startsWith('ws:')) marketId = marketId.slice(3);
+  if (marketId.startsWith('expired:')) marketId = marketId.slice('expired:'.length);
   if (!marketId) return null;
   const rawSide = (params.get('side') || 'yes').toLowerCase();
   return { marketId, side: rawSide === 'no' ? 'NO' : 'YES' };
@@ -84,7 +100,7 @@ function App() {
     const t = window.setTimeout(() => setShowServerDownBanner(true), SERVER_DOWN_BANNER_DELAY_MS);
     return () => window.clearTimeout(t);
   }, [backendConnected]);
-  const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
+  const selectedMarketId = useAppStore((s) => marketIdForUrl(s.selectedMarket));
   const selectedMarketConditionId = useAppStore((s) => s.selectedMarket?.conditionId?.trim() ?? '');
   const sidebarOutcome = useAppStore((s) => s.sidebarOutcome);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
@@ -172,8 +188,12 @@ function App() {
       const st = useAppStore.getState();
       const key = pendingLink.marketId.trim();
       const byId = buildMarketByIdRecord(st.marketLookup);
-      const m = byId[key] ?? byId[key.toLowerCase()];
-      if (!m) return;
+      let m = byId[key] ?? byId[key.toLowerCase()];
+      if (!m || isWsBidAskStubMarket(m)) {
+        const byToken = resolveCanonicalMarketForToken(key);
+        if (byToken && !isWsBidAskStubMarket(byToken)) m = byToken;
+      }
+      if (!m || isWsBidAskStubMarket(m)) return;
 
       if (!st.selectedMarket || st.selectedMarket.id !== m.id) setSelectedMarket(m);
       if (st.sidebarOutcome !== pendingLink.side) setSidebarOutcome(pendingLink.side);
@@ -224,6 +244,34 @@ function App() {
       tryDefault();
     });
   }, [loading, pendingLink, setSelectedMarket]);
+
+  // Upgrade quote-only selectedMarket (`ws:token` / empty title) once Gamma seed lands.
+  useEffect(() => {
+    const tryUpgrade = () => {
+      const sm = useAppStore.getState().selectedMarket;
+      if (!sm || !isWsBidAskStubMarket(sm)) return;
+      const toks = (sm.clobTokenIds || []).map((t) => String(t || '').trim()).filter(Boolean);
+      for (const tid of toks) {
+        const next = resolveCanonicalMarketForToken(tid);
+        if (next && !isWsBidAskStubMarket(next)) {
+          setSelectedMarket(next);
+          return;
+        }
+      }
+    };
+    tryUpgrade();
+    return useAppStore.subscribe((state, prev) => {
+      if (
+        state.marketLookup === prev.marketLookup &&
+        state.upOrDownMarkets === prev.upOrDownMarkets &&
+        state.weatherMarkets === prev.weatherMarkets &&
+        state.lastUpdated === prev.lastUpdated
+      ) {
+        return;
+      }
+      tryUpgrade();
+    });
+  }, [setSelectedMarket]);
 
   // selected market -> URL sync
   useEffect(() => {

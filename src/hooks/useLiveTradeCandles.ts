@@ -159,7 +159,7 @@ export function useLiveTradeCandles({
 
     void loadKlines();
 
-    const applyWsKline = (k: Record<string, unknown>) => {
+    const applyWsKline = (k: Record<string, unknown>, opts?: { replaceWeather?: boolean }) => {
       const openTime = k.t as number;
       const o = toPrice(parseFloat(String(k.o)) * 100, isNo);
       const h = toPrice(parseFloat(String(k.h)) * 100, isNo);
@@ -174,7 +174,9 @@ export function useLiveTradeCandles({
       const gex = parseGexAssetSnapshot(k.gex) ?? prev?.gex;
       const gexBinance = parseGexAssetSnapshot(k.gex_binance) ?? prev?.gexBinance;
       const gexOkx = parseGexAssetSnapshot(k.gex_okx) ?? prev?.gexOkx;
-      const weather = parseCandleWeather(k.weather) ?? prev?.weather;
+      const parsedWeather = parseCandleWeather(k.weather);
+      // Snapshot: trust payload only (omit = no weather). Update: keep prior if field absent.
+      const weather = opts?.replaceWeather ? parsedWeather : parsedWeather ?? prev?.weather;
       const enrichment = mergeCandleBsEnrichment(parseCandleBsEnrichment(k), prev?.enrichment);
       candleMapRef.current.set(openTime, {
         time: openTime,
@@ -200,7 +202,9 @@ export function useLiveTradeCandles({
           const klines = msg.data?.klines;
           if (!Array.isArray(klines)) return;
           for (const k of klines) {
-            if (k && typeof k === 'object') applyWsKline(k as Record<string, unknown>);
+            if (k && typeof k === 'object') {
+              applyWsKline(k as Record<string, unknown>, { replaceWeather: true });
+            }
           }
           publish();
           setWsTick((n) => n + 1);

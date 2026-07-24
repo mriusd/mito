@@ -1275,9 +1275,9 @@ export const Sidebar = memo(function Sidebar() {
       const sumAbs = row.stakedSumAbsSignedNetUsd;
       const netY = row.stakedNetYesUsd;
       const netN = row.stakedNetNoUsd;
-      if (typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn)) {
+    if (typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn)) {
         live = { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
-        if (typeof sumAbs === 'number' && Number.isFinite(sumAbs)) {
+      if (typeof sumAbs === 'number' && Number.isFinite(sumAbs)) {
           live.stakedSumAbsSignedNetUsd = sumAbs;
         }
         if (typeof netY === 'number' && Number.isFinite(netY) && typeof netN === 'number' && Number.isFinite(netN)) {
@@ -2061,7 +2061,7 @@ export const Sidebar = memo(function Sidebar() {
         return;
       }
 
-    let size = parseFloat(orderAmount);
+      let size = parseFloat(orderAmount);
       if (spec.side === 'SELL' && spec.maxSell) {
         const tidKey = positionTokenKey(tokenId);
         const pos = tidKey
@@ -2070,14 +2070,14 @@ export const Sidebar = memo(function Sidebar() {
             )
           : undefined;
         size = pos ? Math.floor(Number(pos.size) * 100) / 100 : 0;
-    }
-    if (!size || size <= 0) {
+      }
+      if (!size || size <= 0) {
         showToast(
           spec.side === 'SELL' && spec.maxSell ? 'No position size available for MAX sell' : 'Invalid amount',
           'error',
         );
-      return;
-    }
+        return;
+      }
 
       if (spec.side === 'SELL' && spec.maxSell) {
         const cancel = await cancelExistingSellOrdersForToken(tokenId);
@@ -2085,16 +2085,16 @@ export const Sidebar = memo(function Sidebar() {
         if (cancel.replaced) replacedSell = true;
     }
 
-    let expiration = 0;
+      let expiration = 0;
       if (spec.side === 'BUY') {
       const expLeadSec = customOrderExpiryLeadSeconds(spec, getOrderExpiryLeadSeconds());
       const exp = computeLimitExpiration(selectedMarket, expLeadSec);
-      expiration = exp.expiration;
-      if (exp.invalidLead) {
-        showToast('Lead time to expiration already passed for this market', 'error');
-        return;
+        expiration = exp.expiration;
+        if (exp.invalidLead) {
+          showToast('Lead time to expiration already passed for this market', 'error');
+          return;
+        }
       }
-    }
 
       if (spec.side === 'BUY') {
         const customEarlyVusd = orderNotionalUsd(priceCents / 100, size);
@@ -2110,24 +2110,24 @@ export const Sidebar = memo(function Sidebar() {
         spec.side,
         priceCents,
       );
-    if (crossesBook) {
+      if (crossesBook) {
         const confirmed = await requestCrossingConfirm(bestCounterpartyCents ?? 0);
-      if (!confirmed) return;
-    }
+        if (!confirmed) return;
+      }
 
-    const result = await placeOrder({
-      tokenId,
+      const result = await placeOrder({
+        tokenId,
         side: spec.side,
         price: priceCents / 100,
-      size,
-      expiration,
+        size,
+        expiration,
         orderInfo: `${spec.side} ${size} ${resolvedOutcome} for ${marketName} @ ${priceCents}¢`,
-    });
+      });
       if (!result.success) {
-      showToast(result.error || 'Custom order failed', 'error');
+        showToast(result.error || 'Custom order failed', 'error');
         if (placed > 0) triggerWalletRefresh();
         return;
-    }
+      }
       placed += 1;
     }
 
@@ -3084,7 +3084,7 @@ export const Sidebar = memo(function Sidebar() {
                     </div>
                   </div>
                 </div>
-              </div>
+                </div>
               <div
                 className={
                   notifyPlaySound
@@ -3471,10 +3471,10 @@ export const Sidebar = memo(function Sidebar() {
               )}
             </div>
             <SidebarUpDownEndPicker titleColor={sidebarTitleColor} />
-            <button
+                      <button
               ref={historyButtonRef}
-              type="button"
-              onClick={() => {
+                        type="button"
+                        onClick={() => {
                 dismissHistoryTip();
                 preloadMarketViewDialog();
                 setMarketViewDialogOpen(true);
@@ -3487,7 +3487,7 @@ export const Sidebar = memo(function Sidebar() {
               aria-label="Market view"
             >
               <History className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
-            </button>
+                      </button>
             <button
               ref={notifyGearRef}
               type="button"
@@ -3749,14 +3749,14 @@ export const Sidebar = memo(function Sidebar() {
           <SidebarToxicStatsFlashWrap
             notifyFlashBg={notifyFlashBg}
             notifyMaxVolatilityPct={notifyMaxVolatilityPct}
-          >
+            >
               <div className="grid w-full grid-cols-4 gap-1.5 text-[10px] min-w-0 items-stretch">
               <SidebarMarketStatsCells
                 yesTokenId={selectedMarket?.clobTokenIds?.[0] ?? ''}
                 canShowEmbeddedToxic={canShowEmbeddedToxic}
                 onExpandToxic={expandSidebarToxicFlowPanel}
               />
-                </div>
+            </div>
             <div className="mt-1 w-full min-w-0">
               <SidebarToxicStrips
                 toxicFlowMarketId={toxicFlowMarketId}
@@ -3773,8 +3773,8 @@ export const Sidebar = memo(function Sidebar() {
                 notifySmartTiltPct={notifySmartTiltPct}
                 notifyFavouriteTiltPct={notifyFavouriteTiltPct}
                 notifyGreensTiltPct={notifyGreensTiltPct}
-              />
-              </div>
+                  />
+                </div>
           </SidebarToxicStatsFlashWrap>
           </div>
 
@@ -4071,7 +4071,7 @@ export const Sidebar = memo(function Sidebar() {
                 orderPrice={orderPrice}
                 orderAmount={orderAmount}
               />
-                </div>
+            </div>
 
             <div className="mb-2 flex flex-col gap-0.5">
               <div
@@ -4400,10 +4400,10 @@ export const Sidebar = memo(function Sidebar() {
                             const mag = Math.abs(delta);
                             const deltaClass =
                               mag >= 20
-                                ? 'bg-red-950/90 text-red-100 hover:bg-red-900'
-                                : mag >= 15
+                                  ? 'bg-red-950/90 text-red-100 hover:bg-red-900'
+                                  : mag >= 15
                                     ? 'bg-red-950/85 text-red-200 hover:bg-red-900'
-                                  : mag >= 10
+                                    : mag >= 10
                                       ? 'bg-red-900/80 text-red-200 hover:bg-red-800'
                                     : 'bg-red-900/65 text-red-200 hover:bg-red-800/80';
                             return (
@@ -4440,12 +4440,12 @@ export const Sidebar = memo(function Sidebar() {
                             const mag = Math.abs(delta);
                             const deltaClass =
                               mag >= 20
-                                ? 'bg-green-950/55 text-green-200 hover:bg-green-900/70'
-                                : mag >= 15
-                                  ? 'bg-green-900/40 text-green-200 hover:bg-green-800/55'
-                                  : mag >= 10
-                                    ? 'bg-green-900/50 text-green-200 hover:bg-green-800/65'
-                                    : 'bg-green-900/65 text-green-200 hover:bg-green-800/80';
+                                  ? 'bg-green-950/55 text-green-200 hover:bg-green-900/70'
+                                  : mag >= 15
+                                    ? 'bg-green-900/40 text-green-200 hover:bg-green-800/55'
+                                    : mag >= 10
+                                      ? 'bg-green-900/50 text-green-200 hover:bg-green-800/65'
+                                      : 'bg-green-900/65 text-green-200 hover:bg-green-800/80';
                             return (
                               <button
                                 key={delta}
@@ -4534,7 +4534,7 @@ export const Sidebar = memo(function Sidebar() {
           />
         </>
       )}
-            </div>
+        </div>
         {!isMobileSheet && selectedMarket ? (
           <>
           <div className="hidden md:block w-6 shrink-0" aria-hidden />
@@ -4571,13 +4571,13 @@ export const Sidebar = memo(function Sidebar() {
         ) : null}
         {sidebarToxicEffective && selectedMarket ? (
           <SidebarToxicPanel
-            marketId={selectedMarket.conditionId || ''}
-            marketName={marketName}
-            yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
+                marketId={selectedMarket.conditionId || ''}
+                marketName={marketName}
+                yesTokenId={selectedMarket.clobTokenIds?.[0] || ''}
             noTokenId={selectedMarket.clobTokenIds?.[1] || ''}
             marketExpired={isMarketExpired}
-            onClose={closeToxicSidebarPanel}
-          />
+                onClose={closeToxicSidebarPanel}
+              />
         ) : null}
       </div>
       {customDialogOpen && typeof document !== 'undefined' && createPortal((
@@ -4599,18 +4599,18 @@ export const Sidebar = memo(function Sidebar() {
                       </button>
                     ) : null}
                   </div>
-              <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                     <span className="text-gray-400 w-16 shrink-0">Side</span>
                     <select
                       value={draft.side}
                       onChange={(e) => updateCustomOrderDraft(index, { side: e.target.value as 'BUY' | 'SELL' })}
                       className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white flex-1"
                     >
-                  <option value="BUY">BUY</option>
-                  <option value="SELL">SELL</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
+                      <option value="BUY">BUY</option>
+                      <option value="SELL">SELL</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <span className="text-gray-400 w-16 shrink-0">Direction</span>
                     <select
                       value={draft.outcome}
@@ -4623,7 +4623,7 @@ export const Sidebar = memo(function Sidebar() {
                       <option value="YES">YES</option>
                       <option value="NO">NO</option>
                     </select>
-              </div>
+                  </div>
                   <div className="flex items-center gap-2">
                     <span className="text-gray-400 w-16 shrink-0">Price</span>
                     <select
@@ -4693,25 +4693,25 @@ export const Sidebar = memo(function Sidebar() {
                     </div>
                   )}
                   {draft.side === 'SELL' && (
-                <label className="flex items-center gap-2 ml-[4.5rem] text-gray-300">
+                    <label className="flex items-center gap-2 ml-[4.5rem] text-gray-300">
                       <input
                         type="checkbox"
                         checked={draft.maxSell}
                         onChange={(e) => updateCustomOrderDraft(index, { maxSell: e.target.checked })}
                         className="rounded accent-red-500"
                       />
-                  <span>Max</span>
-                </label>
-              )}
+                      <span>Max</span>
+                    </label>
+                  )}
                 </div>
               ))}
-              <button
-                type="button"
-                onClick={handleAddCustomOrderDraft}
-                className="w-full rounded border border-dashed border-gray-600 px-2 py-1.5 text-gray-300 hover:bg-gray-700/40"
-              >
-                Add order
-              </button>
+                <button
+                  type="button"
+                  onClick={handleAddCustomOrderDraft}
+                  className="w-full rounded border border-dashed border-gray-600 px-2 py-1.5 text-gray-300 hover:bg-gray-700/40"
+                >
+                  Add order
+                </button>
               <p className="text-[10px] text-gray-500 leading-snug">
                 Direction — uses YES/NO from Place Order box. BS ± applies to sidebar YES math prob; NO price = 100 − that.
               </p>

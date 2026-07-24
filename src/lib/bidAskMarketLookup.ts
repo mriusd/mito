@@ -301,21 +301,46 @@ useAppStore.subscribe((state, prev) => {
     state.weatherMarkets !== prev.weatherMarkets
   ) {
     bumpSeedIndex();
+    // Stubs may have landed before Gamma buckets — promote them now.
+    queueMicrotask(() => upgradeWsStubsInMarketLookup());
   }
 });
+
+/** True when row is a quote-only stub (no Gamma id / title) from bid/ask before markets load. */
+export function isWsBidAskStubMarket(m: Market | null | undefined): boolean {
+  if (!m) return true;
+  const id = String(m.id || '').trim();
+  if (id.startsWith('ws:') || id.startsWith('expired:')) return true;
+  if (!(m.question || '').trim() && !(m.conditionId || '').trim()) return true;
+  return false;
+}
+
+/**
+ * Canonical market for a CLOB token: Gamma/weather seed wins over stale `ws:` stubs in lookup.
+ * Keeps live bid/ask fields from pending/lookup via cloneMarketForClobToken.
+ */
+export function resolveCanonicalMarketForToken(tokenId: string): Market | undefined {
+  const id = String(tokenId || '').trim();
+  if (!id) return undefined;
+  const state = useAppStore.getState();
+  const pending = pendingPatch[id];
+  const seed = getOrBuildSeedIndex().get(id);
+  if (seed) {
+    const prevLookup = pending
+      ? { ...state.marketLookup, [id]: pending }
+      : state.marketLookup;
+    return cloneMarketForClobToken(seed, id, prevLookup);
+  }
+  if (pending) return pending;
+  return state.marketLookup[id];
+}
 
 /** Seed row for WS bid/ask merge when token not yet in marketLookup (e.g. new up/down market). */
 export function resolveBidAskSeedMarket(assetId: string): Market | undefined {
   const id = String(assetId || '').trim();
   if (!id) return undefined;
-  const pending = pendingPatch[id];
-  if (pending) return pending;
-  const state = useAppStore.getState();
-  const fromLookup = state.marketLookup[id];
-  if (fromLookup) return fromLookup;
-
-  const seed = getOrBuildSeedIndex().get(id);
-  if (seed) return cloneMarketForClobToken(seed, id, state.marketLookup);
+  const canonical = resolveCanonicalMarketForToken(id);
+  if (canonical) return canonical;
 
   return {
     id: `ws:${id}`,
@@ -325,6 +350,25 @@ export function resolveBidAskSeedMarket(assetId: string): Market | undefined {
     conditionId: '',
     eventSlug: '',
   };
+}
+
+/** After markets refresh: replace quote-only `ws:` stubs in marketLookup with Gamma rows. */
+export function upgradeWsStubsInMarketLookup(): void {
+  const state = useAppStore.getState();
+  const lookup = state.marketLookup;
+  const seed = getOrBuildSeedIndex();
+  let merged: Record<string, Market> | null = null;
+  for (const [tid, row] of Object.entries(lookup)) {
+    if (!isWsBidAskStubMarket(row)) continue;
+    const s = seed.get(tid);
+    if (!s) continue;
+    const next = cloneMarketForClobToken(s, tid, lookup);
+    if (merged == null) merged = { ...lookup };
+    merged[tid] = next;
+  }
+  if (merged) {
+    useAppStore.setState({ marketLookup: merged });
+  }
 }
 
 const BIDASK_BATCH_CHUNK = 80;

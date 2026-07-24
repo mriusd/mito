@@ -15,6 +15,10 @@ import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLo
 import { useLiveBidAskLookupSubset } from '../../hooks/useLiveBidAskLookupSubset';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
+import {
+  isWsBidAskStubMarket,
+  resolveCanonicalMarketForToken,
+} from '../../lib/bidAskMarketLookup';
 import { TpoVirtualTableBody } from './TpoVirtualTableBody';
 import { TpoColorCodedSize, TpoColorCodedText } from './TpoColorCodedSize';
 import {
@@ -533,22 +537,31 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const handleMarketClick = useCallback(async (tokenId: string, hint?: TpoSelectHint) => {
     const tid = String(tokenId || '').trim();
     if (!tid) return;
+    // Prefer Gamma seed over quote-only `ws:` stubs (empty question → sidebar "Unknown").
+    const fromCanonical = resolveCanonicalMarketForToken(tid);
     const fromLookup = lookupMarketByTokenId(tid, marketLookup);
+    const market =
+      fromCanonical && !isWsBidAskStubMarket(fromCanonical)
+        ? fromCanonical
+        : fromLookup && !isWsBidAskStubMarket(fromLookup)
+          ? fromLookup
+          : null;
     const outcomeHint = (hint?.outcome || '').toUpperCase();
     const sideFromHint = outcomeHint === 'NO' || outcomeHint === 'DOWN' ? 'NO' : 'YES';
-    const mid = canonicalConditionKey(
-      String(hint?.marketId || fromLookup?.conditionId || fromLookup?.id || '').trim(),
-    );
+    const midRaw = String(hint?.marketId || market?.conditionId || '').trim();
+    const mid = midRaw && !midRaw.startsWith('ws:') && !midRaw.startsWith('expired:')
+      ? canonicalConditionKey(midRaw)
+      : '';
 
-    const open = (market: Market, side: 'YES' | 'NO') => {
-      setSelectedMarket(market);
+    const open = (m: Market, side: 'YES' | 'NO') => {
+      setSelectedMarket(m);
       setSidebarOutcome(side);
       setSidebarOpen(true);
     };
 
-    if (fromLookup) {
+    if (market) {
       const outcome = getTokenOutcome(tid, marketLookup);
-      open(fromLookup as Market, outcome === 'NO' ? 'NO' : sideFromHint);
+      open(market as Market, outcome === 'NO' ? 'NO' : sideFromHint);
       return;
     }
 
@@ -578,7 +591,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         clobTokenIds.push(tid);
       }
     }
-    // Never use raw token id as conditionId — that breaks subscribeWalletMarket / My Trades.
+    // Never use raw token id / ws: stub as conditionId — breaks subscribeWalletMarket / URL / title.
     const stub: Market = {
       id: mid || `expired:${tid}`,
       conditionId: mid || undefined,

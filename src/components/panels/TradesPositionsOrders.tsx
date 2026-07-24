@@ -1265,10 +1265,10 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       <col style={{ width: 98 }} />
       <col style={{ width: 44 }} />
       <col style={{ width: 32 }} />
-      <col style={{ width: 48 }} />
-      <col style={{ width: 48 }} />
-      <col style={{ width: 48 }} />
       <col style={{ width: 52 }} />
+      <col style={{ width: 48 }} />
+      <col style={{ width: 48 }} />
+      <col style={{ width: 48 }} />
       <col style={{ width: 52 }} />
       <col style={{ width: 56 }} />
       <col style={{ width: 52 }} />
@@ -1631,6 +1631,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               </th>
               <th
                 className={`${nHSortCls} text-right`}
+                onClick={() => toggleOrdSort('size')}
+                title="Sort by size"
+              >
+                Size{ordSortArrow('size')}
+              </th>
+              <th
+                className={`${nHSortCls} text-right`}
                 onClick={() => toggleOrdSort('price')}
                 title="Sort by price"
               >
@@ -1638,13 +1645,6 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
               </th>
               <th className={`${nHCls} text-right`}>Bid</th>
               <th className={`${nHCls} text-right`}>Ask</th>
-              <th
-                className={`${nHSortCls} text-right`}
-                onClick={() => toggleOrdSort('size')}
-                title="Sort by size"
-              >
-                Size{ordSortArrow('size')}
-              </th>
               <th
                 className={`${nHSortCls} text-right`}
                 onClick={() => toggleOrdSort('filled')}
@@ -1690,6 +1690,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     >{o.marketName}</td>
                     <td className={`${cCls} font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
                     <td className={`${cCls} font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
+                    <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.round(o.size)} /></td>
                     <td className={`${nCls} text-right`}><TpoColorCodedText text={`${o.price.toFixed(1)}¢`} /></td>
                     <td
                       className={`${nCls} text-right ${bidTint < 0 ? 'text-green-300/90' : ''}`}
@@ -1703,7 +1704,6 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     >
                       {formatQuoteCents(askProb)}
                     </td>
-                    <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.round(o.size)} /></td>
                     <td className={`${nCls} text-right text-gray-500`}>{Math.round(o.filled).toLocaleString()}</td>
                     <td className={`${nCls} text-right`}>
                       <TpoColorCodedText

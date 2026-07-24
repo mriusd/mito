@@ -104,7 +104,8 @@ export function useLiveTradeCandles({
         const gex = parseGexAssetSnapshot(k[18]) ?? prev?.gex;
         const gexBinance = parseGexAssetSnapshot(k[22]) ?? prev?.gexBinance;
         const gexOkx = parseGexAssetSnapshot(k[23]) ?? prev?.gexOkx;
-        const weather = parseCandleWeather(k[24]) ?? prev?.weather;
+        // REST row is authoritative — never inherit weather from a prior map entry.
+        const weather = parseCandleWeather(k[24]);
         const enrichment = mergeCandleBsEnrichment(parseHttpKlineEnrichment(k), prev?.enrichment);
         map.set(openTime, {
           time: openTime,

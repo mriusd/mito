@@ -24,15 +24,8 @@ function WeatherBucketBars({
     () => [...buckets].sort((a, b) => getTempSortValue(a.temp) - getTempSortValue(b.temp)),
     [buckets],
   );
-  const maxPct = useMemo(() => {
-    let m = 0.05;
-    for (const b of sorted) {
-      const model = b.modelProb ?? 0;
-      const mid = b.mid ?? b.bid ?? b.ask ?? 0;
-      m = Math.max(m, model, mid);
-    }
-    return m;
-  }, [sorted]);
+  // Fixed 100% scale — do not auto-fit to tallest bar.
+  const maxPct = 1;
   const trackPx = 72;
 
   if (sorted.length === 0) {

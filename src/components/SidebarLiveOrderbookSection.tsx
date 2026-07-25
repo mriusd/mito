@@ -98,15 +98,14 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
         >
           {liveOrderbookExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </button>
-        <span className="shrink-0">Live Orderbook</span>
+        <span className="shrink-0">Orderbook</span>
         <SidebarDataSourceBadge source="polymarket" />
         {midCents != null ? (
           <span
-            className="min-w-0 truncate text-[10px] tabular-nums text-gray-300"
+            className="min-w-0 truncate text-[10px] tabular-nums font-semibold text-gray-200"
             title="Mid = (best bid + best ask) / 2 for displayed book"
           >
-            <span className="text-gray-500">Mid</span>{' '}
-            <span className="font-semibold text-gray-200">{midCents.toFixed(1)}¢</span>
+            {midCents.toFixed(1)}¢
           </span>
         ) : null}
         <div

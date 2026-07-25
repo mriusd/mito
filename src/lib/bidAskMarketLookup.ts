@@ -192,8 +192,12 @@ function flushPendingBidAskToStore() {
     let merged = lookup;
     let bumped = false;
     for (const id of ids) {
-      const next = snapshot[id];
+      let next = snapshot[id];
       const baseline = lookup[id];
+      // Never replace a real Gamma row with a quote-only stub (kills titles → TPO shows token ints).
+      if (baseline && !isWsBidAskStubMarket(baseline) && isWsBidAskStubMarket(next)) {
+        next = { ...baseline, ...pickWsFieldsFromMarket(next) };
+      }
       if (bidAskWsRowEqual(baseline, next)) continue;
       if (merged === lookup) merged = { ...lookup };
       merged[id] = next;
@@ -323,16 +327,39 @@ export function resolveCanonicalMarketForToken(tokenId: string): Market | undefi
   const id = String(tokenId || '').trim();
   if (!id) return undefined;
   const state = useAppStore.getState();
-  const pending = pendingPatch[id];
-  const seed = getOrBuildSeedIndex().get(id);
-  if (seed) {
-    const prevLookup = pending
-      ? { ...state.marketLookup, [id]: pending }
-      : state.marketLookup;
-    return cloneMarketForClobToken(seed, id, prevLookup);
+  const seedMap = getOrBuildSeedIndex();
+  const candidates = [id];
+  // Bid/ask keys and Gamma clob ids sometimes differ by leading zeros / decimal form.
+  try {
+    const norm = BigInt(id).toString();
+    if (norm !== id) candidates.push(norm);
+  } catch {
+    /* not an int token */
   }
-  if (pending) return pending;
-  return state.marketLookup[id];
+
+  for (const key of candidates) {
+    const seed = seedMap.get(key);
+    if (!seed) continue;
+    const pending = pendingPatch[key] ?? pendingPatch[id];
+    const prevLookup = pending
+      ? { ...state.marketLookup, [key]: pending, [id]: pending }
+      : state.marketLookup;
+    return cloneMarketForClobToken(seed, key, prevLookup);
+  }
+
+  for (const key of candidates) {
+    const pending = pendingPatch[key];
+    if (pending && !isWsBidAskStubMarket(pending)) return pending;
+  }
+  for (const key of candidates) {
+    const row = state.marketLookup[key];
+    if (row && !isWsBidAskStubMarket(row)) return row;
+  }
+  for (const key of candidates) {
+    if (pendingPatch[key]) return pendingPatch[key];
+    if (state.marketLookup[key]) return state.marketLookup[key];
+  }
+  return undefined;
 }
 
 /** Seed row for WS bid/ask merge when token not yet in marketLookup (e.g. new up/down market). */
@@ -360,7 +387,14 @@ export function upgradeWsStubsInMarketLookup(): void {
   let merged: Record<string, Market> | null = null;
   for (const [tid, row] of Object.entries(lookup)) {
     if (!isWsBidAskStubMarket(row)) continue;
-    const s = seed.get(tid);
+    let s = seed.get(tid);
+    if (!s) {
+      try {
+        s = seed.get(BigInt(tid).toString());
+      } catch {
+        s = undefined;
+      }
+    }
     if (!s) continue;
     const next = cloneMarketForClobToken(s, tid, lookup);
     if (merged == null) merged = { ...lookup };

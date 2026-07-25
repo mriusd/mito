@@ -1100,12 +1100,19 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   // Process orders — no live quote dep (5k orders × quote ticks freezes UI).
   const processedOrders = useMemo(() => {
     const fullLookup = useAppStore.getState().marketLookup;
+    const resolveOrderMarket = (tid: string) => {
+      const canonical = resolveCanonicalMarketForToken(tid);
+      if (canonical && !isWsBidAskStubMarket(canonical)) return canonical;
+      const fromLookup = lookupMarketByTokenId(tid, fullLookup);
+      if (fromLookup && !isWsBidAskStubMarket(fromLookup)) return fromLookup;
+      return canonical || fromLookup;
+    };
     return orders
       .filter((o) => {
         const tid = getOrderClobTokenId(o);
         if (assetFilter !== 'ALL') {
-          const market = lookupMarketByTokenId(tid, fullLookup);
-          if (!market) return true;
+          const market = resolveOrderMarket(tid);
+          if (!market || isWsBidAskStubMarket(market)) return true;
           const asset = extractAssetFromMarket(market);
           if (asset) {
             if (asset !== assetFilter) return false;
@@ -1120,13 +1127,18 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       })
       .map((order) => {
         const tid = getOrderClobTokenId(order);
-        const market = lookupMarketByTokenId(tid, fullLookup);
-        let asset = market ? extractAssetFromMarket(market) || '' : '';
-        const rowDate = resolveTpoRowDate(market, { question: order.outcome, eventSlug: market?.eventSlug, endDate: market?.endDate ?? null });
+        const market = resolveOrderMarket(tid);
+        let asset = market && !isWsBidAskStubMarket(market) ? extractAssetFromMarket(market) || '' : '';
+        const question = (market?.question || market?.eventTitle || '').trim();
+        const rowDate = resolveTpoRowDate(market, {
+          question: question || order.outcome,
+          eventSlug: market?.eventSlug,
+          endDate: market?.endDate ?? null,
+        });
         const endDate = rowDate.sortDate;
-        const marketName = getMarketPriceCondition(null, tid, fullLookup);
+        const marketName = getMarketPriceCondition(question || null, tid, fullLookup);
         const mktLabel = formatTpoMarketLabel(asset, marketName);
-        const outcome = getTokenOutcome(tid, fullLookup) || '';
+        const outcome = getTokenOutcome(tid, fullLookup) || order.outcome || '';
         const price = parseFloat(order.price) * 100;
         const size = parseFloat(order.original_size || order.size);
         const filled = parseFloat(order.size_matched || '0');
@@ -1152,7 +1164,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           filled: Number.isFinite(filled) ? filled : 0,
           value: Number.isFinite(value) ? value : 0,
           timeMs,
-          marketId: market?.id,
+          marketId: market && !isWsBidAskStubMarket(market) ? market.id : market?.conditionId,
         };
       });
   }, [orders, assetFilter, ordersFilter]);

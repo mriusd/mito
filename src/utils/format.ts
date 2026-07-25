@@ -299,13 +299,18 @@ export function getMarketPriceCondition(question: string | null | undefined, tok
   let groupItemTitle = '';
   if (tokenId && marketLookup) {
     const market = lookupMarketByTokenId(tokenId, marketLookup);
-    if (market) {
-      if (!question) question = market.question || market.eventTitle || '';
+    // Ignore quote-only stubs (empty question) — otherwise callers show raw token ints.
+    const q = (market?.question || market?.eventTitle || '').trim();
+    if (market && q) {
+      if (!question) question = q;
       eventSlug = market.eventSlug || '';
       groupItemTitle = market.groupItemTitle || '';
+    } else if (market) {
+      eventSlug = eventSlug || market.eventSlug || '';
+      groupItemTitle = groupItemTitle || market.groupItemTitle || '';
     }
   }
-  if (!question) return tokenId?.slice(0, 8) || '?';
+  if (!question) return '?';
 
   const weatherLabel = formatWeatherMarketLabel(question, eventSlug, groupItemTitle);
   if (weatherLabel) return weatherLabel;
@@ -371,14 +376,18 @@ export function shortenMarketName(
   groupItemTitle?: string,
 ): string {
   if (!question && tokenId && marketLookup) {
-    const market = marketLookup[tokenId];
-    if (market) {
-      question = market.question || market.eventTitle || '';
+    const market = lookupMarketByTokenId(tokenId, marketLookup);
+    const q = (market?.question || market?.eventTitle || '').trim();
+    if (q) {
+      question = q;
+      eventSlug = eventSlug || market?.eventSlug;
+      groupItemTitle = groupItemTitle || market?.groupItemTitle;
+    } else if (market) {
       eventSlug = eventSlug || market.eventSlug;
       groupItemTitle = groupItemTitle || market.groupItemTitle;
     }
   }
-  if (!question) return tokenId?.slice(0, 12) || 'Unknown';
+  if (!question) return 'Unknown';
 
   const weatherLabel = formatWeatherMarketLabel(question, eventSlug, groupItemTitle);
   if (weatherLabel) return weatherLabel;

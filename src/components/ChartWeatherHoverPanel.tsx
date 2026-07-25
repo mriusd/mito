@@ -15,11 +15,9 @@ function fracToPx(frac: number, maxPct: number, trackPx: number): number {
 
 function WeatherBucketBars({
   buckets,
-  forecastTempC,
   metric,
 }: {
   buckets: CandleWeatherBucket[];
-  forecastTempC: number | null;
   metric: string;
 }) {
   const sorted = useMemo(
@@ -69,18 +67,11 @@ function WeatherBucketBars({
           const askPx = fracToPx(b.ask ?? 0, maxPct, trackPx);
           const midPx = b.mid != null ? fracToPx(b.mid, maxPct, trackPx) : null;
           const topPx = Math.max(bidPx, askPx, midPx ?? 0);
-          const forecastHighlight =
-            forecastTempC != null &&
-            Math.abs(getTempSortValue(b.temp) - Math.floor(forecastTempC)) < 2;
           return (
             <div
               key={`bar-${b.temp}`}
               className={`relative flex-1 min-w-0 h-full flex gap-0.5 items-end ${
-                b.selected
-                  ? 'ring-1 ring-white/70 rounded'
-                  : forecastHighlight
-                    ? 'ring-1 ring-amber-400/80 rounded'
-                    : ''
+                b.selected ? 'ring-1 ring-white/70 rounded' : ''
               }`}
               title={`${b.temp} · model ${b.modelProb != null ? `${(b.modelProb * 100).toFixed(1)}%` : '—'} · mid ${
                 b.mid != null ? `${(b.mid * 100).toFixed(1)}%` : '—'
@@ -117,7 +108,7 @@ function WeatherBucketBars({
                     ) : null}
                     {midPx != null && midPx > 0 ? (
                       <div
-                        className="absolute left-0 right-0 h-[2px] bg-white/90"
+                        className="absolute left-0 right-0 z-[5] h-[2px] bg-gray-900"
                         style={{ bottom: Math.max(0, midPx - 1) }}
                       />
                     ) : null}
@@ -151,10 +142,6 @@ function WeatherBucketBars({
 export function ChartWeatherHoverPanel({ weather }: { weather: CandleWeatherSnapshot }) {
   const obs = useMemo(() => candleWeatherToObservations(weather), [weather]);
   const unit: WeatherTempUnit = weather.unit === 'F' || weather.obsTempUnit === 'F' ? 'F' : 'C';
-  const forecastTempC =
-    weather.metric === 'low'
-      ? (weather.forecastLowC ?? null)
-      : (weather.forecastHighC ?? null);
 
   const buckets = useMemo(() => {
     const raw = weather.market_buckets ?? [];
@@ -179,7 +166,7 @@ export function ChartWeatherHoverPanel({ weather }: { weather: CandleWeatherSnap
           {conf != null ? ` · ${(conf * 100).toFixed(0)}%` : ''}
         </div>
       </div>
-      <WeatherBucketBars buckets={buckets} forecastTempC={forecastTempC} metric={weather.metric} />
+      <WeatherBucketBars buckets={buckets} metric={weather.metric} />
       {obs ? (
         <div className="h-[140px] min-h-[140px] rounded border border-gray-700/80 overflow-hidden bg-gray-950/40">
           <TemperatureChart data={obs} unit={unit} />

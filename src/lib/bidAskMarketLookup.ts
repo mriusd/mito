@@ -72,6 +72,13 @@ export type BidAskWsItem = Record<string, unknown> & {
   usdcVolume?: number;
   volume?: number;
   wmpVolumeSum?: number;
+  /** Backend tokenRegistry / onchain prep — fills empty `ws:` stubs. */
+  marketId?: string;
+  question?: string;
+  eventSlug?: string;
+  endDate?: string;
+  conditionId?: string;
+  slug?: string;
 };
 
 function mergeWsItemOntoMarket(seed: Market, item: BidAskWsItem): Market {
@@ -112,6 +119,41 @@ function mergeWsItemOntoMarket(seed: Market, item: BidAskWsItem): Market {
   const vol = item.usdcVolume ?? item.volume;
   if (typeof vol === 'number' && Number.isFinite(vol) && vol !== seed.volume) {
     patch.volume = vol;
+    changed = true;
+  }
+
+  // Backend title/ids — fill empty stubs (upgrade `ws:` id → Gamma numeric id).
+  const q = typeof item.question === 'string' ? item.question.trim() : '';
+  if (q && q !== (seed.question || '').trim()) {
+    patch.question = q;
+    changed = true;
+  }
+  const mid = typeof item.marketId === 'string' ? item.marketId.trim() : '';
+  if (
+    mid &&
+    (isWsBidAskStubMarket(seed) || !(seed.id || '').trim() || String(seed.id).startsWith('ws:'))
+  ) {
+    patch.id = mid;
+    changed = true;
+  }
+  const cond = typeof item.conditionId === 'string' ? item.conditionId.trim() : '';
+  if (cond && cond !== (seed.conditionId || '').trim()) {
+    patch.conditionId = cond;
+    changed = true;
+  }
+  const es = typeof item.eventSlug === 'string' ? item.eventSlug.trim() : '';
+  if (es && es !== (seed.eventSlug || '').trim()) {
+    patch.eventSlug = es;
+    changed = true;
+  }
+  const ed = typeof item.endDate === 'string' ? item.endDate.trim() : '';
+  if (ed && ed !== (seed.endDate || '').trim()) {
+    patch.endDate = ed;
+    changed = true;
+  }
+  const slug = typeof item.slug === 'string' ? item.slug.trim() : '';
+  if (slug && slug !== ((seed as { slug?: string }).slug || '').trim()) {
+    (patch as { slug?: string }).slug = slug;
     changed = true;
   }
 

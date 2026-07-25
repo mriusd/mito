@@ -43,6 +43,7 @@ import {
   buildLiveTradeChartOption,
   centsFromPixelY,
   findCandleIndexAtPixel,
+  resolveCandleIndexFromAxisValue,
   type LiveTradeDataZoomState,
 } from '../lib/liveTradeChartEchartsOption';
 
@@ -186,6 +187,7 @@ export function LiveTradeChart({
   } | null>(null);
   const [hoverObPos, setHoverObPos] = useState<{ left: number; top: number } | null>(null);
   const hoverObPopupRef = useRef<HTMLDivElement>(null);
+  const pointerClientRef = useRef({ x: 0, y: 0 });
   const orderDragLevelRef = useRef<SidebarChartOrderLevel | null>(null);
   const [orderDrag, setOrderDrag] = useState<{ orderId: string; chartCents: number } | null>(null);
   const [orderHandleHover, setOrderHandleHover] = useState(false);
@@ -415,30 +417,10 @@ export function LiveTradeChart({
     orderDragLevelRef.current = null;
   }, [sidebarChartOrderLevels, tokenId]);
 
-  const handleMouseMove = useCallback(
-    (e: ReactMouseEvent<HTMLDivElement>) => {
-      const rect = wrapRef.current?.getBoundingClientRect();
-      const chart = getChart();
-      if (!rect || !chart) return;
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+  const candleTimes = useMemo(() => candles.map((c) => c.time), [candles]);
 
-      if (chartOrderDragEnabled && !orderDrag) {
-        const onHandle = !!hitTestOrderHandle(mx, my);
-        setOrderHandleHover(onHandle);
-        if (onHandle) {
-          setHoverOhlcv(null);
-          setHoverOb(null);
-          return;
-        }
-      }
-      if (orderDrag) {
-        setHoverOhlcv(null);
-        setHoverOb(null);
-        return;
-      }
-
-      const idx = findCandleIndexAtPixel(chart, mx);
+  const applyCandleHover = useCallback(
+    (idx: number | null, clientX: number, clientY: number) => {
       if (idx == null || idx < 0 || idx >= candles.length) {
         setHoverOhlcv(null);
         setHoverOb(null);
@@ -472,8 +454,8 @@ export function LiveTradeChart({
         return;
       }
       setHoverOb({
-        clientX: e.clientX,
-        clientY: e.clientY,
+        clientX,
+        clientY,
         ...(hasPolyOb ? { ob: nearest.ob } : {}),
         ...(hasCexOb ? { cexOb: nearest.cexOb } : {}),
         ...(hasGex ? { gex: nearest.gex } : {}),
@@ -484,7 +466,60 @@ export function LiveTradeChart({
         enrichment: nearest.enrichment,
       });
     },
-    [getChart, candleObHover, chartOrderDragEnabled, orderDrag, hitTestOrderHandle, candles, interval],
+    [candles, candleObHover, interval],
+  );
+
+  const handleMouseMove = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>) => {
+      pointerClientRef.current = { x: e.clientX, y: e.clientY };
+      const rect = wrapRef.current?.getBoundingClientRect();
+      const chart = getChart();
+      if (!rect || !chart) return;
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+      if (chartOrderDragEnabled && !orderDrag) {
+        const onHandle = !!hitTestOrderHandle(mx, my);
+        setOrderHandleHover(onHandle);
+        if (onHandle) {
+          setHoverOhlcv(null);
+          setHoverOb(null);
+          return;
+        }
+      }
+      if (orderDrag) {
+        setHoverOhlcv(null);
+        setHoverOb(null);
+        return;
+      }
+
+      const idx = findCandleIndexAtPixel(chart, mx, candleTimes, my);
+      applyCandleHover(idx, e.clientX, e.clientY);
+    },
+    [
+      getChart,
+      chartOrderDragEnabled,
+      orderDrag,
+      hitTestOrderHandle,
+      candleTimes,
+      applyCandleHover,
+    ],
+  );
+
+  const onUpdateAxisPointer = useCallback(
+    (event: {
+      axesInfo?: { axisDim?: string; axisIndex?: number; value?: unknown }[];
+    }) => {
+      if (orderDrag) return;
+      const xInfo =
+        event.axesInfo?.find((a) => a.axisDim === 'x' && (a.axisIndex == null || a.axisIndex === 0)) ??
+        event.axesInfo?.find((a) => a.axisDim === 'x');
+      if (!xInfo || xInfo.value == null) return;
+      const idx = resolveCandleIndexFromAxisValue(xInfo.value, candleTimes);
+      const { x, y } = pointerClientRef.current;
+      applyCandleHover(idx, x, y);
+    },
+    [orderDrag, candleTimes, applyCandleHover],
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -715,6 +750,7 @@ export function LiveTradeChart({
           onEvents={{
             datazoom: onDataZoom,
             finished: syncOrderHandles,
+            updateAxisPointer: onUpdateAxisPointer,
           }}
         />
         {hoverOhlcv ? (

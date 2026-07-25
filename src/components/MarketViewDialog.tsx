@@ -9,10 +9,16 @@ import { MarketViewMarketsPanel, marketViewUsesGrid, MarketViewMarketsLegend } f
 import { MarketViewColumnLoadBar } from './MarketViewColumnLoadBar';
 import { MarketViewTradersTable } from './MarketViewTradersTable';
 import { WalletMarketTradesSection } from './WalletMarketTradesSection';
+import { WEATHER_CITIES } from '../lib/weatherCities';
+import { type WeatherMetric } from '../lib/weatherMarketsGrid';
 
 const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 const TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
+const MARKET_VIEW_MODES = ['crypto', 'weather'] as const;
+const WEATHER_METRICS = ['high', 'low'] as const;
 const MARKETS_PAGE_SIZE = 100;
+/** Onchain weather rows per city (~hundreds); API max is 1000. */
+const WEATHER_MARKETS_PAGE_SIZE = 1000;
 const TRADERS_PAGE_SIZE = 100;
 const MARKET_VIEW_TRADERS_SORT_COL_KEY = 'polybot-market-view-traders-sort-col';
 const MARKET_VIEW_TRADERS_SORT_ORDER_KEY = 'polybot-market-view-traders-pnl-order';
@@ -57,6 +63,8 @@ function persistMarketViewTradersSortOrder(order: 'asc' | 'desc'): void {
 
 type Asset = (typeof ASSETS)[number];
 type Timeframe = (typeof TIMEFRAMES)[number];
+type MarketViewMode = (typeof MARKET_VIEW_MODES)[number];
+type LoadedTimeframe = Timeframe | 'weather';
 
 function onchainMarketToMarket(m: OnchainMarketListItem): Market {
   const id = (m.conditionId || '').trim();
@@ -66,7 +74,50 @@ function onchainMarketToMarket(m: OnchainMarketListItem): Market {
     question: (m.question || '').trim() || id,
     endDate: (m.endDate || '').trim(),
     eventSlug: m.eventSlug,
-    clobTokenIds: [],
+    groupItemTitle: m.squareLabel,
+    clobTokenIds: Array.isArray(m.clobTokenIds) ? m.clobTokenIds : [],
+  };
+}
+
+function weatherMetricNeedle(metric: WeatherMetric): string {
+  return metric === 'high' ? 'highest-temperature' : 'lowest-temperature';
+}
+
+/** Temp bucket label for Market View squares (from question, else slug). */
+function weatherSquareLabelFromOnchain(m: OnchainMarketListItem): string {
+  const q = (m.question || '').trim();
+  let mm = q.match(/be\s+between\s+([\d.]+-[\d.]+°[CF])/i);
+  if (mm) return mm[1];
+  mm = q.match(/be\s+([\d.]+°[CF]\s+or\s+(?:below|higher|lower|above))/i);
+  if (mm) return mm[1];
+  mm = q.match(/be\s+([\d.]+°[CF])/i);
+  if (mm) return mm[1];
+
+  const slug = (m.slug || '').trim().toLowerCase();
+  const tail = slug.match(/-(\d+(?:-\d+)?[cf]|[\d]+for(?:below|higher))$/i);
+  if (tail) {
+    const t = tail[1];
+    const below = t.match(/^(\d+)forbelow$/i);
+    if (below) return `${below[1]}°F or below`;
+    const higher = t.match(/^(\d+)forhigher$/i);
+    if (higher) return `${higher[1]}°F or higher`;
+    const rangeF = t.match(/^(\d+-\d+)f$/i);
+    if (rangeF) return `${rangeF[1]}°F`;
+    const rangeC = t.match(/^(\d+-\d+)c$/i);
+    if (rangeC) return `${rangeC[1]}°C`;
+    const oneF = t.match(/^(\d+)f$/i);
+    if (oneF) return `${oneF[1]}°F`;
+    const oneC = t.match(/^(\d+)c$/i);
+    if (oneC) return `${oneC[1]}°C`;
+  }
+  return '';
+}
+
+function annotateWeatherOnchainItem(m: OnchainMarketListItem): OnchainMarketListItem {
+  return {
+    ...m,
+    timeframe: 'weather',
+    squareLabel: weatherSquareLabelFromOnchain(m) || m.squareLabel,
   };
 }
 
@@ -88,10 +139,16 @@ function mergeMarketsById(...groups: OnchainMarketListItem[][]): OnchainMarketLi
 
 export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const openWalletInfoOverlay = useAppStore((s) => s.openWalletInfoOverlay);
+  const [draftMode, setDraftMode] = useState<MarketViewMode>('crypto');
   const [draftAsset, setDraftAsset] = useState<Asset>('BTC');
   const [draftTimeframe, setDraftTimeframe] = useState<Timeframe>('5m');
+  const [draftCity, setDraftCity] = useState(WEATHER_CITIES[0]?.slug ?? 'london');
+  const [draftMetric, setDraftMetric] = useState<WeatherMetric>('high');
+  const [loadedMode, setLoadedMode] = useState<MarketViewMode | null>(null);
   const [loadedAsset, setLoadedAsset] = useState<Asset | null>(null);
-  const [loadedTimeframe, setLoadedTimeframe] = useState<Timeframe | null>(null);
+  const [loadedTimeframe, setLoadedTimeframe] = useState<LoadedTimeframe | null>(null);
+  const [loadedCity, setLoadedCity] = useState<string | null>(null);
+  const [loadedMetric, setLoadedMetric] = useState<WeatherMetric | null>(null);
 
   const [loadedMarkets, setLoadedMarkets] = useState<OnchainMarketListItem[]>([]);
   const [marketsOffset, setMarketsOffset] = useState(0);
@@ -123,6 +180,25 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
   }, [loadedMarkets, selectedMarketId]);
 
   const hasMoreMarkets = marketsTotal >= 0 && marketsOffset < marketsTotal;
+
+  const loadWeatherMarketsPage = useCallback(
+    async (city: string, metric: WeatherMetric, offset: number, append: boolean) => {
+      const needle = weatherMetricNeedle(metric);
+      const data = await fetchOnchainMarkets({
+        asset: city,
+        expired_only: false,
+        limit: WEATHER_MARKETS_PAGE_SIZE,
+        offset,
+      });
+      const batch = (data.markets ?? [])
+        .filter((m) => (m.eventSlug || '').includes(needle))
+        .map(annotateWeatherOnchainItem);
+      setMarketsTotal(data.total);
+      setMarketsOffset(offset + (data.count ?? (data.markets ?? []).length));
+      setLoadedMarkets((prev) => (append ? mergeMarketsById(prev, batch) : batch));
+    },
+    [],
+  );
 
   const loadMarketsPage = useCallback(
     async (asset: Asset, timeframe: Timeframe, offset: number, append: boolean) => {
@@ -170,14 +246,26 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
   );
 
   const onLoad = useCallback(() => {
-    setLoadedAsset(draftAsset);
-    setLoadedTimeframe(draftTimeframe);
+    setLoadedMode(draftMode);
+    if (draftMode === 'weather') {
+      setLoadedCity(draftCity);
+      setLoadedMetric(draftMetric);
+      setLoadedAsset(null);
+      setLoadedTimeframe('weather');
+    } else {
+      setLoadedAsset(draftAsset);
+      setLoadedTimeframe(draftTimeframe);
+      setLoadedCity(null);
+      setLoadedMetric(null);
+    }
     setMarketsError('');
     setLoadedMarkets([]);
     setMarketsOffset(0);
     setMarketsTotal(-1);
+    setSelectedMarketId(null);
+    setSelectedWallet(null);
     setMarketsLoadSeq((n) => n + 1);
-  }, [draftAsset, draftTimeframe]);
+  }, [draftMode, draftAsset, draftTimeframe, draftCity, draftMetric]);
 
   useEffect(() => {
     if (!open) {
@@ -196,21 +284,29 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
       setMarketsError('');
       setLoadingTrades(false);
       setMarketsLoadSeq(0);
+      setLoadedMode(null);
       setLoadedAsset(null);
       setLoadedTimeframe(null);
+      setLoadedCity(null);
+      setLoadedMetric(null);
+      setDraftMode('crypto');
       setDraftAsset('BTC');
       setDraftTimeframe('5m');
+      setDraftCity(WEATHER_CITIES[0]?.slug ?? 'london');
+      setDraftMetric('high');
       return;
     }
+    setDraftMode('crypto');
     setDraftAsset('BTC');
     setDraftTimeframe('5m');
+    setLoadedMode('crypto');
     setLoadedAsset('BTC');
     setLoadedTimeframe('5m');
     setMarketsLoadSeq((n) => n + 1);
   }, [open]);
 
   useEffect(() => {
-    if (!open || !loadedAsset || !loadedTimeframe) {
+    if (!open || !loadedMode || !loadedTimeframe) {
       setLoadedMarkets([]);
       setMarketsOffset(0);
       setMarketsTotal(-1);
@@ -218,10 +314,31 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
       setMarketsError('');
       return;
     }
+
+    if (loadedMode === 'weather') {
+      if (!loadedCity || !loadedMetric) return;
+      let cancelled = false;
+      setLoadingMarkets(true);
+      setMarketsError('');
+      void loadWeatherMarketsPage(loadedCity, loadedMetric, 0, false)
+        .catch((e) => {
+          if (cancelled) return;
+          setLoadedMarkets([]);
+          setMarketsError(e instanceof Error ? e.message : 'Failed to load weather markets');
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingMarkets(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!loadedAsset) return;
     let cancelled = false;
     setLoadingMarkets(true);
     setMarketsError('');
-    void loadMarketsPage(loadedAsset, loadedTimeframe, 0, false)
+    void loadMarketsPage(loadedAsset, loadedTimeframe as Timeframe, 0, false)
       .catch((e) => {
         if (cancelled) return;
         setLoadedMarkets([]);
@@ -233,13 +350,37 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
     return () => {
       cancelled = true;
     };
-  }, [open, loadedAsset, loadedTimeframe, marketsLoadSeq, loadMarketsPage]);
+  }, [
+    open,
+    loadedMode,
+    loadedAsset,
+    loadedTimeframe,
+    loadedCity,
+    loadedMetric,
+    marketsLoadSeq,
+    loadMarketsPage,
+    loadWeatherMarketsPage,
+  ]);
 
   const onLoadMoreMarkets = useCallback(() => {
-    if (!loadedAsset || !loadedTimeframe || loadingMoreMarkets || loadingMarkets || !hasMoreMarkets) return;
+    if (loadingMoreMarkets || loadingMarkets || !hasMoreMarkets) return;
+    if (loadedMode === 'weather') {
+      if (!loadedCity || !loadedMetric) return;
+      setLoadingMoreMarkets(true);
+      setMarketsError('');
+      void loadWeatherMarketsPage(loadedCity, loadedMetric, marketsOffset, true)
+        .catch((e) => {
+          setMarketsError(e instanceof Error ? e.message : 'Failed to load more markets');
+        })
+        .finally(() => {
+          setLoadingMoreMarkets(false);
+        });
+      return;
+    }
+    if (!loadedAsset || !loadedTimeframe) return;
     setLoadingMoreMarkets(true);
     setMarketsError('');
-    void loadMarketsPage(loadedAsset, loadedTimeframe, marketsOffset, true)
+    void loadMarketsPage(loadedAsset, loadedTimeframe as Timeframe, marketsOffset, true)
       .catch((e) => {
         setMarketsError(e instanceof Error ? e.message : 'Failed to load more markets');
       })
@@ -247,13 +388,17 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
         setLoadingMoreMarkets(false);
       });
   }, [
+    loadedMode,
     loadedAsset,
     loadedTimeframe,
+    loadedCity,
+    loadedMetric,
     loadingMoreMarkets,
     loadingMarkets,
     hasMoreMarkets,
     marketsOffset,
     loadMarketsPage,
+    loadWeatherMarketsPage,
   ]);
 
   useEffect(() => {
@@ -371,33 +516,79 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
         <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 py-2 border-b border-gray-700 bg-gray-900/80">
           <div className="text-sm font-bold text-yellow-400 mr-2">Market View</div>
           <label className="flex items-center gap-1 text-[10px] text-gray-400">
-            Asset
+            Type
             <select
               className="bg-gray-900 border border-gray-600 rounded px-1.5 py-0.5 text-[11px] text-white"
-              value={draftAsset}
-              onChange={(e) => setDraftAsset(e.target.value as Asset)}
+              value={draftMode}
+              onChange={(e) => setDraftMode(e.target.value as MarketViewMode)}
             >
-              {ASSETS.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
+              <option value="crypto">Crypto</option>
+              <option value="weather">Weather</option>
             </select>
           </label>
-          <label className="flex items-center gap-1 text-[10px] text-gray-400">
-            Timeframe
-            <select
-              className="bg-gray-900 border border-gray-600 rounded px-1.5 py-0.5 text-[11px] text-white"
-              value={draftTimeframe}
-              onChange={(e) => setDraftTimeframe(e.target.value as Timeframe)}
-            >
-              {TIMEFRAMES.map((tf) => (
-                <option key={tf} value={tf}>
-                  {tf}
-                </option>
-              ))}
-            </select>
-          </label>
+          {draftMode === 'crypto' ? (
+            <>
+              <label className="flex items-center gap-1 text-[10px] text-gray-400">
+                Asset
+                <select
+                  className="bg-gray-900 border border-gray-600 rounded px-1.5 py-0.5 text-[11px] text-white"
+                  value={draftAsset}
+                  onChange={(e) => setDraftAsset(e.target.value as Asset)}
+                >
+                  {ASSETS.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-1 text-[10px] text-gray-400">
+                Timeframe
+                <select
+                  className="bg-gray-900 border border-gray-600 rounded px-1.5 py-0.5 text-[11px] text-white"
+                  value={draftTimeframe}
+                  onChange={(e) => setDraftTimeframe(e.target.value as Timeframe)}
+                >
+                  {TIMEFRAMES.map((tf) => (
+                    <option key={tf} value={tf}>
+                      {tf}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="flex items-center gap-1 text-[10px] text-gray-400">
+                City
+                <select
+                  className="bg-gray-900 border border-gray-600 rounded px-1.5 py-0.5 text-[11px] text-white max-w-[9rem]"
+                  value={draftCity}
+                  onChange={(e) => setDraftCity(e.target.value)}
+                >
+                  {WEATHER_CITIES.map((c) => (
+                    <option key={c.slug} value={c.slug}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-1 text-[10px] text-gray-400">
+                Metric
+                <select
+                  className="bg-gray-900 border border-gray-600 rounded px-1.5 py-0.5 text-[11px] text-white"
+                  value={draftMetric}
+                  onChange={(e) => setDraftMetric(e.target.value as WeatherMetric)}
+                >
+                  {WEATHER_METRICS.map((m) => (
+                    <option key={m} value={m}>
+                      {m === 'high' ? 'High' : 'Low'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
           <button
             type="button"
             className="rounded bg-blue-600 hover:bg-blue-500 px-2.5 py-0.5 text-[11px] font-bold text-white"
@@ -405,11 +596,17 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
           >
             Load
           </button>
-          {loadedAsset && loadedTimeframe ? (
+          {loadedMode === 'crypto' && loadedAsset && loadedTimeframe ? (
             <span className="text-[10px] text-gray-500 ml-1">
               {loadedAsset} · {loadedTimeframe} · {loadedMarkets.length}
               {marketsTotal >= 0 ? ` / ${marketsTotal} expired` : ''}
               {marketViewUsesGrid(loadedTimeframe) ? ' (+ open)' : ''}
+            </span>
+          ) : null}
+          {loadedMode === 'weather' && loadedCity && loadedMetric ? (
+            <span className="text-[10px] text-gray-500 ml-1">
+              {WEATHER_CITIES.find((c) => c.slug === loadedCity)?.label ?? loadedCity} ·{' '}
+              {loadedMetric === 'high' ? 'High' : 'Low'} · {loadedMarkets.length}
             </span>
           ) : null}
           <button type="button" className="ml-auto text-gray-500 hover:text-white" onClick={onClose} aria-label="Close">
@@ -421,8 +618,10 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
           <div className="bg-gray-900 rounded p-2 flex flex-col min-h-0 min-w-0 w-full overflow-hidden">
             <div className="text-[10px] text-gray-400 font-bold mb-0.5 shrink-0">Markets</div>
             <MarketViewColumnLoadBar active={loadingMarkets || loadingMoreMarkets} />
-            {marketViewUsesGrid(loadedTimeframe ?? draftTimeframe) ? <MarketViewMarketsLegend /> : null}
-            {!loadedAsset || !loadedTimeframe ? (
+            {marketViewUsesGrid(loadedTimeframe ?? (draftMode === 'weather' ? 'weather' : draftTimeframe)) ? (
+              <MarketViewMarketsLegend />
+            ) : null}
+            {!loadedMode || !loadedTimeframe ? (
               <div className="flex flex-1 items-center justify-center text-gray-500 text-[10px]">
                 Loading markets…
               </div>
@@ -433,7 +632,9 @@ export function MarketViewDialog({ open, onClose }: { open: boolean; onClose: ()
             ) : loadingMarkets && loadedMarkets.length === 0 ? (
               <div className="flex flex-1 min-h-0" />
             ) : loadedMarkets.length === 0 ? (
-              <div className="flex flex-1 items-center justify-center text-gray-500 text-[10px]">No expired markets.</div>
+              <div className="flex flex-1 items-center justify-center text-gray-500 text-[10px]">
+                {loadedMode === 'weather' ? 'No weather markets for this city.' : 'No expired markets.'}
+              </div>
             ) : (
               <MarketViewMarketsPanel
                 markets={loadedMarkets}

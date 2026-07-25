@@ -2,8 +2,13 @@ import { memo, useMemo } from 'react';
 import type { OnchainMarketListItem } from '../api';
 import { ASSET_COLORS, assetTickerFromQuestion, shortenUpDownMarketListCell } from '../utils/format';
 import { marketListEndDateTimeLocale } from './WalletLatestMarketsTradedTable';
+import {
+  compactTempBucketLabel,
+  getTempSortValue,
+  weatherEventDateISOFromSlug,
+} from '../lib/weatherMarketsGrid';
 
-const GRID_TIMEFRAMES = new Set(['5m', '15m', '1h', '4h']);
+const GRID_TIMEFRAMES = new Set(['5m', '15m', '1h', '4h', 'weather']);
 
 const TF_DURATION_MS: Record<string, number> = {
   '5m': 5 * 60 * 1000,
@@ -22,9 +27,18 @@ function marketSquareStatus(m: OnchainMarketListItem, timeframe: string, nowMs: 
   const endMs = parseMarketEndMs(m);
   if (!endMs) return 'expired_unresolved';
 
+  const outcome = (m.outcome || '').trim().toUpperCase();
+
+  // Weather: open event day = live (no intra-day TF window).
+  if (timeframe === 'weather') {
+    if (endMs > nowMs) return 'current';
+    if (outcome === 'YES' || outcome === 'UP') return 'resolved_yes';
+    if (outcome === 'NO' || outcome === 'DOWN') return 'resolved_no';
+    return 'expired_unresolved';
+  }
+
   const duration = TF_DURATION_MS[timeframe] ?? 0;
   const startMs = duration > 0 ? endMs - duration : endMs;
-  const outcome = (m.outcome || '').trim().toUpperCase();
 
   if (endMs > nowMs) {
     if (startMs <= nowMs) return 'current';
@@ -228,7 +242,59 @@ type MarketGridDay = {
   gridMarkets?: OnchainMarketListItem[];
 };
 
+function dayKeyFromWeatherMarket(m: OnchainMarketListItem): { dayKey: string; dayMs: number } | null {
+  const iso = weatherEventDateISOFromSlug(m.eventSlug || '');
+  if (iso) {
+    const [y, mo, da] = iso.split('-').map((x) => parseInt(x, 10));
+    if (Number.isFinite(y) && Number.isFinite(mo) && Number.isFinite(da)) {
+      return { dayKey: iso, dayMs: Date.UTC(y, mo - 1, da, 12, 0, 0) };
+    }
+  }
+  const endMs = parseMarketEndMs(m);
+  if (!endMs) return null;
+  return { dayKey: dayKeyFromMs(endMs), dayMs: endMs };
+}
+
+function weatherSquareLabel(m: OnchainMarketListItem): string {
+  const raw = (m.squareLabel || '').trim();
+  if (raw) return compactTempBucketLabel(raw);
+  return compactTempBucketLabel(m.question || '') || '?';
+}
+
+function buildWeatherMarketGridDays(markets: OnchainMarketListItem[]): MarketGridDay[] {
+  const byDay = new Map<string, { dayMs: number; markets: OnchainMarketListItem[] }>();
+  for (const m of markets) {
+    const slot = dayKeyFromWeatherMarket(m);
+    if (!slot) continue;
+    const bucket = byDay.get(slot.dayKey);
+    if (bucket) bucket.markets.push(m);
+    else byDay.set(slot.dayKey, { dayMs: slot.dayMs, markets: [m] });
+  }
+  const days: MarketGridDay[] = [];
+  for (const [dayKey, { dayMs, markets: dayMarkets }] of byDay) {
+    const gridMarkets = [...dayMarkets].sort(
+      (a, b) => getTempSortValue(a.squareLabel || '') - getTempSortValue(b.squareLabel || ''),
+    );
+    const title = /^\d{4}-\d{2}-\d{2}$/.test(dayKey)
+      ? (() => {
+          const [y, mo, da] = dayKey.split('-').map((x) => parseInt(x, 10));
+          return new Date(y, mo - 1, da).toLocaleDateString(undefined, {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          });
+        })()
+      : formatDayTitle(dayMs);
+    days.push({ dayKey, dayMs, title, gridMarkets });
+  }
+  days.sort((a, b) => b.dayMs - a.dayMs);
+  return days;
+}
+
 function buildMarketGridDays(markets: OnchainMarketListItem[], timeframe: string): MarketGridDay[] {
+  if (timeframe === 'weather') return buildWeatherMarketGridDays(markets);
+
   const byDay = new Map<string, { dayMs: number; markets: OnchainMarketListItem[] }>();
   for (const m of markets) {
     const endMs = parseMarketEndMs(m);
@@ -412,6 +478,7 @@ const MarketViewMarketsGrid = memo(function MarketViewMarketsGrid({
 
   const isHourRows = usesHourRowGrid(timeframe);
   const is1hTwoRow = uses1hTwoRowGrid(timeframe);
+  const isWeather = timeframe === 'weather';
 
   return (
     <div className="space-y-3">
@@ -424,7 +491,23 @@ const MarketViewMarketsGrid = memo(function MarketViewMarketsGrid({
               showTotal
             />
           </div>
-          {is1hTwoRow && day.oneHourGrid ? (
+          {isWeather ? (
+            <div className="flex flex-wrap gap-0.5">
+              {day.gridMarkets?.map((m) => {
+                const id = (m.conditionId || '').trim();
+                return (
+                  <MarketSquare
+                    key={id}
+                    market={m}
+                    selected={selectedLc === id.toLowerCase()}
+                    label={weatherSquareLabel(m)}
+                    status={marketSquareStatus(m, timeframe, nowMs)}
+                    onSelect={onSelectMarket}
+                  />
+                );
+              })}
+            </div>
+          ) : is1hTwoRow && day.oneHourGrid ? (
             <div className="space-y-1">
               <OneHourGridRow
                 hours={HOUR_1H_TOP}

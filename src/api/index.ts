@@ -751,6 +751,10 @@ export interface OnchainMarketListItem {
   endDate?: string;
   resolved?: number;
   outcome?: string;
+  /** Market View weather squares — temp bucket label (e.g. 18, 84-85). */
+  squareLabel?: string;
+  /** Preserve CLOB tokens when converting weather Market → list item. */
+  clobTokenIds?: string[];
 }
 
 export async function fetchOnchainMarkets(params: {

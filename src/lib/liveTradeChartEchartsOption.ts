@@ -133,9 +133,18 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
     itemStyle: { color: c.c >= c.o ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)' },
   }));
 
-  const markLineData: { yAxis: number; name?: string; lineStyle?: object; label?: object }[] = [];
+  /** Include in Y extent so auto-scale does not clip order/position lines. */
+  const levelPrices: number[] = [];
+  const markLineData: {
+    yAxis: number;
+    name?: string;
+    lineStyle?: object;
+    label?: object;
+  }[] = [];
   if (positionLevels?.length) {
     for (const lv of positionLevels) {
+      if (!Number.isFinite(lv.priceCents)) continue;
+      levelPrices.push(lv.priceCents);
       const color = lv.direction === 'long' ? '#2563eb' : '#facc15';
       markLineData.push({
         yAxis: lv.priceCents,
@@ -153,6 +162,8 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
   }
   if (orderLevels?.length) {
     for (const lv of orderLevels) {
+      if (!Number.isFinite(lv.priceCents)) continue;
+      levelPrices.push(lv.priceCents);
       const color = lv.direction === 'long' ? '#2563eb' : '#facc15';
       markLineData.push({
         yAxis: lv.priceCents,
@@ -323,17 +334,32 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
       borderColor: BULL,
       borderColor0: BEAR,
     },
-    markLine:
-      markLineData.length > 0
-        ? {
-            symbol: 'none',
-            animation: false,
-            data: markLineData,
-            silent: true,
-          }
-        : undefined,
     z: 3,
   });
+
+  // Dedicated series for order/position lines — candlestick markLine is unreliable / clipped
+  // when Y auto-scales to OHLC only.
+  if (markLineData.length > 0) {
+    const lastIdx = Math.max(0, categories.length - 1);
+    series.push({
+      type: 'line',
+      name: 'levels',
+      data: levelPrices.map((p) => [lastIdx, p]),
+      showSymbol: false,
+      symbolSize: 0,
+      lineStyle: { width: 0, opacity: 0 },
+      itemStyle: { opacity: 0 },
+      markLine: {
+        symbol: 'none',
+        animation: false,
+        silent: true,
+        data: markLineData,
+      },
+      z: 8,
+      silent: true,
+      clip: false,
+    });
+  }
 
   if (mathLine.length > 0) {
     series.push({
@@ -389,7 +415,8 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
       showContent: false,
       axisPointer: {
         type: 'cross',
-        snap: false,
+        // Snap to candle category so hover/popup bind to timeline column, not body Y.
+        snap: true,
         animation: false,
         crossStyle: {
           color: 'rgba(255,255,255,0.45)',
@@ -501,16 +528,28 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
       {
         type: 'value',
         scale: true,
-        // Fit visible candles (after X dataZoom filter); pad + clamp to 0–100¢.
+        // Fit visible candles + order/position levels; pad + clamp to 0–100¢.
         min: (ext: { min: number; max: number }) => {
-          const span = Math.max(0.5, (ext.max ?? 0) - (ext.min ?? 0));
+          let lo = ext.min ?? 0;
+          let hi = ext.max ?? 100;
+          for (const p of levelPrices) {
+            lo = Math.min(lo, p);
+            hi = Math.max(hi, p);
+          }
+          const span = Math.max(0.5, hi - lo);
           const pad = Math.max(0.5, span * 0.08);
-          return Math.max(0, (ext.min ?? 0) - pad);
+          return Math.max(0, lo - pad);
         },
         max: (ext: { min: number; max: number }) => {
-          const span = Math.max(0.5, (ext.max ?? 0) - (ext.min ?? 0));
+          let lo = ext.min ?? 0;
+          let hi = ext.max ?? 100;
+          for (const p of levelPrices) {
+            lo = Math.min(lo, p);
+            hi = Math.max(hi, p);
+          }
+          const span = Math.max(0.5, hi - lo);
           const pad = Math.max(0.5, span * 0.08);
-          return Math.min(100, (ext.max ?? 100) + pad);
+          return Math.min(100, hi + pad);
         },
         axisLine: { show: false },
         axisTick: { show: false },
@@ -546,19 +585,90 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
   };
 }
 
-/** Find candle index nearest to category pixel x (chart-local). */
+/** Map axis-pointer / convertFromPixel raw value → candle index (by time or ordinal). */
+export function resolveCandleIndexFromAxisValue(
+  raw: unknown,
+  candleTimes: number[],
+): number | null {
+  if (candleTimes.length === 0) return null;
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return null;
+
+  // Category axis may yield the category label (open time ms).
+  if (n > 1e11) {
+    const exact = candleTimes.indexOf(n);
+    if (exact >= 0) return exact;
+    let best = 0;
+    let bestDt = Math.abs(candleTimes[0] - n);
+    for (let i = 1; i < candleTimes.length; i++) {
+      const dt = Math.abs(candleTimes[i] - n);
+      if (dt < bestDt) {
+        best = i;
+        bestDt = dt;
+      }
+    }
+    return best;
+  }
+
+  const idx = Math.round(n);
+  if (idx < 0 || idx >= candleTimes.length) return null;
+  return idx;
+}
+
+/**
+ * Find candle index for chart-local pixel X.
+ * Uses a Y sample inside the price grid so hover works on the full vertical
+ * timeline column (heatmap / empty space), not only on the candle body.
+ */
 export function findCandleIndexAtPixel(
   chart: {
     convertFromPixel: (finder: object, point: number[]) => number[] | number;
+    convertToPixel: (finder: object, value: number | number[]) => number | number[];
+    getHeight: () => number;
   },
   offsetX: number,
+  candleTimes: number[],
+  offsetY?: number,
 ): number | null {
+  if (candleTimes.length === 0) return null;
   try {
-    const point = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [offsetX, 0]);
+    const h = chart.getHeight();
+    const sampleY =
+      offsetY != null && Number.isFinite(offsetY)
+        ? Math.min(Math.max(8, offsetY), Math.max(8, h * 0.65))
+        : Math.max(8, h * 0.35);
+    const point = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [offsetX, sampleY]);
     const arr = Array.isArray(point) ? point : [point];
-    const idx = Math.round(Number(arr[0]));
-    if (!Number.isFinite(idx)) return null;
-    return idx;
+    const fromAxis = resolveCandleIndexFromAxisValue(arr[0], candleTimes);
+    if (fromAxis != null) return fromAxis;
+
+    // Fallback: binary search nearest category by pixel X (off-body convertFromPixel flaky).
+    const xAt = (i: number): number => {
+      const px = chart.convertToPixel({ xAxisIndex: 0 }, i);
+      return typeof px === 'number' ? px : Array.isArray(px) ? Number(px[0]) : NaN;
+    };
+    let lo = 0;
+    let hi = candleTimes.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      const x = xAt(mid);
+      if (!Number.isFinite(x)) return null;
+      if (x < offsetX) lo = mid + 1;
+      else hi = mid;
+    }
+    const candidates = [lo, Math.max(0, lo - 1)];
+    let best = lo;
+    let bestDist = Infinity;
+    for (const i of candidates) {
+      const x = xAt(i);
+      if (!Number.isFinite(x)) continue;
+      const dist = Math.abs(x - offsetX);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = i;
+      }
+    }
+    return Number.isFinite(bestDist) ? best : null;
   } catch {
     return null;
   }

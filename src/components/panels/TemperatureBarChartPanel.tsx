@@ -123,6 +123,18 @@ function readStoredForecastSource(panelId: string): ForecastSourceToggle {
   return v === 'weather-company' ? 'weather-company' : 'open-meteo';
 }
 
+type TempOddsOutcomeView = 'YES' | 'NO';
+
+function readStoredOutcomeView(panelId: string): TempOddsOutcomeView {
+  const v = localStorage.getItem(`polybot-weather-temp-bars-outcome-${panelId}`);
+  return v === 'NO' ? 'NO' : 'YES';
+}
+
+function flipProb01(p: number | null): number | null {
+  if (p == null || !Number.isFinite(p)) return null;
+  return Math.max(0, Math.min(1, 1 - p));
+}
+
 function weatherMarketCityAndDate(
   market: Market | null | undefined,
 ): { city: WeatherCitySlug; dateIso: string } | null {
@@ -443,6 +455,23 @@ function getMarketYesQuote(market: Market): MarketYesQuote {
   return { bid, ask, mid };
 }
 
+/** YES book → NO book (noBid≈1−yesAsk, noAsk≈1−yesBid). */
+function quoteForOutcomeView(yesQuote: MarketYesQuote, view: TempOddsOutcomeView): MarketYesQuote {
+  if (view === 'YES') return yesQuote;
+  const bid = yesQuote.ask != null ? flipProb01(yesQuote.ask) : null;
+  const ask = yesQuote.bid != null ? flipProb01(yesQuote.bid) : null;
+  let mid = yesQuote.mid != null ? flipProb01(yesQuote.mid) : null;
+  if (mid == null) {
+    if (bid != null && ask != null) mid = (bid + ask) / 2;
+    else mid = bid ?? ask;
+  }
+  return { bid, ask, mid };
+}
+
+function flipYesChartFrac(frac: number, view: TempOddsOutcomeView): number {
+  return view === 'NO' ? 1 - frac : frac;
+}
+
 function quoteScaleLevels(quote: MarketYesQuote): number[] {
   return [quote.bid, quote.ask, quote.mid].filter((v): v is number => v != null);
 }
@@ -631,30 +660,54 @@ function buildTempOddsBuckets(
   orderLookup: Record<string, Order[]>,
   metric: WeatherMetric,
   obsBoundC: number | null,
+  outcomeView: TempOddsOutcomeView,
 ): { entries: TempOddsBucket[]; maxPct: number } {
   const snaps = buckets.map(({ market }) => resolveMarketStakeSnap(market, stakedByMarketId));
-  // Rel = bucket YES stake / Σ YES stake across city+date (not Yes+No — NO pads against-bucket).
-  let cityYesUsd = 0;
+  // Rel = bucket stake / Σ stake for selected side across city+date.
+  let citySideUsd = 0;
   for (const snap of snaps) {
-    if (snap && snap.yesUsd > 0) cityYesUsd += snap.yesUsd;
+    if (!snap) continue;
+    const side = outcomeView === 'NO' ? snap.noUsd : snap.yesUsd;
+    if (side > 0) citySideUsd += side;
   }
 
   const entries: TempOddsBucket[] = buckets.map(({ temp, label, market }, i) => {
     const yesTokenId = market.clobTokenIds?.[0] || '';
     const noTokenId = market.clobTokenIds?.[1] || '';
-    const quote = getMarketYesQuote(market);
+    const quote = quoteForOutcomeView(getMarketYesQuote(market), outcomeView);
     let modelPctOm = lookupModelBucketProb(modelBucketsOm, temp);
     let modelPctWc = lookupModelBucketProb(modelBucketsWc, temp);
     const snap = snaps[i];
     let stakedPct = snap?.yesProb ?? null;
+    const sideUsd = snap ? (outcomeView === 'NO' ? snap.noUsd : snap.yesUsd) : 0;
     let stakedSharePct =
-      cityYesUsd > 0 && snap && snap.yesUsd > 0 ? snap.yesUsd / cityYesUsd : null;
+      citySideUsd > 0 && sideUsd > 0 ? sideUsd / citySideUsd : null;
     if (weatherTempBucketRuledOutByObs(temp, metric, obsBoundC)) {
       modelPctOm = 0;
       modelPctWc = 0;
       stakedPct = 0;
       stakedSharePct = 0;
     }
+    if (outcomeView === 'NO') {
+      modelPctOm = flipProb01(modelPctOm);
+      modelPctWc = flipProb01(modelPctWc);
+      stakedPct = flipProb01(stakedPct);
+    }
+    const entryRaw = marketEntryYesFrac(
+      yesTokenId,
+      noTokenId,
+      positions,
+      liveTradesSource,
+      onchainWsPositions,
+    );
+    const entry =
+      entryRaw != null
+        ? { ...entryRaw, frac: flipYesChartFrac(entryRaw.frac, outcomeView) }
+        : null;
+    const orderMarks = marketOrderYesMarks(yesTokenId, noTokenId, orderLookup).map((m) => ({
+      ...m,
+      frac: flipYesChartFrac(m.frac, outcomeView),
+    }));
     return {
       temp,
       label,
@@ -665,8 +718,8 @@ function buildTempOddsBuckets(
       modelPctWc,
       stakedPct,
       stakedSharePct,
-      entry: marketEntryYesFrac(yesTokenId, noTokenId, positions, liveTradesSource, onchainWsPositions),
-      orderMarks: marketOrderYesMarks(yesTokenId, noTokenId, orderLookup),
+      entry,
+      orderMarks,
     };
   });
   const maxPct = TEMP_ODDS_BAR_MAX_PCT;
@@ -684,6 +737,7 @@ function useTempOddsBuckets(
   orderLookup: Record<string, Order[]>,
   metric: WeatherMetric,
   obsBoundC: number | null,
+  outcomeView: TempOddsOutcomeView,
 ) {
   const [quoteTick, setQuoteTick] = useState(0);
   useEffect(() => {
@@ -729,6 +783,7 @@ function useTempOddsBuckets(
         orderLookup,
         metric,
         obsBoundC,
+        outcomeView,
       ),
     [
       buckets,
@@ -741,6 +796,7 @@ function useTempOddsBuckets(
       orderLookup,
       metric,
       obsBoundC,
+      outcomeView,
       quoteTick,
     ],
   );
@@ -968,6 +1024,7 @@ interface TempOddsChartProps {
   forecastTempC: number | null;
   metric: WeatherMetric;
   obsBoundC: number | null;
+  outcomeView: TempOddsOutcomeView;
 }
 
 function TempOddsChart({
@@ -991,6 +1048,7 @@ function TempOddsChart({
   forecastTempC,
   metric,
   obsBoundC,
+  outcomeView,
 }: TempOddsChartProps) {
   const plotRef = useRef<HTMLDivElement>(null);
   const [trackPx, setTrackPx] = useState(0);
@@ -1017,6 +1075,7 @@ function TempOddsChart({
     orderLookup,
     metric,
     obsBoundC,
+    outcomeView,
   );
 
   useLayoutEffect(() => {
@@ -1262,6 +1321,9 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const [forecastSource, setForecastSource] = useState<ForecastSourceToggle>(() =>
     readStoredForecastSource(panelId),
   );
+  const [outcomeView, setOutcomeView] = useState<TempOddsOutcomeView>(() =>
+    readStoredOutcomeView(panelId),
+  );
   const [modelFetchedAtMs, setModelFetchedAtMs] = useState(0);
   const [modelRefreshing, setModelRefreshing] = useState(false);
   const modelFetchGenRef = useRef(0);
@@ -1284,6 +1346,14 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     (source: ForecastSourceToggle) => {
       setForecastSource(source);
       localStorage.setItem(`polybot-weather-temp-bars-forecast-source-${panelId}`, source);
+    },
+    [panelId],
+  );
+
+  const setTempOddsOutcomeView = useCallback(
+    (view: TempOddsOutcomeView) => {
+      setOutcomeView(view);
+      localStorage.setItem(`polybot-weather-temp-bars-outcome-${panelId}`, view);
     },
     [panelId],
   );
@@ -1866,7 +1936,32 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
 
         <TempUnitToggle unit={tempUnit} onChange={setTempUnitOverride} />
 
-        <div className="no-drag inline-flex overflow-hidden rounded border border-gray-600 divide-x divide-gray-600 bg-gray-900/90">
+        <div className="no-drag inline-flex shrink-0 overflow-hidden rounded border border-gray-600 divide-x divide-gray-600 bg-gray-900/90">
+          <button
+            type="button"
+            title="Show YES probabilities"
+            className={`px-1.5 py-0.5 text-[9px] font-bold ${
+              outcomeView === 'YES' ? 'bg-green-700/80 text-white' : 'text-gray-400 hover:text-green-300'
+            }`}
+            onClick={() => setTempOddsOutcomeView('YES')}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            YES
+          </button>
+          <button
+            type="button"
+            title="Show NO probabilities (1 − YES)"
+            className={`px-1.5 py-0.5 text-[9px] font-bold ${
+              outcomeView === 'NO' ? 'bg-red-700/80 text-white' : 'text-gray-400 hover:text-red-300'
+            }`}
+            onClick={() => setTempOddsOutcomeView('NO')}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            NO
+          </button>
+        </div>
+
+        <div className="no-drag inline-flex shrink-0 overflow-hidden rounded border border-gray-600 divide-x divide-gray-600 bg-gray-900/90">
           <button
             type="button"
             title="Low temp markets"
@@ -2029,6 +2124,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
                 orderLookup={orderLookup}
                 forecastTempC={forecastTempC}
                 metric={chartMode}
+                outcomeView={outcomeView}
                 obsBoundC={
                   obsData == null
                     ? null

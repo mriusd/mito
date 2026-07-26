@@ -489,6 +489,25 @@ export function TemperatureChart({
     const nowMs = Date.now();
     if (nowMs >= dayStart && nowMs <= dayEnd) {
       const nowX = toX(nowMs);
+      let nowTemp: number | null = null;
+      for (let i = points.length - 1; i >= 0; i--) {
+        if (points[i].timeMs <= nowMs) {
+          nowTemp = points[i].temp;
+          break;
+        }
+      }
+      if (nowTemp == null && forecastPoints.length > 0) {
+        let best = forecastPoints[0];
+        let bestD = Math.abs(best.timeMs - nowMs);
+        for (const p of forecastPoints) {
+          const d = Math.abs(p.timeMs - nowMs);
+          if (d < bestD) {
+            best = p;
+            bestD = d;
+          }
+        }
+        nowTemp = best.temp;
+      }
       ctx.save();
       ctx.strokeStyle = 'rgba(250, 250, 250, 0.55)';
       ctx.lineWidth = 1;
@@ -498,11 +517,13 @@ export function TemperatureChart({
       ctx.lineTo(nowX, chartB);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(250, 250, 250, 0.7)';
-      ctx.font = '8px monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText('Now', nowX, chartT - 2);
+      if (nowTemp != null) {
+        ctx.fillStyle = 'rgba(250, 250, 250, 0.85)';
+        ctx.font = '8px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`${nowTemp}${unitSuffix}`, nowX, chartT - 2);
+      }
       ctx.restore();
     }
 

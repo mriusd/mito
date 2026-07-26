@@ -1929,34 +1929,27 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${nCls} text-right`}><TpoColorCodedText text={`${p.entryPrice.toFixed(1)}¢`} /></td>
                     <td className={`${nCls} text-right text-red-400`}>-${p.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td
-                      className={`group/bid ${nCls} text-right ${hasBid ? exitColor : 'text-gray-400'}`}
-                      onClick={(e) => e.stopPropagation()}
+                      className={`${nCls} text-right ${hasBid ? exitColor : 'text-gray-400'} ${
+                        !isBucketParent &&
+                        hasBid &&
+                        !posOrderBusyTids.has(normalizeClobTokenId(p.tid))
+                          ? 'cursor-pointer hover:underline'
+                          : ''
+                      }`}
+                      title={
+                        !isBucketParent && hasBid
+                          ? `Limit sell @ bid ${p.currentPrice.toFixed(1)}¢`
+                          : undefined
+                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isBucketParent) return;
+                        if (posOrderBusyTids.has(normalizeClobTokenId(p.tid))) return;
+                        if (!hasBid) return;
+                        void handleSellAtBid(p);
+                      }}
                     >
-                      {hasBid ? (
-                        <span className="inline-flex items-center justify-end gap-0.5">
-                          <span>{`${p.currentPrice.toFixed(1)}¢`}</span>
-                          {!isBucketParent ? (
-                            <button
-                              type="button"
-                              disabled={posOrderBusyTids.has(normalizeClobTokenId(p.tid))}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleSellAtBid(p);
-                              }}
-                              className="no-drag w-4 h-4 shrink-0 rounded-sm inline-flex items-center justify-center bg-red-600 hover:bg-red-500 disabled:bg-red-600/50 opacity-0 pointer-events-none group-hover/bid:opacity-100 group-hover/bid:pointer-events-auto"
-                              title={`Limit sell @ bid ${p.currentPrice.toFixed(1)}¢`}
-                            >
-                              {posOrderBusyTids.has(normalizeClobTokenId(p.tid)) ? (
-                                <span className="cancel-spinner" />
-                              ) : (
-                                <span className="text-black text-[10px] font-bold leading-none">✕</span>
-                              )}
-                            </button>
-                          ) : null}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
+                      {hasBid ? `${p.currentPrice.toFixed(1)}¢` : '-'}
                     </td>
                     <td
                       className={`${nCls} text-right text-red-300/90 ${

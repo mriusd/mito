@@ -99,7 +99,7 @@ type TpoPosRow = {
   currentValue: number;
   bidProb: number | null;
   askProb: number | null;
-  /** Summed ask ¢ when Bucket on; else derived from askProb. */
+  /** Ask ¢ (size-weighted avg when Bucket on); else derived from askProb. */
   askCents?: number | null;
   sellPrice: number | null;
   pnl: number;
@@ -149,33 +149,36 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
     let entryPrice = 0;
     let cost = 0;
     let currentValue = 0;
-    let bidCents = 0;
-    let askCents = 0;
-    let sellCents = 0;
-    let hasBid = false;
-    let hasAsk = false;
-    let allHaveSell = true;
+    let bidW = 0;
+    let bidSz = 0;
+    let askW = 0;
+    let askSz = 0;
+    let sellW = 0;
+    let sellSz = 0;
     const outcomes = new Set<string>();
     for (const r of list) {
       size = Math.min(size, r.size);
       entryPrice += r.entryPrice;
       cost += r.cost;
       currentValue += r.currentValue;
-      if (r.bidProb != null && Number.isFinite(r.bidProb) && r.bidProb > 0) {
-        bidCents += r.currentPrice;
-        hasBid = true;
+      const w = Number.isFinite(r.size) && r.size > 0 ? r.size : 0;
+      if (w > 0 && r.bidProb != null && Number.isFinite(r.bidProb) && r.bidProb > 0) {
+        bidW += r.currentPrice * w;
+        bidSz += w;
       }
-      if (r.askProb != null && Number.isFinite(r.askProb) && r.askProb > 0) {
-        askCents += r.askProb * 100;
-        hasAsk = true;
+      if (w > 0 && r.askProb != null && Number.isFinite(r.askProb) && r.askProb > 0) {
+        askW += r.askProb * 100 * w;
+        askSz += w;
       }
-      if (r.sellPrice != null && Number.isFinite(r.sellPrice) && r.sellPrice > 0) {
-        sellCents += r.sellPrice;
-      } else {
-        allHaveSell = false;
+      if (w > 0 && r.sellPrice != null && Number.isFinite(r.sellPrice) && r.sellPrice > 0) {
+        sellW += r.sellPrice * w;
+        sellSz += w;
       }
       if (r.outcome) outcomes.add(r.outcome);
     }
+    const bidCents = bidSz > 0 ? bidW / bidSz : null;
+    const askCents = askSz > 0 ? askW / askSz : null;
+    const sellCents = sellSz > 0 ? sellW / sellSz : null;
     const pnl = currentValue - cost;
     const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
     out.push({
@@ -187,13 +190,12 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
       size,
       entryPrice,
       cost,
-      currentPrice: hasBid ? bidCents : 0,
+      currentPrice: bidCents ?? 0,
       currentValue,
-      bidProb: hasBid ? bidCents / 100 : null,
-      askProb: hasAsk ? askCents / 100 : null,
-      askCents: hasAsk ? askCents : null,
-      // Sum sell ¢ only when every child has a resting sell.
-      sellPrice: allHaveSell && sellCents > 0 ? sellCents : null,
+      bidProb: bidCents != null ? bidCents / 100 : null,
+      askProb: askCents != null ? askCents / 100 : null,
+      askCents,
+      sellPrice: sellCents,
       pnl,
       pnlPercent,
       clickable: first.clickable,

@@ -40,13 +40,13 @@ function WeatherBucketBars({
 
   return (
     <div className="flex flex-col gap-1 min-h-0">
-      <div className="flex gap-0.5 min-h-[12px]">
+      <div className="flex gap-0 divide-x divide-gray-500/80 min-h-[12px]">
         {sorted.map((b) => {
           const mid = b.mid ?? b.bid ?? b.ask;
           return (
             <div
               key={b.temp}
-              className="flex-1 min-w-0 flex gap-0.5 text-[8px] text-gray-400 tabular-nums leading-none"
+              className="flex-1 min-w-0 flex gap-0.5 px-0.5 text-[8px] text-gray-400 tabular-nums leading-none"
             >
               <span className="flex-1 text-center text-amber-400/80">
                 {b.modelProbOm != null ? `${(b.modelProbOm * 100).toFixed(0)}` : '—'}
@@ -67,7 +67,7 @@ function WeatherBucketBars({
           );
         })}
       </div>
-      <div className="flex items-end gap-0.5" style={{ height: trackPx }}>
+      <div className="flex items-end gap-0 divide-x divide-gray-500/80" style={{ height: trackPx }}>
         {sorted.map((b) => {
           const omPx = fracToPx(b.modelProbOm ?? 0, maxPct, trackPx);
           const wcPx = fracToPx(b.modelProbWc ?? 0, maxPct, trackPx);
@@ -80,7 +80,7 @@ function WeatherBucketBars({
           return (
             <div
               key={`bar-${b.temp}`}
-              className={`relative flex-1 min-w-0 h-full flex gap-0.5 items-end ${
+              className={`relative flex-1 min-w-0 h-full flex gap-0.5 items-end px-0.5 ${
                 b.selected ? 'ring-1 ring-white/70 rounded' : ''
               }`}
               title={[
@@ -154,11 +154,11 @@ function WeatherBucketBars({
           );
         })}
       </div>
-      <div className="flex gap-0.5 min-h-[10px]">
+      <div className="flex gap-0 divide-x divide-gray-500/80 min-h-[10px]">
         {sorted.map((b) => (
           <div
             key={`lbl-${b.temp}`}
-            className={`flex-1 min-w-0 text-center text-[8px] truncate leading-tight ${
+            className={`flex-1 min-w-0 px-0.5 text-center text-[8px] truncate leading-tight ${
               b.selected ? 'font-semibold text-white/90' : 'text-gray-500'
             }`}
           >

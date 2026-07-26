@@ -13,7 +13,7 @@ export type CandleWeatherBucket = {
   modelProbWc?: number | null;
   /** YES staked share: StakedNetYes / (Yes+No). */
   stakedProb?: number | null;
-  /** Bucket's share of city/date/metric total staked USD. */
+  /** Bucket YES stake / Σ YES stake across city/date/metric. */
   stakedShare?: number | null;
   bid?: number | null;
   ask?: number | null;

@@ -524,7 +524,7 @@ type TempOddsBucket = {
   modelPctWc: number | null;
   /** YES staked share: stakedNetYesUsd / (yes+no). */
   stakedPct: number | null;
-  /** Bucket's share of city/date total staked USD. */
+  /** Bucket YES stake / Σ YES stake across city/date. */
   stakedSharePct: number | null;
   entry: { frac: number; outcome: 'YES' | 'NO' } | null;
   orderMarks: TempOddsOrderMark[];
@@ -533,7 +533,8 @@ type TempOddsBucket = {
 /** Per-market stake snapshot for Temp Odds bars. */
 type MarketStakeSnap = {
   yesProb: number | null;
-  totalUsd: number;
+  yesUsd: number;
+  noUsd: number;
 };
 
 function stakedYesProbFromUsd(yesUsd: unknown, noUsd: unknown): number | null {
@@ -547,24 +548,13 @@ function stakedYesProbFromUsd(yesUsd: unknown, noUsd: unknown): number | null {
 function marketStakeSnapFromParts(
   yesUsd: unknown,
   noUsd: unknown,
-  sumAbsUsd: unknown,
+  _sumAbsUsd: unknown,
 ): MarketStakeSnap | null {
-  const yesProb = stakedYesProbFromUsd(yesUsd, noUsd);
-  let totalUsd = 0;
-  if (typeof yesUsd === 'number' && typeof noUsd === 'number' && Number.isFinite(yesUsd) && Number.isFinite(noUsd)) {
-    const tot = yesUsd + noUsd;
-    if (tot > 0) totalUsd = tot;
-  }
-  if (
-    totalUsd <= 0 &&
-    typeof sumAbsUsd === 'number' &&
-    Number.isFinite(sumAbsUsd) &&
-    sumAbsUsd > 0
-  ) {
-    totalUsd = sumAbsUsd;
-  }
-  if (totalUsd <= 0 && yesProb == null) return null;
-  return { yesProb, totalUsd };
+  const y = typeof yesUsd === 'number' && Number.isFinite(yesUsd) && yesUsd >= 0 ? yesUsd : null;
+  const n = typeof noUsd === 'number' && Number.isFinite(noUsd) && noUsd >= 0 ? noUsd : null;
+  if (y == null || n == null) return null;
+  if (y + n <= 0) return null;
+  return { yesProb: y / (y + n), yesUsd: y, noUsd: n };
 }
 
 function resolveMarketStakeSnap(
@@ -580,8 +570,8 @@ function resolveMarketStakeSnap(
     row?.stakedSumAbsSignedNetUsd,
   );
   // REST first — weather WS shareStats often empty/zero and flickers bars off.
-  if (rest && rest.totalUsd > 0) return rest;
-  if (ws && ws.totalUsd > 0) return ws;
+  if (rest && rest.yesUsd + rest.noUsd > 0) return rest;
+  if (ws && ws.yesUsd + ws.noUsd > 0) return ws;
   return rest ?? ws ?? null;
 }
 
@@ -598,9 +588,10 @@ function buildTempOddsBuckets(
   obsBoundC: number | null,
 ): { entries: TempOddsBucket[]; maxPct: number } {
   const snaps = buckets.map(({ market }) => resolveMarketStakeSnap(market, stakedByMarketId));
-  let cityTotalUsd = 0;
+  // Rel = bucket YES stake / Σ YES stake across city+date (not Yes+No — NO pads against-bucket).
+  let cityYesUsd = 0;
   for (const snap of snaps) {
-    if (snap && snap.totalUsd > 0) cityTotalUsd += snap.totalUsd;
+    if (snap && snap.yesUsd > 0) cityYesUsd += snap.yesUsd;
   }
 
   const entries: TempOddsBucket[] = buckets.map(({ temp, label, market }, i) => {
@@ -612,7 +603,7 @@ function buildTempOddsBuckets(
     const snap = snaps[i];
     let stakedPct = snap?.yesProb ?? null;
     let stakedSharePct =
-      cityTotalUsd > 0 && snap && snap.totalUsd > 0 ? snap.totalUsd / cityTotalUsd : null;
+      cityYesUsd > 0 && snap && snap.yesUsd > 0 ? snap.yesUsd / cityYesUsd : null;
     if (weatherTempBucketRuledOutByObs(temp, metric, obsBoundC)) {
       modelPctOm = 0;
       modelPctWc = 0;
@@ -986,11 +977,11 @@ function TempOddsChart({
           <div className="flex-1 flex items-center justify-center text-gray-600 text-[10px]">No markets</div>
         ) : (
           <div className="flex flex-col flex-1 min-h-0 gap-1">
-            <div className="flex shrink-0 gap-0.5 min-h-[12px]">
+            <div className="flex shrink-0 gap-0 divide-x divide-gray-500/80 min-h-[12px]">
               {entries.map(({ temp, pct, modelPctOm, modelPctWc, stakedPct, stakedSharePct }) => (
                 <div
                   key={`prob-${temp}`}
-                  className="flex-1 min-w-0 flex gap-0.5 text-[9px] text-gray-400 tabular-nums leading-none"
+                  className="flex-1 min-w-0 flex gap-0.5 px-0.5 text-[9px] text-gray-400 tabular-nums leading-none"
                 >
                   <span className="flex-1 text-center text-amber-400/80">
                     {modelPctOm != null ? `${(modelPctOm * 100).toFixed(0)}` : '—'}
@@ -1011,7 +1002,7 @@ function TempOddsChart({
             <div className="relative flex min-h-0 flex-1 items-stretch gap-0">
               <div
                 ref={plotRef}
-                className="relative flex h-full min-h-0 min-w-0 flex-1 items-stretch gap-0.5 overflow-visible"
+                className="relative flex h-full min-h-0 min-w-0 flex-1 items-stretch gap-0 divide-x divide-gray-500/80 overflow-visible"
               >
                 {trackPx > 0
                   ? entries.map(({ temp, label, market, quote, pct, modelPctOm, modelPctWc, stakedPct, stakedSharePct, entry, orderMarks }) => {
@@ -1049,7 +1040,7 @@ function TempOddsChart({
                   : null}
               </div>
             </div>
-            <div className="flex shrink-0 gap-0.5 min-h-[10px]">
+            <div className="flex shrink-0 gap-0 divide-x divide-gray-500/80 min-h-[10px]">
               {entries.map(({ temp, label, market }) => {
                 const forecastHighlight =
                   forecastTempC != null && weatherTempBucketMatchesCelsius(temp, forecastTempC);
@@ -1057,7 +1048,7 @@ function TempOddsChart({
                 return (
                 <div
                   key={`lbl-${temp}`}
-                  className={`flex-1 min-w-0 text-center text-[8px] truncate leading-tight ${
+                  className={`flex-1 min-w-0 px-0.5 text-center text-[8px] truncate leading-tight ${
                     forecastHighlight
                       ? `font-bold text-amber-300${selected ? ' underline decoration-white/70 underline-offset-2' : ''}`
                       : selected

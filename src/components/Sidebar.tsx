@@ -2061,7 +2061,7 @@ export const Sidebar = memo(function Sidebar() {
         return;
       }
 
-      let size = parseFloat(orderAmount);
+    let size = parseFloat(orderAmount);
       if (spec.side === 'SELL' && spec.maxSell) {
         const tidKey = positionTokenKey(tokenId);
         const pos = tidKey
@@ -2070,13 +2070,13 @@ export const Sidebar = memo(function Sidebar() {
             )
           : undefined;
         size = pos ? Math.floor(Number(pos.size) * 100) / 100 : 0;
-      }
-      if (!size || size <= 0) {
+    }
+    if (!size || size <= 0) {
         showToast(
           spec.side === 'SELL' && spec.maxSell ? 'No position size available for MAX sell' : 'Invalid amount',
           'error',
         );
-        return;
+      return;
       }
 
       if (spec.side === 'SELL' && spec.maxSell) {
@@ -2085,16 +2085,16 @@ export const Sidebar = memo(function Sidebar() {
         if (cancel.replaced) replacedSell = true;
     }
 
-      let expiration = 0;
+    let expiration = 0;
       if (spec.side === 'BUY') {
       const expLeadSec = customOrderExpiryLeadSeconds(spec, getOrderExpiryLeadSeconds());
       const exp = computeLimitExpiration(selectedMarket, expLeadSec);
-        expiration = exp.expiration;
-        if (exp.invalidLead) {
-          showToast('Lead time to expiration already passed for this market', 'error');
-          return;
-        }
+      expiration = exp.expiration;
+      if (exp.invalidLead) {
+        showToast('Lead time to expiration already passed for this market', 'error');
+        return;
       }
+    }
 
       if (spec.side === 'BUY') {
         const customEarlyVusd = orderNotionalUsd(priceCents / 100, size);
@@ -2110,21 +2110,21 @@ export const Sidebar = memo(function Sidebar() {
         spec.side,
         priceCents,
       );
-      if (crossesBook) {
+    if (crossesBook) {
         const confirmed = await requestCrossingConfirm(bestCounterpartyCents ?? 0);
-        if (!confirmed) return;
-      }
+      if (!confirmed) return;
+    }
 
-      const result = await placeOrder({
-        tokenId,
+    const result = await placeOrder({
+      tokenId,
         side: spec.side,
         price: priceCents / 100,
-        size,
-        expiration,
+      size,
+      expiration,
         orderInfo: `${spec.side} ${size} ${resolvedOutcome} for ${marketName} @ ${priceCents}¢`,
-      });
+    });
       if (!result.success) {
-        showToast(result.error || 'Custom order failed', 'error');
+      showToast(result.error || 'Custom order failed', 'error');
         if (placed > 0) triggerWalletRefresh();
         return;
       }
@@ -3757,7 +3757,7 @@ export const Sidebar = memo(function Sidebar() {
                 canShowEmbeddedToxic={canShowEmbeddedToxic}
                 onExpandToxic={expandSidebarToxicFlowPanel}
               />
-            </div>
+                </div>
             <div className="mt-1 w-full min-w-0">
               <SidebarToxicStrips
                 toxicFlowMarketId={toxicFlowMarketId}
@@ -3775,7 +3775,7 @@ export const Sidebar = memo(function Sidebar() {
                 notifyFavouriteTiltPct={notifyFavouriteTiltPct}
                 notifyGreensTiltPct={notifyGreensTiltPct}
                   />
-                </div>
+              </div>
           </SidebarToxicStatsFlashWrap>
           </div>
 
@@ -4072,7 +4072,7 @@ export const Sidebar = memo(function Sidebar() {
                 orderPrice={orderPrice}
                 orderAmount={orderAmount}
               />
-            </div>
+                </div>
 
             <div className="mb-2 flex flex-col gap-0.5">
               <div
@@ -4535,7 +4535,7 @@ export const Sidebar = memo(function Sidebar() {
           />
         </>
       )}
-        </div>
+            </div>
         {!isMobileSheet && selectedMarket ? (
           <>
           <div className="hidden md:block w-6 shrink-0" aria-hidden />
@@ -4600,18 +4600,18 @@ export const Sidebar = memo(function Sidebar() {
                       </button>
                     ) : null}
                   </div>
-                  <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
                     <span className="text-gray-400 w-16 shrink-0">Side</span>
                     <select
                       value={draft.side}
                       onChange={(e) => updateCustomOrderDraft(index, { side: e.target.value as 'BUY' | 'SELL' })}
                       className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white flex-1"
                     >
-                      <option value="BUY">BUY</option>
-                      <option value="SELL">SELL</option>
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-2">
+                  <option value="BUY">BUY</option>
+                  <option value="SELL">SELL</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
                     <span className="text-gray-400 w-16 shrink-0">Direction</span>
                     <select
                       value={draft.outcome}
@@ -4624,7 +4624,7 @@ export const Sidebar = memo(function Sidebar() {
                       <option value="YES">YES</option>
                       <option value="NO">NO</option>
                     </select>
-                  </div>
+              </div>
                   <div className="flex items-center gap-2">
                     <span className="text-gray-400 w-16 shrink-0">Price</span>
                     <select
@@ -4694,16 +4694,16 @@ export const Sidebar = memo(function Sidebar() {
                     </div>
                   )}
                   {draft.side === 'SELL' && (
-                    <label className="flex items-center gap-2 ml-[4.5rem] text-gray-300">
+                <label className="flex items-center gap-2 ml-[4.5rem] text-gray-300">
                       <input
                         type="checkbox"
                         checked={draft.maxSell}
                         onChange={(e) => updateCustomOrderDraft(index, { maxSell: e.target.checked })}
                         className="rounded accent-red-500"
                       />
-                      <span>Max</span>
-                    </label>
-                  )}
+                  <span>Max</span>
+                </label>
+              )}
                 </div>
               ))}
                 <button

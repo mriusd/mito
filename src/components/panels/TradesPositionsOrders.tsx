@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, memo, type ReactNode } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, memo, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useAccount } from 'wagmi';
 import { useAppStore } from '../../stores/appStore';
@@ -6,6 +6,7 @@ import {
   cancelOrder,
   fetchMarketOutcomeTokens,
   fetchOnchainWalletTrades,
+  placeOrder,
   type OnchainClaimRow,
   type OnchainMarketTradeRow,
 } from '../../api';
@@ -967,6 +968,125 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     }
   };
 
+  const [posOrderBusyTids, setPosOrderBusyTids] = useState<Set<string>>(() => new Set());
+
+  const withPosOrderBusy = useCallback(async (tid: string, fn: () => Promise<void>) => {
+    const key = normalizeClobTokenId(tid);
+    if (!key) return;
+    setPosOrderBusyTids((prev) => new Set(prev).add(key));
+    try {
+      await fn();
+    } finally {
+      setPosOrderBusyTids((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  }, []);
+
+  /** Resting limit sell at price in cents (0.1–99.9). */
+  const handleLimitSellAtCents = useCallback(
+    async (row: TpoPosRow, priceCents: number, label = 'limit') => {
+      if (row.bucketChildren && row.bucketChildren.length > 1) return;
+      const tid = String(row.tid || '').trim();
+      const size = Math.floor(row.size * 100) / 100;
+      if (!tid || size <= 0) return;
+      if (!Number.isFinite(priceCents) || priceCents < 0.1 || priceCents > 99.9) {
+        showToast('Sell price must be 0.1–99.9¢', 'error');
+        return;
+      }
+      const centsTick = Math.round(priceCents * 10) / 10;
+      const price = centsTick / 100;
+      await withPosOrderBusy(tid, async () => {
+        try {
+          const result = await placeOrder({
+            tokenId: tid,
+            side: 'SELL',
+            price,
+            size,
+            expiration: 0,
+            orderInfo: `SELL ${size} @ ${centsTick.toFixed(1)}¢ (${label}, TPO)`,
+          });
+          if (result.success) {
+            showToast('Sell order placed', 'success');
+            triggerWalletRefresh();
+          } else {
+            showToast(result.error || 'Sell failed', 'error');
+          }
+        } catch {
+          showToast('Sell failed', 'error');
+        }
+      });
+    },
+    [withPosOrderBusy],
+  );
+
+  const handleSellAtBid = useCallback(
+    async (row: TpoPosRow) => {
+      const bid = row.bidProb;
+      if (bid == null || !Number.isFinite(bid) || bid <= 0) {
+        showToast('No bid — cannot place sell', 'error');
+        return;
+      }
+      await handleLimitSellAtCents(row, bid * 100, 'bid');
+    },
+    [handleLimitSellAtCents],
+  );
+
+  const handleSellAtAsk = useCallback(
+    async (row: TpoPosRow) => {
+      const ask = row.askProb;
+      if (ask == null || !Number.isFinite(ask) || ask <= 0) {
+        showToast('No ask — cannot place sell', 'error');
+        return;
+      }
+      await handleLimitSellAtCents(row, ask * 100, 'ask');
+    },
+    [handleLimitSellAtCents],
+  );
+
+  const [posSellEditTid, setPosSellEditTid] = useState<string | null>(null);
+  const [posSellEditValue, setPosSellEditValue] = useState('');
+  const posSellEditSubmittingRef = useRef(false);
+
+  const openPosSellEdit = useCallback((row: TpoPosRow) => {
+    if (row.bucketChildren && row.bucketChildren.length > 1) return;
+    const tid = normalizeClobTokenId(row.tid);
+    if (!tid) return;
+    const seed =
+      row.sellPrice != null && Number.isFinite(row.sellPrice)
+        ? row.sellPrice.toFixed(1)
+        : row.askProb != null && row.askProb > 0
+          ? (row.askProb * 100).toFixed(1)
+          : '';
+    setPosSellEditTid(tid);
+    setPosSellEditValue(seed);
+  }, []);
+
+  const commitPosSellEdit = useCallback(
+    async (row: TpoPosRow) => {
+      if (posSellEditSubmittingRef.current) return;
+      const tid = normalizeClobTokenId(row.tid);
+      if (!tid || posSellEditTid !== tid) return;
+      const raw = posSellEditValue.trim().replace(/¢/g, '');
+      posSellEditSubmittingRef.current = true;
+      setPosSellEditTid(null);
+      try {
+        if (!raw) return;
+        const cents = parseFloat(raw);
+        if (!Number.isFinite(cents)) {
+          showToast('Invalid sell price', 'error');
+          return;
+        }
+        await handleLimitSellAtCents(row, cents, 'manual');
+      } finally {
+        posSellEditSubmittingRef.current = false;
+      }
+    },
+    [posSellEditValue, posSellEditTid, handleLimitSellAtCents],
+  );
+
   const assets = ['ALL', 'BTC', 'ETH', 'SOL', 'XRP', 'WEATHER'];
   const assetColors: Record<string, string> = { ALL: 'text-white', BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400', WEATHER: 'text-sky-400' };
 
@@ -1808,17 +1928,107 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.floor(p.size)} /></td>
                     <td className={`${nCls} text-right`}><TpoColorCodedText text={`${p.entryPrice.toFixed(1)}¢`} /></td>
                     <td className={`${nCls} text-right text-red-400`}>-${p.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td className={`${nCls} text-right ${hasBid ? exitColor : 'text-gray-400'}`}>
-                      {hasBid ? `${p.currentPrice.toFixed(1)}¢` : '-'}
+                    <td
+                      className={`group/bid ${nCls} text-right ${hasBid ? exitColor : 'text-gray-400'}`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {hasBid ? (
+                        <span className="inline-flex items-center justify-end gap-0.5">
+                          <span>{`${p.currentPrice.toFixed(1)}¢`}</span>
+                          {!isBucketParent ? (
+                            <button
+                              type="button"
+                              disabled={posOrderBusyTids.has(normalizeClobTokenId(p.tid))}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleSellAtBid(p);
+                              }}
+                              className="no-drag w-4 h-4 shrink-0 rounded-sm inline-flex items-center justify-center bg-red-600 hover:bg-red-500 disabled:bg-red-600/50 opacity-0 pointer-events-none group-hover/bid:opacity-100 group-hover/bid:pointer-events-auto"
+                              title={`Limit sell @ bid ${p.currentPrice.toFixed(1)}¢`}
+                            >
+                              {posOrderBusyTids.has(normalizeClobTokenId(p.tid)) ? (
+                                <span className="cancel-spinner" />
+                              ) : (
+                                <span className="text-black text-[10px] font-bold leading-none">✕</span>
+                              )}
+                            </button>
+                          ) : null}
+                        </span>
+                      ) : (
+                        '-'
+                      )}
                     </td>
-                    <td className={`${nCls} text-right text-red-300/90`}>
+                    <td
+                      className={`${nCls} text-right text-red-300/90 ${
+                        !isBucketParent &&
+                        p.askProb != null &&
+                        p.askProb > 0 &&
+                        !posOrderBusyTids.has(normalizeClobTokenId(p.tid))
+                          ? 'cursor-pointer hover:text-red-200 hover:underline'
+                          : ''
+                      }`}
+                      title={
+                        !isBucketParent && p.askProb != null && p.askProb > 0
+                          ? `Place sell @ ask ${(p.askProb * 100).toFixed(1)}¢`
+                          : undefined
+                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isBucketParent) return;
+                        if (posOrderBusyTids.has(normalizeClobTokenId(p.tid))) return;
+                        if (p.askProb == null || p.askProb <= 0) return;
+                        void handleSellAtAsk(p);
+                      }}
+                    >
                       {p.askCents != null ? formatAskCentsSum(p.askCents) : formatQuoteCents(p.askProb)}
                     </td>
                     <td
-                      className={`${nCls} text-right ${p.sellPrice == null ? 'text-gray-400' : ''}`}
-                      style={p.sellPrice != null ? positionSellPriceColorStyle(p.currentPrice, p.sellPrice) : undefined}
+                      className={`${nCls} text-right ${
+                        !isBucketParent ? 'cursor-pointer' : ''
+                      } ${p.sellPrice == null && posSellEditTid !== normalizeClobTokenId(p.tid) ? 'text-gray-400' : ''}`}
+                      style={
+                        p.sellPrice != null && posSellEditTid !== normalizeClobTokenId(p.tid)
+                          ? positionSellPriceColorStyle(p.currentPrice, p.sellPrice)
+                          : undefined
+                      }
+                      title={!isBucketParent ? 'Click to set sell price (¢)' : undefined}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isBucketParent) return;
+                        if (posOrderBusyTids.has(normalizeClobTokenId(p.tid))) return;
+                        openPosSellEdit(p);
+                      }}
                     >
-                      {p.sellPrice != null ? `${p.sellPrice.toFixed(1)}¢` : '-'}
+                      {posSellEditTid === normalizeClobTokenId(p.tid) ? (
+                        <input
+                          autoFocus
+                          type="text"
+                          inputMode="decimal"
+                          className="no-drag w-14 max-w-full rounded border border-gray-600 bg-gray-900 px-0.5 py-0 text-right text-[10px] tabular-nums text-white outline-none focus:border-cyan-500"
+                          value={posSellEditValue}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => setPosSellEditValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void commitPosSellEdit(p);
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              setPosSellEditTid(null);
+                            }
+                          }}
+                          onBlur={() => {
+                            void commitPosSellEdit(p);
+                          }}
+                          disabled={posOrderBusyTids.has(normalizeClobTokenId(p.tid))}
+                          aria-label="Sell price cents"
+                        />
+                      ) : p.sellPrice != null ? (
+                        `${p.sellPrice.toFixed(1)}¢`
+                      ) : (
+                        '-'
+                      )}
                     </td>
                     <td className={`${nCls} text-right text-gray-300`}>${p.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td className={`${nCls} text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(p.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>

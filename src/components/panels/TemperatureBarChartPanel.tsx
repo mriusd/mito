@@ -447,6 +447,13 @@ function quoteScaleLevels(quote: MarketYesQuote): number[] {
   return [quote.bid, quote.ask, quote.mid].filter((v): v is number => v != null);
 }
 
+function marketBarTipPx(quote: MarketYesQuote, maxPct: number, trackPx: number): number {
+  const bidPx = quote.bid != null ? fracToBottomPx(quote.bid, maxPct, trackPx) : 0;
+  const askPx = quote.ask != null ? fracToBottomPx(quote.ask, maxPct, trackPx) : 0;
+  const midPx = quote.mid != null ? fracToBottomPx(quote.mid, maxPct, trackPx) : 0;
+  return Math.max(bidPx, askPx, midPx);
+}
+
 function renderMarketSpreadBar(
   quote: MarketYesQuote,
   maxPct: number,
@@ -798,6 +805,7 @@ function TempOddsBar({
     stakedPct != null && maxPct > 0 ? (stakedPct / maxPct) * trackPx : 0;
   const stakedShareBarPx =
     stakedSharePct != null && maxPct > 0 ? (stakedSharePct / maxPct) * trackPx : 0;
+  const marketTipPx = marketBarTipPx(quote, maxPct, trackPx);
   const levelMarkGroups = useMemo(
     () => buildTempLevelGroups(entry, orderMarks),
     [entry, orderMarks],
@@ -832,6 +840,15 @@ function TempOddsBar({
           ? 'rounded ring-2 ring-white/70'
           : '';
 
+  const tipLabel = (text: string, tipPx: number, colorClass: string) => (
+    <span
+      className={`absolute left-0 right-0 z-[6] -translate-y-full text-center text-[9px] tabular-nums leading-none pointer-events-none ${colorClass}`}
+      style={{ bottom: tipPx }}
+    >
+      {text}
+    </span>
+  );
+
   return (
     <button
       type="button"
@@ -852,23 +869,6 @@ function TempOddsBar({
         .filter(Boolean)
         .join(' · ')}
     >
-      {showProb ? (
-        <span className="text-[9px] text-gray-400 mb-0.5 tabular-nums shrink-0 min-h-[12px] leading-none flex w-full gap-0.5">
-          <span className="flex-1 text-center text-amber-400/80">
-            {modelPctOm != null ? `${(modelPctOm * 100).toFixed(0)}` : '—'}
-          </span>
-          <span className="flex-1 text-center text-sky-400/80">
-            {modelPctWc != null ? `${(modelPctWc * 100).toFixed(0)}` : '—'}
-          </span>
-          <span className="flex-1 text-center text-violet-400/80">
-            {stakedPct != null ? `${(stakedPct * 100).toFixed(0)}` : '—'}
-          </span>
-          <span className="flex-1 text-center text-fuchsia-400/80">
-            {stakedSharePct != null ? `${(stakedSharePct * 100).toFixed(0)}` : '—'}
-          </span>
-          <span className="flex-1 text-center">{pct != null ? `${(pct * 100).toFixed(0)}` : '—'}</span>
-        </span>
-      ) : null}
       <div className="relative w-full flex-1 min-h-0 flex items-end">
         <div className="relative w-full h-full flex gap-0.5 items-end">
           <div className="relative flex-1 min-w-0 h-full">
@@ -878,6 +878,9 @@ function TempOddsBar({
                 style={{ height: modelBarOmPx }}
               />
             ) : null}
+            {showProb && modelPctOm != null
+              ? tipLabel(`${(modelPctOm * 100).toFixed(0)}`, modelBarOmPx, 'text-amber-400/80')
+              : null}
           </div>
           <div className="relative flex-1 min-w-0 h-full">
             {modelBarWcPx > 0 ? (
@@ -886,6 +889,9 @@ function TempOddsBar({
                 style={{ height: modelBarWcPx }}
               />
             ) : null}
+            {showProb && modelPctWc != null
+              ? tipLabel(`${(modelPctWc * 100).toFixed(0)}`, modelBarWcPx, 'text-sky-400/80')
+              : null}
           </div>
           <div className="relative flex-1 min-w-0 h-full">
             {stakedBarPx > 0 ? (
@@ -894,6 +900,9 @@ function TempOddsBar({
                 style={{ height: stakedBarPx }}
               />
             ) : null}
+            {showProb && stakedPct != null
+              ? tipLabel(`${(stakedPct * 100).toFixed(0)}`, stakedBarPx, 'text-violet-400/80')
+              : null}
           </div>
           <div className="relative flex-1 min-w-0 h-full">
             {stakedShareBarPx > 0 ? (
@@ -902,9 +911,15 @@ function TempOddsBar({
                 style={{ height: stakedShareBarPx }}
               />
             ) : null}
+            {showProb && stakedSharePct != null
+              ? tipLabel(`${(stakedSharePct * 100).toFixed(0)}`, stakedShareBarPx, 'text-fuchsia-400/80')
+              : null}
           </div>
           <div className="relative flex-1 min-w-0 h-full">
             {marketBar}
+            {showProb && pct != null
+              ? tipLabel(`${(pct * 100).toFixed(0)}`, marketTipPx, 'text-gray-300')
+              : null}
           </div>
           {levelMarks}
         </div>
@@ -1015,29 +1030,7 @@ function TempOddsChart({
           <div className="flex-1 flex items-center justify-center text-gray-600 text-[10px]">No markets</div>
         ) : (
           <div className="flex flex-col flex-1 min-h-0 gap-1">
-            <div className="flex shrink-0 gap-0 divide-x divide-gray-500/80 min-h-[12px]">
-              {entries.map(({ temp, pct, modelPctOm, modelPctWc, stakedPct, stakedSharePct }) => (
-                <div
-                  key={`prob-${temp}`}
-                  className="flex-1 min-w-0 flex gap-0.5 px-0.5 text-[9px] text-gray-400 tabular-nums leading-none"
-                >
-                  <span className="flex-1 text-center text-amber-400/80">
-                    {modelPctOm != null ? `${(modelPctOm * 100).toFixed(0)}` : '—'}
-                  </span>
-                  <span className="flex-1 text-center text-sky-400/80">
-                    {modelPctWc != null ? `${(modelPctWc * 100).toFixed(0)}` : '—'}
-                  </span>
-                  <span className="flex-1 text-center text-violet-400/80">
-                    {stakedPct != null ? `${(stakedPct * 100).toFixed(0)}` : '—'}
-                  </span>
-                  <span className="flex-1 text-center text-fuchsia-400/80">
-                    {stakedSharePct != null ? `${(stakedSharePct * 100).toFixed(0)}` : '—'}
-                  </span>
-                  <span className="flex-1 text-center">{pct != null ? `${(pct * 100).toFixed(0)}` : '—'}</span>
-                </div>
-              ))}
-            </div>
-            <div className="relative flex min-h-0 flex-1 items-stretch gap-0">
+            <div className="relative flex min-h-0 flex-1 items-stretch gap-0 pt-3">
               <div
                 ref={plotRef}
                 className="relative flex h-full min-h-0 min-w-0 flex-1 items-stretch gap-0 divide-x divide-gray-500/80 overflow-visible"
@@ -1069,7 +1062,7 @@ function TempOddsChart({
                         orderMarks={orderMarks}
                         marketTitle={market.groupItemTitle || label}
                         onClick={() => onBarClick(market)}
-                        showProb={false}
+                        showProb
                         showLabel={false}
                         forecastHighlight={forecastHighlight}
                       />

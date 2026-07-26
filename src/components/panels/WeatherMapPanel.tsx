@@ -62,7 +62,12 @@ const TZ_LON_STEP = 15;
 const NIGHT_OVERLAY_STEP = 6;
 const MAP_ZOOM_MIN = 1;
 const MAP_ZOOM_MAX = 6;
-const MAP_ZOOM_FACTOR = 1.35;
+const MAP_ZOOM_STEP = 0.25;
+
+function snapMapZoom(zoom: number): number {
+  const stepped = Math.round(zoom / MAP_ZOOM_STEP) * MAP_ZOOM_STEP;
+  return Math.min(MAP_ZOOM_MAX, Math.max(MAP_ZOOM_MIN, stepped));
+}
 
 type MapView = { zoom: number; panX: number; panY: number };
 
@@ -73,7 +78,7 @@ function weatherMapViewStorageKey(panelId: string): string {
 }
 
 function clampMapView(view: MapView, layout: MapLayout): MapView {
-  const zoom = Math.min(MAP_ZOOM_MAX, Math.max(MAP_ZOOM_MIN, view.zoom));
+  const zoom = snapMapZoom(view.zoom);
   if (zoom <= MAP_ZOOM_MIN + 1e-6) {
     return { zoom: MAP_ZOOM_MIN, panX: 0, panY: 0 };
   }
@@ -110,9 +115,7 @@ function readStoredMapView(panelId: string): MapView {
     if (!raw) return { ...DEFAULT_MAP_VIEW };
     const o = JSON.parse(raw) as { zoom?: unknown; panXFrac?: unknown; panYFrac?: unknown };
     const zoom =
-      typeof o.zoom === 'number' && Number.isFinite(o.zoom)
-        ? Math.min(MAP_ZOOM_MAX, Math.max(MAP_ZOOM_MIN, o.zoom))
-        : MAP_ZOOM_MIN;
+      typeof o.zoom === 'number' && Number.isFinite(o.zoom) ? snapMapZoom(o.zoom) : MAP_ZOOM_MIN;
     if (zoom <= MAP_ZOOM_MIN + 1e-6) return { ...DEFAULT_MAP_VIEW };
     const panXFrac = typeof o.panXFrac === 'number' && Number.isFinite(o.panXFrac) ? o.panXFrac : 0;
     const panYFrac = typeof o.panYFrac === 'number' && Number.isFinite(o.panYFrac) ? o.panYFrac : 0;
@@ -782,9 +785,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   const zoomBy = useCallback(
     (dir: 1 | -1) => {
       const cur = viewRef.current;
-      const nextZoom =
-        dir > 0 ? Math.min(MAP_ZOOM_MAX, cur.zoom * MAP_ZOOM_FACTOR) : Math.max(MAP_ZOOM_MIN, cur.zoom / MAP_ZOOM_FACTOR);
-      setMapView({ ...cur, zoom: nextZoom });
+      setMapView({ ...cur, zoom: snapMapZoom(cur.zoom + dir * MAP_ZOOM_STEP) });
     },
     [setMapView],
   );
@@ -983,7 +984,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
             <Minus size={12} strokeWidth={2.5} />
           </button>
           <span className="min-w-[2.25rem] text-center text-[9px] tabular-nums text-gray-400">
-            {zoom.toFixed(1)}×
+            {zoom.toFixed(2)}×
           </span>
           <button
             type="button"

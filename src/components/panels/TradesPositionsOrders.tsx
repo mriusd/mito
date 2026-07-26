@@ -50,7 +50,8 @@ import {
   ASSET_COLORS as assetColorMap2,
   type MarketAssetCategoryFilter,
 } from '../../utils/format';
-import { formatWeatherEventDateLabel, tpoMarketSortDateIso } from '../../lib/weatherMarketExpiry';
+import { formatWeatherEventDateLabel, parseWeatherCityFromSlug, tpoMarketSortDateIso } from '../../lib/weatherMarketExpiry';
+import { weatherCityLabel } from '../../lib/weatherCities';
 import type { Market } from '../../types';
 
 const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
@@ -72,6 +73,117 @@ function formatTpoMarketLabel(asset: string, marketName: string): string {
 function formatQuoteCents(prob: number | null | undefined): string {
   if (prob == null || !Number.isFinite(prob) || prob <= 0) return '-';
   return `${(prob * 100).toFixed(1)}¢`;
+}
+
+function formatAskCentsSum(cents: number | null | undefined): string {
+  if (cents == null || !Number.isFinite(cents) || cents <= 0) return '-';
+  return `${cents.toFixed(1)}¢`;
+}
+
+type TpoPosRow = {
+  tid: string;
+  asset: string;
+  endDate: string | null;
+  dateLabel: string;
+  dateColor: string;
+  marketName: string;
+  outcome: string;
+  size: number;
+  entryPrice: number;
+  cost: number;
+  currentPrice: number;
+  currentValue: number;
+  bidProb: number | null;
+  askProb: number | null;
+  /** Summed ask ¢ when Bucket on; else derived from askProb. */
+  askCents?: number | null;
+  sellPrice: number | null;
+  pnl: number;
+  pnlPercent: number;
+  marketId?: string | null;
+  title: string;
+  eventSlug: string;
+  clickable: boolean;
+};
+
+/** City + event-date key for Weather Bucket mode. */
+function tpoWeatherBucketKey(eventSlug: string, endDate: string | null): string | null {
+  const city = parseWeatherCityFromSlug(eventSlug || '');
+  const date = (endDate || '').trim();
+  if (!city || !date) return null;
+  return `${city}|${date}`;
+}
+
+function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
+  const groups = new Map<string, TpoPosRow[]>();
+  const passthrough: TpoPosRow[] = [];
+  for (const r of rows) {
+    const key = tpoWeatherBucketKey(r.eventSlug, r.endDate);
+    if (!key) {
+      passthrough.push(r);
+      continue;
+    }
+    const list = groups.get(key);
+    if (list) list.push(r);
+    else groups.set(key, [r]);
+  }
+  const out: TpoPosRow[] = [...passthrough];
+  for (const [key, list] of groups) {
+    if (list.length === 1) {
+      out.push(list[0]);
+      continue;
+    }
+    const [citySlug] = key.split('|');
+    const first = list[0];
+    let size = first.size;
+    let entryPrice = 0;
+    let cost = 0;
+    let currentValue = 0;
+    let bidCents = 0;
+    let askCents = 0;
+    let hasBid = false;
+    let hasAsk = false;
+    const outcomes = new Set<string>();
+    for (const r of list) {
+      size = Math.min(size, r.size);
+      entryPrice += r.entryPrice;
+      cost += r.cost;
+      currentValue += r.currentValue;
+      if (r.bidProb != null && Number.isFinite(r.bidProb) && r.bidProb > 0) {
+        bidCents += r.currentPrice;
+        hasBid = true;
+      }
+      if (r.askProb != null && Number.isFinite(r.askProb) && r.askProb > 0) {
+        askCents += r.askProb * 100;
+        hasAsk = true;
+      }
+      if (r.outcome) outcomes.add(r.outcome);
+    }
+    const pnl = currentValue - cost;
+    const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
+    out.push({
+      ...first,
+      // Keep a real token id so row click still opens a market from the bucket.
+      tid: first.tid,
+      marketName: weatherCityLabel(citySlug),
+      outcome: outcomes.size === 1 ? [...outcomes][0] : '—',
+      size,
+      entryPrice,
+      cost,
+      currentPrice: hasBid ? bidCents : 0,
+      currentValue,
+      bidProb: hasBid ? bidCents / 100 : null,
+      askProb: hasAsk ? askCents / 100 : null,
+      askCents: hasAsk ? askCents : null,
+      sellPrice: null,
+      pnl,
+      pnlPercent,
+      clickable: first.clickable,
+      title: `${weatherCityLabel(citySlug)} · ${first.dateLabel}`,
+      eventSlug: first.eventSlug,
+    });
+  }
+  return out;
 }
 
 function formatElapsed(ms: number): string {
@@ -697,6 +809,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       ? (v as MarketAssetCategoryFilter)
       : 'ALL';
   });
+  const [posWeatherBucket, setPosWeatherBucket] = useState(() => {
+    try {
+      return localStorage.getItem(`polymarket-tpo-pos-weather-bucket-${panelId}`) === '1';
+    } catch {
+      return false;
+    }
+  });
   type PosSortCol = 'expiry' | 'size' | 'entry' | 'cost' | 'bid' | 'ask' | 'sell' | 'val' | 'pnl' | 'pnlPct';
   const [posSortCol, setPosSortCol] = useState<PosSortCol>(() => {
     const v = localStorage.getItem(`polymarket-tpo-pos-sort-col-${panelId}`);
@@ -1033,6 +1152,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const sellPrice = sellOrderPriceByToken.get(normalizeClobTokenId(tid)) ?? null;
       const conditionId = market?.conditionId || market?.id || pos.conditionId || pos.market || '';
       const clickable = !!tid;
+      const marketIdRaw = conditionId || market?.id || pos.market;
       return {
         tid,
         asset,
@@ -1051,15 +1171,19 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         sellPrice,
         pnl,
         pnlPercent,
-        marketId: conditionId || market?.id || pos.market,
+        marketId: marketIdRaw != null && marketIdRaw !== '' ? String(marketIdRaw) : null,
         title: pos.title || market?.question || '',
         eventSlug: pos.eventSlug || pos.slug || market?.eventSlug || '',
         clickable,
-      };
+      } satisfies TpoPosRow;
     }), [positionsForTable, posCategoryFilter, marketLookup, liveQuoteLookup, sellOrderPriceByToken]);
 
   const displayPositions = useMemo(() => {
-    const rows = [...processedPositions];
+    const base =
+      posCategoryFilter === 'WEATHER' && posWeatherBucket
+        ? bucketTpoWeatherPositions(processedPositions as TpoPosRow[])
+        : (processedPositions as TpoPosRow[]);
+    const rows = [...base];
     if (posSortCol === 'size') {
       return rows.sort((a, b) => (a.size - b.size) * posSortDir);
     }
@@ -1073,7 +1197,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       return rows.sort((a, b) => (a.currentPrice - b.currentPrice) * posSortDir);
     }
     if (posSortCol === 'ask') {
-      return rows.sort((a, b) => ((a.askProb ?? 0) - (b.askProb ?? 0)) * posSortDir);
+      return rows.sort((a, b) => {
+        const aAsk = a.askCents ?? (a.askProb != null ? a.askProb * 100 : 0);
+        const bAsk = b.askCents ?? (b.askProb != null ? b.askProb * 100 : 0);
+        return (aAsk - bAsk) * posSortDir;
+      });
     }
     if (posSortCol === 'sell') {
       // Tint score: greener (bid≈sell) higher. Default dir -1 → green at top.
@@ -1095,7 +1223,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       const cmp = comparePositionsByExpiryDesc(a, b);
       return posSortDir === -1 ? cmp : -cmp;
     });
-  }, [processedPositions, posSortCol, posSortDir]);
+  }, [processedPositions, posCategoryFilter, posWeatherBucket, posSortCol, posSortDir]);
 
   // Process orders — no live quote dep (5k orders × quote ticks freezes UI).
   const processedOrders = useMemo(() => {
@@ -1315,7 +1443,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         <span className="shrink-0 text-[10px] font-bold text-gray-500 select-none">TPO</span>
         <div className="no-drag flex min-w-0 flex-1 flex-wrap items-center gap-1">
           <button onClick={() => handleSetTab('positions')} className={tabCls('positions')}>
-            Positions <span className="text-xs text-gray-500">({processedPositions.length})</span>
+            Positions <span className="text-xs text-gray-500">({displayPositions.length})</span>
           </button>
           <button onClick={() => handleSetTab('orders')} className={tabCls('orders')}>
             Orders <span className="text-xs text-gray-500">({processedOrders.length})</span>
@@ -1352,29 +1480,49 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           )}
 
           {tab === 'positions' && (
-            <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]">
-              {POS_CATEGORY_OPTS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  title={
-                    c === 'ALL' ? 'All positions'
-                      : c === 'CRYPTO' ? 'BTC / ETH / SOL / XRP'
-                        : c === 'WEATHER' ? 'Weather / temperature'
-                          : 'RWA, events, and other'
-                  }
-                  onClick={() => {
-                    setPosCategoryFilter(c);
-                    localStorage.setItem(`polymarket-tpo-pos-category-${panelId}`, c);
-                  }}
-                  className={filterBtnCls(
-                    posCategoryFilter === c,
-                    c === 'CRYPTO' ? 'green' : c === 'WEATHER' ? 'blue' : c === 'OTHER' ? 'red' : 'gray',
-                  )}
+            <div className="inline-flex items-center gap-1 flex-wrap">
+              <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]">
+                {POS_CATEGORY_OPTS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    title={
+                      c === 'ALL' ? 'All positions'
+                        : c === 'CRYPTO' ? 'BTC / ETH / SOL / XRP'
+                          : c === 'WEATHER' ? 'Weather / temperature'
+                            : 'RWA, events, and other'
+                    }
+                    onClick={() => {
+                      setPosCategoryFilter(c);
+                      localStorage.setItem(`polymarket-tpo-pos-category-${panelId}`, c);
+                    }}
+                    className={filterBtnCls(
+                      posCategoryFilter === c,
+                      c === 'CRYPTO' ? 'green' : c === 'WEATHER' ? 'blue' : c === 'OTHER' ? 'red' : 'gray',
+                    )}
+                  >
+                    {c === 'CRYPTO' ? 'Crypto' : c === 'WEATHER' ? 'Weather' : c === 'OTHER' ? 'Other' : 'All'}
+                  </button>
+                ))}
+              </div>
+              {posCategoryFilter === 'WEATHER' ? (
+                <label
+                  className="no-drag inline-flex items-center gap-1 cursor-pointer select-none text-[9px] text-gray-400 hover:text-gray-200"
+                  title="Combine same city/date into one row: sum entry/bid/ask/val; size=min; cost from actual sizes; PnL from summed val−cost"
                 >
-                  {c === 'CRYPTO' ? 'Crypto' : c === 'WEATHER' ? 'Weather' : c === 'OTHER' ? 'Other' : 'All'}
-                </button>
-              ))}
+                  <input
+                    type="checkbox"
+                    checked={posWeatherBucket}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setPosWeatherBucket(on);
+                      localStorage.setItem(`polymarket-tpo-pos-weather-bucket-${panelId}`, on ? '1' : '0');
+                    }}
+                    className="h-3 w-3 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-0 focus:ring-offset-0"
+                  />
+                  Bucket
+                </label>
+              ) : null}
             </div>
           )}
 
@@ -1597,7 +1745,9 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${nCls} text-right ${hasBid ? exitColor : 'text-gray-400'}`}>
                       {hasBid ? `${p.currentPrice.toFixed(1)}¢` : '-'}
                     </td>
-                    <td className={`${nCls} text-right text-red-300/90`}>{formatQuoteCents(p.askProb)}</td>
+                    <td className={`${nCls} text-right text-red-300/90`}>
+                      {p.askCents != null ? formatAskCentsSum(p.askCents) : formatQuoteCents(p.askProb)}
+                    </td>
                     <td
                       className={`${nCls} text-right ${p.sellPrice == null ? 'text-gray-400' : ''}`}
                       style={p.sellPrice != null ? positionSellPriceColorStyle(p.currentPrice, p.sellPrice) : undefined}

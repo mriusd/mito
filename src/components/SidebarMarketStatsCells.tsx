@@ -2,7 +2,6 @@ import { memo, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { MarketStakedLegsResponse } from '../api';
 import { fetchMarketStakedLegs, marketTotalStakedAbsUsd, mergeMarketStakedLegsResponse } from '../api';
 import { useThrottledBidAskMarketRow } from '../hooks/useThrottledBidAskMarketRow';
-import { formatPolymarketVolumeK } from '../utils/format';
 import { setSidebarNotifyStakedGatePasses } from '../lib/sidebarNotifyStakedGateStore';
 import { useSidebarToxicFlowData } from '../lib/sidebarToxicFlowStore';
 
@@ -154,8 +153,13 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
 
   const stakedGross = useMemo(() => stakedGrossUsd(stakedLegs), [stakedLegs]);
   const yesK =
-    stakedHalves.yesUsd != null ? formatPolymarketVolumeK(stakedHalves.yesUsd) : null;
-  const noK = stakedHalves.noUsd != null ? formatPolymarketVolumeK(stakedHalves.noUsd) : null;
+    stakedHalves.yesUsd != null && Number.isFinite(stakedHalves.yesUsd)
+      ? `${(stakedHalves.yesUsd / 1000).toFixed(2)}k`
+      : null;
+  const noK =
+    stakedHalves.noUsd != null && Number.isFinite(stakedHalves.noUsd)
+      ? `${(stakedHalves.noUsd / 1000).toFixed(2)}k`
+      : null;
   const yesPctLabel =
     stakedHalves.yesPct != null ? `${Math.round(stakedHalves.yesPct)}%` : null;
   const noPctLabel = stakedHalves.noPct != null ? `${Math.round(stakedHalves.noPct)}%` : null;
@@ -175,7 +179,7 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
         onClick={onExpandToxic}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <div className="text-[8px] uppercase tracking-wide text-emerald-400/90 truncate">Staked Yes</div>
+        <div className="text-[8px] uppercase tracking-wide text-emerald-400/90 truncate">Stk Yes</div>
         <div className="tabular-nums font-bold text-emerald-300 truncate">
           {yesK != null ? `$${yesK}` : '--'}
         </div>
@@ -187,7 +191,7 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
         onClick={onExpandToxic}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <div className="text-[8px] uppercase tracking-wide text-red-400/90 truncate">Staked No</div>
+        <div className="text-[8px] uppercase tracking-wide text-red-400/90 truncate">Stk No</div>
         <div className="tabular-nums font-bold text-red-300 truncate">
           {noK != null ? `$${noK}` : '--'}
         </div>

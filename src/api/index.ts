@@ -789,6 +789,34 @@ export async function fetchMarketStakedLegs(marketId: string): Promise<MarketSta
   return resp.json();
 }
 
+/** Batch staked legs — one BE scan for up to 64 market ids. Keys match request ids. */
+export async function fetchMarketsStakedLegs(
+  marketIds: string[],
+): Promise<Record<string, MarketStakedLegsResponse>> {
+  const ids = [...new Set(marketIds.map((id) => id.trim()).filter(Boolean))];
+  if (ids.length === 0) return {};
+  const resp = await fetchBackend(
+    `${BASE}/api/markets-staked-legs?market_ids=${encodeURIComponent(ids.join(','))}`,
+    undefined,
+    { timeoutMs: 20_000 },
+  );
+  if (!resp.ok) throw new Error('Failed to fetch markets staked legs');
+  const body = (await resp.json()) as { byMarketId?: Record<string, MarketStakedLegsResponse> };
+  const by = body?.byMarketId;
+  if (!by || typeof by !== 'object') return {};
+  // Case-insensitive lookup: return map keyed by each requested id.
+  const lower = new Map<string, MarketStakedLegsResponse>();
+  for (const [k, v] of Object.entries(by)) {
+    lower.set(k.toLowerCase(), v);
+  }
+  const out: Record<string, MarketStakedLegsResponse> = {};
+  for (const id of ids) {
+    const hit = by[id] ?? lower.get(id.toLowerCase());
+    if (hit) out[id] = hit;
+  }
+  return out;
+}
+
 export type MarketOutcomeTokensResponse = {
   marketId: string;
   tokenIdYes: string;

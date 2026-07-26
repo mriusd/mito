@@ -37,7 +37,7 @@ import {
   type WeatherMetric,
 } from '../../lib/weatherMarketsGrid';
 import {
-  fetchMarketStakedLegs,
+  fetchMarketsStakedLegs,
   fetchWeatherProbabilities,
   type WeatherForecastSourceId,
   type WeatherProbabilitiesPayload,
@@ -537,6 +537,30 @@ type MarketStakeSnap = {
   noUsd: number;
 };
 
+/** Module cache survives date/city flips + cancelled fetches so bars don't blink empty. */
+const TEMP_ODDS_STAKE_CACHE = new Map<string, MarketStakeSnap>();
+const TEMP_ODDS_STAKE_CACHE_MAX = 256;
+
+function tempOddsStakeCacheKey(market: { id?: string; conditionId?: string }): string {
+  return (market.conditionId || market.id || '').trim().toLowerCase();
+}
+
+function tempOddsStakeCacheGet(market: { id?: string; conditionId?: string }): MarketStakeSnap | null {
+  const k = tempOddsStakeCacheKey(market);
+  if (!k) return null;
+  return TEMP_ODDS_STAKE_CACHE.get(k) ?? null;
+}
+
+function tempOddsStakeCacheSet(market: { id?: string; conditionId?: string }, snap: MarketStakeSnap): void {
+  const k = tempOddsStakeCacheKey(market);
+  if (!k) return;
+  TEMP_ODDS_STAKE_CACHE.set(k, snap);
+  if (TEMP_ODDS_STAKE_CACHE.size > TEMP_ODDS_STAKE_CACHE_MAX) {
+    const first = TEMP_ODDS_STAKE_CACHE.keys().next().value;
+    if (first != null) TEMP_ODDS_STAKE_CACHE.delete(first);
+  }
+}
+
 function stakedYesProbFromUsd(yesUsd: unknown, noUsd: unknown): number | null {
   if (typeof yesUsd !== 'number' || typeof noUsd !== 'number') return null;
   if (!Number.isFinite(yesUsd) || !Number.isFinite(noUsd)) return null;
@@ -555,6 +579,15 @@ function marketStakeSnapFromParts(
   if (y == null || n == null) return null;
   if (y + n <= 0) return null;
   return { yesProb: y / (y + n), yesUsd: y, noUsd: n };
+}
+
+function hydrateStakedByMarketId(markets: Market[]): Record<string, MarketStakeSnap> {
+  const out: Record<string, MarketStakeSnap> = {};
+  for (const m of markets) {
+    const hit = tempOddsStakeCacheGet(m);
+    if (hit) out[m.id] = hit;
+  }
+  return out;
 }
 
 function resolveMarketStakeSnap(
@@ -1511,45 +1544,68 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     [activeBarMarkets],
   );
 
-  // Weather markets often empty on WS — REST fill YES% + total USD; poll; keep last good.
+  // Weather WS shareStats often empty — one batch REST; module cache; keep last good.
   useEffect(() => {
     const markets = activeBarMarkets;
     if (markets.length === 0) {
       setStakedByMarketId({});
       return;
     }
-    let cancelled = false;
-    const load = async () => {
-      const pairs = await Promise.all(
-        markets.map(async (m) => {
-          const mid = (m.conditionId || m.id || '').trim();
-          if (!mid) return null;
-          try {
-            const legs = await fetchMarketStakedLegs(mid);
-            const snap = marketStakeSnapFromParts(
-              legs.stakedNetYesUsd,
-              legs.stakedNetNoUsd,
-              legs.stakedSumAbsSignedNetUsd,
-            );
-            return snap ? ([m.id, snap] as const) : null;
-          } catch {
-            return null;
-          }
-        }),
-      );
-      if (cancelled) return;
+    // Instant paint from cache (survives cancel / city flip-back).
+    const cached = hydrateStakedByMarketId(markets);
+    if (Object.keys(cached).length > 0) {
       setStakedByMarketId((prev) => {
-        const next: Record<string, MarketStakeSnap> = {};
-        const idSet = new Set(markets.map((m) => m.id));
-        for (const pair of pairs) {
-          if (pair) next[pair[0]] = pair[1];
-        }
-        // Keep prior snap when a single REST call fails (bars used to blink off).
-        for (const id of idSet) {
-          if (!next[id] && prev[id]) next[id] = prev[id];
+        const next = { ...cached };
+        for (const m of markets) {
+          if (!next[m.id] && prev[m.id]) next[m.id] = prev[m.id]!;
         }
         return next;
       });
+    }
+    let cancelled = false;
+    const stakeKey = activeBarMarketStakeKey;
+    const load = async () => {
+      const ids = markets
+        .map((m) => (m.conditionId || m.id || '').trim())
+        .filter(Boolean);
+      if (ids.length === 0) return;
+      try {
+        const byId = await fetchMarketsStakedLegs(ids);
+        const next: Record<string, MarketStakeSnap> = {};
+        for (const m of markets) {
+          const mid = (m.conditionId || m.id || '').trim();
+          if (!mid) continue;
+          const legs =
+            byId[mid] ??
+            byId[mid.toLowerCase()] ??
+            Object.entries(byId).find(([k]) => k.toLowerCase() === mid.toLowerCase())?.[1];
+          if (!legs) continue;
+          const snap = marketStakeSnapFromParts(
+            legs.stakedNetYesUsd,
+            legs.stakedNetNoUsd,
+            legs.stakedSumAbsSignedNetUsd,
+          );
+          if (!snap) continue;
+          tempOddsStakeCacheSet(m, snap);
+          next[m.id] = snap;
+        }
+        // Always write cache; only skip setState if this date/city set changed.
+        if (cancelled) return;
+        setStakedByMarketId((prev) => {
+          const merged: Record<string, MarketStakeSnap> = {};
+          for (const m of markets) {
+            if (next[m.id]) merged[m.id] = next[m.id]!;
+            else if (prev[m.id]) merged[m.id] = prev[m.id]!;
+            else {
+              const hit = tempOddsStakeCacheGet(m);
+              if (hit) merged[m.id] = hit;
+            }
+          }
+          return merged;
+        });
+      } catch (e) {
+        console.error('[temp-odds] markets-staked-legs', stakeKey, e);
+      }
     };
     void load();
     const timer = setInterval(() => {

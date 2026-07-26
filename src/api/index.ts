@@ -1222,14 +1222,19 @@ export interface WeatherTemperatureProbabilities {
   confidence?: number;
 }
 
+export type WeatherForecastSourceId = 'open-meteo' | 'weather-company';
+
 export interface WeatherProbabilitiesPayload {
   target_date: string;
   analysis_timestamp?: string;
   updated_at?: number;
+  forecast_source?: WeatherForecastSourceId | string;
   highest_temperature?: WeatherTemperatureProbabilities;
   lowest_temperature?: WeatherTemperatureProbabilities;
   overall_rationale?: string;
   data_quality_notes?: string;
+  /** Dual-source map when backend polls both OM + WC. */
+  by_source?: Partial<Record<WeatherForecastSourceId | string, WeatherProbabilitiesPayload>>;
 }
 
 export async function fetchWeatherProbabilities(

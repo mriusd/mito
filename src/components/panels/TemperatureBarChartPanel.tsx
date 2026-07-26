@@ -36,7 +36,11 @@ import {
   type WeatherGridData,
   type WeatherMetric,
 } from '../../lib/weatherMarketsGrid';
-import { fetchWeatherProbabilities, type WeatherProbabilitiesPayload } from '../../api';
+import {
+  fetchWeatherProbabilities,
+  type WeatherForecastSourceId,
+  type WeatherProbabilitiesPayload,
+} from '../../api';
 import {
   fetchWeatherObservations,
   floorDisplayTemp,
@@ -44,6 +48,8 @@ import {
   obsTempToCelsius,
   weatherHighlightHighC,
   weatherHighlightLowC,
+  weatherObsWithForecastSource,
+  type WeatherForecastSourceId as ObsForecastSourceId,
   type WeatherObservationsResponse,
   type WeatherTempUnit,
 } from '../../lib/weatherObservations';
@@ -56,6 +62,20 @@ import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
 import { useThrottledGridOrders, useThrottledGridPositions } from '../../hooks/useThrottledGridWallet';
 import type { Position } from '../../types';
 import type { WSPosition } from '../../hooks/useOnchainTradesWS';
+
+type ForecastSourceToggle = WeatherForecastSourceId;
+
+function modelBucketsFromPayload(
+  payload: WeatherProbabilitiesPayload | null | undefined,
+  source: ForecastSourceToggle,
+  metric: WeatherMetric,
+): Record<string, number> | null {
+  const srcPayload = payload?.by_source?.[source] ?? (payload?.forecast_source === source ? payload : null);
+  const flat = srcPayload ?? (source === 'open-meteo' ? payload : null);
+  if (!flat) return null;
+  const field = metric === 'low' ? flat.lowest_temperature : flat.highest_temperature;
+  return field?.bucket_probabilities_1c ?? null;
+}
 
 const EMPTY_MARKETS: Market[] = [];
 
@@ -499,7 +519,8 @@ type TempOddsBucket = {
   market: Market;
   quote: MarketYesQuote;
   pct: number | null;
-  modelPct: number | null;
+  modelPctOm: number | null;
+  modelPctWc: number | null;
   entry: { frac: number; outcome: 'YES' | 'NO' } | null;
   orderMarks: TempOddsOrderMark[];
 };
@@ -509,7 +530,8 @@ function buildTempOddsBuckets(
   positions: Position[],
   liveTradesSource: string,
   onchainWsPositions: WSPosition[],
-  modelBuckets: Record<string, number> | null | undefined,
+  modelBucketsOm: Record<string, number> | null | undefined,
+  modelBucketsWc: Record<string, number> | null | undefined,
   orderLookup: Record<string, Order[]>,
   metric: WeatherMetric,
   obsBoundC: number | null,
@@ -518,9 +540,11 @@ function buildTempOddsBuckets(
     const yesTokenId = market.clobTokenIds?.[0] || '';
     const noTokenId = market.clobTokenIds?.[1] || '';
     const quote = getMarketYesQuote(market);
-    let modelPct = lookupModelBucketProb(modelBuckets, temp);
+    let modelPctOm = lookupModelBucketProb(modelBucketsOm, temp);
+    let modelPctWc = lookupModelBucketProb(modelBucketsWc, temp);
     if (weatherTempBucketRuledOutByObs(temp, metric, obsBoundC)) {
-      modelPct = 0;
+      modelPctOm = 0;
+      modelPctWc = 0;
     }
     return {
       temp,
@@ -528,7 +552,8 @@ function buildTempOddsBuckets(
       market,
       quote,
       pct: quote.mid,
-      modelPct,
+      modelPctOm,
+      modelPctWc,
       entry: marketEntryYesFrac(yesTokenId, noTokenId, positions, liveTradesSource, onchainWsPositions),
       orderMarks: marketOrderYesMarks(yesTokenId, noTokenId, orderLookup),
     };
@@ -542,7 +567,8 @@ function useTempOddsBuckets(
   positions: Position[],
   liveTradesSource: string,
   onchainWsPositions: WSPosition[],
-  modelBuckets: Record<string, number> | null | undefined,
+  modelBucketsOm: Record<string, number> | null | undefined,
+  modelBucketsWc: Record<string, number> | null | undefined,
   orderLookup: Record<string, Order[]>,
   metric: WeatherMetric,
   obsBoundC: number | null,
@@ -585,7 +611,8 @@ function useTempOddsBuckets(
         positions,
         liveTradesSource,
         onchainWsPositions,
-        modelBuckets,
+        modelBucketsOm,
+        modelBucketsWc,
         orderLookup,
         metric,
         obsBoundC,
@@ -595,7 +622,8 @@ function useTempOddsBuckets(
       positions,
       liveTradesSource,
       onchainWsPositions,
-      modelBuckets,
+      modelBucketsOm,
+      modelBucketsWc,
       orderLookup,
       metric,
       obsBoundC,
@@ -608,12 +636,14 @@ interface TempOddsBarProps {
   label: string;
   quote: MarketYesQuote;
   pct: number | null;
-  modelPct: number | null;
+  modelPctOm: number | null;
+  modelPctWc: number | null;
   maxPct: number;
   trackPx: number;
   barColor: string;
   barSpreadColor: string;
-  modelBarColor: string;
+  modelBarColorOm: string;
+  modelBarColorWc: string;
   selected: boolean;
   entry: { frac: number; outcome: 'YES' | 'NO' } | null;
   orderMarks: TempOddsOrderMark[];
@@ -628,12 +658,14 @@ function TempOddsBar({
   label,
   quote,
   pct,
-  modelPct,
+  modelPctOm,
+  modelPctWc,
   maxPct,
   trackPx,
   barColor,
   barSpreadColor,
-  modelBarColor,
+  modelBarColorOm,
+  modelBarColorWc,
   selected,
   entry,
   orderMarks,
@@ -643,8 +675,10 @@ function TempOddsBar({
   showLabel = true,
   forecastHighlight = false,
 }: TempOddsBarProps) {
-  const modelBarPx =
-    modelPct != null && maxPct > 0 ? (modelPct / maxPct) * trackPx : 0;
+  const modelBarOmPx =
+    modelPctOm != null && maxPct > 0 ? (modelPctOm / maxPct) * trackPx : 0;
+  const modelBarWcPx =
+    modelPctWc != null && maxPct > 0 ? (modelPctWc / maxPct) * trackPx : 0;
   const levelMarkGroups = useMemo(
     () => buildTempLevelGroups(entry, orderMarks),
     [entry, orderMarks],
@@ -685,25 +719,44 @@ function TempOddsBar({
       {...(selected ? { 'data-temp-odds-bar-selected': '' } : {})}
       className={`no-drag flex flex-col items-center justify-end flex-1 min-w-0 h-full px-0.5 group outline-none focus:outline-none ${frameClass}`}
       onClick={onClick}
-      title={[entryTip, marketTitle, quoteTip, ...orderTips, forecastHighlight ? 'WU hourly forecast' : null]
+      title={[
+        entryTip,
+        marketTitle,
+        quoteTip,
+        ...orderTips,
+        modelPctOm != null ? `OM ${(modelPctOm * 100).toFixed(1)}%` : null,
+        modelPctWc != null ? `WC ${(modelPctWc * 100).toFixed(1)}%` : null,
+        forecastHighlight ? 'Forecast bucket' : null,
+      ]
         .filter(Boolean)
         .join(' · ')}
     >
       {showProb ? (
         <span className="text-[9px] text-gray-400 mb-0.5 tabular-nums shrink-0 min-h-[12px] leading-none flex w-full gap-0.5">
-          <span className="flex-1 text-center opacity-60">
-            {modelPct != null ? `${(modelPct * 100).toFixed(1)}%` : '—'}
+          <span className="flex-1 text-center text-amber-400/80">
+            {modelPctOm != null ? `${(modelPctOm * 100).toFixed(0)}` : '—'}
           </span>
-          <span className="flex-1 text-center">{pct != null ? `${(pct * 100).toFixed(1)}%` : '—'}</span>
+          <span className="flex-1 text-center text-sky-400/80">
+            {modelPctWc != null ? `${(modelPctWc * 100).toFixed(0)}` : '—'}
+          </span>
+          <span className="flex-1 text-center">{pct != null ? `${(pct * 100).toFixed(0)}` : '—'}</span>
         </span>
       ) : null}
       <div className="relative w-full flex-1 min-h-0 flex items-end">
         <div className="relative w-full h-full flex gap-0.5 items-end">
           <div className="relative flex-1 min-w-0 h-full">
-            {modelBarPx > 0 ? (
+            {modelBarOmPx > 0 ? (
               <div
-                className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${modelBarColor}`}
-                style={{ height: modelBarPx }}
+                className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${modelBarColorOm}`}
+                style={{ height: modelBarOmPx }}
+              />
+            ) : null}
+          </div>
+          <div className="relative flex-1 min-w-0 h-full">
+            {modelBarWcPx > 0 ? (
+              <div
+                className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${modelBarColorWc}`}
+                style={{ height: modelBarWcPx }}
               />
             ) : null}
           </div>
@@ -733,7 +786,8 @@ function TempOddsBar({
 interface TempOddsChartProps {
   barColor: string;
   barSpreadColor: string;
-  modelBarColor: string;
+  modelBarColorOm: string;
+  modelBarColorWc: string;
   grid: WeatherGridData | null;
   dateCol: DateCol | undefined;
   selectedMarketId: string;
@@ -741,7 +795,8 @@ interface TempOddsChartProps {
   positions: Position[];
   liveTradesSource: string;
   onchainWsPositions: WSPosition[];
-  modelBuckets: Record<string, number> | null | undefined;
+  modelBucketsOm: Record<string, number> | null | undefined;
+  modelBucketsWc: Record<string, number> | null | undefined;
   orderLookup: Record<string, Order[]>;
   forecastTempC: number | null;
   metric: WeatherMetric;
@@ -751,7 +806,8 @@ interface TempOddsChartProps {
 function TempOddsChart({
   barColor,
   barSpreadColor,
-  modelBarColor,
+  modelBarColorOm,
+  modelBarColorWc,
   grid,
   dateCol,
   selectedMarketId,
@@ -759,7 +815,8 @@ function TempOddsChart({
   positions,
   liveTradesSource,
   onchainWsPositions,
-  modelBuckets,
+  modelBucketsOm,
+  modelBucketsWc,
   orderLookup,
   forecastTempC,
   metric,
@@ -784,7 +841,8 @@ function TempOddsChart({
     positions,
     liveTradesSource,
     onchainWsPositions,
-    modelBuckets,
+    modelBucketsOm,
+    modelBucketsWc,
     orderLookup,
     metric,
     obsBoundC,
@@ -808,15 +866,18 @@ function TempOddsChart({
         ) : (
           <div className="flex flex-col flex-1 min-h-0 gap-1">
             <div className="flex shrink-0 gap-0.5 min-h-[12px]">
-              {entries.map(({ temp, pct, modelPct }) => (
+              {entries.map(({ temp, pct, modelPctOm, modelPctWc }) => (
                 <div
                   key={`prob-${temp}`}
                   className="flex-1 min-w-0 flex gap-0.5 text-[9px] text-gray-400 tabular-nums leading-none"
                 >
-                  <span className="flex-1 text-center opacity-60">
-                    {modelPct != null ? `${(modelPct * 100).toFixed(1)}%` : '—'}
+                  <span className="flex-1 text-center text-amber-400/80">
+                    {modelPctOm != null ? `${(modelPctOm * 100).toFixed(0)}` : '—'}
                   </span>
-                  <span className="flex-1 text-center">{pct != null ? `${(pct * 100).toFixed(1)}%` : '—'}</span>
+                  <span className="flex-1 text-center text-sky-400/80">
+                    {modelPctWc != null ? `${(modelPctWc * 100).toFixed(0)}` : '—'}
+                  </span>
+                  <span className="flex-1 text-center">{pct != null ? `${(pct * 100).toFixed(0)}` : '—'}</span>
                 </div>
               ))}
             </div>
@@ -826,7 +887,7 @@ function TempOddsChart({
                 className="relative flex h-full min-h-0 min-w-0 flex-1 items-stretch gap-0.5 overflow-visible"
               >
                 {trackPx > 0
-                  ? entries.map(({ temp, label, market, quote, pct, modelPct, entry, orderMarks }) => {
+                  ? entries.map(({ temp, label, market, quote, pct, modelPctOm, modelPctWc, entry, orderMarks }) => {
                       const forecastHighlight =
                         forecastTempC != null && weatherTempBucketMatchesCelsius(temp, forecastTempC);
                       return (
@@ -835,12 +896,14 @@ function TempOddsChart({
                         label={label}
                         quote={quote}
                         pct={pct}
-                        modelPct={modelPct}
+                        modelPctOm={modelPctOm}
+                        modelPctWc={modelPctWc}
                         maxPct={maxPct}
                         trackPx={trackPx}
                         barColor={barColor}
                         barSpreadColor={barSpreadColor}
-                        modelBarColor={modelBarColor}
+                        modelBarColorOm={modelBarColorOm}
+                        modelBarColorWc={modelBarColorWc}
                         selected={selectedMarketId === market.id}
                         entry={entry}
                         orderMarks={orderMarks}
@@ -887,14 +950,24 @@ function TempOddsTemperatureChart({
   data,
   loading,
   unit,
+  forecastSource,
+  onForecastSourceChange,
 }: {
   data: WeatherObservationsResponse | null;
   loading: boolean;
   unit: WeatherTempUnit;
+  forecastSource: ForecastSourceToggle;
+  onForecastSourceChange: (source: ForecastSourceToggle) => void;
 }) {
-  const last = data?.points?.length ? data.points[data.points.length - 1] : null;
-  const obsUnit = data?.obsTempUnit ?? 'C';
+  const chartData = useMemo(() => {
+    if (!data) return null;
+    return weatherObsWithForecastSource(data, forecastSource as ObsForecastSourceId);
+  }, [data, forecastSource]);
+  const last = chartData?.points?.length ? chartData.points[chartData.points.length - 1] : null;
+  const obsUnit = chartData?.obsTempUnit ?? 'C';
   const unitSuffix = unit === 'F' ? '°F' : '°C';
+  const hasOm = Boolean(data?.forecastBySource?.['open-meteo']?.points?.length);
+  const hasWc = Boolean(data?.forecastBySource?.['weather-company']?.points?.length);
   type HeaderPart = {
     text: string;
     color: string;
@@ -934,8 +1007,36 @@ function TempOddsTemperatureChart({
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0 border border-gray-700/80 rounded-lg bg-gray-900/40 p-2">
-      <div className="mb-1 flex shrink-0 items-baseline gap-2">
+      <div className="mb-1 flex shrink-0 items-center gap-2">
         <div className="text-[9px] font-bold uppercase tracking-wide text-sky-400/80">Hourly</div>
+        <div className="flex items-center gap-0.5 rounded border border-gray-700/80 p-0.5">
+          <button
+            type="button"
+            className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded ${
+              forecastSource === 'open-meteo'
+                ? 'bg-amber-500/30 text-amber-200'
+                : 'text-gray-500 hover:text-gray-300'
+            } ${!hasOm ? 'opacity-40' : ''}`}
+            disabled={!hasOm && hasWc}
+            onClick={() => onForecastSourceChange('open-meteo')}
+            title="Open-Meteo forecast"
+          >
+            OM
+          </button>
+          <button
+            type="button"
+            className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded ${
+              forecastSource === 'weather-company'
+                ? 'bg-sky-500/30 text-sky-200'
+                : 'text-gray-500 hover:text-gray-300'
+            } ${!hasWc ? 'opacity-40' : ''}`}
+            disabled={!hasWc && hasOm}
+            onClick={() => onForecastSourceChange('weather-company')}
+            title="Weather Company forecast"
+          >
+            WC
+          </button>
+        </div>
         {headerParts.length > 0 ? (
           <div className="ml-auto flex min-w-0 items-center gap-1 truncate text-[10px] font-normal tabular-nums">
             {headerParts.map((p, i) => (
@@ -969,8 +1070,8 @@ function TempOddsTemperatureChart({
       <div className="flex-1 min-h-0">
         {loading ? (
           <div className="flex h-full items-center justify-center text-[10px] text-gray-500">Loading…</div>
-        ) : data ? (
-          <TemperatureChart data={data} unit={unit} />
+        ) : chartData ? (
+          <TemperatureChart data={chartData} unit={unit} />
         ) : (
           <div className="flex h-full items-center justify-center text-[10px] text-gray-500">No data</div>
         )}
@@ -999,6 +1100,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const [pastFilterTick, setPastFilterTick] = useState(0);
   const [modelPayload, setModelPayload] = useState<WeatherProbabilitiesPayload | null>(null);
   const [modelPayloadKey, setModelPayloadKey] = useState('');
+  const [forecastSource, setForecastSource] = useState<ForecastSourceToggle>('open-meteo');
   const [modelFetchedAtMs, setModelFetchedAtMs] = useState(0);
   const [modelRefreshing, setModelRefreshing] = useState(false);
   const modelFetchGenRef = useRef(0);
@@ -1270,6 +1372,11 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const activeBarMarkets = chartMode === 'low' ? lowBarMarkets : highBarMarkets;
   const activeGrid = chartMode === 'low' ? lowGrid : highGrid;
   const activeDateCol = chartMode === 'low' ? lowDateCol : highDateCol;
+  const forecastTempC = useMemo(() => {
+    if (!obsData) return null;
+    const sourced = weatherObsWithForecastSource(obsData, forecastSource as ObsForecastSourceId);
+    return chartMode === 'low' ? weatherHighlightLowC(sourced) : weatherHighlightHighC(sourced);
+  }, [obsData, forecastSource, chartMode]);
   const prevBarSelectionKeyRef = useRef('');
 
   useEffect(() => {
@@ -1652,7 +1759,8 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               <TempOddsChart
                 barColor={chartMode === 'low' ? 'bg-cyan-400/90' : 'bg-red-400/90'}
                 barSpreadColor={chartMode === 'low' ? 'bg-cyan-400/40' : 'bg-red-400/40'}
-                modelBarColor={chartMode === 'low' ? 'bg-teal-400/50' : 'bg-amber-400/50'}
+                modelBarColorOm={chartMode === 'low' ? 'bg-amber-400/55' : 'bg-amber-400/55'}
+                modelBarColorWc={chartMode === 'low' ? 'bg-sky-400/55' : 'bg-sky-400/55'}
                 grid={activeGrid}
                 dateCol={activeDateCol}
                 selectedMarketId={barSelectionId}
@@ -1660,13 +1768,10 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
                 positions={positions}
                 liveTradesSource={liveTradesSource}
                 onchainWsPositions={onchainWsPositions}
-                modelBuckets={
-                  chartMode === 'low'
-                    ? modelPayload?.lowest_temperature?.bucket_probabilities_1c
-                    : modelPayload?.highest_temperature?.bucket_probabilities_1c
-                }
+                modelBucketsOm={modelBucketsFromPayload(modelPayload, 'open-meteo', chartMode)}
+                modelBucketsWc={modelBucketsFromPayload(modelPayload, 'weather-company', chartMode)}
                 orderLookup={orderLookup}
-                forecastTempC={chartMode === 'low' ? weatherHighlightLowC(obsData) : weatherHighlightHighC(obsData)}
+                forecastTempC={forecastTempC}
                 metric={chartMode}
                 obsBoundC={
                   obsData == null
@@ -1685,7 +1790,13 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
                 No {chartMode === 'low' ? 'low' : 'high'} temp markets
               </div>
             )}
-            <TempOddsTemperatureChart data={obsData} loading={obsLoading} unit={tempUnit} />
+            <TempOddsTemperatureChart
+              data={obsData}
+              loading={obsLoading}
+              unit={tempUnit}
+              forecastSource={forecastSource}
+              onForecastSourceChange={setForecastSource}
+            />
           </>
         )}
       </div>

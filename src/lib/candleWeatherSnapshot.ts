@@ -1,9 +1,16 @@
-import type { WeatherObservationsResponse, WeatherObservationPoint } from './weatherObservations';
+import type {
+  WeatherForecastSourceId,
+  WeatherForecastSourceSeries,
+  WeatherObservationsResponse,
+  WeatherObservationPoint,
+} from './weatherObservations';
 
 export type CandleWeatherBucket = {
   temp: string;
   label: string;
   modelProb?: number | null;
+  modelProbOm?: number | null;
+  modelProbWc?: number | null;
   bid?: number | null;
   ask?: number | null;
   mid?: number | null;
@@ -28,7 +35,9 @@ export type CandleWeatherSnapshot = {
   timezone?: string;
   dayStartMs?: number;
   dayEndMs?: number;
+  forecastSource?: WeatherForecastSourceId | string;
   probs?: CandleWeatherProbs | null;
+  probsBySource?: Partial<Record<WeatherForecastSourceId | string, CandleWeatherProbs>>;
   forecastHighC?: number | null;
   forecastLowC?: number | null;
   highTemp?: number | null;
@@ -36,6 +45,7 @@ export type CandleWeatherSnapshot = {
   obsTempUnit?: 'C' | 'F';
   points?: WeatherObservationPoint[];
   forecastPoints?: WeatherObservationPoint[];
+  forecastBySource?: Partial<Record<WeatherForecastSourceId | string, WeatherForecastSourceSeries>>;
   market_buckets?: CandleWeatherBucket[];
 };
 
@@ -68,6 +78,44 @@ function asPoint(raw: unknown): WeatherObservationPoint | null {
   };
 }
 
+function parseProbs(raw: unknown): CandleWeatherProbs | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const probsRaw = raw as Record<string, unknown>;
+  const bp = probsRaw.bucket_probabilities_1c;
+  return {
+    expected_value_c: asNum(probsRaw.expected_value_c) ?? undefined,
+    median_c: asNum(probsRaw.median_c) ?? undefined,
+    std_c: asNum(probsRaw.std_c) ?? undefined,
+    confidence: asNum(probsRaw.confidence) ?? undefined,
+    bucket_probabilities_1c:
+      bp && typeof bp === 'object' && !Array.isArray(bp)
+        ? Object.fromEntries(
+            Object.entries(bp as Record<string, unknown>)
+              .map(([k, v]) => [k, asNum(v)])
+              .filter((e): e is [string, number] => e[1] != null),
+          )
+        : undefined,
+  };
+}
+
+function parseForecastSeries(raw: unknown): WeatherForecastSourceSeries | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const points = Array.isArray(o.points)
+    ? o.points.map(asPoint).filter((p): p is WeatherObservationPoint => p != null)
+    : undefined;
+  const forecastHighC = asNum(o.forecastHighC) ?? undefined;
+  const forecastLowC = asNum(o.forecastLowC) ?? undefined;
+  const forecastUpdatedAt = asNum(o.forecastUpdatedAt) ?? undefined;
+  if (!points?.length && forecastHighC == null && forecastLowC == null) return null;
+  return {
+    ...(points?.length ? { points } : {}),
+    ...(forecastHighC != null ? { forecastHighC } : {}),
+    ...(forecastLowC != null ? { forecastLowC } : {}),
+    ...(forecastUpdatedAt != null ? { forecastUpdatedAt } : {}),
+  };
+}
+
 export function parseCandleWeather(raw: unknown): CandleWeatherSnapshot | undefined {
   if (raw == null || raw === '') return undefined;
   let obj: unknown = raw;
@@ -97,6 +145,8 @@ export function parseCandleWeather(raw: unknown): CandleWeatherSnapshot | undefi
       temp,
       label: typeof br.label === 'string' ? br.label : temp,
       modelProb: asNum(br.modelProb),
+      modelProbOm: asNum(br.modelProbOm),
+      modelProbWc: asNum(br.modelProbWc),
       bid: asNum(br.bid),
       ask: asNum(br.ask),
       mid: asNum(br.mid),
@@ -105,24 +155,13 @@ export function parseCandleWeather(raw: unknown): CandleWeatherSnapshot | undefi
     });
   }
 
-  const probsRaw = o.probs && typeof o.probs === 'object' ? (o.probs as Record<string, unknown>) : null;
-  let probs: CandleWeatherProbs | null = null;
-  if (probsRaw) {
-    const bp = probsRaw.bucket_probabilities_1c;
-    probs = {
-      expected_value_c: asNum(probsRaw.expected_value_c) ?? undefined,
-      median_c: asNum(probsRaw.median_c) ?? undefined,
-      std_c: asNum(probsRaw.std_c) ?? undefined,
-      confidence: asNum(probsRaw.confidence) ?? undefined,
-      bucket_probabilities_1c:
-        bp && typeof bp === 'object' && !Array.isArray(bp)
-          ? Object.fromEntries(
-              Object.entries(bp as Record<string, unknown>)
-                .map(([k, v]) => [k, asNum(v)])
-                .filter((e): e is [string, number] => e[1] != null),
-            )
-          : undefined,
-    };
+  const probs = parseProbs(o.probs);
+  const probsBySource: CandleWeatherSnapshot['probsBySource'] = {};
+  if (o.probsBySource && typeof o.probsBySource === 'object' && !Array.isArray(o.probsBySource)) {
+    for (const [src, rawProbs] of Object.entries(o.probsBySource as Record<string, unknown>)) {
+      const parsed = parseProbs(rawProbs);
+      if (parsed) probsBySource[src] = parsed;
+    }
   }
 
   const points = Array.isArray(o.points)
@@ -131,6 +170,14 @@ export function parseCandleWeather(raw: unknown): CandleWeatherSnapshot | undefi
   const forecastPoints = Array.isArray(o.forecastPoints)
     ? o.forecastPoints.map(asPoint).filter((p): p is WeatherObservationPoint => p != null)
     : undefined;
+
+  const forecastBySource: CandleWeatherSnapshot['forecastBySource'] = {};
+  if (o.forecastBySource && typeof o.forecastBySource === 'object' && !Array.isArray(o.forecastBySource)) {
+    for (const [src, rawSeries] of Object.entries(o.forecastBySource as Record<string, unknown>)) {
+      const parsed = parseForecastSeries(rawSeries);
+      if (parsed) forecastBySource[src] = parsed;
+    }
+  }
 
   return {
     city,
@@ -141,7 +188,9 @@ export function parseCandleWeather(raw: unknown): CandleWeatherSnapshot | undefi
     timezone: typeof o.timezone === 'string' ? o.timezone : undefined,
     dayStartMs: asNum(o.dayStartMs) ?? undefined,
     dayEndMs: asNum(o.dayEndMs) ?? undefined,
+    forecastSource: typeof o.forecastSource === 'string' ? o.forecastSource : undefined,
     probs,
+    ...(Object.keys(probsBySource).length > 0 ? { probsBySource } : {}),
     forecastHighC: asNum(o.forecastHighC),
     forecastLowC: asNum(o.forecastLowC),
     highTemp: asNum(o.highTemp),
@@ -149,6 +198,7 @@ export function parseCandleWeather(raw: unknown): CandleWeatherSnapshot | undefi
     obsTempUnit: o.obsTempUnit === 'F' || o.obsTempUnit === 'C' ? o.obsTempUnit : undefined,
     points,
     forecastPoints,
+    ...(Object.keys(forecastBySource).length > 0 ? { forecastBySource } : {}),
     market_buckets,
   };
 }
@@ -163,8 +213,10 @@ export function candleWeatherToObservations(snap: CandleWeatherSnapshot): Weathe
     timezone: snap.timezone,
     dayStartMs: snap.dayStartMs,
     dayEndMs: snap.dayEndMs,
+    forecastSource: snap.forecastSource,
     points: snap.points ?? [],
     forecastPoints: snap.forecastPoints,
+    forecastBySource: snap.forecastBySource,
     highTemp: snap.highTemp ?? undefined,
     lowTemp: snap.lowTemp ?? undefined,
     forecastHighC: snap.forecastHighC ?? undefined,

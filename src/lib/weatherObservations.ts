@@ -17,17 +17,27 @@ export type WeatherForecastHistoryBatch = {
   points: WeatherObservationPoint[];
 };
 
+export type WeatherForecastSourceId = 'open-meteo' | 'weather-company';
+
+export type WeatherForecastSourceSeries = {
+  points?: WeatherObservationPoint[];
+  forecastHighC?: number;
+  forecastLowC?: number;
+  forecastUpdatedAt?: number;
+};
+
 export type WeatherObservationsResponse = {
   city: string;
   date: string;
   source?: WeatherTempSource;
-  forecastSource?: 'open-meteo' | 'wunderground';
+  forecastSource?: WeatherForecastSourceId | string;
   locationId: string;
   timezone: string;
   dayStartMs: number;
   dayEndMs: number;
   points: WeatherObservationPoint[];
   forecastPoints?: WeatherObservationPoint[];
+  forecastBySource?: Partial<Record<WeatherForecastSourceId | string, WeatherForecastSourceSeries>>;
   forecastHistory?: WeatherForecastHistoryBatch[];
   highTemp?: number;
   lowTemp?: number;
@@ -37,6 +47,35 @@ export type WeatherObservationsResponse = {
   /** Native unit for obs temps/dew points (forecast stays °C). */
   obsTempUnit?: WeatherTempUnit;
 };
+
+export function weatherObsWithForecastSource(
+  data: WeatherObservationsResponse,
+  source: WeatherForecastSourceId,
+): WeatherObservationsResponse {
+  const series = data.forecastBySource?.[source];
+  if (!series?.points?.length) {
+    // Legacy: flat forecastPoints is primary only — reuse for that source, else clear.
+    if (data.forecastSource === source || (!data.forecastBySource && source === 'open-meteo')) {
+      return { ...data, forecastSource: source };
+    }
+    return {
+      ...data,
+      forecastSource: source,
+      forecastPoints: undefined,
+      forecastHighC: undefined,
+      forecastLowC: undefined,
+      forecastUpdatedAt: undefined,
+    };
+  }
+  return {
+    ...data,
+    forecastSource: source,
+    forecastPoints: series.points,
+    forecastHighC: series.forecastHighC,
+    forecastLowC: series.forecastLowC,
+    forecastUpdatedAt: series.forecastUpdatedAt,
+  };
+}
 
 export type WeatherForecastSummary = {
   city: string;

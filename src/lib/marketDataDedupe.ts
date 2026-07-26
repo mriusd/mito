@@ -69,10 +69,19 @@ function marketArraysEqualByRefOrContent(a: Market[] | undefined, b: Market[] | 
   return true;
 }
 
+function marketRecordLeafCount(m: Record<string, Market[]> | null | undefined): number {
+  if (!m) return 0;
+  let n = 0;
+  for (const k of Object.keys(m)) n += (m[k] || []).length;
+  return n;
+}
+
 export function coalesceRecordOfMarketArrays(
   prev: Record<string, Market[]>,
   next: Record<string, Market[]>,
 ): Record<string, Market[]> {
+  // Empty Gamma wipe must not clear a healthy sidebar/list.
+  if (marketRecordLeafCount(next) === 0 && marketRecordLeafCount(prev) > 0) return prev;
   if (recordOfMarketArraysEqual(next, prev)) return prev;
   const out: Record<string, Market[]> = {};
   let anyChange = false;
@@ -96,10 +105,21 @@ export function recordOfMarketArraysEqual(a: Record<string, Market[]>, b: Record
   return true;
 }
 
+function upOrDownLeafCount(m: Record<string, Record<string, Market[]>> | null | undefined): number {
+  if (!m) return 0;
+  let n = 0;
+  for (const asset of Object.keys(m)) {
+    const tfMap = m[asset] || {};
+    for (const tf of Object.keys(tfMap)) n += (tfMap[tf] || []).length;
+  }
+  return n;
+}
+
 export function coalesceUpOrDownMarkets(
   prev: Record<string, Record<string, Market[]>>,
   next: Record<string, Record<string, Market[]>>,
 ): Record<string, Record<string, Market[]>> {
+  if (upOrDownLeafCount(next) === 0 && upOrDownLeafCount(prev) > 0) return prev;
   if (upOrDownMarketsEqual(next, prev)) return prev;
   const out: Record<string, Record<string, Market[]>> = {};
   let changed = false;

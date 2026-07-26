@@ -431,19 +431,19 @@ input[type="range"].vol-slider::-moz-range-thumb {
   to { transform: translateX(0); opacity: 1; }
 }
 
-/** Server-down strip: fixed overlay, does not shift layout */
-@keyframes serverDownBannerIn {
+/** Server-down toast: bottom-right, above ephemeral toasts */
+@keyframes serverDownToastIn {
   from {
-    transform: translateY(-100%);
+    transform: translateX(100%);
     opacity: 0;
   }
   to {
-    transform: translateY(0);
+    transform: translateX(0);
     opacity: 1;
   }
 }
-.server-down-banner {
-  animation: serverDownBannerIn 0.35s ease-out both;
+.server-down-toast {
+  animation: serverDownToastIn 0.3s ease both;
 }
 @keyframes flashGreen {
   0%, 100% { background-color: transparent; }

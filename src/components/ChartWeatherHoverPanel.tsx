@@ -6,7 +6,11 @@ import {
 } from '../lib/candleWeatherSnapshot';
 import { getTempSortValue, lookupModelBucketProb } from '../lib/weatherMarketsGrid';
 import { TemperatureChart } from './TemperatureChart';
-import type { WeatherTempUnit } from '../lib/weatherObservations';
+import {
+  weatherObsWithForecastSource,
+  type WeatherForecastSourceId,
+  type WeatherTempUnit,
+} from '../lib/weatherObservations';
 
 function fracToPx(frac: number, maxPct: number, trackPx: number): number {
   if (maxPct <= 0 || trackPx <= 0 || frac <= 0) return 0;
@@ -27,6 +31,8 @@ function WeatherBucketBars({
   // Fixed 100% scale — do not auto-fit to tallest bar.
   const maxPct = 1;
   const trackPx = 72;
+  const marketBarColor = metric === 'low' ? 'bg-cyan-400/90' : 'bg-red-400/90';
+  const marketSpreadColor = metric === 'low' ? 'bg-cyan-700/70' : 'bg-red-700/70';
 
   if (sorted.length === 0) {
     return <div className="text-[10px] text-gray-500 py-2 text-center">No market buckets</div>;
@@ -36,18 +42,20 @@ function WeatherBucketBars({
     <div className="flex flex-col gap-1 min-h-0">
       <div className="flex gap-0.5 min-h-[12px]">
         {sorted.map((b) => {
-          const model = b.modelProb;
           const mid = b.mid ?? b.bid ?? b.ask;
           return (
             <div
               key={b.temp}
               className="flex-1 min-w-0 flex gap-0.5 text-[8px] text-gray-400 tabular-nums leading-none"
             >
-              <span className="flex-1 text-center opacity-60">
-                {model != null ? `${(model * 100).toFixed(1)}%` : '—'}
+              <span className="flex-1 text-center text-amber-400/80">
+                {b.modelProbOm != null ? `${(b.modelProbOm * 100).toFixed(0)}` : '—'}
+              </span>
+              <span className="flex-1 text-center text-sky-400/80">
+                {b.modelProbWc != null ? `${(b.modelProbWc * 100).toFixed(0)}` : '—'}
               </span>
               <span className="flex-1 text-center">
-                {mid != null ? `${(mid * 100).toFixed(1)}%` : '—'}
+                {mid != null ? `${(mid * 100).toFixed(0)}` : '—'}
               </span>
             </div>
           );
@@ -55,7 +63,8 @@ function WeatherBucketBars({
       </div>
       <div className="flex items-end gap-0.5" style={{ height: trackPx }}>
         {sorted.map((b) => {
-          const modelPx = fracToPx(b.modelProb ?? 0, maxPct, trackPx);
+          const omPx = fracToPx(b.modelProbOm ?? 0, maxPct, trackPx);
+          const wcPx = fracToPx(b.modelProbWc ?? 0, maxPct, trackPx);
           const bidPx = fracToPx(b.bid ?? 0, maxPct, trackPx);
           const askPx = fracToPx(b.ask ?? 0, maxPct, trackPx);
           const midPx = b.mid != null ? fracToPx(b.mid, maxPct, trackPx) : null;
@@ -66,17 +75,28 @@ function WeatherBucketBars({
               className={`relative flex-1 min-w-0 h-full flex gap-0.5 items-end ${
                 b.selected ? 'ring-1 ring-white/70 rounded' : ''
               }`}
-              title={`${b.temp} · model ${b.modelProb != null ? `${(b.modelProb * 100).toFixed(1)}%` : '—'} · mid ${
-                b.mid != null ? `${(b.mid * 100).toFixed(1)}%` : '—'
-              }`}
+              title={[
+                b.temp,
+                b.modelProbOm != null ? `OM ${(b.modelProbOm * 100).toFixed(1)}%` : null,
+                b.modelProbWc != null ? `WC ${(b.modelProbWc * 100).toFixed(1)}%` : null,
+                b.mid != null ? `mid ${(b.mid * 100).toFixed(1)}%` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             >
               <div className="relative flex-1 min-w-0 h-full">
-                {modelPx > 0 ? (
+                {omPx > 0 ? (
                   <div
-                    className={`absolute bottom-0 left-0 right-0 rounded-t-sm ${
-                      metric === 'low' ? 'bg-sky-500/50' : 'bg-orange-500/50'
-                    }`}
-                    style={{ height: modelPx }}
+                    className="absolute bottom-0 left-0 right-0 rounded-t-sm bg-amber-400/55"
+                    style={{ height: omPx }}
+                  />
+                ) : null}
+              </div>
+              <div className="relative flex-1 min-w-0 h-full">
+                {wcPx > 0 ? (
+                  <div
+                    className="absolute bottom-0 left-0 right-0 rounded-t-sm bg-sky-400/55"
+                    style={{ height: wcPx }}
                   />
                 ) : null}
               </div>
@@ -85,17 +105,13 @@ function WeatherBucketBars({
                   <>
                     {bidPx > 0 ? (
                       <div
-                        className={`absolute bottom-0 left-0 right-0 ${
-                          metric === 'low' ? 'bg-sky-400' : 'bg-orange-400'
-                        }`}
+                        className={`absolute bottom-0 left-0 right-0 ${marketBarColor}`}
                         style={{ height: Math.min(bidPx, askPx || bidPx) }}
                       />
                     ) : null}
                     {askPx > bidPx ? (
                       <div
-                        className={`absolute left-0 right-0 ${
-                          metric === 'low' ? 'bg-sky-700/70' : 'bg-orange-700/70'
-                        }`}
+                        className={`absolute left-0 right-0 ${marketSpreadColor}`}
                         style={{ bottom: bidPx, height: askPx - bidPx }}
                       />
                     ) : null}
@@ -125,8 +141,41 @@ function WeatherBucketBars({
         ))}
       </div>
       <div className="flex justify-between text-[8px] text-gray-500 px-0.5">
-        <span>model</span>
-        <span>market</span>
+        <span className="text-amber-400/70">OM</span>
+        <span className="text-sky-400/70">WC</span>
+        <span>mkt</span>
+      </div>
+    </div>
+  );
+}
+
+function ForecastSourceChart({
+  obs,
+  unit,
+  source,
+  label,
+  forecastColor,
+}: {
+  obs: NonNullable<ReturnType<typeof candleWeatherToObservations>>;
+  unit: WeatherTempUnit;
+  source: WeatherForecastSourceId;
+  label: string;
+  forecastColor: string;
+}) {
+  const sourced = useMemo(() => weatherObsWithForecastSource(obs, source), [obs, source]);
+  const hasFc = Boolean(sourced.forecastPoints?.length);
+  return (
+    <div className="space-y-0.5">
+      <div
+        className={`text-[9px] font-bold uppercase tracking-wide ${
+          source === 'open-meteo' ? 'text-amber-400/80' : 'text-sky-400/80'
+        }`}
+      >
+        {label}
+        {!hasFc ? <span className="ml-1 font-normal normal-case text-gray-600">no fc</span> : null}
+      </div>
+      <div className="h-[120px] min-h-[120px] rounded border border-gray-700/80 overflow-hidden bg-gray-950/40">
+        <TemperatureChart data={sourced} unit={unit} forecastColor={forecastColor} />
       </div>
     </div>
   );
@@ -138,31 +187,61 @@ export function ChartWeatherHoverPanel({ weather }: { weather: CandleWeatherSnap
 
   const buckets = useMemo(() => {
     const raw = weather.market_buckets ?? [];
-    const modelMap = weather.probs?.bucket_probabilities_1c;
+    const omMap =
+      weather.probsBySource?.['open-meteo']?.bucket_probabilities_1c ??
+      (weather.forecastSource === 'open-meteo' || !weather.forecastSource
+        ? weather.probs?.bucket_probabilities_1c
+        : undefined);
+    const wcMap =
+      weather.probsBySource?.['weather-company']?.bucket_probabilities_1c ??
+      (weather.forecastSource === 'weather-company' ? weather.probs?.bucket_probabilities_1c : undefined);
     return raw.map((b) => {
-      if (b.modelProb != null) return b;
-      const model = lookupModelBucketProb(modelMap, b.temp);
-      return model != null ? { ...b, modelProb: model } : b;
+      let modelProbOm = b.modelProbOm;
+      let modelProbWc = b.modelProbWc;
+      if (modelProbOm == null) {
+        modelProbOm = lookupModelBucketProb(omMap, b.temp);
+      }
+      if (modelProbWc == null) {
+        modelProbWc = lookupModelBucketProb(wcMap, b.temp);
+      }
+      // Legacy single-model candles: mirror into OM if dual fields absent.
+      if (modelProbOm == null && modelProbWc == null && b.modelProb != null) {
+        modelProbOm = b.modelProb;
+      }
+      return { ...b, modelProbOm, modelProbWc };
     });
-  }, [weather.market_buckets, weather.probs]);
+  }, [weather.market_buckets, weather.probs, weather.probsBySource, weather.forecastSource]);
 
   const title = `${weather.city} · ${weather.target_date} · ${weather.metric === 'low' ? 'low' : 'high'}`;
-  const ev = weather.probs?.expected_value_c;
-  const conf = weather.probs?.confidence;
-
+  const evOm = weather.probsBySource?.['open-meteo']?.expected_value_c ?? weather.probs?.expected_value_c;
+  const evWc = weather.probsBySource?.['weather-company']?.expected_value_c;
   return (
     <div className="mt-2 border-t border-gray-700 pt-2 space-y-2">
       <div className="flex items-baseline justify-between gap-2">
         <div className="text-[10px] font-medium text-gray-200 truncate">{title}</div>
         <div className="text-[9px] text-gray-500 tabular-nums shrink-0">
-          {ev != null ? `μ ${ev.toFixed(1)}°` : ''}
-          {conf != null ? ` · ${(conf * 100).toFixed(0)}%` : ''}
+          {evOm != null ? <span className="text-amber-400/80">OM μ {evOm.toFixed(1)}°</span> : null}
+          {evOm != null && evWc != null ? <span className="text-gray-600"> · </span> : null}
+          {evWc != null ? <span className="text-sky-400/80">WC μ {evWc.toFixed(1)}°</span> : null}
         </div>
       </div>
       <WeatherBucketBars buckets={buckets} metric={weather.metric} />
       {obs ? (
-        <div className="h-[140px] min-h-[140px] rounded border border-gray-700/80 overflow-hidden bg-gray-950/40">
-          <TemperatureChart data={obs} unit={unit} />
+        <div className="space-y-2">
+          <ForecastSourceChart
+            obs={obs}
+            unit={unit}
+            source="open-meteo"
+            label="OM forecast"
+            forecastColor="rgba(251, 191, 36, 0.55)"
+          />
+          <ForecastSourceChart
+            obs={obs}
+            unit={unit}
+            source="weather-company"
+            label="WC forecast"
+            forecastColor="rgba(56, 189, 248, 0.55)"
+          />
         </div>
       ) : (
         <div className="text-[10px] text-gray-500 text-center py-2">No forecast series</div>

@@ -1,4 +1,5 @@
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { useAccount } from 'wagmi';
 import './lib/wallet';
 import { useAppStore } from './stores/appStore';
@@ -395,13 +396,16 @@ function App() {
 
       {showServerDownBanner && (
         <div
-          className="server-down-banner fixed top-0 left-0 right-0 z-[350] border-b border-red-700/70 bg-red-950/95 px-3 py-2 text-center shadow-lg pointer-events-auto"
+          className="server-down-toast fixed bottom-5 right-5 z-[60001] flex max-w-[320px] items-start gap-2.5 rounded-lg bg-red-600 px-3.5 py-3 text-white shadow-lg pointer-events-none"
           role="alert"
         >
-          <p className="text-xs font-bold text-red-200">Server is down or being restarted</p>
-          <p className="mt-0.5 text-[11px] text-red-100/90">
-            Please allow for several minutes for it to get back online. This clears automatically once the server is back online.
-          </p>
+          <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" aria-hidden />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold leading-snug">Server is down or being restarted</p>
+            <p className="mt-1 text-[11px] leading-snug text-red-50/90">
+              Please allow for several minutes for it to get back online. This clears automatically once the server is back online.
+            </p>
+          </div>
         </div>
       )}
     </div>

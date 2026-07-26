@@ -823,7 +823,7 @@ export function LiveTradeChart({
                 style={{
                   left: hoverObPos?.left ?? hoverOb.clientX + 10,
                   top: hoverObPos?.top ?? Math.max(10, hoverOb.clientY - 100),
-                  width: hoverOb.weather ? 480 : 320,
+                  width: hoverOb.weather ? 520 : 320,
                   maxHeight: '80vh',
                   overflowY: 'auto',
                 }}

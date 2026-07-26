@@ -229,9 +229,12 @@ export function useWeatherTempUnit(): [WeatherTempUnit, (unit: WeatherTempUnit) 
 export function TemperatureChart({
   data,
   unit,
+  forecastColor,
 }: {
   data: WeatherObservationsResponse;
   unit: WeatherTempUnit;
+  /** Override forecast temp stroke (default red translucent). */
+  forecastColor?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -240,6 +243,7 @@ export function TemperatureChart({
   const [drawTick, setDrawTick] = useState(0);
   const [hoverTip, setHoverTip] = useState<{ x: number; y: number; text: string } | null>(null);
   const bumpDraw = useCallback(() => setDrawTick((n) => n + 1), []);
+  const fcStroke = forecastColor ?? TEMP_FORECAST;
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -679,7 +683,7 @@ export function TemperatureChart({
       drawSeriesLine(
         forecastPoints.map((p) => ({ timeMs: p.timeMs, value: p.temp })),
         toYTemp,
-        TEMP_FORECAST,
+        fcStroke,
         2,
         [5, 4],
         2,
@@ -781,7 +785,7 @@ export function TemperatureChart({
       ctx.arc(x, y, 4, 0, Math.PI * 2);
       ctx.fill();
     }
-  }, [data, unit]);
+  }, [data, unit, fcStroke]);
 
   useLayoutEffect(() => {
     draw();

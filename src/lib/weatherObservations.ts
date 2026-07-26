@@ -251,3 +251,25 @@ export function weatherHighlightHighC(data: WeatherObservationsResponse | null |
   if (obs != null && fc != null) return Math.max(obs, fc);
   return fc ?? obs ?? null;
 }
+
+/**
+ * High bound for Mis Priced map: hotter of observed high and any forecast source high.
+ * Matches Temp Odds gold ring when OM/WC disagree (e.g. OM 25.9 vs WC 26).
+ */
+export function weatherMispriceHighBoundC(
+  data: WeatherObservationsResponse | null | undefined,
+): number | null {
+  if (!data) return null;
+  const obsUnit = data.obsTempUnit ?? 'C';
+  const obs = data.highTemp != null ? obsTempToCelsius(data.highTemp, obsUnit) : null;
+  const fcs: number[] = [];
+  const push = (v: number | undefined) => {
+    if (v != null && Number.isFinite(v)) fcs.push(v);
+  };
+  push(data.forecastHighC);
+  push(data.forecastBySource?.['open-meteo']?.forecastHighC);
+  push(data.forecastBySource?.['weather-company']?.forecastHighC);
+  const fcMax = fcs.length > 0 ? Math.max(...fcs) : null;
+  if (obs != null && fcMax != null) return Math.max(obs, fcMax);
+  return fcMax ?? obs ?? null;
+}

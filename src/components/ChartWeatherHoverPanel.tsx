@@ -205,7 +205,12 @@ function ForecastSourceChart({
         {!hasFc ? <span className="ml-1 font-normal normal-case text-gray-600">no fc</span> : null}
       </div>
       <div className="h-[120px] min-h-[120px] rounded border border-gray-700/80 overflow-hidden bg-gray-950/40">
-        <TemperatureChart data={sourced} unit={unit} forecastColor={forecastColor} />
+        <TemperatureChart
+          data={sourced}
+          unit={unit}
+          forecastColor={forecastColor}
+          hideOtherForecastOverlay
+        />
       </div>
     </div>
   );
@@ -264,14 +269,14 @@ export function ChartWeatherHoverPanel({ weather }: { weather: CandleWeatherSnap
             unit={unit}
             source="open-meteo"
             label="OM forecast"
-            forecastColor="rgba(251, 191, 36, 0.55)"
+            forecastColor="#f87171"
           />
           <ForecastSourceChart
             obs={obs}
             unit={unit}
             source="weather-company"
             label="WC forecast"
-            forecastColor="rgba(56, 189, 248, 0.55)"
+            forecastColor="#f87171"
           />
         </div>
       ) : (

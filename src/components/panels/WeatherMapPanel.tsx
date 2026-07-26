@@ -15,9 +15,11 @@ import {
   buildWeatherCityExposureByDate,
   buildWeatherCityMaxBidByDate,
   buildWeatherCityMaxSpreadByDate,
+  buildWeatherCityMispricedByDate,
   weatherMapQuoteTokenIdsForDate,
   type WeatherCityExposure,
 } from '../../lib/weatherMapExposure';
+import { fetchWeatherObservations, weatherMispriceHighBoundC } from '../../lib/weatherObservations';
 import { useThrottledGridOrders, useThrottledGridPositions } from '../../hooks/useThrottledGridWallet';
 import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
 import { useAppStore } from '../../stores/appStore';
@@ -309,7 +311,7 @@ function drawDayGlow(ctx: CanvasRenderingContext2D, layout: MapLayout, date: Dat
   ctx.fill();
 }
 
-type WeatherMapColorMode = 'state' | 'certainty' | 'spread';
+type WeatherMapColorMode = 'state' | 'certainty' | 'spread' | 'mispriced';
 
 const WEATHER_MAP_COLOR_MODE_LS = 'polybot-weather-map-color-mode';
 /** Spread ≥ this (prob units) maps to fully sharp purple (30¢). */
@@ -317,10 +319,11 @@ const SPREAD_DIM_AT = 0.3;
 /** Flash city dots when max spread exceeds this (20¢). */
 const SPREAD_FLASH_AT = 0.2;
 const SPREAD_FLASH_PERIOD_MS = 650;
+const FORECAST_HIGH_REFRESH_MS = 5 * 60_000;
 
 function readStoredColorMode(): WeatherMapColorMode {
   const v = localStorage.getItem(WEATHER_MAP_COLOR_MODE_LS);
-  if (v === 'certainty' || v === 'spread' || v === 'state') return v;
+  if (v === 'certainty' || v === 'spread' || v === 'mispriced' || v === 'state') return v;
   return 'state';
 }
 
@@ -371,6 +374,18 @@ function cityDotFillByMaxSpread(
   const baseAlpha = selected || hovered ? 0.2 : 0.14;
   const alpha = Math.min(selected || hovered ? 0.98 : 0.92, baseAlpha + t * 0.78);
   return `rgba(168, 85, 247, ${alpha})`;
+}
+
+/** Below-forecast-high bucket mid > 10¢ → turquoise; else gray. */
+function cityDotFillByMispriced(
+  maxMid: number | undefined,
+  hovered: boolean,
+  selected: boolean,
+): string {
+  if (maxMid == null || !(maxMid > 0) || !Number.isFinite(maxMid)) {
+    return selected || hovered ? '#e5e7eb' : '#6b7280';
+  }
+  return selected || hovered ? '#5eead4' : '#2dd4bf';
 }
 
 function nearestCity(
@@ -445,6 +460,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   const [colorMode, setColorMode] = useState<WeatherMapColorMode>(() => readStoredColorMode());
   const colorModeRef = useRef(colorMode);
   colorModeRef.current = colorMode;
+  const [forecastHighByCity, setForecastHighByCity] = useState<Map<string, number>>(() => new Map());
   const weatherMarkets = useAppStore((s) => s.weatherMarkets);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const progOrderMap = useAppStore((s) => s.progOrderMap);
@@ -467,9 +483,11 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     );
   }, [weatherMarkets, tempOddsDateIso, tempOddsMetric, positions, orders, progOrderMap, liveTradesSource, onchainWsPositions, marketLookup]);
 
+  // Mis Priced always inspects highest-temp buckets vs forecast high.
+  const quoteMetric = colorMode === 'mispriced' ? 'high' : tempOddsMetric;
   const quoteTokenIds = useMemo(
-    () => weatherMapQuoteTokenIdsForDate(weatherMarkets, tempOddsDateIso, tempOddsMetric),
-    [weatherMarkets, tempOddsDateIso, tempOddsMetric],
+    () => weatherMapQuoteTokenIdsForDate(weatherMarkets, tempOddsDateIso, quoteMetric),
+    [weatherMarkets, tempOddsDateIso, quoteMetric],
   );
 
   const [quoteTick, setQuoteTick] = useState(0);
@@ -500,8 +518,50 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     [weatherMarkets, tempOddsDateIso, tempOddsMetric, liveQuoteLookup],
   );
 
+  const cityMispriced = useMemo(
+    () =>
+      buildWeatherCityMispricedByDate(
+        weatherMarkets,
+        tempOddsDateIso,
+        liveQuoteLookup,
+        forecastHighByCity,
+      ),
+    [weatherMarkets, tempOddsDateIso, liveQuoteLookup, forecastHighByCity],
+  );
+
   useEffect(() => onTempOddsDateSelect(setTempOddsDateIso), []);
   useEffect(() => onTempOddsMetricSelect(setTempOddsMetric), []);
+
+  useEffect(() => {
+    if (colorMode !== 'mispriced' || !tempOddsDateIso) return;
+    let alive = true;
+    const load = () => {
+      void Promise.all(
+        WEATHER_CITIES.map(async (c) => {
+          try {
+            const obs = await fetchWeatherObservations(c.slug, tempOddsDateIso);
+            const hi = weatherMispriceHighBoundC(obs);
+            return hi != null ? ([c.slug, hi] as const) : null;
+          } catch {
+            return null;
+          }
+        }),
+      ).then((rows) => {
+        if (!alive) return;
+        const next = new Map<string, number>();
+        for (const row of rows) {
+          if (row) next.set(row[0], row[1]);
+        }
+        setForecastHighByCity(next);
+      });
+    };
+    load();
+    const id = window.setInterval(load, FORECAST_HIGH_REFRESH_MS);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [colorMode, tempOddsDateIso]);
 
   const meridians = useMemo(() => buildTimezoneMeridians(), []);
 
@@ -593,6 +653,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       const selected = selectedSlug === city.slug;
       const maxBid = cityMaxBid.get(city.slug);
       const maxSpread = cityMaxSpread.get(city.slug);
+      const misMid = cityMispriced.get(city.slug);
       const exposure = cityExposure.get(city.slug);
       const r = (selected ? DOT_RADIUS + 2 : hovered ? DOT_RADIUS + 1.5 : DOT_RADIUS) * invZ;
       const flash =
@@ -608,7 +669,9 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
           ? cityDotFillByMaxBid(maxBid, hovered, selected)
           : mode === 'spread'
             ? cityDotFillByMaxSpread(maxSpread, hovered, selected)
-            : cityDotFillByState(exposure, hovered, selected);
+            : mode === 'mispriced'
+              ? cityDotFillByMispriced(misMid, hovered, selected)
+              : cityDotFillByState(exposure, hovered, selected);
       ctx.fill();
       ctx.restore();
       if (selected) {
@@ -634,7 +697,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       ctx.textBaseline = 'middle';
       ctx.fillText('Map load failed', width / 2, height / 2);
     }
-  }, [cities, land, loadError, nowMs, cityMaxBid, cityMaxSpread, cityExposure, colorMode]);
+  }, [cities, land, loadError, nowMs, cityMaxBid, cityMaxSpread, cityMispriced, cityExposure, colorMode]);
 
   drawRef.current = draw;
 
@@ -730,6 +793,15 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
           if (maxSpread != null && Number.isFinite(maxSpread)) {
             extra = ` · max spread ${(maxSpread * 100).toFixed(1)}¢`;
           }
+        } else if (mode === 'mispriced') {
+          const misMid = cityMispriced.get(hit.slug);
+          const fc = forecastHighByCity.get(hit.slug);
+          if (misMid != null && misMid > 0) {
+            extra = ` · below-fc mid ${(misMid * 100).toFixed(1)}¢`;
+            if (fc != null) extra += ` · fc ${fc.toFixed(1)}°C`;
+          } else if (fc != null) {
+            extra = ` · fc ${fc.toFixed(1)}°C`;
+          }
         }
       }
       const nextTip = hit ? { x: mx, y: my, label: `${hit.label}${extra}` } : null;
@@ -753,7 +825,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       setHoverTip(nextTip);
       if (slugChanged) scheduleDraw();
     },
-    [scheduleDraw, cityMaxBid, cityMaxSpread],
+    [scheduleDraw, cityMaxBid, cityMaxSpread, cityMispriced, forecastHighByCity],
   );
 
   const selectCity = useCallback(
@@ -901,6 +973,11 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
               label: 'Spread',
               title: 'Max bid–ask spread across buckets (purple; wider = sharper)',
             },
+            {
+              id: 'mispriced' as const,
+              label: 'Mis Priced',
+              title: 'Turquoise: below-forecast-high bucket with YES mid ≥ 10¢',
+            },
           ]).map(({ id, label, title }) => (
             <button
               key={id}
@@ -950,7 +1027,9 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
             ? ' · max bid certainty (red→green)'
             : colorMode === 'spread'
               ? ' · max bid–ask spread (purple; wider=sharper)'
-              : ' · pos=green/yellow/red · purple=order · white=none'}
+              : colorMode === 'mispriced'
+                ? ' · turquoise = below-fc high bucket mid ≥10¢'
+                : ' · pos=green/yellow/red · purple=order · white=none'}
         </span>
       </div>
       <div ref={containerRef} className="no-drag relative min-h-0 flex-1">

@@ -1,10 +1,18 @@
 import type { Market, Order, Position } from '../types';
 import { getOrderClobTokenId, normalizeClobTokenId } from '../utils/format';
-import { outcomeBidAskProb } from './outcomeQuote';
+import { outcomeBidAskProb, outcomeMidOrOneSideProb } from './outcomeQuote';
 import { positionBidExitTier, type PositionBidExitTier } from './positionBidExitTier';
 import { resolveLegPositionForToken } from './sidebarMyPositions';
-import { filterWeatherMarkets, weatherEventDateISOFromSlug, type WeatherMetric } from './weatherMarketsGrid';
+import {
+  filterWeatherMarkets,
+  weatherEventDateISOFromSlug,
+  weatherTempBucketRuledOutByObs,
+  type WeatherMetric,
+} from './weatherMarketsGrid';
 import type { WSPosition } from '../hooks/useOnchainTradesWS';
+
+/** YES mid ≥ this on a below-forecast-high bucket → city flagged mispriced (10¢). */
+export const WEATHER_MISPRICED_MID_AT = 0.1;
 
 export type WeatherCityExposure =
   | { kind: 'none' }
@@ -192,4 +200,44 @@ export function weatherMapQuoteTokenIdsForDate(
     }
   }
   return ids;
+}
+
+/**
+ * Per-city max YES mid among highest-temp buckets that sit entirely below forecast high.
+ * Only cities with at least one such bucket mid > WEATHER_MISPRICED_MID_AT are present.
+ */
+export function buildWeatherCityMispricedByDate(
+  weatherMarkets: Record<string, Market[]>,
+  dateIso: string | null,
+  marketLookup: Record<string, Market>,
+  forecastHighByCity: Map<string, number>,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!dateIso || forecastHighByCity.size === 0) return out;
+
+  for (const [citySlug, markets] of Object.entries(weatherMarkets)) {
+    const forecastHighC = forecastHighByCity.get(citySlug);
+    if (forecastHighC == null || !Number.isFinite(forecastHighC)) continue;
+
+    let maxMid = 0;
+    let any = false;
+    const scoped = filterWeatherMarkets(markets, 'high');
+    for (const market of scoped) {
+      const eventDate = weatherEventDateISOFromSlug(market.eventSlug || '');
+      if (eventDate !== dateIso) continue;
+      const temp = market.groupItemTitle || '';
+      if (!temp || !weatherTempBucketRuledOutByObs(temp, 'high', forecastHighC)) continue;
+      const yesTokenId = market.clobTokenIds?.[0];
+      if (!yesTokenId) continue;
+      const mid = outcomeMidOrOneSideProb(yesTokenId, marketLookup, {
+        bestBid: market.bestBid,
+        bestAsk: market.bestAsk,
+      });
+      if (mid == null || !(mid > 0) || !Number.isFinite(mid)) continue;
+      any = true;
+      if (mid > maxMid) maxMid = mid;
+    }
+    if (any && maxMid >= WEATHER_MISPRICED_MID_AT) out.set(citySlug, maxMid);
+  }
+  return out;
 }

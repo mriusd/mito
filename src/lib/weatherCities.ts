@@ -134,6 +134,13 @@ export function weatherCityWundergroundHourlyUrl(slug: string, dateYmd?: string 
   return `${base}/date/${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
 }
 
+/** Aviation Weather Center decoded METAR for city ICAO. */
+export function weatherCityMetarUrl(slug: string): string | null {
+  const icao = WEATHER_CITIES.find((c) => c.slug === slug.trim().toLowerCase())?.icao?.trim();
+  if (!icao) return null;
+  return `https://aviationweather.gov/data/metar/?decoded=1&autorefresh=0&ids=${encodeURIComponent(icao.toUpperCase())}`;
+}
+
 /** Catalog cities plus any extra slugs from loaded market data. */
 export function mergeWeatherCityOptions(extraSlugs: string[] = []): WeatherCityMeta[] {
   const map = new Map<string, WeatherCityMeta>(WEATHER_CITIES.map((c) => [c.slug, c]));

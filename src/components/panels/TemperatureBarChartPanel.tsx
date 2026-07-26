@@ -14,6 +14,7 @@ import {
   isWeatherCitySlug,
   mergeWeatherCityOptions,
   weatherCityTempUnit,
+  weatherCityMetarUrl,
   weatherCityResolutionUrl,
 } from '../../lib/weatherCities';
 import { onTempOddsCitySelect, selectTempOddsCity, selectTempOddsDate, selectTempOddsMetric } from '../../lib/weatherTempOddsControl';
@@ -2083,6 +2084,10 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     [city, selectedObsDate],
   );
   const resolutionTitle = 'Weather Underground hourly';
+  const metarUrl = useMemo(() => weatherCityMetarUrl(city), [city]);
+  const metarTitle = cityMeta.icao
+    ? `Aviation Weather METAR (${cityMeta.icao})`
+    : 'Aviation Weather METAR';
 
   const refreshModelProbabilities = useCallback(async () => {
     const ctx = modelContextKey;
@@ -2346,6 +2351,19 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
             onMouseDown={(e) => e.stopPropagation()}
           >
             <ExternalLink className="h-3 w-3" aria-hidden />
+          </a>
+        ) : null}
+        {metarUrl ? (
+          <a
+            href={metarUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="no-drag inline-flex shrink-0 items-center rounded p-0.5 text-[9px] font-bold tabular-nums text-gray-400 hover:text-amber-300"
+            title={metarTitle}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            METAR
           </a>
         ) : null}
 

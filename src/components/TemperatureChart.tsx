@@ -485,6 +485,27 @@ export function TemperatureChart({
       ctx.fillText(formatWeatherChartHour(labelMs, data.timezone), x, chartB + 4);
     }
 
+    const dayEnd = data.dayEndMs ?? dayStart + DAY_MS;
+    const nowMs = Date.now();
+    if (nowMs >= dayStart && nowMs <= dayEnd) {
+      const nowX = toX(nowMs);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(250, 250, 250, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath();
+      ctx.moveTo(nowX, chartT);
+      ctx.lineTo(nowX, chartB);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(250, 250, 250, 0.7)';
+      ctx.font = '8px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('Now', nowX, chartT - 2);
+      ctx.restore();
+    }
+
     const windY = chartB + WIND_ROW_Y;
     const hourlyObsWind = hourlyWindPoints(data.points, dayStart);
     const hourlyFcWind = hourlyWindPoints(data.forecastPoints ?? [], dayStart);
@@ -833,6 +854,22 @@ export function TemperatureChart({
     if (containerRef.current) ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, [bumpDraw]);
+
+  // Keep "Now" line moving while viewing the active local day.
+  useEffect(() => {
+    const dayStart = data.dayStartMs;
+    const dayEnd = data.dayEndMs ?? dayStart + DAY_MS;
+    const inDay = () => {
+      const t = Date.now();
+      return t >= dayStart && t <= dayEnd;
+    };
+    if (!inDay()) return;
+    const id = window.setInterval(() => {
+      if (!inDay()) return;
+      bumpDraw();
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [data.dayStartMs, data.dayEndMs, bumpDraw]);
 
   useEffect(() => {
     hoverRef.current = null;

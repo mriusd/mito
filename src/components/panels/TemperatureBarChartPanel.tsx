@@ -181,6 +181,30 @@ function marketLimitExpirationSec(endDate?: string): number | undefined {
   return endSec;
 }
 
+const BUCKET_LIMIT_MAX_CENTS = 99;
+const BUCKET_PRICE_DELTA_DEFAULT_CENTS = 10;
+
+function readStoredBucketPriceDelta(panelId: string): number {
+  try {
+    const saved = localStorage.getItem(`polybot-weather-temp-bars-bucket-delta-${panelId}`);
+    const n = parseFloat(String(saved ?? ''));
+    return Number.isFinite(n) && n >= 0 ? n : BUCKET_PRICE_DELTA_DEFAULT_CENTS;
+  } catch {
+    return BUCKET_PRICE_DELTA_DEFAULT_CENTS;
+  }
+}
+
+/** Limit = ask + Δ¢, capped at 99¢ (same as Pair Trading). */
+function bucketLimitFromAskPrice(
+  askPrice: number | null,
+  offsetCents: number,
+): { price: number; cents: number } | null {
+  if (askPrice == null || !Number.isFinite(askPrice) || askPrice <= 0) return null;
+  if (!Number.isFinite(offsetCents) || offsetCents < 0) return null;
+  const cents = Math.min(askPrice * 100 + offsetCents, BUCKET_LIMIT_MAX_CENTS);
+  return { price: cents / 100, cents };
+}
+
 function weatherMarketCityAndDate(
   market: Market | null | undefined,
 ): { city: WeatherCitySlug; dateIso: string } | null {
@@ -1050,6 +1074,9 @@ function TempOddsBar({
 }
 
 function TempOddsBucketTradeStrip({
+  priceDeltaInput,
+  onPriceDeltaInputChange,
+  onCommitPriceDelta,
   orderAmount,
   onOrderAmountChange,
   askCents,
@@ -1060,6 +1087,9 @@ function TempOddsBucketTradeStrip({
   walletReady,
   onPlace,
 }: {
+  priceDeltaInput: string;
+  onPriceDeltaInputChange: (v: string) => void;
+  onCommitPriceDelta: (raw: string) => void;
   orderAmount: string;
   onOrderAmountChange: (v: string) => void;
   askCents: number | null;
@@ -1076,6 +1106,23 @@ function TempOddsBucketTradeStrip({
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="flex flex-wrap items-end gap-2">
+        <div className="w-[72px] shrink-0">
+          <label className="mb-1 block text-[10px] text-gray-400">Δ price (¢)</label>
+          <input
+            type="number"
+            value={priceDeltaInput}
+            onChange={(e) => onPriceDeltaInputChange(e.target.value)}
+            onBlur={() => onCommitPriceDelta(priceDeltaInput)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onCommitPriceDelta(priceDeltaInput);
+            }}
+            onWheel={(e) => e.preventDefault()}
+            className="order-input no-spin h-[34px] w-full"
+            placeholder="10"
+            min={0}
+            step={0.1}
+          />
+        </div>
         <div className="min-w-[120px] flex-1">
           <label className="mb-1 block text-[10px] text-gray-400">Amount (shares per leg)</label>
           <input
@@ -1149,6 +1196,9 @@ interface TempOddsChartProps {
   onToggleBucketMarket: (marketId: string) => void;
   bucketOrderAmount: string;
   onBucketOrderAmountChange: (v: string) => void;
+  bucketPriceDeltaInput: string;
+  onBucketPriceDeltaInputChange: (v: string) => void;
+  onCommitBucketPriceDelta: (raw: string) => void;
   bucketPlacing: boolean;
   walletReady: boolean;
   onPlaceBucketOrders: (markets: Market[]) => void;
@@ -1181,6 +1231,9 @@ function TempOddsChart({
   onToggleBucketMarket,
   bucketOrderAmount,
   onBucketOrderAmountChange,
+  bucketPriceDeltaInput,
+  onBucketPriceDeltaInputChange,
+  onCommitBucketPriceDelta,
   bucketPlacing,
   walletReady,
   onPlaceBucketOrders,
@@ -1337,6 +1390,9 @@ function TempOddsChart({
             </div>
             {bucketTradeEnabled ? (
               <TempOddsBucketTradeStrip
+                priceDeltaInput={bucketPriceDeltaInput}
+                onPriceDeltaInputChange={onBucketPriceDeltaInputChange}
+                onCommitPriceDelta={onCommitBucketPriceDelta}
                 orderAmount={bucketOrderAmount}
                 onOrderAmountChange={onBucketOrderAmountChange}
                 askCents={bucketAskCents}
@@ -1518,6 +1574,12 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const [bucketTradeEnabled, setBucketTradeEnabled] = useState(() => readStoredBucketTrade(panelId));
   const [bucketSelectedMarketIds, setBucketSelectedMarketIds] = useState<Set<string>>(() => new Set());
   const [bucketOrderAmount, setBucketOrderAmount] = useState('100');
+  const [bucketPriceDeltaCents, setBucketPriceDeltaCents] = useState(() =>
+    readStoredBucketPriceDelta(panelId),
+  );
+  const [bucketPriceDeltaInput, setBucketPriceDeltaInput] = useState(() =>
+    String(readStoredBucketPriceDelta(panelId)),
+  );
   const [bucketPlacing, setBucketPlacing] = useState(false);
   const tradingWallet = useTradingWalletAddress();
   const walletReady = !!tradingWallet;
@@ -1572,6 +1634,20 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
       return next;
     });
   }, []);
+
+  const commitBucketPriceDelta = useCallback(
+    (raw: string) => {
+      const n = parseFloat(raw.trim());
+      if (!Number.isFinite(n) || n < 0) {
+        setBucketPriceDeltaInput(String(bucketPriceDeltaCents));
+        return;
+      }
+      setBucketPriceDeltaCents(n);
+      setBucketPriceDeltaInput(String(n));
+      localStorage.setItem(`polybot-weather-temp-bars-bucket-delta-${panelId}`, String(n));
+    },
+    [panelId, bucketPriceDeltaCents],
+  );
 
   useEffect(() => {
     setBucketSelectedMarketIds(new Set());
@@ -2131,7 +2207,13 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
             if (placed > 0) triggerWalletRefresh();
             return;
           }
-          const cap = maxOrderUsdViolationMessage(maxOrderSizeUsd, orderNotionalUsd(walk.avgPrice, shares));
+          const limitPx = bucketLimitFromAskPrice(walk.avgPrice, bucketPriceDeltaCents);
+          if (!limitPx) {
+            showToast(`${leg.label}: invalid limit price`, 'error');
+            if (placed > 0) triggerWalletRefresh();
+            return;
+          }
+          const cap = maxOrderUsdViolationMessage(maxOrderSizeUsd, orderNotionalUsd(limitPx.price, shares));
           if (cap) {
             showToast(`${leg.label}: ${cap}`, 'error');
             if (placed > 0) triggerWalletRefresh();
@@ -2141,10 +2223,10 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           const result = await placeOrder({
             tokenId: leg.tokenId,
             side: 'BUY',
-            price: walk.avgPrice,
+            price: limitPx.price,
             size: shares,
             ...(expiration != null ? { expiration } : {}),
-            orderInfo: `Bucket BUY ${shares} ${outcomeView} ${leg.label} @ ${(walk.avgCents).toFixed(1)}¢`,
+            orderInfo: `Bucket BUY ${shares} ${outcomeView} ${leg.label} @ ${limitPx.cents.toFixed(1)}¢ (ask ${walk.avgCents.toFixed(1)}+Δ${bucketPriceDeltaCents})`,
           });
           if (!result.success) {
             showToast(result.error || `${leg.label} order failed`, 'error');
@@ -2161,7 +2243,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
         setBucketPlacing(false);
       }
     },
-    [walletReady, bucketOrderAmount, outcomeView, maxOrderSizeUsd],
+    [walletReady, bucketOrderAmount, bucketPriceDeltaCents, outcomeView, maxOrderSizeUsd],
   );
 
   useEffect(() => {
@@ -2444,6 +2526,9 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
                 onToggleBucketMarket={toggleBucketMarket}
                 bucketOrderAmount={bucketOrderAmount}
                 onBucketOrderAmountChange={setBucketOrderAmount}
+                bucketPriceDeltaInput={bucketPriceDeltaInput}
+                onBucketPriceDeltaInputChange={setBucketPriceDeltaInput}
+                onCommitBucketPriceDelta={commitBucketPriceDelta}
                 bucketPlacing={bucketPlacing}
                 walletReady={walletReady}
                 onPlaceBucketOrders={(markets) => void handlePlaceBucketOrders(markets)}

@@ -1,4 +1,5 @@
 import { geoGraticule, geoPath, geoEquirectangular } from 'd3-geo';
+import { Minus, Plus } from 'lucide-react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { WEATHER_CITIES, type WeatherCitySlug } from '../../lib/weatherCities';
 import { WEATHER_CITY_COORDS } from '../../lib/weatherCityCoords';
@@ -56,6 +57,46 @@ const MAP_TOP_LABEL_H = 16;
 const GRATICULE_STEP = 15;
 const TZ_LON_STEP = 15;
 const NIGHT_OVERLAY_STEP = 6;
+const MAP_ZOOM_MIN = 1;
+const MAP_ZOOM_MAX = 6;
+const MAP_ZOOM_FACTOR = 1.35;
+
+type MapView = { zoom: number; panX: number; panY: number };
+
+const DEFAULT_MAP_VIEW: MapView = { zoom: 1, panX: 0, panY: 0 };
+
+function clampMapView(view: MapView, layout: MapLayout): MapView {
+  const zoom = Math.min(MAP_ZOOM_MAX, Math.max(MAP_ZOOM_MIN, view.zoom));
+  if (zoom <= MAP_ZOOM_MIN + 1e-6) {
+    return { zoom: MAP_ZOOM_MIN, panX: 0, panY: 0 };
+  }
+  const maxPanX = (layout.w / 2) * (zoom - 1);
+  const maxPanY = (layout.h / 2) * (zoom - 1);
+  return {
+    zoom,
+    panX: Math.min(maxPanX, Math.max(-maxPanX, view.panX)),
+    panY: Math.min(maxPanY, Math.max(-maxPanY, view.panY)),
+  };
+}
+
+function applyMapViewTransform(ctx: CanvasRenderingContext2D, layout: MapLayout, view: MapView) {
+  const cx = layout.pad + layout.w / 2;
+  const cy = layout.mapTop + layout.h / 2;
+  ctx.translate(cx + view.panX, cy + view.panY);
+  ctx.scale(view.zoom, view.zoom);
+  ctx.translate(-cx, -cy);
+}
+
+/** Screen → layout/map coords (inverse of applyMapViewTransform). */
+function screenToMapCoords(mx: number, my: number, layout: MapLayout, view: MapView) {
+  const cx = layout.pad + layout.w / 2;
+  const cy = layout.mapTop + layout.h / 2;
+  const z = view.zoom || 1;
+  return {
+    x: (mx - cx - view.panX) / z + cx,
+    y: (my - cy - view.panY) / z + cy,
+  };
+}
 
 let landGeoJsonPromise: Promise<LandGeoJSON> | null = null;
 let nightOverlayCache: { key: string; canvas: HTMLCanvasElement } | null = null;
@@ -256,13 +297,16 @@ function nearestCity(
   layout: MapLayout,
   mx: number,
   my: number,
+  view: MapView = DEFAULT_MAP_VIEW,
 ): MapCity | null {
+  const mapPt = screenToMapCoords(mx, my, layout, view);
+  const hitR = HIT_RADIUS / Math.max(view.zoom, 1);
   let best: MapCity | null = null;
   let bestD = Infinity;
   for (const city of cities) {
     const { x, y } = projectLonLat(city.lon, city.lat, layout);
-    const d = Math.hypot(mx - x, my - y);
-    if (d <= HIT_RADIUS && d < bestD) {
+    const d = Math.hypot(mapPt.x - x, mapPt.y - y);
+    if (d <= hitR && d < bestD) {
       best = city;
       bestD = d;
     }
@@ -292,11 +336,23 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
   const hoverTipRef = useRef<{ x: number; y: number; label: string } | null>(null);
   const drawRef = useRef<() => void>(() => {});
   const drawRafRef = useRef(0);
+  const viewRef = useRef<MapView>({ ...DEFAULT_MAP_VIEW });
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originPanX: number;
+    originPanY: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
   const [land, setLand] = useState<LandGeoJSON | null>(null);
   const [loadError, setLoadError] = useState('');
   const [hoverTip, setHoverTip] = useState<{ x: number; y: number; label: string } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [layoutSnapshot, setLayoutSnapshot] = useState<MapLayout | null>(null);
+  const [zoom, setZoom] = useState(MAP_ZOOM_MIN);
+  const [dragging, setDragging] = useState(false);
 
   const [tempOddsDateIso, setTempOddsDateIso] = useState<string | null>(() => getTempOddsSelectedDate());
   const [tempOddsMetric, setTempOddsMetric] = useState(() => getTempOddsSelectedMetric());
@@ -405,8 +461,16 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
 
     const layout = makeLayout(width, height);
     layoutRef.current = layout;
+    const view = clampMapView(viewRef.current, layout);
+    viewRef.current = view;
 
     const date = new Date(nowMs);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(layout.pad, layout.mapTop, layout.w, layout.h);
+    ctx.clip();
+    applyMapViewTransform(ctx, layout, view);
 
     ctx.fillStyle = '#0c4a6e';
     ctx.fillRect(layout.pad, layout.mapTop, layout.w, layout.h);
@@ -424,13 +488,15 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
     const hoverSlug = hoverSlugRef.current;
     const selectedSlug = selectedSlugRef.current;
     const mode = colorModeRef.current;
+    // Keep city dots ~constant screen size while zoomed.
+    const invZ = 1 / Math.max(view.zoom, 1);
     for (const city of cities) {
       const { x, y } = projectLonLat(city.lon, city.lat, layout);
       const hovered = hoverSlug === city.slug;
       const selected = selectedSlug === city.slug;
       const maxBid = cityMaxBid.get(city.slug);
       const exposure = cityExposure.get(city.slug);
-      const r = selected ? DOT_RADIUS + 2 : hovered ? DOT_RADIUS + 1.5 : DOT_RADIUS;
+      const r = (selected ? DOT_RADIUS + 2 : hovered ? DOT_RADIUS + 1.5 : DOT_RADIUS) * invZ;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fillStyle =
@@ -440,18 +506,19 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
       ctx.fill();
       if (selected) {
         ctx.beginPath();
-        ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+        ctx.arc(x, y, r + 3 * invZ, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * invZ;
         ctx.stroke();
       } else if (hovered) {
         ctx.beginPath();
-        ctx.arc(x, y, r + 2, 0, Math.PI * 2);
+        ctx.arc(x, y, r + 2 * invZ, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.5 * invZ;
         ctx.stroke();
       }
     }
+    ctx.restore();
 
     if (loadError && !land) {
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
@@ -498,9 +565,30 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
     (mx: number, my: number) => {
       const layout = layoutRef.current;
       if (!layout) return null;
-      return nearestCity(cities, layout, mx, my);
+      return nearestCity(cities, layout, mx, my, viewRef.current);
     },
     [cities],
+  );
+
+  const setMapView = useCallback(
+    (next: MapView) => {
+      const layout = layoutRef.current;
+      const clamped = layout ? clampMapView(next, layout) : clampMapView(next, makeLayout(1, 1));
+      viewRef.current = clamped;
+      setZoom(clamped.zoom);
+      scheduleDraw();
+    },
+    [scheduleDraw],
+  );
+
+  const zoomBy = useCallback(
+    (dir: 1 | -1) => {
+      const cur = viewRef.current;
+      const nextZoom =
+        dir > 0 ? Math.min(MAP_ZOOM_MAX, cur.zoom * MAP_ZOOM_FACTOR) : Math.max(MAP_ZOOM_MIN, cur.zoom / MAP_ZOOM_FACTOR);
+      setMapView({ ...cur, zoom: nextZoom });
+    },
+    [setMapView],
   );
 
   const setHoveredCity = useCallback(
@@ -568,18 +656,73 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
     [scheduleDraw],
   );
 
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      if (viewRef.current.zoom <= MAP_ZOOM_MIN + 1e-6) return;
+      dragRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        originPanX: viewRef.current.panX,
+        originPanY: viewRef.current.panY,
+        moved: false,
+      };
+      e.currentTarget.setPointerCapture(e.pointerId);
+      setDragging(true);
+    },
+    [],
+  );
+
   const onPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
+
+      const drag = dragRef.current;
+      if (drag && drag.pointerId === e.pointerId) {
+        const dx = e.clientX - drag.startX;
+        const dy = e.clientY - drag.startY;
+        if (!drag.moved && Math.hypot(dx, dy) > 3) drag.moved = true;
+        const layout = layoutRef.current;
+        const next = {
+          zoom: viewRef.current.zoom,
+          panX: drag.originPanX + dx,
+          panY: drag.originPanY + dy,
+        };
+        viewRef.current = layout ? clampMapView(next, layout) : next;
+        scheduleDraw();
+        if (hoverSlugRef.current || hoverTipRef.current) {
+          hoverSlugRef.current = null;
+          hoverTipRef.current = null;
+          setHoverTip(null);
+        }
+        return;
+      }
+
       setHoveredCity(pickCityAt(mx, my), mx, my);
     },
-    [pickCityAt, setHoveredCity],
+    [pickCityAt, setHoveredCity, scheduleDraw],
   );
 
+  const endDrag = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    if (drag.moved) suppressClickRef.current = true;
+    dragRef.current = null;
+    setDragging(false);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+    setZoom(viewRef.current.zoom);
+  }, []);
+
   const onPointerLeave = useCallback(() => {
+    if (dragRef.current) return;
     if (!hoverSlugRef.current && !hoverTipRef.current) return;
     hoverSlugRef.current = null;
     hoverTipRef.current = null;
@@ -589,6 +732,10 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
 
   const onClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      if (suppressClickRef.current) {
+        suppressClickRef.current = false;
+        return;
+      }
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const mx = e.clientX - rect.left;
@@ -629,8 +776,32 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
             </button>
           ))}
         </div>
+        <div className="no-drag inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5">
+          <button
+            type="button"
+            title="Zoom out"
+            disabled={zoom <= MAP_ZOOM_MIN + 1e-6}
+            onClick={() => zoomBy(-1)}
+            className="rounded-sm p-0.5 text-gray-300 hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+          >
+            <Minus size={12} strokeWidth={2.5} />
+          </button>
+          <span className="min-w-[2.25rem] text-center text-[9px] tabular-nums text-gray-400">
+            {zoom.toFixed(1)}×
+          </span>
+          <button
+            type="button"
+            title="Zoom in"
+            disabled={zoom >= MAP_ZOOM_MAX - 1e-6}
+            onClick={() => zoomBy(1)}
+            className="rounded-sm p-0.5 text-gray-300 hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+          >
+            <Plus size={12} strokeWidth={2.5} />
+          </button>
+        </div>
         <span className="text-[10px] text-gray-500">
           click city → Temp Odds
+          {zoom > 1 ? ' · drag to pan' : ''}
           {colorMode === 'certainty'
             ? ' · max bid certainty (red→green)'
             : ' · pos=green/yellow/red · purple=order · white=none'}
@@ -656,8 +827,13 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
           className="pointer-events-none block h-full w-full rounded border border-gray-700/80"
         />
         <div
-          className="absolute inset-0 z-[2] cursor-crosshair"
+          className={`absolute inset-0 z-[2] ${
+            dragging ? 'cursor-grabbing' : zoom > 1 ? 'cursor-grab' : 'cursor-crosshair'
+          }`}
+          onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
           onPointerLeave={onPointerLeave}
           onClick={onClick}
         />

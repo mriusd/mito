@@ -82,7 +82,24 @@ export function useLiveTradeCandles({
 
     const publish = () => {
       if (cancelled) return;
-      const next = Array.from(candleMapRef.current.values()).sort((a, b) => a.time - b.time);
+      const sorted = Array.from(candleMapRef.current.values()).sort((a, b) => a.time - b.time);
+      // Weather series only: forward-fill bars/forecast; drop historical vol=0 flat stubs.
+      const weatherSeries = interval === '5m' && sorted.some((c) => c.weather != null);
+      if (!weatherSeries) {
+        setCandles(sorted);
+        return;
+      }
+      let lastWx: CandleWeatherSnapshot | undefined;
+      const lastT = sorted[sorted.length - 1]?.time ?? -1;
+      const next: LiveTradeCandle[] = [];
+      for (const c of sorted) {
+        let row = c;
+        if (c.weather) lastWx = c.weather;
+        else if (lastWx) row = { ...c, weather: lastWx };
+        const flatEmpty = row.v <= 0 && row.o === row.h && row.h === row.l && row.l === row.c;
+        if (flatEmpty && row.time !== lastT) continue;
+        next.push(row);
+      }
       setCandles(next);
     };
 

@@ -330,7 +330,13 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
                 const timeMs = tradeTimeMs(trade);
                 const ageMs = timeMs > 0 ? nowMs - timeMs : Infinity;
                 const timeColor =
-                  ageMs < 15 * 60000 ? 'text-green-400' : ageMs < 60 * 60000 ? 'text-yellow-400' : 'text-gray-400';
+                  ageMs < 60_000
+                    ? 'text-purple-400'
+                    : ageMs < 15 * 60_000
+                      ? 'text-green-400'
+                      : ageMs < 60 * 60_000
+                        ? 'text-yellow-400'
+                        : 'text-gray-400';
                 const dirTone =
                   side === 'BUY'
                     ? 'text-emerald-400'

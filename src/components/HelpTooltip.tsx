@@ -5,13 +5,21 @@ interface HelpTooltipProps {
   text: string;
   /** Desktop: show on pointer hover (with leave delay). Mobile still uses tap + sheet. */
   openOnHover?: boolean;
+  /** Delay before opening on hover (desktop). Default 0 = instant. */
+  hoverOpenDelayMs?: number;
   /** When set, hover/tap target is this node (no default “?” control). Use with `wrapClassName` for borders/layout. */
   children?: ReactNode;
   /** Classes on the hover wrapper when `children` is set. */
   wrapClassName?: string;
 }
 
-export function HelpTooltip({ text, openOnHover = false, children, wrapClassName }: HelpTooltipProps) {
+export function HelpTooltip({
+  text,
+  openOnHover = false,
+  hoverOpenDelayMs = 0,
+  children,
+  wrapClassName,
+}: HelpTooltipProps) {
   const [open, setOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [sheetOffset, setSheetOffset] = useState(20);
@@ -22,6 +30,7 @@ export function HelpTooltip({ text, openOnHover = false, children, wrapClassName
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const dragStartYRef = useRef<number | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sheetOffsetRef = useRef(sheetOffset);
   sheetOffsetRef.current = sheetOffset;
 
@@ -32,13 +41,21 @@ export function HelpTooltip({ text, openOnHover = false, children, wrapClassName
     }
   }, []);
 
+  const clearOpenTimer = useCallback(() => {
+    if (openTimerRef.current) {
+      clearTimeout(openTimerRef.current);
+      openTimerRef.current = null;
+    }
+  }, []);
+
   const scheduleClose = useCallback(() => {
     if (!openOnHover || isMobile) return;
+    clearOpenTimer();
     clearCloseTimer();
     closeTimerRef.current = setTimeout(() => {
       setOpen(false);
     }, 220);
-  }, [openOnHover, isMobile, clearCloseTimer]);
+  }, [openOnHover, isMobile, clearCloseTimer, clearOpenTimer]);
 
   const updatePos = useCallback(() => {
     if (!triggerRef.current) return;
@@ -72,8 +89,9 @@ export function HelpTooltip({ text, openOnHover = false, children, wrapClassName
   useEffect(() => {
     return () => {
       clearCloseTimer();
+      clearOpenTimer();
     };
-  }, [clearCloseTimer]);
+  }, [clearCloseTimer, clearOpenTimer]);
 
   useEffect(() => {
     if (!sheetDragging) return;
@@ -153,10 +171,19 @@ export function HelpTooltip({ text, openOnHover = false, children, wrapClassName
   const onDesktopPointerEnter = () => {
     if (!openOnHover || isMobile) return;
     clearCloseTimer();
-    setOpen(true);
+    clearOpenTimer();
+    if (hoverOpenDelayMs <= 0) {
+      setOpen(true);
+      return;
+    }
+    openTimerRef.current = setTimeout(() => {
+      openTimerRef.current = null;
+      setOpen(true);
+    }, hoverOpenDelayMs);
   };
   const onDesktopPointerLeave = () => {
     if (!openOnHover || isMobile) return;
+    clearOpenTimer();
     scheduleClose();
   };
 

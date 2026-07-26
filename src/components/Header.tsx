@@ -280,6 +280,7 @@ export function Header({ onRefresh }: HeaderProps) {
         >
           <HelpTooltip
             openOnHover
+            hoverOpenDelayMs={500}
             wrapClassName="inline-flex flex-1 min-w-0 h-full"
             text={
               'Polygon on-chain fills: sidebar live tape and Polygonscan tx links; market grid uses chain-backed rollups when a wallet is connected.'
@@ -299,6 +300,7 @@ export function Header({ onRefresh }: HeaderProps) {
           </HelpTooltip>
           <HelpTooltip
             openOnHover
+            hoverOpenDelayMs={500}
             wrapClassName="inline-flex flex-1 min-w-0 h-full"
             text={
               'Polymarket public feed: sidebar tape from market WebSocket; portfolio positions and P&L activity from Data API.'

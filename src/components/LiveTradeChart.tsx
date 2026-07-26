@@ -453,10 +453,7 @@ export function LiveTradeChart({
       const hasGexBinance = nearest.gexBinance != null;
       const hasGexOkx = nearest.gexOkx != null;
       const hasWeather = nearest.weather != null && interval === '5m';
-      if (!hasPolyOb && !hasCexOb && !hasGex && !hasGexBinance && !hasGexOkx && !hasWeather) {
-        setHoverOb(null);
-        return;
-      }
+      // Always show popup (OHLCV at minimum) — don't require OB/GEX/weather on that bar.
       setHoverOb({
         clientX,
         clientY,

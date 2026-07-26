@@ -32,6 +32,7 @@ import {
 } from '../../lib/sidebarOnchainTradesStore';
 import { canonicalConditionKey, type WSPosition, type WSTrade } from '../../hooks/useOnchainTradesWS';
 import { hasCredsForWallet, ensureCredsForWallet, triggerWalletRefresh } from '../../lib/clobClient';
+import { cancelExistingSellOrdersForToken } from '../../lib/cancelExistingSellOrdersForToken';
 import { isWebMode } from '../../lib/env';
 import { appKit } from '../../lib/wallet';
 import { signingDialog } from '../SigningDialog';
@@ -978,6 +979,92 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     }
   };
 
+  type TpoOrdEditRow = {
+    id: string;
+    tid: string;
+    side: string;
+    price: number;
+    size: number;
+    filled: number;
+  };
+
+  const [ordPriceEditId, setOrdPriceEditId] = useState<string | null>(null);
+  const [ordPriceEditValue, setOrdPriceEditValue] = useState('');
+  const ordPriceEditSubmittingRef = useRef(false);
+
+  const openOrdPriceEdit = useCallback((row: TpoOrdEditRow) => {
+    if (!row.id || cancellingOrderIds.has(row.id)) return;
+    setOrdPriceEditId(row.id);
+    setOrdPriceEditValue(
+      Number.isFinite(row.price) && row.price > 0 ? row.price.toFixed(1) : '',
+    );
+  }, [cancellingOrderIds]);
+
+  const commitOrdPriceEdit = useCallback(
+    async (row: TpoOrdEditRow) => {
+      if (ordPriceEditSubmittingRef.current) return;
+      if (!row.id || ordPriceEditId !== row.id) return;
+      const raw = ordPriceEditValue.trim().replace(/¢/g, '');
+      ordPriceEditSubmittingRef.current = true;
+      setOrdPriceEditId(null);
+      try {
+        if (!raw) return;
+        const cents = parseFloat(raw);
+        if (!Number.isFinite(cents) || cents < 0.1 || cents > 99.9) {
+          showToast('Price must be 0.1–99.9¢', 'error');
+          return;
+        }
+        const centsTick = Math.round(cents * 10) / 10;
+        if (Math.abs(centsTick - row.price) < 0.05) return;
+        const tid = String(row.tid || '').trim();
+        const side = (row.side || '').toUpperCase();
+        const remaining = Math.floor((row.size - row.filled) * 100) / 100;
+        if (!tid || (side !== 'BUY' && side !== 'SELL')) {
+          showToast('Invalid order', 'error');
+          return;
+        }
+        if (!(remaining > 0)) {
+          showToast('Nothing left to replace', 'error');
+          return;
+        }
+        setCancellingOrderIds((prev) => new Set(prev).add(row.id));
+        try {
+          const cancel = await cancelOrder(row.id);
+          if (!cancel.success) {
+            showToast(cancel.error || 'Cancel failed', 'error');
+            return;
+          }
+          const price = centsTick / 100;
+          const placed = await placeOrder({
+            tokenId: tid,
+            side,
+            price,
+            size: remaining,
+            expiration: 0,
+            orderInfo: `${side} ${remaining} @ ${centsTick.toFixed(1)}¢ (replace, TPO)`,
+          });
+          if (!placed.success) {
+            showToast(placed.error || 'Replace place failed — order was cancelled', 'error');
+            return;
+          }
+          showToast(`Order replaced @ ${centsTick.toFixed(1)}¢`, 'success');
+          triggerWalletRefresh();
+        } catch {
+          showToast('Replace failed', 'error');
+        } finally {
+          setCancellingOrderIds((prev) => {
+            const next = new Set(prev);
+            next.delete(row.id);
+            return next;
+          });
+        }
+      } finally {
+        ordPriceEditSubmittingRef.current = false;
+      }
+    },
+    [ordPriceEditId, ordPriceEditValue],
+  );
+
   const [posOrderBusyTids, setPosOrderBusyTids] = useState<Set<string>>(() => new Set());
 
   const withPosOrderBusy = useCallback(async (tid: string, fn: () => Promise<void>) => {
@@ -995,7 +1082,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     }
   }, []);
 
-  /** Resting limit sell at price in cents (0.1–99.9). */
+  /** Resting limit sell at price in cents (0.1–99.9). Cancels existing sells on token first. */
   const handleLimitSellAtCents = useCallback(
     async (row: TpoPosRow, priceCents: number, label = 'limit') => {
       if (row.bucketChildren && row.bucketChildren.length > 1) return;
@@ -1008,8 +1095,16 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       }
       const centsTick = Math.round(priceCents * 10) / 10;
       const price = centsTick / 100;
+      const hadSell =
+        row.sellPrice != null && Number.isFinite(row.sellPrice) && row.sellPrice > 0;
       await withPosOrderBusy(tid, async () => {
         try {
+          const liveOrders = useAppStore.getState().orders;
+          const cancel = await cancelExistingSellOrdersForToken(tid, liveOrders);
+          if (!cancel.success) {
+            showToast(cancel.error || 'Cancel existing sell failed', 'error');
+            return;
+          }
           const result = await placeOrder({
             tokenId: tid,
             side: 'SELL',
@@ -1019,10 +1114,21 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             orderInfo: `SELL ${size} @ ${centsTick.toFixed(1)}¢ (${label}, TPO)`,
           });
           if (result.success) {
-            showToast('Sell order placed', 'success');
+            showToast(
+              hadSell || cancel.cancelled > 0
+                ? `Sell replaced @ ${centsTick.toFixed(1)}¢`
+                : 'Sell order placed',
+              'success',
+            );
             triggerWalletRefresh();
           } else {
-            showToast(result.error || 'Sell failed', 'error');
+            showToast(
+              result.error ||
+                (cancel.cancelled > 0
+                  ? 'Replace place failed — old sell was cancelled'
+                  : 'Sell failed'),
+              'error',
+            );
           }
         } catch {
           showToast('Sell failed', 'error');
@@ -1089,7 +1195,15 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           showToast('Invalid sell price', 'error');
           return;
         }
-        await handleLimitSellAtCents(row, cents, 'manual');
+        const centsTick = Math.round(cents * 10) / 10;
+        if (
+          row.sellPrice != null &&
+          Number.isFinite(row.sellPrice) &&
+          Math.abs(centsTick - row.sellPrice) < 0.05
+        ) {
+          return;
+        }
+        await handleLimitSellAtCents(row, centsTick, 'manual');
       } finally {
         posSellEditSubmittingRef.current = false;
       }
@@ -2159,7 +2273,44 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     <td className={`${cCls} font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
                     <td className={`${cCls} font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
                     <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.round(o.size)} /></td>
-                    <td className={`${nCls} text-right`}><TpoColorCodedText text={`${o.price.toFixed(1)}¢`} /></td>
+                    <td
+                      className={`${nCls} text-right cursor-pointer`}
+                      title="Click to edit price (cancel + replace)"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (cancellingOrderIds.has(o.id)) return;
+                        openOrdPriceEdit(o);
+                      }}
+                    >
+                      {ordPriceEditId === o.id ? (
+                        <input
+                          autoFocus
+                          type="text"
+                          inputMode="decimal"
+                          className="no-drag w-14 max-w-full rounded border border-gray-600 bg-gray-900 px-0.5 py-0 text-right text-[10px] tabular-nums text-white outline-none focus:border-cyan-500"
+                          value={ordPriceEditValue}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => setOrdPriceEditValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void commitOrdPriceEdit(o);
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              setOrdPriceEditId(null);
+                            }
+                          }}
+                          onBlur={() => {
+                            void commitOrdPriceEdit(o);
+                          }}
+                          disabled={cancellingOrderIds.has(o.id)}
+                          aria-label="Order price cents"
+                        />
+                      ) : (
+                        <TpoColorCodedText text={`${o.price.toFixed(1)}¢`} />
+                      )}
+                    </td>
                     <td
                       className={`${nCls} text-right ${bidTint < 0 ? 'text-green-300/90' : ''}`}
                       style={bidTint >= 0 ? quoteClosenessColorStyle(bidTint) : undefined}

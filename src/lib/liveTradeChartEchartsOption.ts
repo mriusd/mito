@@ -13,6 +13,7 @@ import {
 import { chartEnrichmentMathCents, CHART_MATH_PROB_COLOR } from './chartCandleEnrichment';
 import type { LiveTradeCandle } from '../hooks/useLiveTradeCandles';
 import type { SidebarChartOrderLevel, SidebarChartPositionLevel } from './sidebarOrderbookAggregate';
+import { normalizeClobTokenId } from '../utils/format';
 
 const BULL = '#10b981';
 const BEAR = '#ef4444';
@@ -51,14 +52,14 @@ function stakeBucketForCandle(
 ): { yes: number; no: number } | null {
   const buckets = c.weather?.market_buckets;
   if (!buckets?.length) return null;
-  const tid = (tokenId || '').trim();
-  let b = tid ? buckets.find((x) => (x.tokenId || '').trim() === tid) : undefined;
+  const tid = normalizeClobTokenId(tokenId || '');
+  let b = tid
+    ? buckets.find((x) => normalizeClobTokenId(x.tokenId || '') === tid)
+    : undefined;
   if (!b) b = buckets.find((x) => x.selected);
   if (!b) return null;
-  const yes = b.stakedYesUsd;
-  const no = b.stakedNoUsd;
-  if (yes == null && no == null) return null;
-  return { yes: yes ?? 0, no: no ?? 0 };
+  // Omitted stake fields mean $0 for this bucket — still a real sample (keep line continuous).
+  return { yes: b.stakedYesUsd ?? 0, no: b.stakedNoUsd ?? 0 };
 }
 
 function fmtStakeAxisUsd(v: number): string {
@@ -161,13 +162,18 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
   const stakeYes: (number | null)[] = [];
   const stakeNo: (number | null)[] = [];
   let stakePointCount = 0;
+  let lastYes: number | null = null;
+  let lastNo: number | null = null;
   for (const c of candles) {
     const s = stakeBucketForCandle(c, tokenId);
     if (!s) {
-      stakeYes.push(null);
-      stakeNo.push(null);
+      // Forward-fill across candles missing weather so stk$ lines don't die mid-chart.
+      stakeYes.push(lastYes);
+      stakeNo.push(lastNo);
       continue;
     }
+    lastYes = s.yes;
+    lastNo = s.no;
     stakeYes.push(s.yes);
     stakeNo.push(s.no);
     stakePointCount++;
@@ -363,7 +369,7 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
       data: stakeYes,
       showSymbol: false,
       symbolSize: 0,
-      connectNulls: false,
+      connectNulls: true,
       lineStyle: { color: BULL, width: 1.5 },
       itemStyle: { color: BULL },
       z: 2,
@@ -377,7 +383,7 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
       data: stakeNo,
       showSymbol: false,
       symbolSize: 0,
-      connectNulls: false,
+      connectNulls: true,
       lineStyle: { color: BEAR, width: 1.5 },
       itemStyle: { color: BEAR },
       z: 2,
@@ -725,9 +731,10 @@ export function findCandleIndexAtPixel(
   if (candleTimes.length === 0) return null;
   try {
     const h = chart.getHeight();
+    // Keep Y inside the price grid (not the volume/stake strip) so category X resolves.
     const sampleY =
       offsetY != null && Number.isFinite(offsetY)
-        ? Math.min(Math.max(8, offsetY), Math.max(8, h * 0.65))
+        ? Math.min(Math.max(8, offsetY), Math.max(8, h * 0.72))
         : Math.max(8, h * 0.35);
     const point = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [offsetX, sampleY]);
     const arr = Array.isArray(point) ? point : [point];

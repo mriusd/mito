@@ -1,6 +1,11 @@
 import type { Market, Order, Position } from '../types';
 import { getOrderClobTokenId, normalizeClobTokenId } from '../utils/format';
-import { outcomeBidAskProb, outcomeMidOrOneSideProb } from './outcomeQuote';
+import {
+  outcomeBestAskProb,
+  outcomeBestBidProb,
+  outcomeBidAskProb,
+  outcomeMidOrOneSideProb,
+} from './outcomeQuote';
 import { positionBidExitTier, type PositionBidExitTier } from './positionBidExitTier';
 import { resolveLegPositionForToken } from './sidebarMyPositions';
 import {
@@ -168,7 +173,9 @@ export function buildWeatherCityMaxSpreadByDate(
       if (eventDate !== dateIso) continue;
       const yesTokenId = market.clobTokenIds?.[0];
       if (!yesTokenId) continue;
-      const { bid, ask } = outcomeBidAskProb(yesTokenId, marketLookup);
+      const gamma = { bestBid: market.bestBid, bestAsk: market.bestAsk };
+      const bid = outcomeBestBidProb(yesTokenId, marketLookup, gamma);
+      const ask = outcomeBestAskProb(yesTokenId, marketLookup, gamma);
       if (bid == null || ask == null || !(bid > 0) || !(ask > 0)) continue;
       const spread = ask - bid;
       if (!(spread >= 0) || !Number.isFinite(spread)) continue;

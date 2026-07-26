@@ -311,38 +311,21 @@ function drawDayGlow(ctx: CanvasRenderingContext2D, layout: MapLayout, date: Dat
   ctx.fill();
 }
 
-type WeatherMapColorMode = 'state' | 'certainty' | 'spread' | 'mispriced';
-
-const WEATHER_MAP_COLOR_MODE_LS = 'polybot-weather-map-color-mode';
-/** Spread ≥ this (prob units) maps to fully sharp purple (30¢). */
-const SPREAD_DIM_AT = 0.3;
-/** Flash city dots when max spread exceeds this (20¢). */
+/** Flash when max spread exceeds this (20¢). */
 const SPREAD_FLASH_AT = 0.2;
-const SPREAD_FLASH_PERIOD_MS = 650;
+const FLASH_PERIOD_MS = 650;
 const FORECAST_HIGH_REFRESH_MS = 5 * 60_000;
+const FLASH_PURPLE = '#c084fc';
+const FLASH_TURQUOISE = '#2dd4bf';
 
-function readStoredColorMode(): WeatherMapColorMode {
-  const v = localStorage.getItem(WEATHER_MAP_COLOR_MODE_LS);
-  if (v === 'certainty' || v === 'spread' || v === 'mispriced' || v === 'state') return v;
-  return 'state';
-}
-
-/** Old: position PnL tier / open order / none. */
-function cityDotFillByState(
-  exposure: WeatherCityExposure | undefined,
-  hovered: boolean,
-  selected: boolean,
-): string {
-  if (!exposure || exposure.kind === 'none') {
-    return selected || hovered ? '#e5e7eb' : '#ffffff';
-  }
-  if (exposure.kind === 'order') {
-    return selected || hovered ? '#c084fc' : '#a855f7';
-  }
+/** Position PnL / open order → stroke around certainty fill. None = no state ring. */
+function cityDotStrokeByState(exposure: WeatherCityExposure | undefined): string | null {
+  if (!exposure || exposure.kind === 'none') return null;
+  if (exposure.kind === 'order') return '#c084fc';
   const tier = exposure.tier;
-  if (tier === 'green') return selected || hovered ? '#4ade80' : '#22c55e';
-  if (tier === 'red') return selected || hovered ? '#f87171' : '#ef4444';
-  return selected || hovered ? '#fde047' : '#eab308';
+  if (tier === 'green') return '#4ade80';
+  if (tier === 'red') return '#f87171';
+  return '#facc15';
 }
 
 /** Max-bid certainty: red (low) → yellow → green (high). No quote = gray. */
@@ -360,32 +343,8 @@ function cityDotFillByMaxBid(
   return `hsl(${hue}, 75%, ${light}%)`;
 }
 
-/** Max bid–ask spread: purple; larger spread → sharper/brighter. No quote = gray. */
-function cityDotFillByMaxSpread(
-  maxSpread: number | undefined,
-  hovered: boolean,
-  selected: boolean,
-): string {
-  if (maxSpread == null || !Number.isFinite(maxSpread) || maxSpread < 0) {
-    return selected || hovered ? '#e5e7eb' : '#9ca3af';
-  }
-  const t = Math.min(1, Math.max(0, maxSpread / SPREAD_DIM_AT));
-  // Dim at tight spread → bright purple at wide spread.
-  const baseAlpha = selected || hovered ? 0.2 : 0.14;
-  const alpha = Math.min(selected || hovered ? 0.98 : 0.92, baseAlpha + t * 0.78);
-  return `rgba(168, 85, 247, ${alpha})`;
-}
-
-/** Below-forecast-high bucket mid > 10¢ → turquoise; else gray. */
-function cityDotFillByMispriced(
-  maxMid: number | undefined,
-  hovered: boolean,
-  selected: boolean,
-): string {
-  if (maxMid == null || !(maxMid > 0) || !Number.isFinite(maxMid)) {
-    return selected || hovered ? '#e5e7eb' : '#6b7280';
-  }
-  return selected || hovered ? '#5eead4' : '#2dd4bf';
+function flashPulse(phaseRad = 0): number {
+  return 0.22 + 0.78 * (0.5 + 0.5 * Math.sin((Date.now() / FLASH_PERIOD_MS) * Math.PI * 2 + phaseRad));
 }
 
 function nearestCity(
@@ -457,9 +416,6 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
 
   const [tempOddsDateIso, setTempOddsDateIso] = useState<string | null>(() => getTempOddsSelectedDate());
   const [tempOddsMetric, setTempOddsMetric] = useState(() => getTempOddsSelectedMetric());
-  const [colorMode, setColorMode] = useState<WeatherMapColorMode>(() => readStoredColorMode());
-  const colorModeRef = useRef(colorMode);
-  colorModeRef.current = colorMode;
   const [forecastHighByCity, setForecastHighByCity] = useState<Map<string, number>>(() => new Map());
   const weatherMarkets = useAppStore((s) => s.weatherMarkets);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
@@ -483,12 +439,23 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     );
   }, [weatherMarkets, tempOddsDateIso, tempOddsMetric, positions, orders, progOrderMap, liveTradesSource, onchainWsPositions, marketLookup]);
 
-  // Mis Priced always inspects highest-temp buckets vs forecast high.
-  const quoteMetric = colorMode === 'mispriced' ? 'high' : tempOddsMetric;
-  const quoteTokenIds = useMemo(
-    () => weatherMapQuoteTokenIdsForDate(weatherMarkets, tempOddsDateIso, quoteMetric),
-    [weatherMarkets, tempOddsDateIso, quoteMetric],
-  );
+  // Metric tokens for certainty/spread + high tokens for mispriced.
+  const quoteTokenIds = useMemo(() => {
+    const metricIds = weatherMapQuoteTokenIdsForDate(weatherMarkets, tempOddsDateIso, tempOddsMetric);
+    const highIds =
+      tempOddsMetric === 'high'
+        ? metricIds
+        : weatherMapQuoteTokenIdsForDate(weatherMarkets, tempOddsDateIso, 'high');
+    if (tempOddsMetric === 'high') return metricIds;
+    const seen = new Set(metricIds);
+    const out = metricIds.slice();
+    for (const id of highIds) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+    }
+    return out;
+  }, [weatherMarkets, tempOddsDateIso, tempOddsMetric]);
 
   const [quoteTick, setQuoteTick] = useState(0);
   useEffect(() => {
@@ -533,7 +500,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   useEffect(() => onTempOddsMetricSelect(setTempOddsMetric), []);
 
   useEffect(() => {
-    if (colorMode !== 'mispriced' || !tempOddsDateIso) return;
+    if (!tempOddsDateIso) return;
     let alive = true;
     const load = () => {
       void Promise.all(
@@ -561,7 +528,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       alive = false;
       window.clearInterval(id);
     };
-  }, [colorMode, tempOddsDateIso]);
+  }, [tempOddsDateIso]);
 
   const meridians = useMemo(() => buildTimezoneMeridians(), []);
 
@@ -644,9 +611,11 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
 
     const hoverSlug = hoverSlugRef.current;
     const selectedSlug = selectedSlugRef.current;
-    const mode = colorModeRef.current;
     // Keep city dots ~constant screen size while zoomed.
+    // Under scale(zoom), multiply sizes by invZ so screen px stay constant.
     const invZ = 1 / Math.max(view.zoom, 1);
+    const pulse = flashPulse(0);
+    const pulseAlt = flashPulse(Math.PI);
     for (const city of cities) {
       const { x, y } = projectLonLat(city.lon, city.lat, layout);
       const hovered = hoverSlug === city.slug;
@@ -656,33 +625,66 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       const misMid = cityMispriced.get(city.slug);
       const exposure = cityExposure.get(city.slug);
       const r = (selected ? DOT_RADIUS + 2 : hovered ? DOT_RADIUS + 1.5 : DOT_RADIUS) * invZ;
-      const flash =
-        mode === 'spread' && maxSpread != null && maxSpread > SPREAD_FLASH_AT
-          ? 0.28 + 0.72 * (0.5 + 0.5 * Math.sin((Date.now() / SPREAD_FLASH_PERIOD_MS) * Math.PI * 2))
-          : 1;
-      ctx.save();
-      ctx.globalAlpha = flash;
+      const mispriced = misMid != null && misMid > 0;
+      const wideSpread = maxSpread != null && maxSpread > SPREAD_FLASH_AT;
+      const stateStroke = cityDotStrokeByState(exposure);
+
+      // Certainty fill.
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle =
-        mode === 'certainty'
-          ? cityDotFillByMaxBid(maxBid, hovered, selected)
-          : mode === 'spread'
-            ? cityDotFillByMaxSpread(maxSpread, hovered, selected)
-            : mode === 'mispriced'
-              ? cityDotFillByMispriced(misMid, hovered, selected)
-              : cityDotFillByState(exposure, hovered, selected);
+      ctx.fillStyle = cityDotFillByMaxBid(maxBid, hovered, selected);
       ctx.fill();
-      ctx.restore();
+
+      // Mispriced: turquoise wash on the fill (does not hide purple halo).
+      if (mispriced) {
+        ctx.save();
+        ctx.globalAlpha = 0.25 + 0.7 * pulse;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = FLASH_TURQUOISE;
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // State ring: dark understroke so green-on-green stays visible.
+      if (stateStroke) {
+        const sr = r + 2.25 * invZ;
+        ctx.beginPath();
+        ctx.arc(x, y, sr, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+        ctx.lineWidth = 4.5 * invZ;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y, sr, 0, Math.PI * 2);
+        ctx.strokeStyle = stateStroke;
+        ctx.lineWidth = 2.75 * invZ;
+        ctx.stroke();
+      }
+
+      // Spread: pulsing purple halo outside fill/state (always visible if wide).
+      if (wideSpread) {
+        const hr = r + (stateStroke ? 5.5 : 3.5) * invZ;
+        ctx.save();
+        ctx.globalAlpha = 0.35 + 0.65 * pulseAlt;
+        ctx.beginPath();
+        ctx.arc(x, y, hr, 0, Math.PI * 2);
+        ctx.strokeStyle = FLASH_PURPLE;
+        ctx.lineWidth = 3.25 * invZ;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      const outer = r + (wideSpread ? 8 : stateStroke ? 5.5 : 3) * invZ;
       if (selected) {
         ctx.beginPath();
-        ctx.arc(x, y, r + 3 * invZ, 0, Math.PI * 2);
+        ctx.arc(x, y, outer, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(255,255,255,0.95)';
         ctx.lineWidth = 2 * invZ;
         ctx.stroke();
       } else if (hovered) {
         ctx.beginPath();
-        ctx.arc(x, y, r + 2 * invZ, 0, Math.PI * 2);
+        ctx.arc(x, y, outer - 1 * invZ, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(255,255,255,0.85)';
         ctx.lineWidth = 1.5 * invZ;
         ctx.stroke();
@@ -697,7 +699,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       ctx.textBaseline = 'middle';
       ctx.fillText('Map load failed', width / 2, height / 2);
     }
-  }, [cities, land, loadError, nowMs, cityMaxBid, cityMaxSpread, cityMispriced, cityExposure, colorMode]);
+  }, [cities, land, loadError, nowMs, cityMaxBid, cityMaxSpread, cityMispriced, cityExposure]);
 
   drawRef.current = draw;
 
@@ -709,9 +711,17 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     });
   }, []);
 
-  // Pulse high-spread dots while Spread mode is active.
+  const needsFlashPulse = useMemo(() => {
+    if (cityMispriced.size > 0) return true;
+    for (const s of cityMaxSpread.values()) {
+      if (s > SPREAD_FLASH_AT) return true;
+    }
+    return false;
+  }, [cityMispriced, cityMaxSpread]);
+
+  // Pulse purple (wide spread) / turquoise (mispriced) overlays.
   useEffect(() => {
-    if (colorMode !== 'spread') return;
+    if (!needsFlashPulse) return;
     let alive = true;
     let raf = 0;
     const tick = () => {
@@ -724,7 +734,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       alive = false;
       cancelAnimationFrame(raf);
     };
-  }, [colorMode, scheduleDraw]);
+  }, [needsFlashPulse, scheduleDraw]);
 
   const syncLayoutSnapshot = useCallback((width: number, height: number) => {
     const layout = makeLayout(width, height);
@@ -782,27 +792,25 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   const setHoveredCity = useCallback(
     (hit: MapCity | null, mx: number, my: number) => {
       const slug = hit?.slug ?? null;
-      const mode = colorModeRef.current;
       let extra = '';
       if (hit) {
-        if (mode === 'certainty') {
-          const maxBid = cityMaxBid.get(hit.slug);
-          if (maxBid != null && maxBid > 0) extra = ` · max bid ${(maxBid * 100).toFixed(1)}¢`;
-        } else if (mode === 'spread') {
-          const maxSpread = cityMaxSpread.get(hit.slug);
-          if (maxSpread != null && Number.isFinite(maxSpread)) {
-            extra = ` · max spread ${(maxSpread * 100).toFixed(1)}¢`;
-          }
-        } else if (mode === 'mispriced') {
-          const misMid = cityMispriced.get(hit.slug);
-          const fc = forecastHighByCity.get(hit.slug);
-          if (misMid != null && misMid > 0) {
-            extra = ` · below-fc mid ${(misMid * 100).toFixed(1)}¢`;
-            if (fc != null) extra += ` · fc ${fc.toFixed(1)}°C`;
-          } else if (fc != null) {
-            extra = ` · fc ${fc.toFixed(1)}°C`;
-          }
+        const parts: string[] = [];
+        const maxBid = cityMaxBid.get(hit.slug);
+        if (maxBid != null && maxBid > 0) parts.push(`bid ${(maxBid * 100).toFixed(1)}¢`);
+        const maxSpread = cityMaxSpread.get(hit.slug);
+        if (maxSpread != null && maxSpread > SPREAD_FLASH_AT) {
+          parts.push(`spread ${(maxSpread * 100).toFixed(1)}¢`);
         }
+        const misMid = cityMispriced.get(hit.slug);
+        if (misMid != null && misMid > 0) {
+          parts.push(`mis ${(misMid * 100).toFixed(1)}¢`);
+          const fc = forecastHighByCity.get(hit.slug);
+          if (fc != null) parts.push(`fc ${fc.toFixed(1)}°C`);
+        }
+        const exposure = cityExposure.get(hit.slug);
+        if (exposure?.kind === 'order') parts.push('order');
+        else if (exposure?.kind === 'position') parts.push(`pos ${exposure.tier}`);
+        if (parts.length) extra = ` · ${parts.join(' · ')}`;
       }
       const nextTip = hit ? { x: mx, y: my, label: `${hit.label}${extra}` } : null;
       const prevTip = hoverTipRef.current;
@@ -825,7 +833,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       setHoverTip(nextTip);
       if (slugChanged) scheduleDraw();
     },
-    [scheduleDraw, cityMaxBid, cityMaxSpread, cityMispriced, forecastHighByCity],
+    [scheduleDraw, cityMaxBid, cityMaxSpread, cityMispriced, forecastHighByCity, cityExposure],
   );
 
   const selectCity = useCallback(
@@ -964,39 +972,6 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-2 h-full flex flex-col min-h-0">
       <div className="panel-header mb-1 flex shrink-0 cursor-grab items-center gap-2 flex-wrap">
         <span className="text-xs font-bold text-gray-500">Weather Map</span>
-        <div className="no-drag inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]">
-          {([
-            { id: 'state' as const, label: 'State', title: 'Position PnL / open order' },
-            { id: 'certainty' as const, label: 'Certainty', title: 'Max bid across buckets (red→green)' },
-            {
-              id: 'spread' as const,
-              label: 'Spread',
-              title: 'Max bid–ask spread across buckets (purple; wider = sharper)',
-            },
-            {
-              id: 'mispriced' as const,
-              label: 'Mis Priced',
-              title: 'Turquoise: below-forecast-high bucket with YES mid ≥ 10¢',
-            },
-          ]).map(({ id, label, title }) => (
-            <button
-              key={id}
-              type="button"
-              title={title}
-              onClick={() => {
-                setColorMode(id);
-                localStorage.setItem(WEATHER_MAP_COLOR_MODE_LS, id);
-              }}
-              className={
-                colorMode === id
-                  ? 'px-2 py-0.5 rounded-sm font-semibold bg-gray-500 text-white'
-                  : 'px-2 py-0.5 rounded-sm font-semibold text-gray-400 hover:text-white hover:bg-gray-700'
-              }
-            >
-              {label}
-            </button>
-          ))}
-        </div>
         <div className="no-drag inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5">
           <button
             type="button"
@@ -1021,15 +996,8 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
           </button>
         </div>
         <span className="text-[10px] text-gray-500">
-          click city → Temp Odds
+          fill=certainty · ring=state · flash purple=spread · turquoise=mispriced
           {zoom > 1 ? ' · drag to pan' : ''}
-          {colorMode === 'certainty'
-            ? ' · max bid certainty (red→green)'
-            : colorMode === 'spread'
-              ? ' · max bid–ask spread (purple; wider=sharper)'
-              : colorMode === 'mispriced'
-                ? ' · turquoise = below-fc high bucket mid ≥10¢'
-                : ' · pos=green/yellow/red · purple=order · white=none'}
         </span>
       </div>
       <div ref={containerRef} className="no-drag relative min-h-0 flex-1">

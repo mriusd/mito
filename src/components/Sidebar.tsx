@@ -3750,7 +3750,7 @@ export const Sidebar = memo(function Sidebar() {
             notifyFlashBg={notifyFlashBg}
             notifyMaxVolatilityPct={notifyMaxVolatilityPct}
             >
-              <div className="grid w-full grid-cols-3 gap-1.5 text-[10px] min-w-0 items-stretch">
+              <div className="grid w-full grid-cols-4 gap-1.5 text-[10px] min-w-0 items-stretch">
               <SidebarMarketStatsCells
                 yesTokenId={selectedMarket?.clobTokenIds?.[0] ?? ''}
                 stakedLegs={sidebarStakedLegs}

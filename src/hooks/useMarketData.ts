@@ -79,6 +79,8 @@ export function useMarketData() {
         lastUpdated: data.lastUpdated || '',
       };
       useAppStore.getState().setMarketData(patchPayload);
+      // Always clear splash once we have a payload — do not wait for 2nd recovery probe.
+      useAppStore.getState().setLoading(false);
 
       const sel = store.selectedMarket;
       if (sel?.id && marketArraysChanged) {
@@ -95,7 +97,6 @@ export function useMarketData() {
       recoverySuccessesRef.current = 0;
       markBackendRecovered();
       useAppStore.getState().setBackendConnected(true);
-      useAppStore.getState().setLoading(false);
       if (wasDown) notifyBackendReconnect();
     } catch (err) {
       console.error('Failed to fetch markets:', err);

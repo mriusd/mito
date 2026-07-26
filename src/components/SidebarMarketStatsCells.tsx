@@ -160,6 +160,7 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
     stakedHalves.yesPct != null ? `${Math.round(stakedHalves.yesPct)}%` : null;
   const noPctLabel = stakedHalves.noPct != null ? `${Math.round(stakedHalves.noPct)}%` : null;
   const stakedTitle = `Staked net halves: YES $${stakedHalves.yesUsd != null ? stakedHalves.yesUsd.toFixed(0) : '—'} (${yesPctLabel ?? '—'}) · NO $${stakedHalves.noUsd != null ? stakedHalves.noUsd.toFixed(0) : '—'} (${noPctLabel ?? '—'}). Gross Σ|usd| $${typeof stakedGross === 'number' && Number.isFinite(stakedGross) ? stakedGross.toFixed(0) : '—'}. Click to expand Toxic Flow.`;
+  const stakedProbTitle = `Staked probability = StakedYes / (StakedYes+StakedNo) ≈ ${yesPctLabel ?? '—'}. Click to expand Toxic Flow.`;
 
   const pillBtn = canShowEmbeddedToxic
     ? 'cursor-pointer hover:brightness-110 active:brightness-125'
@@ -174,9 +175,7 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
         onClick={onExpandToxic}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <div className="text-[8px] uppercase tracking-wide text-emerald-400/90 truncate">
-          Staked Yes{yesPctLabel ? ` ${yesPctLabel}` : ''}
-        </div>
+        <div className="text-[8px] uppercase tracking-wide text-emerald-400/90 truncate">Staked Yes</div>
         <div className="tabular-nums font-bold text-emerald-300 truncate">
           {yesK != null ? `$${yesK}` : '--'}
         </div>
@@ -188,12 +187,20 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
         onClick={onExpandToxic}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <div className="text-[8px] uppercase tracking-wide text-red-400/90 truncate">
-          Staked No{noPctLabel ? ` ${noPctLabel}` : ''}
-        </div>
+        <div className="text-[8px] uppercase tracking-wide text-red-400/90 truncate">Staked No</div>
         <div className="tabular-nums font-bold text-red-300 truncate">
           {noK != null ? `$${noK}` : '--'}
         </div>
+      </button>
+      <button
+        type="button"
+        className={`rounded px-1.5 py-1 min-w-0 border border-violet-700/55 bg-violet-950/30 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${pillBtn}`}
+        title={stakedProbTitle}
+        onClick={onExpandToxic}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <div className="text-[8px] uppercase tracking-wide text-violet-400/90 truncate">Staked Prob</div>
+        <div className="tabular-nums font-bold text-violet-300 truncate">{yesPctLabel ?? '--'}</div>
       </button>
       <button
         type="button"

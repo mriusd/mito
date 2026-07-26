@@ -19,9 +19,17 @@ async function tradingProxyWalletForOrder(): Promise<string | { error: string }>
 }
 
 export async function fetchMarkets(): Promise<MarketsResponse> {
-  const resp = await fetchBackend(`${BASE}/api/markets`, undefined, { probe: true, timeoutMs: 5000 });
-  if (!resp.ok) throw new Error('Failed to fetch markets');
-  return resp.json();
+  // Timeout must cover body download + JSON parse — fetch() resolves on headers; huge
+  // weather+updown payloads used to hang resp.json() with no abort (felt like multi‑minute "refresh").
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), 15_000);
+  try {
+    const resp = await fetchBackend(`${BASE}/api/markets`, { signal: ctrl.signal }, { probe: true, timeoutMs: 15_000 });
+    if (!resp.ok) throw new Error('Failed to fetch markets');
+    return (await resp.json()) as MarketsResponse;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 export async function fetchSettings(): Promise<Record<string, unknown>> {

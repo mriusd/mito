@@ -48,6 +48,55 @@ export function longitudeAtSolarHour(hour: number, date: Date): number {
   return lon;
 }
 
+/** Decimal local hour [0, 24) in an IANA timezone. */
+export function localDecimalHour(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const n = (t: Intl.DateTimeFormatPartTypes) =>
+    parseInt(parts.find((p) => p.type === t)?.value ?? '0', 10);
+  return n('hour') + n('minute') / 60 + n('second') / 3600;
+}
+
+function normalizeLon(lon: number): number {
+  let x = lon;
+  while (x > 180) x -= 360;
+  while (x < -180) x += 360;
+  return x;
+}
+
+/**
+ * Longitude where civil clocks read `hour`:00, inferred from weather cities.
+ * For each city still approaching that hour (within 12h), project
+ * `city.lon + hoursUntil * 15°` and average (so NYC 13:47 → ~2h east of NYC).
+ */
+export function longitudeAtCivilHour(
+  hour: number,
+  date: Date,
+  cities: ReadonlyArray<{ lon: number; timezone: string }>,
+): number {
+  let sumX = 0;
+  let sumY = 0;
+  let n = 0;
+  const target = ((hour % 24) + 24) % 24;
+  for (const c of cities) {
+    const localH = localDecimalHour(date, c.timezone);
+    const delta = (((target - localH) % 24) + 24) % 24;
+    // Include cities at `hour`:00 (delta=0) and those approaching within 12h.
+    if (delta > 12) continue;
+    const lon = normalizeLon(c.lon + delta * 15);
+    sumX += Math.cos(lon * DEG);
+    sumY += Math.sin(lon * DEG);
+    n += 1;
+  }
+  if (n === 0) return longitudeAtSolarHour(target, date);
+  return (Math.atan2(sumY / n, sumX / n) * 180) / Math.PI;
+}
+
 export function utcOffsetLabel(lon: number): string {
   const off = Math.round(lon / 15);
   if (off === 0) return 'UTC';

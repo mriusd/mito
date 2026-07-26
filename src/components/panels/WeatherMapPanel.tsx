@@ -5,7 +5,7 @@ import { WEATHER_CITIES, type WeatherCitySlug } from '../../lib/weatherCities';
 import { WEATHER_CITY_COORDS } from '../../lib/weatherCityCoords';
 import {
   isNightAt,
-  longitudeAtSolarHour,
+  longitudeAtCivilHour,
   solarHourAtLongitude,
   subsolarPoint,
   utcOffsetLabel,
@@ -265,18 +265,28 @@ function drawTimezoneMeridians(ctx: CanvasRenderingContext2D, layout: MapLayout)
   ctx.restore();
 }
 
-/** Thin orange dotted meridian where local solar time is 16:00. */
+const CIVIL_HOUR_16_CITIES: ReadonlyArray<{ lon: number; timezone: string }> = WEATHER_CITIES.filter(
+  (c) => WEATHER_CITY_COORDS[c.slug],
+).map((c) => ({ lon: WEATHER_CITY_COORDS[c.slug].lon, timezone: c.timezone }));
+
+/**
+ * Thin orange dotted line where city civil clocks hit 16:00
+ * (NYC 13:47 → ~2h / 30° east of NYC, not mid-Atlantic solar band).
+ * Screen space so zoom/pan doesn't drift it.
+ */
 function drawSolarHour16Line(ctx: CanvasRenderingContext2D, layout: MapLayout, date: Date) {
-  const lon = longitudeAtSolarHour(16, date);
-  const top = projectLonLat(lon, 90, layout);
-  const bottom = projectLonLat(lon, -90, layout);
+  const lon = longitudeAtCivilHour(16, date, CIVIL_HOUR_16_CITIES);
+  const x = projectLonLat(lon, 0, layout).x;
   ctx.save();
+  ctx.beginPath();
+  ctx.rect(layout.pad, layout.mapTop, layout.w, layout.h);
+  ctx.clip();
   ctx.strokeStyle = 'rgba(249, 115, 22, 0.9)';
   ctx.lineWidth = 1;
   ctx.setLineDash([2, 3]);
   ctx.beginPath();
-  ctx.moveTo(top.x, top.y);
-  ctx.lineTo(bottom.x, bottom.y);
+  ctx.moveTo(x, layout.mapTop);
+  ctx.lineTo(x, layout.mapTop + layout.h);
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.restore();
@@ -629,7 +639,6 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
 
     drawGraticule(ctx, layout);
     drawTimezoneMeridians(ctx, layout);
-    drawSolarHour16Line(ctx, layout, date);
 
     const hoverSlug = hoverSlugRef.current;
     const selectedSlug = selectedSlugRef.current;
@@ -713,6 +722,9 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       }
     }
     ctx.restore();
+
+    // After zoom/pan restore — keep 16:00 line locked to the solar hour header.
+    drawSolarHour16Line(ctx, layout, date);
 
     if (loadError && !land) {
       ctx.fillStyle = 'rgba(255,255,255,0.35)';

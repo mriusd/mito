@@ -18,22 +18,98 @@ async function tradingProxyWalletForOrder(): Promise<string | { error: string }>
   }
 }
 
+type MarketsManifest = {
+  schema?: string;
+  parts?: string[];
+  count?: number;
+  lastUpdated?: string;
+  positions?: MarketsResponse['positions'];
+  orders?: MarketsResponse['orders'];
+  trades?: MarketsResponse['trades'];
+  cashBalance?: number;
+  makerAddress?: string;
+  tokenInfo?: Record<string, unknown>;
+  progOrderMap?: Record<string, unknown>;
+};
+
+type MarketsPartPayload = Partial<
+  Pick<
+    MarketsResponse,
+    'aboveMarkets' | 'priceOnMarkets' | 'weeklyHitMarkets' | 'upOrDownMarkets' | 'weatherMarkets'
+  >
+>;
+
+function mergeMarketsParts(manifest: MarketsManifest, parts: MarketsPartPayload[]): MarketsResponse {
+  const aboveMarkets: Record<string, Market[]> = {};
+  const priceOnMarkets: Record<string, Market[]> = {};
+  const weeklyHitMarkets: Record<string, Market[]> = {};
+  const upOrDownMarkets: Record<string, Record<string, Market[]>> = {};
+  const weatherMarkets: Record<string, Market[]> = {};
+
+  for (const p of parts) {
+    Object.assign(aboveMarkets, p.aboveMarkets || {});
+    Object.assign(priceOnMarkets, p.priceOnMarkets || {});
+    Object.assign(weeklyHitMarkets, p.weeklyHitMarkets || {});
+    Object.assign(weatherMarkets, p.weatherMarkets || {});
+    for (const [asset, tfMap] of Object.entries(p.upOrDownMarkets || {})) {
+      upOrDownMarkets[asset] = { ...(upOrDownMarkets[asset] || {}), ...tfMap };
+    }
+  }
+
+  return {
+    aboveMarkets,
+    priceOnMarkets,
+    weeklyHitMarkets,
+    upOrDownMarkets,
+    weatherMarkets,
+    positions: manifest.positions || [],
+    orders: manifest.orders || [],
+    trades: manifest.trades || [],
+    count: manifest.count || 0,
+    lastUpdated: manifest.lastUpdated || '',
+    cashBalance: manifest.cashBalance || 0,
+    makerAddress: manifest.makerAddress || '',
+    tokenInfo: manifest.tokenInfo || {},
+    progOrderMap: manifest.progOrderMap || {},
+  };
+}
+
+async function fetchMarketsJSON<T>(url: string, timeoutMs: number): Promise<T> {
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const resp = await fetchBackend(url, { signal: ctrl.signal }, { probe: true, timeoutMs });
+    if (!resp.ok) throw new Error(`Failed to fetch markets (${resp.status})`);
+    return (await resp.json()) as T;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 export async function fetchMarkets(): Promise<MarketsResponse> {
-  // Timeout must cover body download + JSON parse — fetch() resolves on headers; huge
-  // weather+updown payloads used to hang resp.json() with no abort (felt like multi‑minute "refresh").
-  // One retry: Cloudflare sometimes truncates chunked bodies mid-stream (bad JSON).
+  // Cloudflare truncates monolith /api/markets (~3MB). Backend serves parts-v1 manifest + small chunks.
   let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const ctrl = new AbortController();
-    const timer = window.setTimeout(() => ctrl.abort(), 30_000);
     try {
-      const resp = await fetchBackend(`${BASE}/api/markets`, { signal: ctrl.signal }, { probe: true, timeoutMs: 30_000 });
-      if (!resp.ok) throw new Error('Failed to fetch markets');
-      return (await resp.json()) as MarketsResponse;
+      const manifest = await fetchMarketsJSON<MarketsManifest & MarketsPartPayload>(
+        `${BASE}/api/markets`,
+        15_000,
+      );
+      if (manifest.schema === 'parts-v1' && Array.isArray(manifest.parts) && manifest.parts.length > 0) {
+        const parts = await Promise.all(
+          manifest.parts.map((id) =>
+            fetchMarketsJSON<MarketsPartPayload>(
+              `${BASE}/api/markets?part=${encodeURIComponent(id)}`,
+              15_000,
+            ),
+          ),
+        );
+        return mergeMarketsParts(manifest, parts);
+      }
+      // Legacy monolith (local / old binary).
+      return manifest as MarketsResponse;
     } catch (err) {
       lastErr = err;
-    } finally {
-      window.clearTimeout(timer);
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error('Failed to fetch markets');

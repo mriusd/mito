@@ -840,6 +840,12 @@ function TempOddsBar({
           ? 'rounded ring-2 ring-white/70'
           : '';
 
+  const marketLabelColor = barColor.includes('cyan')
+    ? 'text-cyan-400/90'
+    : barColor.includes('red')
+      ? 'text-red-400/90'
+      : 'text-gray-300';
+
   const tipLabel = (text: string, tipPx: number, colorClass: string) => (
     <span
       className={`absolute left-0 right-0 z-[6] -translate-y-full text-center text-[9px] tabular-nums leading-none pointer-events-none ${colorClass}`}
@@ -918,7 +924,7 @@ function TempOddsBar({
           <div className="relative flex-1 min-w-0 h-full">
             {marketBar}
             {showProb && pct != null
-              ? tipLabel(`${(pct * 100).toFixed(0)}`, marketTipPx, 'text-gray-300')
+              ? tipLabel(`${(pct * 100).toFixed(0)}`, marketTipPx, marketLabelColor)
               : null}
           </div>
           {levelMarks}

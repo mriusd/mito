@@ -1900,10 +1900,16 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 const hasBid = p.bidProb != null && Number.isFinite(p.bidProb) && p.bidProb > 0;
                 const isBucketParent = !!(p.bucketKey && p.bucketChildren && p.bucketChildren.length > 1);
                 const bucketOpen = isBucketParent && posBucketExpanded.has(p.bucketKey!);
+                const bucketHidesSelected =
+                  isBucketParent &&
+                  !bucketOpen &&
+                  !!selectedMarketId &&
+                  !!p.bucketChildren?.some((c) => c.marketId === selectedMarketId);
+                const rowSelected = selectedMarketId === p.marketId || bucketHidesSelected;
                 return (
                   <tr
                     key={p.rowKey ?? p.tid}
-                    className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === p.marketId ? 'bg-blue-900/40' : ''} ${p.bucketChild ? 'bg-gray-900/40' : ''}`}
+                    className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${rowSelected ? 'bg-blue-900/40' : ''} ${p.bucketChild ? 'bg-gray-900/40' : ''}`}
                     onClick={() => p.clickable && void handleMarketClick(p.tid, {
                       marketId: p.marketId,
                       title: p.title,

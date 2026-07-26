@@ -38,121 +38,123 @@ function WeatherBucketBars({
     return <div className="text-[10px] text-gray-500 py-2 text-center">No market buckets</div>;
   }
 
+  const marketLabelColor = metric === 'low' ? 'text-cyan-400/90' : 'text-red-400/90';
+
+  const tipLabel = (text: string, tipPx: number, colorClass: string) => (
+    <span
+      className={`absolute left-0 right-0 z-[6] -translate-y-full text-center text-[8px] tabular-nums leading-none pointer-events-none ${colorClass}`}
+      style={{ bottom: tipPx }}
+    >
+      {text}
+    </span>
+  );
+
   return (
     <div className="flex flex-col gap-1 min-h-0">
-      <div className="flex gap-0 divide-x divide-gray-500/80 min-h-[12px]">
-        {sorted.map((b) => {
-          const mid = b.mid ?? b.bid ?? b.ask;
-          return (
-            <div
-              key={b.temp}
-              className="flex-1 min-w-0 flex gap-0.5 px-0.5 text-[8px] text-gray-400 tabular-nums leading-none"
-            >
-              <span className="flex-1 text-center text-amber-400/80">
-                {b.modelProbOm != null ? `${(b.modelProbOm * 100).toFixed(0)}` : '—'}
-              </span>
-              <span className="flex-1 text-center text-sky-400/80">
-                {b.modelProbWc != null ? `${(b.modelProbWc * 100).toFixed(0)}` : '—'}
-              </span>
-              <span className="flex-1 text-center text-violet-400/80">
-                {b.stakedProb != null ? `${(b.stakedProb * 100).toFixed(0)}` : '—'}
-              </span>
-              <span className="flex-1 text-center text-fuchsia-400/80">
-                {b.stakedShare != null ? `${(b.stakedShare * 100).toFixed(0)}` : '—'}
-              </span>
-              <span className="flex-1 text-center">
-                {mid != null ? `${(mid * 100).toFixed(0)}` : '—'}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex items-end gap-0 divide-x divide-gray-500/80" style={{ height: trackPx }}>
-        {sorted.map((b) => {
-          const omPx = fracToPx(b.modelProbOm ?? 0, maxPct, trackPx);
-          const wcPx = fracToPx(b.modelProbWc ?? 0, maxPct, trackPx);
-          const stkPx = fracToPx(b.stakedProb ?? 0, maxPct, trackPx);
-          const relPx = fracToPx(b.stakedShare ?? 0, maxPct, trackPx);
-          const bidPx = fracToPx(b.bid ?? 0, maxPct, trackPx);
-          const askPx = fracToPx(b.ask ?? 0, maxPct, trackPx);
-          const midPx = b.mid != null ? fracToPx(b.mid, maxPct, trackPx) : null;
-          const topPx = Math.max(bidPx, askPx, midPx ?? 0);
-          return (
-            <div
-              key={`bar-${b.temp}`}
-              className={`relative flex-1 min-w-0 h-full flex gap-0.5 items-end px-0.5 ${
-                b.selected ? 'ring-1 ring-white/70 rounded' : ''
-              }`}
-              title={[
-                b.temp,
-                b.modelProbOm != null ? `OM ${(b.modelProbOm * 100).toFixed(1)}%` : null,
-                b.modelProbWc != null ? `WC ${(b.modelProbWc * 100).toFixed(1)}%` : null,
-                b.stakedProb != null ? `Stk ${(b.stakedProb * 100).toFixed(1)}%` : null,
-                b.stakedShare != null ? `Rel ${(b.stakedShare * 100).toFixed(1)}%` : null,
-                b.mid != null ? `mid ${(b.mid * 100).toFixed(1)}%` : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            >
-              <div className="relative flex-1 min-w-0 h-full">
-                {omPx > 0 ? (
-                  <div
-                    className="absolute bottom-0 left-0 right-0 rounded-t-sm bg-amber-400/55"
-                    style={{ height: omPx }}
-                  />
-                ) : null}
+      <div className="pt-2.5">
+        <div className="flex items-end gap-0 divide-x divide-gray-500/80 overflow-visible" style={{ height: trackPx }}>
+          {sorted.map((b) => {
+            const mid = b.mid ?? b.bid ?? b.ask;
+            const omPx = fracToPx(b.modelProbOm ?? 0, maxPct, trackPx);
+            const wcPx = fracToPx(b.modelProbWc ?? 0, maxPct, trackPx);
+            const stkPx = fracToPx(b.stakedProb ?? 0, maxPct, trackPx);
+            const relPx = fracToPx(b.stakedShare ?? 0, maxPct, trackPx);
+            const bidPx = fracToPx(b.bid ?? 0, maxPct, trackPx);
+            const askPx = fracToPx(b.ask ?? 0, maxPct, trackPx);
+            const midPx = b.mid != null ? fracToPx(b.mid, maxPct, trackPx) : null;
+            const topPx = Math.max(bidPx, askPx, midPx ?? 0);
+            return (
+              <div
+                key={`bar-${b.temp}`}
+                className={`relative flex-1 min-w-0 h-full flex gap-0.5 items-end px-0.5 ${
+                  b.selected ? 'ring-1 ring-white/70 rounded' : ''
+                }`}
+                title={[
+                  b.temp,
+                  b.modelProbOm != null ? `OM ${(b.modelProbOm * 100).toFixed(1)}%` : null,
+                  b.modelProbWc != null ? `WC ${(b.modelProbWc * 100).toFixed(1)}%` : null,
+                  b.stakedProb != null ? `Stk ${(b.stakedProb * 100).toFixed(1)}%` : null,
+                  b.stakedShare != null ? `Rel ${(b.stakedShare * 100).toFixed(1)}%` : null,
+                  mid != null ? `mid ${(mid * 100).toFixed(1)}%` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              >
+                <div className="relative flex-1 min-w-0 h-full">
+                  {omPx > 0 ? (
+                    <div
+                      className="absolute bottom-0 left-0 right-0 rounded-t-sm bg-amber-400/55"
+                      style={{ height: omPx }}
+                    />
+                  ) : null}
+                  {b.modelProbOm != null
+                    ? tipLabel(`${(b.modelProbOm * 100).toFixed(0)}`, omPx, 'text-amber-400/80')
+                    : null}
+                </div>
+                <div className="relative flex-1 min-w-0 h-full">
+                  {wcPx > 0 ? (
+                    <div
+                      className="absolute bottom-0 left-0 right-0 rounded-t-sm bg-sky-400/55"
+                      style={{ height: wcPx }}
+                    />
+                  ) : null}
+                  {b.modelProbWc != null
+                    ? tipLabel(`${(b.modelProbWc * 100).toFixed(0)}`, wcPx, 'text-sky-400/80')
+                    : null}
+                </div>
+                <div className="relative flex-1 min-w-0 h-full">
+                  {stkPx > 0 ? (
+                    <div
+                      className="absolute bottom-0 left-0 right-0 rounded-t-sm bg-violet-400/55"
+                      style={{ height: stkPx }}
+                    />
+                  ) : null}
+                  {b.stakedProb != null
+                    ? tipLabel(`${(b.stakedProb * 100).toFixed(0)}`, stkPx, 'text-violet-400/80')
+                    : null}
+                </div>
+                <div className="relative flex-1 min-w-0 h-full">
+                  {relPx > 0 ? (
+                    <div
+                      className="absolute bottom-0 left-0 right-0 rounded-t-sm bg-fuchsia-400/55"
+                      style={{ height: relPx }}
+                    />
+                  ) : null}
+                  {b.stakedShare != null
+                    ? tipLabel(`${(b.stakedShare * 100).toFixed(0)}`, relPx, 'text-fuchsia-400/80')
+                    : null}
+                </div>
+                <div className="relative flex-1 min-w-0 h-full">
+                  {topPx > 0 ? (
+                    <>
+                      {bidPx > 0 ? (
+                        <div
+                          className={`absolute bottom-0 left-0 right-0 ${marketBarColor}`}
+                          style={{ height: Math.min(bidPx, askPx || bidPx) }}
+                        />
+                      ) : null}
+                      {askPx > bidPx ? (
+                        <div
+                          className={`absolute left-0 right-0 ${marketSpreadColor}`}
+                          style={{ bottom: bidPx, height: askPx - bidPx }}
+                        />
+                      ) : null}
+                      {midPx != null && midPx > 0 ? (
+                        <div
+                          className="absolute left-0 right-0 z-[5] h-[2px] bg-gray-900"
+                          style={{ bottom: Math.max(0, midPx - 1) }}
+                        />
+                      ) : null}
+                    </>
+                  ) : null}
+                  {mid != null
+                    ? tipLabel(`${(mid * 100).toFixed(0)}`, topPx, marketLabelColor)
+                    : null}
+                </div>
               </div>
-              <div className="relative flex-1 min-w-0 h-full">
-                {wcPx > 0 ? (
-                  <div
-                    className="absolute bottom-0 left-0 right-0 rounded-t-sm bg-sky-400/55"
-                    style={{ height: wcPx }}
-                  />
-                ) : null}
-              </div>
-              <div className="relative flex-1 min-w-0 h-full">
-                {stkPx > 0 ? (
-                  <div
-                    className="absolute bottom-0 left-0 right-0 rounded-t-sm bg-violet-400/55"
-                    style={{ height: stkPx }}
-                  />
-                ) : null}
-              </div>
-              <div className="relative flex-1 min-w-0 h-full">
-                {relPx > 0 ? (
-                  <div
-                    className="absolute bottom-0 left-0 right-0 rounded-t-sm bg-fuchsia-400/55"
-                    style={{ height: relPx }}
-                  />
-                ) : null}
-              </div>
-              <div className="relative flex-1 min-w-0 h-full">
-                {topPx > 0 ? (
-                  <>
-                    {bidPx > 0 ? (
-                      <div
-                        className={`absolute bottom-0 left-0 right-0 ${marketBarColor}`}
-                        style={{ height: Math.min(bidPx, askPx || bidPx) }}
-                      />
-                    ) : null}
-                    {askPx > bidPx ? (
-                      <div
-                        className={`absolute left-0 right-0 ${marketSpreadColor}`}
-                        style={{ bottom: bidPx, height: askPx - bidPx }}
-                      />
-                    ) : null}
-                    {midPx != null && midPx > 0 ? (
-                      <div
-                        className="absolute left-0 right-0 z-[5] h-[2px] bg-gray-900"
-                        style={{ bottom: Math.max(0, midPx - 1) }}
-                      />
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
       <div className="flex gap-0 divide-x divide-gray-500/80 min-h-[10px]">
         {sorted.map((b) => (
@@ -171,7 +173,7 @@ function WeatherBucketBars({
         <span className="text-sky-400/70">WC</span>
         <span className="text-violet-400/70">Stk</span>
         <span className="text-fuchsia-400/70">Rel</span>
-        <span>mkt</span>
+        <span className={marketLabelColor}>mkt</span>
       </div>
     </div>
   );

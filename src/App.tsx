@@ -93,12 +93,17 @@ function App() {
   const loading = useAppStore((s) => s.loading);
   const backendConnected = useAppStore((s) => s.backendConnected);
   const [showServerDownBanner, setShowServerDownBanner] = useState(false);
+  const serverDownDismissedRef = useRef(false);
   useEffect(() => {
     if (backendConnected !== false) {
+      serverDownDismissedRef.current = false;
       setShowServerDownBanner(false);
       return;
     }
-    const t = window.setTimeout(() => setShowServerDownBanner(true), SERVER_DOWN_BANNER_DELAY_MS);
+    if (serverDownDismissedRef.current) return;
+    const t = window.setTimeout(() => {
+      if (!serverDownDismissedRef.current) setShowServerDownBanner(true);
+    }, SERVER_DOWN_BANNER_DELAY_MS);
     return () => window.clearTimeout(t);
   }, [backendConnected]);
   const selectedMarketId = useAppStore((s) => marketIdForUrl(s.selectedMarket));
@@ -395,18 +400,24 @@ function App() {
       <div id="toastContainer" className="toast-container" />
 
       {showServerDownBanner && (
-        <div
-          className="server-down-toast fixed bottom-5 right-5 z-[60001] flex max-w-[320px] items-start gap-2.5 rounded-lg bg-red-600 px-3.5 py-3 text-white shadow-lg pointer-events-none"
+        <button
+          type="button"
+          className="server-down-toast fixed bottom-5 right-5 z-[60001] flex max-w-[320px] items-start gap-2.5 rounded-lg bg-red-600 px-3.5 py-3 text-left text-white shadow-lg cursor-pointer hover:bg-red-500"
           role="alert"
+          title="Click to dismiss"
+          onClick={() => {
+            serverDownDismissedRef.current = true;
+            setShowServerDownBanner(false);
+          }}
         >
           <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" aria-hidden />
           <div className="min-w-0">
             <p className="text-sm font-semibold leading-snug">Server is down or being restarted</p>
             <p className="mt-1 text-[11px] leading-snug text-red-50/90">
-              Please allow for several minutes for it to get back online. This clears automatically once the server is back online.
+              Please allow for several minutes for it to get back online. Click to dismiss.
             </p>
           </div>
-        </div>
+        </button>
       )}
     </div>
   );

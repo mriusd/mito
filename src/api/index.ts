@@ -692,50 +692,86 @@ export interface MarketStakedLegsResponse {
   stakedNetNoUsd?: number;
 }
 
-/** True when live WS stake fields look populated (not empty/unloaded market → all zeros). */
-function liveStakedLegsHaveData(live: MarketStakedLegsResponse | null | undefined): boolean {
-  if (!live) return false;
-  const sum = live.stakedSumAbsSignedNetUsd;
-  if (typeof sum === 'number' && Number.isFinite(sum) && sum > 0) return true;
-  const y = live.stakedUsdYesLeg;
-  const n = live.stakedUsdNoLeg;
-  return (
-    (typeof y === 'number' && Number.isFinite(y) && y > 0) ||
-    (typeof n === 'number' && Number.isFinite(n) && n > 0)
-  );
+function pickStakedNetHalves(
+  a: MarketStakedLegsResponse | null | undefined,
+  b: MarketStakedLegsResponse | null | undefined,
+): { yes: number; no: number } | null {
+  const pairs: { yes: number; no: number }[] = [];
+  for (const src of [a, b]) {
+    if (!src) continue;
+    const y = src.stakedNetYesUsd;
+    const n = src.stakedNetNoUsd;
+    if (typeof y === 'number' && Number.isFinite(y) && typeof n === 'number' && Number.isFinite(n)) {
+      pairs.push({ yes: y, no: n });
+    }
+  }
+  return pairs.find((p) => p.yes + p.no > 0) ?? pairs[0] ?? null;
 }
 
-/** WS often sends zeros for markets outside crypto shareStats load (e.g. weather); prefer REST then. */
+function pickPositiveSumAbs(
+  a: MarketStakedLegsResponse | null | undefined,
+  b: MarketStakedLegsResponse | null | undefined,
+): number | undefined {
+  for (const src of [a, b]) {
+    const v = src?.stakedSumAbsSignedNetUsd;
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) return v;
+  }
+  for (const src of [a, b]) {
+    const v = src?.stakedSumAbsSignedNetUsd;
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+  }
+  return undefined;
+}
+
+function pickGrossLegs(
+  live: MarketStakedLegsResponse | null | undefined,
+  rest: MarketStakedLegsResponse | null | undefined,
+): { yes: number; no: number } | null {
+  const read = (src: MarketStakedLegsResponse | null | undefined) => {
+    if (!src) return null;
+    const y = src.stakedUsdYesLeg;
+    const n = src.stakedUsdNoLeg;
+    if (typeof y !== 'number' || !Number.isFinite(y) || typeof n !== 'number' || !Number.isFinite(n)) {
+      return null;
+    }
+    return { yes: y, no: n };
+  };
+  const liveG = read(live);
+  const restG = read(rest);
+  const liveNets = pickStakedNetHalves(live, null);
+  // Prefer live gross when live stake nets/sum look real; else REST (weather WS often empty).
+  if (liveG && liveNets && liveNets.yes + liveNets.no > 0) return liveG;
+  if (liveG && typeof live?.stakedSumAbsSignedNetUsd === 'number' && live.stakedSumAbsSignedNetUsd > 0) {
+    return liveG;
+  }
+  if (restG && (restG.yes > 0 || restG.no > 0)) return restG;
+  return restG ?? liveG;
+}
+
+/** WS often sends zeros for weather (shareStats unloaded); REST net halves must win over WS zeros. */
 export function mergeMarketStakedLegsResponse(
   live: MarketStakedLegsResponse | null | undefined,
   rest: MarketStakedLegsResponse | null | undefined,
 ): MarketStakedLegsResponse | null {
   if (!live && !rest) return null;
-  const preferLive = liveStakedLegsHaveData(live);
-  const primary = preferLive ? live : rest ?? live;
-  const secondary = preferLive ? rest : live;
-  if (!primary) return null;
-  const wy = primary.stakedUsdYesLeg ?? secondary?.stakedUsdYesLeg;
-  const wn = primary.stakedUsdNoLeg ?? secondary?.stakedUsdNoLeg;
-  if (!(typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn))) return null;
-  const out: MarketStakedLegsResponse = { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
-  const sumPref = primary.stakedSumAbsSignedNetUsd;
-  const sumAlt = secondary?.stakedSumAbsSignedNetUsd;
-  if (typeof sumPref === 'number' && Number.isFinite(sumPref)) {
-    out.stakedSumAbsSignedNetUsd = sumPref;
-  } else if (typeof sumAlt === 'number' && Number.isFinite(sumAlt)) {
-    out.stakedSumAbsSignedNetUsd = sumAlt;
-  }
-  const nyPref = primary.stakedNetYesUsd;
-  const nnPref = primary.stakedNetNoUsd;
-  const nyAlt = secondary?.stakedNetYesUsd;
-  const nnAlt = secondary?.stakedNetNoUsd;
-  if (typeof nyPref === 'number' && Number.isFinite(nyPref) && typeof nnPref === 'number' && Number.isFinite(nnPref)) {
-    out.stakedNetYesUsd = nyPref;
-    out.stakedNetNoUsd = nnPref;
-  } else if (typeof nyAlt === 'number' && Number.isFinite(nyAlt) && typeof nnAlt === 'number' && Number.isFinite(nnAlt)) {
-    out.stakedNetYesUsd = nyAlt;
-    out.stakedNetNoUsd = nnAlt;
+  // REST first so weather /api/market-staked-legs beats WS all-zero shareStats.
+  const nets = pickStakedNetHalves(rest, live);
+  const gross = pickGrossLegs(live, rest);
+  if (!gross && !nets) return null;
+
+  const out: MarketStakedLegsResponse = {
+    stakedUsdYesLeg: gross?.yes ?? 0,
+    stakedUsdNoLeg: gross?.no ?? 0,
+  };
+  const sumAbs = pickPositiveSumAbs(rest, live);
+  if (sumAbs != null) out.stakedSumAbsSignedNetUsd = sumAbs;
+  if (nets) {
+    out.stakedNetYesUsd = nets.yes;
+    out.stakedNetNoUsd = nets.no;
+    if (out.stakedSumAbsSignedNetUsd == null || out.stakedSumAbsSignedNetUsd <= 0) {
+      const tot = nets.yes + nets.no;
+      if (tot > 0) out.stakedSumAbsSignedNetUsd = tot;
+    }
   }
   return out;
 }

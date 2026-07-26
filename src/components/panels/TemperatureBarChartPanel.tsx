@@ -524,8 +524,16 @@ type TempOddsBucket = {
   modelPctWc: number | null;
   /** YES staked share: stakedNetYesUsd / (yes+no). */
   stakedPct: number | null;
+  /** Bucket's share of city/date total staked USD. */
+  stakedSharePct: number | null;
   entry: { frac: number; outcome: 'YES' | 'NO' } | null;
   orderMarks: TempOddsOrderMark[];
+};
+
+/** Per-market stake snapshot for Temp Odds bars. */
+type MarketStakeSnap = {
+  yesProb: number | null;
+  totalUsd: number;
 };
 
 function stakedYesProbFromUsd(yesUsd: unknown, noUsd: unknown): number | null {
@@ -536,6 +544,47 @@ function stakedYesProbFromUsd(yesUsd: unknown, noUsd: unknown): number | null {
   return yesUsd / tot;
 }
 
+function marketStakeSnapFromParts(
+  yesUsd: unknown,
+  noUsd: unknown,
+  sumAbsUsd: unknown,
+): MarketStakeSnap | null {
+  const yesProb = stakedYesProbFromUsd(yesUsd, noUsd);
+  let totalUsd = 0;
+  if (typeof yesUsd === 'number' && typeof noUsd === 'number' && Number.isFinite(yesUsd) && Number.isFinite(noUsd)) {
+    const tot = yesUsd + noUsd;
+    if (tot > 0) totalUsd = tot;
+  }
+  if (
+    totalUsd <= 0 &&
+    typeof sumAbsUsd === 'number' &&
+    Number.isFinite(sumAbsUsd) &&
+    sumAbsUsd > 0
+  ) {
+    totalUsd = sumAbsUsd;
+  }
+  if (totalUsd <= 0 && yesProb == null) return null;
+  return { yesProb, totalUsd };
+}
+
+function resolveMarketStakeSnap(
+  market: Market,
+  restByMarketId: Record<string, MarketStakeSnap>,
+): MarketStakeSnap | null {
+  const rest = restByMarketId[market.id];
+  const yesTokenId = market.clobTokenIds?.[0] || '';
+  const row = yesTokenId ? getBidAskMarketRow(yesTokenId) : undefined;
+  const ws = marketStakeSnapFromParts(
+    row?.stakedNetYesUsd,
+    row?.stakedNetNoUsd,
+    row?.stakedSumAbsSignedNetUsd,
+  );
+  // REST first — weather WS shareStats often empty/zero and flickers bars off.
+  if (rest && rest.totalUsd > 0) return rest;
+  if (ws && ws.totalUsd > 0) return ws;
+  return rest ?? ws ?? null;
+}
+
 function buildTempOddsBuckets(
   buckets: { temp: string; label: string; market: Market }[],
   positions: Position[],
@@ -543,25 +592,32 @@ function buildTempOddsBuckets(
   onchainWsPositions: WSPosition[],
   modelBucketsOm: Record<string, number> | null | undefined,
   modelBucketsWc: Record<string, number> | null | undefined,
-  stakedPctByMarketId: Record<string, number>,
+  stakedByMarketId: Record<string, MarketStakeSnap>,
   orderLookup: Record<string, Order[]>,
   metric: WeatherMetric,
   obsBoundC: number | null,
 ): { entries: TempOddsBucket[]; maxPct: number } {
-  const entries: TempOddsBucket[] = buckets.map(({ temp, label, market }) => {
+  const snaps = buckets.map(({ market }) => resolveMarketStakeSnap(market, stakedByMarketId));
+  let cityTotalUsd = 0;
+  for (const snap of snaps) {
+    if (snap && snap.totalUsd > 0) cityTotalUsd += snap.totalUsd;
+  }
+
+  const entries: TempOddsBucket[] = buckets.map(({ temp, label, market }, i) => {
     const yesTokenId = market.clobTokenIds?.[0] || '';
     const noTokenId = market.clobTokenIds?.[1] || '';
     const quote = getMarketYesQuote(market);
     let modelPctOm = lookupModelBucketProb(modelBucketsOm, temp);
     let modelPctWc = lookupModelBucketProb(modelBucketsWc, temp);
-    const row = yesTokenId ? getBidAskMarketRow(yesTokenId) : undefined;
-    let stakedPct =
-      stakedYesProbFromUsd(row?.stakedNetYesUsd, row?.stakedNetNoUsd) ??
-      (typeof stakedPctByMarketId[market.id] === 'number' ? stakedPctByMarketId[market.id] : null);
+    const snap = snaps[i];
+    let stakedPct = snap?.yesProb ?? null;
+    let stakedSharePct =
+      cityTotalUsd > 0 && snap && snap.totalUsd > 0 ? snap.totalUsd / cityTotalUsd : null;
     if (weatherTempBucketRuledOutByObs(temp, metric, obsBoundC)) {
       modelPctOm = 0;
       modelPctWc = 0;
       stakedPct = 0;
+      stakedSharePct = 0;
     }
     return {
       temp,
@@ -572,6 +628,7 @@ function buildTempOddsBuckets(
       modelPctOm,
       modelPctWc,
       stakedPct,
+      stakedSharePct,
       entry: marketEntryYesFrac(yesTokenId, noTokenId, positions, liveTradesSource, onchainWsPositions),
       orderMarks: marketOrderYesMarks(yesTokenId, noTokenId, orderLookup),
     };
@@ -587,7 +644,7 @@ function useTempOddsBuckets(
   onchainWsPositions: WSPosition[],
   modelBucketsOm: Record<string, number> | null | undefined,
   modelBucketsWc: Record<string, number> | null | undefined,
-  stakedPctByMarketId: Record<string, number>,
+  stakedByMarketId: Record<string, MarketStakeSnap>,
   orderLookup: Record<string, Order[]>,
   metric: WeatherMetric,
   obsBoundC: number | null,
@@ -632,7 +689,7 @@ function useTempOddsBuckets(
         onchainWsPositions,
         modelBucketsOm,
         modelBucketsWc,
-        stakedPctByMarketId,
+        stakedByMarketId,
         orderLookup,
         metric,
         obsBoundC,
@@ -644,7 +701,7 @@ function useTempOddsBuckets(
       onchainWsPositions,
       modelBucketsOm,
       modelBucketsWc,
-      stakedPctByMarketId,
+      stakedByMarketId,
       orderLookup,
       metric,
       obsBoundC,
@@ -660,6 +717,7 @@ interface TempOddsBarProps {
   modelPctOm: number | null;
   modelPctWc: number | null;
   stakedPct: number | null;
+  stakedSharePct: number | null;
   maxPct: number;
   trackPx: number;
   barColor: string;
@@ -667,6 +725,7 @@ interface TempOddsBarProps {
   modelBarColorOm: string;
   modelBarColorWc: string;
   stakedBarColor: string;
+  stakedShareBarColor: string;
   selected: boolean;
   entry: { frac: number; outcome: 'YES' | 'NO' } | null;
   orderMarks: TempOddsOrderMark[];
@@ -684,6 +743,7 @@ function TempOddsBar({
   modelPctOm,
   modelPctWc,
   stakedPct,
+  stakedSharePct,
   maxPct,
   trackPx,
   barColor,
@@ -691,6 +751,7 @@ function TempOddsBar({
   modelBarColorOm,
   modelBarColorWc,
   stakedBarColor,
+  stakedShareBarColor,
   selected,
   entry,
   orderMarks,
@@ -706,6 +767,8 @@ function TempOddsBar({
     modelPctWc != null && maxPct > 0 ? (modelPctWc / maxPct) * trackPx : 0;
   const stakedBarPx =
     stakedPct != null && maxPct > 0 ? (stakedPct / maxPct) * trackPx : 0;
+  const stakedShareBarPx =
+    stakedSharePct != null && maxPct > 0 ? (stakedSharePct / maxPct) * trackPx : 0;
   const levelMarkGroups = useMemo(
     () => buildTempLevelGroups(entry, orderMarks),
     [entry, orderMarks],
@@ -754,6 +817,7 @@ function TempOddsBar({
         modelPctOm != null ? `OM ${(modelPctOm * 100).toFixed(1)}%` : null,
         modelPctWc != null ? `WC ${(modelPctWc * 100).toFixed(1)}%` : null,
         stakedPct != null ? `Stk ${(stakedPct * 100).toFixed(1)}%` : null,
+        stakedSharePct != null ? `Rel ${(stakedSharePct * 100).toFixed(1)}%` : null,
         forecastHighlight ? 'Forecast bucket' : null,
       ]
         .filter(Boolean)
@@ -769,6 +833,9 @@ function TempOddsBar({
           </span>
           <span className="flex-1 text-center text-violet-400/80">
             {stakedPct != null ? `${(stakedPct * 100).toFixed(0)}` : '—'}
+          </span>
+          <span className="flex-1 text-center text-fuchsia-400/80">
+            {stakedSharePct != null ? `${(stakedSharePct * 100).toFixed(0)}` : '—'}
           </span>
           <span className="flex-1 text-center">{pct != null ? `${(pct * 100).toFixed(0)}` : '—'}</span>
         </span>
@@ -796,6 +863,14 @@ function TempOddsBar({
               <div
                 className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${stakedBarColor}`}
                 style={{ height: stakedBarPx }}
+              />
+            ) : null}
+          </div>
+          <div className="relative flex-1 min-w-0 h-full">
+            {stakedShareBarPx > 0 ? (
+              <div
+                className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${stakedShareBarColor}`}
+                style={{ height: stakedShareBarPx }}
               />
             ) : null}
           </div>
@@ -828,6 +903,7 @@ interface TempOddsChartProps {
   modelBarColorOm: string;
   modelBarColorWc: string;
   stakedBarColor: string;
+  stakedShareBarColor: string;
   grid: WeatherGridData | null;
   dateCol: DateCol | undefined;
   selectedMarketId: string;
@@ -837,7 +913,7 @@ interface TempOddsChartProps {
   onchainWsPositions: WSPosition[];
   modelBucketsOm: Record<string, number> | null | undefined;
   modelBucketsWc: Record<string, number> | null | undefined;
-  stakedPctByMarketId: Record<string, number>;
+  stakedByMarketId: Record<string, MarketStakeSnap>;
   orderLookup: Record<string, Order[]>;
   forecastTempC: number | null;
   metric: WeatherMetric;
@@ -850,6 +926,7 @@ function TempOddsChart({
   modelBarColorOm,
   modelBarColorWc,
   stakedBarColor,
+  stakedShareBarColor,
   grid,
   dateCol,
   selectedMarketId,
@@ -859,7 +936,7 @@ function TempOddsChart({
   onchainWsPositions,
   modelBucketsOm,
   modelBucketsWc,
-  stakedPctByMarketId,
+  stakedByMarketId,
   orderLookup,
   forecastTempC,
   metric,
@@ -886,7 +963,7 @@ function TempOddsChart({
     onchainWsPositions,
     modelBucketsOm,
     modelBucketsWc,
-    stakedPctByMarketId,
+    stakedByMarketId,
     orderLookup,
     metric,
     obsBoundC,
@@ -910,7 +987,7 @@ function TempOddsChart({
         ) : (
           <div className="flex flex-col flex-1 min-h-0 gap-1">
             <div className="flex shrink-0 gap-0.5 min-h-[12px]">
-              {entries.map(({ temp, pct, modelPctOm, modelPctWc, stakedPct }) => (
+              {entries.map(({ temp, pct, modelPctOm, modelPctWc, stakedPct, stakedSharePct }) => (
                 <div
                   key={`prob-${temp}`}
                   className="flex-1 min-w-0 flex gap-0.5 text-[9px] text-gray-400 tabular-nums leading-none"
@@ -924,6 +1001,9 @@ function TempOddsChart({
                   <span className="flex-1 text-center text-violet-400/80">
                     {stakedPct != null ? `${(stakedPct * 100).toFixed(0)}` : '—'}
                   </span>
+                  <span className="flex-1 text-center text-fuchsia-400/80">
+                    {stakedSharePct != null ? `${(stakedSharePct * 100).toFixed(0)}` : '—'}
+                  </span>
                   <span className="flex-1 text-center">{pct != null ? `${(pct * 100).toFixed(0)}` : '—'}</span>
                 </div>
               ))}
@@ -934,7 +1014,7 @@ function TempOddsChart({
                 className="relative flex h-full min-h-0 min-w-0 flex-1 items-stretch gap-0.5 overflow-visible"
               >
                 {trackPx > 0
-                  ? entries.map(({ temp, label, market, quote, pct, modelPctOm, modelPctWc, stakedPct, entry, orderMarks }) => {
+                  ? entries.map(({ temp, label, market, quote, pct, modelPctOm, modelPctWc, stakedPct, stakedSharePct, entry, orderMarks }) => {
                       const forecastHighlight =
                         forecastTempC != null && weatherTempBucketMatchesCelsius(temp, forecastTempC);
                       return (
@@ -946,6 +1026,7 @@ function TempOddsChart({
                         modelPctOm={modelPctOm}
                         modelPctWc={modelPctWc}
                         stakedPct={stakedPct}
+                        stakedSharePct={stakedSharePct}
                         maxPct={maxPct}
                         trackPx={trackPx}
                         barColor={barColor}
@@ -953,6 +1034,7 @@ function TempOddsChart({
                         modelBarColorOm={modelBarColorOm}
                         modelBarColorWc={modelBarColorWc}
                         stakedBarColor={stakedBarColor}
+                        stakedShareBarColor={stakedShareBarColor}
                         selected={selectedMarketId === market.id}
                         entry={entry}
                         orderMarks={orderMarks}
@@ -1421,7 +1503,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const activeBarMarkets = chartMode === 'low' ? lowBarMarkets : highBarMarkets;
   const activeGrid = chartMode === 'low' ? lowGrid : highGrid;
   const activeDateCol = chartMode === 'low' ? lowDateCol : highDateCol;
-  const [stakedPctByMarketId, setStakedPctByMarketId] = useState<Record<string, number>>({});
+  const [stakedByMarketId, setStakedByMarketId] = useState<Record<string, MarketStakeSnap>>({});
   const forecastTempC = useMemo(() => {
     if (!obsData) return null;
     const sourced = weatherObsWithForecastSource(obsData, forecastSource as ObsForecastSourceId);
@@ -1438,37 +1520,53 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     [activeBarMarkets],
   );
 
-  // Weather markets often have empty WS shareStats — REST fill staked YES% per bucket.
+  // Weather markets often empty on WS — REST fill YES% + total USD; poll; keep last good.
   useEffect(() => {
     const markets = activeBarMarkets;
     if (markets.length === 0) {
-      setStakedPctByMarketId({});
+      setStakedByMarketId({});
       return;
     }
     let cancelled = false;
-    (async () => {
+    const load = async () => {
       const pairs = await Promise.all(
         markets.map(async (m) => {
           const mid = (m.conditionId || m.id || '').trim();
           if (!mid) return null;
           try {
             const legs = await fetchMarketStakedLegs(mid);
-            const p = stakedYesProbFromUsd(legs.stakedNetYesUsd, legs.stakedNetNoUsd);
-            return p != null ? ([m.id, p] as const) : null;
+            const snap = marketStakeSnapFromParts(
+              legs.stakedNetYesUsd,
+              legs.stakedNetNoUsd,
+              legs.stakedSumAbsSignedNetUsd,
+            );
+            return snap ? ([m.id, snap] as const) : null;
           } catch {
             return null;
           }
         }),
       );
       if (cancelled) return;
-      const next: Record<string, number> = {};
-      for (const pair of pairs) {
-        if (pair) next[pair[0]] = pair[1];
-      }
-      setStakedPctByMarketId(next);
-    })();
+      setStakedByMarketId((prev) => {
+        const next: Record<string, MarketStakeSnap> = {};
+        const idSet = new Set(markets.map((m) => m.id));
+        for (const pair of pairs) {
+          if (pair) next[pair[0]] = pair[1];
+        }
+        // Keep prior snap when a single REST call fails (bars used to blink off).
+        for (const id of idSet) {
+          if (!next[id] && prev[id]) next[id] = prev[id];
+        }
+        return next;
+      });
+    };
+    void load();
+    const timer = setInterval(() => {
+      void load();
+    }, 30_000);
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by activeBarMarketStakeKey
   }, [activeBarMarketStakeKey]);
@@ -1856,6 +1954,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
                 modelBarColorOm={chartMode === 'low' ? 'bg-amber-400/55' : 'bg-amber-400/55'}
                 modelBarColorWc={chartMode === 'low' ? 'bg-sky-400/55' : 'bg-sky-400/55'}
                 stakedBarColor="bg-violet-400/55"
+                stakedShareBarColor="bg-fuchsia-400/55"
                 grid={activeGrid}
                 dateCol={activeDateCol}
                 selectedMarketId={barSelectionId}
@@ -1865,7 +1964,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
                 onchainWsPositions={onchainWsPositions}
                 modelBucketsOm={modelBucketsFromPayload(modelPayload, 'open-meteo', chartMode)}
                 modelBucketsWc={modelBucketsFromPayload(modelPayload, 'weather-company', chartMode)}
-                stakedPctByMarketId={stakedPctByMarketId}
+                stakedByMarketId={stakedByMarketId}
                 orderLookup={orderLookup}
                 forecastTempC={forecastTempC}
                 metric={chartMode}

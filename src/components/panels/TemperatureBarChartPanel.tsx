@@ -1411,18 +1411,28 @@ function TempOddsChart({
   );
 }
 
+/** TPO trades Time column age colors. */
+function tempOddsForecastElapsedColor(ageMs: number): string {
+  if (ageMs < 60_000) return 'text-purple-400';
+  if (ageMs < 15 * 60_000) return 'text-green-400';
+  if (ageMs < 60 * 60_000) return 'text-yellow-400';
+  return 'text-gray-400';
+}
+
 function TempOddsTemperatureChart({
   data,
   loading,
   unit,
   forecastSource,
   onForecastSourceChange,
+  nowMs,
 }: {
   data: WeatherObservationsResponse | null;
   loading: boolean;
   unit: WeatherTempUnit;
   forecastSource: ForecastSourceToggle;
   onForecastSourceChange: (source: ForecastSourceToggle) => void;
+  nowMs: number;
 }) {
   const chartData = useMemo(() => {
     if (!data) return null;
@@ -1433,6 +1443,18 @@ function TempOddsTemperatureChart({
   const unitSuffix = unit === 'F' ? '°F' : '°C';
   const hasOm = Boolean(data?.forecastBySource?.['open-meteo']?.points?.length);
   const hasWc = Boolean(data?.forecastBySource?.['weather-company']?.points?.length);
+  const forecastUpdatedMs = useMemo(() => {
+    const raw = chartData?.forecastUpdatedAt;
+    if (raw == null || !Number.isFinite(raw) || raw <= 0) return 0;
+    // API is ms; tolerate accidental seconds.
+    return raw < 1e12 ? raw * 1000 : raw;
+  }, [chartData?.forecastUpdatedAt]);
+  const forecastAgeLabel =
+    forecastUpdatedMs > 0 ? formatElapsedSinceMs(forecastUpdatedMs, nowMs) || null : null;
+  const forecastAgeClass =
+    forecastUpdatedMs > 0
+      ? tempOddsForecastElapsedColor(Math.max(0, nowMs - forecastUpdatedMs))
+      : 'text-gray-500';
   type HeaderPart = {
     text: string;
     color: string;
@@ -1502,6 +1524,14 @@ function TempOddsTemperatureChart({
             WC
           </button>
         </div>
+        {forecastAgeLabel ? (
+          <span
+            className={`whitespace-nowrap text-[10px] font-normal tabular-nums ${forecastAgeClass}`}
+            title="Forecast last updated"
+          >
+            {forecastAgeLabel}
+          </span>
+        ) : null}
         {headerParts.length > 0 ? (
           <div className="ml-auto flex min-w-0 items-center gap-1 truncate text-[10px] font-normal tabular-nums">
             {headerParts.map((p, i) => (
@@ -2555,6 +2585,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               unit={tempUnit}
               forecastSource={forecastSource}
               onForecastSourceChange={setTempOddsForecastSource}
+              nowMs={nowMs}
             />
           </>
         )}

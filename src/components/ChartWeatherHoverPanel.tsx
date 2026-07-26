@@ -57,6 +57,9 @@ function WeatherBucketBars({
               <span className="flex-1 text-center text-violet-400/80">
                 {b.stakedProb != null ? `${(b.stakedProb * 100).toFixed(0)}` : '—'}
               </span>
+              <span className="flex-1 text-center text-fuchsia-400/80">
+                {b.stakedShare != null ? `${(b.stakedShare * 100).toFixed(0)}` : '—'}
+              </span>
               <span className="flex-1 text-center">
                 {mid != null ? `${(mid * 100).toFixed(0)}` : '—'}
               </span>
@@ -69,6 +72,7 @@ function WeatherBucketBars({
           const omPx = fracToPx(b.modelProbOm ?? 0, maxPct, trackPx);
           const wcPx = fracToPx(b.modelProbWc ?? 0, maxPct, trackPx);
           const stkPx = fracToPx(b.stakedProb ?? 0, maxPct, trackPx);
+          const relPx = fracToPx(b.stakedShare ?? 0, maxPct, trackPx);
           const bidPx = fracToPx(b.bid ?? 0, maxPct, trackPx);
           const askPx = fracToPx(b.ask ?? 0, maxPct, trackPx);
           const midPx = b.mid != null ? fracToPx(b.mid, maxPct, trackPx) : null;
@@ -84,6 +88,7 @@ function WeatherBucketBars({
                 b.modelProbOm != null ? `OM ${(b.modelProbOm * 100).toFixed(1)}%` : null,
                 b.modelProbWc != null ? `WC ${(b.modelProbWc * 100).toFixed(1)}%` : null,
                 b.stakedProb != null ? `Stk ${(b.stakedProb * 100).toFixed(1)}%` : null,
+                b.stakedShare != null ? `Rel ${(b.stakedShare * 100).toFixed(1)}%` : null,
                 b.mid != null ? `mid ${(b.mid * 100).toFixed(1)}%` : null,
               ]
                 .filter(Boolean)
@@ -110,6 +115,14 @@ function WeatherBucketBars({
                   <div
                     className="absolute bottom-0 left-0 right-0 rounded-t-sm bg-violet-400/55"
                     style={{ height: stkPx }}
+                  />
+                ) : null}
+              </div>
+              <div className="relative flex-1 min-w-0 h-full">
+                {relPx > 0 ? (
+                  <div
+                    className="absolute bottom-0 left-0 right-0 rounded-t-sm bg-fuchsia-400/55"
+                    style={{ height: relPx }}
                   />
                 ) : null}
               </div>
@@ -157,6 +170,7 @@ function WeatherBucketBars({
         <span className="text-amber-400/70">OM</span>
         <span className="text-sky-400/70">WC</span>
         <span className="text-violet-400/70">Stk</span>
+        <span className="text-fuchsia-400/70">Rel</span>
         <span>mkt</span>
       </div>
     </div>

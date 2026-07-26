@@ -18,13 +18,6 @@ function stakedGrossUsd(legs: MarketStakedLegsResponse | null): number | null {
   return Math.abs(y) + Math.abs(n);
 }
 
-function stakedPillTier(net: number | null): 'muted' | 'low' | 'mid' | 'high' {
-  if (typeof net !== 'number' || !Number.isFinite(net)) return 'muted';
-  if (net < 15_000) return 'low';
-  if (net <= 30_000) return 'mid';
-  return 'high';
-}
-
 export const SidebarNotifyStakedGateSync = memo(function SidebarNotifyStakedGateSync({
   yesTokenId,
   marketConditionId,
@@ -156,21 +149,47 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
     return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
   }, [row, toxicFlow?.totalWallets]);
 
-  const stakedNetAbs = useMemo(() => stakedNetAbsUsd(stakedLegs), [stakedLegs]);
+  const stakedHalves = useMemo(() => {
+    const y = stakedLegs?.stakedNetYesUsd;
+    const n = stakedLegs?.stakedNetNoUsd;
+    const sumAbs = stakedLegs?.stakedSumAbsSignedNetUsd;
+    const yesOk = typeof y === 'number' && Number.isFinite(y) && y >= 0;
+    const noOk = typeof n === 'number' && Number.isFinite(n) && n >= 0;
+    if (yesOk && noOk) {
+      const tot = y + n;
+      return {
+        yesUsd: y,
+        noUsd: n,
+        yesPct: tot > 0 ? (y / tot) * 100 : null,
+        noPct: tot > 0 ? (n / tot) * 100 : null,
+        total: tot,
+      };
+    }
+    // Legacy: only total abs — cannot split.
+    if (typeof sumAbs === 'number' && Number.isFinite(sumAbs) && sumAbs > 0) {
+      return { yesUsd: null, noUsd: null, yesPct: null, noPct: null, total: sumAbs };
+    }
+    return { yesUsd: null, noUsd: null, yesPct: null, noPct: null, total: null };
+  }, [stakedLegs]);
 
   const stakedGross = useMemo(() => stakedGrossUsd(stakedLegs), [stakedLegs]);
+  const yesK =
+    stakedHalves.yesUsd != null ? formatPolymarketVolumeK(stakedHalves.yesUsd) : null;
+  const noK = stakedHalves.noUsd != null ? formatPolymarketVolumeK(stakedHalves.noUsd) : null;
+  const yesPctLabel =
+    stakedHalves.yesPct != null ? `${Math.round(stakedHalves.yesPct)}%` : null;
+  const noPctLabel = stakedHalves.noPct != null ? `${Math.round(stakedHalves.noPct)}%` : null;
+  const stakedTitle = `Staked net halves: YES $${stakedHalves.yesUsd != null ? stakedHalves.yesUsd.toFixed(0) : '—'} (${yesPctLabel ?? '—'}) · NO $${stakedHalves.noUsd != null ? stakedHalves.noUsd.toFixed(0) : '—'} (${noPctLabel ?? '—'}). Gross Σ|usd| $${typeof stakedGross === 'number' && Number.isFinite(stakedGross) ? stakedGross.toFixed(0) : '—'}. Click to expand Toxic Flow.`;
 
-  const tier = stakedPillTier(stakedNetAbs);
-  const stakedNetKDisplay =
-    stakedNetAbs != null && Number.isFinite(stakedNetAbs) ? formatPolymarketVolumeK(stakedNetAbs) : null;
+  const pillBtn = canShowEmbeddedToxic
+    ? 'cursor-pointer hover:brightness-110 active:brightness-125'
+    : 'cursor-default';
 
   return (
     <>
       <button
         type="button"
-        className={`rounded px-1.5 py-1 min-w-0 border border-gray-700/70 bg-gray-900/50 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${
-          canShowEmbeddedToxic ? 'cursor-pointer hover:brightness-110 active:brightness-125' : 'cursor-default'
-        }`}
+        className={`rounded px-1.5 py-1 min-w-0 border border-gray-700/70 bg-gray-900/50 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${pillBtn}`}
         title={
           canShowEmbeddedToxic
             ? 'USDC volume (toxic-flow / WMP; same as Holders panel). Click to expand.'
@@ -186,57 +205,35 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
       </button>
       <button
         type="button"
-        className={`rounded px-1.5 py-1 min-w-0 border text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${
-          canShowEmbeddedToxic ? 'cursor-pointer hover:brightness-110 active:brightness-125' : 'cursor-default'
-        } ${
-          tier === 'low'
-            ? 'border-red-700/65 bg-red-950/35'
-            : tier === 'mid'
-              ? 'border-amber-600/55 bg-amber-950/35'
-              : tier === 'high'
-                ? 'border-emerald-800/60 bg-emerald-950/30'
-                : 'border-gray-700/70 bg-gray-900/50'
-        }`}
-        title={
-          canShowEmbeddedToxic
-            ? `Total staked: Σ_w |Staked Net| USD ≈ $${typeof stakedNetAbs === 'number' && Number.isFinite(stakedNetAbs) ? stakedNetAbs.toFixed(0) : '—'}. Σ|usd_yes|+Σ|usd_no| gross $${typeof stakedGross === 'number' && Number.isFinite(stakedGross) ? stakedGross.toFixed(0) : '—'}. Click to expand Toxic Flow.`
-            : `Total staked (pill): Σ_w |Staked Net| USD ≈ $${typeof stakedNetAbs === 'number' && Number.isFinite(stakedNetAbs) ? stakedNetAbs.toFixed(0) : '—'}. Gross leg USD: $${typeof stakedGross === 'number' && Number.isFinite(stakedGross) ? stakedGross.toFixed(0) : '—'}`
-        }
+        className={`rounded px-1.5 py-1 min-w-0 border border-emerald-800/55 bg-emerald-950/25 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${pillBtn}`}
+        title={stakedTitle}
         onClick={onExpandToxic}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <div
-          className={`text-[8px] uppercase tracking-wide truncate ${
-            tier === 'low'
-              ? 'text-red-400/90'
-              : tier === 'mid'
-                ? 'text-amber-400/90'
-                : tier === 'high'
-                  ? 'text-emerald-500/90'
-                  : 'text-gray-500'
-          }`}
-        >
-          Staked
+        <div className="text-[8px] uppercase tracking-wide text-emerald-400/90 truncate">
+          Staked Yes{yesPctLabel ? ` ${yesPctLabel}` : ''}
         </div>
-        <div
-          className={`tabular-nums font-bold truncate ${
-            tier === 'low'
-              ? 'text-red-300'
-              : tier === 'mid'
-                ? 'text-amber-200'
-                : tier === 'high'
-                  ? 'text-emerald-300'
-                  : 'text-gray-200'
-          }`}
-        >
-          {stakedNetKDisplay ? `$${stakedNetKDisplay}` : '--'}
+        <div className="tabular-nums font-bold text-emerald-300 truncate">
+          {yesK != null ? `$${yesK}` : '--'}
         </div>
       </button>
       <button
         type="button"
-        className={`rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${
-          canShowEmbeddedToxic ? 'cursor-pointer hover:bg-gray-800/65 active:bg-gray-800/90' : 'cursor-default'
-        }`}
+        className={`rounded px-1.5 py-1 min-w-0 border border-red-800/55 bg-red-950/25 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${pillBtn}`}
+        title={stakedTitle}
+        onClick={onExpandToxic}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <div className="text-[8px] uppercase tracking-wide text-red-400/90 truncate">
+          Staked No{noPctLabel ? ` ${noPctLabel}` : ''}
+        </div>
+        <div className="tabular-nums font-bold text-red-300 truncate">
+          {noK != null ? `$${noK}` : '--'}
+        </div>
+      </button>
+      <button
+        type="button"
+        className={`rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${pillBtn}`}
         title={
           canShowEmbeddedToxic
             ? 'Total shares Σ|inv_yes−inv_no| (same as Holders panel). Click to expand.'
@@ -250,9 +247,7 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
       </button>
       <button
         type="button"
-        className={`min-w-0 w-full rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-amber-500/70 ${
-          canShowEmbeddedToxic ? 'cursor-pointer hover:bg-yellow-900/35 active:bg-yellow-900/50' : 'cursor-default'
-        }`}
+        className={`min-w-0 w-full rounded border border-yellow-500/50 bg-yellow-900/20 px-1.5 py-1 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-amber-500/70 ${pillBtn}`}
         title={
           canShowEmbeddedToxic
             ? 'Wallets with WMP rows (same as Holders panel Wallets). Click to expand.'

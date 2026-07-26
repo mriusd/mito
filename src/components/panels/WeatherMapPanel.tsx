@@ -65,6 +65,10 @@ type MapView = { zoom: number; panX: number; panY: number };
 
 const DEFAULT_MAP_VIEW: MapView = { zoom: 1, panX: 0, panY: 0 };
 
+function weatherMapViewStorageKey(panelId: string): string {
+  return `polybot-weather-map-view-${panelId}`;
+}
+
 function clampMapView(view: MapView, layout: MapLayout): MapView {
   const zoom = Math.min(MAP_ZOOM_MAX, Math.max(MAP_ZOOM_MIN, view.zoom));
   if (zoom <= MAP_ZOOM_MIN + 1e-6) {
@@ -77,6 +81,55 @@ function clampMapView(view: MapView, layout: MapLayout): MapView {
     panX: Math.min(maxPanX, Math.max(-maxPanX, view.panX)),
     panY: Math.min(maxPanY, Math.max(-maxPanY, view.panY)),
   };
+}
+
+/** Persist zoom + pan as fractions of map size (survives panel resize). */
+function writeStoredMapView(panelId: string, view: MapView, layout: MapLayout | null) {
+  const w = layout?.w ?? 1;
+  const h = layout?.h ?? 1;
+  try {
+    localStorage.setItem(
+      weatherMapViewStorageKey(panelId),
+      JSON.stringify({
+        zoom: view.zoom,
+        panXFrac: w > 0 ? view.panX / w : 0,
+        panYFrac: h > 0 ? view.panY / h : 0,
+      }),
+    );
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function readStoredMapView(panelId: string): MapView {
+  try {
+    const raw = localStorage.getItem(weatherMapViewStorageKey(panelId));
+    if (!raw) return { ...DEFAULT_MAP_VIEW };
+    const o = JSON.parse(raw) as { zoom?: unknown; panXFrac?: unknown; panYFrac?: unknown };
+    const zoom =
+      typeof o.zoom === 'number' && Number.isFinite(o.zoom)
+        ? Math.min(MAP_ZOOM_MAX, Math.max(MAP_ZOOM_MIN, o.zoom))
+        : MAP_ZOOM_MIN;
+    if (zoom <= MAP_ZOOM_MIN + 1e-6) return { ...DEFAULT_MAP_VIEW };
+    const panXFrac = typeof o.panXFrac === 'number' && Number.isFinite(o.panXFrac) ? o.panXFrac : 0;
+    const panYFrac = typeof o.panYFrac === 'number' && Number.isFinite(o.panYFrac) ? o.panYFrac : 0;
+    // Absolute pan applied once layout known; keep fracs via temporary unit layout.
+    return { zoom, panX: panXFrac, panY: panYFrac };
+  } catch {
+    return { ...DEFAULT_MAP_VIEW };
+  }
+}
+
+function mapViewFromStoredFracs(stored: MapView, layout: MapLayout): MapView {
+  // readStoredMapView packs panX/panY as fracs until first layout apply.
+  return clampMapView(
+    {
+      zoom: stored.zoom,
+      panX: stored.panX * layout.w,
+      panY: stored.panY * layout.h,
+    },
+    layout,
+  );
 }
 
 function applyMapViewTransform(ctx: CanvasRenderingContext2D, layout: MapLayout, view: MapView) {
@@ -327,7 +380,7 @@ function buildTimezoneMeridians(): number[] {
   return lons;
 }
 
-function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
+function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const layoutRef = useRef<MapLayout | null>(null);
@@ -336,7 +389,12 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
   const hoverTipRef = useRef<{ x: number; y: number; label: string } | null>(null);
   const drawRef = useRef<() => void>(() => {});
   const drawRafRef = useRef(0);
-  const viewRef = useRef<MapView>({ ...DEFAULT_MAP_VIEW });
+  const initStoredView = useMemo(() => readStoredMapView(panelId), [panelId]);
+  /** panX/panY still fracs until first layout apply. */
+  const pendingStoredViewRef = useRef<MapView | null>(
+    initStoredView.zoom > MAP_ZOOM_MIN + 1e-6 ? initStoredView : null,
+  );
+  const viewRef = useRef<MapView>({ zoom: initStoredView.zoom, panX: 0, panY: 0 });
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -351,7 +409,7 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
   const [hoverTip, setHoverTip] = useState<{ x: number; y: number; label: string } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [layoutSnapshot, setLayoutSnapshot] = useState<MapLayout | null>(null);
-  const [zoom, setZoom] = useState(MAP_ZOOM_MIN);
+  const [zoom, setZoom] = useState(initStoredView.zoom);
   const [dragging, setDragging] = useState(false);
 
   const [tempOddsDateIso, setTempOddsDateIso] = useState<string | null>(() => getTempOddsSelectedDate());
@@ -461,6 +519,10 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
 
     const layout = makeLayout(width, height);
     layoutRef.current = layout;
+    if (pendingStoredViewRef.current) {
+      viewRef.current = mapViewFromStoredFracs(pendingStoredViewRef.current, layout);
+      pendingStoredViewRef.current = null;
+    }
     const view = clampMapView(viewRef.current, layout);
     viewRef.current = view;
 
@@ -576,9 +638,10 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
       const clamped = layout ? clampMapView(next, layout) : clampMapView(next, makeLayout(1, 1));
       viewRef.current = clamped;
       setZoom(clamped.zoom);
+      writeStoredMapView(panelId, clamped, layout);
       scheduleDraw();
     },
-    [scheduleDraw],
+    [scheduleDraw, panelId],
   );
 
   const zoomBy = useCallback(
@@ -707,19 +770,23 @@ function WeatherMapPanelInner({ panelId: _panelId }: { panelId: string }) {
     [pickCityAt, setHoveredCity, scheduleDraw],
   );
 
-  const endDrag = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== e.pointerId) return;
-    if (drag.moved) suppressClickRef.current = true;
-    dragRef.current = null;
-    setDragging(false);
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      /* already released */
-    }
-    setZoom(viewRef.current.zoom);
-  }, []);
+  const endDrag = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (!drag || drag.pointerId !== e.pointerId) return;
+      if (drag.moved) suppressClickRef.current = true;
+      dragRef.current = null;
+      setDragging(false);
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        /* already released */
+      }
+      setZoom(viewRef.current.zoom);
+      if (drag.moved) writeStoredMapView(panelId, viewRef.current, layoutRef.current);
+    },
+    [panelId],
+  );
 
   const onPointerLeave = useCallback(() => {
     if (dragRef.current) return;

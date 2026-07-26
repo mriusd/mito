@@ -118,6 +118,11 @@ function readStoredTempOddsChartMode(panelId: string): TempOddsChartMode {
   return v === 'high' ? 'high' : 'low';
 }
 
+function readStoredForecastSource(panelId: string): ForecastSourceToggle {
+  const v = localStorage.getItem(`polybot-weather-temp-bars-forecast-source-${panelId}`);
+  return v === 'weather-company' ? 'weather-company' : 'open-meteo';
+}
+
 function weatherMarketCityAndDate(
   market: Market | null | undefined,
 ): { city: WeatherCitySlug; dateIso: string } | null {
@@ -1255,7 +1260,9 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const [pastFilterTick, setPastFilterTick] = useState(0);
   const [modelPayload, setModelPayload] = useState<WeatherProbabilitiesPayload | null>(null);
   const [modelPayloadKey, setModelPayloadKey] = useState('');
-  const [forecastSource, setForecastSource] = useState<ForecastSourceToggle>('open-meteo');
+  const [forecastSource, setForecastSource] = useState<ForecastSourceToggle>(() =>
+    readStoredForecastSource(panelId),
+  );
   const [modelFetchedAtMs, setModelFetchedAtMs] = useState(0);
   const [modelRefreshing, setModelRefreshing] = useState(false);
   const modelFetchGenRef = useRef(0);
@@ -1270,6 +1277,14 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     (mode: TempOddsChartMode) => {
       setChartMode(mode);
       localStorage.setItem(`polybot-weather-temp-bars-chart-mode-${panelId}`, mode);
+    },
+    [panelId],
+  );
+
+  const setTempOddsForecastSource = useCallback(
+    (source: ForecastSourceToggle) => {
+      setForecastSource(source);
+      localStorage.setItem(`polybot-weather-temp-bars-forecast-source-${panelId}`, source);
     },
     [panelId],
   );
@@ -2037,7 +2052,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               loading={obsLoading}
               unit={tempUnit}
               forecastSource={forecastSource}
-              onForecastSourceChange={setForecastSource}
+              onForecastSourceChange={setTempOddsForecastSource}
             />
           </>
         )}

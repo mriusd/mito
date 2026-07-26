@@ -236,6 +236,8 @@ export function LiveTradeChart({
         interval,
         startTime,
         endTime,
+        // Stake buckets keyed by YES token id (weather market_buckets.tokenId).
+        tokenId: soundMuteYesTokenId || tokenId,
         obHeatmap,
         hideTrades,
         tradeMarkers,
@@ -254,6 +256,8 @@ export function LiveTradeChart({
       interval,
       startTime,
       endTime,
+      tokenId,
+      soundMuteYesTokenId,
       obHeatmap,
       hideTrades,
       tradeMarkers,

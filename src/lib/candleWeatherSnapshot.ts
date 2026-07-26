@@ -15,6 +15,9 @@ export type CandleWeatherBucket = {
   stakedProb?: number | null;
   /** Bucket YES stake / Σ YES stake across city/date/metric. */
   stakedShare?: number | null;
+  /** Absolute staked USD halves at candle snapshot. */
+  stakedYesUsd?: number | null;
+  stakedNoUsd?: number | null;
   bid?: number | null;
   ask?: number | null;
   mid?: number | null;
@@ -153,6 +156,8 @@ export function parseCandleWeather(raw: unknown): CandleWeatherSnapshot | undefi
       modelProbWc: asNum(br.modelProbWc),
       stakedProb: asNum(br.stakedProb),
       stakedShare: asNum(br.stakedShare),
+      stakedYesUsd: asNum(br.stakedYesUsd),
+      stakedNoUsd: asNum(br.stakedNoUsd),
       bid: asNum(br.bid),
       ask: asNum(br.ask),
       mid: asNum(br.mid),

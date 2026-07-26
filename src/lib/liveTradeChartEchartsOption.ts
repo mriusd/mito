@@ -32,6 +32,8 @@ export type BuildLiveTradeChartOptionArgs = {
   interval: string;
   startTime?: number;
   endTime?: number;
+  /** Chart token — match weather stake bucket (YES id or selected). */
+  tokenId?: string;
   obHeatmap: boolean;
   hideTrades: boolean;
   tradeMarkers?: ChartTradeMarker[];
@@ -42,6 +44,29 @@ export type BuildLiveTradeChartOptionArgs = {
   dataZoom?: LiveTradeDataZoomState | null;
   emptyMessage?: string;
 };
+
+function stakeBucketForCandle(
+  c: LiveTradeCandle,
+  tokenId?: string,
+): { yes: number; no: number } | null {
+  const buckets = c.weather?.market_buckets;
+  if (!buckets?.length) return null;
+  const tid = (tokenId || '').trim();
+  let b = tid ? buckets.find((x) => (x.tokenId || '').trim() === tid) : undefined;
+  if (!b) b = buckets.find((x) => x.selected);
+  if (!b) return null;
+  const yes = b.stakedYesUsd;
+  const no = b.stakedNoUsd;
+  if (yes == null && no == null) return null;
+  return { yes: yes ?? 0, no: no ?? 0 };
+}
+
+function fmtStakeAxisUsd(v: number): string {
+  const n = Math.abs(v);
+  if (n >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+  if (n >= 1000) return `$${(v / 1000).toFixed(1)}k`;
+  return `$${v.toFixed(0)}`;
+}
 
 function heatAlpha(numerator: number, opacityMax: number): number {
   if (opacityMax <= 0 || numerator <= 0) return 0;
@@ -97,6 +122,7 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
     interval,
     startTime,
     endTime,
+    tokenId,
     obHeatmap,
     hideTrades,
     tradeMarkers,
@@ -132,6 +158,21 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
     value: c.v,
     itemStyle: { color: c.c >= c.o ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)' },
   }));
+  const stakeYes: (number | null)[] = [];
+  const stakeNo: (number | null)[] = [];
+  let stakePointCount = 0;
+  for (const c of candles) {
+    const s = stakeBucketForCandle(c, tokenId);
+    if (!s) {
+      stakeYes.push(null);
+      stakeNo.push(null);
+      continue;
+    }
+    stakeYes.push(s.yes);
+    stakeNo.push(s.no);
+    stakePointCount++;
+  }
+  const showStakePanel = stakePointCount > 0;
 
   /** Include in Y extent so auto-scale does not clip order/position lines. */
   const levelPrices: number[] = [];
@@ -313,16 +354,47 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
     });
   }
 
-  series.push({
-    type: 'bar',
-    name: 'volume',
-    xAxisIndex: 1,
-    yAxisIndex: 1,
-    data: volumes,
-    barWidth: '70%',
-    z: 2,
-    silent: true,
-  });
+  if (showStakePanel) {
+    series.push({
+      type: 'line',
+      name: 'stakedYes',
+      xAxisIndex: 1,
+      yAxisIndex: 1,
+      data: stakeYes,
+      showSymbol: false,
+      symbolSize: 0,
+      connectNulls: false,
+      lineStyle: { color: BULL, width: 1.5 },
+      itemStyle: { color: BULL },
+      z: 2,
+      silent: true,
+    });
+    series.push({
+      type: 'line',
+      name: 'stakedNo',
+      xAxisIndex: 1,
+      yAxisIndex: 1,
+      data: stakeNo,
+      showSymbol: false,
+      symbolSize: 0,
+      connectNulls: false,
+      lineStyle: { color: BEAR, width: 1.5 },
+      itemStyle: { color: BEAR },
+      z: 2,
+      silent: true,
+    });
+  } else {
+    series.push({
+      type: 'bar',
+      name: 'volume',
+      xAxisIndex: 1,
+      yAxisIndex: 1,
+      data: volumes,
+      barWidth: '70%',
+      z: 2,
+      silent: true,
+    });
+  }
 
   series.push({
     type: 'candlestick',
@@ -444,8 +516,8 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
       link: [{ xAxisIndex: [0, 1] }],
     },
     grid: [
-      { left: 36, right: 8, top: 4, bottom: 28 },
-      { left: 36, right: 8, top: '72%', bottom: 16, height: '18%' },
+      { left: showStakePanel ? 44 : 36, right: 8, top: 4, bottom: 28 },
+      { left: showStakePanel ? 44 : 36, right: 8, top: '72%', bottom: 16, height: '18%' },
     ],
     dataZoom: [
       {
@@ -574,11 +646,31 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
         type: 'value',
         gridIndex: 1,
         scale: true,
+        min: 0,
         axisLine: { show: false },
         axisTick: { show: false },
-        axisLabel: { show: false },
+        axisLabel: showStakePanel
+          ? {
+              show: true,
+              color: 'rgba(255,255,255,0.3)',
+              fontSize: 8,
+              fontFamily: 'monospace',
+              formatter: (v: number) => fmtStakeAxisUsd(Number(v)),
+            }
+          : { show: false },
         splitLine: { show: false },
-        axisPointer: { show: false, label: { show: false } },
+        axisPointer: showStakePanel
+          ? {
+              show: true,
+              label: {
+                formatter: (p) => {
+                  const n = Number(p.value);
+                  if (!Number.isFinite(n)) return '';
+                  return fmtStakeAxisUsd(n);
+                },
+              },
+            }
+          : { show: false, label: { show: false } },
       },
     ],
     series,

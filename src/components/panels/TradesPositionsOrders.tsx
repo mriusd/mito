@@ -149,8 +149,10 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
     let currentValue = 0;
     let bidCents = 0;
     let askCents = 0;
+    let sellCents = 0;
     let hasBid = false;
     let hasAsk = false;
+    let allHaveSell = true;
     const outcomes = new Set<string>();
     for (const r of list) {
       size = Math.min(size, r.size);
@@ -164,6 +166,11 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
       if (r.askProb != null && Number.isFinite(r.askProb) && r.askProb > 0) {
         askCents += r.askProb * 100;
         hasAsk = true;
+      }
+      if (r.sellPrice != null && Number.isFinite(r.sellPrice) && r.sellPrice > 0) {
+        sellCents += r.sellPrice;
+      } else {
+        allHaveSell = false;
       }
       if (r.outcome) outcomes.add(r.outcome);
     }
@@ -183,7 +190,8 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
       bidProb: hasBid ? bidCents / 100 : null,
       askProb: hasAsk ? askCents / 100 : null,
       askCents: hasAsk ? askCents : null,
-      sellPrice: null,
+      // Sum sell ¢ only when every child has a resting sell.
+      sellPrice: allHaveSell && sellCents > 0 ? sellCents : null,
       pnl,
       pnlPercent,
       clickable: first.clickable,

@@ -38,10 +38,16 @@ import {
 } from '../../lib/weatherMarketsGrid';
 import {
   fetchMarketsStakedLegs,
+  fetchOrderbook,
   fetchWeatherProbabilities,
+  placeOrder,
   type WeatherForecastSourceId,
   type WeatherProbabilitiesPayload,
 } from '../../api';
+import { triggerWalletRefresh } from '../../lib/clobClient';
+import { walkAsksForShares } from '../../lib/orderbookWalk';
+import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
+import { showToast } from '../../utils/toast';
 import {
   fetchWeatherObservations,
   floorDisplayTemp,
@@ -130,9 +136,49 @@ function readStoredOutcomeView(panelId: string): TempOddsOutcomeView {
   return v === 'NO' ? 'NO' : 'YES';
 }
 
+function readStoredBucketTrade(panelId: string): boolean {
+  return localStorage.getItem(`polybot-weather-temp-bars-bucket-trade-${panelId}`) === '1';
+}
+
 function flipProb01(p: number | null): number | null {
   if (p == null || !Number.isFinite(p)) return null;
   return Math.max(0, Math.min(1, 1 - p));
+}
+
+function bucketTradeTokenId(market: Market, view: TempOddsOutcomeView): string {
+  const ids = market.clobTokenIds || [];
+  return ((view === 'NO' ? ids[1] : ids[0]) || '').trim();
+}
+
+function orderNotionalUsd(priceDecimal: number, size: number): number {
+  if (!Number.isFinite(priceDecimal) || !Number.isFinite(size) || size <= 0 || priceDecimal <= 0) return 0;
+  return priceDecimal * size;
+}
+
+function maxOrderUsdViolationMessage(maxUsd: number, valueUsd: number): string | null {
+  if (!Number.isFinite(maxUsd) || maxUsd <= 0) return null;
+  if (!Number.isFinite(valueUsd) || valueUsd <= maxUsd) return null;
+  const lim =
+    Number.isInteger(maxUsd) || Math.abs(maxUsd - Math.round(maxUsd)) < 1e-9
+      ? String(Math.round(maxUsd))
+      : maxUsd.toFixed(2);
+  return `Max order size ${lim} USD. To increase the limit go to settings menu in the header.`;
+}
+
+function bucketAskColorClass(cents: number | null): string {
+  if (cents == null || !Number.isFinite(cents)) return 'text-gray-400';
+  if (cents > 100) return 'text-red-400';
+  if (cents >= 95) return 'text-yellow-400';
+  return 'text-green-400';
+}
+
+function marketLimitExpirationSec(endDate?: string): number | undefined {
+  const end = String(endDate || '').trim();
+  if (!end) return undefined;
+  const endSec = Math.floor(new Date(end).getTime() / 1000);
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (!Number.isFinite(endSec) || endSec <= nowSec + 60) return undefined;
+  return endSec;
 }
 
 function weatherMarketCityAndDate(
@@ -1003,6 +1049,79 @@ function TempOddsBar({
   );
 }
 
+function TempOddsBucketTradeStrip({
+  orderAmount,
+  onOrderAmountChange,
+  askCents,
+  askInsufficient,
+  estCostUsd,
+  selectedCount,
+  placing,
+  walletReady,
+  onPlace,
+}: {
+  orderAmount: string;
+  onOrderAmountChange: (v: string) => void;
+  askCents: number | null;
+  askInsufficient: boolean;
+  estCostUsd: number | null;
+  selectedCount: number;
+  placing: boolean;
+  walletReady: boolean;
+  onPlace: () => void;
+}) {
+  return (
+    <div
+      className="no-drag mt-1 shrink-0 rounded border border-gray-700/80 bg-gray-950/50 p-2"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-[120px] flex-1">
+          <label className="mb-1 block text-[10px] text-gray-400">Amount (shares per leg)</label>
+          <input
+            type="number"
+            value={orderAmount}
+            onChange={(e) => onOrderAmountChange(e.target.value)}
+            onWheel={(e) => e.preventDefault()}
+            className="order-input no-spin h-[34px] w-full"
+            placeholder="100"
+            min={1}
+            step={1}
+          />
+        </div>
+        <div className="rounded bg-gray-800/80 px-2 py-1 text-[10px] text-gray-400">
+          <div>Ask price</div>
+          <div className={`font-bold tabular-nums ${bucketAskColorClass(askCents)}`}>
+            {askCents != null ? `${askCents.toFixed(1)}¢` : '—'}
+          </div>
+          {askInsufficient ? (
+            <div className="text-[9px] font-semibold text-red-400">insufficient ask</div>
+          ) : null}
+        </div>
+        <div className="rounded bg-gray-800/80 px-2 py-1 text-[10px] text-gray-400">
+          <div>Est. cost</div>
+          <div className="font-bold tabular-nums text-red-300">
+            {estCostUsd != null ? `$${estCostUsd.toFixed(2)}` : '—'}
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={!walletReady || placing || selectedCount === 0 || askInsufficient || askCents == null}
+          onClick={onPlace}
+          className="h-[34px] shrink-0 rounded-lg bg-emerald-700 px-4 text-[11px] font-bold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {placing ? 'Placing…' : 'Place Orders'}
+        </button>
+      </div>
+      {selectedCount > 0 ? (
+        <div className="mt-1 text-[9px] text-gray-500 tabular-nums">{selectedCount} leg{selectedCount === 1 ? '' : 's'} selected</div>
+      ) : (
+        <div className="mt-1 text-[9px] text-gray-600">Select buckets below the bars</div>
+      )}
+    </div>
+  );
+}
+
 interface TempOddsChartProps {
   barColor: string;
   barSpreadColor: string;
@@ -1025,6 +1144,14 @@ interface TempOddsChartProps {
   metric: WeatherMetric;
   obsBoundC: number | null;
   outcomeView: TempOddsOutcomeView;
+  bucketTradeEnabled: boolean;
+  bucketSelectedMarketIds: Set<string>;
+  onToggleBucketMarket: (marketId: string) => void;
+  bucketOrderAmount: string;
+  onBucketOrderAmountChange: (v: string) => void;
+  bucketPlacing: boolean;
+  walletReady: boolean;
+  onPlaceBucketOrders: (markets: Market[]) => void;
 }
 
 function TempOddsChart({
@@ -1049,6 +1176,14 @@ function TempOddsChart({
   metric,
   obsBoundC,
   outcomeView,
+  bucketTradeEnabled,
+  bucketSelectedMarketIds,
+  onToggleBucketMarket,
+  bucketOrderAmount,
+  onBucketOrderAmountChange,
+  bucketPlacing,
+  walletReady,
+  onPlaceBucketOrders,
 }: TempOddsChartProps) {
   const plotRef = useRef<HTMLDivElement>(null);
   const [trackPx, setTrackPx] = useState(0);
@@ -1087,6 +1222,31 @@ function TempOddsChart({
     ro.observe(el);
     return () => ro.disconnect();
   }, [buckets.length]);
+
+  const selectedEntries = useMemo(
+    () => entries.filter((e) => bucketSelectedMarketIds.has(e.market.id)),
+    [entries, bucketSelectedMarketIds],
+  );
+
+  const bucketAskCents = useMemo(() => {
+    if (selectedEntries.length === 0) return null;
+    let sum = 0;
+    for (const e of selectedEntries) {
+      const ask = e.quote.ask;
+      if (ask == null || !(ask > 0)) return null;
+      sum += ask * 100;
+    }
+    return sum;
+  }, [selectedEntries]);
+
+  const bucketAskInsufficient =
+    selectedEntries.length > 0 &&
+    selectedEntries.some((e) => e.quote.ask == null || !(e.quote.ask > 0));
+
+  const shares = parseFloat(bucketOrderAmount);
+  const hasShareAmount = Number.isFinite(shares) && shares > 0;
+  const bucketEstCostUsd =
+    hasShareAmount && bucketAskCents != null ? (bucketAskCents / 100) * shares : null;
 
   return (
     <div className="relative flex flex-col flex-1 min-w-0 min-h-0">
@@ -1141,10 +1301,11 @@ function TempOddsChart({
                 const forecastHighlight =
                   forecastTempC != null && weatherTempBucketMatchesCelsius(temp, forecastTempC);
                 const selected = selectedMarketId === market.id;
+                const bucketChecked = bucketSelectedMarketIds.has(market.id);
                 return (
                 <div
                   key={`lbl-${temp}`}
-                  className={`flex-1 min-w-0 px-0.5 text-center text-[8px] truncate leading-tight ${
+                  className={`flex-1 min-w-0 px-0.5 text-center text-[8px] leading-tight ${
                     forecastHighlight
                       ? `font-bold text-amber-300${selected ? ' underline decoration-white/70 underline-offset-2' : ''}`
                       : selected
@@ -1152,11 +1313,41 @@ function TempOddsChart({
                         : 'text-gray-500'
                   }`}
                 >
-                  {label}
+                  {bucketTradeEnabled ? (
+                    <label
+                      className="no-drag flex flex-col items-center gap-0.5 cursor-pointer"
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-3 w-3 accent-emerald-500"
+                        checked={bucketChecked}
+                        onChange={() => onToggleBucketMarket(market.id)}
+                        aria-label={`Bucket trade ${label}`}
+                      />
+                      <span className="truncate max-w-full">{label}</span>
+                    </label>
+                  ) : (
+                    <span className="truncate block">{label}</span>
+                  )}
                 </div>
                 );
               })}
             </div>
+            {bucketTradeEnabled ? (
+              <TempOddsBucketTradeStrip
+                orderAmount={bucketOrderAmount}
+                onOrderAmountChange={onBucketOrderAmountChange}
+                askCents={bucketAskCents}
+                askInsufficient={bucketAskInsufficient}
+                estCostUsd={bucketEstCostUsd}
+                selectedCount={selectedEntries.length}
+                placing={bucketPlacing}
+                walletReady={walletReady}
+                onPlace={() => onPlaceBucketOrders(selectedEntries.map((e) => e.market))}
+              />
+            ) : null}
           </div>
         )}
       </div>
@@ -1324,6 +1515,13 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const [outcomeView, setOutcomeView] = useState<TempOddsOutcomeView>(() =>
     readStoredOutcomeView(panelId),
   );
+  const [bucketTradeEnabled, setBucketTradeEnabled] = useState(() => readStoredBucketTrade(panelId));
+  const [bucketSelectedMarketIds, setBucketSelectedMarketIds] = useState<Set<string>>(() => new Set());
+  const [bucketOrderAmount, setBucketOrderAmount] = useState('100');
+  const [bucketPlacing, setBucketPlacing] = useState(false);
+  const tradingWallet = useTradingWalletAddress();
+  const walletReady = !!tradingWallet;
+  const maxOrderSizeUsd = useAppStore((s) => s.maxOrderSizeUsd);
   const [modelFetchedAtMs, setModelFetchedAtMs] = useState(0);
   const [modelRefreshing, setModelRefreshing] = useState(false);
   const modelFetchGenRef = useRef(0);
@@ -1357,6 +1555,27 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     },
     [panelId],
   );
+
+  const setTempOddsBucketTrade = useCallback(
+    (on: boolean) => {
+      setBucketTradeEnabled(on);
+      localStorage.setItem(`polybot-weather-temp-bars-bucket-trade-${panelId}`, on ? '1' : '0');
+    },
+    [panelId],
+  );
+
+  const toggleBucketMarket = useCallback((marketId: string) => {
+    setBucketSelectedMarketIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(marketId)) next.delete(marketId);
+      else next.add(marketId);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    setBucketSelectedMarketIds(new Set());
+  }, [city, selectedDateKey, chartMode]);
 
   useEffect(() => {
     selectTempOddsMetric(chartMode);
@@ -1864,6 +2083,87 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     [setSelectedMarket, setSidebarOpen, setSidebarOutcome, syncSelectedBarFocus],
   );
 
+  const handlePlaceBucketOrders = useCallback(
+    async (markets: Market[]) => {
+      if (!walletReady) {
+        showToast('Connect wallet first', 'error');
+        return;
+      }
+      const shares = parseFloat(bucketOrderAmount);
+      if (!Number.isFinite(shares) || shares <= 0) {
+        showToast('Enter shares per leg', 'error');
+        return;
+      }
+      if (markets.length === 0) {
+        showToast('Select at least one bucket', 'error');
+        return;
+      }
+
+      const legs: { market: Market; tokenId: string; label: string }[] = [];
+      for (const market of markets) {
+        const tokenId = bucketTradeTokenId(market, outcomeView);
+        if (!tokenId) {
+          showToast(`Missing ${outcomeView} token for ${market.groupItemTitle || market.question || 'market'}`, 'error');
+          return;
+        }
+        legs.push({
+          market,
+          tokenId,
+          label: compactTempBucketLabel(market.groupItemTitle || '') || market.groupItemTitle || 'bucket',
+        });
+      }
+
+      setBucketPlacing(true);
+      try {
+        let placed = 0;
+        for (const leg of legs) {
+          let book: { asks: { price: string; size: string }[] };
+          try {
+            book = await fetchOrderbook(leg.tokenId);
+          } catch {
+            showToast(`${leg.label}: orderbook fetch failed`, 'error');
+            if (placed > 0) triggerWalletRefresh();
+            return;
+          }
+          const walk = walkAsksForShares(book.asks || [], shares);
+          if (!walk || !walk.complete) {
+            showToast(`${leg.label}: not enough ask depth for ${shares} shares`, 'error');
+            if (placed > 0) triggerWalletRefresh();
+            return;
+          }
+          const cap = maxOrderUsdViolationMessage(maxOrderSizeUsd, orderNotionalUsd(walk.avgPrice, shares));
+          if (cap) {
+            showToast(`${leg.label}: ${cap}`, 'error');
+            if (placed > 0) triggerWalletRefresh();
+            return;
+          }
+          const expiration = marketLimitExpirationSec(leg.market.endDate);
+          const result = await placeOrder({
+            tokenId: leg.tokenId,
+            side: 'BUY',
+            price: walk.avgPrice,
+            size: shares,
+            ...(expiration != null ? { expiration } : {}),
+            orderInfo: `Bucket BUY ${shares} ${outcomeView} ${leg.label} @ ${(walk.avgCents).toFixed(1)}¢`,
+          });
+          if (!result.success) {
+            showToast(result.error || `${leg.label} order failed`, 'error');
+            if (placed > 0) triggerWalletRefresh();
+            return;
+          }
+          placed += 1;
+        }
+        showToast(`Placed ${placed} bucket order${placed === 1 ? '' : 's'}`, 'success');
+        triggerWalletRefresh();
+      } catch {
+        showToast('Bucket orders failed', 'error');
+      } finally {
+        setBucketPlacing(false);
+      }
+    },
+    [walletReady, bucketOrderAmount, outcomeView, maxOrderSizeUsd],
+  );
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (shouldIgnoreTempOddsKey(e)) return;
@@ -1960,6 +2260,20 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
             NO
           </button>
         </div>
+
+        <label
+          className="no-drag inline-flex shrink-0 cursor-pointer items-center gap-1 rounded border border-gray-600 bg-gray-900/90 px-1.5 py-0.5 text-[9px] font-bold text-gray-300"
+          title="Select temperature buckets and place BUY orders on each"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            className="h-3 w-3 accent-emerald-500"
+            checked={bucketTradeEnabled}
+            onChange={(e) => setTempOddsBucketTrade(e.target.checked)}
+          />
+          Bucket Trade
+        </label>
 
         <div className="no-drag inline-flex shrink-0 overflow-hidden rounded border border-gray-600 divide-x divide-gray-600 bg-gray-900/90">
           <button
@@ -2125,6 +2439,14 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
                 forecastTempC={forecastTempC}
                 metric={chartMode}
                 outcomeView={outcomeView}
+                bucketTradeEnabled={bucketTradeEnabled}
+                bucketSelectedMarketIds={bucketSelectedMarketIds}
+                onToggleBucketMarket={toggleBucketMarket}
+                bucketOrderAmount={bucketOrderAmount}
+                onBucketOrderAmountChange={setBucketOrderAmount}
+                bucketPlacing={bucketPlacing}
+                walletReady={walletReady}
+                onPlaceBucketOrders={(markets) => void handlePlaceBucketOrders(markets)}
                 obsBoundC={
                   obsData == null
                     ? null

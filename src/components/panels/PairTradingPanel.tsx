@@ -24,6 +24,7 @@ import { buildSidebarUserOrderHighlightSets, sidebarObAggregateBook } from '../.
 import { SidebarOrderbookBookGrid, type SidebarObLevel } from '../SidebarOrderbookBookGrid';
 import { SidebarDataSourceBadge } from '../SidebarDataSourceBadge';
 import { showToast } from '../../utils/toast';
+import { walkAsksForShares, walkBidsForShares } from '../../lib/orderbookWalk';
 
 const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 const TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
@@ -183,83 +184,9 @@ function bestAskDecimal(asks: SidebarObLevel[]): number | null {
   return Number.isFinite(px) && px > 0 ? px : null;
 }
 
-type AskWalkResult = {
-  avgPrice: number;
-  avgCents: number;
-  totalCostUsd: number;
-  filledShares: number;
-  complete: boolean;
-};
-
-type BidWalkResult = {
-  avgPrice: number;
-  avgCents: number;
-  totalProceedsUsd: number;
-  filledShares: number;
-  complete: boolean;
-};
-
 function bestBidDecimal(bids: SidebarObLevel[]): number | null {
   const px = parseFloat(String(bids[0]?.price ?? ''));
   return Number.isFinite(px) && px > 0 ? px : null;
-}
-
-function walkAsksForShares(asks: SidebarObLevel[], shares: number): AskWalkResult | null {
-  if (!Number.isFinite(shares) || shares <= 0 || asks.length === 0) return null;
-
-  let remaining = shares;
-  let costUsd = 0;
-  let filled = 0;
-
-  for (const level of asks) {
-    const px = parseFloat(String(level.price));
-    const sz = parseFloat(String(level.size));
-    if (!Number.isFinite(px) || px <= 0 || !Number.isFinite(sz) || sz <= 0) continue;
-    const take = Math.min(remaining, sz);
-    costUsd += take * px;
-    filled += take;
-    remaining -= take;
-    if (remaining <= 1e-9) break;
-  }
-
-  if (filled <= 0) return null;
-  const avgPrice = costUsd / filled;
-  return {
-    avgPrice,
-    avgCents: avgPrice * 100,
-    totalCostUsd: costUsd,
-    filledShares: filled,
-    complete: remaining <= 1e-6,
-  };
-}
-
-function walkBidsForShares(bids: SidebarObLevel[], shares: number): BidWalkResult | null {
-  if (!Number.isFinite(shares) || shares <= 0 || bids.length === 0) return null;
-
-  let remaining = shares;
-  let proceedsUsd = 0;
-  let filled = 0;
-
-  for (const level of bids) {
-    const px = parseFloat(String(level.price));
-    const sz = parseFloat(String(level.size));
-    if (!Number.isFinite(px) || px <= 0 || !Number.isFinite(sz) || sz <= 0) continue;
-    const take = Math.min(remaining, sz);
-    proceedsUsd += take * px;
-    filled += take;
-    remaining -= take;
-    if (remaining <= 1e-9) break;
-  }
-
-  if (filled <= 0) return null;
-  const avgPrice = proceedsUsd / filled;
-  return {
-    avgPrice,
-    avgCents: avgPrice * 100,
-    totalProceedsUsd: proceedsUsd,
-    filledShares: filled,
-    complete: remaining <= 1e-6,
-  };
 }
 
 function pairLimitFromAskPrice(askPrice: number | null, offsetCents: number): { price: number; cents: number } | null {

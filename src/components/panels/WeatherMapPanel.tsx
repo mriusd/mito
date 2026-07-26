@@ -314,6 +314,9 @@ type WeatherMapColorMode = 'state' | 'certainty' | 'spread';
 const WEATHER_MAP_COLOR_MODE_LS = 'polybot-weather-map-color-mode';
 /** Spread ≥ this (prob units) maps to fully sharp purple (30¢). */
 const SPREAD_DIM_AT = 0.3;
+/** Flash city dots when max spread exceeds this (20¢). */
+const SPREAD_FLASH_AT = 0.2;
+const SPREAD_FLASH_PERIOD_MS = 650;
 
 function readStoredColorMode(): WeatherMapColorMode {
   const v = localStorage.getItem(WEATHER_MAP_COLOR_MODE_LS);
@@ -592,6 +595,12 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       const maxSpread = cityMaxSpread.get(city.slug);
       const exposure = cityExposure.get(city.slug);
       const r = (selected ? DOT_RADIUS + 2 : hovered ? DOT_RADIUS + 1.5 : DOT_RADIUS) * invZ;
+      const flash =
+        mode === 'spread' && maxSpread != null && maxSpread > SPREAD_FLASH_AT
+          ? 0.28 + 0.72 * (0.5 + 0.5 * Math.sin((Date.now() / SPREAD_FLASH_PERIOD_MS) * Math.PI * 2))
+          : 1;
+      ctx.save();
+      ctx.globalAlpha = flash;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fillStyle =
@@ -601,6 +610,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
             ? cityDotFillByMaxSpread(maxSpread, hovered, selected)
             : cityDotFillByState(exposure, hovered, selected);
       ctx.fill();
+      ctx.restore();
       if (selected) {
         ctx.beginPath();
         ctx.arc(x, y, r + 3 * invZ, 0, Math.PI * 2);
@@ -635,6 +645,23 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       drawRef.current();
     });
   }, []);
+
+  // Pulse high-spread dots while Spread mode is active.
+  useEffect(() => {
+    if (colorMode !== 'spread') return;
+    let alive = true;
+    let raf = 0;
+    const tick = () => {
+      if (!alive) return;
+      scheduleDraw();
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+    };
+  }, [colorMode, scheduleDraw]);
 
   const syncLayoutSnapshot = useCallback((width: number, height: number) => {
     const layout = makeLayout(width, height);

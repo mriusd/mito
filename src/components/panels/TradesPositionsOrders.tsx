@@ -23,6 +23,7 @@ import {
 } from '../../lib/bidAskMarketLookup';
 import { TpoVirtualTableBody } from './TpoVirtualTableBody';
 import { TpoColorCodedSize, TpoColorCodedText } from './TpoColorCodedSize';
+import { isSidebarDustPosition } from '../../lib/sidebarMyPositions';
 import {
   refreshSidebarOnchainWallet,
   useSidebarOnchainGridWalletPositions,
@@ -634,7 +635,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   }, [onchainClaimRows]);
 
   const positionsForTable = useMemo(() => {
-    const openLeg = (p: Position) => (p.size || 0) > 0 && !p.redeemable;
+    // Match sidebar: hide dust (<0.01) so Math.floor(size) never shows 0-share rows.
+    const openLeg = (p: Position) => !isSidebarDustPosition(p.size || 0) && !p.redeemable;
     if (liveTradesSource !== 'onchain') return positions.filter(openLeg);
     const byToken = new Map<string, Position>();
     for (const p of positions) {
@@ -1221,10 +1223,10 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       };
     }), [tradesForTable, assetFilter, tradesSideFilter, marketLookup]);
 
-  // Process positions — unresolved + size > 0 only.
+  // Process positions — unresolved + non-dust only.
   const processedPositions = useMemo(() => positionsForTable
     .filter((p) => {
-      if ((p.size || 0) <= 0 || p.redeemable) return false;
+      if (isSidebarDustPosition(p.size || 0) || p.redeemable) return false;
       const tid = getPositionClobTokenId(p);
       if (!tid) return false;
       const market = lookupMarketByTokenId(tid, marketLookup);

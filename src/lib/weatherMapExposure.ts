@@ -138,6 +138,40 @@ export function buildWeatherCityMaxBidByDate(
   return out;
 }
 
+/**
+ * Max YES bid–ask spread (ask − bid) across temp buckets for each city on `dateIso`.
+ * Requires both sides quoted. Higher = wider book (brighter purple on map).
+ */
+export function buildWeatherCityMaxSpreadByDate(
+  weatherMarkets: Record<string, Market[]>,
+  dateIso: string | null,
+  marketLookup: Record<string, Market>,
+  metric: WeatherMetric | null = null,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!dateIso) return out;
+
+  for (const [citySlug, markets] of Object.entries(weatherMarkets)) {
+    let maxSpread = 0;
+    let any = false;
+    const scoped = metric != null ? filterWeatherMarkets(markets, metric) : markets;
+    for (const market of scoped) {
+      const eventDate = weatherEventDateISOFromSlug(market.eventSlug || '');
+      if (eventDate !== dateIso) continue;
+      const yesTokenId = market.clobTokenIds?.[0];
+      if (!yesTokenId) continue;
+      const { bid, ask } = outcomeBidAskProb(yesTokenId, marketLookup);
+      if (bid == null || ask == null || !(bid > 0) || !(ask > 0)) continue;
+      const spread = ask - bid;
+      if (!(spread >= 0) || !Number.isFinite(spread)) continue;
+      any = true;
+      if (spread > maxSpread) maxSpread = spread;
+    }
+    if (any) out.set(citySlug, maxSpread);
+  }
+  return out;
+}
+
 /** YES CLOB token ids for weather markets on `dateIso` (bid/ask subscribe). */
 export function weatherMapQuoteTokenIdsForDate(
   weatherMarkets: Record<string, Market[]>,

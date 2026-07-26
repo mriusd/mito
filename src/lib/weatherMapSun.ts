@@ -39,6 +39,15 @@ export function solarHourAtLongitude(lon: number, date: Date): number {
   return Math.floor(h);
 }
 
+/** Longitude (−180…180) where local solar time equals `hour` (e.g. 16 → 16:00). */
+export function longitudeAtSolarHour(hour: number, date: Date): number {
+  const utcH = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
+  let lon = (hour - utcH) * 15;
+  while (lon > 180) lon -= 360;
+  while (lon < -180) lon += 360;
+  return lon;
+}
+
 export function utcOffsetLabel(lon: number): string {
   const off = Math.round(lon / 15);
   if (off === 0) return 'UTC';

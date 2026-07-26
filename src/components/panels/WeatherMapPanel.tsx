@@ -5,6 +5,7 @@ import { WEATHER_CITIES, type WeatherCitySlug } from '../../lib/weatherCities';
 import { WEATHER_CITY_COORDS } from '../../lib/weatherCityCoords';
 import {
   isNightAt,
+  longitudeAtSolarHour,
   solarHourAtLongitude,
   subsolarPoint,
   utcOffsetLabel,
@@ -260,6 +261,23 @@ function drawTimezoneMeridians(ctx: CanvasRenderingContext2D, layout: MapLayout)
     ctx.lineTo(bottom.x, bottom.y);
     ctx.stroke();
   }
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+/** Thin orange dotted meridian where local solar time is 16:00. */
+function drawSolarHour16Line(ctx: CanvasRenderingContext2D, layout: MapLayout, date: Date) {
+  const lon = longitudeAtSolarHour(16, date);
+  const top = projectLonLat(lon, 90, layout);
+  const bottom = projectLonLat(lon, -90, layout);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(249, 115, 22, 0.9)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 3]);
+  ctx.beginPath();
+  ctx.moveTo(top.x, top.y);
+  ctx.lineTo(bottom.x, bottom.y);
+  ctx.stroke();
   ctx.setLineDash([]);
   ctx.restore();
 }
@@ -611,6 +629,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
 
     drawGraticule(ctx, layout);
     drawTimezoneMeridians(ctx, layout);
+    drawSolarHour16Line(ctx, layout, date);
 
     const hoverSlug = hoverSlugRef.current;
     const selectedSlug = selectedSlugRef.current;

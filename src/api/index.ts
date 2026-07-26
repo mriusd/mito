@@ -684,33 +684,50 @@ export interface MarketStakedLegsResponse {
   stakedNetNoUsd?: number;
 }
 
-/** WS often sends gross legs without `stakedSumAbsSignedNetUsd`; REST may have it — merge so headline ≠ bogus |ΣY−ΣN|. */
+/** True when live WS stake fields look populated (not empty/unloaded market → all zeros). */
+function liveStakedLegsHaveData(live: MarketStakedLegsResponse | null | undefined): boolean {
+  if (!live) return false;
+  const sum = live.stakedSumAbsSignedNetUsd;
+  if (typeof sum === 'number' && Number.isFinite(sum) && sum > 0) return true;
+  const y = live.stakedUsdYesLeg;
+  const n = live.stakedUsdNoLeg;
+  return (
+    (typeof y === 'number' && Number.isFinite(y) && y > 0) ||
+    (typeof n === 'number' && Number.isFinite(n) && n > 0)
+  );
+}
+
+/** WS often sends zeros for markets outside crypto shareStats load (e.g. weather); prefer REST then. */
 export function mergeMarketStakedLegsResponse(
   live: MarketStakedLegsResponse | null | undefined,
   rest: MarketStakedLegsResponse | null | undefined,
 ): MarketStakedLegsResponse | null {
   if (!live && !rest) return null;
-  const wy = live?.stakedUsdYesLeg ?? rest?.stakedUsdYesLeg;
-  const wn = live?.stakedUsdNoLeg ?? rest?.stakedUsdNoLeg;
+  const preferLive = liveStakedLegsHaveData(live);
+  const primary = preferLive ? live : rest ?? live;
+  const secondary = preferLive ? rest : live;
+  if (!primary) return null;
+  const wy = primary.stakedUsdYesLeg ?? secondary?.stakedUsdYesLeg;
+  const wn = primary.stakedUsdNoLeg ?? secondary?.stakedUsdNoLeg;
   if (!(typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn))) return null;
   const out: MarketStakedLegsResponse = { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
-  const sumLive = live?.stakedSumAbsSignedNetUsd;
-  const sumRest = rest?.stakedSumAbsSignedNetUsd;
-  if (typeof sumLive === 'number' && Number.isFinite(sumLive)) {
-    out.stakedSumAbsSignedNetUsd = sumLive;
-  } else if (typeof sumRest === 'number' && Number.isFinite(sumRest)) {
-    out.stakedSumAbsSignedNetUsd = sumRest;
+  const sumPref = primary.stakedSumAbsSignedNetUsd;
+  const sumAlt = secondary?.stakedSumAbsSignedNetUsd;
+  if (typeof sumPref === 'number' && Number.isFinite(sumPref)) {
+    out.stakedSumAbsSignedNetUsd = sumPref;
+  } else if (typeof sumAlt === 'number' && Number.isFinite(sumAlt)) {
+    out.stakedSumAbsSignedNetUsd = sumAlt;
   }
-  const nyLive = live?.stakedNetYesUsd;
-  const nyRest = rest?.stakedNetYesUsd;
-  const nnLive = live?.stakedNetNoUsd;
-  const nnRest = rest?.stakedNetNoUsd;
-  if (typeof nyLive === 'number' && Number.isFinite(nyLive) && typeof nnLive === 'number' && Number.isFinite(nnLive)) {
-    out.stakedNetYesUsd = nyLive;
-    out.stakedNetNoUsd = nnLive;
-  } else if (typeof nyRest === 'number' && Number.isFinite(nyRest) && typeof nnRest === 'number' && Number.isFinite(nnRest)) {
-    out.stakedNetYesUsd = nyRest;
-    out.stakedNetNoUsd = nnRest;
+  const nyPref = primary.stakedNetYesUsd;
+  const nnPref = primary.stakedNetNoUsd;
+  const nyAlt = secondary?.stakedNetYesUsd;
+  const nnAlt = secondary?.stakedNetNoUsd;
+  if (typeof nyPref === 'number' && Number.isFinite(nyPref) && typeof nnPref === 'number' && Number.isFinite(nnPref)) {
+    out.stakedNetYesUsd = nyPref;
+    out.stakedNetNoUsd = nnPref;
+  } else if (typeof nyAlt === 'number' && Number.isFinite(nyAlt) && typeof nnAlt === 'number' && Number.isFinite(nnAlt)) {
+    out.stakedNetYesUsd = nyAlt;
+    out.stakedNetNoUsd = nnAlt;
   }
   return out;
 }

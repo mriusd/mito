@@ -4,6 +4,7 @@ import { fetchMarketStakedLegs, marketTotalStakedAbsUsd, mergeMarketStakedLegsRe
 import { useThrottledBidAskMarketRow } from '../hooks/useThrottledBidAskMarketRow';
 import { formatPolymarketVolumeK } from '../utils/format';
 import { setSidebarNotifyStakedGatePasses } from '../lib/sidebarNotifyStakedGateStore';
+import { useSidebarToxicFlowData } from '../lib/sidebarToxicFlowStore';
 
 function stakedNetAbsUsd(legs: MarketStakedLegsResponse | null): number | null {
   return marketTotalStakedAbsUsd(legs);
@@ -87,46 +88,77 @@ export const SidebarNotifyStakedGateSync = memo(function SidebarNotifyStakedGate
 
 export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
   yesTokenId,
+  stakedLegs: stakedLegsProp,
   canShowEmbeddedToxic,
   onExpandToxic,
 }: {
   yesTokenId: string;
+  /** REST+WS merged legs from Sidebar (needed for weather — WS shareStats often all-zero). */
+  stakedLegs: MarketStakedLegsResponse | null;
   canShowEmbeddedToxic: boolean;
   onExpandToxic: () => void;
 }) {
   const row = useThrottledBidAskMarketRow(yesTokenId);
+  // Same source as expanded Holders (toxic-flow): WS shareStats often empty/wrong for weather.
+  const toxicFlow = useSidebarToxicFlowData();
+
+  const stakedLegs = useMemo(() => {
+    // Prefer parent merge (REST fills weather); re-merge live row in case parent lags one tick.
+    let live: MarketStakedLegsResponse | null = null;
+    if (row) {
+      const wy = row.stakedUsdYesLeg;
+      const wn = row.stakedUsdNoLeg;
+      const sumAbs = row.stakedSumAbsSignedNetUsd;
+      const netY = row.stakedNetYesUsd;
+      const netN = row.stakedNetNoUsd;
+      if (typeof wy === 'number' && Number.isFinite(wy) && typeof wn === 'number' && Number.isFinite(wn)) {
+        live = { stakedUsdYesLeg: wy, stakedUsdNoLeg: wn };
+        if (typeof sumAbs === 'number' && Number.isFinite(sumAbs)) {
+          live.stakedSumAbsSignedNetUsd = sumAbs;
+        }
+        if (typeof netY === 'number' && Number.isFinite(netY) && typeof netN === 'number' && Number.isFinite(netN)) {
+          live.stakedNetYesUsd = netY;
+          live.stakedNetNoUsd = netN;
+        }
+      }
+    }
+    return mergeMarketStakedLegsResponse(live, stakedLegsProp) ?? stakedLegsProp;
+  }, [row, stakedLegsProp]);
 
   const volumeDisplay = useMemo(() => {
+    const toxicVol = toxicFlow?.totalUsdcIn;
+    if (typeof toxicVol === 'number' && Number.isFinite(toxicVol) && toxicVol > 0) {
+      return formatPolymarketVolumeK(toxicVol);
+    }
     const v = row?.wmpVolumeSum;
     if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return null;
     return formatPolymarketVolumeK(v);
-  }, [row]);
+  }, [row, toxicFlow?.totalUsdcIn]);
 
   const sharesDisplay = useMemo(() => {
+    const toxicShares = toxicFlow?.totalShares;
+    if (typeof toxicShares === 'number' && Number.isFinite(toxicShares)) {
+      return Math.floor(toxicShares).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    }
     const v = row?.sharesInExistence;
     if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
-    return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  }, [row]);
+    return Math.floor(v).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }, [row, toxicFlow?.totalShares]);
 
   const holdersDisplay = useMemo(() => {
+    // Expanded Holders "Wallets" = totalWallets from toxic-flow / WMP COUNT(*).
+    const toxicHolders = toxicFlow?.totalWallets;
+    if (typeof toxicHolders === 'number' && Number.isFinite(toxicHolders)) {
+      return toxicHolders.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    }
     const v = row?.holders;
     if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
     return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  }, [row]);
+  }, [row, toxicFlow?.totalWallets]);
 
-  const stakedNetAbs = useMemo(() => {
-    const sumAbs = row?.stakedSumAbsSignedNetUsd;
-    return typeof sumAbs === 'number' && Number.isFinite(sumAbs) ? sumAbs : null;
-  }, [row]);
+  const stakedNetAbs = useMemo(() => stakedNetAbsUsd(stakedLegs), [stakedLegs]);
 
-  const stakedGross = useMemo(() => {
-    const wy = row?.stakedUsdYesLeg;
-    const wn = row?.stakedUsdNoLeg;
-    if (typeof wy !== 'number' || !Number.isFinite(wy) || typeof wn !== 'number' || !Number.isFinite(wn)) {
-      return null;
-    }
-    return Math.abs(wy) + Math.abs(wn);
-  }, [row]);
+  const stakedGross = useMemo(() => stakedGrossUsd(stakedLegs), [stakedLegs]);
 
   const tier = stakedPillTier(stakedNetAbs);
   const stakedNetKDisplay =
@@ -141,8 +173,8 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
         }`}
         title={
           canShowEmbeddedToxic
-            ? 'Σ wallet_market_positions.volume (chart WS). Click to expand Toxic Flow holders panel.'
-            : 'Σ wallet_market_positions.volume for this market (chart WS wmpVolumeSum)'
+            ? 'USDC volume (toxic-flow / WMP; same as Holders panel). Click to expand.'
+            : 'USDC volume for this market (toxic-flow totalUsdcIn, else chart WS wmpVolumeSum)'
         }
         onClick={onExpandToxic}
         onPointerDown={(e) => e.stopPropagation()}
@@ -207,8 +239,8 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
         }`}
         title={
           canShowEmbeddedToxic
-            ? 'Shares in existence from net balances. Click to expand Toxic Flow holders panel.'
-            : 'Shares in existence from net wallet balances: sum(abs(YES-NO))'
+            ? 'Total shares Σ|inv_yes−inv_no| (same as Holders panel). Click to expand.'
+            : 'Total shares: Σ|inv_yes−inv_no| from wallet_market_positions'
         }
         onClick={onExpandToxic}
         onPointerDown={(e) => e.stopPropagation()}
@@ -223,8 +255,8 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
         }`}
         title={
           canShowEmbeddedToxic
-            ? 'Holders count. Click to expand Toxic Flow holders panel.'
-            : 'Holders count (desktop: expand sidebar chevron for Toxic Flow)'
+            ? 'Wallets with WMP rows (same as Holders panel Wallets). Click to expand.'
+            : 'Wallets count from wallet_market_positions (toxic-flow totalWallets)'
         }
         onClick={onExpandToxic}
         onPointerDown={(e) => e.stopPropagation()}

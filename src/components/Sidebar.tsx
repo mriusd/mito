@@ -3753,6 +3753,7 @@ export const Sidebar = memo(function Sidebar() {
               <div className="grid w-full grid-cols-4 gap-1.5 text-[10px] min-w-0 items-stretch">
               <SidebarMarketStatsCells
                 yesTokenId={selectedMarket?.clobTokenIds?.[0] ?? ''}
+                stakedLegs={sidebarStakedLegs}
                 canShowEmbeddedToxic={canShowEmbeddedToxic}
                 onExpandToxic={expandSidebarToxicFlowPanel}
               />

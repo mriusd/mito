@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, memo, type ReactNode } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useAccount } from 'wagmi';
 import { useAppStore } from '../../stores/appStore';
 import {
@@ -104,6 +105,12 @@ type TpoPosRow = {
   title: string;
   eventSlug: string;
   clickable: boolean;
+  /** City|date key when this row is a multi-market bucket parent. */
+  bucketKey?: string;
+  bucketChildren?: TpoPosRow[];
+  /** Child row under an expanded bucket. */
+  bucketChild?: boolean;
+  rowKey?: string;
 };
 
 /** City + event-date key for Weather Bucket mode. */
@@ -181,6 +188,9 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
       clickable: first.clickable,
       title: `${weatherCityLabel(citySlug)} · ${first.dateLabel}`,
       eventSlug: first.eventSlug,
+      bucketKey: key,
+      bucketChildren: list,
+      rowKey: `bucket:${key}`,
     });
   }
   return out;
@@ -816,6 +826,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       return false;
     }
   });
+  const [posBucketExpanded, setPosBucketExpanded] = useState<Set<string>>(() => new Set());
   type PosSortCol = 'expiry' | 'size' | 'entry' | 'cost' | 'bid' | 'ask' | 'sell' | 'val' | 'pnl' | 'pnlPct';
   const [posSortCol, setPosSortCol] = useState<PosSortCol>(() => {
     const v = localStorage.getItem(`polymarket-tpo-pos-sort-col-${panelId}`);
@@ -1184,46 +1195,81 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         ? bucketTpoWeatherPositions(processedPositions as TpoPosRow[])
         : (processedPositions as TpoPosRow[]);
     const rows = [...base];
-    if (posSortCol === 'size') {
-      return rows.sort((a, b) => (a.size - b.size) * posSortDir);
-    }
-    if (posSortCol === 'entry') {
-      return rows.sort((a, b) => (a.entryPrice - b.entryPrice) * posSortDir);
-    }
-    if (posSortCol === 'cost') {
-      return rows.sort((a, b) => (a.cost - b.cost) * posSortDir);
-    }
-    if (posSortCol === 'bid') {
-      return rows.sort((a, b) => (a.currentPrice - b.currentPrice) * posSortDir);
-    }
-    if (posSortCol === 'ask') {
-      return rows.sort((a, b) => {
-        const aAsk = a.askCents ?? (a.askProb != null ? a.askProb * 100 : 0);
-        const bAsk = b.askCents ?? (b.askProb != null ? b.askProb * 100 : 0);
-        return (aAsk - bAsk) * posSortDir;
+    const sortRows = (list: TpoPosRow[]) => {
+      if (posSortCol === 'size') {
+        return list.sort((a, b) => (a.size - b.size) * posSortDir);
+      }
+      if (posSortCol === 'entry') {
+        return list.sort((a, b) => (a.entryPrice - b.entryPrice) * posSortDir);
+      }
+      if (posSortCol === 'cost') {
+        return list.sort((a, b) => (a.cost - b.cost) * posSortDir);
+      }
+      if (posSortCol === 'bid') {
+        return list.sort((a, b) => (a.currentPrice - b.currentPrice) * posSortDir);
+      }
+      if (posSortCol === 'ask') {
+        return list.sort((a, b) => {
+          const aAsk = a.askCents ?? (a.askProb != null ? a.askProb * 100 : 0);
+          const bAsk = b.askCents ?? (b.askProb != null ? b.askProb * 100 : 0);
+          return (aAsk - bAsk) * posSortDir;
+        });
+      }
+      if (posSortCol === 'sell') {
+        // Tint score: greener (bid≈sell) higher. Default dir -1 → green at top.
+        return list.sort((a, b) => (
+          positionSellPriceTintScore(a.currentPrice, a.sellPrice)
+          - positionSellPriceTintScore(b.currentPrice, b.sellPrice)
+        ) * posSortDir);
+      }
+      if (posSortCol === 'val') {
+        return list.sort((a, b) => (a.currentValue - b.currentValue) * posSortDir);
+      }
+      if (posSortCol === 'pnl') {
+        return list.sort((a, b) => (a.pnl - b.pnl) * posSortDir);
+      }
+      if (posSortCol === 'pnlPct') {
+        return list.sort((a, b) => (a.pnlPercent - b.pnlPercent) * posSortDir);
+      }
+      return list.sort((a, b) => {
+        const cmp = comparePositionsByExpiryDesc(a, b);
+        return posSortDir === -1 ? cmp : -cmp;
       });
+    };
+    sortRows(rows);
+    if (!(posCategoryFilter === 'WEATHER' && posWeatherBucket)) {
+      return rows.map((r) => ({ ...r, rowKey: r.rowKey ?? r.tid }));
     }
-    if (posSortCol === 'sell') {
-      // Tint score: greener (bid≈sell) higher. Default dir -1 → green at top.
-      return rows.sort((a, b) => (
-        positionSellPriceTintScore(a.currentPrice, a.sellPrice)
-        - positionSellPriceTintScore(b.currentPrice, b.sellPrice)
-      ) * posSortDir);
+    const flat: TpoPosRow[] = [];
+    for (const r of rows) {
+      flat.push(r);
+      if (!r.bucketKey || !r.bucketChildren?.length || !posBucketExpanded.has(r.bucketKey)) continue;
+      for (const child of r.bucketChildren) {
+        flat.push({
+          ...child,
+          bucketChild: true,
+          rowKey: `child:${r.bucketKey}:${child.tid}`,
+        });
+      }
     }
-    if (posSortCol === 'val') {
-      return rows.sort((a, b) => (a.currentValue - b.currentValue) * posSortDir);
-    }
-    if (posSortCol === 'pnl') {
-      return rows.sort((a, b) => (a.pnl - b.pnl) * posSortDir);
-    }
-    if (posSortCol === 'pnlPct') {
-      return rows.sort((a, b) => (a.pnlPercent - b.pnlPercent) * posSortDir);
-    }
-    return rows.sort((a, b) => {
-      const cmp = comparePositionsByExpiryDesc(a, b);
-      return posSortDir === -1 ? cmp : -cmp;
+    return flat;
+  }, [
+    processedPositions,
+    posCategoryFilter,
+    posWeatherBucket,
+    posBucketExpanded,
+    posSortCol,
+    posSortDir,
+  ]);
+
+  const togglePosBucketExpanded = useCallback((bucketKey: string) => {
+    setPosBucketExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(bucketKey)) next.delete(bucketKey);
+      else next.add(bucketKey);
+      return next;
     });
-  }, [processedPositions, posCategoryFilter, posWeatherBucket, posSortCol, posSortDir]);
+  }, []);
 
   // Process orders — no live quote dep (5k orders × quote ticks freezes UI).
   const processedOrders = useMemo(() => {
@@ -1517,6 +1563,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                       const on = e.target.checked;
                       setPosWeatherBucket(on);
                       localStorage.setItem(`polymarket-tpo-pos-weather-bucket-${panelId}`, on ? '1' : '0');
+                      if (!on) setPosBucketExpanded(new Set());
                     }}
                     className="h-3 w-3 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-0 focus:ring-offset-0"
                   />
@@ -1723,10 +1770,12 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                 const pnlSign = p.pnl >= 0 ? '+' : '-';
                 const exitColor = POSITION_BID_EXIT_TAILWIND[positionBidExitTier(p.entryPrice, p.currentPrice)];
                 const hasBid = p.bidProb != null && Number.isFinite(p.bidProb) && p.bidProb > 0;
+                const isBucketParent = !!(p.bucketKey && p.bucketChildren && p.bucketChildren.length > 1);
+                const bucketOpen = isBucketParent && posBucketExpanded.has(p.bucketKey!);
                 return (
                   <tr
-                    key={p.tid}
-                    className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === p.marketId ? 'bg-blue-900/40' : ''}`}
+                    key={p.rowKey ?? p.tid}
+                    className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${p.clickable ? 'cursor-pointer' : 'opacity-70'} ${selectedMarketId === p.marketId ? 'bg-blue-900/40' : ''} ${p.bucketChild ? 'bg-gray-900/40' : ''}`}
                     onClick={() => p.clickable && void handleMarketClick(p.tid, {
                       marketId: p.marketId,
                       title: p.title,
@@ -1737,7 +1786,24 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                   >
                     <td className={`${cCls} ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
                     <td className={`${nCls} ${p.dateColor}`}>{p.dateLabel}</td>
-                    <td className={`${cCls} ${assetColorMap2[p.asset] || 'text-gray-300'}`}>{p.marketName}</td>
+                    <td className={`${cCls} ${assetColorMap2[p.asset] || 'text-gray-300'}`}>
+                      <span className={`inline-flex items-center gap-0.5 min-w-0 ${p.bucketChild ? 'pl-3' : ''}`}>
+                        {isBucketParent ? (
+                          <button
+                            type="button"
+                            className="no-drag shrink-0 rounded p-0 text-gray-400 hover:text-white"
+                            title={bucketOpen ? 'Collapse bucket' : 'Expand bucket'}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              togglePosBucketExpanded(p.bucketKey!);
+                            }}
+                          >
+                            {bucketOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          </button>
+                        ) : null}
+                        <span className="truncate">{p.marketName}</span>
+                      </span>
+                    </td>
                     <td className={`${cCls} font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
                     <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.floor(p.size)} /></td>
                     <td className={`${nCls} text-right`}><TpoColorCodedText text={`${p.entryPrice.toFixed(1)}¢`} /></td>

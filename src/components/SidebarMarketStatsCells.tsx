@@ -118,26 +118,6 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
     return mergeMarketStakedLegsResponse(live, stakedLegsProp) ?? stakedLegsProp;
   }, [row, stakedLegsProp]);
 
-  const volumeDisplay = useMemo(() => {
-    const toxicVol = toxicFlow?.totalUsdcIn;
-    if (typeof toxicVol === 'number' && Number.isFinite(toxicVol) && toxicVol > 0) {
-      return formatPolymarketVolumeK(toxicVol);
-    }
-    const v = row?.wmpVolumeSum;
-    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return null;
-    return formatPolymarketVolumeK(v);
-  }, [row, toxicFlow?.totalUsdcIn]);
-
-  const sharesDisplay = useMemo(() => {
-    const toxicShares = toxicFlow?.totalShares;
-    if (typeof toxicShares === 'number' && Number.isFinite(toxicShares)) {
-      return Math.floor(toxicShares).toLocaleString(undefined, { maximumFractionDigits: 0 });
-    }
-    const v = row?.sharesInExistence;
-    if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
-    return Math.floor(v).toLocaleString(undefined, { maximumFractionDigits: 0 });
-  }, [row, toxicFlow?.totalShares]);
-
   const holdersDisplay = useMemo(() => {
     // Expanded Holders "Wallets" = totalWallets from toxic-flow / WMP COUNT(*).
     const toxicHolders = toxicFlow?.totalWallets;
@@ -189,22 +169,6 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
     <>
       <button
         type="button"
-        className={`rounded px-1.5 py-1 min-w-0 border border-gray-700/70 bg-gray-900/50 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${pillBtn}`}
-        title={
-          canShowEmbeddedToxic
-            ? 'USDC volume (toxic-flow / WMP; same as Holders panel). Click to expand.'
-            : 'USDC volume for this market (toxic-flow totalUsdcIn, else chart WS wmpVolumeSum)'
-        }
-        onClick={onExpandToxic}
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Volume</div>
-        <div className="tabular-nums font-bold text-green-400 truncate">
-          {volumeDisplay ? `$${volumeDisplay}` : '--'}
-        </div>
-      </button>
-      <button
-        type="button"
         className={`rounded px-1.5 py-1 min-w-0 border border-emerald-800/55 bg-emerald-950/25 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${pillBtn}`}
         title={stakedTitle}
         onClick={onExpandToxic}
@@ -230,20 +194,6 @@ export const SidebarMarketStatsCells = memo(function SidebarMarketStatsCells({
         <div className="tabular-nums font-bold text-red-300 truncate">
           {noK != null ? `$${noK}` : '--'}
         </div>
-      </button>
-      <button
-        type="button"
-        className={`rounded border border-gray-700/70 bg-gray-900/50 px-1.5 py-1 min-w-0 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${pillBtn}`}
-        title={
-          canShowEmbeddedToxic
-            ? 'Total shares Σ|inv_yes−inv_no| (same as Holders panel). Click to expand.'
-            : 'Total shares: Σ|inv_yes−inv_no| from wallet_market_positions'
-        }
-        onClick={onExpandToxic}
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <div className="text-[8px] uppercase tracking-wide text-gray-500 truncate">Shares</div>
-        <div className="tabular-nums font-bold text-gray-200 truncate">{sharesDisplay}</div>
       </button>
       <button
         type="button"

@@ -686,7 +686,7 @@ const ToxicFlowStakedStatCell = memo(function ToxicFlowStakedStatCell({
         {dialogStakedNetAbsUsd != null ? (
           <span title={`$${dialogStakedNetAbsUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}>
             ${formatPolymarketVolumeK(dialogStakedNetAbsUsd)}
-          </span>
+      </span>
         ) : (
           '—'
         )}
@@ -1387,7 +1387,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
         }, 25_000);
       };
       ws.onmessage = (ev) => {
-        if (cancelled) return;
+      if (cancelled) return;
         try {
           const msg = JSON.parse(String(ev.data)) as ToxicFlowWSMessage;
           const next = applyToxicFlowWSMessage(internalDataRef.current, msg);
@@ -1594,7 +1594,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
             <X size={16} strokeWidth={2} />
           </button>
         ) : null}
-      </div>
+        </div>
     ),
     [marketName, inlineSplit, onClose],
   );
@@ -1604,7 +1604,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
       <ToxicFlowDialogLoadingLine open={open} marketId={midTrim} loadingOverride={loading} />
       {error && <div className="text-red-400 text-center py-8 shrink-0">Error: {error}</div>}
 
-      {!loading && !error && data && (
+          {!loading && !error && data && (
         <>
           <ToxicFlowDialogStatsGrid yesTokenId={yesTok} marketId={midTrim} open={open} data={data} />
           <ToxicFlowDialogZeroWalletsHelp data={data} />
@@ -1657,8 +1657,8 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
               onInlineMarketsListOpenChange={onInlineMarketsListOpenChange}
               toxicFlowMarketId={midTrim}
             />
-          </div>
-        </div>
+                          </div>
+                </div>
       ) : null,
     [
       inlineSplit,
@@ -1695,7 +1695,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
           : {}),
       };
 
-  return (
+                return (
     <div
       className={rootClass}
       {...(!embedded
@@ -1739,7 +1739,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
                 ) : (
                   holdersBody
                 )}
-              </div>
+                          </div>
             </div>
             {inlineWalletPanel}
           </div>
@@ -1770,19 +1770,19 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
               ) : (
                 holdersBody
               )}
-            </div>
+                          </div>
           </>
         )}
         {showInlineWalletModal ? (
-          <WalletInfoDialog
-            open={walletDialogOpen}
-            wallet={selectedWallet}
-            initialMarketId={marketId}
+        <WalletInfoDialog
+          open={walletDialogOpen}
+          wallet={selectedWallet}
+          initialMarketId={marketId}
             focusMarketId={midTrim}
             focusMarketSeq={focusMarketSeq}
             onClose={closeWalletPanel}
             toxicFlowMarketId={midTrim}
-          />
+        />
         ) : null}
       </div>
     </div>

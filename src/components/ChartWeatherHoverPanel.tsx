@@ -1,10 +1,12 @@
 import { useMemo } from 'react';
+import { useAppStore } from '../stores/appStore';
 import {
   candleWeatherToObservations,
   type CandleWeatherBucket,
   type CandleWeatherSnapshot,
 } from '../lib/candleWeatherSnapshot';
 import { getTempSortValue, lookupModelBucketProb } from '../lib/weatherMarketsGrid';
+import { normalizeClobTokenId } from '../utils/format';
 import { TemperatureChart } from './TemperatureChart';
 import {
   weatherObsWithForecastSource,
@@ -15,6 +17,23 @@ import {
 function fracToPx(frac: number, maxPct: number, trackPx: number): number {
   if (maxPct <= 0 || trackPx <= 0 || frac <= 0) return 0;
   return Math.min(trackPx, (frac / maxPct) * trackPx);
+}
+
+/** Highlight bucket when sidebar selected token matches bucket YES or sibling NO. */
+function weatherBucketMatchesSidebarToken(
+  bucket: CandleWeatherBucket,
+  selectedTokenId: string | null,
+  selectedMarketTokenIds: string[] | undefined,
+): boolean {
+  const sel = normalizeClobTokenId(selectedTokenId);
+  if (!sel) return false;
+  const yes = normalizeClobTokenId(bucket.tokenId);
+  if (yes && yes === sel) return true;
+  if (!yes || !selectedMarketTokenIds?.length) return false;
+  const mYes = normalizeClobTokenId(selectedMarketTokenIds[0]);
+  const mNo = normalizeClobTokenId(selectedMarketTokenIds[1]);
+  if (yes !== mYes) return false;
+  return sel === mYes || sel === mNo;
 }
 
 function WeatherBucketBars({
@@ -217,6 +236,14 @@ function ForecastSourceChart({
 }
 
 export function ChartWeatherHoverPanel({ weather }: { weather: CandleWeatherSnapshot }) {
+  const selectedMarket = useAppStore((s) => s.selectedMarket);
+  const sidebarOutcome = useAppStore((s) => s.sidebarOutcome);
+  const selectedTokenId = useMemo(() => {
+    const toks = selectedMarket?.clobTokenIds;
+    if (!toks?.length) return null;
+    return toks[sidebarOutcome === 'YES' ? 0 : 1] || null;
+  }, [selectedMarket, sidebarOutcome]);
+
   const obs = useMemo(() => candleWeatherToObservations(weather), [weather]);
   const unit: WeatherTempUnit = weather.unit === 'F' || weather.obsTempUnit === 'F' ? 'F' : 'C';
 
@@ -243,9 +270,21 @@ export function ChartWeatherHoverPanel({ weather }: { weather: CandleWeatherSnap
       if (modelProbOm == null && modelProbWc == null && b.modelProb != null) {
         modelProbOm = b.modelProb;
       }
-      return { ...b, modelProbOm, modelProbWc };
+      const selected = weatherBucketMatchesSidebarToken(
+        b,
+        selectedTokenId,
+        selectedMarket?.clobTokenIds,
+      );
+      return { ...b, modelProbOm, modelProbWc, selected };
     });
-  }, [weather.market_buckets, weather.probs, weather.probsBySource, weather.forecastSource]);
+  }, [
+    weather.market_buckets,
+    weather.probs,
+    weather.probsBySource,
+    weather.forecastSource,
+    selectedTokenId,
+    selectedMarket?.clobTokenIds,
+  ]);
 
   const title = `${weather.city} · ${weather.target_date} · ${weather.metric === 'low' ? 'low' : 'high'}`;
   const evOm = weather.probsBySource?.['open-meteo']?.expected_value_c ?? weather.probs?.expected_value_c;

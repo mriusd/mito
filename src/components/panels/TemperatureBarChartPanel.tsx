@@ -2340,36 +2340,32 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           </svg>
         </button>
 
-        {(resolutionUrl || cityMeta.icao) ? (
-          <div className="no-drag inline-flex shrink-0 overflow-hidden rounded border border-gray-600 divide-x divide-gray-600 bg-gray-900/90">
-            {resolutionUrl ? (
-              <a
-                href={resolutionUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex shrink-0 items-center px-1.5 py-0.5 text-[9px] font-bold text-gray-400 hover:bg-gray-800/90 hover:text-sky-300"
-                title={resolutionTitle}
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                WU
-              </a>
-            ) : null}
-            {cityMeta.icao ? (
-              <button
-                type="button"
-                className="inline-flex shrink-0 items-center px-1.5 py-0.5 text-[9px] font-bold text-gray-400 hover:bg-gray-800/90 hover:text-amber-300"
-                title={metarTitle}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMetarDialogOpen(true);
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                METAR
-              </button>
-            ) : null}
-          </div>
+        {resolutionUrl ? (
+          <a
+            href={resolutionUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="no-drag inline-flex shrink-0 items-center text-[10px] font-bold px-1.5 py-0.5 rounded border border-orange-600/60 text-orange-300 hover:bg-orange-900/40"
+            title={resolutionTitle}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            WU
+          </a>
+        ) : null}
+        {cityMeta.icao ? (
+          <button
+            type="button"
+            className="no-drag inline-flex shrink-0 items-center text-[10px] font-bold px-1.5 py-0.5 rounded border border-cyan-600/60 text-cyan-300 hover:bg-cyan-900/40"
+            title={metarTitle}
+            onClick={(e) => {
+              e.stopPropagation();
+              setMetarDialogOpen(true);
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            METAR
+          </button>
         ) : null}
 
         <TempUnitToggle unit={tempUnit} onChange={setTempUnitOverride} />

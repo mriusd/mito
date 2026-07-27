@@ -19,6 +19,7 @@ import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { triggerWalletRefresh } from '../lib/clobClient';
 import { preloadMarketViewDialog } from '../lib/preloadMarketViewDialog';
 import { executeMergePositions } from '../lib/mergePositions';
+import { executeSplitPositions } from '../lib/splitPositions';
 import { showToast } from '../utils/toast';
 import { signingDialog, isDialogHidden } from './SigningDialog';
 import {
@@ -124,7 +125,7 @@ import {
   refreshSidebarOnchainMarketTrades,
   refreshSidebarOnchainWallet,
 } from '../lib/sidebarOnchainTradesStore';
-import { SidebarMyPositionsPanel, type SidebarMergeEligible } from './SidebarMyPositionsPanel';
+import { SidebarMyPositionsPanel, type SidebarMergeEligible, type SidebarSplitEligible } from './SidebarMyPositionsPanel';
 import { SidebarToxicFlowHost } from './SidebarToxicFlowHost';
 import { SidebarToxicStrips } from './SidebarToxicStrips';
 import { SidebarToxicPanel, preloadSidebarToxicFlowDialog } from './SidebarToxicPanel';
@@ -202,8 +203,16 @@ const MergePositionsDialogLazy = lazyWithChunkReload(() =>
   import('./MergePositionsDialog').then((m) => ({ default: m.MergePositionsDialog })),
 );
 
+const SplitPositionsDialogLazy = lazyWithChunkReload(() =>
+  import('./SplitPositionsDialog').then((m) => ({ default: m.SplitPositionsDialog })),
+);
+
 function preloadMergePositionsDialog() {
   void importWithChunkReload(() => import('./MergePositionsDialog'));
+}
+
+function preloadSplitPositionsDialog() {
+  void importWithChunkReload(() => import('./SplitPositionsDialog'));
 }
 const SIDEBAR_ORDER_KIND_KEY = 'polymarket-sidebar-order-kind';
 const SIDEBAR_TOXIC_EXPANDED_KEY = 'polybot-sidebar-toxic-expanded';
@@ -805,6 +814,7 @@ export const Sidebar = memo(function Sidebar() {
   const setMarketViewDialogOpen = useAppStore((s) => s.setMarketViewDialogOpen);
   const positions = useAppStore((s) => s.positions);
   const makerAddressForMerge = useAppStore((s) => s.makerAddress);
+  const cashBalance = useAppStore((s) => s.cashBalance);
   const orders = useAppStore((s) => s.orders);
   const trades = useAppStore((s) => s.trades);
   const marketLookupEpoch = useAppStore((s) => s.marketLookupEpoch);
@@ -1232,6 +1242,7 @@ export const Sidebar = memo(function Sidebar() {
   });
   const [marketStakedLegs, setMarketStakedLegs] = useState<MarketStakedLegsResponse | null>(null);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [splitDialogOpen, setSplitDialogOpen] = useState(false);
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_TOXIC_EXPANDED_KEY, toxicSidebarExpanded ? 'true' : 'false');
@@ -1245,6 +1256,7 @@ export const Sidebar = memo(function Sidebar() {
   }, []);
   useEffect(() => {
     setMergeDialogOpen(false);
+    setSplitDialogOpen(false);
   }, [selectedMarket?.id]);
   useEffect(() => {
     const mid = ((selectedMarket?.conditionId ?? selectedMarket?.id) || '').trim();
@@ -1389,9 +1401,14 @@ export const Sidebar = memo(function Sidebar() {
   );
 
   const [mergeDialogParams, setMergeDialogParams] = useState<SidebarMergeEligible | null>(null);
+  const [splitDialogParams, setSplitDialogParams] = useState<SidebarSplitEligible | null>(null);
   const handleOpenMergeDialog = useCallback((eligible: SidebarMergeEligible) => {
     setMergeDialogParams(eligible);
     setMergeDialogOpen(true);
+  }, []);
+  const handleOpenSplitDialog = useCallback((eligible: SidebarSplitEligible) => {
+    setSplitDialogParams(eligible);
+    setSplitDialogOpen(true);
   }, []);
 
   const requestCrossingConfirm = useCallback((bestPriceCents: number) => {
@@ -2737,6 +2754,38 @@ export const Sidebar = memo(function Sidebar() {
     [mergeDialogParams?.conditionId, mergeDialogParams?.yesTokenId, mergeFunderWallet, liveTradesSource, refreshMyMarketTrades],
   );
 
+  const handleSplitSubmit = useCallback(
+    async (amountUsd: number) => {
+      if (!splitDialogParams?.conditionId || !mergeFunderWallet) {
+        return { success: false, error: 'Missing condition id or proxy wallet' };
+      }
+      const res = await executeSplitPositions({
+        conditionId: splitDialogParams.conditionId,
+        amountUsd,
+        funderAddress: mergeFunderWallet,
+        tokenId: splitDialogParams.yesTokenId,
+      });
+      if (res.success) {
+        showToast('Split confirmed', 'success');
+        triggerWalletRefresh();
+        if (liveTradesSource === 'onchain') {
+          refreshSidebarOnchainWallet();
+          refreshMyMarketTrades();
+          for (const delayMs of [2000, 5000, 12000]) {
+            window.setTimeout(() => {
+              refreshSidebarOnchainWallet();
+              refreshMyMarketTrades();
+            }, delayMs);
+          }
+        }
+      } else {
+        showToast(res.error, 'error');
+      }
+      return res;
+    },
+    [splitDialogParams?.conditionId, splitDialogParams?.yesTokenId, mergeFunderWallet, liveTradesSource, refreshMyMarketTrades],
+  );
+
   return (
     <>
     {mergeDialogOpen && !!mergeDialogParams?.conditionId && (
@@ -2750,6 +2799,19 @@ export const Sidebar = memo(function Sidebar() {
       outcomePairLabel={isUpDownMarket ? 'UP / DOWN' : 'YES / NO'}
       onSubmit={handleMergeSubmit}
     />
+      </Suspense>
+    )}
+    {splitDialogOpen && !!splitDialogParams?.conditionId && (
+      <Suspense fallback={null}>
+        <SplitPositionsDialogLazy
+          open
+          onClose={() => setSplitDialogOpen(false)}
+          maxUsd={splitDialogParams.maxSplitUsd}
+          conditionId={splitDialogParams.conditionId}
+          title={fullMarketName || marketName}
+          outcomePairLabel={isUpDownMarket ? 'UP / DOWN' : 'YES / NO'}
+          onSubmit={handleSplitSubmit}
+        />
       </Suspense>
     )}
     {notifyDialogOpen && typeof document !== 'undefined' &&
@@ -4282,9 +4344,12 @@ export const Sidebar = memo(function Sidebar() {
               onClosePosition={handleClosePosition}
               onLimitSellAtPrice={handlePositionLimitSell}
               onOpenMergeDialog={handleOpenMergeDialog}
+              onOpenSplitDialog={handleOpenSplitDialog}
+              cashBalance={cashBalance}
               walletForLivePositions={walletForLivePositions}
               onRefreshMyMarketTrades={refreshMyMarketTrades}
               preloadMergePositionsDialog={preloadMergePositionsDialog}
+              preloadSplitPositionsDialog={preloadSplitPositionsDialog}
             />
             <div className="my-3 border-t border-gray-700/70" />
             <div className="flex items-center justify-between gap-2 mb-2 mt-3">

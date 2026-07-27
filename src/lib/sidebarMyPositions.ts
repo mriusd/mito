@@ -121,6 +121,14 @@ export type SidebarMergeEligible = {
   yesTokenId: string;
 };
 
+export type SidebarSplitEligible = {
+  showButton: boolean;
+  canOpenDialog: boolean;
+  maxSplitUsd: number;
+  conditionId: string;
+  yesTokenId: string;
+};
+
 export function computeSidebarMergeEligible(
   selectedMarket: Market | null,
   myPositions: { asset: string; size: number; avgPrice: number }[],
@@ -145,4 +153,22 @@ export function computeSidebarMergeEligible(
   const maxMerge = Math.min(yesSz, noSz);
   const canOpenDialog = Boolean(conditionId && mergeFunderWallet.trim());
   return { showButton: true, canOpenDialog, maxMerge, conditionId, yesTokenId: yesT };
+}
+
+export function computeSidebarSplitEligible(
+  selectedMarket: Market | null,
+  mergeFunderWallet: string,
+  cashBalance: number,
+): SidebarSplitEligible {
+  if (!selectedMarket?.clobTokenIds || selectedMarket.clobTokenIds.length < 2) {
+    return { showButton: false, canOpenDialog: false, maxSplitUsd: 0, conditionId: '', yesTokenId: '' };
+  }
+  const yesT = selectedMarket.clobTokenIds[0] || '';
+  const conditionId = (selectedMarket.conditionId || '').trim();
+  if (!conditionId) {
+    return { showButton: false, canOpenDialog: false, maxSplitUsd: 0, conditionId: '', yesTokenId: '' };
+  }
+  const maxSplitUsd = Math.max(0, cashBalance);
+  const canOpenDialog = Boolean(mergeFunderWallet.trim() && maxSplitUsd > 0);
+  return { showButton: true, canOpenDialog, maxSplitUsd, conditionId, yesTokenId: yesT };
 }

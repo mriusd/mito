@@ -4,9 +4,11 @@ import { getTokenOutcome } from '../utils/format';
 import { useSidebarOnchainWalletPositions } from '../lib/sidebarOnchainTradesStore';
 import {
   computeSidebarMergeEligible,
+  computeSidebarSplitEligible,
   computeSidebarMyPositions,
   isSidebarDustPosition,
   type SidebarMergeEligible,
+  type SidebarSplitEligible,
 } from '../lib/sidebarMyPositions';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 import { SidebarPositionListItem } from './SidebarPositionListItem';
@@ -15,7 +17,7 @@ import { refreshSidebarOnchainMarketTrades, refreshSidebarOnchainWallet } from '
 
 import { useSidebarSpotStripBs, sidebarBsMathCentsForOutcome } from '../lib/sidebarSpotStripStore';
 
-export type { SidebarMergeEligible };
+export type { SidebarMergeEligible, SidebarSplitEligible };
 
 export const SidebarMyPositionsPanel = memo(function SidebarMyPositionsPanel({
   selectedMarket,
@@ -31,9 +33,12 @@ export const SidebarMyPositionsPanel = memo(function SidebarMyPositionsPanel({
   onClosePosition,
   onLimitSellAtPrice,
   onOpenMergeDialog,
+  onOpenSplitDialog,
+  cashBalance,
   walletForLivePositions,
   onRefreshMyMarketTrades,
   preloadMergePositionsDialog,
+  preloadSplitPositionsDialog,
 }: {
   selectedMarket: Market;
   marketLookup: Record<string, Market>;
@@ -48,9 +53,12 @@ export const SidebarMyPositionsPanel = memo(function SidebarMyPositionsPanel({
   onClosePosition: (tokenId: string, size: number) => void;
   onLimitSellAtPrice: (tokenId: string, size: number, priceCents: number) => void;
   onOpenMergeDialog: (eligible: SidebarMergeEligible) => void;
+  onOpenSplitDialog: (eligible: SidebarSplitEligible) => void;
+  cashBalance: number;
   walletForLivePositions: string | null;
   onRefreshMyMarketTrades: () => void;
   preloadMergePositionsDialog: () => void;
+  preloadSplitPositionsDialog: () => void;
 }) {
   const spotBs = useSidebarSpotStripBs();
   const onchainWsPositions = useSidebarOnchainWalletPositions();
@@ -78,6 +86,11 @@ export const SidebarMyPositionsPanel = memo(function SidebarMyPositionsPanel({
     [selectedMarket, myPositions, mergeFunderWallet],
   );
 
+  const splitEligible = useMemo(
+    () => computeSidebarSplitEligible(selectedMarket, mergeFunderWallet, cashBalance),
+    [selectedMarket, mergeFunderWallet, cashBalance],
+  );
+
   return (
     <>
       <div className="flex items-center justify-between mb-2 gap-2">
@@ -101,6 +114,27 @@ export const SidebarMyPositionsPanel = memo(function SidebarMyPositionsPanel({
               className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-cyan-600/60 text-cyan-300 hover:bg-cyan-900/40 disabled:opacity-35 disabled:cursor-not-allowed shrink-0"
             >
               Merge
+            </button>
+          )}
+          {splitEligible.showButton && !isMarketExpired && (
+            <button
+              type="button"
+              disabled={!splitEligible.canOpenDialog}
+              onClick={() => splitEligible.canOpenDialog && onOpenSplitDialog(splitEligible)}
+              onMouseEnter={preloadSplitPositionsDialog}
+              onFocus={preloadSplitPositionsDialog}
+              title={
+                !splitEligible.canOpenDialog
+                  ? !splitEligible.conditionId
+                    ? 'Market conditionId missing — refresh markets or re-open sidebar'
+                    : splitEligible.maxSplitUsd <= 0
+                      ? 'No USDC cash in Polymarket wallet'
+                      : 'Resolve Polymarket proxy wallet (connect wallet / API keys)'
+                  : `Split USDC into ${isUpDownMarket ? 'UP/DOWN' : 'YES/NO'} shares`
+              }
+              className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-cyan-600/60 text-cyan-300 hover:bg-cyan-900/40 disabled:opacity-35 disabled:cursor-not-allowed shrink-0"
+            >
+              Split
             </button>
           )}
         </div>

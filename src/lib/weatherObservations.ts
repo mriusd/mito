@@ -2,6 +2,7 @@ import { API_BASE } from './env';
 import { fetchBackend } from './fetchBackend';
 import type { WeatherCitySlug } from '../types';
 import type { WeatherTempSource } from './weatherCities';
+import { weatherCityTimezone } from './weatherCities';
 
 export type WeatherObservationPoint = {
   timeMs: number;
@@ -101,7 +102,7 @@ export type WeatherMetarDetail = {
   dewp?: number;
   wdirDeg?: number;
   wspdKt?: number;
-  visibSm?: number;
+  visibSm?: string;
   altimMb?: number;
   skyCover?: string;
   fltCat?: string;
@@ -109,17 +110,52 @@ export type WeatherMetarDetail = {
   rawOb: string;
 };
 
+async function fetchWeatherMetarDetailViaObservations(city: WeatherCitySlug): Promise<WeatherMetarDetail> {
+  const date = weatherDateInputValueInTimezone(weatherCityTimezone(city));
+  const obs = await fetchWeatherObservations(city, date);
+  if (!obs.points?.length) {
+    throw new Error('No METAR observations for today');
+  }
+  const latest = obs.points.reduce((a, b) => (b.timeMs > a.timeMs ? b : a));
+  return {
+    city: obs.city,
+    icao: obs.locationId,
+    obsTimeMs: latest.timeMs,
+    temp: latest.temp,
+    obsTempUnit: obs.obsTempUnit ?? 'C',
+    dewp: latest.dewpoint,
+    wdirDeg: latest.windDirDeg,
+    wspdKt: latest.windSpeedKt,
+    rawOb: '',
+  };
+}
+
+function metarEndpointRecoverable(err: unknown): boolean {
+  if (err instanceof TypeError) return true;
+  if (!(err instanceof Error)) return false;
+  return /Failed to fetch|NetworkError|network|aborted|502|404|metar unavailable/i.test(err.message);
+}
+
 export async function fetchWeatherMetarDetail(city: WeatherCitySlug): Promise<WeatherMetarDetail> {
   const base = import.meta.env.DEV ? '' : API_BASE;
-  const resp = await fetchBackend(`${base}/api/weather-metar/${encodeURIComponent(city)}`);
-  if (!resp.ok) {
-    const text = await resp.text();
-    if (resp.status === 404) {
-      throw new Error('METAR API not on backend — deploy polycandles');
+  try {
+    const resp = await fetchBackend(
+      `${base}/api/weather-metar/${encodeURIComponent(city)}`,
+      undefined,
+      { timeoutMs: 12_000 },
+    );
+    if (resp.ok) return resp.json();
+    if (resp.status === 404 || resp.status === 502) {
+      return fetchWeatherMetarDetailViaObservations(city);
     }
+    const text = await resp.text();
     throw new Error(text || `weather metar ${resp.status}`);
+  } catch (err) {
+    if (metarEndpointRecoverable(err)) {
+      return fetchWeatherMetarDetailViaObservations(city);
+    }
+    throw err;
   }
-  return resp.json();
 }
 
 function parseDateYmd(date: string): string {

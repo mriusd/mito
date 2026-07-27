@@ -153,7 +153,7 @@ export function WeatherMetarDialog({
               <MetarField label="Wind" value={formatWind(detail.wdirDeg, detail.wspdKt)} />
               <MetarField
                 label="Visibility"
-                value={detail.visibSm != null ? `${detail.visibSm} sm` : '—'}
+                value={detail.visibSm ? `${detail.visibSm} sm` : '—'}
               />
               <MetarField
                 label="Altimeter"

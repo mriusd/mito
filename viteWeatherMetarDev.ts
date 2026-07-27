@@ -128,7 +128,7 @@ function toDetail(city: string, icao: string, r: MetarRow) {
     dewp,
     wdirDeg: parseWdir(r.wdir),
     wspdKt: r.wspd,
-    visibSm: r.visib,
+    visibSm: r.visib != null ? String(r.visib) : undefined,
     altimMb: r.altim,
     skyCover: r.cover?.trim() || undefined,
     fltCat: r.fltCat?.trim() || undefined,

@@ -26,7 +26,7 @@ export function SplitPositionsDialog({
 
   useEffect(() => {
     if (!open) return;
-    setQtyStr(maxUsd > 0 ? String(Math.floor(maxUsd * 100) / 100) : '');
+    setQtyStr('5');
     setError('');
     setBusy(false);
   }, [open, maxUsd]);

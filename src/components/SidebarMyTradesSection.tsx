@@ -6,14 +6,19 @@ import {
   getTokenOutcome,
   getTradeClobTokenId,
   normalizeClobTokenId,
+  normalizeConditionIdKey,
   outcomeTokenBelongsToSelectedMarket,
   tradeMatchesSelectedMarket,
 } from '../utils/format';
 import { mySidebarTradeRowKey, useMyTradeRowRingSound } from '../lib/myTradeRowRing';
 import { isMarketExpired as marketIsExpired } from '../lib/marketExpiry';
-import { useSidebarOnchainWalletMarketTrades } from '../lib/sidebarOnchainTradesStore';
+import {
+  useSidebarOnchainWalletMarketTrades,
+  useSidebarOnchainWalletTrades,
+} from '../lib/sidebarOnchainTradesStore';
 import { useWalletTradeElapsedMs } from '../lib/walletTradeElapsedStore';
-import { canonicalConditionKey } from '../hooks/useOnchainTradesWS';
+import type { WSTrade } from '../hooks/useOnchainTradesWS';
+import { walletTradeKey } from '../lib/tradeKeys';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 
 const GROUP_LS_KEY = 'sidebar-my-trades-group';
@@ -49,7 +54,67 @@ type MyTradeRow = {
   created_at?: string;
   matchTime?: string;
   size_filled?: string;
+  outcome?: string;
 };
+
+function tokenInSelectedMarket(tokenId: string, selected: Market): boolean {
+  const nt = normalizeClobTokenId(tokenId);
+  if (!nt) return false;
+  return (selected.clobTokenIds || []).some((id) => normalizeClobTokenId(id) === nt);
+}
+
+function myTradeFillMatchesMarket(
+  f: WSTrade,
+  selectedMarket: Market,
+  marketLookup: Record<string, Market>,
+): boolean {
+  const side = String(f.side || '').toUpperCase();
+  if (f.pending && side !== 'SPLIT' && side !== 'MERGE' && side !== 'REDEEM') return false;
+
+  const tid = String(f.tokenId || '').trim();
+  const selCond = normalizeConditionIdKey(selectedMarket.conditionId || selectedMarket.id);
+  const fillCond = normalizeConditionIdKey(f.marketId);
+
+  if (side === 'SPLIT' || side === 'MERGE' || side === 'REDEEM') {
+    if (selCond && fillCond && selCond === fillCond && !selCond.startsWith('expired:')) return true;
+    if (tid && tokenInSelectedMarket(tid, selectedMarket)) return true;
+    return false;
+  }
+
+  if (tid && outcomeTokenBelongsToSelectedMarket(tid, selectedMarket, marketLookup)) return true;
+  if (selCond && fillCond && selCond === fillCond && !selCond.startsWith('expired:')) return true;
+  if (tid && tokenInSelectedMarket(tid, selectedMarket)) return true;
+  return false;
+}
+
+function mergeOnchainWalletTradeRows(marketRows: WSTrade[], walletRows: WSTrade[]): WSTrade[] {
+  const byKey = new Map<string, WSTrade>();
+  for (const t of [...marketRows, ...walletRows]) {
+    const k =
+      t.id || walletTradeKey(t.txHash, t.logIndex, t.tokenId, t.side);
+    if (!byKey.has(k)) byKey.set(k, t);
+  }
+  return [...byKey.values()].sort(
+    (a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0),
+  );
+}
+
+function wsTradeToMyTradeRow(f: WSTrade): MyTradeRow {
+  return {
+    asset_id: f.tokenId,
+    token_id: f.tokenId,
+    side: f.side,
+    price: String(f.price),
+    size: String(f.size),
+    fee: String(f.fee || 0),
+    timestamp: f.blockTime > 0 ? f.blockTime * 1000 : Date.now(),
+    txHash: f.txHash,
+    logIndex: f.logIndex,
+    created_at: '',
+    matchTime: '',
+    outcome: f.outcome,
+  };
+}
 
 type DisplayTradeRow = MyTradeRow & {
   rowKey: string;
@@ -76,7 +141,10 @@ function tradeOutcomeGroupKey(
   tid: string,
   selectedMarket: Market,
   marketLookup: Record<string, Market>,
+  outcomeHint?: string,
 ): string {
+  const hint = (outcomeHint || '').trim().toUpperCase();
+  if (hint === 'YES' || hint === 'NO') return hint;
   const fromLookup = getTokenOutcome(tid, marketLookup);
   if (fromLookup) return fromLookup;
   const toks = selectedMarket.clobTokenIds || [];
@@ -98,7 +166,7 @@ function groupMyTrades(
     const tid = normalizeClobTokenId(
       getTradeClobTokenId(trade) || String(trade.asset_id || trade.token_id || '').trim(),
     );
-    const outcome = tradeOutcomeGroupKey(tid, selectedMarket, marketLookup);
+    const outcome = tradeOutcomeGroupKey(tid, selectedMarket, marketLookup, trade.outcome);
     // Dir + display ¢ + YES/NO — ignore float noise / token-id formatting.
     const gKey = `${side}|${priceKey}|${outcome}`;
     const sizeRaw = tradeFilledSizeShares(trade);
@@ -166,6 +234,7 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
 }) {
   const trades = useAppStore((s) => s.trades);
   const wsMarketTrades = useSidebarOnchainWalletMarketTrades();
+  const wsWalletTrades = useSidebarOnchainWalletTrades();
   const nowMs = useWalletTradeElapsedMs();
   const [groupOn, setGroupOn] = useState(() => localStorage.getItem(GROUP_LS_KEY) === '1');
 
@@ -173,40 +242,11 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
     if (liveTradesSource !== 'onchain') {
       return trades.filter((t) => tradeMatchesSelectedMarket(t, selectedMarket, marketLookup)) as MyTradeRow[];
     }
-    const selCond = canonicalConditionKey(
-      String(selectedMarket.conditionId || selectedMarket.id || '').trim(),
-    );
-    const selToks = new Set(
-      (selectedMarket.clobTokenIds || [])
-        .map((t) => normalizeClobTokenId(String(t || '').trim()))
-        .filter(Boolean),
-    );
-    return wsMarketTrades
-      .filter((f) => {
-        if (f.pending) return false;
-        const tid = String(f.tokenId || '').trim();
-        if (outcomeTokenBelongsToSelectedMarket(tid, selectedMarket, marketLookup)) return true;
-        // Expired stubs / WS market snapshots: match by condition id or normalized token.
-        const fillCond = canonicalConditionKey(String(f.marketId || '').trim());
-        if (selCond && fillCond && selCond === fillCond && !selCond.startsWith('expired:')) return true;
-        return !!tid && selToks.has(normalizeClobTokenId(tid));
-      })
-      .slice()
-      .sort((a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0))
-      .map((f) => ({
-        asset_id: f.tokenId,
-        token_id: f.tokenId,
-        side: f.side,
-        price: String(f.price),
-        size: String(f.size),
-        fee: String(f.fee || 0),
-        timestamp: f.blockTime > 0 ? f.blockTime * 1000 : Date.now(),
-        txHash: f.txHash,
-        logIndex: f.logIndex,
-        created_at: '',
-        matchTime: '',
-      }));
-  }, [liveTradesSource, trades, selectedMarket, marketLookup, wsMarketTrades]);
+    const merged = mergeOnchainWalletTradeRows(wsMarketTrades, wsWalletTrades);
+    return merged
+      .filter((f) => myTradeFillMatchesMarket(f, selectedMarket, marketLookup))
+      .map(wsTradeToMyTradeRow);
+  }, [liveTradesSource, trades, selectedMarket, marketLookup, wsMarketTrades, wsWalletTrades]);
 
   const myTradesDisplay = useMemo(
     () => (liveTradesSource === 'onchain' ? myTrades : myTrades.slice(0, 20)),
@@ -313,7 +353,11 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
               {tableRows.map((trade) => {
                 const isFlashing = trade.flashKeys.some((k) => myTradeFlashKeys.has(k));
                 const tid = getTradeClobTokenId(trade) || String(trade.asset_id || trade.token_id || '').trim();
-                const outcome = getTokenOutcome(tid, marketLookup);
+                const outcome =
+                  (trade.outcome || '').trim().toUpperCase() === 'YES' ||
+                  (trade.outcome || '').trim().toUpperCase() === 'NO'
+                    ? (trade.outcome || '').trim().toUpperCase()
+                    : getTokenOutcome(tid, marketLookup);
                 const sideLabel = isUpDownMarket ? (outcome === 'YES' ? 'UP' : 'DOWN') : outcome;
                 const rawPrice = parseFloat(trade.price);
                 const size = tradeFilledSizeShares(trade);

@@ -132,7 +132,7 @@ export const SidebarMyPositionsPanel = memo(function SidebarMyPositionsPanel({
                       : 'Resolve Polymarket proxy wallet (connect wallet / API keys)'
                   : `Split USDC into ${isUpDownMarket ? 'UP/DOWN' : 'YES/NO'} shares`
               }
-              className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-cyan-600/60 text-cyan-300 hover:bg-cyan-900/40 disabled:opacity-35 disabled:cursor-not-allowed shrink-0"
+              className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-purple-600/60 text-purple-300 hover:bg-purple-900/40 disabled:opacity-35 disabled:cursor-not-allowed shrink-0"
             >
               Split
             </button>

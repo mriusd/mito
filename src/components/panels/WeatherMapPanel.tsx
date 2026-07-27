@@ -1,6 +1,6 @@
 import { geoGraticule, geoPath, geoEquirectangular } from 'd3-geo';
 import { Minus, Plus } from 'lucide-react';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { WEATHER_CITIES, type WeatherCitySlug } from '../../lib/weatherCities';
 import { WEATHER_CITY_COORDS } from '../../lib/weatherCityCoords';
 import {
@@ -378,6 +378,34 @@ function flashPulse(phaseRad = 0): number {
   return 0.22 + 0.78 * (0.5 + 0.5 * Math.sin((Date.now() / FLASH_PERIOD_MS) * Math.PI * 2 + phaseRad));
 }
 
+function drawDataNeedsFlash(data: {
+  cityMispriced: Map<string, number>;
+  cityMaxSpread: Map<string, number>;
+}): boolean {
+  for (const v of data.cityMispriced.values()) {
+    if (v > 0) return true;
+  }
+  for (const s of data.cityMaxSpread.values()) {
+    if (s > SPREAD_FLASH_AT) return true;
+  }
+  return false;
+}
+
+function updateHoverTooltip(
+  el: HTMLDivElement | null,
+  tip: { x: number; y: number; label: string } | null,
+) {
+  if (!el) return;
+  if (!tip) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'block';
+  el.style.left = `${tip.x}px`;
+  el.style.top = `${tip.y - 8}px`;
+  el.textContent = tip.label;
+}
+
 function nearestCity(
   cities: MapCity[],
   layout: MapLayout,
@@ -422,6 +450,20 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   const hoverTipRef = useRef<{ x: number; y: number; label: string } | null>(null);
   const drawRef = useRef<() => void>(() => {});
   const drawRafRef = useRef(0);
+  const scheduleDrawRef = useRef<() => void>(() => {});
+  const syncFlashLoopRef = useRef<() => void>(() => {});
+  const canvasSizeRef = useRef({ w: 0, h: 0, dpr: 1 });
+  const tipElRef = useRef<HTMLDivElement>(null);
+  const drawDataRef = useRef({
+    land: null as LandGeoJSON | null,
+    loadError: '',
+    nowMs: Date.now(),
+    cities: [] as MapCity[],
+    cityMaxBid: new Map<string, number>(),
+    cityMaxSpread: new Map<string, number>(),
+    cityMispriced: new Map<string, number>(),
+    cityExposure: new Map<string, WeatherCityExposure>(),
+  });
   const initStoredView = useMemo(() => readStoredMapView(panelId), [panelId]);
   /** panX/panY still fracs until first layout apply. */
   const pendingStoredViewRef = useRef<MapView | null>(
@@ -439,7 +481,6 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   const suppressClickRef = useRef(false);
   const [land, setLand] = useState<LandGeoJSON | null>(null);
   const [loadError, setLoadError] = useState('');
-  const [hoverTip, setHoverTip] = useState<{ x: number; y: number; label: string } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [layoutSnapshot, setLayoutSnapshot] = useState<MapLayout | null>(null);
   const [zoom, setZoom] = useState(initStoredView.zoom);
@@ -488,12 +529,51 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     return out;
   }, [weatherMarkets, tempOddsDateIso, tempOddsMetric]);
 
-  const [quoteTick, setQuoteTick] = useState(0);
+  const weatherMarketsRef = useRef(weatherMarkets);
+  weatherMarketsRef.current = weatherMarkets;
+  const marketLookupRef = useRef(marketLookup);
+  marketLookupRef.current = marketLookup;
+  const quoteTokenIdsRef = useRef(quoteTokenIds);
+  quoteTokenIdsRef.current = quoteTokenIds;
+  const tempOddsDateIsoRef = useRef(tempOddsDateIso);
+  tempOddsDateIsoRef.current = tempOddsDateIso;
+  const tempOddsMetricRef = useRef(tempOddsMetric);
+  tempOddsMetricRef.current = tempOddsMetric;
+  const forecastHighByCityRef = useRef(forecastHighByCity);
+  forecastHighByCityRef.current = forecastHighByCity;
+
+  const rebuildLiveQuoteMaps = useCallback(() => {
+    const liveLookup: Record<string, Market> = { ...marketLookupRef.current };
+    for (const tid of quoteTokenIdsRef.current) {
+      const row = getBidAskMarketRow(tid);
+      if (row) liveLookup[tid] = row;
+    }
+    const markets = weatherMarketsRef.current;
+    const dateIso = tempOddsDateIsoRef.current;
+    const metric = tempOddsMetricRef.current;
+    drawDataRef.current.cityMaxBid = buildWeatherCityMaxBidByDate(markets, dateIso, liveLookup, metric);
+    drawDataRef.current.cityMaxSpread = buildWeatherCityMaxSpreadByDate(markets, dateIso, liveLookup, metric);
+    drawDataRef.current.cityMispriced = buildWeatherCityMispricedByDate(
+      markets,
+      dateIso,
+      liveLookup,
+      forecastHighByCityRef.current,
+    );
+  }, []);
+
   useEffect(() => {
     setChartBidAskExtraTokens('weather-map', quoteTokenIds);
     return () => setChartBidAskExtraTokens('weather-map', []);
   }, [quoteTokenIds]);
-  useEffect(() => subscribeBidAskMarketLookupGridFlush(() => setQuoteTick((n) => n + 1)), []);
+  useEffect(
+    () =>
+      subscribeBidAskMarketLookupGridFlush(() => {
+        rebuildLiveQuoteMaps();
+        syncFlashLoopRef.current();
+        scheduleDrawRef.current();
+      }),
+    [rebuildLiveQuoteMaps],
+  );
 
   const liveQuoteLookup = useMemo(() => {
     const liveLookup: Record<string, Market> = { ...marketLookup };
@@ -502,9 +582,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       if (row) liveLookup[tid] = row;
     }
     return liveLookup;
-    // quoteTick forces recompute when bid/ask flush
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- quoteTick is the live pulse
-  }, [weatherMarkets, tempOddsDateIso, tempOddsMetric, marketLookup, quoteTokenIds, quoteTick]);
+  }, [weatherMarkets, tempOddsDateIso, tempOddsMetric, marketLookup, quoteTokenIds]);
 
   const cityMaxBid = useMemo(
     () => buildWeatherCityMaxBidByDate(weatherMarkets, tempOddsDateIso, liveQuoteLookup, tempOddsMetric),
@@ -600,15 +678,32 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     const dpr = window.devicePixelRatio || 1;
     const width = Math.max(1, container.clientWidth);
     const height = Math.max(1, container.clientHeight);
-    canvas.width = Math.floor(width * dpr);
-    canvas.height = Math.floor(height * dpr);
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
+    const size = canvasSizeRef.current;
+    if (size.w !== width || size.h !== height || size.dpr !== dpr) {
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      size.w = width;
+      size.h = height;
+      size.dpr = dpr;
+    }
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
+
+    const {
+      land,
+      loadError,
+      nowMs,
+      cities,
+      cityMaxBid,
+      cityMaxSpread,
+      cityMispriced,
+      cityExposure,
+    } = drawDataRef.current;
 
     const layout = makeLayout(width, height);
     layoutRef.current = layout;
@@ -642,8 +737,6 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
 
     const hoverSlug = hoverSlugRef.current;
     const selectedSlug = selectedSlugRef.current;
-    // Keep city dots ~constant screen size while zoomed.
-    // Under scale(zoom), multiply sizes by invZ so screen px stay constant.
     const invZ = 1 / Math.max(view.zoom, 1);
     const pulse = flashPulse(0);
     const pulseAlt = flashPulse(Math.PI);
@@ -660,13 +753,11 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       const wideSpread = maxSpread != null && maxSpread > SPREAD_FLASH_AT;
       const stateStroke = cityDotStrokeByState(exposure);
 
-      // Certainty fill.
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fillStyle = cityDotFillByMaxBid(maxBid, hovered, selected);
       ctx.fill();
 
-      // Mispriced: turquoise wash on the fill (does not hide purple halo).
       if (mispriced) {
         ctx.save();
         ctx.globalAlpha = 0.25 + 0.7 * pulse;
@@ -677,7 +768,6 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
         ctx.restore();
       }
 
-      // State ring: dark understroke so green-on-green stays visible.
       if (stateStroke) {
         const sr = r + 2.25 * invZ;
         ctx.beginPath();
@@ -693,7 +783,6 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
         ctx.stroke();
       }
 
-      // Spread: pulsing purple halo outside fill/state (always visible if wide).
       if (wideSpread) {
         const hr = r + (stateStroke ? 5.5 : 3.5) * invZ;
         ctx.save();
@@ -723,7 +812,6 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     }
     ctx.restore();
 
-    // After zoom/pan restore — keep 16:00 line locked to the solar hour header.
     drawSolarHour16Line(ctx, layout, date);
 
     if (loadError && !land) {
@@ -733,42 +821,72 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       ctx.textBaseline = 'middle';
       ctx.fillText('Map load failed', width / 2, height / 2);
     }
-  }, [cities, land, loadError, nowMs, cityMaxBid, cityMaxSpread, cityMispriced, cityExposure]);
+  }, []);
 
   drawRef.current = draw;
 
   const scheduleDraw = useCallback(() => {
-    if (drawRafRef.current) cancelAnimationFrame(drawRafRef.current);
+    if (drawRafRef.current) return;
     drawRafRef.current = requestAnimationFrame(() => {
       drawRafRef.current = 0;
       drawRef.current();
     });
   }, []);
 
-  const needsFlashPulse = useMemo(() => {
-    if (cityMispriced.size > 0) return true;
-    for (const s of cityMaxSpread.values()) {
-      if (s > SPREAD_FLASH_AT) return true;
-    }
-    return false;
-  }, [cityMispriced, cityMaxSpread]);
+  scheduleDrawRef.current = scheduleDraw;
 
-  // Pulse purple (wide spread) / turquoise (mispriced) overlays.
-  useEffect(() => {
-    if (!needsFlashPulse) return;
+  const flashLoopRef = useRef<{ stop: () => void } | null>(null);
+
+  const syncFlashLoop = useCallback(() => {
+    if (!drawDataNeedsFlash(drawDataRef.current)) {
+      flashLoopRef.current?.stop();
+      flashLoopRef.current = null;
+      return;
+    }
+    if (flashLoopRef.current) return;
     let alive = true;
     let raf = 0;
     const tick = () => {
       if (!alive) return;
-      scheduleDraw();
+      scheduleDrawRef.current();
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => {
-      alive = false;
-      cancelAnimationFrame(raf);
+    flashLoopRef.current = {
+      stop: () => {
+        alive = false;
+        cancelAnimationFrame(raf);
+      },
     };
-  }, [needsFlashPulse, scheduleDraw]);
+  }, []);
+
+  syncFlashLoopRef.current = syncFlashLoop;
+
+  useEffect(() => {
+    drawDataRef.current = {
+      land,
+      loadError,
+      nowMs,
+      cities,
+      cityMaxBid,
+      cityMaxSpread,
+      cityMispriced,
+      cityExposure,
+    };
+    syncFlashLoop();
+    scheduleDraw();
+  }, [
+    land,
+    loadError,
+    nowMs,
+    cities,
+    cityMaxBid,
+    cityMaxSpread,
+    cityMispriced,
+    cityExposure,
+    syncFlashLoop,
+    scheduleDraw,
+  ]);
 
   const syncLayoutSnapshot = useCallback((width: number, height: number) => {
     const layout = makeLayout(width, height);
@@ -778,19 +896,14 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     );
   }, []);
 
-  useLayoutEffect(() => {
-    scheduleDraw();
-  }, [draw, scheduleDraw]);
-
   useEffect(() => {
     scheduleDraw();
-  }, [land, loadError, nowMs, scheduleDraw]);
-
-  useEffect(() => {
     return () => {
+      flashLoopRef.current?.stop();
+      flashLoopRef.current = null;
       if (drawRafRef.current) cancelAnimationFrame(drawRafRef.current);
     };
-  }, []);
+  }, [scheduleDraw]);
 
   const pickCityAt = useCallback(
     (mx: number, my: number) => {
@@ -856,13 +969,13 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
           return;
         }
         hoverTipRef.current = nextTip;
-        setHoverTip(nextTip);
+        updateHoverTooltip(tipElRef.current, nextTip);
         return;
       }
 
       hoverSlugRef.current = slug;
       hoverTipRef.current = nextTip;
-      setHoverTip(nextTip);
+      updateHoverTooltip(tipElRef.current, nextTip);
       if (slugChanged) scheduleDraw();
     },
     [scheduleDraw, cityMaxBid, cityMaxSpread, cityMispriced, forecastHighByCity, cityExposure],
@@ -944,7 +1057,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
         if (hoverSlugRef.current || hoverTipRef.current) {
           hoverSlugRef.current = null;
           hoverTipRef.current = null;
-          setHoverTip(null);
+          updateHoverTooltip(tipElRef.current, null);
         }
         return;
       }
@@ -977,7 +1090,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     if (!hoverSlugRef.current && !hoverTipRef.current) return;
     hoverSlugRef.current = null;
     hoverTipRef.current = null;
-    setHoverTip(null);
+    updateHoverTooltip(tipElRef.current, null);
     scheduleDraw();
   }, [scheduleDraw]);
 
@@ -1062,14 +1175,10 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
           onPointerLeave={onPointerLeave}
           onClick={onClick}
         />
-        {hoverTip ? (
-          <div
-            className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded border border-gray-600 bg-gray-900/95 px-1.5 py-0.5 text-[10px] text-gray-100 shadow-md"
-            style={{ left: hoverTip.x, top: hoverTip.y - 8 }}
-          >
-            {hoverTip.label}
-          </div>
-        ) : null}
+        <div
+          ref={tipElRef}
+          className="pointer-events-none absolute z-10 hidden -translate-x-1/2 -translate-y-full whitespace-nowrap rounded border border-gray-600 bg-gray-900/95 px-1.5 py-0.5 text-[10px] text-gray-100 shadow-md"
+        />
       </div>
     </div>
   );

@@ -2,11 +2,13 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 import { visualizer } from 'rollup-plugin-visualizer'
+import { weatherMetarDevPlugin } from './viteWeatherMetarDev'
 
 const analyze = process.env.ANALYZE === '1'
 
 export default defineConfig({
   plugins: [
+    weatherMetarDevPlugin(),
     react(),
     nodePolyfills({ include: ['crypto', 'buffer', 'stream', 'util'] }),
     ...(analyze

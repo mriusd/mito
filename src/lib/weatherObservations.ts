@@ -110,9 +110,13 @@ export type WeatherMetarDetail = {
 };
 
 export async function fetchWeatherMetarDetail(city: WeatherCitySlug): Promise<WeatherMetarDetail> {
-  const resp = await fetchBackend(`${API_BASE}/api/weather-metar/${encodeURIComponent(city)}`);
+  const base = import.meta.env.DEV ? '' : API_BASE;
+  const resp = await fetchBackend(`${base}/api/weather-metar/${encodeURIComponent(city)}`);
   if (!resp.ok) {
     const text = await resp.text();
+    if (resp.status === 404) {
+      throw new Error('METAR API not on backend — deploy polycandles');
+    }
     throw new Error(text || `weather metar ${resp.status}`);
   }
   return resp.json();

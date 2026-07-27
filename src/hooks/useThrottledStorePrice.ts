@@ -38,3 +38,47 @@ export function useThrottledStorePrice(symbol: AssetSymbol, ms = 1000): number {
 
   return price;
 }
+
+type PriceDataMap = ReturnType<typeof useAppStore.getState>['priceData'];
+
+function priceDataMapsEqual(a: PriceDataMap, b: PriceDataMap): boolean {
+  if (a === b) return true;
+  for (const k of Object.keys(b) as AssetSymbol[]) {
+    if ((a[k]?.price ?? 0) !== (b[k]?.price ?? 0)) return false;
+  }
+  return true;
+}
+
+/** Full Binance spot map, re-render at most every `ms` (Markov / multi-asset grids). */
+export function useThrottledPriceDataMap(ms = 1000): PriceDataMap {
+  const [prices, setPrices] = useState(() => useAppStore.getState().priceData);
+
+  useEffect(() => {
+    let latest = useAppStore.getState().priceData;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const flush = () => {
+      timer = null;
+      setPrices((prev) => (priceDataMapsEqual(prev, latest) ? prev : latest));
+    };
+
+    const schedule = () => {
+      if (timer != null) return;
+      timer = setTimeout(flush, ms);
+    };
+
+    schedule();
+    const unsub = useAppStore.subscribe((state) => {
+      if (state.priceData === latest) return;
+      latest = state.priceData;
+      schedule();
+    });
+
+    return () => {
+      unsub();
+      if (timer != null) clearTimeout(timer);
+    };
+  }, [ms]);
+
+  return prices;
+}

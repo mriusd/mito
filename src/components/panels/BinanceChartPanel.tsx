@@ -7,7 +7,8 @@ import { ASSET_COLORS } from '../../types';
 import { API_BASE } from '../../lib/env';
 import { fetchBackend } from '../../lib/fetchBackend';
 import { subscribeChartKline } from '../../lib/chartWsShared';
-import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
+import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
+import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
 import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
 import {
   gexImpliedPrice,
@@ -908,7 +909,6 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     };
   }, [rbsTfEnabled, visibleRbsTimeframes]);
 
-  const priceData = useAppStore((s) => s.priceData);
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const chartClobTokenIds = useMemo(() => {
@@ -928,8 +928,8 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const sym = assetToSymbol(asset);
-  const livePrice = priceData[sym]?.price ?? 0;
-  const chainlinkPrices = useChainlinkPricesMap();
+  const livePrice = useThrottledStorePrice(sym, 500);
+  const chainlinkPrices = useThrottledChainlinkPricesMap(500);
   const spotForChart = useMemo(() => {
     if (priceSource === 'chainlink') {
       const cl = chainlinkPrices[asset];

@@ -3,7 +3,8 @@ import { useAppStore } from '../../stores/appStore';
 import type { AssetName, AssetSymbol, Market } from '../../types';
 import { ASSET_COLORS } from '../../types';
 import { assetToSymbol } from '../../utils/format';
-import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
+import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
+import { useThrottledPriceDataMap } from '../../hooks/useThrottledStorePrice';
 import { getMarketProbability } from '../../utils/bsMath';
 import { useMarkovUpDown, markovNextUpProb, type MarkovTFModel } from '../../hooks/useMarkovUpDown';
 import { useLogregUpDown, type LrTFModel } from '../../hooks/useLogregUpDown';
@@ -379,11 +380,11 @@ function MarkovPanelInner({ panelId }: { panelId: string }) {
   const models = useMarkovUpDown();
   const lrModels = useLogregUpDown();
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
-  const priceData = useAppStore((s) => s.priceData);
+  const priceData = useThrottledPriceDataMap(1000);
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
-  const chainlinkPrices = useChainlinkPricesMap();
+  const chainlinkPrices = useThrottledChainlinkPricesMap(1000);
 
   useEffect(() => {
     localStorage.setItem(`polybot-markov-asset-${panelId}`, asset);

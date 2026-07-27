@@ -523,6 +523,7 @@ function mapRawWSTrade(t: {
 }): WSTrade | null {
   const tokenId = String(t.tokenId || '');
   const side = normalizeLedgerAction(t.side);
+  if (!side) return null;
   const logIndex = Number.isFinite(Number(t.logIndex)) ? Number(t.logIndex) : undefined;
   const txHash = t.txHash;
   if (!tokenId && side !== 'SPLIT' && side !== 'MERGE' && side !== 'REDEEM') return null;
@@ -548,14 +549,15 @@ function mapRawWSTrade(t: {
   return row;
 }
 
-function normalizeLedgerAction(s: string | undefined): WSTrade['side'] {
+function normalizeLedgerAction(s: string | undefined): WSTrade['side'] | null {
   const u = String(s || '').toUpperCase().trim();
   if (u === 'SELL') return 'SELL';
   if (u === 'SPLIT') return 'SPLIT';
   if (u === 'MERGE') return 'MERGE';
   if (u === 'REDEEM') return 'REDEEM';
   if (u === 'BUY') return 'BUY';
-  return 'BUY';
+  // TRANSFER / CONV / FEE WITHDRAW — not trade-tape rows.
+  return null;
 }
 
 function mapFetchedTradesToDedupedRows(
@@ -1282,11 +1284,14 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
           } else if (msg.type === 'walletMarketTrade' && msg.data) {
             const w = String(msg.wallet || '').trim().toLowerCase();
             const m = canonicalConditionKey(String(msg.marketId || ''));
-            if (!w || !m) return;
+            if (!w) return;
             const row = mapRawWSTrade(msg.data as Parameters<typeof mapRawWSTrade>[0]);
             if (row) {
-              const listeners = walletMarketListenersRef.current.get(walletMarketTradesKey(w, m));
-              listeners?.forEach((l) => l.onTrade?.(row));
+              if (m && !row.marketId) row.marketId = m;
+              if (m) {
+                const listeners = walletMarketListenersRef.current.get(walletMarketTradesKey(w, m));
+                listeners?.forEach((l) => l.onTrade?.(row));
+              }
               const tx = (row.txHash || '').toLowerCase();
               if (tx) dropWalletMarketPendingByTx(new Set([tx]));
               const pw = (walletRef.current || '').trim().toLowerCase();
@@ -1294,7 +1299,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
                 setWalletTrades((prev) => prependWalletMarketTradeRow(prev, row, WALLET_TRADES_CAP).rows);
               }
               const pm = marketRef.current ? canonicalConditionKey(marketRef.current) : '';
-              if (pw && pm && w === pw && m === pm) {
+              if (m && pw && pm && w === pw && m === pm) {
                 setWalletMarketTrades((prev) => prependWalletMarketTradeRow(prev, row).rows);
               }
             }

@@ -20,10 +20,10 @@ export function useBinanceWS() {
       setBinanceTickerBatch(snapshot);
     }
 
-    /** Throttle to 4 Hz — every animation frame was triggering 50+ subscribers to re-render and accumulate fiber.alternate detached DOM. */
+    /** Throttle to 2 Hz — 4 Hz still drove Markov/BinanceChart ~27ms commits and starved canvas rAF. */
     function scheduleFlush() {
       if (flushRafRef.current != null) return;
-      flushRafRef.current = window.setTimeout(() => flushTickerBatch(), 250) as unknown as number;
+      flushRafRef.current = window.setTimeout(() => flushTickerBatch(), 500) as unknown as number;
     }
 
     function connect() {

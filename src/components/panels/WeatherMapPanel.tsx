@@ -374,8 +374,149 @@ function cityDotFillByMaxBid(
   return `hsl(${hue}, 75%, ${light}%)`;
 }
 
-function flashPulse(phaseRad = 0): number {
-  return 0.22 + 0.78 * (0.5 + 0.5 * Math.sin((Date.now() / FLASH_PERIOD_MS) * Math.PI * 2 + phaseRad));
+function flashPulseAt(tsMs: number, phaseRad = 0): number {
+  return 0.22 + 0.78 * (0.5 + 0.5 * Math.sin((tsMs / FLASH_PERIOD_MS) * Math.PI * 2 + phaseRad));
+}
+
+function baseMapCacheKey(
+  width: number,
+  height: number,
+  dpr: number,
+  view: MapView,
+  nowMs: number,
+  hasLand: boolean,
+): string {
+  const minute = Math.floor(nowMs / 60_000);
+  return `${width}x${height}@${dpr}|z${view.zoom.toFixed(3)}|${view.panX.toFixed(1)},${view.panY.toFixed(1)}|${minute}|${hasLand ? 1 : 0}`;
+}
+
+function drawMapBase(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  layout: MapLayout,
+  view: MapView,
+  land: LandGeoJSON | null,
+  loadError: string,
+  nowMs: number,
+) {
+  const date = new Date(nowMs);
+  ctx.clearRect(0, 0, width, height);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(layout.pad, layout.mapTop, layout.w, layout.h);
+  ctx.clip();
+  applyMapViewTransform(ctx, layout, view);
+  ctx.fillStyle = '#0c4a6e';
+  ctx.fillRect(layout.pad, layout.mapTop, layout.w, layout.h);
+  if (land) drawLand(ctx, land, layout);
+  drawNightOverlay(ctx, layout, date);
+  drawDayGlow(ctx, layout, date);
+  drawGraticule(ctx, layout);
+  drawTimezoneMeridians(ctx, layout);
+  ctx.restore();
+  drawSolarHour16Line(ctx, layout, date);
+  if (loadError && !land) {
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Map load failed', width / 2, height / 2);
+  }
+}
+
+function drawMapCities(
+  ctx: CanvasRenderingContext2D,
+  layout: MapLayout,
+  view: MapView,
+  cities: MapCity[],
+  cityMaxBid: Map<string, number>,
+  cityMaxSpread: Map<string, number>,
+  cityMispriced: Map<string, number>,
+  cityExposure: Map<string, WeatherCityExposure>,
+  hoverSlug: WeatherCitySlug | null,
+  selectedSlug: WeatherCitySlug | null,
+  pulseTs: number,
+) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(layout.pad, layout.mapTop, layout.w, layout.h);
+  ctx.clip();
+  applyMapViewTransform(ctx, layout, view);
+  const invZ = 1 / Math.max(view.zoom, 1);
+  const pulse = flashPulseAt(pulseTs, 0);
+  const pulseAlt = flashPulseAt(pulseTs, Math.PI);
+  for (const city of cities) {
+    const { x, y } = projectLonLat(city.lon, city.lat, layout);
+    const hovered = hoverSlug === city.slug;
+    const selected = selectedSlug === city.slug;
+    const maxBid = cityMaxBid.get(city.slug);
+    const maxSpread = cityMaxSpread.get(city.slug);
+    const misMid = cityMispriced.get(city.slug);
+    const exposure = cityExposure.get(city.slug);
+    const r = (selected ? DOT_RADIUS + 2 : hovered ? DOT_RADIUS + 1.5 : DOT_RADIUS) * invZ;
+    const mispriced = misMid != null && misMid > 0;
+    const wideSpread = maxSpread != null && maxSpread > SPREAD_FLASH_AT;
+    const stateStroke = cityDotStrokeByState(exposure);
+
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = cityDotFillByMaxBid(maxBid, hovered, selected);
+    ctx.fill();
+
+    if (mispriced) {
+      ctx.save();
+      ctx.globalAlpha = 0.25 + 0.7 * pulse;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = FLASH_TURQUOISE;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    if (stateStroke) {
+      const sr = r + 2.25 * invZ;
+      ctx.beginPath();
+      ctx.arc(x, y, sr, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+      ctx.lineWidth = 4.5 * invZ;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x, y, sr, 0, Math.PI * 2);
+      ctx.strokeStyle = stateStroke;
+      ctx.lineWidth = 2.75 * invZ;
+      ctx.stroke();
+    }
+
+    if (wideSpread) {
+      const hr = r + (stateStroke ? 5.5 : 3.5) * invZ;
+      ctx.save();
+      ctx.globalAlpha = 0.35 + 0.65 * pulseAlt;
+      ctx.beginPath();
+      ctx.arc(x, y, hr, 0, Math.PI * 2);
+      ctx.strokeStyle = FLASH_PURPLE;
+      ctx.lineWidth = 3.25 * invZ;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    const outer = r + (wideSpread ? 8 : stateStroke ? 5.5 : 3) * invZ;
+    if (selected) {
+      ctx.beginPath();
+      ctx.arc(x, y, outer, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.lineWidth = 2 * invZ;
+      ctx.stroke();
+    } else if (hovered) {
+      ctx.beginPath();
+      ctx.arc(x, y, outer - 1 * invZ, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = 1.5 * invZ;
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
 }
 
 function drawDataNeedsFlash(data: {
@@ -453,6 +594,8 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   const scheduleDrawRef = useRef<() => void>(() => {});
   const syncFlashLoopRef = useRef<() => void>(() => {});
   const canvasSizeRef = useRef({ w: 0, h: 0, dpr: 1 });
+  const baseCacheRef = useRef<{ key: string; canvas: HTMLCanvasElement } | null>(null);
+  const pulseTsRef = useRef(0);
   const tipElRef = useRef<HTMLDivElement>(null);
   const drawDataRef = useRef({
     land: null as LandGeoJSON | null,
@@ -575,35 +718,11 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     [rebuildLiveQuoteMaps],
   );
 
-  const liveQuoteLookup = useMemo(() => {
-    const liveLookup: Record<string, Market> = { ...marketLookup };
-    for (const tid of quoteTokenIds) {
-      const row = getBidAskMarketRow(tid);
-      if (row) liveLookup[tid] = row;
-    }
-    return liveLookup;
-  }, [weatherMarkets, tempOddsDateIso, tempOddsMetric, marketLookup, quoteTokenIds]);
-
-  const cityMaxBid = useMemo(
-    () => buildWeatherCityMaxBidByDate(weatherMarkets, tempOddsDateIso, liveQuoteLookup, tempOddsMetric),
-    [weatherMarkets, tempOddsDateIso, tempOddsMetric, liveQuoteLookup],
-  );
-
-  const cityMaxSpread = useMemo(
-    () => buildWeatherCityMaxSpreadByDate(weatherMarkets, tempOddsDateIso, liveQuoteLookup, tempOddsMetric),
-    [weatherMarkets, tempOddsDateIso, tempOddsMetric, liveQuoteLookup],
-  );
-
-  const cityMispriced = useMemo(
-    () =>
-      buildWeatherCityMispricedByDate(
-        weatherMarkets,
-        tempOddsDateIso,
-        liveQuoteLookup,
-        forecastHighByCity,
-      ),
-    [weatherMarkets, tempOddsDateIso, liveQuoteLookup, forecastHighByCity],
-  );
+  useEffect(() => {
+    rebuildLiveQuoteMaps();
+    syncFlashLoopRef.current();
+    scheduleDrawRef.current();
+  }, [weatherMarkets, tempOddsDateIso, tempOddsMetric, marketLookup, forecastHighByCity, rebuildLiveQuoteMaps]);
 
   useEffect(() => onTempOddsDateSelect(setTempOddsDateIso), []);
   useEffect(() => onTempOddsMetricSelect(setTempOddsMetric), []);
@@ -687,12 +806,12 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       size.w = width;
       size.h = height;
       size.dpr = dpr;
+      baseCacheRef.current = null;
     }
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
 
     const {
       land,
@@ -710,122 +829,48 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     if (pendingStoredViewRef.current) {
       viewRef.current = mapViewFromStoredFracs(pendingStoredViewRef.current, layout);
       pendingStoredViewRef.current = null;
+      baseCacheRef.current = null;
     }
     const view = clampMapView(viewRef.current, layout);
     viewRef.current = view;
 
-    const date = new Date(nowMs);
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(layout.pad, layout.mapTop, layout.w, layout.h);
-    ctx.clip();
-    applyMapViewTransform(ctx, layout, view);
-
-    ctx.fillStyle = '#0c4a6e';
-    ctx.fillRect(layout.pad, layout.mapTop, layout.w, layout.h);
-
-    if (land) {
-      drawLand(ctx, land, layout);
-    }
-
-    drawNightOverlay(ctx, layout, date);
-    drawDayGlow(ctx, layout, date);
-
-    drawGraticule(ctx, layout);
-    drawTimezoneMeridians(ctx, layout);
-
-    const hoverSlug = hoverSlugRef.current;
-    const selectedSlug = selectedSlugRef.current;
-    const invZ = 1 / Math.max(view.zoom, 1);
-    const pulse = flashPulse(0);
-    const pulseAlt = flashPulse(Math.PI);
-    for (const city of cities) {
-      const { x, y } = projectLonLat(city.lon, city.lat, layout);
-      const hovered = hoverSlug === city.slug;
-      const selected = selectedSlug === city.slug;
-      const maxBid = cityMaxBid.get(city.slug);
-      const maxSpread = cityMaxSpread.get(city.slug);
-      const misMid = cityMispriced.get(city.slug);
-      const exposure = cityExposure.get(city.slug);
-      const r = (selected ? DOT_RADIUS + 2 : hovered ? DOT_RADIUS + 1.5 : DOT_RADIUS) * invZ;
-      const mispriced = misMid != null && misMid > 0;
-      const wideSpread = maxSpread != null && maxSpread > SPREAD_FLASH_AT;
-      const stateStroke = cityDotStrokeByState(exposure);
-
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = cityDotFillByMaxBid(maxBid, hovered, selected);
-      ctx.fill();
-
-      if (mispriced) {
-        ctx.save();
-        ctx.globalAlpha = 0.25 + 0.7 * pulse;
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = FLASH_TURQUOISE;
-        ctx.fill();
-        ctx.restore();
-      }
-
-      if (stateStroke) {
-        const sr = r + 2.25 * invZ;
-        ctx.beginPath();
-        ctx.arc(x, y, sr, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(0,0,0,0.9)';
-        ctx.lineWidth = 4.5 * invZ;
-        ctx.lineJoin = 'round';
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(x, y, sr, 0, Math.PI * 2);
-        ctx.strokeStyle = stateStroke;
-        ctx.lineWidth = 2.75 * invZ;
-        ctx.stroke();
-      }
-
-      if (wideSpread) {
-        const hr = r + (stateStroke ? 5.5 : 3.5) * invZ;
-        ctx.save();
-        ctx.globalAlpha = 0.35 + 0.65 * pulseAlt;
-        ctx.beginPath();
-        ctx.arc(x, y, hr, 0, Math.PI * 2);
-        ctx.strokeStyle = FLASH_PURPLE;
-        ctx.lineWidth = 3.25 * invZ;
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      const outer = r + (wideSpread ? 8 : stateStroke ? 5.5 : 3) * invZ;
-      if (selected) {
-        ctx.beginPath();
-        ctx.arc(x, y, outer, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-        ctx.lineWidth = 2 * invZ;
-        ctx.stroke();
-      } else if (hovered) {
-        ctx.beginPath();
-        ctx.arc(x, y, outer - 1 * invZ, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-        ctx.lineWidth = 1.5 * invZ;
-        ctx.stroke();
+    const baseKey = baseMapCacheKey(width, height, dpr, view, nowMs, !!land);
+    if (!baseCacheRef.current || baseCacheRef.current.key !== baseKey) {
+      const baseCanvas = document.createElement('canvas');
+      baseCanvas.width = Math.floor(width * dpr);
+      baseCanvas.height = Math.floor(height * dpr);
+      const bctx = baseCanvas.getContext('2d');
+      if (bctx) {
+        bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        drawMapBase(bctx, width, height, layout, view, land, loadError, nowMs);
+        baseCacheRef.current = { key: baseKey, canvas: baseCanvas };
       }
     }
-    ctx.restore();
 
-    drawSolarHour16Line(ctx, layout, date);
-
-    if (loadError && !land) {
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.font = '11px monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('Map load failed', width / 2, height / 2);
+    ctx.clearRect(0, 0, width, height);
+    if (baseCacheRef.current) {
+      ctx.drawImage(baseCacheRef.current.canvas, 0, 0, width, height);
     }
+
+    drawMapCities(
+      ctx,
+      layout,
+      view,
+      cities,
+      cityMaxBid,
+      cityMaxSpread,
+      cityMispriced,
+      cityExposure,
+      hoverSlugRef.current,
+      selectedSlugRef.current,
+      pulseTsRef.current || performance.now(),
+    );
   }, []);
 
   drawRef.current = draw;
 
   const scheduleDraw = useCallback(() => {
+    if (flashLoopActiveRef.current) return;
     if (drawRafRef.current) return;
     drawRafRef.current = requestAnimationFrame(() => {
       drawRafRef.current = 0;
@@ -836,25 +881,31 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   scheduleDrawRef.current = scheduleDraw;
 
   const flashLoopRef = useRef<{ stop: () => void } | null>(null);
+  const flashLoopActiveRef = useRef(false);
 
   const syncFlashLoop = useCallback(() => {
     if (!drawDataNeedsFlash(drawDataRef.current)) {
       flashLoopRef.current?.stop();
       flashLoopRef.current = null;
+      flashLoopActiveRef.current = false;
+      scheduleDrawRef.current();
       return;
     }
     if (flashLoopRef.current) return;
     let alive = true;
     let raf = 0;
-    const tick = () => {
+    flashLoopActiveRef.current = true;
+    const tick = (ts: number) => {
       if (!alive) return;
-      scheduleDrawRef.current();
+      pulseTsRef.current = ts;
+      drawRef.current();
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     flashLoopRef.current = {
       stop: () => {
         alive = false;
+        flashLoopActiveRef.current = false;
         cancelAnimationFrame(raf);
       },
     };
@@ -863,30 +914,19 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   syncFlashLoopRef.current = syncFlashLoop;
 
   useEffect(() => {
-    drawDataRef.current = {
-      land,
-      loadError,
-      nowMs,
-      cities,
-      cityMaxBid,
-      cityMaxSpread,
-      cityMispriced,
-      cityExposure,
-    };
+    drawDataRef.current.land = land;
+    drawDataRef.current.loadError = loadError;
+    drawDataRef.current.nowMs = nowMs;
+    drawDataRef.current.cities = cities;
+    baseCacheRef.current = null;
     syncFlashLoop();
     scheduleDraw();
-  }, [
-    land,
-    loadError,
-    nowMs,
-    cities,
-    cityMaxBid,
-    cityMaxSpread,
-    cityMispriced,
-    cityExposure,
-    syncFlashLoop,
-    scheduleDraw,
-  ]);
+  }, [land, loadError, nowMs, cities, syncFlashLoop, scheduleDraw]);
+
+  useEffect(() => {
+    drawDataRef.current.cityExposure = cityExposure;
+    scheduleDraw();
+  }, [cityExposure, scheduleDraw]);
 
   const syncLayoutSnapshot = useCallback((width: number, height: number) => {
     const layout = makeLayout(width, height);
@@ -920,6 +960,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       const clamped = layout ? clampMapView(next, layout) : clampMapView(next, makeLayout(1, 1));
       viewRef.current = clamped;
       setZoom(clamped.zoom);
+      baseCacheRef.current = null;
       writeStoredMapView(panelId, clamped, layout);
       scheduleDraw();
     },
@@ -939,20 +980,21 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       const slug = hit?.slug ?? null;
       let extra = '';
       if (hit) {
+        const data = drawDataRef.current;
         const parts: string[] = [];
-        const maxBid = cityMaxBid.get(hit.slug);
+        const maxBid = data.cityMaxBid.get(hit.slug);
         if (maxBid != null && maxBid > 0) parts.push(`bid ${(maxBid * 100).toFixed(1)}¢`);
-        const maxSpread = cityMaxSpread.get(hit.slug);
+        const maxSpread = data.cityMaxSpread.get(hit.slug);
         if (maxSpread != null && maxSpread > SPREAD_FLASH_AT) {
           parts.push(`spread ${(maxSpread * 100).toFixed(1)}¢`);
         }
-        const misMid = cityMispriced.get(hit.slug);
+        const misMid = data.cityMispriced.get(hit.slug);
         if (misMid != null && misMid > 0) {
           parts.push(`mis ${(misMid * 100).toFixed(1)}¢`);
-          const fc = forecastHighByCity.get(hit.slug);
+          const fc = forecastHighByCityRef.current.get(hit.slug);
           if (fc != null) parts.push(`fc ${fc.toFixed(1)}°C`);
         }
-        const exposure = cityExposure.get(hit.slug);
+        const exposure = data.cityExposure.get(hit.slug);
         if (exposure?.kind === 'order') parts.push('order');
         else if (exposure?.kind === 'position') parts.push(`pos ${exposure.tier}`);
         if (parts.length) extra = ` · ${parts.join(' · ')}`;
@@ -978,7 +1020,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       updateHoverTooltip(tipElRef.current, nextTip);
       if (slugChanged) scheduleDraw();
     },
-    [scheduleDraw, cityMaxBid, cityMaxSpread, cityMispriced, forecastHighByCity, cityExposure],
+    [scheduleDraw],
   );
 
   const selectCity = useCallback(
@@ -996,6 +1038,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
 
     const onResize = () => {
       nightOverlayCache = null;
+      baseCacheRef.current = null;
       syncLayoutSnapshot(el.clientWidth, el.clientHeight);
       scheduleDraw();
     };
@@ -1053,6 +1096,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
           panY: drag.originPanY + dy,
         };
         viewRef.current = layout ? clampMapView(next, layout) : next;
+        baseCacheRef.current = null;
         scheduleDraw();
         if (hoverSlugRef.current || hoverTipRef.current) {
           hoverSlugRef.current = null;

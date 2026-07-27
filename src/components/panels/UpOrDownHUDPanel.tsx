@@ -10,7 +10,8 @@ import { ASSET_COLORS } from '../../types';
 import { assetToSymbol, formatPolymarketVolumeK, formatPrice, getPolymarketVolumeUsd, getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
 import { BinanceChartPanel } from './BinanceChartPanel';
 import { MarketCellMidRow } from './MarketCellMidRow';
-import { useChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
+import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
+import { useThrottledPriceDataMap } from '../../hooks/useThrottledStorePrice';
 import { getMarketProbability } from '../../utils/bsMath';
 import { useMarkovUpDown, markovNextUpProb } from '../../hooks/useMarkovUpDown';
 import { useUpDownStrikePrice } from '../../hooks/useUpDownStrikePrice';
@@ -339,11 +340,11 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
   const onchainGridPositions = useAppStore((s) => s.onchainGridPositions);
   const orders = useAppStore((s) => s.orders);
   const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;
-  const priceData = useAppStore((s) => s.priceData);
+  const priceData = useThrottledPriceDataMap(500);
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
-  const chainlinkPrices = useChainlinkPricesMap();
+  const chainlinkPrices = useThrottledChainlinkPricesMap(500);
   const markovModels = useMarkovUpDown();
 
   const sym = assetToSymbol(asset) as AssetSymbol;

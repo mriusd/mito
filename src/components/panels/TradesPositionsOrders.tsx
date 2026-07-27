@@ -400,7 +400,12 @@ function wsPositionsToPM(rows: WSPosition[], marketLookup: Record<string, Market
 function wsTradesToPM(rows: WSTrade[]): Trade[] {
   return rows.map((t) => {
     const tsMs = t.blockTime > 1e12 ? t.blockTime : t.blockTime * 1000;
-    const id = onchainFillKey(t.txHash, t.logIndex) || t.id;
+    const side = String(t.side || '').toUpperCase();
+    // SPLIT/MERGE YES+NO share logIndex — include token+side so both legs survive dedupe.
+    const id =
+      onchainFillKey(t.txHash, t.logIndex)
+        ? `${onchainFillKey(t.txHash, t.logIndex)}:${t.tokenId}:${side}`
+        : t.id;
     const mid = (t.marketId || '').trim();
     return {
       id: id || `token:${t.tokenId}:${tsMs}`,
@@ -424,7 +429,9 @@ function wsTradesToPM(rows: WSTrade[]): Trade[] {
 function ledgerTradesToPM(rows: OnchainMarketTradeRow[]): Trade[] {
   return rows.map((t) => {
     const tsMs = t.blockTime > 1e12 ? t.blockTime : t.blockTime * 1000;
-    const id = onchainFillKey(t.txHash, t.logIndex);
+    const side = String(t.side || '').toUpperCase();
+    const base = onchainFillKey(t.txHash, t.logIndex);
+    const id = base ? `${base}:${t.tokenId}:${side}` : undefined;
     const mid = (t.marketId || '').trim();
     return {
       id: id || `token:${t.tokenId}:${tsMs}`,
@@ -461,6 +468,11 @@ function tradeSideMatchesFilter(side: string, filter: string): boolean {
   const s = (side || '').toUpperCase();
   if (filter === 'SELL') return s === 'SELL' || s === 'MERGE' || s === 'REDEEM' || s === 'CLAIM';
   return s === filter;
+}
+
+function isTpoTradeTapeSide(side: string | undefined): boolean {
+  const s = (side || '').toUpperCase();
+  return s === 'BUY' || s === 'SELL' || s === 'SPLIT' || s === 'MERGE' || s === 'REDEEM' || s === 'CLAIM';
 }
 
 function TpoAuthEmpty({
@@ -764,6 +776,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     const side =
       tradesSideFilter === 'BUY' ||
       tradesSideFilter === 'SELL' ||
+      tradesSideFilter === 'SPLIT' ||
       tradesSideFilter === 'MERGE' ||
       tradesSideFilter === 'REDEEM'
         ? tradesSideFilter
@@ -796,12 +809,15 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
   const tradesForTable = useMemo(() => {
     if (liveTradesSource !== 'onchain') return trades;
-    const live = onchainTradesAsPM.filter((t) => tradeSideMatchesFilter(t.side || '', tradesSideFilter));
+    const live = onchainTradesAsPM.filter(
+      (t) => isTpoTradeTapeSide(t.side) && tradeSideMatchesFilter(t.side || '', tradesSideFilter),
+    );
     const claims =
       tradesSideFilter === 'ALL' || tradesSideFilter === 'SELL' ? onchainClaimsAsPM : [];
     const seen = new Set<string>();
     const out: Trade[] = [];
-    for (const t of [...live, ...pagedTradesAsPM, ...claims]) {
+    for (const t of [...live, ...pagedTradesAsPM.filter((t) => isTpoTradeTapeSide(t.side)), ...claims]) {
+      if (!tradeSideMatchesFilter(t.side || '', tradesSideFilter)) continue;
       const k = t.id || `${t.asset_id || t.token_id}:${t.timestamp}`;
       if (seen.has(k)) continue;
       seen.add(k);
@@ -1750,7 +1766,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           {tab === 'trades' && (
             <div className="flex gap-1 items-center flex-wrap">
               <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]">
-                {(['ALL', 'BUY', 'SELL', 'MERGE', 'REDEEM'] as const).map((s) => (
+                {(['ALL', 'BUY', 'SELL', 'SPLIT', 'MERGE', 'REDEEM'] as const).map((s) => (
                   <button
                     key={s}
                     onClick={() => {
@@ -1759,7 +1775,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
                     }}
                     className={filterBtnCls(
                       tradesSideFilter === s,
-                      s === 'BUY' ? 'green' : s === 'SELL' || s === 'MERGE' ? 'red' : s === 'REDEEM' ? 'blue' : 'gray',
+                      s === 'BUY'
+                        ? 'green'
+                        : s === 'SELL' || s === 'MERGE'
+                          ? 'red'
+                          : s === 'SPLIT' || s === 'REDEEM'
+                            ? 'blue'
+                            : 'gray',
                     )}
                   >{s}</button>
                 ))}

@@ -10,8 +10,14 @@ import {
   subsolarPoint,
   utcOffsetLabel,
 } from '../../lib/weatherMapSun';
-import { useMarketLookupSnapshot } from '../../hooks/useMarketLookupSnapshot';
-import { onTempOddsCitySelect, onTempOddsDateSelect, onTempOddsMetricSelect, getTempOddsSelectedDate, getTempOddsSelectedMetric, selectTempOddsCity } from '../../lib/weatherTempOddsControl';
+import {
+  onTempOddsCitySelect,
+  onTempOddsDateSelect,
+  onTempOddsMetricSelect,
+  getTempOddsSelectedDate,
+  getTempOddsSelectedMetric,
+  selectTempOddsCity,
+} from '../../lib/weatherTempOddsControl';
 import {
   buildWeatherCityExposureByDate,
   buildWeatherCityMaxBidByDate,
@@ -21,8 +27,7 @@ import {
   type WeatherCityExposure,
 } from '../../lib/weatherMapExposure';
 import { fetchWeatherObservations, weatherMispriceHighBoundC } from '../../lib/weatherObservations';
-import { useThrottledGridOrders, useThrottledGridPositions } from '../../hooks/useThrottledGridWallet';
-import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
+import { getSidebarOnchainTradesSnapshot, subscribeSidebarOnchainTrades } from '../../lib/sidebarOnchainTradesStore';
 import { useAppStore } from '../../stores/appStore';
 import { getBidAskMarketRow, subscribeBidAskMarketLookupGridFlush } from '../../lib/bidAskMarketLookup';
 import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
@@ -632,36 +637,30 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   const [tempOddsDateIso, setTempOddsDateIso] = useState<string | null>(() => getTempOddsSelectedDate());
   const [tempOddsMetric, setTempOddsMetric] = useState(() => getTempOddsSelectedMetric());
   const [forecastHighByCity, setForecastHighByCity] = useState<Map<string, number>>(() => new Map());
+  // Rare: market catalog / date / metric — React ok. Quotes + wallet → refs only (no re-render).
   const weatherMarkets = useAppStore((s) => s.weatherMarkets);
-  const liveTradesSource = useAppStore((s) => s.liveTradesSource);
-  const progOrderMap = useAppStore((s) => s.progOrderMap);
-  const marketLookup = useMarketLookupSnapshot();
-  const positions = useThrottledGridPositions(2000);
-  const orders = useThrottledGridOrders(2000);
-  const onchainWsPositions = useSidebarOnchainGridWalletPositions();
 
-  const cityExposure = useMemo(() => {
-    const myOrders = orders.filter((o) => !progOrderMap[o.id]);
-    return buildWeatherCityExposureByDate(
-      weatherMarkets,
-      tempOddsDateIso,
-      positions,
-      myOrders,
-      liveTradesSource,
-      onchainWsPositions,
-      marketLookup,
-      tempOddsMetric,
-    );
-  }, [weatherMarkets, tempOddsDateIso, tempOddsMetric, positions, orders, progOrderMap, liveTradesSource, onchainWsPositions, marketLookup]);
+  const weatherMarketsRef = useRef(weatherMarkets);
+  weatherMarketsRef.current = weatherMarkets;
+  const tempOddsDateIsoRef = useRef(tempOddsDateIso);
+  tempOddsDateIsoRef.current = tempOddsDateIso;
+  const tempOddsMetricRef = useRef(tempOddsMetric);
+  tempOddsMetricRef.current = tempOddsMetric;
+  const forecastHighByCityRef = useRef(forecastHighByCity);
+  forecastHighByCityRef.current = forecastHighByCity;
+  const quoteTokenIdsRef = useRef<string[]>([]);
 
-  // Metric tokens for certainty/spread + high tokens for mispriced.
-  const quoteTokenIds = useMemo(() => {
-    const metricIds = weatherMapQuoteTokenIdsForDate(weatherMarkets, tempOddsDateIso, tempOddsMetric);
+  const rebuildQuoteTokenIds = useCallback(() => {
+    const markets = weatherMarketsRef.current;
+    const dateIso = tempOddsDateIsoRef.current;
+    const metric = tempOddsMetricRef.current;
+    const metricIds = weatherMapQuoteTokenIdsForDate(markets, dateIso, metric);
     const highIds =
-      tempOddsMetric === 'high'
-        ? metricIds
-        : weatherMapQuoteTokenIdsForDate(weatherMarkets, tempOddsDateIso, 'high');
-    if (tempOddsMetric === 'high') return metricIds;
+      metric === 'high' ? metricIds : weatherMapQuoteTokenIdsForDate(markets, dateIso, 'high');
+    if (metric === 'high') {
+      quoteTokenIdsRef.current = metricIds;
+      return metricIds;
+    }
     const seen = new Set(metricIds);
     const out = metricIds.slice();
     for (const id of highIds) {
@@ -669,24 +668,13 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       seen.add(id);
       out.push(id);
     }
+    quoteTokenIdsRef.current = out;
     return out;
-  }, [weatherMarkets, tempOddsDateIso, tempOddsMetric]);
-
-  const weatherMarketsRef = useRef(weatherMarkets);
-  weatherMarketsRef.current = weatherMarkets;
-  const marketLookupRef = useRef(marketLookup);
-  marketLookupRef.current = marketLookup;
-  const quoteTokenIdsRef = useRef(quoteTokenIds);
-  quoteTokenIdsRef.current = quoteTokenIds;
-  const tempOddsDateIsoRef = useRef(tempOddsDateIso);
-  tempOddsDateIsoRef.current = tempOddsDateIso;
-  const tempOddsMetricRef = useRef(tempOddsMetric);
-  tempOddsMetricRef.current = tempOddsMetric;
-  const forecastHighByCityRef = useRef(forecastHighByCity);
-  forecastHighByCityRef.current = forecastHighByCity;
+  }, []);
 
   const rebuildLiveQuoteMaps = useCallback(() => {
-    const liveLookup: Record<string, Market> = { ...marketLookupRef.current };
+    const marketLookup = useAppStore.getState().marketLookup;
+    const liveLookup: Record<string, Market> = { ...marketLookup };
     for (const tid of quoteTokenIdsRef.current) {
       const row = getBidAskMarketRow(tid);
       if (row) liveLookup[tid] = row;
@@ -704,10 +692,39 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     );
   }, []);
 
+  const rebuildCityExposure = useCallback(() => {
+    const st = useAppStore.getState();
+    const myOrders = st.orders.filter((o) => !st.progOrderMap[o.id]);
+    drawDataRef.current.cityExposure = buildWeatherCityExposureByDate(
+      weatherMarketsRef.current,
+      tempOddsDateIsoRef.current,
+      st.positions,
+      myOrders,
+      st.liveTradesSource,
+      getSidebarOnchainTradesSnapshot().gridWalletPositions,
+      st.marketLookup,
+      tempOddsMetricRef.current,
+    );
+  }, []);
+
+  const refreshMapData = useCallback(() => {
+    rebuildQuoteTokenIds();
+    rebuildLiveQuoteMaps();
+    rebuildCityExposure();
+    syncFlashLoopRef.current();
+    scheduleDrawRef.current();
+  }, [rebuildQuoteTokenIds, rebuildLiveQuoteMaps, rebuildCityExposure]);
+
   useEffect(() => {
-    setChartBidAskExtraTokens('weather-map', quoteTokenIds);
+    const ids = rebuildQuoteTokenIds();
+    setChartBidAskExtraTokens('weather-map', ids);
     return () => setChartBidAskExtraTokens('weather-map', []);
-  }, [quoteTokenIds]);
+  }, [weatherMarkets, tempOddsDateIso, tempOddsMetric, rebuildQuoteTokenIds]);
+
+  useEffect(() => {
+    refreshMapData();
+  }, [weatherMarkets, tempOddsDateIso, tempOddsMetric, forecastHighByCity, refreshMapData]);
+
   useEffect(
     () =>
       subscribeBidAskMarketLookupGridFlush(() => {
@@ -718,11 +735,38 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     [rebuildLiveQuoteMaps],
   );
 
+  // Wallet / lookup / orders — update canvas refs only (no React re-render).
   useEffect(() => {
-    rebuildLiveQuoteMaps();
-    syncFlashLoopRef.current();
-    scheduleDrawRef.current();
-  }, [weatherMarkets, tempOddsDateIso, tempOddsMetric, marketLookup, forecastHighByCity, rebuildLiveQuoteMaps]);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => {
+      timer = null;
+      rebuildCityExposure();
+      scheduleDrawRef.current();
+    };
+    const schedule = () => {
+      if (timer != null) return;
+      timer = setTimeout(flush, 2000);
+    };
+    rebuildCityExposure();
+    const unsubApp = useAppStore.subscribe((state, prev) => {
+      if (
+        state.positions === prev.positions &&
+        state.orders === prev.orders &&
+        state.progOrderMap === prev.progOrderMap &&
+        state.liveTradesSource === prev.liveTradesSource &&
+        state.marketLookupEpoch === prev.marketLookupEpoch
+      ) {
+        return;
+      }
+      schedule();
+    });
+    const unsubOnchain = subscribeSidebarOnchainTrades(schedule);
+    return () => {
+      unsubApp();
+      unsubOnchain();
+      if (timer != null) clearTimeout(timer);
+    };
+  }, [rebuildCityExposure]);
 
   useEffect(() => onTempOddsDateSelect(setTempOddsDateIso), []);
   useEffect(() => onTempOddsMetricSelect(setTempOddsMetric), []);
@@ -922,11 +966,6 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     syncFlashLoop();
     scheduleDraw();
   }, [land, loadError, nowMs, cities, syncFlashLoop, scheduleDraw]);
-
-  useEffect(() => {
-    drawDataRef.current.cityExposure = cityExposure;
-    scheduleDraw();
-  }, [cityExposure, scheduleDraw]);
 
   const syncLayoutSnapshot = useCallback((width: number, height: number) => {
     const layout = makeLayout(width, height);

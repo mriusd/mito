@@ -1,3 +1,5 @@
+import { formatMarketCountdown } from '../lib/marketCountdown';
+
 export type ChartObHoverOhlcv = {
   timeMs: number;
   o: number;
@@ -30,17 +32,38 @@ function fmtCents(v: number): string {
 export function ChartObHoverOhlcvStrip({
   ohlcv,
   interval,
+  expiryMs,
 }: {
   ohlcv: ChartObHoverOhlcv;
   interval?: string;
+  /** Market expiry — show TTL remaining as of candle open time. */
+  expiryMs?: number;
 }) {
   const isBull = ohlcv.c >= ohlcv.o;
   const color = isBull ? 'text-emerald-400' : 'text-red-400';
+  const ttl =
+    expiryMs != null && Number.isFinite(expiryMs)
+      ? formatMarketCountdown(new Date(expiryMs).toISOString(), ohlcv.timeMs)
+      : null;
 
   return (
     <div className="mb-2 border-b border-gray-700/80 pb-2 px-0.5">
       <div className="mb-1.5 text-[10px] font-semibold tabular-nums text-gray-300 text-center">
         {fmtCandleTime(ohlcv.timeMs, interval)}
+        {ttl?.text ? (
+          <span
+            className={`ml-1.5 font-bold ${
+              ttl.remaining <= 0
+                ? 'text-gray-500'
+                : ttl.remaining < 3_600_000
+                  ? 'text-amber-400'
+                  : 'text-cyan-400/90'
+            }`}
+            title="Time to expiry at this candle"
+          >
+            · {ttl.remaining <= 0 ? 'expired' : `${ttl.text} left`}
+          </span>
+        ) : null}
       </div>
       <div className="grid grid-cols-5 gap-x-1 mb-1 text-[9px] font-medium text-gray-500">
         <span>O</span>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { API_BASE, WS_BASE } from '../lib/env';
 import { backendWsRetryDelayMs, fetchBackend } from '../lib/fetchBackend';
 import { onBackendReconnect } from '../lib/backendReconnect';
@@ -156,43 +156,86 @@ export function usePolymarketPrice(asset: string | null): PriceState {
   return { price, timestamp: price != null ? tsMap[k] ?? null : null };
 }
 
-/** Chainlink /ws/prices at most every `ms` — UpDownMarketsPanel was full tick × all cells. */
+/** Shared throttled Chainlink map — one flush for all consumers (cells must not each re-render on live WS). */
+let throttledChainlinkMap: ChainlinkPricesMap = {};
+const throttledChainlinkListeners = new Set<() => void>();
+let throttledChainlinkTimer: ReturnType<typeof setTimeout> | null = null;
+let throttledChainlinkUnsub: (() => void) | null = null;
+/** Shared flush interval — per-hook `ms` only lowers this (min of subscribers). */
+let throttledChainlinkMs = 1000;
+let throttledChainlinkSubCount = 0;
+
+function chainlinkMapsEqual(a: ChainlinkPricesMap, b: ChainlinkPricesMap): boolean {
+  if (a === b) return true;
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  for (const k of bk) {
+    if (a[k] !== b[k]) return false;
+  }
+  return true;
+}
+
+function flushThrottledChainlink(): void {
+  throttledChainlinkTimer = null;
+  if (chainlinkMapsEqual(throttledChainlinkMap, pricesMap)) return;
+  throttledChainlinkMap = pricesMap;
+  for (const fn of throttledChainlinkListeners) fn();
+}
+
+function scheduleThrottledChainlinkFlush(): void {
+  if (throttledChainlinkTimer != null) return;
+  throttledChainlinkTimer = setTimeout(flushThrottledChainlink, throttledChainlinkMs);
+}
+
+function ensureThrottledChainlinkBridge(): void {
+  if (throttledChainlinkUnsub) return;
+  throttledChainlinkMap = pricesMap;
+  throttledChainlinkUnsub = subscribe(() => {
+    scheduleThrottledChainlinkFlush();
+  });
+}
+
+function releaseThrottledChainlinkBridge(): void {
+  if (throttledChainlinkSubCount > 0) return;
+  if (throttledChainlinkUnsub) {
+    throttledChainlinkUnsub();
+    throttledChainlinkUnsub = null;
+  }
+  if (throttledChainlinkTimer != null) {
+    clearTimeout(throttledChainlinkTimer);
+    throttledChainlinkTimer = null;
+  }
+}
+
+function subscribeThrottledChainlink(onChange: () => void): () => void {
+  throttledChainlinkSubCount += 1;
+  ensureThrottledChainlinkBridge();
+  throttledChainlinkListeners.add(onChange);
+  return () => {
+    throttledChainlinkListeners.delete(onChange);
+    throttledChainlinkSubCount = Math.max(0, throttledChainlinkSubCount - 1);
+    releaseThrottledChainlinkBridge();
+  };
+}
+
+function getThrottledChainlinkSnapshot(): ChainlinkPricesMap {
+  return throttledChainlinkMap;
+}
+
+/**
+ * Chainlink /ws/prices at most every `ms` (shared store; lowest active `ms` wins).
+ * Does NOT re-render on every live tick.
+ */
 export function useThrottledChainlinkPricesMap(ms = 1000): ChainlinkPricesMap {
-  const live = useChainlinkPricesMap();
-  const [prices, setPrices] = useState(live);
-
   useEffect(() => {
-    let latest = live;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    const flush = () => {
-      timer = null;
-      setPrices((prev) => {
-        if (prev === latest) return prev;
-        const pk = Object.keys(prev).sort().join(',');
-        const lk = Object.keys(latest).sort().join(',');
-        if (pk !== lk) return latest;
-        for (const k of Object.keys(latest)) {
-          if (prev[k] !== latest[k]) return latest;
-        }
-        return prev;
-      });
-    };
-
-    const schedule = () => {
-      if (timer != null) return;
-      timer = setTimeout(flush, ms);
-    };
-
-    latest = live;
-    schedule();
-
-    return () => {
-      if (timer != null) clearTimeout(timer);
-    };
-  }, [live, ms]);
-
-  return prices;
+    if (ms > 0 && ms < throttledChainlinkMs) throttledChainlinkMs = ms;
+  }, [ms]);
+  return useSyncExternalStore(
+    subscribeThrottledChainlink,
+    getThrottledChainlinkSnapshot,
+    getThrottledChainlinkSnapshot,
+  );
 }
 
 onBackendReconnect(() => {

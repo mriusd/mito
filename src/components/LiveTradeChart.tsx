@@ -840,7 +840,11 @@ export function LiveTradeChart({
                     : null;
                   return (
                     <>
-                      <ChartObHoverOhlcvStrip ohlcv={hoverOb.ohlcv} interval={interval} />
+                      <ChartObHoverOhlcvStrip
+                        ohlcv={hoverOb.ohlcv}
+                        interval={interval}
+                        expiryMs={endTime}
+                      />
                       <ChartObHoverEnrichmentStrip
                         enrichment={hoverOb.enrichment}
                         priceDec={enrichmentPriceDec}

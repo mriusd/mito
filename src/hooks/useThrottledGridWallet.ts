@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { getPositionClobTokenId, normalizeClobTokenId } from '../utils/format';
 import type { Order } from '../types';
@@ -6,46 +6,59 @@ import type { Order } from '../types';
 type GridPosition = ReturnType<typeof useAppStore.getState>['positions'][number];
 type OnchainGridPosition = ReturnType<typeof useAppStore.getState>['onchainGridPositions'][number];
 
-export function useThrottledGridOrders(ms = 2000): Order[] {
-  const live = useAppStore((s) => s.orders);
-  const [throttled, setThrottled] = useState(live);
-  const liveRef = useRef(live);
-  liveRef.current = live;
+/**
+ * Throttle store slice without selecting live via useAppStore (that re-renders every write).
+ * Subscribe + delayed setState only.
+ */
+function useThrottledAppSlice<T>(select: (s: ReturnType<typeof useAppStore.getState>) => T, ms: number): T {
+  const [value, setValue] = useState(() => select(useAppStore.getState()));
 
   useEffect(() => {
-    const id = window.setTimeout(() => setThrottled(liveRef.current), ms);
-    return () => window.clearTimeout(id);
-  }, [live, ms]);
+    let latest = select(useAppStore.getState());
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-  return throttled;
+    const flush = () => {
+      timer = null;
+      setValue((prev) => (Object.is(prev, latest) ? prev : latest));
+    };
+
+    const schedule = () => {
+      if (timer != null) return;
+      timer = setTimeout(flush, ms);
+    };
+
+    // Prime once in case we mounted mid-stream.
+    schedule();
+    const unsub = useAppStore.subscribe((state) => {
+      const next = select(state);
+      if (Object.is(next, latest)) return;
+      latest = next;
+      schedule();
+    });
+
+    return () => {
+      unsub();
+      if (timer != null) clearTimeout(timer);
+    };
+  }, [select, ms]);
+
+  return value;
+}
+
+const selectOrders = (s: ReturnType<typeof useAppStore.getState>) => s.orders;
+const selectPositions = (s: ReturnType<typeof useAppStore.getState>) => s.positions;
+const selectOnchainGridPositions = (s: ReturnType<typeof useAppStore.getState>) => s.onchainGridPositions;
+
+export function useThrottledGridOrders(ms = 2000): Order[] {
+  return useThrottledAppSlice(selectOrders, ms);
 }
 
 export function useThrottledGridPositions(ms = 2000): GridPosition[] {
-  const live = useAppStore((s) => s.positions);
-  const [throttled, setThrottled] = useState(live);
-  const liveRef = useRef(live);
-  liveRef.current = live;
-
-  useEffect(() => {
-    const id = window.setTimeout(() => setThrottled(liveRef.current), ms);
-    return () => window.clearTimeout(id);
-  }, [live, ms]);
-
-  return throttled;
+  return useThrottledAppSlice(selectPositions, ms);
 }
 
 export function useThrottledOnchainGridPositions(ms = 2000): OnchainGridPosition[] {
-  const live = useAppStore((s) => s.onchainGridPositions);
-  const [throttled, setThrottled] = useState(live);
-  const liveRef = useRef(live);
-  liveRef.current = live;
-
-  useEffect(() => {
-    const id = window.setTimeout(() => setThrottled(liveRef.current), ms);
-    return () => window.clearTimeout(id);
-  }, [live, ms]);
-
-  return throttled;
+  return useThrottledAppSlice(selectOnchainGridPositions, ms);
 }
 
 /** Grid dots: Polymarket API positions + onchain wallet snapshot (onchain wins same token). */

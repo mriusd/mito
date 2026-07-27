@@ -1,4 +1,4 @@
-import { ExternalLink, Link2, Link2Off, RefreshCw } from 'lucide-react';
+import { Link2, Link2Off, RefreshCw } from 'lucide-react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../../stores/appStore';
@@ -14,7 +14,6 @@ import {
   isWeatherCitySlug,
   mergeWeatherCityOptions,
   weatherCityTempUnit,
-  weatherCityMetarUrl,
   weatherCityResolutionUrl,
 } from '../../lib/weatherCities';
 import { onTempOddsCitySelect, selectTempOddsCity, selectTempOddsDate, selectTempOddsMetric } from '../../lib/weatherTempOddsControl';
@@ -62,6 +61,7 @@ import {
   type WeatherTempUnit,
 } from '../../lib/weatherObservations';
 import { TempUnitToggle, TemperatureChart } from '../TemperatureChart';
+import { WeatherMetarDialog } from '../WeatherMetarDialog';
 import { outcomeBestAskProb, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
 import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
@@ -1587,6 +1587,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     return readStoredCity(panelId, initialCity);
   });
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
+  const [metarDialogOpen, setMetarDialogOpen] = useState(false);
   const [cityMenuPos, setCityMenuPos] = useState<{ top: number; left: number } | null>(null);
   const cityBtnRef = useRef<HTMLButtonElement>(null);
   const cityMenuRef = useRef<HTMLDivElement>(null);
@@ -2084,10 +2085,9 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     [city, selectedObsDate],
   );
   const resolutionTitle = 'Weather Underground hourly';
-  const metarUrl = useMemo(() => weatherCityMetarUrl(city), [city]);
   const metarTitle = cityMeta.icao
-    ? `Aviation Weather METAR (${cityMeta.icao})`
-    : 'Aviation Weather METAR';
+    ? `METAR ${cityMeta.icao} (live)`
+    : 'METAR';
 
   const refreshModelProbabilities = useCallback(async () => {
     const ctx = modelContextKey;
@@ -2340,31 +2340,36 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           </svg>
         </button>
 
-        {resolutionUrl ? (
-          <a
-            href={resolutionUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="no-drag inline-flex shrink-0 items-center rounded p-0.5 text-gray-400 hover:text-sky-300"
-            title={resolutionTitle}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <ExternalLink className="h-3 w-3" aria-hidden />
-          </a>
-        ) : null}
-        {metarUrl ? (
-          <a
-            href={metarUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="no-drag inline-flex shrink-0 items-center rounded p-0.5 text-[9px] font-bold tabular-nums text-gray-400 hover:text-amber-300"
-            title={metarTitle}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            METAR
-          </a>
+        {(resolutionUrl || cityMeta.icao) ? (
+          <div className="no-drag inline-flex shrink-0 overflow-hidden rounded border border-gray-600 divide-x divide-gray-600 bg-gray-900/90">
+            {resolutionUrl ? (
+              <a
+                href={resolutionUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex shrink-0 items-center px-1.5 py-0.5 text-[9px] font-bold text-gray-400 hover:bg-gray-800/90 hover:text-sky-300"
+                title={resolutionTitle}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                WU
+              </a>
+            ) : null}
+            {cityMeta.icao ? (
+              <button
+                type="button"
+                className="inline-flex shrink-0 items-center px-1.5 py-0.5 text-[9px] font-bold text-gray-400 hover:bg-gray-800/90 hover:text-amber-300"
+                title={metarTitle}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMetarDialogOpen(true);
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                METAR
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         <TempUnitToggle unit={tempUnit} onChange={setTempUnitOverride} />
@@ -2611,6 +2616,17 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           </>
         )}
       </div>
+      {cityMeta.icao ? (
+        <WeatherMetarDialog
+          open={metarDialogOpen}
+          onClose={() => setMetarDialogOpen(false)}
+          city={city}
+          cityLabel={cityMeta.label}
+          icao={cityMeta.icao}
+          timeZone={cityMeta.timezone}
+          displayTempUnit={tempUnit}
+        />
+      ) : null}
     </div>
   );
 }

@@ -85,6 +85,39 @@ export type WeatherForecastSummary = {
   forecastUpdatedAt?: number;
 };
 
+export type WeatherMetarCloudLayer = {
+  cover: string;
+  baseFt: number;
+};
+
+export type WeatherMetarDetail = {
+  city: string;
+  icao: string;
+  name?: string;
+  reportTime?: string;
+  obsTimeMs: number;
+  temp: number;
+  obsTempUnit: WeatherTempUnit;
+  dewp?: number;
+  wdirDeg?: number;
+  wspdKt?: number;
+  visibSm?: number;
+  altimMb?: number;
+  skyCover?: string;
+  fltCat?: string;
+  clouds?: WeatherMetarCloudLayer[];
+  rawOb: string;
+};
+
+export async function fetchWeatherMetarDetail(city: WeatherCitySlug): Promise<WeatherMetarDetail> {
+  const resp = await fetchBackend(`${API_BASE}/api/weather-metar/${encodeURIComponent(city)}`);
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(text || `weather metar ${resp.status}`);
+  }
+  return resp.json();
+}
+
 function parseDateYmd(date: string): string {
   const raw = date.replace(/-/g, '');
   if (!/^\d{8}$/.test(raw)) {

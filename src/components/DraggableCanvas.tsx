@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useMemo, useRef, useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
+import { Suspense, useCallback, useMemo, useRef, useEffect, useLayoutEffect, useState, memo, type ReactNode } from 'react';
 import { ReactGridLayout as RGLGrid } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import { X } from 'lucide-react';
@@ -251,7 +251,7 @@ function renderPanel(panel: PanelConfig): ReactNode {
   }
 }
 
-export function DraggableCanvas() {
+export const DraggableCanvas = memo(function DraggableCanvas() {
   const panels = useAppStore((s) => s.panels);
   const layouts = useAppStore((s) => s.layouts);
   const setLayouts = useAppStore((s) => s.setLayouts);
@@ -683,4 +683,4 @@ export function DraggableCanvas() {
       </div>
     </div>
   );
-}
+});

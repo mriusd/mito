@@ -5,7 +5,8 @@ import { hitStrikeMetaForBs, getSignalTablePriceStr } from '../utils/format';
 import type { AssetSymbol, Market, Signal, ArbOpportunity } from '../types';
 
 const GRID_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
-
+/** Price/vwap ticks — do not re-run React; throttle compute via store subscribe. */
+const PRICE_RECOMPUTE_MS = 1000;
 
 function assetToSymbol(a: string): AssetSymbol {
   return (a + 'USDT') as AssetSymbol;
@@ -25,14 +26,13 @@ function parsePriceBounds(priceStr: string): { low: number; high: number } {
 
 /**
  * Computes signals and arbs from market data + BS probabilities
- * and pushes them into the store. Runs whenever market data or prices change.
+ * and pushes them into the store.
+ * High-freq price/vwap: store.subscribe + throttle (no React re-render on every tick).
  */
 export function useSignalsAndArbs() {
   const aboveMarkets = useAppStore((s) => s.aboveMarkets);
   const priceOnMarkets = useAppStore((s) => s.priceOnMarkets);
   const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
-  const priceData = useAppStore((s) => s.priceData);
-  const vwapData = useAppStore((s) => s.vwapData);
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const manualPriceSlots = useAppStore((s) => s.manualPriceSlots);
@@ -42,35 +42,76 @@ export function useSignalsAndArbs() {
   const vwapCorrection = useAppStore((s) => s.vwapCorrection);
   const arbMatchMult = useAppStore((s) => s.arbMatchMult);
   const signalMakerMode = useAppStore((s) => s.signalMakerMode);
-  const setSignals = useAppStore((s) => s.setSignals);
-  const setArbs = useAppStore((s) => s.setArbs);
-  const setTriArbs = useAppStore((s) => s.setTriArbs);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const priceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const computeRef = useRef<() => void>(() => {});
 
-  // Orders: read via getState() inside computeAll; omitting from deps avoids debounce thrash on order ticks.
-  useEffect(() => {
-    // Debounce: recompute 200ms after last dependency change
+  const scheduleCompute = (delayMs: number) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      computeAll().catch(e => console.error('[signals] computeAll error:', e));
-    }, 200);
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- orders via getState() in computeAll()
-  }, [aboveMarkets, priceOnMarkets, weeklyHitMarkets, priceData, vwapData, volatilityData, volMultiplier, manualPriceSlots, activeRangeSlot, useLivePrice, bsTimeOffsetHours, vwapCorrection, arbMatchMult, signalMakerMode]);
+      timerRef.current = null;
+      computeRef.current();
+    }, delayMs);
+  };
 
-  function getAssetPrice(symbol: AssetSymbol): number {
+  useEffect(() => {
+    scheduleCompute(50);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- price via subscribe below
+  }, [
+    aboveMarkets,
+    priceOnMarkets,
+    weeklyHitMarkets,
+    volatilityData,
+    volMultiplier,
+    manualPriceSlots,
+    activeRangeSlot,
+    useLivePrice,
+    bsTimeOffsetHours,
+    vwapCorrection,
+    arbMatchMult,
+    signalMakerMode,
+  ]);
+
+  // priceData / vwapData — throttle without re-rendering this host on every tick.
+  useEffect(() => {
+    let lastPd = useAppStore.getState().priceData;
+    let lastVwap = useAppStore.getState().vwapData;
+    const unsub = useAppStore.subscribe((state) => {
+      if (state.priceData === lastPd && state.vwapData === lastVwap) return;
+      lastPd = state.priceData;
+      lastVwap = state.vwapData;
+      if (priceTimerRef.current != null) return;
+      priceTimerRef.current = setTimeout(() => {
+        priceTimerRef.current = null;
+        scheduleCompute(0);
+      }, PRICE_RECOMPUTE_MS);
+    });
+    return () => {
+      unsub();
+      if (priceTimerRef.current) clearTimeout(priceTimerRef.current);
+    };
+  }, []);
+
+  function getAssetPrice(
+    symbol: AssetSymbol,
+    priceData: ReturnType<typeof useAppStore.getState>['priceData'],
+    vwapData: ReturnType<typeof useAppStore.getState>['vwapData'],
+  ): number {
     const slot = manualPriceSlots[symbol]?.[activeRangeSlot[symbol]];
     if (slot && !useLivePrice[symbol]) return slot.low;
     return vwapData[symbol]?.price || priceData[symbol]?.price || 0;
   }
 
   async function computeAll() {
+    const st = useAppStore.getState();
+    const { priceData, vwapData, setSignals, setArbs, setTriArbs, orders } = st;
     const signals: Signal[] = [];
     const now = Date.now();
-    const orders = useAppStore.getState().orders;
 
-    // Build order lookup for skip-own-order detection
     const ordersByToken: Record<string, typeof orders> = {};
     for (const o of orders) {
       const tid = o.asset_id || o.token_id || '';
@@ -80,20 +121,20 @@ export function useSignalsAndArbs() {
       }
     }
 
-    // --- SIGNALS --- (iterate ALL assets from market data, not just grid assets)
-    const allAssetNames = [...new Set([...Object.keys(aboveMarkets), ...Object.keys(priceOnMarkets), ...Object.keys(weeklyHitMarkets)])];
+    const allAssetNames = [
+      ...new Set([...Object.keys(aboveMarkets), ...Object.keys(priceOnMarkets), ...Object.keys(weeklyHitMarkets)]),
+    ];
     for (const asset of allAssetNames) {
       const symbol = assetToSymbol(asset);
-      // Use VWAP/spot price for BS (matches BsFlower center), not manual slot
       const bsLivePrice = vwapData[symbol]?.price || priceData[symbol]?.price || 0;
-      const livePrice = getAssetPrice(symbol);
-      const sigma = (volatilityData[symbol] || 0.60) * volMultiplier;
+      const livePrice = getAssetPrice(symbol, priceData, vwapData);
+      const sigma = (volatilityData[symbol] || 0.6) * volMultiplier;
       if (livePrice <= 0) continue;
 
       const allMarkets = [
-        ...((aboveMarkets[asset] || []).map(m => ({ m, tableType: 'above' as const }))),
-        ...((priceOnMarkets[asset] || []).map(m => ({ m, tableType: 'price' as const }))),
-        ...((weeklyHitMarkets[asset] || []).map(m => ({ m, tableType: 'hit' as const }))),
+        ...((aboveMarkets[asset] || []).map((m) => ({ m, tableType: 'above' as const }))),
+        ...((priceOnMarkets[asset] || []).map((m) => ({ m, tableType: 'price' as const }))),
+        ...((weeklyHitMarkets[asset] || []).map((m) => ({ m, tableType: 'hit' as const }))),
       ];
 
       for (const { m, tableType } of allMarkets) {
@@ -118,9 +159,15 @@ export function useSignalsAndArbs() {
           hitIsDip = hitMeta.isDipHit;
         } else {
           if (!priceStr) continue;
-          const cleaned = priceStr.replace(/[\$,]/g, '').replace(/(.+)↑/, '>$1').replace(/(.+)↓/, '<$1').trim();
-          bsPriceStr = (cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-'))
-            ? cleaned : '>' + cleaned;
+          const cleaned = priceStr
+            .replace(/[\$,]/g, '')
+            .replace(/(.+)↑/, '>$1')
+            .replace(/(.+)↓/, '<$1')
+            .trim();
+          bsPriceStr =
+            cleaned.startsWith('>') || cleaned.startsWith('<') || cleaned.includes('-')
+              ? cleaned
+              : '>' + cleaned;
         }
 
         const bsYes = getSignalYesProbability(
@@ -137,29 +184,22 @@ export function useSignalsAndArbs() {
         const yesProbNum = bsYes * 100;
         const noProbNum = bsNo * 100;
 
-        // YES side: ask price (price to buy YES)
         const yesAskNum = m.bestAsk ? m.bestAsk * 100 : 0;
-        // NO side: ask price = 1 - bestBid (price to buy NO)
         const noAskNum = m.bestBid ? (1 - m.bestBid) * 100 : 0;
-        // Bid prices: YES bid = bestBid, NO bid = 1 - bestAsk
         const yesBidNum = m.bestBid ? m.bestBid * 100 : 0;
         const noBidNum = m.bestAsk ? (1 - m.bestAsk) * 100 : 0;
 
-        // Diffs
         const yesDiffPct = yesProbNum > 0 ? ((yesAskNum - yesProbNum) / yesProbNum) * 100 : 0;
         const noDiffPct = noProbNum > 0 ? ((noAskNum - noProbNum) / noProbNum) * 100 : 0;
         const yesBidDiffPct = yesProbNum > 0 ? ((yesBidNum - yesProbNum) / yesProbNum) * 100 : 0;
         const noBidDiffPct = noProbNum > 0 ? ((noBidNum - noProbNum) / noProbNum) * 100 : 0;
 
-        // Check data availability based on mode
-        // Taker needs ask data; maker needs bid data on the leg we evaluate (see YES/NO blocks)
         const yesHasAskData = yesAskNum > 0;
         const noHasAskData = noAskNum > 0;
         const yesHasBidData = yesBidNum > 0;
         const noHasBidData = noBidNum > 0;
         let yesHasData: boolean, noHasData: boolean;
         if (signalMakerMode) {
-          // Maker YES branch shows NO bid/BS → require NO bid; NO branch shows YES bid → require YES bid
           yesHasData = noHasBidData;
           noHasData = yesHasBidData;
         } else {
@@ -167,31 +207,34 @@ export function useSignalsAndArbs() {
           noHasData = noHasAskData;
         }
 
-        // Own-order detection helpers
         const yesOrds = ordersByToken[yesTokenId] || [];
         const noOrds = ordersByToken[noTokenId] || [];
-        const yesBuyOrders = yesOrds.filter(o => o.side === 'BUY');
-        const yesSellOrders = yesOrds.filter(o => o.side === 'SELL');
-        const noBuyOrders = noOrds.filter(o => o.side === 'BUY');
-        const noSellOrders = noOrds.filter(o => o.side === 'SELL');
+        const yesBuyOrders = yesOrds.filter((o) => o.side === 'BUY');
+        const yesSellOrders = yesOrds.filter((o) => o.side === 'SELL');
+        const noBuyOrders = noOrds.filter((o) => o.side === 'BUY');
+        const noSellOrders = noOrds.filter((o) => o.side === 'SELL');
 
-        const yesMyBestBuy = yesBuyOrders.length > 0 ? Math.max(...yesBuyOrders.map(o => parseFloat(o.price))) : 0;
-        const yesBestBidIsMyOrder = yesMyBestBuy > 0 && (m.bestBid ?? 0) > 0 && Math.abs(yesMyBestBuy - (m.bestBid ?? 0)) < 0.0001;
-        const yesMyBestSell = yesSellOrders.length > 0 ? Math.min(...yesSellOrders.map(o => parseFloat(o.price))) : Infinity;
-        const yesBestAskIsMyOrder = yesMyBestSell < Infinity && m.bestAsk != null && Math.abs(yesMyBestSell - m.bestAsk) < 0.0001;
+        const yesMyBestBuy = yesBuyOrders.length > 0 ? Math.max(...yesBuyOrders.map((o) => parseFloat(o.price))) : 0;
+        const yesBestBidIsMyOrder =
+          yesMyBestBuy > 0 && (m.bestBid ?? 0) > 0 && Math.abs(yesMyBestBuy - (m.bestBid ?? 0)) < 0.0001;
+        const yesMyBestSell =
+          yesSellOrders.length > 0 ? Math.min(...yesSellOrders.map((o) => parseFloat(o.price))) : Infinity;
+        const yesBestAskIsMyOrder =
+          yesMyBestSell < Infinity && m.bestAsk != null && Math.abs(yesMyBestSell - m.bestAsk) < 0.0001;
 
-        const noMyBestBuy = noBuyOrders.length > 0 ? Math.max(...noBuyOrders.map(o => parseFloat(o.price))) : 0;
-        const noBestBidDecimal = m.bestAsk ? (1 - m.bestAsk) : 0;
-        const noBestBidIsMyOrder = noMyBestBuy > 0 && noBestBidDecimal > 0 && Math.abs(noMyBestBuy - noBestBidDecimal) < 0.0001;
-        const noMyBestSell = noSellOrders.length > 0 ? Math.min(...noSellOrders.map(o => parseFloat(o.price))) : Infinity;
-        const noBestAskDecimal = m.bestBid ? (1 - m.bestBid) : 0;
-        const noBestAskIsMyOrder = noMyBestSell < Infinity && noBestAskDecimal > 0 && Math.abs(noMyBestSell - noBestAskDecimal) < 0.0001;
+        const noMyBestBuy = noBuyOrders.length > 0 ? Math.max(...noBuyOrders.map((o) => parseFloat(o.price))) : 0;
+        const noBestBidDecimal = m.bestAsk ? 1 - m.bestAsk : 0;
+        const noBestBidIsMyOrder =
+          noMyBestBuy > 0 && noBestBidDecimal > 0 && Math.abs(noMyBestBuy - noBestBidDecimal) < 0.0001;
+        const noMyBestSell =
+          noSellOrders.length > 0 ? Math.min(...noSellOrders.map((o) => parseFloat(o.price))) : Infinity;
+        const noBestAskDecimal = m.bestBid ? 1 - m.bestBid : 0;
+        const noBestAskIsMyOrder =
+          noMyBestSell < Infinity && noBestAskDecimal > 0 && Math.abs(noMyBestSell - noBestAskDecimal) < 0.0001;
 
-        // YES signal — taker: cheap YES ask vs BS. Maker: flip to NO leg; same formula (bid−BS)/BS×100, signal when < −20
-        const yesBranchSignal =
-          signalMakerMode
-            ? noHasBidData && noProbNum > 0 && noBidDiffPct < -20
-            : yesHasData && yesProbNum > 0 && yesDiffPct < -20;
+        const yesBranchSignal = signalMakerMode
+          ? noHasBidData && noProbNum > 0 && noBidDiffPct < -20
+          : yesHasData && yesProbNum > 0 && yesDiffPct < -20;
         if (yesBranchSignal) {
           const yesSkipSignal = signalMakerMode ? noBestBidIsMyOrder : yesBestAskIsMyOrder;
           if (!yesSkipSignal) {
@@ -208,10 +251,9 @@ export function useSignalsAndArbs() {
               isBullish = false;
             }
             const displayPrice = getSignalTablePriceStr(m);
-            // In maker mode: YES orig -> flip type, show NO side data (bid/BS/diff all NO leg, same % formula as taker)
             signals.push({
               market: m,
-              type: signalMakerMode ? (isBullish ? 'BEAR' : 'BULL') : (isBullish ? 'BULL' : 'BEAR'),
+              type: signalMakerMode ? (isBullish ? 'BEAR' : 'BULL') : isBullish ? 'BULL' : 'BEAR',
               price: signalMakerMode ? noAskNum / 100 : yesAskNum / 100,
               bsPrice: signalMakerMode ? noProbNum / 100 : yesProbNum / 100,
               diff: signalMakerMode ? (noBidNum - noProbNum) / 100 : (yesAskNum - yesProbNum) / 100,
@@ -227,11 +269,9 @@ export function useSignalsAndArbs() {
           }
         }
 
-        // NO signal — taker: cheap NO ask vs BS. Maker: show YES leg; same bid-vs-BS % as taker uses ask-vs-BS %
-        const noBranchSignal =
-          signalMakerMode
-            ? yesHasBidData && yesProbNum > 0 && yesBidDiffPct < -20
-            : noHasData && noProbNum > 0 && noDiffPct < -20;
+        const noBranchSignal = signalMakerMode
+          ? yesHasBidData && yesProbNum > 0 && yesBidDiffPct < -20
+          : noHasData && noProbNum > 0 && noDiffPct < -20;
         if (noBranchSignal) {
           const noSkipSignal = signalMakerMode ? yesBestBidIsMyOrder : noBestAskIsMyOrder;
           if (!noSkipSignal) {
@@ -246,7 +286,6 @@ export function useSignalsAndArbs() {
               isBullish = priceStr.includes('<');
             }
             const displayPrice = getSignalTablePriceStr(m);
-            // In maker mode: NO orig -> show YES side data (bid/BS/diff all YES leg)
             signals.push({
               market: m,
               type: isBullish ? 'BULL' : 'BEAR',
@@ -267,10 +306,8 @@ export function useSignalsAndArbs() {
       }
     }
 
-    // --- ARBS (2-leg cross-asset same-date) ---
     const arbs: ArbOpportunity[] = [];
 
-    // Build per-asset map: { asset -> dateKey -> [{ strike, market, ... }] }
     interface MarketEntry {
       asset: string;
       strike: number;
@@ -284,12 +321,12 @@ export function useSignalsAndArbs() {
 
     for (const asset of GRID_ASSETS) {
       const symbol = assetToSymbol(asset);
-      const livePrice = getAssetPrice(symbol);
+      const livePrice = getAssetPrice(symbol, priceData, vwapData);
       if (livePrice <= 0) continue;
       assetMarketsByDate[asset] = {};
-      const assetVol = (volatilityData[symbol] || 0.60) * volMultiplier;
+      const assetVol = (volatilityData[symbol] || 0.6) * volMultiplier;
 
-      for (const m of (aboveMarkets[asset] || [])) {
+      for (const m of aboveMarkets[asset] || []) {
         const priceStr = m.groupItemTitle || '';
         if (!priceStr) continue;
         const cleaned = priceStr.replace(/[\$,]/g, '');
@@ -307,28 +344,33 @@ export function useSignalsAndArbs() {
         const dateKey = new Date(endDate).toDateString();
 
         if (!assetMarketsByDate[asset][dateKey]) assetMarketsByDate[asset][dateKey] = [];
-        assetMarketsByDate[asset][dateKey].push({ asset, strike, pctFromLive, volNormPct, endDate, market: m, priceStr });
+        assetMarketsByDate[asset][dateKey].push({
+          asset,
+          strike,
+          pctFromLive,
+          volNormPct,
+          endDate,
+          market: m,
+          priceStr,
+        });
       }
     }
 
-    // Helper: compute BS yes probability for a market entry at a given price
     function bsYesAtPrice(entry: MarketEntry, price: number): number | null {
       if (price <= 0) return null;
       const sym = assetToSymbol(entry.asset);
-      const sigma = (volatilityData[sym] || 0.60) * volMultiplier;
+      const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
       const bsStr = '>' + entry.priceStr.replace(/[>$,]/g, '');
       const prob = getMarketProbability(bsStr, price, entry.endDate, sigma, bsTimeOffsetHours);
       return prob !== null ? prob * 100 : null;
     }
 
-    // Compute live BS (VWAP/spot) for OB mode
     function computeBsLive(entry: MarketEntry): number | null {
       const sym = assetToSymbol(entry.asset);
       const lp = vwapData[sym]?.price || priceData[sym]?.price || 0;
       return bsYesAtPrice(entry, lp);
     }
 
-    // Compute slot-based BS (conservative min of low/high bounds) for BS1/BS2 modes
     function computeBsSlot(entry: MarketEntry, slotIndex: number): number | null {
       const sym = assetToSymbol(entry.asset);
       const slot = manualPriceSlots[sym]?.[slotIndex];
@@ -342,7 +384,6 @@ export function useSignalsAndArbs() {
       return probLow;
     }
 
-    // First pass: collect candidates using bestBid/bestAsk (quick filter)
     const candidates: { yesM: MarketEntry; noM: MarketEntry }[] = [];
     for (let i = 0; i < GRID_ASSETS.length; i++) {
       for (let j = i + 1; j < GRID_ASSETS.length; j++) {
@@ -356,15 +397,13 @@ export function useSignalsAndArbs() {
           for (const mA of datesA[dateKey]) {
             for (const mB of datesB[dateKey]) {
               if (Math.abs(mA.volNormPct - mB.volNormPct) > 0.01 * arbMatchMult) continue;
-              // Quick check: YES on A + NO on B
-              const yesAskA = mA.market.bestAsk ? (mA.market.bestAsk * 100) : null;
-              const noAskB = mB.market.bestBid ? ((1 - mB.market.bestBid) * 100) : null;
+              const yesAskA = mA.market.bestAsk ? mA.market.bestAsk * 100 : null;
+              const noAskB = mB.market.bestBid ? (1 - mB.market.bestBid) * 100 : null;
               if (yesAskA !== null && noAskB !== null && yesAskA + noAskB < 100) {
                 candidates.push({ yesM: mA, noM: mB });
               }
-              // Quick check: YES on B + NO on A
-              const yesAskB = mB.market.bestAsk ? (mB.market.bestAsk * 100) : null;
-              const noAskA = mA.market.bestBid ? ((1 - mA.market.bestBid) * 100) : null;
+              const yesAskB = mB.market.bestAsk ? mB.market.bestAsk * 100 : null;
+              const noAskA = mA.market.bestBid ? (1 - mA.market.bestBid) * 100 : null;
               if (yesAskB !== null && noAskA !== null && yesAskB + noAskA < 100) {
                 candidates.push({ yesM: mB, noM: mA });
               }
@@ -374,7 +413,6 @@ export function useSignalsAndArbs() {
       }
     }
 
-    // Set signals immediately (sync), then fetch orderbooks for arbs (async)
     setSignals(signals);
 
     if (candidates.length === 0) {
@@ -383,16 +421,12 @@ export function useSignalsAndArbs() {
       return;
     }
 
-    // Second pass: compute arbs using bestBid/bestAsk from store (no network calls)
     for (const c of candidates) {
-      // YES price = best ask of YES market
       const yesAsk = c.yesM.market.bestAsk || 0;
-      // NO price = 1 - bestBid of NO market (NO ask = 1 - YES bid)
-      const noAsk = c.noM.market.bestBid ? (1 - c.noM.market.bestBid) : 0;
+      const noAsk = c.noM.market.bestBid ? 1 - c.noM.market.bestBid : 0;
       if (yesAsk <= 0 || noAsk <= 0) continue;
       if (yesAsk + noAsk >= 1) continue;
 
-      // Bid prices for selling: YES bid = bestBid, NO bid = 1 - bestAsk
       const yesBidPrice = (c.yesM.market.bestBid || 0) * 100;
       const noBidPrice = c.noM.market.bestAsk ? (1 - c.noM.market.bestAsk) * 100 : 0;
 
@@ -402,7 +436,6 @@ export function useSignalsAndArbs() {
       const edge = 1 - totalCost;
       const edgePct = totalCost > 0 ? (edge / totalCost) * 100 : 0;
 
-      // Compute all BS variants: live (OB), slot0 (BS1), slot1 (BS2)
       const yBsLive = computeBsLive(c.yesM);
       const nBsLive = computeBsLive(c.noM);
       const yBs1 = computeBsSlot(c.yesM, 0);
@@ -424,22 +457,22 @@ export function useSignalsAndArbs() {
         noPct: c.noM.pctFromLive,
         maxSize: 0,
         yesBs: yBsLive,
-        noBs: nBsLive !== null ? (100 - nBsLive) : null,
+        noBs: nBsLive !== null ? 100 - nBsLive : null,
         yesBs1: yBs1,
-        noBs1: nBs1 !== null ? (100 - nBs1) : null,
+        noBs1: nBs1 !== null ? 100 - nBs1 : null,
         yesBs2: yBs2,
-        noBs2: nBs2 !== null ? (100 - nBs2) : null,
+        noBs2: nBs2 !== null ? 100 - nBs2 : null,
         yesBidPrice,
         noBidPrice,
       });
     }
 
-    // Sort arbs by edge% descending
     arbs.sort((a, b) => b.edgePct - a.edgePct);
     setArbs(arbs);
-
-    // --- TRI-ARBS (3-leg same-asset same-date) ---
-    // TODO: implement if needed; for now set empty
     setTriArbs([]);
   }
+
+  computeRef.current = () => {
+    void computeAll().catch((e) => console.error('[signals] computeAll error:', e));
+  };
 }

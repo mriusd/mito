@@ -34,8 +34,8 @@ function listsSameMarketRefs(a: readonly Market[], b: readonly Market[]): boolea
 /** Reuse prior Market refs when Gamma/static content unchanged (poll JSON churn). */
 export function stabilizeMarketArray(prev: Market[] | undefined, next: Market[]): Market[] {
   if (prev === next) return next;
+  if (next.length === 0) return prev && prev.length === 0 ? prev : next;
   if (!prev?.length) return next;
-  if (next.length === 0) return next;
   const prevById = new Map<string, Market>();
   for (const m of prev) prevById.set(m.id, m);
   const out = new Array<Market>(next.length);

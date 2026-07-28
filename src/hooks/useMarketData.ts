@@ -8,7 +8,6 @@ import {
 import { markBackendDownFromHttp, markBackendRecovered } from '../lib/fetchBackend';
 import { notifyBackendReconnect } from '../lib/backendReconnect';
 import type { Market } from '../types';
-import { resolveUpDownStrikeSync } from '../utils/format';
 
 const WS_FIELDS: (keyof Market)[] = [
   'bestBid', 'bestAsk', 'volume', 'sharesInExistence', 'marketNetDirection',
@@ -94,13 +93,8 @@ export function useMarketData() {
       }
       startTransition(() => {
         useAppStore.getState().setMarketData(patchPayload);
-        const sel = useAppStore.getState().selectedMarket;
-        if (sel?.id && marketArraysChanged) {
-          const strike = resolveUpDownStrikeSync(sel, lookup, upOrDownMarkets);
-          if (strike != null && sel.priceToBeat !== strike) {
-            useAppStore.getState().setSelectedMarket({ ...sel, priceToBeat: strike });
-          }
-        }
+        // Strike lives in useUpDownStrikePrice / lookup — do NOT patch selectedMarket
+        // ({...sel, priceToBeat}) every poll (woke Header/Sidebar/Binance/Temp).
       });
       // Always clear splash once we have a payload — do not wait for 2nd recovery probe.
       useAppStore.getState().setLoading(false);

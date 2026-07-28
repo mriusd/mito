@@ -1,6 +1,9 @@
 import { useAccount } from 'wagmi';
 import { appKit } from '../lib/wallet';
 import { useAppStore } from '../stores/appStore';
+import { openPkWalletManager } from './PrivateKeyImportDialog';
+import { getActivePkWallet } from '../lib/pkWallets';
+import { useEffect, useState } from 'react';
 
 function formatAddress(addr: string): string {
   return addr.slice(0, 6) + '...' + addr.slice(-4);
@@ -14,6 +17,12 @@ export function WalletButton() {
   const { address, isConnected } = useAccount();
   const signingMode = useAppStore((s) => s.signingMode);
   const pkAddress = useAppStore((s) => s.pkAddress);
+  const pkRevision = useAppStore((s) => s.pkRevision);
+  const [pkLabel, setPkLabel] = useState(() => getActivePkWallet()?.label ?? null);
+
+  useEffect(() => {
+    setPkLabel(getActivePkWallet()?.label ?? null);
+  }, [pkRevision]);
 
   const isPkActive = signingMode === 'privateKey' && !!pkAddress;
   const displayAddr = isPkActive ? pkAddress : address;
@@ -25,13 +34,25 @@ export function WalletButton() {
     return (
       <button
         onClick={() => {
-          if (!isPkActive) appKit.open({ view: 'Account' });
+          if (isPkActive) openPkWalletManager();
+          else appKit.open({ view: 'Account' });
         }}
+        title={isPkActive && pkLabel ? pkLabel : undefined}
         className="flex items-center gap-1.5 bg-gray-800/50 rounded px-2 h-[28px] hover:bg-gray-700/50 transition text-xs"
       >
         <span className={`w-2 h-2 rounded-full ${dotColor} flex-shrink-0`} />
-        <span className={`${textColor} font-mono font-bold max-[639px]:hidden`}>{formatAddress(displayAddr)}</span>
-        <span className={`${textColor} font-mono font-bold min-[640px]:hidden`}>{formatAddressCompact(displayAddr)}</span>
+        {isPkActive && pkLabel ? (
+          <>
+            <span className={`${textColor} font-bold truncate max-w-[72px] max-[639px]:hidden`}>{pkLabel}</span>
+            <span className={`${textColor} font-mono font-bold opacity-70 max-[639px]:hidden`}>{formatAddressCompact(displayAddr)}</span>
+            <span className={`${textColor} font-mono font-bold min-[640px]:hidden`}>{formatAddressCompact(displayAddr)}</span>
+          </>
+        ) : (
+          <>
+            <span className={`${textColor} font-mono font-bold max-[639px]:hidden`}>{formatAddress(displayAddr)}</span>
+            <span className={`${textColor} font-mono font-bold min-[640px]:hidden`}>{formatAddressCompact(displayAddr)}</span>
+          </>
+        )}
       </button>
     );
   }

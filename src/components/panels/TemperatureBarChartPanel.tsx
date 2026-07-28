@@ -797,6 +797,25 @@ function buildTempOddsBuckets(
   return { entries, maxPct };
 }
 
+const TempOddsElapsedLabel = memo(function TempOddsElapsedLabel({
+  updatedMs,
+  className,
+}: {
+  updatedMs: number;
+  className?: string;
+}) {
+  const nowMs = useWalletTradeElapsedMs();
+  if (updatedMs <= 0) return null;
+  const label = formatElapsedSinceMs(updatedMs, nowMs);
+  if (!label) return null;
+  const ageSec = Math.max(0, Math.floor((nowMs - updatedMs) / 1000));
+  return (
+    <span className={`whitespace-nowrap text-[10px] font-normal tabular-nums ${className ?? tradeElapsedColorClass(ageSec)}`}>
+      {label}
+    </span>
+  );
+});
+
 const TempOddsCityLocalClock = memo(function TempOddsCityLocalClock({ timezone }: { timezone: string }) {
   const now = useExpiryNow();
   return (
@@ -1451,15 +1470,14 @@ function TempOddsTemperatureChart({
   unit,
   forecastSource,
   onForecastSourceChange,
-  nowMs,
 }: {
   data: WeatherObservationsResponse | null;
   loading: boolean;
   unit: WeatherTempUnit;
   forecastSource: ForecastSourceToggle;
   onForecastSourceChange: (source: ForecastSourceToggle) => void;
-  nowMs: number;
 }) {
+  const nowMs = useWalletTradeElapsedMs();
   const chartData = useMemo(() => {
     if (!data) return null;
     return weatherObsWithForecastSource(data, forecastSource as ObsForecastSourceId);
@@ -1808,7 +1826,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   );
   const orderLookup = useMemo(() => buildOrderLookup(myOrders), [myOrders]);
   const onchainWsPositions = useThrottledSidebarOnchainGridWalletPositions(2000);
-  const nowMs = useWalletTradeElapsedMs();
 
   useEffect(() => {
     if (showPast) return;
@@ -1914,17 +1931,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     if (!modelPayload || modelPayloadKey !== modelContextKey || !modelContextKey) return 0;
     return weatherPayloadUpdatedMs(modelPayload, modelFetchedAtMs);
   }, [modelPayload, modelPayloadKey, modelContextKey, modelFetchedAtMs]);
-
-  const predictionAgeLabel = useMemo(() => {
-    if (predictionUpdatedMs <= 0) return null;
-    return formatElapsedSinceMs(predictionUpdatedMs, nowMs) || null;
-  }, [predictionUpdatedMs, nowMs]);
-
-  const predictionAgeClass = useMemo(() => {
-    if (predictionUpdatedMs <= 0) return 'text-gray-500';
-    const ageSec = Math.max(0, Math.floor((nowMs - predictionUpdatedMs) / 1000));
-    return tradeElapsedColorClass(ageSec);
-  }, [predictionUpdatedMs, nowMs]);
 
   const marketExpiryMs = useMemo(() => {
     if (!selectedDateCol?.slug) return null;
@@ -2477,11 +2483,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           <span title="Time until market expiry (local midnight after event day)">
             <TempOddsExpiryCountdown marketExpiryMs={marketExpiryMs} />
           </span>
-          {predictionAgeLabel ? (
-            <span className={`whitespace-nowrap text-[10px] font-normal tabular-nums ${predictionAgeClass}`}>
-              {predictionAgeLabel}
-            </span>
-          ) : null}
+          <TempOddsElapsedLabel updatedMs={predictionUpdatedMs} />
           <button
             type="button"
             title={
@@ -2604,7 +2606,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               unit={tempUnit}
               forecastSource={forecastSource}
               onForecastSourceChange={setTempOddsForecastSource}
-              nowMs={nowMs}
             />
           </>
         )}

@@ -641,8 +641,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (bumpedMarketEpoch) patch.marketLookupEpoch = s.marketLookupEpoch + 1;
       return patch;
     }),
-  setLoading: (v) => set({ loading: v }),
-  setBackendConnected: (v) => set({ backendConnected: v }),
+  setLoading: (v) => set((s) => (s.loading === v ? s : { loading: v })),
+  setBackendConnected: (v) => set((s) => (s.backendConnected === v ? s : { backendConnected: v })),
   setArbs: (a) => set({ arbs: a }),
   setTriArbs: (a) => set({ triArbs: a }),
   setSignals: (next) => set((s) => (signalsEqual(next, s.signals) ? {} : { signals: next })),

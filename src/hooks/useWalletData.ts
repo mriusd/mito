@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useCallback, useState, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useCallback, useState, useMemo, startTransition } from 'react';
 import { getAccount, watchAccount } from '@wagmi/core';
 import { ethers } from 'ethers';
 import { useAppStore } from '../stores/appStore';
@@ -122,12 +122,14 @@ export function useWalletData() {
         if (channelAtStart !== walletChannelKeyRef.current) return;
         if (proxyWalletRef.current?.trim().toLowerCase() !== maker) return;
 
-        useAppStore.getState().setMarketData({
-          positions,
-          orders,
-          trades,
-          cashBalance: balance,
-          makerAddress: makerLocked,
+        startTransition(() => {
+          useAppStore.getState().setMarketData({
+            positions,
+            orders,
+            trades,
+            cashBalance: balance,
+            makerAddress: makerLocked,
+          });
         });
       } catch (err) {
         console.warn('[useWalletData] Failed to fetch wallet data:', err);

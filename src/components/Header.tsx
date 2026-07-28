@@ -11,7 +11,8 @@ import { useThrottledGridPositions } from '../hooks/useThrottledGridWallet';
 import { saveSetting } from '../api';
 import { gridSizeFromDefaultLayoutMins } from '../lib/defaultLayouts';
 import type { PanelType } from '../types';
-import { PrivateKeyImportDialog, getStoredPrivateKey } from './PrivateKeyImportDialog';
+import { PrivateKeyImportDialog, getStoredPrivateKey, OPEN_PK_MANAGER_EVENT } from './PrivateKeyImportDialog';
+import { getActivePkWallet, listPkWallets } from '../lib/pkWallets';
 import { useSyncHeadWS } from '../hooks/useSyncHeadWS';
 import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
@@ -637,10 +638,25 @@ export function Header({ onRefresh }: HeaderProps) {
 function SigningModeSwitch() {
   const signingMode = useAppStore((s) => s.signingMode);
   const setSigningMode = useAppStore((s) => s.setSigningMode);
+  const pkRevision = useAppStore((s) => s.pkRevision);
   const [pkDialogOpen, setPkDialogOpen] = useState(false);
-  const [hasPk, setHasPk] = useState(!!getStoredPrivateKey());
+  const [hasPk, setHasPk] = useState(() => listPkWallets().length > 0);
+  const [activeLabel, setActiveLabel] = useState(() => getActivePkWallet()?.label ?? null);
 
-  const refreshPk = () => setHasPk(!!getStoredPrivateKey());
+  const refreshPk = () => {
+    setHasPk(listPkWallets().length > 0);
+    setActiveLabel(getActivePkWallet()?.label ?? null);
+  };
+
+  useEffect(() => {
+    refreshPk();
+  }, [pkRevision]);
+
+  useEffect(() => {
+    const open = () => setPkDialogOpen(true);
+    window.addEventListener(OPEN_PK_MANAGER_EVENT, open);
+    return () => window.removeEventListener(OPEN_PK_MANAGER_EVENT, open);
+  }, []);
 
   const handleClick = (mode: 'wallet' | 'privateKey') => {
     if (mode === 'wallet') {
@@ -668,11 +684,16 @@ function SigningModeSwitch() {
         </button>
         <button
           type="button"
-          className={`px-2 h-full transition flex items-center gap-1 ${signingMode === 'privateKey' ? 'bg-yellow-700 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'}`}
+          title={activeLabel ? `PK: ${activeLabel}` : 'PK wallets'}
+          className={`px-2 h-full transition flex items-center gap-1 max-w-[120px] ${signingMode === 'privateKey' ? 'bg-yellow-700 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'}`}
           onClick={() => handleClick('privateKey')}
         >
-          PK
-          {signingMode === 'privateKey' && hasPk && <span className="w-1.5 h-1.5 rounded-full bg-green-400" />}
+          <span className="flex-shrink-0">PK</span>
+          {signingMode === 'privateKey' && hasPk && activeLabel ? (
+            <span className="truncate font-semibold opacity-90">{activeLabel}</span>
+          ) : null}
+          {signingMode === 'privateKey' && hasPk && <span className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />}
+          <span className="opacity-70 flex-shrink-0">▾</span>
         </button>
       </div>
       <PrivateKeyImportDialog

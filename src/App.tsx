@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, memo } from 'react';
 import { Loader2 } from 'lucide-react';
 import './lib/wallet';
 import { useAppStore } from './stores/appStore';
@@ -355,4 +355,4 @@ function App() {
   );
 }
 
-export default App;
+export default memo(App);

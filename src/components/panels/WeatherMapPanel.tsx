@@ -634,14 +634,10 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   const [zoom, setZoom] = useState(initStoredView.zoom);
   const [dragging, setDragging] = useState(false);
 
-  const [tempOddsDateIso, setTempOddsDateIso] = useState<string | null>(() => getTempOddsSelectedDate());
-  const [tempOddsMetric, setTempOddsMetric] = useState(() => getTempOddsSelectedMetric());
-  // Catalog / quotes / forecast / clock — refs only. React select of weatherMarkets was 250ms passive.
+  // Date/metric/catalog — refs only. setTempOddsDateIso was React-waking map → 260ms passive with TempOdds.
   const weatherMarketsRef = useRef(useAppStore.getState().weatherMarkets);
-  const tempOddsDateIsoRef = useRef(tempOddsDateIso);
-  tempOddsDateIsoRef.current = tempOddsDateIso;
-  const tempOddsMetricRef = useRef(tempOddsMetric);
-  tempOddsMetricRef.current = tempOddsMetric;
+  const tempOddsDateIsoRef = useRef<string | null>(getTempOddsSelectedDate());
+  const tempOddsMetricRef = useRef(getTempOddsSelectedMetric());
   const forecastHighByCityRef = useRef<Map<string, number>>(new Map());
   const quoteTokenIdsRef = useRef<string[]>([]);
 
@@ -710,14 +706,6 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   }, [rebuildQuoteTokenIds, rebuildLiveQuoteMaps, rebuildCityExposure]);
 
   useEffect(() => {
-    rebuildQuoteTokenIds();
-  }, [tempOddsDateIso, tempOddsMetric, rebuildQuoteTokenIds]);
-
-  useEffect(() => {
-    refreshMapData();
-  }, [tempOddsDateIso, tempOddsMetric, refreshMapData]);
-
-  useEffect(() => {
     weatherMarketsRef.current = useAppStore.getState().weatherMarkets;
     refreshMapData();
     setChartBidAskExtraTokens('weather-map', rebuildQuoteTokenIds());
@@ -776,17 +764,38 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     };
   }, [rebuildCityExposure]);
 
-  useEffect(() => onTempOddsDateSelect(setTempOddsDateIso), []);
-  useEffect(() => onTempOddsMetricSelect(setTempOddsMetric), []);
+  const loadForecastForDateRef = useRef<((iso: string | null) => void) | null>(null);
+
+  useEffect(
+    () =>
+      onTempOddsDateSelect((iso) => {
+        if (tempOddsDateIsoRef.current === iso) return;
+        tempOddsDateIsoRef.current = iso;
+        refreshMapData();
+        setChartBidAskExtraTokens('weather-map', rebuildQuoteTokenIds());
+        loadForecastForDateRef.current?.(iso);
+      }),
+    [refreshMapData, rebuildQuoteTokenIds],
+  );
+  useEffect(
+    () =>
+      onTempOddsMetricSelect((metric) => {
+        if (tempOddsMetricRef.current === metric) return;
+        tempOddsMetricRef.current = metric;
+        refreshMapData();
+        setChartBidAskExtraTokens('weather-map', rebuildQuoteTokenIds());
+      }),
+    [refreshMapData, rebuildQuoteTokenIds],
+  );
 
   useEffect(() => {
-    if (!tempOddsDateIso) return;
     let alive = true;
-    const load = () => {
+    const load = (dateIso: string | null) => {
+      if (!dateIso) return;
       void Promise.all(
         WEATHER_CITIES.map(async (c) => {
           try {
-            const obs = await fetchWeatherObservations(c.slug, tempOddsDateIso);
+            const obs = await fetchWeatherObservations(c.slug, dateIso);
             const hi = weatherMispriceHighBoundC(obs);
             return hi != null ? ([c.slug, hi] as const) : null;
           } catch {
@@ -816,13 +825,15 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
         scheduleDrawRef.current();
       });
     };
-    load();
-    const id = window.setInterval(load, FORECAST_HIGH_REFRESH_MS);
+    loadForecastForDateRef.current = load;
+    load(tempOddsDateIsoRef.current);
+    const id = window.setInterval(() => load(tempOddsDateIsoRef.current), FORECAST_HIGH_REFRESH_MS);
     return () => {
       alive = false;
+      loadForecastForDateRef.current = null;
       window.clearInterval(id);
     };
-  }, [tempOddsDateIso, rebuildLiveQuoteMaps]);
+  }, [rebuildLiveQuoteMaps]);
 
   const meridians = useMemo(() => buildTimezoneMeridians(), []);
 

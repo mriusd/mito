@@ -100,6 +100,10 @@ type TpoPosRow = {
   /** Ask ¢ (size-weighted avg when Bucket on); else derived from askProb. */
   askCents?: number | null;
   sellPrice: number | null;
+  /** Collapsed weather bucket: Σ(size × bid) / Σ(size × ask) / Σ(size × sell¢/100). */
+  bidValueUsd?: number | null;
+  askValueUsd?: number | null;
+  sellValueUsd?: number | null;
   pnl: number;
   pnlPercent: number;
   marketId?: string | null;
@@ -153,6 +157,11 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
     let askSz = 0;
     let sellW = 0;
     let sellSz = 0;
+    let bidValueUsd = 0;
+    let askValueUsd = 0;
+    let sellValueUsd = 0;
+    let bidValueN = 0;
+    let askValueN = 0;
     const outcomes = new Set<string>();
     for (const r of list) {
       size = Math.min(size, r.size);
@@ -163,14 +172,19 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
       if (w > 0 && r.bidProb != null && Number.isFinite(r.bidProb) && r.bidProb > 0) {
         bidW += r.currentPrice * w;
         bidSz += w;
+        bidValueUsd += w * r.bidProb;
+        bidValueN += 1;
       }
       if (w > 0 && r.askProb != null && Number.isFinite(r.askProb) && r.askProb > 0) {
         askW += r.askProb * 100 * w;
         askSz += w;
+        askValueUsd += w * r.askProb;
+        askValueN += 1;
       }
       if (w > 0 && r.sellPrice != null && Number.isFinite(r.sellPrice) && r.sellPrice > 0) {
         sellW += r.sellPrice * w;
         sellSz += w;
+        sellValueUsd += w * (r.sellPrice / 100);
       }
       if (r.outcome) outcomes.add(r.outcome);
     }
@@ -194,6 +208,9 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
       askProb: askCents != null ? askCents / 100 : null,
       askCents,
       sellPrice: sellCents,
+      bidValueUsd: bidValueN > 0 ? bidValueUsd : null,
+      askValueUsd: askValueN > 0 ? askValueUsd : null,
+      sellValueUsd: sellSz > 0 ? sellValueUsd : null,
       pnl,
       pnlPercent,
       clickable: first.clickable,
@@ -802,7 +819,7 @@ function TradesPositionsOrdersInner({
       return false;
     }
   });
-  const [posBucketExpanded, setPosBucketExpanded] = useState<Set<string>>(() => new Set());
+  const [posBucketCollapsed, setPosBucketCollapsed] = useState<Set<string>>(() => new Set());
   type PosSortCol = 'expiry' | 'size' | 'entry' | 'cost' | 'bid' | 'ask' | 'sell' | 'val' | 'pnl' | 'pnlPct';
   const [posSortCol, setPosSortCol] = useState<PosSortCol>(() => {
     const v = localStorage.getItem(`polymarket-tpo-pos-sort-col-${panelId}`);
@@ -1459,7 +1476,7 @@ function TradesPositionsOrdersInner({
     const flat: TpoPosRow[] = [];
     for (const r of rows) {
       flat.push(r);
-      if (!r.bucketKey || !r.bucketChildren?.length || !posBucketExpanded.has(r.bucketKey)) continue;
+      if (!r.bucketKey || !r.bucketChildren?.length || posBucketCollapsed.has(r.bucketKey)) continue;
       for (const child of r.bucketChildren) {
         flat.push({
           ...child,
@@ -1474,13 +1491,13 @@ function TradesPositionsOrdersInner({
     processedPositions,
     posCategoryFilter,
     posWeatherBucket,
-    posBucketExpanded,
+    posBucketCollapsed,
     posSortCol,
     posSortDir,
   ]);
 
   const togglePosBucketExpanded = useCallback((bucketKey: string) => {
-    setPosBucketExpanded((prev) => {
+    setPosBucketCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(bucketKey)) next.delete(bucketKey);
       else next.add(bucketKey);
@@ -1805,7 +1822,7 @@ function TradesPositionsOrdersInner({
               {posCategoryFilter === 'WEATHER' ? (
                 <label
                   className="no-drag inline-flex items-center gap-1 cursor-pointer select-none text-[9px] text-gray-400 hover:text-gray-200"
-                  title="Combine same city/date into one row: sum entry/bid/ask/val; size=min; cost from actual sizes; PnL from summed val−cost"
+                  title="Combine same city/date into one row: bid/ask/sell = $ sum; size=min; entry sum ¢; cost/val/PnL summed"
                 >
                   <input
                     type="checkbox"
@@ -1814,7 +1831,7 @@ function TradesPositionsOrdersInner({
                       const on = e.target.checked;
                       setPosWeatherBucket(on);
                       localStorage.setItem(`polymarket-tpo-pos-weather-bucket-${panelId}`, on ? '1' : '0');
-                      if (!on) setPosBucketExpanded(new Set());
+                      setPosBucketCollapsed(new Set());
                     }}
                     className="h-3 w-3 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-0 focus:ring-offset-0"
                   />
@@ -2022,7 +2039,7 @@ function TradesPositionsOrdersInner({
                 const exitColor = POSITION_BID_EXIT_TAILWIND[positionBidExitTier(p.entryPrice, p.currentPrice)];
                 const hasBid = p.bidProb != null && Number.isFinite(p.bidProb) && p.bidProb > 0;
                 const isBucketParent = !!(p.bucketKey && p.bucketChildren && p.bucketChildren.length > 1);
-                const bucketOpen = isBucketParent && posBucketExpanded.has(p.bucketKey!);
+                const bucketOpen = isBucketParent && !posBucketCollapsed.has(p.bucketKey!);
                 const bucketHidesSelected =
                   isBucketParent &&
                   !bucketOpen &&
@@ -2074,9 +2091,13 @@ function TradesPositionsOrdersInner({
                           : ''
                       }`}
                       title={
-                        !isBucketParent && hasBid
-                          ? `Limit sell @ bid ${p.currentPrice.toFixed(1)}¢`
-                          : undefined
+                        isBucketParent
+                          ? p.bidValueUsd != null
+                            ? `Sum of bid notionals $${p.bidValueUsd.toFixed(2)}`
+                            : undefined
+                          : hasBid
+                            ? `Limit sell @ bid ${p.currentPrice.toFixed(1)}¢`
+                            : undefined
                       }
                       onClick={(e) => {
                         e.stopPropagation();
@@ -2086,7 +2107,11 @@ function TradesPositionsOrdersInner({
                         void handleSellAtBid(p);
                       }}
                     >
-                      {hasBid ? `${p.currentPrice.toFixed(1)}¢` : '-'}
+                      {isBucketParent && p.bidValueUsd != null
+                        ? `$${p.bidValueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : hasBid
+                          ? `${p.currentPrice.toFixed(1)}¢`
+                          : '-'}
                     </td>
                     <td
                       className={`${nCls} text-right text-red-300/90 ${
@@ -2098,9 +2123,13 @@ function TradesPositionsOrdersInner({
                           : ''
                       }`}
                       title={
-                        !isBucketParent && p.askProb != null && p.askProb > 0
-                          ? `Place sell @ ask ${(p.askProb * 100).toFixed(1)}¢`
-                          : undefined
+                        isBucketParent
+                          ? p.askValueUsd != null
+                            ? `Sum of ask notionals $${p.askValueUsd.toFixed(2)}`
+                            : undefined
+                          : p.askProb != null && p.askProb > 0
+                            ? `Place sell @ ask ${(p.askProb * 100).toFixed(1)}¢`
+                            : undefined
                       }
                       onClick={(e) => {
                         e.stopPropagation();
@@ -2110,7 +2139,11 @@ function TradesPositionsOrdersInner({
                         void handleSellAtAsk(p);
                       }}
                     >
-                      {p.askCents != null ? formatAskCentsSum(p.askCents) : formatQuoteCents(p.askProb)}
+                      {isBucketParent && p.askValueUsd != null
+                        ? `$${p.askValueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : p.askCents != null
+                          ? formatAskCentsSum(p.askCents)
+                          : formatQuoteCents(p.askProb)}
                     </td>
                     <td
                       className={`${nCls} text-right ${
@@ -2121,7 +2154,13 @@ function TradesPositionsOrdersInner({
                           ? positionSellPriceColorStyle(p.currentPrice, p.sellPrice)
                           : undefined
                       }
-                      title={!isBucketParent ? 'Click to set sell price (¢)' : undefined}
+                      title={
+                        isBucketParent
+                          ? p.sellValueUsd != null
+                            ? `Sum of sell notionals $${p.sellValueUsd.toFixed(2)}`
+                            : undefined
+                          : 'Click to set sell price (¢)'
+                      }
                       onClick={(e) => {
                         e.stopPropagation();
                         if (isBucketParent) return;
@@ -2154,6 +2193,8 @@ function TradesPositionsOrdersInner({
                           disabled={posOrderBusyTids.has(normalizeClobTokenId(p.tid))}
                           aria-label="Sell price cents"
                         />
+                      ) : isBucketParent && p.sellValueUsd != null ? (
+                        `$${p.sellValueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                       ) : p.sellPrice != null ? (
                         `${p.sellPrice.toFixed(1)}¢`
                       ) : (

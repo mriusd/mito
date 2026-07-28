@@ -798,7 +798,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   };
   const scheduleWalletPosFlush = () => {
     if (posFlushTimerRef.current != null) return;
-    posFlushTimerRef.current = setTimeout(flushWalletPosReact, 1000);
+    // Keep coalesce for bursty fills, but 1s made SPLIT/MERGE positions feel stuck.
+    posFlushTimerRef.current = setTimeout(flushWalletPosReact, 50);
   };
 
   // Fast market-scoped REST before WS snapshot (global walletTrades can miss older fills on this market).

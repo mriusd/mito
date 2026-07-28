@@ -13,7 +13,7 @@ import {
   setSidebarOnchainWalletTrades,
 } from '../lib/sidebarOnchainTradesStore';
 
-const BRIDGE_MS = 1000;
+const BRIDGE_MS = 50;
 
 /** Null host — onchain WS → external store. Coalesce bridge (was 141ms passive storms). */
 export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(opts: OnchainTradesWSOpts) {

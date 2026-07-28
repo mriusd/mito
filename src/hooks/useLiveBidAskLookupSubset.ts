@@ -20,6 +20,18 @@ function subsetEqual(prev: Record<string, Market>, next: Record<string, Market>)
 
 /** Unthrottled WS bid/ask subset — pending patch via `getBidAskMarketRow` (notify / flash gates). */
 export function useLiveBidAskLookupSubset(tokenIds: readonly string[]): Record<string, Market> {
+  return useBidAskLookupSubset(tokenIds, 0);
+}
+
+/** Bid/ask subset; `ms > 0` coalesces WS patches (TPO / heavy panels). */
+export function useThrottledBidAskLookupSubset(
+  tokenIds: readonly string[],
+  ms = 500,
+): Record<string, Market> {
+  return useBidAskLookupSubset(tokenIds, ms);
+}
+
+function useBidAskLookupSubset(tokenIds: readonly string[], ms: number): Record<string, Market> {
   const idsKey = tokenIds.join('\0');
   const ids = useMemo(() => tokenIds.filter(Boolean), [idsKey]);
 
@@ -35,16 +47,32 @@ export function useLiveBidAskLookupSubset(tokenIds: readonly string[]): Record<s
   const [subset, setSubset] = useState(readSubset);
 
   useEffect(() => {
-    const flush = () => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const apply = () => {
+      timer = null;
       setSubset((prev) => {
         const latest = readSubset();
         return subsetEqual(prev, latest) ? prev : latest;
       });
     };
-    const unsub = subscribeBidAskMarketLookup(flush);
-    flush();
-    return unsub;
-  }, [readSubset]);
+
+    const onPatch = () => {
+      if (ms <= 0) {
+        apply();
+        return;
+      }
+      if (timer != null) return;
+      timer = setTimeout(apply, ms);
+    };
+
+    const unsub = subscribeBidAskMarketLookup(onPatch);
+    apply();
+    return () => {
+      unsub();
+      if (timer != null) clearTimeout(timer);
+    };
+  }, [readSubset, ms]);
 
   return subset;
 }

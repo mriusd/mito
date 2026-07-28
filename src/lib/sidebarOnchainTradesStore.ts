@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
 import type { WSPosition, WSTrade, WalletPnlDailyWS } from '../hooks/useOnchainTradesWS';
 import type { WalletPosition } from '../api';
@@ -387,6 +387,30 @@ export function useSidebarOnchainGridWalletPositions(): WSPosition[] {
   return getSidebarOnchainTradesSnapshot().gridWalletPositions;
 }
 
+/** Coalesce onchain grid position digests — heavy panels (TPO). */
+export function useThrottledSidebarOnchainGridWalletPositions(ms = 500): WSPosition[] {
+  const [rows, setRows] = useState(() => getSidebarOnchainTradesSnapshot().gridWalletPositions);
+  useEffect(() => {
+    let latest = getSidebarOnchainTradesSnapshot().gridWalletPositions;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => {
+      timer = null;
+      setRows((prev) => (prev === latest ? prev : latest));
+    };
+    const unsub = subscribeSidebarOnchainTrades(() => {
+      latest = getSidebarOnchainTradesSnapshot().gridWalletPositions;
+      if (timer != null) return;
+      timer = setTimeout(flush, ms);
+    });
+    flush();
+    return () => {
+      unsub();
+      if (timer != null) clearTimeout(timer);
+    };
+  }, [ms]);
+  return rows;
+}
+
 export function useSidebarOnchainWalletTrades(): WSTrade[] {
   const digest = useSyncExternalStore(
     subscribeSidebarOnchainTrades,
@@ -395,6 +419,30 @@ export function useSidebarOnchainWalletTrades(): WSTrade[] {
   );
   void digest;
   return getSidebarOnchainTradesSnapshot().walletTrades;
+}
+
+/** Coalesce onchain wallet trade digests — heavy panels (TPO). */
+export function useThrottledSidebarOnchainWalletTrades(ms = 500): WSTrade[] {
+  const [rows, setRows] = useState(() => getSidebarOnchainTradesSnapshot().walletTrades);
+  useEffect(() => {
+    let latest = getSidebarOnchainTradesSnapshot().walletTrades;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => {
+      timer = null;
+      setRows((prev) => (prev === latest ? prev : latest));
+    };
+    const unsub = subscribeSidebarOnchainTrades(() => {
+      latest = getSidebarOnchainTradesSnapshot().walletTrades;
+      if (timer != null) return;
+      timer = setTimeout(flush, ms);
+    });
+    flush();
+    return () => {
+      unsub();
+      if (timer != null) clearTimeout(timer);
+    };
+  }, [ms]);
+  return rows;
 }
 
 export function useSidebarOnchainWalletWsHydrated(): boolean {

@@ -47,6 +47,7 @@ function useThrottledAppSlice<T>(select: (s: ReturnType<typeof useAppStore.getSt
 
 const selectOrders = (s: ReturnType<typeof useAppStore.getState>) => s.orders;
 const selectPositions = (s: ReturnType<typeof useAppStore.getState>) => s.positions;
+const selectTrades = (s: ReturnType<typeof useAppStore.getState>) => s.trades;
 const selectOnchainGridPositions = (s: ReturnType<typeof useAppStore.getState>) => s.onchainGridPositions;
 
 export function useThrottledGridOrders(ms = 2000): Order[] {
@@ -55,6 +56,10 @@ export function useThrottledGridOrders(ms = 2000): Order[] {
 
 export function useThrottledGridPositions(ms = 2000): GridPosition[] {
   return useThrottledAppSlice(selectPositions, ms);
+}
+
+export function useThrottledGridTrades(ms = 2000): ReturnType<typeof useAppStore.getState>['trades'] {
+  return useThrottledAppSlice(selectTrades, ms);
 }
 
 export function useThrottledOnchainGridPositions(ms = 2000): OnchainGridPosition[] {

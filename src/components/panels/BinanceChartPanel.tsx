@@ -928,8 +928,8 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const sym = assetToSymbol(asset);
-  const livePrice = useThrottledStorePrice(sym, 500);
-  const chainlinkPrices = useThrottledChainlinkPricesMap(500);
+  const livePrice = useThrottledStorePrice(sym, 2000);
+  const chainlinkPrices = useThrottledChainlinkPricesMap(2000);
   const spotForChart = useMemo(() => {
     if (priceSource === 'chainlink') {
       const cl = chainlinkPrices[asset];

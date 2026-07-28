@@ -1,11 +1,16 @@
+import { startTransition } from 'react';
 import type { Market } from '../types';
 import { useAppStore } from '../stores/appStore';
 
 /** Grid store flush for bid/ask + lookup fields — sidebar uses `getBidAskMarketRow` (unthrottled). */
 export const BID_ASK_LOOKUP_FLUSH_MS = 2000;
 export const GRID_BID_ASK_THROTTLE_MS = BID_ASK_LOOKUP_FLUSH_MS;
-/** Coalesce live WS bid/ask into grid flush listeners (faster yes/no on grid/updown without per-tick React). */
-export const GRID_BID_ASK_LIVE_COALESCE_MS = 500;
+/**
+ * Coalesce live WS → grid flush listeners.
+ * Was 500ms — woke every UpDown/Grid cell + TPO together and starved canvas rAF.
+ * Match store flush so React grid ticks ~2s max.
+ */
+export const GRID_BID_ASK_LIVE_COALESCE_MS = BID_ASK_LOOKUP_FLUSH_MS;
 
 /** Fields bid/ask WS batches can materially change vs prior store row — cheap equality gate. */
 const BIDASK_EQ_KEYS: (keyof Market)[] = [
@@ -204,7 +209,10 @@ function scheduleLiveNotify() {
 
 function notifyBidAskMarketLookupGridFlushListeners() {
   bidAskGridFlushDigest += 1;
-  for (const listener of bidAskLookupGridFlushListeners) listener();
+  // Transition: keep weather-map / drag rAF on the immediate lane.
+  startTransition(() => {
+    for (const listener of bidAskLookupGridFlushListeners) listener();
+  });
 }
 
 function scheduleGridLiveCoalesceNotify() {

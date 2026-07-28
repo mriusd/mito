@@ -13,21 +13,18 @@ import {
 import { positionExitBidProb, outcomeBidAskProb } from '../../lib/outcomeQuote';
 import { positionBidExitTier, positionSellPriceColorStyle, positionSellPriceTintScore, POSITION_BID_EXIT_TAILWIND, orderBuyToBidTintScore, orderSellToAskTintScore, quoteClosenessColorStyle } from '../../lib/positionBidExitTier';
 import { onchainFillKey } from '../../lib/tradeKeys';
-import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLookupSubset';
-import { useLiveBidAskLookupSubset } from '../../hooks/useLiveBidAskLookupSubset';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
 import {
   isWsBidAskStubMarket,
   resolveCanonicalMarketForToken,
 } from '../../lib/bidAskMarketLookup';
+import { promoteTpoPanelHot, useTpoPanelData, useTpoPanelHot } from '../../lib/tpoPanelDataStore';
 import { TpoVirtualTableBody } from './TpoVirtualTableBody';
 import { TpoColorCodedSize, TpoColorCodedText } from './TpoColorCodedSize';
 import { isSidebarDustPosition } from '../../lib/sidebarMyPositions';
 import {
   refreshSidebarOnchainWallet,
-  useSidebarOnchainGridWalletPositions,
-  useSidebarOnchainWalletTrades,
   useSidebarOnchainWalletWsHydrated,
 } from '../../lib/sidebarOnchainTradesStore';
 import { canonicalConditionKey, type WSPosition, type WSTrade } from '../../hooks/useOnchainTradesWS';
@@ -504,9 +501,30 @@ function TpoAuthEmpty({
 }
 
 function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
-  const positions = useAppStore((s) => s.positions);
-  const orders = useAppStore((s) => s.orders);
-  const trades = useAppStore((s) => s.trades);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [panelVisible, setPanelVisible] = useState(true);
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      ([entry]) => setPanelVisible(!!entry?.isIntersecting),
+      { root: null, threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const tpoHot = useTpoPanelHot(panelId, panelVisible);
+  const tpoData = useTpoPanelData(panelVisible && tpoHot);
+  const positions = tpoData.positions;
+  const orders = tpoData.orders;
+  const trades = tpoData.trades;
+  const onchainWsPositions = tpoData.onchainPositions;
+  const onchainWsTrades = tpoData.onchainTrades;
+  const marketLookup = tpoData.quoteLookup;
+  const liveQuoteLookup = marketLookup;
+  const tpoQuoteLookup = marketLookup;
+
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const signingMode = useAppStore((s) => s.signingMode);
   const pkAddress = useAppStore((s) => s.pkAddress);
@@ -514,14 +532,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const { address, isConnected } = useAccount();
   const makerAddress = useTradingWalletAddress();
   const selectedMarketId = useAppStore((s) => s.selectedMarket?.conditionId || s.selectedMarket?.id);
-  const selectedMarketClobTokenIds = useAppStore((s) => s.selectedMarket?.clobTokenIds);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
 
   const [onchainClaimRows] = useState<OnchainClaimRow[]>([]);
-  const onchainWsPositions = useSidebarOnchainGridWalletPositions();
-  const onchainWsTrades = useSidebarOnchainWalletTrades();
   const onchainWsHydrated = useSidebarOnchainWalletWsHydrated();
   const tradingWalletKey = makerAddress.trim().toLowerCase();
   const onchainPositionsLoading =
@@ -538,87 +553,12 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     refreshSidebarOnchainWallet();
   }, [liveTradesSource, tradingWalletKey]);
 
-  const polymarketTokenKey = useMemo(() => {
-    const s = new Set<string>();
-    for (const p of positions) {
-      const tid = getPositionClobTokenId(p);
-      if (tid) s.add(tid);
-    }
-    // Cap order/trade token keys — 5k+ open orders must not explode live lookup / subset builds.
-    let orderN = 0;
-    for (const o of orders) {
-      if (orderN >= 200) break;
-      const t = o.asset_id || o.token_id;
-      if (t) {
-        s.add(t);
-        orderN += 1;
-      }
-    }
-    let tradeN = 0;
-    for (const t of trades) {
-      if (tradeN >= 200) break;
-      const id = t.asset_id || t.asset || t.token_id;
-      if (id) {
-        s.add(id);
-        tradeN += 1;
-      }
-    }
-    return Array.from(s).sort().join(',');
-  }, [positions, orders, trades]);
-
-  const tpoClobIds = useMemo(() => {
-    const set = new Set<string>();
-    if (polymarketTokenKey) {
-      for (const tid of polymarketTokenKey.split(',')) {
-        const t = tid.trim();
-        if (t) set.add(t);
-      }
-    }
-    for (const r of onchainWsPositions) {
-      if (r.tokenId) set.add(String(r.tokenId));
-    }
-    for (const t of onchainWsTrades.slice(0, 200)) {
-      if (t.tokenId) set.add(String(t.tokenId));
-    }
-    for (const t of selectedMarketClobTokenIds || []) if (t) set.add(String(t));
-    return [...set];
-  }, [polymarketTokenKey, onchainWsPositions, onchainWsTrades, selectedMarketClobTokenIds]);
-
-  const marketLookup = useThrottledMarketLookupSubset(tpoClobIds);
-
-  // Include YES+NO legs so NO positions can imply from YES book (and vice versa).
-  const tpoLiveQuoteIds = useMemo(() => {
-    const set = new Set<string>();
-    const addTid = (tid: string | null | undefined) => {
-      const t = String(tid || '').trim();
-      if (!t) return;
-      set.add(t);
-      const m = lookupMarketByTokenId(t, marketLookup);
-      for (const id of m?.clobTokenIds || []) {
-        if (id) set.add(String(id));
-      }
-    };
-    for (const p of positions) addTid(getPositionClobTokenId(p));
-    for (const r of onchainWsPositions) addTid(r.tokenId);
-    let orderN = 0;
-    for (const o of orders) {
-      if (orderN >= 200) break;
-      addTid(getOrderClobTokenId(o));
-      orderN += 1;
-    }
-    for (const t of selectedMarketClobTokenIds || []) addTid(t);
-    return [...set];
-  }, [positions, orders, onchainWsPositions, selectedMarketClobTokenIds, marketLookup]);
-
-  const liveQuoteLookup = useLiveBidAskLookupSubset(tpoLiveQuoteIds);
-  const tpoQuoteLookup = useMemo(
-    () => ({ ...marketLookup, ...liveQuoteLookup }),
-    [marketLookup, liveQuoteLookup],
-  );
+  const tpoLiveQuoteIds = useMemo(() => Object.keys(marketLookup), [marketLookup]);
 
   useEffect(() => {
+    if (!panelVisible) return;
     setChartBidAskExtraTokens('tpo', tpoLiveQuoteIds);
-  }, [tpoLiveQuoteIds]);
+  }, [tpoLiveQuoteIds, panelVisible]);
   useEffect(() => () => setChartBidAskExtraTokens('tpo', []), []);
 
   const sellOrderPriceByToken = useMemo(() => buildSellOrderPriceByToken(orders), [orders]);
@@ -1247,8 +1187,10 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     return 'px-2 py-0.5 rounded-sm text-[9px] font-semibold text-gray-400 hover:text-white hover:bg-gray-700';
   };
 
-  // Process trades
-  const processedTrades = useMemo(() => tradesForTable
+  // Process trades (active tab only — 3 TPO panels must not each rebuild all tables)
+  const processedTrades = useMemo(() => {
+    if (tab !== 'trades') return [];
+    return tradesForTable
     .filter((t) => {
       const tid = getTradeClobTokenId(t);
       if (assetFilter !== 'ALL') {
@@ -1353,10 +1295,13 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         eventSlug: trade.eventSlug || trade.slug || market?.eventSlug || '',
         clickable,
       };
-    }), [tradesForTable, assetFilter, tradesSideFilter, marketLookup]);
+    });
+  }, [tab, tradesForTable, assetFilter, tradesSideFilter, marketLookup]);
 
   // Process positions — unresolved + non-dust only.
-  const processedPositions = useMemo(() => positionsForTable
+  const processedPositions = useMemo(() => {
+    if (tab !== 'positions') return [];
+    return positionsForTable
     .filter((p) => {
       if (isSidebarDustPosition(p.size || 0) || p.redeemable) return false;
       const tid = getPositionClobTokenId(p);
@@ -1449,9 +1394,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         eventSlug: pos.eventSlug || pos.slug || market?.eventSlug || '',
         clickable,
       } satisfies TpoPosRow;
-    }), [positionsForTable, posCategoryFilter, marketLookup, liveQuoteLookup, sellOrderPriceByToken]);
+    });
+  }, [tab, positionsForTable, posCategoryFilter, marketLookup, liveQuoteLookup, sellOrderPriceByToken]);
 
   const displayPositions = useMemo(() => {
+    if (tab !== 'positions') return [];
     const base =
       posCategoryFilter === 'WEATHER' && posWeatherBucket
         ? bucketTpoWeatherPositions(processedPositions as TpoPosRow[])
@@ -1516,6 +1463,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     }
     return flat;
   }, [
+    tab,
     processedPositions,
     posCategoryFilter,
     posWeatherBucket,
@@ -1535,6 +1483,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
   // Process orders — no live quote dep (5k orders × quote ticks freezes UI).
   const processedOrders = useMemo(() => {
+    if (tab !== 'orders') return [];
     const fullLookup = useAppStore.getState().marketLookup;
     const resolveOrderMarket = (tid: string) => {
       const canonical = resolveCanonicalMarketForToken(tid);
@@ -1603,7 +1552,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           marketId: market && !isWsBidAskStubMarket(market) ? market.id : market?.conditionId,
         };
       });
-  }, [orders, assetFilter, ordersFilter]);
+  }, [tab, orders, assetFilter, ordersFilter]);
 
   const displayOrders = useMemo(() => {
     if (!ordSortCol) return processedOrders;
@@ -1746,20 +1695,32 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   );
 
   return (
-    <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 min-w-0">
+    <div
+      ref={rootRef}
+      className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 min-w-0"
+      onPointerDownCapture={() => promoteTpoPanelHot(panelId)}
+    >
       <div className="panel-header flex min-w-0 items-center gap-1 mb-2 cursor-grab">
-        <span className="shrink-0 text-[10px] font-bold text-gray-500 select-none">TPO</span>
+        <span className="shrink-0 text-[10px] font-bold text-gray-500 select-none">
+          TPO{!tpoHot && panelVisible ? '·' : ''}
+        </span>
         <div className="no-drag flex min-w-0 flex-1 flex-wrap items-center gap-1">
           <button onClick={() => handleSetTab('positions')} className={tabCls('positions')}>
-            Positions <span className="text-xs text-gray-500">({displayPositions.length})</span>
+            Positions{' '}
+            <span className="text-xs text-gray-500">
+              ({tab === 'positions' ? displayPositions.length : positionsForTable.length})
+            </span>
           </button>
           <button onClick={() => handleSetTab('orders')} className={tabCls('orders')}>
-            Orders <span className="text-xs text-gray-500">({processedOrders.length})</span>
+            Orders{' '}
+            <span className="text-xs text-gray-500">
+              ({tab === 'orders' ? processedOrders.length : orders.length})
+            </span>
           </button>
           <button onClick={() => handleSetTab('trades')} className={tabCls('trades')}>
             Trades{' '}
             <span className="text-xs text-gray-500">
-              ({liveTradesSource === 'onchain' ? tradesTotal : processedTrades.length})
+              ({liveTradesSource === 'onchain' ? tradesTotal : tab === 'trades' ? processedTrades.length : tradesForTable.length})
             </span>
           </button>
 

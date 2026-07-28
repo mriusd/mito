@@ -308,23 +308,24 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
   const myTradesPnl = useMemo(() => {
     let totalSellCost = 0;
     let totalBuyCost = 0;
-    // SPLIT/MERGE mint/burn YES+NO — USDC moves once per tx; counting both legs double-counts.
+    // SPLIT/MERGE: YES+NO legs share one USDC move (= size shares). Count once per tx at face USDC.
     const splitMergeTxSeen = new Set<string>();
     for (const trade of myTradesDisplay) {
       const rawPrice = parseFloat(trade.price);
       const size = tradeFilledSizeShares(trade);
-      if (!Number.isFinite(rawPrice) || !Number.isFinite(size)) continue;
-      const cost = rawPrice * size;
+      if (!Number.isFinite(size)) continue;
       const side = String(trade.side || '').toUpperCase();
       if (side === 'SPLIT' || side === 'MERGE') {
         const tx = String(trade.txHash || '').trim().toLowerCase();
         const dedupeK = tx || mySidebarTradeRowKey(trade);
         if (!dedupeK || splitMergeTxSeen.has(dedupeK)) continue;
         splitMergeTxSeen.add(dedupeK);
-        if (side === 'MERGE') totalSellCost += cost;
-        else totalBuyCost += cost;
+        if (side === 'MERGE') totalSellCost += size;
+        else totalBuyCost += size;
         continue;
       }
+      if (!Number.isFinite(rawPrice)) continue;
+      const cost = rawPrice * size;
       if (side === 'SELL' || side === 'REDEEM') totalSellCost += cost;
       else if (side === 'BUY') totalBuyCost += cost;
     }

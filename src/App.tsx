@@ -1,20 +1,12 @@
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { useAccount } from 'wagmi';
 import './lib/wallet';
 import { useAppStore } from './stores/appStore';
-import { useBinanceWS } from './hooks/useBinanceWS';
-import { useRwaSpotPrices } from './hooks/useRwaSpotPrices';
-import { useMarketData } from './hooks/useMarketData';
-import { invalidateClobMemoryCreds } from './lib/clobClient';
-import { clearWalletAccountSlice } from './lib/clearWalletAccountSlice';
-import { useWalletData } from './hooks/useWalletData';
-import { useVwapAndVolatility } from './hooks/useVwapAndVolatility';
-import { useBidAskWS } from './hooks/useBidAskWS';
 import { Header } from './components/Header';
 import { DraggableCanvas } from './components/DraggableCanvas';
 import { AppOnchainWSHost } from './components/AppOnchainWSHost';
 import { AppSignalsAndArbsHost } from './components/AppSignalsAndArbsHost';
+import { AppDataHost } from './components/AppDataHost';
 import { OrderbookPopup } from './components/OrderbookPopup';
 import { CreateProgDialog } from './components/CreateProgDialog';
 import { EditProgDialog } from './components/EditProgDialog';
@@ -34,8 +26,8 @@ import {
   shouldIgnoreGridKeyEvent,
 } from './lib/marketGridKeyboard';
 import { pickLiveUpDownMarketInTfBucket } from './utils/format';
-import { setMarketDataRefreshFn } from './lib/marketDataRefresh';
 import { installUiInteractionRecovery } from './lib/uiInteractionRecovery';
+import { runAppRefresh } from './lib/appRefresh';
 import {
   isWsBidAskStubMarket,
   resolveCanonicalMarketForToken,
@@ -72,7 +64,6 @@ function parseMarketLinkFromUrl(): { marketId: string; side: 'YES' | 'NO' } | nu
   const params = new URLSearchParams(window.location.search);
   let marketId = (params.get('market') || '').trim();
   if (!marketId) return null;
-  // Legacy broken links wrote quote stubs as ws:<tokenId>.
   if (marketId.startsWith('ws:')) marketId = marketId.slice(3);
   if (marketId.startsWith('expired:')) marketId = marketId.slice('expired:'.length);
   if (!marketId) return null;
@@ -112,7 +103,9 @@ function App() {
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
-  const [pendingLink, setPendingLink] = useState<{ marketId: string; side: 'YES' | 'NO' } | null>(() => parseMarketLinkFromUrl());
+  const [pendingLink, setPendingLink] = useState<{ marketId: string; side: 'YES' | 'NO' } | null>(() =>
+    parseMarketLinkFromUrl(),
+  );
   const didApplyDefaultBtc5mMarketRef = useRef(false);
   const selectedMarketRef = useRef(useAppStore.getState().selectedMarket);
   useEffect(() => {
@@ -129,54 +122,11 @@ function App() {
     }
   }, []);
 
-  useBinanceWS();
-  useRwaSpotPrices();
-  useVwapAndVolatility();
-  useBidAskWS();
-  const { refreshData } = useMarketData();
-  const { refreshWalletData } = useWalletData();
-
-  useEffect(() => {
-    setMarketDataRefreshFn(refreshData);
-    return () => setMarketDataRefreshFn(null);
-  }, [refreshData]);
-
   useEffect(() => installUiInteractionRecovery(), []);
 
   const handleRefresh = useCallback(async () => {
-    await Promise.all([refreshData(), refreshWalletData()]);
-  }, [refreshData, refreshWalletData]);
-
-  const signingMode = useAppStore((s) => s.signingMode);
-  const pkRevision = useAppStore((s) => s.pkRevision);
-  const { address: walletAddress } = useAccount();
-  const prevSigningRef = useRef<typeof signingMode | null>(null);
-  const prevWalletChannelRef = useRef('');
-  useEffect(() => {
-    if (prevSigningRef.current === null) {
-      prevSigningRef.current = signingMode;
-      return;
-    }
-    if (prevSigningRef.current === signingMode) return;
-    prevSigningRef.current = signingMode;
-    invalidateClobMemoryCreds();
-    void handleRefresh();
-  }, [signingMode, handleRefresh]);
-
-  useEffect(() => {
-    const pk = useAppStore.getState().pkAddress;
-    const eoa =
-      signingMode === 'privateKey' && pk
-        ? pk.trim().toLowerCase()
-        : (walletAddress || '').trim().toLowerCase();
-    const channel = eoa ? `${signingMode}|${eoa}|${signingMode === 'privateKey' ? pkRevision : 0}` : '';
-    if (channel === prevWalletChannelRef.current) return;
-    prevWalletChannelRef.current = channel;
-    if (!channel) return;
-    clearWalletAccountSlice();
-    invalidateClobMemoryCreds();
-    void handleRefresh();
-  }, [signingMode, walletAddress, pkRevision, handleRefresh]);
+    await runAppRefresh();
+  }, []);
 
   // Queue URL -> state sync when browser history changes.
   useEffect(() => {
@@ -185,7 +135,7 @@ function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  // Apply URL deep-link once it can be resolved from marketLookup (read from store inside effect to avoid subscribing to full map).
+  // Apply URL deep-link once it can be resolved from marketLookup.
   useEffect(() => {
     if (!pendingLink) return;
 
@@ -213,7 +163,7 @@ function App() {
     });
   }, [pendingLink, setSelectedMarket, setSidebarOutcome, setSidebarOpen]);
 
-  // No ?market= and no sidebar pick yet → open on live BTC 5m Up/Down (matches HUD ladder).
+  // No ?market= and no sidebar pick yet → open on live BTC 5m Up/Down.
   useEffect(() => {
     if (loading) return;
     if (pendingLink != null) return;
@@ -250,7 +200,7 @@ function App() {
     });
   }, [loading, pendingLink, setSelectedMarket]);
 
-  // Upgrade quote-only selectedMarket (`ws:token` / empty title) once Gamma seed lands.
+  // Upgrade quote-only selectedMarket once Gamma seed lands.
   useEffect(() => {
     const tryUpgrade = () => {
       const sm = useAppStore.getState().selectedMarket;
@@ -301,7 +251,7 @@ function App() {
     window.history.replaceState(null, '', next);
   }, [selectedMarketId, sidebarOutcome]);
 
-  // Arrow keys / WASD: move selection to adjacent grid cell (same YES/NO side).
+  // Arrow keys / WASD: move selection to adjacent grid cell.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const sm = selectedMarketRef.current;
@@ -337,20 +287,17 @@ function App() {
 
   return (
     <div className="gradient-bg h-full flex flex-col text-white">
-      {/* Header - static at top */}
+      <AppDataHost />
+
       <div className="flex-shrink-0 px-3 pt-2 pb-1">
         <Header onRefresh={handleRefresh} />
       </div>
 
-      {/* Main content area */}
       <div
         className={`flex-1 min-h-0 flex max-[767px]:ml-0 md:transition-[margin-left] md:duration-[250ms] md:ease-[ease] ${
-          selectedMarketConditionId
-            ? 'md:ml-[calc(18rem+1.5rem)]'
-            : 'md:ml-72'
+          selectedMarketConditionId ? 'md:ml-[calc(18rem+1.5rem)]' : 'md:ml-72'
         }`}
       >
-        {/* Canvas area */}
         <div className="flex-1 min-h-0 overflow-auto px-2 pb-2">
           {loading ? (
             <div className="flex items-center justify-center h-full">
@@ -362,11 +309,9 @@ function App() {
         </div>
       </div>
 
-      {/* On-chain wallet WS (TPO, pair trading, HUD) — always on when CHAIN mode */}
       <AppOnchainWSHost />
       <AppSignalsAndArbsHost />
 
-      {/* Right Sidebar — lazy chunk until desktop (always) or mobile (open / market selected) */}
       {mountSidebarChunk && (
         <ErrorBoundary name="sidebar">
           <Suspense fallback={null}>
@@ -375,28 +320,15 @@ function App() {
         </ErrorBoundary>
       )}
 
-      {/* Orderbook hover popup */}
       <OrderbookPopup />
-
-      {/* Create Smart Order Dialog */}
       <CreateProgDialog />
-
-      {/* Edit Smart Order Dialog */}
       <EditProgDialog />
-
-      {/* Arb Confirm Dialog */}
       <ArbDialog />
-
-      {/* PnL Drilldown Dialog */}
       <PnlDrilldownGlobal />
-
-      {/* Signing Dialog */}
       <SigningDialog />
       <SignatureExplainerDialog />
-
       <MobileScreenNotice />
 
-      {/* Toast container */}
       <div id="toastContainer" className="toast-container" />
 
       {showServerDownBanner && (

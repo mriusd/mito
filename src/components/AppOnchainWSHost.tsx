@@ -7,7 +7,9 @@ import { SidebarOnchainGridPositionsSync } from './SidebarOnchainGridPositionsSy
 /** App-level onchain WS — wallet positions/trades for TPO, pair trading, HUD (not gated on sidebar open). */
 export const AppOnchainWSHost = memo(function AppOnchainWSHost() {
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
-  const selectedMarket = useAppStore((s) => s.selectedMarket);
+  const selectedConditionId = useAppStore((s) => s.selectedMarket?.conditionId?.trim() ?? '');
+  const selectedMarketId = useAppStore((s) => s.selectedMarket?.id?.trim() ?? '');
+  const selectedClobKey = useAppStore((s) => (s.selectedMarket?.clobTokenIds || []).join('\0'));
   const sidebarOutcome = useAppStore((s) => s.sidebarOutcome);
   const wallet = useTradingWalletAddress();
   const walletLc = wallet.trim().toLowerCase();
@@ -15,26 +17,26 @@ export const AppOnchainWSHost = memo(function AppOnchainWSHost() {
   const active = liveTradesSource === 'onchain' && !!walletLc;
 
   const marketId = useMemo(() => {
-    if (!active || !selectedMarket) return null;
+    if (!active) return null;
     // Prefer real condition id only — never token id / expired: stubs (breaks wallet+market trades WS).
-    const cond = (selectedMarket.conditionId || '').trim();
-    if (cond) return cond;
-    const id = (selectedMarket.id || '').trim();
+    if (selectedConditionId) return selectedConditionId;
+    const id = selectedMarketId;
     if (!id || id.startsWith('expired:') || id.startsWith('token:')) return null;
-    const toks = (selectedMarket.clobTokenIds || []).map((t) => String(t || '').trim()).filter(Boolean);
+    const toks = selectedClobKey ? selectedClobKey.split('\0').filter(Boolean) : [];
     if (toks.includes(id)) return null;
     return id;
-  }, [active, selectedMarket?.conditionId, selectedMarket?.id, selectedMarket?.clobTokenIds]);
+  }, [active, selectedConditionId, selectedMarketId, selectedClobKey]);
 
   const scopedClobPair = useMemo(() => {
-    if (!selectedMarket?.clobTokenIds?.length) return null;
-    return selectedMarket.clobTokenIds.map((x) => String(x || '').trim()).filter(Boolean);
-  }, [selectedMarket?.clobTokenIds]);
+    if (!selectedClobKey) return null;
+    const toks = selectedClobKey.split('\0').filter(Boolean);
+    return toks.length ? toks : null;
+  }, [selectedClobKey]);
 
   const tokenId = useMemo(() => {
-    if (!active || !selectedMarket?.clobTokenIds?.length) return null;
-    return selectedMarket.clobTokenIds[sidebarOutcome === 'YES' ? 0 : 1] || null;
-  }, [active, selectedMarket?.clobTokenIds, sidebarOutcome]);
+    if (!active || !scopedClobPair?.length) return null;
+    return scopedClobPair[sidebarOutcome === 'YES' ? 0 : 1] || null;
+  }, [active, scopedClobPair, sidebarOutcome]);
 
   if (!active) return null;
 

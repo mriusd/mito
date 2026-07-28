@@ -2,6 +2,11 @@ import { useState, useEffect, useMemo, useRef, useCallback, Suspense, useSyncExt
 import { useAccount } from 'wagmi';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
+import {
+  useThrottledGridOrders,
+  useThrottledGridPositions,
+  useThrottledGridTrades,
+} from '../hooks/useThrottledGridWallet';
 import { appKit } from '../lib/wallet';
 import {
   fetchMarketStakedLegs,
@@ -812,11 +817,11 @@ export const Sidebar = memo(function Sidebar() {
   const selectedMarket = useAppStore((s) => s.selectedMarket);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setMarketViewDialogOpen = useAppStore((s) => s.setMarketViewDialogOpen);
-  const positions = useAppStore((s) => s.positions);
+  const positions = useThrottledGridPositions(2000);
   const makerAddressForMerge = useAppStore((s) => s.makerAddress);
   const cashBalance = useAppStore((s) => s.cashBalance);
-  const orders = useAppStore((s) => s.orders);
-  const trades = useAppStore((s) => s.trades);
+  const orders = useThrottledGridOrders(2000);
+  const trades = useThrottledGridTrades(2000);
   const marketLookupEpoch = useAppStore((s) => s.marketLookupEpoch);
   const weeklyHitMarkets = useAppStore((s) => s.weeklyHitMarkets);
   const marketLookup = useMemo(() => useAppStore.getState().marketLookup, [marketLookupEpoch]);

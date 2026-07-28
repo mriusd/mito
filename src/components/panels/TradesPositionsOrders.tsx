@@ -19,7 +19,7 @@ import {
   isWsBidAskStubMarket,
   resolveCanonicalMarketForToken,
 } from '../../lib/bidAskMarketLookup';
-import { promoteTpoPanelHot, useTpoPanelData, useTpoPanelHot } from '../../lib/tpoPanelDataStore';
+import { useTpoPanelData } from '../../lib/tpoPanelDataStore';
 import { TpoVirtualTableBody } from './TpoVirtualTableBody';
 import { TpoColorCodedSize, TpoColorCodedText } from './TpoColorCodedSize';
 import { isSidebarDustPosition } from '../../lib/sidebarMyPositions';
@@ -500,7 +500,15 @@ function TpoAuthEmpty({
   );
 }
 
-function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
+export type TpoTab = 'trades' | 'positions' | 'orders';
+
+function TradesPositionsOrdersInner({
+  panelId,
+  lockedTab,
+}: {
+  panelId: string;
+  lockedTab?: TpoTab;
+}) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [panelVisible, setPanelVisible] = useState(true);
   useEffect(() => {
@@ -514,8 +522,15 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     return () => io.disconnect();
   }, []);
 
-  const tpoHot = useTpoPanelHot(panelId, panelVisible);
-  const tpoData = useTpoPanelData(panelVisible && tpoHot);
+  const [tab, setTab] = useState<TpoTab>(() => {
+    if (lockedTab) return lockedTab;
+    const saved = localStorage.getItem(`polymarket-pos-orders-tab-${panelId}`);
+    if (saved === 'trades' || saved === 'positions' || saved === 'orders') return saved;
+    return 'trades';
+  });
+  const effectiveTab = lockedTab ?? tab;
+
+  const tpoData = useTpoPanelData(panelVisible);
   const positions = tpoData.positions;
   const orders = tpoData.orders;
   const trades = tpoData.trades;
@@ -554,18 +569,26 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   }, [liveTradesSource, tradingWalletKey]);
 
   const tpoLiveQuoteIds = useMemo(() => Object.keys(marketLookup), [marketLookup]);
+  const chartExtraKey = `tpo:${panelId}`;
 
   useEffect(() => {
-    if (!panelVisible) return;
-    setChartBidAskExtraTokens('tpo', tpoLiveQuoteIds);
-  }, [tpoLiveQuoteIds, panelVisible]);
-  useEffect(() => () => setChartBidAskExtraTokens('tpo', []), []);
+    if (effectiveTab !== 'positions') {
+      setChartBidAskExtraTokens(chartExtraKey, []);
+      return;
+    }
+    setChartBidAskExtraTokens(chartExtraKey, tpoLiveQuoteIds);
+  }, [chartExtraKey, effectiveTab, tpoLiveQuoteIds]);
+  useEffect(() => () => setChartBidAskExtraTokens(chartExtraKey, []), [chartExtraKey]);
 
-  const sellOrderPriceByToken = useMemo(() => buildSellOrderPriceByToken(orders), [orders]);
+  const sellOrderPriceByToken = useMemo(
+    () => (effectiveTab === 'positions' ? buildSellOrderPriceByToken(orders) : new Map<string, number>()),
+    [effectiveTab, orders],
+  );
 
   const onchainPositionsAsPM = useMemo(
-    () => wsPositionsToPM(onchainWsPositions, liveQuoteLookup),
-    [onchainWsPositions, liveQuoteLookup],
+    () =>
+      effectiveTab === 'positions' ? wsPositionsToPM(onchainWsPositions, liveQuoteLookup) : [],
+    [effectiveTab, onchainWsPositions, liveQuoteLookup],
   );
 
   const onchainTradesAsPM = useMemo(() => wsTradesToPM(onchainWsTrades), [onchainWsTrades]);
@@ -592,6 +615,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const positionsForTable = useMemo(() => {
     // Match sidebar: hide dust (<0.01) so Math.floor(size) never shows 0-share rows.
     const openLeg = (p: Position) => !isSidebarDustPosition(p.size || 0) && !p.redeemable;
+    // Non-positions tabs: cheap list for badge only (skip onchain merge).
+    if (effectiveTab !== 'positions') return positions.filter(openLeg);
     if (liveTradesSource !== 'onchain') return positions.filter(openLeg);
     const byToken = new Map<string, Position>();
     for (const p of positions) {
@@ -620,7 +645,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       }
     }
     return [...byToken.values()];
-  }, [liveTradesSource, positions, onchainPositionsAsPM]);
+  }, [effectiveTab, liveTradesSource, positions, onchainPositionsAsPM]);
 
   const handleMarketClick = useCallback(async (tokenId: string, hint?: TpoSelectHint) => {
     const tid = String(tokenId || '').trim();
@@ -692,9 +717,6 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     open(stub, sideFromHint);
   }, [marketLookup, setSelectedMarket, setSidebarOutcome, setSidebarOpen]);
 
-  const [tab, setTab] = useState<'trades' | 'positions' | 'orders'>(
-    (localStorage.getItem(`polymarket-pos-orders-tab-${panelId}`) as 'trades' | 'positions' | 'orders') || 'trades'
-  );
   const [tradesSideFilter, setTradesSideFilter] = useState(
     localStorage.getItem('polymarket-trades-side-filter') || 'ALL'
   );
@@ -704,6 +726,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
   // On-chain TPO trades: recent page + optional side so SELL/MERGE/REDEEM not buried in mixed fills.
   useEffect(() => {
+    if (effectiveTab !== 'trades') return;
     if (liveTradesSource !== 'onchain') return;
     const w = makerAddress.trim().toLowerCase();
     if (!w) {
@@ -743,11 +766,12 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [liveTradesSource, makerAddress, tradesSideFilter]);
+  }, [effectiveTab, liveTradesSource, makerAddress, tradesSideFilter]);
 
   const pagedTradesAsPM = useMemo(() => ledgerTradesToPM(pagedLedgerTrades), [pagedLedgerTrades]);
 
   const tradesForTable = useMemo(() => {
+    if (effectiveTab !== 'trades') return trades;
     if (liveTradesSource !== 'onchain') return trades;
     const live = onchainTradesAsPM.filter(
       (t) => isTpoTradeTapeSide(t.side) && tradeSideMatchesFilter(t.side || '', tradesSideFilter),
@@ -769,6 +793,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
       return tb - ta;
     });
   }, [
+    effectiveTab,
     liveTradesSource,
     trades,
     tradesSideFilter,
@@ -869,7 +894,8 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     localStorage.setItem(`polymarket-tpo-tr-sort-dir-${panelId}`, '-1');
   };
 
-  const handleSetTab = (t: 'trades' | 'positions' | 'orders') => {
+  const handleSetTab = (t: TpoTab) => {
+    if (lockedTab) return;
     setTab(t);
     localStorage.setItem(`polymarket-pos-orders-tab-${panelId}`, t);
   };
@@ -1173,7 +1199,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   const assetColors: Record<string, string> = { ALL: 'text-white', BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400', WEATHER: 'text-sky-400' };
 
   const tabCls = (t: string) =>
-    tab === t
+    effectiveTab === t
       ? 'px-2 py-0.5 rounded text-xs font-bold bg-gray-600 text-white'
       : 'px-2 py-0.5 rounded text-xs font-bold bg-gray-800 text-gray-500 hover:text-gray-300';
 
@@ -1189,7 +1215,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
   // Process trades (active tab only — 3 TPO panels must not each rebuild all tables)
   const processedTrades = useMemo(() => {
-    if (tab !== 'trades') return [];
+    if (effectiveTab !== 'trades') return [];
     return tradesForTable
     .filter((t) => {
       const tid = getTradeClobTokenId(t);
@@ -1296,11 +1322,11 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         clickable,
       };
     });
-  }, [tab, tradesForTable, assetFilter, tradesSideFilter, marketLookup]);
+  }, [effectiveTab, tradesForTable, assetFilter, tradesSideFilter, marketLookup]);
 
   // Process positions — unresolved + non-dust only.
   const processedPositions = useMemo(() => {
-    if (tab !== 'positions') return [];
+    if (effectiveTab !== 'positions') return [];
     return positionsForTable
     .filter((p) => {
       if (isSidebarDustPosition(p.size || 0) || p.redeemable) return false;
@@ -1395,10 +1421,10 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         clickable,
       } satisfies TpoPosRow;
     });
-  }, [tab, positionsForTable, posCategoryFilter, marketLookup, liveQuoteLookup, sellOrderPriceByToken]);
+  }, [effectiveTab, positionsForTable, posCategoryFilter, marketLookup, liveQuoteLookup, sellOrderPriceByToken]);
 
   const displayPositions = useMemo(() => {
-    if (tab !== 'positions') return [];
+    if (effectiveTab !== 'positions') return [];
     const base =
       posCategoryFilter === 'WEATHER' && posWeatherBucket
         ? bucketTpoWeatherPositions(processedPositions as TpoPosRow[])
@@ -1463,7 +1489,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
     }
     return flat;
   }, [
-    tab,
+    effectiveTab,
     processedPositions,
     posCategoryFilter,
     posWeatherBucket,
@@ -1483,7 +1509,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
   // Process orders — no live quote dep (5k orders × quote ticks freezes UI).
   const processedOrders = useMemo(() => {
-    if (tab !== 'orders') return [];
+    if (effectiveTab !== 'orders') return [];
     const fullLookup = useAppStore.getState().marketLookup;
     const resolveOrderMarket = (tid: string) => {
       const canonical = resolveCanonicalMarketForToken(tid);
@@ -1552,7 +1578,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
           marketId: market && !isWsBidAskStubMarket(market) ? market.id : market?.conditionId,
         };
       });
-  }, [tab, orders, assetFilter, ordersFilter]);
+  }, [effectiveTab, orders, assetFilter, ordersFilter]);
 
   const displayOrders = useMemo(() => {
     if (!ordSortCol) return processedOrders;
@@ -1695,36 +1721,51 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
   );
 
   return (
-    <div
-      ref={rootRef}
-      className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 min-w-0"
-      onPointerDownCapture={() => promoteTpoPanelHot(panelId)}
-    >
+    <div ref={rootRef} className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 min-w-0">
       <div className="panel-header flex min-w-0 items-center gap-1 mb-2 cursor-grab">
-        <span className="shrink-0 text-[10px] font-bold text-gray-500 select-none">
-          TPO{!tpoHot && panelVisible ? '·' : ''}
-        </span>
+        <span className="shrink-0 text-[10px] font-bold text-gray-500 select-none">TPO</span>
         <div className="no-drag flex min-w-0 flex-1 flex-wrap items-center gap-1">
-          <button onClick={() => handleSetTab('positions')} className={tabCls('positions')}>
-            Positions{' '}
-            <span className="text-xs text-gray-500">
-              ({tab === 'positions' ? displayPositions.length : positionsForTable.length})
-            </span>
-          </button>
-          <button onClick={() => handleSetTab('orders')} className={tabCls('orders')}>
-            Orders{' '}
-            <span className="text-xs text-gray-500">
-              ({tab === 'orders' ? processedOrders.length : orders.length})
-            </span>
-          </button>
-          <button onClick={() => handleSetTab('trades')} className={tabCls('trades')}>
-            Trades{' '}
-            <span className="text-xs text-gray-500">
-              ({liveTradesSource === 'onchain' ? tradesTotal : tab === 'trades' ? processedTrades.length : tradesForTable.length})
-            </span>
-          </button>
+          {!lockedTab || lockedTab === 'positions' ? (
+            <button
+              type="button"
+              onClick={() => handleSetTab('positions')}
+              className={tabCls('positions')}
+              disabled={!!lockedTab}
+            >
+              Positions{' '}
+              <span className="text-xs text-gray-500">
+                ({effectiveTab === 'positions' ? displayPositions.length : positionsForTable.length})
+              </span>
+            </button>
+          ) : null}
+          {!lockedTab || lockedTab === 'orders' ? (
+            <button
+              type="button"
+              onClick={() => handleSetTab('orders')}
+              className={tabCls('orders')}
+              disabled={!!lockedTab}
+            >
+              Orders{' '}
+              <span className="text-xs text-gray-500">
+                ({effectiveTab === 'orders' ? processedOrders.length : orders.length})
+              </span>
+            </button>
+          ) : null}
+          {!lockedTab || lockedTab === 'trades' ? (
+            <button
+              type="button"
+              onClick={() => handleSetTab('trades')}
+              className={tabCls('trades')}
+              disabled={!!lockedTab}
+            >
+              Trades{' '}
+              <span className="text-xs text-gray-500">
+                ({liveTradesSource === 'onchain' ? tradesTotal : effectiveTab === 'trades' ? processedTrades.length : tradesForTable.length})
+              </span>
+            </button>
+          ) : null}
 
-          {tab === 'trades' && (
+          {effectiveTab === 'trades' && (
             <div className="flex gap-1 items-center flex-wrap">
               <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]">
                 {(['ALL', 'BUY', 'SELL', 'SPLIT', 'MERGE', 'REDEEM'] as const).map((s) => (
@@ -1754,7 +1795,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             </div>
           )}
 
-          {tab === 'positions' && (
+          {effectiveTab === 'positions' && (
             <div className="inline-flex items-center gap-1 flex-wrap">
               <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]">
                 {POS_CATEGORY_OPTS.map((c) => (
@@ -1802,7 +1843,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
             </div>
           )}
 
-          {tab === 'orders' && (
+          {effectiveTab === 'orders' && (
             <div className="flex gap-1 items-center">
               <div className="inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]">
                 {(['ALL', 'BUY', 'SELL'] as const).map((s) => (
@@ -1827,7 +1868,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
 
       <div className="panel-body text-[10px] flex-1 min-h-0 min-w-0 flex flex-col">
         {/* Trades */}
-        {tab === 'trades' && (
+        {effectiveTab === 'trades' && (
           liveTradesSource === 'onchain' && tradesPageLoading && processedTrades.length === 0 ? (
             <div className="text-purple-300/90 text-center py-4">Loading on-chain trades…</div>
           ) : onchainTradesLoading && liveTradesSource === 'onchain' && processedTrades.length === 0 && !makerAddress.trim() ? (
@@ -1903,7 +1944,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         )}
 
         {/* Positions */}
-        {tab === 'positions' && (
+        {effectiveTab === 'positions' && (
           onchainPositionsLoading && liveTradesSource === 'onchain' && positionsForTable.length === 0 ? (
             <div className="text-purple-300/90 text-center py-4">Loading on-chain positions…</div>
           ) : processedPositions.length === 0 ? (
@@ -2166,7 +2207,7 @@ function TradesPositionsOrdersInner({ panelId }: { panelId: string }) {
         )}
 
         {/* Orders */}
-        {tab === 'orders' && (
+        {effectiveTab === 'orders' && (
           processedOrders.length === 0 ? (
             renderEmptyOrAuth(<div className="text-gray-500 text-center py-4">No open orders</div>)
           ) : (<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-auto overflow-y-hidden">

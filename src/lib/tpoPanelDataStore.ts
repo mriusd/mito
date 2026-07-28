@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useSyncExternalStore } from 'react';
+import { startTransition, useCallback, useSyncExternalStore } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { getBidAskMarketRow, subscribeBidAskMarketLookupGridFlush } from './bidAskMarketLookup';
 import {
@@ -8,66 +8,6 @@ import {
 import { getPositionClobTokenId } from '../utils/format';
 import type { Market, Order, Trade } from '../types';
 import type { WSPosition, WSTrade } from '../hooks/useOnchainTradesWS';
-
-/** Only one TPO panel stays live — duplicates freeze (3× full table kills rAF). */
-const visibleTpoPanelIds: string[] = [];
-let hotTpoPanelId: string | null = null;
-const hotListeners = new Set<() => void>();
-
-function recomputeHotTpoPanel(): void {
-  const next = visibleTpoPanelIds[0] ?? null;
-  if (next === hotTpoPanelId) return;
-  hotTpoPanelId = next;
-  startTransition(() => {
-    for (const l of hotListeners) l();
-  });
-}
-
-export function promoteTpoPanelHot(panelId: string): void {
-  const id = String(panelId || '').trim();
-  if (!id) return;
-  const idx = visibleTpoPanelIds.indexOf(id);
-  if (idx > 0) {
-    visibleTpoPanelIds.splice(idx, 1);
-    visibleTpoPanelIds.unshift(id);
-  } else if (idx < 0) {
-    visibleTpoPanelIds.unshift(id);
-  }
-  recomputeHotTpoPanel();
-}
-
-function setTpoPanelVisible(panelId: string, visible: boolean): void {
-  const id = String(panelId || '').trim();
-  if (!id) return;
-  const idx = visibleTpoPanelIds.indexOf(id);
-  if (visible) {
-    if (idx < 0) visibleTpoPanelIds.push(id);
-  } else if (idx >= 0) {
-    visibleTpoPanelIds.splice(idx, 1);
-  }
-  recomputeHotTpoPanel();
-}
-
-function subscribeTpoHot(listener: () => void): () => void {
-  hotListeners.add(listener);
-  return () => {
-    hotListeners.delete(listener);
-  };
-}
-
-/** True only for the single hot visible TPO panel. */
-export function useTpoPanelHot(panelId: string, visible: boolean): boolean {
-  useEffect(() => {
-    setTpoPanelVisible(panelId, visible);
-    return () => setTpoPanelVisible(panelId, false);
-  }, [panelId, visible]);
-
-  return useSyncExternalStore(
-    subscribeTpoHot,
-    () => hotTpoPanelId === panelId,
-    () => true,
-  );
-}
 
 export type TpoPanelDataSnap = {
   digest: number;
@@ -144,7 +84,6 @@ function collectTokenIds(
   for (const t of selectedClobIds || []) {
     if (t) set.add(String(t));
   }
-  // Pair legs for imply.
   for (const id of [...set]) {
     const m = getBidAskMarketRow(id);
     for (const leg of m?.clobTokenIds || []) {
@@ -226,7 +165,6 @@ function ensureBootstrapped(): void {
     scheduleFlush();
   });
   subscribeSidebarOnchainTrades(scheduleFlush);
-  // Quotes already grid-throttled (~2s) — flush now, don't wait another FLUSH_MS.
   subscribeBidAskMarketLookupGridFlush(() => {
     if (timer != null) {
       clearTimeout(timer);

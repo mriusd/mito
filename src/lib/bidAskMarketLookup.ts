@@ -237,26 +237,28 @@ function flushPendingBidAskToStore() {
     delete pendingPatch[id];
   }
 
-  useAppStore.setState((state) => {
-    const lookup = state.marketLookup;
-    let merged = lookup;
-    let bumped = false;
-    for (const id of ids) {
-      let next = snapshot[id];
-      const baseline = lookup[id];
-      // Never replace a real Gamma row with a quote-only stub (kills titles → TPO shows token ints).
-      if (baseline && !isWsBidAskStubMarket(baseline) && isWsBidAskStubMarket(next)) {
-        next = { ...baseline, ...pickWsFieldsFromMarket(next) };
+  startTransition(() => {
+    useAppStore.setState((state) => {
+      const lookup = state.marketLookup;
+      let merged = lookup;
+      let bumped = false;
+      for (const id of ids) {
+        let next = snapshot[id];
+        const baseline = lookup[id];
+        // Never replace a real Gamma row with a quote-only stub (kills titles → TPO shows token ints).
+        if (baseline && !isWsBidAskStubMarket(baseline) && isWsBidAskStubMarket(next)) {
+          next = { ...baseline, ...pickWsFieldsFromMarket(next) };
+        }
+        if (bidAskWsRowEqual(baseline, next)) continue;
+        if (merged === lookup) merged = { ...lookup };
+        merged[id] = next;
+        bumped = true;
       }
-      if (bidAskWsRowEqual(baseline, next)) continue;
-      if (merged === lookup) merged = { ...lookup };
-      merged[id] = next;
-      bumped = true;
-    }
-    if (!bumped) return {};
-    return { marketLookup: merged };
+      if (!bumped) return {};
+      return { marketLookup: merged };
+    });
+    notifyBidAskMarketLookupGridFlushListeners();
   });
-  notifyBidAskMarketLookupGridFlushListeners();
 }
 
 function scheduleBidAskFlush() {

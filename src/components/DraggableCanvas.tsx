@@ -195,6 +195,12 @@ function renderPanel(panel: PanelConfig): ReactNode {
       return <LazySmartMoneyPanel />;
     case 'trades-positions-orders':
       return <LazyTradesPositionsOrders panelId={panel.id} />;
+    case 'tpo-positions':
+      return <LazyTradesPositionsOrders panelId={panel.id} lockedTab="positions" />;
+    case 'tpo-orders':
+      return <LazyTradesPositionsOrders panelId={panel.id} lockedTab="orders" />;
+    case 'tpo-trades':
+      return <LazyTradesPositionsOrders panelId={panel.id} lockedTab="trades" />;
     case 'pnl':
       return <LazyPnLPanel />;
     case 'updown-overview':
@@ -393,7 +399,11 @@ export const DraggableCanvas = memo(function DraggableCanvas() {
 
   const PANEL_TITLES: Record<string, string> = {
     'asset-BTC': 'BTC', 'asset-ETH': 'ETH', 'asset-SOL': 'SOL', 'asset-XRP': 'XRP',
-    'trades-positions-orders': 'Trades/Positions/Orders', 'updown-overview': 'Up/Down Markets',
+    'trades-positions-orders': 'Trades/Positions/Orders',
+    'tpo-positions': 'TPO Positions',
+    'tpo-orders': 'TPO Orders',
+    'tpo-trades': 'TPO Trades',
+    'updown-overview': 'Up/Down Markets',
     'relative-chart': 'Relative Chart',
     'perp-bot': 'Perp Bot',
     'price-forecast': 'Price Forecast',

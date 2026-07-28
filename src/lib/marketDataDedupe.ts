@@ -12,12 +12,12 @@ export function marketRowContentEqual(a: Market, b: Market): boolean {
     a.groupItemTitle !== b.groupItemTitle ||
     a.endDate !== b.endDate ||
     Boolean(a.closed) !== Boolean(b.closed) ||
-    String(a.outcomePrices ?? '') !== String(b.outcomePrices ?? '') ||
-    a.lastTradePrice !== b.lastTradePrice ||
     a.priceToBeat !== b.priceToBeat
   ) {
     return false;
   }
+  // lastTradePrice / outcomePrices change every poll — live book owns those via marketLookup/WS.
+  // Including them here rewrote above/upDown/weather arrays → marketLookupEpoch storm.
   const ca = a.clobTokenIds || [];
   const cb = b.clobTokenIds || [];
   if (ca.length !== cb.length) return false;

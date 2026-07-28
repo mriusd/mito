@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, startTransition } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { fetchMarkets, buildMarketLookup } from '../api';
 import {
@@ -78,17 +78,19 @@ export function useMarketData() {
         marketCount: data.count || 0,
         lastUpdated: data.lastUpdated || '',
       };
-      useAppStore.getState().setMarketData(patchPayload);
+      startTransition(() => {
+        useAppStore.getState().setMarketData(patchPayload);
+        const sel = useAppStore.getState().selectedMarket;
+        if (sel?.id && marketArraysChanged) {
+          const strike = resolveUpDownStrikeSync(sel, lookup, upOrDownMarkets);
+          if (strike != null && sel.priceToBeat !== strike) {
+            useAppStore.getState().setSelectedMarket({ ...sel, priceToBeat: strike });
+          }
+        }
+      });
       // Always clear splash once we have a payload — do not wait for 2nd recovery probe.
       useAppStore.getState().setLoading(false);
 
-      const sel = store.selectedMarket;
-      if (sel?.id && marketArraysChanged) {
-        const strike = resolveUpDownStrikeSync(sel, lookup, upOrDownMarkets);
-        if (strike != null && sel.priceToBeat !== strike) {
-          useAppStore.getState().setSelectedMarket({ ...sel, priceToBeat: strike });
-        }
-      }
       const wasDown = useAppStore.getState().backendConnected === false;
       if (wasDown) {
         recoverySuccessesRef.current += 1;

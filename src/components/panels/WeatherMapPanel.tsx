@@ -602,6 +602,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   const baseCacheRef = useRef<{ key: string; canvas: HTMLCanvasElement } | null>(null);
   const pulseTsRef = useRef(0);
   const tipElRef = useRef<HTMLDivElement>(null);
+  const meridianStripRef = useRef<HTMLDivElement>(null);
   const drawDataRef = useRef({
     land: null as LandGeoJSON | null,
     loadError: '',
@@ -629,25 +630,19 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   const suppressClickRef = useRef(false);
   const [land, setLand] = useState<LandGeoJSON | null>(null);
   const [loadError, setLoadError] = useState('');
-  const [nowMs, setNowMs] = useState(() => Date.now());
   const [layoutSnapshot, setLayoutSnapshot] = useState<MapLayout | null>(null);
   const [zoom, setZoom] = useState(initStoredView.zoom);
   const [dragging, setDragging] = useState(false);
 
   const [tempOddsDateIso, setTempOddsDateIso] = useState<string | null>(() => getTempOddsSelectedDate());
   const [tempOddsMetric, setTempOddsMetric] = useState(() => getTempOddsSelectedMetric());
-  const [forecastHighByCity, setForecastHighByCity] = useState<Map<string, number>>(() => new Map());
-  // Rare: market catalog / date / metric — React ok. Quotes + wallet → refs only (no re-render).
-  const weatherMarkets = useAppStore((s) => s.weatherMarkets);
-
-  const weatherMarketsRef = useRef(weatherMarkets);
-  weatherMarketsRef.current = weatherMarkets;
+  // Catalog / quotes / forecast / clock — refs only. React select of weatherMarkets was 250ms passive.
+  const weatherMarketsRef = useRef(useAppStore.getState().weatherMarkets);
   const tempOddsDateIsoRef = useRef(tempOddsDateIso);
   tempOddsDateIsoRef.current = tempOddsDateIso;
   const tempOddsMetricRef = useRef(tempOddsMetric);
   tempOddsMetricRef.current = tempOddsMetric;
-  const forecastHighByCityRef = useRef(forecastHighByCity);
-  forecastHighByCityRef.current = forecastHighByCity;
+  const forecastHighByCityRef = useRef<Map<string, number>>(new Map());
   const quoteTokenIdsRef = useRef<string[]>([]);
 
   const rebuildQuoteTokenIds = useCallback(() => {
@@ -715,14 +710,28 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   }, [rebuildQuoteTokenIds, rebuildLiveQuoteMaps, rebuildCityExposure]);
 
   useEffect(() => {
-    const ids = rebuildQuoteTokenIds();
-    setChartBidAskExtraTokens('weather-map', ids);
-    return () => setChartBidAskExtraTokens('weather-map', []);
-  }, [weatherMarkets, tempOddsDateIso, tempOddsMetric, rebuildQuoteTokenIds]);
+    rebuildQuoteTokenIds();
+  }, [tempOddsDateIso, tempOddsMetric, rebuildQuoteTokenIds]);
 
   useEffect(() => {
     refreshMapData();
-  }, [weatherMarkets, tempOddsDateIso, tempOddsMetric, forecastHighByCity, refreshMapData]);
+  }, [tempOddsDateIso, tempOddsMetric, refreshMapData]);
+
+  useEffect(() => {
+    weatherMarketsRef.current = useAppStore.getState().weatherMarkets;
+    refreshMapData();
+    setChartBidAskExtraTokens('weather-map', rebuildQuoteTokenIds());
+    const unsub = useAppStore.subscribe((state, prev) => {
+      if (state.weatherMarkets === prev.weatherMarkets) return;
+      weatherMarketsRef.current = state.weatherMarkets;
+      refreshMapData();
+      setChartBidAskExtraTokens('weather-map', rebuildQuoteTokenIds());
+    });
+    return () => {
+      unsub();
+      setChartBidAskExtraTokens('weather-map', []);
+    };
+  }, [rebuildQuoteTokenIds, refreshMapData]);
 
   useEffect(
     () =>
@@ -790,7 +799,21 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
         for (const row of rows) {
           if (row) next.set(row[0], row[1]);
         }
-        setForecastHighByCity(next);
+        const prev = forecastHighByCityRef.current;
+        if (prev.size === next.size) {
+          let same = true;
+          for (const [k, v] of next) {
+            if (prev.get(k) !== v) {
+              same = false;
+              break;
+            }
+          }
+          if (same) return;
+        }
+        forecastHighByCityRef.current = next;
+        rebuildLiveQuoteMaps();
+        syncFlashLoopRef.current();
+        scheduleDrawRef.current();
       });
     };
     load();
@@ -799,12 +822,28 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       alive = false;
       window.clearInterval(id);
     };
-  }, [tempOddsDateIso]);
+  }, [tempOddsDateIso, rebuildLiveQuoteMaps]);
 
   const meridians = useMemo(() => buildTimezoneMeridians(), []);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    const tick = () => {
+      drawDataRef.current.nowMs = Date.now();
+      baseCacheRef.current = null;
+      scheduleDrawRef.current();
+      const strip = meridianStripRef.current;
+      if (!strip) return;
+      const now = new Date(drawDataRef.current.nowMs);
+      for (const el of strip.querySelectorAll<HTMLElement>('[data-tz-lon]')) {
+        const lon = Number(el.dataset.tzLon);
+        if (!Number.isFinite(lon)) continue;
+        const hour = String(solarHourAtLongitude(lon + TZ_LON_STEP / 2, now)).padStart(2, '0');
+        el.textContent = hour;
+        el.title = `${utcOffsetLabel(lon)} · solar ${hour}:00`;
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 60_000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -959,12 +998,11 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   useEffect(() => {
     drawDataRef.current.land = land;
     drawDataRef.current.loadError = loadError;
-    drawDataRef.current.nowMs = nowMs;
     drawDataRef.current.cities = cities;
     baseCacheRef.current = null;
     syncFlashLoop();
     scheduleDraw();
-  }, [land, loadError, nowMs, cities, syncFlashLoop, scheduleDraw]);
+  }, [land, loadError, cities, syncFlashLoop, scheduleDraw]);
 
   const syncLayoutSnapshot = useCallback((width: number, height: number) => {
     const layout = makeLayout(width, height);
@@ -1193,7 +1231,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
     [pickCityAt, selectCity],
   );
 
-  const now = new Date(nowMs);
+  const now = new Date(drawDataRef.current.nowMs);
 
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-2 h-full flex flex-col min-h-0">
@@ -1229,10 +1267,14 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
       </div>
       <div ref={containerRef} className="no-drag relative min-h-0 flex-1">
         {layoutSnapshot ? (
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-4 border-b border-amber-500/20 bg-gray-950/90">
+          <div
+            ref={meridianStripRef}
+            className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-4 border-b border-amber-500/20 bg-gray-950/90"
+          >
             {meridians.map((lon) => (
               <div
                 key={lon}
+                data-tz-lon={lon}
                 className="absolute top-0 -translate-x-1/2 whitespace-nowrap text-[7px] leading-4 tabular-nums text-amber-200/90"
                 style={{ left: `${lonBandCenterPercent(lon, layoutSnapshot)}%` }}
                 title={`${utcOffsetLabel(lon)} · solar ${String(solarHourAtLongitude(lon + TZ_LON_STEP / 2, now)).padStart(2, '0')}:00`}

@@ -648,7 +648,26 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSignals: (next) => set((s) => (signalsEqual(next, s.signals) ? {} : { signals: next })),
   setProgArbs: (a) => set({ progArbs: a }),
   setSidebarOpen: (v) => set({ sidebarOpen: v }),
-  setSelectedMarket: (m) => set({ selectedMarket: m }),
+  setSelectedMarket: (m) =>
+    set((s) => {
+      const prev = s.selectedMarket;
+      if (prev === m) return s;
+      if (
+        prev &&
+        m &&
+        prev.id === m.id &&
+        prev.conditionId === m.conditionId &&
+        prev.priceToBeat === m.priceToBeat &&
+        prev.bestBid === m.bestBid &&
+        prev.bestAsk === m.bestAsk &&
+        prev.endDate === m.endDate &&
+        prev.question === m.question &&
+        (prev.clobTokenIds || []).join('\0') === (m.clobTokenIds || []).join('\0')
+      ) {
+        return s;
+      }
+      return { selectedMarket: m };
+    }),
   setSidebarOutcome: (v) => set({ sidebarOutcome: v }),
   setProgDialogOpen: (v) => set({ progDialogOpen: v }),
   setProgDialogData: (v) => set({ progDialogData: v }),

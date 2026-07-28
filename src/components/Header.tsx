@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, Suspense, lazy } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, memo, Suspense, lazy } from 'react';
 import { useAccount } from 'wagmi';
 import { RefreshCw, Settings, Plus, Github, Send, Star } from 'lucide-react';
 import logoSvg from '../assets/logo.svg';
@@ -87,8 +87,46 @@ interface HeaderProps {
   onRefresh: () => Promise<void>;
 }
 
-export function Header({ onRefresh }: HeaderProps) {
+/** Owns sync-head WS — must not live in Header (every new block re-rendered whole header). */
+const SyncHeadBlockPill = memo(function SyncHeadBlockPill() {
   const syncHead = useSyncHeadWS();
+  if (syncHead == null || syncHead.lastProcessedBlock <= 0) return null;
+  const lagTone =
+    syncHead.chainHeadBlock > 0 ? blockLagToneClass(syncHead.behindBlocks) : 'text-gray-400';
+  const blocksBehindTip =
+    syncHead.chainHeadBlock > 0 && syncHead.lastProcessedBlock > 0
+      ? syncHead.chainHeadBlock - syncHead.lastProcessedBlock
+      : 0;
+  const blockPillFlashRed = blocksBehindTip > 5;
+  return (
+    <a
+      href={`https://polygonscan.com/block/${syncHead.lastProcessedBlock}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={
+        'flex items-center h-[28px] px-1.5 rounded text-[10px] tabular-nums flex-shrink-0 max-[520px]:hidden transition ' +
+        (blockPillFlashRed
+          ? 'header-sync-block-flash border'
+          : 'bg-gray-800/50 hover:bg-gray-700/60 border border-transparent hover:border-gray-600')
+      }
+      title={
+        'KV last_processed_block number; parentheses = lastProcessed − chainTip (negative ⇒ tip ahead). ' +
+        '−1 is normal: tip moves with newHeads/logs before the block flush writes KV. Open this block on Polygonscan.' +
+        (blockPillFlashRed
+          ? ` Pill flashes red when tip − last_processed > 5 (${blocksBehindTip} behind).`
+          : '')
+      }
+    >
+      <span className="text-gray-500 mr-1">Block</span>
+      <span className="text-gray-200 font-mono">{syncHead.lastProcessedBlock}</span>
+      {syncHead.chainHeadBlock > 0 && (
+        <span className={`ml-0.5 font-mono ${lagTone}`}>({syncHead.behindBlocks})</span>
+      )}
+    </a>
+  );
+});
+
+export function Header({ onRefresh }: HeaderProps) {
   const { isConnected: walletConnected } = useAccount();
   const signingMode = useAppStore((s) => s.signingMode);
   const pkAddress = useAppStore((s) => s.pkAddress);
@@ -213,19 +251,6 @@ export function Header({ onRefresh }: HeaderProps) {
     setMaxOrderSizeUsdLocal(String(n));
   }, [maxOrderSizeUsdLocal, setMaxOrderSizeUsd]);
 
-  const lagTone =
-    syncHead != null && syncHead.chainHeadBlock > 0
-      ? blockLagToneClass(syncHead.behindBlocks)
-      : 'text-gray-400';
-
-  const blocksBehindTip =
-    syncHead != null &&
-    syncHead.chainHeadBlock > 0 &&
-    syncHead.lastProcessedBlock > 0
-      ? syncHead.chainHeadBlock - syncHead.lastProcessedBlock
-      : 0;
-  const blockPillFlashRed = blocksBehindTip > 5;
-
   const walletForHeaderInfoDialog =
     favouritesWalletInfoAddress ??
     (walletSummaryDialogOpen && tradingWallet ? tradingWallet : undefined);
@@ -236,32 +261,7 @@ export function Header({ onRefresh }: HeaderProps) {
         <div className="flex items-center gap-2 h-[28px] flex-shrink-0 min-w-0">
           <img src={logoSvg} alt="logo" className="h-5 w-5 flex-shrink-0 min-w-5 min-h-5" />
           <span className="text-sm font-bold text-white tracking-tight max-[424px]:hidden flex-shrink-0">Mito</span>
-          {syncHead != null && syncHead.lastProcessedBlock > 0 && (
-            <a
-              href={`https://polygonscan.com/block/${syncHead.lastProcessedBlock}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={
-                'flex items-center h-[28px] px-1.5 rounded text-[10px] tabular-nums flex-shrink-0 max-[520px]:hidden transition ' +
-                (blockPillFlashRed
-                  ? 'header-sync-block-flash border'
-                  : 'bg-gray-800/50 hover:bg-gray-700/60 border border-transparent hover:border-gray-600')
-              }
-              title={
-                'KV last_processed_block number; parentheses = lastProcessed − chainTip (negative ⇒ tip ahead). ' +
-                '−1 is normal: tip moves with newHeads/logs before the block flush writes KV. Open this block on Polygonscan.' +
-                (blockPillFlashRed
-                  ? ` Pill flashes red when tip − last_processed > 5 (${blocksBehindTip} behind).`
-                  : '')
-              }
-            >
-              <span className="text-gray-500 mr-1">Block</span>
-              <span className="text-gray-200 font-mono">{syncHead.lastProcessedBlock}</span>
-              {syncHead.chainHeadBlock > 0 && (
-                <span className={`ml-0.5 font-mono ${lagTone}`}>({syncHead.behindBlocks})</span>
-              )}
-            </a>
-          )}
+          <SyncHeadBlockPill />
         </div>
 
         <div className="flex-1 min-w-[8px]" />

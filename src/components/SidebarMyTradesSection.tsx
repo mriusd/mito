@@ -17,7 +17,7 @@ import {
 } from '../lib/sidebarOnchainTradesStore';
 import { LiveElapsedAgeCell } from './WalletTradeTimeCell';
 import type { WSTrade } from '../hooks/useOnchainTradesWS';
-import { walletTradeKey } from '../lib/tradeKeys';
+import { dedupeWalletTradesByLedgerLeg, walletTradeKey } from '../lib/tradeKeys';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
 
 const GROUP_LS_KEY = 'sidebar-my-trades-group';
@@ -87,18 +87,49 @@ function myTradeFillMatchesMarket(
 }
 
 function mergeOnchainWalletTradeRows(marketRows: WSTrade[], walletRows: WSTrade[]): WSTrade[] {
-  const byKey = new Map<string, WSTrade>();
-  for (const t of [...marketRows, ...walletRows]) {
-    const k =
-      t.id || walletTradeKey(t.txHash, t.logIndex, t.tokenId, t.side);
-    if (!byKey.has(k)) byKey.set(k, t);
+  // Market + wallet feeds often carry same SPLIT/MERGE legs at different logIndex (NR+CTF).
+  // Id-only merge keeps both; ledger-leg dedupe collapses to one YES + one NO per tx.
+  return dedupeWalletTradesByLedgerLeg([...marketRows, ...walletRows], (t) => {
+    const tok = normalizeClobTokenId(t.tokenId) || t.tokenId;
+    return t.id || walletTradeKey(t.txHash, t.logIndex, tok, t.side);
+  });
+}
+
+/** Same tx+action+YES/NO — collapse leftover dups when token id strings differ across feeds. */
+function collapseSplitMergeByTxOutcome(
+  rows: WSTrade[],
+  selectedMarket: Market,
+  marketLookup: Record<string, Market>,
+): WSTrade[] {
+  const best = new Map<string, WSTrade>();
+  const passthrough: WSTrade[] = [];
+  for (const t of rows) {
+    const act = String(t.side || '').toUpperCase();
+    const tx = String(t.txHash || '').trim().toLowerCase();
+    if ((act !== 'SPLIT' && act !== 'MERGE') || !tx) {
+      passthrough.push(t);
+      continue;
+    }
+    const tid = normalizeClobTokenId(t.tokenId) || t.tokenId;
+    const outcome = tradeOutcomeGroupKey(tid, selectedMarket, marketLookup, t.outcome);
+    const k = `${tx}:${act}:${outcome}`;
+    const prev = best.get(k);
+    if (!prev) {
+      best.set(k, t);
+      continue;
+    }
+    const li = t.logIndex ?? Number.MAX_SAFE_INTEGER;
+    const pli = prev.logIndex ?? Number.MAX_SAFE_INTEGER;
+    if (li < pli) best.set(k, t);
   }
-  return [...byKey.values()].sort(
+  return [...passthrough, ...best.values()].sort(
     (a, b) => b.blockTime - a.blockTime || (b.logIndex ?? 0) - (a.logIndex ?? 0),
   );
 }
 
 function wsTradeToMyTradeRow(f: WSTrade): MyTradeRow {
+  const bt = Number(f.blockTime) || 0;
+  const tsMs = bt <= 0 ? Date.now() : bt > 1e12 ? bt : bt * 1000;
   return {
     asset_id: f.tokenId,
     token_id: f.tokenId,
@@ -106,7 +137,7 @@ function wsTradeToMyTradeRow(f: WSTrade): MyTradeRow {
     price: String(f.price),
     size: String(f.size),
     fee: String(f.fee || 0),
-    timestamp: f.blockTime > 0 ? f.blockTime * 1000 : Date.now(),
+    timestamp: tsMs,
     txHash: f.txHash,
     logIndex: f.logIndex,
     created_at: '',
@@ -240,7 +271,11 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
     if (liveTradesSource !== 'onchain') {
       return trades.filter((t) => tradeMatchesSelectedMarket(t, selectedMarket, marketLookup)) as MyTradeRow[];
     }
-    const merged = mergeOnchainWalletTradeRows(wsMarketTrades, wsWalletTrades);
+    const merged = collapseSplitMergeByTxOutcome(
+      mergeOnchainWalletTradeRows(wsMarketTrades, wsWalletTrades),
+      selectedMarket,
+      marketLookup,
+    );
     return merged
       .filter((f) => myTradeFillMatchesMarket(f, selectedMarket, marketLookup))
       .map(wsTradeToMyTradeRow);
@@ -273,13 +308,25 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
   const myTradesPnl = useMemo(() => {
     let totalSellCost = 0;
     let totalBuyCost = 0;
+    // SPLIT/MERGE mint/burn YES+NO — USDC moves once per tx; counting both legs double-counts.
+    const splitMergeTxSeen = new Set<string>();
     for (const trade of myTradesDisplay) {
       const rawPrice = parseFloat(trade.price);
       const size = tradeFilledSizeShares(trade);
       if (!Number.isFinite(rawPrice) || !Number.isFinite(size)) continue;
       const cost = rawPrice * size;
-      if (trade.side === 'SELL' || trade.side === 'MERGE' || trade.side === 'REDEEM') totalSellCost += cost;
-      else if (trade.side === 'BUY' || trade.side === 'SPLIT') totalBuyCost += cost;
+      const side = String(trade.side || '').toUpperCase();
+      if (side === 'SPLIT' || side === 'MERGE') {
+        const tx = String(trade.txHash || '').trim().toLowerCase();
+        const dedupeK = tx || mySidebarTradeRowKey(trade);
+        if (!dedupeK || splitMergeTxSeen.has(dedupeK)) continue;
+        splitMergeTxSeen.add(dedupeK);
+        if (side === 'MERGE') totalSellCost += cost;
+        else totalBuyCost += cost;
+        continue;
+      }
+      if (side === 'SELL' || side === 'REDEEM') totalSellCost += cost;
+      else if (side === 'BUY') totalBuyCost += cost;
     }
     return totalSellCost - totalBuyCost;
   }, [myTradesDisplay]);

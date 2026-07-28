@@ -27,6 +27,13 @@ export type MySidebarTradeRow = {
 
 export function mySidebarTradeRowKey(trade: MySidebarTradeRow): string {
   const txHash = (trade.txHash || '').trim();
+  const side = String(trade.side || '').toUpperCase();
+  const tok = String(trade.asset_id || trade.token_id || '').trim();
+  // SPLIT/MERGE YES+NO share logIndex — include token+side so both legs stay distinct.
+  if (txHash && (side === 'SPLIT' || side === 'MERGE' || side === 'REDEEM')) {
+    const base = onchainFillKey(txHash, trade.logIndex);
+    return tok ? `${base}:${tok}:${side}` : `${base}:${side}`;
+  }
   if (txHash) return onchainFillKey(txHash, trade.logIndex);
   const id = (trade.id || '').trim();
   if (id) return id;

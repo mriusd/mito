@@ -19,24 +19,24 @@ export function walletTradeKey(
   return `${txHash || ''}:${logIndex ?? -1}:${tokenId}:${side}`;
 }
 
-/** SPLIT/MERGE: one row per tx+token+action+size (NR+CTF double logs). */
+/** SPLIT/MERGE: one row per tx+token+action (NR+CTF double logs; size float ignored). */
 export function walletTradeLedgerLegEconKey(
   txHash: string | undefined,
   tokenId: string,
   side: string,
-  size: number,
+  _size?: number,
 ): string {
   const act = String(side || '').toUpperCase();
   if (act !== 'SPLIT' && act !== 'MERGE') return '';
   const tx = String(txHash || '').trim().toLowerCase();
   let tok = String(tokenId || '').trim();
-  if (!tok || !tx || size <= 0) return '';
+  if (!tok || !tx) return '';
   try {
     tok = BigInt(tok).toString();
   } catch {
     /* keep */
   }
-  return `${tx}:${tok}:${act}:${size}`;
+  return `${tx}:${tok}:${act}`;
 }
 
 export function dedupeWalletTradesByLedgerLeg<T extends {

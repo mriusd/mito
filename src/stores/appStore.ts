@@ -418,7 +418,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   pkAddress: null,
   pkRevision: 0,
   setSigningMode: (v) => { localStorage.setItem('polymarket-signing-mode', v); set({ signingMode: v }); },
-  setPkAddress: (v) => set({ pkAddress: v }),
+  setPkAddress: (v) => set((s) => (s.pkAddress === v ? {} : { pkAddress: v })),
   bumpPkRevision: () => set((s) => ({ pkRevision: s.pkRevision + 1 })),
 
   // Mobile sheet: closed on load. Desktop rail: open. Matches CSS (max-width: 767px).
@@ -468,12 +468,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!bumped) return {};
     return { priceData: nextPd };
   }),
-  setVwapData: (symbol, price) => set((s) => ({
-    vwapData: { ...s.vwapData, [symbol]: { price, ts: Date.now() } },
-  })),
-  setVolatilityData: (symbol, vol) => set((s) => ({
-    volatilityData: { ...s.volatilityData, [symbol]: vol },
-  })),
+  setVwapData: (symbol, price) => set((s) => {
+    const prev = s.vwapData[symbol];
+    if (prev && Math.abs(prev.price - price) < 1e-9) return s;
+    return { vwapData: { ...s.vwapData, [symbol]: { price, ts: Date.now() } } };
+  }),
+  setVolatilityData: (symbol, vol) => set((s) => {
+    if (s.volatilityData[symbol] === vol) return s;
+    return { volatilityData: { ...s.volatilityData, [symbol]: vol } };
+  }),
   setManualPriceSlot: (symbol, slot, range) => set((s) => {
     const slots = { ...s.manualPriceSlots };
     const pair = [...slots[symbol]] as [PriceRange | null, PriceRange | null];

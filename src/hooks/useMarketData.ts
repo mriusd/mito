@@ -110,13 +110,21 @@ export function useMarketData() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const backendConnected = useAppStore((s) => s.backendConnected);
   useEffect(() => {
-    const ms = backendConnected === false ? 3000 : 30000;
+    let connected = useAppStore.getState().backendConnected;
+    let interval = setInterval(refreshData, connected === false ? 3000 : 30000);
     refreshData();
-    const interval = setInterval(refreshData, ms);
-    return () => clearInterval(interval);
-  }, [backendConnected, refreshData]);
+    const unsub = useAppStore.subscribe((state) => {
+      if (state.backendConnected === connected) return;
+      connected = state.backendConnected;
+      clearInterval(interval);
+      interval = setInterval(refreshData, connected === false ? 3000 : 30000);
+    });
+    return () => {
+      unsub();
+      clearInterval(interval);
+    };
+  }, [refreshData]);
 
   return { refreshData };
 }

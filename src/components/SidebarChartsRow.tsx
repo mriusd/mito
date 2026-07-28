@@ -5,6 +5,7 @@ import { useSidebarMyTradesChartMarkers } from '../hooks/useSidebarMyTradesChart
 import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
 import { useSidebarOrderHighlightSets } from '../lib/sidebarOrderHighlightStore';
 import { useAppStore } from '../stores/appStore';
+import { useThrottledGridOrders, useThrottledGridPositions } from '../hooks/useThrottledGridWallet';
 import { orderMatchesSelectedMarket } from '../utils/format';
 import type { ChartOrderReplaceParams } from '../lib/sidebarOrderbookAggregate';
 import { computeSidebarMyPositions, isSidebarDustPosition } from '../lib/sidebarMyPositions';
@@ -29,8 +30,8 @@ const SidebarChartsRowChart = memo(function SidebarChartsRowChart({
   onChartOrderReplace?: (params: ChartOrderReplaceParams) => void;
 }) {
   const { bidPrices: sidebarUserBidPrices, askPrices: sidebarUserAskPrices } = useSidebarOrderHighlightSets();
-  const orders = useAppStore((s) => s.orders);
-  const positions = useAppStore((s) => s.positions);
+  const orders = useThrottledGridOrders(500);
+  const positions = useThrottledGridPositions(500);
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const onchainWsPositions = useSidebarOnchainWalletPositions();
   const progOrderMap = useAppStore((s) => s.progOrderMap) as Record<string, number>;

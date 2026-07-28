@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { getStoredApiCredsForEoa, hasCredsForWallet, triggerWalletRefresh } from '../lib/clobClient';
 import { isWebMode } from '../lib/env';
@@ -9,9 +9,12 @@ import {
   normalizeConditionIdForWs,
   type PolyUserOrderWsMsg,
 } from '../lib/polymarketUserOrdersWs';
+import type { Order } from '../types';
 
 const PING_MS = 10_000;
 const RECONNECT_MS = 3_000;
+/** Coalesce order WS patches into store. */
+const ORDER_PATCH_FLUSH_MS = 500;
 
 function uniqueMarkets(...groups: string[][]): string[] {
   const s = new Set<string>();
@@ -24,34 +27,32 @@ function uniqueMarkets(...groups: string[][]): string[] {
   return [...s].sort();
 }
 
+function marketsKey(ids: string[]): string {
+  return ids.join('\0');
+}
+
+function selectedConditionFromStore(): string {
+  const m = useAppStore.getState().selectedMarket;
+  return normalizeConditionIdForWs(m?.conditionId || m?.id || '');
+}
+
+function computeTargetMarkets(): string[] {
+  const orderIds = useAppStore.getState().orders.map((o) => o.market || '');
+  return uniqueMarkets([selectedConditionFromStore()], orderIds);
+}
+
 /**
  * Real-time open orders via Polymarket CLOB user WS (`/ws/user`).
- * Patches `appStore.orders` on PLACEMENT / UPDATE / CANCELLATION.
+ * No React store selects — setState on markets used to re-render AppDataHost.
  */
 export function usePolymarketUserOrdersWS(eoa: string | null | undefined, proxyWallet: string | null | undefined) {
-  const selectedConditionId = useAppStore(
-    (s) => normalizeConditionIdForWs(s.selectedMarket?.conditionId || s.selectedMarket?.id || ''),
-  );
-  const orders = useAppStore((s) => s.orders);
-
-  const orderMarketIds = useMemo(
-    () => uniqueMarkets(orders.map((o) => o.market || '')),
-    [orders],
-  );
-
-  const targetMarkets = useMemo(
-    () => uniqueMarkets([selectedConditionId], orderMarketIds),
-    [selectedConditionId, orderMarketIds],
-  );
-
-  const targetMarketsRef = useRef(targetMarkets);
-  targetMarketsRef.current = targetMarkets;
-
   const wsRef = useRef<WebSocket | null>(null);
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const subscribedRef = useRef<Set<string>>(new Set());
   const credsRef = useRef<ReturnType<typeof getStoredApiCredsForEoa>>(null);
+  const targetMarketsRef = useRef<string[]>(computeTargetMarkets());
+  const targetKeyRef = useRef(marketsKey(targetMarketsRef.current));
 
   useEffect(() => {
     if (!isWebMode) return;
@@ -65,6 +66,8 @@ export function usePolymarketUserOrdersWS(eoa: string | null | undefined, proxyW
     credsRef.current = creds;
 
     let cancelled = false;
+    let pendingOrders: Order[] | null = null;
+    let patchTimer: ReturnType<typeof setTimeout> | null = null;
 
     const clearPing = () => {
       if (pingRef.current) {
@@ -78,6 +81,14 @@ export function usePolymarketUserOrdersWS(eoa: string | null | undefined, proxyW
         clearTimeout(reconnectRef.current);
         reconnectRef.current = null;
       }
+    };
+
+    const flushOrderPatches = () => {
+      patchTimer = null;
+      if (!pendingOrders) return;
+      const next = pendingOrders;
+      pendingOrders = null;
+      useAppStore.getState().setMarketData({ orders: next });
     };
 
     const scheduleReconnect = () => {
@@ -96,9 +107,22 @@ export function usePolymarketUserOrdersWS(eoa: string | null | undefined, proxyW
       for (const m of markets) subscribedRef.current.add(m);
     };
 
+    const syncTargetMarkets = () => {
+      const next = computeTargetMarkets();
+      const key = marketsKey(next);
+      if (key === targetKeyRef.current) return;
+      targetKeyRef.current = key;
+      targetMarketsRef.current = next;
+      const pending = next.filter((m) => !subscribedRef.current.has(m));
+      if (pending.length === 0) return;
+      subscribeMarkets(pending, true);
+    };
+
     const handleOrderMsg = (msg: PolyUserOrderWsMsg) => {
-      const st = useAppStore.getState();
-      st.setMarketData({ orders: applyUserOrderWsEvent(st.orders, msg) });
+      const base = pendingOrders ?? useAppStore.getState().orders;
+      pendingOrders = applyUserOrderWsEvent(base, msg);
+      if (patchTimer != null) return;
+      patchTimer = setTimeout(flushOrderPatches, ORDER_PATCH_FLUSH_MS);
     };
 
     const handleTradeMsg = () => {
@@ -165,12 +189,24 @@ export function usePolymarketUserOrdersWS(eoa: string | null | undefined, proxyW
       };
     };
 
+    targetMarketsRef.current = computeTargetMarkets();
+    targetKeyRef.current = marketsKey(targetMarketsRef.current);
     connect();
+
+    const unsubStore = useAppStore.subscribe((state, prev) => {
+      if (state.orders === prev.orders && state.selectedMarket === prev.selectedMarket) return;
+      syncTargetMarkets();
+    });
 
     return () => {
       cancelled = true;
+      unsubStore();
       clearPing();
       clearReconnect();
+      if (patchTimer != null) {
+        clearTimeout(patchTimer);
+        flushOrderPatches();
+      }
       if (wsRef.current) {
         wsRef.current.onopen = null;
         wsRef.current.onmessage = null;
@@ -182,17 +218,4 @@ export function usePolymarketUserOrdersWS(eoa: string | null | undefined, proxyW
       subscribedRef.current = new Set();
     };
   }, [eoa, proxyWallet]);
-
-  // Subscribe to newly seen markets without reconnecting.
-  useEffect(() => {
-    const ws = wsRef.current;
-    const auth = credsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN || !auth) return;
-
-    const pending = targetMarkets.filter((m) => !subscribedRef.current.has(m));
-    if (pending.length === 0) return;
-
-    ws.send(JSON.stringify(buildUserOrdersSubscribePayload(pending, auth, true)));
-    for (const m of pending) subscribedRef.current.add(m);
-  }, [targetMarkets]);
 }

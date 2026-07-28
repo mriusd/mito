@@ -673,8 +673,7 @@ function WeatherMapPanelInner({ panelId }: { panelId: string }) {
   }, []);
 
   const rebuildLiveQuoteMaps = useCallback(() => {
-    const marketLookup = useAppStore.getState().marketLookup;
-    const liveLookup: Record<string, Market> = { ...marketLookup };
+    const liveLookup: Record<string, Market> = {};
     for (const tid of quoteTokenIdsRef.current) {
       const row = getBidAskMarketRow(tid);
       if (row) liveLookup[tid] = row;

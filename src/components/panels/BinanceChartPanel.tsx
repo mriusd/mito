@@ -9,7 +9,7 @@ import { fetchBackend } from '../../lib/fetchBackend';
 import { subscribeChartKline } from '../../lib/chartWsShared';
 import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
 import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
-import { useMarketLookupSubset } from '../../hooks/useMarketLookupSubset';
+import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLookupSubset';
 import {
   gexImpliedPrice,
   useGexConnection,
@@ -893,10 +893,10 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   const rbsSettingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const rbsSettingsMenuRef = useRef<HTMLDivElement | null>(null);
   const [candles, setCandles] = useState<Candle[]>([]);
-  const [candleBsProbTick, setCandleBsProbTick] = useState(0);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [chartHeaderStackControls, setChartHeaderStackControls] = useState(false);
+  const candleBsProbElRef = useRef<HTMLSpanElement | null>(null);
   const visibleRbsTimeframes = useMemo(() => visibleRbsTimeframesForSource(priceSource), [priceSource]);
   const effectiveRbsTfEnabled = useMemo<Record<UpDownTfKey, boolean>>(() => {
     const visible = new Set<UpDownTfKey>(visibleRbsTimeframes);
@@ -923,7 +923,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     }
     return [...set];
   }, [asset, upOrDownMarkets]);
-  const marketLookup = useMarketLookupSubset(chartClobTokenIds);
+  const marketLookup = useThrottledMarketLookupSubset(chartClobTokenIds);
   const volatilityData = useAppStore((s) => s.volatilityData);
   const volMultiplier = useAppStore((s) => s.volMultiplier);
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
@@ -951,28 +951,44 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
       l: Math.min(cur.l, close),
       c: close,
     };
-  }, [candles, spotForChart, timeframe, priceSource, candleBsProbTick]);
+  }, [candles, spotForChart, timeframe, priceSource]);
 
-  const candleGreenBsProb = useMemo(() => {
-    if (!currentCandleOhlc) return null;
-    const barMs = chartBarMsForWindow(timeframe, priceSource);
-    const nowMs = Date.now();
-    const bucketStart = Math.floor(nowMs / barMs) * barMs;
-    const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
-    return candleGreenBsProbability(
-      currentCandleOhlc.o,
-      currentCandleOhlc.c,
-      bucketStart + barMs,
-      sigma,
-      bsTimeOffsetHours,
-      nowMs,
-    );
-  }, [currentCandleOhlc, timeframe, priceSource, volatilityData, sym, volMultiplier, bsTimeOffsetHours, candleBsProbTick]);
-
+  // DOM-only 1Hz BS% — must NOT React setState (was ×N panels Immediate storm).
   useEffect(() => {
-    const id = window.setInterval(() => setCandleBsProbTick((n) => n + 1), 1000);
+    const tick = () => {
+      const el = candleBsProbElRef.current;
+      if (!el) return;
+      if (!currentCandleOhlc) {
+        el.textContent = '';
+        el.className = 'hidden';
+        return;
+      }
+      const barMs = chartBarMsForWindow(timeframe, priceSource);
+      const nowMs = Date.now();
+      const bucketStart = Math.floor(nowMs / barMs) * barMs;
+      const sigma = (useAppStore.getState().volatilityData[sym] || 0.6) * volMultiplier;
+      const p = candleGreenBsProbability(
+        currentCandleOhlc.o,
+        currentCandleOhlc.c,
+        bucketStart + barMs,
+        sigma,
+        bsTimeOffsetHours,
+        nowMs,
+      );
+      if (p == null) {
+        el.textContent = '';
+        el.className = 'hidden';
+        return;
+      }
+      el.textContent = `BS↑${Math.round(p * 100)}%`;
+      el.className = `text-[10px] font-semibold tabular-nums ${
+        p > 0.55 ? 'text-green-400' : p < 0.45 ? 'text-red-400' : 'text-gray-400'
+      }`;
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [currentCandleOhlc, timeframe, priceSource, sym, volMultiplier, bsTimeOffsetHours]);
 
   const hudExchangeSpotReady = useMemo(() => {
     if (!hudGateSupportLinesByExchange) return true;
@@ -1252,7 +1268,8 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     ro.observe(controls);
     measure();
     return () => ro.disconnect();
-  }, [asset, spotForChart, priceSource, timeframe, candleCount, candleGreenBsProb]);
+    // candleGreenBsProb ticks every 1s — must not remount ResizeObserver / remeasure header.
+  }, [asset, spotForChart, priceSource, timeframe, candleCount]);
 
   useEffect(() => {
     if (!hudSyncIntervalFromMarket || !assetOverride) return;
@@ -1588,16 +1605,25 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     const canvas = canvasRef.current;
     if (!container || !canvas) return;
 
+    let lastCssW = 0;
+    let lastCssH = 0;
+    let lastDpr = 0;
+
     const paint = () => {
       const rect = container.getBoundingClientRect();
       const w = Math.floor(rect.width);
       const h = Math.floor(rect.height);
       if (w < 4 || h < 4) return;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.floor(w * dpr);
-      canvas.height = Math.floor(h * dpr);
-      canvas.style.width = `${w}px`;
-      canvas.style.height = `${h}px`;
+      if (w !== lastCssW || h !== lastCssH || dpr !== lastDpr) {
+        lastCssW = w;
+        lastCssH = h;
+        lastDpr = dpr;
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+        canvas.style.width = `${w}px`;
+        canvas.style.height = `${h}px`;
+      }
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1647,20 +1673,11 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
               <span className="text-[11px] font-bold tabular-nums">
                 {spotForChart > 0 ? formatPrice(spotForChart, asset) : '--'}
               </span>
-              {candleGreenBsProb != null && (
-                <span
-                  className={`text-[10px] font-semibold tabular-nums ${
-                    candleGreenBsProb > 0.55
-                      ? 'text-green-400'
-                      : candleGreenBsProb < 0.45
-                        ? 'text-red-400'
-                        : 'text-gray-400'
-                  }`}
-                  title="BS P(candle closes green: close > open)"
-                >
-                  BS↑{Math.round(candleGreenBsProb * 100)}%
-                </span>
-              )}
+              <span
+                ref={candleBsProbElRef}
+                className="hidden"
+                title="BS P(candle closes green: close > open)"
+              />
               {!assetOverride && (
                 <svg className="w-3 h-3 ml-0.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <polyline points="6 9 12 15 18 9" />

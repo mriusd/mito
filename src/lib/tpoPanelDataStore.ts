@@ -10,7 +10,6 @@ import type { Market, Order, Trade } from '../types';
 import type { WSPosition, WSTrade } from '../hooks/useOnchainTradesWS';
 
 export type TpoPanelDataSnap = {
-  digest: number;
   positions: ReturnType<typeof useAppStore.getState>['positions'];
   orders: Order[];
   trades: Trade[];
@@ -19,10 +18,11 @@ export type TpoPanelDataSnap = {
   quoteLookup: Record<string, Market>;
 };
 
+export type TpoDataSlice = 'positions' | 'orders' | 'trades';
+
 const FLUSH_MS = 2000;
 
 let snap: TpoPanelDataSnap = {
-  digest: 0,
   positions: [],
   orders: [],
   trades: [],
@@ -31,7 +31,15 @@ let snap: TpoPanelDataSnap = {
   quoteLookup: {},
 };
 
-const listeners = new Set<() => void>();
+/** Per-slice views — identity stable when that slice did not change. */
+let positionsView: TpoPanelDataSnap = snap;
+let ordersView: TpoPanelDataSnap = snap;
+let tradesView: TpoPanelDataSnap = snap;
+
+const positionsListeners = new Set<() => void>();
+const ordersListeners = new Set<() => void>();
+const tradesListeners = new Set<() => void>();
+
 let timer: ReturnType<typeof setTimeout> | null = null;
 let bootstrapped = false;
 
@@ -101,6 +109,13 @@ function quoteLookupEqual(a: Record<string, Market>, b: Record<string, Market>):
   return true;
 }
 
+function notify(set: Set<() => void>): void {
+  if (set.size === 0) return;
+  startTransition(() => {
+    for (const l of set) l();
+  });
+}
+
 function flushNow(): void {
   timer = null;
   const app = useAppStore.getState();
@@ -120,28 +135,37 @@ function flushNow(): void {
   );
   const quoteLookup = readQuoteLookup(ids);
 
-  const sameWallet =
-    snap.positions === positions &&
-    snap.orders === orders &&
-    snap.trades === trades &&
-    snap.onchainPositions === onchainPositions &&
-    snap.onchainTrades === onchainTrades &&
-    quoteLookupEqual(snap.quoteLookup, quoteLookup);
-  if (sameWallet) return;
+  const positionsChanged =
+    snap.positions !== positions || snap.onchainPositions !== onchainPositions;
+  const ordersChanged = snap.orders !== orders;
+  const tradesChanged = snap.trades !== trades || snap.onchainTrades !== onchainTrades;
+  const quotesChanged = !quoteLookupEqual(snap.quoteLookup, quoteLookup);
+  if (!positionsChanged && !ordersChanged && !tradesChanged && !quotesChanged) return;
 
   snap = {
-    digest: snap.digest + 1,
     positions,
     orders,
     trades,
     onchainPositions,
     onchainTrades,
-    quoteLookup,
+    quoteLookup: quotesChanged ? quoteLookup : snap.quoteLookup,
   };
 
-  startTransition(() => {
-    for (const l of listeners) l();
-  });
+  // Positions: marks + size. Orders-only WS must NOT rebuild positions table.
+  if (positionsChanged || quotesChanged) {
+    positionsView = snap;
+    notify(positionsListeners);
+  } else if (ordersChanged) {
+    positionsView = snap; // fresh sell map on next positions wake; no notify
+  }
+  if (ordersChanged) {
+    ordersView = snap;
+    notify(ordersListeners);
+  }
+  if (tradesChanged) {
+    tradesView = snap;
+    notify(tradesListeners);
+  }
 }
 
 function scheduleFlush(): void {
@@ -166,6 +190,7 @@ function ensureBootstrapped(): void {
   });
   subscribeSidebarOnchainTrades(scheduleFlush);
   subscribeBidAskMarketLookupGridFlush(() => {
+    if (positionsListeners.size === 0) return;
     if (timer != null) {
       clearTimeout(timer);
       timer = null;
@@ -174,27 +199,32 @@ function ensureBootstrapped(): void {
   });
 }
 
-export function subscribeTpoPanelData(listener: () => void): () => void {
+function subscribeSlice(slice: TpoDataSlice, listener: () => void): () => void {
   ensureBootstrapped();
-  listeners.add(listener);
+  const set =
+    slice === 'positions' ? positionsListeners : slice === 'orders' ? ordersListeners : tradesListeners;
+  set.add(listener);
   return () => {
-    listeners.delete(listener);
+    set.delete(listener);
   };
 }
 
-export function getTpoPanelDataSnapshot(): TpoPanelDataSnap {
+function getSliceSnapshot(slice: TpoDataSlice): TpoPanelDataSnap {
   ensureBootstrapped();
-  return snap;
+  if (slice === 'positions') return positionsView;
+  if (slice === 'orders') return ordersView;
+  return tradesView;
 }
 
-/** Shared 2s TPO snapshot. Pass enabled=false when panel off-screen — no re-renders. */
-export function useTpoPanelData(enabled: boolean): TpoPanelDataSnap {
+/** Shared TPO snapshot — each tab only wakes when its slice changes. */
+export function useTpoPanelData(enabled: boolean, slice: TpoDataSlice): TpoPanelDataSnap {
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
       if (!enabled) return () => {};
-      return subscribeTpoPanelData(onStoreChange);
+      return subscribeSlice(slice, onStoreChange);
     },
-    [enabled],
+    [enabled, slice],
   );
-  return useSyncExternalStore(subscribe, getTpoPanelDataSnapshot, getTpoPanelDataSnapshot);
+  const getSnapshot = useCallback(() => getSliceSnapshot(slice), [slice]);
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

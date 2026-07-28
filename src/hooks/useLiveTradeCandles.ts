@@ -68,6 +68,15 @@ export function useLiveTradeCandles({
   const [ready, setReady] = useState(false);
   const [wsTick, setWsTick] = useState(0);
   const [candles, setCandles] = useState<LiveTradeCandle[]>([]);
+  const wsTickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleWsTick = () => {
+    if (wsTickTimerRef.current != null) return;
+    wsTickTimerRef.current = setTimeout(() => {
+      wsTickTimerRef.current = null;
+      setWsTick((n) => n + 1);
+    }, 250);
+  };
 
   useEffect(() => {
     candleMapRef.current = new Map();
@@ -77,10 +86,11 @@ export function useLiveTradeCandles({
     if (!tokenId) return;
 
     let cancelled = false;
+    let publishTimer: ReturnType<typeof setTimeout> | null = null;
 
     const { startMs: st, endMs: et } = resolveLiveTradeChartWindow(tokenId, startTime, endTime);
 
-    const publish = () => {
+    const publishNow = () => {
       if (cancelled) return;
       const sorted = Array.from(candleMapRef.current.values()).sort((a, b) => a.time - b.time);
       // Weather series only: forward-fill bars/forecast; drop historical vol=0 flat stubs.
@@ -101,6 +111,22 @@ export function useLiveTradeCandles({
         next.push(row);
       }
       setCandles(next);
+    };
+
+    const publish = (immediate = false) => {
+      if (immediate) {
+        if (publishTimer != null) {
+          clearTimeout(publishTimer);
+          publishTimer = null;
+        }
+        publishNow();
+        return;
+      }
+      if (publishTimer != null) return;
+      publishTimer = setTimeout(() => {
+        publishTimer = null;
+        publishNow();
+      }, 250);
     };
 
     const applyKlines = (klines: any[][]) => {
@@ -152,7 +178,7 @@ export function useLiveTradeCandles({
           .then((hist: any[][]) => {
             if (cancelled) return;
             if (Array.isArray(hist) && hist.length > 0) applyKlines(hist);
-            publish();
+            publish(true);
           });
 
       return fetchBackend(`${API_BASE}/api/v3/klines?${klineQuery}`)
@@ -161,7 +187,7 @@ export function useLiveTradeCandles({
           if (cancelled) return;
           if (Array.isArray(klines) && klines.length > 0) {
             applyKlines(klines);
-            publish();
+            publish(true);
             return;
           }
           return applyHistory();
@@ -224,8 +250,8 @@ export function useLiveTradeCandles({
               applyWsKline(k as Record<string, unknown>, { replaceWeather: true });
             }
           }
-          publish();
-          setWsTick((n) => n + 1);
+          publish(true);
+          scheduleWsTick();
           return;
         }
         if (msg.type === 'klineStreamUpdate') {
@@ -233,20 +259,20 @@ export function useLiveTradeCandles({
           if (!k) return;
           applyWsKline(k as Record<string, unknown>);
           publish();
-          setWsTick((n) => n + 1);
+          scheduleWsTick();
         } else if (msg.type === 'klineStreamDelete') {
           const tRaw = msg.data?.data?.t;
           const t = typeof tRaw === 'number' ? tRaw : Number(tRaw);
           if (Number.isFinite(t) && t > 0) {
             candleMapRef.current.delete(t);
             publish();
-            setWsTick((n) => n + 1);
+            scheduleWsTick();
           }
         }
       },
       onReconnect: () => {
         void loadKlines().then(() => {
-          if (!cancelled) setWsTick((n) => n + 1);
+          if (!cancelled) scheduleWsTick();
         });
       },
     });
@@ -254,7 +280,7 @@ export function useLiveTradeCandles({
     const onVisibility = () => {
       if (cancelled || document.visibilityState !== 'visible') return;
       void loadKlines().then(() => {
-        if (!cancelled) setWsTick((n) => n + 1);
+        if (!cancelled) scheduleWsTick();
       });
     };
 
@@ -263,6 +289,11 @@ export function useLiveTradeCandles({
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', onVisibility);
+      if (wsTickTimerRef.current != null) {
+        clearTimeout(wsTickTimerRef.current);
+        wsTickTimerRef.current = null;
+      }
+      if (publishTimer != null) clearTimeout(publishTimer);
       unsub();
     };
   }, [tokenId, isNo, startTime, endTime, interval, candleMs]);

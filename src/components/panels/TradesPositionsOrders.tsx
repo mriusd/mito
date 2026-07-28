@@ -530,7 +530,7 @@ function TradesPositionsOrdersInner({
   });
   const effectiveTab = lockedTab ?? tab;
 
-  const tpoData = useTpoPanelData(panelVisible);
+  const tpoData = useTpoPanelData(panelVisible, effectiveTab);
   const positions = tpoData.positions;
   const orders = tpoData.orders;
   const trades = tpoData.trades;

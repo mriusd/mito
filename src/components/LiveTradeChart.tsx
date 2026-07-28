@@ -301,7 +301,14 @@ export function LiveTradeChart({
   }, [getChart, displayChartOrderLevels, candles.length]);
 
   useEffect(() => {
-    syncOrderHandles();
+    let raf: number | null = null;
+    raf = requestAnimationFrame(() => {
+      raf = null;
+      syncOrderHandles();
+    });
+    return () => {
+      if (raf != null) cancelAnimationFrame(raf);
+    };
   }, [syncOrderHandles, option]);
 
   const onDataZoom = useCallback(() => {

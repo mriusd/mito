@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { useAccount } from 'wagmi';
+import { getAccount, watchAccount } from '@wagmi/core';
 import { ethers } from 'ethers';
 import { useAppStore } from '../stores/appStore';
 import { fetchProxyWallet, fetchWalletPositions, fetchWalletActivity, fetchWalletBalance } from '../api/polymarket';
@@ -10,6 +10,9 @@ import { clearWalletAccountSlice } from '../lib/clearWalletAccountSlice';
 import { isWebMode } from '../lib/env';
 import { getStoredPrivateKey } from '../components/PrivateKeyImportDialog';
 import { normalizeClobTokenId } from '../utils/format';
+import { wagmiAdapter } from '../lib/wallet';
+
+const wagmiConfig = wagmiAdapter.wagmiConfig;
 
 function walletChannelKey(
   signingMode: 'wallet' | 'privateKey',
@@ -25,11 +28,11 @@ function walletChannelKey(
 // then fetch positions, orders, trades, balance from Polymarket directly.
 // In app mode this hook is a no-op.
 export function useWalletData() {
-  const { address, isConnected } = useAccount();
-  const signingMode = useAppStore((s) => s.signingMode);
-  const pkRevision = useAppStore((s) => s.pkRevision);
-  const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
-  const setPkAddress = useAppStore((s) => s.setPkAddress);
+  // No useAccount / live store selects — those re-rendered AppDataHost every wagmi/store tick.
+  const [address, setAddress] = useState(() => getAccount(wagmiConfig).address);
+  const [isConnected, setIsConnected] = useState(() => Boolean(getAccount(wagmiConfig).isConnected));
+  const [signingMode, setSigningMode] = useState(() => useAppStore.getState().signingMode);
+  const [pkRevision, setPkRevision] = useState(() => useAppStore.getState().pkRevision);
   /** Bumped only on real channel change (layout) — stale in-flight loads must not write after PK↔wallet switch. */
   const walletLoadEpochRef = useRef(0);
   const walletChannelKeyRef = useRef<string>('');
@@ -38,6 +41,22 @@ export function useWalletData() {
   const credsCheckedRef = useRef(false);
 
   proxyWalletRef.current = proxyWallet;
+
+  useEffect(() => {
+    return watchAccount(wagmiConfig, {
+      onChange(data) {
+        setAddress(data.address);
+        setIsConnected(Boolean(data.isConnected));
+      },
+    });
+  }, []);
+
+  useEffect(() => {
+    return useAppStore.subscribe((state, prev) => {
+      if (state.signingMode !== prev.signingMode) setSigningMode(state.signingMode);
+      if (state.pkRevision !== prev.pkRevision) setPkRevision(state.pkRevision);
+    });
+  }, []);
 
   // Derive EOA from private key when PK mode is active
   const pkEoa = useMemo(() => {
@@ -50,7 +69,9 @@ export function useWalletData() {
   }, [signingMode, pkRevision]);
 
   // Publish pkAddress to store so other components can read it
-  useEffect(() => { setPkAddress(pkEoa); }, [pkEoa, setPkAddress]);
+  useEffect(() => {
+    useAppStore.getState().setPkAddress(pkEoa);
+  }, [pkEoa]);
 
   // The effective EOA: PK address when in PK mode, otherwise wagmi address
   const effectiveEoa = signingMode === 'privateKey' && pkEoa ? pkEoa : address;
@@ -247,12 +268,25 @@ export function useWalletData() {
 
   // Refetch when user focuses a market (Data API can lag; sidebar filters need fresh rows)
   useEffect(() => {
-    if (!proxyWallet || !selectedMarketId) return;
-    const t = window.setTimeout(() => {
-      void fetchAll();
-    }, 400);
-    return () => clearTimeout(t);
-  }, [selectedMarketId, proxyWallet, fetchAll]);
+    if (!proxyWallet) return;
+    let prevId = useAppStore.getState().selectedMarket?.id ?? '';
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const unsub = useAppStore.subscribe((state) => {
+      const id = state.selectedMarket?.id ?? '';
+      if (id === prevId) return;
+      prevId = id;
+      if (!id) return;
+      if (t != null) clearTimeout(t);
+      t = setTimeout(() => {
+        t = null;
+        void fetchAll();
+      }, 400);
+    });
+    return () => {
+      unsub();
+      if (t != null) clearTimeout(t);
+    };
+  }, [proxyWallet, fetchAll]);
 
   return { refreshWalletData: fetchAll };
 }

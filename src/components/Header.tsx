@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, Suspense, lazy } from 'react';
 import { useAccount } from 'wagmi';
 import { RefreshCw, Settings, Plus, Github, Send, Star } from 'lucide-react';
 import logoSvg from '../assets/logo.svg';
 import { HelpTooltip } from './HelpTooltip';
-import { useShallow } from 'zustand/react/shallow';
 import { portfolioPositionsValueUsd } from '../lib/portfolioMetrics';
 import { WalletButton } from './WalletButton';
 import { useAppStore } from '../stores/appStore';
 import { useTradingWalletAddress } from '../hooks/useTradingWalletAddress';
+import { useThrottledGridPositions } from '../hooks/useThrottledGridWallet';
 import { saveSetting } from '../api';
 import { gridSizeFromDefaultLayoutMins } from '../lib/defaultLayouts';
 import type { PanelType } from '../types';
@@ -97,12 +97,11 @@ export function Header({ onRefresh }: HeaderProps) {
   const setVwapCandles = useAppStore((s) => s.setVwapCandles);
   const vwapCorrection = useAppStore((s) => s.vwapCorrection);
   const setVwapCorrection = useAppStore((s) => s.setVwapCorrection);
-  const { cashBalance, totalVal } = useAppStore(
-    useShallow((s) => {
-      const cashBalance = s.cashBalance;
-      const totalVal = portfolioPositionsValueUsd(s.positions) + cashBalance;
-      return { cashBalance, totalVal };
-    })
+  const cashBalance = useAppStore((s) => s.cashBalance);
+  const positions = useThrottledGridPositions(2000);
+  const totalVal = useMemo(
+    () => portfolioPositionsValueUsd(positions) + cashBalance,
+    [positions, cashBalance],
   );
   const layouts = useAppStore((s) => s.layouts);
   const panels = useAppStore((s) => s.panels);

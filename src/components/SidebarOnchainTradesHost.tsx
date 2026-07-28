@@ -1,8 +1,7 @@
-import { memo, useEffect, useLayoutEffect, useMemo } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useOnchainTradesWS, type OnchainTradesWSOpts } from '../hooks/useOnchainTradesWS';
 import {
   registerSidebarOnchainRefreshFns,
-  refreshSidebarOnchainWallet,
   resetSidebarOnchainTradesStore,
   resetSidebarOnchainWalletMarketTradesScope,
   resetSidebarOnchainWalletSession,
@@ -14,7 +13,9 @@ import {
   setSidebarOnchainWalletTrades,
 } from '../lib/sidebarOnchainTradesStore';
 
-/** Null host — onchain WS writes external store (Sidebar body stays off hot path). */
+const BRIDGE_MS = 1000;
+
+/** Null host — onchain WS → external store. Coalesce bridge (was 141ms passive storms). */
 export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(opts: OnchainTradesWSOpts) {
   const {
     walletPositions,
@@ -35,6 +36,25 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
   );
 
   const walletKey = (opts.wallet || '').trim().toLowerCase();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestRef = useRef({
+    walletPositions,
+    gridWalletPositions,
+    walletTrades,
+    walletHistory,
+    walletPnlDaily,
+    walletMarketTrades,
+    walletMarketTradesScopeKey,
+  });
+  latestRef.current = {
+    walletPositions,
+    gridWalletPositions,
+    walletTrades,
+    walletHistory,
+    walletPnlDaily,
+    walletMarketTrades,
+    walletMarketTradesScopeKey,
+  };
 
   useLayoutEffect(() => {
     resetSidebarOnchainWalletMarketTradesScope(walletMarketTradesScopeKey);
@@ -45,29 +65,35 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
   }, [walletKey]);
 
   useEffect(() => {
-    setSidebarOnchainWalletPositions(walletPositions);
-  }, [walletPositions]);
-
-  useEffect(() => {
-    setSidebarOnchainGridWalletPositions(gridWalletPositions);
-  }, [gridWalletPositions]);
-
-  useEffect(() => {
-    setSidebarOnchainWalletTrades(walletTrades);
-  }, [walletTrades]);
-
-  useEffect(() => {
-    setSidebarOnchainWalletHistory(walletHistory);
-  }, [walletHistory]);
-
-  useEffect(() => {
-    setSidebarOnchainWalletPnlDaily(walletPnlDaily);
-  }, [walletPnlDaily]);
-
-  // Market-scoped REST/WS rows (not a filter of global TPO walletTrades).
-  useEffect(() => {
-    setSidebarOnchainWalletMarketTrades(walletMarketTrades, walletMarketTradesScopeKey);
-  }, [walletMarketTrades, walletMarketTradesScopeKey]);
+    const flush = () => {
+      timerRef.current = null;
+      const s = latestRef.current;
+      setSidebarOnchainWalletPositions(s.walletPositions);
+      setSidebarOnchainGridWalletPositions(s.gridWalletPositions);
+      setSidebarOnchainWalletTrades(s.walletTrades);
+      setSidebarOnchainWalletHistory(s.walletHistory);
+      setSidebarOnchainWalletPnlDaily(s.walletPnlDaily);
+      setSidebarOnchainWalletMarketTrades(s.walletMarketTrades, s.walletMarketTradesScopeKey);
+    };
+    if (timerRef.current == null) {
+      timerRef.current = setTimeout(flush, BRIDGE_MS);
+    }
+    return () => {
+      if (timerRef.current != null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      flush();
+    };
+  }, [
+    walletPositions,
+    gridWalletPositions,
+    walletTrades,
+    walletHistory,
+    walletPnlDaily,
+    walletMarketTrades,
+    walletMarketTradesScopeKey,
+  ]);
 
   useEffect(() => {
     registerSidebarOnchainRefreshFns({
@@ -77,17 +103,7 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
     });
   }, [refreshWallet, refreshWalletMarketTrades, subscribeWalletPnl]);
 
-  useEffect(() => {
-    if (!walletKey) return;
-    refreshSidebarOnchainWallet();
-  }, [walletKey]);
-
-  useEffect(() => {
-    return () => {
-      registerSidebarOnchainRefreshFns({ refreshWallet: null, refreshMarketTrades: null, subscribeWalletPnl: null });
-      resetSidebarOnchainTradesStore();
-    };
-  }, []);
+  useEffect(() => () => resetSidebarOnchainTradesStore(), []);
 
   return null;
 });

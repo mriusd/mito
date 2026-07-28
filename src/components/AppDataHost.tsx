@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef } from 'react';
-import { useAccount } from 'wagmi';
+import { getAccount, watchAccount } from '@wagmi/core';
 import { useBinanceWS } from '../hooks/useBinanceWS';
 import { useRwaSpotPrices } from '../hooks/useRwaSpotPrices';
 import { useMarketData } from '../hooks/useMarketData';
@@ -11,9 +11,13 @@ import { setAppRefreshFn } from '../lib/appRefresh';
 import { useAppStore } from '../stores/appStore';
 import { invalidateClobMemoryCreds } from '../lib/clobClient';
 import { clearWalletAccountSlice } from '../lib/clearWalletAccountSlice';
+import { wagmiAdapter } from '../lib/wallet';
+
+const wagmiConfig = wagmiAdapter.wagmiConfig;
 
 /**
- * Owns polling / WS / wallet hooks so App shell does not re-render with them.
+ * Owns polling / WS / wallet hooks. No useAccount / live store selects —
+ * those re-rendered this host on every tick and showed up as the storm root.
  */
 export const AppDataHost = memo(function AppDataHost() {
   useBinanceWS();
@@ -36,39 +40,63 @@ export const AppDataHost = memo(function AppDataHost() {
     };
   }, [refreshData, handleRefresh]);
 
-  const signingMode = useAppStore((s) => s.signingMode);
-  const pkRevision = useAppStore((s) => s.pkRevision);
-  const { address: walletAddress } = useAccount();
-  const prevSigningRef = useRef<typeof signingMode | null>(null);
+  const handleRefreshRef = useRef(handleRefresh);
+  handleRefreshRef.current = handleRefresh;
+  const prevSigningRef = useRef<string | null>(null);
   const prevWalletChannelRef = useRef('');
 
   useEffect(() => {
-    if (prevSigningRef.current === null) {
-      prevSigningRef.current = signingMode;
-      return;
-    }
-    if (prevSigningRef.current === signingMode) return;
-    prevSigningRef.current = signingMode;
-    invalidateClobMemoryCreds();
-    void handleRefresh();
-  }, [signingMode, handleRefresh]);
+    const runChannelCheck = () => {
+      const st = useAppStore.getState();
+      const signingMode = st.signingMode;
+      const pkRevision = st.pkRevision;
+      const pk = st.pkAddress;
+      const walletAddress = getAccount(wagmiConfig).address;
 
-  useEffect(() => {
-    const pk = useAppStore.getState().pkAddress;
-    const eoa =
-      signingMode === 'privateKey' && pk
-        ? pk.trim().toLowerCase()
-        : (walletAddress || '').trim().toLowerCase();
-    const channel = eoa
-      ? `${signingMode}|${eoa}|${signingMode === 'privateKey' ? pkRevision : 0}`
-      : '';
-    if (channel === prevWalletChannelRef.current) return;
-    prevWalletChannelRef.current = channel;
-    if (!channel) return;
-    clearWalletAccountSlice();
-    invalidateClobMemoryCreds();
-    void handleRefresh();
-  }, [signingMode, walletAddress, pkRevision, handleRefresh]);
+      if (prevSigningRef.current === null) {
+        prevSigningRef.current = signingMode;
+      } else if (prevSigningRef.current !== signingMode) {
+        prevSigningRef.current = signingMode;
+        invalidateClobMemoryCreds();
+        void handleRefreshRef.current();
+      }
+
+      const eoa =
+        signingMode === 'privateKey' && pk
+          ? pk.trim().toLowerCase()
+          : (walletAddress || '').trim().toLowerCase();
+      const channel = eoa
+        ? `${signingMode}|${eoa}|${signingMode === 'privateKey' ? pkRevision : 0}`
+        : '';
+      if (channel === prevWalletChannelRef.current) return;
+      prevWalletChannelRef.current = channel;
+      if (!channel) return;
+      clearWalletAccountSlice();
+      invalidateClobMemoryCreds();
+      void handleRefreshRef.current();
+    };
+
+    runChannelCheck();
+    const unsubStore = useAppStore.subscribe((state, prev) => {
+      if (
+        state.signingMode === prev.signingMode &&
+        state.pkRevision === prev.pkRevision &&
+        state.pkAddress === prev.pkAddress
+      ) {
+        return;
+      }
+      runChannelCheck();
+    });
+    const unsubAccount = watchAccount(wagmiConfig, {
+      onChange() {
+        runChannelCheck();
+      },
+    });
+    return () => {
+      unsubStore();
+      unsubAccount();
+    };
+  }, []);
 
   return null;
 });

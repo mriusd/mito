@@ -1,5 +1,5 @@
 import { Link2, Link2Off, RefreshCw } from 'lucide-react';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, startTransition, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../../stores/appStore';
 import { formatElapsedSinceMs, getOrderClobTokenId, isWeatherMarket, normalizeClobTokenId, tradeElapsedColorClass } from '../../utils/format';
@@ -64,8 +64,8 @@ import { TempUnitToggle, TemperatureChart } from '../TemperatureChart';
 import { WeatherMetarDialog } from '../WeatherMetarDialog';
 import { outcomeBestAskProb, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
-import { useSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
-import { getBidAskMarketRow, subscribeBidAskMarketLookup } from '../../lib/bidAskMarketLookup';
+import { useThrottledSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
+import { getBidAskMarketRow, subscribeBidAskMarketLookupGridFlush } from '../../lib/bidAskMarketLookup';
 import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
 import { useThrottledGridOrders, useThrottledGridPositions } from '../../hooks/useThrottledGridWallet';
 import type { Position } from '../../types';
@@ -797,6 +797,39 @@ function buildTempOddsBuckets(
   return { entries, maxPct };
 }
 
+const TempOddsCityLocalClock = memo(function TempOddsCityLocalClock({ timezone }: { timezone: string }) {
+  const now = useExpiryNow();
+  return (
+    <span
+      className="shrink-0 text-[10px] font-normal tabular-nums text-gray-400"
+      title={`Local time (${timezone.replace(/_/g, ' ')})`}
+    >
+      {formatWeatherCityLocalClock(now, timezone)}
+    </span>
+  );
+});
+
+const TempOddsExpiryCountdown = memo(function TempOddsExpiryCountdown({
+  marketExpiryMs,
+}: {
+  marketExpiryMs: number | null;
+}) {
+  const now = useExpiryNow();
+  const expiryCountdown = useMemo(() => {
+    if (marketExpiryMs == null) return null;
+    return formatMarketCountdown(new Date(marketExpiryMs).toISOString(), now);
+  }, [marketExpiryMs, now]);
+  const cls = useMemo(() => {
+    if (!expiryCountdown?.text) return 'text-gray-500';
+    if (expiryCountdown.text === 'Expired') return 'text-red-400';
+    if (expiryCountdown.remaining < 60000) return 'text-red-400';
+    if (expiryCountdown.remaining > 300000) return 'text-green-400';
+    return 'text-yellow-400';
+  }, [expiryCountdown]);
+  if (!expiryCountdown?.text) return null;
+  return <span className={`text-[10px] font-semibold tabular-nums ${cls}`}>{expiryCountdown.text}</span>;
+});
+
 function useTempOddsBuckets(
   buckets: { temp: string; label: string; market: Market }[],
   positions: Position[],
@@ -812,18 +845,10 @@ function useTempOddsBuckets(
 ) {
   const [quoteTick, setQuoteTick] = useState(0);
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const unsub = subscribeBidAskMarketLookup(() => {
-      if (timer != null) return;
-      timer = setTimeout(() => {
-        timer = null;
-        setQuoteTick((n) => n + 1);
-      }, 250);
+    // Grid flush (~2s) — live@250ms rebuilt every TempOdds bar and starved canvas rAF.
+    return subscribeBidAskMarketLookupGridFlush(() => {
+      startTransition(() => setQuoteTick((n) => n + 1));
     });
-    return () => {
-      unsub();
-      if (timer != null) clearTimeout(timer);
-    };
   }, []);
 
   const quoteTokenIds = useMemo(() => {
@@ -1764,11 +1789,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     return n;
   }, [cityOptions, weatherCityFavorites]);
   const cityMeta = cityOptions.find((c) => c.slug === city) ?? cityOptions[0] ?? WEATHER_CITIES[0];
-  const expiryNow = useExpiryNow();
-  const cityLocalClock = useMemo(
-    () => formatWeatherCityLocalClock(expiryNow, cityMeta.timezone),
-    [expiryNow, cityMeta.timezone],
-  );
   const highMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'high'), [allMarkets]);
   const lowMarkets = useMemo(() => filterWeatherMarkets(allMarkets, 'low'), [allMarkets]);
   const showPast = useAppStore((s) => s.showPast);
@@ -1787,7 +1807,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     [orders, progOrderMap],
   );
   const orderLookup = useMemo(() => buildOrderLookup(myOrders), [myOrders]);
-  const onchainWsPositions = useSidebarOnchainGridWalletPositions();
+  const onchainWsPositions = useThrottledSidebarOnchainGridWalletPositions(2000);
   const nowMs = useWalletTradeElapsedMs();
 
   useEffect(() => {
@@ -1910,19 +1930,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     if (!selectedDateCol?.slug) return null;
     return weatherMarketExpiryMsForEvent(city, selectedDateCol.slug);
   }, [city, selectedDateCol?.slug]);
-
-  const expiryCountdown = useMemo(() => {
-    if (marketExpiryMs == null) return null;
-    return formatMarketCountdown(new Date(marketExpiryMs).toISOString(), expiryNow);
-  }, [marketExpiryMs, expiryNow]);
-
-  const expiryCountdownClass = useMemo(() => {
-    if (!expiryCountdown?.text) return 'text-gray-500';
-    if (expiryCountdown.text === 'Expired') return 'text-red-400';
-    if (expiryCountdown.remaining < 60000) return 'text-red-400';
-    if (expiryCountdown.remaining > 300000) return 'text-green-400';
-    return 'text-yellow-400';
-  }, [expiryCountdown]);
 
   const highDateCol = useMemo(
     () => (highGrid && selectedDateCol ? findDateColForEndDate(highGrid.dates, selectedDateCol) : undefined),
@@ -2434,12 +2441,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           </button>
         </div>
 
-        <span
-          className="shrink-0 text-[10px] font-normal tabular-nums text-gray-400"
-          title={`Local time (${cityMeta.timezone.replace(/_/g, ' ')})`}
-        >
-          {cityLocalClock}
-        </span>
+        <TempOddsCityLocalClock timezone={cityMeta.timezone} />
 
         {dateColumns.length > 0 ? (
           <div className="no-drag flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
@@ -2472,14 +2474,9 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
         <span className="min-w-6 w-6 shrink-0 self-stretch cursor-grab" aria-hidden />
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
-          {expiryCountdown?.text ? (
-            <span
-              className={`whitespace-nowrap text-[10px] font-normal tabular-nums ${expiryCountdownClass}`}
-              title="Time until market expiry (local midnight after event day)"
-            >
-              {expiryCountdown.text}
-            </span>
-          ) : null}
+          <span title="Time until market expiry (local midnight after event day)">
+            <TempOddsExpiryCountdown marketExpiryMs={marketExpiryMs} />
+          </span>
           {predictionAgeLabel ? (
             <span className={`whitespace-nowrap text-[10px] font-normal tabular-nums ${predictionAgeClass}`}>
               {predictionAgeLabel}

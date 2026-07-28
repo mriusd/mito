@@ -738,8 +738,21 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   /** Coalesce bursty onchainTrade WS messages to one React update per frame. */
   const pendingTapeBatchRef = useRef<LiveTrade[]>([]);
   const tapeBatchRafRef = useRef<number | null>(null);
+  const walletPosRef = useRef<WSPosition[]>([]);
+  const gridWalletPosRef = useRef<WSPosition[]>([]);
+  const posFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPnlSubRef = useRef<{ wallet: string; from: string; to: string; tz: string } | null>(null);
   const loadTapeFromAPIRef = useRef<(() => void) | null>(null);
+
+  const flushWalletPosReact = () => {
+    posFlushTimerRef.current = null;
+    setWalletPositions(walletPosRef.current);
+    setGridWalletPositions(gridWalletPosRef.current);
+  };
+  const scheduleWalletPosFlush = () => {
+    if (posFlushTimerRef.current != null) return;
+    posFlushTimerRef.current = setTimeout(flushWalletPosReact, 1000);
+  };
 
   // Fast market-scoped REST before WS snapshot (global walletTrades can miss older fills on this market).
   useEffect(() => {
@@ -759,8 +772,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
           fetchOnchainMarketTrades({ token_ids: ids, wallet: w, limit: WALLET_MARKET_TRADES_CAP }),
         ]);
         if (cancelled || serial !== prefetchSerialRef.current) return;
-        setWalletPositions(
-          (pr.positions || []).map((p) => ({
+        const mapped = (pr.positions || []).map((p) => ({
             tokenId: String(p.tokenId || ''),
             size: Number(p.size || 0),
             avgPrice: Number(p.avgPrice || 0),
@@ -771,8 +783,9 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             outcome: p.outcome,
             endDate: p.endDate,
             underlyingAsset: p.underlyingAsset,
-          })).filter((p) => !!p.tokenId),
-        );
+          })).filter((p) => !!p.tokenId);
+        walletPosRef.current = mapped;
+        setWalletPositions(mapped);
         const deduped = mapFetchedTradesToDedupedRows(tr.trades || [], WALLET_MARKET_TRADES_CAP);
         setWalletMarketTrades(deduped);
       } catch {
@@ -809,6 +822,12 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
 
   useEffect(() => {
     walletRef.current = wallet;
+    walletPosRef.current = [];
+    gridWalletPosRef.current = [];
+    if (posFlushTimerRef.current != null) {
+      clearTimeout(posFlushTimerRef.current);
+      posFlushTimerRef.current = null;
+    }
     setWalletPositions([]);
     setWalletTrades([]);
     setWalletMarketTrades([]);
@@ -858,6 +877,12 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       pendingTapeBatchRef.current = [];
       setTrades([]);
       setSidebarOnchainLiveTrades([]);
+      walletPosRef.current = [];
+      gridWalletPosRef.current = [];
+      if (posFlushTimerRef.current != null) {
+        clearTimeout(posFlushTimerRef.current);
+        posFlushTimerRef.current = null;
+      }
       setWalletPositions([]);
       setWalletTrades([]);
       setWalletMarketTrades([]);
@@ -1210,29 +1235,36 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const raw = (msg.data as Array<Record<string, unknown>>)
               .map((p) => mapRawWSPosition(p))
               .filter((p): p is WSPosition => p != null);
-            setWalletPositions((prev) =>
-              mergeWalletPositionsSnapshot(prev, raw, scopedClobTokenIdsRef.current),
+            walletPosRef.current = mergeWalletPositionsSnapshot(
+              walletPosRef.current,
+              raw,
+              scopedClobTokenIdsRef.current,
             );
-            setGridWalletPositions((prev) => {
-              if (raw.length === 0) return prev;
-              const scoped = scopedClobTokenIdsRef.current || [];
-              const scopedKeys = new Set(
-                scoped.map((x) => normalizeClobTokenKey(x)).filter(Boolean),
-              );
-              const looksFullBook =
-                scopedKeys.size === 0 ||
-                raw.some((p) => {
-                  const k = normalizeClobTokenKey(p.tokenId);
-                  return k && !scopedKeys.has(k);
-                });
-              if (looksFullBook || prev.length === 0) return raw;
-              return prev;
-            });
+            {
+              const prev = gridWalletPosRef.current;
+              if (raw.length === 0) {
+                /* keep prev */
+              } else {
+                const scoped = scopedClobTokenIdsRef.current || [];
+                const scopedKeys = new Set(
+                  scoped.map((x) => normalizeClobTokenKey(x)).filter(Boolean),
+                );
+                const looksFullBook =
+                  scopedKeys.size === 0 ||
+                  raw.some((p) => {
+                    const k = normalizeClobTokenKey(p.tokenId);
+                    return k && !scopedKeys.has(k);
+                  });
+                gridWalletPosRef.current = looksFullBook || prev.length === 0 ? raw : prev;
+              }
+            }
+            scheduleWalletPosFlush();
           } else if (msg.type === 'walletGridPositions' && Array.isArray(msg.data)) {
             const raw = (msg.data as Array<Record<string, unknown>>)
               .map((p) => mapRawWSPosition(p))
               .filter((p): p is WSPosition => p != null);
-            setGridWalletPositions(raw);
+            gridWalletPosRef.current = raw;
+            scheduleWalletPosFlush();
           } else if (msg.type === 'walletTrades' && Array.isArray(msg.data)) {
             const msgWallet = String(msg.wallet || '').trim().toLowerCase();
             const mine = (walletRef.current || '').trim().toLowerCase();
@@ -1466,7 +1498,12 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
           underlyingAsset: p.underlyingAsset,
         }))
         .filter((p) => !!p.tokenId);
-      setWalletPositions((prev) => mergeWalletPositionsSnapshot(prev, mappedPositions, scopedClobTokenIdsRef.current));
+      walletPosRef.current = mergeWalletPositionsSnapshot(
+        walletPosRef.current,
+        mappedPositions,
+        scopedClobTokenIdsRef.current,
+      );
+      scheduleWalletPosFlush();
       const deduped = mapFetchedTradesToDedupedRows(tr.trades || [], WALLET_MARKET_TRADES_CAP);
       setWalletMarketTrades(deduped);
     } catch {

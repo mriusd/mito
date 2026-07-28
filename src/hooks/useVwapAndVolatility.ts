@@ -1,18 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { AssetSymbol } from '../types';
 
 const SYMBOLS: AssetSymbol[] = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT'];
 
 export function useVwapAndVolatility() {
-  const setVwapData = useAppStore((s) => s.setVwapData);
-  const setVolatilityData = useAppStore((s) => s.setVolatilityData);
-  const vwapCandles = useAppStore((s) => s.vwapCandles);
+  const vwapCandlesRef = useRef(useAppStore.getState().vwapCandles);
 
   useEffect(() => {
     async function fetchVWAP(symbol: AssetSymbol) {
       try {
-        const resp = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=${vwapCandles}`);
+        const limit = vwapCandlesRef.current;
+        const resp = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=${limit}`);
         const klines = await resp.json();
         let sumPV = 0, sumV = 0;
         for (const k of klines) {
@@ -22,7 +21,7 @@ export function useVwapAndVolatility() {
           sumV += vol;
         }
         if (sumV > 0) {
-          setVwapData(symbol, sumPV / sumV);
+          useAppStore.getState().setVwapData(symbol, sumPV / sumV);
         }
       } catch (e) {
         console.warn('VWAP fetch failed for', symbol, e);
@@ -35,8 +34,16 @@ export function useVwapAndVolatility() {
 
     fetchAllVWAP();
     const interval = setInterval(fetchAllVWAP, 60000);
-    return () => clearInterval(interval);
-  }, [vwapCandles, setVwapData]);
+    const unsub = useAppStore.subscribe((state, prev) => {
+      if (state.vwapCandles === prev.vwapCandles) return;
+      vwapCandlesRef.current = state.vwapCandles;
+      void fetchAllVWAP();
+    });
+    return () => {
+      clearInterval(interval);
+      unsub();
+    };
+  }, []);
 
   useEffect(() => {
     async function fetchVolatility() {
@@ -64,7 +71,7 @@ export function useVwapAndVolatility() {
                 sigma2 = omega + alpha * r * r + beta * sigma2;
               }
               const annualizedVol = Math.sqrt(sigma2) * Math.sqrt(365);
-              setVolatilityData(symbol, Math.max(0.20, Math.min(2.0, annualizedVol)));
+              useAppStore.getState().setVolatilityData(symbol, Math.max(0.20, Math.min(2.0, annualizedVol)));
             }
           }
         } catch (err) {
@@ -73,5 +80,5 @@ export function useVwapAndVolatility() {
       }
     }
     fetchVolatility();
-  }, [setVolatilityData]);
+  }, []);
 }

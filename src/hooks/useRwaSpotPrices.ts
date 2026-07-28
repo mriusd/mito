@@ -83,7 +83,6 @@ function pickFreshest(parsed: ParsedPrice[], candidateIds: Set<string>): number 
  * (Polymarket resolution source: equities + USOILSPOT; NG = active NGD month).
  */
 export function useRwaSpotPrices() {
-  const setBinanceTickerBatch = useAppStore((s) => s.setBinanceTickerBatch);
   const pendingRef = useRef<Partial<Record<AssetSymbol, number>>>({});
   const flushTimerRef = useRef<number | null>(null);
   const ngFeedIdsRef = useRef<string[]>([]);
@@ -97,7 +96,7 @@ export function useRwaSpotPrices() {
       const snapshot = pendingRef.current;
       pendingRef.current = {};
       if (Object.keys(snapshot).length === 0) return;
-      setBinanceTickerBatch(snapshot);
+      useAppStore.getState().setBinanceTickerBatch(snapshot);
     }
 
     function scheduleFlush() {
@@ -183,7 +182,7 @@ export function useRwaSpotPrices() {
       }
       const tail = pendingRef.current;
       pendingRef.current = {};
-      if (Object.keys(tail).length > 0) setBinanceTickerBatch(tail);
+      if (Object.keys(tail).length > 0) useAppStore.getState().setBinanceTickerBatch(tail);
     };
-  }, [setBinanceTickerBatch]);
+  }, []);
 }

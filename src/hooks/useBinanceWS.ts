@@ -5,7 +5,6 @@ import type { AssetSymbol } from '../types';
 const TICKER_SYMBOLS: AssetSymbol[] = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT'];
 
 export function useBinanceWS() {
-  const setBinanceTickerBatch = useAppStore((s) => s.setBinanceTickerBatch);
   const wsRef = useRef<WebSocket | null>(null);
   const pendingRef = useRef<Partial<Record<AssetSymbol, number>>>({});
   const flushRafRef = useRef<number | null>(null);
@@ -17,7 +16,7 @@ export function useBinanceWS() {
       const keys = Object.keys(snapshot);
       pendingRef.current = {};
       if (keys.length === 0) return;
-      setBinanceTickerBatch(snapshot);
+      useAppStore.getState().setBinanceTickerBatch(snapshot);
     }
 
     /** Throttle to 2 Hz — 4 Hz still drove Markov/BinanceChart ~27ms commits and starved canvas rAF. */
@@ -61,7 +60,7 @@ export function useBinanceWS() {
           if (!Number.isFinite(p)) continue;
           patch[item.symbol as AssetSymbol] = p;
         }
-        setBinanceTickerBatch(patch);
+        useAppStore.getState().setBinanceTickerBatch(patch);
       })
       .catch((err) => {
         console.error('binance ticker init:', err);
@@ -76,11 +75,11 @@ export function useBinanceWS() {
       }
       const tail = pendingRef.current;
       pendingRef.current = {};
-      if (Object.keys(tail).length > 0) setBinanceTickerBatch(tail);
+      if (Object.keys(tail).length > 0) useAppStore.getState().setBinanceTickerBatch(tail);
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
     };
-  }, [setBinanceTickerBatch]);
+  }, []);
 }

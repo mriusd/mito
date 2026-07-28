@@ -74,22 +74,23 @@ function measureFitFontSize(text: string, maxW: number, maxH: number): number {
 
 function ClockPanelInner({ panelId }: { panelId: string }) {
   const [timeZone, setTimeZone] = useState(() => readStoredTimezone(panelId));
-  const [now, setNow] = useState(() => new Date());
   const [fontPx, setFontPx] = useState(48);
   const bodyRef = useRef<HTMLDivElement>(null);
-
-  const { hours, minutes, second } = useMemo(
-    () => formatClockParts(now, timeZone),
-    [now, timeZone],
-  );
-  const colonVisible = second % 2 === 0;
+  const hoursRef = useRef<HTMLSpanElement>(null);
+  const colonRef = useRef<HTMLSpanElement>(null);
+  const minutesRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    const sync = () => setNow(new Date());
+    const sync = () => {
+      const { hours, minutes, second } = formatClockParts(new Date(), timeZone);
+      if (hoursRef.current) hoursRef.current.textContent = hours;
+      if (minutesRef.current) minutesRef.current.textContent = minutes;
+      if (colonRef.current) colonRef.current.style.opacity = second % 2 === 0 ? '1' : '0';
+    };
     sync();
     const id = window.setInterval(sync, TICK_MS);
-    return () => window.clearInterval(id);
-  }, []);
+    return () => clearInterval(id);
+  }, [timeZone]);
 
   useLayoutEffect(() => {
     const el = bodyRef.current;
@@ -106,6 +107,8 @@ function ClockPanelInner({ panelId }: { panelId: string }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, [timeZone]);
+
+  const initial = useMemo(() => formatClockParts(new Date(), timeZone), [timeZone]);
 
   return (
     <div className="panel-wrapper flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-gray-800/50 p-3">
@@ -140,9 +143,9 @@ function ClockPanelInner({ panelId }: { panelId: string }) {
             className="select-none whitespace-nowrap font-mono font-bold tabular-nums leading-none text-white"
             style={{ fontSize: `${fontPx}px` }}
           >
-            {hours}
-            <span className={colonVisible ? 'opacity-100' : 'opacity-0'}>:</span>
-            {minutes}
+            <span ref={hoursRef}>{initial.hours}</span>
+            <span ref={colonRef}>{':'}</span>
+            <span ref={minutesRef}>{initial.minutes}</span>
           </div>
         </div>
       </div>

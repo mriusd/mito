@@ -71,13 +71,27 @@ export function useMarketData() {
         ? { aboveMarkets, priceOnMarkets, weeklyHitMarkets, upOrDownMarkets, weatherMarkets, marketLookup: lookup }
         : {};
 
-      const patchPayload = {
+      const patchPayload: {
+        aboveMarkets?: typeof aboveMarkets;
+        priceOnMarkets?: typeof priceOnMarkets;
+        weeklyHitMarkets?: typeof weeklyHitMarkets;
+        upOrDownMarkets?: typeof upOrDownMarkets;
+        weatherMarkets?: typeof weatherMarkets;
+        marketLookup?: typeof lookup;
+        tokenInfo?: typeof data.tokenInfo;
+        progOrderMap?: typeof data.progOrderMap;
+        marketCount?: number;
+        lastUpdated?: string;
+      } = {
         ...marketPatch,
         tokenInfo: data.tokenInfo || {},
         progOrderMap: data.progOrderMap || {},
         marketCount: data.count || 0,
-        lastUpdated: data.lastUpdated || '',
       };
+      // lastUpdated alone woke SidebarUpDownTargetHost every poll — only stamp when catalog moved.
+      if (marketArraysChanged) {
+        patchPayload.lastUpdated = data.lastUpdated || '';
+      }
       startTransition(() => {
         useAppStore.getState().setMarketData(patchPayload);
         const sel = useAppStore.getState().selectedMarket;

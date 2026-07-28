@@ -11,13 +11,12 @@ export function marketRowContentEqual(a: Market, b: Market): boolean {
     a.eventSlug !== b.eventSlug ||
     a.groupItemTitle !== b.groupItemTitle ||
     a.endDate !== b.endDate ||
-    Boolean(a.closed) !== Boolean(b.closed) ||
-    a.priceToBeat !== b.priceToBeat
+    Boolean(a.closed) !== Boolean(b.closed)
   ) {
     return false;
   }
-  // lastTradePrice / outcomePrices change every poll — live book owns those via marketLookup/WS.
-  // Including them here rewrote above/upDown/weather arrays → marketLookupEpoch storm.
+  // lastTradePrice / outcomePrices / priceToBeat churn every Gamma poll — WS + strike hooks own those.
+  // Including them rewrote upDown/above arrays every 30s → Immediate dashboard storm.
   const ca = a.clobTokenIds || [];
   const cb = b.clobTokenIds || [];
   if (ca.length !== cb.length) return false;
@@ -120,29 +119,58 @@ export function coalesceUpOrDownMarkets(
   next: Record<string, Record<string, Market[]>>,
 ): Record<string, Record<string, Market[]>> {
   if (upOrDownLeafCount(next) === 0 && upOrDownLeafCount(prev) > 0) return prev;
-  if (upOrDownMarketsEqual(next, prev)) return prev;
+
   const out: Record<string, Record<string, Market[]>> = {};
   let changed = false;
+
   for (const asset of Object.keys(next)) {
     const prevAsset = prev[asset] || {};
     const nextAsset = next[asset] || {};
-    let assetOut: Record<string, Market[]> | null = null;
+    const assetOut: Record<string, Market[]> = {};
+    let assetChanged =
+      !prev[asset] || Object.keys(prevAsset).length !== Object.keys(nextAsset).length;
+
     for (const tf of Object.keys(nextAsset)) {
       const stabilized = stabilizeMarketArray(prevAsset[tf], nextAsset[tf] || []);
-      if (stabilized !== nextAsset[tf]) {
-        if (!assetOut) assetOut = { ...nextAsset };
-        assetOut[tf] = stabilized;
-        changed = true;
-      } else if (stabilized !== prevAsset[tf]) {
-        if (!assetOut) assetOut = { ...nextAsset };
-        assetOut[tf] = stabilized;
-        changed = true;
+      assetOut[tf] = stabilized;
+      if (stabilized !== prevAsset[tf]) assetChanged = true;
+    }
+    if (!assetChanged) {
+      for (const tf of Object.keys(prevAsset)) {
+        if (!(tf in nextAsset)) {
+          assetChanged = true;
+          break;
+        }
       }
     }
-    out[asset] = assetOut ?? nextAsset;
-    if (assetOut) changed = true;
+
+    if (!assetChanged && prev[asset]) {
+      // Keep prev asset map ref — was returning fresh `{...nextAsset}` every poll (storm root).
+      out[asset] = prev[asset];
+    } else {
+      out[asset] = assetOut;
+      changed = true;
+    }
   }
-  if (!changed && upOrDownMarketsEqual(out, prev)) return prev;
+
+  for (const asset of Object.keys(prev)) {
+    if (!(asset in next)) {
+      changed = true;
+      break;
+    }
+  }
+
+  if (!changed) return prev;
+  if (Object.keys(out).length === Object.keys(prev).length) {
+    let allPrevRefs = true;
+    for (const asset of Object.keys(out)) {
+      if (out[asset] !== prev[asset]) {
+        allPrevRefs = false;
+        break;
+      }
+    }
+    if (allPrevRefs) return prev;
+  }
   return out;
 }
 

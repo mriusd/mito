@@ -17,7 +17,17 @@ import { useSyncHeadWS } from '../hooks/useSyncHeadWS';
 import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
 import { showToast } from '../utils/toast';
-import { applyLayoutImport, downloadLayoutFile, parseLayoutImport } from '../lib/layoutExport';
+import { downloadLayoutFile } from '../lib/layoutExport';
+import {
+  deleteSavedLayout,
+  getActiveLayoutId,
+  importLayoutToLibrary,
+  listSavedLayouts,
+  renameSavedLayout,
+  saveCurrentLayoutAs,
+  switchToSavedLayout,
+  type SavedLayout,
+} from '../lib/layoutLibrary';
 import type { PanelConfig } from '../types';
 
 const IS_DEV = import.meta.env.DEV;
@@ -81,6 +91,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'weather-temp-bars', title: 'Temp Odds', multi: true },
   { type: 'weather-map', title: 'Weather Map', multi: true },
   { type: 'clock', title: 'Clock', multi: true },
+  { type: 'spreads', title: 'Spreads', multi: true },
   { type: 'chat', title: 'Chat' },
 ];
 
@@ -173,6 +184,11 @@ export function Header({ onRefresh }: HeaderProps) {
   const [showSettings, setShowSettings] = useState(false);
   const layoutFileInputRef = useRef<HTMLInputElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
+  const [savedLayouts, setSavedLayouts] = useState<SavedLayout[]>(() => listSavedLayouts());
+  const [activeLayoutId, setActiveLayoutId] = useState<string | null>(() => getActiveLayoutId());
+  const [newLayoutName, setNewLayoutName] = useState('');
+  const [editingLayoutId, setEditingLayoutId] = useState<string | null>(null);
+  const [editLayoutName, setEditLayoutName] = useState('');
   const [showOrderDialog, setShowOrderDialog] = useState(true);
   const disableMarketPriceWarning = useAppStore((s) => s.disableMarketPriceWarning);
   const setDisableMarketPriceWarning = useAppStore((s) => s.setDisableMarketPriceWarning);
@@ -354,13 +370,20 @@ export function Header({ onRefresh }: HeaderProps) {
         {/* Settings */}
         <div className="relative" ref={settingsRef}>
           <button
-            onClick={() => setShowSettings(!showSettings)}
+            onClick={() => {
+              const next = !showSettings;
+              setShowSettings(next);
+              if (next) {
+                setSavedLayouts(listSavedLayouts());
+                setActiveLayoutId(getActiveLayoutId());
+              }
+            }}
             className="bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white rounded px-1.5 transition border border-gray-600 h-[28px] flex items-center"
           >
             <Settings className="w-3.5 h-3.5" />
           </button>
           {showSettings && (
-            <div className="absolute right-0 max-[639px]:left-0 max-[639px]:right-auto mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-2 px-3 min-w-[200px] w-[min(260px,calc(100vw-16px))] z-[260]">
+            <div className="absolute right-0 max-[639px]:left-0 max-[639px]:right-auto mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-2 px-3 min-w-[200px] w-[min(280px,calc(100vw-16px))] z-[260]">
               <div className="mb-2 pb-2 border-b border-gray-700">
                   <div className="flex items-center gap-1 mb-1">
                     <span className="text-[10px] text-gray-400 font-semibold">VWAP</span>
@@ -462,7 +485,127 @@ export function Header({ onRefresh }: HeaderProps) {
                   MITO Chat (Telegram)
                 </a>
               </div>
-              <div className="mt-2 pt-2 border-t border-gray-700 space-y-1">
+              <div className="mt-2 pt-2 border-t border-gray-700 space-y-1.5">
+                <div className="text-[10px] text-gray-400 font-semibold px-1">Layouts</div>
+
+                {savedLayouts.length > 0 && (
+                  <ul className="space-y-1 max-h-[160px] overflow-y-auto">
+                    {savedLayouts.map((lay) => {
+                      const isActive = lay.id === activeLayoutId;
+                      return (
+                        <li
+                          key={lay.id}
+                          className={`flex items-center gap-1 rounded border px-1.5 py-1 ${
+                            isActive
+                              ? 'border-cyan-500/60 bg-cyan-950/30'
+                              : 'border-gray-600/80 bg-gray-900/40 hover:border-gray-500'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            className="flex-1 min-w-0 text-left"
+                            onClick={() => {
+                              if (isActive) return;
+                              try {
+                                switchToSavedLayout(lay.id);
+                              } catch (err) {
+                                showToast(err instanceof Error ? err.message : 'Switch failed', 'error');
+                              }
+                            }}
+                          >
+                            {editingLayoutId === lay.id ? (
+                              <input
+                                autoFocus
+                                value={editLayoutName}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => setEditLayoutName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation();
+                                  if (e.key === 'Enter') {
+                                    renameSavedLayout(lay.id, editLayoutName);
+                                    setEditingLayoutId(null);
+                                    setSavedLayouts(listSavedLayouts());
+                                  }
+                                  if (e.key === 'Escape') setEditingLayoutId(null);
+                                }}
+                                onBlur={() => {
+                                  renameSavedLayout(lay.id, editLayoutName);
+                                  setEditingLayoutId(null);
+                                  setSavedLayouts(listSavedLayouts());
+                                }}
+                                className="w-full bg-gray-950 border border-cyan-600/50 rounded px-1 py-0.5 text-[11px] text-white"
+                              />
+                            ) : (
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                {isActive && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 flex-shrink-0" />}
+                                <span className={`text-[11px] truncate ${isActive ? 'text-cyan-200 font-semibold' : 'text-gray-200'}`}>
+                                  {lay.name}
+                                </span>
+                              </div>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            title="Rename"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingLayoutId(lay.id);
+                              setEditLayoutName(lay.name);
+                            }}
+                            className="text-gray-400 hover:text-cyan-300 px-0.5 text-[11px] flex-shrink-0"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            type="button"
+                            title="Delete"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteSavedLayout(lay.id);
+                              setSavedLayouts(listSavedLayouts());
+                              setActiveLayoutId(getActiveLayoutId());
+                            }}
+                            className="text-gray-400 hover:text-red-400 px-0.5 text-xs font-bold flex-shrink-0"
+                          >
+                            ×
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    value={newLayoutName}
+                    onChange={(e) => setNewLayoutName(e.target.value)}
+                    placeholder="Name…"
+                    className="flex-1 min-w-0 text-[11px] text-gray-300 bg-gray-700 border border-gray-600 rounded px-1.5 py-1 outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return;
+                      const entry = saveCurrentLayoutAs(newLayoutName);
+                      setNewLayoutName('');
+                      setSavedLayouts(listSavedLayouts());
+                      setActiveLayoutId(entry.id);
+                      showToast(`Saved “${entry.name}”`, 'success');
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const entry = saveCurrentLayoutAs(newLayoutName);
+                      setNewLayoutName('');
+                      setSavedLayouts(listSavedLayouts());
+                      setActiveLayoutId(entry.id);
+                      showToast(`Saved “${entry.name}”`, 'success');
+                    }}
+                    className="flex-shrink-0 px-2 py-1 text-[11px] font-bold text-cyan-200 bg-cyan-900/50 hover:bg-cyan-800/60 border border-cyan-700/50 rounded transition"
+                  >
+                    Save
+                  </button>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -471,14 +614,14 @@ export function Header({ onRefresh }: HeaderProps) {
                   }}
                   className="w-full text-left px-2 py-1.5 text-xs text-cyan-300 hover:text-cyan-200 hover:bg-gray-700 rounded transition"
                 >
-                  Download Layout
+                  Download current
                 </button>
                 <button
                   type="button"
                   onClick={() => layoutFileInputRef.current?.click()}
                   className="w-full text-left px-2 py-1.5 text-xs text-cyan-300 hover:text-cyan-200 hover:bg-gray-700 rounded transition"
                 >
-                  Import Layout
+                  Import layout…
                 </button>
                 <input
                   ref={layoutFileInputRef}
@@ -493,8 +636,8 @@ export function Header({ onRefresh }: HeaderProps) {
                     reader.onload = () => {
                       try {
                         const text = String(reader.result ?? '');
-                        const parsed = parseLayoutImport(text);
-                        applyLayoutImport(parsed);
+                        const base = file.name.replace(/\.json$/i, '').replace(/^mito[-_]?/i, '') || 'Imported';
+                        importLayoutToLibrary(text, base, true);
                       } catch (err) {
                         showToast(err instanceof Error ? err.message : 'Import failed', 'error');
                       }
@@ -515,6 +658,7 @@ export function Header({ onRefresh }: HeaderProps) {
                     localStorage.removeItem('polybot-react-panels');
                     localStorage.removeItem('polybot-react-layouts');
                     localStorage.removeItem('polybot-removed-panels');
+                    localStorage.removeItem('polybot-active-layout-id');
                     setPanels(defaultPanels as any);
                     setLayouts(null as any);
                     setShowSettings(false);

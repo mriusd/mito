@@ -158,6 +158,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
     () => upDownStartTimeFromMarket(chartMarket ?? market),
     [chartMarket, market],
   );
+  const isWeather = isWeatherMarket(chartMarket ?? market);
   const weatherStartTime = useMemo(() => {
     const m = chartMarket ?? market;
     if (!isWeatherMarket(m)) return 0;
@@ -289,6 +290,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       startTime={startTimeProp}
       endTime={endTime}
       defaultIntervalOverride="5m"
+      lockInterval={isWeather ? '5m' : undefined}
       hidePriceLines
       intervalSelector={intervalSelector}
       outcomeToggle={outcomeToggle}

@@ -93,8 +93,8 @@ export function useLiveTradeCandles({
     const publishNow = () => {
       if (cancelled) return;
       const sorted = Array.from(candleMapRef.current.values()).sort((a, b) => a.time - b.time);
-      // Weather series only: forward-fill bars/forecast; drop historical vol=0 flat stubs.
-      const weatherSeries = interval === '5m' && sorted.some((c) => c.weather != null);
+      // Weather series: forward-fill bars/forecast; drop historical vol=0 flat stubs.
+      const weatherSeries = sorted.some((c) => c.weather != null);
       if (!weatherSeries) {
         setCandles(sorted);
         return;

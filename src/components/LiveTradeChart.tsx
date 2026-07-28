@@ -91,6 +91,8 @@ interface LiveTradeChartProps {
   endTime?: number;
   intervalContext?: string;
   defaultIntervalOverride?: string;
+  /** When set, chart stays on this interval (weather Temp Odds only exist on 5m). */
+  lockInterval?: string;
   chainlinkAsset?: string;
   targetPrice?: number | null;
   hidePriceLines?: boolean;
@@ -143,6 +145,7 @@ export function LiveTradeChart({
   endTime,
   intervalContext,
   defaultIntervalOverride,
+  lockInterval,
   chainlinkAsset,
   hidePriceLines,
   tradeMarkers,
@@ -164,10 +167,15 @@ export function LiveTradeChart({
 
   const chartRef = useRef<ReactECharts>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const resolvedDefaultInterval = defaultIntervalOverride || defaultInterval(intervalContext);
+  const lockedInterval =
+    lockInterval && (CHART_INTERVALS as readonly string[]).includes(lockInterval)
+      ? (lockInterval as ChartInterval)
+      : null;
+  const resolvedDefaultInterval = lockedInterval || defaultIntervalOverride || defaultInterval(intervalContext);
   const [interval, setInterval_] = useState<ChartInterval>(
-    () => readStoredChartInterval() ?? (resolvedDefaultInterval as ChartInterval),
+    () => lockedInterval ?? readStoredChartInterval() ?? (resolvedDefaultInterval as ChartInterval),
   );
+
   const [hideTrades, setHideTrades] = useState(false);
   const [volumeSpikeFlashSide, setVolumeSpikeFlashSide] = useState<ChartVolumeSpikeSide | null>(null);
   const lastVolumeSpikeBarRef = useRef<number | null>(null);
@@ -196,11 +204,20 @@ export function LiveTradeChart({
   const [dataZoomTick, setDataZoomTick] = useState(0);
   const chartOrderDragEnabled = !!(sidebarChartOrderLevels?.length && onChartOrderReplace);
 
+  useEffect(() => {
+    if (!lockedInterval) return;
+    if (interval !== lockedInterval) {
+      setInterval_(lockedInterval);
+      dataZoomRef.current = null;
+    }
+  }, [lockedInterval, interval, tokenId]);
+
   const setChartInterval = useCallback((iv: ChartInterval) => {
+    if (lockedInterval) return;
     setInterval_(iv);
     persistChartInterval(iv);
     dataZoomRef.current = null;
-  }, []);
+  }, [lockedInterval]);
 
   const candleMs = INTERVAL_MS[interval] || 60000;
   const enrichmentPriceDec = chainlinkAsset?.toUpperCase() === 'XRP' ? 4 : 2;
@@ -459,7 +476,7 @@ export function LiveTradeChart({
       const hasGex = nearest.gex != null;
       const hasGexBinance = nearest.gexBinance != null;
       const hasGexOkx = nearest.gexOkx != null;
-      const hasWeather = nearest.weather != null && interval === '5m';
+      const hasWeather = nearest.weather != null;
       // Always show popup (OHLCV at minimum) — don't require OB/GEX/weather on that bar.
       setHoverOb({
         clientX,
@@ -680,8 +697,10 @@ export function LiveTradeChart({
         {intervalSelector === 'dropdown' ? (
           <select
             value={interval}
+            disabled={!!lockedInterval}
+            title={lockedInterval ? 'Weather Temp Odds require 5m candles' : undefined}
             onChange={(e) => setChartInterval(e.target.value as ChartInterval)}
-            className="min-w-[3.5rem] w-16 shrink-0 rounded border border-gray-600 bg-gray-800 py-0 pl-1.5 pr-6 text-[10px] font-medium text-gray-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40"
+            className="min-w-[3.5rem] w-16 shrink-0 rounded border border-gray-600 bg-gray-800 py-0 pl-1.5 pr-6 text-[10px] font-medium text-gray-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40 disabled:opacity-60"
             aria-label="Chart resolution"
           >
             {CHART_INTERVALS.map((iv) => (
@@ -695,8 +714,9 @@ export function LiveTradeChart({
             {CHART_INTERVALS.map((iv) => (
               <button
                 key={iv}
+                disabled={!!lockedInterval && iv !== lockedInterval}
                 onClick={() => setChartInterval(iv)}
-                className={`px-1.5 py-0 text-[10px] rounded ${interval === iv ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
+                className={`px-1.5 py-0 text-[10px] rounded ${interval === iv ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'} disabled:opacity-40 disabled:cursor-not-allowed`}
               >
                 {iv}
               </button>

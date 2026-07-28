@@ -360,7 +360,8 @@ export type PanelType =
   | 'weather-temperature'
   | 'weather-temp-bars'
   | 'weather-map'
-  | 'clock';
+  | 'clock'
+  | 'spreads';
 
 export type {
   WeatherCityMeta,

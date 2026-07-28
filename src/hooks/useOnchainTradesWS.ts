@@ -30,7 +30,54 @@ interface OnchainFillRow {
   logIndex?: number;
   txHash?: string;
   tokenId?: string;
+  size?: number;
+  price?: number;
+  side?: string;
+  isPhantom?: number;
 }
+
+function mapOnchainFillRowToLiveTrade(
+  f: OnchainFillRow,
+  maxBlock: number,
+  nowMs: number,
+): LiveTrade | null {
+  if (Number(f.isPhantom ?? 0) === 1) return null;
+  const makerAmt = Number(f.makerAmount ?? 0);
+  const takerAmt = Number(f.takerAmount ?? 0);
+  const makerAsset = String(f.makerAssetId ?? '');
+  const takerAsset = String(f.takerAssetId ?? '');
+  const makerIsUSDC = makerAsset === '0';
+  const takerIsUSDC = takerAsset === '0';
+  let size = makerIsUSDC ? takerAmt : makerAmt;
+  let price = makerIsUSDC
+    ? (takerAmt > 0 ? makerAmt / takerAmt : 0)
+    : (makerAmt > 0 ? takerAmt / makerAmt : 0);
+  let side = (makerIsUSDC ? 'BUY' : takerIsUSDC ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
+  // Live tape rows often carry size/price/side directly (maker/taker amounts may be absent).
+  if (!(size > 0) || !(price > 0)) {
+    const sz = Number(f.size ?? 0);
+    const px = Number(f.price ?? 0);
+    if (sz > 0 && px > 0) {
+      size = sz;
+      price = px;
+      const s = String(f.side || '').toUpperCase();
+      if (s === 'SELL' || s === 'BUY') side = s;
+    }
+  }
+  if (!(size > 0) || !(price > 0)) return null;
+  const ts = tradeTimestampMs(f, maxBlock, nowMs);
+  const logIndex = Number(f.logIndex ?? 0);
+  return stampLiveTradeId({
+    side,
+    size: String(size),
+    price: String(price),
+    timestamp: ts,
+    txHash: f.txHash,
+    logIndex: Number.isFinite(logIndex) ? logIndex : undefined,
+    tokenId: String(f.tokenId || '').trim() || undefined,
+  });
+}
+
 
 /** Polymarket condition id (hex) — preferred for live tape: all YES+NO fills on this market. */
 export type OnchainTradesWSOpts = {
@@ -968,8 +1015,9 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       if (!m && !t) return;
       const qs = new URLSearchParams();
       qs.set('limit', '400');
+      // Prefer market_id alone — public tape is YES+NO; token filter drops half / mismatches decimals.
       if (m) qs.set('market_id', canonicalConditionKey(m));
-      if (t) qs.set('token_id', t);
+      else if (t) qs.set('token_id', t);
       void fetchBackend(`${API_BASE}/api/onchain-fills?${qs.toString()}`)
         .then((r) => r.json())
         .then((res) => {
@@ -986,31 +1034,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
           const nowMs = Date.now();
           const mapped: LiveTrade[] = [];
           for (const f of fills) {
-            const makerAmt = Number(f.makerAmount ?? 0);
-            const takerAmt = Number(f.takerAmount ?? 0);
-            const makerAsset = String(f.makerAssetId ?? '');
-            const takerAsset = String(f.takerAssetId ?? '');
-            const makerIsUSDC = makerAsset === '0';
-            const takerIsUSDC = takerAsset === '0';
-            const size = makerIsUSDC ? takerAmt : makerAmt;
-            const price = makerIsUSDC
-              ? (takerAmt > 0 ? makerAmt / takerAmt : 0)
-              : (makerAmt > 0 ? takerAmt / makerAmt : 0);
-            const side = (makerIsUSDC ? 'BUY' : takerIsUSDC ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
-            const ts = tradeTimestampMs(f, maxBlock, nowMs);
-            const logIndex = Number(f.logIndex ?? 0);
-            const p = Number.isFinite(price) ? price : 0;
-            const txHash = f.txHash;
-            const li = Number.isFinite(logIndex) ? logIndex : undefined;
-            mapped.push(stampLiveTradeId({
-              side,
-              size: String(Number.isFinite(size) ? size : 0),
-              price: String(p),
-              timestamp: ts,
-              txHash,
-              logIndex: li,
-              tokenId: String(f.tokenId || '').trim() || undefined,
-            }));
+            const row = mapOnchainFillRowToLiveTrade(f, maxBlock, nowMs);
+            if (row) mapped.push(row);
           }
           const batched = drainPendingTapeBatch();
           setTrades((prev) => {
@@ -1021,7 +1046,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const pendingRows = cur.filter((x) => x.pending);
             const confirmedTxs = new Set(mapped.map((r) => (r.txHash || '').toLowerCase()).filter(Boolean));
             const keepPending = pendingRows.filter((x) => !confirmedTxs.has((x.txHash || '').toLowerCase()));
-            const confirmed = mapped.slice(0, MAX_TRADES);
+            const fromBuf = filterPublicTapeBuffer(m ? canonicalConditionKey(m) : null, m ? null : t || null);
+            const confirmed = mergePublicLiveTapes(mapped, fromBuf).slice(0, MAX_TRADES);
             if (keepPending.length === 0) {
               setSidebarOnchainLiveTrades(confirmed);
               return confirmed;

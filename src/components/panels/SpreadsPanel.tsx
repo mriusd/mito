@@ -11,7 +11,7 @@ const CATEGORY_LS = 'polybot-spreads-category';
 
 const CATEGORY_OPTS: MarketAssetCategoryFilter[] = ['ALL', 'CRYPTO', 'WEATHER', 'OTHER'];
 
-type SortCol = 'date' | 'market' | 'bid' | 'ask' | 'mid' | 'spread' | 'volume';
+type SortCol = 'date' | 'market' | 'bid' | 'ask' | 'mid' | 'spread' | 'volume' | 'stkY' | 'stkN';
 
 type SpreadRow = {
   market: Market;
@@ -22,7 +22,23 @@ type SpreadRow = {
   mid: number;
   spreadCents: number;
   volume: number | null;
+  stkY: number | null;
+  stkN: number | null;
 };
+
+function stakedUsd(m: Market, leg: 'yes' | 'no'): number | null {
+  const net = leg === 'yes' ? m.stakedNetYesUsd : m.stakedNetNoUsd;
+  if (typeof net === 'number' && Number.isFinite(net) && net >= 0) return net;
+  const abs = leg === 'yes' ? m.stakedUsdYesLeg : m.stakedUsdNoLeg;
+  if (typeof abs === 'number' && Number.isFinite(abs) && abs >= 0) return abs;
+  return null;
+}
+
+function fmtUsd(n: number | null): string {
+  if (n == null) return '—';
+  const k = formatPolymarketVolumeK(n);
+  return k === '—' ? '—' : `$${k}`;
+}
 
 function readSpreadBound(key: string, fallback: number): number {
   try {
@@ -166,6 +182,8 @@ export function SpreadsPanel() {
         mid: (bid + ask) / 2,
         spreadCents,
         volume: volRaw,
+        stkY: stakedUsd(m, 'yes'),
+        stkN: stakedUsd(m, 'no'),
       });
     }
 
@@ -192,6 +210,12 @@ export function SpreadsPanel() {
           break;
         case 'volume':
           cmp = (a.volume ?? -1) - (b.volume ?? -1);
+          break;
+        case 'stkY':
+          cmp = (a.stkY ?? -1) - (b.stkY ?? -1);
+          break;
+        case 'stkN':
+          cmp = (a.stkN ?? -1) - (b.stkN ?? -1);
           break;
       }
       return sortAsc ? cmp : -cmp;
@@ -328,6 +352,8 @@ export function SpreadsPanel() {
                 {th('ask', 'Ask', 'right')}
                 {th('mid', 'Mid', 'right')}
                 {th('spread', 'Spread', 'right')}
+                {th('stkY', 'Stk Y', 'right')}
+                {th('stkN', 'Stk N', 'right')}
                 {th('volume', 'Volume', 'right')}
               </tr>
             </thead>
@@ -351,6 +377,8 @@ export function SpreadsPanel() {
                     <td className="px-1 py-0.5 text-right text-yellow-300 font-semibold tabular-nums">
                       {row.spreadCents.toFixed(1)}¢
                     </td>
+                    <td className="px-1 py-0.5 text-right text-emerald-400/90 tabular-nums">{fmtUsd(row.stkY)}</td>
+                    <td className="px-1 py-0.5 text-right text-red-400/90 tabular-nums">{fmtUsd(row.stkN)}</td>
                     <td className="px-1 py-0.5 text-right text-gray-400 tabular-nums">
                       {formatPolymarketVolumeK(row.volume)}
                     </td>

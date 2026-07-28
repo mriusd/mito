@@ -2797,13 +2797,13 @@ export const Sidebar = memo(function Sidebar() {
       <Suspense fallback={null}>
         <MergePositionsDialogLazy
           open
-      onClose={() => setMergeDialogOpen(false)}
+          onClose={() => setMergeDialogOpen(false)}
       maxShares={mergeDialogParams.maxMerge}
       conditionId={mergeDialogParams.conditionId}
-      title={fullMarketName || marketName}
-      outcomePairLabel={isUpDownMarket ? 'UP / DOWN' : 'YES / NO'}
-      onSubmit={handleMergeSubmit}
-    />
+          title={fullMarketName || marketName}
+          outcomePairLabel={isUpDownMarket ? 'UP / DOWN' : 'YES / NO'}
+          onSubmit={handleMergeSubmit}
+        />
       </Suspense>
     )}
     {splitDialogOpen && !!splitDialogParams?.conditionId && (
@@ -3842,7 +3842,7 @@ export const Sidebar = memo(function Sidebar() {
                 notifyFavouriteTiltPct={notifyFavouriteTiltPct}
                 notifyGreensTiltPct={notifyGreensTiltPct}
                   />
-              </div>
+                </div>
           </SidebarToxicStatsFlashWrap>
           </div>
 

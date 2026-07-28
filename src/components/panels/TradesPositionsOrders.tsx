@@ -48,9 +48,11 @@ import {
   normalizeClobTokenId,
   classifyMarketAssetCategory,
   marketAssetCategoryMatches,
+  formatElapsedSinceMs,
   ASSET_COLORS as assetColorMap2,
   type MarketAssetCategoryFilter,
 } from '../../utils/format';
+import { useWalletTradeElapsedMs } from '../../lib/walletTradeElapsedStore';
 import { formatWeatherEventDateLabel, parseWeatherCityFromSlug, tpoMarketSortDateIso } from '../../lib/weatherMarketExpiry';
 import { weatherCityLabel } from '../../lib/weatherCities';
 import type { Market } from '../../types';
@@ -206,25 +208,24 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
   return out;
 }
 
-function formatElapsed(ms: number): string {
-  const diff = Date.now() - ms;
-  if (diff < 0) return '';
-  const sec = Math.floor(diff / 1000);
-  if (sec < 60) return `${sec}s`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h`;
-  return `${Math.floor(hr / 24)}d`;
-}
-
-function elapsedTimeColor(ms: number): string {
-  const ageMs = ms > 0 ? Date.now() - ms : Infinity;
+function elapsedTimeColor(timeMs: number, nowMs: number): string {
+  const ageMs = timeMs > 0 ? nowMs - timeMs : Infinity;
   if (ageMs < 60_000) return 'text-purple-400';
   if (ageMs < 15 * 60_000) return 'text-green-400';
   if (ageMs < 60 * 60_000) return 'text-yellow-400';
   return 'text-gray-400';
 }
+
+/** Per-cell 5s tick — parent table stays idle. */
+const LiveTpoElapsedCell = memo(function LiveTpoElapsedCell({ timeMs }: { timeMs: number }) {
+  const nowMs = useWalletTradeElapsedMs();
+  if (timeMs <= 0) return null;
+  return (
+    <span className={elapsedTimeColor(timeMs, nowMs)}>
+      {formatElapsedSinceMs(timeMs, nowMs)}
+    </span>
+  );
+});
 
 function parseTsMs(ts: string | number | null | undefined): number {
   if (ts == null || ts === '') return 0;
@@ -1934,7 +1935,7 @@ function TradesPositionsOrdersInner({
                         : <TpoColorCodedText text={`$${t.value.toFixed(2)}`} />}
                     </td>
                     <td className={`${nCls} text-right text-yellow-400/80`}>{t.fee > 0 ? `$${t.fee.toFixed(2)}` : '-'}</td>
-                    <td className={`${nCls} text-right ${elapsedTimeColor(t.timeMs)}`}>{t.timeMs > 0 ? formatElapsed(t.timeMs) : ''}</td>
+                    <td className={`${nCls} text-right`}><LiveTpoElapsedCell timeMs={t.timeMs} /></td>
                   </tr>
                 );
               }}
@@ -2355,7 +2356,7 @@ function TradesPositionsOrdersInner({
                         text={`$${o.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                       />
                     </td>
-                    <td className={`${nCls} text-right ${elapsedTimeColor(o.timeMs)}`}>{o.timeMs > 0 ? formatElapsed(o.timeMs) : ''}</td>
+                    <td className={`${nCls} text-right`}><LiveTpoElapsedCell timeMs={o.timeMs} /></td>
                     <td className={`${nCls} text-center`}>
                       <button
                         onClick={() => !cancellingOrderIds.has(o.id) && handleCancelOrder(o.id)}

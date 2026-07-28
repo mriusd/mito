@@ -227,9 +227,10 @@ export function PnLPanel() {
 
       if (isClaim) {
         dataByDate[dateKey].sold += value;
-      } else if (trade.side === 'BUY') {
+      } else if (trade.side === 'BUY' || trade.side === 'SPLIT') {
         dataByDate[dateKey].bought += value;
       } else {
+        // SELL / MERGE / REDEEM / CLAIM / other exits
         dataByDate[dateKey].sold += value;
       }
     }

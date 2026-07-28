@@ -797,6 +797,14 @@ function buildTempOddsBuckets(
   return { entries, maxPct };
 }
 
+/** TPO trades Time column age colors. */
+function tempOddsForecastElapsedColor(ageMs: number): string {
+  if (ageMs < 60_000) return 'text-purple-400';
+  if (ageMs < 15 * 60_000) return 'text-green-400';
+  if (ageMs < 60 * 60_000) return 'text-yellow-400';
+  return 'text-gray-400';
+}
+
 const TempOddsElapsedLabel = memo(function TempOddsElapsedLabel({
   updatedMs,
   className,
@@ -811,6 +819,22 @@ const TempOddsElapsedLabel = memo(function TempOddsElapsedLabel({
   const ageSec = Math.max(0, Math.floor((nowMs - updatedMs) / 1000));
   return (
     <span className={`whitespace-nowrap text-[10px] font-normal tabular-nums ${className ?? tradeElapsedColorClass(ageSec)}`}>
+      {label}
+    </span>
+  );
+});
+
+/** Forecast age — TPO Time colors; 5s tick isolated from chart. */
+const TempOddsForecastAgeLabel = memo(function TempOddsForecastAgeLabel({ updatedMs }: { updatedMs: number }) {
+  const nowMs = useWalletTradeElapsedMs();
+  if (updatedMs <= 0) return null;
+  const label = formatElapsedSinceMs(updatedMs, nowMs);
+  if (!label) return null;
+  return (
+    <span
+      className={`whitespace-nowrap text-[10px] font-normal tabular-nums ${tempOddsForecastElapsedColor(Math.max(0, nowMs - updatedMs))}`}
+      title="Forecast last updated"
+    >
       {label}
     </span>
   );
@@ -1456,14 +1480,6 @@ function TempOddsChart({
   );
 }
 
-/** TPO trades Time column age colors. */
-function tempOddsForecastElapsedColor(ageMs: number): string {
-  if (ageMs < 60_000) return 'text-purple-400';
-  if (ageMs < 15 * 60_000) return 'text-green-400';
-  if (ageMs < 60 * 60_000) return 'text-yellow-400';
-  return 'text-gray-400';
-}
-
 function TempOddsTemperatureChart({
   data,
   loading,
@@ -1477,7 +1493,6 @@ function TempOddsTemperatureChart({
   forecastSource: ForecastSourceToggle;
   onForecastSourceChange: (source: ForecastSourceToggle) => void;
 }) {
-  const nowMs = useWalletTradeElapsedMs();
   const chartData = useMemo(() => {
     if (!data) return null;
     return weatherObsWithForecastSource(data, forecastSource as ObsForecastSourceId);
@@ -1493,12 +1508,6 @@ function TempOddsTemperatureChart({
     // API is ms; tolerate accidental seconds.
     return raw < 1e12 ? raw * 1000 : raw;
   }, [chartData?.forecastUpdatedAt]);
-  const forecastAgeLabel =
-    forecastUpdatedMs > 0 ? formatElapsedSinceMs(forecastUpdatedMs, nowMs) || null : null;
-  const forecastAgeClass =
-    forecastUpdatedMs > 0
-      ? tempOddsForecastElapsedColor(Math.max(0, nowMs - forecastUpdatedMs))
-      : 'text-gray-500';
   type HeaderPart = {
     text: string;
     color: string;
@@ -1568,14 +1577,7 @@ function TempOddsTemperatureChart({
             WC
           </button>
         </div>
-        {forecastAgeLabel ? (
-          <span
-            className={`whitespace-nowrap text-[10px] font-normal tabular-nums ${forecastAgeClass}`}
-            title="Forecast last updated"
-          >
-            {forecastAgeLabel}
-          </span>
-        ) : null}
+        {forecastUpdatedMs > 0 ? <TempOddsForecastAgeLabel updatedMs={forecastUpdatedMs} /> : null}
         {headerParts.length > 0 ? (
           <div className="ml-auto flex min-w-0 items-center gap-1 truncate text-[10px] font-normal tabular-nums">
             {headerParts.map((p, i) => (

@@ -40,3 +40,22 @@ export const LiveWalletTradeTimeCell = memo(function LiveWalletTradeTimeCell({
   const nowMs = useWalletTradeElapsedMs();
   return <WalletTradeTimeCell blockTime={blockTime} nowMs={nowMs} />;
 });
+
+function tpoElapsedColor(timeMs: number, nowMs: number): string {
+  const ageMs = timeMs > 0 ? nowMs - timeMs : Infinity;
+  if (ageMs < 60_000) return 'text-purple-400';
+  if (ageMs < 15 * 60_000) return 'text-green-400';
+  if (ageMs < 60 * 60_000) return 'text-yellow-400';
+  return 'text-gray-400';
+}
+
+/** TPO / sidebar Time column — 5s tick, parent stays idle. */
+export const LiveElapsedAgeCell = memo(function LiveElapsedAgeCell({ timeMs }: { timeMs: number }) {
+  const nowMs = useWalletTradeElapsedMs();
+  if (timeMs <= 0) return null;
+  return (
+    <span className={tpoElapsedColor(timeMs, nowMs)}>
+      {formatElapsedSinceMs(timeMs, nowMs)}
+    </span>
+  );
+});

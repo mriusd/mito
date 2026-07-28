@@ -2,7 +2,6 @@ import { memo, useMemo, useState } from 'react';
 import type { Market } from '../types';
 import { useAppStore } from '../stores/appStore';
 import {
-  formatElapsedSinceMs,
   getTokenOutcome,
   getTradeClobTokenId,
   normalizeClobTokenId,
@@ -16,7 +15,7 @@ import {
   useSidebarOnchainWalletMarketTrades,
   useSidebarOnchainWalletTrades,
 } from '../lib/sidebarOnchainTradesStore';
-import { useWalletTradeElapsedMs } from '../lib/walletTradeElapsedStore';
+import { LiveElapsedAgeCell } from './WalletTradeTimeCell';
 import type { WSTrade } from '../hooks/useOnchainTradesWS';
 import { walletTradeKey } from '../lib/tradeKeys';
 import { SidebarDataSourceBadge } from './SidebarDataSourceBadge';
@@ -235,7 +234,6 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
   const trades = useAppStore((s) => s.trades);
   const wsMarketTrades = useSidebarOnchainWalletMarketTrades();
   const wsWalletTrades = useSidebarOnchainWalletTrades();
-  const nowMs = useWalletTradeElapsedMs();
   const [groupOn, setGroupOn] = useState(() => localStorage.getItem(GROUP_LS_KEY) === '1');
 
   const myTrades = useMemo(() => {
@@ -372,15 +370,6 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
                       : 0;
                 const tradeFee = parseFloat(trade.fee || '0');
                 const timeMs = tradeTimeMs(trade);
-                const ageMs = timeMs > 0 ? nowMs - timeMs : Infinity;
-                const timeColor =
-                  ageMs < 60_000
-                    ? 'text-purple-400'
-                    : ageMs < 15 * 60_000
-                      ? 'text-green-400'
-                      : ageMs < 60 * 60_000
-                        ? 'text-yellow-400'
-                        : 'text-gray-400';
                 const dirTone =
                   side === 'BUY'
                     ? 'text-emerald-400'
@@ -417,8 +406,8 @@ export const SidebarMyTradesSection = memo(function SidebarMyTradesSection({
                     >
                       {signedCost >= 0 ? '+' : '-'}${Math.abs(signedCost).toFixed(2)}
                     </td>
-                    <td className={`py-0.5 text-right tabular-nums whitespace-nowrap ${timeColor}`}>
-                      {timeMs > 0 ? formatElapsedSinceMs(timeMs, nowMs) : ''}
+                    <td className="py-0.5 text-right tabular-nums whitespace-nowrap">
+                      <LiveElapsedAgeCell timeMs={timeMs} />
                     </td>
                   </tr>
                 );

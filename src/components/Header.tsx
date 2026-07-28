@@ -16,6 +16,8 @@ import { useSyncHeadWS } from '../hooks/useSyncHeadWS';
 import { polymarketSiteUrl } from '../lib/polymarketSiteUrl';
 import { importWithChunkReload, lazyWithChunkReload } from '../utils/lazyWithChunkReload';
 import { showToast } from '../utils/toast';
+import { applyLayoutImport, downloadLayoutFile, parseLayoutImport } from '../lib/layoutExport';
+import type { PanelConfig } from '../types';
 
 const IS_DEV = import.meta.env.DEV;
 
@@ -100,6 +102,7 @@ export function Header({ onRefresh }: HeaderProps) {
     })
   );
   const layouts = useAppStore((s) => s.layouts);
+  const panels = useAppStore((s) => s.panels);
   const setPanels = useAppStore((s) => s.setPanels);
   const setLayouts = useAppStore((s) => s.setLayouts);
   const addPanel = useAppStore((s) => s.addPanel);
@@ -127,6 +130,7 @@ export function Header({ onRefresh }: HeaderProps) {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const layoutFileInputRef = useRef<HTMLInputElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const [showOrderDialog, setShowOrderDialog] = useState(true);
   const disableMarketPriceWarning = useAppStore((s) => s.disableMarketPriceWarning);
@@ -455,7 +459,47 @@ export function Header({ onRefresh }: HeaderProps) {
                   MITO Chat (Telegram)
                 </a>
               </div>
-              <div className="mt-2 pt-2 border-t border-gray-700">
+              <div className="mt-2 pt-2 border-t border-gray-700 space-y-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    downloadLayoutFile(panels as PanelConfig[], layouts);
+                    showToast('Layout downloaded', 'success');
+                  }}
+                  className="w-full text-left px-2 py-1.5 text-xs text-cyan-300 hover:text-cyan-200 hover:bg-gray-700 rounded transition"
+                >
+                  Download Layout
+                </button>
+                <button
+                  type="button"
+                  onClick={() => layoutFileInputRef.current?.click()}
+                  className="w-full text-left px-2 py-1.5 text-xs text-cyan-300 hover:text-cyan-200 hover:bg-gray-700 rounded transition"
+                >
+                  Import Layout
+                </button>
+                <input
+                  ref={layoutFileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      try {
+                        const text = String(reader.result ?? '');
+                        const parsed = parseLayoutImport(text);
+                        applyLayoutImport(parsed);
+                      } catch (err) {
+                        showToast(err instanceof Error ? err.message : 'Import failed', 'error');
+                      }
+                    };
+                    reader.onerror = () => showToast('Failed to read file', 'error');
+                    reader.readAsText(file);
+                  }}
+                />
                 <button
                   onClick={() => {
                     const defaultPanels = [

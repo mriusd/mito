@@ -147,7 +147,8 @@ function shortMarketLabel(m: Market, marketLookup: Record<string, Market>): { la
     else if (et) core = et;
     else core = q || m.id;
   }
-  if (asset && asset !== 'WEATHER' && !core.toUpperCase().startsWith(`${asset} `)) {
+  // Weather already returned above; asset is AssetName | '' (never 'WEATHER').
+  if (asset && !core.toUpperCase().startsWith(`${asset} `)) {
     return { label: `${asset} ${core}`, asset };
   }
   return { label: core, asset };

@@ -48,12 +48,12 @@ import {
   normalizeClobTokenId,
   classifyMarketAssetCategory,
   marketAssetCategoryMatches,
+  normalizeConditionIdKey,
   ASSET_COLORS as assetColorMap2,
   type MarketAssetCategoryFilter,
 } from '../../utils/format';
 import { LiveElapsedAgeCell } from '../WalletTradeTimeCell';
-import { formatWeatherEventDateLabel, parseWeatherCityFromSlug, tpoMarketSortDateIso } from '../../lib/weatherMarketExpiry';
-import { weatherCityLabel } from '../../lib/weatherCities';
+import { formatWeatherEventDateLabel, tpoMarketSortDateIso } from '../../lib/weatherMarketExpiry';
 import type { Market } from '../../types';
 
 const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
@@ -97,20 +97,18 @@ type TpoPosRow = {
   currentValue: number;
   bidProb: number | null;
   askProb: number | null;
-  /** Ask ¢ (size-weighted avg when Bucket on); else derived from askProb. */
+  /** Ask ¢ — single row ask, or Σ ask ¢ when Bucket parent. */
   askCents?: number | null;
   sellPrice: number | null;
-  /** Collapsed weather bucket: Σ(size × bid) / Σ(size × ask) / Σ(size × sell¢/100). */
-  bidValueUsd?: number | null;
-  askValueUsd?: number | null;
-  sellValueUsd?: number | null;
+  /** Bucket parent: Bid/Ask/Sell cells are ¢ sums (not averages). */
+  bucketCentsSum?: boolean;
   pnl: number;
   pnlPercent: number;
   marketId?: string | null;
   title: string;
   eventSlug: string;
   clickable: boolean;
-  /** City|date key when this row is a multi-market bucket parent. */
+  /** Market key when this row is a multi-leg bucket parent. */
   bucketKey?: string;
   bucketChildren?: TpoPosRow[];
   /** Child row under an expanded bucket. */
@@ -118,19 +116,20 @@ type TpoPosRow = {
   rowKey?: string;
 };
 
-/** City + event-date key for Weather Bucket mode. */
-function tpoWeatherBucketKey(eventSlug: string, endDate: string | null): string | null {
-  const city = parseWeatherCityFromSlug(eventSlug || '');
-  const date = (endDate || '').trim();
-  if (!city || !date) return null;
-  return `${city}|${date}`;
+/** Same condition/market — bucket YES+NO (and any duplicate legs) together. */
+function tpoPositionBucketKey(row: TpoPosRow): string | null {
+  const mid = normalizeConditionIdKey(row.marketId || '');
+  if (mid && !mid.startsWith('expired:')) return `mkt:${mid}`;
+  const name = (row.marketName || '').trim().toLowerCase();
+  if (!name) return null;
+  return `name:${name}|${(row.eventSlug || '').trim().toLowerCase()}|${(row.endDate || '').trim()}`;
 }
 
 function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
   const groups = new Map<string, TpoPosRow[]>();
   const passthrough: TpoPosRow[] = [];
   for (const r of rows) {
-    const key = tpoWeatherBucketKey(r.eventSlug, r.endDate);
+    const key = tpoPositionBucketKey(r);
     if (!key) {
       passthrough.push(r);
       continue;
@@ -145,77 +144,60 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
       out.push(list[0]);
       continue;
     }
-    const [citySlug] = key.split('|');
     const first = list[0];
-    let size = first.size;
+    let size = 0;
     let entryPrice = 0;
     let cost = 0;
     let currentValue = 0;
-    let bidW = 0;
-    let bidSz = 0;
-    let askW = 0;
-    let askSz = 0;
-    let sellW = 0;
-    let sellSz = 0;
-    let bidValueUsd = 0;
-    let askValueUsd = 0;
-    let sellValueUsd = 0;
-    let bidValueN = 0;
-    let askValueN = 0;
+    let bidSumCents = 0;
+    let askSumCents = 0;
+    let sellSumCents = 0;
+    let bidN = 0;
+    let askN = 0;
+    let sellN = 0;
     const outcomes = new Set<string>();
     for (const r of list) {
-      size = Math.min(size, r.size);
+      size += Number.isFinite(r.size) ? r.size : 0;
       entryPrice += r.entryPrice;
       cost += r.cost;
       currentValue += r.currentValue;
-      const w = Number.isFinite(r.size) && r.size > 0 ? r.size : 0;
-      if (w > 0 && r.bidProb != null && Number.isFinite(r.bidProb) && r.bidProb > 0) {
-        bidW += r.currentPrice * w;
-        bidSz += w;
-        bidValueUsd += w * r.bidProb;
-        bidValueN += 1;
+      if (r.bidProb != null && Number.isFinite(r.bidProb) && r.bidProb > 0 && Number.isFinite(r.currentPrice)) {
+        bidSumCents += r.currentPrice;
+        bidN += 1;
       }
-      if (w > 0 && r.askProb != null && Number.isFinite(r.askProb) && r.askProb > 0) {
-        askW += r.askProb * 100 * w;
-        askSz += w;
-        askValueUsd += w * r.askProb;
-        askValueN += 1;
+      if (r.askProb != null && Number.isFinite(r.askProb) && r.askProb > 0) {
+        askSumCents += r.askProb * 100;
+        askN += 1;
       }
-      if (w > 0 && r.sellPrice != null && Number.isFinite(r.sellPrice) && r.sellPrice > 0) {
-        sellW += r.sellPrice * w;
-        sellSz += w;
-        sellValueUsd += w * (r.sellPrice / 100);
+      if (r.sellPrice != null && Number.isFinite(r.sellPrice) && r.sellPrice > 0) {
+        sellSumCents += r.sellPrice;
+        sellN += 1;
       }
       if (r.outcome) outcomes.add(r.outcome);
     }
-    const bidCents = bidSz > 0 ? bidW / bidSz : null;
-    const askCents = askSz > 0 ? askW / askSz : null;
-    const sellCents = sellSz > 0 ? sellW / sellSz : null;
     const pnl = currentValue - cost;
     const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
     out.push({
       ...first,
-      // Keep a real token id so row click still opens a market from the bucket.
       tid: first.tid,
-      marketName: weatherCityLabel(citySlug),
+      marketName: first.marketName,
       outcome: outcomes.size === 1 ? [...outcomes][0] : '—',
       size,
       entryPrice,
       cost,
-      currentPrice: bidCents ?? 0,
+      currentPrice: bidN > 0 ? bidSumCents : 0,
       currentValue,
-      bidProb: bidCents != null ? bidCents / 100 : null,
-      askProb: askCents != null ? askCents / 100 : null,
-      askCents,
-      sellPrice: sellCents,
-      bidValueUsd: bidValueN > 0 ? bidValueUsd : null,
-      askValueUsd: askValueN > 0 ? askValueUsd : null,
-      sellValueUsd: sellSz > 0 ? sellValueUsd : null,
+      bidProb: bidN > 0 ? bidSumCents / 100 : null,
+      askProb: askN > 0 ? askSumCents / 100 : null,
+      askCents: askN > 0 ? askSumCents : null,
+      sellPrice: sellN > 0 ? sellSumCents : null,
+      bucketCentsSum: true,
       pnl,
       pnlPercent,
       clickable: first.clickable,
-      title: `${weatherCityLabel(citySlug)} · ${first.dateLabel}`,
+      title: first.title || first.marketName,
       eventSlug: first.eventSlug,
+      marketId: first.marketId,
       bucketKey: key,
       bucketChildren: list,
       rowKey: `bucket:${key}`,
@@ -819,7 +801,7 @@ function TradesPositionsOrdersInner({
       return false;
     }
   });
-  const [posBucketCollapsed, setPosBucketCollapsed] = useState<Set<string>>(() => new Set());
+  const [posBucketExpanded, setPosBucketExpanded] = useState<Set<string>>(() => new Set());
   type PosSortCol = 'expiry' | 'size' | 'entry' | 'cost' | 'bid' | 'ask' | 'sell' | 'val' | 'pnl' | 'pnlPct';
   const [posSortCol, setPosSortCol] = useState<PosSortCol>(() => {
     const v = localStorage.getItem(`polymarket-tpo-pos-sort-col-${panelId}`);
@@ -1476,7 +1458,7 @@ function TradesPositionsOrdersInner({
     const flat: TpoPosRow[] = [];
     for (const r of rows) {
       flat.push(r);
-      if (!r.bucketKey || !r.bucketChildren?.length || posBucketCollapsed.has(r.bucketKey)) continue;
+      if (!r.bucketKey || !r.bucketChildren?.length || !posBucketExpanded.has(r.bucketKey)) continue;
       for (const child of r.bucketChildren) {
         flat.push({
           ...child,
@@ -1491,13 +1473,13 @@ function TradesPositionsOrdersInner({
     processedPositions,
     posCategoryFilter,
     posWeatherBucket,
-    posBucketCollapsed,
+    posBucketExpanded,
     posSortCol,
     posSortDir,
   ]);
 
   const togglePosBucketExpanded = useCallback((bucketKey: string) => {
-    setPosBucketCollapsed((prev) => {
+    setPosBucketExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(bucketKey)) next.delete(bucketKey);
       else next.add(bucketKey);
@@ -1822,7 +1804,7 @@ function TradesPositionsOrdersInner({
               {posCategoryFilter === 'WEATHER' ? (
                 <label
                   className="no-drag inline-flex items-center gap-1 cursor-pointer select-none text-[9px] text-gray-400 hover:text-gray-200"
-                  title="Combine same city/date into one row: bid/ask/sell = $ sum; size=min; entry sum ¢; cost/val/PnL summed"
+                  title="Bucket same market (condition): sum Bid/Ask/Sell ¢; sum size/cost/val"
                 >
                   <input
                     type="checkbox"
@@ -1831,7 +1813,7 @@ function TradesPositionsOrdersInner({
                       const on = e.target.checked;
                       setPosWeatherBucket(on);
                       localStorage.setItem(`polymarket-tpo-pos-weather-bucket-${panelId}`, on ? '1' : '0');
-                      setPosBucketCollapsed(new Set());
+                      setPosBucketExpanded(new Set());
                     }}
                     className="h-3 w-3 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-0 focus:ring-offset-0"
                   />
@@ -2039,7 +2021,7 @@ function TradesPositionsOrdersInner({
                 const exitColor = POSITION_BID_EXIT_TAILWIND[positionBidExitTier(p.entryPrice, p.currentPrice)];
                 const hasBid = p.bidProb != null && Number.isFinite(p.bidProb) && p.bidProb > 0;
                 const isBucketParent = !!(p.bucketKey && p.bucketChildren && p.bucketChildren.length > 1);
-                const bucketOpen = isBucketParent && !posBucketCollapsed.has(p.bucketKey!);
+                const bucketOpen = isBucketParent && posBucketExpanded.has(p.bucketKey!);
                 const bucketHidesSelected =
                   isBucketParent &&
                   !bucketOpen &&
@@ -2092,8 +2074,8 @@ function TradesPositionsOrdersInner({
                       }`}
                       title={
                         isBucketParent
-                          ? p.bidValueUsd != null
-                            ? `Sum of bid notionals $${p.bidValueUsd.toFixed(2)}`
+                          ? hasBid
+                            ? `Sum of bids ${p.currentPrice.toFixed(1)}¢`
                             : undefined
                           : hasBid
                             ? `Limit sell @ bid ${p.currentPrice.toFixed(1)}¢`
@@ -2107,11 +2089,7 @@ function TradesPositionsOrdersInner({
                         void handleSellAtBid(p);
                       }}
                     >
-                      {isBucketParent && p.bidValueUsd != null
-                        ? `$${p.bidValueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : hasBid
-                          ? `${p.currentPrice.toFixed(1)}¢`
-                          : '-'}
+                      {hasBid ? `${p.currentPrice.toFixed(1)}¢` : '-'}
                     </td>
                     <td
                       className={`${nCls} text-right text-red-300/90 ${
@@ -2124,8 +2102,8 @@ function TradesPositionsOrdersInner({
                       }`}
                       title={
                         isBucketParent
-                          ? p.askValueUsd != null
-                            ? `Sum of ask notionals $${p.askValueUsd.toFixed(2)}`
+                          ? p.askCents != null
+                            ? `Sum of asks ${p.askCents.toFixed(1)}¢`
                             : undefined
                           : p.askProb != null && p.askProb > 0
                             ? `Place sell @ ask ${(p.askProb * 100).toFixed(1)}¢`
@@ -2139,25 +2117,21 @@ function TradesPositionsOrdersInner({
                         void handleSellAtAsk(p);
                       }}
                     >
-                      {isBucketParent && p.askValueUsd != null
-                        ? `$${p.askValueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : p.askCents != null
-                          ? formatAskCentsSum(p.askCents)
-                          : formatQuoteCents(p.askProb)}
+                      {p.askCents != null ? formatAskCentsSum(p.askCents) : formatQuoteCents(p.askProb)}
                     </td>
                     <td
                       className={`${nCls} text-right ${
                         !isBucketParent ? 'cursor-pointer' : ''
                       } ${p.sellPrice == null && posSellEditTid !== normalizeClobTokenId(p.tid) ? 'text-gray-400' : ''}`}
                       style={
-                        p.sellPrice != null && posSellEditTid !== normalizeClobTokenId(p.tid)
+                        p.sellPrice != null && posSellEditTid !== normalizeClobTokenId(p.tid) && !p.bucketCentsSum
                           ? positionSellPriceColorStyle(p.currentPrice, p.sellPrice)
                           : undefined
                       }
                       title={
                         isBucketParent
-                          ? p.sellValueUsd != null
-                            ? `Sum of sell notionals $${p.sellValueUsd.toFixed(2)}`
+                          ? p.sellPrice != null
+                            ? `Sum of sell limits ${p.sellPrice.toFixed(1)}¢`
                             : undefined
                           : 'Click to set sell price (¢)'
                       }
@@ -2193,8 +2167,6 @@ function TradesPositionsOrdersInner({
                           disabled={posOrderBusyTids.has(normalizeClobTokenId(p.tid))}
                           aria-label="Sell price cents"
                         />
-                      ) : isBucketParent && p.sellValueUsd != null ? (
-                        `$${p.sellValueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                       ) : p.sellPrice != null ? (
                         `${p.sellPrice.toFixed(1)}¢`
                       ) : (

@@ -82,15 +82,23 @@ function zonedPartsAt(ms: number, timeZone: string): ZonedParts {
   return { year: n('year'), month: n('month'), day: n('day'), hour, minute: n('minute'), second: n('second') };
 }
 
-/** UTC epoch ms for local midnight on a calendar day in the given IANA timezone. */
+/**
+ * UTC epoch ms for local midnight on a calendar day in the given IANA timezone.
+ *
+ * Day delta must use real calendar days (Date.UTC), not fixed 30-day months.
+ * The previous (year*525600 + month*43200 + day*1440) approx made 31-day months
+ * cancel when targeting the 1st of the next month (e.g. Jul 31 → Aug 1 landed on
+ * Jul 31 00:00 local), so end-of-month weather markets showed "Expired" all day.
+ */
 export function zonedLocalMidnightUtcMs(year: number, month: number, day: number, timeZone: string): number {
-  let utcMs = Date.UTC(year, month - 1, day, 0, 0, 0);
+  // Noon UTC is a safer first guess than midnight (avoids previous-day local parts).
+  let utcMs = Date.UTC(year, month - 1, day, 12, 0, 0);
   for (let i = 0; i < 4; i++) {
     const p = zonedPartsAt(utcMs, timeZone);
+    const targetDayNum = Date.UTC(year, month - 1, day) / 86_400_000;
+    const actualDayNum = Date.UTC(p.year, p.month - 1, p.day) / 86_400_000;
     const deltaMin =
-      (year - p.year) * 525600 +
-      (month - p.month) * 43200 +
-      (day - p.day) * 1440 -
+      (targetDayNum - actualDayNum) * 1440 -
       p.hour * 60 -
       p.minute -
       Math.round(p.second / 60);

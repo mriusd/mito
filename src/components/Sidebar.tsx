@@ -1270,16 +1270,20 @@ export const Sidebar = memo(function Sidebar() {
       return;
     }
     let cancelled = false;
-    (async () => {
-      try {
-        const row = await fetchMarketStakedLegs(mid);
-        if (!cancelled) setMarketStakedLegs(row);
-      } catch {
-        if (!cancelled) setMarketStakedLegs(null);
-      }
-    })();
+    // Debounce: rapid hops only fetch for the market the user settles on.
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const row = await fetchMarketStakedLegs(mid);
+          if (!cancelled) setMarketStakedLegs(row);
+        } catch {
+          if (!cancelled) setMarketStakedLegs(null);
+        }
+      })();
+    }, 140);
     return () => {
       cancelled = true;
+      window.clearTimeout(t);
     };
   }, [selectedMarket?.conditionId, selectedMarket?.id]);
   const sidebarStakedLiveRow = useThrottledBidAskMarketRow(selectedMarket?.clobTokenIds?.[0] ?? '');
@@ -3847,8 +3851,9 @@ export const Sidebar = memo(function Sidebar() {
           </div>
 
           {/* Live Orderbook + Trades */}
+          {/* No remount key — usePolymarketOB already reconnects on token change.
+              Remounting here tore down 2 WS + 4 fetches per click and froze the UI. */}
           <SidebarPolymarketOBHost
-            key={`${selectedMarket?.id ?? ''}-${selectedMarket?.clobTokenIds?.[0] ?? ''}-${selectedMarket?.clobTokenIds?.[1] ?? ''}`}
             obTokenId={obTokenId}
             sidebarBookRef={sidebarBookRef}
             orderbookSectionHeight={orderbookSectionHeight}

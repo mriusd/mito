@@ -228,27 +228,30 @@ function App() {
     });
   }, [setSelectedMarket]);
 
-  // selected market -> URL sync
+  // selected market -> URL sync (debounced — rapid hops don't spam history API)
   useEffect(() => {
-    const url = new URL(window.location.href);
-    const params = url.searchParams;
-    const desiredMarket = selectedMarketId;
-    const desiredSide = sidebarOutcome.toLowerCase();
+    const t = window.setTimeout(() => {
+      const url = new URL(window.location.href);
+      const params = url.searchParams;
+      const desiredMarket = selectedMarketId;
+      const desiredSide = sidebarOutcome.toLowerCase();
 
-    if (!desiredMarket) {
-      if (!params.has('market') && !params.has('side')) return;
-      params.delete('market');
-      params.delete('side');
-    } else {
-      const curMarket = params.get('market') || '';
-      const curSide = (params.get('side') || '').toLowerCase();
-      if (curMarket === desiredMarket && curSide === desiredSide) return;
-      params.set('market', desiredMarket);
-      params.set('side', desiredSide);
-    }
+      if (!desiredMarket) {
+        if (!params.has('market') && !params.has('side')) return;
+        params.delete('market');
+        params.delete('side');
+      } else {
+        const curMarket = params.get('market') || '';
+        const curSide = (params.get('side') || '').toLowerCase();
+        if (curMarket === desiredMarket && curSide === desiredSide) return;
+        params.set('market', desiredMarket);
+        params.set('side', desiredSide);
+      }
 
-    const next = `${url.pathname}${params.toString() ? `?${params.toString()}` : ''}${url.hash}`;
-    window.history.replaceState(null, '', next);
+      const next = `${url.pathname}${params.toString() ? `?${params.toString()}` : ''}${url.hash}`;
+      window.history.replaceState(null, '', next);
+    }, 200);
+    return () => window.clearTimeout(t);
   }, [selectedMarketId, sidebarOutcome]);
 
   // Arrow keys / WASD: move selection to adjacent grid cell.

@@ -356,28 +356,32 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
   }, [cleanup, resetLocalBook, publishBook]);
 
   useEffect(() => {
-    tokenIdRef.current = tokenId;
+    // Tear down previous book immediately so rapid market hops don't stack WS/fetches.
+    cleanup();
+    cancelRaf(bookRafSlot);
+    cancelRaf(tradesRafSlot);
+    resetLocalBook();
+    setBook({ bids: [], asks: [] });
+    setTrades([]);
+    setBidUsdTotal(0);
+    setAskUsdTotal(0);
 
     if (!tokenId) {
-      cleanup();
-      resetLocalBook();
+      tokenIdRef.current = null;
       setLoading(false);
-      cancelRaf(bookRafSlot);
-      cancelRaf(tradesRafSlot);
-      setBook({ bids: [], asks: [] });
-      setTrades([]);
-      setBidUsdTotal(0);
-      setAskUsdTotal(0);
       return;
     }
 
-    cancelRaf(bookRafSlot);
-    cancelRaf(tradesRafSlot);
-    setBook({ bids: [], asks: [] });
     setLoading(true);
-    connect();
+    // Debounce connect: free-firing token switches only open one WS for the last token.
+    const tid = tokenId;
+    const connectTimer = window.setTimeout(() => {
+      tokenIdRef.current = tid;
+      connect();
+    }, 120);
 
     return () => {
+      window.clearTimeout(connectTimer);
       cleanup();
     };
   }, [tokenId, connect, cleanup, resetLocalBook]);

@@ -13,6 +13,70 @@ import {
 } from '../lib/marketDataDedupe';
 import { GRID_WIDTH_SUBDIV } from '../lib/defaultLayouts';
 
+/** Quiet window after the last click before applying intermediate markets (ms). */
+const SELECTED_MARKET_COALESCE_MS = 140;
+
+let selectedMarketCoalesceTimer: ReturnType<typeof setTimeout> | null = null;
+let selectedMarketCoalescePending: Market | null | undefined = undefined;
+
+function marketsSameSelection(a: Market | null | undefined, b: Market | null | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.conditionId === b.conditionId &&
+    a.priceToBeat === b.priceToBeat &&
+    a.bestBid === b.bestBid &&
+    a.bestAsk === b.bestAsk &&
+    a.endDate === b.endDate &&
+    a.question === b.question &&
+    (a.clobTokenIds || []).join('\0') === (b.clobTokenIds || []).join('\0')
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- set fn typed loosely; AppState is declared below
+type ZustandSet = (...args: any[]) => void;
+
+function commitSelectedMarket(set: ZustandSet, m: Market | null) {
+  startTransition(() => {
+    set((s: { selectedMarket: Market | null }) => {
+      if (marketsSameSelection(s.selectedMarket, m)) return {};
+      return { selectedMarket: m };
+    });
+  });
+}
+
+/**
+ * Leading + trailing selection: apply first click immediately; while the user keeps
+ * hopping markets, only the last one after SELECTED_MARKET_COALESCE_MS quiet applies.
+ * Prevents N full sidebar/OB/chart teardown storms from free-firing clicks.
+ */
+function applySelectedMarketLeadingTrailing(m: Market | null, set: ZustandSet) {
+  if (selectedMarketCoalesceTimer == null) {
+    commitSelectedMarket(set, m);
+    selectedMarketCoalescePending = undefined;
+    selectedMarketCoalesceTimer = setTimeout(() => {
+      selectedMarketCoalesceTimer = null;
+      if (selectedMarketCoalescePending !== undefined) {
+        const pending = selectedMarketCoalescePending;
+        selectedMarketCoalescePending = undefined;
+        commitSelectedMarket(set, pending);
+      }
+    }, SELECTED_MARKET_COALESCE_MS);
+    return;
+  }
+  selectedMarketCoalescePending = m;
+  clearTimeout(selectedMarketCoalesceTimer);
+  selectedMarketCoalesceTimer = setTimeout(() => {
+    selectedMarketCoalesceTimer = null;
+    if (selectedMarketCoalescePending !== undefined) {
+      const pending = selectedMarketCoalescePending;
+      selectedMarketCoalescePending = undefined;
+      commitSelectedMarket(set, pending);
+    }
+  }, SELECTED_MARKET_COALESCE_MS);
+}
+
 interface PriceData {
   price: number;
 }
@@ -650,29 +714,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   setProgArbs: (a) => set({ progArbs: a }),
   setSidebarOpen: (v) => set({ sidebarOpen: v }),
   setSelectedMarket: (m) => {
-    // Transition keeps hover/scroll paints responsive while sidebar + panels
-    // recompute for the new market (prod felt multi-second without this).
-    startTransition(() => {
-      set((s) => {
-        const prev = s.selectedMarket;
-        if (prev === m) return s;
-        if (
-          prev &&
-          m &&
-          prev.id === m.id &&
-          prev.conditionId === m.conditionId &&
-          prev.priceToBeat === m.priceToBeat &&
-          prev.bestBid === m.bestBid &&
-          prev.bestAsk === m.bestAsk &&
-          prev.endDate === m.endDate &&
-          prev.question === m.question &&
-          (prev.clobTokenIds || []).join('\0') === (m.clobTokenIds || []).join('\0')
-        ) {
-          return s;
-        }
-        return { selectedMarket: m };
-      });
-    });
+    // Rapid market hopping used to queue one full sidebar/OB/chart teardown per click
+    // and freeze the main thread (hover + scroll dead). Leading apply = snappy first
+    // click; trailing coalesce = only the last market in a burst after quiet period.
+    applySelectedMarketLeadingTrailing(m, set);
   },
   setSidebarOutcome: (v) => set({ sidebarOutcome: v }),
   setProgDialogOpen: (v) => set({ progDialogOpen: v }),

@@ -1,4 +1,8 @@
-/** Amplitude + session replay — production only (skipped in dev). */
+/**
+ * Amplitude analytics only — production builds (`import.meta.env.PROD`).
+ * Session Replay is intentionally disabled (main-thread DOM recording made
+ * prod UI laggy vs local vite dev).
+ */
 
 function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -17,17 +21,18 @@ export function initAmplitudeIfProd(): void {
   void (async () => {
     try {
       await loadScript('https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz');
-      await loadScript('https://cdn.amplitude.com/libs/plugin-session-replay-browser-1.8.0-min.js.gz');
       const w = window as Window & {
-        amplitude?: { add: (p: unknown) => void; init: (key: string, opts: Record<string, unknown>) => void };
-        sessionReplay?: { plugin: (o: { sampleRate: number }) => unknown };
+        amplitude?: { init: (key: string, opts: Record<string, unknown>) => void };
       };
-      if (w.amplitude?.add && w.amplitude?.init && w.sessionReplay?.plugin) {
-        w.amplitude.add(w.sessionReplay.plugin({ sampleRate: 1 }));
-        w.amplitude.init('f102288553e5548784ae8a31c758f23b', {
-          autocapture: { elementInteractions: true },
-        });
-      }
+      if (!w.amplitude?.init) return;
+
+      w.amplitude.init('f102288553e5548784ae8a31c758f23b', {
+        autocapture: {
+          elementInteractions: false,
+          pageViews: true,
+          sessions: true,
+        },
+      });
     } catch {
       /* non-fatal */
     }

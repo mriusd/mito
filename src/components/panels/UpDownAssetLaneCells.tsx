@@ -273,7 +273,7 @@ const UpDownFutureQuoteCell = memo(function UpDownFutureQuoteCell({
   return (
     <td
       data-market-id={nextMarket.id}
-      className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap relative cursor-pointer hover:brightness-125 align-middle ${isNextSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+      className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 bg-gray-900/30 text-[10px] whitespace-nowrap relative cursor-pointer hover:bg-white/[0.06] align-middle ${isNextSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
       style={env}
       onClick={() => onCellClick(nextMarket)}
       title={`Next market +${slotIdx + 1} in this lane`}
@@ -494,7 +494,7 @@ function UpDownAssetLaneCellsInner({
     <td
       key={asset}
       data-market-id={market.id}
-      className={`market-cell px-0.5 py-1 text-center whitespace-nowrap border-l border-r border-solid border-gray-700 relative cursor-pointer hover:brightness-125 align-middle ${isSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
+      className={`market-cell px-0.5 py-1 text-center whitespace-nowrap border-l border-r border-solid border-gray-700 relative cursor-pointer hover:bg-white/[0.06] align-middle ${isSelected ? 'selected ring-2 ring-blue-500 ring-inset z-10' : ''} ${isLastTfRow ? 'border-b' : 'border-b border-gray-700/50'}`}
       style={{
         minWidth: 60,
         ...assetBorderStyle(asset, showTarget ? { B: isLastTfRow } : { L: true, B: isLastTfRow }),

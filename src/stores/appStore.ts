@@ -1,3 +1,4 @@
+import { startTransition } from 'react';
 import { create } from 'zustand';
 import type { AssetSymbol, Market, Position, Order, Trade, PriceRange, PanelConfig, Signal, ArbOpportunity, ProgArb } from '../types';
 import { SYMBOLS } from '../types';
@@ -648,26 +649,31 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSignals: (next) => set((s) => (signalsEqual(next, s.signals) ? {} : { signals: next })),
   setProgArbs: (a) => set({ progArbs: a }),
   setSidebarOpen: (v) => set({ sidebarOpen: v }),
-  setSelectedMarket: (m) =>
-    set((s) => {
-      const prev = s.selectedMarket;
-      if (prev === m) return s;
-      if (
-        prev &&
-        m &&
-        prev.id === m.id &&
-        prev.conditionId === m.conditionId &&
-        prev.priceToBeat === m.priceToBeat &&
-        prev.bestBid === m.bestBid &&
-        prev.bestAsk === m.bestAsk &&
-        prev.endDate === m.endDate &&
-        prev.question === m.question &&
-        (prev.clobTokenIds || []).join('\0') === (m.clobTokenIds || []).join('\0')
-      ) {
-        return s;
-      }
-      return { selectedMarket: m };
-    }),
+  setSelectedMarket: (m) => {
+    // Transition keeps hover/scroll paints responsive while sidebar + panels
+    // recompute for the new market (prod felt multi-second without this).
+    startTransition(() => {
+      set((s) => {
+        const prev = s.selectedMarket;
+        if (prev === m) return s;
+        if (
+          prev &&
+          m &&
+          prev.id === m.id &&
+          prev.conditionId === m.conditionId &&
+          prev.priceToBeat === m.priceToBeat &&
+          prev.bestBid === m.bestBid &&
+          prev.bestAsk === m.bestAsk &&
+          prev.endDate === m.endDate &&
+          prev.question === m.question &&
+          (prev.clobTokenIds || []).join('\0') === (m.clobTokenIds || []).join('\0')
+        ) {
+          return s;
+        }
+        return { selectedMarket: m };
+      });
+    });
+  },
   setSidebarOutcome: (v) => set({ sidebarOutcome: v }),
   setProgDialogOpen: (v) => set({ progDialogOpen: v }),
   setProgDialogData: (v) => set({ progDialogData: v }),

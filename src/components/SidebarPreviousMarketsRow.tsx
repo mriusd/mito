@@ -356,7 +356,12 @@ function squareToSelectedMarket(
 
 function SidebarPreviousMarketsRowInner({ selectedMarket }: { selectedMarket: Market }) {
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
-  const marketLookup = useAppStore((s) => s.marketLookup);
+  // Epoch snapshot — do not subscribe to marketLookup identity (bid/ask flush replaces it ~2s).
+  const marketLookupEpoch = useAppStore((s) => s.marketLookupEpoch);
+  const marketLookup = useMemo(
+    () => useAppStore.getState().marketLookup,
+    [marketLookupEpoch],
+  );
   const upOrDownMarkets = useAppStore((s) => s.upOrDownMarkets);
 
   const asset = extractAssetFromMarket(selectedMarket);

@@ -255,6 +255,8 @@ function flushPendingBidAskToStore() {
         bumped = true;
       }
       if (!bumped) return {};
+      // Intentionally do NOT bump marketLookupEpoch — live grids use pending/patch
+      // listeners; epoch bump would re-render every snapshot consumer every flush.
       return { marketLookup: merged };
     });
     notifyBidAskMarketLookupGridFlushListeners();

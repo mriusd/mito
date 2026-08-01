@@ -208,7 +208,7 @@ const UpDownHudCurrentLaneBlock = memo(function UpDownHudCurrentLaneBlock({
         </div>
       </td>
       <td
-        className={`px-0.5 py-1 text-center whitespace-nowrap border-l border-r border-solid border-gray-700 relative cursor-pointer hover:brightness-125 border-b border-gray-700/50 ${
+        className={`px-0.5 py-1 text-center whitespace-nowrap border-l border-r border-solid border-gray-700 relative cursor-pointer hover:bg-white/[0.06] border-b border-gray-700/50 ${
           selectedMarketId === current?.id ? 'bg-purple-600/35 z-10' : ''
         }`}
       >
@@ -512,7 +512,7 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
                     onOpenMarket={openMarket}
                   />
                   <td
-                    className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 text-[10px] whitespace-nowrap cursor-pointer hover:brightness-125 relative border-b border-gray-700/50 ${
+                    className={`px-1 py-1 text-center border-l border-r border-solid border-gray-700 text-[10px] whitespace-nowrap cursor-pointer hover:bg-white/[0.06] relative border-b border-gray-700/50 ${
                       selectedMarket?.id === next?.id ? 'bg-purple-600/35 z-10' : 'bg-gray-900/30'
                     }`}
                   >

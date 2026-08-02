@@ -169,7 +169,59 @@ function parseDateYmd(date: string): string {
 export type WeatherObsFetchOptions = {
   /** Past forecast lines — heavy; load after chart paints. */
   history?: boolean;
+  /** Skip module cache (force network). */
+  bypassCache?: boolean;
 };
+
+/** In-memory obs cache — survives market hops so Temp Odds chart paints instantly. */
+const OBS_CACHE = new Map<string, { at: number; data: WeatherObservationsResponse }>();
+const OBS_CACHE_MAX = 48;
+/** Fresh enough to paint without waiting on network (still revalidates in background). */
+const OBS_CACHE_FRESH_MS = 45_000;
+const OBS_INFLIGHT = new Map<string, Promise<WeatherObservationsResponse>>();
+
+function obsCacheKey(city: string, dateParam: string, history: boolean): string {
+  return `${city}|${dateParam}|h${history ? 1 : 0}`;
+}
+
+function obsCacheSet(key: string, data: WeatherObservationsResponse): void {
+  OBS_CACHE.set(key, { at: Date.now(), data });
+  if (OBS_CACHE.size > OBS_CACHE_MAX) {
+    const first = OBS_CACHE.keys().next().value;
+    if (first != null) OBS_CACHE.delete(first);
+  }
+}
+
+/** Synchronous cache read for stale-while-revalidate UI (null if never fetched). */
+export function peekWeatherObservations(
+  city: WeatherCitySlug,
+  date: string,
+  options?: WeatherObsFetchOptions,
+): WeatherObservationsResponse | null {
+  try {
+    const dateParam = parseDateYmd(date);
+    const key = obsCacheKey(city, dateParam, Boolean(options?.history));
+    return OBS_CACHE.get(key)?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function isWeatherObservationsCacheFresh(
+  city: WeatherCitySlug,
+  date: string,
+  options?: WeatherObsFetchOptions,
+  maxAgeMs = OBS_CACHE_FRESH_MS,
+): boolean {
+  try {
+    const dateParam = parseDateYmd(date);
+    const key = obsCacheKey(city, dateParam, Boolean(options?.history));
+    const hit = OBS_CACHE.get(key);
+    return !!hit && Date.now() - hit.at <= maxAgeMs;
+  } catch {
+    return false;
+  }
+}
 
 export async function fetchWeatherObservations(
   city: WeatherCitySlug,
@@ -177,16 +229,50 @@ export async function fetchWeatherObservations(
   options?: WeatherObsFetchOptions,
 ): Promise<WeatherObservationsResponse> {
   const dateParam = parseDateYmd(date);
-  const qs = new URLSearchParams({ date: dateParam });
-  if (options?.history) qs.set('history', '1');
-  const resp = await fetchBackend(
-    `${API_BASE}/api/weather-observations/${encodeURIComponent(city)}?${qs.toString()}`,
-  );
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(text || `weather observations ${resp.status}`);
+  const history = Boolean(options?.history);
+  const key = obsCacheKey(city, dateParam, history);
+
+  if (!options?.bypassCache) {
+    const hit = OBS_CACHE.get(key);
+    if (hit && Date.now() - hit.at <= OBS_CACHE_FRESH_MS) {
+      return hit.data;
+    }
   }
-  return resp.json();
+
+  const inflight = OBS_INFLIGHT.get(key);
+  if (inflight) return inflight;
+
+  const qs = new URLSearchParams({ date: dateParam });
+  if (history) qs.set('history', '1');
+  const p = (async () => {
+    const resp = await fetchBackend(
+      `${API_BASE}/api/weather-observations/${encodeURIComponent(city)}?${qs.toString()}`,
+      undefined,
+      { timeoutMs: 20_000 },
+    );
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(text || `weather observations ${resp.status}`);
+    }
+    const data = (await resp.json()) as WeatherObservationsResponse;
+    obsCacheSet(key, data);
+    // history payload also upgrades the non-history cache entry when present
+    if (history && data.points?.length) {
+      const lightKey = obsCacheKey(city, dateParam, false);
+      const light = OBS_CACHE.get(lightKey)?.data;
+      if (light) {
+        obsCacheSet(lightKey, { ...light, forecastHistory: data.forecastHistory });
+      }
+    }
+    return data;
+  })();
+
+  OBS_INFLIGHT.set(key, p);
+  try {
+    return await p;
+  } finally {
+    OBS_INFLIGHT.delete(key);
+  }
 }
 
 export async function fetchWeatherForecastSummary(

@@ -1409,16 +1409,72 @@ export interface WeatherProbabilitiesPayload {
   by_source?: Partial<Record<WeatherForecastSourceId | string, WeatherProbabilitiesPayload>>;
 }
 
+/** Module cache — Temp Odds model bars paint instantly when hopping markets/dates. */
+const WEATHER_PROB_CACHE = new Map<string, { at: number; data: WeatherProbabilitiesPayload | null }>();
+const WEATHER_PROB_CACHE_MAX = 48;
+const WEATHER_PROB_FRESH_MS = 60_000;
+const WEATHER_PROB_INFLIGHT = new Map<string, Promise<WeatherProbabilitiesPayload | null>>();
+
+function weatherProbCacheKey(city: string, date: string): string {
+  return `${city.trim().toLowerCase()}|${date.replace(/-/g, '')}`;
+}
+
+export function peekWeatherProbabilities(
+  city: string,
+  date: string,
+): WeatherProbabilitiesPayload | null | undefined {
+  const hit = WEATHER_PROB_CACHE.get(weatherProbCacheKey(city, date));
+  return hit ? hit.data : undefined;
+}
+
+export function isWeatherProbabilitiesCacheFresh(city: string, date: string, maxAgeMs = WEATHER_PROB_FRESH_MS): boolean {
+  const hit = WEATHER_PROB_CACHE.get(weatherProbCacheKey(city, date));
+  return !!hit && Date.now() - hit.at <= maxAgeMs;
+}
+
 export async function fetchWeatherProbabilities(
   city: string,
   date: string,
+  opts?: { bypassCache?: boolean },
 ): Promise<WeatherProbabilitiesPayload | null> {
-  const resp = await fetch(
-    `${BASE}/api/weather-probabilities/${encodeURIComponent(city)}?date=${encodeURIComponent(date)}`,
-  );
-  if (resp.status === 404) return null;
-  if (!resp.ok) throw new Error(`weather probabilities ${resp.status}`);
-  return resp.json();
+  const key = weatherProbCacheKey(city, date);
+
+  if (!opts?.bypassCache) {
+    const hit = WEATHER_PROB_CACHE.get(key);
+    if (hit && Date.now() - hit.at <= WEATHER_PROB_FRESH_MS) {
+      return hit.data;
+    }
+  }
+
+  const inflight = WEATHER_PROB_INFLIGHT.get(key);
+  if (inflight) return inflight;
+
+  const p = (async () => {
+    const resp = await fetchBackend(
+      `${BASE}/api/weather-probabilities/${encodeURIComponent(city)}?date=${encodeURIComponent(date)}`,
+      undefined,
+      { timeoutMs: 20_000 },
+    );
+    if (resp.status === 404) {
+      WEATHER_PROB_CACHE.set(key, { at: Date.now(), data: null });
+      return null;
+    }
+    if (!resp.ok) throw new Error(`weather probabilities ${resp.status}`);
+    const data = (await resp.json()) as WeatherProbabilitiesPayload;
+    WEATHER_PROB_CACHE.set(key, { at: Date.now(), data });
+    if (WEATHER_PROB_CACHE.size > WEATHER_PROB_CACHE_MAX) {
+      const first = WEATHER_PROB_CACHE.keys().next().value;
+      if (first != null) WEATHER_PROB_CACHE.delete(first);
+    }
+    return data;
+  })();
+
+  WEATHER_PROB_INFLIGHT.set(key, p);
+  try {
+    return await p;
+  } finally {
+    WEATHER_PROB_INFLIGHT.delete(key);
+  }
 }
 
 export async function postWeatherProbabilities(city: string, payload: WeatherProbabilitiesPayload): Promise<void> {

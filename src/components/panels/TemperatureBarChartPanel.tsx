@@ -40,6 +40,8 @@ import {
   fetchMarketsStakedLegs,
   fetchOrderbook,
   fetchWeatherProbabilities,
+  isWeatherProbabilitiesCacheFresh,
+  peekWeatherProbabilities,
   placeOrder,
   type WeatherForecastSourceId,
   type WeatherProbabilitiesPayload,
@@ -52,7 +54,9 @@ import {
   fetchWeatherObservations,
   floorDisplayTemp,
   isWeatherDateTodayInTimezone,
+  isWeatherObservationsCacheFresh,
   obsTempToCelsius,
+  peekWeatherObservations,
   weatherHighlightHighC,
   weatherHighlightLowC,
   weatherObsWithForecastSource,
@@ -1923,10 +1927,28 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     [city, selectedDateCol],
   );
 
+  // Stale-while-revalidate: hydrate model bars from module cache immediately.
+  // Never blank the chart while the network round-trip is in flight (prod felt slow vs local).
   useEffect(() => {
-    setModelPayload(null);
-    setModelPayloadKey('');
-    setModelFetchedAtMs(0);
+    if (!modelContextKey) {
+      setModelPayload(null);
+      setModelPayloadKey('');
+      setModelFetchedAtMs(0);
+      return;
+    }
+    const sep = modelContextKey.indexOf('\0');
+    const fetchCity = modelContextKey.slice(0, sep);
+    const date = modelContextKey.slice(sep + 1);
+    const cached = peekWeatherProbabilities(fetchCity, date);
+    if (cached !== undefined) {
+      setModelPayload(cached);
+      setModelPayloadKey(cached ? modelContextKey : '');
+      setModelFetchedAtMs(cached ? Date.now() : 0);
+    } else {
+      setModelPayload(null);
+      setModelPayloadKey('');
+      setModelFetchedAtMs(0);
+    }
   }, [modelContextKey]);
 
   const predictionUpdatedMs = useMemo(() => {
@@ -2104,7 +2126,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     ? `METAR ${cityMeta.icao} (live)`
     : 'METAR';
 
-  const refreshModelProbabilities = useCallback(async () => {
+  const refreshModelProbabilities = useCallback(async (opts?: { bypassCache?: boolean }) => {
     const ctx = modelContextKey;
     if (!ctx) {
       setModelPayload(null);
@@ -2121,10 +2143,22 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
       setModelFetchedAtMs(0);
       return;
     }
+    // Instant paint from cache; skip network spinner when fresh.
+    const cached = peekWeatherProbabilities(fetchCity, date);
+    if (cached !== undefined && !opts?.bypassCache) {
+      setModelPayload(cached);
+      setModelPayloadKey(cached ? ctx : '');
+      setModelFetchedAtMs(cached ? Date.now() : 0);
+      if (isWeatherProbabilitiesCacheFresh(fetchCity, date) && !opts?.bypassCache) {
+        return;
+      }
+    }
     const gen = ++modelFetchGenRef.current;
     setModelRefreshing(true);
     try {
-      const payload = await fetchWeatherProbabilities(fetchCity, date);
+      const payload = await fetchWeatherProbabilities(fetchCity, date, {
+        bypassCache: opts?.bypassCache,
+      });
       if (modelFetchGenRef.current !== gen) return;
       setModelPayload(payload);
       setModelPayloadKey(payload ? ctx : '');
@@ -2132,9 +2166,12 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     } catch (err) {
       if (modelFetchGenRef.current !== gen) return;
       console.error('[weather-probabilities]', err);
-      setModelPayload(null);
-      setModelPayloadKey('');
-      setModelFetchedAtMs(0);
+      // Keep last good paint if we already showed cache
+      if (cached === undefined) {
+        setModelPayload(null);
+        setModelPayloadKey('');
+        setModelFetchedAtMs(0);
+      }
     } finally {
       if (modelFetchGenRef.current === gen) setModelRefreshing(false);
     }
@@ -2152,9 +2189,20 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     let cancelled = false;
     const gen = ++obsFetchGenRef.current;
 
-    const load = (opts?: { history?: boolean; silent?: boolean }) => {
-      if (!opts?.silent) setObsLoading(true);
-      void fetchWeatherObservations(city, selectedObsDate, { history: opts?.history })
+    // Paint cached forecast/obs immediately (same city/date market hops feel instant).
+    const cachedLight = peekWeatherObservations(city, selectedObsDate);
+    if (cachedLight) {
+      setObsData(cachedLight);
+      setObsLoading(false);
+    }
+
+    const load = (opts?: { history?: boolean; silent?: boolean; bypassCache?: boolean }) => {
+      const hasPaint = Boolean(peekWeatherObservations(city, selectedObsDate) || cachedLight);
+      if (!opts?.silent && !opts?.history && !hasPaint) setObsLoading(true);
+      void fetchWeatherObservations(city, selectedObsDate, {
+        history: opts?.history,
+        bypassCache: opts?.bypassCache,
+      })
         .then((resp) => {
           if (cancelled || obsFetchGenRef.current !== gen) return;
           if (opts?.history) {
@@ -2167,7 +2215,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           if (cancelled || obsFetchGenRef.current !== gen) return;
           if (!opts?.history) {
             console.error('[weather-observations]', e);
-            setObsData(null);
+            if (!hasPaint) setObsData(null);
           }
         })
         .finally(() => {
@@ -2177,15 +2225,27 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
         });
     };
 
-    load();
-    void fetchWeatherObservations(city, selectedObsDate, { history: true })
-      .then((resp) => {
-        if (cancelled || obsFetchGenRef.current !== gen) return;
-        setObsData((prev) => (prev ? { ...prev, forecastHistory: resp.forecastHistory } : resp));
-      })
-      .catch(() => {});
+    const lightFresh = isWeatherObservationsCacheFresh(city, selectedObsDate);
+    if (!lightFresh) load();
+    else {
+      // Soft revalidate in background so today stays current without blanking UI.
+      load({ silent: true });
+    }
+    // History is heavy — only if we don't already have it on the light entry.
+    const needHistory = !peekWeatherObservations(city, selectedObsDate)?.forecastHistory?.length
+      && !peekWeatherObservations(city, selectedObsDate, { history: true });
+    if (needHistory) {
+      void fetchWeatherObservations(city, selectedObsDate, { history: true })
+        .then((resp) => {
+          if (cancelled || obsFetchGenRef.current !== gen) return;
+          setObsData((prev) => (prev ? { ...prev, forecastHistory: resp.forecastHistory } : resp));
+        })
+        .catch(() => {});
+    }
     const pollMs = isWeatherDateTodayInTimezone(selectedObsDate, cityMeta.timezone) ? 60_000 : 0;
-    const pollId = pollMs > 0 ? window.setInterval(() => load({ silent: true }), pollMs) : undefined;
+    const pollId = pollMs > 0
+      ? window.setInterval(() => load({ silent: true, bypassCache: true }), pollMs)
+      : undefined;
     return () => {
       cancelled = true;
       if (pollId != null) window.clearInterval(pollId);
@@ -2512,7 +2572,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           </button>
           <button
             type="button"
-            onClick={() => void refreshModelProbabilities()}
+            onClick={() => void refreshModelProbabilities({ bypassCache: true })}
             disabled={modelRefreshing || !selectedDateCol}
             className="no-drag inline-flex items-center justify-center rounded border border-gray-700 bg-gray-800/80 p-0.5 text-gray-400 hover:bg-gray-700 hover:text-gray-200 disabled:opacity-40"
             title="Refresh predictions"

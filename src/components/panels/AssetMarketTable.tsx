@@ -228,7 +228,18 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
   const orders = useThrottledGridOrders(2000);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
+  // Urgent key for instant ring (may be conditionId); also gamma id when full market lands.
+  const selectedMarketKey = useAppStore((s) => s.selectedMarketKey);
   const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
+  const isMarketSelected = useCallback(
+    (m: { id?: string; conditionId?: string } | null | undefined) => {
+      if (!m) return false;
+      if (selectedMarketId && m.id === selectedMarketId) return true;
+      if (!selectedMarketKey) return false;
+      return m.id === selectedMarketKey || (m.conditionId || '') === selectedMarketKey;
+    },
+    [selectedMarketId, selectedMarketKey],
+  );
   const signalsOnGrid = useAppStore((s) => s.signalsOnGrid);
   const signals = useGridSignals();
   const signalMakerMode = useAppStore((s) => s.signalMakerMode);
@@ -540,7 +551,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       signalsOnGrid={signalsOnGrid}
                       yesDiff={sig?.yesDiff}
                       noDiff={sig?.noDiff}
-                      isSelected={selectedMarketId === market.id}
+                      isSelected={isMarketSelected(market)}
                       adjVol={adjVol}
                       bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}
@@ -663,7 +674,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       variant="updown"
                       minWidth={60}
                       signalsOnGrid={false}
-                      isSelected={selectedMarketId === market.id}
+                      isSelected={isMarketSelected(market)}
                       adjVol={adjVol}
                       bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}
@@ -788,7 +799,7 @@ function AssetMarketTableInner({ asset: initialAsset, panelId }: AssetMarketTabl
                       signalsOnGrid={!hlGridMode && signalsOnGrid}
                       yesDiff={sig?.yesDiff}
                       noDiff={sig?.noDiff}
-                      isSelected={selectedMarketId === market.id}
+                      isSelected={isMarketSelected(market)}
                       adjVol={adjVol}
                       bsTimeOffsetHours={bsTimeOffsetHours}
                       yesPosSize={yesPos?.size}

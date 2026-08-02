@@ -269,7 +269,9 @@ const UpDownFutureQuoteCell = memo(function UpDownFutureQuoteCell({
     : { yesHi: false, noHi: false };
   const nextHiPillBase =
     'inline-flex min-h-[1.125rem] items-center justify-center rounded border px-0.5 text-[10px] font-extrabold tabular-nums text-white shrink-0';
-  const isNextSelected = selectedMarketId === nextMarket.id;
+  const isNextSelected =
+    !!selectedMarketId &&
+    (selectedMarketId === nextMarket.id || selectedMarketId === (nextMarket.conditionId || ''));
   return (
     <td
       data-market-id={nextMarket.id}
@@ -438,7 +440,9 @@ function UpDownAssetLaneCellsInner({
   });
   const yesMidStr = yesBid != null ? (yesBid * 100).toFixed(1) : '-';
   const noProbStr = noBid != null ? (noBid * 100).toFixed(1) : '-';
-  const isSelected = selectedMarketId === market.id;
+  const isSelected =
+    !!selectedMarketId &&
+    (selectedMarketId === market.id || selectedMarketId === (market.conditionId || ''));
   const provenSMS = yesTokenId ? (bidAskLookup[yesTokenId]?.provenSMS ?? 0) : 0;
   const smartMoneyBarPct = Math.max(2, Math.min(98, 50 + provenSMS * 50));
   const concRaw =

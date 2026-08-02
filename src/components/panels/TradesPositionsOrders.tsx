@@ -526,7 +526,8 @@ function TradesPositionsOrdersInner({
   const pkRevision = useAppStore((s) => s.pkRevision);
   const { address, isConnected } = useAccount();
   const makerAddress = useTradingWalletAddress();
-  const selectedMarketId = useAppStore((s) => s.selectedMarket?.conditionId || s.selectedMarket?.id);
+  // Urgent key — paints row highlight this frame; full selectedMarket may lag in a transition.
+  const selectedMarketId = useAppStore((s) => s.selectedMarketKey || s.selectedMarket?.conditionId || s.selectedMarket?.id);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);

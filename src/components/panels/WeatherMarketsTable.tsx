@@ -182,7 +182,7 @@ function WeatherMarketsTableInner({ panelId, initialCity = 'nyc' }: WeatherMarke
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
-  const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
+  const selectedMarketId = useAppStore((s) => s.selectedMarketKey || s.selectedMarket?.id || '');
 
   useEffect(() => {
     if (showPast) return;

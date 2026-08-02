@@ -10,7 +10,6 @@ import { normalizeClobTokenId } from '../utils/format';
 import { TemperatureChart } from './TemperatureChart';
 import {
   weatherObsWithForecastSource,
-  type WeatherForecastSourceId,
   type WeatherTempUnit,
 } from '../lib/weatherObservations';
 
@@ -74,8 +73,8 @@ function WeatherBucketBars({
         <div className="flex items-end gap-0 divide-x divide-gray-500/80 overflow-visible" style={{ height: trackPx }}>
           {sorted.map((b) => {
             const mid = b.mid ?? b.bid ?? b.ask;
-            const omPx = fracToPx(b.modelProbOm ?? 0, maxPct, trackPx);
-            const wcPx = fracToPx(b.modelProbWc ?? 0, maxPct, trackPx);
+            const modelProb = b.modelProbOm ?? b.modelProb ?? null;
+            const omPx = fracToPx(modelProb ?? 0, maxPct, trackPx);
             const stkPx = fracToPx(b.stakedProb ?? 0, maxPct, trackPx);
             const relPx = fracToPx(b.stakedShare ?? 0, maxPct, trackPx);
             const bidPx = fracToPx(b.bid ?? 0, maxPct, trackPx);
@@ -90,8 +89,7 @@ function WeatherBucketBars({
                 }`}
                 title={[
                   b.temp,
-                  b.modelProbOm != null ? `OM ${(b.modelProbOm * 100).toFixed(1)}%` : null,
-                  b.modelProbWc != null ? `WC ${(b.modelProbWc * 100).toFixed(1)}%` : null,
+                  modelProb != null ? `OM ${(modelProb * 100).toFixed(1)}%` : null,
                   b.stakedProb != null ? `Stk ${(b.stakedProb * 100).toFixed(1)}%` : null,
                   b.stakedShare != null ? `Rel ${(b.stakedShare * 100).toFixed(1)}%` : null,
                   mid != null ? `mid ${(mid * 100).toFixed(1)}%` : null,
@@ -106,19 +104,8 @@ function WeatherBucketBars({
                       style={{ height: omPx }}
                     />
                   ) : null}
-                  {b.modelProbOm != null
-                    ? tipLabel(`${(b.modelProbOm * 100).toFixed(0)}`, omPx, 'text-amber-400/80')
-                    : null}
-                </div>
-                <div className="relative flex-1 min-w-0 h-full">
-                  {wcPx > 0 ? (
-                    <div
-                      className="absolute bottom-0 left-0 right-0 rounded-t-sm bg-sky-400/55"
-                      style={{ height: wcPx }}
-                    />
-                  ) : null}
-                  {b.modelProbWc != null
-                    ? tipLabel(`${(b.modelProbWc * 100).toFixed(0)}`, wcPx, 'text-sky-400/80')
+                  {modelProb != null
+                    ? tipLabel(`${(modelProb * 100).toFixed(0)}`, omPx, 'text-amber-400/80')
                     : null}
                 </div>
                 <div className="relative flex-1 min-w-0 h-full">
@@ -189,47 +176,9 @@ function WeatherBucketBars({
       </div>
       <div className="flex justify-between text-[8px] text-gray-500 px-0.5">
         <span className="text-amber-400/70">OM</span>
-        <span className="text-sky-400/70">WC</span>
         <span className="text-violet-400/70">Stk</span>
         <span className="text-fuchsia-400/70">Rel</span>
         <span className={marketLabelColor}>mkt</span>
-      </div>
-    </div>
-  );
-}
-
-function ForecastSourceChart({
-  obs,
-  unit,
-  source,
-  label,
-  forecastColor,
-}: {
-  obs: NonNullable<ReturnType<typeof candleWeatherToObservations>>;
-  unit: WeatherTempUnit;
-  source: WeatherForecastSourceId;
-  label: string;
-  forecastColor: string;
-}) {
-  const sourced = useMemo(() => weatherObsWithForecastSource(obs, source), [obs, source]);
-  const hasFc = Boolean(sourced.forecastPoints?.length);
-  return (
-    <div className="space-y-0.5">
-      <div
-        className={`text-[9px] font-bold uppercase tracking-wide ${
-          source === 'open-meteo' ? 'text-amber-400/80' : 'text-sky-400/80'
-        }`}
-      >
-        {label}
-        {!hasFc ? <span className="ml-1 font-normal normal-case text-gray-600">no fc</span> : null}
-      </div>
-      <div className="h-[120px] min-h-[120px] rounded border border-gray-700/80 overflow-hidden bg-gray-950/40">
-        <TemperatureChart
-          data={sourced}
-          unit={unit}
-          forecastColor={forecastColor}
-          hideOtherForecastOverlay
-        />
       </div>
     </div>
   );
@@ -246,28 +195,22 @@ export function ChartWeatherHoverPanel({ weather }: { weather: CandleWeatherSnap
 
   const obs = useMemo(() => candleWeatherToObservations(weather), [weather]);
   const unit: WeatherTempUnit = weather.unit === 'F' || weather.obsTempUnit === 'F' ? 'F' : 'C';
+  const chartObs = useMemo(
+    () => (obs ? weatherObsWithForecastSource(obs, 'open-meteo') : null),
+    [obs],
+  );
 
   const buckets = useMemo(() => {
     const raw = weather.market_buckets ?? [];
     const omMap =
       weather.probsBySource?.['open-meteo']?.bucket_probabilities_1c ??
-      (weather.forecastSource === 'open-meteo' || !weather.forecastSource
-        ? weather.probs?.bucket_probabilities_1c
-        : undefined);
-    const wcMap =
-      weather.probsBySource?.['weather-company']?.bucket_probabilities_1c ??
-      (weather.forecastSource === 'weather-company' ? weather.probs?.bucket_probabilities_1c : undefined);
+      weather.probs?.bucket_probabilities_1c;
     return raw.map((b) => {
       let modelProbOm = b.modelProbOm;
-      let modelProbWc = b.modelProbWc;
       if (modelProbOm == null) {
         modelProbOm = lookupModelBucketProb(omMap, b.temp);
       }
-      if (modelProbWc == null) {
-        modelProbWc = lookupModelBucketProb(wcMap, b.temp);
-      }
-      // Legacy single-model candles: mirror into OM if dual fields absent.
-      if (modelProbOm == null && modelProbWc == null && b.modelProb != null) {
+      if (modelProbOm == null && b.modelProb != null) {
         modelProbOm = b.modelProb;
       }
       const selected = weatherBucketMatchesSidebarToken(
@@ -275,20 +218,18 @@ export function ChartWeatherHoverPanel({ weather }: { weather: CandleWeatherSnap
         selectedTokenId,
         selectedMarket?.clobTokenIds,
       );
-      return { ...b, modelProbOm, modelProbWc, selected };
+      return { ...b, modelProbOm, modelProbWc: null, selected };
     });
   }, [
     weather.market_buckets,
     weather.probs,
     weather.probsBySource,
-    weather.forecastSource,
     selectedTokenId,
     selectedMarket?.clobTokenIds,
   ]);
 
   const title = `${weather.city} · ${weather.target_date} · ${weather.metric === 'low' ? 'low' : 'high'}`;
   const evOm = weather.probsBySource?.['open-meteo']?.expected_value_c ?? weather.probs?.expected_value_c;
-  const evWc = weather.probsBySource?.['weather-company']?.expected_value_c;
 
   return (
     <div className="mt-2 border-t border-gray-700 pt-2 space-y-2">
@@ -296,27 +237,20 @@ export function ChartWeatherHoverPanel({ weather }: { weather: CandleWeatherSnap
         <div className="text-[10px] font-medium text-gray-200 truncate">{title}</div>
         <div className="text-[9px] text-gray-500 tabular-nums shrink-0">
           {evOm != null ? <span className="text-amber-400/80">OM μ {evOm.toFixed(1)}°</span> : null}
-          {evOm != null && evWc != null ? <span className="text-gray-600"> · </span> : null}
-          {evWc != null ? <span className="text-sky-400/80">WC μ {evWc.toFixed(1)}°</span> : null}
         </div>
       </div>
       <WeatherBucketBars buckets={buckets} metric={weather.metric} />
-      {obs ? (
-        <div className="space-y-2">
-          <ForecastSourceChart
-            obs={obs}
-            unit={unit}
-            source="open-meteo"
-            label="OM forecast"
-            forecastColor="#f87171"
-          />
-          <ForecastSourceChart
-            obs={obs}
-            unit={unit}
-            source="weather-company"
-            label="WC forecast"
-            forecastColor="#f87171"
-          />
+      {chartObs ? (
+        <div className="space-y-0.5">
+          <div className="text-[9px] font-bold uppercase tracking-wide text-amber-400/80">
+            OM forecast
+            {!chartObs.forecastPoints?.length ? (
+              <span className="ml-1 font-normal normal-case text-gray-600">no fc</span>
+            ) : null}
+          </div>
+          <div className="h-[120px] min-h-[120px] rounded border border-gray-700/80 overflow-hidden bg-gray-950/40">
+            <TemperatureChart data={chartObs} unit={unit} forecastColor="#f87171" />
+          </div>
         </div>
       ) : (
         <div className="text-[10px] text-gray-500 text-center py-2">No forecast series</div>

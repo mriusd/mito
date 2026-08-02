@@ -43,7 +43,6 @@ import {
   isWeatherProbabilitiesCacheFresh,
   peekWeatherProbabilities,
   placeOrder,
-  type WeatherForecastSourceId,
   type WeatherProbabilitiesPayload,
 } from '../../api';
 import { triggerWalletRefresh } from '../../lib/clobClient';
@@ -60,7 +59,6 @@ import {
   weatherHighlightHighC,
   weatherHighlightLowC,
   weatherObsWithForecastSource,
-  type WeatherForecastSourceId as ObsForecastSourceId,
   type WeatherObservationsResponse,
   type WeatherTempUnit,
 } from '../../lib/weatherObservations';
@@ -75,17 +73,17 @@ import { useThrottledGridOrders, useThrottledGridPositions } from '../../hooks/u
 import type { Position } from '../../types';
 import type { WSPosition } from '../../hooks/useOnchainTradesWS';
 
-type ForecastSourceToggle = WeatherForecastSourceId;
-
+/** Open-Meteo model bars only (WC forecast removed). */
 function modelBucketsFromPayload(
   payload: WeatherProbabilitiesPayload | null | undefined,
-  source: ForecastSourceToggle,
   metric: WeatherMetric,
 ): Record<string, number> | null {
-  const srcPayload = payload?.by_source?.[source] ?? (payload?.forecast_source === source ? payload : null);
-  const flat = srcPayload ?? (source === 'open-meteo' ? payload : null);
-  if (!flat) return null;
-  const field = metric === 'low' ? flat.lowest_temperature : flat.highest_temperature;
+  const srcPayload =
+    payload?.by_source?.['open-meteo'] ??
+    (payload?.forecast_source === 'open-meteo' || !payload?.forecast_source ? payload : null) ??
+    payload;
+  if (!srcPayload) return null;
+  const field = metric === 'low' ? srcPayload.lowest_temperature : srcPayload.highest_temperature;
   return field?.bucket_probabilities_1c ?? null;
 }
 
@@ -127,11 +125,6 @@ type TempOddsChartMode = 'low' | 'high';
 function readStoredTempOddsChartMode(panelId: string): TempOddsChartMode {
   const v = localStorage.getItem(`polybot-weather-temp-bars-chart-mode-${panelId}`);
   return v === 'high' ? 'high' : 'low';
-}
-
-function readStoredForecastSource(panelId: string): ForecastSourceToggle {
-  const v = localStorage.getItem(`polybot-weather-temp-bars-forecast-source-${panelId}`);
-  return v === 'weather-company' ? 'weather-company' : 'open-meteo';
 }
 
 type TempOddsOutcomeView = 'YES' | 'NO';
@@ -636,8 +629,8 @@ type TempOddsBucket = {
   market: Market;
   quote: MarketYesQuote;
   pct: number | null;
-  modelPctOm: number | null;
-  modelPctWc: number | null;
+  /** Open-Meteo model probability (0–1). */
+  modelPct: number | null;
   /** YES staked share: stakedNetYesUsd / (yes+no). */
   stakedPct: number | null;
   /** Bucket YES stake / Σ YES stake across city/date. */
@@ -729,8 +722,7 @@ function buildTempOddsBuckets(
   positions: Position[],
   liveTradesSource: string,
   onchainWsPositions: WSPosition[],
-  modelBucketsOm: Record<string, number> | null | undefined,
-  modelBucketsWc: Record<string, number> | null | undefined,
+  modelBuckets: Record<string, number> | null | undefined,
   stakedByMarketId: Record<string, MarketStakeSnap>,
   orderLookup: Record<string, Order[]>,
   metric: WeatherMetric,
@@ -750,22 +742,19 @@ function buildTempOddsBuckets(
     const yesTokenId = market.clobTokenIds?.[0] || '';
     const noTokenId = market.clobTokenIds?.[1] || '';
     const quote = quoteForOutcomeView(getMarketYesQuote(market), outcomeView);
-    let modelPctOm = lookupModelBucketProb(modelBucketsOm, temp);
-    let modelPctWc = lookupModelBucketProb(modelBucketsWc, temp);
+    let modelPct = lookupModelBucketProb(modelBuckets, temp);
     const snap = snaps[i];
     let stakedPct = snap?.yesProb ?? null;
     const sideUsd = snap ? (outcomeView === 'NO' ? snap.noUsd : snap.yesUsd) : 0;
     let stakedSharePct =
       citySideUsd > 0 && sideUsd > 0 ? sideUsd / citySideUsd : null;
     if (weatherTempBucketRuledOutByObs(temp, metric, obsBoundC)) {
-      modelPctOm = 0;
-      modelPctWc = 0;
+      modelPct = 0;
       stakedPct = 0;
       stakedSharePct = 0;
     }
     if (outcomeView === 'NO') {
-      modelPctOm = flipProb01(modelPctOm);
-      modelPctWc = flipProb01(modelPctWc);
+      modelPct = flipProb01(modelPct);
       stakedPct = flipProb01(stakedPct);
     }
     const entryRaw = marketEntryYesFrac(
@@ -789,8 +778,7 @@ function buildTempOddsBuckets(
       market,
       quote,
       pct: quote.mid,
-      modelPctOm,
-      modelPctWc,
+      modelPct,
       stakedPct,
       stakedSharePct,
       entry,
@@ -882,8 +870,7 @@ function useTempOddsBuckets(
   positions: Position[],
   liveTradesSource: string,
   onchainWsPositions: WSPosition[],
-  modelBucketsOm: Record<string, number> | null | undefined,
-  modelBucketsWc: Record<string, number> | null | undefined,
+  modelBuckets: Record<string, number> | null | undefined,
   stakedByMarketId: Record<string, MarketStakeSnap>,
   orderLookup: Record<string, Order[]>,
   metric: WeatherMetric,
@@ -920,8 +907,7 @@ function useTempOddsBuckets(
         positions,
         liveTradesSource,
         onchainWsPositions,
-        modelBucketsOm,
-        modelBucketsWc,
+        modelBuckets,
         stakedByMarketId,
         orderLookup,
         metric,
@@ -933,8 +919,7 @@ function useTempOddsBuckets(
       positions,
       liveTradesSource,
       onchainWsPositions,
-      modelBucketsOm,
-      modelBucketsWc,
+      modelBuckets,
       stakedByMarketId,
       orderLookup,
       metric,
@@ -949,16 +934,14 @@ interface TempOddsBarProps {
   label: string;
   quote: MarketYesQuote;
   pct: number | null;
-  modelPctOm: number | null;
-  modelPctWc: number | null;
+  modelPct: number | null;
   stakedPct: number | null;
   stakedSharePct: number | null;
   maxPct: number;
   trackPx: number;
   barColor: string;
   barSpreadColor: string;
-  modelBarColorOm: string;
-  modelBarColorWc: string;
+  modelBarColor: string;
   stakedBarColor: string;
   stakedShareBarColor: string;
   selected: boolean;
@@ -975,16 +958,14 @@ function TempOddsBar({
   label,
   quote,
   pct,
-  modelPctOm,
-  modelPctWc,
+  modelPct,
   stakedPct,
   stakedSharePct,
   maxPct,
   trackPx,
   barColor,
   barSpreadColor,
-  modelBarColorOm,
-  modelBarColorWc,
+  modelBarColor,
   stakedBarColor,
   stakedShareBarColor,
   selected,
@@ -996,10 +977,8 @@ function TempOddsBar({
   showLabel = true,
   forecastHighlight = false,
 }: TempOddsBarProps) {
-  const modelBarOmPx =
-    modelPctOm != null && maxPct > 0 ? (modelPctOm / maxPct) * trackPx : 0;
-  const modelBarWcPx =
-    modelPctWc != null && maxPct > 0 ? (modelPctWc / maxPct) * trackPx : 0;
+  const modelBarPx =
+    modelPct != null && maxPct > 0 ? (modelPct / maxPct) * trackPx : 0;
   const stakedBarPx =
     stakedPct != null && maxPct > 0 ? (stakedPct / maxPct) * trackPx : 0;
   const stakedShareBarPx =
@@ -1065,8 +1044,7 @@ function TempOddsBar({
         marketTitle,
         quoteTip,
         ...orderTips,
-        modelPctOm != null ? `OM ${(modelPctOm * 100).toFixed(1)}%` : null,
-        modelPctWc != null ? `WC ${(modelPctWc * 100).toFixed(1)}%` : null,
+        modelPct != null ? `OM ${(modelPct * 100).toFixed(1)}%` : null,
         stakedPct != null ? `Stk ${(stakedPct * 100).toFixed(1)}%` : null,
         stakedSharePct != null ? `Rel ${(stakedSharePct * 100).toFixed(1)}%` : null,
         forecastHighlight ? 'Forecast bucket' : null,
@@ -1077,25 +1055,14 @@ function TempOddsBar({
       <div className="relative w-full flex-1 min-h-0 flex items-end">
         <div className="relative w-full h-full flex gap-0.5 items-end">
           <div className="relative flex-1 min-w-0 h-full">
-            {modelBarOmPx > 0 ? (
+            {modelBarPx > 0 ? (
               <div
-                className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${modelBarColorOm}`}
-                style={{ height: modelBarOmPx }}
+                className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${modelBarColor}`}
+                style={{ height: modelBarPx }}
               />
             ) : null}
-            {showProb && modelPctOm != null
-              ? tipLabel(`${(modelPctOm * 100).toFixed(0)}`, modelBarOmPx, 'text-amber-400/80')
-              : null}
-          </div>
-          <div className="relative flex-1 min-w-0 h-full">
-            {modelBarWcPx > 0 ? (
-              <div
-                className={`absolute bottom-0 left-0 right-0 rounded-t-sm pointer-events-none ${modelBarColorWc}`}
-                style={{ height: modelBarWcPx }}
-              />
-            ) : null}
-            {showProb && modelPctWc != null
-              ? tipLabel(`${(modelPctWc * 100).toFixed(0)}`, modelBarWcPx, 'text-sky-400/80')
+            {showProb && modelPct != null
+              ? tipLabel(`${(modelPct * 100).toFixed(0)}`, modelBarPx, 'text-amber-400/80')
               : null}
           </div>
           <div className="relative flex-1 min-w-0 h-full">
@@ -1245,8 +1212,7 @@ function TempOddsBucketTradeStrip({
 interface TempOddsChartProps {
   barColor: string;
   barSpreadColor: string;
-  modelBarColorOm: string;
-  modelBarColorWc: string;
+  modelBarColor: string;
   stakedBarColor: string;
   stakedShareBarColor: string;
   grid: WeatherGridData | null;
@@ -1256,8 +1222,7 @@ interface TempOddsChartProps {
   positions: Position[];
   liveTradesSource: string;
   onchainWsPositions: WSPosition[];
-  modelBucketsOm: Record<string, number> | null | undefined;
-  modelBucketsWc: Record<string, number> | null | undefined;
+  modelBuckets: Record<string, number> | null | undefined;
   stakedByMarketId: Record<string, MarketStakeSnap>;
   orderLookup: Record<string, Order[]>;
   forecastTempC: number | null;
@@ -1280,8 +1245,7 @@ interface TempOddsChartProps {
 function TempOddsChart({
   barColor,
   barSpreadColor,
-  modelBarColorOm,
-  modelBarColorWc,
+  modelBarColor,
   stakedBarColor,
   stakedShareBarColor,
   grid,
@@ -1291,8 +1255,7 @@ function TempOddsChart({
   positions,
   liveTradesSource,
   onchainWsPositions,
-  modelBucketsOm,
-  modelBucketsWc,
+  modelBuckets,
   stakedByMarketId,
   orderLookup,
   forecastTempC,
@@ -1330,8 +1293,7 @@ function TempOddsChart({
     positions,
     liveTradesSource,
     onchainWsPositions,
-    modelBucketsOm,
-    modelBucketsWc,
+    modelBuckets,
     stakedByMarketId,
     orderLookup,
     metric,
@@ -1387,7 +1349,7 @@ function TempOddsChart({
                 className="relative flex h-full min-h-0 min-w-0 flex-1 items-stretch gap-0 divide-x divide-gray-500/80 overflow-visible"
               >
                 {trackPx > 0
-                  ? entries.map(({ temp, label, market, quote, pct, modelPctOm, modelPctWc, stakedPct, stakedSharePct, entry, orderMarks }) => {
+                  ? entries.map(({ temp, label, market, quote, pct, modelPct, stakedPct, stakedSharePct, entry, orderMarks }) => {
                       const forecastHighlight =
                         forecastTempC != null && weatherTempBucketMatchesCelsius(temp, forecastTempC);
                       return (
@@ -1396,16 +1358,14 @@ function TempOddsChart({
                         label={label}
                         quote={quote}
                         pct={pct}
-                        modelPctOm={modelPctOm}
-                        modelPctWc={modelPctWc}
+                        modelPct={modelPct}
                         stakedPct={stakedPct}
                         stakedSharePct={stakedSharePct}
                         maxPct={maxPct}
                         trackPx={trackPx}
                         barColor={barColor}
                         barSpreadColor={barSpreadColor}
-                        modelBarColorOm={modelBarColorOm}
-                        modelBarColorWc={modelBarColorWc}
+                        modelBarColor={modelBarColor}
                         stakedBarColor={stakedBarColor}
                         stakedShareBarColor={stakedShareBarColor}
                         selected={selectedMarketId === market.id}
@@ -1488,24 +1448,19 @@ function TempOddsTemperatureChart({
   data,
   loading,
   unit,
-  forecastSource,
-  onForecastSourceChange,
 }: {
   data: WeatherObservationsResponse | null;
   loading: boolean;
   unit: WeatherTempUnit;
-  forecastSource: ForecastSourceToggle;
-  onForecastSourceChange: (source: ForecastSourceToggle) => void;
 }) {
+  // Always Open-Meteo (WC forecast removed).
   const chartData = useMemo(() => {
     if (!data) return null;
-    return weatherObsWithForecastSource(data, forecastSource as ObsForecastSourceId);
-  }, [data, forecastSource]);
+    return weatherObsWithForecastSource(data, 'open-meteo');
+  }, [data]);
   const last = chartData?.points?.length ? chartData.points[chartData.points.length - 1] : null;
   const obsUnit = chartData?.obsTempUnit ?? 'C';
   const unitSuffix = unit === 'F' ? '°F' : '°C';
-  const hasOm = Boolean(data?.forecastBySource?.['open-meteo']?.points?.length);
-  const hasWc = Boolean(data?.forecastBySource?.['weather-company']?.points?.length);
   const forecastUpdatedMs = useMemo(() => {
     const raw = chartData?.forecastUpdatedAt;
     if (raw == null || !Number.isFinite(raw) || raw <= 0) return 0;
@@ -1553,33 +1508,8 @@ function TempOddsTemperatureChart({
     <div className="flex flex-col flex-1 min-w-0 min-h-0 border border-gray-700/80 rounded-lg bg-gray-900/40 p-2">
       <div className="mb-1 flex shrink-0 items-center gap-2">
         <div className="text-[9px] font-bold uppercase tracking-wide text-sky-400/80">Hourly</div>
-        <div className="flex items-center gap-0.5 rounded border border-gray-700/80 p-0.5">
-          <button
-            type="button"
-            className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded ${
-              forecastSource === 'open-meteo'
-                ? 'bg-amber-500/30 text-amber-200'
-                : 'text-gray-500 hover:text-gray-300'
-            } ${!hasOm ? 'opacity-40' : ''}`}
-            disabled={!hasOm && hasWc}
-            onClick={() => onForecastSourceChange('open-meteo')}
-            title="Open-Meteo forecast"
-          >
-            OM
-          </button>
-          <button
-            type="button"
-            className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded ${
-              forecastSource === 'weather-company'
-                ? 'bg-sky-500/30 text-sky-200'
-                : 'text-gray-500 hover:text-gray-300'
-            } ${!hasWc ? 'opacity-40' : ''}`}
-            disabled={!hasWc && hasOm}
-            onClick={() => onForecastSourceChange('weather-company')}
-            title="Weather Company forecast"
-          >
-            WC
-          </button>
+        <div className="text-[9px] font-bold uppercase text-amber-400/80" title="Open-Meteo forecast">
+          OM
         </div>
         {forecastUpdatedMs > 0 ? <TempOddsForecastAgeLabel updatedMs={forecastUpdatedMs} /> : null}
         {headerParts.length > 0 ? (
@@ -1646,9 +1576,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const [pastFilterTick, setPastFilterTick] = useState(0);
   const [modelPayload, setModelPayload] = useState<WeatherProbabilitiesPayload | null>(null);
   const [modelPayloadKey, setModelPayloadKey] = useState('');
-  const [forecastSource, setForecastSource] = useState<ForecastSourceToggle>(() =>
-    readStoredForecastSource(panelId),
-  );
   const [outcomeView, setOutcomeView] = useState<TempOddsOutcomeView>(() =>
     readStoredOutcomeView(panelId),
   );
@@ -1679,14 +1606,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
     (mode: TempOddsChartMode) => {
       setChartMode(mode);
       localStorage.setItem(`polybot-weather-temp-bars-chart-mode-${panelId}`, mode);
-    },
-    [panelId],
-  );
-
-  const setTempOddsForecastSource = useCallback(
-    (source: ForecastSourceToggle) => {
-      setForecastSource(source);
-      localStorage.setItem(`polybot-weather-temp-bars-forecast-source-${panelId}`, source);
     },
     [panelId],
   );
@@ -1978,9 +1897,9 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const [stakedByMarketId, setStakedByMarketId] = useState<Record<string, MarketStakeSnap>>({});
   const forecastTempC = useMemo(() => {
     if (!obsData) return null;
-    const sourced = weatherObsWithForecastSource(obsData, forecastSource as ObsForecastSourceId);
+    const sourced = weatherObsWithForecastSource(obsData, 'open-meteo');
     return chartMode === 'low' ? weatherHighlightLowC(sourced) : weatherHighlightHighC(sourced);
-  }, [obsData, forecastSource, chartMode]);
+  }, [obsData, chartMode]);
   const prevBarSelectionKeyRef = useRef('');
 
   const activeBarMarketStakeKey = useMemo(
@@ -2616,8 +2535,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               <TempOddsChart
                 barColor={chartMode === 'low' ? 'bg-cyan-400/90' : 'bg-red-400/90'}
                 barSpreadColor={chartMode === 'low' ? 'bg-cyan-400/40' : 'bg-red-400/40'}
-                modelBarColorOm={chartMode === 'low' ? 'bg-amber-400/55' : 'bg-amber-400/55'}
-                modelBarColorWc={chartMode === 'low' ? 'bg-sky-400/55' : 'bg-sky-400/55'}
+                modelBarColor="bg-amber-400/55"
                 stakedBarColor="bg-violet-400/55"
                 stakedShareBarColor="bg-fuchsia-400/55"
                 grid={activeGrid}
@@ -2627,8 +2545,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
                 positions={positions}
                 liveTradesSource={liveTradesSource}
                 onchainWsPositions={onchainWsPositions}
-                modelBucketsOm={modelBucketsFromPayload(modelPayload, 'open-meteo', chartMode)}
-                modelBucketsWc={modelBucketsFromPayload(modelPayload, 'weather-company', chartMode)}
+                modelBuckets={modelBucketsFromPayload(modelPayload, chartMode)}
                 stakedByMarketId={stakedByMarketId}
                 orderLookup={orderLookup}
                 forecastTempC={forecastTempC}
@@ -2666,8 +2583,6 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
               data={obsData}
               loading={obsLoading}
               unit={tempUnit}
-              forecastSource={forecastSource}
-              onForecastSourceChange={setTempOddsForecastSource}
             />
           </>
         )}

@@ -18,9 +18,6 @@ const TEMP_LINE = '#ef4444';
 /** Dashed red = same series as obs temp (amber/sky was read as dew/RH). */
 const TEMP_FORECAST = '#f87171';
 const TEMP_FORECAST_HISTORY_BASE = 'rgba(248, 113, 113,';
-/** Other-source overlay only (thin) — not primary temp stroke. */
-const TEMP_FORECAST_OM = 'rgba(251, 191, 36, 0.7)';
-const TEMP_FORECAST_WC = 'rgba(56, 189, 248, 0.7)';
 const HUMIDITY_LINE = '#3b82f6';
 const HUMIDITY_FORECAST = 'rgba(59, 130, 246, 0.55)';
 const HUMIDITY_FORECAST_HISTORY_BASE = 'rgba(59, 130, 246,';
@@ -234,14 +231,11 @@ export function TemperatureChart({
   data,
   unit,
   forecastColor,
-  hideOtherForecastOverlay = false,
 }: {
   data: WeatherObservationsResponse;
   unit: WeatherTempUnit;
   /** Optional override; default dashed red so fc temp reads as temp, not dew/RH. */
   forecastColor?: string;
-  /** Dual OM/WC panels already split sources — hide thin other-source overlay. */
-  hideOtherForecastOverlay?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -250,10 +244,7 @@ export function TemperatureChart({
   const [drawTick, setDrawTick] = useState(0);
   const [hoverTip, setHoverTip] = useState<{ x: number; y: number; text: string } | null>(null);
   const bumpDraw = useCallback(() => setDrawTick((n) => n + 1), []);
-  const primarySrc = data.forecastSource === 'weather-company' ? 'weather-company' : 'open-meteo';
   const fcStroke = forecastColor ?? TEMP_FORECAST;
-  const otherSrc = primarySrc === 'open-meteo' ? 'weather-company' : 'open-meteo';
-  const otherFcStroke = otherSrc === 'weather-company' ? TEMP_FORECAST_WC : TEMP_FORECAST_OM;
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -295,18 +286,6 @@ export function TemperatureChart({
       series: 'temp' as const,
     }));
     const forecastPoints: ChartPoint[] = (data.forecastPoints ?? []).map((p) => ({
-      timeMs: p.timeMs,
-      temp: fmtFc(p.temp),
-      humidity: p.humidity,
-      dewpoint: p.dewpoint != null ? fmtFc(p.dewpoint) : undefined,
-      windDirDeg: p.windDirDeg,
-      windSpeedKt: p.windSpeedKt,
-      kind: 'forecast' as const,
-      series: 'temp' as const,
-    }));
-    // Inactive OM/WC source — dashed overlay so both peaks stay visible.
-    const otherFcRaw = data.forecastBySource?.[otherSrc]?.points ?? [];
-    const otherForecastPoints: ChartPoint[] = otherFcRaw.map((p) => ({
       timeMs: p.timeMs,
       temp: fmtFc(p.temp),
       humidity: p.humidity,
@@ -371,7 +350,6 @@ export function TemperatureChart({
     const allTempPoints = [
       ...points,
       ...forecastPoints,
-      ...otherForecastPoints,
       ...forecastHistory.flatMap((b) =>
         b.points.map((p) => ({
           timeMs: p.timeMs,
@@ -743,20 +721,6 @@ export function TemperatureChart({
       }
     }
 
-    if (!hideOtherForecastOverlay && otherForecastPoints.length > 0) {
-      const lastObs = points.length > 0 ? points[points.length - 1] : null;
-      drawSeriesLine(
-        otherForecastPoints.map((p) => ({ timeMs: p.timeMs, value: p.temp })),
-        toYTemp,
-        otherFcStroke,
-        1.5,
-        [3, 5],
-        1.5,
-        false,
-        lastObs ? { timeMs: lastObs.timeMs, value: lastObs.temp } : null,
-      );
-    }
-
     if (forecastPoints.length > 0) {
       const lastObs = points.length > 0 ? points[points.length - 1] : null;
       drawSeriesLine(
@@ -864,7 +828,7 @@ export function TemperatureChart({
       ctx.arc(x, y, 4, 0, Math.PI * 2);
       ctx.fill();
     }
-  }, [data, unit, fcStroke, otherFcStroke, otherSrc, hideOtherForecastOverlay]);
+  }, [data, unit, fcStroke]);
 
   useLayoutEffect(() => {
     draw();

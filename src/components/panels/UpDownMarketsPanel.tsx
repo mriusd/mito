@@ -123,7 +123,9 @@ function UpDownMarketsPanelInner() {
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
+  const selectedMarketKey = useAppStore((s) => s.selectedMarketKey);
   const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
+  const selectedMarketHighlightId = selectedMarketKey || selectedMarketId;
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const positions = useThrottledGridPositions(GRID_BID_ASK_THROTTLE_MS);
   const onchainGridPositions = useThrottledOnchainGridPositions(GRID_BID_ASK_THROTTLE_MS);
@@ -327,7 +329,7 @@ function UpDownMarketsPanelInner() {
               bsTimeOffsetHours={bsTimeOffsetHours}
               positionTokenIds={positionTokenIds}
               orderLookup={orderLookup}
-              selectedMarketId={selectedMarketId}
+              selectedMarketId={selectedMarketHighlightId}
               onCellClick={handleCellClick}
               liveTradesSource={liveTradesSource}
             />

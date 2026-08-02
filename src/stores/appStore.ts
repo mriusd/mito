@@ -13,11 +13,17 @@ import {
 } from '../lib/marketDataDedupe';
 import { GRID_WIDTH_SUBDIV } from '../lib/defaultLayouts';
 
-/** Quiet window after the last click before applying intermediate markets (ms). */
+/** Quiet window after the last click before applying intermediate full markets (ms). */
 const SELECTED_MARKET_COALESCE_MS = 140;
 
 let selectedMarketCoalesceTimer: ReturnType<typeof setTimeout> | null = null;
 let selectedMarketCoalescePending: Market | null | undefined = undefined;
+
+/** Stable row-highlight key — prefer condition id (TPO), else gamma/id. */
+export function marketSelectionKey(m: Market | null | undefined): string {
+  if (!m) return '';
+  return String(m.conditionId || m.id || '').trim();
+}
 
 function marketsSameSelection(a: Market | null | undefined, b: Market | null | undefined): boolean {
   if (a === b) return true;
@@ -37,7 +43,21 @@ function marketsSameSelection(a: Market | null | undefined, b: Market | null | u
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- set fn typed loosely; AppState is declared below
 type ZustandSet = (...args: any[]) => void;
 
+/**
+ * Two-phase selection:
+ * 1) `selectedMarketKey` — sync, urgent (TPO/grid row highlight paints this frame).
+ * 2) `selectedMarket` — coalesced + startTransition (sidebar / Temp Odds can lag slightly).
+ *
+ * Putting the full market object in startTransition alone made the highlight wait on a
+ * multi-hundred-ms tree update (weather points, marketLookup, TPO rows) — felt “stuck”.
+ */
 function commitSelectedMarket(set: ZustandSet, m: Market | null) {
+  const key = marketSelectionKey(m);
+  // Urgent: highlight key only — cheap subscribers re-render now.
+  set((s: { selectedMarketKey: string }) =>
+    s.selectedMarketKey === key ? {} : { selectedMarketKey: key },
+  );
+  // Deferred: full market for sidebar / Temp Odds / charts.
   startTransition(() => {
     set((s: { selectedMarket: Market | null }) => {
       if (marketsSameSelection(s.selectedMarket, m)) return {};
@@ -47,20 +67,36 @@ function commitSelectedMarket(set: ZustandSet, m: Market | null) {
 }
 
 /**
- * Leading + trailing selection: apply first click immediately; while the user keeps
- * hopping markets, only the last one after SELECTED_MARKET_COALESCE_MS quiet applies.
- * Prevents N full sidebar/OB/chart teardown storms from free-firing clicks.
+ * Leading + trailing for full market: first click commits now; while hopping, only the
+ * last market after quiet period. Highlight key still updates on every commit call.
  */
 function applySelectedMarketLeadingTrailing(m: Market | null, set: ZustandSet) {
+  // Always paint highlight key immediately (even mid-burst) so rows feel instant.
+  const key = marketSelectionKey(m);
+  set((s: { selectedMarketKey: string }) =>
+    s.selectedMarketKey === key ? {} : { selectedMarketKey: key },
+  );
+
   if (selectedMarketCoalesceTimer == null) {
-    commitSelectedMarket(set, m);
+    // Leading: full market also now (via transition).
+    startTransition(() => {
+      set((s: { selectedMarket: Market | null }) => {
+        if (marketsSameSelection(s.selectedMarket, m)) return {};
+        return { selectedMarket: m };
+      });
+    });
     selectedMarketCoalescePending = undefined;
     selectedMarketCoalesceTimer = setTimeout(() => {
       selectedMarketCoalesceTimer = null;
       if (selectedMarketCoalescePending !== undefined) {
         const pending = selectedMarketCoalescePending;
         selectedMarketCoalescePending = undefined;
-        commitSelectedMarket(set, pending);
+        startTransition(() => {
+          set((s: { selectedMarket: Market | null }) => {
+            if (marketsSameSelection(s.selectedMarket, pending)) return {};
+            return { selectedMarket: pending };
+          });
+        });
       }
     }, SELECTED_MARKET_COALESCE_MS);
     return;
@@ -72,7 +108,12 @@ function applySelectedMarketLeadingTrailing(m: Market | null, set: ZustandSet) {
     if (selectedMarketCoalescePending !== undefined) {
       const pending = selectedMarketCoalescePending;
       selectedMarketCoalescePending = undefined;
-      commitSelectedMarket(set, pending);
+      startTransition(() => {
+        set((s: { selectedMarket: Market | null }) => {
+          if (marketsSameSelection(s.selectedMarket, pending)) return {};
+          return { selectedMarket: pending };
+        });
+      });
     }
   }, SELECTED_MARKET_COALESCE_MS);
 }
@@ -157,6 +198,11 @@ interface AppState {
   // Sidebar
   sidebarOpen: boolean;
   selectedMarket: Market | null;
+  /**
+   * Urgent highlight key (`conditionId || id`). Updated synchronously on click so TPO/grid
+   * rows light up before the deferred `selectedMarket` transition finishes.
+   */
+  selectedMarketKey: string;
   sidebarOutcome: 'YES' | 'NO';
   /** CHAIN vs API live-trades + grid source (header toggle; localStorage). */
   liveTradesSource: 'onchain' | 'polymarket';
@@ -490,6 +536,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarOpen:
     typeof window !== 'undefined' ? !window.matchMedia('(max-width: 767px)').matches : true,
   selectedMarket: null,
+  selectedMarketKey: '',
   sidebarOutcome: 'YES' as const,
   liveTradesSource: (() => {
     if (typeof localStorage === 'undefined') return 'onchain';

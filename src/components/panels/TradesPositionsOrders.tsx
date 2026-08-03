@@ -439,12 +439,13 @@ type TpoSelectHint = {
 
 const TPO_TRADES_PAGE = 500;
 
-/** SELL filter also shows exit-like CTF actions. */
+/** Side filter for TPO trades. SELL includes redeem/claim exits, but not MERGE. */
 function tradeSideMatchesFilter(side: string, filter: string): boolean {
   if (filter === 'ALL') return true;
   const s = (side || '').toUpperCase();
-  if (filter === 'SELL') return s === 'SELL' || s === 'MERGE' || s === 'REDEEM' || s === 'CLAIM';
-  return s === filter;
+  if (filter === 'SELL') return s === 'SELL' || s === 'REDEEM' || s === 'CLAIM';
+  if (filter === 'REDEEM') return s === 'REDEEM' || s === 'CLAIM';
+  return s === filter.toUpperCase();
 }
 
 function isTpoTradeTapeSide(side: string | undefined): boolean {
@@ -758,7 +759,9 @@ function TradesPositionsOrdersInner({
       (t) => isTpoTradeTapeSide(t.side) && tradeSideMatchesFilter(t.side || '', tradesSideFilter),
     );
     const claims =
-      tradesSideFilter === 'ALL' || tradesSideFilter === 'SELL' ? onchainClaimsAsPM : [];
+      tradesSideFilter === 'ALL' || tradesSideFilter === 'SELL' || tradesSideFilter === 'REDEEM'
+        ? onchainClaimsAsPM
+        : [];
     const seen = new Set<string>();
     const out: Trade[] = [];
     for (const t of [...live, ...pagedTradesAsPM.filter((t) => isTpoTradeTapeSide(t.side)), ...claims]) {

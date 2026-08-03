@@ -60,9 +60,15 @@ const INTERVAL_MS: Record<string, number> = {
   '15m': 900000,
   '1h': 3600000,
   '4h': 14400000,
+  '1d': 86400000,
 };
-const CHART_INTERVALS = ['5s', '1m', '5m', '15m'] as const;
+const CHART_INTERVALS = ['5s', '1m', '5m', '15m', '1h', '4h', '1d'] as const;
 type ChartInterval = (typeof CHART_INTERVALS)[number];
+/** Dropdown/button labels — longer frames shown uppercase for scanability. */
+function chartIntervalLabel(iv: ChartInterval): string {
+  if (iv === '1h' || iv === '4h' || iv === '1d') return iv.toUpperCase();
+  return iv;
+}
 const LIVE_TRADE_CHART_INTERVAL_LS_KEY = 'polybot-live-trade-chart-interval';
 
 function readStoredChartInterval(): ChartInterval | null {
@@ -700,12 +706,12 @@ export function LiveTradeChart({
             disabled={!!lockedInterval}
             title={lockedInterval ? 'Weather Temp Odds require 5m candles' : undefined}
             onChange={(e) => setChartInterval(e.target.value as ChartInterval)}
-            className="min-w-[3.5rem] w-16 shrink-0 rounded border border-gray-600 bg-gray-800 py-0 pl-1.5 pr-6 text-[10px] font-medium text-gray-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40 disabled:opacity-60"
+            className="min-w-[3.75rem] w-[4.25rem] shrink-0 rounded border border-gray-600 bg-gray-800 py-0 pl-1.5 pr-6 text-[10px] font-medium text-gray-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40 disabled:opacity-60"
             aria-label="Chart resolution"
           >
             {CHART_INTERVALS.map((iv) => (
               <option key={iv} value={iv}>
-                {iv}
+                {chartIntervalLabel(iv)}
               </option>
             ))}
           </select>
@@ -718,7 +724,7 @@ export function LiveTradeChart({
                 onClick={() => setChartInterval(iv)}
                 className={`px-1.5 py-0 text-[10px] rounded ${interval === iv ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'} disabled:opacity-40 disabled:cursor-not-allowed`}
               >
-                {iv}
+                {chartIntervalLabel(iv)}
               </button>
             ))}
           </div>

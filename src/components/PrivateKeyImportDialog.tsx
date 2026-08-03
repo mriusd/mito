@@ -37,7 +37,7 @@ export interface PrivateKeyWalletMenuProps {
 }
 
 /**
- * Compact PK wallet picker for header hover/click dropdown (not a modal).
+ * Compact PK wallet picker for header click dropdown (not a modal).
  */
 export function PrivateKeyWalletMenu({ onDone, onCancel, onListChange }: PrivateKeyWalletMenuProps) {
   const [wallets, setWallets] = useState<PkWallet[]>([]);

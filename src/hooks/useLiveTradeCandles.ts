@@ -16,19 +16,26 @@ import { parseCandleWeather, type CandleWeatherSnapshot } from '../lib/candleWea
 
 const MAX_CHART_CANDLES = 2500;
 const ONE_HOUR_MS = 3_600_000;
+/** Server clamps kline limit to 1500; size the 1h lookback so ASC LIMIT returns the *recent* window. */
+const KLINE_FETCH_LIMIT = 1500;
+/** ~62d of 1h bars — matches server limit and guarantees ≥7d when data exists. */
+const ONE_H_FEED_LOOKBACK_MS = KLINE_FETCH_LIMIT * ONE_HOUR_MS;
 
 /** Higher TFs built client-side from 1h klines (backend may not serve 4h/1d for outcome tokens). */
 const AGGREGATE_FROM_1H = new Set(['4h', '1d']);
 
 /**
  * Market startTime is often only the current window (5m/15m/4h) — that yields a handful of
- * 1h/4h bars. Expand the fetch window so longer TFs load enough history (min 7d for 1h/4h).
- * 4h/1d also need longer lookback when aggregating from 1h.
+ * 1h bars. Live `/klines` is also frequently empty for 1h (history has the series).
+ *
+ * Expand lookback for 1h/4h/1d. Cap at ~1500×1h so history `ORDER BY time ASC LIMIT`
+ * returns the *newest* stretch (a wider 180d window used to return only the oldest 1500
+ * hours — 1d still charted, while 1h with a short 7d window showed 0 bars).
  */
 const MIN_HISTORY_MS: Record<string, number> = {
-  '1h': 7 * 24 * 60 * 60 * 1000, // 7d → 168 1h bars
-  '4h': 45 * 24 * 60 * 60 * 1000, // ~45d → ~270 4h bars
-  '1d': 180 * 24 * 60 * 60 * 1000, // ~180d → ~180 daily bars
+  '1h': ONE_H_FEED_LOOKBACK_MS,
+  '4h': ONE_H_FEED_LOOKBACK_MS,
+  '1d': ONE_H_FEED_LOOKBACK_MS,
 };
 
 export type LiveTradeCandle = {
@@ -181,18 +188,20 @@ export function useLiveTradeCandles({
     const feedCandleMs = from1h ? ONE_HOUR_MS : candleMs;
     const displayBucketMs = from1h ? candleMs : feedCandleMs;
     const minHist = MIN_HISTORY_MS[interval];
-    // Expand + history-backfill for long TFs (1h/4h/1d) so live short-tail is not all we show.
+    // Expand + history-first for long TFs — live `/klines` is often empty for 1h resolution.
     const needsExpandedHistory = minHist != null || from1h;
 
     const baseWin = resolveLiveTradeChartWindow(tokenId, startTime, endTime);
     let st = baseWin.startMs;
     let et = baseWin.endMs;
     if (needsExpandedHistory) {
-      const histMs = minHist ?? 90 * 24 * 60 * 60 * 1000;
+      const histMs = minHist ?? ONE_H_FEED_LOOKBACK_MS;
+      // Align end to "now" so ended markets still load recent history (not an empty short tail).
       const endForHist = Math.max(et, Date.now());
-      st = Math.min(st, endForHist - histMs);
-      // Keep end at least "now" so prune retains the full expanded history window.
-      et = Math.max(et, endForHist);
+      // Recent lookback only — do not open a wider range than histMs: server
+      // `ORDER BY time ASC LIMIT 1500` would return the *oldest* slice of a huge window.
+      st = endForHist - histMs;
+      et = endForHist;
     }
 
     const publishNow = () => {
@@ -241,7 +250,8 @@ export function useLiveTradeCandles({
       if (!Array.isArray(klines)) return;
       const map = candleMapRef.current;
       for (const k of klines) {
-        const openTime = k[0] as number;
+        const openTime = Number(k[0]);
+        if (!Number.isFinite(openTime) || openTime <= 0) continue;
         const o = toPrice(parseFloat(k[1] as string) * 100, isNo);
         const h = toPrice(parseFloat(k[2] as string) * 100, isNo);
         const l = toPrice(parseFloat(k[3] as string) * 100, isNo);
@@ -278,13 +288,13 @@ export function useLiveTradeCandles({
       pruneCandleMap(map, st, et, Math.max(feedCandleMs, displayBucketMs) * 2);
     };
 
-    // 1h feed for 180d needs ~4k bars; expanded 1h (7d) still fits under 900 but use room for pad.
-    const klineLimit = from1h || interval === '1h' ? 5000 : 900;
+    // Cap at server max (1500). Long TFs always use the 1h feed limit.
+    const klineLimit = from1h || interval === '1h' ? KLINE_FETCH_LIMIT : 900;
     const klineQuery = `symbol=${encodeURIComponent(tokenId)}&interval=${encodeURIComponent(feedInterval)}&startTime=${st}&endTime=${et}&limit=${klineLimit}`;
 
     const loadKlines = () => {
       const applyHistory = () =>
-        fetchBackend(`${API_BASE}/api/v3/klines/history?${klineQuery}`)
+        fetchBackend(`${API_BASE}/api/v3/klines/history?${klineQuery}`, undefined, 20_000)
           .then((r) => r.json())
           .then((hist: any[][]) => {
             if (cancelled) return;
@@ -292,24 +302,38 @@ export function useLiveTradeCandles({
             publish(true);
           });
 
-      return fetchBackend(`${API_BASE}/api/v3/klines?${klineQuery}`)
-        .then((r) => r.json())
-        .then(async (klines: any[][]) => {
-          if (cancelled) return;
-          if (Array.isArray(klines) && klines.length > 0) {
-            applyKlines(klines);
-            publish(true);
-            // Live endpoint often only has a short tail; history backfills expanded 1h/4h/1d range.
-            if (needsExpandedHistory) {
-              try {
-                await applyHistory();
-              } catch {
-                /* non-fatal */
-              }
+      const applyLive = () =>
+        fetchBackend(`${API_BASE}/api/v3/klines?${klineQuery}`)
+          .then((r) => r.json())
+          .then((klines: any[][]) => {
+            if (cancelled) return;
+            if (Array.isArray(klines) && klines.length > 0) {
+              applyKlines(klines);
+              publish(true);
             }
-            return;
-          }
-          return applyHistory();
+          });
+
+      // History-first for expanded TFs: live 1h is often [] while history has the series.
+      if (needsExpandedHistory) {
+        return applyHistory()
+          .catch(() => {
+            /* try live alone below */
+          })
+          .then(() => {
+            if (cancelled) return;
+            return applyLive().catch(() => {
+              /* non-fatal — history may already have filled the chart */
+            });
+          })
+          .finally(() => {
+            if (!cancelled) setReady(true);
+          });
+      }
+
+      return applyLive()
+        .then(() => {
+          if (cancelled) return;
+          if (candleMapRef.current.size === 0) return applyHistory();
         })
         .catch(() => {
           if (cancelled) return;

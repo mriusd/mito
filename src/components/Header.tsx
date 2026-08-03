@@ -790,7 +790,6 @@ function SigningModeSwitch() {
   const [pkMenuOpen, setPkMenuOpen] = useState(false);
   const [hasPk, setHasPk] = useState(() => listPkWallets().length > 0);
   const [activeLabel, setActiveLabel] = useState(() => getActivePkWallet()?.label ?? null);
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const refreshPk = useCallback(() => {
@@ -798,21 +797,8 @@ function SigningModeSwitch() {
     setActiveLabel(getActivePkWallet()?.label ?? null);
   }, []);
 
-  const clearCloseTimer = () => {
-    if (closeTimerRef.current != null) {
-      clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-  };
-
   const openPkMenu = useCallback(() => {
-    clearCloseTimer();
     setPkMenuOpen(true);
-  }, []);
-
-  const scheduleClosePkMenu = useCallback(() => {
-    clearCloseTimer();
-    closeTimerRef.current = setTimeout(() => setPkMenuOpen(false), 160);
   }, []);
 
   useEffect(() => {
@@ -825,6 +811,7 @@ function SigningModeSwitch() {
     return () => window.removeEventListener(OPEN_PK_MANAGER_EVENT, open);
   }, [openPkMenu]);
 
+  // Click-outside + Escape (same pattern as settings dropdown).
   useEffect(() => {
     if (!pkMenuOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -843,13 +830,6 @@ function SigningModeSwitch() {
     };
   }, [pkMenuOpen]);
 
-  useEffect(
-    () => () => {
-      clearCloseTimer();
-    },
-    [],
-  );
-
   const finishPkOk = () => {
     refreshPk();
     setSigningMode('privateKey');
@@ -865,11 +845,11 @@ function SigningModeSwitch() {
   };
 
   return (
-    <div ref={wrapRef} className="flex items-center">
-      <div className="flex h-[28px] items-center overflow-hidden rounded border border-gray-600 text-[9px] font-bold">
+    <div ref={wrapRef} className="relative flex items-center">
+      <div className="flex h-[28px] items-center rounded border border-gray-600 text-[9px] font-bold">
         <button
           type="button"
-          className={`h-full px-2 transition ${
+          className={`h-full rounded-l px-2 transition ${
             signingMode === 'wallet' ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'
           }`}
           onClick={() => {
@@ -879,56 +859,42 @@ function SigningModeSwitch() {
         >
           Wallet
         </button>
-        <div
-          className="relative h-full"
-          onMouseEnter={openPkMenu}
-          onMouseLeave={scheduleClosePkMenu}
+        <button
+          type="button"
+          title={activeLabel ? `PK: ${activeLabel} — click to switch` : 'PK wallets — click to manage'}
+          className={`flex h-full max-w-[120px] items-center gap-1 rounded-r px-2 transition ${
+            signingMode === 'privateKey'
+              ? 'bg-yellow-700 text-white'
+              : 'bg-gray-800 text-gray-400 hover:text-gray-200'
+          }`}
+          onClick={() => {
+            const next = !pkMenuOpen;
+            setPkMenuOpen(next);
+            if (next && hasPk && signingMode !== 'privateKey') {
+              setSigningMode('privateKey');
+            }
+          }}
         >
-          <button
-            type="button"
-            title={activeLabel ? `PK: ${activeLabel} — hover to switch` : 'PK wallets — hover to manage'}
-            className={`flex h-full max-w-[120px] items-center gap-1 px-2 transition ${
-              signingMode === 'privateKey'
-                ? 'bg-yellow-700 text-white'
-                : 'bg-gray-800 text-gray-400 hover:text-gray-200'
-            }`}
-            onClick={() => {
-              // Touch / click: toggle menu; enable PK mode if a key exists.
-              if (pkMenuOpen) {
-                setPkMenuOpen(false);
-                return;
-              }
-              openPkMenu();
-              if (hasPk && signingMode !== 'privateKey') {
-                setSigningMode('privateKey');
-              }
-            }}
-          >
-            <span className="flex-shrink-0">PK</span>
-            {signingMode === 'privateKey' && hasPk && activeLabel ? (
-              <span className="truncate font-semibold opacity-90">{activeLabel}</span>
-            ) : null}
-            {signingMode === 'privateKey' && hasPk && (
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-green-400" />
-            )}
-            <span className="flex-shrink-0 opacity-70">▾</span>
-          </button>
-
-          {pkMenuOpen ? (
-            <div
-              className="absolute right-0 top-full z-[260] pt-1"
-              onMouseEnter={openPkMenu}
-              onMouseLeave={scheduleClosePkMenu}
-            >
-              <PrivateKeyWalletMenu
-                onDone={finishPkOk}
-                onCancel={finishPkCancel}
-                onListChange={refreshPk}
-              />
-            </div>
+          <span className="flex-shrink-0">PK</span>
+          {signingMode === 'privateKey' && hasPk && activeLabel ? (
+            <span className="truncate font-semibold opacity-90">{activeLabel}</span>
           ) : null}
-        </div>
+          {signingMode === 'privateKey' && hasPk && (
+            <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-green-400" />
+          )}
+          <span className="flex-shrink-0 opacity-70">▾</span>
+        </button>
       </div>
+
+      {pkMenuOpen ? (
+        <div className="absolute right-0 top-full z-[260] mt-1">
+          <PrivateKeyWalletMenu
+            onDone={finishPkOk}
+            onCancel={finishPkCancel}
+            onListChange={refreshPk}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

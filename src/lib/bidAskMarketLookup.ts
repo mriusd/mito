@@ -280,9 +280,24 @@ export function flushBidAskMarketLookupNow() {
 export function getBidAskMarketRow(tokenId: string): Market | undefined {
   const id = String(tokenId || '').trim();
   if (!id) return undefined;
-  const pending = pendingPatch[id];
-  if (pending) return pending;
-  return useAppStore.getState().marketLookup[id];
+  const candidates = [id];
+  // Lookup / WS keys sometimes differ by BigInt decimal form (leading zeros).
+  try {
+    const norm = BigInt(id).toString();
+    if (norm !== id) candidates.push(norm);
+  } catch {
+    /* not an int token */
+  }
+  for (const key of candidates) {
+    const pending = pendingPatch[key];
+    if (pending) return pending;
+  }
+  const lookup = useAppStore.getState().marketLookup;
+  for (const key of candidates) {
+    const row = lookup[key];
+    if (row) return row;
+  }
+  return undefined;
 }
 
 function pickWsFieldsFromMarket(old: Market): Partial<Market> {

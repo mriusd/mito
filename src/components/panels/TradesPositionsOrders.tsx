@@ -53,7 +53,8 @@ import {
   type MarketAssetCategoryFilter,
 } from '../../utils/format';
 import { LiveElapsedAgeCell } from '../WalletTradeTimeCell';
-import { formatWeatherEventDateLabel, tpoMarketSortDateIso } from '../../lib/weatherMarketExpiry';
+import { formatWeatherEventDateLabel, parseWeatherCityFromSlug, tpoMarketSortDateIso } from '../../lib/weatherMarketExpiry';
+import { weatherCityLabel } from '../../lib/weatherCities';
 import type { Market } from '../../types';
 
 const assetColorMap: Record<string, string> = { BTC: 'text-orange-400', ETH: 'text-blue-400', SOL: 'text-purple-400', XRP: 'text-cyan-400' };
@@ -116,8 +117,10 @@ type TpoPosRow = {
   rowKey?: string;
 };
 
+type TpoWeatherBucketMode = 'city' | 'market';
+
 /** Same condition/market — bucket YES+NO (and any duplicate legs) together. */
-function tpoPositionBucketKey(row: TpoPosRow): string | null {
+function tpoPositionMarketBucketKey(row: TpoPosRow): string | null {
   const mid = normalizeConditionIdKey(row.marketId || '');
   if (mid && !mid.startsWith('expired:')) return `mkt:${mid}`;
   const name = (row.marketName || '').trim().toLowerCase();
@@ -125,11 +128,48 @@ function tpoPositionBucketKey(row: TpoPosRow): string | null {
   return `name:${name}|${(row.eventSlug || '').trim().toLowerCase()}|${(row.endDate || '').trim()}`;
 }
 
-function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
+/** Weather city slug for City bucket mode. */
+function tpoWeatherCitySlug(row: TpoPosRow): string | null {
+  const fromSlug = parseWeatherCityFromSlug(row.eventSlug || '');
+  if (fromSlug) return String(fromSlug).toLowerCase();
+  const text = `${row.eventSlug || ''} ${row.title || ''}`;
+  const slugMatch = text.match(/(?:highest|lowest)-temperature-in-([a-z0-9-]+)-on-/i);
+  if (slugMatch?.[1]) return slugMatch[1].toLowerCase();
+  const qMatch = text.match(/temperature in ([A-Za-z][A-Za-z\s.'-]+?) be /i);
+  if (qMatch?.[1]) {
+    return qMatch[1]
+      .trim()
+      .toLowerCase()
+      .replace(/[.'']/g, '')
+      .replace(/\s+/g, '-');
+  }
+  // Formatted label e.g. "London ↑31°C" / "Hong Kong ↓22°C"
+  const labelMatch = (row.marketName || '').match(/^(.+?)\s*[↑↓]/);
+  if (labelMatch?.[1]) {
+    return labelMatch[1]
+      .trim()
+      .toLowerCase()
+      .replace(/[.'']/g, '')
+      .replace(/\s+/g, '-');
+  }
+  return null;
+}
+
+function tpoPositionBucketKey(row: TpoPosRow, mode: TpoWeatherBucketMode): string | null {
+  if (mode === 'city') {
+    const city = tpoWeatherCitySlug(row);
+    if (city) return `city:${city}`;
+    // Fallback: keep ungrouped rather than mixing cities into one market key.
+    return null;
+  }
+  return tpoPositionMarketBucketKey(row);
+}
+
+function bucketTpoWeatherPositions(rows: TpoPosRow[], mode: TpoWeatherBucketMode): TpoPosRow[] {
   const groups = new Map<string, TpoPosRow[]>();
   const passthrough: TpoPosRow[] = [];
   for (const r of rows) {
-    const key = tpoPositionBucketKey(r);
+    const key = tpoPositionBucketKey(r, mode);
     if (!key) {
       passthrough.push(r);
       continue;
@@ -156,6 +196,8 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
     let askN = 0;
     let sellN = 0;
     const outcomes = new Set<string>();
+    let latestEnd: string | null = first.endDate;
+    let latestEndMs = first.endDate ? Date.parse(first.endDate) : NaN;
     for (const r of list) {
       size += Number.isFinite(r.size) ? r.size : 0;
       entryPrice += r.entryPrice;
@@ -174,13 +216,25 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
         sellN += 1;
       }
       if (r.outcome) outcomes.add(r.outcome);
+      if (r.endDate) {
+        const ms = Date.parse(r.endDate);
+        if (Number.isFinite(ms) && (!Number.isFinite(latestEndMs) || ms > latestEndMs)) {
+          latestEndMs = ms;
+          latestEnd = r.endDate;
+        }
+      }
     }
     const pnl = currentValue - cost;
     const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
+    const citySlug = mode === 'city' && key.startsWith('city:') ? key.slice('city:'.length) : null;
+    const latestChild = list.find((r) => r.endDate === latestEnd) ?? first;
     out.push({
       ...first,
       tid: first.tid,
-      marketName: first.marketName,
+      marketName: citySlug ? `${weatherCityLabel(citySlug)} · ${list.length}` : first.marketName,
+      endDate: latestEnd,
+      dateLabel: latestChild.dateLabel,
+      dateColor: latestChild.dateColor,
       outcome: outcomes.size === 1 ? [...outcomes][0] : '—',
       size,
       entryPrice,
@@ -195,9 +249,9 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[]): TpoPosRow[] {
       pnl,
       pnlPercent,
       clickable: first.clickable,
-      title: first.title || first.marketName,
+      title: citySlug ? weatherCityLabel(citySlug) : first.title || first.marketName,
       eventSlug: first.eventSlug,
-      marketId: first.marketId,
+      marketId: mode === 'city' ? null : first.marketId,
       bucketKey: key,
       bucketChildren: list,
       rowKey: `bucket:${key}`,
@@ -550,7 +604,13 @@ function TradesPositionsOrdersInner({
     refreshSidebarOnchainWallet();
   }, [liveTradesSource, tradingWalletKey]);
 
-  const tpoLiveQuoteIds = useMemo(() => Object.keys(marketLookup), [marketLookup]);
+  // Prefer full watch list (all position tokens) over keys already quoted — otherwise
+  // tokens missing from marketLookup never get chart bid/ask subscription.
+  const tpoLiveQuoteIds = useMemo(() => {
+    const fromWatch = tpoData.watchTokenIds;
+    if (fromWatch?.length) return fromWatch;
+    return Object.keys(marketLookup);
+  }, [tpoData.watchTokenIds, marketLookup]);
   const chartExtraKey = `tpo:${panelId}`;
 
   useEffect(() => {
@@ -803,6 +863,14 @@ function TradesPositionsOrdersInner({
       return localStorage.getItem(`polymarket-tpo-pos-weather-bucket-${panelId}`) === '1';
     } catch {
       return false;
+    }
+  });
+  const [posWeatherBucketMode, setPosWeatherBucketMode] = useState<TpoWeatherBucketMode>(() => {
+    try {
+      const v = localStorage.getItem(`polymarket-tpo-pos-weather-bucket-mode-${panelId}`);
+      return v === 'city' ? 'city' : 'market';
+    } catch {
+      return 'market';
     }
   });
   const [posBucketExpanded, setPosBucketExpanded] = useState<Set<string>>(() => new Set());
@@ -1411,7 +1479,7 @@ function TradesPositionsOrdersInner({
     if (effectiveTab !== 'positions') return [];
     const base =
       posCategoryFilter === 'WEATHER' && posWeatherBucket
-        ? bucketTpoWeatherPositions(processedPositions as TpoPosRow[])
+        ? bucketTpoWeatherPositions(processedPositions as TpoPosRow[], posWeatherBucketMode)
         : (processedPositions as TpoPosRow[]);
     const rows = [...base];
     const sortRows = (list: TpoPosRow[]) => {
@@ -1477,6 +1545,7 @@ function TradesPositionsOrdersInner({
     processedPositions,
     posCategoryFilter,
     posWeatherBucket,
+    posWeatherBucketMode,
     posBucketExpanded,
     posSortCol,
     posSortDir,
@@ -1806,23 +1875,50 @@ function TradesPositionsOrdersInner({
                 ))}
               </div>
               {posCategoryFilter === 'WEATHER' ? (
-                <label
-                  className="no-drag inline-flex items-center gap-1 cursor-pointer select-none text-[9px] text-gray-400 hover:text-gray-200"
-                  title="Bucket same market (condition): sum Bid/Ask/Sell ¢; sum size/cost/val"
-                >
-                  <input
-                    type="checkbox"
-                    checked={posWeatherBucket}
-                    onChange={(e) => {
-                      const on = e.target.checked;
-                      setPosWeatherBucket(on);
-                      localStorage.setItem(`polymarket-tpo-pos-weather-bucket-${panelId}`, on ? '1' : '0');
-                      setPosBucketExpanded(new Set());
-                    }}
-                    className="h-3 w-3 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-0 focus:ring-offset-0"
-                  />
-                  Bucket
-                </label>
+                <div className="inline-flex items-center gap-1 flex-wrap">
+                  <label
+                    className="no-drag inline-flex items-center gap-1 cursor-pointer select-none text-[9px] text-gray-400 hover:text-gray-200"
+                    title={
+                      posWeatherBucketMode === 'city'
+                        ? 'Bucket by city: sum Bid/Ask/Sell ¢; sum size/cost/val across temp markets'
+                        : 'Bucket by market (condition): sum Bid/Ask/Sell ¢; sum size/cost/val'
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={posWeatherBucket}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setPosWeatherBucket(on);
+                        localStorage.setItem(`polymarket-tpo-pos-weather-bucket-${panelId}`, on ? '1' : '0');
+                        setPosBucketExpanded(new Set());
+                      }}
+                      className="h-3 w-3 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-0 focus:ring-offset-0"
+                    />
+                    Bucket
+                  </label>
+                  {posWeatherBucket ? (
+                    <div
+                      className="no-drag inline-flex items-center gap-0.5 rounded-md bg-gray-900 border border-gray-700 p-0.5 text-[9px]"
+                      title="City: group all temp buckets for a city · Market: group legs of the same condition"
+                    >
+                      {(['city', 'market'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => {
+                            setPosWeatherBucketMode(mode);
+                            localStorage.setItem(`polymarket-tpo-pos-weather-bucket-mode-${panelId}`, mode);
+                            setPosBucketExpanded(new Set());
+                          }}
+                          className={filterBtnCls(posWeatherBucketMode === mode, mode === 'city' ? 'blue' : 'gray')}
+                        >
+                          {mode === 'city' ? 'City' : 'Market'}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           )}

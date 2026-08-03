@@ -67,7 +67,11 @@ import { WeatherMetarDialog } from '../WeatherMetarDialog';
 import { outcomeBestAskProb, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
 import { useThrottledSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
-import { getBidAskMarketRow, subscribeBidAskMarketLookupGridFlush } from '../../lib/bidAskMarketLookup';
+import {
+  getBidAskMarketRow,
+  subscribeBidAskMarketLookup,
+  subscribeBidAskMarketLookupGridFlush,
+} from '../../lib/bidAskMarketLookup';
 import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
 import { useThrottledGridOrders, useThrottledGridPositions } from '../../hooks/useThrottledGridWallet';
 import type { Position } from '../../types';
@@ -879,10 +883,28 @@ function useTempOddsBuckets(
 ) {
   const [quoteTick, setQuoteTick] = useState(0);
   useEffect(() => {
-    // Grid flush (~2s) — live@250ms rebuilt every TempOdds bar and starved canvas rAF.
-    return subscribeBidAskMarketLookupGridFlush(() => {
+    // Live WS bid/ask (pending), coalesced ~400ms. Grid flush alone left bars on stale Gamma
+    // quotes for 2s+; unthrottled rAF starve was the original concern — 400ms is a middle path.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsubLive = subscribeBidAskMarketLookup(() => {
+      if (timer != null) return;
+      timer = setTimeout(() => {
+        timer = null;
+        startTransition(() => setQuoteTick((n) => n + 1));
+      }, 400);
+    });
+    const unsubGrid = subscribeBidAskMarketLookupGridFlush(() => {
+      if (timer != null) {
+        clearTimeout(timer);
+        timer = null;
+      }
       startTransition(() => setQuoteTick((n) => n + 1));
     });
+    return () => {
+      unsubLive();
+      unsubGrid();
+      if (timer != null) clearTimeout(timer);
+    };
   }, []);
 
   const quoteTokenIds = useMemo(() => {

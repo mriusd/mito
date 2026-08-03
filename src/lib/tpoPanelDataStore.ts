@@ -1,6 +1,10 @@
 import { startTransition, useCallback, useSyncExternalStore } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { getBidAskMarketRow, subscribeBidAskMarketLookupGridFlush } from './bidAskMarketLookup';
+import {
+  getBidAskMarketRow,
+  subscribeBidAskMarketLookup,
+  subscribeBidAskMarketLookupGridFlush,
+} from './bidAskMarketLookup';
 import {
   getSidebarOnchainTradesSnapshot,
   subscribeSidebarOnchainTrades,
@@ -16,11 +20,15 @@ export type TpoPanelDataSnap = {
   onchainPositions: WSPosition[];
   onchainTrades: WSTrade[];
   quoteLookup: Record<string, Market>;
+  /** All position/order token ids for chart bid/ask watch (not only those already quoted). */
+  watchTokenIds: string[];
 };
 
 export type TpoDataSlice = 'positions' | 'orders' | 'trades';
 
 const FLUSH_MS = 2000;
+/** Live bid/ask → positions table. Faster than grid 2s so Bid/Ask stay current. */
+const QUOTE_FLUSH_MS = 400;
 
 let snap: TpoPanelDataSnap = {
   positions: [],
@@ -29,6 +37,7 @@ let snap: TpoPanelDataSnap = {
   onchainPositions: [],
   onchainTrades: [],
   quoteLookup: {},
+  watchTokenIds: [],
 };
 
 /** Per-slice views — identity stable when that slice did not change. */
@@ -41,6 +50,7 @@ const ordersListeners = new Set<() => void>();
 const tradesListeners = new Set<() => void>();
 
 let timer: ReturnType<typeof setTimeout> | null = null;
+let quoteTimer: ReturnType<typeof setTimeout> | null = null;
 let bootstrapped = false;
 
 function readQuoteLookup(ids: readonly string[]): Record<string, Market> {
@@ -109,6 +119,13 @@ function quoteLookupEqual(a: Record<string, Market>, b: Record<string, Market>):
   return true;
 }
 
+function watchTokenIdsEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 function notify(set: Set<() => void>): void {
   if (set.size === 0) return;
   startTransition(() => {
@@ -116,8 +133,41 @@ function notify(set: Set<() => void>): void {
   });
 }
 
+/** Quote-only wake — re-read pending/store bid/ask without waiting for full 2s grid flush. */
+function flushQuotesOnly(): void {
+  quoteTimer = null;
+  if (positionsListeners.size === 0) return;
+  const ids = snap.watchTokenIds.length > 0
+    ? snap.watchTokenIds
+    : collectTokenIds(
+        snap.positions,
+        snap.orders,
+        snap.trades,
+        snap.onchainPositions,
+        snap.onchainTrades,
+        useAppStore.getState().selectedMarket?.clobTokenIds,
+      );
+  const quoteLookup = readQuoteLookup(ids);
+  if (quoteLookupEqual(snap.quoteLookup, quoteLookup)) return;
+  snap = {
+    ...snap,
+    quoteLookup,
+  };
+  positionsView = snap;
+  notify(positionsListeners);
+}
+
+function scheduleQuoteFlush(): void {
+  if (quoteTimer != null) return;
+  quoteTimer = setTimeout(flushQuotesOnly, QUOTE_FLUSH_MS);
+}
+
 function flushNow(): void {
   timer = null;
+  if (quoteTimer != null) {
+    clearTimeout(quoteTimer);
+    quoteTimer = null;
+  }
   const app = useAppStore.getState();
   const onchain = getSidebarOnchainTradesSnapshot();
   const positions = app.positions;
@@ -134,13 +184,15 @@ function flushNow(): void {
     app.selectedMarket?.clobTokenIds,
   );
   const quoteLookup = readQuoteLookup(ids);
+  const watchTokenIds = ids.slice().sort();
 
   const positionsChanged =
     snap.positions !== positions || snap.onchainPositions !== onchainPositions;
   const ordersChanged = snap.orders !== orders;
   const tradesChanged = snap.trades !== trades || snap.onchainTrades !== onchainTrades;
   const quotesChanged = !quoteLookupEqual(snap.quoteLookup, quoteLookup);
-  if (!positionsChanged && !ordersChanged && !tradesChanged && !quotesChanged) return;
+  const watchChanged = !watchTokenIdsEqual(snap.watchTokenIds, watchTokenIds);
+  if (!positionsChanged && !ordersChanged && !tradesChanged && !quotesChanged && !watchChanged) return;
 
   snap = {
     positions,
@@ -149,10 +201,11 @@ function flushNow(): void {
     onchainPositions,
     onchainTrades,
     quoteLookup: quotesChanged ? quoteLookup : snap.quoteLookup,
+    watchTokenIds: watchChanged ? watchTokenIds : snap.watchTokenIds,
   };
 
   // Positions: marks + size. Orders-only WS must NOT rebuild positions table.
-  if (positionsChanged || quotesChanged) {
+  if (positionsChanged || quotesChanged || watchChanged) {
     positionsView = snap;
     notify(positionsListeners);
   } else if (ordersChanged) {
@@ -189,6 +242,12 @@ function ensureBootstrapped(): void {
     scheduleFlush();
   });
   subscribeSidebarOnchainTrades(scheduleFlush);
+  // Live WS bid/ask (pending) — keep TPO Bid/Ask current (~400ms).
+  subscribeBidAskMarketLookup(() => {
+    if (positionsListeners.size === 0) return;
+    scheduleQuoteFlush();
+  });
+  // Store flush / grid digest — full re-collect of token ids + quotes.
   subscribeBidAskMarketLookupGridFlush(() => {
     if (positionsListeners.size === 0) return;
     if (timer != null) {

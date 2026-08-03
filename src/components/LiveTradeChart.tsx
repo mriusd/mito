@@ -237,6 +237,14 @@ export function LiveTradeChart({
     candleMs,
   });
 
+  // 4h/1d: axis follows loaded history (not short market-window startTime, which clipped to ~2 bars).
+  const chartAxisStartTime = useMemo(() => {
+    if (interval === '4h' || interval === '1d') {
+      return candles.length > 0 ? candles[0]!.time : startTime;
+    }
+    return startTime;
+  }, [interval, candles, startTime]);
+
   const displayChartOrderLevels = useMemo(() => {
     if (!sidebarChartOrderLevels?.length) return undefined;
     if (!orderDrag) return sidebarChartOrderLevels;
@@ -257,7 +265,7 @@ export function LiveTradeChart({
         candles,
         candleMs,
         interval,
-        startTime,
+        startTime: chartAxisStartTime,
         endTime,
         // Stake buckets keyed by YES token id (weather market_buckets.tokenId).
         tokenId: soundMuteYesTokenId || tokenId,
@@ -277,7 +285,7 @@ export function LiveTradeChart({
       candles,
       candleMs,
       interval,
-      startTime,
+      chartAxisStartTime,
       endTime,
       tokenId,
       soundMuteYesTokenId,

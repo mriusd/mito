@@ -15,6 +15,10 @@ import {
 import { parseCandleWeather, type CandleWeatherSnapshot } from '../lib/candleWeatherSnapshot';
 
 const MAX_CHART_CANDLES = 2500;
+const ONE_HOUR_MS = 3_600_000;
+
+/** Higher TFs built client-side from 1h klines (backend may not serve 4h/1d for outcome tokens). */
+const AGGREGATE_FROM_1H = new Set(['4h', '1d']);
 
 export type LiveTradeCandle = {
   time: number;
@@ -34,6 +38,78 @@ export type LiveTradeCandle = {
 
 function toPrice(raw: number, isNo: boolean): number {
   return isNo ? 100 - raw : raw;
+}
+
+function bucketOpenTime(timeMs: number, bucketMs: number): number {
+  return Math.floor(timeMs / bucketMs) * bucketMs;
+}
+
+/**
+ * Collapse 1h OHLC into coarser buckets (4h / 1d).
+ * Open = first hour open, close = last hour close, H/L extremes, volume sum.
+ * Snapshots (ob / weather / enrichment) prefer the latest hour that has them.
+ */
+export function aggregateHourlyCandles(
+  hourly: LiveTradeCandle[],
+  bucketMs: number,
+): LiveTradeCandle[] {
+  if (bucketMs <= ONE_HOUR_MS || hourly.length === 0) return hourly;
+  const groups = new Map<number, LiveTradeCandle[]>();
+  for (const c of hourly) {
+    const t = bucketOpenTime(c.time, bucketMs);
+    let g = groups.get(t);
+    if (!g) {
+      g = [];
+      groups.set(t, g);
+    }
+    g.push(c);
+  }
+  const out: LiveTradeCandle[] = [];
+  const keys = [...groups.keys()].sort((a, b) => a - b);
+  for (const t of keys) {
+    const parts = groups.get(t)!;
+    parts.sort((a, b) => a.time - b.time);
+    const first = parts[0]!;
+    const last = parts[parts.length - 1]!;
+    let h = first.h;
+    let l = first.l;
+    let v = 0;
+    let ob = first.ob;
+    let cexOb = first.cexOb;
+    let gex = first.gex;
+    let gexBinance = first.gexBinance;
+    let gexOkx = first.gexOkx;
+    let enrichment = first.enrichment;
+    let weather = first.weather;
+    for (const p of parts) {
+      if (p.h > h) h = p.h;
+      if (p.l < l) l = p.l;
+      v += p.v || 0;
+      if (p.ob) ob = p.ob;
+      if (p.cexOb) cexOb = p.cexOb;
+      if (p.gex) gex = p.gex;
+      if (p.gexBinance) gexBinance = p.gexBinance;
+      if (p.gexOkx) gexOkx = p.gexOkx;
+      if (p.enrichment) enrichment = p.enrichment;
+      if (p.weather) weather = p.weather;
+    }
+    out.push({
+      time: t,
+      o: first.o,
+      h,
+      l,
+      c: last.c,
+      v,
+      ...(ob ? { ob } : {}),
+      ...(cexOb ? { cexOb } : {}),
+      ...(gex ? { gex } : {}),
+      ...(gexBinance ? { gexBinance } : {}),
+      ...(gexOkx ? { gexOkx } : {}),
+      ...(weather ? { weather } : {}),
+      ...(enrichment ? { enrichment } : {}),
+    });
+  }
+  return out;
 }
 
 function pruneCandleMap(map: Map<number, LiveTradeCandle>, startMs: number, endMs: number, padMs: number) {
@@ -88,11 +164,20 @@ export function useLiveTradeCandles({
     let cancelled = false;
     let publishTimer: ReturnType<typeof setTimeout> | null = null;
 
+    // 4h / 1d: pull 1h stream and aggregate client-side.
+    const from1h = AGGREGATE_FROM_1H.has(interval);
+    const feedInterval = from1h ? '1h' : interval;
+    const feedCandleMs = from1h ? ONE_HOUR_MS : candleMs;
+    const displayBucketMs = from1h ? candleMs : feedCandleMs;
+
     const { startMs: st, endMs: et } = resolveLiveTradeChartWindow(tokenId, startTime, endTime);
 
     const publishNow = () => {
       if (cancelled) return;
-      const sorted = Array.from(candleMapRef.current.values()).sort((a, b) => a.time - b.time);
+      let sorted = Array.from(candleMapRef.current.values()).sort((a, b) => a.time - b.time);
+      if (from1h) {
+        sorted = aggregateHourlyCandles(sorted, displayBucketMs);
+      }
       // Weather series: forward-fill bars/forecast; drop historical vol=0 flat stubs.
       const weatherSeries = sorted.some((c) => c.weather != null);
       if (!weatherSeries) {
@@ -166,10 +251,13 @@ export function useLiveTradeCandles({
           ...(enrichment ? { enrichment } : {}),
         });
       }
-      pruneCandleMap(map, st, et, candleMs * 2);
+      // Keep enough 1h bars to cover 4h/1d display window (pad by target bucket).
+      pruneCandleMap(map, st, et, Math.max(feedCandleMs, displayBucketMs) * 2);
     };
 
-    const klineQuery = `symbol=${encodeURIComponent(tokenId)}&interval=${interval}&startTime=${st}&endTime=${et}&limit=900`;
+    // Higher limits for 1h feed when aggregating (4h/1d need more history).
+    const klineLimit = from1h ? 1500 : 900;
+    const klineQuery = `symbol=${encodeURIComponent(tokenId)}&interval=${encodeURIComponent(feedInterval)}&startTime=${st}&endTime=${et}&limit=${klineLimit}`;
 
     const loadKlines = () => {
       const applyHistory = () =>
@@ -237,10 +325,10 @@ export function useLiveTradeCandles({
         ...(weather ? { weather } : {}),
         ...(enrichment ? { enrichment } : {}),
       });
-      pruneCandleMap(candleMapRef.current, st, et, candleMs * 2);
+      pruneCandleMap(candleMapRef.current, st, et, Math.max(feedCandleMs, displayBucketMs) * 2);
     };
 
-    const unsub = subscribeChartKline(tokenId, interval, {
+    const unsub = subscribeChartKline(tokenId, feedInterval, {
       onMessage: (msg) => {
         if (msg.type === 'klineStreamSnapshot') {
           const klines = msg.data?.klines;

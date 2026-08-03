@@ -21,10 +21,12 @@ const ONE_HOUR_MS = 3_600_000;
 const AGGREGATE_FROM_1H = new Set(['4h', '1d']);
 
 /**
- * Market startTime is often only the current window (5m/15m) or ~14d weather lookback —
- * that yields 1–2 daily bars. Expand fetch history for aggregated TFs.
+ * Market startTime is often only the current window (5m/15m/4h) — that yields a handful of
+ * 1h/4h bars. Expand the fetch window so longer TFs load enough history (min 7d for 1h/4h).
+ * 4h/1d also need longer lookback when aggregating from 1h.
  */
-const AGGREGATE_MIN_HISTORY_MS: Record<string, number> = {
+const MIN_HISTORY_MS: Record<string, number> = {
+  '1h': 7 * 24 * 60 * 60 * 1000, // 7d → 168 1h bars
   '4h': 45 * 24 * 60 * 60 * 1000, // ~45d → ~270 4h bars
   '1d': 180 * 24 * 60 * 60 * 1000, // ~180d → ~180 daily bars
 };
@@ -178,15 +180,18 @@ export function useLiveTradeCandles({
     const feedInterval = from1h ? '1h' : interval;
     const feedCandleMs = from1h ? ONE_HOUR_MS : candleMs;
     const displayBucketMs = from1h ? candleMs : feedCandleMs;
+    const minHist = MIN_HISTORY_MS[interval];
+    // Expand + history-backfill for long TFs (1h/4h/1d) so live short-tail is not all we show.
+    const needsExpandedHistory = minHist != null || from1h;
 
     const baseWin = resolveLiveTradeChartWindow(tokenId, startTime, endTime);
     let st = baseWin.startMs;
     let et = baseWin.endMs;
-    if (from1h) {
-      const minHist = AGGREGATE_MIN_HISTORY_MS[interval] ?? 90 * 24 * 60 * 60 * 1000;
+    if (needsExpandedHistory) {
+      const histMs = minHist ?? 90 * 24 * 60 * 60 * 1000;
       const endForHist = Math.max(et, Date.now());
-      st = Math.min(st, endForHist - minHist);
-      // Cap pad so prune keeps long 1h history
+      st = Math.min(st, endForHist - histMs);
+      // Keep end at least "now" so prune retains the full expanded history window.
       et = Math.max(et, endForHist);
     }
 
@@ -273,8 +278,8 @@ export function useLiveTradeCandles({
       pruneCandleMap(map, st, et, Math.max(feedCandleMs, displayBucketMs) * 2);
     };
 
-    // 1h feed for 180d needs ~4k bars; request a high limit (server may clamp).
-    const klineLimit = from1h ? 5000 : 900;
+    // 1h feed for 180d needs ~4k bars; expanded 1h (7d) still fits under 900 but use room for pad.
+    const klineLimit = from1h || interval === '1h' ? 5000 : 900;
     const klineQuery = `symbol=${encodeURIComponent(tokenId)}&interval=${encodeURIComponent(feedInterval)}&startTime=${st}&endTime=${et}&limit=${klineLimit}`;
 
     const loadKlines = () => {
@@ -294,8 +299,8 @@ export function useLiveTradeCandles({
           if (Array.isArray(klines) && klines.length > 0) {
             applyKlines(klines);
             publish(true);
-            // Live endpoint often only has a short tail; history backfills 4h/1d range.
-            if (from1h) {
+            // Live endpoint often only has a short tail; history backfills expanded 1h/4h/1d range.
+            if (needsExpandedHistory) {
               try {
                 await applyHistory();
               } catch {

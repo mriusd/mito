@@ -237,9 +237,9 @@ export function LiveTradeChart({
     candleMs,
   });
 
-  // 4h/1d: axis follows loaded history (not short market-window startTime, which clipped to ~2 bars).
+  // 1h/4h/1d: axis follows loaded history (not short market-window startTime, which clipped to a few bars).
   const chartAxisStartTime = useMemo(() => {
-    if (interval === '4h' || interval === '1d') {
+    if (interval === '1h' || interval === '4h' || interval === '1d') {
       return candles.length > 0 ? candles[0]!.time : startTime;
     }
     return startTime;

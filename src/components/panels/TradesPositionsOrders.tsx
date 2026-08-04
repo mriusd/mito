@@ -83,6 +83,16 @@ function formatAskCentsSum(cents: number | null | undefined): string {
   return `${cents.toFixed(1)}¢`;
 }
 
+/** Mid ¢ from bid/ask probs [0,1]; sole side if only one quoted. */
+function midCentsFromBidAsk(bidProb: number | null | undefined, askProb: number | null | undefined): number | null {
+  const hasBid = bidProb != null && Number.isFinite(bidProb) && bidProb > 0;
+  const hasAsk = askProb != null && Number.isFinite(askProb) && askProb > 0;
+  if (hasBid && hasAsk) return ((bidProb! + askProb!) / 2) * 100;
+  if (hasBid) return bidProb! * 100;
+  if (hasAsk) return askProb! * 100;
+  return null;
+}
+
 type TpoPosRow = {
   tid: string;
   asset: string;
@@ -98,6 +108,8 @@ type TpoPosRow = {
   currentValue: number;
   bidProb: number | null;
   askProb: number | null;
+  /** Mid ¢ — (bid+ask)/2, or sole side; Σ mid ¢ when Bucket parent. */
+  midCents?: number | null;
   /** Ask ¢ — single row ask, or Σ ask ¢ when Bucket parent. */
   askCents?: number | null;
   sellPrice: number | null;
@@ -191,9 +203,11 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[], mode: TpoWeatherBucketMode
     let currentValue = 0;
     let bidSumCents = 0;
     let askSumCents = 0;
+    let midSumCents = 0;
     let sellSumCents = 0;
     let bidN = 0;
     let askN = 0;
+    let midN = 0;
     let sellN = 0;
     const outcomes = new Set<string>();
     let latestEnd: string | null = first.endDate;
@@ -210,6 +224,11 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[], mode: TpoWeatherBucketMode
       if (r.askProb != null && Number.isFinite(r.askProb) && r.askProb > 0) {
         askSumCents += r.askProb * 100;
         askN += 1;
+      }
+      const childMid = r.midCents ?? midCentsFromBidAsk(r.bidProb, r.askProb);
+      if (childMid != null && childMid > 0) {
+        midSumCents += childMid;
+        midN += 1;
       }
       if (r.sellPrice != null && Number.isFinite(r.sellPrice) && r.sellPrice > 0) {
         sellSumCents += r.sellPrice;
@@ -243,6 +262,7 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[], mode: TpoWeatherBucketMode
       currentValue,
       bidProb: bidN > 0 ? bidSumCents / 100 : null,
       askProb: askN > 0 ? askSumCents / 100 : null,
+      midCents: midN > 0 ? midSumCents : null,
       askCents: askN > 0 ? askSumCents : null,
       sellPrice: sellN > 0 ? sellSumCents : null,
       bucketCentsSum: true,
@@ -874,11 +894,11 @@ function TradesPositionsOrdersInner({
     }
   });
   const [posBucketExpanded, setPosBucketExpanded] = useState<Set<string>>(() => new Set());
-  type PosSortCol = 'expiry' | 'size' | 'entry' | 'cost' | 'bid' | 'ask' | 'sell' | 'val' | 'pnl' | 'pnlPct';
+  type PosSortCol = 'expiry' | 'size' | 'entry' | 'cost' | 'bid' | 'mid' | 'ask' | 'sell' | 'val' | 'pnl' | 'pnlPct';
   const [posSortCol, setPosSortCol] = useState<PosSortCol>(() => {
     const v = localStorage.getItem(`polymarket-tpo-pos-sort-col-${panelId}`);
     if (v === 'exit') return 'bid';
-    if (v === 'pnl' || v === 'pnlPct' || v === 'entry' || v === 'cost' || v === 'bid' || v === 'ask' || v === 'sell' || v === 'val') return v;
+    if (v === 'pnl' || v === 'pnlPct' || v === 'entry' || v === 'cost' || v === 'bid' || v === 'mid' || v === 'ask' || v === 'sell' || v === 'val') return v;
     return 'expiry';
   });
   const [posSortDir, setPosSortDir] = useState<1 | -1>(() => {
@@ -1433,10 +1453,11 @@ function TradesPositionsOrdersInner({
       const avg = pos.avgPrice || 0;
       const { bid: bidProb, ask: askProb } = outcomeBidAskProb(tid, liveQuoteLookup);
       const cur = bidProb ?? 0;
+      const midCents = midCentsFromBidAsk(bidProb, askProb);
       const mid =
         bidProb == null || bidProb === 0
           ? 0
-          : askProb != null
+          : askProb != null && askProb > 0
             ? (bidProb + askProb) / 2
             : bidProb;
       const entryPrice = avg * 100;
@@ -1464,6 +1485,7 @@ function TradesPositionsOrdersInner({
         currentValue,
         bidProb,
         askProb,
+        midCents,
         sellPrice,
         pnl,
         pnlPercent,
@@ -1494,6 +1516,13 @@ function TradesPositionsOrdersInner({
       }
       if (posSortCol === 'bid') {
         return list.sort((a, b) => (a.currentPrice - b.currentPrice) * posSortDir);
+      }
+      if (posSortCol === 'mid') {
+        return list.sort((a, b) => {
+          const aMid = a.midCents ?? midCentsFromBidAsk(a.bidProb, a.askProb) ?? 0;
+          const bMid = b.midCents ?? midCentsFromBidAsk(b.bidProb, b.askProb) ?? 0;
+          return (aMid - bMid) * posSortDir;
+        });
       }
       if (posSortCol === 'ask') {
         return list.sort((a, b) => {
@@ -1722,7 +1751,7 @@ function TradesPositionsOrdersInner({
 
   // Pixel cols + minWidth: table scrolls horizontally on mobile instead of overlapping.
   const TR_MIN_W = 530;
-  const POS_MIN_W = 716;
+  const POS_MIN_W = 764;
   const ORD_MIN_W = 662;
   const trColgroup = (
     <colgroup>
@@ -1747,6 +1776,7 @@ function TradesPositionsOrdersInner({
       <col style={{ width: 52 }} />
       <col style={{ width: 48 }} />
       <col style={{ width: 60 }} />
+      <col style={{ width: 48 }} />
       <col style={{ width: 48 }} />
       <col style={{ width: 48 }} />
       <col style={{ width: 48 }} />
@@ -2006,7 +2036,7 @@ function TradesPositionsOrdersInner({
                               : 'text-red-400'
                     }`}>{t.side}</td>
                     <td className={`${cCls} font-bold ${t.outcome === 'YES' || t.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{t.outcome || '-'}</td>
-                    <td className={`${nCls} text-right`}>{t.side === 'CLAIM' ? '—' : <TpoColorCodedSize value={Math.round(t.size)} />}</td>
+                    <td className={`${nCls} text-right`}>{t.side === 'CLAIM' ? '—' : <TpoColorCodedSize value={t.size} />}</td>
                     <td className={`${nCls} text-right`}>{t.side === 'CLAIM' ? '—' : <TpoColorCodedText text={`${t.price.toFixed(1)}¢`} />}</td>
                     <td className={`${nCls} text-right`}>
                       {t.side === 'CLAIM'
@@ -2076,6 +2106,13 @@ function TradesPositionsOrdersInner({
                 title="Sort by bid"
               >
                 Bid{posSortArrow('bid')}
+              </th>
+              <th
+                className={`${nHSortCls} text-right`}
+                onClick={() => togglePosSort('mid')}
+                title="Sort by mid ((bid+ask)/2)"
+              >
+                Mid{posSortArrow('mid')}
               </th>
               <th
                 className={`${nHSortCls} text-right`}
@@ -2161,7 +2198,7 @@ function TradesPositionsOrdersInner({
                       </span>
                     </td>
                     <td className={`${cCls} font-bold ${p.outcome === 'YES' || p.outcome === 'UP' ? 'text-green-300' : 'text-red-300'}`}>{p.outcome || '-'}</td>
-                    <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.floor(p.size)} /></td>
+                    <td className={`${nCls} text-right`}><TpoColorCodedSize value={p.size} /></td>
                     <td className={`${nCls} text-right`}><TpoColorCodedText text={`${p.entryPrice.toFixed(1)}¢`} /></td>
                     <td className={`${nCls} text-right text-red-400`}>-${p.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td
@@ -2190,6 +2227,20 @@ function TradesPositionsOrdersInner({
                       }}
                     >
                       {hasBid ? `${p.currentPrice.toFixed(1)}¢` : '-'}
+                    </td>
+                    <td
+                      className={`${nCls} text-right text-cyan-300/90`}
+                      title={
+                        isBucketParent
+                          ? p.midCents != null
+                            ? `Sum of mids ${p.midCents.toFixed(1)}¢`
+                            : undefined
+                          : p.midCents != null
+                            ? `Mid ${p.midCents.toFixed(1)}¢`
+                            : undefined
+                      }
+                    >
+                      {p.midCents != null && p.midCents > 0 ? `${p.midCents.toFixed(1)}¢` : '-'}
                     </td>
                     <td
                       className={`${nCls} text-right text-red-300/90 ${
@@ -2285,10 +2336,11 @@ function TradesPositionsOrdersInner({
               <tr className="border-t-2 border-gray-600 font-bold">
                 <td className={`${cCls} text-white`}>Total</td>
                 <td className={cCls}></td><td className={cCls}></td><td className={cCls}></td>
-                <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.floor(totalSize)} /></td>
+                <td className={`${nCls} text-right`}><TpoColorCodedSize value={totalSize} /></td>
                 <td className={`${nCls} text-right`}><TpoColorCodedText text={`${avgEntry.toFixed(1)}¢`} /></td>
                 <td className={`${nCls} text-right text-red-400`}>-${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td className={`${nCls} text-right text-gray-400`}>{avgExit.toFixed(1)}¢</td>
+                <td className={cCls}></td>
                 <td className={cCls}></td>
                 <td className={cCls}></td>
                 <td className={`${nCls} text-right text-white`}>${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -2392,7 +2444,7 @@ function TradesPositionsOrdersInner({
                     >{o.marketName}</td>
                     <td className={`${cCls} font-bold ${o.side === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.side}</td>
                     <td className={`${cCls} font-bold ${o.outcome === 'YES' ? 'text-green-300' : 'text-red-300'}`}>{o.outcome || '-'}</td>
-                    <td className={`${nCls} text-right`}><TpoColorCodedSize value={Math.round(o.size)} /></td>
+                    <td className={`${nCls} text-right`}><TpoColorCodedSize value={o.size} /></td>
                     <td
                       className={`${nCls} text-right cursor-pointer`}
                       title="Click to edit price (cancel + replace)"

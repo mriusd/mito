@@ -70,8 +70,15 @@ export function TpoColorCodedText({ text }: { text: string }) {
   );
 }
 
-/** Locale-formatted integer size: first significant digit colored. */
+/** Locale-formatted size with 1 decimal: first significant digit colored. */
 export function TpoColorCodedSize({ value }: { value: number }) {
   if (!Number.isFinite(value)) return <>—</>;
-  return <TpoColorCodedText text={Math.trunc(value).toLocaleString()} />;
+  // One decimal; locale grouping on the integer part only.
+  const rounded = Math.round(value * 10) / 10;
+  const neg = rounded < 0;
+  const abs = Math.abs(rounded);
+  const whole = Math.floor(abs);
+  const frac = Math.round((abs - whole) * 10);
+  const text = `${neg ? '-' : ''}${whole.toLocaleString()}.${frac}`;
+  return <TpoColorCodedText text={text} />;
 }

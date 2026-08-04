@@ -74,8 +74,8 @@ export function PnLPanel() {
 
   const dateWindow = useMemo(() => {
     const now = new Date();
-    const DAYS_PAST = 3;
-    const DAYS_FUTURE = 7;
+    const DAYS_PAST = 7;
+    const DAYS_FUTURE = 3;
     const dates: string[] = [];
     for (let i = -DAYS_PAST; i <= DAYS_FUTURE; i++) {
       const d = new Date(now);

@@ -634,7 +634,8 @@ function TradesPositionsOrdersInner({
   const chartExtraKey = `tpo:${panelId}`;
 
   useEffect(() => {
-    if (effectiveTab !== 'positions') {
+    // Positions + orders both show live Bid/Mid/Ask — keep tokens on the chart bid/ask watch list.
+    if (effectiveTab !== 'positions' && effectiveTab !== 'orders') {
       setChartBidAskExtraTokens(chartExtraKey, []);
       return;
     }
@@ -1752,7 +1753,7 @@ function TradesPositionsOrdersInner({
   // Pixel cols + minWidth: table scrolls horizontally on mobile instead of overlapping.
   const TR_MIN_W = 530;
   const POS_MIN_W = 764;
-  const ORD_MIN_W = 662;
+  const ORD_MIN_W = 710;
   const trColgroup = (
     <colgroup>
       <col style={{ width: 44 }} />
@@ -1793,6 +1794,7 @@ function TradesPositionsOrdersInner({
       <col style={{ width: 44 }} />
       <col style={{ width: 32 }} />
       <col style={{ width: 52 }} />
+      <col style={{ width: 48 }} />
       <col style={{ width: 48 }} />
       <col style={{ width: 48 }} />
       <col style={{ width: 48 }} />
@@ -2398,6 +2400,7 @@ function TradesPositionsOrdersInner({
                 Price{ordSortArrow('price')}
               </th>
               <th className={`${nHCls} text-right`}>Bid</th>
+              <th className={`${nHCls} text-right`} title="Mid ((bid+ask)/2)">Mid</th>
               <th className={`${nHCls} text-right`}>Ask</th>
               <th
                 className={`${nHSortCls} text-right`}
@@ -2428,6 +2431,7 @@ function TradesPositionsOrdersInner({
                 const { bid: bidProb, ask: askProb } = outcomeBidAskProb(o.tid, tpoQuoteLookup);
                 const bidCents = bidProb != null && bidProb > 0 ? bidProb * 100 : null;
                 const askCents = askProb != null && askProb > 0 ? askProb * 100 : null;
+                const midCents = midCentsFromBidAsk(bidProb, askProb);
                 const side = (o.side || '').toUpperCase();
                 const bidTint = side === 'BUY' ? orderBuyToBidTintScore(o.price, bidCents) : -1;
                 const askTint = side === 'SELL' ? orderSellToAskTintScore(o.price, askCents) : -1;
@@ -2488,6 +2492,12 @@ function TradesPositionsOrdersInner({
                       style={bidTint >= 0 ? quoteClosenessColorStyle(bidTint) : undefined}
                     >
                       {formatQuoteCents(bidProb)}
+                    </td>
+                    <td
+                      className={`${nCls} text-right text-cyan-300/90`}
+                      title={midCents != null ? `Mid ${midCents.toFixed(1)}¢` : undefined}
+                    >
+                      {midCents != null ? `${midCents.toFixed(1)}¢` : '-'}
                     </td>
                     <td
                       className={`${nCls} text-right ${askTint < 0 ? 'text-red-300/90' : ''}`}

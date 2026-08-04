@@ -136,7 +136,7 @@ function notify(set: Set<() => void>): void {
 /** Quote-only wake — re-read pending/store bid/ask without waiting for full 2s grid flush. */
 function flushQuotesOnly(): void {
   quoteTimer = null;
-  if (positionsListeners.size === 0) return;
+  if (positionsListeners.size === 0 && ordersListeners.size === 0) return;
   const ids = snap.watchTokenIds.length > 0
     ? snap.watchTokenIds
     : collectTokenIds(
@@ -153,8 +153,14 @@ function flushQuotesOnly(): void {
     ...snap,
     quoteLookup,
   };
-  positionsView = snap;
-  notify(positionsListeners);
+  if (positionsListeners.size > 0) {
+    positionsView = snap;
+    notify(positionsListeners);
+  }
+  if (ordersListeners.size > 0) {
+    ordersView = snap;
+    notify(ordersListeners);
+  }
 }
 
 function scheduleQuoteFlush(): void {
@@ -211,7 +217,8 @@ function flushNow(): void {
   } else if (ordersChanged) {
     positionsView = snap; // fresh sell map on next positions wake; no notify
   }
-  if (ordersChanged) {
+  // Orders table also shows live Bid/Mid/Ask — refresh quoteLookup on quote ticks.
+  if (ordersChanged || quotesChanged || watchChanged) {
     ordersView = snap;
     notify(ordersListeners);
   }
@@ -242,14 +249,14 @@ function ensureBootstrapped(): void {
     scheduleFlush();
   });
   subscribeSidebarOnchainTrades(scheduleFlush);
-  // Live WS bid/ask (pending) — keep TPO Bid/Ask current (~400ms).
+  // Live WS bid/ask (pending) — keep TPO Bid/Mid/Ask current (~400ms).
   subscribeBidAskMarketLookup(() => {
-    if (positionsListeners.size === 0) return;
+    if (positionsListeners.size === 0 && ordersListeners.size === 0) return;
     scheduleQuoteFlush();
   });
   // Store flush / grid digest — full re-collect of token ids + quotes.
   subscribeBidAskMarketLookupGridFlush(() => {
-    if (positionsListeners.size === 0) return;
+    if (positionsListeners.size === 0 && ordersListeners.size === 0) return;
     if (timer != null) {
       clearTimeout(timer);
       timer = null;

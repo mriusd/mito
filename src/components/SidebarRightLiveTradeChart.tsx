@@ -271,7 +271,6 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
         soundMuteNoTokenId={noTokenId}
         volumeSpikeAlerts={volumeSpikeAlerts}
         candleObHover
-        obHeatmap
         sidebarUserBidPrices={sidebarUserBidPrices}
         sidebarUserAskPrices={sidebarUserAskPrices}
         sidebarChartOrderLevels={sidebarChartOrderLevels}
@@ -299,7 +298,6 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       soundMuteNoTokenId={noTokenId}
       volumeSpikeAlerts={volumeSpikeAlerts}
       candleObHover
-      obHeatmap
       sidebarUserBidPrices={sidebarUserBidPrices}
       sidebarUserAskPrices={sidebarUserAskPrices}
       sidebarChartOrderLevels={sidebarChartOrderLevels}

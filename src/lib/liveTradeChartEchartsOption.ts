@@ -683,6 +683,48 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
   };
 }
 
+/**
+ * Merge patch for live candle ticks — updates series/xAxis data without full notMerge rebuild.
+ * Call via chart.setOption(patch, { lazyUpdate: true }) when only OHLC/volume changed.
+ */
+export function buildLiveTradeChartSeriesUpdate(args: BuildLiveTradeChartOptionArgs): EChartsOption {
+  const full = buildLiveTradeChartOption(args);
+  const xAxes = Array.isArray(full.xAxis) ? full.xAxis : full.xAxis != null ? [full.xAxis] : [];
+  const seriesList = Array.isArray(full.series) ? full.series : full.series != null ? [full.series] : [];
+  return {
+    xAxis: xAxes.map((ax) => {
+      const row = ax as { data?: unknown };
+      return { data: row.data };
+    }),
+    series: seriesList.map((s) => {
+      const row = s as {
+        name?: string;
+        data?: unknown;
+        markLine?: unknown;
+        label?: unknown;
+      };
+      const patch: {
+        name?: string;
+        data?: unknown;
+        markLine?: unknown;
+        label?: unknown;
+      } = {
+        name: row.name,
+        data: row.data,
+      };
+      if (row.markLine != null) patch.markLine = row.markLine;
+      if (row.name === 'lastLabel' && row.label != null) patch.label = row.label;
+      return patch;
+    }),
+  };
+}
+
+/** Axis identity for structural rebuilds (length / window) — ignores last-bar OHLC churn. */
+export function liveTradeCandleAxisSig(candles: LiveTradeCandle[]): string {
+  if (candles.length === 0) return '0';
+  return `${candles.length}:${candles[0]!.time}:${candles[candles.length - 1]!.time}`;
+}
+
 /** Map axis-pointer / convertFromPixel raw value → candle index (by time or ordinal). */
 export function resolveCandleIndexFromAxisValue(
   raw: unknown,

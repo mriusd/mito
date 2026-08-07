@@ -273,6 +273,8 @@ interface AppState {
   removePanel: (id: string) => void;
 
   updateBidAsk: (assetId: string, bestBid: number, bestAsk: number) => void;
+  /** Force-patch `priceToBeat` (bypasses poll coalesce that ignores strike churn). */
+  patchMarketPriceToBeats: (byMarketId: Record<string, number>) => void;
 
   // Derived
   getAssetPrice: (symbol: AssetSymbol) => number;
@@ -814,6 +816,70 @@ export const useAppStore = create<AppState>((set, get) => ({
       marketLookupEpoch: s.marketLookupEpoch + 1,
     };
   }),
+  patchMarketPriceToBeats: (byMarketId) =>
+    set((s) => {
+      const want = new Map<string, number>();
+      for (const [id, raw] of Object.entries(byMarketId)) {
+        if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) want.set(id, raw);
+      }
+      if (want.size === 0) return {};
+
+      let udChanged = false;
+      const nextUd: Record<string, Record<string, Market[]>> = {};
+      for (const asset of Object.keys(s.upOrDownMarkets)) {
+        const tfMap = s.upOrDownMarkets[asset];
+        let assetChanged = false;
+        const nextTf: Record<string, Market[]> = {};
+        for (const tf of Object.keys(tfMap)) {
+          const arr = tfMap[tf];
+          let arrChanged = false;
+          const nextArr = arr.map((m) => {
+            const p = want.get(m.id);
+            if (p == null || m.priceToBeat === p) return m;
+            arrChanged = true;
+            return { ...m, priceToBeat: p };
+          });
+          nextTf[tf] = arrChanged ? nextArr : arr;
+          if (arrChanged) assetChanged = true;
+        }
+        nextUd[asset] = assetChanged ? nextTf : tfMap;
+        if (assetChanged) udChanged = true;
+      }
+
+      let lookupChanged = false;
+      let nextLookup = s.marketLookup;
+      for (const [tid, m] of Object.entries(s.marketLookup)) {
+        const p = want.get(m.id);
+        if (p == null || m.priceToBeat === p) continue;
+        if (!lookupChanged) {
+          nextLookup = { ...s.marketLookup };
+          lookupChanged = true;
+        }
+        nextLookup[tid] = { ...m, priceToBeat: p };
+      }
+
+      let nextSelected = s.selectedMarket;
+      if (nextSelected) {
+        const p = want.get(nextSelected.id);
+        if (p != null && nextSelected.priceToBeat !== p) {
+          nextSelected = { ...nextSelected, priceToBeat: p };
+        }
+      }
+
+      if (!udChanged && !lookupChanged && nextSelected === s.selectedMarket) return {};
+
+      const patch: Partial<AppState> = {};
+      if (udChanged) {
+        patch.upOrDownMarkets = nextUd;
+        patch.lastUpdated = new Date().toISOString();
+      }
+      if (lookupChanged) {
+        patch.marketLookup = nextLookup;
+        patch.marketLookupEpoch = s.marketLookupEpoch + 1;
+      }
+      if (nextSelected !== s.selectedMarket) patch.selectedMarket = nextSelected;
+      return patch;
+    }),
   getAssetPrice: (symbol) => {
     const s = get();
     const manual = s.manualPriceSlots[symbol][s.activeRangeSlot[symbol]];

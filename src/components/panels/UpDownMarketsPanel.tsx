@@ -1,9 +1,14 @@
 import { useCallback, useMemo, useState, memo, Fragment } from 'react';
 import type { CSSProperties } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { HelpTooltip } from '../HelpTooltip';
 import type { Market, AssetSymbol } from '../../types';
-import { getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
+import {
+  extractAssetFromMarket,
+  getPositionClobTokenId,
+  normalizeClobTokenId,
+} from '../../utils/format';
 import {
   useThrottledGridOrders,
   useThrottledGridPositions,
@@ -12,6 +17,9 @@ import {
 import { GRID_BID_ASK_THROTTLE_MS } from '../../lib/bidAskMarketLookup';
 import { UpDownTimeframeRowsBody } from './UpDownTimeframeRow';
 import { useUpDownNextMarketFlashWhaleSound } from '../../lib/upDownNextMarketFlashSound';
+import { fetchUpDownTargetFromCrypto } from '../../lib/upDownTargetFromCrypto';
+import { fetchMarkets } from '../../api';
+import { API_BASE } from '../../lib/env';
 
 const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 const TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
@@ -83,6 +91,7 @@ function UpDownMarketsPanelInner() {
     () => localStorage.getItem(NEXT_MARKETS_COUNT_KEY) ?? '1',
   );
   const [assetVisible, setAssetVisible] = useState<AssetVisibility>(() => readAssetVisibility());
+  const [targetsRefreshing, setTargetsRefreshing] = useState(false);
 
   const nextMarketsCount = Math.max(1, Math.min(20, Math.trunc(Number.parseInt(nextMarketsCountStr, 10)) || 1));
 
@@ -123,6 +132,7 @@ function UpDownMarketsPanelInner() {
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
+  const patchMarketPriceToBeats = useAppStore((s) => s.patchMarketPriceToBeats);
   const selectedMarketKey = useAppStore((s) => s.selectedMarketKey);
   const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
   const selectedMarketHighlightId = selectedMarketKey || selectedMarketId;
@@ -197,10 +207,108 @@ function UpDownMarketsPanelInner() {
 
   useUpDownNextMarketFlashWhaleSound(sortedOpenByAssetTf, visibleAssets, nextMarketsCount);
 
+  const refreshTargetPrices = useCallback(async () => {
+    if (targetsRefreshing) return;
+    setTargetsRefreshing(true);
+    try {
+      const now = Date.now();
+      const byId = new Map<string, Market>();
+      for (const asset of visibleAssets) {
+        for (const tf of TIMEFRAMES) {
+          const markets = sortedOpenByAssetTf[asset]?.[tf] ?? [];
+          const currentIdx = markets.findIndex((m) => m.endDate && new Date(m.endDate).getTime() > now);
+          if (currentIdx < 0) continue;
+          byId.set(markets[currentIdx].id, markets[currentIdx]);
+          for (let i = 0; i < nextMarketsCount; i++) {
+            const m = markets[currentIdx + 1 + i];
+            if (m) byId.set(m.id, m);
+          }
+        }
+      }
+      const targets: Market[] = [...byId.values()];
+      if (targets.length === 0) return;
+
+      const patch: Record<string, number> = {};
+
+      try {
+        const data = await fetchMarkets();
+        const want = new Set(targets.map((m) => m.id));
+        for (const asset of Object.keys(data.upOrDownMarkets || {})) {
+          const tfMap = data.upOrDownMarkets[asset] || {};
+          for (const tf of Object.keys(tfMap)) {
+            for (const m of tfMap[tf] || []) {
+              if (!want.has(m.id)) continue;
+              const p = m.priceToBeat;
+              if (typeof p === 'number' && Number.isFinite(p) && p > 0) patch[m.id] = p;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Up/Down target refresh: /api/markets failed', err);
+      }
+
+      // Always crypto-fetch visible windows so button truly refreshes strikes.
+      const queue = targets;
+      let qi = 0;
+      const workers = Math.min(6, queue.length);
+      await Promise.all(
+        Array.from({ length: workers }, async () => {
+          while (qi < queue.length) {
+            const i = qi++;
+            const m = queue[i];
+            if (!m?.endDate) continue;
+            const endMs = new Date(m.endDate).getTime();
+            if (!Number.isFinite(endMs)) continue;
+            const asset = extractAssetFromMarket(m);
+            if (!asset) continue;
+            const combined = `${m.eventSlug || ''} ${m.question || ''}`;
+            try {
+              const p = await fetchUpDownTargetFromCrypto(API_BASE, asset, endMs, combined);
+              if (p != null && Number.isFinite(p) && p > 0) patch[m.id] = p;
+            } catch {
+              /* per-market miss — keep /api/markets value if any */
+            }
+          }
+        }),
+      );
+
+      if (Object.keys(patch).length === 0) {
+        console.error('Up/Down target refresh: no targets resolved');
+        return;
+      }
+      patchMarketPriceToBeats(patch);
+    } finally {
+      setTargetsRefreshing(false);
+    }
+  }, [
+    targetsRefreshing,
+    visibleAssets,
+    sortedOpenByAssetTf,
+    nextMarketsCount,
+    patchMarketPriceToBeats,
+  ]);
+
   return (
     <div className="panel-wrapper bg-gray-800/50 rounded-lg p-3 flex flex-col min-h-0 h-full overflow-hidden">
       <div className="panel-header flex items-center gap-2 mb-2 cursor-grab flex-wrap">
-        <h3 className="text-sm font-bold text-yellow-400">Up or Down Markets</h3>
+        <h3 className="text-sm font-bold text-yellow-400 flex items-center gap-1.5">
+          Up or Down Markets
+          <button
+            type="button"
+            className="shrink-0 p-0.5 rounded text-gray-500 hover:text-white hover:bg-gray-700 disabled:opacity-40 no-drag"
+            title="Refetch target prices"
+            aria-label="Refetch target prices"
+            disabled={targetsRefreshing || visibleAssets.length === 0}
+            onClick={(e) => {
+              e.stopPropagation();
+              void refreshTargetPrices();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <RefreshCw size={13} className={targetsRefreshing ? 'animate-spin' : ''} />
+          </button>
+        </h3>
         <div className="ml-auto flex items-center gap-3 cursor-default flex-wrap">
           <div className="flex items-center gap-1">
             <span className="text-[10px] text-gray-400 whitespace-nowrap">Next markets</span>

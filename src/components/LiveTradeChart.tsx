@@ -41,8 +41,10 @@ import { useLiveTradeCandles } from '../hooks/useLiveTradeCandles';
 import type { CandleWeatherSnapshot } from '../lib/candleWeatherSnapshot';
 import {
   buildLiveTradeChartOption,
+  buildLiveTradeChartSeriesUpdate,
   centsFromPixelY,
   findCandleIndexAtPixel,
+  liveTradeCandleAxisSig,
   resolveCandleIndexFromAxisValue,
   type LiveTradeDataZoomState,
 } from '../lib/liveTradeChartEchartsOption';
@@ -228,7 +230,7 @@ export function LiveTradeChart({
   const candleMs = INTERVAL_MS[interval] || 60000;
   const enrichmentPriceDec = chainlinkAsset?.toUpperCase() === 'XRP' ? 4 : 2;
 
-  const { candles, ready, wsTick, candleMapRef } = useLiveTradeCandles({
+  const { candles, candlesRef, ready, wsTick, candleMapRef } = useLiveTradeCandles({
     tokenId,
     isNo,
     startTime,
@@ -259,10 +261,13 @@ export function LiveTradeChart({
     return 'Waiting for data...';
   }, [startTime]);
 
+  const candleAxisSig = liveTradeCandleAxisSig(candles);
+
   const option = useMemo(
     () =>
       buildLiveTradeChartOption({
-        candles,
+        // Prefer live ref (may be ahead of structural `candles` state on first paint after axis change).
+        candles: candlesRef.current.length > 0 ? candlesRef.current : candles,
         candleMs,
         interval,
         startTime: chartAxisStartTime,
@@ -279,10 +284,10 @@ export function LiveTradeChart({
         dataZoom: dataZoomRef.current,
         emptyMessage,
       }),
-    // dataZoomTick forces rebuild after user zoom without resetting ref mid-drag
+    // candleAxisSig — rebuild only when bar count / window changes, not last-bar OHLC.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
-      candles,
+      candleAxisSig,
       candleMs,
       interval,
       chartAxisStartTime,
@@ -305,6 +310,59 @@ export function LiveTradeChart({
     return chartRef.current?.getEchartsInstance();
   }, []);
 
+  const optionAppliedRef = useRef<typeof option | null>(null);
+
+  // Live OHLC ticks: merge series data only — do not notMerge / remount the chart.
+  useLayoutEffect(() => {
+    const chart = getChart();
+    if (!chart) return;
+    if (optionAppliedRef.current !== option) {
+      optionAppliedRef.current = option;
+      return;
+    }
+    const live = candlesRef.current;
+    if (live.length === 0) return;
+    chart.setOption(
+      buildLiveTradeChartSeriesUpdate({
+        candles: live,
+        candleMs,
+        interval,
+        startTime: chartAxisStartTime,
+        endTime,
+        tokenId: soundMuteYesTokenId || tokenId,
+        obHeatmap,
+        hideTrades,
+        tradeMarkers,
+        chartOutcome: outcomeToggle?.value ?? 'YES',
+        orderLevels: displayChartOrderLevels,
+        positionLevels: sidebarChartPositionLevels,
+        hidePriceLines,
+        dataZoom: dataZoomRef.current,
+        emptyMessage,
+      }),
+      { lazyUpdate: true },
+    );
+  }, [
+    getChart,
+    option,
+    wsTick,
+    candleMs,
+    interval,
+    chartAxisStartTime,
+    endTime,
+    tokenId,
+    soundMuteYesTokenId,
+    obHeatmap,
+    hideTrades,
+    tradeMarkers,
+    outcomeToggle?.value,
+    displayChartOrderLevels,
+    sidebarChartPositionLevels,
+    hidePriceLines,
+    emptyMessage,
+    candlesRef,
+  ]);
+
   const syncOrderHandles = useCallback(() => {
     const chart = getChart();
     const levels = displayChartOrderLevels;
@@ -313,10 +371,11 @@ export function LiveTradeChart({
       return;
     }
     const width = wrapRef.current?.clientWidth ?? 0;
+    const lastIdx = Math.max(0, candlesRef.current.length - 1);
     const next: OrderHandleLayout[] = [];
     for (const lv of levels) {
       try {
-        const pt = chart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [candles.length - 1, lv.priceCents]);
+        const pt = chart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [lastIdx, lv.priceCents]);
         if (!Array.isArray(pt) || !Number.isFinite(pt[1])) continue;
         next.push({
           orderId: lv.orderId,
@@ -329,7 +388,7 @@ export function LiveTradeChart({
       }
     }
     setOrderHandles(next);
-  }, [getChart, displayChartOrderLevels, candles.length]);
+  }, [getChart, displayChartOrderLevels, candlesRef, candleAxisSig]);
 
   useEffect(() => {
     let raf: number | null = null;
@@ -463,12 +522,13 @@ export function LiveTradeChart({
 
   const applyCandleHover = useCallback(
     (idx: number | null, clientX: number, clientY: number) => {
-      if (idx == null || idx < 0 || idx >= candles.length) {
+      const live = candlesRef.current;
+      if (idx == null || idx < 0 || idx >= live.length) {
         setHoverOhlcv(null);
         setHoverOb(null);
         return;
       }
-      const nearest = candles[idx];
+      const nearest = live[idx];
       const ohlcv: ChartObHoverOhlcv = {
         timeMs: nearest.time,
         o: nearest.o,
@@ -505,7 +565,7 @@ export function LiveTradeChart({
         enrichment: nearest.enrichment,
       });
     },
-    [candles, candleObHover, interval],
+    [candlesRef, candleObHover],
   );
 
   const handleMouseMove = useCallback(

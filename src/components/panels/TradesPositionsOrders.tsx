@@ -920,8 +920,8 @@ function TradesPositionsOrdersInner({
     localStorage.setItem(`polymarket-tpo-pos-sort-dir-${panelId}`, '-1');
   };
 
-  type OrdSortCol = 'date' | 'side' | 'outcome' | 'price' | 'size' | 'filled' | 'value' | 'time';
-  const ORD_SORT_COLS: OrdSortCol[] = ['date', 'side', 'outcome', 'price', 'size', 'filled', 'value', 'time'];
+  type OrdSortCol = 'date' | 'side' | 'outcome' | 'price' | 'bid' | 'mid' | 'ask' | 'size' | 'filled' | 'value' | 'time';
+  const ORD_SORT_COLS: OrdSortCol[] = ['date', 'side', 'outcome', 'price', 'bid', 'mid', 'ask', 'size', 'filled', 'value', 'time'];
   const [ordSortCol, setOrdSortCol] = useState<OrdSortCol | null>(() => {
     const v = localStorage.getItem(`polymarket-tpo-ord-sort-col-${panelId}`);
     return ORD_SORT_COLS.includes(v as OrdSortCol) ? (v as OrdSortCol) : null;
@@ -1693,6 +1693,26 @@ function TradesPositionsOrdersInner({
         case 'price':
           cmp = (a.price - b.price) * dir;
           break;
+        case 'bid': {
+          const aBid = outcomeBidAskProb(a.tid, tpoQuoteLookup).bid;
+          const bBid = outcomeBidAskProb(b.tid, tpoQuoteLookup).bid;
+          cmp = ((aBid != null && aBid > 0 ? aBid : 0) - (bBid != null && bBid > 0 ? bBid : 0)) * dir;
+          break;
+        }
+        case 'mid': {
+          const aq = outcomeBidAskProb(a.tid, tpoQuoteLookup);
+          const bq = outcomeBidAskProb(b.tid, tpoQuoteLookup);
+          const aMid = midCentsFromBidAsk(aq.bid, aq.ask) ?? 0;
+          const bMid = midCentsFromBidAsk(bq.bid, bq.ask) ?? 0;
+          cmp = (aMid - bMid) * dir;
+          break;
+        }
+        case 'ask': {
+          const aAsk = outcomeBidAskProb(a.tid, tpoQuoteLookup).ask;
+          const bAsk = outcomeBidAskProb(b.tid, tpoQuoteLookup).ask;
+          cmp = ((aAsk != null && aAsk > 0 ? aAsk : 0) - (bAsk != null && bAsk > 0 ? bAsk : 0)) * dir;
+          break;
+        }
         case 'size':
           cmp = (a.size - b.size) * dir;
           break;
@@ -1711,7 +1731,7 @@ function TradesPositionsOrdersInner({
       if (cmp !== 0) return cmp;
       return String(a.id).localeCompare(String(b.id));
     });
-  }, [processedOrders, ordSortCol, ordSortDir]);
+  }, [processedOrders, ordSortCol, ordSortDir, tpoQuoteLookup]);
 
   const displayTrades = useMemo(() => {
     if (tradeSortCol !== 'time') return processedTrades;
@@ -2399,9 +2419,27 @@ function TradesPositionsOrdersInner({
               >
                 Price{ordSortArrow('price')}
               </th>
-              <th className={`${nHCls} text-right`}>Bid</th>
-              <th className={`${nHCls} text-right`} title="Mid ((bid+ask)/2)">Mid</th>
-              <th className={`${nHCls} text-right`}>Ask</th>
+              <th
+                className={`${nHSortCls} text-right`}
+                onClick={() => toggleOrdSort('bid')}
+                title="Sort by bid"
+              >
+                Bid{ordSortArrow('bid')}
+              </th>
+              <th
+                className={`${nHSortCls} text-right`}
+                onClick={() => toggleOrdSort('mid')}
+                title="Sort by mid ((bid+ask)/2)"
+              >
+                Mid{ordSortArrow('mid')}
+              </th>
+              <th
+                className={`${nHSortCls} text-right`}
+                onClick={() => toggleOrdSort('ask')}
+                title="Sort by ask"
+              >
+                Ask{ordSortArrow('ask')}
+              </th>
               <th
                 className={`${nHSortCls} text-right`}
                 onClick={() => toggleOrdSort('filled')}

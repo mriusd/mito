@@ -159,6 +159,7 @@ export function useLiveTradeCandles({
   candleMs,
 }: UseLiveTradeCandlesArgs) {
   const candleMapRef = useRef<Map<number, LiveTradeCandle>>(new Map());
+  const candlesRef = useRef<LiveTradeCandle[]>([]);
   const [ready, setReady] = useState(false);
   const [wsTick, setWsTick] = useState(0);
   const [candles, setCandles] = useState<LiveTradeCandle[]>([]);
@@ -174,6 +175,7 @@ export function useLiveTradeCandles({
 
   useEffect(() => {
     candleMapRef.current = new Map();
+    candlesRef.current = [];
     setReady(false);
     setCandles([]);
 
@@ -212,22 +214,30 @@ export function useLiveTradeCandles({
       }
       // Weather series: forward-fill bars/forecast; drop historical vol=0 flat stubs.
       const weatherSeries = sorted.some((c) => c.weather != null);
-      if (!weatherSeries) {
-        setCandles(sorted);
-        return;
+      if (weatherSeries) {
+        let lastWx: CandleWeatherSnapshot | undefined;
+        const lastT = sorted[sorted.length - 1]?.time ?? -1;
+        const next: LiveTradeCandle[] = [];
+        for (const c of sorted) {
+          let row = c;
+          if (c.weather) lastWx = c.weather;
+          else if (lastWx) row = { ...c, weather: lastWx };
+          const flatEmpty = row.v <= 0 && row.o === row.h && row.h === row.l && row.l === row.c;
+          if (flatEmpty && row.time !== lastT) continue;
+          next.push(row);
+        }
+        sorted = next;
       }
-      let lastWx: CandleWeatherSnapshot | undefined;
-      const lastT = sorted[sorted.length - 1]?.time ?? -1;
-      const next: LiveTradeCandle[] = [];
-      for (const c of sorted) {
-        let row = c;
-        if (c.weather) lastWx = c.weather;
-        else if (lastWx) row = { ...c, weather: lastWx };
-        const flatEmpty = row.v <= 0 && row.o === row.h && row.h === row.l && row.l === row.c;
-        if (flatEmpty && row.time !== lastT) continue;
-        next.push(row);
-      }
-      setCandles(next);
+
+      const prev = candlesRef.current;
+      candlesRef.current = sorted;
+      // Structural = axis length/window changed. Last-bar OHLC churn stays ref-only + wsTick.
+      const structural =
+        prev.length !== sorted.length ||
+        prev[0]?.time !== sorted[0]?.time ||
+        prev[prev.length - 1]?.time !== sorted[sorted.length - 1]?.time;
+      if (structural) setCandles(sorted);
+      scheduleWsTick();
     };
 
     const publish = (immediate = false) => {
@@ -441,5 +451,5 @@ export function useLiveTradeCandles({
     };
   }, [tokenId, isNo, startTime, endTime, interval, candleMs]);
 
-  return { candles, ready, wsTick, candleMapRef };
+  return { candles, candlesRef, ready, wsTick, candleMapRef };
 }

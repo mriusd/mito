@@ -692,31 +692,22 @@ export function buildLiveTradeChartSeriesUpdate(args: BuildLiveTradeChartOptionA
   const xAxes = Array.isArray(full.xAxis) ? full.xAxis : full.xAxis != null ? [full.xAxis] : [];
   const seriesList = Array.isArray(full.series) ? full.series : full.series != null ? [full.series] : [];
   return {
-    xAxis: xAxes.map((ax) => {
-      const row = ax as { data?: unknown };
-      return { data: row.data };
-    }),
+    xAxis: xAxes.map((ax) => ({ data: (ax as { data?: unknown[] }).data })),
     series: seriesList.map((s) => {
       const row = s as {
         name?: string;
         data?: unknown;
-        markLine?: unknown;
-        label?: unknown;
+        markLine?: object;
+        label?: object;
       };
-      const patch: {
-        name?: string;
-        data?: unknown;
-        markLine?: unknown;
-        label?: unknown;
-      } = {
+      return {
         name: row.name,
         data: row.data,
+        ...(row.markLine != null ? { markLine: row.markLine } : {}),
+        ...(row.name === 'lastLabel' && row.label != null ? { label: row.label } : {}),
       };
-      if (row.markLine != null) patch.markLine = row.markLine;
-      if (row.name === 'lastLabel' && row.label != null) patch.label = row.label;
-      return patch;
     }),
-  };
+  } as EChartsOption;
 }
 
 /** Axis identity for structural rebuilds (length / window) — ignores last-bar OHLC churn. */

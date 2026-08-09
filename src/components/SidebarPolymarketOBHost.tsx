@@ -9,6 +9,7 @@ import { setSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import { SidebarLiveOrderbookSection } from './SidebarLiveOrderbookSection';
 import { useSidebarOrderHighlightSets } from '../lib/sidebarOrderHighlightStore';
 import { setSidebarYesObDepth, resetSidebarYesObDepth } from '../lib/sidebarYesObDepthStore';
+import { outcomeMidCentsFromSidebarBook } from '../lib/sidebarYesMidFromBook';
 
 type OBLevel = { price: string; size: string };
 
@@ -200,6 +201,12 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
 
   const obLoading = activeObLoading && viewBids.length === 0 && viewAsks.length === 0;
 
+  // Mid from raw CLOB top-of-book — never from grouped viewBids/viewAsks (1¢/5¢ buckets).
+  const midCents = useMemo(
+    () => outcomeMidCentsFromSidebarBook(snapshotBids, snapshotAsks),
+    [snapshotBids, snapshotAsks],
+  );
+
   const prevTopSig = useRef<string>('');
 
   useLayoutEffect(() => {
@@ -261,6 +268,7 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
       displayAskFullUsd={displayAskFullUsd}
       displayBids={viewBids}
       displayAsks={viewAsks}
+      midCents={midCents}
       obAggStep={obAggStep}
       onObAggStepChange={setObAggStepPersist}
       obLoading={obLoading}

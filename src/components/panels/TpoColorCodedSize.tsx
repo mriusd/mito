@@ -1,5 +1,5 @@
-/** Pale hues (TPO column palette) for leading digit 0–9. */
-const LEAD_DIGIT_HEX = [
+/** Pale hues (TPO column palette) for digit 0–9. */
+const DIGIT_HEX = [
   '#9ca3af', // 0 gray-400
   '#fca5a5', // 1 red-300
   '#fdba74', // 2 orange-300
@@ -13,49 +13,20 @@ const LEAD_DIGIT_HEX = [
 ] as const;
 
 /**
- * First significant digit (1–9) colored; leading 0s gray (digit-0 hue).
- * Rest of digits pale gray + black stroke; punctuation muted.
+ * Every digit 0–9 colored by its value; punctuation muted.
  */
 export function TpoColorCodedText({ text }: { text: string }) {
   if (!text) return <>—</>;
-  let coloredFirst = false;
   return (
     <span className="tpo-color-digits font-mono font-bold tabular-nums text-gray-300">
       {[...text].map((ch, i) => {
-        if (ch >= '1' && ch <= '9') {
-          if (!coloredFirst) {
-            coloredFirst = true;
-            return (
-              <span
-                key={i}
-                className="tpo-digit-stroke"
-                style={{ color: LEAD_DIGIT_HEX[ch.charCodeAt(0) - 48] }}
-              >
-                {ch}
-              </span>
-            );
-          }
+        if (ch >= '0' && ch <= '9') {
           return (
-            <span key={i} className="tpo-digit-stroke text-gray-300">
-              {ch}
-            </span>
-          );
-        }
-        if (ch === '0') {
-          // Leading zeros (before first 1–9): gray digit hue. Later zeros: pale.
-          if (!coloredFirst) {
-            return (
-              <span
-                key={i}
-                className="tpo-digit-stroke"
-                style={{ color: LEAD_DIGIT_HEX[0] }}
-              >
-                {ch}
-              </span>
-            );
-          }
-          return (
-            <span key={i} className="tpo-digit-stroke text-gray-300">
+            <span
+              key={i}
+              className="tpo-digit-stroke"
+              style={{ color: DIGIT_HEX[ch.charCodeAt(0) - 48] }}
+            >
               {ch}
             </span>
           );
@@ -70,7 +41,7 @@ export function TpoColorCodedText({ text }: { text: string }) {
   );
 }
 
-/** Locale-formatted size with 1 decimal: first significant digit colored. */
+/** Locale-formatted size with 1 decimal: each digit color-coded. */
 export function TpoColorCodedSize({ value }: { value: number }) {
   if (!Number.isFinite(value)) return <>—</>;
   // One decimal; locale grouping on the integer part only.

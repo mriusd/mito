@@ -16,6 +16,11 @@ export type SidebarLiveOrderbookSectionProps = {
   displayAskFullUsd: number;
   displayBids: SidebarObLevel[];
   displayAsks: SidebarObLevel[];
+  /**
+   * Mid ¢ from raw CLOB top-of-book (not grouped display levels).
+   * When grouping is 1¢/5¢, displayBids[0] is a bucket — mid must not use that.
+   */
+  midCents: number | null;
   obAggStep: SidebarObAggStep;
   onObAggStepChange: (step: SidebarObAggStep) => void;
   obLoading: boolean;
@@ -43,6 +48,7 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
     displayAskFullUsd,
     displayBids,
     displayAsks,
+    midCents,
     obAggStep,
     onObAggStepChange,
     obLoading,
@@ -63,18 +69,6 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
     () => resolvedBinaryOutcomeLabel(outcomeMarket, isUpDownMarket),
     [outcomeMarket, isUpDownMarket],
   );
-
-  /** Display-book mid in ¢: (bestBid+bestAsk)/2, or best side alone if one missing. */
-  const midCents = useMemo(() => {
-    const bid = parseFloat(displayBids[0]?.price ?? '');
-    const ask = parseFloat(displayAsks[0]?.price ?? '');
-    const bidOk = Number.isFinite(bid) && bid > 0;
-    const askOk = Number.isFinite(ask) && ask > 0;
-    if (bidOk && askOk) return ((bid + ask) / 2) * 100;
-    if (bidOk) return bid * 100;
-    if (askOk) return ask * 100;
-    return null;
-  }, [displayBids, displayAsks]);
 
   const overlayPrimary = resolvedOutcomeLabel
     ? { text: `Outcome: ${resolvedOutcomeLabel}`, className: 'text-emerald-400 font-bold' }
@@ -103,7 +97,7 @@ function orderbookSectionInner(props: SidebarLiveOrderbookSectionProps) {
         {midCents != null ? (
           <span
             className="min-w-0 truncate text-[10px] tabular-nums font-semibold text-gray-200"
-            title="Mid = (best bid + best ask) / 2 for displayed book"
+            title="Mid = (raw best bid + raw best ask) / 2 — not from 1¢/5¢ grouped levels"
           >
             {midCents.toFixed(1)}¢
           </span>

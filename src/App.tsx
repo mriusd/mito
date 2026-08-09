@@ -28,6 +28,7 @@ import {
 import { pickLiveUpDownMarketInTfBucket } from './utils/format';
 import { installUiInteractionRecovery } from './lib/uiInteractionRecovery';
 import { runAppRefresh } from './lib/appRefresh';
+import { MOBILE_SCREEN_MEDIA_QUERY } from './lib/mobileScreenNotice';
 import {
   isWsBidAskStubMarket,
   resolveCanonicalMarketForToken,
@@ -47,7 +48,7 @@ const SidebarLazy = lazyWithChunkReload(() =>
 
 function useMountSidebarLazyChunk(): boolean {
   const [mount, setMount] = useState(() =>
-    typeof window !== 'undefined' && !window.matchMedia('(max-width: 767px)').matches,
+    typeof window !== 'undefined' && !window.matchMedia(MOBILE_SCREEN_MEDIA_QUERY).matches,
   );
   useEffect(() => {
     const check = () => {
@@ -99,6 +100,7 @@ function App() {
   }, [backendConnected]);
   const selectedMarketId = useAppStore((s) => marketIdForUrl(s.selectedMarket));
   const selectedMarketConditionId = useAppStore((s) => s.selectedMarket?.conditionId?.trim() ?? '');
+  const hideSidebar = useAppStore((s) => s.hideSidebar);
   const sidebarOutcome = useAppStore((s) => s.sidebarOutcome);
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
@@ -117,7 +119,7 @@ function App() {
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return;
-    if (window.matchMedia('(max-width: 767px)').matches) {
+    if (window.matchMedia(MOBILE_SCREEN_MEDIA_QUERY).matches) {
       useAppStore.getState().setSidebarOpen(false);
     }
   }, []);
@@ -297,8 +299,12 @@ function App() {
       </div>
 
       <div
-        className={`flex-1 min-h-0 flex max-[767px]:ml-0 md:transition-[margin-left] md:duration-[250ms] md:ease-[ease] ${
-          selectedMarketConditionId ? 'md:ml-[calc(18rem+1.5rem)]' : 'md:ml-72'
+        className={`flex-1 min-h-0 flex max-[559px]:ml-0 min-[560px]:transition-[margin-left] min-[560px]:duration-[250ms] min-[560px]:ease-[ease] ${
+          hideSidebar
+            ? 'min-[560px]:ml-0'
+            : selectedMarketConditionId
+              ? 'min-[560px]:ml-[calc(18rem+1.5rem)]'
+              : 'min-[560px]:ml-72'
         }`}
       >
         <div className="flex-1 min-h-0 overflow-auto px-2 pb-2">

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, memo, Suspense, lazy } from 'react';
 import { useAccount } from 'wagmi';
-import { RefreshCw, Settings, Plus, Github, Send, Star } from 'lucide-react';
+import { RefreshCw, Settings, Plus, Github, Send, Star, Wallet } from 'lucide-react';
 import logoSvg from '../assets/logo.svg';
 import { HelpTooltip } from './HelpTooltip';
 import { portfolioPositionsValueUsd } from '../lib/portfolioMetrics';
@@ -198,6 +198,8 @@ export function Header({ onRefresh }: HeaderProps) {
   const setDisableMarketPriceWarning = useAppStore((s) => s.setDisableMarketPriceWarning);
   const autoSwitchNextMarketOnExpiry = useAppStore((s) => s.autoSwitchNextMarketOnExpiry);
   const setAutoSwitchNextMarketOnExpiry = useAppStore((s) => s.setAutoSwitchNextMarketOnExpiry);
+  const hideSidebar = useAppStore((s) => s.hideSidebar);
+  const setHideSidebar = useAppStore((s) => s.setHideSidebar);
   const maxOrderSizeUsd = useAppStore((s) => s.maxOrderSizeUsd);
   const setMaxOrderSizeUsd = useAppStore((s) => s.setMaxOrderSizeUsd);
   // Close add menu / settings on click outside
@@ -294,14 +296,16 @@ export function Header({ onRefresh }: HeaderProps) {
             try { await onRefresh(); } finally { setRefreshing(false); }
           }}
           disabled={refreshing}
-          className="max-[999px]:hidden bg-blue-600 hover:bg-blue-700 disabled:opacity-60 px-3 rounded text-xs font-medium transition flex items-center gap-1 h-[28px]"
+          aria-label="Refresh"
+          title="Refresh"
+          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded text-xs font-medium transition flex items-center justify-center gap-1 h-[28px] w-[28px] px-0 min-[1000px]:w-auto min-[1000px]:px-3 shrink-0"
         >
           <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
-          Refresh
+          <span className="max-[999px]:hidden">Refresh</span>
         </button>
 
         <div
-          className="inline-flex h-[28px] rounded-lg border border-gray-600/80 bg-gray-950/95 p-0.5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.45)] shrink-0"
+          className="max-[999px]:hidden inline-flex h-[28px] rounded-lg border border-gray-600/80 bg-gray-950/95 p-0.5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.45)] shrink-0"
           role="group"
           aria-label="Live trades data source"
         >
@@ -351,10 +355,11 @@ export function Header({ onRefresh }: HeaderProps) {
         <div className="relative" ref={addMenuRef}>
           <button
             onClick={() => setShowAddMenu(!showAddMenu)}
-            className="bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded px-2 max-[639px]:px-1.5 text-xs font-medium transition border border-gray-600 h-[28px] whitespace-nowrap flex items-center gap-1"
+            aria-label="Add panel"
+            className="bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded px-2 max-[999px]:px-1.5 text-xs font-medium transition border border-gray-600 h-[28px] whitespace-nowrap flex items-center gap-1"
           >
             <Plus className="w-3 h-3" />
-            <span className="max-[639px]:hidden">Panel</span>
+            <span className="max-[999px]:hidden">Panel</span>
           </button>
           {showAddMenu && (
             <div className="absolute right-0 max-[639px]:left-0 max-[639px]:right-auto mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[180px] w-[min(220px,calc(100vw-16px))] z-50">
@@ -447,6 +452,15 @@ export function Header({ onRefresh }: HeaderProps) {
                   className="accent-blue-500"
                 />
                 <span className="text-xs text-gray-300">Auto-switch to next market on expiry</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer mt-2">
+                <input
+                  type="checkbox"
+                  checked={hideSidebar}
+                  onChange={(e) => setHideSidebar(e.target.checked)}
+                  className="accent-blue-500"
+                />
+                <span className="text-xs text-gray-300">Hide Sidebar</span>
               </label>
               <div className="mt-2 pt-2 border-t border-gray-700">
                 <label className="flex items-center gap-1 mb-0.5 text-[10px] text-gray-400 font-medium">
@@ -715,7 +729,8 @@ export function Header({ onRefresh }: HeaderProps) {
             setFavouritesWalletInfoAddress(null);
             setWalletSummaryDialogOpen(true);
           }}
-          className="shrink-0 rounded border border-cyan-600/50 bg-cyan-950/35 px-2 h-[28px] text-[10px] font-semibold text-cyan-200 hover:bg-cyan-900/40 disabled:opacity-40 disabled:pointer-events-none whitespace-nowrap"
+          className="shrink-0 rounded border border-cyan-600/50 bg-cyan-950/35 px-1.5 h-[28px] flex items-center justify-center text-cyan-200 hover:bg-cyan-900/40 disabled:opacity-40 disabled:pointer-events-none"
+          aria-label="Wallet Summary"
           title={
             !effectiveWalletConnected
               ? 'Connect wallet or import private key (PK)'
@@ -726,7 +741,7 @@ export function Header({ onRefresh }: HeaderProps) {
                   : 'Wallet summary and trades for this market'
           }
         >
-          Wallet Summary
+          <Wallet className="w-3.5 h-3.5" />
         </button>
 
         <SigningModeSwitch />

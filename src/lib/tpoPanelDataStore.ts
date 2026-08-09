@@ -27,8 +27,8 @@ export type TpoPanelDataSnap = {
 export type TpoDataSlice = 'positions' | 'orders' | 'trades';
 
 const FLUSH_MS = 2000;
-/** Live bid/ask → positions table. Faster than grid 2s so Bid/Ask stay current. */
-const QUOTE_FLUSH_MS = 400;
+/** Live bid/ask → positions/orders Bid·Mid·Ask. Keep tight; do not startTransition (lags under load). */
+const QUOTE_FLUSH_MS = 100;
 
 let snap: TpoPanelDataSnap = {
   positions: [],
@@ -133,6 +133,18 @@ function notify(set: Set<() => void>): void {
   });
 }
 
+/** Sync wake for quote ticks — startTransition was delaying Bid/Ask by seconds under load. */
+function notifySync(set: Set<() => void>): void {
+  if (set.size === 0) return;
+  for (const l of set) l();
+}
+
+function quoteBidAskEqual(a: Market | undefined, b: Market | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.bestBid === b.bestBid && a.bestAsk === b.bestAsk;
+}
+
 /** Quote-only wake — re-read pending/store bid/ask without waiting for full 2s grid flush. */
 function flushQuotesOnly(): void {
   quoteTimer = null;
@@ -148,18 +160,28 @@ function flushQuotesOnly(): void {
         useAppStore.getState().selectedMarket?.clobTokenIds,
       );
   const quoteLookup = readQuoteLookup(ids);
-  if (quoteLookupEqual(snap.quoteLookup, quoteLookup)) return;
+  // Compare bid/ask values (not only object identity) so we never skip real ticks.
+  let quotesChanged = Object.keys(quoteLookup).length !== Object.keys(snap.quoteLookup).length;
+  if (!quotesChanged) {
+    for (const id of Object.keys(quoteLookup)) {
+      if (!quoteBidAskEqual(snap.quoteLookup[id], quoteLookup[id])) {
+        quotesChanged = true;
+        break;
+      }
+    }
+  }
+  if (!quotesChanged) return;
   snap = {
     ...snap,
     quoteLookup,
   };
   if (positionsListeners.size > 0) {
     positionsView = snap;
-    notify(positionsListeners);
+    notifySync(positionsListeners);
   }
   if (ordersListeners.size > 0) {
     ordersView = snap;
-    notify(ordersListeners);
+    notifySync(ordersListeners);
   }
 }
 

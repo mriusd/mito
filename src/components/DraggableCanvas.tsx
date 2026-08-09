@@ -7,6 +7,7 @@ import { lazyWithChunkReload } from '../utils/lazyWithChunkReload';
 import { ErrorBoundary } from './ErrorBoundary';
 import type { PanelConfig, PanelType } from '../types';
 import BREAKPOINT_LAYOUTS, { HEIGHT_VARIANTS, GRID_COLS } from '../lib/defaultLayouts';
+import { DESKTOP_SCREEN_MIN_WIDTH_PX } from '../lib/mobileScreenNotice';
 
 const LazyAssetMarketTable = lazyWithChunkReload(() =>
   import('./panels/AssetMarketTable').then((m) => ({ default: m.AssetMarketTable })),
@@ -285,8 +286,10 @@ export const DraggableCanvas = memo(function DraggableCanvas() {
   const [rowHeight, setRowHeight] = useState(0);
   const containerHeight = rowHeight * TOTAL_ROWS;
 
-  /** Below `sm` (768px): drag/resize only after double-tap on panel header. */
-  const [viewportNarrow, setViewportNarrow] = useState(() => window.innerWidth < 768);
+  /** Below mobile/desktop cutoff: drag/resize only after double-tap on panel header. */
+  const [viewportNarrow, setViewportNarrow] = useState(
+    () => window.innerWidth < DESKTOP_SCREEN_MIN_WIDTH_PX,
+  );
   const [mobileLayoutArmed, setMobileLayoutArmed] = useState(false);
   const mobileDoubleTapRef = useRef<{ t: number; panelId: string }>({ t: 0, panelId: '' });
   const mobileArmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -294,7 +297,7 @@ export const DraggableCanvas = memo(function DraggableCanvas() {
 
   useEffect(() => {
     const onResize = () => {
-      const n = window.innerWidth < 768;
+      const n = window.innerWidth < DESKTOP_SCREEN_MIN_WIDTH_PX;
       setViewportNarrow(n);
       if (!n) {
         setMobileLayoutArmed(false);
@@ -494,7 +497,7 @@ export const DraggableCanvas = memo(function DraggableCanvas() {
   );
 
   const disarmMobileAfterLayoutGesture = useCallback(() => {
-    if (window.innerWidth >= 768) return;
+    if (window.innerWidth >= DESKTOP_SCREEN_MIN_WIDTH_PX) return;
     setMobileLayoutArmed(false);
     if (mobileArmTimeoutRef.current) {
       clearTimeout(mobileArmTimeoutRef.current);
@@ -504,7 +507,7 @@ export const DraggableCanvas = memo(function DraggableCanvas() {
 
   const handleMobileDragStart = useCallback(() => {
     layoutInteractingRef.current = true;
-    if (window.innerWidth >= 768) return;
+    if (window.innerWidth >= DESKTOP_SCREEN_MIN_WIDTH_PX) return;
     if (mobileArmTimeoutRef.current) {
       clearTimeout(mobileArmTimeoutRef.current);
       mobileArmTimeoutRef.current = null;

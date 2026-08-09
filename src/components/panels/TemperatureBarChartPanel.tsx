@@ -1,5 +1,5 @@
 import { Link2, Link2Off, RefreshCw } from 'lucide-react';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, startTransition, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../../stores/appStore';
 import { formatElapsedSinceMs, getOrderClobTokenId, isWeatherMarket, normalizeClobTokenId, tradeElapsedColorClass } from '../../utils/format';
@@ -883,22 +883,23 @@ function useTempOddsBuckets(
 ) {
   const [quoteTick, setQuoteTick] = useState(0);
   useEffect(() => {
-    // Live WS bid/ask (pending), coalesced ~400ms. Grid flush alone left bars on stale Gamma
-    // quotes for 2s+; unthrottled rAF starve was the original concern — 400ms is a middle path.
+    // Live WS pending patches (~rAF). Coalesce 100ms; do NOT startTransition (lags under load).
+    // Grid flush is a backup when store merges without a live notify path.
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const bump = () => setQuoteTick((n) => n + 1);
     const unsubLive = subscribeBidAskMarketLookup(() => {
       if (timer != null) return;
       timer = setTimeout(() => {
         timer = null;
-        startTransition(() => setQuoteTick((n) => n + 1));
-      }, 400);
+        bump();
+      }, 100);
     });
     const unsubGrid = subscribeBidAskMarketLookupGridFlush(() => {
       if (timer != null) {
         clearTimeout(timer);
         timer = null;
       }
-      startTransition(() => setQuoteTick((n) => n + 1));
+      bump();
     });
     return () => {
       unsubLive();

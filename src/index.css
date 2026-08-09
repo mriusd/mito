@@ -643,7 +643,7 @@ input[type="range"].vol-slider::-moz-range-thumb {
   transition: none;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 560px) {
   /**
    * Left column is always w-72 when embedded toxic is available; shell must fit 288px + expand handle.
    */
@@ -702,7 +702,7 @@ input[type="range"].vol-slider::-moz-range-thumb {
   display: none;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 559px) {
   .sidebar-mobile-overlay {
     display: block;
     position: fixed;
@@ -985,7 +985,7 @@ input[type="range"].vol-slider::-moz-range-thumb {
   vertical-align: middle;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 559px) {
   .panel-header {
     touch-action: manipulation;
   }

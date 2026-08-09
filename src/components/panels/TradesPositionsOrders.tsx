@@ -15,6 +15,7 @@ import { positionBidExitTier, positionSellPriceColorStyle, positionSellPriceTint
 import { onchainFillKey } from '../../lib/tradeKeys';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
+import { useThrottledBidAskLookupSubset } from '../../hooks/useLiveBidAskLookupSubset';
 import {
   isWsBidAskStubMarket,
   resolveCanonicalMarketForToken,
@@ -52,8 +53,8 @@ import {
   ASSET_COLORS as assetColorMap2,
   type MarketAssetCategoryFilter,
 } from '../../utils/format';
-import { LiveElapsedAgeCell } from '../WalletTradeTimeCell';
-import { formatWeatherEventDateLabel, parseWeatherCityFromSlug, tpoMarketSortDateIso } from '../../lib/weatherMarketExpiry';
+import { LiveElapsedAgeCell, LiveExpiryCountdownCell } from '../WalletTradeTimeCell';
+import { formatWeatherEventDateLabel, parseWeatherCityFromSlug, tpoMarketSortDateIso, resolveMarketExpiryEndDate } from '../../lib/weatherMarketExpiry';
 import { weatherCityLabel } from '../../lib/weatherCities';
 import type { Market } from '../../types';
 
@@ -97,6 +98,9 @@ type TpoPosRow = {
   tid: string;
   asset: string;
   endDate: string | null;
+  /** Full expiry instant ms — crypto Date column live countdown. */
+  expiryEndMs: number;
+  isCrypto: boolean;
   dateLabel: string;
   dateColor: string;
   marketName: string;
@@ -212,6 +216,7 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[], mode: TpoWeatherBucketMode
     const outcomes = new Set<string>();
     let latestEnd: string | null = first.endDate;
     let latestEndMs = first.endDate ? Date.parse(first.endDate) : NaN;
+    let latestExpiryEndMs = first.expiryEndMs > 0 ? first.expiryEndMs : 0;
     for (const r of list) {
       size += Number.isFinite(r.size) ? r.size : 0;
       entryPrice += r.entryPrice;
@@ -235,6 +240,7 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[], mode: TpoWeatherBucketMode
         sellN += 1;
       }
       if (r.outcome) outcomes.add(r.outcome);
+      if (r.expiryEndMs > latestExpiryEndMs) latestExpiryEndMs = r.expiryEndMs;
       if (r.endDate) {
         const ms = Date.parse(r.endDate);
         if (Number.isFinite(ms) && (!Number.isFinite(latestEndMs) || ms > latestEndMs)) {
@@ -252,6 +258,8 @@ function bucketTpoWeatherPositions(rows: TpoPosRow[], mode: TpoWeatherBucketMode
       tid: first.tid,
       marketName: citySlug ? `${weatherCityLabel(citySlug)} · ${list.length}` : first.marketName,
       endDate: latestEnd,
+      expiryEndMs: latestExpiryEndMs,
+      isCrypto: list.every((r) => r.isCrypto),
       dateLabel: latestChild.dateLabel,
       dateColor: latestChild.dateColor,
       outcome: outcomes.size === 1 ? [...outcomes][0] : '—',
@@ -592,8 +600,22 @@ function TradesPositionsOrdersInner({
   const onchainWsPositions = tpoData.onchainPositions;
   const onchainWsTrades = tpoData.onchainTrades;
   const marketLookup = tpoData.quoteLookup;
-  const liveQuoteLookup = marketLookup;
-  const tpoQuoteLookup = marketLookup;
+  // Prefer full watch list (all position/order tokens) over keys already quoted.
+  const tpoLiveQuoteIds = useMemo(() => {
+    const fromWatch = tpoData.watchTokenIds;
+    if (fromWatch?.length) return fromWatch;
+    return Object.keys(marketLookup);
+  }, [tpoData.watchTokenIds, marketLookup]);
+  // Live pending bid/ask (~100ms) — independent of TPO store startTransition/full-row path.
+  const liveBidAskOverlay = useThrottledBidAskLookupSubset(
+    effectiveTab === 'positions' || effectiveTab === 'orders' ? tpoLiveQuoteIds : [],
+    100,
+  );
+  const liveQuoteLookup = useMemo(() => {
+    if (Object.keys(liveBidAskOverlay).length === 0) return marketLookup;
+    return { ...marketLookup, ...liveBidAskOverlay };
+  }, [marketLookup, liveBidAskOverlay]);
+  const tpoQuoteLookup = liveQuoteLookup;
 
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const signingMode = useAppStore((s) => s.signingMode);
@@ -624,13 +646,6 @@ function TradesPositionsOrdersInner({
     refreshSidebarOnchainWallet();
   }, [liveTradesSource, tradingWalletKey]);
 
-  // Prefer full watch list (all position tokens) over keys already quoted — otherwise
-  // tokens missing from marketLookup never get chart bid/ask subscription.
-  const tpoLiveQuoteIds = useMemo(() => {
-    const fromWatch = tpoData.watchTokenIds;
-    if (fromWatch?.length) return fromWatch;
-    return Object.keys(marketLookup);
-  }, [tpoData.watchTokenIds, marketLookup]);
   const chartExtraKey = `tpo:${panelId}`;
 
   useEffect(() => {
@@ -1424,6 +1439,18 @@ function TradesPositionsOrdersInner({
       };
       const rowDate = resolveTpoRowDate(market, posFallback);
       const endDate = rowDate.sortDate;
+      const cat = classifyMarketAssetCategory(market, {
+        title: pos.title,
+        eventSlug: pos.eventSlug || pos.slug,
+        underlyingAsset: pos.underlyingAsset,
+      });
+      const isCrypto = cat === 'CRYPTO';
+      const expiryRaw = resolveMarketExpiryEndDate(
+        market ?? { endDate: pos.endDate || undefined, question: pos.title, eventSlug: pos.eventSlug || pos.slug },
+        pos.endDate || '',
+      );
+      const expiryParsed = expiryRaw ? Date.parse(expiryRaw) : NaN;
+      const expiryEndMs = Number.isFinite(expiryParsed) ? expiryParsed : 0;
       // Prefer WS/Data API title — lookup often misses Other markets (shows tokenId[:8]).
       const marketName = getMarketPriceCondition(pos.title || market?.question, tid, marketLookup);
       let mktLabel = formatTpoMarketLabel(asset, marketName);
@@ -1475,6 +1502,8 @@ function TradesPositionsOrdersInner({
         tid,
         asset,
         endDate,
+        expiryEndMs,
+        isCrypto,
         dateLabel: endDate ? rowDate.display.label : '-',
         dateColor: endDate ? rowDate.display.color : 'text-gray-400',
         marketName: mktLabel,
@@ -2200,7 +2229,13 @@ function TradesPositionsOrdersInner({
                     })}
                   >
                     <td className={`${cCls} ${assetColorMap[p.asset] || 'text-gray-400'} font-bold`}>{p.asset}</td>
-                    <td className={`${nCls} ${p.dateColor}`}>{p.dateLabel}</td>
+                    <td className={`${nCls} ${p.isCrypto ? '' : p.dateColor}`}>
+                      {p.isCrypto ? (
+                        <LiveExpiryCountdownCell endMs={p.expiryEndMs} />
+                      ) : (
+                        p.dateLabel
+                      )}
+                    </td>
                     <td className={`${cCls} ${assetColorMap2[p.asset] || 'text-gray-300'}`}>
                       <span className={`inline-flex items-center gap-0.5 min-w-0 ${p.bucketChild ? 'pl-3' : ''}`}>
                         {isBucketParent ? (

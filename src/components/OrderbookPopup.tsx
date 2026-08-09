@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { fetchOrderbook } from '../api';
 import { OrderbookPopupPanel, type OBEntry } from './OrderbookPopupPanel';
+import { DESKTOP_SCREEN_MIN_WIDTH_PX } from '../lib/mobileScreenNotice';
 
 interface PopupState {
   visible: boolean;
@@ -28,7 +29,7 @@ function pruneCache() {
 }
 
 export function OrderbookPopup() {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < DESKTOP_SCREEN_MIN_WIDTH_PX);
 
   const [state, setState] = useState<PopupState>({
     visible: false,
@@ -50,7 +51,7 @@ export function OrderbookPopup() {
   const popupRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 768);
+    const onResize = () => setIsMobile(window.innerWidth < DESKTOP_SCREEN_MIN_WIDTH_PX);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);

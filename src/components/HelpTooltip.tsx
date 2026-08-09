@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { DESKTOP_SCREEN_MIN_WIDTH_PX } from '../lib/mobileScreenNotice';
 
 interface HelpTooltipProps {
   text: string;
@@ -21,7 +22,7 @@ export function HelpTooltip({
   wrapClassName,
 }: HelpTooltipProps) {
   const [open, setOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < DESKTOP_SCREEN_MIN_WIDTH_PX);
   const [sheetOffset, setSheetOffset] = useState(20);
   const [sheetDragging, setSheetDragging] = useState(false);
   const [sheetClosing, setSheetClosing] = useState(false);
@@ -72,7 +73,7 @@ export function HelpTooltip({
   }, []);
 
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 768);
+    const onResize = () => setIsMobile(window.innerWidth < DESKTOP_SCREEN_MIN_WIDTH_PX);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);

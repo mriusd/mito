@@ -1,7 +1,12 @@
 export const MOBILE_SCREEN_NOTICE_LS_KEY = 'polybot-mobile-screen-notice-dismissed';
 
-/** Same breakpoint as App sidebar mobile behavior. */
-export const MOBILE_SCREEN_MEDIA_QUERY = '(max-width: 767px)';
+/**
+ * Mobile UI (sidebar sheet, notice, touch help) below this width.
+ * Was 767 — lowered so tablet / narrow desktop keep desktop rail longer.
+ */
+export const MOBILE_SCREEN_MAX_WIDTH_PX = 559;
+export const DESKTOP_SCREEN_MIN_WIDTH_PX = MOBILE_SCREEN_MAX_WIDTH_PX + 1;
+export const MOBILE_SCREEN_MEDIA_QUERY = `(max-width: ${MOBILE_SCREEN_MAX_WIDTH_PX}px)`;
 
 export function readMobileScreenNoticeDismissed(): boolean {
   try {

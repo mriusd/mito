@@ -12,6 +12,7 @@ import {
   upOrDownMarketsEqual,
 } from '../lib/marketDataDedupe';
 import { GRID_WIDTH_SUBDIV } from '../lib/defaultLayouts';
+import { MOBILE_SCREEN_MEDIA_QUERY } from '../lib/mobileScreenNotice';
 
 /** Quiet window after the last click before applying intermediate full markets (ms). */
 const SELECTED_MARKET_COALESCE_MS = 140;
@@ -151,6 +152,8 @@ interface AppState {
   disableMarketPriceWarning: boolean;
   /** When true, sidebar selection jumps to the next live row when the current market expires (Up/Down TF bucket or same slug+strike). */
   autoSwitchNextMarketOnExpiry: boolean;
+  /** When true, keep sidebar closed (market clicks still select; rail stays hidden). Default off. */
+  hideSidebar: boolean;
 
   // Market data from API
   aboveMarkets: Record<string, Market[]>;
@@ -243,6 +246,7 @@ interface AppState {
   setMaxOrderSizeUsd: (v: number) => void;
   setDisableMarketPriceWarning: (v: boolean) => void;
   setAutoSwitchNextMarketOnExpiry: (v: boolean) => void;
+  setHideSidebar: (v: boolean) => void;
   setArbMatchMult: (v: number) => void;
   setSignalMakerMode: (v: boolean) => void;
   setSignalPriceMode: (v: string) => void;
@@ -498,6 +502,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (v === null) return true;
     return v === 'true';
   })(),
+  hideSidebar: localStorage.getItem('polybot-hide-sidebar') === 'true',
 
   aboveMarkets: {},
   priceOnMarkets: {},
@@ -534,9 +539,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   setPkAddress: (v) => set((s) => (s.pkAddress === v ? {} : { pkAddress: v })),
   bumpPkRevision: () => set((s) => ({ pkRevision: s.pkRevision + 1 })),
 
-  // Mobile sheet: closed on load. Desktop rail: open. Matches CSS (max-width: 767px).
+  // Mobile sheet: closed on load. Desktop rail: open (unless Hide Sidebar setting).
   sidebarOpen:
-    typeof window !== 'undefined' ? !window.matchMedia('(max-width: 767px)').matches : true,
+    typeof window !== 'undefined'
+      ? !window.matchMedia(MOBILE_SCREEN_MEDIA_QUERY).matches &&
+        localStorage.getItem('polybot-hide-sidebar') !== 'true'
+      : true,
   selectedMarket: null,
   selectedMarketKey: '',
   sidebarOutcome: 'YES' as const,
@@ -672,6 +680,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     set({ autoSwitchNextMarketOnExpiry: v });
   },
+  setHideSidebar: (v) => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('polybot-hide-sidebar', v ? 'true' : 'false');
+    }
+    set((s) => ({
+      hideSidebar: v,
+      ...(v ? { sidebarOpen: false } : s.selectedMarket ? { sidebarOpen: true } : {}),
+    }));
+  },
   setArbMatchMult: (v) => {
     localStorage.setItem('polymarket-arb-match-mult', String(v));
     set({ arbMatchMult: v });
@@ -761,7 +778,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   setTriArbs: (a) => set({ triArbs: a }),
   setSignals: (next) => set((s) => (signalsEqual(next, s.signals) ? {} : { signals: next })),
   setProgArbs: (a) => set({ progArbs: a }),
-  setSidebarOpen: (v) => set({ sidebarOpen: v }),
+  setSidebarOpen: (v) =>
+    set((s) => {
+      if (v && s.hideSidebar) {
+        return s.sidebarOpen ? { sidebarOpen: false } : {};
+      }
+      return s.sidebarOpen === v ? {} : { sidebarOpen: v };
+    }),
   setSelectedMarket: (m) => {
     // Rapid market hopping used to queue one full sidebar/OB/chart teardown per click
     // and freeze the main thread (hover + scroll dead). Leading apply = snappy first

@@ -172,6 +172,7 @@ import {
   persistSidebarHoldersExpandTipDismissed,
   readSidebarHoldersExpandTipDismissed,
 } from '../lib/sidebarHoldersExpandTip';
+import { DESKTOP_SCREEN_MIN_WIDTH_PX } from '../lib/mobileScreenNotice';
 import {
   persistSidebarNotifyGearTipDismissed,
   readSidebarNotifyGearTipDismissed,
@@ -812,6 +813,8 @@ function mergeSidebarPositionsWsRest(
 export const Sidebar = memo(function Sidebar() {
   const { isConnected: walletConnected, address: walletAddress } = useAccount();
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
+  const hideSidebar = useAppStore((s) => s.hideSidebar);
+  const sidebarVisible = sidebarOpen && !hideSidebar;
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   // const setProgDialogOpen = useAppStore((s) => s.setProgDialogOpen);
   const selectedMarket = useAppStore((s) => s.selectedMarket);
@@ -1323,9 +1326,9 @@ export const Sidebar = memo(function Sidebar() {
   useEffect(() => signingDialog.subscribe(setSigningState), []);
   // Live WebSocket orderbook from Polymarket
   const obTokenId = useMemo(() => {
-    if (!sidebarOpen || !selectedMarket?.clobTokenIds) return null;
+    if (!sidebarVisible || !selectedMarket?.clobTokenIds) return null;
     return selectedMarket.clobTokenIds[orderOutcome === 'YES' ? 0 : 1] || null;
-  }, [sidebarOpen, selectedMarket, orderOutcome]);
+  }, [sidebarVisible, selectedMarket, orderOutcome]);
   const sidebarBookRef = useRef<SidebarPolymarketBookSnapshot | null>(null);
 
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
@@ -2496,24 +2499,24 @@ export const Sidebar = memo(function Sidebar() {
   const liveTradesSectionHeight = liveTradesExpanded
     ? (liveOrderbookExpanded ? sidebarSectionHeight : sidebarDoubleSectionHeight)
     : collapsedSectionHeight;
-  const [isMobileSheet, setIsMobileSheet] = useState(() => window.innerWidth < 768);
+  const [isMobileSheet, setIsMobileSheet] = useState(() => window.innerWidth < DESKTOP_SCREEN_MIN_WIDTH_PX);
   const [mobileDragOffset, setMobileDragOffset] = useState(0);
   const [mobileDragging, setMobileDragging] = useState(false);
   const mobileDragStartYRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const onResize = () => setIsMobileSheet(window.innerWidth < 768);
+    const onResize = () => setIsMobileSheet(window.innerWidth < DESKTOP_SCREEN_MIN_WIDTH_PX);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
   useEffect(() => {
-    if (!sidebarOpen) {
+    if (!sidebarVisible) {
       setMobileDragOffset(0);
       setMobileDragging(false);
       mobileDragStartYRef.current = null;
     }
-  }, [sidebarOpen]);
+  }, [sidebarVisible]);
 
   useEffect(() => {
     if (!mobileDragging) return;
@@ -2579,13 +2582,13 @@ export const Sidebar = memo(function Sidebar() {
       setHoldersExpandTipOpen(false);
       return;
     }
-    if (!sidebarOpen || !canShowEmbeddedToxic || sidebarToxicEffective) {
+    if (!sidebarVisible || !canShowEmbeddedToxic || sidebarToxicEffective) {
       setHoldersExpandTipOpen(false);
       return;
     }
     setHoldersExpandTipOpen(true);
   }, [
-    sidebarOpen,
+    sidebarVisible,
     canShowEmbeddedToxic,
     sidebarToxicEffective,
     selectedMarket?.conditionId,
@@ -2623,7 +2626,7 @@ export const Sidebar = memo(function Sidebar() {
       setHistoryTipOpen(false);
       return;
     }
-    if (!sidebarOpen || !selectedMarket) {
+    if (!sidebarVisible || !selectedMarket) {
       setHistoryTipOpen(false);
       return;
     }
@@ -2640,7 +2643,7 @@ export const Sidebar = memo(function Sidebar() {
     }
     setHistoryTipOpen(true);
   }, [
-    sidebarOpen,
+    sidebarVisible,
     selectedMarket?.id,
     onboardingBlockingUiOpen,
     notifyDialogOpen,
@@ -2665,7 +2668,7 @@ export const Sidebar = memo(function Sidebar() {
       setNotifyGearTipOpen(false);
       return;
     }
-    if (!sidebarOpen || !selectedMarket) {
+    if (!sidebarVisible || !selectedMarket) {
       setNotifyGearTipOpen(false);
       return;
     }
@@ -2682,7 +2685,7 @@ export const Sidebar = memo(function Sidebar() {
     }
     setNotifyGearTipOpen(true);
   }, [
-    sidebarOpen,
+    sidebarVisible,
     selectedMarket?.id,
     onboardingBlockingUiOpen,
     notifyDialogOpen,
@@ -2708,7 +2711,7 @@ export const Sidebar = memo(function Sidebar() {
   }, [canShowEmbeddedToxic, toxicSidebarExpanded, toxicFlowMarketId]);
 
   const startMobileDrag = (clientY: number) => {
-    if (!isMobileSheet || !sidebarOpen) return;
+    if (!isMobileSheet || !sidebarVisible) return;
     mobileDragStartYRef.current = clientY;
     setMobileDragging(true);
     setMobileDragOffset(0);
@@ -3459,7 +3462,7 @@ export const Sidebar = memo(function Sidebar() {
         </div>,
         document.body,
     )}
-    {isMobileSheet && sidebarOpen && (
+    {isMobileSheet && sidebarVisible && (
       <button
         type="button"
         className="sidebar-mobile-overlay"
@@ -3469,7 +3472,7 @@ export const Sidebar = memo(function Sidebar() {
     )}
     <div
       ref={sidebarRootRef}
-      className={`right-sidebar ${sidebarOpen ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}${canShowEmbeddedToxic && !sidebarToxicEffective ? ' sidebar-toxic-collapsed' : ''}${sidebarToxicEffective ? ' sidebar-toxic-expanded' : ''}`}
+      className={`right-sidebar ${sidebarVisible ? 'open' : ''} ${mobileDragging ? 'mobile-dragging' : ''}${canShowEmbeddedToxic && !sidebarToxicEffective ? ' sidebar-toxic-collapsed' : ''}${sidebarToxicEffective ? ' sidebar-toxic-expanded' : ''}`}
       style={
         {
           ['--mobile-sheet-offset' as string]: `${mobileDragOffset}px`,
@@ -4613,11 +4616,11 @@ export const Sidebar = memo(function Sidebar() {
             </div>
         {!isMobileSheet && selectedMarket ? (
           <>
-          <div className="hidden md:block w-6 shrink-0" aria-hidden />
+          <div className="hidden min-[560px]:block w-6 shrink-0" aria-hidden />
           <button
             ref={toxicExpandHandleRef}
             type="button"
-            className={`sidebar-toxic-expand-handle relative hidden md:flex shrink-0 w-6 flex-col justify-center items-center border-l border-gray-800/55 bg-gray-900/95 text-gray-500 hover:text-gray-400 ${sidebarToxicEffective ? '' : holdersExpandTipOpen ? 'sidebar-expand-handle-tip-flash' : 'sidebar-expand-handle-idle-flash'}`}
+            className={`sidebar-toxic-expand-handle relative hidden min-[560px]:flex shrink-0 w-6 flex-col justify-center items-center border-l border-gray-800/55 bg-gray-900/95 text-gray-500 hover:text-gray-400 ${sidebarToxicEffective ? '' : holdersExpandTipOpen ? 'sidebar-expand-handle-tip-flash' : 'sidebar-expand-handle-idle-flash'}`}
             title={sidebarToxicEffective ? 'Collapse holders panel' : 'Expand holders panel in sidebar'}
             aria-expanded={toxicSidebarExpanded}
             aria-label={sidebarToxicEffective ? 'Collapse holders panel' : 'Expand holders panel'}

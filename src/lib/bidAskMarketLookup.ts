@@ -6,11 +6,12 @@ import { useAppStore } from '../stores/appStore';
 export const BID_ASK_LOOKUP_FLUSH_MS = 2000;
 export const GRID_BID_ASK_THROTTLE_MS = BID_ASK_LOOKUP_FLUSH_MS;
 /**
- * Coalesce live WS → grid flush listeners.
- * Was 500ms — woke every UpDown/Grid cell + TPO together and starved canvas rAF.
- * Match store flush so React grid ticks ~2s max.
+ * Coalesce live WS → grid flush listeners (useThrottledBidAskPair / grid cells).
+ * Was 2s (matched store flush) — bid/ask looked multi-minute stale under load when
+ * pending was cleared before store committed. 250ms keeps books usable without
+ * per-tick full-grid storms.
  */
-export const GRID_BID_ASK_LIVE_COALESCE_MS = BID_ASK_LOOKUP_FLUSH_MS;
+export const GRID_BID_ASK_LIVE_COALESCE_MS = 250;
 
 /** Fields bid/ask WS batches can materially change vs prior store row — cheap equality gate. */
 const BIDASK_EQ_KEYS: (keyof Market)[] = [
@@ -231,34 +232,48 @@ function flushPendingBidAskToStore() {
     return;
   }
 
+  // Snapshot only — do NOT clear pending before store commit.
+  // Old code deleted pending then applied setState inside startTransition; under load
+  // the transition lagged seconds–minutes while getBidAskMarketRow fell back to the
+  // still-stale store → bid/ask appeared frozen.
   const snapshot: Record<string, Market> = {};
   for (const id of ids) {
     snapshot[id] = pendingPatch[id]!;
-    delete pendingPatch[id];
   }
 
-  startTransition(() => {
-    useAppStore.setState((state) => {
-      const lookup = state.marketLookup;
-      let merged = lookup;
-      let bumped = false;
-      for (const id of ids) {
-        let next = snapshot[id];
-        const baseline = lookup[id];
-        // Never replace a real Gamma row with a quote-only stub (kills titles → TPO shows token ints).
-        if (baseline && !isWsBidAskStubMarket(baseline) && isWsBidAskStubMarket(next)) {
-          next = { ...baseline, ...pickWsFieldsFromMarket(next) };
-        }
-        if (bidAskWsRowEqual(baseline, next)) continue;
-        if (merged === lookup) merged = { ...lookup };
-        merged[id] = next;
-        bumped = true;
+  // Sync merge into marketLookup so readers never see a pending-cleared/store-stale gap.
+  useAppStore.setState((state) => {
+    const lookup = state.marketLookup;
+    let merged = lookup;
+    let bumped = false;
+    for (const id of ids) {
+      let next = snapshot[id];
+      if (!next) continue;
+      const baseline = lookup[id];
+      // Never replace a real Gamma row with a quote-only stub (kills titles → TPO shows token ints).
+      if (baseline && !isWsBidAskStubMarket(baseline) && isWsBidAskStubMarket(next)) {
+        next = { ...baseline, ...pickWsFieldsFromMarket(next) };
       }
-      if (!bumped) return {};
-      // Intentionally do NOT bump marketLookupEpoch — live grids use pending/patch
-      // listeners; epoch bump would re-render every snapshot consumer every flush.
-      return { marketLookup: merged };
-    });
+      if (bidAskWsRowEqual(baseline, next)) continue;
+      if (merged === lookup) merged = { ...lookup };
+      merged[id] = next;
+      bumped = true;
+    }
+    if (!bumped) return {};
+    // Intentionally do NOT bump marketLookupEpoch — live grids use pending/patch
+    // listeners; epoch bump would re-render every snapshot consumer every flush.
+    return { marketLookup: merged };
+  });
+
+  // Drop only patches that were not superseded by a newer WS tick during the merge.
+  for (const id of ids) {
+    if (pendingPatch[id] === snapshot[id]) {
+      delete pendingPatch[id];
+    }
+  }
+
+  // Grid listeners can stay deprioritized; live readers already use pending/sync store.
+  startTransition(() => {
     notifyBidAskMarketLookupGridFlushListeners();
   });
 }
@@ -484,8 +499,8 @@ function processBidAskChunk(): void {
   if (bidAskChunkQueue.length === 0) return;
   const chunk = bidAskChunkQueue.splice(0, BIDASK_BATCH_CHUNK);
   const more = bidAskChunkQueue.length > 0;
-  // Defer live React notify until queue drained — mid-dump setState freezes clicks.
-  if (applyBidAskMarketPatches(chunk, { notifyLive: false })) {
+  // Notify live every chunk so UI is not frozen until the full dump drains.
+  if (applyBidAskMarketPatches(chunk, { notifyLive: true })) {
     bidAskChunkDrainTouched = true;
   }
   if (more) {
@@ -503,7 +518,6 @@ function applyBidAskMarketPatches(
   opts?: { notifyLive?: boolean },
 ): boolean {
   const notifyLive = opts?.notifyLive !== false;
-  const lookup = useAppStore.getState().marketLookup;
   let touched = false;
   for (const item of items) {
     if (!item.assetId) continue;
@@ -511,14 +525,20 @@ function applyBidAskMarketPatches(
     const seed = resolveBidAskSeedMarket(id);
     if (!seed) continue;
     const next = mergeWsItemOntoMarket(seed, item);
-    if (bidAskWsRowEqual(lookup[id], next)) {
-      if (pendingPatch[id]) {
-        delete pendingPatch[id];
-        touched = true;
-      }
+    // Compare against pending+store (getBidAskMarketRow), not store-only — otherwise a
+    // live pending tick can look "equal" to a wrong baseline and get discarded.
+    const current = getBidAskMarketRow(id);
+    if (bidAskWsRowEqual(current, next)) {
       continue;
     }
     pendingPatch[id] = next;
+    // Also index normalized form so getBidAskMarketRow candidates hit the same row.
+    try {
+      const norm = BigInt(id).toString();
+      if (norm !== id) pendingPatch[norm] = next;
+    } catch {
+      /* not an int token */
+    }
     touched = true;
   }
   if (touched) {
@@ -531,11 +551,13 @@ function applyBidAskMarketPatches(
 
 export function enqueueBidAskMarketPatches(items: BidAskWsItem[]) {
   if (items.length === 0) return;
-  // Small live ticks: apply sync. Huge reconnect dumps: chunk across frames.
-  if (items.length <= BIDASK_BATCH_CHUNK && bidAskChunkQueue.length === 0) {
+  // Small live ticks always apply immediately — never queue behind a reconnect dump
+  // (that backlog made bid/ask lag for minutes while chunks drained).
+  if (items.length <= BIDASK_BATCH_CHUNK) {
     applyBidAskMarketPatches(items);
     return;
   }
+  // Large dumps only: chunk across frames so the main thread stays responsive.
   bidAskChunkQueue.push(...items);
   if (bidAskChunkRaf == null) {
     bidAskChunkRaf = requestAnimationFrame(processBidAskChunk);

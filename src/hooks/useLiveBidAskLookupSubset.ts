@@ -51,15 +51,14 @@ export function useThrottledBidAskLookupSubset(
 }
 
 /**
- * TPO Bid/Mid/Ask — always re-reads pending/store on each tick.
- * Backup 1s poll so a missed live notify cannot freeze quotes for minutes.
+ * Forces TPO (and similar) tables to re-paint Bid/Mid/Ask.
+ * Rows should call getBidAskMarketRow / resolveTpoRowLiveQuote at paint time —
+ * do not bake quotes into a heavy memo that can lag under load.
+ *
+ * - Live WS notify → ~50ms coalesce
+ * - Backup poll every 500ms (never multi-minute freeze)
  */
-export function useTpoLiveQuoteLookup(
-  tokenIds: readonly string[],
-  enabled: boolean,
-): Record<string, Market> {
-  const idsKey = tokenIds.join('\0');
-  const ids = useMemo(() => tokenIds.filter(Boolean), [idsKey]);
+export function useTpoQuoteEpoch(enabled: boolean): number {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -71,19 +70,32 @@ export function useTpoLiveQuoteLookup(
     };
     const onPatch = () => {
       if (timer != null) return;
-      // ~50ms coalesce — tight enough for TPO without setState every rAF dump.
       timer = setTimeout(bump, 50);
     };
     const unsub = subscribeBidAskMarketLookup(onPatch);
-    // Backup poll: if live notify path stalls, still re-read getBidAskMarketRow.
-    const poll = window.setInterval(bump, 1000);
+    const poll = window.setInterval(bump, 500);
     bump();
     return () => {
       unsub();
       window.clearInterval(poll);
       if (timer != null) clearTimeout(timer);
     };
-  }, [enabled, idsKey]);
+  }, [enabled]);
+
+  return tick;
+}
+
+/**
+ * TPO Bid/Mid/Ask lookup map — re-reads pending/store on each tick.
+ * Prefer useTpoQuoteEpoch + resolveTpoRowLiveQuote at row paint for lowest lag.
+ */
+export function useTpoLiveQuoteLookup(
+  tokenIds: readonly string[],
+  enabled: boolean,
+): Record<string, Market> {
+  const idsKey = tokenIds.join('\0');
+  const ids = useMemo(() => tokenIds.filter(Boolean), [idsKey]);
+  const tick = useTpoQuoteEpoch(enabled);
 
   return useMemo(() => {
     void tick;

@@ -170,10 +170,9 @@ function mergeWsItemOntoMarket(seed: Market, item: BidAskWsItem): Market {
 const pendingPatch: Record<string, Market> = {};
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let gridLiveCoalesceTimer: ReturnType<typeof setTimeout> | null = null;
-let liveNotifyRaf: number | null = null;
-/** Caps live notify delay when rAF is throttled (background tab ≈ 1/min in Chrome). */
+/** Caps live notify delay — timer-only (no rAF; background tabs throttle rAF ~1/min). */
 let liveNotifyTimeout: ReturnType<typeof setTimeout> | null = null;
-const LIVE_NOTIFY_MAX_DELAY_MS = 100;
+const LIVE_NOTIFY_MAX_DELAY_MS = 50;
 const bidAskLookupLiveListeners = new Set<() => void>();
 const bidAskLookupGridFlushListeners = new Set<() => void>();
 let bidAskGridFlushDigest = 0;
@@ -202,40 +201,17 @@ function notifyBidAskMarketLookupLiveListeners() {
   for (const listener of bidAskLookupLiveListeners) listener();
 }
 
-function flushLiveNotify() {
-  if (liveNotifyRaf != null) {
-    cancelAnimationFrame(liveNotifyRaf);
-    liveNotifyRaf = null;
-  }
-  if (liveNotifyTimeout != null) {
-    clearTimeout(liveNotifyTimeout);
-    liveNotifyTimeout = null;
-  }
-  notifyBidAskMarketLookupLiveListeners();
-}
-
 /**
- * Coalesce live React notifies to one per frame when the tab is active.
- * Also arm a short timeout — Chrome throttles rAF to ~1/min in background tabs,
- * which made TPO/grid bid/ask look frozen for minutes.
+ * Coalesce live React notifies on a short timer only.
+ * Do NOT use requestAnimationFrame as the primary path — Chrome throttles rAF to
+ * ~1/min in background (and under load), which made TPO bid/ask lag for minutes.
  */
 function scheduleLiveNotify() {
-  if (liveNotifyRaf == null) {
-    liveNotifyRaf = requestAnimationFrame(() => {
-      liveNotifyRaf = null;
-      if (liveNotifyTimeout != null) {
-        clearTimeout(liveNotifyTimeout);
-        liveNotifyTimeout = null;
-      }
-      notifyBidAskMarketLookupLiveListeners();
-    });
-  }
-  if (liveNotifyTimeout == null) {
-    liveNotifyTimeout = setTimeout(() => {
-      liveNotifyTimeout = null;
-      flushLiveNotify();
-    }, LIVE_NOTIFY_MAX_DELAY_MS);
-  }
+  if (liveNotifyTimeout != null) return;
+  liveNotifyTimeout = setTimeout(() => {
+    liveNotifyTimeout = null;
+    notifyBidAskMarketLookupLiveListeners();
+  }, LIVE_NOTIFY_MAX_DELAY_MS);
 }
 
 function notifyBidAskMarketLookupGridFlushListeners() {
@@ -602,10 +578,6 @@ export function resetBidAskMarketLookupPending() {
   if (gridLiveCoalesceTimer != null) {
     clearTimeout(gridLiveCoalesceTimer);
     gridLiveCoalesceTimer = null;
-  }
-  if (liveNotifyRaf != null) {
-    cancelAnimationFrame(liveNotifyRaf);
-    liveNotifyRaf = null;
   }
   if (liveNotifyTimeout != null) {
     clearTimeout(liveNotifyTimeout);

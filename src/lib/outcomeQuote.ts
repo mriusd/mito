@@ -78,6 +78,19 @@ export function gammaImpliedNoBestBid(gammaYesBook: { bestAsk?: number }): { bes
   return hasQuoteSide(implied) ? { bestBid: implied } : undefined;
 }
 
+function lookupLiveRow(tokenId: string | undefined, lookup: Record<string, Market>): Market | null {
+  const tid = String(tokenId || '').trim();
+  if (!tid) return null;
+  if (lookup[tid]) return lookup[tid]!;
+  try {
+    const norm = BigInt(tid).toString();
+    if (norm !== tid && lookup[norm]) return lookup[norm]!;
+  } catch {
+    /* not an int token */
+  }
+  return null;
+}
+
 /** Best ask on outcome token as implied probability [0,1]; live book + optional Gamma fallback. */
 export function outcomeBestAskProb(
   tokenId: string | undefined,
@@ -85,7 +98,7 @@ export function outcomeBestAskProb(
   gammaFallback?: { bestBid?: number; bestAsk?: number },
   opts?: { liveOnly?: boolean },
 ): number | null {
-  const live = tokenId ? lookup[tokenId] : null;
+  const live = lookupLiveRow(tokenId, lookup);
   const ba =
     opts?.liveOnly && live
       ? pickSideLiveOnly(live.bestAsk)
@@ -101,7 +114,7 @@ export function outcomeBestBidProb(
   gammaFallback?: { bestBid?: number; bestAsk?: number },
   opts?: { liveOnly?: boolean },
 ): number | null {
-  const live = tokenId ? lookup[tokenId] : null;
+  const live = lookupLiveRow(tokenId, lookup);
   const bb =
     opts?.liveOnly && live
       ? pickSideLiveOnly(live.bestBid)
@@ -137,7 +150,7 @@ export function outcomeBidAskProb(
       return tid;
     }
   })();
-  const live = lookup[tid] || lookup[norm];
+  const live = lookupLiveRow(tid, lookup);
   const gamma = live ? { bestBid: live.bestBid, bestAsk: live.bestAsk } : undefined;
   const directBid = outcomeBestBidProb(tid, lookup, gamma);
   const directAsk = outcomeBestAskProb(tid, lookup, gamma);
@@ -145,7 +158,12 @@ export function outcomeBidAskProb(
     return { bid: directBid, ask: directAsk };
   }
 
-  for (const row of Object.values(lookup)) {
+  // Prefer clobTokenIds on the live row, then scan lookup values.
+  const rows: Market[] = live ? [live, ...Object.values(lookup)] : Object.values(lookup);
+  const seen = new Set<Market>();
+  for (const row of rows) {
+    if (seen.has(row)) continue;
+    seen.add(row);
     const ids = row.clobTokenIds || [];
     const yesId = ids[0] || '';
     const noId = ids[1] || '';

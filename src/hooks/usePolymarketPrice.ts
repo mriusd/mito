@@ -114,8 +114,9 @@ function applyPriceTick(rawAsset: string, price: number, ts: number): void {
   lastWsMsgAt = Date.now();
   const prevTs = tsMap[k];
   const prevPrice = pricesMap[k];
-  tsMap[k] = ts;
-  if (prevPrice === price && prevTs === ts) return;
+  // Always advance wall-clock freshness even when TWAP value is unchanged for a tick.
+  tsMap[k] = ts > 0 ? ts : Date.now();
+  if (prevPrice === price && prevTs === tsMap[k]) return;
   pricesMap = { ...pricesMap, [k]: price };
   emit();
 }
@@ -173,25 +174,33 @@ function disconnect(): void {
 
 async function pollChainlinkSpot(): Promise<void> {
   if (refCount <= 0) return;
-  const stale = lastWsMsgAt > 0 && Date.now() - lastWsMsgAt > CHAINLINK_WS_STALE_MS;
-  if (!stale && lastWsMsgAt > 0) return;
+  // Always poll when WS is quiet; also periodic soft-refresh so TWAP keys stay warm
+  // even if the socket is half-open without ticks.
+  const quiet = lastWsMsgAt === 0 || Date.now() - lastWsMsgAt > CHAINLINK_WS_STALE_MS;
+  if (!quiet && Date.now() - lastWsMsgAt < CHAINLINK_SPOT_POLL_MS) return;
   try {
     const r = await fetchBackend(`${API_BASE}/api/chainlink-spot`, undefined, 4000);
     if (!r.ok) return;
     const body = (await r.json()) as Record<string, number>;
     let changed = false;
     const next = { ...pricesMap };
+    const now = Date.now();
     for (const [asset, price] of Object.entries(body)) {
       if (typeof price !== 'number' || price <= 0 || !Number.isFinite(price)) continue;
       const k = normalizeChainlinkFeedKey(asset);
       if (!k) continue;
-      if (next[k] === price) continue;
+      if (next[k] === price) {
+        // Refresh timestamp so UI knows feed is alive even if TWAP value is flat.
+        if (quiet) tsMap[k] = now;
+        continue;
+      }
       next[k] = price;
-      tsMap[k] = Date.now();
+      tsMap[k] = now;
       changed = true;
     }
     if (changed) {
       pricesMap = next;
+      if (quiet) lastWsMsgAt = now;
       emit();
     }
   } catch {

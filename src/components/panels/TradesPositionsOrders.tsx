@@ -15,12 +15,17 @@ import { positionBidExitTier, positionSellPriceColorStyle, positionSellPriceTint
 import { onchainFillKey } from '../../lib/tradeKeys';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
-import { useTpoLiveQuoteLookup } from '../../hooks/useLiveBidAskLookupSubset';
+import { useTpoQuoteEpoch } from '../../hooks/useLiveBidAskLookupSubset';
 import { getBidAskMarketRow } from '../../lib/bidAskMarketLookup';
 import {
   isWsBidAskStubMarket,
   resolveCanonicalMarketForToken,
 } from '../../lib/bidAskMarketLookup';
+import {
+  liveBidAskLookupForToken,
+  resolveTpoBucketLiveQuote,
+  resolveTpoRowLiveQuote,
+} from '../../lib/tpoLiveQuotes';
 import { useTpoPanelData } from '../../lib/tpoPanelDataStore';
 import { TpoVirtualTableBody } from './TpoVirtualTableBody';
 import { TpoColorCodedSize, TpoColorCodedText } from './TpoColorCodedSize';
@@ -633,15 +638,11 @@ function TradesPositionsOrdersInner({
     return [...set];
   }, [tpoData.watchTokenIds, tpoData.positions, tpoData.onchainPositions, tpoData.orders]);
 
-  // Live pending bid/ask — re-read getBidAskMarketRow every WS tick (+1s backup poll).
-  // Do not depend on TPO store quoteLookup alone (that path can freeze under load).
+  // Epoch forces row re-paint; bid/ask resolved at paint via getBidAskMarketRow (not baked memo).
   const quotesEnabled = effectiveTab === 'positions' || effectiveTab === 'orders';
-  const liveBidAskOverlay = useTpoLiveQuoteLookup(tpoLiveQuoteIds, quotesEnabled);
-  const liveQuoteLookup = useMemo(
-    () => ({ ...marketLookup, ...liveBidAskOverlay }),
-    [marketLookup, liveBidAskOverlay],
-  );
-  const tpoQuoteLookup = liveQuoteLookup;
+  const quoteEpoch = useTpoQuoteEpoch(quotesEnabled);
+  // Structural metadata / sell map still use tpo quoteLookup; live book is read at row paint.
+  const liveQuoteLookup = marketLookup;
 
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const signingMode = useAppStore((s) => s.signingMode);
@@ -1505,7 +1506,7 @@ function TradesPositionsOrdersInner({
 
       const size = pos.size || 0;
       const avg = pos.avgPrice || 0;
-      const { bid: bidProb, ask: askProb } = outcomeBidAskProb(tid, liveQuoteLookup);
+      const { bid: bidProb, ask: askProb } = outcomeBidAskProb(tid, liveBidAskLookupForToken(tid));
       const cur = bidProb ?? 0;
       const midCents = midCentsFromBidAsk(bidProb, askProb);
       const mid =
@@ -1551,7 +1552,7 @@ function TradesPositionsOrdersInner({
         clickable,
       } satisfies TpoPosRow;
     });
-  }, [effectiveTab, positionsForTable, posCategoryFilter, marketLookup, liveQuoteLookup, sellOrderPriceByToken]);
+  }, [effectiveTab, positionsForTable, posCategoryFilter, marketLookup, sellOrderPriceByToken, quoteEpoch]);
 
   const displayPositions = useMemo(() => {
     if (effectiveTab !== 'positions') return [];
@@ -1749,22 +1750,22 @@ function TradesPositionsOrdersInner({
           cmp = (a.price - b.price) * dir;
           break;
         case 'bid': {
-          const aBid = outcomeBidAskProb(a.tid, tpoQuoteLookup).bid;
-          const bBid = outcomeBidAskProb(b.tid, tpoQuoteLookup).bid;
+          const aBid = outcomeBidAskProb(a.tid, liveBidAskLookupForToken(a.tid)).bid;
+          const bBid = outcomeBidAskProb(b.tid, liveBidAskLookupForToken(b.tid)).bid;
           cmp = ((aBid != null && aBid > 0 ? aBid : 0) - (bBid != null && bBid > 0 ? bBid : 0)) * dir;
           break;
         }
         case 'mid': {
-          const aq = outcomeBidAskProb(a.tid, tpoQuoteLookup);
-          const bq = outcomeBidAskProb(b.tid, tpoQuoteLookup);
+          const aq = outcomeBidAskProb(a.tid, liveBidAskLookupForToken(a.tid));
+          const bq = outcomeBidAskProb(b.tid, liveBidAskLookupForToken(b.tid));
           const aMid = midCentsFromBidAsk(aq.bid, aq.ask) ?? 0;
           const bMid = midCentsFromBidAsk(bq.bid, bq.ask) ?? 0;
           cmp = (aMid - bMid) * dir;
           break;
         }
         case 'ask': {
-          const aAsk = outcomeBidAskProb(a.tid, tpoQuoteLookup).ask;
-          const bAsk = outcomeBidAskProb(b.tid, tpoQuoteLookup).ask;
+          const aAsk = outcomeBidAskProb(a.tid, liveBidAskLookupForToken(a.tid)).ask;
+          const bAsk = outcomeBidAskProb(b.tid, liveBidAskLookupForToken(b.tid)).ask;
           cmp = ((aAsk != null && aAsk > 0 ? aAsk : 0) - (bAsk != null && bAsk > 0 ? bAsk : 0)) * dir;
           break;
         }
@@ -1786,7 +1787,7 @@ function TradesPositionsOrdersInner({
       if (cmp !== 0) return cmp;
       return String(a.id).localeCompare(String(b.id));
     });
-  }, [processedOrders, ordSortCol, ordSortDir, tpoQuoteLookup]);
+  }, [processedOrders, ordSortCol, ordSortDir, quoteEpoch]);
 
   const displayTrades = useMemo(() => {
     if (tradeSortCol !== 'time') return processedTrades;
@@ -2230,11 +2231,25 @@ function TradesPositionsOrdersInner({
             <TpoVirtualTableBody count={displayPositions.length} colgroup={posColgroup} minWidth={POS_MIN_W}>
               {(i) => {
                 const p = displayPositions[i];
-                const pnlColor = p.pnl >= 0 ? 'text-green-400' : 'text-red-400';
-                const pnlSign = p.pnl >= 0 ? '+' : '-';
-                const exitColor = POSITION_BID_EXIT_TAILWIND[positionBidExitTier(p.entryPrice, p.currentPrice)];
-                const hasBid = p.bidProb != null && Number.isFinite(p.bidProb) && p.bidProb > 0;
+                // Force paint dependency on live book ticks (virtual rows re-render with parent).
+                void quoteEpoch;
                 const isBucketParent = !!(p.bucketKey && p.bucketChildren && p.bucketChildren.length > 1);
+                // Always resolve Bid/Mid/Ask from pending/store at paint — never use multi-second baked memo.
+                const liveQ = isBucketParent && p.bucketChildren?.length
+                  ? resolveTpoBucketLiveQuote(p.bucketChildren)
+                  : resolveTpoRowLiveQuote(p.tid, p.size, p.cost);
+                const bidProb = liveQ.bidProb;
+                const askProb = liveQ.askProb;
+                const midCents = liveQ.midCents;
+                const currentPrice = liveQ.currentPrice;
+                const currentValue = liveQ.currentValue;
+                const pnl = liveQ.pnl;
+                const pnlPercent = liveQ.pnlPercent;
+                const askCents = liveQ.askCents;
+                const pnlColor = pnl >= 0 ? 'text-green-400' : 'text-red-400';
+                const pnlSign = pnl >= 0 ? '+' : '-';
+                const exitColor = POSITION_BID_EXIT_TAILWIND[positionBidExitTier(p.entryPrice, currentPrice)];
+                const hasBid = bidProb != null && Number.isFinite(bidProb) && bidProb > 0;
                 const bucketOpen = isBucketParent && posBucketExpanded.has(p.bucketKey!);
                 const bucketHidesSelected =
                   isBucketParent &&
@@ -2295,10 +2310,10 @@ function TradesPositionsOrdersInner({
                       title={
                         isBucketParent
                           ? hasBid
-                            ? `Sum of bids ${p.currentPrice.toFixed(1)}¢`
+                            ? `Sum of bids ${currentPrice.toFixed(1)}¢`
                             : undefined
                           : hasBid
-                            ? `Limit sell @ bid ${p.currentPrice.toFixed(1)}¢`
+                            ? `Limit sell @ bid ${currentPrice.toFixed(1)}¢`
                             : undefined
                       }
                       onClick={(e) => {
@@ -2306,52 +2321,52 @@ function TradesPositionsOrdersInner({
                         if (isBucketParent) return;
                         if (posOrderBusyTids.has(normalizeClobTokenId(p.tid))) return;
                         if (!hasBid) return;
-                        void handleSellAtBid(p);
+                        void handleSellAtBid({ ...p, bidProb, currentPrice });
                       }}
                     >
-                      {hasBid ? `${p.currentPrice.toFixed(1)}¢` : '-'}
+                      {hasBid ? `${currentPrice.toFixed(1)}¢` : '-'}
                     </td>
                     <td
                       className={`${nCls} text-right text-cyan-300/90`}
                       title={
                         isBucketParent
-                          ? p.midCents != null
-                            ? `Sum of mids ${p.midCents.toFixed(1)}¢`
+                          ? midCents != null
+                            ? `Sum of mids ${midCents.toFixed(1)}¢`
                             : undefined
-                          : p.midCents != null
-                            ? `Mid ${p.midCents.toFixed(1)}¢`
+                          : midCents != null
+                            ? `Mid ${midCents.toFixed(1)}¢`
                             : undefined
                       }
                     >
-                      {p.midCents != null && p.midCents > 0 ? `${p.midCents.toFixed(1)}¢` : '-'}
+                      {midCents != null && midCents > 0 ? `${midCents.toFixed(1)}¢` : '-'}
                     </td>
                     <td
                       className={`${nCls} text-right text-red-300/90 ${
                         !isBucketParent &&
-                        p.askProb != null &&
-                        p.askProb > 0 &&
+                        askProb != null &&
+                        askProb > 0 &&
                         !posOrderBusyTids.has(normalizeClobTokenId(p.tid))
                           ? 'cursor-pointer hover:text-red-200 hover:underline'
                           : ''
                       }`}
                       title={
                         isBucketParent
-                          ? p.askCents != null
-                            ? `Sum of asks ${p.askCents.toFixed(1)}¢`
+                          ? askCents != null
+                            ? `Sum of asks ${askCents.toFixed(1)}¢`
                             : undefined
-                          : p.askProb != null && p.askProb > 0
-                            ? `Place sell @ ask ${(p.askProb * 100).toFixed(1)}¢`
+                          : askProb != null && askProb > 0
+                            ? `Place sell @ ask ${(askProb * 100).toFixed(1)}¢`
                             : undefined
                       }
                       onClick={(e) => {
                         e.stopPropagation();
                         if (isBucketParent) return;
                         if (posOrderBusyTids.has(normalizeClobTokenId(p.tid))) return;
-                        if (p.askProb == null || p.askProb <= 0) return;
-                        void handleSellAtAsk(p);
+                        if (askProb == null || askProb <= 0) return;
+                        void handleSellAtAsk({ ...p, askProb });
                       }}
                     >
-                      {p.askCents != null ? formatAskCentsSum(p.askCents) : formatQuoteCents(p.askProb)}
+                      {askCents != null ? formatAskCentsSum(askCents) : formatQuoteCents(askProb)}
                     </td>
                     <td
                       className={`${nCls} text-right ${
@@ -2359,7 +2374,7 @@ function TradesPositionsOrdersInner({
                       } ${p.sellPrice == null && posSellEditTid !== normalizeClobTokenId(p.tid) ? 'text-gray-400' : ''}`}
                       style={
                         p.sellPrice != null && posSellEditTid !== normalizeClobTokenId(p.tid) && !p.bucketCentsSum
-                          ? positionSellPriceColorStyle(p.currentPrice, p.sellPrice)
+                          ? positionSellPriceColorStyle(currentPrice, p.sellPrice)
                           : undefined
                       }
                       title={
@@ -2407,9 +2422,9 @@ function TradesPositionsOrdersInner({
                         '-'
                       )}
                     </td>
-                    <td className={`${nCls} text-right text-gray-300`}>${p.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td className={`${nCls} text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(p.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td className={`${nCls} text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(p.pnlPercent))}%</td>
+                    <td className={`${nCls} text-right text-gray-300`}>${currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className={`${nCls} text-right ${pnlColor} font-bold`}>{pnlSign}${Math.abs(pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className={`${nCls} text-right ${pnlColor} font-bold`}>{pnlSign}{Math.round(Math.abs(pnlPercent))}%</td>
                   </tr>
                 );
               }}
@@ -2527,7 +2542,11 @@ function TradesPositionsOrdersInner({
             <TpoVirtualTableBody count={displayOrders.length} colgroup={ordColgroup} minWidth={ORD_MIN_W}>
               {(i) => {
                 const o = displayOrders[i];
-                const { bid: bidProb, ask: askProb } = outcomeBidAskProb(o.tid, tpoQuoteLookup);
+                void quoteEpoch;
+                const { bid: bidProb, ask: askProb } = outcomeBidAskProb(
+                  o.tid,
+                  liveBidAskLookupForToken(o.tid),
+                );
                 const bidCents = bidProb != null && bidProb > 0 ? bidProb * 100 : null;
                 const askCents = askProb != null && askProb > 0 ? askProb * 100 : null;
                 const midCents = midCentsFromBidAsk(bidProb, askProb);

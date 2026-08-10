@@ -168,6 +168,12 @@ function mergeWsItemOntoMarket(seed: Market, item: BidAskWsItem): Market {
 }
 
 const pendingPatch: Record<string, Market> = {};
+/**
+ * WS-only top of book. Gamma/marketLookup polls must never overwrite these — that was the
+ * correct↔wrong bid/ask flicker (live WS vs stale Gamma bestBid on the same Market row).
+ */
+type LiveTopOfBook = { bestBid: number; bestAsk: number };
+const liveTopOfBook = new Map<string, LiveTopOfBook>();
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let gridLiveCoalesceTimer: ReturnType<typeof setTimeout> | null = null;
 /** Caps live notify delay — timer-only (no rAF; background tabs throttle rAF ~1/min). */
@@ -176,6 +182,52 @@ const LIVE_NOTIFY_MAX_DELAY_MS = 50;
 const bidAskLookupLiveListeners = new Set<() => void>();
 const bidAskLookupGridFlushListeners = new Set<() => void>();
 let bidAskGridFlushDigest = 0;
+
+function tokenIdCandidates(tokenId: string): string[] {
+  const id = String(tokenId || '').trim();
+  if (!id) return [];
+  const out = [id];
+  try {
+    const norm = BigInt(id).toString();
+    if (norm !== id) out.push(norm);
+  } catch {
+    /* not an int token */
+  }
+  return out;
+}
+
+function getLiveTopOfBook(tokenId: string): LiveTopOfBook | undefined {
+  for (const key of tokenIdCandidates(tokenId)) {
+    const hit = liveTopOfBook.get(key);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+/** Record WS bestBid/bestAsk for all id forms. Returns true if sides changed. */
+function setLiveTopOfBook(
+  tokenId: string,
+  bestBid: number | undefined,
+  bestAsk: number | undefined,
+): boolean {
+  const keys = tokenIdCandidates(tokenId);
+  if (keys.length === 0) return false;
+  const prev = getLiveTopOfBook(tokenId);
+  const next: LiveTopOfBook = {
+    bestBid: bestBid !== undefined && Number.isFinite(bestBid) ? bestBid : (prev?.bestBid ?? 0),
+    bestAsk: bestAsk !== undefined && Number.isFinite(bestAsk) ? bestAsk : (prev?.bestAsk ?? 0),
+  };
+  if (prev && prev.bestBid === next.bestBid && prev.bestAsk === next.bestAsk) return false;
+  for (const k of keys) liveTopOfBook.set(k, next);
+  return true;
+}
+
+function applyLiveTopOfBookToRow(row: Market, tokenId: string): Market {
+  const tob = getLiveTopOfBook(tokenId);
+  if (!tob) return row;
+  if (row.bestBid === tob.bestBid && row.bestAsk === tob.bestAsk) return row;
+  return { ...row, bestBid: tob.bestBid, bestAsk: tob.bestAsk };
+}
 
 /** Fires on each WS bid/ask patch — sidebar live prob bar, unthrottled hooks. */
 export function subscribeBidAskMarketLookup(listener: () => void): () => void {
@@ -297,28 +349,49 @@ export function flushBidAskMarketLookupNow() {
   flushPendingBidAskToStore();
 }
 
-/** Latest WS row for order checks: unflushed pending patch wins over store (not throttled React snapshot). */
+/**
+ * Latest market row for a CLOB token.
+ * bestBid/bestAsk always prefer the WS-only top-of-book map when present — never let
+ * Gamma poll values on marketLookup fight live books (that caused correct↔wrong flicker).
+ */
 export function getBidAskMarketRow(tokenId: string): Market | undefined {
   const id = String(tokenId || '').trim();
   if (!id) return undefined;
-  const candidates = [id];
-  // Lookup / WS keys sometimes differ by BigInt decimal form (leading zeros).
-  try {
-    const norm = BigInt(id).toString();
-    if (norm !== id) candidates.push(norm);
-  } catch {
-    /* not an int token */
-  }
+  const candidates = tokenIdCandidates(id);
+  let base: Market | undefined;
   for (const key of candidates) {
     const pending = pendingPatch[key];
-    if (pending) return pending;
+    if (pending) {
+      base = pending;
+      break;
+    }
   }
-  const lookup = useAppStore.getState().marketLookup;
-  for (const key of candidates) {
-    const row = lookup[key];
-    if (row) return row;
+  if (!base) {
+    const lookup = useAppStore.getState().marketLookup;
+    for (const key of candidates) {
+      const row = lookup[key];
+      if (row) {
+        base = row;
+        break;
+      }
+    }
   }
-  return undefined;
+  const tob = getLiveTopOfBook(id);
+  if (!base) {
+    // WS quote arrived before Gamma row — still surface live top of book.
+    if (!tob) return undefined;
+    return {
+      id: `ws:${id}`,
+      clobTokenIds: [id],
+      question: '',
+      endDate: '',
+      conditionId: '',
+      eventSlug: '',
+      bestBid: tob.bestBid,
+      bestAsk: tob.bestAsk,
+    };
+  }
+  return applyLiveTopOfBookToRow(base, id);
 }
 
 function pickWsFieldsFromMarket(old: Market): Partial<Market> {
@@ -527,23 +600,43 @@ function applyBidAskMarketPatches(
   let touched = false;
   for (const item of items) {
     if (!item.assetId) continue;
-    const id = item.assetId;
+    const id = String(item.assetId).trim();
+    if (!id) continue;
+
+    // WS top-of-book is authoritative for bid/ask display (isolated from Gamma).
+    const tobChanged =
+      item.bestBid !== undefined || item.bestAsk !== undefined
+        ? setLiveTopOfBook(
+            id,
+            item.bestBid !== undefined ? Number(item.bestBid) || 0 : undefined,
+            item.bestAsk !== undefined ? Number(item.bestAsk) || 0 : undefined,
+          )
+        : false;
+
     const seed = resolveBidAskSeedMarket(id);
-    if (!seed) continue;
-    const next = mergeWsItemOntoMarket(seed, item);
-    // Compare against pending+store (getBidAskMarketRow), not store-only — otherwise a
-    // live pending tick can look "equal" to a wrong baseline and get discarded.
-    const current = getBidAskMarketRow(id);
-    if (bidAskWsRowEqual(current, next)) {
+    if (!seed) {
+      if (tobChanged) touched = true;
       continue;
     }
-    pendingPatch[id] = next;
-    // Also index normalized form so getBidAskMarketRow candidates hit the same row.
-    try {
-      const norm = BigInt(id).toString();
-      if (norm !== id) pendingPatch[norm] = next;
-    } catch {
-      /* not an int token */
+    // Merge non-quote fields onto seed; then force bid/ask from live top-of-book.
+    let next = mergeWsItemOntoMarket(seed, item);
+    const tob = getLiveTopOfBook(id);
+    if (tob) {
+      next = { ...next, bestBid: tob.bestBid, bestAsk: tob.bestAsk };
+    }
+
+    // Compare quote sides + row identity for non-quote churn.
+    const current = getBidAskMarketRow(id);
+    const quoteSame =
+      !!current &&
+      current.bestBid === next.bestBid &&
+      current.bestAsk === next.bestAsk &&
+      !tobChanged;
+    if (quoteSame && bidAskWsRowEqual(current, next)) {
+      continue;
+    }
+    for (const key of tokenIdCandidates(id)) {
+      pendingPatch[key] = next;
     }
     touched = true;
   }
@@ -590,4 +683,5 @@ export function resetBidAskMarketLookupPending() {
   bidAskChunkQueue = [];
   bidAskChunkDrainTouched = false;
   for (const k of Object.keys(pendingPatch)) delete pendingPatch[k];
+  liveTopOfBook.clear();
 }

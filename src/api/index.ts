@@ -487,9 +487,16 @@ function addMarketToTokenLookup(
       return;
     }
     const ws = old ? pickLookupWsFields(old) : {};
+    // Strip Gamma bestBid/bestAsk unless we already have live WS fields on `old`.
+    // Otherwise market poll flips bid/ask against the WS book (visible flicker).
     lookup[id] = clearBidAsk
       ? { ...m, ...ws, bestBid: undefined, bestAsk: undefined }
-      : { ...m, ...ws };
+      : {
+          ...m,
+          ...ws,
+          bestBid: (ws as Partial<Market>).bestBid,
+          bestAsk: (ws as Partial<Market>).bestAsk,
+        };
   };
   const register = (id: string, leg: 'YES' | 'NO', clearBidAsk: boolean) => {
     reuseOrClone(id, leg, clearBidAsk);

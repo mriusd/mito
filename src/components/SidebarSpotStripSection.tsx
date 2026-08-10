@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import { CirclePercent } from 'lucide-react';
 import type { Market, AssetSymbol } from '../types';
 import { useAppStore } from '../stores/appStore';
-import { usePolymarketPrice } from '../hooks/usePolymarketPrice';
+import { usePolymarketPriceForMarket } from '../hooks/usePolymarketPrice';
 import { useThrottledStorePrice } from '../hooks/useThrottledStorePrice';
 import {
   extractAssetFromMarket,
@@ -11,6 +11,7 @@ import {
   getMarketPriceCondition,
   isWeatherMarket,
   upDownMarketUsesChainlinkSpot,
+  upDownTimeframeKeyFromMarket,
 } from '../utils/format';
 import { getHitMarketProbability, getMarketProbability } from '../utils/bsMath';
 import {
@@ -80,7 +81,12 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
 
   const sidebarThrottledSpot = useThrottledStorePrice(sidebarPriceSym ?? 'BTCUSDT', 1000);
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(selectedMarket) : null;
-  const polyPrice = usePolymarketPrice(upDownSpotUsesChainlink ? upDownAsset : null);
+  // 5m → TWAP-30, 15m → TWAP-60 (Polymarket settlement alignment).
+  const polyPrice = usePolymarketPriceForMarket(
+    upDownSpotUsesChainlink ? selectedMarket : null,
+    upDownSpotUsesChainlink ? upDownAsset : null,
+  );
+  const upDownTf = isUpDownMarket ? upDownTimeframeKeyFromMarket(selectedMarket) : null;
 
   const row = useMemo((): SpotStripRow | null => {
     if (isWeatherMarket(selectedMarket)) {
@@ -238,6 +244,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
     upDownTargetPrice,
     upDownSpotUsesChainlink,
     polyPrice.price,
+    upDownTf,
     sidebarPriceSym,
     sidebarThrottledSpot,
     volatilityData,
@@ -287,7 +294,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
     row.mode === 'weather'
       ? ''
       : row.mode === 'updown'
-      ? 'Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the same spot as “Current” on the right: Polymarket Chainlink for 5m/15m windows, Binance spot for 1h/4h/24h. Inputs: target strike, time to expiry, implied volatility (σ).\n\nFor Up (YES): probability price is above the target at expiry. For Down (NO): below.\n\nCompare to the market price to spot mispricings.'
+      ? 'Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the same spot as “Current” on the right: Polymarket TWAP-30 for 5m windows, TWAP-60 for 15m, Binance spot for 1h/4h/24h. Inputs: target strike, time to expiry, implied volatility (σ).\n\nFor Up (YES): probability price is above the target at expiry. For Down (NO): below.\n\nCompare to the market price to spot mispricings.'
       : row.hitModel
         ? 'Fair-value probability for this Hit market (one-touch / first-passage under GBM): risk-neutral chance price touches the strike by expiry. Same Binance spot as “Current”, σ from settings.\n\nCompare to the order book to spot mispricings.'
         : 'Fair-value probability (terminal Black-Scholes–style) for this market’s strike vs spot.\n\nUses Binance spot, time to expiry, and σ. For YES/NO: YES uses model YES probability; NO uses 100% − YES.\n\nCompare to the market price to spot mispricings.';
@@ -301,13 +308,24 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
         }
       : row.mode === 'updown'
       ? {
-          label: row.currentSource === 'chainlink' ? 'CL' : 'BINANCE',
+          label:
+            row.currentSource === 'chainlink'
+              ? upDownTf === '15m'
+                ? 'CL60'
+                : upDownTf === '5m'
+                  ? 'CL30'
+                  : 'CL'
+              : 'BINANCE',
           className: row.currentSource === 'chainlink' ? 'bg-blue-600 text-white' : 'bg-yellow-400 text-black',
           title:
             row.currentSource === 'chainlink'
-              ? 'Polymarket RTDS Chainlink (via backend)'
+              ? upDownTf === '15m'
+                ? 'Polymarket RTDS TWAP-60 (crypto_prices_twap_sixty) via backend'
+                : upDownTf === '5m'
+                  ? 'Polymarket RTDS TWAP-30 (crypto_prices_twap_thirty) via backend'
+                  : 'Polymarket RTDS Chainlink/TWAP (via backend)'
               : upDownSpotUsesChainlink
-                ? 'Binance spot (fallback until Chainlink connects)'
+                ? 'Binance spot (fallback until TWAP feed connects)'
                 : 'Binance spot (1h/4h/24h Up/Down)',
         }
       : {

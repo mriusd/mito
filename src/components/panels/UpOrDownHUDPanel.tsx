@@ -10,7 +10,10 @@ import { ASSET_COLORS } from '../../types';
 import { assetToSymbol, formatPolymarketVolumeK, formatPrice, getPolymarketVolumeUsd, getPositionClobTokenId, normalizeClobTokenId } from '../../utils/format';
 import { BinanceChartPanel } from './BinanceChartPanel';
 import { MarketCellMidRow } from './MarketCellMidRow';
-import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
+import {
+  resolveChainlinkPriceFromMap,
+  useThrottledChainlinkPricesMap,
+} from '../../hooks/usePolymarketPrice';
 import { useThrottledPriceDataMap } from '../../hooks/useThrottledStorePrice';
 import { getMarketProbability } from '../../utils/bsMath';
 import { useMarkovUpDown, markovNextUpProb } from '../../hooks/useMarkovUpDown';
@@ -101,7 +104,7 @@ const UpDownHudCurrentLaneBlock = memo(function UpDownHudCurrentLaneBlock({
   const yesTokenId = current?.clobTokenIds?.[0] || '';
   const liveEntry = yesTokenId ? getBidAskMarketRow(yesTokenId) : undefined;
   const bestBid = liveEntry?.bestBid ?? current?.bestBid;
-  const cl = chainlinkPrices[asset];
+  const cl = resolveChainlinkPriceFromMap(chainlinkPrices, asset, tf).price;
   const binanceSpot = priceData[sym]?.price;
   const preferChainlink = tf === '5m' || tf === '15m';
   const liveSpot = preferChainlink
@@ -349,7 +352,8 @@ function UpOrDownHUDPanelInner({ panelId }: { panelId: string }) {
 
   const sym = assetToSymbol(asset) as AssetSymbol;
   const livePrice = priceData[sym]?.price ?? 0;
-  const clPrice = chainlinkPrices[asset];
+  // Header: prefer TWAP-30 (higher frequency); fall back TWAP-60 / bare / Binance.
+  const clPrice = resolveChainlinkPriceFromMap(chainlinkPrices, asset, '5m').price;
   const headerPrice = (clPrice && clPrice > 0) ? clPrice : livePrice;
   const titleColor = ASSET_COLORS[asset] || 'text-white';
   const assetMarkets = upOrDownMarkets[asset] || {};

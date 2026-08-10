@@ -3,7 +3,10 @@ import { useAppStore } from '../../stores/appStore';
 import type { AssetName, AssetSymbol, Market } from '../../types';
 import { ASSET_COLORS } from '../../types';
 import { assetToSymbol } from '../../utils/format';
-import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
+import {
+  resolveChainlinkPriceFromMap,
+  useThrottledChainlinkPricesMap,
+} from '../../hooks/usePolymarketPrice';
 import { useThrottledPriceDataMap } from '../../hooks/useThrottledStorePrice';
 import { getMarketProbability } from '../../utils/bsMath';
 import { useMarkovUpDown, markovNextUpProb, type MarkovTFModel } from '../../hooks/useMarkovUpDown';
@@ -79,7 +82,7 @@ function computeTFRow(
   const assetMarkets = upOrDownMarkets[asset] || {};
   const sym = assetToSymbol(asset) as AssetSymbol;
   const current = getCurrentMarket(assetMarkets, tf);
-  const cl = chainlinkPrices[asset];
+  const cl = resolveChainlinkPriceFromMap(chainlinkPrices, asset, tf).price;
   const binanceSpot = priceData[sym]?.price;
   const preferChainlink = tf === '5m' || tf === '15m';
   const liveSpot = preferChainlink

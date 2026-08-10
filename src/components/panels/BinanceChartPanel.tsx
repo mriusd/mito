@@ -7,7 +7,10 @@ import { ASSET_COLORS } from '../../types';
 import { API_BASE } from '../../lib/env';
 import { fetchBackend } from '../../lib/fetchBackend';
 import { subscribeChartKline } from '../../lib/chartWsShared';
-import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
+import {
+  resolveChainlinkPriceFromMap,
+  useThrottledChainlinkPricesMap,
+} from '../../hooks/usePolymarketPrice';
 import { useThrottledStorePrice } from '../../hooks/useThrottledStorePrice';
 import { useThrottledMarketLookupSubset } from '../../hooks/useThrottledMarketLookupSubset';
 import {
@@ -932,11 +935,12 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   const chainlinkPrices = useThrottledChainlinkPricesMap(2000);
   const spotForChart = useMemo(() => {
     if (priceSource === 'chainlink') {
-      const cl = chainlinkPrices[asset];
+      // 5m chart → TWAP-30; 15m → TWAP-60; else bare/fallback
+      const cl = resolveChainlinkPriceFromMap(chainlinkPrices, asset, timeframe).price;
       if (cl != null && Number.isFinite(cl) && cl > 0) return cl;
     }
     return livePrice;
-  }, [priceSource, chainlinkPrices, asset, livePrice]);
+  }, [priceSource, chainlinkPrices, asset, livePrice, timeframe]);
 
   const currentCandleOhlc = useMemo((): CandleOhlcSnap | null => {
     const barMs = chartBarMsForWindow(timeframe, priceSource);
@@ -993,13 +997,13 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   const hudExchangeSpotReady = useMemo(() => {
     if (!hudGateSupportLinesByExchange) return true;
     if (priceSource === 'chainlink') {
-      const cl = chainlinkPrices[asset];
+      const cl = resolveChainlinkPriceFromMap(chainlinkPrices, asset, timeframe).price;
       if (cl != null && Number.isFinite(cl) && cl > 0) return true;
-      // Same fallback as Up/Down 5m/15m rows: Binance spot when Chainlink feed is missing
+      // Same fallback as Up/Down 5m/15m rows: Binance spot when TWAP feed is missing
       return livePrice > 0 && Number.isFinite(livePrice);
     }
     return livePrice > 0 && Number.isFinite(livePrice);
-  }, [hudGateSupportLinesByExchange, priceSource, chainlinkPrices, asset, livePrice]);
+  }, [hudGateSupportLinesByExchange, priceSource, chainlinkPrices, asset, livePrice, timeframe]);
 
   const rbsTfEnabledForCompute = useMemo<Record<UpDownTfKey, boolean>>(() => {
     if (!hudGateSupportLinesByExchange || hudExchangeSpotReady) return effectiveRbsTfEnabled;

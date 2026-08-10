@@ -11,7 +11,10 @@ import { bidAskLookupFromPair } from '../../hooks/useLiveBidAskPair';
 import { useLiveBidAskPair } from '../../hooks/useLiveBidAskPair';
 import { useGridAssetLivePrice } from '../../lib/gridAssetLivePriceStore';
 import { GRID_BID_ASK_THROTTLE_MS } from '../../lib/bidAskMarketLookup';
-import { useThrottledChainlinkPricesMap } from '../../hooks/usePolymarketPrice';
+import {
+  resolveChainlinkPriceFromMap,
+  useThrottledChainlinkPricesMap,
+} from '../../hooks/usePolymarketPrice';
 import { MarketCellMidRow } from './MarketCellMidRow';
 
 const ASSET_COLORS: Record<string, string> = {
@@ -370,7 +373,9 @@ function UpDownAssetLaneCellsInner({
   const sym = (asset + 'USDT') as AssetSymbol;
   const duration = TF_DURATIONS_MS[tf] ?? 0;
   const binanceSpot = useGridAssetLivePrice(sym);
-  const chainlinkSpot = useThrottledChainlinkPricesMap(GRID_BID_ASK_THROTTLE_MS)[asset];
+  const chainlinkMap = useThrottledChainlinkPricesMap(GRID_BID_ASK_THROTTLE_MS);
+  // 5m → TWAP-30, 15m → TWAP-60
+  const chainlinkSpot = resolveChainlinkPriceFromMap(chainlinkMap, asset, tf).price;
 
   const currentPair = useLiveBidAskPair(yesTokenId, noTokenId);
   const bidAskLookup = useMemo(

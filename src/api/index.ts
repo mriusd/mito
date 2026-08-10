@@ -977,9 +977,44 @@ export async function fetchMarketWalletPositions(params: {
   if (params.offset != null) qs.set('offset', String(params.offset));
   if (params.sort) qs.set('sort', params.sort);
   if (params.order) qs.set('order', params.order);
-  const resp = await fetchBackend(`${BASE}/api/market-wallet-positions?${qs.toString()}`);
-  if (!resp.ok) throw new Error('Failed to fetch market wallet positions');
-  return resp.json();
+  const url = `${BASE}/api/market-wallet-positions?${qs.toString()}`;
+
+  // Server may return 503 while ingest is busy or concurrency-limited (Retry-After: 1).
+  // Retry a few times so Market View traders column is not a hard fail on brief load spikes.
+  const maxAttempts = 4;
+  let lastErr = 'Failed to fetch market wallet positions';
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const resp = await fetchBackend(url, undefined, 15_000);
+    if (resp.ok) return resp.json();
+
+    let body = '';
+    try {
+      body = (await resp.text()).trim();
+    } catch {
+      /* ignore */
+    }
+    let detail = body;
+    try {
+      const j = JSON.parse(body) as { error?: string };
+      if (j?.error) detail = j.error;
+    } catch {
+      /* plain text */
+    }
+    lastErr = detail
+      ? `Failed to fetch market wallet positions (${resp.status}: ${detail})`
+      : `Failed to fetch market wallet positions (${resp.status})`;
+
+    const retryable = resp.status === 503 || resp.status === 429 || resp.status === 502;
+    if (!retryable || attempt === maxAttempts - 1) break;
+
+    const retryAfterHdr = resp.headers.get('Retry-After');
+    const retryAfterSec = retryAfterHdr ? Number(retryAfterHdr) : NaN;
+    const waitMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
+      ? Math.min(5_000, Math.round(retryAfterSec * 1000))
+      : 400 * (attempt + 1);
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+  throw new Error(lastErr);
 }
 
 export async function fetchWalletPositions(params: {

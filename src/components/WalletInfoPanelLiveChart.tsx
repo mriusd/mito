@@ -46,10 +46,17 @@ export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
       return;
     }
     let cancelled = false;
-    setChartOutcomeTokens(null);
-    void fetchMarketOutcomeTokens(mid).then((tok) => {
-      if (!cancelled) setChartOutcomeTokens(tok);
-    });
+    void fetchMarketOutcomeTokens(mid)
+      .then((tok) => {
+        if (cancelled || !tok) return;
+        setChartOutcomeTokens({
+          tokenIdYes: (tok.tokenIdYes || '').trim(),
+          tokenIdNo: (tok.tokenIdNo || '').trim(),
+        });
+      })
+      .catch(() => {
+        /* leave null — chart unmounts until tokens available */
+      });
     return () => {
       cancelled = true;
     };

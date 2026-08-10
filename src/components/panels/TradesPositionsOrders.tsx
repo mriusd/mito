@@ -15,7 +15,8 @@ import { positionBidExitTier, positionSellPriceColorStyle, positionSellPriceTint
 import { onchainFillKey } from '../../lib/tradeKeys';
 import { useTradingWalletAddress } from '../../hooks/useTradingWalletAddress';
 import { setChartBidAskExtraTokens } from '../../lib/chartWsShared';
-import { useThrottledBidAskLookupSubset } from '../../hooks/useLiveBidAskLookupSubset';
+import { useTpoLiveQuoteLookup } from '../../hooks/useLiveBidAskLookupSubset';
+import { getBidAskMarketRow } from '../../lib/bidAskMarketLookup';
 import {
   isWsBidAskStubMarket,
   resolveCanonicalMarketForToken,
@@ -600,21 +601,46 @@ function TradesPositionsOrdersInner({
   const onchainWsPositions = tpoData.onchainPositions;
   const onchainWsTrades = tpoData.onchainTrades;
   const marketLookup = tpoData.quoteLookup;
-  // Prefer full watch list (all position/order tokens) over keys already quoted.
+  // Collect every position/order token (not only watchTokenIds already in quote map).
   const tpoLiveQuoteIds = useMemo(() => {
-    const fromWatch = tpoData.watchTokenIds;
-    if (fromWatch?.length) return fromWatch;
-    return Object.keys(marketLookup);
-  }, [tpoData.watchTokenIds, marketLookup]);
-  // Live pending bid/ask (~100ms) — independent of TPO store startTransition/full-row path.
-  const liveBidAskOverlay = useThrottledBidAskLookupSubset(
-    effectiveTab === 'positions' || effectiveTab === 'orders' ? tpoLiveQuoteIds : [],
-    100,
+    const set = new Set<string>();
+    for (const id of tpoData.watchTokenIds || []) {
+      if (id) set.add(String(id));
+    }
+    for (const p of tpoData.positions || []) {
+      const tid = getPositionClobTokenId(p);
+      if (tid) set.add(tid);
+    }
+    for (const p of tpoData.onchainPositions || []) {
+      if (p.tokenId) set.add(String(p.tokenId));
+    }
+    let orderN = 0;
+    for (const o of tpoData.orders || []) {
+      if (orderN >= 300) break;
+      const t = o.asset_id || o.token_id;
+      if (t) {
+        set.add(String(t));
+        orderN += 1;
+      }
+    }
+    // Sibling YES/NO legs so complete-market mids resolve.
+    for (const id of [...set]) {
+      const row = getBidAskMarketRow(id);
+      for (const leg of row?.clobTokenIds || []) {
+        if (leg) set.add(String(leg));
+      }
+    }
+    return [...set];
+  }, [tpoData.watchTokenIds, tpoData.positions, tpoData.onchainPositions, tpoData.orders]);
+
+  // Live pending bid/ask — re-read getBidAskMarketRow every WS tick (+1s backup poll).
+  // Do not depend on TPO store quoteLookup alone (that path can freeze under load).
+  const quotesEnabled = effectiveTab === 'positions' || effectiveTab === 'orders';
+  const liveBidAskOverlay = useTpoLiveQuoteLookup(tpoLiveQuoteIds, quotesEnabled);
+  const liveQuoteLookup = useMemo(
+    () => ({ ...marketLookup, ...liveBidAskOverlay }),
+    [marketLookup, liveBidAskOverlay],
   );
-  const liveQuoteLookup = useMemo(() => {
-    if (Object.keys(liveBidAskOverlay).length === 0) return marketLookup;
-    return { ...marketLookup, ...liveBidAskOverlay };
-  }, [marketLookup, liveBidAskOverlay]);
   const tpoQuoteLookup = liveQuoteLookup;
 
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);

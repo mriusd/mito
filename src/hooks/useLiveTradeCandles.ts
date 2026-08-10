@@ -196,15 +196,15 @@ export function useLiveTradeCandles({
     const baseWin = resolveLiveTradeChartWindow(tokenId, startTime, endTime);
     let st = baseWin.startMs;
     let et = baseWin.endMs;
+    // Always allow "now" on the fetch/prune end so live tail + WS are not wiped for ended markets.
+    const endForFetch = Math.max(et, Date.now());
     if (needsExpandedHistory) {
       const histMs = minHist ?? ONE_H_FEED_LOOKBACK_MS;
-      // Align end to "now" so ended markets still load recent history (not an empty short tail).
-      const endForHist = Math.max(et, Date.now());
       // Recent lookback only — do not open a wider range than histMs: server
       // `ORDER BY time ASC LIMIT 1500` would return the *oldest* slice of a huge window.
-      st = endForHist - histMs;
-      et = endForHist;
+      st = endForFetch - histMs;
     }
+    et = endForFetch;
 
     const publishNow = () => {
       if (cancelled) return;
@@ -300,58 +300,49 @@ export function useLiveTradeCandles({
 
     // Cap at server max (1500). Long TFs always use the 1h feed limit.
     const klineLimit = from1h || interval === '1h' ? KLINE_FETCH_LIMIT : 900;
-    const klineQuery = `symbol=${encodeURIComponent(tokenId)}&interval=${encodeURIComponent(feedInterval)}&startTime=${st}&endTime=${et}&limit=${klineLimit}`;
+    const baseQ = `symbol=${encodeURIComponent(tokenId)}&interval=${encodeURIComponent(feedInterval)}&limit=${klineLimit}`;
+    // Windowed query for history / expanded range; live also tries a limit-only tail (mem cache).
+    const windowedQuery = `${baseQ}&startTime=${st}&endTime=${et}`;
 
     const loadKlines = () => {
-      const applyHistory = () =>
-        fetchBackend(`${API_BASE}/api/v3/klines/history?${klineQuery}`, undefined, 20_000)
-          .then((r) => r.json())
-          .then((hist: any[][]) => {
-            if (cancelled) return;
-            if (Array.isArray(hist) && hist.length > 0) applyKlines(hist);
-            publish(true);
-          });
+      /**
+       * `/klines/history` often hangs on ledger fallback (observed 20s+ with 0 bytes).
+       * Keep timeouts short and race live + history so the chart can paint from
+       * whichever answers — WS snapshot still backfills if REST is empty.
+       */
+      const HIST_MS = 4_000;
+      const LIVE_MS = 5_000;
 
-      const applyLive = () =>
-        fetchBackend(`${API_BASE}/api/v3/klines?${klineQuery}`)
-          .then((r) => r.json())
-          .then((klines: any[][]) => {
-            if (cancelled) return;
-            if (Array.isArray(klines) && klines.length > 0) {
-              applyKlines(klines);
-              publish(true);
-            }
-          });
+      const ingest = (rows: unknown) => {
+        if (cancelled || !Array.isArray(rows) || rows.length === 0) return false;
+        applyKlines(rows as any[][]);
+        publish(true);
+        return true;
+      };
 
-      // History-first for expanded TFs: live 1h is often [] while history has the series.
-      if (needsExpandedHistory) {
-        return applyHistory()
-          .catch(() => {
-            /* try live alone below */
+      const fetchJson = (url: string, timeoutMs: number) =>
+        fetchBackend(url, undefined, timeoutMs)
+          .then((r) => {
+            if (!r.ok) return null;
+            return r.json();
           })
-          .then(() => {
-            if (cancelled) return;
-            return applyLive().catch(() => {
-              /* non-fatal — history may already have filled the chart */
-            });
-          })
-          .finally(() => {
-            if (!cancelled) setReady(true);
-          });
-      }
+          .catch(() => null);
 
-      return applyLive()
-        .then(() => {
-          if (cancelled) return;
-          if (candleMapRef.current.size === 0) return applyHistory();
-        })
-        .catch(() => {
-          if (cancelled) return;
-          return applyHistory();
-        })
-        .finally(() => {
-          if (!cancelled) setReady(true);
-        });
+      // Parallel: live window, live limit-only tail, history window, history limit-only.
+      // First non-empty paints immediately (no sequential history-first wait).
+      const reqs = [
+        fetchJson(`${API_BASE}/api/v3/klines?${windowedQuery}`, LIVE_MS).then(ingest),
+        fetchJson(`${API_BASE}/api/v3/klines?${baseQ}`, LIVE_MS).then(ingest),
+        fetchJson(`${API_BASE}/api/v3/klines/history?${windowedQuery}`, HIST_MS).then(ingest),
+        fetchJson(`${API_BASE}/api/v3/klines/history?${baseQ}`, HIST_MS).then(ingest),
+      ];
+
+      // Mark ready as soon as first paint or all attempts finish — never block 20s on history.
+      const readyOnce = () => {
+        if (!cancelled) setReady(true);
+      };
+      void Promise.race(reqs).then(readyOnce).catch(readyOnce);
+      return Promise.allSettled(reqs).finally(readyOnce);
     };
 
     void loadKlines();

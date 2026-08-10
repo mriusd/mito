@@ -843,6 +843,7 @@ export function LiveTradeChart({
         onMouseLeave={handleMouseLeave}
       >
         <ReactECharts
+          key={`${tokenId || ''}:${interval}`}
           ref={chartRef}
           option={option}
           style={{ width: '100%', height: 128, borderRadius: 6 }}

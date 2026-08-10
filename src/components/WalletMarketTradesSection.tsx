@@ -82,19 +82,27 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
 
   useEffect(() => {
     const mid = marketId.trim();
-    if (!open || !mid) {
+    // Prefer CLOB ids already on the market row — skip a round-trip when present.
+    if (!open || !mid || market?.clobTokenIds?.[0]?.trim()) {
       setChartOutcomeTokens(null);
       return;
     }
     let cancelled = false;
-    setChartOutcomeTokens(null);
-    void fetchMarketOutcomeTokens(mid).then((tok) => {
-      if (!cancelled) setChartOutcomeTokens(tok);
-    });
+    void fetchMarketOutcomeTokens(mid)
+      .then((tok) => {
+        if (cancelled || !tok) return;
+        setChartOutcomeTokens({
+          tokenIdYes: (tok.tokenIdYes || '').trim(),
+          tokenIdNo: (tok.tokenIdNo || '').trim(),
+        });
+      })
+      .catch(() => {
+        /* chart stays empty until tokens resolve another way */
+      });
     return () => {
       cancelled = true;
     };
-  }, [open, marketId]);
+  }, [open, marketId, market?.clobTokenIds?.[0]]);
 
   const selectedMarketForChart = useMemo(
     () =>

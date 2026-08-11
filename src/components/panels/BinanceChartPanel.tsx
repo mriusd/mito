@@ -1308,7 +1308,10 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
             limit: '1000',
           });
           if (endTime !== undefined) params.set('endTime', String(endTime));
-          const res = await fetchBackend(`${API_BASE}/api/v3/klines?${params}`);
+          const res = await fetchBackend(`${API_BASE}/api/v3/klines?${params}`, undefined, {
+            timeoutMs: 8_000,
+            soft: true,
+          });
           if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
           const rows = await res.json();
           if (!Array.isArray(rows) || rows.length === 0) break;

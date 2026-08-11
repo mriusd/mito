@@ -298,20 +298,24 @@ export function useLiveTradeCandles({
       pruneCandleMap(map, st, et, Math.max(feedCandleMs, displayBucketMs) * 2);
     };
 
-    // Cap at server max (1500). Long TFs always use the 1h feed limit.
-    const klineLimit = from1h || interval === '1h' ? KLINE_FETCH_LIMIT : 900;
+    // Cap fetches: full 900–1500 history rows are multi‑MB and trip HTTP/2/CORS under load
+    // when 4 parallel requests fire on every market switch (www.mito.trade → data.mito.trade).
+    const klineLimit = from1h || interval === '1h' ? KLINE_FETCH_LIMIT : 400;
     const baseQ = `symbol=${encodeURIComponent(tokenId)}&interval=${encodeURIComponent(feedInterval)}&limit=${klineLimit}`;
-    // Windowed query for history / expanded range; live also tries a limit-only tail (mem cache).
     const windowedQuery = `${baseQ}&startTime=${st}&endTime=${et}`;
 
-    const loadKlines = () => {
+    const loadKlines = async () => {
       /**
-       * `/klines/history` often hangs on ledger fallback (observed 20s+ with 0 bytes).
-       * Keep timeouts short and race live + history so the chart can paint from
-       * whichever answers — WS snapshot still backfills if REST is empty.
+       * Soft fetches: kline failures must not open the global backend circuit
+       * (that made weather/temp-odds die after a few HTTP2 blips).
+       *
+       * Staged load (not 4-way parallel stampede):
+       *  1) live limit-only (mem cache, small)
+       *  2) live windowed if still empty
+       *  3) history only as backfill if still sparse — WS snapshot can still fill gaps
        */
-      const HIST_MS = 4_000;
-      const LIVE_MS = 5_000;
+      const LIVE_MS = 4_000;
+      const HIST_MS = 5_000;
 
       const ingest = (rows: unknown) => {
         if (cancelled || !Array.isArray(rows) || rows.length === 0) return false;
@@ -321,28 +325,36 @@ export function useLiveTradeCandles({
       };
 
       const fetchJson = (url: string, timeoutMs: number) =>
-        fetchBackend(url, undefined, timeoutMs)
+        fetchBackend(url, undefined, { timeoutMs, soft: true })
           .then((r) => {
             if (!r.ok) return null;
             return r.json();
           })
           .catch(() => null);
 
-      // Parallel: live window, live limit-only tail, history window, history limit-only.
-      // First non-empty paints immediately (no sequential history-first wait).
-      const reqs = [
-        fetchJson(`${API_BASE}/api/v3/klines?${windowedQuery}`, LIVE_MS).then(ingest),
-        fetchJson(`${API_BASE}/api/v3/klines?${baseQ}`, LIVE_MS).then(ingest),
-        fetchJson(`${API_BASE}/api/v3/klines/history?${windowedQuery}`, HIST_MS).then(ingest),
-        fetchJson(`${API_BASE}/api/v3/klines/history?${baseQ}`, HIST_MS).then(ingest),
-      ];
+      try {
+        // 1) Fast path — recent live bars only.
+        let got = await fetchJson(`${API_BASE}/api/v3/klines?${baseQ}`, LIVE_MS).then(ingest);
+        if (cancelled) return;
 
-      // Mark ready as soon as first paint or all attempts finish — never block 20s on history.
-      const readyOnce = () => {
+        // 2) Windowed live if the tail was empty (new token / cold mem).
+        if (!got) {
+          got = await fetchJson(`${API_BASE}/api/v3/klines?${windowedQuery}`, LIVE_MS).then(ingest);
+        }
+        if (cancelled) return;
+
+        // 3) History backfill only when we still have little data (avoid 2MB×N storms).
+        const needHistory = candleMapRef.current.size < Math.min(80, Math.floor(klineLimit / 4));
+        if (needHistory) {
+          await fetchJson(`${API_BASE}/api/v3/klines/history?${baseQ}`, HIST_MS).then(ingest);
+          if (cancelled) return;
+          if (candleMapRef.current.size < 20) {
+            await fetchJson(`${API_BASE}/api/v3/klines/history?${windowedQuery}`, HIST_MS).then(ingest);
+          }
+        }
+      } finally {
         if (!cancelled) setReady(true);
-      };
-      void Promise.race(reqs).then(readyOnce).catch(readyOnce);
-      return Promise.allSettled(reqs).finally(readyOnce);
+      }
     };
 
     void loadKlines();

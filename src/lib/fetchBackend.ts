@@ -19,6 +19,12 @@ export type FetchBackendOptions = {
   timeoutMs?: number;
   /** Health probe — allowed while backend marked down. */
   probe?: boolean;
+  /**
+   * Optional/non-critical fetch (chart klines, etc.).
+   * Failures do not open the backend circuit or flip `backendConnected`.
+   * Still allowed while the circuit is open so charts can recover independently.
+   */
+  soft?: boolean;
 };
 
 let circuitOpenUntil = 0;
@@ -92,7 +98,8 @@ export async function fetchBackend(
     typeof timeoutMsOrOpts === 'number' ? { timeoutMs: timeoutMsOrOpts } : timeoutMsOrOpts;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_BACKEND_FETCH_MS;
 
-  if (!opts.probe) {
+  // Soft/optional requests skip the circuit — a bad kline must not freeze markets/weather.
+  if (!opts.probe && !opts.soft) {
     if (!isBackendFetchAllowed()) {
       throw new BackendUnavailableError('backend unavailable');
     }
@@ -108,7 +115,8 @@ export async function fetchBackend(
   try {
     return await fetch(input, { ...init, signal: ctrl.signal });
   } catch (err) {
-    if (!opts.probe && isBackendTransportError(err)) {
+    // Soft chart loads: HTTP2/CORS blips must not mark the whole backend down.
+    if (!opts.probe && !opts.soft && isBackendTransportError(err)) {
       noteFailureStrike();
     }
     throw err;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Settings } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
@@ -899,7 +899,6 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [chartHeaderStackControls, setChartHeaderStackControls] = useState(false);
   const candleBsProbElRef = useRef<HTMLSpanElement | null>(null);
   const visibleRbsTimeframes = useMemo(() => visibleRbsTimeframesForSource(priceSource), [priceSource]);
   const effectiveRbsTfEnabled = useMemo<Record<UpDownTfKey, boolean>>(() => {
@@ -1262,51 +1261,8 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
   priceSourceRef.current = priceSource;
   const fetchVersionRef = useRef(0);
 
-  useLayoutEffect(() => {
-    const header = chartHeaderRef.current;
-    const title = chartTitleRef.current;
-    const controls = chartControlsRef.current;
-    if (!header || !title || !controls) return;
-
-    const gapPx = 8; // gap-x-2
-    // Hysteresis: stacking changes title/controls to full-width rows, which re-fires RO.
-    // Without slack, needSecondRow can flip true↔false every frame → max update depth.
-    const STACK_SLACK_PX = 12;
-    const UNSTACK_SLACK_PX = 36;
-    let raf = 0;
-
-    const measure = () => {
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        const h = chartHeaderRef.current;
-        const t = chartTitleRef.current;
-        const c = chartControlsRef.current;
-        if (!h || !t || !c) return;
-        const contentW = t.scrollWidth + gapPx + c.scrollWidth;
-        const avail = h.clientWidth;
-        setChartHeaderStackControls((prev) => {
-          if (!prev) {
-            // Unstacked: stack only when clearly overflowing.
-            return contentW > avail + STACK_SLACK_PX ? true : prev;
-          }
-          // Stacked: unstack only when there is clear room for one row.
-          return contentW <= avail - UNSTACK_SLACK_PX ? false : prev;
-        });
-      });
-    };
-
-    const ro = new ResizeObserver(measure);
-    ro.observe(header);
-    ro.observe(title);
-    ro.observe(controls);
-    measure();
-    return () => {
-      if (raf) cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
-    // candleGreenBsProb ticks every 1s — must not remount ResizeObserver / remeasure header.
-  }, [asset, spotForChart, priceSource, timeframe, candleCount]);
+  // Header wrap is CSS-only (flex-wrap + basis). A ResizeObserver that setState-stacked
+  // the title/controls row caused React #185 max update depth when layout flipped.
 
   useEffect(() => {
     if (!hudSyncIntervalFromMarket || !assetOverride) return;
@@ -1704,7 +1660,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
         ) : (
           <h3
             ref={chartTitleRef}
-            className={`text-[11px] font-bold flex items-center gap-1 flex-wrap min-w-0 ${chartHeaderStackControls ? 'w-full shrink-0 basis-full' : 'flex-1'} ${titleColor}`}
+            className={`text-[11px] font-bold flex items-center gap-1 flex-wrap min-w-0 flex-1 basis-[10rem] ${titleColor}`}
           >
             <span
               className={`relative binance-asset-dropdown-root no-drag inline-flex items-center gap-0.5 select-none ${assetOverride ? 'cursor-default' : 'cursor-pointer'}`}
@@ -1747,7 +1703,7 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
         )}
           <div
           ref={chartControlsRef}
-          className={`flex items-center gap-1.5 no-drag cursor-default ${chartHeaderStackControls ? 'w-full shrink-0 basis-full justify-start flex-wrap' : 'shrink-0'}`}
+          className="flex items-center gap-1.5 no-drag cursor-default shrink-0 flex-wrap justify-start max-w-full"
           onPointerDown={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >

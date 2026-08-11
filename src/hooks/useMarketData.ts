@@ -93,8 +93,25 @@ export function useMarketData() {
       }
       startTransition(() => {
         useAppStore.getState().setMarketData(patchPayload);
-        // Strike lives in useUpDownStrikePrice / lookup — do NOT patch selectedMarket
-        // ({...sel, priceToBeat}) every poll (woke Header/Sidebar/Binance/Temp).
+        // Keep selectedMarket.priceToBeat in sync with polycandles TWAP-open (coalesce used to drop it).
+        const st = useAppStore.getState();
+        const sel = st.selectedMarket;
+        if (sel?.id && upOrDownMarkets) {
+          let fresh: number | undefined;
+          outer: for (const asset of Object.keys(upOrDownMarkets)) {
+            const tfMap = upOrDownMarkets[asset] || {};
+            for (const tf of Object.keys(tfMap)) {
+              const row = (tfMap[tf] || []).find((m) => m.id === sel.id);
+              if (row?.priceToBeat != null && Number.isFinite(row.priceToBeat) && row.priceToBeat > 0) {
+                fresh = row.priceToBeat;
+                break outer;
+              }
+            }
+          }
+          if (fresh != null && (sel.priceToBeat == null || Math.abs(sel.priceToBeat - fresh) > 1e-9)) {
+            st.patchMarketPriceToBeats({ [sel.id]: fresh });
+          }
+        }
       });
       // Always clear splash once we have a payload — do not wait for 2nd recovery probe.
       useAppStore.getState().setLoading(false);

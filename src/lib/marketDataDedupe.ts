@@ -31,6 +31,16 @@ function listsSameMarketRefs(a: readonly Market[], b: readonly Market[]): boolea
   return true;
 }
 
+/** Merge polycandles/TWAP strike onto a reused row without full rewrite. */
+function mergePriceToBeatIfChanged(prev: Market, next: Market): Market {
+  const np = next.priceToBeat;
+  if (np == null || !Number.isFinite(np) || np <= 0) return prev;
+  const pp = prev.priceToBeat;
+  if (pp != null && Number.isFinite(pp) && Math.abs(pp - np) < 1e-9) return prev;
+  // 5m/15m: polycandles forces TWAP-open as priceToBeat — must land in the store for sidebar Target.
+  return { ...prev, priceToBeat: np };
+}
+
 /** Reuse prior Market refs when Gamma/static content unchanged (poll JSON churn). */
 export function stabilizeMarketArray(prev: Market[] | undefined, next: Market[]): Market[] {
   if (prev === next) return next;
@@ -42,7 +52,11 @@ export function stabilizeMarketArray(prev: Market[] | undefined, next: Market[])
   for (let i = 0; i < next.length; i++) {
     const n = next[i];
     const p = prevById.get(n.id);
-    out[i] = p && marketRowContentEqual(p, n) ? p : n;
+    if (p && marketRowContentEqual(p, n)) {
+      out[i] = mergePriceToBeatIfChanged(p, n);
+    } else {
+      out[i] = n;
+    }
   }
   if (listsSameMarketRefs(prev, out)) return prev;
   if (prev.length === out.length) {

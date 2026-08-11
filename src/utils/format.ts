@@ -94,8 +94,9 @@ export function pickNextUpDownMarketInTfBucket(marketsForTf: Market[] | undefine
 }
 
 /**
- * Up/Down target from Gamma `priceToBeat`: same order as UpDownMarketsPanel (row → lookup).
- * Also reads `upOrDownMarkets` bucket by id when the selected snapshot lacks `priceToBeat` but the store row was refreshed (e.g. after auto-switch at expiry).
+ * Up/Down target strike for sidebar Target.
+ * Prefer polycandles bucket / lookup (TWAP-open for 5m/15m) over selectedMarket.priceToBeat —
+ * selected can keep a stale Gamma strike while the catalog was refreshed with TWAP open.
  */
 export function resolveUpDownStrikeSync(
   m: Market | null | undefined,
@@ -112,14 +113,19 @@ export function resolveUpDownStrikeSync(
   if (asset && tf) {
     const row = (buckets[asset]?.[tf] ?? []).find((x) => x.id === m.id);
     const pb = row?.priceToBeat;
-    if (pb != null && Number.isFinite(pb)) fromBucket = pb;
+    if (pb != null && Number.isFinite(pb) && pb > 0) fromBucket = pb;
   }
 
-  const p =
-    m.priceToBeat ??
-    (fromLookup != null && Number.isFinite(fromLookup) ? fromLookup : undefined) ??
-    fromBucket;
-  return p != null && Number.isFinite(p) ? p : undefined;
+  // Bucket first (polycandles applyTwapPriceToBeatForUpDown), then lookup, then selected.
+  const candidates = [
+    fromBucket,
+    fromLookup != null && Number.isFinite(fromLookup) && fromLookup > 0 ? fromLookup : undefined,
+    m.priceToBeat != null && Number.isFinite(m.priceToBeat) && m.priceToBeat > 0 ? m.priceToBeat : undefined,
+  ];
+  for (const p of candidates) {
+    if (p != null && Number.isFinite(p) && p > 0) return p;
+  }
+  return undefined;
 }
 
 /** Parsed from Gamma `outcomePrices` when a binary market is resolved (winning side is 1, loser 0). */

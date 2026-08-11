@@ -94,9 +94,10 @@ export function pickNextUpDownMarketInTfBucket(marketsForTf: Market[] | undefine
 }
 
 /**
- * Up/Down target strike for sidebar Target.
- * Prefer polycandles bucket / lookup (TWAP-open for 5m/15m) over selectedMarket.priceToBeat —
- * selected can keep a stale Gamma strike while the catalog was refreshed with TWAP open.
+ * Up/Down target strike from catalog (sync path for sidebar Target).
+ * Prefer polycandles bucket / lookup priceToBeat (TWAP-open for 5m/15m) over
+ * selectedMarket.priceToBeat — selected can keep a stale Gamma strike.
+ * Short TF also overlays /api/crypto-price TWAP-open in useUpDownStrikePrice (slug start).
  */
 export function resolveUpDownStrikeSync(
   m: Market | null | undefined,

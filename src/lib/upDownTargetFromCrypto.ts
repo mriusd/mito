@@ -1,6 +1,9 @@
 /**
- * Polymarket /api/crypto/crypto-price often omits hourly (and similar) openPrice for the first ~5 minutes
- * of a window. The fiveminute variant for [windowStart, windowStart+5m] returns the same open sooner.
+ * Up/Down Target strike via polycandles /api/crypto-price.
+ *
+ * For 5m/15m the backend prefers local TWAP open at window start (CL30/CL60 capture) —
+ * same source polycandles uses for priceToBeat / mitobot K. Window start must match the
+ * event-slug unix suffix (not endDate−TF, which can disagree with the slug and miss TWAP).
  */
 
 export function upDownCryptoTimeframe(combined: string): '5m' | '15m' | '1h' | '4h' | '24h' | null {
@@ -11,11 +14,31 @@ export function upDownCryptoTimeframe(combined: string): '5m' | '15m' | '1h' | '
   return '1h';
 }
 
+/**
+ * Unix window start from event slug suffix (e.g. btc-updown-5m-1774353300).
+ * Same rules as polycandles extractEventStartUnix — not endDate−duration.
+ */
+export function extractEventStartUnixFromSlug(slug: string | null | undefined): number | null {
+  const s = String(slug || '').trim();
+  if (!s) return null;
+  const i = s.lastIndexOf('-');
+  if (i < 0 || i + 1 >= s.length) return null;
+  const suffix = s.slice(i + 1);
+  // Reject short year suffixes like "...-2026"
+  if (suffix.length < 10 || !/^\d+$/.test(suffix)) return null;
+  const ts = Number(suffix);
+  if (!Number.isFinite(ts) || ts < 946684800) return null;
+  const nowSec = Date.now() / 1000;
+  if (ts > nowSec + 2 * 365 * 24 * 3600) return null;
+  return ts;
+}
+
 export async function fetchUpDownTargetFromCrypto(
   apiBase: string,
   asset: string,
   endMs: number,
   combined: string,
+  eventSlug?: string | null,
 ): Promise<number | null> {
   const tf = upDownCryptoTimeframe(combined);
   if (!tf) return null;
@@ -36,9 +59,20 @@ export async function fetchUpDownTargetFromCrypto(
     intervalMs = 24 * 60 * 60 * 1000;
   }
 
-  const startMs = endMs - intervalMs;
+  // Prefer slug unix (matches polycandles TWAP-open key + bot priceToBeat). Fall back to end−TF.
+  const slugUnix = extractEventStartUnixFromSlug(eventSlug) ?? extractEventStartUnixFromSlug(combined);
+  let startMs: number;
+  let resolvedEndMs = endMs;
+  if (slugUnix != null && (tf === '5m' || tf === '15m')) {
+    startMs = slugUnix * 1000;
+    // Keep window length consistent with TF when endDate is slightly off slug+duration.
+    resolvedEndMs = startMs + intervalMs;
+  } else {
+    startMs = endMs - intervalMs;
+  }
+
   const startISO = new Date(startMs).toISOString();
-  const endISO = new Date(endMs).toISOString();
+  const endISO = new Date(resolvedEndMs).toISOString();
   const q = (s: string) => encodeURIComponent(s);
   const url = (v: string, s: string, e: string) =>
     `${apiBase}/api/crypto-price?symbol=${asset}&eventStartTime=${q(s)}&variant=${v}&endDate=${q(e)}`;
@@ -65,7 +99,7 @@ export async function fetchUpDownTargetFromCrypto(
   let p = await fetchOpen(variant, startISO, endISO);
   if (p != null) return p;
 
-  const fiveEndMs = Math.min(startMs + 5 * 60 * 1000, endMs);
+  const fiveEndMs = Math.min(startMs + 5 * 60 * 1000, resolvedEndMs);
   p = await fetchOpen('fiveminute', startISO, new Date(fiveEndMs).toISOString());
   return p;
 }

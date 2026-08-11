@@ -13,10 +13,12 @@ import { isMarketExpired } from '../lib/marketExpiry';
 const POLL_MS = 12_000;
 
 /**
- * Up/Down target strike for sidebar Target:
- * 1) polycandles catalog (TWAP-open for 5m/15m via bucket/lookup)
- * 2) async /api/crypto-price (backend prefers TWAP open for 5m/15m)
- * Never lock forever on a stale selectedMarket.priceToBeat from Gamma.
+ * Sidebar Target strike — must match mitobot K / polycandles /api/markets priceToBeat.
+ *
+ * Prefer catalog bucket/lookup/selected priceToBeat (same JSON the bot reads).
+ * Only poll /api/crypto-price when catalog has no strike yet (window just opened).
+ * Never override a present catalog strike with crypto-price (that path was returning a
+ * different open and made Target disagree with the bot).
  */
 export function useUpDownStrikePrice(market: Market | null | undefined): number | undefined {
   const lastUpdated = useAppStore((s) => s.lastUpdated);
@@ -45,13 +47,19 @@ export function useUpDownStrikePrice(market: Market | null | undefined): number 
   const [asyncStrike, setAsyncStrike] = useState<number | undefined>(undefined);
   const tf = market ? upDownTimeframeKeyFromMarket(market) : null;
   const isShortTf = tf === '5m' || tf === '15m';
+  const hasCatalogStrike =
+    syncStrike != null && Number.isFinite(syncStrike) && syncStrike > 0;
 
   useEffect(() => {
-    setAsyncStrike(undefined);
-    if (!market?.endDate) return;
-    // Short TF: still poll crypto-price/TWAP open so Target tracks polycandles as soon as open is captured
-    // (catalog may lag one poll after window start). Longer TF: only poll when sync missing.
-    if (!isShortTf && syncStrike != null && Number.isFinite(syncStrike)) return;
+    // Catalog already has bot-aligned priceToBeat — do not poll crypto-price or patch over it.
+    if (hasCatalogStrike) {
+      setAsyncStrike(undefined);
+      return;
+    }
+    if (!market?.endDate) {
+      setAsyncStrike(undefined);
+      return;
+    }
 
     const endMs = new Date(market.endDate).getTime();
     if (!Number.isFinite(endMs)) return;
@@ -63,11 +71,24 @@ export function useUpDownStrikePrice(market: Market | null | undefined): number 
     let cancelled = false;
     const tick = async () => {
       if (cancelled || isMarketExpired(market)) return;
+      // Re-check catalog each tick — markets poll may land ptb between intervals.
+      const st = useAppStore.getState();
+      const cat = resolveUpDownStrikeSync(market, st.marketLookup, st.upOrDownMarkets);
+      if (cat != null && Number.isFinite(cat) && cat > 0) {
+        if (!cancelled) setAsyncStrike(undefined);
+        return;
+      }
       try {
-        const p = await fetchUpDownTargetFromCrypto(API_BASE, asset, endMs, combined);
+        const p = await fetchUpDownTargetFromCrypto(
+          API_BASE,
+          asset,
+          endMs,
+          combined,
+          market.eventSlug,
+        );
         if (!cancelled && p != null && Number.isFinite(p) && p > 0) {
           setAsyncStrike(p);
-          // Keep store in sync so grid cells / BS math see the same strike.
+          // Only seed store when catalog still empty (fill gap until markets refresh).
           useAppStore.getState().patchMarketPriceToBeats({ [market.id]: p });
         }
       } catch {
@@ -76,7 +97,8 @@ export function useUpDownStrikePrice(market: Market | null | undefined): number 
     };
 
     void tick();
-    const iv = setInterval(() => void tick(), POLL_MS);
+    // Short TF: poll until catalog lands. Longer TF: same when missing.
+    const iv = setInterval(() => void tick(), isShortTf ? POLL_MS : POLL_MS * 2);
     return () => {
       cancelled = true;
       clearInterval(iv);
@@ -87,24 +109,16 @@ export function useUpDownStrikePrice(market: Market | null | undefined): number 
     market?.endDate,
     market?.eventSlug,
     market?.question,
-    syncStrike,
+    hasCatalogStrike,
     isShortTf,
+    lastUpdated,
+    marketLookupEpoch,
   ]);
 
-  // Prefer sync catalog (TWAP-open from polycandles markets API). Async only when missing
-  // or when short-TF async is a real TWAP open that differs (late capture).
-  if (syncStrike != null && Number.isFinite(syncStrike) && syncStrike > 0) {
-    if (
-      isShortTf &&
-      asyncStrike != null &&
-      Number.isFinite(asyncStrike) &&
-      asyncStrike > 0 &&
-      Math.abs(asyncStrike - syncStrike) > 0.5
-    ) {
-      // Large disagreement: prefer backend crypto-price/TWAP open over stale Gamma on selected.
-      return asyncStrike;
-    }
-    return syncStrike;
+  // Catalog first (bot K). Async only as temporary fill when markets ptb missing.
+  if (hasCatalogStrike) return syncStrike;
+  if (asyncStrike != null && Number.isFinite(asyncStrike) && asyncStrike > 0) {
+    return asyncStrike;
   }
-  return asyncStrike;
+  return undefined;
 }

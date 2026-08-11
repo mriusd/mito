@@ -31,13 +31,16 @@ function listsSameMarketRefs(a: readonly Market[], b: readonly Market[]): boolea
   return true;
 }
 
-/** Merge polycandles/TWAP strike onto a reused row without full rewrite. */
+/** Merge polycandles strike onto a reused row without full rewrite. */
 function mergePriceToBeatIfChanged(prev: Market, next: Market): Market {
   const np = next.priceToBeat;
-  if (np == null || !Number.isFinite(np) || np <= 0) return prev;
+  if (np == null || !Number.isFinite(np) || np <= 0) {
+    // Keep prev strike if next poll omits priceToBeat (do not clear bot-aligned Target).
+    return prev;
+  }
   const pp = prev.priceToBeat;
   if (pp != null && Number.isFinite(pp) && Math.abs(pp - np) < 1e-9) return prev;
-  // 5m/15m: polycandles forces TWAP-open as priceToBeat — must land in the store for sidebar Target.
+  // Always take polycandles /api/markets priceToBeat (same source as mitobot K).
   return { ...prev, priceToBeat: np };
 }
 

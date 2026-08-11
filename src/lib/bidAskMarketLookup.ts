@@ -6,35 +6,14 @@ export const BID_ASK_LOOKUP_FLUSH_MS = 2000;
 export const GRID_BID_ASK_THROTTLE_MS = BID_ASK_LOOKUP_FLUSH_MS;
 /**
  * Coalesce live WS → grid flush listeners (useThrottledBidAskPair / grid cells).
- * Prod uses a longer window: continuous startTransition+grid re-renders on mito.trade
- * starved click handlers (seconds of lag) while local vite felt fine under lighter load.
+ * Keep short — longer windows made bid/ask feel non-realtime. Click starvation is
+ * handled by not using startTransition on this path (not by deferring quotes).
  */
-export const GRID_BID_ASK_LIVE_COALESCE_MS = import.meta.env.PROD ? 500 : 250;
+export const GRID_BID_ASK_LIVE_COALESCE_MS = 100;
 
-/** Quiet window after pointer/keyboard so bid/ask grid work yields to the click. */
-const INTERACTION_QUIET_MS = 140;
-let interactionQuietUntil = 0;
-
-/** Call on pointerdown/keydown so bid/ask grid flushes defer briefly (click responsiveness). */
+/** No-op retained for callers; interaction deferral was starving live quotes. */
 export function noteUserInteractionForBidAsk(): void {
-  interactionQuietUntil = performance.now() + INTERACTION_QUIET_MS;
-}
-
-function isUserInteracting(): boolean {
-  return performance.now() < interactionQuietUntil;
-}
-
-function isInputPending(): boolean {
-  try {
-    const s = (navigator as Navigator & {
-      scheduling?: { isInputPending?: (opts?: { includeContinuous?: boolean }) => boolean };
-    }).scheduling;
-    // Discrete only — includeContinuous stays true during mouse-move/scroll and
-    // was starving bid/ask notify + chunk drain until a full page reload.
-    return s?.isInputPending?.() === true;
-  } catch {
-    return false;
-  }
+  /* intentionally empty — see GRID_BID_ASK_LIVE_COALESCE_MS comment */
 }
 
 /** Fields bid/ask WS batches can materially change vs prior store row — cheap equality gate. */
@@ -299,7 +278,6 @@ function scheduleLiveNotify() {
 function notifyBidAskMarketLookupGridFlushListeners() {
   bidAskGridFlushDigest += 1;
   // Sync notify after coalesce timer — do NOT startTransition here.
-  // Continuous transitions under prod bid/ask load starved discrete clicks (mito.trade lag).
   for (const listener of bidAskLookupGridFlushListeners) {
     try {
       listener();
@@ -309,29 +287,12 @@ function notifyBidAskMarketLookupGridFlushListeners() {
   }
 }
 
-/** Cap re-deferrals so isInputPending() cannot starve grid notifies forever. */
-let gridNotifyDeferCount = 0;
-const GRID_NOTIFY_MAX_DEFERS = 4;
-
 function scheduleGridLiveCoalesceNotify() {
   if (gridLiveCoalesceTimer != null) return;
-  const delay = isUserInteracting()
-    ? GRID_BID_ASK_LIVE_COALESCE_MS + INTERACTION_QUIET_MS
-    : GRID_BID_ASK_LIVE_COALESCE_MS;
   gridLiveCoalesceTimer = setTimeout(() => {
     gridLiveCoalesceTimer = null;
-    // Defer while mid-click — but only a few times (stuck isInputPending was freezing quotes).
-    if (
-      gridNotifyDeferCount < GRID_NOTIFY_MAX_DEFERS &&
-      (isUserInteracting() || isInputPending())
-    ) {
-      gridNotifyDeferCount += 1;
-      scheduleGridLiveCoalesceNotify();
-      return;
-    }
-    gridNotifyDeferCount = 0;
     notifyBidAskMarketLookupGridFlushListeners();
-  }, delay);
+  }, GRID_BID_ASK_LIVE_COALESCE_MS);
 }
 
 function flushPendingBidAskToStore() {
@@ -382,12 +343,8 @@ function flushPendingBidAskToStore() {
     }
   }
 
-  // Live readers use pending/liveTopOfBook; grid listeners wake after coalesce path.
-  if (isUserInteracting() || isInputPending()) {
-    scheduleGridLiveCoalesceNotify();
-  } else {
-    notifyBidAskMarketLookupGridFlushListeners();
-  }
+  // Live readers use pending/liveTopOfBook; grid listeners wake on digest bump.
+  notifyBidAskMarketLookupGridFlushListeners();
 }
 
 function scheduleBidAskFlush() {
@@ -402,6 +359,13 @@ export function flushBidAskMarketLookupNow() {
   }
   flushPendingBidAskToStore();
 }
+
+/**
+ * Stable snapshot cache for useSyncExternalStore consumers.
+ * Returning a new object every getSnapshot() (even with same bid/ask) causes
+ * infinite re-renders / React #185 and makes quotes look frozen after recovery.
+ */
+const getRowSnapCache = new Map<string, Market>();
 
 /**
  * Latest market row for a CLOB token.
@@ -431,10 +395,14 @@ export function getBidAskMarketRow(tokenId: string): Market | undefined {
     }
   }
   const tob = getLiveTopOfBook(id);
+  let next: Market | undefined;
   if (!base) {
     // WS quote arrived before Gamma row — still surface live top of book.
-    if (!tob) return undefined;
-    return {
+    if (!tob) {
+      getRowSnapCache.delete(id);
+      return undefined;
+    }
+    next = {
       id: `ws:${id}`,
       clobTokenIds: [id],
       question: '',
@@ -444,8 +412,21 @@ export function getBidAskMarketRow(tokenId: string): Market | undefined {
       bestBid: tob.bestBid,
       bestAsk: tob.bestAsk,
     };
+  } else {
+    next = applyLiveTopOfBookToRow(base, id);
   }
-  return applyLiveTopOfBookToRow(base, id);
+
+  const cacheKey = candidates[0] || id;
+  const prev = getRowSnapCache.get(cacheKey);
+  if (prev && bidAskWsRowEqual(prev, next) && prev.bestBid === next.bestBid && prev.bestAsk === next.bestAsk) {
+    return prev;
+  }
+  getRowSnapCache.set(cacheKey, next);
+  // Alias normalized forms to same snap so dual-key readers share identity.
+  for (const k of candidates) {
+    if (k !== cacheKey) getRowSnapCache.set(k, next);
+  }
+  return next;
 }
 
 function pickWsFieldsFromMarket(old: Market): Partial<Market> {
@@ -635,21 +616,8 @@ function clearBidAskChunkTimer(): void {
   bidAskChunkTimer = null;
 }
 
-let chunkDeferCount = 0;
-const CHUNK_MAX_DEFERS = 8;
-
 function scheduleBidAskChunkContinue(): void {
   if (bidAskChunkTimer != null) return;
-  // Prefer setTimeout when input is pending — rAF can sit behind heavy paints.
-  if (chunkDeferCount < CHUNK_MAX_DEFERS && (isUserInteracting() || isInputPending())) {
-    chunkDeferCount += 1;
-    bidAskChunkTimer = window.setTimeout(() => {
-      bidAskChunkTimer = null;
-      processBidAskChunk();
-    }, 16);
-    return;
-  }
-  chunkDeferCount = 0;
   bidAskChunkTimer = requestAnimationFrame(() => {
     bidAskChunkTimer = null;
     processBidAskChunk();
@@ -659,12 +627,6 @@ function scheduleBidAskChunkContinue(): void {
 function processBidAskChunk(): void {
   bidAskChunkTimer = null;
   if (bidAskChunkQueue.length === 0) return;
-  // Yield briefly if a click is in flight — force drain after CHUNK_MAX_DEFERS.
-  if (chunkDeferCount < CHUNK_MAX_DEFERS && (isUserInteracting() || isInputPending())) {
-    scheduleBidAskChunkContinue();
-    return;
-  }
-  chunkDeferCount = 0;
   const chunk = bidAskChunkQueue.splice(0, BIDASK_BATCH_CHUNK);
   const more = bidAskChunkQueue.length > 0;
   // Notify live every chunk so UI is not frozen until the full dump drains.
@@ -770,4 +732,5 @@ export function resetBidAskMarketLookupPending() {
   bidAskChunkDrainTouched = false;
   for (const k of Object.keys(pendingPatch)) delete pendingPatch[k];
   liveTopOfBook.clear();
+  getRowSnapCache.clear();
 }

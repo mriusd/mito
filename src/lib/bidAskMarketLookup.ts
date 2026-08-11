@@ -603,44 +603,42 @@ export function upgradeWsStubsInMarketLookup(): void {
   }
 }
 
-const BIDASK_BATCH_CHUNK = 80;
-let bidAskChunkQueue: BidAskWsItem[] = [];
-/** rAF id or setTimeout id — both cancelled via clearTimeout + cancelAnimationFrame. */
-let bidAskChunkTimer: number | null = null;
-let bidAskChunkDrainTouched = false;
+/**
+ * Latest-wins buffer by assetId — never FIFO intermediate ticks.
+ * Multiple WS batches in one frame collapse to one item per token before apply.
+ */
+let latestByAssetId = new Map<string, BidAskWsItem>();
+let drainRaf: number | null = null;
 
-function clearBidAskChunkTimer(): void {
-  if (bidAskChunkTimer == null) return;
-  cancelAnimationFrame(bidAskChunkTimer);
-  clearTimeout(bidAskChunkTimer);
-  bidAskChunkTimer = null;
+function clearBidAskDrainTimer(): void {
+  if (drainRaf == null) return;
+  cancelAnimationFrame(drainRaf);
+  clearTimeout(drainRaf);
+  drainRaf = null;
 }
 
-function scheduleBidAskChunkContinue(): void {
-  if (bidAskChunkTimer != null) return;
-  bidAskChunkTimer = requestAnimationFrame(() => {
-    bidAskChunkTimer = null;
-    processBidAskChunk();
+function coalesceWsItem(prev: BidAskWsItem | undefined, item: BidAskWsItem): BidAskWsItem {
+  if (!prev) return item;
+  // Newer fields overwrite; keep any fields missing on the latest tick.
+  return { ...prev, ...item };
+}
+
+function scheduleLatestDrain(): void {
+  if (drainRaf != null) return;
+  drainRaf = requestAnimationFrame(() => {
+    drainRaf = null;
+    drainLatestBidAsk();
   });
 }
 
-function processBidAskChunk(): void {
-  bidAskChunkTimer = null;
-  if (bidAskChunkQueue.length === 0) return;
-  const chunk = bidAskChunkQueue.splice(0, BIDASK_BATCH_CHUNK);
-  const more = bidAskChunkQueue.length > 0;
-  // Notify live every chunk so UI is not frozen until the full dump drains.
-  if (applyBidAskMarketPatches(chunk, { notifyLive: true })) {
-    bidAskChunkDrainTouched = true;
-  }
-  if (more) {
-    scheduleBidAskChunkContinue();
-    return;
-  }
-  if (bidAskChunkDrainTouched) {
-    bidAskChunkDrainTouched = false;
-    scheduleLiveNotify();
-  }
+/** Apply only the latest pending patch per token (drop all superseded updates). */
+function drainLatestBidAsk(): void {
+  if (latestByAssetId.size === 0) return;
+  // Swap so ticks that arrive mid-apply go into a fresh map for the next frame.
+  const batch = latestByAssetId;
+  latestByAssetId = new Map();
+  applyBidAskMarketPatches([...batch.values()]);
+  if (latestByAssetId.size > 0) scheduleLatestDrain();
 }
 
 function applyBidAskMarketPatches(
@@ -699,19 +697,18 @@ function applyBidAskMarketPatches(
   return touched;
 }
 
+/**
+ * Ingest WS bid/ask patches. Always latest-wins per token — never queues intermediate
+ * prices to replay. At most one apply per animation frame.
+ */
 export function enqueueBidAskMarketPatches(items: BidAskWsItem[]) {
   if (items.length === 0) return;
-  // Small live ticks always apply immediately — never queue behind a reconnect dump
-  // (that backlog made bid/ask lag for minutes while chunks drained).
-  if (items.length <= BIDASK_BATCH_CHUNK) {
-    applyBidAskMarketPatches(items);
-    return;
+  for (const item of items) {
+    const id = String(item.assetId || '').trim();
+    if (!id) continue;
+    latestByAssetId.set(id, coalesceWsItem(latestByAssetId.get(id), item));
   }
-  // Large dumps only: chunk across frames so the main thread stays responsive.
-  bidAskChunkQueue.push(...items);
-  if (bidAskChunkTimer == null) {
-    scheduleBidAskChunkContinue();
-  }
+  scheduleLatestDrain();
 }
 
 export function resetBidAskMarketLookupPending() {
@@ -727,9 +724,8 @@ export function resetBidAskMarketLookupPending() {
     clearTimeout(liveNotifyTimeout);
     liveNotifyTimeout = null;
   }
-  clearBidAskChunkTimer();
-  bidAskChunkQueue = [];
-  bidAskChunkDrainTouched = false;
+  clearBidAskDrainTimer();
+  latestByAssetId = new Map();
   for (const k of Object.keys(pendingPatch)) delete pendingPatch[k];
   liveTopOfBook.clear();
   getRowSnapCache.clear();

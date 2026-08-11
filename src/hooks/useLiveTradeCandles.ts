@@ -298,24 +298,24 @@ export function useLiveTradeCandles({
       pruneCandleMap(map, st, et, Math.max(feedCandleMs, displayBucketMs) * 2);
     };
 
-    // Cap fetches: full 900–1500 history rows are multi‑MB and trip HTTP/2/CORS under load
-    // when 4 parallel requests fire on every market switch (www.mito.trade → data.mito.trade).
-    const klineLimit = from1h || interval === '1h' ? KLINE_FETCH_LIMIT : 400;
-    const baseQ = `symbol=${encodeURIComponent(tokenId)}&interval=${encodeURIComponent(feedInterval)}&limit=${klineLimit}`;
+    // slim=1: OHLCV only (no gex/weather blobs). Full enrich rows were multi‑MB and
+    // Cloudflare 502'd concurrent chart loads (502 has no CORS → browser "CORS blocked").
+    const klineLimit = from1h || interval === '1h' ? 500 : 200;
+    const baseQ =
+      `symbol=${encodeURIComponent(tokenId)}&interval=${encodeURIComponent(feedInterval)}` +
+      `&limit=${klineLimit}&slim=1`;
     const windowedQuery = `${baseQ}&startTime=${st}&endTime=${et}`;
 
     const loadKlines = async () => {
       /**
-       * Soft fetches: kline failures must not open the global backend circuit
-       * (that made weather/temp-odds die after a few HTTP2 blips).
-       *
-       * Staged load (not 4-way parallel stampede):
-       *  1) live limit-only (mem cache, small)
-       *  2) live windowed if still empty
-       *  3) history only as backfill if still sparse — WS snapshot can still fill gaps
+       * Soft + staged: never stampede origin (concurrent klines → CF 502 → whole app flaky).
+       *  1) live limit-only
+       *  2) live windowed if empty
+       *  3) one history call only if still empty
+       * WS snapshot still backfills live bars.
        */
-      const LIVE_MS = 4_000;
-      const HIST_MS = 5_000;
+      const LIVE_MS = 3_500;
+      const HIST_MS = 4_000;
 
       const ingest = (rows: unknown) => {
         if (cancelled || !Array.isArray(rows) || rows.length === 0) return false;
@@ -333,24 +333,15 @@ export function useLiveTradeCandles({
           .catch(() => null);
 
       try {
-        // 1) Fast path — recent live bars only.
         let got = await fetchJson(`${API_BASE}/api/v3/klines?${baseQ}`, LIVE_MS).then(ingest);
         if (cancelled) return;
-
-        // 2) Windowed live if the tail was empty (new token / cold mem).
         if (!got) {
           got = await fetchJson(`${API_BASE}/api/v3/klines?${windowedQuery}`, LIVE_MS).then(ingest);
         }
         if (cancelled) return;
-
-        // 3) History backfill only when we still have little data (avoid 2MB×N storms).
-        const needHistory = candleMapRef.current.size < Math.min(80, Math.floor(klineLimit / 4));
-        if (needHistory) {
+        // History only when live miss — single call, slim payload.
+        if (!got || candleMapRef.current.size < 15) {
           await fetchJson(`${API_BASE}/api/v3/klines/history?${baseQ}`, HIST_MS).then(ingest);
-          if (cancelled) return;
-          if (candleMapRef.current.size < 20) {
-            await fetchJson(`${API_BASE}/api/v3/klines/history?${windowedQuery}`, HIST_MS).then(ingest);
-          }
         }
       } finally {
         if (!cancelled) setReady(true);

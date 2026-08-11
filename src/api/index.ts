@@ -96,13 +96,23 @@ export async function fetchMarkets(): Promise<MarketsResponse> {
         15_000,
       );
       if (manifest.schema === 'parts-v1' && Array.isArray(manifest.parts) && manifest.parts.length > 0) {
-        const parts = await Promise.all(
-          manifest.parts.map((id) =>
-            fetchMarketsJSON<MarketsPartPayload>(
+        // Bound concurrency — Promise.all on ~10 weather parts + upOrDown storms CF → 502 (no CORS).
+        const partIds = manifest.parts;
+        const PART_CONCURRENCY = 3;
+        const parts: MarketsPartPayload[] = new Array(partIds.length);
+        let next = 0;
+        const worker = async () => {
+          while (next < partIds.length) {
+            const i = next++;
+            const id = partIds[i]!;
+            parts[i] = await fetchMarketsJSON<MarketsPartPayload>(
               `${BASE}/api/markets?part=${encodeURIComponent(id)}`,
               15_000,
-            ),
-          ),
+            );
+          }
+        };
+        await Promise.all(
+          Array.from({ length: Math.min(PART_CONCURRENCY, partIds.length) }, () => worker()),
         );
         return mergeMarketsParts(manifest, parts);
       }

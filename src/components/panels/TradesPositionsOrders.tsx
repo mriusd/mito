@@ -1358,30 +1358,6 @@ function TradesPositionsOrdersInner({
     [withPosOrderBusy],
   );
 
-  const handleSellAtBid = useCallback(
-    async (row: TpoPosRow) => {
-      const bid = row.bidProb;
-      if (bid == null || !Number.isFinite(bid) || bid <= 0) {
-        showToast('No bid — cannot place sell', 'error');
-        return;
-      }
-      await handleLimitSellAtCents(row, bid * 100, 'bid');
-    },
-    [handleLimitSellAtCents],
-  );
-
-  const handleSellAtAsk = useCallback(
-    async (row: TpoPosRow) => {
-      const ask = row.askProb;
-      if (ask == null || !Number.isFinite(ask) || ask <= 0) {
-        showToast('No ask — cannot place sell', 'error');
-        return;
-      }
-      await handleLimitSellAtCents(row, ask * 100, 'ask');
-    },
-    [handleLimitSellAtCents],
-  );
-
   const [posSellEditTid, setPosSellEditTid] = useState<string | null>(null);
   const [posSellEditValue, setPosSellEditValue] = useState('');
   const posSellEditSubmittingRef = useRef(false);
@@ -2465,29 +2441,16 @@ function TradesPositionsOrdersInner({
                     <td className={`${nCls} text-right`}><TpoColorCodedText text={`${p.entryPrice.toFixed(1)}¢`} /></td>
                     <td className={`${nCls} text-right text-red-400`}>-${p.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td
-                      className={`${nCls} text-right ${hasBid ? exitColor : 'text-gray-400'} ${
-                        !isBucketParent &&
-                        hasBid &&
-                        !posOrderBusyTids.has(normalizeClobTokenId(p.tid))
-                          ? 'cursor-pointer hover:underline'
-                          : ''
-                      }`}
+                      className={`${nCls} text-right ${hasBid ? exitColor : 'text-gray-400'}`}
                       title={
                         isBucketParent
                           ? hasBid
                             ? `Sum of bids ${currentPrice.toFixed(1)}¢`
                             : undefined
                           : hasBid
-                            ? `Limit sell @ bid ${currentPrice.toFixed(1)}¢`
+                            ? `Bid ${currentPrice.toFixed(1)}¢`
                             : undefined
                       }
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isBucketParent) return;
-                        if (posOrderBusyTids.has(normalizeClobTokenId(p.tid))) return;
-                        if (!hasBid) return;
-                        void handleSellAtBid({ ...p, bidProb, currentPrice });
-                      }}
                     >
                       {hasBid ? `${currentPrice.toFixed(1)}¢` : '-'}
                     </td>
@@ -2506,30 +2469,16 @@ function TradesPositionsOrdersInner({
                       {midCents != null && midCents > 0 ? `${midCents.toFixed(1)}¢` : '-'}
                     </td>
                     <td
-                      className={`${nCls} text-right text-red-300/90 ${
-                        !isBucketParent &&
-                        askProb != null &&
-                        askProb > 0 &&
-                        !posOrderBusyTids.has(normalizeClobTokenId(p.tid))
-                          ? 'cursor-pointer hover:text-red-200 hover:underline'
-                          : ''
-                      }`}
+                      className={`${nCls} text-right text-red-300/90`}
                       title={
                         isBucketParent
                           ? askCents != null
                             ? `Sum of asks ${askCents.toFixed(1)}¢`
                             : undefined
                           : askProb != null && askProb > 0
-                            ? `Place sell @ ask ${(askProb * 100).toFixed(1)}¢`
+                            ? `Ask ${(askProb * 100).toFixed(1)}¢`
                             : undefined
                       }
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isBucketParent) return;
-                        if (posOrderBusyTids.has(normalizeClobTokenId(p.tid))) return;
-                        if (askProb == null || askProb <= 0) return;
-                        void handleSellAtAsk({ ...p, askProb });
-                      }}
                     >
                       {askCents != null ? formatAskCentsSum(askCents) : formatQuoteCents(askProb)}
                     </td>

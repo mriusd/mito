@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import {
   enqueueBidAskMarketPatches,
-  resetBidAskMarketLookupPending,
   type BidAskWsItem,
 } from '../lib/bidAskMarketLookup';
 import { subscribeChartBidAsk } from '../lib/chartWsShared';
@@ -20,7 +19,8 @@ export function useBidAskWS() {
 
     return () => {
       unsub();
-      resetBidAskMarketLookupPending();
+      // Do NOT clear liveTopOfBook / pending here — a host remount would wipe live
+      // quotes and look like "stale until full reload". Only drop the WS subscription.
     };
   }, []);
 }

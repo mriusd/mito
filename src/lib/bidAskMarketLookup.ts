@@ -29,7 +29,9 @@ function isInputPending(): boolean {
     const s = (navigator as Navigator & {
       scheduling?: { isInputPending?: (opts?: { includeContinuous?: boolean }) => boolean };
     }).scheduling;
-    return s?.isInputPending?.({ includeContinuous: true }) === true;
+    // Discrete only — includeContinuous stays true during mouse-move/scroll and
+    // was starving bid/ask notify + chunk drain until a full page reload.
+    return s?.isInputPending?.() === true;
   } catch {
     return false;
   }
@@ -272,7 +274,13 @@ export function getBidAskGridFlushDigest(): number {
 }
 
 function notifyBidAskMarketLookupLiveListeners() {
-  for (const listener of bidAskLookupLiveListeners) listener();
+  for (const listener of bidAskLookupLiveListeners) {
+    try {
+      listener();
+    } catch (err) {
+      console.warn('[bidAsk] live listener error:', err);
+    }
+  }
 }
 
 /**
@@ -292,8 +300,18 @@ function notifyBidAskMarketLookupGridFlushListeners() {
   bidAskGridFlushDigest += 1;
   // Sync notify after coalesce timer — do NOT startTransition here.
   // Continuous transitions under prod bid/ask load starved discrete clicks (mito.trade lag).
-  for (const listener of bidAskLookupGridFlushListeners) listener();
+  for (const listener of bidAskLookupGridFlushListeners) {
+    try {
+      listener();
+    } catch (err) {
+      console.warn('[bidAsk] grid listener error:', err);
+    }
+  }
 }
+
+/** Cap re-deferrals so isInputPending() cannot starve grid notifies forever. */
+let gridNotifyDeferCount = 0;
+const GRID_NOTIFY_MAX_DEFERS = 4;
 
 function scheduleGridLiveCoalesceNotify() {
   if (gridLiveCoalesceTimer != null) return;
@@ -302,11 +320,16 @@ function scheduleGridLiveCoalesceNotify() {
     : GRID_BID_ASK_LIVE_COALESCE_MS;
   gridLiveCoalesceTimer = setTimeout(() => {
     gridLiveCoalesceTimer = null;
-    // Defer again while the user is mid-click so the event handler runs first.
-    if (isUserInteracting() || isInputPending()) {
+    // Defer while mid-click — but only a few times (stuck isInputPending was freezing quotes).
+    if (
+      gridNotifyDeferCount < GRID_NOTIFY_MAX_DEFERS &&
+      (isUserInteracting() || isInputPending())
+    ) {
+      gridNotifyDeferCount += 1;
       scheduleGridLiveCoalesceNotify();
       return;
     }
+    gridNotifyDeferCount = 0;
     notifyBidAskMarketLookupGridFlushListeners();
   }, delay);
 }
@@ -612,16 +635,21 @@ function clearBidAskChunkTimer(): void {
   bidAskChunkTimer = null;
 }
 
+let chunkDeferCount = 0;
+const CHUNK_MAX_DEFERS = 8;
+
 function scheduleBidAskChunkContinue(): void {
   if (bidAskChunkTimer != null) return;
   // Prefer setTimeout when input is pending — rAF can sit behind heavy paints.
-  if (isUserInteracting() || isInputPending()) {
+  if (chunkDeferCount < CHUNK_MAX_DEFERS && (isUserInteracting() || isInputPending())) {
+    chunkDeferCount += 1;
     bidAskChunkTimer = window.setTimeout(() => {
       bidAskChunkTimer = null;
       processBidAskChunk();
     }, 16);
     return;
   }
+  chunkDeferCount = 0;
   bidAskChunkTimer = requestAnimationFrame(() => {
     bidAskChunkTimer = null;
     processBidAskChunk();
@@ -631,11 +659,12 @@ function scheduleBidAskChunkContinue(): void {
 function processBidAskChunk(): void {
   bidAskChunkTimer = null;
   if (bidAskChunkQueue.length === 0) return;
-  // Yield immediately if a click is in flight — drain after the quiet window.
-  if (isUserInteracting() || isInputPending()) {
+  // Yield briefly if a click is in flight — force drain after CHUNK_MAX_DEFERS.
+  if (chunkDeferCount < CHUNK_MAX_DEFERS && (isUserInteracting() || isInputPending())) {
     scheduleBidAskChunkContinue();
     return;
   }
+  chunkDeferCount = 0;
   const chunk = bidAskChunkQueue.splice(0, BIDASK_BATCH_CHUNK);
   const more = bidAskChunkQueue.length > 0;
   // Notify live every chunk so UI is not frozen until the full dump drains.

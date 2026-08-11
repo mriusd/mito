@@ -77,23 +77,50 @@ export function useWalletData() {
   const effectiveEoa = signingMode === 'privateKey' && pkEoa ? pkEoa : address;
   const effectiveConnected = signingMode === 'privateKey' && pkEoa ? true : isConnected;
 
+  const stillCurrent = useCallback(
+    (epochAtStart: number, channelAtStart: string, maker: string) => {
+      if (epochAtStart !== walletLoadEpochRef.current) return false;
+      if (channelAtStart !== walletChannelKeyRef.current) return false;
+      return proxyWalletRef.current?.trim().toLowerCase() === maker;
+    },
+    [],
+  );
+
   const loadWalletData = useCallback(
     async (makerLocked: string) => {
       const maker = makerLocked.trim().toLowerCase();
       if (!maker) return;
       const epochAtStart = walletLoadEpochRef.current;
       const channelAtStart = walletChannelKeyRef.current;
+
+      // Publish maker immediately so Header Cash/Val is not stuck at 0 while
+      // positions paginate (prod Data API can take many seconds / hit 429s).
+      if (stillCurrent(epochAtStart, channelAtStart, maker)) {
+        useAppStore.getState().setMarketData({ makerAddress: makerLocked });
+      }
+
+      // Balance first and independently — header cash must not wait on positions.
+      void (async () => {
+        try {
+          const balance = await fetchWalletBalance(makerLocked);
+          if (!stillCurrent(epochAtStart, channelAtStart, maker)) return;
+          useAppStore.getState().setMarketData({
+            cashBalance: balance,
+            makerAddress: makerLocked,
+          });
+        } catch (err) {
+          console.warn('[useWalletData] balance fetch failed:', err);
+        }
+      })();
+
       try {
-        const [positions, trades, orders, balance] = await Promise.all([
+        const [positions, trades, orders] = await Promise.all([
           fetchWalletPositions(makerLocked),
           fetchWalletActivity(makerLocked, 500),
           fetchOpenOrdersDirect(makerLocked),
-          fetchWalletBalance(makerLocked),
         ]);
 
-        if (epochAtStart !== walletLoadEpochRef.current) return;
-        if (channelAtStart !== walletChannelKeyRef.current) return;
-        if (proxyWalletRef.current?.trim().toLowerCase() !== maker) return;
+        if (!stillCurrent(epochAtStart, channelAtStart, maker)) return;
 
         // Fix missing avgPrice: compute from trades when API returns 0
         for (const pos of positions) {
@@ -118,24 +145,25 @@ export function useWalletData() {
           }
         }
 
-        if (epochAtStart !== walletLoadEpochRef.current) return;
-        if (channelAtStart !== walletChannelKeyRef.current) return;
-        if (proxyWalletRef.current?.trim().toLowerCase() !== maker) return;
+        if (!stillCurrent(epochAtStart, channelAtStart, maker)) return;
 
         startTransition(() => {
           useAppStore.getState().setMarketData({
             positions,
             orders,
             trades,
-            cashBalance: balance,
             makerAddress: makerLocked,
           });
         });
       } catch (err) {
         console.warn('[useWalletData] Failed to fetch wallet data:', err);
+        // Keep makerAddress so header can still show cash if balance landed.
+        if (stillCurrent(epochAtStart, channelAtStart, maker)) {
+          useAppStore.getState().setMarketData({ makerAddress: makerLocked });
+        }
       }
     },
-    [],
+    [stillCurrent],
   );
 
   useLayoutEffect(() => {

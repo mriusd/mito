@@ -192,9 +192,13 @@ export function Header({ onRefresh }: HeaderProps) {
   const tradingWallet = useTradingWalletAddress();
   const effectiveWalletConnected =
     signingMode === 'privateKey' && pkAddress ? true : walletConnected;
+  // Show portfolio once store maker is set for this session. Allow tradingWallet
+  // still resolving (empty) so Cash/Val are not stuck at 0 on slow prod loads.
+  // Hide only on a real mismatch (wallet switch race).
+  const makerLc = makerAddress.trim().toLowerCase();
+  const tradingLc = tradingWallet.trim().toLowerCase();
   const walletPortfolioReady =
-    !!tradingWallet &&
-    makerAddress.trim().toLowerCase() === tradingWallet.trim().toLowerCase();
+    !!makerLc && (!tradingLc || makerLc === tradingLc);
   const displayTotalVal = walletPortfolioReady ? totalVal : 0;
   const displayCashBalance = walletPortfolioReady ? cashBalance : 0;
 

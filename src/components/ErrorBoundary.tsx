@@ -79,6 +79,11 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
           <p className="text-xs font-semibold text-red-300">Something went wrong here</p>
           <p className="text-[11px] text-gray-400">Retrying automatically…</p>
+          {error?.message ? (
+            <p className="max-w-full break-words px-2 text-left text-[10px] font-mono text-gray-500">
+              {error.message}
+            </p>
+          ) : null}
           <button
             onClick={this.reset}
             className="mt-1 rounded bg-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:bg-gray-600"

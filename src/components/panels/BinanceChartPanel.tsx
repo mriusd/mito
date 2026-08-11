@@ -449,6 +449,7 @@ const SR_PRICE_DECIMALS: Partial<Record<AssetName, number>> = {
 };
 
 function formatSrStrike(p: number, asset: AssetName): string {
+  if (!Number.isFinite(p)) return '–';
   const d = SR_PRICE_DECIMALS[asset] ?? 2;
   return p.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
 }
@@ -1072,16 +1073,21 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
 
   const rbsResult = useMemo<RBSComputeResult>(() => {
     if (spotForChart <= 0) return { kind: 'clear' };
-    const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
-    const assetMarkets = upOrDownMarkets[asset] || {};
-    return computeRBSPriceResult(
-      spotForChart,
-      sigma,
-      assetMarkets,
-      marketLookup,
-      Date.now(),
-      rbsTfEnabledForCompute,
-    );
+    try {
+      const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
+      const assetMarkets = upOrDownMarkets[asset] || {};
+      return computeRBSPriceResult(
+        spotForChart,
+        sigma,
+        assetMarkets,
+        marketLookup,
+        Date.now(),
+        rbsTfEnabledForCompute,
+      );
+    } catch (err) {
+      console.warn('[BinanceChartPanel] RBS compute failed:', err);
+      return { kind: 'clear' };
+    }
   }, [asset, spotForChart, volatilityData, volMultiplier, sym, upOrDownMarkets, marketLookup, rbsTfEnabledForCompute, rbsVolWeightAdjusted]);
 
   useEffect(() => {
@@ -1103,19 +1109,24 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
 
   const rbs1hPrice = useMemo(() => {
     if (spotForChart <= 0) return null;
-    const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
-    const forced1h: Record<UpDownTfKey, boolean> = { ...rbsTfEnabledForCompute, '1h': true };
-    const res = computeRBSPriceResult(
-      spotForChart,
-      sigma,
-      upOrDownMarkets[asset] || {},
-      marketLookup,
-      Date.now(),
-      forced1h,
-    );
-    if (res.kind !== 'price') return null;
-    const line = res.tfLines.find((l) => l.tf === '1h');
-    return line != null && Number.isFinite(line.price) && line.price > 0 ? line.price : null;
+    try {
+      const sigma = (volatilityData[sym] || 0.6) * volMultiplier;
+      const forced1h: Record<UpDownTfKey, boolean> = { ...rbsTfEnabledForCompute, '1h': true };
+      const res = computeRBSPriceResult(
+        spotForChart,
+        sigma,
+        upOrDownMarkets[asset] || {},
+        marketLookup,
+        Date.now(),
+        forced1h,
+      );
+      if (res.kind !== 'price') return null;
+      const line = res.tfLines.find((l) => l.tf === '1h');
+      return line != null && Number.isFinite(line.price) && line.price > 0 ? line.price : null;
+    } catch (err) {
+      console.warn('[BinanceChartPanel] RBS 1h compute failed:', err);
+      return null;
+    }
   }, [
     asset,
     spotForChart,
@@ -1214,22 +1225,26 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     for (let i = 0; i < count; i++) {
       const slotIdx = 5 - count + i;
       const el = arrowRefs.current[slotIdx];
-      if (!el) continue;
+      if (!el || typeof el.animate !== 'function') continue;
       const delayIdx = dir === 'up' ? i : count - 1 - i;
-      arrowAnimsRef.current[slotIdx] = el.animate(
-        [
-          { opacity: 0, offset: 0 },
-          { opacity: 0.85, offset: 0.4 },
-          { opacity: 0.85, offset: 0.6 },
-          { opacity: 0, offset: 1 },
-        ],
-        {
-          duration: cycleDuration,
-          delay: delayIdx * stagger,
-          iterations: Infinity,
-          easing: 'ease-in-out',
-        },
-      );
+      try {
+        arrowAnimsRef.current[slotIdx] = el.animate(
+          [
+            { opacity: 0, offset: 0 },
+            { opacity: 0.85, offset: 0.4 },
+            { opacity: 0.85, offset: 0.6 },
+            { opacity: 0, offset: 1 },
+          ],
+          {
+            duration: cycleDuration,
+            delay: delayIdx * stagger,
+            iterations: Infinity,
+            easing: 'ease-in-out',
+          },
+        );
+      } catch {
+        el.style.opacity = '0.85';
+      }
     }
   }, [rbsArrowSignal]);
 
@@ -1254,15 +1269,30 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     if (!header || !title || !controls) return;
 
     const gapPx = 8; // gap-x-2
+    // Hysteresis: stacking changes title/controls to full-width rows, which re-fires RO.
+    // Without slack, needSecondRow can flip true↔false every frame → max update depth.
+    const STACK_SLACK_PX = 12;
+    const UNSTACK_SLACK_PX = 36;
+    let raf = 0;
 
     const measure = () => {
-      requestAnimationFrame(() => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        raf = 0;
         const h = chartHeaderRef.current;
         const t = chartTitleRef.current;
         const c = chartControlsRef.current;
         if (!h || !t || !c) return;
-        const needSecondRow = t.scrollWidth + gapPx + c.scrollWidth > h.clientWidth + 0.5;
-        setChartHeaderStackControls(needSecondRow);
+        const contentW = t.scrollWidth + gapPx + c.scrollWidth;
+        const avail = h.clientWidth;
+        setChartHeaderStackControls((prev) => {
+          if (!prev) {
+            // Unstacked: stack only when clearly overflowing.
+            return contentW > avail + STACK_SLACK_PX ? true : prev;
+          }
+          // Stacked: unstack only when there is clear room for one row.
+          return contentW <= avail - UNSTACK_SLACK_PX ? false : prev;
+        });
       });
     };
 
@@ -1271,7 +1301,10 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     ro.observe(title);
     ro.observe(controls);
     measure();
-    return () => ro.disconnect();
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
     // candleGreenBsProb ticks every 1s — must not remount ResizeObserver / remeasure header.
   }, [asset, spotForChart, priceSource, timeframe, candleCount]);
 
@@ -1614,38 +1647,42 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
     let lastDpr = 0;
 
     const paint = () => {
-      const rect = container.getBoundingClientRect();
-      const w = Math.floor(rect.width);
-      const h = Math.floor(rect.height);
-      if (w < 4 || h < 4) return;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      if (w !== lastCssW || h !== lastCssH || dpr !== lastDpr) {
-        lastCssW = w;
-        lastCssH = h;
-        lastDpr = dpr;
-        canvas.width = Math.floor(w * dpr);
-        canvas.height = Math.floor(h * dpr);
-        canvas.style.width = `${w}px`;
-        canvas.style.height = `${h}px`;
+      try {
+        const rect = container.getBoundingClientRect();
+        const w = Math.floor(rect.width);
+        const h = Math.floor(rect.height);
+        if (w < 4 || h < 4) return;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        if (w !== lastCssW || h !== lastCssH || dpr !== lastDpr) {
+          lastCssW = w;
+          lastCssH = h;
+          lastDpr = dpr;
+          canvas.width = Math.floor(w * dpr);
+          canvas.height = Math.floor(h * dpr);
+          canvas.style.width = `${w}px`;
+          canvas.style.height = `${h}px`;
+        }
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        drawCandles(
+          ctx,
+          w,
+          h,
+          candles,
+          timeframe,
+          srLines,
+          asset,
+          rbsTfLines,
+          selectedRbsTf,
+          hudGateSupportLinesByExchange,
+          liveGexPos,
+          gexPosEnabled && gexChartSupported,
+          currentCandleOhlc,
+        );
+      } catch (err) {
+        console.warn('[BinanceChartPanel] paint failed:', err);
       }
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawCandles(
-        ctx,
-        w,
-        h,
-        candles,
-        timeframe,
-        srLines,
-        asset,
-        rbsTfLines,
-        selectedRbsTf,
-        hudGateSupportLinesByExchange,
-        liveGexPos,
-        gexPosEnabled && gexChartSupported,
-        currentCandleOhlc,
-      );
     };
 
     paint();

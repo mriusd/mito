@@ -339,7 +339,8 @@ export interface WSPosition {
 }
 
 function mapRawWSPosition(p: Record<string, unknown>): WSPosition | null {
-  const tokenId = String(p.tokenId || '');
+  const tokenIdRaw = String(p.tokenId || '');
+  const tokenId = normalizeClobTokenKey(tokenIdRaw) || tokenIdRaw;
   const size = Number(p.size || 0);
   if (!tokenId || size <= 0) return null;
   return {
@@ -355,6 +356,36 @@ function mapRawWSPosition(p: Record<string, unknown>): WSPosition | null {
     endDate: typeof p.endDate === 'string' ? p.endDate : undefined,
     underlyingAsset: typeof p.underlyingAsset === 'string' ? p.underlyingAsset : undefined,
   };
+}
+
+/** Collapse legs that only differ by token-id string form (leading zeros, etc.). */
+function dedupeWSPositionsByToken(rows: WSPosition[]): WSPosition[] {
+  if (rows.length <= 1) return rows;
+  const byTok = new Map<string, WSPosition>();
+  for (const p of rows) {
+    const k = normalizeClobTokenKey(p.tokenId);
+    if (!k) continue;
+    const prev = byTok.get(k);
+    if (!prev) {
+      byTok.set(k, { ...p, tokenId: k });
+      continue;
+    }
+    byTok.set(k, {
+      ...p,
+      tokenId: k,
+      size: Math.max(p.size || 0, prev.size || 0),
+      avgPrice: (p.avgPrice || 0) > 0 ? p.avgPrice : prev.avgPrice,
+      feesPaid: p.feesPaid != null ? p.feesPaid : prev.feesPaid,
+      title: (p.title || '').trim() || prev.title,
+      slug: p.slug || prev.slug,
+      eventSlug: p.eventSlug || prev.eventSlug,
+      marketId: p.marketId || prev.marketId,
+      outcome: p.outcome || prev.outcome,
+      endDate: p.endDate || prev.endDate,
+      underlyingAsset: p.underlyingAsset || prev.underlyingAsset,
+    });
+  }
+  return [...byTok.values()];
 }
 
 function mergeWalletPositionsSnapshot(
@@ -1259,9 +1290,11 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const msgWallet = String(msg.wallet || '').trim().toLowerCase();
             const mine = (walletRef.current || '').trim().toLowerCase();
             if (msgWallet && mine && msgWallet !== mine) return;
-            const raw = (msg.data as Array<Record<string, unknown>>)
-              .map((p) => mapRawWSPosition(p))
-              .filter((p): p is WSPosition => p != null);
+            const raw = dedupeWSPositionsByToken(
+              (msg.data as Array<Record<string, unknown>>)
+                .map((p) => mapRawWSPosition(p))
+                .filter((p): p is WSPosition => p != null),
+            );
             walletPosRef.current = mergeWalletPositionsSnapshot(
               walletPosRef.current,
               raw,
@@ -1287,9 +1320,11 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             }
             scheduleWalletPosFlush();
           } else if (msg.type === 'walletGridPositions' && Array.isArray(msg.data)) {
-            const raw = (msg.data as Array<Record<string, unknown>>)
-              .map((p) => mapRawWSPosition(p))
-              .filter((p): p is WSPosition => p != null);
+            const raw = dedupeWSPositionsByToken(
+              (msg.data as Array<Record<string, unknown>>)
+                .map((p) => mapRawWSPosition(p))
+                .filter((p): p is WSPosition => p != null),
+            );
             gridWalletPosRef.current = raw;
             scheduleWalletPosFlush();
           } else if (msg.type === 'walletTrades' && Array.isArray(msg.data)) {

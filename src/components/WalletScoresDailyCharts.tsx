@@ -110,6 +110,7 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
       ctx.font = '9px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('No data', W / 2, H / 2);
+      layoutRef.current = null;
       return;
     }
 
@@ -120,9 +121,18 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
     ];
 
     const allVals: number[] = [];
-    for (const s of series) allVals.push(...s.values);
+    for (const s of series) {
+      for (let i = 0; i < n; i++) {
+        const v = s.values[i];
+        allVals.push(Number.isFinite(v) ? v : 0);
+      }
+    }
     let vmin = Math.min(...allVals);
     let vmax = Math.max(...allVals);
+    if (!Number.isFinite(vmin) || !Number.isFinite(vmax)) {
+      vmin = 0;
+      vmax = 1;
+    }
     [vmin, vmax] = padRange(vmin, vmax);
 
     const maxStr = `${vmax.toLocaleString('en-US', { maximumFractionDigits: 0 })}%`;
@@ -131,7 +141,11 @@ function RatesRoiCanvas({ dates, win, profit, roi }: { dates: string[]; win: num
     const padL = Math.min(72, Math.max(28, Math.ceil(Math.max(ctx.measureText(maxStr).width, ctx.measureText(minStr).width) + 8)));
     const innerW = Math.max(1, plotRight - padL);
     const xAt = (i: number) => padL + (n <= 1 ? innerW / 2 : (i / (n - 1)) * innerW);
-    const yAt = (v: number) => padT + innerH - ((v - vmin) / (vmax - vmin)) * innerH;
+    const ySpan = vmax - vmin || 1;
+    const yAt = (v: number) => {
+      const vv = Number.isFinite(v) ? v : vmin;
+      return padT + innerH - ((vv - vmin) / ySpan) * innerH;
+    };
 
     ctx.strokeStyle = '#374151';
     ctx.lineWidth = 1;
@@ -353,10 +367,16 @@ function MiniLineCanvas({
       ctx.font = '9px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('No data', W / 2, H / 2);
+      layoutRef.current = null;
       return;
     }
-    let vmin = Math.min(...values);
-    let vmax = Math.max(...values);
+    const safeVals = values.map((v) => (Number.isFinite(v) ? v : 0));
+    let vmin = Math.min(...safeVals);
+    let vmax = Math.max(...safeVals);
+    if (!Number.isFinite(vmin) || !Number.isFinite(vmax)) {
+      vmin = 0;
+      vmax = 1;
+    }
     [vmin, vmax] = padRange(vmin, vmax);
 
     const maxStr = formatYAxis(yFmt, vmax);
@@ -365,7 +385,11 @@ function MiniLineCanvas({
     const padL = Math.min(88, Math.max(28, Math.ceil(Math.max(ctx.measureText(maxStr).width, ctx.measureText(minStr).width) + 8)));
     const innerW = Math.max(1, plotRight - padL);
     const xAt = (i: number) => padL + (n <= 1 ? innerW / 2 : (i / (n - 1)) * innerW);
-    const yAt = (v: number) => padT + innerH - ((v - vmin) / (vmax - vmin)) * innerH;
+    const ySpan = vmax - vmin || 1;
+    const yAt = (v: number) => {
+      const vv = Number.isFinite(v) ? v : vmin;
+      return padT + innerH - ((vv - vmin) / ySpan) * innerH;
+    };
 
     ctx.strokeStyle = '#374151';
     ctx.lineWidth = 1;

@@ -33,11 +33,13 @@ import {
   type SavedLayout,
 } from '../lib/layoutLibrary';
 import type { PanelConfig } from '../types';
+import { ErrorBoundary } from './ErrorBoundary';
 
 const IS_DEV = import.meta.env.DEV;
 
+/** Load wallet summary from its own module — not ToxicFlowDialog (huge + circular risk). */
 const WalletInfoDialogLazy = lazyWithChunkReload(() =>
-  import('./ToxicFlowDialog').then((m) => ({ default: m.WalletInfoDialog })),
+  import('./WalletInfoPanel').then((m) => ({ default: m.WalletInfoDialog })),
 );
 
 const FavouriteWalletsDialogLazy = lazyWithChunkReload(() =>
@@ -49,7 +51,27 @@ const MarketViewDialogLazy = lazy(() =>
 );
 
 function preloadWalletSummaryDialog() {
-  void importWithChunkReload(() => import('./ToxicFlowDialog'));
+  void importWithChunkReload(() => import('./WalletInfoPanel'));
+}
+
+function walletInfoDialogFallback(error: Error, retry: () => void) {
+  return (
+    <div className="fixed inset-0 z-[49999] flex items-center justify-center bg-black/70 p-4">
+      <div className="max-w-md rounded-lg border border-gray-700 bg-gray-900 p-4 text-center shadow-xl">
+        <p className="text-sm font-semibold text-red-300">Wallet summary failed</p>
+        <p className="mt-2 break-words text-left text-[11px] text-gray-400 font-mono">
+          {error?.message || String(error)}
+        </p>
+        <button
+          type="button"
+          onClick={retry}
+          className="mt-3 rounded bg-gray-700 px-3 py-1.5 text-xs text-gray-100 hover:bg-gray-600"
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function preloadFavouriteWalletsDialog() {
@@ -750,17 +772,19 @@ export function Header({ onRefresh }: HeaderProps) {
       </div>
 
       {walletForHeaderInfoDialog && (
-        <Suspense fallback={null}>
-          <WalletInfoDialogLazy
-            open
-            wallet={walletForHeaderInfoDialog}
-            initialMarketId={selectedMarket?.conditionId?.trim() || ''}
-            onClose={() => {
-              setFavouritesWalletInfoAddress(null);
-              setWalletSummaryDialogOpen(false);
-            }}
-          />
-        </Suspense>
+        <ErrorBoundary name="wallet-summary" fallback={walletInfoDialogFallback}>
+          <Suspense fallback={null}>
+            <WalletInfoDialogLazy
+              open
+              wallet={walletForHeaderInfoDialog}
+              initialMarketId={selectedMarket?.conditionId?.trim() || ''}
+              onClose={() => {
+                setFavouritesWalletInfoAddress(null);
+                setWalletSummaryDialogOpen(false);
+              }}
+            />
+          </Suspense>
+        </ErrorBoundary>
       )}
 
       {favouriteWalletsDialogOpen && (
@@ -784,15 +808,17 @@ export function Header({ onRefresh }: HeaderProps) {
       )}
 
       {walletInfoOverlay ? (
-        <Suspense fallback={null}>
-          <WalletInfoDialogLazy
-            open
-            wallet={walletInfoOverlay.wallet}
-            initialMarketId={walletInfoOverlay.initialMarketId}
-            overlayZClass="z-[70000]"
-            onClose={closeWalletInfoOverlay}
-          />
-        </Suspense>
+        <ErrorBoundary name="wallet-info-overlay" fallback={walletInfoDialogFallback}>
+          <Suspense fallback={null}>
+            <WalletInfoDialogLazy
+              open
+              wallet={walletInfoOverlay.wallet}
+              initialMarketId={walletInfoOverlay.initialMarketId}
+              overlayZClass="z-[70000]"
+              onClose={closeWalletInfoOverlay}
+            />
+          </Suspense>
+        </ErrorBoundary>
       ) : null}
     </header>
   );

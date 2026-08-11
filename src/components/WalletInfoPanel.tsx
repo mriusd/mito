@@ -5,6 +5,7 @@ import {
   useCallback,
   useRef,
   useLayoutEffect,
+  type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchWalletSummary, fetchWalletPositions, type WalletPosition, type WalletSummary } from '../api';
@@ -41,7 +42,7 @@ const WalletInfoPanelShell = memo(function WalletInfoPanelShell({
   variant: WalletInfoPanelVariant;
   overlayZClass: string;
   onClose: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   if (variant === 'inline') {
     return (
@@ -58,7 +59,7 @@ const WalletInfoPanelShell = memo(function WalletInfoPanelShell({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-gray-800 rounded-lg p-3 w-full mx-4 shadow-xl border border-gray-700 max-w-[min(98vw,93.6rem)] max-h-[88vh] min-h-[50vh] flex flex-col overflow-hidden">
+      <div className="bg-gray-800 rounded-lg p-3 w-full mx-4 shadow-xl border border-gray-700 max-w-[min(98vw,102rem)] max-h-[88vh] min-h-[50vh] flex flex-col overflow-hidden">
         {children}
       </div>
     </div>
@@ -105,26 +106,39 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
       if (!wallet) return '';
       const prefRaw = (initialMarketId || '').trim();
       const pref = prefRaw.toLowerCase();
-      const [s, p] = await Promise.all([
-        fetchWalletSummary(wallet),
-        fetchWalletPositions({ wallet, limit: 1000, ledger: true, order: 'end_date_desc' }),
-      ]);
-      setSummary(s);
-      const sorted = sortWalletPositionsByDisplayedDateDesc(p.positions || [], buildMarketByIdRecord(useAppStore.getState().marketLookup));
-      const byId = enrichMarketByIdFromWalletPositions(useAppStore.getState().marketLookup, sorted);
-      setMarketById(byId);
-      setMarkets(sorted);
-      let pick = '';
-      if (preserveSelected && sorted.some((row) => row.marketId === preserveSelected)) {
-        pick = preserveSelected;
-      } else if (pref) {
-        const hit = sorted.find((row) => String(row.marketId || '').trim().toLowerCase() === pref);
-        if (hit) pick = hit.marketId;
-        else pick = prefRaw;
+      try {
+        const [s, p] = await Promise.all([
+          fetchWalletSummary(wallet),
+          fetchWalletPositions({ wallet, limit: 1000, ledger: true, order: 'end_date_desc' }),
+        ]);
+        setSummary(s);
+        const rows = Array.isArray(p?.positions) ? p.positions : [];
+        const sorted = sortWalletPositionsByDisplayedDateDesc(
+          rows,
+          buildMarketByIdRecord(useAppStore.getState().marketLookup),
+        );
+        const byId = enrichMarketByIdFromWalletPositions(useAppStore.getState().marketLookup, sorted);
+        setMarketById(byId);
+        setMarkets(sorted);
+        let pick = '';
+        if (preserveSelected && sorted.some((row) => row.marketId === preserveSelected)) {
+          pick = preserveSelected;
+        } else if (pref) {
+          const hit = sorted.find((row) => String(row.marketId || '').trim().toLowerCase() === pref);
+          if (hit) pick = hit.marketId;
+          else pick = prefRaw;
+        }
+        if (!pick && sorted.length > 0) pick = sorted[0]!.marketId;
+        setSelectedMarketId(pick);
+        return pick;
+      } catch (err) {
+        console.warn('[WalletInfoPanel] load markets failed:', err);
+        setSummary(null);
+        setMarkets([]);
+        setMarketById({});
+        setSelectedMarketId(prefRaw);
+        return prefRaw;
       }
-      if (!pick && sorted.length > 0) pick = sorted[0].marketId;
-      setSelectedMarketId(pick);
-      return pick;
     },
     [wallet, initialMarketId],
   );
@@ -214,7 +228,12 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     if (!open) return;
     const el = summaryLeftRef.current;
     if (!el) return;
-    const measure = () => setSummaryLeftH(Math.round(el.getBoundingClientRect().height));
+    // Only update when height actually changes — avoids ResizeObserver feedback loops
+    // (parent height style ↔ measured left column) that can hit max update depth.
+    const measure = () => {
+      const next = Math.round(el.getBoundingClientRect().height);
+      setSummaryLeftH((prev) => (prev === next ? prev : next));
+    };
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     measure();
@@ -275,7 +294,8 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
           style={
             isInlineWalletInfo
               ? undefined
-              : { gridTemplateColumns: 'minmax(0, 1fr) minmax(16rem, 36rem)', gridTemplateRows: 'minmax(0, 1fr)' }
+              // Markets list needs room for Date/Market/staked columns; trades pane secondary.
+              : { gridTemplateColumns: 'minmax(34rem, 2fr) minmax(14rem, 0.95fr)', gridTemplateRows: 'minmax(0, 1fr)' }
           }
         >
           {showMarketsList ? (

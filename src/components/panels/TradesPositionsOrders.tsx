@@ -720,36 +720,157 @@ function TradesPositionsOrdersInner({
   const positionsForTable = useMemo(() => {
     // Match sidebar: hide dust (<0.01) so Math.floor(size) never shows 0-share rows.
     const openLeg = (p: Position) => !isSidebarDustPosition(p.size || 0) && !p.redeemable;
-    // Non-positions tabs: cheap list for badge only (skip onchain merge).
-    if (effectiveTab !== 'positions') return positions.filter(openLeg);
-    if (liveTradesSource !== 'onchain') return positions.filter(openLeg);
-    const byToken = new Map<string, Position>();
-    for (const p of positions) {
-      const tid = getPositionClobTokenId(p);
-      if (!tid || !openLeg(p)) continue;
-      byToken.set(normalizeClobTokenId(tid), p);
-    }
-    for (const p of onchainPositionsAsPM) {
-      const tid = getPositionClobTokenId(p);
-      if (!tid || !openLeg(p)) continue;
-      const key = normalizeClobTokenId(tid);
-      const prev = byToken.get(key);
-      // Onchain size/avg win; keep Data API title/slug when WS meta blank (Other markets).
-      if (prev && !(p.title || '').trim() && (prev.title || '').trim()) {
-        byToken.set(key, {
-          ...p,
-          title: prev.title,
-          slug: p.slug || prev.slug,
-          eventSlug: p.eventSlug || prev.eventSlug,
-          endDate: p.endDate || prev.endDate,
-          outcome: p.outcome || prev.outcome,
-          redeemable: prev.redeemable,
-        });
-      } else {
-        byToken.set(key, p);
+    const outcomeKey = (raw: string | undefined | null) => {
+      const s = String(raw || '').trim().toUpperCase();
+      if (!s) return '';
+      if (s === 'YES' || s === 'UP' || s === 'Y' || s === 'HIGHER') return 'YES';
+      if (s === 'NO' || s === 'DOWN' || s === 'N' || s === 'LOWER') return 'NO';
+      return s;
+    };
+    const marketKeyOf = (p: Position) =>
+      normalizeConditionIdKey(p.conditionId || p.market || '');
+    const titleKeyOf = (p: Position) =>
+      (p.title || p.eventSlug || p.slug || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+    const mergeLeg = (a: Position, b: Position): Position => {
+      // Prefer the leg that already has a mark (curPrice) — that's the token with live quotes.
+      const aMark = (a.curPrice || 0) > 0 ? 1 : 0;
+      const bMark = (b.curPrice || 0) > 0 ? 1 : 0;
+      const prefer = bMark > aMark ? b : aMark > bMark ? a : (b.size || 0) > (a.size || 0) ? b : a;
+      const other = prefer === a ? b : a;
+      const key = normalizeClobTokenId(getPositionClobTokenId(prefer))
+        || normalizeClobTokenId(getPositionClobTokenId(other));
+      return {
+        ...prefer,
+        asset: key || prefer.asset,
+        size: Math.max(prefer.size || 0, other.size || 0),
+        avgPrice: (prefer.avgPrice || 0) > 0 ? prefer.avgPrice : other.avgPrice,
+        curPrice: (prefer.curPrice || 0) > 0 ? prefer.curPrice : other.curPrice,
+        title: (prefer.title || '').trim() || other.title,
+        slug: prefer.slug || other.slug,
+        eventSlug: prefer.eventSlug || other.eventSlug,
+        endDate: prefer.endDate || other.endDate,
+        outcome: prefer.outcome || other.outcome,
+        conditionId: prefer.conditionId || prefer.market || other.conditionId || other.market,
+        market: prefer.market || other.market,
+        underlyingAsset: prefer.underlyingAsset || other.underlyingAsset,
+        redeemable: prefer.redeemable ?? other.redeemable,
+      };
+    };
+
+    /** Collapse identical legs by normalized token id. */
+    const dedupeByToken = (rows: Position[]): Position[] => {
+      const byToken = new Map<string, Position>();
+      for (const p of rows) {
+        if (!openLeg(p)) continue;
+        const tid = getPositionClobTokenId(p);
+        const key = normalizeClobTokenId(tid);
+        if (!key) continue;
+        const prev = byToken.get(key);
+        byToken.set(key, prev ? mergeLeg(prev, { ...p, asset: key }) : { ...p, asset: key });
       }
+      return [...byToken.values()];
+    };
+
+    /**
+     * Same economic leg can arrive as two token ids (Data API vs CTF, toxic vs WMP).
+     * Collapse by marketId|outcome, then by title|outcome|size.
+     */
+    const collapseDuplicateLegs = (rows: Position[]): Position[] => {
+      const byMktOut = new Map<string, Position>();
+      const noMkt: Position[] = [];
+      for (const p of rows) {
+        const mid = marketKeyOf(p);
+        const oc = outcomeKey(p.outcome);
+        if (mid && oc) {
+          const k = `${mid}|${oc}`;
+          const prev = byMktOut.get(k);
+          byMktOut.set(k, prev ? mergeLeg(prev, p) : p);
+        } else {
+          noMkt.push(p);
+        }
+      }
+      const afterMkt = [...byMktOut.values(), ...noMkt];
+      const byTitle = new Map<string, Position>();
+      for (const p of afterMkt) {
+        const title = titleKeyOf(p);
+        const oc = outcomeKey(p.outcome);
+        // Size bucket to 0.1 shares — screenshot dups share exact size; avoid merging unrelated sizes.
+        const sizeBucket = Math.round((p.size || 0) * 10);
+        const k =
+          title && oc
+            ? `t:${title}|${oc}|${sizeBucket}`
+            : `tok:${normalizeClobTokenId(getPositionClobTokenId(p)) || getPositionClobTokenId(p)}`;
+        if (!k || k === 'tok:') {
+          byTitle.set(`raw:${byTitle.size}:${getPositionClobTokenId(p)}`, p);
+          continue;
+        }
+        const prev = byTitle.get(k);
+        byTitle.set(k, prev ? mergeLeg(prev, p) : p);
+      }
+      return [...byTitle.values()];
+    };
+
+    // Non-positions tabs: cheap list for badge only (skip onchain merge).
+    if (effectiveTab !== 'positions') return collapseDuplicateLegs(dedupeByToken(positions));
+    if (liveTradesSource !== 'onchain') return collapseDuplicateLegs(dedupeByToken(positions));
+
+    // Onchain inventory is authoritative. Data API only enriches matching tokens and
+    // fills markets WMP never saw — never a second row for the same market+outcome
+    // (crypto dups when CTF/Data API token ids disagree).
+    const byToken = new Map<string, Position>();
+    for (const p of onchainPositionsAsPM) {
+      if (!openLeg(p)) continue;
+      const tid = getPositionClobTokenId(p);
+      const key = normalizeClobTokenId(tid);
+      if (!key) continue;
+      const prev = byToken.get(key);
+      byToken.set(key, prev ? mergeLeg(prev, { ...p, asset: key }) : { ...p, asset: key });
     }
-    return [...byToken.values()];
+
+    // marketId|YES/NO and title|outcome — drop Data API legs that only differ by token id.
+    const onchainLegKeys = new Set<string>();
+    const onchainTitleKeys = new Set<string>();
+    for (const p of byToken.values()) {
+      const mid = marketKeyOf(p);
+      const oc = outcomeKey(p.outcome);
+      const title = titleKeyOf(p);
+      const sizeBucket = Math.round((p.size || 0) * 10);
+      if (mid && oc) onchainLegKeys.add(`${mid}|${oc}`);
+      if (title && oc) onchainTitleKeys.add(`t:${title}|${oc}|${sizeBucket}`);
+    }
+
+    for (const p of positions) {
+      if (!openLeg(p)) continue;
+      const tid = getPositionClobTokenId(p);
+      const key = normalizeClobTokenId(tid);
+      if (!key) continue;
+      const prev = byToken.get(key);
+      if (prev) {
+        // Same token: onchain size/avg win; Data API fills blank titles/slugs.
+        byToken.set(key, mergeLeg(prev, {
+          ...p,
+          // Keep onchain size/avg — mergeLeg prefers curPrice then size; force onchain inventory.
+          size: prev.size,
+          avgPrice: (prev.avgPrice || 0) > 0 ? prev.avgPrice : p.avgPrice,
+          asset: key,
+        }));
+        continue;
+      }
+      // Different token: drop when onchain already has this market+outcome or title+outcome+size.
+      const mid = marketKeyOf(p);
+      const oc = outcomeKey(p.outcome);
+      const title = titleKeyOf(p);
+      const sizeBucket = Math.round((p.size || 0) * 10);
+      if (mid && oc && onchainLegKeys.has(`${mid}|${oc}`)) continue;
+      if (title && oc && onchainTitleKeys.has(`t:${title}|${oc}|${sizeBucket}`)) continue;
+      byToken.set(key, { ...p, asset: key });
+      if (mid && oc) onchainLegKeys.add(`${mid}|${oc}`);
+      if (title && oc) onchainTitleKeys.add(`t:${title}|${oc}|${sizeBucket}`);
+    }
+
+    // Final collapse: onchain can itself emit two tokens per leg (toxic vs WMP token maps).
+    return collapseDuplicateLegs([...byToken.values()]);
   }, [effectiveTab, liveTradesSource, positions, onchainPositionsAsPM]);
 
   const handleMarketClick = useCallback(async (tokenId: string, hint?: TpoSelectHint) => {
@@ -1442,7 +1563,7 @@ function TradesPositionsOrdersInner({
   // Process positions — unresolved + non-dust only.
   const processedPositions = useMemo(() => {
     if (effectiveTab !== 'positions') return [];
-    return positionsForTable
+    const mapped = positionsForTable
     .filter((p) => {
       if (isSidebarDustPosition(p.size || 0) || p.redeemable) return false;
       const tid = getPositionClobTokenId(p);
@@ -1552,6 +1673,43 @@ function TradesPositionsOrdersInner({
         clickable,
       } satisfies TpoPosRow;
     });
+
+    // Last line of defense: UI can show two tokens for one leg (dead quotes vs live).
+    // Collapse by marketId|outcome, then by displayed Market label|outcome|size.
+    const pickRow = (a: TpoPosRow, b: TpoPosRow): TpoPosRow => {
+      const aLive = a.bidProb != null && a.bidProb > 0 ? 1 : 0;
+      const bLive = b.bidProb != null && b.bidProb > 0 ? 1 : 0;
+      if (bLive !== aLive) return bLive > aLive ? b : a;
+      const aSell = a.sellPrice != null ? 1 : 0;
+      const bSell = b.sellPrice != null ? 1 : 0;
+      if (bSell !== aSell) return bSell > aSell ? b : a;
+      return (b.size || 0) >= (a.size || 0) ? b : a;
+    };
+    const byMkt = new Map<string, TpoPosRow>();
+    const noMkt: TpoPosRow[] = [];
+    for (const r of mapped) {
+      const mid = normalizeConditionIdKey(r.marketId || '');
+      const oc = String(r.outcome || '').trim().toUpperCase();
+      if (mid && oc && !mid.startsWith('expired:')) {
+        const k = `${mid}|${oc}`;
+        const prev = byMkt.get(k);
+        byMkt.set(k, prev ? pickRow(prev, r) : r);
+      } else {
+        noMkt.push(r);
+      }
+    }
+    const byLabel = new Map<string, TpoPosRow>();
+    for (const r of [...byMkt.values(), ...noMkt]) {
+      const label = (r.marketName || '').trim().toLowerCase();
+      const oc = String(r.outcome || '').trim().toUpperCase();
+      const sizeBucket = Math.round((r.size || 0) * 10);
+      const k = label && oc
+        ? `lbl:${r.asset || ''}|${label}|${oc}|${sizeBucket}`
+        : `tid:${normalizeClobTokenId(r.tid) || r.tid}`;
+      const prev = byLabel.get(k);
+      byLabel.set(k, prev ? pickRow(prev, r) : r);
+    }
+    return [...byLabel.values()];
   }, [effectiveTab, positionsForTable, posCategoryFilter, marketLookup, sellOrderPriceByToken, quoteEpoch]);
 
   const displayPositions = useMemo(() => {
@@ -1611,7 +1769,14 @@ function TradesPositionsOrdersInner({
     };
     sortRows(rows);
     if (!(posCategoryFilter === 'WEATHER' && posWeatherBucket)) {
-      return rows.map((r) => ({ ...r, rowKey: r.rowKey ?? r.tid }));
+      return rows.map((r) => {
+        const tidKey = normalizeClobTokenId(r.tid) || r.tid;
+        return {
+          ...r,
+          // Normalized token id — avoids React double-mount when raw forms differ.
+          rowKey: r.rowKey ?? tidKey,
+        };
+      });
     }
     const flat: TpoPosRow[] = [];
     for (const r of rows) {

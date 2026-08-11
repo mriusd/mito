@@ -1,4 +1,3 @@
-import { startTransition } from 'react';
 import type { Market } from '../types';
 import { useAppStore } from '../stores/appStore';
 
@@ -7,11 +6,34 @@ export const BID_ASK_LOOKUP_FLUSH_MS = 2000;
 export const GRID_BID_ASK_THROTTLE_MS = BID_ASK_LOOKUP_FLUSH_MS;
 /**
  * Coalesce live WS → grid flush listeners (useThrottledBidAskPair / grid cells).
- * Was 2s (matched store flush) — bid/ask looked multi-minute stale under load when
- * pending was cleared before store committed. 250ms keeps books usable without
- * per-tick full-grid storms.
+ * Prod uses a longer window: continuous startTransition+grid re-renders on mito.trade
+ * starved click handlers (seconds of lag) while local vite felt fine under lighter load.
  */
-export const GRID_BID_ASK_LIVE_COALESCE_MS = 250;
+export const GRID_BID_ASK_LIVE_COALESCE_MS = import.meta.env.PROD ? 500 : 250;
+
+/** Quiet window after pointer/keyboard so bid/ask grid work yields to the click. */
+const INTERACTION_QUIET_MS = 140;
+let interactionQuietUntil = 0;
+
+/** Call on pointerdown/keydown so bid/ask grid flushes defer briefly (click responsiveness). */
+export function noteUserInteractionForBidAsk(): void {
+  interactionQuietUntil = performance.now() + INTERACTION_QUIET_MS;
+}
+
+function isUserInteracting(): boolean {
+  return performance.now() < interactionQuietUntil;
+}
+
+function isInputPending(): boolean {
+  try {
+    const s = (navigator as Navigator & {
+      scheduling?: { isInputPending?: (opts?: { includeContinuous?: boolean }) => boolean };
+    }).scheduling;
+    return s?.isInputPending?.({ includeContinuous: true }) === true;
+  } catch {
+    return false;
+  }
+}
 
 /** Fields bid/ask WS batches can materially change vs prior store row — cheap equality gate. */
 const BIDASK_EQ_KEYS: (keyof Market)[] = [
@@ -268,18 +290,25 @@ function scheduleLiveNotify() {
 
 function notifyBidAskMarketLookupGridFlushListeners() {
   bidAskGridFlushDigest += 1;
-  // Transition: keep weather-map / drag rAF on the immediate lane.
-  startTransition(() => {
-    for (const listener of bidAskLookupGridFlushListeners) listener();
-  });
+  // Sync notify after coalesce timer — do NOT startTransition here.
+  // Continuous transitions under prod bid/ask load starved discrete clicks (mito.trade lag).
+  for (const listener of bidAskLookupGridFlushListeners) listener();
 }
 
 function scheduleGridLiveCoalesceNotify() {
   if (gridLiveCoalesceTimer != null) return;
+  const delay = isUserInteracting()
+    ? GRID_BID_ASK_LIVE_COALESCE_MS + INTERACTION_QUIET_MS
+    : GRID_BID_ASK_LIVE_COALESCE_MS;
   gridLiveCoalesceTimer = setTimeout(() => {
     gridLiveCoalesceTimer = null;
+    // Defer again while the user is mid-click so the event handler runs first.
+    if (isUserInteracting() || isInputPending()) {
+      scheduleGridLiveCoalesceNotify();
+      return;
+    }
     notifyBidAskMarketLookupGridFlushListeners();
-  }, GRID_BID_ASK_LIVE_COALESCE_MS);
+  }, delay);
 }
 
 function flushPendingBidAskToStore() {
@@ -330,10 +359,12 @@ function flushPendingBidAskToStore() {
     }
   }
 
-  // Grid listeners can stay deprioritized; live readers already use pending/sync store.
-  startTransition(() => {
+  // Live readers use pending/liveTopOfBook; grid listeners wake after coalesce path.
+  if (isUserInteracting() || isInputPending()) {
+    scheduleGridLiveCoalesceNotify();
+  } else {
     notifyBidAskMarketLookupGridFlushListeners();
-  });
+  }
 }
 
 function scheduleBidAskFlush() {
@@ -570,12 +601,41 @@ export function upgradeWsStubsInMarketLookup(): void {
 
 const BIDASK_BATCH_CHUNK = 80;
 let bidAskChunkQueue: BidAskWsItem[] = [];
-let bidAskChunkRaf: number | null = null;
+/** rAF id or setTimeout id — both cancelled via clearTimeout + cancelAnimationFrame. */
+let bidAskChunkTimer: number | null = null;
 let bidAskChunkDrainTouched = false;
 
+function clearBidAskChunkTimer(): void {
+  if (bidAskChunkTimer == null) return;
+  cancelAnimationFrame(bidAskChunkTimer);
+  clearTimeout(bidAskChunkTimer);
+  bidAskChunkTimer = null;
+}
+
+function scheduleBidAskChunkContinue(): void {
+  if (bidAskChunkTimer != null) return;
+  // Prefer setTimeout when input is pending — rAF can sit behind heavy paints.
+  if (isUserInteracting() || isInputPending()) {
+    bidAskChunkTimer = window.setTimeout(() => {
+      bidAskChunkTimer = null;
+      processBidAskChunk();
+    }, 16);
+    return;
+  }
+  bidAskChunkTimer = requestAnimationFrame(() => {
+    bidAskChunkTimer = null;
+    processBidAskChunk();
+  });
+}
+
 function processBidAskChunk(): void {
-  bidAskChunkRaf = null;
+  bidAskChunkTimer = null;
   if (bidAskChunkQueue.length === 0) return;
+  // Yield immediately if a click is in flight — drain after the quiet window.
+  if (isUserInteracting() || isInputPending()) {
+    scheduleBidAskChunkContinue();
+    return;
+  }
   const chunk = bidAskChunkQueue.splice(0, BIDASK_BATCH_CHUNK);
   const more = bidAskChunkQueue.length > 0;
   // Notify live every chunk so UI is not frozen until the full dump drains.
@@ -583,7 +643,7 @@ function processBidAskChunk(): void {
     bidAskChunkDrainTouched = true;
   }
   if (more) {
-    bidAskChunkRaf = requestAnimationFrame(processBidAskChunk);
+    scheduleBidAskChunkContinue();
     return;
   }
   if (bidAskChunkDrainTouched) {
@@ -658,8 +718,8 @@ export function enqueueBidAskMarketPatches(items: BidAskWsItem[]) {
   }
   // Large dumps only: chunk across frames so the main thread stays responsive.
   bidAskChunkQueue.push(...items);
-  if (bidAskChunkRaf == null) {
-    bidAskChunkRaf = requestAnimationFrame(processBidAskChunk);
+  if (bidAskChunkTimer == null) {
+    scheduleBidAskChunkContinue();
   }
 }
 
@@ -676,10 +736,7 @@ export function resetBidAskMarketLookupPending() {
     clearTimeout(liveNotifyTimeout);
     liveNotifyTimeout = null;
   }
-  if (bidAskChunkRaf != null) {
-    cancelAnimationFrame(bidAskChunkRaf);
-    bidAskChunkRaf = null;
-  }
+  clearBidAskChunkTimer();
   bidAskChunkQueue = [];
   bidAskChunkDrainTouched = false;
   for (const k of Object.keys(pendingPatch)) delete pendingPatch[k];

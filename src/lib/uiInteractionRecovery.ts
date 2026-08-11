@@ -1,6 +1,7 @@
 import { signingDialog } from '../components/SigningDialog';
 import { dismissSignatureExplainer } from '../components/SignatureExplainerDialog';
 import { useAppStore } from '../stores/appStore';
+import { noteUserInteractionForBidAsk } from './bidAskMarketLookup';
 import { appKit } from './wallet';
 
 export const UI_ESCAPE_DISMISS_EVENT = 'polybot:escape-dismiss';
@@ -72,11 +73,18 @@ function dismissGlobalBlockingUi(): void {
 
 export function installUiInteractionRecovery(): () => void {
   const onKeyDown = (e: KeyboardEvent) => {
+    // Any key: yield bid/ask grid work so UI stays clickable under WS load (esp. prod).
+    noteUserInteractionForBidAsk();
     if (e.key !== 'Escape') return;
     dismissGlobalBlockingUi();
   };
 
+  const onPointerStart = () => {
+    noteUserInteractionForBidAsk();
+  };
+
   const onPointerEnd = () => {
+    noteUserInteractionForBidAsk();
     reconcileAppKitModal();
     clearStuckGridDragClasses();
   };
@@ -84,6 +92,7 @@ export function installUiInteractionRecovery(): () => void {
   const reconcileTimer = window.setInterval(reconcileAppKitModal, 2500);
 
   window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('pointerdown', onPointerStart, true);
   window.addEventListener('pointerup', onPointerEnd, true);
   window.addEventListener('pointercancel', onPointerEnd, true);
   window.addEventListener('blur', onPointerEnd);
@@ -91,6 +100,7 @@ export function installUiInteractionRecovery(): () => void {
   return () => {
     window.clearInterval(reconcileTimer);
     window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('pointerdown', onPointerStart, true);
     window.removeEventListener('pointerup', onPointerEnd, true);
     window.removeEventListener('pointercancel', onPointerEnd, true);
     window.removeEventListener('blur', onPointerEnd);

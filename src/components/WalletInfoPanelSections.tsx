@@ -114,7 +114,7 @@ export const WalletInfoPanelMarketsSection = memo(function WalletInfoPanelMarket
 }) {
   return (
     <div
-      className={`bg-gray-900 rounded p-2 min-h-0 h-full min-w-0 flex flex-col overflow-hidden${isInlineWalletInfo ? ' shrink-0 w-[min(36rem,42%)] max-w-[36rem]' : ''}`}
+      className={`bg-gray-900 rounded p-2 min-h-0 h-full min-w-0 flex flex-col overflow-hidden${isInlineWalletInfo ? ' shrink-0 w-[min(52rem,56%)] max-w-[52rem]' : ''}`}
     >
       <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
         <div className="text-[10px] text-gray-400 font-bold">Latest Markets Traded</div>

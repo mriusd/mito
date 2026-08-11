@@ -6,6 +6,10 @@ export type CandleBsEnrichment = {
   currentPrice?: number;
   volatility?: number;
   bsProb?: number;
+  /** Chainlink RTDS TWAP-30 (≈5m window) at candle update. */
+  twap30?: number;
+  /** Chainlink RTDS TWAP-60 (≈15m window) at candle update. */
+  twap60?: number;
 };
 
 function parseEnrichmentNum(v: unknown): number | undefined {
@@ -20,15 +24,26 @@ export function parseCandleBsEnrichment(raw: {
   current_price?: unknown;
   volatility?: unknown;
   bs_prob?: unknown;
+  twap_30?: unknown;
+  twap_60?: unknown;
 }): CandleBsEnrichment | undefined {
   const targetPrice = parseEnrichmentNum(raw.target_price);
   const currentPrice = parseEnrichmentNum(raw.current_price);
   const volatility = parseEnrichmentNum(raw.volatility);
   const bsProb = parseEnrichmentNum(raw.bs_prob);
-  if (targetPrice == null && currentPrice == null && volatility == null && bsProb == null) {
+  const twap30 = parseEnrichmentNum(raw.twap_30);
+  const twap60 = parseEnrichmentNum(raw.twap_60);
+  if (
+    targetPrice == null &&
+    currentPrice == null &&
+    volatility == null &&
+    bsProb == null &&
+    twap30 == null &&
+    twap60 == null
+  ) {
     return undefined;
   }
-  return { targetPrice, currentPrice, volatility, bsProb };
+  return { targetPrice, currentPrice, volatility, bsProb, twap30, twap60 };
 }
 
 export function parseHttpKlineEnrichment(k: unknown[]): CandleBsEnrichment | undefined {
@@ -37,6 +52,8 @@ export function parseHttpKlineEnrichment(k: unknown[]): CandleBsEnrichment | und
     current_price: k[14],
     volatility: k[15],
     bs_prob: k[16],
+    twap_30: k[25],
+    twap_60: k[26],
   });
 }
 
@@ -50,6 +67,8 @@ export function mergeCandleBsEnrichment(
     currentPrice: next?.currentPrice ?? prev?.currentPrice,
     volatility: next?.volatility ?? prev?.volatility,
     bsProb: next?.bsProb ?? prev?.bsProb,
+    twap30: next?.twap30 ?? prev?.twap30,
+    twap60: next?.twap60 ?? prev?.twap60,
   };
 }
 

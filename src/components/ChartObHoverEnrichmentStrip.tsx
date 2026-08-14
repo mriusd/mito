@@ -3,6 +3,7 @@ import {
   computeSpotTargetPriceDiff,
   formatChartEnrichmentUsd,
   type CandleBsEnrichment,
+  type PriceDelta,
 } from '../lib/chartCandleEnrichment';
 
 export type ChartObHoverEnrichmentStripProps = {
@@ -11,88 +12,182 @@ export type ChartObHoverEnrichmentStripProps = {
   chartOutcome?: 'YES' | 'NO';
 };
 
+function DeltaLine({ d, priceDec, title }: { d: PriceDelta | null; priceDec: number; title?: string }) {
+  if (!d) {
+    return (
+      <span className="inline-flex min-h-[14px] items-center text-transparent select-none" aria-hidden>
+        ↑0.00 (0.00%)
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`inline-flex min-h-[14px] items-center whitespace-nowrap gap-0.5 ${d.isUp ? 'text-green-400' : 'text-red-400'}`}
+      title={title}
+    >
+      <span>
+        {d.isUp ? '↑' : '↓'}
+        {d.abs.toLocaleString(undefined, {
+          minimumFractionDigits: priceDec,
+          maximumFractionDigits: priceDec,
+        })}
+      </span>
+      <span>
+        ({d.pct >= 0 ? '+' : ''}
+        {d.pct.toFixed(2)}%)
+      </span>
+    </span>
+  );
+}
+
+/**
+ * Candle hover enrichment — same arrangement as sidebar spot strip for up/down:
+ *   Row 1: Target | Math(TWAP) | TWAP   + TWAP−Target delta
+ *   Row 2: Spot   | Math(pred) | Pred   + Spot−Target / Pred−Target deltas
+ *   σ on a compact footer line.
+ */
 export function ChartObHoverEnrichmentStrip({
   enrichment,
   priceDec = 2,
   chartOutcome = 'YES',
 }: ChartObHoverEnrichmentStripProps) {
   if (!enrichment) return null;
-  const { targetPrice, currentPrice, volatility, bsProb, twap30, twap60 } = enrichment;
-  const mathCents = chartEnrichmentMathCents(bsProb, chartOutcome);
-  const diff = computeSpotTargetPriceDiff(currentPrice, targetPrice);
-  const hasBs =
+
+  const {
+    targetPrice,
+    currentPrice,
+    volatility,
+    bsProb,
+    twapBsProb,
+    spotPrice,
+    twap60,
+    predictedTwap,
+  } = enrichment;
+
+  const pred = predictedTwap != null && predictedTwap > 0 ? predictedTwap : currentPrice;
+  const twap = twap60 != null && twap60 > 0 ? twap60 : undefined;
+  const spot = spotPrice != null && spotPrice > 0 ? spotPrice : undefined;
+
+  const twapMathCents = chartEnrichmentMathCents(twapBsProb, chartOutcome);
+  const predMathCents = chartEnrichmentMathCents(bsProb, chartOutcome);
+
+  const twapVsTarget = computeSpotTargetPriceDiff(twap, targetPrice);
+  const spotVsTarget = computeSpotTargetPriceDiff(spot, targetPrice);
+  const predVsTarget = computeSpotTargetPriceDiff(pred, targetPrice);
+
+  const hasSidebarLayout =
     (targetPrice != null && targetPrice > 0) ||
-    (currentPrice != null && currentPrice > 0) ||
-    (volatility != null && volatility > 0) ||
-    mathCents != null;
-  const hasTwap =
-    (twap30 != null && twap30 > 0) ||
-    (twap60 != null && twap60 > 0);
-  if (!hasBs && !hasTwap) return null;
+    (twap != null && twap > 0) ||
+    (pred != null && pred > 0) ||
+    (spot != null && spot > 0) ||
+    twapMathCents != null ||
+    predMathCents != null;
+
+  if (!hasSidebarLayout) return null;
+
+  const threeCol = {
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(2.75rem, auto) minmax(0, 1fr)',
+  } as const;
 
   return (
     <div className="mb-2 border-b border-gray-700/80 pb-2 px-0.5">
-      {hasBs ? (
-        <>
-          <div className="grid grid-cols-4 gap-x-1 mb-1 text-[9px] font-medium text-gray-500">
-            <span>Target</span>
-            <span className="text-center">Math</span>
-            <span className="text-center">σ</span>
-            <span className="text-right">Oracle</span>
-          </div>
-          <div className="grid grid-cols-4 gap-x-1 text-[10px] font-bold tabular-nums text-white">
-            <span className="truncate" title={formatChartEnrichmentUsd(targetPrice, priceDec)}>
-              {formatChartEnrichmentUsd(targetPrice, priceDec)}
-            </span>
-            <span className="text-center text-cyan-300" title="B-S fair value at candle">
-              {mathCents != null ? `${mathCents.toFixed(1)}¢` : '—'}
-            </span>
-            <span className="text-center text-gray-300" title="Annualized volatility">
-              {volatility != null && volatility > 0 ? `${(volatility * 100).toFixed(1)}%` : '—'}
-            </span>
-            <span className="text-right truncate" title={formatChartEnrichmentUsd(currentPrice, priceDec)}>
-              {formatChartEnrichmentUsd(currentPrice, priceDec)}
-            </span>
-          </div>
-          {diff ? (
-            <div className="mt-1.5 flex justify-end text-[10px] font-bold tabular-nums leading-none">
-              <span
-                className={`inline-flex min-h-[15px] items-center whitespace-nowrap gap-0.5 ${diff.isUp ? 'text-green-400' : 'text-red-400'}`}
-              >
-                <span>
-                  {diff.isUp ? '↑' : '↓'}
-                  {diff.abs.toLocaleString(undefined, {
-                    minimumFractionDigits: priceDec,
-                    maximumFractionDigits: priceDec,
-                  })}
-                </span>
-                <span>
-                  ({diff.pct >= 0 ? '+' : ''}
-                  {diff.pct.toFixed(2)}%)
-                </span>
-              </span>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-      {hasTwap ? (
-        <div className={hasBs ? 'mt-1.5 pt-1.5 border-t border-gray-700/60' : ''}>
-          <div className="grid grid-cols-2 gap-x-1 mb-1 text-[9px] font-medium text-gray-500">
-            <span title="Chainlink TWAP 30s (5m markets)">TWAP 30</span>
-            <span className="text-right" title="Chainlink TWAP 60s (15m markets)">
-              TWAP 60
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-x-1 text-[10px] font-bold tabular-nums text-amber-300/95">
-            <span className="truncate" title={formatChartEnrichmentUsd(twap30, priceDec)}>
-              {formatChartEnrichmentUsd(twap30, priceDec)}
-            </span>
-            <span className="text-right truncate" title={formatChartEnrichmentUsd(twap60, priceDec)}>
-              {formatChartEnrichmentUsd(twap60, priceDec)}
-            </span>
-          </div>
+      {/* Row 1: Target | Math(TWAP) | TWAP — matches sidebar */}
+      <div className="grid gap-x-1.5 gap-y-0.5 w-full" style={threeCol}>
+        <div className="text-[9px] font-medium leading-none text-gray-500 min-h-[14px] flex items-center">
+          Target
         </div>
-      ) : null}
+        <div
+          className="text-[9px] font-medium leading-none text-gray-500 min-h-[14px] flex items-center justify-center"
+          title="B-S fair value using live settlement TWAP as S₀"
+        >
+          Math
+        </div>
+        <div
+          className="text-[9px] font-medium leading-none text-gray-500 min-h-[14px] flex items-center justify-end"
+          title="Settlement TWAP-60 (CL60)"
+        >
+          TWAP
+        </div>
+
+        <div className="min-h-[15px] flex items-center min-w-0">
+          <span className="text-[10px] font-bold tabular-nums text-white truncate">
+            {formatChartEnrichmentUsd(targetPrice, priceDec)}
+          </span>
+        </div>
+        <div className="min-h-[15px] flex items-center justify-center min-w-0">
+          <span className="text-[10px] font-bold tabular-nums text-cyan-300">
+            {twapMathCents != null ? `${twapMathCents.toFixed(1)}¢` : '—'}
+          </span>
+        </div>
+        <div className="min-h-[15px] flex items-center justify-end min-w-0">
+          <span className="text-[10px] font-bold tabular-nums text-white truncate">
+            {formatChartEnrichmentUsd(twap, priceDec)}
+          </span>
+        </div>
+
+        <div className="min-h-[14px]" />
+        <div className="min-h-[14px]" />
+        <div className="min-h-[14px] flex items-center justify-end text-[10px] font-bold tabular-nums leading-none">
+          <DeltaLine d={twapVsTarget} priceDec={priceDec} title="TWAP − Target" />
+        </div>
+      </div>
+
+      {/* Row 2: Spot | Math(pred) | Pred TWAP */}
+      <div
+        className="grid gap-x-1.5 gap-y-0.5 w-full mt-1.5 pt-1.5 border-t border-gray-700/60"
+        style={threeCol}
+      >
+        <div
+          className="text-[9px] font-medium leading-none text-gray-500 min-h-[14px] flex items-center"
+          title="Chainlink spot (crypto_prices_chainlink)"
+        >
+          Spot
+        </div>
+        <div
+          className="text-[9px] font-medium leading-none text-gray-500 min-h-[14px] flex items-center justify-center"
+          title="B-S fair value using predicted settlement TWAP as S₀"
+        >
+          Math
+        </div>
+        <div
+          className="text-[9px] font-medium leading-none text-gray-500 min-h-[14px] flex items-center justify-end"
+          title="Predicted settlement TWAP at expiry (flat-spot blend)"
+        >
+          Pred TWAP
+        </div>
+
+        <div className="min-h-[15px] flex items-center min-w-0">
+          <span className="text-[10px] font-bold tabular-nums text-amber-300/95 truncate">
+            {formatChartEnrichmentUsd(spot, priceDec)}
+          </span>
+        </div>
+        <div className="min-h-[15px] flex items-center justify-center min-w-0">
+          <span className="text-[10px] font-bold tabular-nums text-cyan-300">
+            {predMathCents != null ? `${predMathCents.toFixed(1)}¢` : '—'}
+          </span>
+        </div>
+        <div className="min-h-[15px] flex items-center justify-end min-w-0">
+          <span className="text-[10px] font-bold tabular-nums text-amber-300/95 truncate">
+            {formatChartEnrichmentUsd(pred, priceDec)}
+          </span>
+        </div>
+
+        <div className="min-h-[14px] flex items-center text-[10px] font-bold tabular-nums leading-none">
+          <DeltaLine d={spotVsTarget} priceDec={priceDec} title="Spot − Target" />
+        </div>
+        <div className="min-h-[14px] flex items-center justify-center text-[9px] text-gray-500 tabular-nums">
+          {volatility != null && volatility > 0 ? (
+            <span title="Annualized volatility">σ {(volatility * 100).toFixed(1)}%</span>
+          ) : (
+            <span className="text-transparent select-none" aria-hidden>
+              σ
+            </span>
+          )}
+        </div>
+        <div className="min-h-[14px] flex items-center justify-end text-[10px] font-bold tabular-nums leading-none">
+          <DeltaLine d={predVsTarget} priceDec={priceDec} title="Predicted TWAP − Target" />
+        </div>
+      </div>
     </div>
   );
 }

@@ -3,14 +3,24 @@ export const CHART_MATH_PROB_COLOR = '#eab308';
 
 export type CandleBsEnrichment = {
   targetPrice?: number;
+  /** @deprecated Prefer predictedTwap; kept for older payloads (predicted S₀). */
   currentPrice?: number;
   volatility?: number;
+  /** YES BS with predicted TWAP as S₀ (sidebar bottom Math). */
   bsProb?: number;
-  /** Chainlink RTDS TWAP-30 (≈5m window) at candle update. */
+  /** YES BS with live settlement TWAP as S₀ (sidebar top Math). */
+  twapBsProb?: number;
+  /** Chainlink true spot (crypto_prices_chainlink) at candle update. */
+  spotPrice?: number;
+  /** Chainlink RTDS TWAP-30 at candle update. */
   twap30?: number;
-  /** Chainlink RTDS TWAP-60 (≈15m window) at candle update. */
+  /** Settlement TWAP-60 (sidebar TWAP / CL60). */
   twap60?: number;
+  /** Predicted settlement TWAP at candle time (sidebar Pred TWAP). */
+  predictedTwap?: number;
 };
+
+export type PriceDelta = { abs: number; pct: number; isUp: boolean };
 
 function parseEnrichmentNum(v: unknown): number | undefined {
   if (v == null || v === '') return undefined;
@@ -24,26 +34,47 @@ export function parseCandleBsEnrichment(raw: {
   current_price?: unknown;
   volatility?: unknown;
   bs_prob?: unknown;
+  twap_bs_prob?: unknown;
+  spot_price?: unknown;
+  spot?: unknown;
   twap_30?: unknown;
   twap_60?: unknown;
+  predicted_twap?: unknown;
 }): CandleBsEnrichment | undefined {
   const targetPrice = parseEnrichmentNum(raw.target_price);
   const currentPrice = parseEnrichmentNum(raw.current_price);
   const volatility = parseEnrichmentNum(raw.volatility);
   const bsProb = parseEnrichmentNum(raw.bs_prob);
+  const twapBsProb = parseEnrichmentNum(raw.twap_bs_prob);
+  const spotPrice = parseEnrichmentNum(raw.spot_price) ?? parseEnrichmentNum(raw.spot);
   const twap30 = parseEnrichmentNum(raw.twap_30);
   const twap60 = parseEnrichmentNum(raw.twap_60);
+  const predictedTwap =
+    parseEnrichmentNum(raw.predicted_twap) ?? currentPrice;
   if (
     targetPrice == null &&
     currentPrice == null &&
     volatility == null &&
     bsProb == null &&
+    twapBsProb == null &&
+    spotPrice == null &&
     twap30 == null &&
-    twap60 == null
+    twap60 == null &&
+    predictedTwap == null
   ) {
     return undefined;
   }
-  return { targetPrice, currentPrice, volatility, bsProb, twap30, twap60 };
+  return {
+    targetPrice,
+    currentPrice,
+    volatility,
+    bsProb,
+    twapBsProb,
+    spotPrice,
+    twap30,
+    twap60,
+    predictedTwap,
+  };
 }
 
 export function parseHttpKlineEnrichment(k: unknown[]): CandleBsEnrichment | undefined {
@@ -54,6 +85,9 @@ export function parseHttpKlineEnrichment(k: unknown[]): CandleBsEnrichment | und
     bs_prob: k[16],
     twap_30: k[25],
     twap_60: k[26],
+    spot_price: k[27],
+    twap_bs_prob: k[28],
+    predicted_twap: k[29] ?? k[14],
   });
 }
 
@@ -67,8 +101,11 @@ export function mergeCandleBsEnrichment(
     currentPrice: next?.currentPrice ?? prev?.currentPrice,
     volatility: next?.volatility ?? prev?.volatility,
     bsProb: next?.bsProb ?? prev?.bsProb,
+    twapBsProb: next?.twapBsProb ?? prev?.twapBsProb,
+    spotPrice: next?.spotPrice ?? prev?.spotPrice,
     twap30: next?.twap30 ?? prev?.twap30,
     twap60: next?.twap60 ?? prev?.twap60,
+    predictedTwap: next?.predictedTwap ?? prev?.predictedTwap,
   };
 }
 
@@ -80,7 +117,7 @@ export function formatChartEnrichmentUsd(n: number | undefined, priceDec: number
 export function computeSpotTargetPriceDiff(
   currentPrice: number | undefined | null,
   targetPrice: number | undefined | null,
-): { abs: number; pct: number; isUp: boolean } | null {
+): PriceDelta | null {
   if (currentPrice == null || !Number.isFinite(currentPrice) || currentPrice <= 0) return null;
   if (targetPrice == null || !Number.isFinite(targetPrice) || targetPrice <= 0) return null;
   const signedDelta = currentPrice - targetPrice;
@@ -95,7 +132,8 @@ export function chartEnrichmentMathCents(
   bsProb: number | undefined,
   chartOutcome: 'YES' | 'NO',
 ): number | null {
-  if (bsProb == null || !Number.isFinite(bsProb) || bsProb <= 0) return null;
-  const yesCents = bsProb * 100;
+  // Allow 0 (resolved / deep OTM); only reject missing / non-finite.
+  if (bsProb == null || !Number.isFinite(bsProb) || bsProb < 0) return null;
+  const yesCents = Math.max(0, Math.min(99.9, bsProb * 100));
   return chartOutcome === 'YES' ? yesCents : 100 - yesCents;
 }

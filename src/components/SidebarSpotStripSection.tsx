@@ -2,15 +2,21 @@ import { memo, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import { CirclePercent } from 'lucide-react';
 import type { Market, AssetSymbol } from '../types';
 import { useAppStore } from '../stores/appStore';
-import { usePolymarketPriceForMarket } from '../hooks/usePolymarketPrice';
+import {
+  chainlinkTwapWindowForUpDownTf,
+  predictedTwapAtExpiry,
+  resolveChainlinkBareSpotFromMap,
+  useChainlinkPricesMap,
+  usePolymarketPriceForMarket,
+} from '../hooks/usePolymarketPrice';
 import { useThrottledStorePrice } from '../hooks/useThrottledStorePrice';
+import { useExpiryNow } from '../hooks/useExpiryNow';
 import {
   extractAssetFromMarket,
   formatPriceShort,
   formatWeatherMarketLabel,
   getMarketPriceCondition,
   isWeatherMarket,
-  upDownMarketUsesChainlinkSpot,
   upDownTimeframeKeyFromMarket,
 } from '../utils/format';
 import { getHitMarketProbability, getMarketProbability } from '../utils/bsMath';
@@ -27,19 +33,88 @@ import { SidebarYesMidProbBar } from './SidebarYesMidProbBar';
 import { HelpTooltip } from './HelpTooltip';
 import type { SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 
+type PriceDelta = { abs: number; pct: number; isUp: boolean };
+
 type SpotStripRow = {
   mode: 'updown' | 'generic' | 'weather';
   targetDisplay: string;
   priceDec: number;
+  /** BS cents for order side — pred TWAP (up/down) or spot (generic). */
   mathCents: number | null;
+  /** Model YES ¢ from pred TWAP (up/down) or spot (generic); drives prob bar. */
   yesMathCents: number | null;
+  /** Up/Down only: BS for order side using live settlement TWAP as S₀. */
+  twapMathCents: number | null;
   pastExpiry: boolean;
+  /** Settlement TWAP (CL60 for 5m/15m) or Binance. */
   currentPrice: number;
   currentSource: 'chainlink' | 'binance';
-  diff: { abs: number; pct: number; isUp: boolean } | null;
+  /** Live spot (Chainlink bare preferred, else Binance). */
+  spotPrice: number;
+  spotSource: 'chainlink' | 'binance';
+  /** Predicted settlement TWAP at expiry (mitobot continuous formula). */
+  predictedTwap: number;
+  predictedWinSec: number;
+  predictedRemInWin: number;
+  /** TWAP − Target */
+  diff: PriceDelta | null;
+  /** Spot − Target */
+  spotVsTarget: PriceDelta | null;
+  /** Predicted TWAP − Target */
+  predVsTarget: PriceDelta | null;
   hitModel?: boolean;
   countdownEndDate?: string;
 };
+
+function deltaVsTarget(price: number, target: number | null | undefined): PriceDelta | null {
+  if (!(price > 0) || target == null || !(target > 0)) return null;
+  const signedDelta = price - target;
+  return {
+    abs: Math.abs(signedDelta),
+    pct: (signedDelta / target) * 100,
+    isUp: signedDelta >= 0,
+  };
+}
+
+function formatUsd(n: number, priceDec: number): string {
+  return `$${n.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}`;
+}
+
+function DeltaLine({
+  d,
+  priceDec,
+  title,
+}: {
+  d: PriceDelta | null;
+  priceDec: number;
+  title?: string;
+}) {
+  if (!d) {
+    return (
+      <span className="inline-flex min-h-[15px] items-center text-transparent select-none" aria-hidden>
+        ↑0.00 (0.00%)
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`inline-flex min-h-[15px] items-center whitespace-nowrap gap-0.5 sidebar-readable-value ${d.isUp ? 'text-green-400' : 'text-red-400'}`}
+      title={title}
+    >
+      <span>
+        {d.isUp ? '↑' : '↓'}
+        {d.abs.toLocaleString(undefined, {
+          minimumFractionDigits: priceDec,
+          maximumFractionDigits: priceDec,
+        })}
+      </span>
+      <span>
+        ({d.pct >= 0 ? '+' : ''}
+        {d.pct.toFixed(2)}%)
+      </span>
+    </span>
+  );
+}
 
 export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
   selectedMarket,
@@ -73,6 +148,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
   const bsTimeOffsetHours = useAppStore((s) => s.bsTimeOffsetHours);
   const upDownTargetPrice = useSidebarUpDownTargetPrice();
   const liveUpDownSameTfMarket = useSidebarUpDownLiveSameTfMarket();
+  const expiryNow = useExpiryNow();
 
   const sidebarPriceSym = useMemo((): AssetSymbol | null => {
     const asset = extractAssetFromMarket(selectedMarket);
@@ -81,11 +157,12 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
 
   const sidebarThrottledSpot = useThrottledStorePrice(sidebarPriceSym ?? 'BTCUSDT', 1000);
   const upDownAsset = isUpDownMarket ? extractAssetFromMarket(selectedMarket) : null;
-  // 5m → TWAP-30, 15m → TWAP-60 (Polymarket settlement alignment).
+  // 5m + 15m → TWAP-60 (CL60) for settlement column.
   const polyPrice = usePolymarketPriceForMarket(
     upDownSpotUsesChainlink ? selectedMarket : null,
     upDownSpotUsesChainlink ? upDownAsset : null,
   );
+  const chainlinkPricesMap = useChainlinkPricesMap();
   const upDownTf = isUpDownMarket ? upDownTimeframeKeyFromMarket(selectedMarket) : null;
 
   const row = useMemo((): SpotStripRow | null => {
@@ -108,10 +185,18 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
         priceDec: 0,
         mathCents: null,
         yesMathCents: null,
+        twapMathCents: null,
         pastExpiry,
         currentPrice: 0,
         currentSource: 'binance',
+        spotPrice: 0,
+        spotSource: 'binance',
+        predictedTwap: 0,
+        predictedWinSec: 0,
+        predictedRemInWin: 0,
         diff: null,
+        spotVsTarget: null,
+        predVsTarget: null,
         countdownEndDate,
       };
     }
@@ -130,48 +215,86 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
 
     if (isUpDownMarket) {
       const binanceSym = (asset.toUpperCase() + 'USDT') as AssetSymbol;
-      const chainlinkPrice =
+      const chainlinkTwap =
         upDownSpotUsesChainlink && polyPrice.price != null && polyPrice.price > 0 ? polyPrice.price : 0;
       const binancePrice = sidebarPriceSym === binanceSym ? sidebarThrottledSpot : 0;
-      const currentPrice = upDownSpotUsesChainlink ? chainlinkPrice || binancePrice : binancePrice;
+      const currentPrice = upDownSpotUsesChainlink ? chainlinkTwap || binancePrice : binancePrice;
       const currentSource: 'chainlink' | 'binance' =
-        upDownSpotUsesChainlink && chainlinkPrice > 0 ? 'chainlink' : 'binance';
+        upDownSpotUsesChainlink && chainlinkTwap > 0 ? 'chainlink' : 'binance';
 
+      const bareCl = resolveChainlinkBareSpotFromMap(chainlinkPricesMap, asset);
+      const spotFromCl = bareCl.price != null && bareCl.price > 0 ? bareCl.price : 0;
+      const spotPrice = spotFromCl > 0 ? spotFromCl : binancePrice;
+      const spotSource: 'chainlink' | 'binance' = spotFromCl > 0 ? 'chainlink' : 'binance';
+
+      // Mitobot continuous: pred = (twap*(W−r) + spot*r)/W, W=60 for 5m/15m.
+      const winSec = chainlinkTwapWindowForUpDownTf(upDownTf) ?? 60;
+      const predSnap =
+        currentPrice > 0 && spotPrice > 0
+          ? predictedTwapAtExpiry({
+              twap: currentPrice,
+              spot: spotPrice,
+              endMs: expiryMs,
+              nowMs: expiryNow + bsTimeOffsetHours * 3600000,
+              windowSec: winSec,
+            })
+          : null;
+      const predictedTwap = predSnap?.pred ?? 0;
+
+      // Top Math: BS from live settlement TWAP. Bottom Math: BS from predicted TWAP.
+      let twapMathCents: number | null = null;
       let mathCents: number | null = null;
       let yesMathCents: number | null = null;
-      if (!pastExpiry && upDownTargetPrice && currentPrice) {
-        const probUp = getMarketProbability('>' + upDownTargetPrice, currentPrice, endDate, sigma, bsTimeOffsetHours);
-        if (probUp !== null) {
-          yesMathCents = probUp * 100;
-          mathCents = (orderOutcome === 'YES' ? probUp : 1 - probUp) * 100;
+      if (!pastExpiry && upDownTargetPrice) {
+        if (currentPrice > 0) {
+          const pTwap = getMarketProbability(
+            '>' + upDownTargetPrice,
+            currentPrice,
+            endDate,
+            sigma,
+            bsTimeOffsetHours,
+          );
+          if (pTwap !== null) {
+            twapMathCents = (orderOutcome === 'YES' ? pTwap : 1 - pTwap) * 100;
+          }
+        }
+        const predUnderlying = predictedTwap > 0 ? predictedTwap : 0;
+        if (predUnderlying > 0) {
+          const pPred = getMarketProbability(
+            '>' + upDownTargetPrice,
+            predUnderlying,
+            endDate,
+            sigma,
+            bsTimeOffsetHours,
+          );
+          if (pPred !== null) {
+            yesMathCents = pPred * 100;
+            mathCents = (orderOutcome === 'YES' ? pPred : 1 - pPred) * 100;
+          }
         }
       }
-
-      const diff =
-        upDownTargetPrice && currentPrice
-          ? (() => {
-              const signedDelta = currentPrice - upDownTargetPrice;
-              return {
-                abs: Math.abs(signedDelta),
-                pct: (signedDelta / upDownTargetPrice) * 100,
-                isUp: signedDelta >= 0,
-              };
-            })()
-          : null;
 
       return {
         mode: 'updown',
         targetDisplay:
           upDownTargetPrice != null
-            ? `$${upDownTargetPrice.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}`
+            ? formatUsd(upDownTargetPrice, priceDec)
             : '...',
         priceDec,
         mathCents,
         yesMathCents,
+        twapMathCents,
         pastExpiry,
         currentPrice,
         currentSource,
-        diff,
+        spotPrice,
+        spotSource,
+        predictedTwap,
+        predictedWinSec: predSnap?.win ?? winSec,
+        predictedRemInWin: predSnap?.remInWin ?? 0,
+        diff: deltaVsTarget(currentPrice, upDownTargetPrice),
+        spotVsTarget: deltaVsTarget(spotPrice, upDownTargetPrice),
+        predVsTarget: deltaVsTarget(predictedTwap, upDownTargetPrice),
       };
     }
 
@@ -204,7 +327,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
       }
     }
 
-    let diff: { abs: number; pct: number; isUp: boolean } | null = null;
+    let diff: PriceDelta | null = null;
     if (currentPrice > 0 && !ps.includes('-')) {
       let rest = ps.replace(/,/g, '');
       if (rest.startsWith('>') || rest.startsWith('<')) rest = rest.slice(1);
@@ -216,12 +339,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
         K = parseFloat(rest);
       }
       if (!isNaN(K) && K > 0) {
-        const signedDelta = currentPrice - K;
-        diff = {
-          abs: Math.abs(signedDelta),
-          pct: (signedDelta / K) * 100,
-          isUp: signedDelta >= 0,
-        };
+        diff = deltaVsTarget(currentPrice, K);
       }
     }
 
@@ -231,10 +349,18 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
       priceDec,
       mathCents,
       yesMathCents,
+      twapMathCents: null,
       pastExpiry,
       currentPrice,
       currentSource,
+      spotPrice: currentPrice,
+      spotSource: currentSource,
+      predictedTwap: 0,
+      predictedWinSec: 0,
+      predictedRemInWin: 0,
       diff,
+      spotVsTarget: null,
+      predVsTarget: null,
       hitModel: selectedMarketIsHit,
     };
   }, [
@@ -244,6 +370,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
     upDownTargetPrice,
     upDownSpotUsesChainlink,
     polyPrice.price,
+    chainlinkPricesMap,
     upDownTf,
     sidebarPriceSym,
     sidebarThrottledSpot,
@@ -252,6 +379,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
     bsTimeOffsetHours,
     orderOutcome,
     selectedMarketIsHit,
+    expiryNow,
   ]);
 
   useLayoutEffect(() => {
@@ -269,10 +397,16 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
   useEffect(() => () => setSidebarSpotStripBsSnapshot(null), []);
 
   const currentPriceRef = useRef<HTMLSpanElement>(null);
+  const spotPriceRef = useRef<HTMLSpanElement>(null);
+  const predPriceRef = useRef<HTMLSpanElement>(null);
   const prevPriceRef = useRef(0);
+  const prevSpotRef = useRef(0);
+  const prevPredRef = useRef(0);
 
   useEffect(() => {
     prevPriceRef.current = 0;
+    prevSpotRef.current = 0;
+    prevPredRef.current = 0;
   }, [selectedMarket.id]);
 
   useEffect(() => {
@@ -288,42 +422,54 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
     prevPriceRef.current = p;
   }, [row?.currentPrice]);
 
+  useEffect(() => {
+    const p = row?.spotPrice;
+    if (!p || p <= 0 || !spotPriceRef.current) return;
+    const el = spotPriceRef.current;
+    if (prevSpotRef.current && p !== prevSpotRef.current) {
+      const cls = p > prevSpotRef.current ? 'updown-flash-up' : 'updown-flash-down';
+      el.classList.remove('updown-flash-up', 'updown-flash-down');
+      void el.offsetWidth;
+      el.classList.add(cls);
+    }
+    prevSpotRef.current = p;
+  }, [row?.spotPrice]);
+
+  useEffect(() => {
+    const p = row?.predictedTwap;
+    if (!p || p <= 0 || !predPriceRef.current) return;
+    const el = predPriceRef.current;
+    if (prevPredRef.current && p !== prevPredRef.current) {
+      const cls = p > prevPredRef.current ? 'updown-flash-up' : 'updown-flash-down';
+      el.classList.remove('updown-flash-up', 'updown-flash-down');
+      void el.offsetWidth;
+      el.classList.add(cls);
+    }
+    prevPredRef.current = p;
+  }, [row?.predictedTwap]);
+
   if (!row) return null;
 
   const mathTooltip =
     row.mode === 'weather'
       ? ''
-      : row.mode === 'updown'
-      ? 'Mathematical fair value for this Up/Down market (Black-Scholes–style terminal probability).\n\nUses the same spot as “Current” on the right: Polymarket TWAP-30 for 5m windows, TWAP-60 for 15m, Binance spot for 1h/4h/24h. Inputs: target strike, time to expiry, implied volatility (σ).\n\nFor Up (YES): probability price is above the target at expiry. For Down (NO): below.\n\nCompare to the market price to spot mispricings.'
       : row.hitModel
         ? 'Fair-value probability for this Hit market (one-touch / first-passage under GBM): risk-neutral chance price touches the strike by expiry. Same Binance spot as “Current”, σ from settings.\n\nCompare to the order book to spot mispricings.'
         : 'Fair-value probability (terminal Black-Scholes–style) for this market’s strike vs spot.\n\nUses Binance spot, time to expiry, and σ. For YES/NO: YES uses model YES probability; NO uses 100% − YES.\n\nCompare to the market price to spot mispricings.';
 
-  const currentBadge =
-    row.mode === 'weather'
-      ? {
-          label: 'GMT',
-          className: 'bg-gray-600 text-gray-200',
-          title: 'Expires at GMT midnight after event day',
-        }
-      : row.mode === 'updown'
+  const twapBadge =
+    row.mode === 'updown'
       ? {
           label:
             row.currentSource === 'chainlink'
-              ? upDownTf === '15m'
+              ? upDownTf === '5m' || upDownTf === '15m'
                 ? 'CL60'
-                : upDownTf === '5m'
-                  ? 'CL30'
-                  : 'CL'
+                : 'CL'
               : 'BINANCE',
           className: row.currentSource === 'chainlink' ? 'bg-blue-600 text-white' : 'bg-yellow-400 text-black',
           title:
             row.currentSource === 'chainlink'
-              ? upDownTf === '15m'
-                ? 'Polymarket RTDS TWAP-60 (crypto_prices_twap_sixty) via backend'
-                : upDownTf === '5m'
-                  ? 'Polymarket RTDS TWAP-30 (crypto_prices_twap_thirty) via backend'
-                  : 'Polymarket RTDS Chainlink/TWAP (via backend)'
+              ? 'Current settlement TWAP-60 (crypto_prices_twap_sixty)'
               : upDownSpotUsesChainlink
                 ? 'Binance spot (fallback until TWAP feed connects)'
                 : 'Binance spot (1h/4h/24h Up/Down)',
@@ -334,10 +480,258 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
           title: 'Binance spot',
         };
 
+  const spotBadge =
+    row.mode === 'updown'
+      ? {
+          label: row.spotSource === 'chainlink' ? 'CL' : 'BINANCE',
+          className: row.spotSource === 'chainlink' ? 'bg-blue-600 text-white' : 'bg-yellow-400 text-black',
+          title:
+            row.spotSource === 'chainlink'
+              ? 'Chainlink spot (live underlying, not settlement TWAP)'
+              : 'Binance spot (fallback until Chainlink spot connects)',
+        }
+      : null;
+
   const reserveUpDownSpotHeight = row.mode === 'updown' && !row.pastExpiry;
+  const predTitle =
+    row.predictedTwap > 0
+      ? `Predicted settlement TWAP at expiry if spot stays flat (mitobot continuous):\n` +
+        `(TWAP×(W−r) + Spot×r)/W with W=${row.predictedWinSec}s, r=${row.predictedRemInWin.toFixed(1)}s left in window`
+      : 'Predicted TWAP needs both current TWAP and spot';
+
+  // ——— Up/Down: Target | BS(TWAP) | TWAP  /  Spot | BS(pred) | Pred TWAP ———
+  if (row.mode === 'updown') {
+    const twapMathTooltip =
+      'Terminal BS for this side using live settlement TWAP as S₀ (CL60/CL30), strike = Target, σ from settings.\n\n' +
+      'Click to fill order price.';
+    const predMathTooltip =
+      'Terminal BS for this side using predicted settlement TWAP as S₀ (spot stays flat to expiry), strike = Target, σ from settings.\n\n' +
+      'Click to fill order price.';
+    const threeCol = {
+      gridTemplateColumns: 'minmax(0, 1fr) minmax(3.25rem, auto) minmax(0, 1fr)',
+    } as const;
+
+    return (
+      <div className={`sidebar-section sidebar-target-section py-1 px-3${reserveUpDownSpotHeight ? ' min-h-[9.5rem]' : ''}`}>
+        {/* Row 1: Target | Math(TWAP) | TWAP */}
+        <div className="grid gap-x-2 gap-y-1 w-full" style={threeCol}>
+          <div className="flex items-center min-h-[15px] text-[9px] font-medium leading-none text-gray-500">
+            Target
+          </div>
+          <div className="flex items-center justify-center gap-0.5 min-h-[15px] text-[9px] font-medium leading-none text-gray-500">
+            <CirclePercent className="h-[9px] w-[9px] shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
+            <span className="shrink-0">Math</span>
+            <HelpTooltip
+              text={twapMathTooltip}
+              openOnHover
+              wrapClassName="inline-flex shrink-0 items-center leading-none"
+            >
+              <span className="flex size-[10px] shrink-0 cursor-help items-center justify-center rounded-full border border-gray-500 text-[7px] font-bold leading-none text-gray-400 hover:border-gray-300 hover:text-gray-200">
+                ?
+              </span>
+            </HelpTooltip>
+          </div>
+          <div className="flex items-center justify-end gap-1 min-h-[15px] text-[9px] font-medium leading-none text-gray-500">
+            <span className="shrink-0">TWAP</span>
+            <span
+              className={`shrink-0 px-0.5 rounded-sm text-[9px] font-bold leading-none py-px ${twapBadge.className}`}
+              title={twapBadge.title}
+            >
+              {twapBadge.label}
+            </span>
+          </div>
+
+          <div className="flex items-center min-h-[16px] min-w-0">
+            <span className="text-[11px] font-bold tabular-nums text-white truncate sidebar-readable-value">
+              {row.targetDisplay}
+            </span>
+          </div>
+          <div className="flex items-center justify-center min-h-[16px] min-w-0">
+            {row.pastExpiry ? (
+              <span className="text-gray-500 tabular-nums text-[11px] sidebar-readable-value" title="Time machine ahead of expiration">
+                &gt;⏱
+              </span>
+            ) : row.twapMathCents !== null ? (
+              <SidebarSpotStripMathButton
+                mathCents={row.twapMathCents}
+                sidebarBookRef={sidebarBookRef}
+                onPickPrice={onPickPrice}
+              />
+            ) : (
+              <span className="text-gray-600 text-[11px] sidebar-readable-value">—</span>
+            )}
+          </div>
+          <div className="flex items-center justify-end min-h-[16px] min-w-0">
+            <span
+              ref={currentPriceRef}
+              className="text-[11px] font-bold tabular-nums text-white truncate whitespace-nowrap sidebar-readable-value"
+            >
+              {row.currentPrice ? formatUsd(row.currentPrice, row.priceDec) : '...'}
+            </span>
+          </div>
+
+          <div className="flex items-center min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
+            {selectedMarket?.endDate ? (
+              <SidebarMarketCountdownLabel
+                endDate={selectedMarket.endDate}
+                mode={row.mode}
+                liveUpDownSameTfMarket={liveUpDownSameTfMarket}
+                onSwitchLiveMarket={
+                  liveUpDownSameTfMarket && onSwitchLiveMarket
+                    ? () => onSwitchLiveMarket(liveUpDownSameTfMarket)
+                    : undefined
+                }
+              />
+            ) : (
+              <span className="text-transparent select-none" aria-hidden>
+                —
+              </span>
+            )}
+          </div>
+          <div className="flex items-center justify-center min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
+            <span className="text-transparent select-none text-[9px]" aria-hidden>
+              σ
+            </span>
+          </div>
+          <div className="flex items-center justify-end min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
+            <DeltaLine d={row.diff} priceDec={row.priceDec} title="TWAP − Target" />
+          </div>
+        </div>
+
+        {/* Row 2: Spot | Math(pred TWAP) | Pred TWAP */}
+        <div
+          className="grid gap-x-2 gap-y-1 w-full mt-1 pt-1 border-t border-gray-800/60"
+          style={threeCol}
+        >
+          <div className="flex items-center gap-1 min-h-[15px] text-[9px] font-medium leading-none text-gray-500">
+            <span className="shrink-0">Spot</span>
+            {spotBadge && (
+              <span
+                className={`shrink-0 px-0.5 rounded-sm text-[9px] font-bold leading-none py-px ${spotBadge.className}`}
+                title={spotBadge.title}
+              >
+                {spotBadge.label}
+              </span>
+            )}
+            <HelpTooltip
+              text="Live Chainlink spot (crypto_prices_chainlink), else Binance."
+              openOnHover
+              wrapClassName="inline-flex shrink-0 items-center leading-none"
+            >
+              <span className="flex size-[10px] shrink-0 cursor-help items-center justify-center rounded-full border border-gray-500 text-[7px] font-bold leading-none text-gray-400 hover:border-gray-300 hover:text-gray-200">
+                ?
+              </span>
+            </HelpTooltip>
+          </div>
+          <div className="flex items-center justify-center gap-0.5 min-h-[15px] text-[9px] font-medium leading-none text-gray-500">
+            <CirclePercent className="h-[9px] w-[9px] shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
+            <span className="shrink-0">Math</span>
+            <HelpTooltip
+              text={predMathTooltip}
+              openOnHover
+              wrapClassName="inline-flex shrink-0 items-center leading-none"
+            >
+              <span className="flex size-[10px] shrink-0 cursor-help items-center justify-center rounded-full border border-gray-500 text-[7px] font-bold leading-none text-gray-400 hover:border-gray-300 hover:text-gray-200">
+                ?
+              </span>
+            </HelpTooltip>
+          </div>
+          <div className="flex items-center justify-end gap-1 min-h-[15px] text-[9px] font-medium leading-none text-gray-500">
+            <span className="shrink-0">Pred TWAP</span>
+            <HelpTooltip
+              text={
+                'Mitobot continuous predicted settlement TWAP at expiry if spot stays flat:\n\n' +
+                'predicted = (current_TWAP × (W − r) + spot × r) / W\n\n' +
+                'W = rolling window (60s for 5m/15m). r = seconds left clamped to [0, W].\n' +
+                'Before the window (r=W) → pred = spot; at expiry (r=0) → pred = current TWAP.\n\n' +
+                'Bottom Math uses this predicted TWAP as S₀.'
+              }
+              openOnHover
+              wrapClassName="inline-flex shrink-0 items-center leading-none"
+            >
+              <span className="flex size-[10px] shrink-0 cursor-help items-center justify-center rounded-full border border-gray-500 text-[7px] font-bold leading-none text-gray-400 hover:border-gray-300 hover:text-gray-200">
+                ?
+              </span>
+            </HelpTooltip>
+          </div>
+
+          <div className="flex items-center min-h-[16px] min-w-0">
+            {row.pastExpiry ? (
+              <span className="text-gray-500 tabular-nums text-[11px] sidebar-readable-value" title="Time machine ahead of expiration">
+                &gt;⏱
+              </span>
+            ) : (
+              <span
+                ref={spotPriceRef}
+                className="text-[11px] font-bold tabular-nums text-white truncate whitespace-nowrap sidebar-readable-value"
+              >
+                {row.spotPrice ? formatUsd(row.spotPrice, row.priceDec) : '...'}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center justify-center min-h-[16px] min-w-0">
+            {row.pastExpiry ? (
+              <span className="text-gray-500 tabular-nums text-[11px] sidebar-readable-value" title="Time machine ahead of expiration">
+                &gt;⏱
+              </span>
+            ) : row.mathCents !== null ? (
+              <SidebarSpotStripMathButton
+                mathCents={row.mathCents}
+                sidebarBookRef={sidebarBookRef}
+                onPickPrice={onPickPrice}
+              />
+            ) : (
+              <span className="text-gray-600 text-[11px] sidebar-readable-value">—</span>
+            )}
+          </div>
+          <div className="flex items-center justify-end min-h-[16px] min-w-0">
+            <span
+              ref={predPriceRef}
+              className="text-[11px] font-bold tabular-nums text-amber-200/95 truncate whitespace-nowrap sidebar-readable-value"
+              title={predTitle}
+            >
+              {row.predictedTwap > 0 ? formatUsd(row.predictedTwap, row.priceDec) : '...'}
+            </span>
+          </div>
+
+          <div className="flex items-center min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
+            <DeltaLine d={row.spotVsTarget} priceDec={row.priceDec} title="Spot − Target" />
+          </div>
+          <div className="flex items-center justify-center min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
+            <SidebarSpotVolSigmaLabel
+              notifyMaxVolatilityPct={notifyMaxVolatilityPct}
+              notifyVolatilityCandles={notifyVolatilityCandles}
+              sidebarChartKlineLabel={sidebarChartKlineLabel}
+              pastExpiry={row.pastExpiry}
+            />
+          </div>
+          <div className="flex items-center justify-end min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
+            <DeltaLine d={row.predVsTarget} priceDec={row.priceDec} title="Predicted TWAP − Target" />
+          </div>
+        </div>
+        {reserveUpDownSpotHeight && (
+          <SidebarYesMidProbBar
+            yesMathCents={row.yesMathCents}
+            sidebarBookRef={sidebarBookRef}
+            shellOnly={row.yesMathCents == null}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ——— Weather / generic (3-column) ———
+  const currentBadge =
+    row.mode === 'weather'
+      ? {
+          label: 'GMT',
+          className: 'bg-gray-600 text-gray-200',
+          title: 'Expires at GMT midnight after event day',
+        }
+      : twapBadge;
 
   return (
-    <div className={`sidebar-section sidebar-target-section py-1 px-3${reserveUpDownSpotHeight ? ' min-h-[7.5rem]' : ''}`}>
+    <div className="sidebar-section sidebar-target-section py-1 px-3">
       <div
         className="grid gap-x-3 gap-y-1.5 items-center w-full min-h-[3.625rem]"
         style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(6rem, 1fr) minmax(0, 1fr)' }}
@@ -419,25 +813,17 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
             {row.mode === 'weather'
               ? '—'
               : row.currentPrice
-              ? `$${row.currentPrice.toLocaleString(undefined, { minimumFractionDigits: row.priceDec, maximumFractionDigits: row.priceDec })}`
-              : '...'}
+                ? formatUsd(row.currentPrice, row.priceDec)
+                : '...'}
           </span>
         </div>
 
         <div className="flex items-center justify-start min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
           {row.countdownEndDate || selectedMarket?.endDate ? (
-            <div className="flex items-center gap-1 min-w-0 whitespace-nowrap">
-              <SidebarMarketCountdownLabel
-                endDate={row.countdownEndDate ?? selectedMarket.endDate ?? ''}
-                mode={row.mode}
-                liveUpDownSameTfMarket={liveUpDownSameTfMarket}
-                onSwitchLiveMarket={
-                  liveUpDownSameTfMarket && onSwitchLiveMarket
-                    ? () => onSwitchLiveMarket(liveUpDownSameTfMarket)
-                    : undefined
-                }
-              />
-            </div>
+            <SidebarMarketCountdownLabel
+              endDate={row.countdownEndDate ?? selectedMarket.endDate ?? ''}
+              mode={row.mode}
+            />
           ) : (
             <span className="text-transparent select-none" aria-hidden>
               —
@@ -459,36 +845,9 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
           )}
         </div>
         <div className="flex items-center justify-end min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
-          {row.diff && row.currentPrice > 0 ? (
-            <span
-              className={`inline-flex min-h-[15px] items-center whitespace-nowrap gap-0.5 sidebar-readable-value ${row.diff.isUp ? 'text-green-400' : 'text-red-400'}`}
-            >
-              <span>
-                {row.diff.isUp ? '↑' : '↓'}
-                {row.diff.abs.toLocaleString(undefined, {
-                  minimumFractionDigits: row.priceDec,
-                  maximumFractionDigits: row.priceDec,
-                })}
-              </span>
-              <span>
-                ({row.diff.pct >= 0 ? '+' : ''}
-                {row.diff.pct.toFixed(2)}%)
-              </span>
-            </span>
-          ) : (
-            <span className="inline-flex min-h-[15px] items-center text-transparent select-none" aria-hidden>
-              ↑0.00 (0.00%)
-            </span>
-          )}
+          <DeltaLine d={row.diff} priceDec={row.priceDec} />
         </div>
       </div>
-      {reserveUpDownSpotHeight && (
-        <SidebarYesMidProbBar
-          yesMathCents={row.yesMathCents}
-          sidebarBookRef={sidebarBookRef}
-          shellOnly={row.yesMathCents == null}
-        />
-      )}
     </div>
   );
 });

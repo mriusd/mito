@@ -238,13 +238,17 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
     });
   }
 
+  // Yellow BS/math line: forward-fill last known math across gaps so the line does not
+  // vanish on expired markets (last bars often lack a fresh bs_prob after T≤0).
   const mathLine: [number, number][] = [];
+  let lastMathCents: number | null = null;
   for (let i = 0; i < candles.length; i++) {
     const c = candles[i];
     if (c.time < minT - candleMs || c.time > maxT + candleMs) continue;
     const cents = chartEnrichmentMathCents(c.enrichment?.bsProb, chartOutcome);
-    if (cents == null) continue;
-    mathLine.push([i, cents]);
+    if (cents != null) lastMathCents = cents;
+    if (lastMathCents == null) continue;
+    mathLine.push([i, lastMathCents]);
   }
 
   const markerSeriesData: {

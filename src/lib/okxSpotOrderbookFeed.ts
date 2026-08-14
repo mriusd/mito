@@ -272,3 +272,8 @@ export function useOkxObPanels(market: BinanceObMarket, enabled = true): Record<
   if (!enabled) return EMPTY_PANELS;
   return marketState[market].snap?.assets ?? EMPTY_PANELS;
 }
+
+/** Imperative snapshot read (candle hover fallback without a React subscription). */
+export function getOkxObPanelSnapshot(market: BinanceObMarket): BinanceObPanelSnapshot | null {
+  return marketState[market].snap;
+}

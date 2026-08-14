@@ -1,9 +1,9 @@
 /**
  * Up/Down Target strike via polycandles /api/crypto-price.
  *
- * For 5m/15m the backend prefers local TWAP open at window start (CL30/CL60 capture) —
- * same source polycandles uses for priceToBeat / mitobot K. Window start must match the
- * event-slug unix suffix (not endDate−TF, which can disagree with the slug and miss TWAP).
+ * For 5m/15m the backend prefers TWAP-60 at market-window open (local capture),
+ * then Polymarket crypto-price open — same source polycandles uses for priceToBeat /
+ * mitobot K. Window start must match the event-slug unix suffix (not endDate−TF).
  */
 
 export function upDownCryptoTimeframe(combined: string): '5m' | '15m' | '1h' | '4h' | '24h' | null {

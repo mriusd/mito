@@ -131,10 +131,17 @@ export function aggregateHourlyCandles(
 }
 
 function pruneCandleMap(map: Map<number, LiveTradeCandle>, startMs: number, endMs: number, padMs: number) {
+  if (map.size === 0) return;
   const lo = startMs - padMs;
   const hi = endMs + padMs;
+  const victims: number[] = [];
   for (const t of map.keys()) {
-    if (t < lo || t > hi) map.delete(t);
+    if (t < lo || t > hi) victims.push(t);
+  }
+  // Never wipe a successful history load because the window was slightly wrong
+  // (older wallet markets: endDate/lastTradeTime off by hours/days).
+  if (victims.length < map.size) {
+    for (const t of victims) map.delete(t);
   }
   if (map.size <= MAX_CHART_CANDLES) return;
   const sorted = [...map.keys()].sort((a, b) => a - b);
@@ -148,6 +155,11 @@ export type UseLiveTradeCandlesArgs = {
   endTime?: number;
   interval: string;
   candleMs: number;
+  /**
+   * When true, after slim OHLCV load, pull a short non-slim window so candle hover
+   * gets CEX OB / poly OB / GEX (slim=1 strips those blobs).
+   */
+  includeCandleEnrichment?: boolean;
 };
 
 export function useLiveTradeCandles({
@@ -157,6 +169,7 @@ export function useLiveTradeCandles({
   endTime,
   interval,
   candleMs,
+  includeCandleEnrichment = false,
 }: UseLiveTradeCandlesArgs) {
   const candleMapRef = useRef<Map<number, LiveTradeCandle>>(new Map());
   const candlesRef = useRef<LiveTradeCandle[]>([]);
@@ -196,15 +209,38 @@ export function useLiveTradeCandles({
     const baseWin = resolveLiveTradeChartWindow(tokenId, startTime, endTime);
     let st = baseWin.startMs;
     let et = baseWin.endMs;
-    // Always allow "now" on the fetch/prune end so live tail + WS are not wiped for ended markets.
-    const endForFetch = Math.max(et, Date.now());
-    if (needsExpandedHistory) {
-      const histMs = minHist ?? ONE_H_FEED_LOOKBACK_MS;
-      // Recent lookback only — do not open a wider range than histMs: server
-      // `ORDER BY time ASC LIMIT 1500` would return the *oldest* slice of a huge window.
-      st = endForFetch - histMs;
+    const nowMs = Date.now();
+    // Market ended in the past (wallet-info older rows): anchor fetch/prune on *expiry*,
+    // not "now". Expanding end→now + lookback from now wipes all historical bars
+    // (latest market still works; older markets show "Waiting for data…").
+    const marketEnded = Number.isFinite(et) && et < nowMs - 60_000;
+
+    if (marketEnded) {
+      const histMs = needsExpandedHistory
+        ? (minHist ?? ONE_H_FEED_LOOKBACK_MS)
+        : 7 * 24 * 60 * 60 * 1000;
+      // Pad after expiry so the last settling bars survive prune.
+      const endPad = Math.max(feedCandleMs * 8, 2 * 60 * 60 * 1000);
+      const endAnchor = et;
+      st = Math.min(st, endAnchor - histMs);
+      // Keep start ≤ end; widen short updown windows (end−15m) so history has room.
+      if (endAnchor - st < Math.min(histMs, 24 * 60 * 60 * 1000)) {
+        st = endAnchor - Math.min(histMs, 7 * 24 * 60 * 60 * 1000);
+      }
+      et = endAnchor + endPad;
+    } else {
+      // Live / not-yet-ended: allow "now" on the end so WS tail is not pruned.
+      const endForFetch = Math.max(et, nowMs);
+      if (needsExpandedHistory) {
+        const histMs = minHist ?? ONE_H_FEED_LOOKBACK_MS;
+        // Recent lookback only — server ASC LIMIT returns oldest slice of a huge window.
+        st = endForFetch - histMs;
+      } else {
+        const minLookback = 48 * 60 * 60 * 1000;
+        if (endForFetch - st < minLookback) st = endForFetch - minLookback;
+      }
+      et = endForFetch;
     }
-    et = endForFetch;
 
     const publishNow = () => {
       if (cancelled) return;
@@ -298,50 +334,147 @@ export function useLiveTradeCandles({
       pruneCandleMap(map, st, et, Math.max(feedCandleMs, displayBucketMs) * 2);
     };
 
-    // slim=1: OHLCV only (no gex/weather blobs). Full enrich rows were multi‑MB and
-    // Cloudflare 502'd concurrent chart loads (502 has no CORS → browser "CORS blocked").
+    // slim=1: OHLCV only (no gex/weather/cex blobs). Full enrich on the whole window
+    // was multi‑MB and CF 502'd. We optionally backfill a short non-slim window after.
     const klineLimit = from1h || interval === '1h' ? 500 : 200;
     const baseQ =
       `symbol=${encodeURIComponent(tokenId)}&interval=${encodeURIComponent(feedInterval)}` +
       `&limit=${klineLimit}&slim=1`;
     const windowedQuery = `${baseQ}&startTime=${st}&endTime=${et}`;
+    // Recent bars only — enough for hover CEX OB / poly OB without huge payloads.
+    const ENRICH_LIMIT = 80;
+    const enrichQ =
+      `symbol=${encodeURIComponent(tokenId)}&interval=${encodeURIComponent(feedInterval)}` +
+      `&limit=${ENRICH_LIMIT}&startTime=${st}&endTime=${et}`;
+
+    /** Carry last-known CEX OB / poly OB / BS enrichment forward so hover + math line
+     * work on bars that only have OHLCV (or OB without bs_prob). Always fill enrichment
+     * even when no orderbook exists — otherwise the yellow math line vanishes. */
+    const forwardFillEnrichment = () => {
+      const map = candleMapRef.current;
+      if (map.size === 0) return;
+      const times = [...map.keys()].sort((a, b) => a - b);
+      let lastCex = undefined as LiveTradeCandle['cexOb'];
+      let lastOb = undefined as LiveTradeCandle['ob'];
+      let lastGex = undefined as LiveTradeCandle['gex'];
+      let lastGexBinance = undefined as LiveTradeCandle['gexBinance'];
+      let lastGexOkx = undefined as LiveTradeCandle['gexOkx'];
+      let lastEnrichment = undefined as LiveTradeCandle['enrichment'];
+      for (const t of times) {
+        const row = map.get(t)!;
+        if (row.cexOb) lastCex = row.cexOb;
+        if (row.ob) lastOb = row.ob;
+        if (row.gex) lastGex = row.gex;
+        if (row.gexBinance) lastGexBinance = row.gexBinance;
+        if (row.gexOkx) lastGexOkx = row.gexOkx;
+        // Merge so partial ticks (spot only) keep prior bsProb for the math line.
+        const mergedEnrich = mergeCandleBsEnrichment(row.enrichment, lastEnrichment);
+        if (mergedEnrich) lastEnrichment = mergedEnrich;
+        map.set(t, {
+          ...row,
+          ...(row.cexOb ? {} : lastCex ? { cexOb: lastCex } : {}),
+          ...(row.ob ? {} : lastOb ? { ob: lastOb } : {}),
+          ...(row.gex ? {} : lastGex ? { gex: lastGex } : {}),
+          ...(row.gexBinance ? {} : lastGexBinance ? { gexBinance: lastGexBinance } : {}),
+          ...(row.gexOkx ? {} : lastGexOkx ? { gexOkx: lastGexOkx } : {}),
+          ...(mergedEnrich ? { enrichment: mergedEnrich } : {}),
+        });
+      }
+    };
 
     const loadKlines = async () => {
       /**
        * Soft + staged: never stampede origin (concurrent klines → CF 502 → whole app flaky).
-       *  1) live limit-only
-       *  2) live windowed if empty
-       *  3) one history call only if still empty
-       * WS snapshot still backfills live bars.
+       * Retry each URL once — browser HTTP2/CORS blips often fail the first attempt only.
        */
-      const LIVE_MS = 3_500;
-      const HIST_MS = 4_000;
+      const LIVE_MS = 12_000;
+      const HIST_MS = 15_000;
 
       const ingest = (rows: unknown) => {
-        if (cancelled || !Array.isArray(rows) || rows.length === 0) return false;
-        applyKlines(rows as any[][]);
+        if (cancelled || rows == null) return false;
+        // Server may return a bare array or `{ klines: [...] }`.
+        const list = Array.isArray(rows)
+          ? rows
+          : typeof rows === 'object' && Array.isArray((rows as { klines?: unknown }).klines)
+            ? (rows as { klines: unknown[] }).klines
+            : null;
+        if (!list || list.length === 0) return false;
+        applyKlines(list as any[][]);
         publish(true);
         return true;
       };
 
-      const fetchJson = (url: string, timeoutMs: number) =>
-        fetchBackend(url, undefined, { timeoutMs, soft: true })
-          .then((r) => {
-            if (!r.ok) return null;
-            return r.json();
-          })
-          .catch(() => null);
+      const fetchJson = async (url: string, timeoutMs: number): Promise<unknown> => {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const r = await fetchBackend(url, undefined, { timeoutMs, soft: true });
+            if (!r.ok) {
+              if (attempt === 0) await new Promise((res) => setTimeout(res, 300 + attempt * 400));
+              continue;
+            }
+            return await r.json();
+          } catch {
+            if (attempt === 0) await new Promise((res) => setTimeout(res, 300 + attempt * 400));
+          }
+        }
+        return null;
+      };
 
       try {
-        let got = await fetchJson(`${API_BASE}/api/v3/klines?${baseQ}`, LIVE_MS).then(ingest);
-        if (cancelled) return;
-        if (!got) {
-          got = await fetchJson(`${API_BASE}/api/v3/klines?${windowedQuery}`, LIVE_MS).then(ingest);
+        // Expired markets: history windowed on market end first (live limit is empty).
+        // Live markets: windowed live, then limit-only, then history.
+        if (marketEnded) {
+          let got = await fetchJson(
+            `${API_BASE}/api/v3/klines/history?${windowedQuery}`,
+            HIST_MS,
+          ).then(ingest);
+          if (cancelled) return;
+          if (!got) {
+            got = await fetchJson(`${API_BASE}/api/v3/klines?${windowedQuery}`, LIVE_MS).then(ingest);
+          }
+          if (cancelled) return;
+          // Unwindowed history last — some tokens only resolve via limit DESC on history.
+          if (!got || candleMapRef.current.size < 3) {
+            await fetchJson(`${API_BASE}/api/v3/klines/history?${baseQ}`, HIST_MS).then(ingest);
+          }
+        } else {
+          let got = await fetchJson(`${API_BASE}/api/v3/klines?${windowedQuery}`, LIVE_MS).then(ingest);
+          if (cancelled) return;
+          if (!got) {
+            got = await fetchJson(`${API_BASE}/api/v3/klines?${baseQ}`, LIVE_MS).then(ingest);
+          }
+          if (cancelled) return;
+          if (!got || candleMapRef.current.size < 5) {
+            got =
+              (await fetchJson(
+                `${API_BASE}/api/v3/klines/history?${windowedQuery}`,
+                HIST_MS,
+              ).then(ingest)) || got;
+          }
+          if (cancelled) return;
+          if (!got || candleMapRef.current.size < 5) {
+            await fetchJson(`${API_BASE}/api/v3/klines/history?${baseQ}`, HIST_MS).then(ingest);
+          }
         }
-        if (cancelled) return;
-        // History only when live miss — single call, slim payload.
-        if (!got || candleMapRef.current.size < 15) {
-          await fetchJson(`${API_BASE}/api/v3/klines/history?${baseQ}`, HIST_MS).then(ingest);
+
+        // Backfill CEX OB / poly OB / GEX for hover (heavy JSON; slim already has BS scalars).
+        if (includeCandleEnrichment && candleMapRef.current.size > 0) {
+          if (cancelled) return;
+          let enriched = await fetchJson(
+            `${API_BASE}/api/v3/klines/history?${enrichQ}`,
+            HIST_MS,
+          ).then(ingest);
+          if (cancelled) return;
+          if (!enriched) {
+            enriched = await fetchJson(`${API_BASE}/api/v3/klines?${enrichQ}`, LIVE_MS).then(ingest);
+          }
+          if (cancelled) return;
+        }
+        // Always forward-fill BS math across bars so the yellow math line stays continuous
+        // (including expired markets where live recompute stops after T≤0).
+        if (candleMapRef.current.size > 0) {
+          forwardFillEnrichment();
+          publish(true);
         }
       } finally {
         if (!cancelled) setReady(true);
@@ -397,6 +530,7 @@ export function useLiveTradeCandles({
               applyWsKline(k as Record<string, unknown>, { replaceWeather: true });
             }
           }
+          forwardFillEnrichment();
           publish(true);
           scheduleWsTick();
           return;
@@ -405,6 +539,7 @@ export function useLiveTradeCandles({
           const k = msg.data?.data?.k;
           if (!k) return;
           applyWsKline(k as Record<string, unknown>);
+          forwardFillEnrichment();
           publish();
           scheduleWsTick();
         } else if (msg.type === 'klineStreamDelete') {
@@ -443,7 +578,7 @@ export function useLiveTradeCandles({
       if (publishTimer != null) clearTimeout(publishTimer);
       unsub();
     };
-  }, [tokenId, isNo, startTime, endTime, interval, candleMs]);
+  }, [tokenId, isNo, startTime, endTime, interval, candleMs, includeCandleEnrichment]);
 
   return { candles, candlesRef, ready, wsTick, candleMapRef };
 }

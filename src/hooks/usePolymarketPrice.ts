@@ -23,13 +23,12 @@ export function normalizeChainlinkFeedKey(raw: string): string {
 }
 
 /**
- * Polymarket settlement alignment:
- * - 5m up/down → TWAP 30s (`BTC_TWAP_30`)
- * - 15m up/down → TWAP 60s (`BTC_TWAP_60`)
+ * Polymarket / sidebar TWAP window for Up/Down:
+ * - 5m and 15m → TWAP 60s (`BTC_TWAP_60`) — both use CL60
+ * - longer TFs → null (use bare / Binance path elsewhere)
  */
 export function chainlinkTwapWindowForUpDownTf(tf: string | null | undefined): 30 | 60 | null {
-  if (tf === '5m') return 30;
-  if (tf === '15m') return 60;
+  if (tf === '5m' || tf === '15m') return 60;
   return null;
 }
 
@@ -72,17 +71,72 @@ export function resolveChainlinkPriceFromMap(
   const hit = tryKey(preferred);
   if (hit) return hit;
 
-  // Fallbacks if preferred TWAP not connected yet
-  if (tf === '5m') {
-    const alt = tryKey(a) || tryKey(chainlinkTwapFeedKey(a, 60));
-    if (alt) return alt;
-  } else if (tf === '15m') {
+  // Fallbacks if preferred TWAP-60 not connected yet
+  if (tf === '5m' || tf === '15m') {
     const alt = tryKey(a) || tryKey(chainlinkTwapFeedKey(a, 30));
     if (alt) return alt;
   } else {
-    // Bare asset or unknown tf: prefer legacy, then 30 then 60
-    const alt = tryKey(a) || tryKey(chainlinkTwapFeedKey(a, 30)) || tryKey(chainlinkTwapFeedKey(a, 60));
+    // Bare asset or unknown tf: prefer legacy, then 60 then 30
+    const alt = tryKey(a) || tryKey(chainlinkTwapFeedKey(a, 60)) || tryKey(chainlinkTwapFeedKey(a, 30));
     if (alt) return alt;
+  }
+  return { price: null, feed: null, timestamp: null };
+}
+
+/**
+ * Mitobot continuous `continuousTradingPredictedTwapAtExpiry`:
+ * expected settlement TWAP at expiry if spot stays flat.
+ *
+ * Settlement rolling window W (sidebar: 60s for 5m/15m). With r = clamp(sec_left, 0, W):
+ *
+ *   predicted = (current_twap * (W − r) + spot * r) / W
+ *
+ * r≥W (before window) → predicted = spot; r=0 (at expiry) → predicted = current_twap.
+ */
+export function predictedTwapAtExpiry(opts: {
+  twap: number;
+  spot: number;
+  endMs: number;
+  nowMs?: number;
+  /** Rolling TWAP window seconds (default 60 = CL60). */
+  windowSec?: number;
+}): { pred: number; remInWin: number; win: number } | null {
+  const twap = opts.twap;
+  const spot = opts.spot;
+  const win = opts.windowSec != null && opts.windowSec > 0 ? opts.windowSec : 60;
+  if (!(twap > 0) || !Number.isFinite(twap)) return null;
+  if (!(spot > 0) || !Number.isFinite(spot)) return null;
+  const nowMs = opts.nowMs ?? Date.now();
+  let remSec = 0;
+  if (opts.endMs > 0 && Number.isFinite(opts.endMs)) {
+    remSec = (opts.endMs - nowMs) / 1000;
+  }
+  if (remSec < 0) remSec = 0;
+  let remInWin = remSec;
+  if (remInWin > win) remInWin = win;
+  const elapsed = win - remInWin;
+  const pred = (twap * elapsed + spot * remInWin) / win;
+  if (!(pred > 0) || !Number.isFinite(pred)) return null;
+  return { pred, remInWin, win };
+}
+
+/**
+ * Chainlink *spot* only (bare `BTC` / `ETH` / … from crypto_prices_chainlink) — never TWAP_30/60.
+ * Use when the UI needs both settlement TWAP and live spot side-by-side.
+ * (Historically bare BTC mirrored TWAP-30; polycandles now keeps them separate.)
+ */
+export function resolveChainlinkBareSpotFromMap(
+  map: ChainlinkPricesMap,
+  asset: string | null | undefined,
+): { price: number | null; feed: string | null; timestamp: number | null } {
+  const a = String(asset || '').trim().toUpperCase();
+  if (!a) return { price: null, feed: null, timestamp: null };
+  // Prefer explicit spot keys if present; then bare asset (true CL spot).
+  for (const k of [`${a}_SPOT`, `${a}_CL`, a]) {
+    const p = map[k];
+    if (typeof p === 'number' && p > 0 && Number.isFinite(p)) {
+      return { price: p, feed: k, timestamp: tsMap[k] ?? null };
+    }
   }
   return { price: null, feed: null, timestamp: null };
 }
@@ -244,7 +298,7 @@ export function useChainlinkPricesMap(): ChainlinkPricesMap {
 
 export type UsePolymarketPriceOpts = {
   /**
-   * Up/Down market timeframe: `5m` → TWAP-30, `15m` → TWAP-60.
+   * Up/Down market timeframe: `5m` / `15m` → TWAP-60.
    * Omit for legacy bare asset (or auto-fallback).
    */
   timeframe?: string | null;
@@ -252,7 +306,7 @@ export type UsePolymarketPriceOpts = {
 
 /**
  * Single-asset Chainlink/TWAP price from the shared /ws/prices socket.
- * Pass `timeframe: '5m' | '15m'` for settlement-aligned TWAP selection.
+ * Pass `timeframe: '5m' | '15m'` for TWAP-60 selection.
  */
 export function usePolymarketPrice(
   asset: string | null,
@@ -267,7 +321,7 @@ export function usePolymarketPrice(
 }
 
 /**
- * Convenience for Up/Down markets: picks TWAP window from market slug/question (5m→30, 15m→60).
+ * Convenience for Up/Down markets: picks TWAP window from market slug/question (5m/15m → TWAP-60).
  */
 export function usePolymarketPriceForMarket(
   market: { eventSlug?: string; question?: string; groupItemTitle?: string } | null | undefined,

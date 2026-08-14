@@ -35,7 +35,8 @@ function upDownIntervalContextFromMarket(market: Market): string | undefined {
 function upDownKlineDefaultIntervalFromMarket(market: Market): string | undefined {
   if (!marketIsUpDown(market)) return undefined;
   const combined = `${market.eventSlug || ''} ${market.question || ''}`;
-  if (combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i)) return '5s';
+  // Prefer 1m over 5s — many tokens have empty 5s series after expiry ("Waiting for data…").
+  if (combined.match(/updown-5m/i) || combined.match(/\b5[- ]?min/i)) return '1m';
   if (combined.match(/updown-15m/i) || combined.match(/\b15[- ]?min/i)) return '1m';
   if (combined.match(/updown-4h/i) || combined.match(/\b4[- ]?h/i)) return '15m';
   if (combined.match(/up-or-down-on-/i) || combined.match(/\b24[- ]?h/i)) return '15m';
@@ -67,6 +68,8 @@ export type SidebarRightLiveTradeChartProps = {
   chartStartTime?: number;
   chartEndTime?: number;
   intervalSelector?: 'buttons' | 'dropdown';
+  /** When true, ignore global localStorage interval (wallet dialog — stored 5s left charts empty). */
+  ignoreStoredInterval?: boolean;
   chartOutcome?: 'YES' | 'NO';
   onChartOutcomeChange?: (value: 'YES' | 'NO') => void;
   outcomeSync?: { enabled: boolean; onToggle: () => void };
@@ -91,6 +94,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   chartStartTime,
   chartEndTime,
   intervalSelector = 'buttons',
+  ignoreStoredInterval = false,
   chartOutcome: chartOutcomeProp,
   onChartOutcomeChange,
   outcomeSync,
@@ -105,11 +109,14 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
 }: SidebarRightLiveTradeChartProps) {
   const marketId = (market.conditionId || market.id || '').trim();
   const storeYesTokenId = market.clobTokenIds?.[0]?.trim() || '';
+  const storeNoTokenId = market.clobTokenIds?.[1]?.trim() || '';
   const [fetchedYesTokenId, setFetchedYesTokenId] = useState('');
   const [fetchedNoTokenId, setFetchedNoTokenId] = useState('');
 
+  // Need both outcome tokens for UP vs DOWN charts. Ledger/store often only has YES —
+  // still fetch so DOWN does not silently reuse the YES series.
   useEffect(() => {
-    if (storeYesTokenId) {
+    if (storeYesTokenId && storeNoTokenId) {
       setFetchedYesTokenId('');
       setFetchedNoTokenId('');
       return;
@@ -120,8 +127,6 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       return;
     }
     let cancelled = false;
-    setFetchedYesTokenId('');
-    setFetchedNoTokenId('');
     void fetchMarketOutcomeTokens(marketId)
       .then((tok) => {
         if (cancelled) return;
@@ -137,15 +142,25 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
     return () => {
       cancelled = true;
     };
-  }, [marketId, storeYesTokenId]);
+  }, [marketId, storeYesTokenId, storeNoTokenId]);
 
-  const chartMarket = useMemo(() => {
-    if (storeYesTokenId) return market;
-    return walletInfoChartMarketWithOutcomeTokens(market, fetchedYesTokenId, fetchedNoTokenId);
-  }, [market, storeYesTokenId, fetchedYesTokenId, fetchedNoTokenId]);
+  const chartMarket = useMemo(
+    () =>
+      walletInfoChartMarketWithOutcomeTokens(
+        market,
+        fetchedYesTokenId || storeYesTokenId,
+        fetchedNoTokenId || storeNoTokenId,
+      ),
+    [market, storeYesTokenId, storeNoTokenId, fetchedYesTokenId, fetchedNoTokenId],
+  );
 
   const isUpDownMarket = marketIsUpDown(chartMarket ?? market);
-  const upDownAsset = isUpDownMarket ? extractAssetFromMarket(chartMarket ?? market) : null;
+  // Underlying for CEX OB hover (BTC/ETH/…) — question/slug, then ledger underlyingAsset.
+  const marketAsset =
+    extractAssetFromMarket(chartMarket ?? market) ||
+    String((chartMarket ?? market)?.underlyingAsset || '').trim().toUpperCase() ||
+    null;
+  const upDownAsset = isUpDownMarket ? marketAsset : null;
   const upDownIntervalContext = useMemo(
     () => upDownIntervalContextFromMarket(chartMarket ?? market),
     [chartMarket, market],
@@ -189,7 +204,12 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
     setInternalChartOutcome('YES');
   }, [market.id, yesTokenId, noTokenId, chartOutcomeProp]);
 
-  const tokenId = chartOutcome === 'YES' ? yesTokenId : noTokenId || yesTokenId;
+  // Always chart the YES CLOB series and invert for DOWN/NO.
+  // Polycandles klines are stored on the YES token for most markets; loading the NO
+  // token often returns empty or the UI fell back to YES without flipping — so UP and
+  // DOWN looked identical. Complement is 100−p for binary markets.
+  const tokenId = yesTokenId;
+  const chartIsNo = chartOutcome === 'NO';
   const endTime = useMemo(() => {
     if (chartEndTime != null) return chartEndTime;
     const m = chartMarket ?? market;
@@ -246,7 +266,8 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
     onChange: setChartOutcome,
     yesLabel,
     noLabel,
-    noDisabled: !noTokenId,
+    // Always allow DOWN/NO: either a distinct CLOB token or YES token with price flip.
+    noDisabled: !yesTokenId,
   };
 
   const wrap = (node: ReactNode) => (className ? <div className={className}>{node}</div> : node);
@@ -256,13 +277,14 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       <LiveTradeChart
         trades={trades}
         tradeMarkers={tradeMarkers}
-        isNo={false}
+        isNo={chartIsNo}
         tokenId={tokenId}
         startTime={startTimeProp}
         endTime={endTime}
         intervalContext={upDownIntervalContext}
         defaultIntervalOverride={upDownKlineDefaultInterval}
-        chainlinkAsset={upDownAsset || undefined}
+        ignoreStoredInterval={ignoreStoredInterval}
+        chainlinkAsset={upDownAsset || marketAsset || undefined}
         hidePriceLines
         intervalSelector={intervalSelector}
         outcomeToggle={outcomeToggle}
@@ -284,12 +306,15 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
     <LiveTradeChart
       trades={trades}
       tradeMarkers={tradeMarkers}
-      isNo={false}
+      isNo={chartIsNo}
       tokenId={tokenId}
       startTime={startTimeProp}
       endTime={endTime}
       defaultIntervalOverride="5m"
+      ignoreStoredInterval={ignoreStoredInterval}
       lockInterval={isWeather ? '5m' : undefined}
+      // chainlinkAsset doubles as CEX OB asset key (BTC/ETH/SOL/XRP).
+      chainlinkAsset={marketAsset || undefined}
       hidePriceLines
       intervalSelector={intervalSelector}
       outcomeToggle={outcomeToggle}

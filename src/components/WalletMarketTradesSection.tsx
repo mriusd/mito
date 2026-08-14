@@ -7,7 +7,10 @@ import { walletDirectionalChartOutcome } from '../lib/toxicFlowStakeCohort';
 import { useSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import { wsTradeToFillRow } from '../lib/walletInfoFillRows';
 import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
-import { walletInfoChartMarketWithOutcomeTokens } from '../lib/walletInfoChartMarket';
+import {
+  clobTokenIdsFromWalletPosition,
+  walletInfoChartMarketWithOutcomeTokens,
+} from '../lib/walletInfoChartMarket';
 import { MarketViewTradesWalletBar } from './MarketViewTradesWalletBar';
 import { capWalletInfoFills, WalletInfoFillRow } from './WalletInfoFillRow';
 import type { WalletPosition } from '../api';
@@ -80,10 +83,19 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
     return ids.length > 0 ? ids : null;
   }, [chartOutcomeTokens]);
 
+  const traderTokens = useMemo(() => clobTokenIdsFromWalletPosition(trader), [trader]);
+
   useEffect(() => {
     const mid = marketId.trim();
-    // Prefer CLOB ids already on the market row — skip a round-trip when present.
-    if (!open || !mid || market?.clobTokenIds?.[0]?.trim()) {
+    const storeYes = market?.clobTokenIds?.[0]?.trim() || '';
+    const storeNo = market?.clobTokenIds?.[1]?.trim() || '';
+    const posYes = traderTokens[0] || '';
+    const posNo = traderTokens[1] || '';
+    const hasBoth =
+      !!(storeYes && storeNo && storeYes !== storeNo) ||
+      !!(posYes && posNo && posYes !== posNo);
+    // Need both YES and NO tokens for distinct UP/DOWN series.
+    if (!open || !mid || hasBoth) {
       setChartOutcomeTokens(null);
       return;
     }
@@ -102,16 +114,16 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
     return () => {
       cancelled = true;
     };
-  }, [open, marketId, market?.clobTokenIds?.[0]]);
+  }, [open, marketId, market?.clobTokenIds, traderTokens]);
 
   const selectedMarketForChart = useMemo(
     () =>
       walletInfoChartMarketWithOutcomeTokens(
         market,
-        chartOutcomeTokens?.tokenIdYes || '',
-        chartOutcomeTokens?.tokenIdNo || '',
+        chartOutcomeTokens?.tokenIdYes || market?.clobTokenIds?.[0] || traderTokens[0] || '',
+        chartOutcomeTokens?.tokenIdNo || market?.clobTokenIds?.[1] || traderTokens[1] || '',
       ),
-    [market, chartOutcomeTokens],
+    [market, chartOutcomeTokens, traderTokens],
   );
 
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);

@@ -48,6 +48,15 @@ import {
   resolveCandleIndexFromAxisValue,
   type LiveTradeDataZoomState,
 } from '../lib/liveTradeChartEchartsOption';
+import {
+  useBinanceObMarketConnection,
+  useBinanceObPanels,
+} from '../lib/binanceSpotOrderbookFeed';
+import {
+  useOkxObMarketConnection,
+  useOkxObPanels,
+} from '../lib/okxSpotOrderbookFeed';
+import { buildLiveCexObSnapshot, isLiveCexObAsset } from '../lib/liveCexObSnapshot';
 
 export type { ChartTradeMarker } from '../lib/chartTradeMarkers';
 
@@ -99,6 +108,11 @@ interface LiveTradeChartProps {
   endTime?: number;
   intervalContext?: string;
   defaultIntervalOverride?: string;
+  /**
+   * When true, do not restore the global localStorage interval.
+   * Wallet-info charts often inherit a stored `5s` while that series is empty after expiry.
+   */
+  ignoreStoredInterval?: boolean;
   /** When set, chart stays on this interval (weather Temp Odds only exist on 5m). */
   lockInterval?: string;
   chainlinkAsset?: string;
@@ -153,6 +167,7 @@ export function LiveTradeChart({
   endTime,
   intervalContext,
   defaultIntervalOverride,
+  ignoreStoredInterval = false,
   lockInterval,
   chainlinkAsset,
   hidePriceLines,
@@ -179,10 +194,18 @@ export function LiveTradeChart({
     lockInterval && (CHART_INTERVALS as readonly string[]).includes(lockInterval)
       ? (lockInterval as ChartInterval)
       : null;
-  const resolvedDefaultInterval = lockedInterval || defaultIntervalOverride || defaultInterval(intervalContext);
-  const [interval, setInterval_] = useState<ChartInterval>(
-    () => lockedInterval ?? readStoredChartInterval() ?? (resolvedDefaultInterval as ChartInterval),
-  );
+  const resolvedDefaultInterval = (lockedInterval ||
+    defaultIntervalOverride ||
+    defaultInterval(intervalContext)) as ChartInterval;
+  const [interval, setInterval_] = useState<ChartInterval>(() => {
+    if (lockedInterval) return lockedInterval;
+    if (!ignoreStoredInterval) {
+      const stored = readStoredChartInterval();
+      if (stored) return stored;
+    }
+    return resolvedDefaultInterval;
+  });
+  const emptyFallbackTriedRef = useRef<string>('');
 
   const [hideTrades, setHideTrades] = useState(false);
   const [volumeSpikeFlashSide, setVolumeSpikeFlashSide] = useState<ChartVolumeSpikeSide | null>(null);
@@ -230,19 +253,113 @@ export function LiveTradeChart({
   const candleMs = INTERVAL_MS[interval] || 60000;
   const enrichmentPriceDec = chainlinkAsset?.toUpperCase() === 'XRP' ? 4 : 2;
 
+  // Always load YES-token klines (polycandles stores the YES series). Invert in the
+  // view layer for DOWN/NO so the toggle is instant and never depends on a NO-token feed.
   const { candles, candlesRef, ready, wsTick, candleMapRef } = useLiveTradeCandles({
     tokenId,
-    isNo,
+    isNo: false,
     startTime,
     endTime,
     interval,
     candleMs,
+    // Wallet + sidebar candle hover need poly OB / GEX blobs when present on candles.
+    includeCandleEnrichment: candleObHover,
   });
+
+  // Live Binance/OKX books for candle-hover CEX OB (REST/history almost never ship cex_ob).
+  const cexObAsset = (chainlinkAsset || '').trim().toUpperCase();
+  const cexObLiveEnabled = candleObHover && isLiveCexObAsset(cexObAsset);
+  useBinanceObMarketConnection('spot', cexObLiveEnabled);
+  useBinanceObMarketConnection('futures', cexObLiveEnabled);
+  useOkxObMarketConnection('spot', cexObLiveEnabled);
+  useOkxObMarketConnection('futures', cexObLiveEnabled);
+  // Subscribe so this component re-renders when books update.
+  const binSpotPanels = useBinanceObPanels('spot', cexObLiveEnabled);
+  const binFutPanels = useBinanceObPanels('futures', cexObLiveEnabled);
+  const okxSpotPanels = useOkxObPanels('spot', cexObLiveEnabled);
+  const okxFutPanels = useOkxObPanels('futures', cexObLiveEnabled);
+  const liveCexOb = useMemo(() => {
+    if (!cexObLiveEnabled) return null;
+    void binSpotPanels;
+    void binFutPanels;
+    void okxSpotPanels;
+    void okxFutPanels;
+    return buildLiveCexObSnapshot(cexObAsset);
+  }, [
+    cexObLiveEnabled,
+    cexObAsset,
+    binSpotPanels,
+    binFutPanels,
+    okxSpotPanels,
+    okxFutPanels,
+  ]);
+  const liveCexObRef = useRef(liveCexOb);
+  liveCexObRef.current = liveCexOb;
+
+  /** YES-space candles → chart view (invert OHLC when showing NO/DOWN). */
+  const viewCandlesFrom = useCallback(
+    (src: typeof candles): typeof candles => {
+      if (!isNo || src.length === 0) return src;
+      return src.map((c) => ({
+        ...c,
+        o: 100 - c.o,
+        // Swap high/low after invert so the candle body stays valid.
+        h: 100 - c.l,
+        l: 100 - c.h,
+        c: 100 - c.c,
+      }));
+    },
+    [isNo],
+  );
+
+  // Stable across YES/NO (UP/DOWN) toggles — share one kline series per market.
+  const marketIntervalKey =
+    (soundMuteYesTokenId || '').trim() ||
+    (soundMuteNoTokenId || '').trim() ||
+    (tokenId || '').trim();
+
+  // When REST/WS return nothing for a fine interval (common: stored or default 5s after
+  // market expiry), step up once so wallet-info charts still render.
+  // Key by market+interval (not outcome token) so UP/DOWN does not re-ladder to 1m.
+  useEffect(() => {
+    if (lockedInterval || !ready || !tokenId) return;
+    if (candles.length > 0 || candlesRef.current.length > 0) {
+      emptyFallbackTriedRef.current = '';
+      return;
+    }
+    const ladder: ChartInterval[] = ['5s', '1m', '5m', '15m', '1h'];
+    const key = `${marketIntervalKey}|${interval}`;
+    if (emptyFallbackTriedRef.current === key) return;
+    const idx = ladder.indexOf(interval);
+    if (idx < 0 || idx >= ladder.length - 1) return;
+    emptyFallbackTriedRef.current = key;
+    const next = ladder[idx + 1]!;
+    setInterval_(next);
+    dataZoomRef.current = null;
+  }, [ready, candles.length, tokenId, interval, lockedInterval, candlesRef, marketIntervalKey]);
+
+  // Wallet-info: pin to default interval only when the *market* changes — not when the
+  // user toggles UP/DOWN (that only changes tokenId / soundMute* stays the same).
+  useEffect(() => {
+    emptyFallbackTriedRef.current = '';
+    if (lockedInterval) {
+      setInterval_(lockedInterval);
+      return;
+    }
+    if (ignoreStoredInterval) {
+      setInterval_(resolvedDefaultInterval);
+      dataZoomRef.current = null;
+    }
+  }, [marketIntervalKey, lockedInterval, ignoreStoredInterval, resolvedDefaultInterval]);
 
   // 1h/4h/1d: axis follows loaded history (not short market-window startTime, which clipped to a few bars).
   const chartAxisStartTime = useMemo(() => {
     if (interval === '1h' || interval === '4h' || interval === '1d') {
       return candles.length > 0 ? candles[0]!.time : startTime;
+    }
+    // Prefer first loaded bar so expired markets aren't an empty axis when startTime is late.
+    if (candles.length > 0 && startTime != null && candles[0]!.time < startTime) {
+      return candles[0]!.time;
     }
     return startTime;
   }, [interval, candles, startTime]);
@@ -258,16 +375,22 @@ export function LiveTradeChart({
   const emptyMessage = useMemo(() => {
     const now = Date.now();
     if (startTime && now < startTime) return 'Market not started yet';
+    if (ready && candles.length === 0) {
+      if (endTime != null && endTime < now - 60_000) return 'No candle history for this market';
+      return 'No candle data';
+    }
     return 'Waiting for data...';
-  }, [startTime]);
+  }, [startTime, endTime, ready, candles.length]);
 
   const candleAxisSig = liveTradeCandleAxisSig(candles);
+  // Include isNo so option rebuilds on UP/DOWN even when the axis (times) is unchanged.
+  const viewAxisSig = `${candleAxisSig}|${isNo ? 'N' : 'Y'}`;
 
   const option = useMemo(
-    () =>
-      buildLiveTradeChartOption({
-        // Prefer live ref (may be ahead of structural `candles` state on first paint after axis change).
-        candles: candlesRef.current.length > 0 ? candlesRef.current : candles,
+    () => {
+      const src = candlesRef.current.length > 0 ? candlesRef.current : candles;
+      return buildLiveTradeChartOption({
+        candles: viewCandlesFrom(src),
         candleMs,
         interval,
         startTime: chartAxisStartTime,
@@ -277,17 +400,18 @@ export function LiveTradeChart({
         obHeatmap,
         hideTrades,
         tradeMarkers,
-        chartOutcome: outcomeToggle?.value ?? 'YES',
+        chartOutcome: outcomeToggle?.value ?? (isNo ? 'NO' : 'YES'),
         orderLevels: displayChartOrderLevels,
         positionLevels: sidebarChartPositionLevels,
         hidePriceLines,
         dataZoom: dataZoomRef.current,
         emptyMessage,
-      }),
-    // candleAxisSig — rebuild only when bar count / window changes, not last-bar OHLC.
+      });
+    },
+    // viewAxisSig — rebuild on bar window change *or* UP/DOWN invert.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
-      candleAxisSig,
+      viewAxisSig,
       candleMs,
       interval,
       chartAxisStartTime,
@@ -298,6 +422,8 @@ export function LiveTradeChart({
       hideTrades,
       tradeMarkers,
       outcomeToggle?.value,
+      isNo,
+      viewCandlesFrom,
       displayChartOrderLevels,
       sidebarChartPositionLevels,
       hidePriceLines,
@@ -320,7 +446,7 @@ export function LiveTradeChart({
       optionAppliedRef.current = option;
       return;
     }
-    const live = candlesRef.current;
+    const live = viewCandlesFrom(candlesRef.current);
     if (live.length === 0) return;
     chart.setOption(
       buildLiveTradeChartSeriesUpdate({
@@ -333,7 +459,7 @@ export function LiveTradeChart({
         obHeatmap,
         hideTrades,
         tradeMarkers,
-        chartOutcome: outcomeToggle?.value ?? 'YES',
+        chartOutcome: outcomeToggle?.value ?? (isNo ? 'NO' : 'YES'),
         orderLevels: displayChartOrderLevels,
         positionLevels: sidebarChartPositionLevels,
         hidePriceLines,
@@ -356,6 +482,8 @@ export function LiveTradeChart({
     hideTrades,
     tradeMarkers,
     outcomeToggle?.value,
+    isNo,
+    viewCandlesFrom,
     displayChartOrderLevels,
     sidebarChartPositionLevels,
     hidePriceLines,
@@ -529,14 +657,24 @@ export function LiveTradeChart({
         return;
       }
       const nearest = live[idx];
-      const ohlcv: ChartObHoverOhlcv = {
-        timeMs: nearest.time,
-        o: nearest.o,
-        h: nearest.h,
-        l: nearest.l,
-        c: nearest.c,
-        v: nearest.v,
-      };
+      // Invert OHLCV for NO/DOWN view so popup matches the inverted chart.
+      const ohlcv: ChartObHoverOhlcv = isNo
+        ? {
+            timeMs: nearest.time,
+            o: 100 - nearest.o,
+            h: 100 - nearest.l,
+            l: 100 - nearest.h,
+            c: 100 - nearest.c,
+            v: nearest.v,
+          }
+        : {
+            timeMs: nearest.time,
+            o: nearest.o,
+            h: nearest.h,
+            l: nearest.l,
+            c: nearest.c,
+            v: nearest.v,
+          };
       setHoverOhlcv(ohlcv);
 
       if (!candleObHover) {
@@ -544,28 +682,61 @@ export function LiveTradeChart({
         return;
       }
 
+      // Prefer this bar's enrich blobs; else walk neighbors; else live Binance/OKX books.
+      let cexOb = nearest.cexOb;
+      let polyOb = nearest.ob;
+      let gex = nearest.gex;
+      let gexBinance = nearest.gexBinance;
+      let gexOkx = nearest.gexOkx;
+      let enrichment = nearest.enrichment;
+      if (!cexOb || !polyOb || !gex) {
+        for (let j = idx - 1; j >= 0; j--) {
+          const prev = live[j];
+          if (!prev) break;
+          if (!cexOb && prev.cexOb) cexOb = prev.cexOb;
+          if (!polyOb && prev.ob) polyOb = prev.ob;
+          if (!gex && prev.gex) gex = prev.gex;
+          if (!gexBinance && prev.gexBinance) gexBinance = prev.gexBinance;
+          if (!gexOkx && prev.gexOkx) gexOkx = prev.gexOkx;
+          if (!enrichment && prev.enrichment) enrichment = prev.enrichment;
+          if (cexOb && polyOb && gex) break;
+        }
+      }
+      if (!cexOb || !gexBinance || !gexOkx) {
+        for (let j = live.length - 1; j > idx; j--) {
+          const next = live[j];
+          if (!next) break;
+          if (!cexOb && next.cexOb) cexOb = next.cexOb;
+          if (!gexBinance && next.gexBinance) gexBinance = next.gexBinance;
+          if (!gexOkx && next.gexOkx) gexOkx = next.gexOkx;
+          if (cexOb && gexBinance && gexOkx) break;
+        }
+      }
+      // Live asset-level CEX books — same data as SpotOrderbookPanel / sidebar hover.
+      if (!cexOb) cexOb = liveCexObRef.current ?? undefined;
+
       const hasPolyOb =
-        nearest.ob != null && (nearest.ob.bids.length > 0 || nearest.ob.asks.length > 0);
-      const hasCexOb = nearest.cexOb != null;
-      const hasGex = nearest.gex != null;
-      const hasGexBinance = nearest.gexBinance != null;
-      const hasGexOkx = nearest.gexOkx != null;
+        polyOb != null && (polyOb.bids.length > 0 || polyOb.asks.length > 0);
+      const hasCexOb = cexOb != null;
+      const hasGex = gex != null;
+      const hasGexBinance = gexBinance != null;
+      const hasGexOkx = gexOkx != null;
       const hasWeather = nearest.weather != null;
       // Always show popup (OHLCV at minimum) — don't require OB/GEX/weather on that bar.
       setHoverOb({
         clientX,
         clientY,
-        ...(hasPolyOb ? { ob: nearest.ob } : {}),
-        ...(hasCexOb ? { cexOb: nearest.cexOb } : {}),
-        ...(hasGex ? { gex: nearest.gex } : {}),
-        ...(hasGexBinance ? { gexBinance: nearest.gexBinance } : {}),
-        ...(hasGexOkx ? { gexOkx: nearest.gexOkx } : {}),
+        ...(hasPolyOb ? { ob: polyOb } : {}),
+        ...(hasCexOb ? { cexOb } : {}),
+        ...(hasGex ? { gex } : {}),
+        ...(hasGexBinance ? { gexBinance } : {}),
+        ...(hasGexOkx ? { gexOkx } : {}),
         ...(hasWeather ? { weather: nearest.weather } : {}),
         ohlcv,
-        enrichment: nearest.enrichment,
+        enrichment,
       });
     },
-    [candlesRef, candleObHover],
+    [candlesRef, candleObHover, isNo],
   );
 
   const handleMouseMove = useCallback(
@@ -843,7 +1014,7 @@ export function LiveTradeChart({
         onMouseLeave={handleMouseLeave}
       >
         <ReactECharts
-          key={`${tokenId || ''}:${interval}`}
+          key={`${tokenId || ''}:${interval}:${isNo ? 'NO' : 'YES'}`}
           ref={chartRef}
           option={option}
           style={{ width: '100%', height: 128, borderRadius: 6 }}

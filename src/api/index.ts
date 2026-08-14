@@ -923,11 +923,64 @@ export type MarketOutcomeTokensResponse = {
   tokenIdNo: string;
 };
 
+/**
+ * Resolve YES/NO CLOB token ids for a condition id.
+ * Soft backend call first (must not trip circuit / block when klines flaky), then CLOB public market.
+ */
 export async function fetchMarketOutcomeTokens(marketId: string): Promise<MarketOutcomeTokensResponse | null> {
-  const resp = await fetchBackend(`${BASE}/api/market-outcome-tokens?market_id=${encodeURIComponent(marketId)}`);
-  if (resp.status === 404) return null;
-  if (!resp.ok) throw new Error(`Failed to fetch market outcome tokens: ${resp.status}`);
-  return resp.json();
+  const mid = marketId.trim();
+  if (!mid) return null;
+
+  try {
+    const resp = await fetchBackend(
+      `${BASE}/api/market-outcome-tokens?market_id=${encodeURIComponent(mid)}`,
+      undefined,
+      { timeoutMs: 12_000, soft: true },
+    );
+    if (resp.ok) {
+      const body = (await resp.json()) as MarketOutcomeTokensResponse;
+      if (body?.tokenIdYes?.trim()) return body;
+    }
+  } catch {
+    /* fall through to CLOB */
+  }
+
+  // Markets not in onchain conditions 404 above — CLOB still has tokens for chart klines.
+  try {
+    const url = `${BASE}/api/polyproxy/clob/markets/${encodeURIComponent(mid)}`;
+    const resp = await fetchBackend(url, undefined, { timeoutMs: 12_000, soft: true });
+    if (!resp.ok) return null;
+    const body = (await resp.json()) as {
+      tokens?: Array<{ token_id?: string; tokenId?: string; outcome?: string }>;
+      clobTokenIds?: string[];
+    };
+    const fromList = Array.isArray(body.clobTokenIds)
+      ? body.clobTokenIds.map((t) => String(t || '').trim()).filter(Boolean)
+      : [];
+    if (fromList[0]) {
+      return {
+        marketId: mid,
+        tokenIdYes: fromList[0]!,
+        tokenIdNo: fromList[1] || '',
+      };
+    }
+    const tokens = Array.isArray(body.tokens) ? body.tokens : [];
+    let yes = '';
+    let no = '';
+    for (const t of tokens) {
+      const id = String(t.token_id || t.tokenId || '').trim();
+      if (!id) continue;
+      const oc = String(t.outcome || '').trim().toLowerCase();
+      if (oc === 'yes' || oc === 'up' || oc === 'y') yes = yes || id;
+      else if (oc === 'no' || oc === 'down' || oc === 'n') no = no || id;
+      else if (!yes) yes = id;
+      else if (!no) no = id;
+    }
+    if (!yes) return null;
+    return { marketId: mid, tokenIdYes: yes, tokenIdNo: no };
+  } catch {
+    return null;
+  }
 }
 
 export interface OnchainMarketListItem {

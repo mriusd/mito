@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, memo, Fragment } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, memo, Fragment } from 'react';
 import type { CSSProperties } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
@@ -8,6 +8,7 @@ import {
   extractAssetFromMarket,
   getPositionClobTokenId,
   normalizeClobTokenId,
+  upDownTimeframeKeyFromMarket,
 } from '../../utils/format';
 import {
   useThrottledGridOrders,
@@ -17,9 +18,29 @@ import {
 import { GRID_BID_ASK_THROTTLE_MS } from '../../lib/bidAskMarketLookup';
 import { UpDownTimeframeRowsBody } from './UpDownTimeframeRow';
 import { useUpDownNextMarketFlashWhaleSound } from '../../lib/upDownNextMarketFlashSound';
-import { fetchUpDownTargetFromCrypto } from '../../lib/upDownTargetFromCrypto';
+import {
+  extractEventStartUnixFromSlug,
+  fetchUpDownTargetFromCrypto,
+} from '../../lib/upDownTargetFromCrypto';
 import { fetchMarkets } from '../../api';
 import { API_BASE } from '../../lib/env';
+
+/** After window open, poll missing targets every 5s until priceToBeat lands. */
+const MISSING_TARGET_RETRY_MS = 5_000;
+
+function upDownMarketWindowStartMs(m: Market, endMs: number): number {
+  const slugUnix =
+    extractEventStartUnixFromSlug(m.eventSlug) ??
+    extractEventStartUnixFromSlug(`${m.eventSlug || ''} ${m.question || ''}`);
+  if (slugUnix != null) return slugUnix * 1000;
+  const tf = upDownTimeframeKeyFromMarket(m);
+  let dur = 60 * 60 * 1000;
+  if (tf === '5m') dur = 5 * 60 * 1000;
+  else if (tf === '15m') dur = 15 * 60 * 1000;
+  else if (tf === '4h') dur = 4 * 60 * 60 * 1000;
+  else if (tf === '24h') dur = 24 * 60 * 60 * 1000;
+  return endMs - dur;
+}
 
 const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 const TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
@@ -207,6 +228,103 @@ function UpDownMarketsPanelInner() {
 
   useUpDownNextMarketFlashWhaleSound(sortedOpenByAssetTf, visibleAssets, nextMarketsCount);
 
+  // After auto-roll / window open, polycandles often has no priceToBeat for a few seconds.
+  // Poll live (+ next) cells missing Target every 5s, first attempt at windowStart+5s.
+  const missingTargetInflight = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+
+    const collectMissing = (): Market[] => {
+      const now = Date.now();
+      const out: Market[] = [];
+      for (const asset of visibleAssets) {
+        for (const tf of TIMEFRAMES) {
+          const markets = sortedOpenByAssetTf[asset]?.[tf] ?? [];
+          const currentIdx = markets.findIndex(
+            (m) => m.endDate && new Date(m.endDate).getTime() > now,
+          );
+          if (currentIdx < 0) continue;
+          const candidates: Market[] = [markets[currentIdx]!];
+          for (let i = 0; i < nextMarketsCount; i++) {
+            const m = markets[currentIdx + 1 + i];
+            if (m) candidates.push(m);
+          }
+          for (const m of candidates) {
+            const pb = m.priceToBeat;
+            if (pb != null && Number.isFinite(pb) && pb > 0) continue;
+            if (!m.endDate) continue;
+            const endMs = new Date(m.endDate).getTime();
+            if (!Number.isFinite(endMs) || endMs <= now) continue;
+            const startMs = upDownMarketWindowStartMs(m, endMs);
+            // Wait until 5s after this window's open (or always for future next markets past their open).
+            if (now < startMs + MISSING_TARGET_RETRY_MS) continue;
+            out.push(m);
+          }
+        }
+      }
+      return out;
+    };
+
+    const tick = async () => {
+      if (cancelled || missingTargetInflight.current) return;
+      const missing = collectMissing();
+      if (missing.length === 0) return;
+      missingTargetInflight.current = true;
+      try {
+        const patch: Record<string, number> = {};
+        // Prefer a full markets refresh first (bot-aligned TWAP-open).
+        try {
+          const data = await fetchMarkets();
+          const want = new Set(missing.map((m) => m.id));
+          for (const asset of Object.keys(data.upOrDownMarkets || {})) {
+            const tfMap = data.upOrDownMarkets[asset] || {};
+            for (const tf of Object.keys(tfMap)) {
+              for (const m of tfMap[tf] || []) {
+                if (!want.has(m.id)) continue;
+                const p = m.priceToBeat;
+                if (typeof p === 'number' && Number.isFinite(p) && p > 0) patch[m.id] = p;
+              }
+            }
+          }
+        } catch {
+          /* fall through to crypto-price */
+        }
+        for (const m of missing) {
+          if (patch[m.id] != null) continue;
+          if (!m.endDate) continue;
+          const endMs = new Date(m.endDate).getTime();
+          const asset = extractAssetFromMarket(m);
+          if (!asset || !Number.isFinite(endMs)) continue;
+          const combined = `${m.eventSlug || ''} ${m.question || ''}`;
+          try {
+            const p = await fetchUpDownTargetFromCrypto(
+              API_BASE,
+              asset,
+              endMs,
+              combined,
+              m.eventSlug,
+            );
+            if (p != null && Number.isFinite(p) && p > 0) patch[m.id] = p;
+          } catch {
+            /* retry next interval */
+          }
+        }
+        if (!cancelled && Object.keys(patch).length > 0) {
+          useAppStore.getState().patchMarketPriceToBeats(patch);
+        }
+      } finally {
+        missingTargetInflight.current = false;
+      }
+    };
+
+    void tick();
+    const iv = window.setInterval(() => void tick(), MISSING_TARGET_RETRY_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(iv);
+    };
+  }, [visibleAssets, sortedOpenByAssetTf, nextMarketsCount]);
+
   const refreshTargetPrices = useCallback(async () => {
     if (targetsRefreshing) return;
     setTargetsRefreshing(true);
@@ -263,7 +381,13 @@ function UpDownMarketsPanelInner() {
             if (!asset) continue;
             const combined = `${m.eventSlug || ''} ${m.question || ''}`;
             try {
-              const p = await fetchUpDownTargetFromCrypto(API_BASE, asset, endMs, combined);
+              const p = await fetchUpDownTargetFromCrypto(
+                API_BASE,
+                asset,
+                endMs,
+                combined,
+                m.eventSlug,
+              );
               if (p != null && Number.isFinite(p) && p > 0) patch[m.id] = p;
             } catch {
               /* per-market miss — keep /api/markets value if any */

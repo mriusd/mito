@@ -6,19 +6,37 @@ import {
   resolveUpDownStrikeSync,
   upDownTimeframeKeyFromMarket,
 } from '../utils/format';
-import { fetchUpDownTargetFromCrypto } from '../lib/upDownTargetFromCrypto';
+import {
+  extractEventStartUnixFromSlug,
+  fetchUpDownTargetFromCrypto,
+} from '../lib/upDownTargetFromCrypto';
 import { API_BASE } from '../lib/env';
 import { isMarketExpired } from '../lib/marketExpiry';
 
-const POLL_MS = 12_000;
+/** Poll interval while target is missing (and delay after window open). */
+const TARGET_RETRY_MS = 5_000;
+
+function marketWindowStartMs(market: Market, endMs: number): number {
+  const slugUnix =
+    extractEventStartUnixFromSlug(market.eventSlug) ??
+    extractEventStartUnixFromSlug(`${market.eventSlug || ''} ${market.question || ''}`);
+  if (slugUnix != null) return slugUnix * 1000;
+  const tf = upDownTimeframeKeyFromMarket(market);
+  let dur = 60 * 60 * 1000;
+  if (tf === '5m') dur = 5 * 60 * 1000;
+  else if (tf === '15m') dur = 15 * 60 * 1000;
+  else if (tf === '4h') dur = 4 * 60 * 60 * 1000;
+  else if (tf === '24h') dur = 24 * 60 * 60 * 1000;
+  return endMs - dur;
+}
 
 /**
  * Sidebar Target strike — must match mitobot K / polycandles /api/markets priceToBeat.
  *
  * Prefer catalog bucket/lookup/selected priceToBeat (same JSON the bot reads).
- * Only poll /api/crypto-price when catalog has no strike yet (window just opened).
- * Never override a present catalog strike with crypto-price (that path was returning a
- * different open and made Target disagree with the bot).
+ * When missing (common right after auto-switch to a new window), wait until
+ * marketStart+5s then poll /api/crypto-price every 5s until a target is acquired.
+ * Never override a present catalog strike with crypto-price.
  */
 export function useUpDownStrikePrice(market: Market | null | undefined): number | undefined {
   const lastUpdated = useAppStore((s) => s.lastUpdated);
@@ -44,23 +62,28 @@ export function useUpDownStrikePrice(market: Market | null | undefined): number 
     marketLookupEpoch,
   ]);
 
-  const [asyncStrike, setAsyncStrike] = useState<number | undefined>(undefined);
-  const tf = market ? upDownTimeframeKeyFromMarket(market) : null;
-  const isShortTf = tf === '5m' || tf === '15m';
+  /** Bound to market.id so a switch never shows the previous window's async fill. */
+  const [asyncStrike, setAsyncStrike] = useState<{ id: string; p: number } | null>(null);
+
   const hasCatalogStrike =
     syncStrike != null && Number.isFinite(syncStrike) && syncStrike > 0;
 
+  // Drop any prior market's async value immediately on selection change.
   useEffect(() => {
-    // Catalog already has bot-aligned priceToBeat — do not poll crypto-price or patch over it.
+    setAsyncStrike(null);
+  }, [market?.id]);
+
+  useEffect(() => {
     if (hasCatalogStrike) {
-      setAsyncStrike(undefined);
+      setAsyncStrike(null);
       return;
     }
-    if (!market?.endDate) {
-      setAsyncStrike(undefined);
+    if (!market?.id || !market.endDate) {
+      setAsyncStrike(null);
       return;
     }
 
+    const marketId = market.id;
     const endMs = new Date(market.endDate).getTime();
     if (!Number.isFinite(endMs)) return;
 
@@ -68,14 +91,21 @@ export function useUpDownStrikePrice(market: Market | null | undefined): number 
     const asset = extractAssetFromMarket(market);
     if (!asset) return;
 
+    const startMs = marketWindowStartMs(market, endMs);
+    // First attempt at window open + 5s (or immediately if already later).
+    const firstAt = startMs + TARGET_RETRY_MS;
+
     let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
     const tick = async () => {
       if (cancelled || isMarketExpired(market)) return;
       // Re-check catalog each tick — markets poll may land ptb between intervals.
       const st = useAppStore.getState();
       const cat = resolveUpDownStrikeSync(market, st.marketLookup, st.upOrDownMarkets);
       if (cat != null && Number.isFinite(cat) && cat > 0) {
-        if (!cancelled) setAsyncStrike(undefined);
+        if (!cancelled) setAsyncStrike(null);
         return;
       }
       try {
@@ -87,22 +117,31 @@ export function useUpDownStrikePrice(market: Market | null | undefined): number 
           market.eventSlug,
         );
         if (!cancelled && p != null && Number.isFinite(p) && p > 0) {
-          setAsyncStrike(p);
-          // Only seed store when catalog still empty (fill gap until markets refresh).
-          useAppStore.getState().patchMarketPriceToBeats({ [market.id]: p });
+          setAsyncStrike({ id: marketId, p });
+          // Seed store so up/down panel Target cells update too.
+          useAppStore.getState().patchMarketPriceToBeats({ [marketId]: p });
         }
       } catch {
         /* network / CORS — retry on next poll */
       }
     };
 
-    void tick();
-    // Short TF: poll until catalog lands. Longer TF: same when missing.
-    const iv = setInterval(() => void tick(), isShortTf ? POLL_MS : POLL_MS * 2);
+    const startPolling = () => {
+      if (cancelled) return;
+      void tick();
+      intervalId = setInterval(() => void tick(), TARGET_RETRY_MS);
+    };
+
+    const delay = Math.max(0, firstAt - Date.now());
+    timeoutId = setTimeout(startPolling, delay);
+
     return () => {
       cancelled = true;
-      clearInterval(iv);
+      if (timeoutId != null) clearTimeout(timeoutId);
+      if (intervalId != null) clearInterval(intervalId);
     };
+    // Intentionally omit lastUpdated/marketLookupEpoch — tick re-reads the store.
+    // Restarting the timer on every markets poll would push first-fetch past open+5s forever.
   }, [
     market,
     market?.id,
@@ -110,15 +149,18 @@ export function useUpDownStrikePrice(market: Market | null | undefined): number 
     market?.eventSlug,
     market?.question,
     hasCatalogStrike,
-    isShortTf,
-    lastUpdated,
-    marketLookupEpoch,
   ]);
 
   // Catalog first (bot K). Async only as temporary fill when markets ptb missing.
   if (hasCatalogStrike) return syncStrike;
-  if (asyncStrike != null && Number.isFinite(asyncStrike) && asyncStrike > 0) {
-    return asyncStrike;
+  if (
+    asyncStrike != null &&
+    market?.id &&
+    asyncStrike.id === market.id &&
+    Number.isFinite(asyncStrike.p) &&
+    asyncStrike.p > 0
+  ) {
+    return asyncStrike.p;
   }
   return undefined;
 }

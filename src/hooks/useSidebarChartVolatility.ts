@@ -72,6 +72,9 @@ export function useSidebarChartVolatility({
   const wsRef = useRef<WebSocket | null>(null);
   const binanceFallbackWsRef = useRef<WebSocket | null>(null);
   const intervalRef = useRef('');
+  /** Separate gens so Chainlink primary + Binance fallback don't cancel each other. */
+  const primaryFetchGenRef = useRef(0);
+  const fallbackFetchGenRef = useRef(0);
   const [ready, setReady] = useState(false);
   const [binanceFallbackReady, setBinanceFallbackReady] = useState(false);
   const [tick, setTick] = useState(0);
@@ -85,6 +88,11 @@ export function useSidebarChartVolatility({
   const binanceSymbol = asset ? `${asset.toUpperCase()}USDT` : '';
   const binanceStreamSymbol = asset ? `${asset.toLowerCase()}usdt` : '';
 
+  // New market (or clear selection): drop σ immediately so UI never keeps the previous window's value.
+  useEffect(() => {
+    onVolRef.current?.(null);
+  }, [recalcKey, asset]);
+
   useEffect(() => {
     if (!asset) {
       candleMapRef.current = new Map();
@@ -95,8 +103,12 @@ export function useSidebarChartVolatility({
 
     if (chainlinkCandles) return;
 
+    // Refetch on every market (recalcKey) even when asset/interval are unchanged —
+    // otherwise σ stays frozen on the first session's kline snapshot until page reload.
+    const gen = ++primaryFetchGenRef.current;
     candleMapRef.current = new Map();
     setReady(false);
+    onVolRef.current?.(null);
 
     if (wsRef.current) {
       wsRef.current.close();
@@ -106,6 +118,7 @@ export function useSidebarChartVolatility({
     fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=100`)
       .then((r) => r.json())
       .then((klines: unknown[][]) => {
+        if (gen !== primaryFetchGenRef.current) return;
         if (!Array.isArray(klines)) {
           setReady(true);
           return;
@@ -117,7 +130,9 @@ export function useSidebarChartVolatility({
         }
         setReady(true);
       })
-      .catch(() => setReady(true));
+      .catch(() => {
+        if (gen === primaryFetchGenRef.current) setReady(true);
+      });
 
     const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${binanceStreamSymbol}@kline_${interval}`);
     wsRef.current = ws;
@@ -150,15 +165,17 @@ export function useSidebarChartVolatility({
 
     return () => {
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
-      wsRef.current = null;
+      if (wsRef.current === ws) wsRef.current = null;
     };
-  }, [asset, chainlinkCandles, binanceSymbol, binanceStreamSymbol, interval]);
+  }, [asset, chainlinkCandles, binanceSymbol, binanceStreamSymbol, interval, recalcKey]);
 
   useEffect(() => {
     if (!asset || !chainlinkCandles) return;
 
+    const gen = ++primaryFetchGenRef.current;
     candleMapRef.current = new Map();
     setReady(false);
+    onVolRef.current?.(null);
 
     const clSymbol = chainlinkKlineSymbol(asset);
     let disposed = false;
@@ -167,8 +184,8 @@ export function useSidebarChartVolatility({
     void fetchBackend(`${API_BASE}/api/v3/klines?${params}`)
       .then((r) => r.json())
       .then((klines: unknown[][]) => {
-        if (disposed || !Array.isArray(klines)) {
-          setReady(true);
+        if (disposed || gen !== primaryFetchGenRef.current || !Array.isArray(klines)) {
+          if (!disposed && gen === primaryFetchGenRef.current) setReady(true);
           return;
         }
         const map = candleMapRef.current;
@@ -178,7 +195,9 @@ export function useSidebarChartVolatility({
         }
         setReady(true);
       })
-      .catch(() => setReady(true));
+      .catch(() => {
+        if (!disposed && gen === primaryFetchGenRef.current) setReady(true);
+      });
 
     const unsub = subscribeChartKline(clSymbol, interval, {
       onMessage: (msg) => {
@@ -199,7 +218,7 @@ export function useSidebarChartVolatility({
       disposed = true;
       unsub();
     };
-  }, [asset, chainlinkCandles, interval]);
+  }, [asset, chainlinkCandles, interval, recalcKey]);
 
   /** Binance klines fallback when Chainlink σ cannot be computed (sparse CL history). */
   useEffect(() => {
@@ -209,6 +228,7 @@ export function useSidebarChartVolatility({
       return;
     }
 
+    const gen = ++fallbackFetchGenRef.current;
     binanceFallbackMapRef.current = new Map();
     setBinanceFallbackReady(false);
 
@@ -220,6 +240,7 @@ export function useSidebarChartVolatility({
     fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=100`)
       .then((r) => r.json())
       .then((klines: unknown[][]) => {
+        if (gen !== fallbackFetchGenRef.current) return;
         if (!Array.isArray(klines)) {
           setBinanceFallbackReady(true);
           return;
@@ -231,7 +252,9 @@ export function useSidebarChartVolatility({
         }
         setBinanceFallbackReady(true);
       })
-      .catch(() => setBinanceFallbackReady(true));
+      .catch(() => {
+        if (gen === fallbackFetchGenRef.current) setBinanceFallbackReady(true);
+      });
 
     const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${binanceStreamSymbol}@kline_${interval}`);
     binanceFallbackWsRef.current = ws;
@@ -263,9 +286,17 @@ export function useSidebarChartVolatility({
 
     return () => {
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
-      binanceFallbackWsRef.current = null;
+      if (binanceFallbackWsRef.current === ws) binanceFallbackWsRef.current = null;
     };
-  }, [asset, chainlinkCandles, binanceSymbol, binanceStreamSymbol, interval]);
+  }, [asset, chainlinkCandles, binanceSymbol, binanceStreamSymbol, interval, recalcKey]);
+
+  // Recompute when a candle bucket rolls even if the WS is quiet (esp. after market auto-switch).
+  useEffect(() => {
+    if (!asset) return;
+    const period = Math.min(Math.max(5_000, Math.floor(candleMs / 6)), 15_000);
+    const id = window.setInterval(() => setTick((n) => n + 1), period);
+    return () => window.clearInterval(id);
+  }, [asset, candleMs, recalcKey]);
 
   useEffect(() => {
     if (!asset) {

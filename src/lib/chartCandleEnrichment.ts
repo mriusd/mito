@@ -1,5 +1,8 @@
-/** Chart math-probability line + sidebar target-section math value. */
+/** Chart TWAP-BS math line + sidebar top Math (live settlement TWAP as S₀). */
 export const CHART_MATH_PROB_COLOR = '#eab308';
+
+/** Chart predicted-BS math line + sidebar bottom Math (predicted TWAP as S₀). */
+export const CHART_PRED_MATH_PROB_COLOR = '#f472b6';
 
 export type CandleBsEnrichment = {
   targetPrice?: number;

@@ -7,16 +7,19 @@ export const SidebarSpotStripMathButton = memo(function SidebarSpotStripMathButt
   mathCents,
   sidebarBookRef: _sidebarBookRef,
   onPickPrice,
+  /** Default yellow (TWAP BS). Pass turquoise for predicted BS. */
+  color = CHART_MATH_PROB_COLOR,
 }: {
   mathCents: number;
   sidebarBookRef: MutableRefObject<SidebarPolymarketBookSnapshot | null>;
   onPickPrice: (cents: string) => void;
+  color?: string;
 }) {
   return (
     <button
       type="button"
       className="inline-flex max-w-full items-center justify-center gap-0.5 whitespace-nowrap rounded-none border-0 bg-transparent p-0 text-[11px] font-bold font-sans tabular-nums shadow-none outline-none ring-0 cursor-pointer hover:underline focus-visible:ring-1 focus-visible:ring-amber-500/60 sidebar-readable-value"
-      style={{ color: CHART_MATH_PROB_COLOR }}
+      style={{ color }}
       onClick={() => onPickPrice(mathCents.toFixed(1))}
     >
       <CirclePercent className="h-2.5 w-2.5 shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />

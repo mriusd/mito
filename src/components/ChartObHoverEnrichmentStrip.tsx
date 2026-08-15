@@ -1,5 +1,7 @@
 import {
   chartEnrichmentMathCents,
+  CHART_MATH_PROB_COLOR,
+  CHART_PRED_MATH_PROB_COLOR,
   computeSpotTargetPriceDiff,
   formatChartEnrichmentUsd,
   type CandleBsEnrichment,
@@ -64,6 +66,13 @@ export function ChartObHoverEnrichmentStrip({
     predictedTwap,
   } = enrichment;
 
+  // Historical σ from candle.volatility (fraction), stored by polycandles as
+  // sidebar-style realized vol — not live GARCH / not live sidebar snapshot.
+  const volPct =
+    volatility != null && Number.isFinite(volatility) && volatility > 0
+      ? volatility * 100
+      : null;
+
   const pred = predictedTwap != null && predictedTwap > 0 ? predictedTwap : currentPrice;
   const twap = twap60 != null && twap60 > 0 ? twap60 : undefined;
   const spot = spotPrice != null && spotPrice > 0 ? spotPrice : undefined;
@@ -115,7 +124,11 @@ export function ChartObHoverEnrichmentStrip({
           </span>
         </div>
         <div className="min-h-[15px] flex items-center justify-center min-w-0">
-          <span className="text-[10px] font-bold tabular-nums text-cyan-300">
+          <span
+            className="text-[10px] font-bold tabular-nums"
+            style={{ color: CHART_MATH_PROB_COLOR }}
+            title="Yellow dashed chart line — BS from live TWAP"
+          >
             {twapMathCents != null ? `${twapMathCents.toFixed(1)}¢` : '—'}
           </span>
         </div>
@@ -144,8 +157,9 @@ export function ChartObHoverEnrichmentStrip({
           Spot
         </div>
         <div
-          className="text-[9px] font-medium leading-none text-gray-500 min-h-[14px] flex items-center justify-center"
-          title="B-S fair value using predicted settlement TWAP as S₀"
+          className="text-[9px] font-medium leading-none min-h-[14px] flex items-center justify-center"
+          style={{ color: CHART_PRED_MATH_PROB_COLOR }}
+          title="B-S fair value using predicted settlement TWAP as S₀ (pink dashed chart line)"
         >
           Math
         </div>
@@ -162,7 +176,11 @@ export function ChartObHoverEnrichmentStrip({
           </span>
         </div>
         <div className="min-h-[15px] flex items-center justify-center min-w-0">
-          <span className="text-[10px] font-bold tabular-nums text-cyan-300">
+          <span
+            className="text-[10px] font-bold tabular-nums"
+            style={{ color: CHART_PRED_MATH_PROB_COLOR }}
+            title="Pink dashed chart line — BS from predicted TWAP"
+          >
             {predMathCents != null ? `${predMathCents.toFixed(1)}¢` : '—'}
           </span>
         </div>
@@ -176,8 +194,13 @@ export function ChartObHoverEnrichmentStrip({
           <DeltaLine d={spotVsTarget} priceDec={priceDec} title="Spot − Target" />
         </div>
         <div className="min-h-[14px] flex items-center justify-center text-[9px] text-gray-500 tabular-nums">
-          {volatility != null && volatility > 0 ? (
-            <span title="Annualized volatility">σ {(volatility * 100).toFixed(1)}%</span>
+          {volPct != null ? (
+            <span
+              title="Historical realized σ at this candle (same formula as sidebar chart vol)"
+              className="tabular-nums"
+            >
+              σ {volPct.toFixed(1)}%
+            </span>
           ) : (
             <span className="text-transparent select-none" aria-hidden>
               σ

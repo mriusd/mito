@@ -26,6 +26,7 @@ import {
 } from '../lib/sidebarUpDownTargetStore';
 import { setSidebarSpotStripBsSnapshot } from '../lib/sidebarSpotStripStore';
 import { weatherMarketLocalMidnightExpiryMs } from '../lib/weatherMarketExpiry';
+import { CHART_PRED_MATH_PROB_COLOR } from '../lib/chartCandleEnrichment';
 import { SidebarMarketCountdownLabel } from './SidebarMarketCountdownLabel';
 import { SidebarSpotStripMathButton } from './SidebarSpotStripMathButton';
 import { SidebarSpotVolSigmaLabel } from './SidebarSpotVolSigmaLabel';
@@ -623,15 +624,18 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
               </span>
             </HelpTooltip>
           </div>
-          <div className="flex items-center justify-center gap-0.5 min-h-[15px] text-[9px] font-medium leading-none text-gray-500">
-            <CirclePercent className="h-[9px] w-[9px] shrink-0 opacity-80" strokeWidth={2.5} aria-hidden />
+          <div
+            className="flex items-center justify-center gap-0.5 min-h-[15px] text-[9px] font-medium leading-none"
+            style={{ color: CHART_PRED_MATH_PROB_COLOR }}
+          >
+            <CirclePercent className="h-[9px] w-[9px] shrink-0 opacity-90" strokeWidth={2.5} aria-hidden />
             <span className="shrink-0">Math</span>
             <HelpTooltip
               text={predMathTooltip}
               openOnHover
               wrapClassName="inline-flex shrink-0 items-center leading-none"
             >
-              <span className="flex size-[10px] shrink-0 cursor-help items-center justify-center rounded-full border border-gray-500 text-[7px] font-bold leading-none text-gray-400 hover:border-gray-300 hover:text-gray-200">
+              <span className="flex size-[10px] shrink-0 cursor-help items-center justify-center rounded-full border border-pink-500/70 text-[7px] font-bold leading-none text-pink-300/90 hover:border-pink-300 hover:text-pink-200">
                 ?
               </span>
             </HelpTooltip>
@@ -679,6 +683,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
                 mathCents={row.mathCents}
                 sidebarBookRef={sidebarBookRef}
                 onPickPrice={onPickPrice}
+                color={CHART_PRED_MATH_PROB_COLOR}
               />
             ) : (
               <span className="text-gray-600 text-[11px] sidebar-readable-value">—</span>

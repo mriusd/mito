@@ -4,7 +4,17 @@ let annualVolPct: number | null = null;
 const listeners = new Set<() => void>();
 
 export function setSidebarChartAnnualVolPct(next: number | null): void {
-  if (next === annualVolPct) return;
+  // Treat near-equal floats as equal (display is 0.1%); always accept null transitions.
+  if (next == null && annualVolPct == null) return;
+  if (
+    next != null &&
+    annualVolPct != null &&
+    Number.isFinite(next) &&
+    Number.isFinite(annualVolPct) &&
+    Math.abs(next - annualVolPct) < 1e-6
+  ) {
+    return;
+  }
   annualVolPct = next;
   for (const fn of listeners) fn();
 }

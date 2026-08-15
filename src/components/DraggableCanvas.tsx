@@ -87,6 +87,9 @@ const LazyTemperaturePanel = lazyWithChunkReload(() =>
 const LazyTemperatureBarChartPanel = lazyWithChunkReload(() =>
   import('./panels/TemperatureBarChartPanel').then((m) => ({ default: m.TemperatureBarChartPanel })),
 );
+const LazyCryptoBucketPanel = lazyWithChunkReload(() =>
+  import('./panels/CryptoBucketPanel').then((m) => ({ default: m.CryptoBucketPanel })),
+);
 const LazyWeatherMapPanel = lazyWithChunkReload(() =>
   import('./panels/WeatherMapPanel').then((m) => ({ default: m.WeatherMapPanel })),
 );
@@ -252,6 +255,8 @@ function renderPanel(panel: PanelConfig): ReactNode {
       return <LazyTemperaturePanel panelId={panel.id} />;
     case 'weather-temp-bars':
       return <LazyTemperatureBarChartPanel panelId={panel.id} />;
+    case 'crypto-buckets':
+      return <LazyCryptoBucketPanel panelId={panel.id} />;
     case 'weather-map':
       return <LazyWeatherMapPanel panelId={panel.id} />;
     case 'clock':
@@ -432,6 +437,7 @@ export const DraggableCanvas = memo(function DraggableCanvas() {
     'weather-temperature': 'Temperature',
     'weather-temp-bars': 'Temp Odds',
     'weather-map': 'Weather Map',
+    'crypto-buckets': 'Crypto Buckets',
     clock: 'Clock',
     spreads: 'Spreads',
   };

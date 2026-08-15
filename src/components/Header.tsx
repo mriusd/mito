@@ -116,6 +116,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'weather-temperature', title: 'Temperature', multi: true },
   { type: 'weather-temp-bars', title: 'Temp Odds', multi: true },
   { type: 'weather-map', title: 'Weather Map', multi: true },
+  { type: 'crypto-buckets', title: 'Crypto Buckets', multi: true },
   { type: 'clock', title: 'Clock', multi: true },
   { type: 'spreads', title: 'Spreads', multi: true },
   { type: 'chat', title: 'Chat' },

@@ -9,6 +9,7 @@ import {
   useSidebarChartAnnualVolPct,
   readNotifyMaxVolatilityPct,
 } from '../lib/sidebarChartVolStore';
+import { CHART_PRED_MATH_PROB_COLOR } from '../lib/chartCandleEnrichment';
 import type { SidebarPolymarketBookSnapshot } from './SidebarPolymarketOBHost';
 import { HelpTooltip } from './HelpTooltip';
 import { SidebarBarMidMarker } from './SidebarBarMidMarker';
@@ -88,7 +89,17 @@ export const SidebarYesMidProbBar = memo(function SidebarYesMidProbBar({
             <span className="text-gray-600 sidebar-readable-value">–</span>
           )}
           <span className="text-gray-600 mx-0.5">/</span>
-          <span className="text-gray-400 sidebar-readable-value">{m != null ? `${m.toFixed(1)} math` : '– math'}</span>
+          <span
+            className="sidebar-readable-value font-semibold"
+            style={{ color: m != null ? CHART_PRED_MATH_PROB_COLOR : undefined }}
+            title="Model YES ¢ from predicted TWAP (same as bottom Math / pink chart line)"
+          >
+            {m != null ? (
+              `${m.toFixed(1)} math`
+            ) : (
+              <span className="text-gray-400">– math</span>
+            )}
+          </span>
           <span className="text-gray-600 mx-0.5">/</span>
           <span
             className={`sidebar-readable-value ${volClass}${volBelowMax ? ' sidebar-vol-below-max-flash' : ''}`}

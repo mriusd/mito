@@ -360,6 +360,7 @@ export type PanelType =
   | 'weather-temperature'
   | 'weather-temp-bars'
   | 'weather-map'
+  | 'crypto-buckets'
   | 'clock'
   | 'spreads';
 

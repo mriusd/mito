@@ -10,7 +10,11 @@ import {
   maxInnerCentHeatmapSide,
   obSnapshotToCentHeatmap,
 } from './chartObHeatmap';
-import { chartEnrichmentMathCents, CHART_MATH_PROB_COLOR } from './chartCandleEnrichment';
+import {
+  chartEnrichmentMathCents,
+  CHART_MATH_PROB_COLOR,
+  CHART_PRED_MATH_PROB_COLOR,
+} from './chartCandleEnrichment';
 import type { LiveTradeCandle } from '../hooks/useLiveTradeCandles';
 import type { SidebarChartOrderLevel, SidebarChartPositionLevel } from './sidebarOrderbookAggregate';
 import { normalizeClobTokenId } from '../utils/format';
@@ -238,17 +242,24 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
     });
   }
 
-  // Yellow BS/math line: forward-fill last known math across gaps so the line does not
-  // vanish on expired markets (last bars often lack a fresh bs_prob after T≤0).
-  const mathLine: [number, number][] = [];
-  let lastMathCents: number | null = null;
+  // Yellow dashed: BS from live settlement TWAP (twap_bs_prob / sidebar top Math).
+  // Pink dashed (same pattern): BS from predicted TWAP (bs_prob / sidebar bottom Math).
+  // Forward-fill last known value so lines do not vanish on expired markets
+  // (last bars often lack a fresh bs_prob after T≤0).
+  const twapMathLine: [number, number][] = [];
+  const predMathLine: [number, number][] = [];
+  let lastTwapMathCents: number | null = null;
+  let lastPredMathCents: number | null = null;
   for (let i = 0; i < candles.length; i++) {
     const c = candles[i];
     if (c.time < minT - candleMs || c.time > maxT + candleMs) continue;
-    const cents = chartEnrichmentMathCents(c.enrichment?.bsProb, chartOutcome);
-    if (cents != null) lastMathCents = cents;
-    if (lastMathCents == null) continue;
-    mathLine.push([i, lastMathCents]);
+    const twapCents = chartEnrichmentMathCents(c.enrichment?.twapBsProb, chartOutcome);
+    if (twapCents != null) lastTwapMathCents = twapCents;
+    if (lastTwapMathCents != null) twapMathLine.push([i, lastTwapMathCents]);
+
+    const predCents = chartEnrichmentMathCents(c.enrichment?.bsProb, chartOutcome);
+    if (predCents != null) lastPredMathCents = predCents;
+    if (lastPredMathCents != null) predMathLine.push([i, lastPredMathCents]);
   }
 
   const markerSeriesData: {
@@ -443,15 +454,30 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
     });
   }
 
-  if (mathLine.length > 0) {
+  if (twapMathLine.length > 0) {
     series.push({
       type: 'line',
       name: 'math',
-      data: mathLine,
-      showSymbol: mathLine.length === 1,
+      data: twapMathLine,
+      showSymbol: twapMathLine.length === 1,
       symbolSize: 4,
       lineStyle: { color: CHART_MATH_PROB_COLOR, width: 1.5, type: 'dashed' },
       itemStyle: { color: CHART_MATH_PROB_COLOR },
+      z: 4,
+      silent: true,
+    });
+  }
+
+  if (predMathLine.length > 0) {
+    series.push({
+      type: 'line',
+      name: 'mathPred',
+      data: predMathLine,
+      showSymbol: predMathLine.length === 1,
+      symbolSize: 4,
+      // Same dash pattern / width as yellow TWAP math line (only color differs).
+      lineStyle: { color: CHART_PRED_MATH_PROB_COLOR, width: 1.5, type: 'dashed' },
+      itemStyle: { color: CHART_PRED_MATH_PROB_COLOR },
       z: 4,
       silent: true,
     });

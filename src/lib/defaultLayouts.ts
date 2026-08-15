@@ -128,6 +128,7 @@ const PANEL_MIN_PIXELS: Record<string, { minW: number; minH: number }> = {
   'weather-markets': { minW: 640, minH: 280 },
   'weather-temperature': { minW: 360, minH: 240 },
   'weather-temp-bars': { minW: 720, minH: 260 },
+  'crypto-buckets': { minW: 480, minH: 240 },
   'weather-map': { minW: 360, minH: 220 },
   clock: { minW: 200, minH: 120 },
   spreads: { minW: 360, minH: 200 },

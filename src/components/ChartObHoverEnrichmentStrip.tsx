@@ -36,7 +36,7 @@ function DeltaLine({ d, priceDec, title }: { d: PriceDelta | null; priceDec: num
       </span>
       <span>
         ({d.pct >= 0 ? '+' : ''}
-        {d.pct.toFixed(2)}%)
+        {d.pct.toFixed(3)}%)
       </span>
     </span>
   );

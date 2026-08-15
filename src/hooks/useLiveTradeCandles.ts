@@ -5,6 +5,7 @@ import { subscribeChartKline } from '../lib/chartWsShared';
 import { resolveLiveTradeChartWindow } from '../lib/walletInfoChartMarket';
 import { parseCandleOb, type CandleObSnapshot } from '../lib/candleObSnapshot';
 import { parseCexObSnapshot, type CexObCandleSnapshot } from '../lib/cexObSnapshot';
+import { parseCvdCandleSnapshot, type CvdCandleSnapshot } from '../lib/cvdCandleSnapshot';
 import { parseGexAssetSnapshot, type GexAssetSnapshot } from '../lib/deribitGexFeed';
 import {
   mergeCandleBsEnrichment,
@@ -50,6 +51,8 @@ export type LiveTradeCandle = {
   gex?: GexAssetSnapshot;
   gexBinance?: GexAssetSnapshot;
   gexOkx?: GexAssetSnapshot;
+  /** Polymarket trade CVD for this outcome token (up/down crypto candles). */
+  cvd?: CvdCandleSnapshot;
   enrichment?: CandleBsEnrichment;
   weather?: CandleWeatherSnapshot;
 };
@@ -97,6 +100,7 @@ export function aggregateHourlyCandles(
     let gex = first.gex;
     let gexBinance = first.gexBinance;
     let gexOkx = first.gexOkx;
+    let cvd = first.cvd;
     let enrichment = first.enrichment;
     let weather = first.weather;
     for (const p of parts) {
@@ -108,6 +112,7 @@ export function aggregateHourlyCandles(
       if (p.gex) gex = p.gex;
       if (p.gexBinance) gexBinance = p.gexBinance;
       if (p.gexOkx) gexOkx = p.gexOkx;
+      if (p.cvd) cvd = p.cvd;
       if (p.enrichment) enrichment = p.enrichment;
       if (p.weather) weather = p.weather;
     }
@@ -123,6 +128,7 @@ export function aggregateHourlyCandles(
       ...(gex ? { gex } : {}),
       ...(gexBinance ? { gexBinance } : {}),
       ...(gexOkx ? { gexOkx } : {}),
+      ...(cvd ? { cvd } : {}),
       ...(weather ? { weather } : {}),
       ...(enrichment ? { enrichment } : {}),
     });
@@ -309,6 +315,8 @@ export function useLiveTradeCandles({
         const ob = parseCandleOb(k[12]);
         const cexOb = parseCexObSnapshot(k[17]) ?? prev?.cexOb;
         const gex = parseGexAssetSnapshot(k[18]) ?? prev?.gex;
+        // non-slim index 21 = cvd JSON (see polycandles writeBinanceKlines)
+        const cvd = parseCvdCandleSnapshot(k[21]) ?? prev?.cvd;
         const gexBinance = parseGexAssetSnapshot(k[22]) ?? prev?.gexBinance;
         const gexOkx = parseGexAssetSnapshot(k[23]) ?? prev?.gexOkx;
         // REST row is authoritative — never inherit weather from a prior map entry.
@@ -324,6 +332,7 @@ export function useLiveTradeCandles({
           ...(ob ? { ob } : prev?.ob ? { ob: prev.ob } : {}),
           ...(cexOb ? { cexOb } : {}),
           ...(gex ? { gex } : {}),
+          ...(cvd ? { cvd } : {}),
           ...(gexBinance ? { gexBinance } : {}),
           ...(gexOkx ? { gexOkx } : {}),
           ...(weather ? { weather } : {}),
@@ -359,6 +368,7 @@ export function useLiveTradeCandles({
       let lastGex = undefined as LiveTradeCandle['gex'];
       let lastGexBinance = undefined as LiveTradeCandle['gexBinance'];
       let lastGexOkx = undefined as LiveTradeCandle['gexOkx'];
+      let lastCvd = undefined as LiveTradeCandle['cvd'];
       let lastEnrichment = undefined as LiveTradeCandle['enrichment'];
       for (const t of times) {
         const row = map.get(t)!;
@@ -367,6 +377,7 @@ export function useLiveTradeCandles({
         if (row.gex) lastGex = row.gex;
         if (row.gexBinance) lastGexBinance = row.gexBinance;
         if (row.gexOkx) lastGexOkx = row.gexOkx;
+        if (row.cvd) lastCvd = row.cvd;
         // Merge so partial ticks (spot only) keep prior bsProb for the math line.
         const mergedEnrich = mergeCandleBsEnrichment(row.enrichment, lastEnrichment);
         if (mergedEnrich) lastEnrichment = mergedEnrich;
@@ -377,6 +388,7 @@ export function useLiveTradeCandles({
           ...(row.gex ? {} : lastGex ? { gex: lastGex } : {}),
           ...(row.gexBinance ? {} : lastGexBinance ? { gexBinance: lastGexBinance } : {}),
           ...(row.gexOkx ? {} : lastGexOkx ? { gexOkx: lastGexOkx } : {}),
+          ...(row.cvd ? {} : lastCvd ? { cvd: lastCvd } : {}),
           ...(mergedEnrich ? { enrichment: mergedEnrich } : {}),
         });
       }
@@ -498,6 +510,7 @@ export function useLiveTradeCandles({
       const gex = parseGexAssetSnapshot(k.gex) ?? prev?.gex;
       const gexBinance = parseGexAssetSnapshot(k.gex_binance) ?? prev?.gexBinance;
       const gexOkx = parseGexAssetSnapshot(k.gex_okx) ?? prev?.gexOkx;
+      const cvd = parseCvdCandleSnapshot(k.cvd) ?? prev?.cvd;
       const parsedWeather = parseCandleWeather(k.weather);
       // Snapshot: trust payload only (omit = no weather). Update: keep prior if field absent.
       const weather = opts?.replaceWeather ? parsedWeather : parsedWeather ?? prev?.weather;
@@ -514,6 +527,7 @@ export function useLiveTradeCandles({
         ...(gex ? { gex } : {}),
         ...(gexBinance ? { gexBinance } : {}),
         ...(gexOkx ? { gexOkx } : {}),
+        ...(cvd ? { cvd } : {}),
         ...(weather ? { weather } : {}),
         ...(enrichment ? { enrichment } : {}),
       });
@@ -530,6 +544,8 @@ export function useLiveTradeCandles({
               applyWsKline(k as Record<string, unknown>, { replaceWeather: true });
             }
           }
+          // Snapshot only: fill gaps across history. Per-tick forward-fill was
+          // rewriting every bar and could pin transient live BS spikes onto neighbors.
           forwardFillEnrichment();
           publish(true);
           scheduleWsTick();
@@ -539,7 +555,27 @@ export function useLiveTradeCandles({
           const k = msg.data?.data?.k;
           if (!k) return;
           applyWsKline(k as Record<string, unknown>);
-          forwardFillEnrichment();
+          // Open-bucket tick: only backfill missing fields on *this* bar from the prior bar.
+          // Do not re-walk the whole series (avoids spreading a live BS glitch).
+          {
+            const openTime = (k as { t?: number }).t;
+            if (typeof openTime === 'number' && openTime > 0) {
+              const map = candleMapRef.current;
+              const row = map.get(openTime);
+              if (row) {
+                let prevEnrich = row.enrichment;
+                const times = [...map.keys()].sort((a, b) => a - b);
+                const idx = times.indexOf(openTime);
+                if (idx > 0) {
+                  prevEnrich = map.get(times[idx - 1]!)?.enrichment ?? prevEnrich;
+                }
+                const merged = mergeCandleBsEnrichment(row.enrichment, prevEnrich);
+                if (merged) {
+                  map.set(openTime, { ...row, enrichment: merged });
+                }
+              }
+            }
+          }
           publish();
           scheduleWsTick();
         } else if (msg.type === 'klineStreamDelete') {

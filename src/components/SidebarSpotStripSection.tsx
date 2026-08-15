@@ -93,7 +93,7 @@ function DeltaLine({
   if (!d) {
     return (
       <span className="inline-flex min-h-[15px] items-center text-transparent select-none" aria-hidden>
-        ↑0.00 (0.00%)
+        ↑0.00 (0.000%)
       </span>
     );
   }
@@ -111,7 +111,7 @@ function DeltaLine({
       </span>
       <span>
         ({d.pct >= 0 ? '+' : ''}
-        {d.pct.toFixed(2)}%)
+        {d.pct.toFixed(3)}%)
       </span>
     </span>
   );

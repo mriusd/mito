@@ -12,6 +12,7 @@ import {
 } from './chartObHeatmap';
 import {
   chartEnrichmentMathCents,
+  despikeMathCentsSeries,
   CHART_MATH_PROB_COLOR,
   CHART_PRED_MATH_PROB_COLOR,
 } from './chartCandleEnrichment';
@@ -245,9 +246,10 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
   // Yellow dashed: BS from live settlement TWAP (twap_bs_prob / sidebar top Math).
   // Pink dashed (same pattern): BS from predicted TWAP (bs_prob / sidebar bottom Math).
   // Forward-fill last known value so lines do not vanish on expired markets
-  // (last bars often lack a fresh bs_prob after T≤0).
-  const twapMathLine: [number, number][] = [];
-  const predMathLine: [number, number][] = [];
+  // (last bars often lack a fresh bs_prob after T≤0). Despike isolated needles —
+  // live open-bucket recompute can glitch one bar; full HTTP reload looks smooth.
+  const twapRaw: Array<{ i: number; v: number | null }> = [];
+  const predRaw: Array<{ i: number; v: number | null }> = [];
   let lastTwapMathCents: number | null = null;
   let lastPredMathCents: number | null = null;
   for (let i = 0; i < candles.length; i++) {
@@ -255,11 +257,23 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
     if (c.time < minT - candleMs || c.time > maxT + candleMs) continue;
     const twapCents = chartEnrichmentMathCents(c.enrichment?.twapBsProb, chartOutcome);
     if (twapCents != null) lastTwapMathCents = twapCents;
-    if (lastTwapMathCents != null) twapMathLine.push([i, lastTwapMathCents]);
+    twapRaw.push({ i, v: lastTwapMathCents });
 
     const predCents = chartEnrichmentMathCents(c.enrichment?.bsProb, chartOutcome);
     if (predCents != null) lastPredMathCents = predCents;
-    if (lastPredMathCents != null) predMathLine.push([i, lastPredMathCents]);
+    predRaw.push({ i, v: lastPredMathCents });
+  }
+  const twapDespiked = despikeMathCentsSeries(twapRaw.map((p) => p.v));
+  const predDespiked = despikeMathCentsSeries(predRaw.map((p) => p.v));
+  const twapMathLine: [number, number][] = [];
+  const predMathLine: [number, number][] = [];
+  for (let k = 0; k < twapRaw.length; k++) {
+    const v = twapDespiked[k];
+    if (v != null) twapMathLine.push([twapRaw[k]!.i, v]);
+  }
+  for (let k = 0; k < predRaw.length; k++) {
+    const v = predDespiked[k];
+    if (v != null) predMathLine.push([predRaw[k]!.i, v]);
   }
 
   const markerSeriesData: {

@@ -32,6 +32,43 @@ function parseEnrichmentNum(v: unknown): number | undefined {
   return n;
 }
 
+/**
+ * Normalize BS probability to [0, 1].
+ * Live WS / DB occasionally emit percent (0–100) instead of fraction (0–1);
+ * treating 50 as 50% would become 5000¢ and clamp to 99.9 → fake spikes.
+ */
+export function normalizeBsProbability(raw: number | undefined | null): number | undefined {
+  if (raw == null || !Number.isFinite(raw) || raw < 0) return undefined;
+  let p = raw;
+  if (p > 1 && p <= 100) p = p / 100;
+  if (p > 1) return undefined; // garbage
+  return p;
+}
+
+/**
+ * Remove isolated needles from a ¢ series (live open-bucket BS can glitch for one bar).
+ * A point is a spike if it jumps > maxJump from both neighbors while neighbors agree.
+ */
+export function despikeMathCentsSeries(
+  points: Array<number | null>,
+  maxJump = 18,
+): Array<number | null> {
+  if (points.length < 3) return points;
+  const out = points.slice();
+  for (let i = 1; i < out.length - 1; i++) {
+    const a = out[i - 1];
+    const b = out[i];
+    const c = out[i + 1];
+    if (a == null || b == null || c == null) continue;
+    if (Math.abs(b - a) > maxJump && Math.abs(b - c) > maxJump && Math.abs(a - c) <= maxJump) {
+      out[i] = (a + c) / 2;
+    }
+  }
+  // Trailing one-bar needle (live open candle): jump from prev then no next yet.
+  // Handled when a later bar arrives; no action here.
+  return out;
+}
+
 export function parseCandleBsEnrichment(raw: {
   target_price?: unknown;
   current_price?: unknown;
@@ -47,8 +84,17 @@ export function parseCandleBsEnrichment(raw: {
   const targetPrice = parseEnrichmentNum(raw.target_price);
   const currentPrice = parseEnrichmentNum(raw.current_price);
   const volatility = parseEnrichmentNum(raw.volatility);
-  const bsProb = parseEnrichmentNum(raw.bs_prob);
-  const twapBsProb = parseEnrichmentNum(raw.twap_bs_prob);
+  // Probs: allow 0; normalize percent→fraction. Do not use parseEnrichmentNum (rejects ≤0 and doesn't normalize).
+  const bsProb = (() => {
+    if (raw.bs_prob == null || raw.bs_prob === '') return undefined;
+    const n = typeof raw.bs_prob === 'number' ? raw.bs_prob : parseFloat(String(raw.bs_prob));
+    return normalizeBsProbability(n);
+  })();
+  const twapBsProb = (() => {
+    if (raw.twap_bs_prob == null || raw.twap_bs_prob === '') return undefined;
+    const n = typeof raw.twap_bs_prob === 'number' ? raw.twap_bs_prob : parseFloat(String(raw.twap_bs_prob));
+    return normalizeBsProbability(n);
+  })();
   const spotPrice = parseEnrichmentNum(raw.spot_price) ?? parseEnrichmentNum(raw.spot);
   const twap30 = parseEnrichmentNum(raw.twap_30);
   const twap60 = parseEnrichmentNum(raw.twap_60);
@@ -135,8 +181,8 @@ export function chartEnrichmentMathCents(
   bsProb: number | undefined,
   chartOutcome: 'YES' | 'NO',
 ): number | null {
-  // Allow 0 (resolved / deep OTM); only reject missing / non-finite.
-  if (bsProb == null || !Number.isFinite(bsProb) || bsProb < 0) return null;
-  const yesCents = Math.max(0, Math.min(99.9, bsProb * 100));
+  const p = normalizeBsProbability(bsProb);
+  if (p == null) return null;
+  const yesCents = Math.max(0, Math.min(99.9, p * 100));
   return chartOutcome === 'YES' ? yesCents : 100 - yesCents;
 }

@@ -651,6 +651,8 @@ export interface WalletPosition {
   firstTradeTime: number;
   lastTradeTime: number;
   marketAsset: string;
+  /** Same as marketAsset when set from markets.asset join (BTC/ETH/…). */
+  underlyingAsset?: string;
   marketType: string;
   marketTimeframe: string;
   resultYes?: number;

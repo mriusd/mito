@@ -129,6 +129,8 @@ export interface Market {
   signalType?: string;
   // Up or Down target price from Gamma API
   priceToBeat?: number;
+  /** Base asset when known (BTC/ETH/…); wallet ledger / chart CEX hover. */
+  underlyingAsset?: string;
 }
 
 export interface Position {

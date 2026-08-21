@@ -1,0 +1,36 @@
+---
+description: Never deploy, kill, or restart services on mito — edit only locally
+alwaysApply: true
+---
+
+# No mito deploy / no process control
+
+Never deploy code to mito. Never kill, start, or restart processes on mito.
+Change code **only locally**. The user deploys and restarts manually.
+
+This covers polybot-react and related backends worked from this workspace
+(polycandles, mitobot, gobot, etc.).
+
+## Forbidden
+
+- SSH (or any remote) to **build, copy, install, restart, kill**, or run app binaries on mito
+- `scp`, `rsync`, or writing source/binaries under `/root/prog/*`, `/mnt/polygon/*`, or similar
+- `pkill`, `kill`, systemd, tmux, `nohup`, or any start/stop/restart of polycandles / mitobot / other mito apps
+- Replacing binaries or swapping `*.new` / `*.prev` on the server
+- Implied deploy after a local fix ("restart so it picks up changes")
+
+## Allowed
+
+- Edit, build, and test **locally**
+- SSH only to **read** (logs, status, `grep`, `pgrep` for diagnosis) — never to change process or deploy
+- Tell the user exact commands to run on mito if deploy/restart is needed
+
+## After code changes
+
+Stop at local work. Offer mito commands in chat; do **not** run them.
+
+## Overrides
+
+Only if the user **explicitly** asks in that message to deploy / kill / restart
+on mito (e.g. "deploy polycandles", "kill polycandles on mito").
+A code fix alone is not permission to deploy.

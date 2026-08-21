@@ -34,11 +34,23 @@ import { SidebarOrderbookBookGrid } from './SidebarOrderbookBookGrid';
 import type { CandleBsEnrichment } from '../lib/chartCandleEnrichment';
 import { ChartObHoverEnrichmentStrip } from './ChartObHoverEnrichmentStrip';
 import { ChartObHoverOhlcvStrip, type ChartObHoverOhlcv } from './ChartObHoverOhlcvStrip';
+import { ChartObHoverCvdStrip, cvdBarsFromCandles } from './ChartObHoverCvdStrip';
+import { CvdBarChart } from './CvdBarChart';
 import { ChartCexObHoverGrid } from './ChartCexObHoverGrid';
 import { ChartGexHoverGrid } from './ChartGexHoverGrid';
 import { ChartWeatherHoverPanel } from './ChartWeatherHoverPanel';
 import { useLiveTradeCandles } from '../hooks/useLiveTradeCandles';
 import type { CandleWeatherSnapshot } from '../lib/candleWeatherSnapshot';
+import type { CvdCandleSnapshot } from '../lib/cvdCandleSnapshot';
+import {
+  isOppLegEmptyStub,
+  mergeOppCandleSnapshot,
+  oppCandleSnapshotFromLive,
+  oppSweepLegFromCandleOb,
+  type OppCandleSnapshot,
+} from '../lib/oppCandleSnapshot';
+import { useSidebarAskSweepOpp } from '../lib/sidebarAskSweepOppStore';
+import type { CvdBar } from '../lib/binanceCvdFeed';
 import {
   buildLiveTradeChartOption,
   buildLiveTradeChartSeriesUpdate,
@@ -81,10 +93,12 @@ function chartIntervalLabel(iv: ChartInterval): string {
   return iv;
 }
 const LIVE_TRADE_CHART_INTERVAL_LS_KEY = 'polybot-live-trade-chart-interval';
+/** Wallet-info panel chart — separate from sidebar so 5s defaults don't empty wallet charts. */
+export const WALLET_INFO_CHART_INTERVAL_LS_KEY = 'polybot-wallet-info-chart-interval';
 
-function readStoredChartInterval(): ChartInterval | null {
+function readStoredChartInterval(key: string = LIVE_TRADE_CHART_INTERVAL_LS_KEY): ChartInterval | null {
   try {
-    const v = localStorage.getItem(LIVE_TRADE_CHART_INTERVAL_LS_KEY);
+    const v = localStorage.getItem(key);
     if (v && (CHART_INTERVALS as readonly string[]).includes(v)) return v as ChartInterval;
   } catch {
     /* ignore */
@@ -92,9 +106,9 @@ function readStoredChartInterval(): ChartInterval | null {
   return null;
 }
 
-function persistChartInterval(iv: ChartInterval) {
+function persistChartInterval(iv: ChartInterval, key: string = LIVE_TRADE_CHART_INTERVAL_LS_KEY) {
   try {
-    localStorage.setItem(LIVE_TRADE_CHART_INTERVAL_LS_KEY, iv);
+    localStorage.setItem(key, iv);
   } catch {
     /* ignore */
   }
@@ -111,8 +125,14 @@ interface LiveTradeChartProps {
   /**
    * When true, do not restore the global localStorage interval.
    * Wallet-info charts often inherit a stored `5s` while that series is empty after expiry.
+   * Prefer `intervalStorageKey` when the choice should still persist across markets.
    */
   ignoreStoredInterval?: boolean;
+  /**
+   * Persist interval under this key (e.g. wallet-info). Independent of the global
+   * sidebar key. When set, market switches keep the last chosen resolution.
+   */
+  intervalStorageKey?: string;
   /** When set, chart stays on this interval (weather Temp Odds only exist on 5m). */
   lockInterval?: string;
   chainlinkAsset?: string;
@@ -168,6 +188,7 @@ export function LiveTradeChart({
   intervalContext,
   defaultIntervalOverride,
   ignoreStoredInterval = false,
+  intervalStorageKey,
   lockInterval,
   chainlinkAsset,
   hidePriceLines,
@@ -199,6 +220,11 @@ export function LiveTradeChart({
     defaultInterval(intervalContext)) as ChartInterval;
   const [interval, setInterval_] = useState<ChartInterval>(() => {
     if (lockedInterval) return lockedInterval;
+    if (intervalStorageKey) {
+      const stored = readStoredChartInterval(intervalStorageKey);
+      if (stored) return stored;
+      return resolvedDefaultInterval;
+    }
     if (!ignoreStoredInterval) {
       const stored = readStoredChartInterval();
       if (stored) return stored;
@@ -223,6 +249,10 @@ export function LiveTradeChart({
     weather?: CandleWeatherSnapshot;
     ohlcv: ChartObHoverOhlcv;
     enrichment?: CandleBsEnrichment;
+    opp?: OppCandleSnapshot;
+    /** Polymarket CVD bars through hovered candle (chart resolution). */
+    cvdBars?: CvdBar[];
+    cvdHovered?: CvdCandleSnapshot | null;
   } | null>(null);
   const [hoverObPos, setHoverObPos] = useState<{ left: number; top: number } | null>(null);
   const hoverObPopupRef = useRef<HTMLDivElement>(null);
@@ -246,12 +276,19 @@ export function LiveTradeChart({
   const setChartInterval = useCallback((iv: ChartInterval) => {
     if (lockedInterval) return;
     setInterval_(iv);
-    persistChartInterval(iv);
+    if (intervalStorageKey) {
+      persistChartInterval(iv, intervalStorageKey);
+    } else if (!ignoreStoredInterval) {
+      persistChartInterval(iv);
+    }
     dataZoomRef.current = null;
-  }, [lockedInterval]);
+  }, [lockedInterval, intervalStorageKey, ignoreStoredInterval]);
 
   const candleMs = INTERVAL_MS[interval] || 60000;
   const enrichmentPriceDec = chainlinkAsset?.toUpperCase() === 'XRP' ? 4 : 2;
+  const liveAskSweepOpp = useSidebarAskSweepOpp();
+  const liveAskSweepOppRef = useRef(liveAskSweepOpp);
+  liveAskSweepOppRef.current = liveAskSweepOpp;
 
   // Always load YES-token klines (polycandles stores the YES series). Invert in the
   // view layer for DOWN/NO so the toggle is instant and never depends on a NO-token feed.
@@ -262,7 +299,8 @@ export function LiveTradeChart({
     endTime,
     interval,
     candleMs,
-    // Wallet + sidebar candle hover need poly OB / GEX blobs when present on candles.
+    // Always pull enrich when hover is on (OB/GEX). CVD now also ships on slim klines
+    // so wallet-info / market-view charts get Δ without waiting for enrich.
     includeCandleEnrichment: candleObHover,
   });
 
@@ -338,19 +376,27 @@ export function LiveTradeChart({
     dataZoomRef.current = null;
   }, [ready, candles.length, tokenId, interval, lockedInterval, candlesRef, marketIntervalKey]);
 
-  // Wallet-info: pin to default interval only when the *market* changes — not when the
-  // user toggles UP/DOWN (that only changes tokenId / soundMute* stays the same).
+  // On *market* change (not UP/DOWN token flip): clear empty-ladder state.
+  // With intervalStorageKey (wallet-info), keep the user's resolution across markets.
+  // Legacy ignoreStoredInterval without a key still snaps back to the context default.
   useEffect(() => {
     emptyFallbackTriedRef.current = '';
     if (lockedInterval) {
       setInterval_(lockedInterval);
       return;
     }
+    if (intervalStorageKey) {
+      // Re-apply stored preference (empty-data ladder may have stepped up temporarily).
+      const stored = readStoredChartInterval(intervalStorageKey);
+      setInterval_(stored ?? resolvedDefaultInterval);
+      dataZoomRef.current = null;
+      return;
+    }
     if (ignoreStoredInterval) {
       setInterval_(resolvedDefaultInterval);
       dataZoomRef.current = null;
     }
-  }, [marketIntervalKey, lockedInterval, ignoreStoredInterval, resolvedDefaultInterval]);
+  }, [marketIntervalKey, lockedInterval, ignoreStoredInterval, intervalStorageKey, resolvedDefaultInterval]);
 
   // 1h/4h/1d: axis follows loaded history (not short market-window startTime, which clipped to a few bars).
   const chartAxisStartTime = useMemo(() => {
@@ -383,6 +429,22 @@ export function LiveTradeChart({
   }, [startTime, endTime, ready, candles.length]);
 
   const candleAxisSig = liveTradeCandleAxisSig(candles);
+
+  // YES-space CVD bars under the chart (Δ + Σ), clipped to visible dataZoom window.
+  const chartCvdBars = useMemo((): CvdBar[] => {
+    void wsTick;
+    void dataZoomTick;
+    void candleAxisSig;
+    const src = candlesRef.current.length > 0 ? candlesRef.current : candles;
+    if (src.length === 0) return [];
+    const dz = dataZoomRef.current;
+    const startPct = dz?.start ?? 0;
+    const endPct = dz?.end ?? 100;
+    const i0 = Math.max(0, Math.floor((startPct / 100) * src.length));
+    const i1 = Math.min(src.length - 1, Math.max(i0, Math.ceil((endPct / 100) * src.length) - 1));
+    const t0 = src[i0]?.time ?? 0;
+    return cvdBarsFromCandles(src, i1).filter((b) => b.t >= t0);
+  }, [candles, candlesRef, wsTick, dataZoomTick, candleAxisSig]);
   // Include isNo so option rebuilds on UP/DOWN even when the axis (times) is unchanged.
   const viewAxisSig = `${candleAxisSig}|${isNo ? 'N' : 'Y'}`;
 
@@ -537,15 +599,11 @@ export function LiveTradeChart({
     };
     const zooms = opt.dataZoom || [];
     const xDz = zooms.find((z) => z.xAxisIndex != null) || zooms[0];
-    const yDz = zooms.find((z) => z.yAxisIndex != null);
+    // Price Y is fixed 0–100¢ — only persist time-axis zoom.
     const next: LiveTradeDataZoomState = {
       start: typeof xDz?.start === 'number' ? xDz.start : dataZoomRef.current?.start ?? 0,
       end: typeof xDz?.end === 'number' ? xDz.end : dataZoomRef.current?.end ?? 100,
     };
-    if (typeof yDz?.start === 'number' && typeof yDz?.end === 'number') {
-      next.yStart = yDz.start;
-      next.yEnd = yDz.end;
-    }
     dataZoomRef.current = next;
     syncOrderHandles();
   }, [getChart, syncOrderHandles]);
@@ -682,24 +740,25 @@ export function LiveTradeChart({
         return;
       }
 
-      // Prefer this bar's enrich blobs; else walk neighbors; else live Binance/OKX books.
+      // Prefer this bar's enrich blobs. Walk neighbors for CEX/GEX/enrichment only —
+      // never borrow poly OB or opp$ from another candle (made every 5s bar look identical).
       let cexOb = nearest.cexOb;
-      let polyOb = nearest.ob;
+      const polyOb = nearest.ob;
       let gex = nearest.gex;
       let gexBinance = nearest.gexBinance;
       let gexOkx = nearest.gexOkx;
       let enrichment = nearest.enrichment;
-      if (!cexOb || !polyOb || !gex) {
+      let opp = nearest.opp;
+      if (!cexOb || !gex || !enrichment) {
         for (let j = idx - 1; j >= 0; j--) {
           const prev = live[j];
           if (!prev) break;
           if (!cexOb && prev.cexOb) cexOb = prev.cexOb;
-          if (!polyOb && prev.ob) polyOb = prev.ob;
           if (!gex && prev.gex) gex = prev.gex;
           if (!gexBinance && prev.gexBinance) gexBinance = prev.gexBinance;
           if (!gexOkx && prev.gexOkx) gexOkx = prev.gexOkx;
           if (!enrichment && prev.enrichment) enrichment = prev.enrichment;
-          if (cexOb && polyOb && gex) break;
+          if (cexOb && gex && enrichment) break;
         }
       }
       if (!cexOb || !gexBinance || !gexOkx) {
@@ -715,6 +774,43 @@ export function LiveTradeChart({
       // Live asset-level CEX books — same data as SpotOrderbookPanel / sidebar hover.
       if (!cexOb) cexOb = liveCexObRef.current ?? undefined;
 
+      // Prefer this candle's poly OB ask-sweep for the charted outcome — replaces
+      // empty stubs ({0,0,0}) that blocked real mid-market books from showing.
+      // Preserve flip%/wall fields from the candle opp JSON when patching legs.
+      if (polyOb) {
+        const leg = oppSweepLegFromCandleOb(polyOb);
+        if (leg) {
+          if (isNo) {
+            if (isOppLegEmptyStub(opp?.no)) {
+              opp = { ...opp, yes: opp?.yes, no: leg, updatedAt: opp?.updatedAt };
+            }
+          } else if (isOppLegEmptyStub(opp?.yes)) {
+            opp = { ...opp, yes: leg, no: opp?.no, updatedAt: opp?.updatedAt };
+          }
+        }
+      }
+      // Live opp$ only on the latest (open) candle — fills the other leg / stubs.
+      const isLatestBar = idx === live.length - 1;
+      if (isLatestBar) {
+        const liveOpp = oppCandleSnapshotFromLive(
+          liveAskSweepOppRef.current.yesOppUsd,
+          liveAskSweepOppRef.current.noOppUsd,
+        );
+        // live as primary for stubs: mergeOpp prefers non-stub legs from either side
+        opp = mergeOppCandleSnapshot(opp, liveOpp);
+      }
+      // Still one-sided → pad the other leg with $0 so both columns always show.
+      if (opp && (opp.yes || opp.no) && (isOppLegEmptyStub(opp.yes) || isOppLegEmptyStub(opp.no))) {
+        if (!isOppLegEmptyStub(opp.yes) || !isOppLegEmptyStub(opp.no)) {
+          opp = {
+            ...opp,
+            yes: isOppLegEmptyStub(opp.yes) ? { shares: 0, cost: 0, profit: 0 } : opp.yes,
+            no: isOppLegEmptyStub(opp.no) ? { shares: 0, cost: 0, profit: 0 } : opp.no,
+            updatedAt: opp.updatedAt,
+          };
+        }
+      }
+
       const hasPolyOb =
         polyOb != null && (polyOb.bids.length > 0 || polyOb.asks.length > 0);
       const hasCexOb = cexOb != null;
@@ -722,6 +818,9 @@ export function LiveTradeChart({
       const hasGexBinance = gexBinance != null;
       const hasGexOkx = gexOkx != null;
       const hasWeather = nearest.weather != null;
+      // CVD: always YES-space (NO buys→YES sells); never flip with DOWN/NO candle view.
+      const cvdBars = cvdBarsFromCandles(live, idx);
+      const cvdHovered = nearest.cvd ?? null;
       // Always show popup (OHLCV at minimum) — don't require OB/GEX/weather on that bar.
       setHoverOb({
         clientX,
@@ -734,6 +833,8 @@ export function LiveTradeChart({
         ...(hasWeather ? { weather: nearest.weather } : {}),
         ohlcv,
         enrichment,
+        ...(opp ? { opp } : {}),
+        ...(cvdBars.length > 0 || cvdHovered ? { cvdBars, cvdHovered } : {}),
       });
     },
     [candlesRef, candleObHover, isNo],
@@ -1027,6 +1128,37 @@ export function LiveTradeChart({
             updateAxisPointer: onUpdateAxisPointer,
           }}
         />
+        {chartCvdBars.length > 0 ? (
+          <div className="mt-1 space-y-1 border-t border-gray-800/80 pt-1 px-0.5">
+            <div className="flex items-center justify-between px-0.5">
+              <span className="text-[8px] font-bold uppercase tracking-wide text-sky-400/90">
+                CVD · YES · Δ
+              </span>
+              <span className="text-[8px] text-gray-500">{chartIntervalLabel(interval)}</span>
+            </div>
+            <CvdBarChart
+              bars={chartCvdBars}
+              barCount={Math.max(chartCvdBars.length, 1)}
+              intervalLabel={chartIntervalLabel(interval)}
+              mode="delta"
+              compact
+              emptyLabel="No CVD"
+            />
+            <div className="flex items-center justify-between px-0.5 pt-0.5">
+              <span className="text-[8px] font-bold uppercase tracking-wide text-gray-500">
+                Cumulative Σ
+              </span>
+            </div>
+            <CvdBarChart
+              bars={chartCvdBars}
+              barCount={Math.max(chartCvdBars.length, 1)}
+              intervalLabel={chartIntervalLabel(interval)}
+              mode="cum"
+              compact
+              emptyLabel="No cum CVD"
+            />
+          </div>
+        ) : null}
         {hoverOhlcv ? (
           <div
             className="pointer-events-none absolute left-9 top-1 z-[5] text-[9px] font-bold font-mono tabular-nums whitespace-nowrap"
@@ -1093,11 +1225,11 @@ export function LiveTradeChart({
           ? createPortal(
               <div
                 ref={hoverObPopupRef}
-                className="fixed z-[60150] bg-gray-900/95 border border-gray-600 rounded-lg shadow-xl p-2 pointer-events-none"
+                className="fixed z-[80000] bg-gray-900/95 border border-gray-600 rounded-lg shadow-xl p-2 pointer-events-none"
                 style={{
                   left: hoverObPos?.left ?? hoverOb.clientX + 10,
                   top: hoverObPos?.top ?? Math.max(10, hoverOb.clientY - 100),
-                  width: hoverOb.weather ? 520 : 320,
+                  width: hoverOb.weather ? 520 : hoverOb.cvdBars && hoverOb.cvdBars.length > 0 ? 360 : 320,
                   maxHeight: '80vh',
                   overflowY: 'auto',
                 }}
@@ -1120,9 +1252,18 @@ export function LiveTradeChart({
                       />
                       <ChartObHoverEnrichmentStrip
                         enrichment={hoverOb.enrichment}
+                        opp={hoverOb.opp}
                         priceDec={enrichmentPriceDec}
                         chartOutcome={chartOutcome}
                       />
+                      {hoverOb.cvdBars && hoverOb.cvdBars.length > 0 ? (
+                        <ChartObHoverCvdStrip
+                          bars={hoverOb.cvdBars}
+                          highlightT={hoverOb.ohlcv.timeMs}
+                          intervalLabel={chartIntervalLabel(interval)}
+                          hovered={hoverOb.cvdHovered}
+                        />
+                      ) : null}
                       {polyDisplay ? (
                         <SidebarOrderbookBookGrid
                           displayBids={polyDisplay.displayBids}

@@ -70,6 +70,8 @@ export type SidebarRightLiveTradeChartProps = {
   intervalSelector?: 'buttons' | 'dropdown';
   /** When true, ignore global localStorage interval (wallet dialog — stored 5s left charts empty). */
   ignoreStoredInterval?: boolean;
+  /** Persist resolution under this key across market switches (wallet-info chart). */
+  intervalStorageKey?: string;
   chartOutcome?: 'YES' | 'NO';
   onChartOutcomeChange?: (value: 'YES' | 'NO') => void;
   outcomeSync?: { enabled: boolean; onToggle: () => void };
@@ -95,6 +97,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
   chartEndTime,
   intervalSelector = 'buttons',
   ignoreStoredInterval = false,
+  intervalStorageKey,
   chartOutcome: chartOutcomeProp,
   onChartOutcomeChange,
   outcomeSync,
@@ -284,6 +287,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
         intervalContext={upDownIntervalContext}
         defaultIntervalOverride={upDownKlineDefaultInterval}
         ignoreStoredInterval={ignoreStoredInterval}
+        intervalStorageKey={intervalStorageKey}
         chainlinkAsset={upDownAsset || marketAsset || undefined}
         hidePriceLines
         intervalSelector={intervalSelector}
@@ -312,6 +316,7 @@ export const SidebarRightLiveTradeChart = memo(function SidebarRightLiveTradeCha
       endTime={endTime}
       defaultIntervalOverride="5m"
       ignoreStoredInterval={ignoreStoredInterval}
+      intervalStorageKey={intervalStorageKey}
       lockInterval={isWeather ? '5m' : undefined}
       // chainlinkAsset doubles as CEX OB asset key (BTC/ETH/SOL/XRP).
       chainlinkAsset={marketAsset || undefined}

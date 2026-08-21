@@ -8,9 +8,10 @@ import {
   clobTokenIdsFromWalletPosition,
   walletInfoChartMarketWithOutcomeTokens,
 } from '../lib/walletInfoChartMarket';
-import { wsTradeToFillRow } from '../lib/walletInfoFillRows';
+import { chartOutcomeFromEarliestFill, wsTradeToFillRow } from '../lib/walletInfoFillRows';
 import type { Market } from '../types';
 import { SidebarRightLiveTradeChart } from './SidebarRightLiveTradeChart';
+import { WALLET_INFO_CHART_INTERVAL_LS_KEY } from './LiveTradeChart';
 
 export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
   open,
@@ -19,6 +20,8 @@ export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
   selectedMarketMeta,
   positionForMarket = null,
   focusMarketSeq = 0,
+  /** History “trades for market”: seed YES/NO from earliest fill’s outcome token. */
+  outcomeFromFirstTrade = false,
 }: {
   open: boolean;
   wallet: string;
@@ -26,6 +29,7 @@ export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
   selectedMarketMeta: Market | null;
   positionForMarket?: WalletPosition | null;
   focusMarketSeq?: number;
+  outcomeFromFirstTrade?: boolean;
 }) {
   const enabled = open && !!wallet && !!selectedMarketId.trim();
   const { trades: wsMarketTrades } = useWalletMarketTradesWS(wallet, selectedMarketId, enabled);
@@ -36,6 +40,7 @@ export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
   const walletInfoChartTrades = useThrottledPolymarketChartTrades(500);
   const [walletChartOutcome, setWalletChartOutcome] = useState<'YES' | 'NO'>('YES');
   const userChartOverrideRef = useRef(false);
+  const firstTradeSeededRef = useRef(false);
   const [chartOutcomeTokens, setChartOutcomeTokens] = useState<{
     tokenIdYes: string;
     tokenIdNo: string;
@@ -89,12 +94,33 @@ export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
 
   useEffect(() => {
     userChartOverrideRef.current = false;
+    firstTradeSeededRef.current = false;
   }, [wallet, selectedMarketId, focusMarketSeq]);
 
   useEffect(() => {
     if (userChartOverrideRef.current) return;
+    if (outcomeFromFirstTrade) {
+      if (firstTradeSeededRef.current) return;
+      const fromFirst = chartOutcomeFromEarliestFill(ledgerFillsForMarkers, selectedMarketMeta);
+      if (fromFirst) {
+        firstTradeSeededRef.current = true;
+        setWalletChartOutcome(fromFirst);
+        return;
+      }
+      // Fills not loaded yet — lean fallback until earliest fill arrives.
+      setWalletChartOutcome(walletDirectionalChartOutcome(positionForMarket));
+      return;
+    }
     setWalletChartOutcome(walletDirectionalChartOutcome(positionForMarket));
-  }, [wallet, selectedMarketId, focusMarketSeq, positionForMarket]);
+  }, [
+    wallet,
+    selectedMarketId,
+    focusMarketSeq,
+    positionForMarket,
+    outcomeFromFirstTrade,
+    ledgerFillsForMarkers,
+    selectedMarketMeta,
+  ]);
 
   const selectedMarketForChart = useMemo(() => {
     const fromFetch = chartOutcomeTokens;
@@ -133,6 +159,7 @@ export const WalletInfoPanelLiveChart = memo(function WalletInfoPanelLiveChart({
         }}
         intervalSelector="dropdown"
         ignoreStoredInterval
+        intervalStorageKey={WALLET_INFO_CHART_INTERVAL_LS_KEY}
         volumeSpikeAlerts={false}
       />
     </div>

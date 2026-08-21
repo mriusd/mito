@@ -152,6 +152,8 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
               setChartOutcome(next);
             }}
             intervalSelector="dropdown"
+            ignoreStoredInterval
+            intervalStorageKey="polybot-market-view-chart-interval"
             volumeSpikeAlerts={false}
           />
         </div>

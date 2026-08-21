@@ -32,6 +32,24 @@ export function obBookSideUsdTotal(levels: OBLevel[]): number {
   return levels.reduce((s, l) => s + obLevelBandUsd(l), 0);
 }
 
+/**
+ * Mitobot continuous `opp$`: buy the whole ask book; if that outcome wins, redeem @ $1/share.
+ * profit = Σshares − Σ(price×size). Returns null when no valid ask levels.
+ */
+export function obAskSweepRedeemProfit(levels: OBLevel[]): number | null {
+  let shares = 0;
+  let cost = 0;
+  for (const lvl of levels) {
+    const px = parseFloat(lvl.price);
+    const sz = parseFloat(lvl.size);
+    if (!(px > 0) || !(sz > 0) || !Number.isFinite(px) || !Number.isFinite(sz)) continue;
+    shares += sz;
+    cost += px * sz;
+  }
+  if (!(shares > 0)) return null;
+  return shares - cost;
+}
+
 /** YES bids vs NO bids USD depth (5–95¢ each book). */
 export function orderbookYesBidNoBidDepth(
   yesBids: OBLevel[],

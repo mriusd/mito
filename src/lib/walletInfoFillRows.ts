@@ -47,6 +47,31 @@ function isUpDownFromFill(mk: Market | Record<string, unknown>, f: OnchainFillRo
   return /upordown|up-down|up\s*or\s*down|updown/.test(blob);
 }
 
+/** Chart YES/NO from the chronologically first fill’s outcome token (not BUY/SELL). */
+export function chartOutcomeFromEarliestFill(
+  fills: Array<Pick<OnchainFillRow, 'blockTime' | 'side' | 'tokenId' | 'marketType' | 'pending'>>,
+  mk: Market | Record<string, unknown> | null | undefined,
+): 'YES' | 'NO' | null {
+  let earliest: (typeof fills)[number] | null = null;
+  let earliestTs = Number.POSITIVE_INFINITY;
+  for (const f of fills) {
+    if (f.pending) continue;
+    const action = String((f as OnchainFillRow).action || '').toUpperCase();
+    if (action === 'SPLIT' || action === 'MERGE' || action === 'REDEEM') continue;
+    const ts = Number(f.blockTime ?? 0);
+    if (!(ts > 0)) continue;
+    if (ts < earliestTs) {
+      earliestTs = ts;
+      earliest = f;
+    }
+  }
+  if (!earliest) return null;
+  const tone = fillOutcomeDisplay(earliest as OnchainFillRow, mk || {}).tone;
+  if (tone === 'yes') return 'YES';
+  if (tone === 'no') return 'NO';
+  return null;
+}
+
 export function fillOutcomeDisplay(
   f: OnchainFillRow,
   mk: Market | Record<string, unknown>,

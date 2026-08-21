@@ -7,9 +7,19 @@ import {
   type CandleBsEnrichment,
   type PriceDelta,
 } from '../lib/chartCandleEnrichment';
+import {
+  fmtFlipPct,
+  fmtFlipPrice,
+  fmtFlipUsd,
+  fmtObWallUsd,
+  fmtOppLegTitle,
+  fmtOppProfitUsd,
+  type OppCandleSnapshot,
+} from '../lib/oppCandleSnapshot';
 
 export type ChartObHoverEnrichmentStripProps = {
   enrichment?: CandleBsEnrichment;
+  opp?: OppCandleSnapshot;
   priceDec?: number;
   chartOutcome?: 'YES' | 'NO';
 };
@@ -50,10 +60,11 @@ function DeltaLine({ d, priceDec, title }: { d: PriceDelta | null; priceDec: num
  */
 export function ChartObHoverEnrichmentStrip({
   enrichment,
+  opp,
   priceDec = 2,
   chartOutcome = 'YES',
 }: ChartObHoverEnrichmentStripProps) {
-  if (!enrichment) return null;
+  if (!enrichment && !opp) return null;
 
   const {
     targetPrice,
@@ -64,7 +75,7 @@ export function ChartObHoverEnrichmentStrip({
     spotPrice,
     twap60,
     predictedTwap,
-  } = enrichment;
+  } = enrichment ?? {};
 
   // Historical σ from candle.volatility (fraction), stored by polycandles as
   // sidebar-style realized vol — not live GARCH / not live sidebar snapshot.
@@ -84,6 +95,10 @@ export function ChartObHoverEnrichmentStrip({
   const spotVsTarget = computeSpotTargetPriceDiff(spot, targetPrice);
   const predVsTarget = computeSpotTargetPriceDiff(pred, targetPrice);
 
+  const hasOpp = opp?.yes != null || opp?.no != null;
+  const hasFlip =
+    opp?.flipPct != null || opp?.flipUsd != null || opp?.flipPrice != null;
+  const hasWall = opp?.wallYes != null || opp?.wallNo != null;
   const hasSidebarLayout =
     (targetPrice != null && targetPrice > 0) ||
     (twap != null && twap > 0) ||
@@ -92,7 +107,7 @@ export function ChartObHoverEnrichmentStrip({
     twapMathCents != null ||
     predMathCents != null;
 
-  if (!hasSidebarLayout) return null;
+  if (!hasSidebarLayout && !hasOpp && !hasFlip && !hasWall) return null;
 
   const threeCol = {
     gridTemplateColumns: 'minmax(0, 1fr) minmax(2.75rem, auto) minmax(0, 1fr)',
@@ -100,6 +115,8 @@ export function ChartObHoverEnrichmentStrip({
 
   return (
     <div className="mb-2 border-b border-gray-700/80 pb-2 px-0.5">
+      {hasSidebarLayout ? (
+      <>
       {/* Row 1: Target | Math(TWAP) | TWAP — matches sidebar */}
       <div className="grid gap-x-1.5 gap-y-0.5 w-full" style={threeCol}>
         <div className="text-[9px] font-medium leading-none text-gray-500 min-h-[14px] flex items-center">
@@ -211,6 +228,158 @@ export function ChartObHoverEnrichmentStrip({
           <DeltaLine d={predVsTarget} priceDec={priceDec} title="Predicted TWAP − Target" />
         </div>
       </div>
+      </>
+      ) : null}
+
+      {/* Row 3: YES opp$ | opp$ | NO opp$ — same as sidebar spot strip */}
+      {(hasSidebarLayout || hasOpp || hasFlip || hasWall) ? (
+        <div
+          className="grid gap-x-1.5 gap-y-0.5 w-full mt-1.5 pt-1.5 border-t border-gray-700/60"
+          style={threeCol}
+          title="opp$: buy entire ask book → redeem winners @ $1 (profit = shares − cost)"
+        >
+          <div className="text-[9px] font-medium leading-none text-emerald-500/80 min-h-[14px] flex items-center">
+            YES opp$
+          </div>
+          <div className="text-[9px] font-medium leading-none text-gray-500 min-h-[14px] flex items-center justify-center">
+            opp$
+          </div>
+          <div className="text-[9px] font-medium leading-none text-rose-400/80 min-h-[14px] flex items-center justify-end">
+            NO opp$
+          </div>
+          <div className="min-h-[15px] flex items-center min-w-0">
+            <span
+              className={`text-[10px] font-bold tabular-nums ${
+                opp?.yes != null
+                  ? opp.yes.profit >= 0
+                    ? 'text-emerald-400'
+                    : 'text-red-400'
+                  : 'text-gray-600'
+              }`}
+              title={fmtOppLegTitle(opp?.yes, 'YES')}
+            >
+              {fmtOppProfitUsd(opp?.yes?.profit)}
+            </span>
+          </div>
+          <div className="min-h-[15px] flex items-center justify-center text-[9px] text-gray-600">
+            value
+          </div>
+          <div className="min-h-[15px] flex items-center justify-end min-w-0">
+            <span
+              className={`text-[10px] font-bold tabular-nums ${
+                opp?.no != null
+                  ? opp.no.profit >= 0
+                    ? 'text-emerald-400'
+                    : 'text-red-400'
+                  : 'text-gray-600'
+              }`}
+              title={fmtOppLegTitle(opp?.no, 'NO')}
+            >
+              {fmtOppProfitUsd(opp?.no?.profit)}
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Row 4: Flip % | Flip $ | Flip price — spot* so pred TWAP = K */}
+      {(hasFlip || hasWall) ? (
+        <div
+          className="grid gap-x-1.5 gap-y-0.5 w-full mt-1.5 pt-1.5 border-t border-gray-700/60"
+          style={threeCol}
+          title="Flip: spot move so predicted TWAP hits strike (mitobot Markets flip)"
+        >
+          <div className="text-[9px] font-medium leading-none text-gray-500 min-h-[14px] flex items-center">
+            Flip %
+          </div>
+          <div className="text-[9px] font-medium leading-none text-gray-500 min-h-[14px] flex items-center justify-center">
+            Flip $
+          </div>
+          <div
+            className="text-[9px] font-medium leading-none text-gray-500 min-h-[14px] flex items-center justify-end"
+            title="spot* — flip price that pushes predicted TWAP to strike"
+          >
+            spot*
+          </div>
+          <div className="min-h-[15px] flex items-center min-w-0">
+            <span
+              className={`text-[10px] font-bold tabular-nums ${
+                opp?.flipPct != null
+                  ? opp.flipPct >= 0
+                    ? 'text-emerald-400'
+                    : 'text-red-400'
+                  : 'text-gray-600'
+              }`}
+              title="(spot* − spot) / spot × 100"
+            >
+              {fmtFlipPct(opp?.flipPct)}
+            </span>
+          </div>
+          <div className="min-h-[15px] flex items-center justify-center min-w-0">
+            <span
+              className={`text-[10px] font-bold tabular-nums ${
+                opp?.flipUsd != null
+                  ? opp.flipUsd >= 0
+                    ? 'text-emerald-400'
+                    : 'text-red-400'
+                  : 'text-gray-600'
+              }`}
+              title="spot* − spot"
+            >
+              {fmtFlipUsd(opp?.flipUsd)}
+            </span>
+          </div>
+          <div className="min-h-[15px] flex items-center justify-end min-w-0">
+            <span
+              className="text-[10px] font-bold tabular-nums text-amber-300/95"
+              title="spot* — price that pushes predicted TWAP to strike"
+            >
+              {fmtFlipPrice(opp?.flipPrice, priceDec)}
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Row 5: Wall Y | wall | Wall N — Binance protective notional at |flip%| */}
+      {(hasFlip || hasWall) ? (
+        <div
+          className="grid gap-x-1.5 gap-y-0.5 w-full mt-1.5 pt-1.5 border-t border-gray-700/60"
+          style={threeCol}
+          title="OB wall: Binance spot USD to walk |flip%| (YES=bids/Down, NO=asks/Up)"
+        >
+          <div className="text-[9px] font-medium leading-none text-emerald-500/80 min-h-[14px] flex items-center">
+            Wall Y
+          </div>
+          <div className="text-[9px] font-medium leading-none text-gray-500 min-h-[14px] flex items-center justify-center">
+            wall
+          </div>
+          <div className="text-[9px] font-medium leading-none text-rose-400/80 min-h-[14px] flex items-center justify-end">
+            Wall N
+          </div>
+          <div className="min-h-[15px] flex items-center min-w-0">
+            <span
+              className={`text-[10px] font-bold tabular-nums ${
+                opp?.wallYes != null ? 'text-emerald-400' : 'text-gray-600'
+              }`}
+              title="YES protective wall — Binance bid depth to |flip%| Down"
+            >
+              {fmtObWallUsd(opp?.wallYes)}
+            </span>
+          </div>
+          <div className="min-h-[15px] flex items-center justify-center text-[9px] text-gray-600">
+            @|flip%|
+          </div>
+          <div className="min-h-[15px] flex items-center justify-end min-w-0">
+            <span
+              className={`text-[10px] font-bold tabular-nums ${
+                opp?.wallNo != null ? 'text-rose-400' : 'text-gray-600'
+              }`}
+              title="NO protective wall — Binance ask depth to |flip%| Up"
+            >
+              {fmtObWallUsd(opp?.wallNo)}
+            </span>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

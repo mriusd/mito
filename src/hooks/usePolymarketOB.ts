@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { API_BASE } from '../lib/env';
 import { fetchBackend } from '../lib/fetchBackend';
-import { obBookSideUsdTotal } from '../lib/orderbookBookImbalance';
+import { obAskSweepRedeemProfit, obBookSideUsdTotal } from '../lib/orderbookBookImbalance';
 import { polymarketTradeKey } from '../lib/tradeKeys';
 
 interface OBLevel {
@@ -117,6 +117,7 @@ function fullBookUsdTotals(bids: Map<string, string>, asks: Map<string, string>)
   return {
     bidUsdTotal: obBookSideUsdTotal(allBids),
     askUsdTotal: obBookSideUsdTotal(allAsks),
+    askSweepProfit: obAskSweepRedeemProfit(allAsks),
   };
 }
 
@@ -124,6 +125,7 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
   const [book, setBook] = useState<BookState>({ bids: [], asks: [] });
   const [bidUsdTotal, setBidUsdTotal] = useState(0);
   const [askUsdTotal, setAskUsdTotal] = useState(0);
+  const [askSweepProfit, setAskSweepProfit] = useState<number | null>(null);
   const [trades, setTrades] = useState<LiveTrade[]>([]);
   const [loading, setLoading] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -147,6 +149,7 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
     snapshotLoaded.current = false;
     setBidUsdTotal(0);
     setAskUsdTotal(0);
+    setAskSweepProfit(null);
   }, []);
 
   const publishBook = useCallback((limit: number) => {
@@ -155,6 +158,7 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
     setBook({ bids: next.bids, asks: next.asks });
     setBidUsdTotal(totals.bidUsdTotal);
     setAskUsdTotal(totals.askUsdTotal);
+    setAskSweepProfit(totals.askSweepProfit);
     if (next.bids.length > 0 || next.asks.length > 0) {
       setLoading(false);
     }
@@ -393,5 +397,13 @@ export function usePolymarketOB(tokenId: string | null, bookLimit = 15) {
     publishBook(bookLimit);
   }, [tokenId, bookLimit, publishBook]);
 
-  return { bids: book.bids, asks: book.asks, trades, loading, bidUsdTotal, askUsdTotal };
+  return {
+    bids: book.bids,
+    asks: book.asks,
+    trades,
+    loading,
+    bidUsdTotal,
+    askUsdTotal,
+    askSweepProfit,
+  };
 }

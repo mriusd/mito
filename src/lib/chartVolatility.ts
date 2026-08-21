@@ -1,5 +1,7 @@
 /**
- * Sidebar chart σ from completed candle closes (same math as ChainlinkChart / useSidebarChartVolatility).
+ * Sidebar / candle display σ — same math as mitobot binance_vol.go:
+ * max(Parkinson high–low, close-to-close sample stdev) × √(bars/year) × 100.
+ * Include the current open kline when present (mitobot barsForCalc).
  */
 
 const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
@@ -25,7 +27,35 @@ export function sidebarChartIntervalFromContext(context?: string): string {
   return '1h';
 }
 
-/** Annualized σ% from close-to-close log returns (sample stdev). `closes` = chronological completed bars only. Needs ≥3 closes. */
+/** One OHLC bar for vol (mitobot binanceOHLC). */
+export type VolOhlcBar = {
+  h: number;
+  l: number;
+  c: number;
+};
+
+/**
+ * Select last `lookback` completed bars + current open bar (if any).
+ * Matches mitobot: completed capped to N, then open appended → up to N+1 bars.
+ */
+export function volBarsForCalc(
+  candles: Array<{ time: number; h: number; l: number; c: number }>,
+  candleMs: number,
+  lookback: number,
+  nowMs: number = Date.now(),
+): VolOhlcBar[] {
+  if (!Number.isFinite(candleMs) || candleMs <= 0) return [];
+  const lb = Math.max(3, Math.min(500, Math.round(lookback)));
+  const bucketNow = Math.floor(nowMs / candleMs) * candleMs;
+  const sorted = [...candles].sort((a, b) => a.time - b.time);
+  const completed = sorted.filter((c) => c.time < bucketNow).slice(-lb);
+  const open = sorted.find((c) => c.time === bucketNow);
+  const out: VolOhlcBar[] = completed.map((c) => ({ h: c.h, l: c.l, c: c.c }));
+  if (open) out.push({ h: open.h, l: open.l, c: open.c });
+  return out;
+}
+
+/** Annualized σ% from close-to-close log returns (sample stdev). Needs ≥3 closes. */
 export function annualizedVolPctFromClosePrices(closes: number[], barMs: number): number | null {
   if (!Number.isFinite(barMs) || barMs <= 0) return null;
   const ok = closes.filter((x) => Number.isFinite(x) && x > 0);
@@ -43,4 +73,49 @@ export function annualizedVolPctFromClosePrices(closes: number[], barMs: number)
   const barsPerYear = MS_PER_YEAR / barMs;
   const ann = sdPerBar * Math.sqrt(barsPerYear);
   return Number.isFinite(ann) ? ann * 100 : null;
+}
+
+/**
+ * Parkinson (1980) high–low estimator, annualized %.
+ * σ²_bar = (1/(4 n ln 2)) Σ [ln(H_i/L_i)]² ; flat H==L contributes n++ with 0 range.
+ */
+export function annualizedVolPctParkinson(bars: VolOhlcBar[], barMs: number): number | null {
+  if (!Number.isFinite(barMs) || barMs <= 0) return null;
+  let sumSq = 0;
+  let n = 0;
+  for (const b of bars) {
+    if (!(b.h > 0 && b.l > 0 && Number.isFinite(b.h) && Number.isFinite(b.l)) || b.h < b.l) {
+      continue;
+    }
+    if (b.h === b.l) {
+      n++;
+      continue;
+    }
+    const lr = Math.log(b.h / b.l);
+    if (!Number.isFinite(lr)) continue;
+    sumSq += lr * lr;
+    n++;
+  }
+  if (n < 3) return null;
+  const varBar = sumSq / (4 * Math.LN2 * n);
+  if (!Number.isFinite(varBar) || varBar < 0) return null;
+  const sdPerBar = Math.sqrt(varBar);
+  const barsPerYear = MS_PER_YEAR / barMs;
+  const ann = sdPerBar * Math.sqrt(barsPerYear);
+  return Number.isFinite(ann) ? ann * 100 : null;
+}
+
+/**
+ * Short-term chart σ% — max(Parkinson, close-to-close). Mitobot annualizedVolPctFromOHLC.
+ * Needs ≥3 bars.
+ */
+export function annualizedVolPctFromOHLC(bars: VolOhlcBar[], barMs: number): number | null {
+  if (!Number.isFinite(barMs) || barMs <= 0 || bars.length < 3) return null;
+  const closes = bars.map((b) => b.c).filter((c) => Number.isFinite(c) && c > 0);
+  const cc = annualizedVolPctFromClosePrices(closes, barMs);
+  const park = annualizedVolPctParkinson(bars, barMs);
+  if (cc != null && park != null) return park > cc ? park : cc;
+  if (park != null) return park;
+  if (cc != null) return cc;
+  return null;
 }

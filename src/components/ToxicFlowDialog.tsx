@@ -1262,6 +1262,8 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState('');
   const [focusMarketSeq, setFocusMarketSeq] = useState(0);
+  /** Pinned when wallet panel opens — sidebar auto-switch must not remount it. */
+  const [walletPinnedMarketId, setWalletPinnedMarketId] = useState('');
   const selectedWalletRef = useRef('');
   const walletDialogOpenRef = useRef(false);
   const isWide1920 = useMinWidth1920();
@@ -1523,6 +1525,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     const sameWalletOpen =
       walletDialogOpenRef.current &&
       selectedWalletRef.current.trim().toLowerCase() === w.toLowerCase();
+    setWalletPinnedMarketId(midTrim);
     setSelectedWallet(w);
     setWalletDialogOpen(true);
     if (sameWalletOpen && midTrim) {
@@ -1650,12 +1653,12 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
           >
             <InlineWalletInfoPanelHost
               wallet={selectedWallet}
-              initialMarketId={marketId}
-              focusMarketId={midTrim}
+              initialMarketId={walletPinnedMarketId}
+              focusMarketId={walletPinnedMarketId}
               focusMarketSeq={focusMarketSeq}
               onClose={closeWalletPanel}
               onInlineMarketsListOpenChange={onInlineMarketsListOpenChange}
-              toxicFlowMarketId={midTrim}
+              toxicFlowMarketId={walletPinnedMarketId}
             />
                           </div>
                 </div>
@@ -1663,8 +1666,7 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
     [
       inlineSplit,
       selectedWallet,
-      marketId,
-      midTrim,
+      walletPinnedMarketId,
       focusMarketSeq,
       closeWalletPanel,
       onInlineMarketsListOpenChange,
@@ -1777,11 +1779,11 @@ const ToxicFlowDialogInner = memo(function ToxicFlowDialogInner({
         <WalletInfoDialog
           open={walletDialogOpen}
           wallet={selectedWallet}
-          initialMarketId={marketId}
-            focusMarketId={midTrim}
+          initialMarketId={walletPinnedMarketId}
+            focusMarketId={walletPinnedMarketId}
             focusMarketSeq={focusMarketSeq}
             onClose={closeWalletPanel}
-            toxicFlowMarketId={midTrim}
+            toxicFlowMarketId={walletPinnedMarketId}
         />
         ) : null}
       </div>

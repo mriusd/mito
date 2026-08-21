@@ -4,8 +4,9 @@ import { fetchBackend } from '../lib/fetchBackend';
 import { subscribeChartKline } from '../lib/chartWsShared';
 import {
   SIDEBAR_CHART_INTERVAL_MS,
-  annualizedVolPctFromClosePrices,
+  annualizedVolPctFromOHLC,
   sidebarChartIntervalFromContext,
+  volBarsForCalc,
 } from '../lib/chartVolatility';
 
 interface Candle {
@@ -48,14 +49,9 @@ function computeAnnualizedVolFromMap(
   candleMs: number,
   volatilityLookbackCandles: number,
 ): number | null {
-  const allCandles = [...map.values()].sort((a, b) => a.time - b.time);
-  const bucketNow = Math.floor(Date.now() / candleMs) * candleMs;
-  const lb = Math.max(3, Math.min(500, Math.round(volatilityLookbackCandles)));
-  const closed = allCandles.filter((c) => c.time < bucketNow).slice(-lb);
-  return annualizedVolPctFromClosePrices(
-    closed.map((c) => c.c),
-    candleMs,
-  );
+  // Mitobot: last N completed + current open bar; max(Parkinson H/L, close-close).
+  const bars = volBarsForCalc([...map.values()], candleMs, volatilityLookbackCandles);
+  return annualizedVolPctFromOHLC(bars, candleMs);
 }
 
 /** Headless sidebar σ from Binance or polycandles Chainlink klines (same window as former left chart). */

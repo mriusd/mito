@@ -210,6 +210,8 @@ export function Header({ onRefresh }: HeaderProps) {
   const walletInfoOverlay = useAppStore((s) => s.walletInfoOverlay);
   const closeWalletInfoOverlay = useAppStore((s) => s.closeWalletInfoOverlay);
   const [favouritesWalletInfoAddress, setFavouritesWalletInfoAddress] = useState<string | null>(null);
+  /** Frozen when wallet dialog opens — live selectedMarket auto-switch must not remount it. */
+  const [walletInfoDialogMarketId, setWalletInfoDialogMarketId] = useState('');
   const [showAddMenu, setShowAddMenu] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -304,6 +306,11 @@ export function Header({ onRefresh }: HeaderProps) {
   const walletForHeaderInfoDialog =
     favouritesWalletInfoAddress ??
     (walletSummaryDialogOpen && tradingWallet ? tradingWallet : undefined);
+
+  const closeHeaderWalletInfoDialog = useCallback(() => {
+    setFavouritesWalletInfoAddress(null);
+    setWalletSummaryDialogOpen(false);
+  }, [setWalletSummaryDialogOpen]);
 
   return (
     <header className="mb-1 relative z-[220]">
@@ -754,6 +761,7 @@ export function Header({ onRefresh }: HeaderProps) {
           onFocus={preloadWalletSummaryDialog}
           onClick={() => {
             setFavouritesWalletInfoAddress(null);
+            setWalletInfoDialogMarketId(selectedMarket?.conditionId?.trim() || '');
             setWalletSummaryDialogOpen(true);
           }}
           className="shrink-0 rounded border border-cyan-600/50 bg-cyan-950/35 px-1.5 h-[28px] flex items-center justify-center text-cyan-200 hover:bg-cyan-900/40 disabled:opacity-40 disabled:pointer-events-none"
@@ -782,11 +790,8 @@ export function Header({ onRefresh }: HeaderProps) {
             <WalletInfoDialogLazy
               open
               wallet={walletForHeaderInfoDialog}
-              initialMarketId={selectedMarket?.conditionId?.trim() || ''}
-              onClose={() => {
-                setFavouritesWalletInfoAddress(null);
-                setWalletSummaryDialogOpen(false);
-              }}
+              initialMarketId={walletInfoDialogMarketId}
+              onClose={closeHeaderWalletInfoDialog}
             />
           </Suspense>
         </ErrorBoundary>
@@ -799,6 +804,7 @@ export function Header({ onRefresh }: HeaderProps) {
             onClose={() => setFavouriteWalletsDialogOpen(false)}
             onOpenWalletInfo={(wallet) => {
               setFavouritesWalletInfoAddress(wallet.trim().toLowerCase());
+              setWalletInfoDialogMarketId(selectedMarket?.conditionId?.trim() || '');
               setWalletSummaryDialogOpen(false);
               setFavouriteWalletsDialogOpen(false);
             }}

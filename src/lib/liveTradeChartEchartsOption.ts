@@ -183,9 +183,11 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
     stakeNo.push(s.no);
     stakePointCount++;
   }
+  // Weather stake panel; else volume. CVD Δ/Σ bars render below the chart in React.
   const showStakePanel = stakePointCount > 0;
+  const bottomLeftPad = showStakePanel ? 44 : 36;
 
-  /** Include in Y extent so auto-scale does not clip order/position lines. */
+  /** Order/position mark lines (price axis is fixed 0–100¢). */
   const levelPrices: number[] = [];
   const markLineData: {
     yAxis: number;
@@ -444,8 +446,7 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
     z: 3,
   });
 
-  // Dedicated series for order/position lines — candlestick markLine is unreliable / clipped
-  // when Y auto-scales to OHLC only.
+  // Dedicated series for order/position lines — candlestick markLine is unreliable.
   if (markLineData.length > 0) {
     const lastIdx = Math.max(0, categories.length - 1);
     series.push({
@@ -566,8 +567,8 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
       link: [{ xAxisIndex: [0, 1] }],
     },
     grid: [
-      { left: showStakePanel ? 44 : 36, right: 8, top: 4, bottom: 28 },
-      { left: showStakePanel ? 44 : 36, right: 8, top: '72%', bottom: 16, height: '18%' },
+      { left: bottomLeftPad, right: 8, top: 4, bottom: 28 },
+      { left: bottomLeftPad, right: 8, top: '72%', bottom: 16, height: '18%' },
     ],
     dataZoom: [
       {
@@ -575,23 +576,12 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
         xAxisIndex: [0, 1],
         start: dzStart,
         end: dzEnd,
-        // Filter out-of-window candles so price Y rescales to visible OHLC.
+        // Time-axis only — price Y is fixed 0–100¢ (no OHLC rescaling).
         filterMode: 'filter',
         zoomOnMouseWheel: true,
         moveOnMouseMove: true,
         moveOnMouseWheel: false,
         preventDefaultMouseMove: true,
-      },
-      {
-        type: 'inside',
-        yAxisIndex: [0],
-        start: dataZoom?.yStart ?? 0,
-        end: dataZoom?.yEnd ?? 100,
-        filterMode: 'none',
-        // Shift+wheel (or pinch on Y) zooms price scale; plain wheel stays on time.
-        zoomOnMouseWheel: 'shift',
-        moveOnMouseMove: true,
-        moveOnMouseWheel: false,
       },
       {
         type: 'slider',
@@ -649,30 +639,10 @@ export function buildLiveTradeChartOption(args: BuildLiveTradeChartOptionArgs): 
     yAxis: [
       {
         type: 'value',
-        scale: true,
-        // Fit visible candles + order/position levels; pad + clamp to 0–100¢.
-        min: (ext: { min: number; max: number }) => {
-          let lo = ext.min ?? 0;
-          let hi = ext.max ?? 100;
-          for (const p of levelPrices) {
-            lo = Math.min(lo, p);
-            hi = Math.max(hi, p);
-          }
-          const span = Math.max(0.5, hi - lo);
-          const pad = Math.max(0.5, span * 0.08);
-          return Math.max(0, lo - pad);
-        },
-        max: (ext: { min: number; max: number }) => {
-          let lo = ext.min ?? 0;
-          let hi = ext.max ?? 100;
-          for (const p of levelPrices) {
-            lo = Math.min(lo, p);
-            hi = Math.max(hi, p);
-          }
-          const span = Math.max(0.5, hi - lo);
-          const pad = Math.max(0.5, span * 0.08);
-          return Math.min(100, hi + pad);
-        },
+        // Fixed full probability axis — never auto-fit to candle/price range.
+        scale: false,
+        min: 0,
+        max: 100,
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },

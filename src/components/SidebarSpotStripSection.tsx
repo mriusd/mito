@@ -25,6 +25,7 @@ import {
   useSidebarUpDownTargetPrice,
 } from '../lib/sidebarUpDownTargetStore';
 import { setSidebarSpotStripBsSnapshot } from '../lib/sidebarSpotStripStore';
+import { useSidebarAskSweepOpp } from '../lib/sidebarAskSweepOppStore';
 import { weatherMarketLocalMidnightExpiryMs } from '../lib/weatherMarketExpiry';
 import { CHART_PRED_MATH_PROB_COLOR } from '../lib/chartCandleEnrichment';
 import { SidebarMarketCountdownLabel } from './SidebarMarketCountdownLabel';
@@ -80,6 +81,23 @@ function deltaVsTarget(price: number, target: number | null | undefined): PriceD
 function formatUsd(n: number, priceDec: number): string {
   return `$${n.toLocaleString(undefined, { minimumFractionDigits: priceDec, maximumFractionDigits: priceDec })}`;
 }
+
+/** Mitobot Markets opp$: rounded USD with thousands separators. */
+function formatOppUsd(n: number | null): string {
+  if (n == null || !Number.isFinite(n)) return '—';
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  // Near-$1 asks yield sub-dollar edges — don't round those to 0.
+  if (abs >= 1000) return `${sign}${Math.round(abs).toLocaleString('en-US')}`;
+  if (abs >= 10) return `${sign}${abs.toFixed(1)}`;
+  if (abs > 0) return `${sign}${abs.toFixed(2)}`;
+  return '0';
+}
+
+const ASK_SWEEP_OPP_TOOLTIP =
+  'Value opp$ (mitobot continuous): potential profit if the whole ask side is bought and that outcome wins.\n\n' +
+  'profit = Σ shares − Σ (price × size), redeeming each share at $1.\n\n' +
+  'Left = YES ask book. Right = NO ask book.';
 
 function DeltaLine({
   d,
@@ -150,6 +168,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
   const upDownTargetPrice = useSidebarUpDownTargetPrice();
   const liveUpDownSameTfMarket = useSidebarUpDownLiveSameTfMarket();
   const expiryNow = useExpiryNow();
+  const askSweepOpp = useSidebarAskSweepOpp();
 
   const sidebarPriceSym = useMemo((): AssetSymbol | null => {
     const asset = extractAssetFromMarket(selectedMarket);
@@ -513,7 +532,7 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
     } as const;
 
     return (
-      <div className={`sidebar-section sidebar-target-section py-1 px-3${reserveUpDownSpotHeight ? ' min-h-[9.5rem]' : ''}`}>
+      <div className={`sidebar-section sidebar-target-section py-1 px-3${reserveUpDownSpotHeight ? ' min-h-[11.25rem]' : ''}`}>
         {/* Row 1: Target | Math(TWAP) | TWAP */}
         <div className="grid gap-x-2 gap-y-1 w-full" style={threeCol}>
           <div className="flex items-center min-h-[15px] text-[9px] font-medium leading-none text-gray-500">
@@ -712,6 +731,50 @@ export const SidebarSpotStripSection = memo(function SidebarSpotStripSection({
           </div>
           <div className="flex items-center justify-end min-h-[15px] min-w-0 text-[10px] font-bold tabular-nums leading-none">
             <DeltaLine d={row.predVsTarget} priceDec={row.priceDec} title="Predicted TWAP − Target" />
+          </div>
+        </div>
+
+        {/* Row 3: YES opp$ | label | NO opp$ — full-ask redeem edge (mitobot) */}
+        <div
+          className="grid gap-x-2 gap-y-0.5 w-full mt-1 pt-1 border-t border-gray-800/60"
+          style={threeCol}
+        >
+          <div className="flex items-center min-h-[14px] text-[9px] font-medium leading-none text-emerald-500/80">
+            YES opp$
+          </div>
+          <div className="flex items-center justify-center gap-0.5 min-h-[14px] text-[9px] font-medium leading-none text-gray-500">
+            <span className="shrink-0">opp$</span>
+            <HelpTooltip
+              text={ASK_SWEEP_OPP_TOOLTIP}
+              openOnHover
+              wrapClassName="inline-flex shrink-0 items-center leading-none"
+            >
+              <span className="flex size-[10px] shrink-0 cursor-help items-center justify-center rounded-full border border-gray-500 text-[7px] font-bold leading-none text-gray-400 hover:border-gray-300 hover:text-gray-200">
+                ?
+              </span>
+            </HelpTooltip>
+          </div>
+          <div className="flex items-center justify-end min-h-[14px] text-[9px] font-medium leading-none text-rose-400/80">
+            NO opp$
+          </div>
+          <div className="flex items-center min-h-[16px] min-w-0">
+            <span
+              className="text-[11px] font-bold tabular-nums text-emerald-400 sidebar-readable-value"
+              title="YES ask sweep redeem edge (Σshares − Σcost)"
+            >
+              {formatOppUsd(askSweepOpp.yesOppUsd)}
+            </span>
+          </div>
+          <div className="flex items-center justify-center min-h-[16px] min-w-0 text-[10px] text-gray-600">
+            <span className="tabular-nums">value</span>
+          </div>
+          <div className="flex items-center justify-end min-h-[16px] min-w-0">
+            <span
+              className="text-[11px] font-bold tabular-nums text-rose-400 sidebar-readable-value"
+              title="NO ask sweep redeem edge (Σshares − Σcost)"
+            >
+              {formatOppUsd(askSweepOpp.noOppUsd)}
+            </span>
           </div>
         </div>
         {reserveUpDownSpotHeight && (

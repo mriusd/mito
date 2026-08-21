@@ -6,6 +6,7 @@ import { resolveLiveTradeChartWindow } from '../lib/walletInfoChartMarket';
 import { parseCandleOb, type CandleObSnapshot } from '../lib/candleObSnapshot';
 import { parseCexObSnapshot, type CexObCandleSnapshot } from '../lib/cexObSnapshot';
 import { parseCvdCandleSnapshot, type CvdCandleSnapshot } from '../lib/cvdCandleSnapshot';
+import { parseOppCandleSnapshot, type OppCandleSnapshot } from '../lib/oppCandleSnapshot';
 import { parseGexAssetSnapshot, type GexAssetSnapshot } from '../lib/deribitGexFeed';
 import {
   mergeCandleBsEnrichment,
@@ -53,6 +54,8 @@ export type LiveTradeCandle = {
   gexOkx?: GexAssetSnapshot;
   /** Polymarket trade CVD for this outcome token (up/down crypto candles). */
   cvd?: CvdCandleSnapshot;
+  /** Full ask-side redeem edge (opp$) for YES and NO legs. */
+  opp?: OppCandleSnapshot;
   enrichment?: CandleBsEnrichment;
   weather?: CandleWeatherSnapshot;
 };
@@ -100,9 +103,15 @@ export function aggregateHourlyCandles(
     let gex = first.gex;
     let gexBinance = first.gexBinance;
     let gexOkx = first.gexOkx;
-    let cvd = first.cvd;
     let enrichment = first.enrichment;
     let weather = first.weather;
+    let opp = first.opp;
+    // Sum per-bucket CVD across hours (do not take last only).
+    let buyUsd = 0;
+    let sellUsd = 0;
+    let tradeCount = 0;
+    let lastCvd = first.cvd;
+    let hasCvd = false;
     for (const p of parts) {
       if (p.h > h) h = p.h;
       if (p.l < l) l = p.l;
@@ -112,10 +121,31 @@ export function aggregateHourlyCandles(
       if (p.gex) gex = p.gex;
       if (p.gexBinance) gexBinance = p.gexBinance;
       if (p.gexOkx) gexOkx = p.gexOkx;
-      if (p.cvd) cvd = p.cvd;
+      if (p.cvd) {
+        hasCvd = true;
+        lastCvd = p.cvd;
+        buyUsd += p.cvd.buyUsd || 0;
+        sellUsd += p.cvd.sellUsd || 0;
+        tradeCount += p.cvd.tradeCount || 0;
+      }
+      if (p.opp) opp = p.opp;
       if (p.enrichment) enrichment = p.enrichment;
       if (p.weather) weather = p.weather;
     }
+    const cvd = hasCvd
+      ? {
+          source: lastCvd?.source,
+          asset: lastCvd?.asset,
+          tokenId: lastCvd?.tokenId,
+          updatedAt: lastCvd?.updatedAt ?? 0,
+          bucketMs: bucketMs,
+          buyUsd,
+          sellUsd,
+          deltaUsd: buyUsd - sellUsd,
+          cumDeltaUsd: lastCvd?.cumDeltaUsd ?? buyUsd - sellUsd,
+          tradeCount,
+        }
+      : undefined;
     out.push({
       time: t,
       o: first.o,
@@ -129,6 +159,7 @@ export function aggregateHourlyCandles(
       ...(gexBinance ? { gexBinance } : {}),
       ...(gexOkx ? { gexOkx } : {}),
       ...(cvd ? { cvd } : {}),
+      ...(opp ? { opp } : {}),
       ...(weather ? { weather } : {}),
       ...(enrichment ? { enrichment } : {}),
     });
@@ -315,13 +346,15 @@ export function useLiveTradeCandles({
         const ob = parseCandleOb(k[12]);
         const cexOb = parseCexObSnapshot(k[17]) ?? prev?.cexOb;
         const gex = parseGexAssetSnapshot(k[18]) ?? prev?.gex;
-        // non-slim index 21 = cvd JSON (see polycandles writeBinanceKlines)
+        // non-slim index 21 = cvd JSON; 30 = opp$ (see polycandles writeBinanceKlines)
         const cvd = parseCvdCandleSnapshot(k[21]) ?? prev?.cvd;
         const gexBinance = parseGexAssetSnapshot(k[22]) ?? prev?.gexBinance;
         const gexOkx = parseGexAssetSnapshot(k[23]) ?? prev?.gexOkx;
         // REST row is authoritative — never inherit weather from a prior map entry.
         const weather = parseCandleWeather(k[24]);
         const enrichment = mergeCandleBsEnrichment(parseHttpKlineEnrichment(k), prev?.enrichment);
+        // Per-bucket opp$ only — do not inherit from another candle's time.
+        const opp = parseOppCandleSnapshot(k[30]) ?? undefined;
         map.set(openTime, {
           time: openTime,
           o,
@@ -329,10 +362,12 @@ export function useLiveTradeCandles({
           l: lo,
           c,
           v,
-          ...(ob ? { ob } : prev?.ob ? { ob: prev.ob } : {}),
+          // Do not inherit prev.ob / prev.opp — each candle keeps its own book snapshot.
+          ...(ob ? { ob } : {}),
           ...(cexOb ? { cexOb } : {}),
           ...(gex ? { gex } : {}),
           ...(cvd ? { cvd } : {}),
+          ...(opp ? { opp } : {}),
           ...(gexBinance ? { gexBinance } : {}),
           ...(gexOkx ? { gexOkx } : {}),
           ...(weather ? { weather } : {}),
@@ -356,39 +391,34 @@ export function useLiveTradeCandles({
       `symbol=${encodeURIComponent(tokenId)}&interval=${encodeURIComponent(feedInterval)}` +
       `&limit=${ENRICH_LIMIT}&startTime=${st}&endTime=${et}`;
 
-    /** Carry last-known CEX OB / poly OB / BS enrichment forward so hover + math line
-     * work on bars that only have OHLCV (or OB without bs_prob). Always fill enrichment
-     * even when no orderbook exists — otherwise the yellow math line vanishes. */
+    /** Carry last-known CEX GEX + BS enrichment forward so math line / CEX hover work on
+     * OHLCV-only bars. Do NOT forward-fill poly OB or opp$ — those are per-bucket book
+     * snapshots; copying them made every 5s candle show the same imbalance / opp$. */
     const forwardFillEnrichment = () => {
       const map = candleMapRef.current;
       if (map.size === 0) return;
       const times = [...map.keys()].sort((a, b) => a - b);
       let lastCex = undefined as LiveTradeCandle['cexOb'];
-      let lastOb = undefined as LiveTradeCandle['ob'];
       let lastGex = undefined as LiveTradeCandle['gex'];
       let lastGexBinance = undefined as LiveTradeCandle['gexBinance'];
       let lastGexOkx = undefined as LiveTradeCandle['gexOkx'];
-      let lastCvd = undefined as LiveTradeCandle['cvd'];
       let lastEnrichment = undefined as LiveTradeCandle['enrichment'];
       for (const t of times) {
         const row = map.get(t)!;
         if (row.cexOb) lastCex = row.cexOb;
-        if (row.ob) lastOb = row.ob;
         if (row.gex) lastGex = row.gex;
         if (row.gexBinance) lastGexBinance = row.gexBinance;
         if (row.gexOkx) lastGexOkx = row.gexOkx;
-        if (row.cvd) lastCvd = row.cvd;
+        // Do not forward-fill CVD / poly OB / opp$ — per-bucket snapshots.
         // Merge so partial ticks (spot only) keep prior bsProb for the math line.
         const mergedEnrich = mergeCandleBsEnrichment(row.enrichment, lastEnrichment);
         if (mergedEnrich) lastEnrichment = mergedEnrich;
         map.set(t, {
           ...row,
           ...(row.cexOb ? {} : lastCex ? { cexOb: lastCex } : {}),
-          ...(row.ob ? {} : lastOb ? { ob: lastOb } : {}),
           ...(row.gex ? {} : lastGex ? { gex: lastGex } : {}),
           ...(row.gexBinance ? {} : lastGexBinance ? { gexBinance: lastGexBinance } : {}),
           ...(row.gexOkx ? {} : lastGexOkx ? { gexOkx: lastGexOkx } : {}),
-          ...(row.cvd ? {} : lastCvd ? { cvd: lastCvd } : {}),
           ...(mergedEnrich ? { enrichment: mergedEnrich } : {}),
         });
       }
@@ -505,12 +535,19 @@ export function useLiveTradeCandles({
       const hi = Math.max(o, h, l, c);
       const lo = Math.min(o, h, l, c);
       const prev = candleMapRef.current.get(openTime);
-      const ob = parseCandleOb(k.ob) ?? prev?.ob;
+      // Poly OB + opp$: prefer this tick's payload; keep prior only for the *same* open
+      // bucket when the WS tick omitted the field (partial enrich). Never copy across times.
+      const parsedOb = parseCandleOb(k.ob);
+      const ob = parsedOb ?? (prev && prev.time === openTime ? prev.ob : undefined);
       const cexOb = parseCexObSnapshot(k.cex_ob) ?? prev?.cexOb;
       const gex = parseGexAssetSnapshot(k.gex) ?? prev?.gex;
       const gexBinance = parseGexAssetSnapshot(k.gex_binance) ?? prev?.gexBinance;
       const gexOkx = parseGexAssetSnapshot(k.gex_okx) ?? prev?.gexOkx;
       const cvd = parseCvdCandleSnapshot(k.cvd) ?? prev?.cvd;
+      const parsedOpp = parseOppCandleSnapshot(k.opp);
+      const opp =
+        parsedOpp ??
+        (prev && prev.time === openTime ? prev.opp : undefined);
       const parsedWeather = parseCandleWeather(k.weather);
       // Snapshot: trust payload only (omit = no weather). Update: keep prior if field absent.
       const weather = opts?.replaceWeather ? parsedWeather : parsedWeather ?? prev?.weather;
@@ -528,6 +565,7 @@ export function useLiveTradeCandles({
         ...(gexBinance ? { gexBinance } : {}),
         ...(gexOkx ? { gexOkx } : {}),
         ...(cvd ? { cvd } : {}),
+        ...(opp ? { opp } : {}),
         ...(weather ? { weather } : {}),
         ...(enrichment ? { enrichment } : {}),
       });

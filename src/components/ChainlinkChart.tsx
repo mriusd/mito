@@ -4,8 +4,9 @@ import { fetchBackend } from '../lib/fetchBackend';
 import { subscribeChartKline } from '../lib/chartWsShared';
 import {
   SIDEBAR_CHART_INTERVAL_MS,
-  annualizedVolPctFromClosePrices,
+  annualizedVolPctFromOHLC,
   sidebarChartIntervalFromContext,
+  volBarsForCalc,
 } from '../lib/chartVolatility';
 
 interface Candle {
@@ -180,14 +181,8 @@ export function ChainlinkChart({
 
   useEffect(() => {
     const map = candleMapRef.current;
-    const allCandles = [...map.values()].sort((a, b) => a.time - b.time);
-    const bucketNow = Math.floor(Date.now() / candleMs) * candleMs;
-    const lb = Math.max(3, Math.min(500, Math.round(volatilityLookbackCandles)));
-    const closed = allCandles.filter((c) => c.time < bucketNow).slice(-lb);
-    const pct = annualizedVolPctFromClosePrices(
-      closed.map((c) => c.c),
-      candleMs,
-    );
+    const bars = volBarsForCalc([...map.values()], candleMs, volatilityLookbackCandles);
+    const pct = annualizedVolPctFromOHLC(bars, candleMs);
     onVolRef.current?.(pct);
   }, [ready, tick, candleMs, volatilityLookbackCandles]);
 
@@ -332,13 +327,8 @@ export function ChainlinkChart({
 
     // Last price label
     const lastC = candles[candles.length - 1].c;
-    const bucketNow = Math.floor(Date.now() / candleMs) * candleMs;
-    const lb = Math.max(3, Math.min(500, Math.round(volatilityLookbackCandles)));
-    const closedForSigma = allCandles.filter((c) => c.time < bucketNow).slice(-lb);
-    const sigmaAnnPct = annualizedVolPctFromClosePrices(
-      closedForSigma.map((c) => c.c),
-      candleMs,
-    );
+    const barsForSigma = volBarsForCalc(allCandles, candleMs, volatilityLookbackCandles);
+    const sigmaAnnPct = annualizedVolPctFromOHLC(barsForSigma, candleMs);
     const lastY = toY(lastC);
     const accentRgb = chainlinkCandles ? '96,165,250' : '0,210,210';
     const accentHex = chainlinkCandles ? '#93c5fd' : '#00d2d2';
@@ -356,7 +346,7 @@ export function ChainlinkChart({
     ctx.textBaseline = 'middle';
     ctx.fillText('$' + lastC.toFixed(decimals), chartLeft - 2, lastY);
 
-    // σ annualized from last N completed candles (excludes unfinished current bar), bottom-left
+    // σ = max(Parkinson H/L, close-close) over last N completed + open bar (mitobot), bottom-left
     if (sigmaAnnPct != null && Number.isFinite(sigmaAnnPct)) {
       ctx.font = 'bold 9px monospace';
       ctx.fillStyle = 'rgba(255, 216, 120, 0.95)';

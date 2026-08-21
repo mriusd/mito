@@ -101,10 +101,13 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const isInlineWalletInfo = variant === 'inline';
   const showMarketsList = !isInlineWalletInfo || inlineMarketsListOpen;
 
+  // Seed only at open/wallet — live parent selectedMarket must not reload this dialog.
+  const openSeedMarketIdRef = useRef((initialMarketId || '').trim());
+
   const loadMarketsAndSelect = useCallback(
     async (preserveSelected: string | null) => {
       if (!wallet) return '';
-      const prefRaw = (initialMarketId || '').trim();
+      const prefRaw = openSeedMarketIdRef.current;
       const pref = prefRaw.toLowerCase();
       try {
         const [s, p] = await Promise.all([
@@ -140,13 +143,14 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
         return prefRaw;
       }
     },
-    [wallet, initialMarketId],
+    [wallet],
   );
 
   const prevFocusMarketSeqRef = useRef(0);
 
   useEffect(() => {
     if (!open || !wallet) return;
+    openSeedMarketIdRef.current = (initialMarketId || '').trim();
     setSummary(undefined);
     setMarkets([]);
     setSelectedMarketId('');
@@ -162,19 +166,20 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
         setLoadingMarkets(false);
       }
     })();
-  }, [open, wallet, initialMarketId, loadMarketsAndSelect]);
+    // intentionally omit initialMarketId: sidebar auto-switch must not remount/reload
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed captured above on open/wallet only
+  }, [open, wallet, loadMarketsAndSelect]);
 
   useEffect(() => {
     if (!open || !wallet || !focusMarketSeq || focusMarketSeq === prevFocusMarketSeqRef.current) return;
     prevFocusMarketSeqRef.current = focusMarketSeq;
-    const prefRaw = (focusMarketId || initialMarketId || '').trim();
+    const prefRaw = (focusMarketId || openSeedMarketIdRef.current || '').trim();
     if (!prefRaw) return;
     const prefLc = prefRaw.toLowerCase();
     const hit = markets.find((row) => String(row.marketId || '').trim().toLowerCase() === prefLc);
     setSelectedMarketId(hit ? hit.marketId : prefRaw);
     setFillsRefreshToken((n) => n + 1);
-  }, [focusMarketSeq, focusMarketId, initialMarketId, open, wallet, markets]);
-
+  }, [focusMarketSeq, focusMarketId, open, wallet, markets]);
   useEffect(() => {
     if (!isInlineWalletInfo) return;
     onInlineMarketsListOpenChange?.(inlineMarketsListOpen);
@@ -335,7 +340,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
 }, (a, b) =>
   a.open === b.open &&
   a.wallet === b.wallet &&
-  a.initialMarketId === b.initialMarketId &&
+  // initialMarketId is open-seed only; ignore live selected-market churn
   a.focusMarketId === b.focusMarketId &&
   a.focusMarketSeq === b.focusMarketSeq &&
   a.variant === b.variant &&
@@ -391,7 +396,7 @@ export const InlineWalletInfoPanelHost = memo(function InlineWalletInfoPanelHost
   );
 }, (a, b) =>
   a.wallet === b.wallet &&
-  a.initialMarketId === b.initialMarketId &&
+  // initialMarketId is open-seed only; ignore live selected-market churn
   a.focusMarketId === b.focusMarketId &&
   a.focusMarketSeq === b.focusMarketSeq &&
   a.toxicFlowMarketId === b.toxicFlowMarketId &&

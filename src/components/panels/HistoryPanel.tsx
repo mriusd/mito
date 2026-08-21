@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { fetchWalletPositions } from '../../api';
 import type { WalletPosition } from '../../api';
@@ -10,22 +10,22 @@ import {
   useSidebarOnchainWalletHistory,
   useSidebarOnchainWalletHistoryHydrated,
 } from '../../lib/sidebarOnchainTradesStore';
-import type { Market } from '../../types';
+import { lazyWithChunkReload } from '../../utils/lazyWithChunkReload';
 import {
   WalletLatestMarketsTradedTable,
   buildMarketByIdRecord,
   sortWalletPositionsByDisplayedDateDesc,
-  walletNetInventorySidebarOutcome,
 } from '../WalletLatestMarketsTradedTable';
+
+const WalletMarketTradesDialogLazy = lazyWithChunkReload(() =>
+  import('../WalletMarketTradesDialog').then((m) => ({ default: m.WalletMarketTradesDialog })),
+);
 
 export function HistoryPanel() {
   const tradingWallet = useTradingWalletAddress();
   const liveTradesSource = useAppStore((s) => s.liveTradesSource);
   const marketLookup = useMarketLookupSnapshot();
   const selectedMarket = useAppStore((s) => s.selectedMarket);
-  const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
-  const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
-  const setSidebarOutcome = useAppStore((s) => s.setSidebarOutcome);
   const wsHistory = useSidebarOnchainWalletHistory();
   const wsHistoryHydrated = useSidebarOnchainWalletHistoryHydrated();
   const onchainMode = liveTradesSource === 'onchain';
@@ -33,6 +33,7 @@ export function HistoryPanel() {
   const [restMarkets, setRestMarkets] = useState<WalletPosition[]>([]);
   const [restLoading, setRestLoading] = useState(false);
   const [refreshBump, setRefreshBump] = useState(0);
+  const [tradesDialogMarketId, setTradesDialogMarketId] = useState<string | null>(null);
   const loadEpochRef = useRef(0);
   const tradingWalletKey = tradingWallet.trim().toLowerCase();
 
@@ -95,21 +96,15 @@ export function HistoryPanel() {
   const onHistoryRowClick = useCallback(
     (marketId: string) => {
       const mid = marketId.trim();
-      if (!mid) return;
-      const lc = mid.toLowerCase();
-      const market = marketById[mid] || marketById[lc];
-      if (!market) return;
-      const row = markets.find((m) => {
-        const rid = String(m.marketId || '').trim();
-        return rid === mid || rid.toLowerCase() === lc;
-      });
-      const side = walletNetInventorySidebarOutcome(row);
-      setSelectedMarket(market as Market);
-      if (side) setSidebarOutcome(side);
-      setSidebarOpen(true);
+      if (!mid || !tradingWalletKey) return;
+      setTradesDialogMarketId(mid);
     },
-    [marketById, markets, setSelectedMarket, setSidebarOutcome, setSidebarOpen],
+    [tradingWalletKey],
   );
+
+  const closeTradesDialog = useCallback(() => {
+    setTradesDialogMarketId(null);
+  }, []);
 
   const onRefresh = useCallback(
     (e: React.MouseEvent) => {
@@ -165,6 +160,18 @@ export function HistoryPanel() {
           />
         </div>
       </div>
+      {tradesDialogMarketId && tradingWalletKey ? (
+        <Suspense fallback={null}>
+          <WalletMarketTradesDialogLazy
+            open
+            wallet={tradingWalletKey}
+            marketId={tradesDialogMarketId}
+            marketById={marketById}
+            markets={markets}
+            onClose={closeTradesDialog}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { setSidebarPolymarketTape } from '../lib/sidebarPolymarketTapeStore';
 import { SidebarLiveOrderbookSection } from './SidebarLiveOrderbookSection';
 import { useSidebarOrderHighlightSets } from '../lib/sidebarOrderHighlightStore';
 import { setSidebarYesObDepth, resetSidebarYesObDepth } from '../lib/sidebarYesObDepthStore';
+import { setSidebarAskSweepOpp, resetSidebarAskSweepOpp } from '../lib/sidebarAskSweepOppStore';
 import { outcomeMidCentsFromSidebarBook } from '../lib/sidebarYesMidFromBook';
 
 type OBLevel = { price: string; size: string };
@@ -89,6 +90,7 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
     loading: yesObLoading,
     bidUsdTotal: yesBidUsdTotal,
     askUsdTotal: yesAskUsdTotal,
+    askSweepProfit: yesAskSweepProfit,
   } = usePolymarketOB(yesTokenId, bookLimit);
   const {
     bids: noBids,
@@ -97,6 +99,7 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
     loading: noObLoading,
     bidUsdTotal: noBidUsdTotal,
     askUsdTotal: noAskUsdTotal,
+    askSweepProfit: noAskSweepProfit,
   } = usePolymarketOB(noTokenId, bookLimit);
 
   const activeObLoading = orderOutcome === 'YES' ? yesObLoading : noObLoading;
@@ -108,6 +111,8 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   const yesUsdStaleRef = useRef({ bidUsdTotal: 0 });
   const noUsdStaleRef = useRef({ bidUsdTotal: 0 });
   const displayUsdStaleRef = useRef({ bidUsdTotal: 0, askUsdTotal: 0 });
+  const yesOppStaleRef = useRef<number | null>(null);
+  const noOppStaleRef = useRef<number | null>(null);
   useLayoutEffect(() => {
     obStaleBookRef.current = { bids: [], asks: [] };
     yesStaleBookRef.current = { bids: [], asks: [] };
@@ -115,7 +120,10 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
     yesUsdStaleRef.current = { bidUsdTotal: 0 };
     noUsdStaleRef.current = { bidUsdTotal: 0 };
     displayUsdStaleRef.current = { bidUsdTotal: 0, askUsdTotal: 0 };
+    yesOppStaleRef.current = null;
+    noOppStaleRef.current = null;
     resetSidebarYesObDepth();
+    resetSidebarAskSweepOpp();
   }, [selectedMarket?.id, obTokenId]);
   useLayoutEffect(() => {
     if (!activeObLoading) {
@@ -212,6 +220,22 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   useLayoutEffect(() => {
     setSidebarYesObDepth({ yesBidUsd: yesBarBidUsd, noBidUsd: noBarBidUsd });
   }, [yesBarBidUsd, noBarBidUsd]);
+
+  useLayoutEffect(() => {
+    // Empty ask book → 0 edge (same as mitobot Markets opp$), not unknown.
+    if (!yesObLoading) yesOppStaleRef.current = yesAskSweepProfit ?? 0;
+  }, [yesObLoading, yesAskSweepProfit]);
+  useLayoutEffect(() => {
+    if (!noObLoading) noOppStaleRef.current = noAskSweepProfit ?? 0;
+  }, [noObLoading, noAskSweepProfit]);
+  useLayoutEffect(() => {
+    const yesTok = yesTokenId != null;
+    const noTok = noTokenId != null;
+    setSidebarAskSweepOpp({
+      yesOppUsd: !yesTok ? null : yesObLoading ? yesOppStaleRef.current : (yesAskSweepProfit ?? 0),
+      noOppUsd: !noTok ? null : noObLoading ? noOppStaleRef.current : (noAskSweepProfit ?? 0),
+    });
+  }, [yesTokenId, noTokenId, yesObLoading, noObLoading, yesAskSweepProfit, noAskSweepProfit]);
 
   useEffect(() => {
     setSidebarPolymarketTape(polymarketLiveTrades);

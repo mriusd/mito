@@ -35,13 +35,15 @@ export function HistoryPanel() {
   const [refreshBump, setRefreshBump] = useState(0);
   const [tradesDialogMarketId, setTradesDialogMarketId] = useState<string | null>(null);
   const loadEpochRef = useRef(0);
+  const onchainRefreshWalletRef = useRef('');
   const tradingWalletKey = tradingWallet.trim().toLowerCase();
 
   const marketById = useMemo(() => buildMarketByIdRecord(marketLookup), [marketLookup]);
 
   useLayoutEffect(() => {
     loadEpochRef.current += 1;
-    setRestMarkets([]);
+    onchainRefreshWalletRef.current = '';
+    setRestMarkets((prev) => (prev.length === 0 ? prev : []));
     setRestLoading(false);
   }, [tradingWalletKey]);
 
@@ -50,7 +52,7 @@ export function HistoryPanel() {
     const w = tradingWalletKey;
     const epochAtStart = loadEpochRef.current;
     if (!w) {
-      setRestMarkets([]);
+      setRestMarkets((prev) => (prev.length === 0 ? prev : []));
       return;
     }
     if (showLoading) setRestLoading(true);
@@ -61,7 +63,7 @@ export function HistoryPanel() {
       setRestMarkets(sortWalletPositionsByDisplayedDateDesc(p.positions || [], byId));
     } catch {
       if (epochAtStart !== loadEpochRef.current) return;
-      setRestMarkets([]);
+      setRestMarkets((prev) => (prev.length === 0 ? prev : []));
     } finally {
       if (showLoading && epochAtStart === loadEpochRef.current) setRestLoading(false);
     }
@@ -72,8 +74,14 @@ export function HistoryPanel() {
     void loadRest();
   }, [onchainMode, loadRest, refreshBump]);
 
+  // One refresh per wallet when entering onchain mode — do not re-fire on every parent render.
   useEffect(() => {
-    if (!onchainMode || !tradingWalletKey) return;
+    if (!onchainMode || !tradingWalletKey) {
+      onchainRefreshWalletRef.current = '';
+      return;
+    }
+    if (onchainRefreshWalletRef.current === tradingWalletKey) return;
+    onchainRefreshWalletRef.current = tradingWalletKey;
     refreshSidebarOnchainWallet();
   }, [onchainMode, tradingWalletKey]);
 

@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { useOnchainTradesWS, type OnchainTradesWSOpts } from '../hooks/useOnchainTradesWS';
 import {
   registerSidebarOnchainRefreshFns,
@@ -56,11 +56,13 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
     walletMarketTradesScopeKey,
   };
 
-  useLayoutEffect(() => {
+  // Passive effects only — never notify the external store from useLayoutEffect / render.
+  // Synchronous notify() was updating SidebarChartsRowChart mid-commit of this host.
+  useEffect(() => {
     resetSidebarOnchainWalletMarketTradesScope(walletMarketTradesScopeKey);
   }, [walletMarketTradesScopeKey]);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     resetSidebarOnchainWalletSession();
   }, [walletKey]);
 
@@ -75,15 +77,14 @@ export const SidebarOnchainTradesHost = memo(function SidebarOnchainTradesHost(o
       setSidebarOnchainWalletPnlDaily(s.walletPnlDaily);
       setSidebarOnchainWalletMarketTrades(s.walletMarketTrades, s.walletMarketTradesScopeKey);
     };
-    if (timerRef.current == null) {
-      timerRef.current = setTimeout(flush, BRIDGE_MS);
-    }
+    // Always (re)arm — previous cleanup only clears; do not sync-flush on dep change
+    // (that notified chart subscribers while React was still committing this host).
+    timerRef.current = setTimeout(flush, BRIDGE_MS);
     return () => {
       if (timerRef.current != null) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
-      flush();
     };
   }, [
     walletPositions,

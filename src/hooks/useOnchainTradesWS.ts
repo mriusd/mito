@@ -798,6 +798,14 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
   const [walletMarketTrades, setWalletMarketTrades] = useState<WSTrade[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
   const [walletMarketConnectBump, setWalletMarketConnectBump] = useState(0);
+  /** Prevent subscribe-while-closed from bumping connect forever (Maximum update depth). */
+  const walletMarketConnectBumpArmedRef = useRef(false);
+
+  // Never call setSidebarOnchainLiveTrades inside setTrades updaters — those run during
+  // Host render and notify useSyncExternalStore subscribers (SidebarChartsRowChart).
+  useEffect(() => {
+    setSidebarOnchainLiveTrades(trades);
+  }, [trades]);
 
   const walletMarketRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const primaryWalletMarketKeyRef = useRef<string | null>(null);
@@ -936,7 +944,6 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     const tid = tokenRef.current;
     const seeded = filterPublicTapeBuffer(mCanon, mCanon ? null : tid || null);
     setTrades(seeded);
-    setSidebarOnchainLiveTrades(seeded);
     loadTapeFromAPIRef.current?.();
   }, [marketId, tokenId]);
 
@@ -955,7 +962,6 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       }
       pendingTapeBatchRef.current = [];
       setTrades([]);
-      setSidebarOnchainLiveTrades([]);
       walletPosRef.current = [];
       gridWalletPosRef.current = [];
       if (posFlushTimerRef.current != null) {
@@ -990,9 +996,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
         for (const t of incoming) {
           cur = prependDedupedSortedTape(cur, t, MAX_TRADES);
         }
-        cur = finalizeLiveTapeRows(cur, MAX_TRADES);
-        setSidebarOnchainLiveTrades(cur);
-        return cur;
+        return finalizeLiveTapeRows(cur, MAX_TRADES);
       });
     };
 
@@ -1080,13 +1084,8 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const keepPending = pendingRows.filter((x) => !confirmedTxs.has((x.txHash || '').toLowerCase()));
             const fromBuf = filterPublicTapeBuffer(m ? canonicalConditionKey(m) : null, m ? null : t || null);
             const confirmed = mergePublicLiveTapes(mapped, fromBuf).slice(0, MAX_TRADES);
-            if (keepPending.length === 0) {
-              setSidebarOnchainLiveTrades(confirmed);
-              return confirmed;
-            }
-            const out = finalizeLiveTapeRows([...keepPending, ...confirmed], MAX_TRADES);
-            setSidebarOnchainLiveTrades(out);
-            return out;
+            if (keepPending.length === 0) return confirmed;
+            return finalizeLiveTapeRows([...keepPending, ...confirmed], MAX_TRADES);
           });
         })
         .catch(() => {});
@@ -1104,7 +1103,6 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       setTrades((prev) => {
         const next = finalizeLiveTapeRows(prev, MAX_TRADES);
         if (next.length === prev.length && next.every((r, i) => r === prev[i])) return prev;
-        setSidebarOnchainLiveTrades(next);
         return next;
       });
     }, PENDING_SWEEP_MS);
@@ -1158,6 +1156,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       ws.onopen = () => {
         markBackendWsUp();
         attempt = 0;
+        walletMarketConnectBumpArmedRef.current = false;
         setWsConnected(true);
         stopPolling();
         void loadFromAPI();
@@ -1281,11 +1280,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
               (x) => !(x.pending && set.has((x.txHash || '').toLowerCase())),
             );
             dropPendingWalletMarketForAllListeners(set);
-            setTrades((prev) => {
-              const next = dropPendingByTx(prev, set);
-              setSidebarOnchainLiveTrades(next);
-              return next;
-            });
+            setTrades((prev) => dropPendingByTx(prev, set));
           } else if (msg.type === 'walletPositions' && Array.isArray(msg.data)) {
             const msgWallet = String(msg.wallet || '').trim().toLowerCase();
             const mine = (walletRef.current || '').trim().toLowerCase();
@@ -1412,6 +1407,7 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       };
 
       ws.onclose = () => {
+        walletMarketConnectBumpArmedRef.current = false;
         setWsConnected(false);
         if (pingRef.current) {
           clearInterval(pingRef.current);
@@ -1513,7 +1509,13 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
       for (const row of getWalletMarketPendingTrades(w, m)) {
         listener.onTrade?.(row);
       }
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      // One bump to wake the connect effect — not on every subscribe while closed
+      // (that re-entered Maximum update depth and blanked the whole app).
+      if (
+        (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) &&
+        !walletMarketConnectBumpArmedRef.current
+      ) {
+        walletMarketConnectBumpArmedRef.current = true;
         setWalletMarketConnectBump((n) => n + 1);
       }
       return () => {
@@ -1605,12 +1607,10 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
     }
   }, [refetchWalletFromApi, subscribeWalletPnl]);
 
+  // Mount-only provider count — do NOT null shared on wsConnected / fn identity churn
+  // (that raced dialogs into subscribe-while-closed → connectBump loops).
   useEffect(() => {
     onchainTradesWSProviderCount += 1;
-    onchainTradesWSSharedStable.subscribeWalletMarketTrades = subscribeWalletMarketTrades;
-    onchainTradesWSSharedStable.refreshWalletMarketTrades = refreshWalletMarketTrades;
-    onchainTradesWSSharedStable.subscribeWalletPnl = subscribeWalletPnl;
-    onchainTradesWSSharedStable.wsConnected = wsConnected;
     onchainTradesWSShared = onchainTradesWSSharedStable;
     return () => {
       onchainTradesWSProviderCount -= 1;
@@ -1626,6 +1626,16 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
         bumpWalletMarketPendingStore();
       }
     };
+  }, []);
+
+  useEffect(() => {
+    onchainTradesWSSharedStable.subscribeWalletMarketTrades = subscribeWalletMarketTrades;
+    onchainTradesWSSharedStable.refreshWalletMarketTrades = refreshWalletMarketTrades;
+    onchainTradesWSSharedStable.subscribeWalletPnl = subscribeWalletPnl;
+    onchainTradesWSSharedStable.wsConnected = wsConnected;
+    if (onchainTradesWSProviderCount > 0) {
+      onchainTradesWSShared = onchainTradesWSSharedStable;
+    }
   }, [subscribeWalletMarketTrades, refreshWalletMarketTrades, subscribeWalletPnl, wsConnected]);
 
   return {

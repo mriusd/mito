@@ -76,8 +76,10 @@ export class ErrorBoundary extends Component<Props, State> {
     if (error) {
       if (this.props.fallback) return this.props.fallback(error, this.reset);
       return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
-          <p className="text-xs font-semibold text-red-300">Something went wrong here</p>
+        <div className="flex min-h-[12rem] h-full w-full flex-col items-center justify-center gap-2 p-4 text-center bg-gray-950">
+          <p className="text-sm font-semibold text-red-300">
+            Something went wrong{this.props.name ? ` (${this.props.name})` : ''}
+          </p>
           <p className="text-[11px] text-gray-400">Retrying automatically…</p>
           {error?.message ? (
             <p className="max-w-full break-words px-2 text-left text-[10px] font-mono text-gray-500">
@@ -86,9 +88,16 @@ export class ErrorBoundary extends Component<Props, State> {
           ) : null}
           <button
             onClick={this.reset}
-            className="mt-1 rounded bg-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:bg-gray-600"
+            className="mt-1 rounded bg-gray-700 px-3 py-1.5 text-[11px] text-gray-200 hover:bg-gray-600"
           >
             Retry now
+          </button>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="text-[10px] text-blue-400 hover:underline"
+          >
+            Hard reload page
           </button>
         </div>
       );

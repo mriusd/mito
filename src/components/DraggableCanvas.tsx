@@ -367,14 +367,18 @@ export const DraggableCanvas = memo(function DraggableCanvas() {
 
     const measure = () => {
       const rect = el.getBoundingClientRect();
-      const availableH = window.innerHeight - rect.top;
+      let availableH = window.innerHeight - rect.top;
+      if (!Number.isFinite(availableH) || availableH < 120) {
+        availableH = Math.max(120, window.innerHeight * 0.7);
+      }
       let w = rect.width;
       // Flex children can report 0 width until after layout; avoid never mounting the grid (black canvas).
-      if (!(w > 0)) {
+      if (!(w > 0) || !Number.isFinite(w)) {
         w = Math.max(320, window.innerWidth - 312);
       }
-      setContainerWidth(w);
-      setRowHeight(Math.max(1, availableH / TOTAL_ROWS));
+      const nextRow = Math.max(1, availableH / TOTAL_ROWS);
+      setContainerWidth((prev) => (prev === w ? prev : w));
+      setRowHeight((prev) => (prev === nextRow ? prev : nextRow));
     };
 
     measure();
@@ -383,12 +387,14 @@ export const DraggableCanvas = memo(function DraggableCanvas() {
     window.addEventListener('resize', measure);
     let rafOuter = 0;
     let rafInner = 0;
+    const retryTimers = [50, 200, 500].map((ms) => window.setTimeout(measure, ms));
     rafOuter = requestAnimationFrame(() => {
       rafInner = requestAnimationFrame(measure);
     });
     return () => {
       cancelAnimationFrame(rafOuter);
       cancelAnimationFrame(rafInner);
+      retryTimers.forEach((id) => window.clearTimeout(id));
       ro.disconnect();
       window.removeEventListener('resize', measure);
     };
@@ -459,16 +465,44 @@ export const DraggableCanvas = memo(function DraggableCanvas() {
   /** Layout from store or defaults. Default minW/minH only apply when building defaults; saved layouts are used as stored. */
   const computedLayout = useMemo((): LayoutItem[] => {
     const defaults = getDefaultLayout(effectivePanels, currentBreakpoint, containerWidth, rowHeight);
+    const sanitize = (item: LayoutItem): LayoutItem => {
+      const w = typeof item.w === 'number' && Number.isFinite(item.w) && item.w > 0 ? item.w : 4;
+      const h = typeof item.h === 'number' && Number.isFinite(item.h) && item.h > 0 ? item.h : 20;
+      const x = typeof item.x === 'number' && Number.isFinite(item.x) && item.x >= 0 ? item.x : 0;
+      const y = typeof item.y === 'number' && Number.isFinite(item.y) && item.y >= 0 ? item.y : 0;
+      return { ...item, x, y, w, h, minW: 1, minH: 1 };
+    };
     if (layouts && layouts[currentBreakpoint]) {
       const saved = layouts[currentBreakpoint] as LayoutItem[];
       // Drop stored minW/minH (often from old defaults); RGL uses them as hard floors — keep only user w/h.
-      const fromUser = saved.map((item) => ({ ...item, minW: 1, minH: 1 }));
+      const fromUser = saved.map(sanitize);
       const savedIds = new Set(saved.map((l) => l.i));
-      const missing = defaults.filter((d) => !savedIds.has(d.i));
+      const missing = defaults.filter((d) => !savedIds.has(d.i)).map(sanitize);
       return missing.length > 0 ? [...fromUser, ...missing] : fromUser;
     }
-    return defaults;
+    return defaults.map(sanitize);
   }, [layouts, effectivePanels, currentBreakpoint, currentCols, containerWidth, rowHeight]);
+
+  const resetLayoutToDefaults = useCallback(() => {
+    const defaultPanels: PanelConfig[] = [
+      { id: 'asset-BTC', type: 'asset-BTC', title: 'BTC' },
+      { id: 'trades-positions-orders', type: 'trades-positions-orders', title: 'Trades/Positions/Orders' },
+      { id: 'updown-overview', type: 'updown-overview', title: 'Up/Down Markets' },
+      { id: 'signals', type: 'signals', title: 'Signals' },
+      { id: 'chat', type: 'chat', title: 'Chat' },
+    ];
+    try {
+      localStorage.removeItem('polybot-react-panels');
+      localStorage.removeItem('polybot-react-layouts');
+      localStorage.removeItem('polybot-removed-panels');
+    } catch {
+      /* ignore */
+    }
+    setRemovedPanelTypes(new Set());
+    setPanels(defaultPanels);
+    setLayouts(null);
+    setShowLayoutMenu(false);
+  }, [setPanels, setLayouts]);
 
   /**
    * RGL is controlled via `layout={gridLayout}`. The store is only written on drag/resize stop.
@@ -579,33 +613,55 @@ export const DraggableCanvas = memo(function DraggableCanvas() {
     [removePanel, layouts, setLayouts, effectivePanels, removedPanelTypes]
   );
 
+  const layoutNotReady =
+    !(containerWidth > 0) ||
+    !(rowHeight > 0) ||
+    !Number.isFinite(containerWidth) ||
+    !Number.isFinite(rowHeight);
+
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      {/* Dev Header */}
-      {import.meta.env.VITE_FE_ENV === 'dev' && (
-        <div className="flex-shrink-0 flex items-center gap-3 bg-gray-900 border-b border-gray-700 px-3 py-1">
+      {/* Always-on layout toolbar — black canvas is usually bad saved layout / zero measure */}
+      <div className="flex-shrink-0 flex items-center gap-3 bg-gray-900 border-b border-gray-700 px-3 py-1">
+        {import.meta.env.VITE_FE_ENV === 'dev' ? (
           <span className="text-[10px] font-mono text-gray-400">
-            Canvas W: {containerWidth} | Canvas H: {containerHeight} | Row: {rowHeight}px | Viewport: {window.innerWidth}×{window.innerHeight}
+            Canvas W: {containerWidth} | Canvas H: {containerHeight} | Row: {rowHeight}px | Viewport:{' '}
+            {window.innerWidth}×{window.innerHeight}
           </span>
-          <span className="text-[10px] font-mono text-gray-500">
-            store={layouts ? 'saved' : 'defaults'}
-          </span>
-          <div className="relative ml-auto" ref={layoutMenuRef}>
-            <button
-              onClick={() => setShowLayoutMenu(!showLayoutMenu)}
-              className="bg-purple-700 hover:bg-purple-600 text-white rounded px-2 text-[10px] font-medium transition border border-purple-500 h-5"
-            >
-              Layout
-            </button>
-            {showLayoutMenu && (
-              <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[160px] z-50">
-                {Object.keys(BREAKPOINT_LAYOUTS).filter(bp => !bp.includes('-tall')).map((bp) => (
+        ) : (
+          <span className="text-[10px] text-gray-500">Main layout</span>
+        )}
+        <span className="text-[10px] font-mono text-gray-500">store={layouts ? 'saved' : 'defaults'}</span>
+        <div className="relative ml-auto" ref={layoutMenuRef}>
+          <button
+            type="button"
+            onClick={() => setShowLayoutMenu(!showLayoutMenu)}
+            className="bg-purple-700 hover:bg-purple-600 text-white rounded px-2 text-[10px] font-medium transition border border-purple-500 h-5"
+          >
+            Layout
+          </button>
+          <button
+            type="button"
+            onClick={resetLayoutToDefaults}
+            className="ml-2 bg-gray-800 hover:bg-red-700 text-red-300 hover:text-white rounded px-2 text-[10px] font-medium transition border border-gray-600 h-5"
+            title="Clear saved panels/layouts and restore defaults"
+          >
+            Reset layout
+          </button>
+          {showLayoutMenu && (
+            <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[160px] z-50">
+              {Object.keys(BREAKPOINT_LAYOUTS)
+                .filter((bp) => !bp.includes('-tall'))
+                .map((bp) => (
                   <button
                     key={bp}
+                    type="button"
                     onClick={() => {
                       const bpMap = BREAKPOINT_LAYOUTS[bp];
-                      const newPanels: PanelConfig[] = Object.keys(bpMap).map(type => ({
-                        id: type, type: type as PanelType, title: PANEL_TITLES[type] || type,
+                      const newPanels: PanelConfig[] = Object.keys(bpMap).map((type) => ({
+                        id: type,
+                        type: type as PanelType,
+                        title: PANEL_TITLES[type] || type,
                       }));
                       localStorage.removeItem('polybot-removed-panels');
                       setRemovedPanelTypes(new Set());
@@ -618,93 +674,106 @@ export const DraggableCanvas = memo(function DraggableCanvas() {
                     {bp}
                   </button>
                 ))}
-                <div className="border-t border-gray-700 my-1" />
-                <button
-                  onClick={() => {
-                    const defaultPanels: PanelConfig[] = [
-                      { id: 'asset-BTC', type: 'asset-BTC', title: 'BTC' },
-                      { id: 'trades-positions-orders', type: 'trades-positions-orders', title: 'Trades/Positions/Orders' },
-                      { id: 'updown-overview', type: 'updown-overview', title: 'Up/Down Markets' },
-                      { id: 'signals', type: 'signals', title: 'Signals' },
-                      { id: 'chat', type: 'chat', title: 'Chat' },
-                    ];
-                    localStorage.removeItem('polybot-react-panels');
-                    localStorage.removeItem('polybot-react-layouts');
-                    localStorage.removeItem('polybot-removed-panels');
-                    setRemovedPanelTypes(new Set());
-                    setPanels(defaultPanels);
-                    setLayouts(null);
-                    setShowLayoutMenu(false);
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-gray-700 transition"
-                >
-                  Reset to Defaults
-                </button>
-              </div>
-            )}
-          </div>
+              <div className="border-t border-gray-700 my-1" />
+              <button
+                type="button"
+                onClick={resetLayoutToDefaults}
+                className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-gray-700 transition"
+              >
+                Reset to Defaults
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
       <div ref={containerRef} className="flex-1 min-h-0 overflow-auto relative min-w-0">
-      {(containerWidth <= 0 || rowHeight <= 0) ? (
-        <div className="flex h-[min(240px,40vh)] items-center justify-center text-gray-500 text-xs">Loading layout…</div>
-      ) : (
-      <GridLayout
-        className="layout"
-        width={containerWidth}
-        layout={gridLayout}
-        cols={currentCols}
-        rowHeight={rowHeight}
-        onLayoutChange={handleLayoutChange}
-        onDragStart={handleMobileDragStart}
-        onResizeStart={handleResizeStart}
-        onDragStop={handleDragStopWrapped}
-        onResizeStop={handleResizeStopWrapped}
-        isDraggable={layoutInteractEnabled}
-        isResizable={true}
-        draggableHandle=".panel-header"
-        draggableCancel=".no-drag,.no-drag *,input,select,textarea,button,label,option,.cursor-help,[data-no-drag='true'],[data-no-drag='true'] *"
-        compactType="vertical"
-        margin={[0, 0]}
-        containerPadding={[0, 0]}
-        useCSSTransforms={true}
-      >
-        {effectivePanels.map((panel) => (
-          <div key={panel.id} data-panel-wrap-id={panel.id} className="relative overflow-hidden h-full p-[2px]">
-            {/* Remove button */}
+        {layoutNotReady ? (
+          <div className="flex h-[min(240px,40vh)] flex-col items-center justify-center gap-2 text-gray-300 text-xs">
+            <span>Loading layout…</span>
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (confirmingRemove === panel.id) {
-                  handleRemovePanel(panel.id);
-                  setConfirmingRemove(null);
-                } else {
-                  setConfirmingRemove(panel.id);
-                }
-              }}
-              onBlur={() => setTimeout(() => setConfirmingRemove(null), 200)}
-              className={`absolute top-0.5 right-0.5 z-10 rounded flex items-center justify-center transition ${
-                confirmingRemove === panel.id
-                  ? 'bg-red-600 text-white opacity-100 px-1.5 h-5'
-                  : 'bg-gray-800/80 hover:bg-red-600 text-gray-500 hover:text-white w-4 h-4 opacity-0 hover:opacity-100 group-hover:opacity-100'
-              }`}
-              style={{ fontSize: '10px' }}
-              title={confirmingRemove === panel.id ? 'Click again to confirm' : 'Remove panel'}
-              onMouseDown={(e) => e.stopPropagation()}
+              type="button"
+              onClick={resetLayoutToDefaults}
+              className="rounded bg-purple-700 px-3 py-1 text-[11px] text-white hover:bg-purple-600"
             >
-              {confirmingRemove === panel.id ? (
-                <span className="text-[9px] font-bold">Remove?</span>
-              ) : (
-                <X className="w-3 h-3" />
-              )}
+              Reset layout
             </button>
-            <ErrorBoundary name={panel.type}>
-              <Suspense fallback={null}>{renderPanel(panel)}</Suspense>
-            </ErrorBoundary>
           </div>
-        ))}
-      </GridLayout>
-      )}
+        ) : effectivePanels.length === 0 ? (
+          <div className="flex h-[min(320px,50vh)] flex-col items-center justify-center gap-3 text-gray-300">
+            <p className="text-sm font-semibold">No panels on the canvas</p>
+            <p className="text-[11px] text-gray-500">Saved layout may be empty or all panels were removed.</p>
+            <button
+              type="button"
+              onClick={resetLayoutToDefaults}
+              className="rounded bg-purple-700 px-3 py-1.5 text-xs text-white hover:bg-purple-600"
+            >
+              Restore default panels
+            </button>
+          </div>
+        ) : (
+          <GridLayout
+            className="layout"
+            width={containerWidth}
+            layout={gridLayout}
+            cols={currentCols}
+            rowHeight={rowHeight}
+            onLayoutChange={handleLayoutChange}
+            onDragStart={handleMobileDragStart}
+            onResizeStart={handleResizeStart}
+            onDragStop={handleDragStopWrapped}
+            onResizeStop={handleResizeStopWrapped}
+            isDraggable={layoutInteractEnabled}
+            isResizable={true}
+            draggableHandle=".panel-header"
+            draggableCancel=".no-drag,.no-drag *,input,select,textarea,button,label,option,.cursor-help,[data-no-drag='true'],[data-no-drag='true'] *"
+            compactType="vertical"
+            margin={[0, 0]}
+            containerPadding={[0, 0]}
+            useCSSTransforms={true}
+          >
+            {effectivePanels.map((panel) => (
+              <div key={panel.id} data-panel-wrap-id={panel.id} className="relative overflow-hidden h-full p-[2px]">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirmingRemove === panel.id) {
+                      handleRemovePanel(panel.id);
+                      setConfirmingRemove(null);
+                    } else {
+                      setConfirmingRemove(panel.id);
+                    }
+                  }}
+                  onBlur={() => setTimeout(() => setConfirmingRemove(null), 200)}
+                  className={`absolute top-0.5 right-0.5 z-10 rounded flex items-center justify-center transition ${
+                    confirmingRemove === panel.id
+                      ? 'bg-red-600 text-white opacity-100 px-1.5 h-5'
+                      : 'bg-gray-800/80 hover:bg-red-600 text-gray-500 hover:text-white w-4 h-4 opacity-0 hover:opacity-100 group-hover:opacity-100'
+                  }`}
+                  style={{ fontSize: '10px' }}
+                  title={confirmingRemove === panel.id ? 'Click again to confirm' : 'Remove panel'}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  {confirmingRemove === panel.id ? (
+                    <span className="text-[9px] font-bold">Remove?</span>
+                  ) : (
+                    <X className="w-3 h-3" />
+                  )}
+                </button>
+                <ErrorBoundary name={panel.type}>
+                  <Suspense
+                    fallback={
+                      <div className="flex h-full items-center justify-center text-[10px] text-gray-500">
+                        Loading {panel.title || panel.type}…
+                      </div>
+                    }
+                  >
+                    {renderPanel(panel)}
+                  </Suspense>
+                </ErrorBoundary>
+              </div>
+            ))}
+          </GridLayout>
+        )}
       </div>
     </div>
   );

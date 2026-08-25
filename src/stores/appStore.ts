@@ -303,7 +303,7 @@ declare namespace ReactGridLayout {
 export type PersistedGridLayouts = ReactGridLayout.Layouts;
 
 // Bump this version to force-reset all users' saved layouts to fresh defaults
-const LAYOUT_VERSION = 9;
+const LAYOUT_VERSION = 10;
 
 function scaleSavedLayoutWidths(
   layouts: Record<string, { x?: number; w?: number }[]>,
@@ -341,6 +341,7 @@ function scaleSavedLayoutWidths(
   if (savedVersion > 0) {
     localStorage.removeItem('polybot-react-panels');
     localStorage.removeItem('polybot-react-layouts');
+    localStorage.removeItem('polybot-removed-panels');
   }
   localStorage.setItem('polybot-layout-version', String(LAYOUT_VERSION));
 })();

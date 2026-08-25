@@ -8,6 +8,7 @@ import {
   sidebarChartIntervalFromContext,
   volBarsForCalc,
 } from '../lib/chartVolatility';
+import { safeCloseWebSocket } from '../lib/safeCloseWebSocket';
 
 interface Candle {
   time: number;
@@ -106,10 +107,8 @@ export function useSidebarChartVolatility({
     setReady(false);
     onVolRef.current?.(null);
 
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
+    safeCloseWebSocket(wsRef.current);
+    wsRef.current = null;
 
     fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=100`)
       .then((r) => r.json())
@@ -160,8 +159,8 @@ export function useSidebarChartVolatility({
     ws.onerror = () => {};
 
     return () => {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
       if (wsRef.current === ws) wsRef.current = null;
+      safeCloseWebSocket(ws);
     };
   }, [asset, chainlinkCandles, binanceSymbol, binanceStreamSymbol, interval, recalcKey]);
 
@@ -228,10 +227,8 @@ export function useSidebarChartVolatility({
     binanceFallbackMapRef.current = new Map();
     setBinanceFallbackReady(false);
 
-    if (binanceFallbackWsRef.current) {
-      binanceFallbackWsRef.current.close();
-      binanceFallbackWsRef.current = null;
-    }
+    safeCloseWebSocket(binanceFallbackWsRef.current);
+    binanceFallbackWsRef.current = null;
 
     fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=100`)
       .then((r) => r.json())
@@ -281,8 +278,8 @@ export function useSidebarChartVolatility({
     ws.onerror = () => {};
 
     return () => {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
       if (binanceFallbackWsRef.current === ws) binanceFallbackWsRef.current = null;
+      safeCloseWebSocket(ws);
     };
   }, [asset, chainlinkCandles, binanceSymbol, binanceStreamSymbol, interval, recalcKey]);
 

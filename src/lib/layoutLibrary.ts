@@ -7,6 +7,7 @@ import {
   buildLayoutExport,
   parseLayoutImport,
 } from './layoutExport';
+import { LAYOUT_VERSION } from './layoutVersion';
 
 const LIBRARY_KEY = 'polybot-layout-library';
 const ACTIVE_ID_KEY = 'polybot-active-layout-id';
@@ -155,7 +156,7 @@ function writeLiveLayout(entry: Pick<SavedLayout, 'panels' | 'layouts' | 'remove
   } else {
     localStorage.removeItem('polybot-removed-panels');
   }
-  localStorage.setItem('polybot-layout-version', String(MITO_LAYOUT_FILE_VERSION));
+  localStorage.setItem('polybot-layout-version', String(LAYOUT_VERSION));
 }
 
 /** Switch to named layout (snapshots current into previous active first). Reloads. */

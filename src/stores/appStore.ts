@@ -12,6 +12,7 @@ import {
   upOrDownMarketsEqual,
 } from '../lib/marketDataDedupe';
 import { GRID_WIDTH_SUBDIV } from '../lib/defaultLayouts';
+import { LAYOUT_VERSION } from '../lib/layoutVersion';
 import { MOBILE_SCREEN_MEDIA_QUERY } from '../lib/mobileScreenNotice';
 
 /** Quiet window after the last click before applying intermediate full markets (ms). */
@@ -302,9 +303,6 @@ declare namespace ReactGridLayout {
 
 export type PersistedGridLayouts = ReactGridLayout.Layouts;
 
-// Bump this version to force-reset all users' saved layouts to fresh defaults
-const LAYOUT_VERSION = 10;
-
 function scaleSavedLayoutWidths(
   layouts: Record<string, { x?: number; w?: number }[]>,
   factor: number,
@@ -318,10 +316,17 @@ function scaleSavedLayoutWidths(
   }
 }
 
-// Run version check once before any load functions
+// Run version check once before any load functions.
+// Soft-migrate when possible — never wipe a layout that was just imported with an older file.version stamp.
 (function checkLayoutVersion() {
   const savedVersion = parseInt(localStorage.getItem('polybot-layout-version') || '0', 10);
   if (savedVersion >= LAYOUT_VERSION) return;
+
+  // v9 → v10: no grid schema change (v10 only cleared bad state once). Keep panels/layouts.
+  if (savedVersion === 9) {
+    localStorage.setItem('polybot-layout-version', String(LAYOUT_VERSION));
+    return;
+  }
 
   if (savedVersion === 8) {
     try {
@@ -338,6 +343,7 @@ function scaleSavedLayoutWidths(
     return;
   }
 
+  // Ancient / unknown: reset once.
   if (savedVersion > 0) {
     localStorage.removeItem('polybot-react-panels');
     localStorage.removeItem('polybot-react-layouts');

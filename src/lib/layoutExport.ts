@@ -1,9 +1,10 @@
 import type { PanelConfig } from '../types';
 import type { PersistedGridLayouts } from '../stores/appStore';
+import { LAYOUT_VERSION } from './layoutVersion';
 
 export const MITO_LAYOUT_SCHEMA = 'mito-layout' as const;
 /** Matches appStore LAYOUT_VERSION for future migrations. */
-export const MITO_LAYOUT_FILE_VERSION = 9;
+export const MITO_LAYOUT_FILE_VERSION = LAYOUT_VERSION;
 
 export type MitoLayoutExport = {
   schema: typeof MITO_LAYOUT_SCHEMA;
@@ -100,6 +101,8 @@ export function applyLayoutImport(file: MitoLayoutExport): void {
   } else {
     localStorage.removeItem('polybot-removed-panels');
   }
-  localStorage.setItem('polybot-layout-version', String(MITO_LAYOUT_FILE_VERSION));
+  // Always stamp the *current* app version (not an older file.version), or the next
+  // boot's checkLayoutVersion would wipe the import as "outdated".
+  localStorage.setItem('polybot-layout-version', String(LAYOUT_VERSION));
   window.location.reload();
 }

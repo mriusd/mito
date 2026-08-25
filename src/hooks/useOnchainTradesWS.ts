@@ -5,8 +5,25 @@ import type { WalletPosition } from '../api';
 import { API_BASE, WS_BASE } from '../lib/env';
 import { fetchBackend, backendWsRetryDelayMs, markBackendDownFromWs, markBackendWsUp } from '../lib/fetchBackend';
 import { onBackendReconnect } from '../lib/backendReconnect';
+import type {
+  WalletPnlByDate,
+  WalletPnlCategory,
+  WalletPnlDailyWS,
+  WalletPnlDayBucket,
+  WSPosition,
+  WSTrade,
+} from '../lib/onchainTradesTypes';
 import { dedupeWalletTradesByLedgerLeg, onchainFillKey, walletTradeKey } from '../lib/tradeKeys';
 import type { LiveTrade } from './usePolymarketOB';
+
+export type {
+  WSPosition,
+  WSTrade,
+  WalletPnlDayBucket,
+  WalletPnlByDate,
+  WalletPnlCategory,
+  WalletPnlDailyWS,
+} from '../lib/onchainTradesTypes';
 
 /** Cap sidebar / chart tape arrays — 3500 rows × lucide-SVG anchors held hundreds of MB of detached DOM after a few market switches. */
 const MAX_TRADES = 400;
@@ -324,20 +341,6 @@ function tradeTimestampMs(f: OnchainFillRow, maxBlock: number, nowMs: number): n
   return Math.min(ms, nowMs);
 }
 
-export interface WSPosition {
-  tokenId: string;
-  size: number;
-  avgPrice: number;
-  feesPaid?: number;
-  title?: string;
-  slug?: string;
-  eventSlug?: string;
-  marketId?: string;
-  outcome?: string;
-  endDate?: string;
-  underlyingAsset?: string;
-}
-
 function mapRawWSPosition(p: Record<string, unknown>): WSPosition | null {
   const tokenIdRaw = String(p.tokenId || '');
   const tokenId = normalizeClobTokenKey(tokenIdRaw) || tokenIdRaw;
@@ -423,32 +426,6 @@ function mergeWalletPositionsSnapshot(
   return [...byTok.values()];
 }
 
-export interface WSTrade {
-  /** Stable dedupe key — set once at ingest. */
-  id?: string;
-  /** Mempool overlay — superseded by ledger row with same txHash. */
-  pending?: boolean;
-  /** true = LIMIT/approx price from calldata fast path; replaced by trace broadcast. */
-  priceApproximate?: boolean;
-  tokenId: string;
-  /** Condition id when known */
-  marketId?: string;
-  side: 'BUY' | 'SELL' | 'SPLIT' | 'MERGE' | 'REDEEM';
-  outcome?: string;
-  size: number;
-  price: number;
-  fee: number;
-  deltaUsd?: number;
-  isTaker?: boolean;
-  blockTime: number;
-  txHash?: string;
-  /** Same tx can have multiple OrderFilled logs — required for dedupe. */
-  logIndex?: number;
-  title?: string;
-  slug?: string;
-  eventSlug?: string;
-}
-
 export type WalletMarketTradesListener = {
   onSnapshot: (trades: WSTrade[], total: number) => void;
   onTrade?: (trade: WSTrade) => void;
@@ -473,19 +450,7 @@ const onchainTradesWSSharedStable: OnchainTradesWSShared = {
   wsConnected: false,
 };
 
-export type WalletPnlDayBucket = { bought: number; sold: number };
-export type WalletPnlByDate = Record<string, WalletPnlDayBucket>;
-export type WalletPnlCategory = 'CRYPTO' | 'WEATHER' | 'OTHER';
 
-export type WalletPnlDailyWS = {
-  from: string;
-  to: string;
-  tradeByDate: WalletPnlByDate;
-  marketByDate: WalletPnlByDate;
-  /** Present after polycandles deploy — per Crypto/Weather/Other day buckets. */
-  tradeByDateByCategory?: Partial<Record<WalletPnlCategory, WalletPnlByDate>>;
-  marketByDateByCategory?: Partial<Record<WalletPnlCategory, WalletPnlByDate>>;
-};
 
 export function getOnchainTradesWSShared(): OnchainTradesWSShared | null {
   return onchainTradesWSShared;

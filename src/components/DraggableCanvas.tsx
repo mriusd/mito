@@ -762,7 +762,7 @@ export const DraggableCanvas = memo(function DraggableCanvas() {
                 <ErrorBoundary name={panel.type}>
                   <Suspense
                     fallback={
-                      <div className="flex h-full items-center justify-center text-[10px] text-gray-500">
+                      <div className="flex h-full min-h-[3rem] items-center justify-center text-[10px] text-gray-500">
                         Loading {panel.title || panel.type}…
                       </div>
                     }

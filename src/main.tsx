@@ -6,9 +6,13 @@ import { wagmiAdapter } from './lib/wallet'
 import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { clearChunkReloadFlag } from './utils/lazyWithChunkReload'
 
 // Amplitude (incl. session replay) intentionally not loaded — prod UI was lagging
 // under continuous bid/ask DOM updates while local vite (no Amplitude) stayed smooth.
+
+// Drop stale chunk-reload lock from a prior aborted HMR/navigation so lazy panels can mount.
+clearChunkReloadFlag()
 
 const queryClient = new QueryClient()
 

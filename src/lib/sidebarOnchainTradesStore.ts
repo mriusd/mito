@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { LiveTrade } from '../hooks/usePolymarketOB';
-import type { WSPosition, WSTrade, WalletPnlDailyWS } from '../hooks/useOnchainTradesWS';
+import type { WSPosition, WSTrade, WalletPnlDailyWS } from './onchainTradesTypes';
 import type { WalletPosition } from '../api';
 
 type SidebarOnchainTradesSnapshot = {

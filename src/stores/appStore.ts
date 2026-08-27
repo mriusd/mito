@@ -151,6 +151,8 @@ interface AppState {
   maxOrderSizeUsd: number;
   /** When true, skip sidebar dialog when a limit price would cross the book (instant execution). */
   disableMarketPriceWarning: boolean;
+  /** When true, skip the type-MARKET confirm when market-selling / closing a position. */
+  disableMarketDialog: boolean;
   /** When true, sidebar selection jumps to the next live row when the current market expires (Up/Down TF bucket or same slug+strike). */
   autoSwitchNextMarketOnExpiry: boolean;
   /** When true, keep sidebar closed (market clicks still select; rail stays hidden). Default off. */
@@ -246,6 +248,7 @@ interface AppState {
   setDailyBudget: (v: string) => void;
   setMaxOrderSizeUsd: (v: number) => void;
   setDisableMarketPriceWarning: (v: boolean) => void;
+  setDisableMarketDialog: (v: boolean) => void;
   setAutoSwitchNextMarketOnExpiry: (v: boolean) => void;
   setHideSidebar: (v: boolean) => void;
   setArbMatchMult: (v: number) => void;
@@ -503,6 +506,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   })(),
   disableMarketPriceWarning: localStorage.getItem('polymarket-disable-market-price-warning') === 'true',
+  disableMarketDialog: localStorage.getItem('polymarket-disable-market-dialog') === 'true',
   autoSwitchNextMarketOnExpiry: (() => {
     if (typeof localStorage === 'undefined') return true;
     const v = localStorage.getItem('polymarket-auto-switch-next-on-expiry');
@@ -680,6 +684,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       localStorage.setItem('polymarket-disable-market-price-warning', v ? 'true' : 'false');
     }
     set({ disableMarketPriceWarning: v });
+  },
+  setDisableMarketDialog: (v) => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('polymarket-disable-market-dialog', v ? 'true' : 'false');
+    }
+    set({ disableMarketDialog: v });
   },
   setAutoSwitchNextMarketOnExpiry: (v) => {
     if (typeof localStorage !== 'undefined') {

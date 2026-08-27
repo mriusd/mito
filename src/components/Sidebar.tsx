@@ -1463,6 +1463,9 @@ export const Sidebar = memo(function Sidebar() {
   }, []);
 
   const requestClosePositionMarketConfirm = useCallback(() => {
+    if (useAppStore.getState().disableMarketDialog) {
+      return Promise.resolve(true);
+    }
     return new Promise<boolean>((resolve) => {
       closePositionMarketConfirmResolver.current = resolve;
       setClosePositionMarketConfirmInput('');

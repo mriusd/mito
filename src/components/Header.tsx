@@ -225,6 +225,8 @@ export function Header({ onRefresh }: HeaderProps) {
   const [showOrderDialog, setShowOrderDialog] = useState(true);
   const disableMarketPriceWarning = useAppStore((s) => s.disableMarketPriceWarning);
   const setDisableMarketPriceWarning = useAppStore((s) => s.setDisableMarketPriceWarning);
+  const disableMarketDialog = useAppStore((s) => s.disableMarketDialog);
+  const setDisableMarketDialog = useAppStore((s) => s.setDisableMarketDialog);
   const autoSwitchNextMarketOnExpiry = useAppStore((s) => s.autoSwitchNextMarketOnExpiry);
   const setAutoSwitchNextMarketOnExpiry = useAppStore((s) => s.setAutoSwitchNextMarketOnExpiry);
   const hideSidebar = useAppStore((s) => s.hideSidebar);
@@ -477,6 +479,15 @@ export function Header({ onRefresh }: HeaderProps) {
                   className="accent-blue-500"
                 />
                 <span className="text-xs text-gray-300">Disable market price warning</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer mt-2" title="Skip typing MARKET when closing a position with a market sell">
+                <input
+                  type="checkbox"
+                  checked={disableMarketDialog}
+                  onChange={(e) => setDisableMarketDialog(e.target.checked)}
+                  className="accent-blue-500"
+                />
+                <span className="text-xs text-gray-300">Disable MARKET dialog</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer mt-2">
                 <input

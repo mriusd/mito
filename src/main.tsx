@@ -16,14 +16,18 @@ clearChunkReloadFlag()
 
 const queryClient = new QueryClient()
 
+// StrictMode double-mounts effects in DEV (2× WS connects, 2× intervals) — fine for
+// correctness checks, brutal with Vite compiling panel modules. Prod builds only.
+const rootTree = (
+  <WagmiProvider config={wagmiAdapter.wagmiConfig}>
+    <QueryClientProvider client={queryClient}>
+      <ErrorBoundary name="root">
+        <App />
+      </ErrorBoundary>
+    </QueryClientProvider>
+  </WagmiProvider>
+);
+
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <WagmiProvider config={wagmiAdapter.wagmiConfig}>
-      <QueryClientProvider client={queryClient}>
-        <ErrorBoundary name="root">
-          <App />
-        </ErrorBoundary>
-      </QueryClientProvider>
-    </WagmiProvider>
-  </StrictMode>,
+  import.meta.env.PROD ? <StrictMode>{rootTree}</StrictMode> : rootTree,
 )

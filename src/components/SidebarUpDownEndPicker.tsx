@@ -1,4 +1,4 @@
-import { memo, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { useSidebarUpDownEndPicker } from '../lib/sidebarUpDownTargetStore';
@@ -12,6 +12,27 @@ export const SidebarUpDownEndPicker = memo(function SidebarUpDownEndPicker({
   const selectedMarketId = useAppStore((s) => s.selectedMarket?.id ?? '');
   const setSelectedMarket = useAppStore((s) => s.setSelectedMarket);
   const detailsRef = useRef<HTMLDetailsElement>(null);
+
+  // Close on outside click / Escape — an open list was covering the canvas and eating scroll.
+  useEffect(() => {
+    const onPointer = (e: Event) => {
+      const dr = detailsRef.current;
+      if (!dr?.open) return;
+      if (e.target instanceof Node && dr.contains(e.target)) return;
+      dr.open = false;
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const dr = detailsRef.current;
+      if (dr?.open) dr.open = false;
+    };
+    document.addEventListener('pointerdown', onPointer, true);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, []);
 
   if (!endPicker) return null;
 

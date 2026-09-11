@@ -36,6 +36,82 @@ function mergeWsFields(fresh: Record<string, Market>, prev: Record<string, Marke
   return fresh;
 }
 
+function applyMarketsPayload(data: Awaited<ReturnType<typeof fetchMarkets>>, opts?: { clearSplash?: boolean }) {
+  // Unblock splash before coalesce/lookup — that work can stall the main thread for seconds.
+  if (opts?.clearSplash) {
+    useAppStore.getState().setLoading(false);
+  }
+
+  const store = useAppStore.getState();
+  const prevLookup = store.marketLookup;
+  const aboveMarkets = coalesceRecordOfMarketArrays(store.aboveMarkets, data.aboveMarkets || {});
+  const priceOnMarkets = coalesceRecordOfMarketArrays(store.priceOnMarkets, data.priceOnMarkets || {});
+  const weeklyHitMarkets = coalesceRecordOfMarketArrays(store.weeklyHitMarkets, data.weeklyHitMarkets || {});
+  const upOrDownMarkets = coalesceUpOrDownMarkets(store.upOrDownMarkets, data.upOrDownMarkets || {});
+  const weatherMarkets = coalesceRecordOfMarketArrays(store.weatherMarkets, data.weatherMarkets || {});
+  const marketArraysChanged =
+    aboveMarkets !== store.aboveMarkets ||
+    priceOnMarkets !== store.priceOnMarkets ||
+    weeklyHitMarkets !== store.weeklyHitMarkets ||
+    upOrDownMarkets !== store.upOrDownMarkets ||
+    weatherMarkets !== store.weatherMarkets;
+  const lookup = marketArraysChanged
+    ? mergeWsFields(
+        buildMarketLookup(aboveMarkets, priceOnMarkets, weeklyHitMarkets, upOrDownMarkets, weatherMarkets, prevLookup),
+        prevLookup,
+      )
+    : prevLookup;
+
+  const marketPatch = marketArraysChanged
+    ? { aboveMarkets, priceOnMarkets, weeklyHitMarkets, upOrDownMarkets, weatherMarkets, marketLookup: lookup }
+    : {};
+
+  const patchPayload: {
+    aboveMarkets?: typeof aboveMarkets;
+    priceOnMarkets?: typeof priceOnMarkets;
+    weeklyHitMarkets?: typeof weeklyHitMarkets;
+    upOrDownMarkets?: typeof upOrDownMarkets;
+    weatherMarkets?: typeof weatherMarkets;
+    marketLookup?: typeof lookup;
+    tokenInfo?: typeof data.tokenInfo;
+    progOrderMap?: typeof data.progOrderMap;
+    marketCount?: number;
+    lastUpdated?: string;
+  } = {
+    ...marketPatch,
+    tokenInfo: data.tokenInfo || {},
+    progOrderMap: data.progOrderMap || {},
+    marketCount: data.count || 0,
+  };
+  // lastUpdated alone woke SidebarUpDownTargetHost every poll — only stamp when catalog moved.
+  if (marketArraysChanged) {
+    patchPayload.lastUpdated = data.lastUpdated || '';
+  }
+
+  startTransition(() => {
+    useAppStore.getState().setMarketData(patchPayload);
+    // Keep selectedMarket.priceToBeat in sync with polycandles TWAP-open (coalesce used to drop it).
+    const st = useAppStore.getState();
+    const sel = st.selectedMarket;
+    if (sel?.id && upOrDownMarkets) {
+      let fresh: number | undefined;
+      outer: for (const asset of Object.keys(upOrDownMarkets)) {
+        const tfMap = upOrDownMarkets[asset] || {};
+        for (const tf of Object.keys(tfMap)) {
+          const row = (tfMap[tf] || []).find((m) => m.id === sel.id);
+          if (row?.priceToBeat != null && Number.isFinite(row.priceToBeat) && row.priceToBeat > 0) {
+            fresh = row.priceToBeat;
+            break outer;
+          }
+        }
+      }
+      if (fresh != null && (sel.priceToBeat == null || Math.abs(sel.priceToBeat - fresh) > 1e-9)) {
+        st.patchMarketPriceToBeats({ [sel.id]: fresh });
+      }
+    }
+  });
+}
+
 export function useMarketData() {
   const refreshingRef = useRef(false);
   /** Consecutive probe successes while down — require 2 before declaring recovery (backend may serve /api/markets before WS/DB endpoints are warm). */
@@ -45,76 +121,32 @@ export function useMarketData() {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     try {
-      const data = await fetchMarkets();
-      const store = useAppStore.getState();
-      const prevLookup = store.marketLookup;
-      const aboveMarkets = coalesceRecordOfMarketArrays(store.aboveMarkets, data.aboveMarkets || {});
-      const priceOnMarkets = coalesceRecordOfMarketArrays(store.priceOnMarkets, data.priceOnMarkets || {});
-      const weeklyHitMarkets = coalesceRecordOfMarketArrays(store.weeklyHitMarkets, data.weeklyHitMarkets || {});
-      const upOrDownMarkets = coalesceUpOrDownMarkets(store.upOrDownMarkets, data.upOrDownMarkets || {});
-      const weatherMarkets = coalesceRecordOfMarketArrays(store.weatherMarkets, data.weatherMarkets || {});
-      const marketArraysChanged =
-        aboveMarkets !== store.aboveMarkets ||
-        priceOnMarkets !== store.priceOnMarkets ||
-        weeklyHitMarkets !== store.weeklyHitMarkets ||
-        upOrDownMarkets !== store.upOrDownMarkets ||
-        weatherMarkets !== store.weatherMarkets;
-      const lookup = marketArraysChanged
-        ? mergeWsFields(
-            buildMarketLookup(aboveMarkets, priceOnMarkets, weeklyHitMarkets, upOrDownMarkets, weatherMarkets, prevLookup),
-            prevLookup,
-          )
-        : prevLookup;
-
-      const marketPatch = marketArraysChanged
-        ? { aboveMarkets, priceOnMarkets, weeklyHitMarkets, upOrDownMarkets, weatherMarkets, marketLookup: lookup }
-        : {};
-
-      const patchPayload: {
-        aboveMarkets?: typeof aboveMarkets;
-        priceOnMarkets?: typeof priceOnMarkets;
-        weeklyHitMarkets?: typeof weeklyHitMarkets;
-        upOrDownMarkets?: typeof upOrDownMarkets;
-        weatherMarkets?: typeof weatherMarkets;
-        marketLookup?: typeof lookup;
-        tokenInfo?: typeof data.tokenInfo;
-        progOrderMap?: typeof data.progOrderMap;
-        marketCount?: number;
-        lastUpdated?: string;
-      } = {
-        ...marketPatch,
-        tokenInfo: data.tokenInfo || {},
-        progOrderMap: data.progOrderMap || {},
-        marketCount: data.count || 0,
+      let clearedSplash = false;
+      const clearSplashAndPaint = async () => {
+        if (clearedSplash) return;
+        clearedSplash = true;
+        useAppStore.getState().setLoading(false);
+        // Yield so React can paint the canvas before heavy lookup/weather work.
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
       };
-      // lastUpdated alone woke SidebarUpDownTargetHost every poll — only stamp when catalog moved.
-      if (marketArraysChanged) {
-        patchPayload.lastUpdated = data.lastUpdated || '';
-      }
-      startTransition(() => {
-        useAppStore.getState().setMarketData(patchPayload);
-        // Keep selectedMarket.priceToBeat in sync with polycandles TWAP-open (coalesce used to drop it).
-        const st = useAppStore.getState();
-        const sel = st.selectedMarket;
-        if (sel?.id && upOrDownMarkets) {
-          let fresh: number | undefined;
-          outer: for (const asset of Object.keys(upOrDownMarkets)) {
-            const tfMap = upOrDownMarkets[asset] || {};
-            for (const tf of Object.keys(tfMap)) {
-              const row = (tfMap[tf] || []).find((m) => m.id === sel.id);
-              if (row?.priceToBeat != null && Number.isFinite(row.priceToBeat) && row.priceToBeat > 0) {
-                fresh = row.priceToBeat;
-                break outer;
-              }
-            }
-          }
-          if (fresh != null && (sel.priceToBeat == null || Math.abs(sel.priceToBeat - fresh) > 1e-9)) {
-            st.patchMarketPriceToBeats({ [sel.id]: fresh });
-          }
+
+      const data = await fetchMarkets(async (progress) => {
+        // Core catalog (no weather) — unblock UI; weather merges when complete.
+        if (progress.phase === 'core') {
+          await clearSplashAndPaint();
+          applyMarketsPayload(progress.data, { clearSplash: false });
+        } else if (progress.phase === 'complete') {
+          await clearSplashAndPaint();
+          applyMarketsPayload(progress.data, { clearSplash: false });
         }
       });
-      // Always clear splash once we have a payload — do not wait for 2nd recovery probe.
-      useAppStore.getState().setLoading(false);
+      // No onProgress path (legacy monolith / no weather split): apply once here.
+      if (!clearedSplash) {
+        await clearSplashAndPaint();
+        applyMarketsPayload(data, { clearSplash: false });
+      }
 
       const wasDown = useAppStore.getState().backendConnected === false;
       if (wasDown) {

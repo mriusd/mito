@@ -279,8 +279,9 @@ const PairTradingExpiryCountdown = memo(function PairTradingExpiryCountdown({
 });
 
 function usePairLegOrderbook(market: Market | null, leg: PairLeg, obAggStep: SidebarObAggStep) {
-  const yesTokenId = market?.clobTokenIds?.[0]?.trim() || null;
-  const noTokenId = market?.clobTokenIds?.[1]?.trim() || null;
+  const expired = isMarketExpired(market);
+  const yesTokenId = expired ? null : market?.clobTokenIds?.[0]?.trim() || null;
+  const noTokenId = expired ? null : market?.clobTokenIds?.[1]?.trim() || null;
   const orderOutcome = leg === 'UP' ? 'YES' : 'NO';
 
   const {

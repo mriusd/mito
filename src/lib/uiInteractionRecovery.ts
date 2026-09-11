@@ -39,12 +39,16 @@ function reconcileAppKitModal(): void {
     modal.classList.remove('open');
     if (modal instanceof HTMLElement) {
       modal.style.pointerEvents = 'none';
+      // Full-viewport invisible modal still sits at z-index 9999 — hide it completely
+      // so it cannot interfere with wheel/scroll hit-testing in some browsers.
+      modal.style.display = 'none';
     }
     return;
   }
 
   if (modal instanceof HTMLElement) {
     modal.style.removeProperty('pointer-events');
+    modal.style.removeProperty('display');
   }
 }
 
@@ -73,22 +77,23 @@ function dismissGlobalBlockingUi(): void {
 
 export function installUiInteractionRecovery(): () => void {
   const onKeyDown = (e: KeyboardEvent) => {
-    // Any key: yield bid/ask grid work so UI stays clickable under WS load (esp. prod).
-    noteUserInteractionForBidAsk();
+    // Yield bid/ask apply so typing / Esc stays responsive under WS load.
+    noteUserInteractionForBidAsk(e.target);
     if (e.key !== 'Escape') return;
     dismissGlobalBlockingUi();
   };
 
-  const onPointerStart = () => {
-    noteUserInteractionForBidAsk();
+  const onPointerStart = (e: PointerEvent) => {
+    noteUserInteractionForBidAsk(e.target);
   };
 
-  const onPointerEnd = () => {
-    noteUserInteractionForBidAsk();
+  const onPointerEnd = (e: PointerEvent) => {
+    noteUserInteractionForBidAsk(e.target);
     reconcileAppKitModal();
     clearStuckGridDragClasses();
   };
 
+  reconcileAppKitModal();
   const reconcileTimer = window.setInterval(reconcileAppKitModal, 2500);
 
   window.addEventListener('keydown', onKeyDown);

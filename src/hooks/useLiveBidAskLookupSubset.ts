@@ -55,8 +55,8 @@ export function useThrottledBidAskLookupSubset(
  * Rows should call getBidAskMarketRow / resolveTpoRowLiveQuote at paint time —
  * do not bake quotes into a heavy memo that can lag under load.
  *
- * - Live WS notify → ~50ms coalesce
- * - Backup poll every 500ms (never multi-minute freeze)
+ * Coalesce was 50ms + 500ms poll — with TPO on the default layout that kept the
+ * whole app ~soft. Prefer ~300ms live coalesce and a slower backup poll.
  */
 export function useTpoQuoteEpoch(enabled: boolean): number {
   const [tick, setTick] = useState(0);
@@ -70,10 +70,10 @@ export function useTpoQuoteEpoch(enabled: boolean): number {
     };
     const onPatch = () => {
       if (timer != null) return;
-      timer = setTimeout(bump, 50);
+      timer = setTimeout(bump, 300);
     };
     const unsub = subscribeBidAskMarketLookup(onPatch);
-    const poll = window.setInterval(bump, 500);
+    const poll = window.setInterval(bump, 2000);
     bump();
     return () => {
       unsub();

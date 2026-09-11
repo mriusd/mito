@@ -126,6 +126,7 @@ const PANEL_MIN_PIXELS: Record<string, { minW: number; minH: number }> = {
   'spot-orderbook': { minW: 360, minH: 220 },
   'pair-trading': { minW: 720, minH: 420 },
   'weather-markets': { minW: 640, minH: 280 },
+  'weather-no-trade': { minW: 420, minH: 240 },
   'weather-temperature': { minW: 360, minH: 240 },
   'weather-temp-bars': { minW: 720, minH: 260 },
   'crypto-buckets': { minW: 480, minH: 240 },

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { RefreshCw } from 'lucide-react';
 import type { WeatherCitySlug } from '../types';
 import {
@@ -114,7 +115,7 @@ export function WeatherMetarDialog({
   const ageLabel = ageMs > 0 ? formatElapsedSinceMs(ageMs) : '';
   const ageClass = ageMs > 0 ? tradeElapsedColorClass(ageMs) : 'text-gray-500';
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 bg-black/70 z-[60000] flex items-center justify-center"
       onMouseDown={(e) => {
@@ -196,6 +197,7 @@ export function WeatherMetarDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -113,6 +113,7 @@ const ALL_PANEL_TYPES: { type: PanelType; title: string; multi?: boolean; devOnl
   { type: 'funding-rate', title: 'Funding Rate' },
   { type: 'hyperliquid-outcomes', title: 'Hyperliquid Outcomes' },
   { type: 'weather-markets', title: 'Weather Markets', multi: true },
+  { type: 'weather-no-trade', title: 'No Trade', multi: true },
   { type: 'weather-temperature', title: 'Temperature', multi: true },
   { type: 'weather-temp-bars', title: 'Temp Odds', multi: true },
   { type: 'weather-map', title: 'Weather Map', multi: true },

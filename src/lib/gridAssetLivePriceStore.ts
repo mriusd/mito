@@ -76,7 +76,9 @@ export function subscribeGridAssetLivePrice(onStoreChange: () => void): () => vo
 }
 
 export function getGridAssetLivePriceSnapshot(symbol: AssetSymbol): number {
-  return prices[symbol] ?? 0;
+  // Whole dollars — sub-$ Binance noise must not re-render every grid cell's B-S tint.
+  const p = prices[symbol] ?? 0;
+  return p > 0 ? Math.round(p) : 0;
 }
 
 /** One throttled spot price feed per asset for grid cells/cols — not per-cell hooks. */

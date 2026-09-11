@@ -86,7 +86,44 @@ async function fetchMarketsJSON<T>(url: string, timeoutMs: number): Promise<T> {
   }
 }
 
-export async function fetchMarkets(): Promise<MarketsResponse> {
+function isWeatherPartId(id: string): boolean {
+  return id === 'weather' || id.startsWith('weather:');
+}
+
+async function fetchMarketsParts(
+  partIds: string[],
+  concurrency: number,
+): Promise<MarketsPartPayload[]> {
+  const parts: MarketsPartPayload[] = new Array(partIds.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < partIds.length) {
+      const i = next++;
+      const id = partIds[i]!;
+      parts[i] = await fetchMarketsJSON<MarketsPartPayload>(
+        `${BASE}/api/markets?part=${encodeURIComponent(id)}`,
+        15_000,
+      );
+    }
+  };
+  const n = Math.max(1, Math.min(concurrency, partIds.length));
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  return parts;
+}
+
+export type FetchMarketsProgress = {
+  /** Core catalog ready (crypto / updown / etc). Splash can clear. */
+  phase: 'core' | 'complete';
+  data: MarketsResponse;
+};
+
+/**
+ * Fetch markets catalog. With parts-v1, loads non-weather parts first so the UI can
+ * leave "Loading markets…" while weather chunks continue in the background.
+ */
+export async function fetchMarkets(
+  onProgress?: (p: FetchMarketsProgress) => void | Promise<void>,
+): Promise<MarketsResponse> {
   // Cloudflare truncates monolith /api/markets (~3MB). Backend serves parts-v1 manifest + small chunks.
   let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -96,25 +133,29 @@ export async function fetchMarkets(): Promise<MarketsResponse> {
         15_000,
       );
       if (manifest.schema === 'parts-v1' && Array.isArray(manifest.parts) && manifest.parts.length > 0) {
-        // Bound concurrency — Promise.all on ~10 weather parts + upOrDown storms CF → 502 (no CORS).
         const partIds = manifest.parts;
-        const PART_CONCURRENCY = 3;
-        const parts: MarketsPartPayload[] = new Array(partIds.length);
-        let next = 0;
-        const worker = async () => {
-          while (next < partIds.length) {
-            const i = next++;
-            const id = partIds[i]!;
-            parts[i] = await fetchMarketsJSON<MarketsPartPayload>(
-              `${BASE}/api/markets?part=${encodeURIComponent(id)}`,
-              15_000,
-            );
-          }
-        };
-        await Promise.all(
-          Array.from({ length: Math.min(PART_CONCURRENCY, partIds.length) }, () => worker()),
-        );
-        return mergeMarketsParts(manifest, parts);
+        const coreIds = partIds.filter((id) => !isWeatherPartId(id));
+        const weatherIds = partIds.filter((id) => isWeatherPartId(id));
+
+        // Core first (above/priceOn/weeklyHit/upOrDown) — keep concurrency modest for CF.
+        const CORE_CONCURRENCY = 6;
+        const WEATHER_CONCURRENCY = 6;
+
+        const coreParts =
+          coreIds.length > 0 ? await fetchMarketsParts(coreIds, CORE_CONCURRENCY) : [];
+        const coreData = mergeMarketsParts(manifest, coreParts);
+        if (weatherIds.length > 0 && onProgress) {
+          await onProgress({ phase: 'core', data: coreData });
+          const weatherParts = await fetchMarketsParts(weatherIds, WEATHER_CONCURRENCY);
+          const complete = mergeMarketsParts(manifest, [...coreParts, ...weatherParts]);
+          await onProgress({ phase: 'complete', data: complete });
+          return complete;
+        }
+        if (weatherIds.length > 0) {
+          const weatherParts = await fetchMarketsParts(weatherIds, WEATHER_CONCURRENCY);
+          return mergeMarketsParts(manifest, [...coreParts, ...weatherParts]);
+        }
+        return coreData;
       }
       // Legacy monolith (local / old binary).
       return manifest as MarketsResponse;
@@ -1298,7 +1339,13 @@ export interface WalletPnlDailyResponse {
   wallet: string;
   from: string;
   to: string;
-  byDate: Record<string, { bought: number; sold: number }>;
+  byDate: Record<string, {
+    bought: number;
+    sold: number;
+    fees?: number;
+    makerRebate?: number;
+    takerRebate?: number;
+  }>;
   updated?: string;
 }
 

@@ -359,6 +359,7 @@ export type PanelType =
   | 'wallet-history'
   | 'pair-trading'
   | 'weather-markets'
+  | 'weather-no-trade'
   | 'weather-temperature'
   | 'weather-temp-bars'
   | 'weather-map'

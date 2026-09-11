@@ -8,7 +8,7 @@ import { nextMarketHiFlashSides, useUpDownNextHiSettings } from '../../lib/upDow
 import { marketRowContentEqual } from '../../lib/marketDataDedupe';
 import { useUpDownExpiryBarNow } from '../../lib/upDownExpiryBarTickStore';
 import { bidAskLookupFromPair } from '../../hooks/useLiveBidAskPair';
-import { useLiveBidAskPair } from '../../hooks/useLiveBidAskPair';
+import { useThrottledBidAskPair } from '../../hooks/useThrottledBidAskPair';
 import { useGridAssetLivePrice } from '../../lib/gridAssetLivePriceStore';
 import { GRID_BID_ASK_THROTTLE_MS } from '../../lib/bidAskMarketLookup';
 import {
@@ -255,7 +255,7 @@ const UpDownFutureQuoteCell = memo(function UpDownFutureQuoteCell({
   const nextTokenIds = nextMarket.clobTokenIds || [];
   const nextYesTokenId = nextTokenIds[0] || '';
   const nextNoTokenId = nextTokenIds[1] || '';
-  const pair = useLiveBidAskPair(nextYesTokenId, nextNoTokenId);
+  const pair = useThrottledBidAskPair(nextYesTokenId, nextNoTokenId);
   const lookup = useMemo(
     () => bidAskLookupFromPair(nextYesTokenId, nextNoTokenId, pair),
     [nextYesTokenId, nextNoTokenId, pair.yes, pair.no],
@@ -377,7 +377,7 @@ function UpDownAssetLaneCellsInner({
   // 5m → TWAP-30, 15m → TWAP-60
   const chainlinkSpot = resolveChainlinkPriceFromMap(chainlinkMap, asset, tf).price;
 
-  const currentPair = useLiveBidAskPair(yesTokenId, noTokenId);
+  const currentPair = useThrottledBidAskPair(yesTokenId, noTokenId);
   const bidAskLookup = useMemo(
     () => bidAskLookupFromPair(yesTokenId, noTokenId, currentPair),
     [yesTokenId, noTokenId, currentPair.yes, currentPair.no],

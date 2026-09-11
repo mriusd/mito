@@ -16,7 +16,14 @@ import {
   weatherCityTempUnit,
   weatherCityResolutionUrl,
 } from '../../lib/weatherCities';
-import { onTempOddsCitySelect, selectTempOddsCity, selectTempOddsDate, selectTempOddsMetric } from '../../lib/weatherTempOddsControl';
+import {
+  onTempOddsCitySelect,
+  onTempOddsDateSelect,
+  onTempOddsMetricSelect,
+  selectTempOddsCity,
+  selectTempOddsDate,
+  selectTempOddsMetric,
+} from '../../lib/weatherTempOddsControl';
 import { sortWeatherCityOptions, useWeatherCityFavorites } from '../../lib/weatherCityFavorites';
 import { WeatherCityMenu } from '../WeatherCityMenu';
 import {
@@ -64,6 +71,7 @@ import {
 } from '../../lib/weatherObservations';
 import { TempUnitToggle, TemperatureChart } from '../TemperatureChart';
 import { WeatherMetarDialog } from '../WeatherMetarDialog';
+import { WeatherMetarHistoryDialog } from '../WeatherMetarHistoryDialog';
 import { outcomeBestAskProb, outcomeBestBidProb, outcomeMidOrOneSideProb } from '../../lib/outcomeQuote';
 import { resolveLegPositionForToken } from '../../lib/sidebarMyPositions';
 import { useThrottledSidebarOnchainGridWalletPositions } from '../../lib/sidebarOnchainTradesStore';
@@ -892,7 +900,7 @@ function useTempOddsBuckets(
       timer = setTimeout(() => {
         timer = null;
         bump();
-      }, 100);
+      }, 400);
     });
     const unsubGrid = subscribeBidAskMarketLookupGridFlush(() => {
       if (timer != null) {
@@ -1590,6 +1598,7 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   });
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
   const [metarDialogOpen, setMetarDialogOpen] = useState(false);
+  const [metarHistoryDialogOpen, setMetarHistoryDialogOpen] = useState(false);
   const [cityMenuPos, setCityMenuPos] = useState<{ top: number; left: number } | null>(null);
   const cityBtnRef = useRef<HTMLButtonElement>(null);
   const cityMenuRef = useRef<HTMLDivElement>(null);
@@ -1689,9 +1698,34 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
         if (link) {
           setLinkSidebar(true);
           localStorage.setItem(`polybot-weather-temp-bars-link-sidebar-${panelId}`, '1');
+        } else {
+          // External pick (No Trade / map without link) — don't let sidebar market override city.
+          setLinkSidebar(false);
+          localStorage.setItem(`polybot-weather-temp-bars-link-sidebar-${panelId}`, '0');
         }
       }),
     [panelId],
+  );
+
+  useEffect(
+    () =>
+      onTempOddsDateSelect((iso) => {
+        if (!iso) return;
+        setSelectedDateKey((prev) => {
+          if (prev === iso) return prev;
+          localStorage.setItem(`polybot-weather-temp-bars-date-${panelId}`, iso);
+          return iso;
+        });
+      }),
+    [panelId],
+  );
+
+  useEffect(
+    () =>
+      onTempOddsMetricSelect((metric) => {
+        setTempOddsChartMode(metric);
+      }),
+    [setTempOddsChartMode],
   );
 
   useEffect(() => {
@@ -2067,6 +2101,9 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
   const metarTitle = cityMeta.icao
     ? `METAR ${cityMeta.icao} (live)`
     : 'METAR';
+  const metarHistoryTitle = cityMeta.icao
+    ? `METAR / TAF history for ${cityMeta.icao}`
+    : 'METAR / TAF history';
 
   const refreshModelProbabilities = useCallback(async (opts?: { bypassCache?: boolean }) => {
     const ctx = modelContextKey;
@@ -2371,18 +2408,32 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
           </a>
         ) : null}
         {cityMeta.icao ? (
-          <button
-            type="button"
-            className="no-drag inline-flex shrink-0 items-center text-[10px] font-bold px-1.5 py-0.5 rounded border border-cyan-600/60 text-cyan-300 hover:bg-cyan-900/40"
-            title={metarTitle}
-            onClick={(e) => {
-              e.stopPropagation();
-              setMetarDialogOpen(true);
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            METAR
-          </button>
+          <>
+            <button
+              type="button"
+              className="no-drag inline-flex shrink-0 items-center text-[10px] font-bold px-1.5 py-0.5 rounded border border-cyan-600/60 text-cyan-300 hover:bg-cyan-900/40"
+              title={metarTitle}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMetarDialogOpen(true);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              METAR
+            </button>
+            <button
+              type="button"
+              className="no-drag inline-flex shrink-0 items-center text-[10px] font-bold px-1.5 py-0.5 rounded border border-violet-600/60 text-violet-300 hover:bg-violet-900/40"
+              title={metarHistoryTitle}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMetarHistoryDialogOpen(true);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              History
+            </button>
+          </>
         ) : null}
 
         <TempUnitToggle unit={tempUnit} onChange={setTempUnitOverride} />
@@ -2611,15 +2662,25 @@ function TemperatureBarChartPanelInner({ panelId, initialCity = 'london' }: Temp
         )}
       </div>
       {cityMeta.icao ? (
-        <WeatherMetarDialog
-          open={metarDialogOpen}
-          onClose={() => setMetarDialogOpen(false)}
-          city={city}
-          cityLabel={cityMeta.label}
-          icao={cityMeta.icao}
-          timeZone={cityMeta.timezone}
-          displayTempUnit={tempUnit}
-        />
+        <>
+          <WeatherMetarDialog
+            open={metarDialogOpen}
+            onClose={() => setMetarDialogOpen(false)}
+            city={city}
+            cityLabel={cityMeta.label}
+            icao={cityMeta.icao}
+            timeZone={cityMeta.timezone}
+            displayTempUnit={tempUnit}
+          />
+          <WeatherMetarHistoryDialog
+            open={metarHistoryDialogOpen}
+            onClose={() => setMetarHistoryDialogOpen(false)}
+            icao={cityMeta.icao}
+            cityLabel={cityMeta.label}
+            timeZone={cityMeta.timezone}
+            displayTempUnit={tempUnit}
+          />
+        </>
       ) : null}
     </div>
   );

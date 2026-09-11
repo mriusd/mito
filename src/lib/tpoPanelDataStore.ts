@@ -27,8 +27,8 @@ export type TpoPanelDataSnap = {
 export type TpoDataSlice = 'positions' | 'orders' | 'trades';
 
 const FLUSH_MS = 2000;
-/** Live bid/ask → positions/orders Bid·Mid·Ask. Keep tight; do not startTransition (lags under load). */
-const QUOTE_FLUSH_MS = 100;
+/** Live bid/ask → positions/orders Bid·Mid·Ask. Was 100ms — kept the whole UI soft with TPO open. */
+const QUOTE_FLUSH_MS = 400;
 
 let snap: TpoPanelDataSnap = {
   positions: [],

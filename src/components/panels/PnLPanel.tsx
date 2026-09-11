@@ -57,6 +57,18 @@ function fmtUsd(v: number): string {
 
 type PnlBucketMode = 'trade' | 'market';
 
+type PnlDayRow = {
+  bought: number;
+  sold: number;
+  fees: number;
+  makerRebate: number;
+  takerRebate: number;
+};
+
+function emptyPnlDay(): PnlDayRow {
+  return { bought: 0, sold: 0, fees: 0, makerRebate: 0, takerRebate: 0 };
+}
+
 export function PnLPanel() {
   const trades = useAppStore((s) => s.trades);
   const marketLookup = useMarketLookupSnapshot();
@@ -137,16 +149,43 @@ export function PnLPanel() {
     };
   }, [makerAddress, liveTradesSource, dateWindow.fromStr, dateWindow.toStr]);
 
-  const onchainByDate = useMemo((): Record<string, { bought: number; sold: number }> | 'pending' | 'inactive' => {
+  const onchainByDate = useMemo((): Record<string, PnlDayRow> | 'pending' | 'inactive' => {
     const w = makerAddress?.trim();
     if (!w || liveTradesSource !== 'onchain') return 'inactive';
     if (!wsPnl || wsPnl.from !== dateWindow.fromStr || wsPnl.to !== dateWindow.toStr) return 'pending';
+    const normalize = (src: Record<string, {
+      bought?: number;
+      sold?: number;
+      fees?: number;
+      makerRebate?: number;
+      takerRebate?: number;
+    }> | undefined): Record<string, PnlDayRow> => {
+      const out: Record<string, PnlDayRow> = {};
+      if (!src) return out;
+      for (const [dk, row] of Object.entries(src)) {
+        out[dk] = {
+          bought: row.bought || 0,
+          sold: row.sold || 0,
+          fees: row.fees || 0,
+          makerRebate: row.makerRebate || 0,
+          takerRebate: row.takerRebate || 0,
+        };
+      }
+      return out;
+    };
     if (assetCategoryFilter === 'ALL') {
-      return bucketMode === 'market' ? wsPnl.marketByDate : wsPnl.tradeByDate;
+      return normalize(bucketMode === 'market' ? wsPnl.marketByDate : wsPnl.tradeByDate);
     }
     const byCat = bucketMode === 'market' ? wsPnl.marketByDateByCategory : wsPnl.tradeByDateByCategory;
-    // Empty object when category map missing (old server) or no fills — toggle still changes view.
-    return byCat?.[assetCategoryFilter] ?? {};
+    // Category maps omit wallet-level rebates; merge rebate totals from All for the same dates.
+    const catMap = normalize(byCat?.[assetCategoryFilter] ?? {});
+    const allMap = normalize(bucketMode === 'market' ? wsPnl.marketByDate : wsPnl.tradeByDate);
+    for (const [dk, allRow] of Object.entries(allMap)) {
+      if (!catMap[dk]) catMap[dk] = emptyPnlDay();
+      catMap[dk].makerRebate = allRow.makerRebate;
+      catMap[dk].takerRebate = allRow.takerRebate;
+    }
+    return catMap;
   }, [makerAddress, liveTradesSource, wsPnl, dateWindow.fromStr, dateWindow.toStr, bucketMode, assetCategoryFilter]);
 
   const handleRefresh = useCallback(() => {
@@ -172,9 +211,9 @@ export function PnLPanel() {
   const { dates, dataByDate } = useMemo(() => {
     const { dates, dateSet } = dateWindow;
 
-    const dataByDate: Record<string, { bought: number; sold: number }> = {};
+    const dataByDate: Record<string, PnlDayRow> = {};
     for (const dk of dates) {
-      dataByDate[dk] = { bought: 0, sold: 0 };
+      dataByDate[dk] = emptyPnlDay();
     }
 
     if (
@@ -185,7 +224,7 @@ export function PnLPanel() {
         for (const dk of dates) {
           const row = onchainByDate[dk];
           if (row) {
-            dataByDate[dk] = { bought: row.bought, sold: row.sold };
+            dataByDate[dk] = { ...row };
           }
         }
         return { dates, dataByDate };
@@ -224,14 +263,18 @@ export function PnLPanel() {
       const size = parseFloat(trade.size_filled || trade.size) || 0;
       const isClaim = rawPrice === 0 && !(trade as { side?: string | null }).side;
       const value = isClaim ? (trade.usdcSize || size) : (trade.usdcSize || (rawPrice * size));
+      const feeRaw = Number((trade as { fee?: string | number }).fee);
+      const fee = Number.isFinite(feeRaw) && feeRaw > 0 ? feeRaw : 0;
 
       if (isClaim) {
         dataByDate[dateKey].sold += value;
       } else if (trade.side === 'BUY' || trade.side === 'SPLIT') {
         dataByDate[dateKey].bought += value;
+        dataByDate[dateKey].fees += fee;
       } else {
         // SELL / MERGE / REDEEM / CLAIM / other exits
         dataByDate[dateKey].sold += value;
+        dataByDate[dateKey].fees += fee;
       }
     }
 
@@ -352,9 +395,9 @@ export function PnLPanel() {
           </tr>
         </thead>
         <tbody>
-          {/* Bought row */}
+          {/* Bought row — notional size×price (ex-fee) */}
           <tr className="hover:bg-gray-800/50">
-            <td className="px-2 py-1 font-bold text-red-400 border-b border-gray-700/50 whitespace-nowrap">Bought</td>
+            <td className="px-2 py-1 font-bold text-red-400 border-b border-gray-700/50 whitespace-nowrap" title="Buy notional (size×price, ex-fee)">Bought</td>
             {dates.map((dk) => {
               const v = dataByDate[dk]?.bought || 0;
               return (
@@ -364,9 +407,9 @@ export function PnLPanel() {
               );
             })}
           </tr>
-          {/* Sold row */}
+          {/* Sold row — notional size×price (ex-fee) */}
           <tr className="hover:bg-gray-800/50">
-            <td className="px-2 py-1 font-bold text-green-400 border-b border-gray-700/50 whitespace-nowrap">Sold</td>
+            <td className="px-2 py-1 font-bold text-green-400 border-b border-gray-700/50 whitespace-nowrap" title="Sell notional (size×price, ex-fee)">Sold</td>
             {dates.map((dk) => {
               const v = dataByDate[dk]?.sold || 0;
               return (
@@ -376,13 +419,53 @@ export function PnLPanel() {
               );
             })}
           </tr>
-          {/* Net row */}
+          {/* Fees row — total fees from buys + sells */}
           <tr className="hover:bg-gray-800/50">
-            <td className="px-2 py-1 font-bold text-white border-b border-gray-700/50 whitespace-nowrap">Net</td>
+            <td className="px-2 py-1 font-bold text-orange-400 border-b border-gray-700/50 whitespace-nowrap" title="Total fees paid on buys and sells">Fees</td>
             {dates.map((dk) => {
-              const b = dataByDate[dk]?.bought || 0;
-              const s = dataByDate[dk]?.sold || 0;
-              const net = s - b;
+              const v = dataByDate[dk]?.fees || 0;
+              return (
+                <td key={dk} className={`px-2 py-1 text-right border-b border-l border-gray-700 whitespace-nowrap ${v > 0 ? 'text-orange-400' : 'text-gray-600'}`}>
+                  {v > 0 ? fmtUsd(-v) : '-'}
+                </td>
+              );
+            })}
+          </tr>
+          {/* Maker Rebate */}
+          <tr className="hover:bg-gray-800/50">
+            <td className="px-2 py-1 font-bold text-cyan-400 border-b border-gray-700/50 whitespace-nowrap" title="Daily maker rebate payouts (pUSD)">Maker Rebate</td>
+            {dates.map((dk) => {
+              const v = dataByDate[dk]?.makerRebate || 0;
+              return (
+                <td key={dk} className={`px-2 py-1 text-right border-b border-l border-gray-700 whitespace-nowrap ${v > 0 ? 'text-cyan-400' : 'text-gray-600'}`}>
+                  {v > 0 ? fmtUsd(v) : '-'}
+                </td>
+              );
+            })}
+          </tr>
+          {/* Taker Rebate */}
+          <tr className="hover:bg-gray-800/50">
+            <td className="px-2 py-1 font-bold text-sky-400 border-b border-gray-700/50 whitespace-nowrap" title="Daily taker rebate payouts (pUSD)">Taker Rebate</td>
+            {dates.map((dk) => {
+              const v = dataByDate[dk]?.takerRebate || 0;
+              return (
+                <td key={dk} className={`px-2 py-1 text-right border-b border-l border-gray-700 whitespace-nowrap ${v > 0 ? 'text-sky-400' : 'text-gray-600'}`}>
+                  {v > 0 ? fmtUsd(v) : '-'}
+                </td>
+              );
+            })}
+          </tr>
+          {/* Net = Sold − Bought − Fees + Maker Rebate + Taker Rebate */}
+          <tr className="hover:bg-gray-800/50">
+            <td className="px-2 py-1 font-bold text-white border-b border-gray-700/50 whitespace-nowrap" title="Sold − Bought − Fees + Maker Rebate + Taker Rebate">Net</td>
+            {dates.map((dk) => {
+              const row = dataByDate[dk];
+              const b = row?.bought || 0;
+              const s = row?.sold || 0;
+              const fees = row?.fees || 0;
+              const mr = row?.makerRebate || 0;
+              const tr = row?.takerRebate || 0;
+              const net = s - b - fees + mr + tr;
               const color = net === 0 ? 'text-gray-600' : net > 0 ? 'text-green-400' : 'text-red-400';
               return (
                 <td key={dk} className={`px-2 py-1 text-right border-b border-l border-gray-700 font-bold whitespace-nowrap ${color}`}>

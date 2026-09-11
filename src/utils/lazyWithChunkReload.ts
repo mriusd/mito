@@ -65,21 +65,52 @@ export async function importWithChunkReload<T>(importer: () => Promise<T>): Prom
   }
 }
 
+type LazyFactory<T extends ComponentType<unknown>> = () => Promise<{ default: T }>;
+
+const preloadFns = new Map<string, () => Promise<unknown>>();
+
 /**
- * React.lazy wrapper that **starts** the import as soon as the panel module is registered
- * (DraggableCanvas load), not when Suspense first renders. Avoids stuck "Loading…" when
- * first paint races Vite / circular graphs.
+ * React.lazy wrapper with chunk-reload recovery.
+ *
+ * - **Production:** eager-kickoff at registration (avoids Suspense races after deploy).
+ * - **Vite DEV:** do NOT eager-import every panel — that compiles the whole panel graph
+ *   up front and freezes local UI while production (pre-built chunks) stays fine.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function lazyWithChunkReload<T extends ComponentType<any>>(
-  factory: () => Promise<{ default: T }>,
+  factory: LazyFactory<T>,
+  preloadKey?: string,
 ): LazyExoticComponent<T> {
   let promise: Promise<{ default: T }> | null = null;
   const load = () => {
     if (!promise) promise = importWithChunkReload(factory);
     return promise;
   };
-  // Eager kickoff at registration time.
-  void load();
+  if (preloadKey) {
+    preloadFns.set(preloadKey, load);
+  }
+  // Only eager-load in production builds. Vite DEV pays transform cost per module.
+  if (import.meta.env.PROD) {
+    void load();
+  }
   return lazy(() => load());
+}
+
+/** Preload a panel chunk by type key (used after layout is known). */
+export function preloadPanelChunk(panelType: string): void {
+  const fn = preloadFns.get(panelType);
+  if (fn) void fn();
+}
+
+/** Preload several panel types (idle). */
+export function preloadPanelChunks(panelTypes: readonly string[]): void {
+  const unique = [...new Set(panelTypes.filter(Boolean))];
+  const run = () => {
+    for (const t of unique) preloadPanelChunk(t);
+  };
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+    window.requestIdleCallback(() => run(), { timeout: 2000 });
+  } else {
+    window.setTimeout(run, 0);
+  }
 }

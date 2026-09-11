@@ -15,7 +15,10 @@ import { outcomeMidCentsFromSidebarBook } from '../lib/sidebarYesMidFromBook';
 type OBLevel = { price: string; size: string };
 
 const OB_RAW_TOP_REF = 15;
-const OB_DEEP_BOOK = 380;
+/** Levels pushed into React for the visible book (USD totals still use the full local maps). */
+const OB_UI_BOOK_EXPANDED = 48;
+/** Collapsed / inactive side — mid + top-of-book only. */
+const OB_UI_BOOK_COMPACT = 4;
 
 export type SidebarPolymarketBookSnapshot = {
   displayBids: OBLevel[];
@@ -72,8 +75,9 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
     }
   }, []);
 
-  const bookLimit = OB_DEEP_BOOK;
-  const obEnabled = obTokenId != null;
+  // Expired / closed markets have no live CLOB book (404). Skip YES+NO hooks entirely —
+  // otherwise dual REST+WS+reconnect loops stall market selection.
+  const obEnabled = obTokenId != null && !isMarketExpired;
   const yesTokenId = useMemo(() => {
     if (!obEnabled || !selectedMarket?.clobTokenIds?.[0]) return null;
     return selectedMarket.clobTokenIds[0] || null;
@@ -83,6 +87,11 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
     return selectedMarket.clobTokenIds[1] || null;
   }, [obEnabled, selectedMarket?.id, selectedMarket?.clobTokenIds?.[1]]);
 
+  const yesBookLimit =
+    orderOutcome === 'YES' && liveOrderbookExpanded ? OB_UI_BOOK_EXPANDED : OB_UI_BOOK_COMPACT;
+  const noBookLimit =
+    orderOutcome === 'NO' && liveOrderbookExpanded ? OB_UI_BOOK_EXPANDED : OB_UI_BOOK_COMPACT;
+
   const {
     bids: yesBids,
     asks: yesAsks,
@@ -91,7 +100,7 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
     bidUsdTotal: yesBidUsdTotal,
     askUsdTotal: yesAskUsdTotal,
     askSweepProfit: yesAskSweepProfit,
-  } = usePolymarketOB(yesTokenId, bookLimit);
+  } = usePolymarketOB(yesTokenId, yesBookLimit);
   const {
     bids: noBids,
     asks: noAsks,
@@ -100,7 +109,7 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
     bidUsdTotal: noBidUsdTotal,
     askUsdTotal: noAskUsdTotal,
     askSweepProfit: noAskSweepProfit,
-  } = usePolymarketOB(noTokenId, bookLimit);
+  } = usePolymarketOB(noTokenId, noBookLimit);
 
   const activeObLoading = orderOutcome === 'YES' ? yesObLoading : noObLoading;
   const polymarketLiveTrades = orderOutcome === 'YES' ? yesTrades : noTrades;
@@ -164,48 +173,30 @@ export const SidebarPolymarketOBHost = memo(function SidebarPolymarketOBHost({
   const snapshotBids = activeObLoading ? obStaleBookRef.current.bids : orderOutcome === 'YES' ? yesBids : noBids;
   const snapshotAsks = activeObLoading ? obStaleBookRef.current.asks : orderOutcome === 'YES' ? yesAsks : noAsks;
 
-  const { viewBids, viewAsks, refSnapshotBids, refSnapshotAsks, yesBarBidUsd, noBarBidUsd, displayBidFullUsd, displayAskFullUsd } =
-    useMemo(() => {
-      const refBid = snapshotBids.slice(0, OB_RAW_TOP_REF);
-      const refAsk = snapshotAsks.slice(0, OB_RAW_TOP_REF);
-      const yesBidForBar = yesObLoading ? yesUsdStaleRef.current.bidUsdTotal : yesBidUsdTotal;
-      const noBidForBar = noObLoading ? noUsdStaleRef.current.bidUsdTotal : noBidUsdTotal;
-      const displayUsd = (orderOutcome === 'YES' ? yesObLoading : noObLoading)
-        ? displayUsdStaleRef.current
-        : orderOutcome === 'YES'
-          ? { bidUsdTotal: yesBidUsdTotal, askUsdTotal: yesAskUsdTotal }
-          : { bidUsdTotal: noBidUsdTotal, askUsdTotal: noAskUsdTotal };
+  // Aggregate only when the active book / step changes — do NOT depend on opposite-side USD
+  // totals (those update every throttle tick and were rebuilding the whole grid).
+  const { viewBids, viewAsks, refSnapshotBids, refSnapshotAsks } = useMemo(() => {
+    // Cap visible rows — deep books were rewriting 40–50 DOM rows every throttle tick.
+    const bidCap = obAggStep === '0.1' ? 24 : obAggStep === '1' ? 20 : 16;
+    const { bids, asks } = sidebarObAggregateBook(snapshotBids, snapshotAsks, obAggStep, bidCap);
+    return {
+      viewBids: bids,
+      viewAsks: asks,
+      refSnapshotBids: snapshotBids.slice(0, OB_RAW_TOP_REF),
+      refSnapshotAsks: snapshotAsks.slice(0, OB_RAW_TOP_REF),
+    };
+  }, [snapshotBids, snapshotAsks, obAggStep]);
 
-      const bidCap = obAggStep === '0.1' ? 50 : obAggStep === '1' ? 40 : 24;
-      const askCap = bidCap;
-      const { bids: viewBids, asks: viewAsks } = sidebarObAggregateBook(
-        snapshotBids,
-        snapshotAsks,
-        obAggStep,
-        bidCap,
-      );
-      return {
-        viewBids,
-        viewAsks,
-        refSnapshotBids: refBid,
-        refSnapshotAsks: refAsk,
-        yesBarBidUsd: yesBidForBar,
-        noBarBidUsd: noBidForBar,
-        displayBidFullUsd: displayUsd.bidUsdTotal,
-        displayAskFullUsd: displayUsd.askUsdTotal,
-      };
-    }, [
-      snapshotBids,
-      snapshotAsks,
-      obAggStep,
-      orderOutcome,
-      yesObLoading,
-      noObLoading,
-      yesBidUsdTotal,
-      yesAskUsdTotal,
-      noBidUsdTotal,
-      noAskUsdTotal,
-    ]);
+  // Round USD for React props — dollar noise must not re-render the whole book section.
+  const yesBarBidUsd = Math.round(yesObLoading ? yesUsdStaleRef.current.bidUsdTotal : yesBidUsdTotal);
+  const noBarBidUsd = Math.round(noObLoading ? noUsdStaleRef.current.bidUsdTotal : noBidUsdTotal);
+  const displayUsd = (orderOutcome === 'YES' ? yesObLoading : noObLoading)
+    ? displayUsdStaleRef.current
+    : orderOutcome === 'YES'
+      ? { bidUsdTotal: yesBidUsdTotal, askUsdTotal: yesAskUsdTotal }
+      : { bidUsdTotal: noBidUsdTotal, askUsdTotal: noAskUsdTotal };
+  const displayBidFullUsd = Math.round(displayUsd.bidUsdTotal);
+  const displayAskFullUsd = Math.round(displayUsd.askUsdTotal);
 
   const obLoading = activeObLoading && viewBids.length === 0 && viewAsks.length === 0;
 

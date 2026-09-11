@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type { Market } from '../types';
 import { useExpiryNow } from '../hooks/useExpiryNow';
-import { useLiveBidAskLookupSubset } from '../hooks/useLiveBidAskLookupSubset';
+import { useThrottledBidAskLookupSubset } from '../hooks/useLiveBidAskLookupSubset';
 import {
   getMarketNotifyMutedSnapshot,
   isMarketNotifyMuted,
@@ -198,7 +198,8 @@ export function useUpDownNextMarketFlashWhaleSound(
     return [...ids];
   }, [nextMarkets]);
 
-  const bidAskLookup = useLiveBidAskLookupSubset(lookupTokenIds);
+  // Throttled — unthrottled live subset re-ran flash checks on every WS tick and softened the UI.
+  const bidAskLookup = useThrottledBidAskLookupSubset(lookupTokenIds, 400);
   const mutedMarketsKey = useSyncExternalStore(
     subscribeMarketNotifyMuted,
     getMarketNotifyMutedSnapshot,

@@ -70,7 +70,9 @@ export const GridMarketCellLiveFx = memo(function GridMarketCellLiveFx({
   yesPosSize,
   noPosSize,
 }: GridMarketCellLiveFxProps) {
-  const livePrice = useGridAssetLivePrice(assetToSymbol(asset));
+  const livePriceRaw = useGridAssetLivePrice(assetToSymbol(asset));
+  // Bucket spot so tiny Binance ticks don't re-run B-S on every cell.
+  const livePrice = livePriceRaw > 0 ? Math.round(livePriceRaw) : 0;
 
   const gridDeltaBg = !skipDelta && !isClosed && !isPast
     ? deltaBgStyle(strikeStr, yesMidProb, endDate, livePrice, adjVol, bsTimeOffsetHours, isHit)

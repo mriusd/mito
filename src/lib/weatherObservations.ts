@@ -137,10 +137,9 @@ function metarEndpointRecoverable(err: unknown): boolean {
 }
 
 export async function fetchWeatherMetarDetail(city: WeatherCitySlug): Promise<WeatherMetarDetail> {
-  const base = import.meta.env.DEV ? '' : API_BASE;
   try {
     const resp = await fetchBackend(
-      `${base}/api/weather-metar/${encodeURIComponent(city)}`,
+      `${API_BASE}/api/weather-metar/${encodeURIComponent(city)}`,
       undefined,
       { timeoutMs: 12_000 },
     );
@@ -156,6 +155,119 @@ export async function fetchWeatherMetarDetail(city: WeatherCitySlug): Promise<We
     }
     throw err;
   }
+}
+
+export type WeatherMetarHistoryRow = {
+  icao: string;
+  city?: string;
+  name?: string;
+  reportTime?: string;
+  obsTimeMs: number;
+  tempC?: number;
+  dewpC?: number;
+  temp?: number;
+  dewp?: number;
+  obsTempUnit?: WeatherTempUnit;
+  wdirDeg?: number;
+  wspdKt?: number;
+  visibSm?: string;
+  altimMb?: number;
+  skyCover?: string;
+  fltCat?: string;
+  clouds?: WeatherMetarCloudLayer[];
+  rawOb?: string;
+  fetchedAtMs?: number;
+};
+
+export type WeatherTafCloudLayer = {
+  cover: string;
+  baseFt?: number;
+  type?: string;
+};
+
+export type WeatherTafFcst = {
+  timeFromMs: number;
+  timeToMs: number;
+  timeBecMs?: number;
+  fcstChange?: string;
+  probability?: number;
+  wdirDeg?: number;
+  wspdKt?: number;
+  wgstKt?: number;
+  visibSm?: string;
+  altimMb?: number;
+  vertVisFt?: number;
+  wxString?: string;
+  clouds?: WeatherTafCloudLayer[];
+};
+
+export type WeatherTafHistoryRow = {
+  icao: string;
+  city?: string;
+  name?: string;
+  bulletinTime?: string;
+  issueTime?: string;
+  issueTimeMs: number;
+  validFromMs?: number;
+  validToMs?: number;
+  rawTaf?: string;
+  remarks?: string;
+  fcsts?: WeatherTafFcst[];
+  lat?: number;
+  lon?: number;
+  elevM?: number;
+  fetchedAtMs?: number;
+};
+
+export type WeatherMetarHistoryResponse = {
+  icao: string;
+  city?: string;
+  count: number;
+  tafCount?: number;
+  limit: number;
+  startMs?: number;
+  endMs?: number;
+  rows: WeatherMetarHistoryRow[];
+  metar?: WeatherMetarHistoryRow[];
+  taf?: WeatherTafHistoryRow[];
+};
+
+export type WeatherMetarHistoryOptions = {
+  startMs?: number;
+  endMs?: number;
+  limit?: number;
+};
+
+/** Historic METAR + TAF for an ICAO (oldest-first sorting is the caller's job). */
+export async function fetchWeatherMetarHistory(
+  icao: string,
+  options?: WeatherMetarHistoryOptions,
+): Promise<WeatherMetarHistoryResponse> {
+  const code = icao.trim().toUpperCase();
+  if (!code) throw new Error('missing icao');
+  const qs = new URLSearchParams();
+  qs.set('icao', code);
+  if (options?.startMs != null && options.startMs > 0) qs.set('startMs', String(options.startMs));
+  if (options?.endMs != null && options.endMs > 0) qs.set('endMs', String(options.endMs));
+  if (options?.limit != null && options.limit > 0) qs.set('limit', String(options.limit));
+  const resp = await fetchBackend(
+    `${API_BASE}/api/weather-metar-history?${qs.toString()}`,
+    undefined,
+    { timeoutMs: 20_000 },
+  );
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(text || `weather metar history ${resp.status}`);
+  }
+  const data = (await resp.json()) as WeatherMetarHistoryResponse;
+  const metar = data.metar?.length ? data.metar : data.rows ?? [];
+  return {
+    ...data,
+    rows: metar,
+    metar,
+    taf: data.taf ?? [],
+    tafCount: data.tafCount ?? data.taf?.length ?? 0,
+  };
 }
 
 function parseDateYmd(date: string): string {

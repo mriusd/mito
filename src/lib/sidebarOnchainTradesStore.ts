@@ -304,17 +304,17 @@ export function setSidebarOnchainWalletPnlDaily(next: WalletPnlDailyWS | null): 
       ...Object.keys(prev.marketByDate),
       ...Object.keys(next.marketByDate),
     ]);
+    const dayEq = (
+      a: { bought?: number; sold?: number; fees?: number; makerRebate?: number; takerRebate?: number } | undefined,
+      b: { bought?: number; sold?: number; fees?: number; makerRebate?: number; takerRebate?: number } | undefined,
+    ) =>
+      (a?.bought ?? 0) === (b?.bought ?? 0) &&
+      (a?.sold ?? 0) === (b?.sold ?? 0) &&
+      (a?.fees ?? 0) === (b?.fees ?? 0) &&
+      (a?.makerRebate ?? 0) === (b?.makerRebate ?? 0) &&
+      (a?.takerRebate ?? 0) === (b?.takerRebate ?? 0);
     for (const k of dateKeys) {
-      const ta = prev.tradeByDate[k];
-      const tb = next.tradeByDate[k];
-      const ma = prev.marketByDate[k];
-      const mb = next.marketByDate[k];
-      if (
-        (ta?.bought ?? 0) !== (tb?.bought ?? 0) ||
-        (ta?.sold ?? 0) !== (tb?.sold ?? 0) ||
-        (ma?.bought ?? 0) !== (mb?.bought ?? 0) ||
-        (ma?.sold ?? 0) !== (mb?.sold ?? 0)
-      ) {
+      if (!dayEq(prev.tradeByDate[k], next.tradeByDate[k]) || !dayEq(prev.marketByDate[k], next.marketByDate[k])) {
         same = false;
         break;
       }

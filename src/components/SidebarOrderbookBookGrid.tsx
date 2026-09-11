@@ -61,6 +61,7 @@ type ObBookRowProps = {
 };
 
 function obBookRowEqual(a: ObBookRowProps, b: ObBookRowProps): boolean {
+  // Intentionally ignore onClick identity — prepareObSideRows rebuilds lambdas every tick.
   return (
     a.side === b.side &&
     a.orderPk === b.orderPk &&
@@ -73,8 +74,7 @@ function obBookRowEqual(a: ObBookRowProps, b: ObBookRowProps): boolean {
     a.levelPct === b.levelPct &&
     a.hl === b.hl &&
     a.readOnly === b.readOnly &&
-    a.title === b.title &&
-    a.onClick === b.onClick
+    a.title === b.title
   );
 }
 
@@ -112,7 +112,7 @@ const SidebarObBookRow = memo(function SidebarObBookRow({
       </div>
       <span className={`relative z-[1] block min-w-0 w-full text-left ${priceCls}`}>{bpDisp}¢</span>
       <span className="relative z-[1] block min-w-0 w-full text-right live-ob-size tabular-nums sidebar-readable-value">
-        {levelSize.toFixed(0)}
+        {levelSize}
       </span>
       <span className="relative z-[1] block min-w-0 w-full text-right live-ob-usd tabular-nums sidebar-readable-value">
         {fmtObLevelUsd(cumulativeUsd)}
@@ -153,15 +153,17 @@ function prepareObSideRows(
 
   let prevCumulUsd = 0;
   return levels.map((level, i) => {
-    const levelSize = parseFloat(level.size) || 0;
-    const levelUsd = obLevelDisplayUsd(level);
+    const rawLevelSize = parseFloat(level.size) || 0;
+    const levelSize = Math.round(rawLevelSize);
+    const levelUsd = Math.round(obLevelDisplayUsd(level));
     let cumulativeUsd = cumulUsds[i];
     if (i === lastIdx && typeof sideFullUsd === 'number' && Number.isFinite(sideFullUsd) && sideFullUsd > 0) {
       cumulativeUsd = Math.max(cumulativeUsd, sideFullUsd);
     }
-    cumulativeUsd = Math.max(cumulativeUsd, prevCumulUsd);
+    // Bucket cumulative $ so tiny upper-level size noise doesn't rewrite every row below.
+    cumulativeUsd = Math.round(Math.max(cumulativeUsd, prevCumulUsd) / 10) * 10;
     prevCumulUsd = cumulativeUsd;
-    const cumulativeSize = cumuls[i];
+    const cumulativeSize = Math.round(cumuls[i]);
     const centsNum = Math.round(parseFloat(level.price) * 1000) / 10;
     const bpDisp = obAggStep === '0.1' ? centsNum.toFixed(1) : String(Math.round(centsNum));
     const orderPk = sidebarObAggOrderPriceCents(centsNum, obAggStep, side);
@@ -170,10 +172,11 @@ function prepareObSideRows(
         ? 'bg-blue-900/50 font-bold'
         : 'bg-orange-900/50 font-bold'
       : '';
-    const depthPct = maxCumul > 0 ? (cumulativeSize / maxCumul) * 100 : 0;
-    const levelPct = maxBookLevelSize > 0 ? (levelSize / maxBookLevelSize) * 100 : 0;
+    // Whole percents — avoids style thrash on sub-share book noise.
+    const depthPct = maxCumul > 0 ? Math.round((cumulativeSize / maxCumul) * 100) : 0;
+    const levelPct = maxBookLevelSize > 0 ? Math.round((rawLevelSize / maxBookLevelSize) * 100) : 0;
     const sideLabel = side === 'bid' ? 'Bid' : 'Ask';
-    const title = `${sideLabel} ${bpDisp}¢ · ${levelSize.toFixed(0)} shares · level ${fmtObLevelUsd(levelUsd)} · cumulative ${cumulativeSize.toFixed(0)} shares / ${fmtObLevelUsd(cumulativeUsd)} (${depthPct.toFixed(0)}% of book shares · ${levelPct.toFixed(0)}% of max bid/ask size at level)`;
+    const title = `${sideLabel} ${bpDisp}¢ · ${levelSize} shares · level ${fmtObLevelUsd(levelUsd)} · cumulative ${cumulativeSize} shares / ${fmtObLevelUsd(cumulativeUsd)} (${depthPct}% of book shares · ${levelPct}% of max bid/ask size at level)`;
 
     return {
       side,
@@ -187,7 +190,7 @@ function prepareObSideRows(
       levelPct,
       hl,
       title,
-      onClick: readOnly ? undefined : () => onLevelClick(orderPk, levelSize, cumulativeSize),
+      onClick: readOnly ? undefined : () => onLevelClick(orderPk, rawLevelSize, cumuls[i]),
     };
   });
 }

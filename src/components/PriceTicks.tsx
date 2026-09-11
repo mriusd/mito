@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, memo, useLayoutEffect } from 'react';
+import { useEffect, useState, useCallback, memo, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
 import { useThrottledStorePrice } from '../hooks/useThrottledStorePrice';
@@ -15,8 +15,8 @@ interface TickMark {
 function ticksEqual(a: TickMark[], b: TickMark[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
-    const x = a[i];
-    const y = b[i];
+    const x = a[i]!;
+    const y = b[i]!;
     if (x.y !== y.y || x.color !== y.color || x.width !== y.width || x.height !== y.height || x.zIndex !== y.zIndex) {
       return false;
     }
@@ -30,6 +30,11 @@ interface PriceTicksProps {
   symbol: AssetSymbol;
 }
 
+/**
+ * Live/manual price tick marks on Above/Hit/Between grids.
+ * IMPORTANT: do NOT listen to window scroll (capture) — that re-ran getBoundingClientRect on
+ * every wheel tick and made table scrolling feel frozen.
+ */
 export const PriceTicks = memo(function PriceTicks({ containerRef, symbol }: PriceTicksProps) {
   const livePrice = useThrottledStorePrice(symbol, 1000);
   const slot0 = useAppStore((s) => s.manualPriceSlots[symbol]?.[0] ?? null);
@@ -37,6 +42,7 @@ export const PriceTicks = memo(function PriceTicks({ containerRef, symbol }: Pri
   const [ticks, setTicks] = useState<TickMark[]>([]);
   const [priceRight, setPriceRight] = useState(0);
   const [portalRoot, setPortalRoot] = useState<HTMLDivElement | null>(null);
+  const rafSlot = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -86,7 +92,7 @@ export const PriceTicks = memo(function PriceTicks({ containerRef, symbol }: Pri
 
     let isAsc = false;
     for (let i = 0; i < rows.length - 1; i++) {
-      const diff = rowVal(rows[i + 1]) - rowVal(rows[i]);
+      const diff = rowVal(rows[i + 1]!) - rowVal(rows[i]!);
       if (Math.abs(diff) > 0.0001) {
         isAsc = diff > 0;
         break;
@@ -98,7 +104,7 @@ export const PriceTicks = memo(function PriceTicks({ containerRef, symbol }: Pri
       return { val: rowVal(r), midY: y };
     });
 
-    const nextPriceRight = rows.length > 0 ? rows[0].rect.right - containerRect.left : 0;
+    const nextPriceRight = rows.length > 0 ? rows[0]!.rect.right - containerRect.left : 0;
 
     function priceToY(price: number): number | null {
       if (pts.length === 0) return null;
@@ -107,8 +113,8 @@ export const PriceTicks = memo(function PriceTicks({ containerRef, symbol }: Pri
       const maxV = Math.max(...vals);
       const clamped = Math.max(minV, Math.min(maxV, price));
       for (let i = 0; i < pts.length - 1; i++) {
-        const a = pts[i];
-        const b = pts[i + 1];
+        const a = pts[i]!;
+        const b = pts[i + 1]!;
         const lo = Math.min(a.val, b.val);
         const hi = Math.max(a.val, b.val);
         if (clamped >= lo && clamped <= hi) {
@@ -116,7 +122,7 @@ export const PriceTicks = memo(function PriceTicks({ containerRef, symbol }: Pri
           return a.midY + frac * (b.midY - a.midY);
         }
       }
-      return pts[0].midY;
+      return pts[0]!.midY;
     }
 
     const newTicks: TickMark[] = [];
@@ -151,30 +157,44 @@ export const PriceTicks = memo(function PriceTicks({ containerRef, symbol }: Pri
     setPriceRight((prev) => (prev === nextPriceRight ? prev : nextPriceRight));
   }, [containerRef, livePrice, slot0, slot1]);
 
+  const scheduleCompute = useCallback(() => {
+    if (rafSlot.current != null) return;
+    rafSlot.current = requestAnimationFrame(() => {
+      rafSlot.current = null;
+      computeTicks();
+    });
+  }, [computeTicks]);
+
   useEffect(() => {
     computeTicks();
 
     const container = containerRef.current;
-    const scrollParent = container?.closest('.overflow-x-auto') || container?.parentElement;
+    // Only the table's own scroll parent — never window capture (that froze wheel scrolling).
+    const scrollParent =
+      (container?.closest('.overflow-x-auto.overflow-y-auto') as HTMLElement | null) ||
+      (container?.closest('.overflow-y-auto') as HTMLElement | null) ||
+      null;
 
-    const handler = () => computeTicks();
-    window.addEventListener('resize', handler);
-    window.addEventListener('scroll', handler, true);
-    scrollParent?.addEventListener('scroll', handler);
+    const onResize = () => scheduleCompute();
+    window.addEventListener('resize', onResize);
+    scrollParent?.addEventListener('scroll', scheduleCompute, { passive: true });
 
     let ro: ResizeObserver | null = null;
     if (container) {
-      ro = new ResizeObserver(handler);
+      ro = new ResizeObserver(() => scheduleCompute());
       ro.observe(container);
     }
 
     return () => {
-      window.removeEventListener('resize', handler);
-      window.removeEventListener('scroll', handler, true);
-      scrollParent?.removeEventListener('scroll', handler);
+      window.removeEventListener('resize', onResize);
+      scrollParent?.removeEventListener('scroll', scheduleCompute);
       ro?.disconnect();
+      if (rafSlot.current != null) {
+        cancelAnimationFrame(rafSlot.current);
+        rafSlot.current = null;
+      }
     };
-  }, [computeTicks, containerRef]);
+  }, [computeTicks, scheduleCompute, containerRef]);
 
   if (!portalRoot || ticks.length === 0 || priceRight === 0) return null;
 

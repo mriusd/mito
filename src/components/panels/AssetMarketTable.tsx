@@ -48,7 +48,7 @@ const AssetMarketTableSpotPrice = memo(function AssetMarketTableSpotPrice({
   asset: AssetName;
   symbol: ReturnType<typeof assetToSymbol>;
 }) {
-  const livePrice = useThrottledStorePrice(symbol, 1000);
+  const livePrice = useThrottledStorePrice(symbol, 2000);
   return <span className="font-bold">{livePrice > 0 ? formatPrice(livePrice, asset) : '--'}</span>;
 });
 
@@ -60,7 +60,7 @@ const AssetMarketTableVwapHint = memo(function AssetMarketTableVwapHint({
   symbol: ReturnType<typeof assetToSymbol>;
 }) {
   const vwapPrice = useThrottledStoreVwap(symbol, 1000);
-  const spotPrice = useThrottledStorePrice(symbol, 1000);
+  const spotPrice = useThrottledStorePrice(symbol, 2000);
   if (vwapPrice <= 0) return null;
   const vwapFmt =
     formatPrice(vwapPrice, asset) +
@@ -151,7 +151,7 @@ const AssetMarketTableStrikeRangeWrap = memo(function AssetMarketTableStrikeRang
   markets: Market[];
   asset: AssetName;
 }) {
-  const livePrice = useThrottledStorePrice(assetToSymbol(asset), 1000);
+  const livePrice = useThrottledStorePrice(assetToSymbol(asset), 2000);
   return <StrikeRangeIndicator markets={markets} livePrice={livePrice} asset={asset} />;
 });
 

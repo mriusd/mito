@@ -40,7 +40,14 @@ export interface WSTrade {
   eventSlug?: string;
 }
 
-export type WalletPnlDayBucket = { bought: number; sold: number };
+export type WalletPnlDayBucket = {
+  bought: number;
+  sold: number;
+  /** Total taker/maker fees on fills (ex-rebate). */
+  fees?: number;
+  makerRebate?: number;
+  takerRebate?: number;
+};
 export type WalletPnlByDate = Record<string, WalletPnlDayBucket>;
 export type WalletPnlCategory = 'CRYPTO' | 'WEATHER' | 'OTHER';
 

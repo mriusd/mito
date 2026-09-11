@@ -40,8 +40,9 @@ export const SidebarYesMidProbBar = memo(function SidebarYesMidProbBar({
 
   const m = yesMathCents;
   const delta = yMidOk != null && m != null ? yMidOk - m : null;
+  // Whole percents — sub-¢ mid noise must not rewrite the bar DOM every digest.
   const greenLeftPct =
-    delta == null ? 50 : Math.min(97, Math.max(3, 50 + (delta / 22) * 46));
+    delta == null ? 50 : Math.round(Math.min(97, Math.max(3, 50 + (delta / 22) * 46)));
   const volBelowMax = sidebarVolBelowMaxCap(chartVolPct, maxVolPct);
   const volClass =
     chartVolPct == null

@@ -124,7 +124,11 @@ export function useRwaSpotPrices() {
       }
     }
 
+    let failStreak = 0;
+    let nextPollAllowedAt = 0;
+
     async function pollPyth() {
+      if (Date.now() < nextPollAllowedAt) return;
       try {
         const fixedIds = FIXED_FEEDS.map((f) => f.feedId);
         const ngIds = ngFeedIdsRef.current;
@@ -132,6 +136,8 @@ export function useRwaSpotPrices() {
         const allIds = [...new Set([...fixedIds, ...ngIds, ...wtiMonthIds])];
         const parsed = await fetchLatestParsed(allIds);
         if (cancelled) return;
+        failStreak = 0;
+        nextPollAllowedAt = 0;
 
         const byId = new Map<string, number>();
         for (const row of parsed) {
@@ -161,7 +167,11 @@ export function useRwaSpotPrices() {
 
         applyPatch(patch);
       } catch (err) {
-        console.error('rwa pyth prices:', err);
+        failStreak += 1;
+        // Hermes often blocked in DEV — don't spam console / main thread every 5s.
+        const backoffMs = Math.min(5 * 60_000, PYTH_POLL_MS * 2 ** Math.min(failStreak, 5));
+        nextPollAllowedAt = Date.now() + backoffMs;
+        if (failStreak <= 2) console.warn('rwa pyth prices unavailable; backing off', backoffMs, 'ms');
       }
     }
 

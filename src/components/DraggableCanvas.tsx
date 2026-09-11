@@ -3,106 +3,149 @@ import { ReactGridLayout as RGLGrid } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import { X } from 'lucide-react';
 import { useAppStore, type PersistedGridLayouts } from '../stores/appStore';
-import { lazyWithChunkReload } from '../utils/lazyWithChunkReload';
+import { lazyWithChunkReload, preloadPanelChunks } from '../utils/lazyWithChunkReload';
 import { ErrorBoundary } from './ErrorBoundary';
 import type { PanelConfig, PanelType } from '../types';
 import BREAKPOINT_LAYOUTS, { HEIGHT_VARIANTS, GRID_COLS } from '../lib/defaultLayouts';
 import { DESKTOP_SCREEN_MIN_WIDTH_PX } from '../lib/mobileScreenNotice';
 
-const LazyAssetMarketTable = lazyWithChunkReload(() =>
-  import('./panels/AssetMarketTable').then((m) => ({ default: m.AssetMarketTable })),
+/** Map panel.type → preload key (asset-* share one chunk). */
+function panelPreloadKey(type: string): string {
+  if (type.startsWith('asset-')) return 'asset-market';
+  return type;
+}
+
+const LazyAssetMarketTable = lazyWithChunkReload(
+  () => import('./panels/AssetMarketTable').then((m) => ({ default: m.AssetMarketTable })),
+  'asset-market',
 );
-const LazyHedgesTable = lazyWithChunkReload(() =>
-  import('./panels/ArbsTable').then((m) => ({ default: m.HedgesTable })),
+const LazyHedgesTable = lazyWithChunkReload(
+  () => import('./panels/ArbsTable').then((m) => ({ default: m.HedgesTable })),
+  'hedges',
 );
-const LazySummaryTable = lazyWithChunkReload(() =>
-  import('./panels/SummaryTable').then((m) => ({ default: m.SummaryTable })),
+const LazySummaryTable = lazyWithChunkReload(
+  () => import('./panels/SummaryTable').then((m) => ({ default: m.SummaryTable })),
+  'summary',
 );
-const LazyArbPositionsTable = lazyWithChunkReload(() =>
-  import('./panels/ArbPositionsTable').then((m) => ({ default: m.ArbPositionsTable })),
+const LazyArbPositionsTable = lazyWithChunkReload(
+  () => import('./panels/ArbPositionsTable').then((m) => ({ default: m.ArbPositionsTable })),
+  'arb-positions',
 );
-const LazySignalsTable = lazyWithChunkReload(() =>
-  import('./panels/SignalsTable').then((m) => ({ default: m.SignalsTable })),
+const LazySignalsTable = lazyWithChunkReload(
+  () => import('./panels/SignalsTable').then((m) => ({ default: m.SignalsTable })),
+  'signals',
 );
-const LazyTradesPositionsOrders = lazyWithChunkReload(() =>
-  import('./panels/TradesPositionsOrders').then((m) => ({ default: m.TradesPositionsOrders })),
+const LazyTradesPositionsOrders = lazyWithChunkReload(
+  () => import('./panels/TradesPositionsOrders').then((m) => ({ default: m.TradesPositionsOrders })),
+  'trades-positions-orders',
 );
-const LazyPnLPanel = lazyWithChunkReload(() =>
-  import('./panels/PnLPanel').then((m) => ({ default: m.PnLPanel })),
+const LazyPnLPanel = lazyWithChunkReload(
+  () => import('./panels/PnLPanel').then((m) => ({ default: m.PnLPanel })),
+  'pnl',
 );
-const LazyUpDownMarketsPanel = lazyWithChunkReload(() =>
-  import('./panels/UpDownMarketsPanel').then((m) => ({ default: m.UpDownMarketsPanel })),
+const LazyUpDownMarketsPanel = lazyWithChunkReload(
+  () => import('./panels/UpDownMarketsPanel').then((m) => ({ default: m.UpDownMarketsPanel })),
+  'updown-overview',
 );
-const LazyRelativeChartPanel = lazyWithChunkReload(() =>
-  import('./panels/RelativeChartPanel').then((m) => ({ default: m.RelativeChartPanel })),
+const LazyRelativeChartPanel = lazyWithChunkReload(
+  () => import('./panels/RelativeChartPanel').then((m) => ({ default: m.RelativeChartPanel })),
+  'relative-chart',
 );
-const LazyPriceForecastPanel = lazyWithChunkReload(() =>
-  import('./panels/PriceForecastPanel').then((m) => ({ default: m.PriceForecastPanel })),
+const LazyPriceForecastPanel = lazyWithChunkReload(
+  () => import('./panels/PriceForecastPanel').then((m) => ({ default: m.PriceForecastPanel })),
+  'price-forecast',
 );
-const LazyBinanceChartPanel = lazyWithChunkReload(() =>
-  import('./panels/BinanceChartPanel').then((m) => ({ default: m.BinanceChartPanel })),
+const LazyBinanceChartPanel = lazyWithChunkReload(
+  () => import('./panels/BinanceChartPanel').then((m) => ({ default: m.BinanceChartPanel })),
+  'binance-chart',
 );
-const LazySpotOrderbookPanel = lazyWithChunkReload(() =>
-  import('./panels/SpotOrderbookPanel').then((m) => ({ default: m.SpotOrderbookPanel })),
+const LazySpotOrderbookPanel = lazyWithChunkReload(
+  () => import('./panels/SpotOrderbookPanel').then((m) => ({ default: m.SpotOrderbookPanel })),
+  'spot-orderbook',
 );
-const LazyGexPanel = lazyWithChunkReload(() =>
-  import('./panels/GexPanel').then((m) => ({ default: m.GexPanel })),
+const LazyGexPanel = lazyWithChunkReload(
+  () => import('./panels/GexPanel').then((m) => ({ default: m.GexPanel })),
+  'gex',
 );
-const LazyLiquidationMapPanel = lazyWithChunkReload(() =>
-  import('./panels/LiquidationMapPanel').then((m) => ({ default: m.LiquidationMapPanel })),
+const LazyLiquidationMapPanel = lazyWithChunkReload(
+  () => import('./panels/LiquidationMapPanel').then((m) => ({ default: m.LiquidationMapPanel })),
+  'liquidation-map',
 );
-const LazyCvdPanel = lazyWithChunkReload(() =>
-  import('./panels/CvdPanel').then((m) => ({ default: m.CvdPanel })),
+const LazyCvdPanel = lazyWithChunkReload(
+  () => import('./panels/CvdPanel').then((m) => ({ default: m.CvdPanel })),
+  'cvd',
 );
-const LazyFundingRatePanel = lazyWithChunkReload(() =>
-  import('./panels/FundingRatePanel').then((m) => ({ default: m.FundingRatePanel })),
+const LazyFundingRatePanel = lazyWithChunkReload(
+  () => import('./panels/FundingRatePanel').then((m) => ({ default: m.FundingRatePanel })),
+  'funding-rate',
 );
-const LazyPairTradingPanel = lazyWithChunkReload(() =>
-  import('./panels/PairTradingPanel').then((m) => ({ default: m.PairTradingPanel })),
+const LazyPairTradingPanel = lazyWithChunkReload(
+  () => import('./panels/PairTradingPanel').then((m) => ({ default: m.PairTradingPanel })),
+  'pair-trading',
 );
-const LazyUpOrDownHUDPanel = lazyWithChunkReload(() =>
-  import('./panels/UpOrDownHUDPanel').then((m) => ({ default: m.UpOrDownHUDPanel })),
+const LazyUpOrDownHUDPanel = lazyWithChunkReload(
+  () => import('./panels/UpOrDownHUDPanel').then((m) => ({ default: m.UpOrDownHUDPanel })),
+  'updown-hud',
 );
-const LazyMarkovPanel = lazyWithChunkReload(() =>
-  import('./panels/MarkovPanel').then((m) => ({ default: m.MarkovPanel })),
+const LazyMarkovPanel = lazyWithChunkReload(
+  () => import('./panels/MarkovPanel').then((m) => ({ default: m.MarkovPanel })),
+  'markov',
 );
-const LazyChatPanel = lazyWithChunkReload(() =>
-  import('./panels/ChatPanel').then((m) => ({ default: m.ChatPanel })),
+const LazyChatPanel = lazyWithChunkReload(
+  () => import('./panels/ChatPanel').then((m) => ({ default: m.ChatPanel })),
+  'chat',
 );
-const LazySmartMoneyPanel = lazyWithChunkReload(() =>
-  import('./panels/SmartMoneyPanel').then((m) => ({ default: m.SmartMoneyPanel })),
+const LazySmartMoneyPanel = lazyWithChunkReload(
+  () => import('./panels/SmartMoneyPanel').then((m) => ({ default: m.SmartMoneyPanel })),
+  'smart-money',
 );
-const LazyHistoryPanel = lazyWithChunkReload(() =>
-  import('./panels/HistoryPanel').then((m) => ({ default: m.HistoryPanel })),
+const LazyHistoryPanel = lazyWithChunkReload(
+  () => import('./panels/HistoryPanel').then((m) => ({ default: m.HistoryPanel })),
+  'history',
 );
-const LazyHyperliquidOutcomesPanel = lazyWithChunkReload(() =>
-  import('./panels/HyperliquidOutcomesPanel').then((m) => ({ default: m.HyperliquidOutcomesPanel })),
+const LazyHyperliquidOutcomesPanel = lazyWithChunkReload(
+  () => import('./panels/HyperliquidOutcomesPanel').then((m) => ({ default: m.HyperliquidOutcomesPanel })),
+  'hyperliquid-outcomes',
 );
-const LazyWeatherMarketsTable = lazyWithChunkReload(() =>
-  import('./panels/WeatherMarketsTable').then((m) => ({ default: m.WeatherMarketsTable })),
+const LazyWeatherMarketsTable = lazyWithChunkReload(
+  () => import('./panels/WeatherMarketsTable').then((m) => ({ default: m.WeatherMarketsTable })),
+  'weather-markets',
 );
-const LazyTemperaturePanel = lazyWithChunkReload(() =>
-  import('./panels/TemperaturePanel').then((m) => ({ default: m.TemperaturePanel })),
+const LazyWeatherNoTradePanel = lazyWithChunkReload(
+  () => import('./panels/WeatherNoTradePanel').then((m) => ({ default: m.WeatherNoTradePanel })),
+  'weather-no-trade',
 );
-const LazyTemperatureBarChartPanel = lazyWithChunkReload(() =>
-  import('./panels/TemperatureBarChartPanel').then((m) => ({ default: m.TemperatureBarChartPanel })),
+const LazyTemperaturePanel = lazyWithChunkReload(
+  () => import('./panels/TemperaturePanel').then((m) => ({ default: m.TemperaturePanel })),
+  'temperature',
 );
-const LazyCryptoBucketPanel = lazyWithChunkReload(() =>
-  import('./panels/CryptoBucketPanel').then((m) => ({ default: m.CryptoBucketPanel })),
+const LazyTemperatureBarChartPanel = lazyWithChunkReload(
+  () => import('./panels/TemperatureBarChartPanel').then((m) => ({ default: m.TemperatureBarChartPanel })),
+  'weather-temp-bars',
 );
-const LazyWeatherMapPanel = lazyWithChunkReload(() =>
-  import('./panels/WeatherMapPanel').then((m) => ({ default: m.WeatherMapPanel })),
+const LazyCryptoBucketPanel = lazyWithChunkReload(
+  () => import('./panels/CryptoBucketPanel').then((m) => ({ default: m.CryptoBucketPanel })),
+  'crypto-buckets',
 );
-const LazyClockPanel = lazyWithChunkReload(() =>
-  import('./panels/ClockPanel').then((m) => ({ default: m.ClockPanel })),
+const LazyWeatherMapPanel = lazyWithChunkReload(
+  () => import('./panels/WeatherMapPanel').then((m) => ({ default: m.WeatherMapPanel })),
+  'weather-map',
 );
-const LazySpreadsPanel = lazyWithChunkReload(() =>
-  import('./panels/SpreadsPanel').then((m) => ({ default: m.SpreadsPanel })),
+const LazyClockPanel = lazyWithChunkReload(
+  () => import('./panels/ClockPanel').then((m) => ({ default: m.ClockPanel })),
+  'clock',
+);
+const LazySpreadsPanel = lazyWithChunkReload(
+  () => import('./panels/SpreadsPanel').then((m) => ({ default: m.SpreadsPanel })),
+  'spreads',
 );
 
 const IS_DEV = import.meta.env.DEV;
 const LazyPerpBotPanel = IS_DEV
-  ? lazyWithChunkReload(() => import('./panels/PerpBotPanel').then((m) => ({ default: m.PerpBotPanel })))
+  ? lazyWithChunkReload(
+      () => import('./panels/PerpBotPanel').then((m) => ({ default: m.PerpBotPanel })),
+      'perp-bot',
+    )
   : null;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- react-grid-layout/legacy default export not fully typed
@@ -251,6 +294,8 @@ function renderPanel(panel: PanelConfig): ReactNode {
       return <LazyHistoryPanel />;
     case 'weather-markets':
       return <LazyWeatherMarketsTable panelId={panel.id} />;
+    case 'weather-no-trade':
+      return <LazyWeatherNoTradePanel panelId={panel.id} />;
     case 'weather-temperature':
       return <LazyTemperaturePanel panelId={panel.id} />;
     case 'weather-temp-bars':
@@ -440,6 +485,7 @@ export const DraggableCanvas = memo(function DraggableCanvas() {
     'arbs': 'Hedges', 'summary': 'Summary',
     'wallet-history': 'History',
     'weather-markets': 'Weather Markets',
+    'weather-no-trade': 'No Trade',
     'weather-temperature': 'Temperature',
     'weather-temp-bars': 'Temp Odds',
     'weather-map': 'Weather Map',
@@ -461,6 +507,11 @@ export const DraggableCanvas = memo(function DraggableCanvas() {
     }
     return extra.length > 0 ? [...panels, ...extra] : panels;
   }, [panels, currentBreakpoint, removedPanelTypes]);
+
+  // DEV: only transform panels that are actually on the canvas (prod still eager-loads at register).
+  useEffect(() => {
+    preloadPanelChunks(effectivePanels.map((p) => panelPreloadKey(p.type)));
+  }, [effectivePanels]);
 
   /** Layout from store or defaults. Default minW/minH only apply when building defaults; saved layouts are used as stored. */
   const computedLayout = useMemo((): LayoutItem[] => {

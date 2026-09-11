@@ -1481,7 +1481,16 @@ export const Sidebar = memo(function Sidebar() {
     if (resolver) resolver(confirmed);
   }, []);
 
-  const [liveOrderbookExpanded, setLiveOrderbookExpanded] = useState(() => localStorage.getItem('sidebar-live-orderbook-expanded') !== 'false');
+  // Default collapsed — expanded live book was the main-thread hog that froze table scrolling.
+  // v2 key: old default wrote "true" on every mount, so a version bump is required to take effect.
+  const [liveOrderbookExpanded, setLiveOrderbookExpanded] = useState(() => {
+    try {
+      localStorage.removeItem('sidebar-live-orderbook-expanded');
+    } catch {
+      /* ignore */
+    }
+    return localStorage.getItem('sidebar-live-orderbook-expanded-v2') === 'true';
+  });
   const [liveTradesExpanded, setLiveTradesExpanded] = useState(() => {
     const saved = localStorage.getItem('sidebar-live-trades-expanded');
     if (saved === 'true') return true;
@@ -1497,7 +1506,7 @@ export const Sidebar = memo(function Sidebar() {
     bumpCustomSidebarButtonsStore();
   }, [customButtons]);
   useEffect(() => {
-    localStorage.setItem('sidebar-live-orderbook-expanded', liveOrderbookExpanded ? 'true' : 'false');
+    localStorage.setItem('sidebar-live-orderbook-expanded-v2', liveOrderbookExpanded ? 'true' : 'false');
   }, [liveOrderbookExpanded]);
   useEffect(() => {
     localStorage.setItem('sidebar-live-trades-expanded', liveTradesExpanded ? 'true' : 'false');

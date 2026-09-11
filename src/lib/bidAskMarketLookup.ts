@@ -1,19 +1,25 @@
 import type { Market } from '../types';
 import { useAppStore } from '../stores/appStore';
+import { noteUiInteractionActivity } from './uiInteractionQuiet';
 
-/** Grid store flush for bid/ask + lookup fields — sidebar uses `getBidAskMarketRow` (unthrottled). */
-export const BID_ASK_LOOKUP_FLUSH_MS = 2000;
+/** Grid store flush for bid/ask + lookup fields — sidebar uses `getBidAskMarketRow` (live path). */
+export const BID_ASK_LOOKUP_FLUSH_MS = 3000;
 export const GRID_BID_ASK_THROTTLE_MS = BID_ASK_LOOKUP_FLUSH_MS;
 /**
- * Coalesce live WS → grid flush listeners (useThrottledBidAskPair / grid cells).
- * Keep short — longer windows made bid/ask feel non-realtime. Click starvation is
- * handled by not using startTransition on this path (not by deferring quotes).
+ * @deprecated Grid cells must NOT wake on this path — it used to fire every 100ms and
+ * re-render hundreds of GridMarketCells (froze scrolling). Grid updates use the 2s flush only.
+ * Kept as a no-op constant for any leftover imports.
  */
-export const GRID_BID_ASK_LIVE_COALESCE_MS = 100;
+export const GRID_BID_ASK_LIVE_COALESCE_MS = BID_ASK_LOOKUP_FLUSH_MS;
 
-/** No-op retained for callers; interaction deferral was starving live quotes. */
-export function noteUserInteractionForBidAsk(): void {
-  /* intentionally empty — see GRID_BID_ASK_LIVE_COALESCE_MS comment */
+/** Pause bid/ask apply briefly so typing / text selection stays responsive. */
+export function noteUserInteractionForBidAsk(target?: EventTarget | null): void {
+  noteUiInteractionActivity(target);
+}
+
+function isBidAskInteractionQuiet(): boolean {
+  const q = (window as unknown as { __polybotScrollQuietUntil?: number }).__polybotScrollQuietUntil;
+  return q != null && Date.now() < q;
 }
 
 /** Fields bid/ask WS batches can materially change vs prior store row — cheap equality gate. */
@@ -181,7 +187,8 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let gridLiveCoalesceTimer: ReturnType<typeof setTimeout> | null = null;
 /** Caps live notify delay — timer-only (no rAF; background tabs throttle rAF ~1/min). */
 let liveNotifyTimeout: ReturnType<typeof setTimeout> | null = null;
-const LIVE_NOTIFY_MAX_DELAY_MS = 50;
+/** Sidebar/live hooks only — grids use the store flush path. */
+const LIVE_NOTIFY_MAX_DELAY_MS = 500;
 const bidAskLookupLiveListeners = new Set<() => void>();
 const bidAskLookupGridFlushListeners = new Set<() => void>();
 let bidAskGridFlushDigest = 0;
@@ -269,10 +276,17 @@ function notifyBidAskMarketLookupLiveListeners() {
  */
 function scheduleLiveNotify() {
   if (liveNotifyTimeout != null) return;
+  const delay = isBidAskInteractionQuiet()
+    ? Math.max(LIVE_NOTIFY_MAX_DELAY_MS, 800)
+    : LIVE_NOTIFY_MAX_DELAY_MS;
   liveNotifyTimeout = setTimeout(() => {
     liveNotifyTimeout = null;
+    if (isBidAskInteractionQuiet()) {
+      scheduleLiveNotify();
+      return;
+    }
     notifyBidAskMarketLookupLiveListeners();
-  }, LIVE_NOTIFY_MAX_DELAY_MS);
+  }, delay);
 }
 
 function notifyBidAskMarketLookupGridFlushListeners() {
@@ -287,69 +301,33 @@ function notifyBidAskMarketLookupGridFlushListeners() {
   }
 }
 
+/** No-op: grid digest only bumps on the 2s store flush (see flushPendingBidAskToStore). */
 function scheduleGridLiveCoalesceNotify() {
-  if (gridLiveCoalesceTimer != null) return;
-  gridLiveCoalesceTimer = setTimeout(() => {
-    gridLiveCoalesceTimer = null;
-    notifyBidAskMarketLookupGridFlushListeners();
-  }, GRID_BID_ASK_LIVE_COALESCE_MS);
+  /* intentionally empty — 100ms grid wakes froze the UI */
 }
 
 function flushPendingBidAskToStore() {
   flushTimer = null;
-  const ids = Object.keys(pendingPatch);
-  if (ids.length === 0) {
-    notifyBidAskMarketLookupGridFlushListeners();
-    return;
-  }
-
-  // Snapshot only — do NOT clear pending before store commit.
-  // Old code deleted pending then applied setState inside startTransition; under load
-  // the transition lagged seconds–minutes while getBidAskMarketRow fell back to the
-  // still-stale store → bid/ask appeared frozen.
-  const snapshot: Record<string, Market> = {};
-  for (const id of ids) {
-    snapshot[id] = pendingPatch[id]!;
-  }
-
-  // Sync merge into marketLookup so readers never see a pending-cleared/store-stale gap.
-  useAppStore.setState((state) => {
-    const lookup = state.marketLookup;
-    let merged = lookup;
-    let bumped = false;
-    for (const id of ids) {
-      let next = snapshot[id];
-      if (!next) continue;
-      const baseline = lookup[id];
-      // Never replace a real Gamma row with a quote-only stub (kills titles → TPO shows token ints).
-      if (baseline && !isWsBidAskStubMarket(baseline) && isWsBidAskStubMarket(next)) {
-        next = { ...baseline, ...pickWsFieldsFromMarket(next) };
-      }
-      if (bidAskWsRowEqual(baseline, next)) continue;
-      if (merged === lookup) merged = { ...lookup };
-      merged[id] = next;
-      bumped = true;
-    }
-    if (!bumped) return {};
-    // Intentionally do NOT bump marketLookupEpoch — live grids use pending/patch
-    // listeners; epoch bump would re-render every snapshot consumer every flush.
-    return { marketLookup: merged };
-  });
-
-  // Drop only patches that were not superseded by a newer WS tick during the merge.
-  for (const id of ids) {
-    if (pendingPatch[id] === snapshot[id]) {
-      delete pendingPatch[id];
-    }
-  }
-
-  // Live readers use pending/liveTopOfBook; grid listeners wake on digest bump.
+  // CRITICAL PERF: do NOT `{ ...marketLookup }` merge here.
+  // Cloning 6k+ market rows every flush caused 100–300ms longtasks and made text
+  // selection/input feel frozen. Live readers already go through getBidAskMarketRow
+  // (pendingPatch + liveTopOfBook). Pending patches stay as the quote overlay.
   notifyBidAskMarketLookupGridFlushListeners();
 }
 
 function scheduleBidAskFlush() {
   if (flushTimer != null) return;
-  flushTimer = setTimeout(flushPendingBidAskToStore, BID_ASK_LOOKUP_FLUSH_MS);
+  const delay = isBidAskInteractionQuiet()
+    ? Math.max(BID_ASK_LOOKUP_FLUSH_MS, 2500)
+    : BID_ASK_LOOKUP_FLUSH_MS;
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    if (isBidAskInteractionQuiet()) {
+      scheduleBidAskFlush();
+      return;
+    }
+    flushPendingBidAskToStore();
+  }, delay);
 }
 
 export function flushBidAskMarketLookupNow() {
@@ -520,6 +498,9 @@ export function isWsBidAskStubMarket(m: Market | null | undefined): boolean {
 /**
  * Canonical market for a CLOB token: Gamma/weather seed wins over stale `ws:` stubs in lookup.
  * Keeps live bid/ask fields from pending/lookup via cloneMarketForClobToken.
+ *
+ * PERF: never `{ ...marketLookup }` here — that ran per WS token and froze the UI
+ * (6k-key object spread × dozens of tokens per drain).
  */
 export function resolveCanonicalMarketForToken(tokenId: string): Market | undefined {
   const id = String(tokenId || '').trim();
@@ -539,9 +520,16 @@ export function resolveCanonicalMarketForToken(tokenId: string): Market | undefi
     const seed = seedMap.get(key);
     if (!seed) continue;
     const pending = pendingPatch[key] ?? pendingPatch[id];
-    const prevLookup = pending
-      ? { ...state.marketLookup, [key]: pending, [id]: pending }
-      : state.marketLookup;
+    const lookupRow = state.marketLookup[key] ?? state.marketLookup[id];
+    // Tiny prev map — only the keys cloneMarketForClobToken actually reads.
+    const prevLookup: Record<string, Market> = {};
+    if (pending) {
+      prevLookup[key] = pending;
+      prevLookup[id] = pending;
+    } else if (lookupRow) {
+      prevLookup[key] = lookupRow;
+      prevLookup[id] = lookupRow;
+    }
     return cloneMarketForClobToken(seed, key, prevLookup);
   }
 
@@ -560,12 +548,26 @@ export function resolveCanonicalMarketForToken(tokenId: string): Market | undefi
   return undefined;
 }
 
-/** Seed row for WS bid/ask merge when token not yet in marketLookup (e.g. new up/down market). */
+/**
+ * Seed row for WS bid/ask merge.
+ * HOT PATH — must stay O(1). Do not call resolveCanonicalMarketForToken here
+ * (that was cloning marketLookup per token and destroying interactivity).
+ */
 export function resolveBidAskSeedMarket(assetId: string): Market | undefined {
   const id = String(assetId || '').trim();
   if (!id) return undefined;
-  const canonical = resolveCanonicalMarketForToken(id);
-  if (canonical) return canonical;
+  const seedMap = getOrBuildSeedIndex();
+  let seed = seedMap.get(id);
+  if (!seed) {
+    try {
+      seed = seedMap.get(BigInt(id).toString());
+    } catch {
+      seed = undefined;
+    }
+  }
+  if (seed) return seed;
+  const row = useAppStore.getState().marketLookup[id];
+  if (row && !isWsBidAskStubMarket(row)) return row;
 
   return {
     id: `ws:${id}`,
@@ -623,21 +625,45 @@ function coalesceWsItem(prev: BidAskWsItem | undefined, item: BidAskWsItem): Bid
   return { ...prev, ...item };
 }
 
+/** Coalesce WS patches — never run apply while the user is selecting/typing. */
+const BID_ASK_DRAIN_MS = 500;
+/** Soft time budget per drain slice (ms) — yield so input events can run. */
+const BID_ASK_DRAIN_BUDGET_MS = 6;
+/** Max tokens processed per drain slice. */
+const BID_ASK_DRAIN_MAX_ITEMS = 80;
+
 function scheduleLatestDrain(): void {
   if (drainRaf != null) return;
-  drainRaf = requestAnimationFrame(() => {
+  const delay = isBidAskInteractionQuiet() ? Math.max(BID_ASK_DRAIN_MS, 800) : BID_ASK_DRAIN_MS;
+  drainRaf = window.setTimeout(() => {
     drainRaf = null;
+    if (isBidAskInteractionQuiet()) {
+      scheduleLatestDrain();
+      return;
+    }
     drainLatestBidAsk();
-  });
+  }, delay) as unknown as number;
 }
 
-/** Apply only the latest pending patch per token (drop all superseded updates). */
+/** Apply only the latest pending patch per token — time-sliced so UI stays interactive. */
 function drainLatestBidAsk(): void {
   if (latestByAssetId.size === 0) return;
-  // Swap so ticks that arrive mid-apply go into a fresh map for the next frame.
-  const batch = latestByAssetId;
-  latestByAssetId = new Map();
-  applyBidAskMarketPatches([...batch.values()]);
+  if (isBidAskInteractionQuiet()) {
+    scheduleLatestDrain();
+    return;
+  }
+
+  const items: BidAskWsItem[] = [];
+  const start = performance.now();
+  for (const [id, item] of latestByAssetId) {
+    items.push(item);
+    latestByAssetId.delete(id);
+    if (items.length >= BID_ASK_DRAIN_MAX_ITEMS || performance.now() - start > BID_ASK_DRAIN_BUDGET_MS) {
+      break;
+    }
+  }
+  if (items.length === 0) return;
+  applyBidAskMarketPatches(items);
   if (latestByAssetId.size > 0) scheduleLatestDrain();
 }
 
@@ -700,9 +726,17 @@ function applyBidAskMarketPatches(
 /**
  * Ingest WS bid/ask patches. Always latest-wins per token — never queues intermediate
  * prices to replay. At most one apply per animation frame.
+ *
+ * Kill switch (diagnostic): localStorage.setItem('polybot-kill-bidask','1'); location.reload()
+ * If the UI instantly becomes smooth with this on, the lag is still quote-pipeline bound.
  */
 export function enqueueBidAskMarketPatches(items: BidAskWsItem[]) {
   if (items.length === 0) return;
+  try {
+    if (localStorage.getItem('polybot-kill-bidask') === '1') return;
+  } catch {
+    /* ignore */
+  }
   for (const item of items) {
     const id = String(item.assetId || '').trim();
     if (!id) continue;

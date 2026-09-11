@@ -93,6 +93,12 @@ export function installUiInteractionRecovery(): () => void {
     clearStuckGridDragClasses();
   };
 
+  // blur is FocusEvent — do not reuse the PointerEvent handler.
+  const onBlur = () => {
+    reconcileAppKitModal();
+    clearStuckGridDragClasses();
+  };
+
   reconcileAppKitModal();
   const reconcileTimer = window.setInterval(reconcileAppKitModal, 2500);
 
@@ -100,7 +106,7 @@ export function installUiInteractionRecovery(): () => void {
   window.addEventListener('pointerdown', onPointerStart, true);
   window.addEventListener('pointerup', onPointerEnd, true);
   window.addEventListener('pointercancel', onPointerEnd, true);
-  window.addEventListener('blur', onPointerEnd);
+  window.addEventListener('blur', onBlur);
 
   return () => {
     window.clearInterval(reconcileTimer);
@@ -108,6 +114,6 @@ export function installUiInteractionRecovery(): () => void {
     window.removeEventListener('pointerdown', onPointerStart, true);
     window.removeEventListener('pointerup', onPointerEnd, true);
     window.removeEventListener('pointercancel', onPointerEnd, true);
-    window.removeEventListener('blur', onPointerEnd);
+    window.removeEventListener('blur', onBlur);
   };
 }

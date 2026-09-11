@@ -108,7 +108,10 @@ export function preloadPanelChunks(panelTypes: readonly string[]): void {
   const run = () => {
     for (const t of unique) preloadPanelChunk(t);
   };
-  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+  if (typeof window === 'undefined') return;
+  // Prefer requestIdleCallback when present; avoid `in` narrowing that makes the
+  // else branch `never` under DOM libs where the method is always typed on Window.
+  if (typeof window.requestIdleCallback === 'function') {
     window.requestIdleCallback(() => run(), { timeout: 2000 });
   } else {
     window.setTimeout(run, 0);

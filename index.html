@@ -8,10 +8,109 @@
     <meta name="description" content="Advanced Polymarket trading dashboard and pro terminal for crypto. Birdseye view with powerful tools, real-time data, and institutional-grade analytics.">
     <style>
       html, body, #root { background-color: #050505; color-scheme: dark; }
+      /* Outside React — still clickable when the app compositor layer goes blank. */
+      #polybot-tab-recover {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 2147483646;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin: 0;
+        padding: 24px;
+        background: rgba(5, 5, 5, 0.92);
+        color: #e5e7eb;
+        font: 13px/1.4 ui-sans-serif, system-ui, sans-serif;
+        text-align: center;
+      }
+      #polybot-tab-recover[data-show="1"] { display: flex; }
+      #polybot-tab-recover button {
+        cursor: pointer;
+        border: 1px solid #4b5563;
+        background: #2563eb;
+        color: #fff;
+        border-radius: 8px;
+        padding: 10px 18px;
+        font: 600 13px/1 ui-sans-serif, system-ui, sans-serif;
+      }
+      #polybot-tab-recover button:hover { background: #1d4ed8; }
+      #polybot-tab-recover .secondary {
+        background: #1f2937;
+        color: #e5e7eb;
+      }
+      #polybot-tab-recover .secondary:hover { background: #374151; }
     </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="polybot-tab-recover" role="alertdialog" aria-modal="true" aria-labelledby="polybot-tab-recover-title">
+      <p id="polybot-tab-recover-title" style="margin:0;font-weight:700;font-size:15px;">UI may be stuck after returning to this tab</p>
+      <p style="margin:0;max-width:28rem;color:#9ca3af;font-size:12px;">
+        If the screen stays black, recover reloads the dashboard. Layout and market selection are kept.
+      </p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+        <button type="button" id="polybot-tab-recover-btn">Recover</button>
+        <button type="button" id="polybot-tab-recover-dismiss" class="secondary">Dismiss</button>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var recover = document.getElementById('polybot-tab-recover');
+        var btn = document.getElementById('polybot-tab-recover-btn');
+        var dismiss = document.getElementById('polybot-tab-recover-dismiss');
+        window.__polybotUiHeartbeat = Date.now();
+
+        window.__polybotHardNudgePaint = function () {
+          var root = document.getElementById('root');
+          if (!root) return;
+          var prev = root.style.visibility;
+          root.style.visibility = 'hidden';
+          void root.offsetHeight;
+          root.style.visibility = prev;
+          try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+        };
+
+        window.__polybotShowTabRecover = function () {
+          if (recover) recover.setAttribute('data-show', '1');
+        };
+        window.__polybotHideTabRecover = function () {
+          if (recover) recover.removeAttribute('data-show');
+        };
+
+        if (btn) {
+          btn.addEventListener('click', function () {
+            try { sessionStorage.setItem('polybot-tab-wake-reload', String(Date.now())); } catch (e) {}
+            window.location.reload();
+          });
+        }
+        if (dismiss) {
+          dismiss.addEventListener('click', function () {
+            window.__polybotHideTabRecover();
+          });
+        }
+
+        // Early wake nudge before the React bundle evaluates (helps Vite cold tabs too).
+        var hiddenAt = 0;
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'hidden') {
+            hiddenAt = Date.now();
+            return;
+          }
+          window.__polybotHardNudgePaint();
+          var away = hiddenAt > 0 ? Date.now() - hiddenAt : 0;
+          if (away >= 30000) {
+            // Show recover quickly on long hide; React heartbeat hides it if UI is alive.
+            setTimeout(function () {
+              if (document.visibilityState !== 'visible') return;
+              var hb = window.__polybotUiHeartbeat || 0;
+              if (Date.now() - hb > 2500) window.__polybotShowTabRecover('early');
+            }, 2500);
+          }
+        });
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

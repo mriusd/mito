@@ -109,39 +109,59 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
       if (!wallet) return '';
       const prefRaw = openSeedMarketIdRef.current;
       const pref = prefRaw.toLowerCase();
+
+      // Summary and positions are independent — do not Promise.all them.
+      // High-volume wallets (~40k+ WMP rows) used to time out on order=end_date_desc;
+      // a failed positions fetch previously wiped the whole dialog including summary.
       try {
-        const [s, p] = await Promise.all([
-          fetchWalletSummary(wallet),
-          fetchWalletPositions({ wallet, limit: 1000, ledger: true, order: 'end_date_desc' }),
-        ]);
+        const s = await fetchWalletSummary(wallet);
         setSummary(s);
-        const rows = Array.isArray(p?.positions) ? p.positions : [];
-        const sorted = sortWalletPositionsByDisplayedDateDesc(
-          rows,
-          buildMarketByIdRecord(useAppStore.getState().marketLookup),
-        );
-        const byId = enrichMarketByIdFromWalletPositions(useAppStore.getState().marketLookup, sorted);
-        setMarketById(byId);
-        setMarkets(sorted);
-        let pick = '';
-        if (preserveSelected && sorted.some((row) => row.marketId === preserveSelected)) {
-          pick = preserveSelected;
-        } else if (pref) {
-          const hit = sorted.find((row) => String(row.marketId || '').trim().toLowerCase() === pref);
-          if (hit) pick = hit.marketId;
-          else pick = prefRaw;
-        }
-        if (!pick && sorted.length > 0) pick = sorted[0]!.marketId;
-        setSelectedMarketId(pick);
-        return pick;
       } catch (err) {
-        console.warn('[WalletInfoPanel] load markets failed:', err);
+        console.warn('[WalletInfoPanel] load summary failed:', err);
         setSummary(null);
-        setMarkets([]);
-        setMarketById({});
-        setSelectedMarketId(prefRaw);
-        return prefRaw;
       }
+
+      let rows: WalletPosition[] = [];
+      try {
+        let p = await fetchWalletPositions({
+          wallet,
+          limit: 1000,
+          ledger: true,
+          order: 'end_date_desc',
+        });
+        rows = Array.isArray(p?.positions) ? p.positions : [];
+      } catch (err) {
+        console.warn('[WalletInfoPanel] load markets (end_date_desc) failed, retrying default order:', err);
+        try {
+          const p = await fetchWalletPositions({ wallet, limit: 1000, ledger: true });
+          rows = Array.isArray(p?.positions) ? p.positions : [];
+        } catch (err2) {
+          console.warn('[WalletInfoPanel] load markets failed:', err2);
+          setMarkets([]);
+          setMarketById({});
+          setSelectedMarketId(prefRaw);
+          return prefRaw;
+        }
+      }
+
+      const sorted = sortWalletPositionsByDisplayedDateDesc(
+        rows,
+        buildMarketByIdRecord(useAppStore.getState().marketLookup),
+      );
+      const byId = enrichMarketByIdFromWalletPositions(useAppStore.getState().marketLookup, sorted);
+      setMarketById(byId);
+      setMarkets(sorted);
+      let pick = '';
+      if (preserveSelected && sorted.some((row) => row.marketId === preserveSelected)) {
+        pick = preserveSelected;
+      } else if (pref) {
+        const hit = sorted.find((row) => String(row.marketId || '').trim().toLowerCase() === pref);
+        if (hit) pick = hit.marketId;
+        else pick = prefRaw;
+      }
+      if (!pick && sorted.length > 0) pick = sorted[0]!.marketId;
+      setSelectedMarketId(pick);
+      return pick;
     },
     [wallet],
   );

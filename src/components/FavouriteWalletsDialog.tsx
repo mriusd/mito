@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { X, Star, Bell, ExternalLink, Copy } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { X, Star, Bell, ExternalLink, Copy, Plus } from 'lucide-react';
 import {
   listToxicFavouriteWalletsByAddedAt,
   readToxicFavouriteWallets,
@@ -7,6 +7,7 @@ import {
   readToxicBellWallets,
   persistToxicBellWallets,
   getToxicFavouriteNickname,
+  setToxicFavouriteNickname,
   exportToxicFavouriteWalletsCsv,
   TOXIC_FAVOURITE_WALLETS_LS_KEY,
   TOXIC_FAVOURITE_NICKNAMES_LS_KEY,
@@ -24,10 +25,23 @@ import { WalletAddressGlyph } from './WalletAddressGlyph';
 const BELL_CLS_ON = 'text-amber-400 fill-amber-400/25';
 const BELL_CLS_OFF = 'stroke-gray-400 fill-none';
 
+const ETH_ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
+
 function shortenAddr(a: string): string {
   const t = a.trim();
   if (t.length < 20) return t;
   return `${t.slice(0, 6)}…${t.slice(-4)}`;
+}
+
+/** Accept 0x…40 hex, or bare 40 hex (adds 0x). */
+function normalizeWalletInput(raw: string): string | null {
+  let t = raw.trim();
+  if (!t) return null;
+  if (!t.startsWith('0x') && !t.startsWith('0X') && /^[a-fA-F0-9]{40}$/.test(t)) {
+    t = `0x${t}`;
+  }
+  if (!ETH_ADDR_RE.test(t)) return null;
+  return t.toLowerCase();
 }
 
 function formatAddedAt(ms: number | null): string {
@@ -53,6 +67,11 @@ export function FavouriteWalletsDialog({
   const [bellWallets, setBellWallets] = useState(readToxicBellWallets);
   const [tagRev, setTagRev] = useState(0);
   const [search, setSearch] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
+  const [addAddr, setAddAddr] = useState('');
+  const [addNick, setAddNick] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+  const addAddrRef = useRef<HTMLInputElement>(null);
 
   const filteredEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -78,7 +97,17 @@ export function FavouriteWalletsDialog({
     if (!open) return;
     refresh();
     setSearch('');
+    setAddOpen(false);
+    setAddAddr('');
+    setAddNick('');
+    setAddError(null);
   }, [open, refresh]);
+
+  useEffect(() => {
+    if (!addOpen) return;
+    const t = window.setTimeout(() => addAddrRef.current?.focus(), 0);
+    return () => window.clearTimeout(t);
+  }, [addOpen]);
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
@@ -115,6 +144,27 @@ export function FavouriteWalletsDialog({
     persistToxicFavouriteWallets(next);
   };
 
+  const addFav = () => {
+    const k = normalizeWalletInput(addAddr);
+    if (!k) {
+      setAddError('Enter a valid 0x wallet address (40 hex chars).');
+      return;
+    }
+    const next = readToxicFavouriteWallets();
+    if (next.has(k)) {
+      setAddError('Already in favourites.');
+      return;
+    }
+    next.add(k);
+    persistToxicFavouriteWallets(next);
+    const nick = addNick.trim();
+    if (nick) setToxicFavouriteNickname(k, nick);
+    setAddAddr('');
+    setAddNick('');
+    setAddError(null);
+    setAddOpen(false);
+  };
+
   const toggleBellWallet = (addr: string) => {
     const k = addr.trim().toLowerCase();
     if (!k) return;
@@ -148,6 +198,23 @@ export function FavouriteWalletsDialog({
             {entries.length > 0 && <span className="text-[10px] text-gray-500">({entries.length})</span>}
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              className={`rounded p-1 border ${
+                addOpen
+                  ? 'border-emerald-500/60 bg-emerald-900/40 text-emerald-300'
+                  : 'border-gray-600 text-gray-300 hover:text-white hover:bg-gray-700'
+              }`}
+              title="Add wallet"
+              aria-label="Add wallet"
+              aria-pressed={addOpen}
+              onClick={() => {
+                setAddOpen((v) => !v);
+                setAddError(null);
+              }}
+            >
+              <Plus size={14} strokeWidth={2.5} />
+            </button>
             {entries.length > 0 ? (
               <button
                 type="button"
@@ -158,15 +225,67 @@ export function FavouriteWalletsDialog({
               </button>
             ) : null}
             <button
-            type="button"
-            onClick={onClose}
-            className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
-            aria-label="Close"
-          >
-            <X size={16} />
-          </button>
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
+              aria-label="Close"
+            >
+              <X size={16} />
+            </button>
           </div>
         </div>
+        {addOpen ? (
+          <div className="px-2 pt-2 shrink-0 space-y-1.5 border-b border-gray-800 pb-2">
+            <div className="flex gap-1.5">
+              <input
+                ref={addAddrRef}
+                type="text"
+                value={addAddr}
+                onChange={(e) => {
+                  setAddAddr(e.target.value);
+                  if (addError) setAddError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addFav();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setAddOpen(false);
+                    setAddError(null);
+                  }
+                }}
+                placeholder="0x… wallet address"
+                className="min-w-0 flex-1 rounded border border-gray-600 bg-gray-950 px-2 py-1 font-mono text-[11px] text-white placeholder:text-gray-500 focus:outline-none focus:border-emerald-500/60"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <button
+                type="button"
+                className="shrink-0 rounded border border-emerald-600/70 bg-emerald-800/50 px-2 py-1 text-[10px] font-semibold text-emerald-100 hover:bg-emerald-700/60"
+                onClick={addFav}
+              >
+                Add
+              </button>
+            </div>
+            <input
+              type="text"
+              value={addNick}
+              onChange={(e) => setAddNick(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addFav();
+                }
+              }}
+              placeholder="Nickname (optional)"
+              className="w-full rounded border border-gray-600 bg-gray-950 px-2 py-1 text-[11px] text-white placeholder:text-gray-500 focus:outline-none focus:border-gray-500"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            {addError ? <p className="text-[10px] text-red-400 px-0.5">{addError}</p> : null}
+          </div>
+        ) : null}
         {entries.length > 0 ? (
           <div className="px-2 pt-2 shrink-0">
             <div className="relative">
@@ -195,7 +314,9 @@ export function FavouriteWalletsDialog({
         ) : null}
         <div className="overflow-y-auto flex-1 p-2">
           {entries.length === 0 ? (
-            <p className="text-xs text-gray-500 text-center py-6 px-2">No favourites yet. Star a wallet in Toxic flow → Holders.</p>
+            <p className="text-xs text-gray-500 text-center py-6 px-2">
+              No favourites yet. Use <span className="text-gray-300">+</span> to add an address, or star a wallet in Toxic flow → Holders.
+            </p>
           ) : filteredEntries.length === 0 ? (
             <p className="text-xs text-gray-500 text-center py-6 px-2">No matches for &ldquo;{search.trim()}&rdquo;</p>
           ) : (

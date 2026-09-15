@@ -28,6 +28,7 @@ import {
 import { pickLiveUpDownMarketInTfBucket } from './utils/format';
 import { installUiInteractionRecovery } from './lib/uiInteractionRecovery';
 import { installUiInteractionQuietListeners } from './lib/uiInteractionQuiet';
+import { installTabWakeRecovery } from './lib/uiTabWake';
 import { runAppRefresh } from './lib/appRefresh';
 import { MOBILE_SCREEN_MEDIA_QUERY } from './lib/mobileScreenNotice';
 import {
@@ -127,6 +128,7 @@ function App() {
 
   useEffect(() => installUiInteractionRecovery(), []);
   useEffect(() => installUiInteractionQuietListeners(), []);
+  useEffect(() => installTabWakeRecovery(), []);
 
   const handleRefresh = useCallback(async () => {
     await runAppRefresh();

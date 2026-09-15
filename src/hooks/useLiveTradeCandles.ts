@@ -633,17 +633,31 @@ export function useLiveTradeCandles({
       },
     });
 
+    let visibilityTimer: ReturnType<typeof setTimeout> | null = null;
     const onVisibility = () => {
-      if (cancelled || document.visibilityState !== 'visible') return;
-      void loadKlines().then(() => {
-        if (!cancelled) scheduleWsTick();
-      });
+      if (cancelled || document.visibilityState !== 'visible') {
+        if (visibilityTimer != null) {
+          clearTimeout(visibilityTimer);
+          visibilityTimer = null;
+        }
+        return;
+      }
+      // Defer past tab-wake paint quiet so restore isn't blocked by REST stampedes.
+      if (visibilityTimer != null) clearTimeout(visibilityTimer);
+      visibilityTimer = setTimeout(() => {
+        visibilityTimer = null;
+        if (cancelled || document.visibilityState !== 'visible') return;
+        void loadKlines().then(() => {
+          if (!cancelled) scheduleWsTick();
+        });
+      }, 1600);
     };
 
     document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
       cancelled = true;
+      if (visibilityTimer != null) clearTimeout(visibilityTimer);
       document.removeEventListener('visibilitychange', onVisibility);
       if (wsTickTimerRef.current != null) {
         clearTimeout(wsTickTimerRef.current);

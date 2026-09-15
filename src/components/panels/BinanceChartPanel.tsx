@@ -1530,19 +1530,33 @@ export function BinanceChartPanel({ panelId, initialAsset, assetOverride, forced
       },
     });
 
+    let visibilityTimer: ReturnType<typeof setTimeout> | null = null;
     const onVisibility = () => {
-      if (disposed || document.visibilityState !== 'visible') return;
-      void fetchKlinesRef.current({ silent: true });
+      if (disposed || document.visibilityState !== 'visible') {
+        if (visibilityTimer != null) {
+          clearTimeout(visibilityTimer);
+          visibilityTimer = null;
+        }
+        return;
+      }
+      if (visibilityTimer != null) clearTimeout(visibilityTimer);
+      visibilityTimer = setTimeout(() => {
+        visibilityTimer = null;
+        if (disposed || document.visibilityState !== 'visible') return;
+        void fetchKlinesRef.current({ silent: true });
+      }, 1600);
     };
     document.addEventListener('visibilitychange', onVisibility);
 
     const pollId = window.setInterval(() => {
       if (disposed) return;
+      if (document.visibilityState === 'hidden') return;
       void fetchKlinesRef.current({ silent: true });
     }, CHAINLINK_KLINE_POLL_MS);
 
     return () => {
       disposed = true;
+      if (visibilityTimer != null) clearTimeout(visibilityTimer);
       document.removeEventListener('visibilitychange', onVisibility);
       window.clearInterval(pollId);
       unsub();

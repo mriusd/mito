@@ -1,6 +1,7 @@
 import type { Market } from '../types';
 import { useAppStore } from '../stores/appStore';
 import { noteUiInteractionActivity } from './uiInteractionQuiet';
+import { shouldDeferHeavyUiWork } from './uiTabWake';
 
 /** Grid store flush for bid/ask + lookup fields — sidebar uses `getBidAskMarketRow` (live path). */
 export const BID_ASK_LOOKUP_FLUSH_MS = 3000;
@@ -276,12 +277,14 @@ function notifyBidAskMarketLookupLiveListeners() {
  */
 function scheduleLiveNotify() {
   if (liveNotifyTimeout != null) return;
-  const delay = isBidAskInteractionQuiet()
-    ? Math.max(LIVE_NOTIFY_MAX_DELAY_MS, 800)
-    : LIVE_NOTIFY_MAX_DELAY_MS;
+  const delay = shouldDeferHeavyUiWork()
+    ? Math.max(LIVE_NOTIFY_MAX_DELAY_MS, 1200)
+    : isBidAskInteractionQuiet()
+      ? Math.max(LIVE_NOTIFY_MAX_DELAY_MS, 800)
+      : LIVE_NOTIFY_MAX_DELAY_MS;
   liveNotifyTimeout = setTimeout(() => {
     liveNotifyTimeout = null;
-    if (isBidAskInteractionQuiet()) {
+    if (shouldDeferHeavyUiWork() || isBidAskInteractionQuiet()) {
       scheduleLiveNotify();
       return;
     }
@@ -317,12 +320,14 @@ function flushPendingBidAskToStore() {
 
 function scheduleBidAskFlush() {
   if (flushTimer != null) return;
-  const delay = isBidAskInteractionQuiet()
+  const delay = shouldDeferHeavyUiWork()
     ? Math.max(BID_ASK_LOOKUP_FLUSH_MS, 2500)
-    : BID_ASK_LOOKUP_FLUSH_MS;
+    : isBidAskInteractionQuiet()
+      ? Math.max(BID_ASK_LOOKUP_FLUSH_MS, 2500)
+      : BID_ASK_LOOKUP_FLUSH_MS;
   flushTimer = setTimeout(() => {
     flushTimer = null;
-    if (isBidAskInteractionQuiet()) {
+    if (shouldDeferHeavyUiWork() || isBidAskInteractionQuiet()) {
       scheduleBidAskFlush();
       return;
     }
@@ -634,10 +639,14 @@ const BID_ASK_DRAIN_MAX_ITEMS = 80;
 
 function scheduleLatestDrain(): void {
   if (drainRaf != null) return;
-  const delay = isBidAskInteractionQuiet() ? Math.max(BID_ASK_DRAIN_MS, 800) : BID_ASK_DRAIN_MS;
+  const delay = shouldDeferHeavyUiWork()
+    ? Math.max(BID_ASK_DRAIN_MS, 1200)
+    : isBidAskInteractionQuiet()
+      ? Math.max(BID_ASK_DRAIN_MS, 800)
+      : BID_ASK_DRAIN_MS;
   drainRaf = window.setTimeout(() => {
     drainRaf = null;
-    if (isBidAskInteractionQuiet()) {
+    if (shouldDeferHeavyUiWork() || isBidAskInteractionQuiet()) {
       scheduleLatestDrain();
       return;
     }
@@ -648,7 +657,7 @@ function scheduleLatestDrain(): void {
 /** Apply only the latest pending patch per token — time-sliced so UI stays interactive. */
 function drainLatestBidAsk(): void {
   if (latestByAssetId.size === 0) return;
-  if (isBidAskInteractionQuiet()) {
+  if (shouldDeferHeavyUiWork() || isBidAskInteractionQuiet()) {
     scheduleLatestDrain();
     return;
   }

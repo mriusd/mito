@@ -1,6 +1,7 @@
 import { WS_BASE } from './env';
 import { onBackendReconnect } from './backendReconnect';
 import { backendWsRetryDelayMs, markBackendDownFromWs, markBackendWsUp } from './fetchBackend';
+import { shouldDeferHeavyUiWork } from './uiTabWake';
 
 // Single shared /ws/chart socket for the whole app. Every consumer (live trade
 // chart, chainlink/volatility charts, binance chart panel, bid/ask lookup)
@@ -125,11 +126,15 @@ function forceChartWsReconnect(reason: string): void {
   }, 100);
 }
 
+let visibilityReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
 function ensureWatchdog(): void {
   if (watchdogIv != null) return;
   watchdogIv = setInterval(() => {
     if (totalSubs() === 0) return;
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    // Don't force-reconnect during tab-wake quiet — paint first.
+    if (shouldDeferHeavyUiWork()) return;
     const now = Date.now();
     // Wait until socket has been open long enough (lastAnyMsgAt set on open).
     if (lastAnyMsgAt <= 0) return;
@@ -158,14 +163,26 @@ function stopWatchdogIfIdle(): void {
     clearInterval(watchdogIv);
     watchdogIv = null;
   }
+  if (visibilityReconnectTimer != null) {
+    clearTimeout(visibilityReconnectTimer);
+    visibilityReconnectTimer = null;
+  }
   if (typeof document !== 'undefined') {
     document.removeEventListener('visibilitychange', onVisibilityForChartWs);
   }
 }
 
-function onVisibilityForChartWs(): void {
+function runVisibilityReconnectCheck(): void {
   if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
   if (totalSubs() === 0) return;
+  if (shouldDeferHeavyUiWork()) {
+    if (visibilityReconnectTimer != null) clearTimeout(visibilityReconnectTimer);
+    visibilityReconnectTimer = setTimeout(() => {
+      visibilityReconnectTimer = null;
+      runVisibilityReconnectCheck();
+    }, 250);
+    return;
+  }
   const now = Date.now();
   if (lastBidAskMsgAt > 0 && now - lastBidAskMsgAt > BIDASK_STALE_MS / 2) {
     forceChartWsReconnect('tab visible + bidAsk stale');
@@ -174,6 +191,25 @@ function onVisibilityForChartWs(): void {
   } else if (ws == null && reconnectTimer == null) {
     connect();
   }
+}
+
+function onVisibilityForChartWs(): void {
+  if (typeof document === 'undefined' || document.visibilityState !== 'visible') {
+    if (visibilityReconnectTimer != null) {
+      clearTimeout(visibilityReconnectTimer);
+      visibilityReconnectTimer = null;
+    }
+    return;
+  }
+  if (totalSubs() === 0) return;
+
+  // Defer reconnect until after tab-wake paint quiet — sync reconnect on visibility
+  // was a common cause of permanent black screens after long background.
+  if (visibilityReconnectTimer != null) clearTimeout(visibilityReconnectTimer);
+  visibilityReconnectTimer = setTimeout(() => {
+    visibilityReconnectTimer = null;
+    runVisibilityReconnectCheck();
+  }, 450);
 }
 
 function rebuildBidAskExtraUnion(): string[] {

@@ -140,7 +140,11 @@ async function executeGaslessDepositWalletSplit(
   const derived = (await client.deriveDepositWalletAddress()).toLowerCase();
   const funder = funderAddress.trim().toLowerCase();
   if (derived !== funder) {
-    throw new Error(`Deposit wallet mismatch: expected ${derived}, got ${funder}`);
+    throw new Error(
+      `Deposit wallet mismatch: expected ${derived}, got ${funder}. ` +
+        `Funder is not this signer’s deposit wallet — use the Polymarket Safe/proxy path, ` +
+        `or switch to the private key / wallet that owns ${funder}.`,
+    );
   }
 
   const deadline = String(Math.floor(Date.now() / 1000) + 600);

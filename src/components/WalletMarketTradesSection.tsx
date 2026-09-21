@@ -53,8 +53,15 @@ export const WalletMarketTradesSection = memo(function WalletMarketTradesSection
   }, [enabled, loadingFills, onLoadingChange]);
 
   useEffect(() => {
-    if (!enabled) return;
-    const sync = () => setNeedsOwnOnchainWs(getOnchainTradesWSShared() == null);
+    if (!enabled) {
+      setNeedsOwnOnchainWs(getOnchainTradesWSShared() == null);
+      return;
+    }
+    // Sticky while enabled — unmounting the bridge when it publishes `shared`
+    // tears down the only socket and blanks the trades list.
+    const sync = () => {
+      if (getOnchainTradesWSShared() == null) setNeedsOwnOnchainWs(true);
+    };
     sync();
     const id = window.setInterval(sync, 500);
     return () => window.clearInterval(id);

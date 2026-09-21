@@ -1373,8 +1373,12 @@ export const Sidebar = memo(function Sidebar() {
   /** Trading maker (proxy): WS `subscribeWallet` for live positions whenever resolved — not only when tape is on-chain. */
   const walletForLivePositions =
     ((proxyWallet || makerAddressForMerge || '').trim().toLowerCase() || null);
-  /** Same resolution as on-chain sidebar: proxy / maker for DB wallet keys. */
-  const mergeFunderWallet = (makerAddressForMerge || proxyWallet || '').trim();
+  /**
+   * Prefer freshly resolved proxy for the active EOA (PK or connected wallet).
+   * Store `makerAddress` can lag after PK ↔ wallet switch and pointed merge at the
+   * wrong funder → "Deposit wallet mismatch: expected <pk deposit>, got <stale maker>".
+   */
+  const mergeFunderWallet = (proxyWallet || makerAddressForMerge || '').trim();
   const scopedClobPair = useMemo(() => {
     if (!selectedMarket?.clobTokenIds?.length) return null;
     return selectedMarket.clobTokenIds.map((x) => String(x || '').trim()).filter(Boolean);

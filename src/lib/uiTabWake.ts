@@ -24,9 +24,10 @@ let wakeQuietUntil = 0;
 let installed = false;
 let hiddenAt = 0;
 let wakeAt = 0;
-let wakeTimer: ReturnType<typeof setTimeout> | null = null;
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-let staleReloadTimer: ReturnType<typeof setTimeout> | null = null;
+// Use `number` (DOM) — not `ReturnType<typeof setInterval>` which becomes NodeJS.Timeout under @types/node.
+let wakeTimer: number | null = null;
+let heartbeatTimer: number | null = null;
+let staleReloadTimer: number | null = null;
 
 declare global {
   interface Window {
@@ -123,7 +124,7 @@ function onBecameVisible(): void {
     });
   });
 
-  wakeTimer = setTimeout(() => {
+  wakeTimer = window.setTimeout(() => {
     wakeTimer = null;
     if (document.visibilityState !== 'visible') return;
     beat();
@@ -134,7 +135,7 @@ function onBecameVisible(): void {
 
   // Long hide: if React timers never advance heartbeat, the tab is dead — reload.
   if (awayMs >= LONG_HIDE_MS) {
-    staleReloadTimer = setTimeout(() => {
+    staleReloadTimer = window.setTimeout(() => {
       staleReloadTimer = null;
       if (document.visibilityState !== 'visible') return;
       const hb = window.__polybotUiHeartbeat ?? 0;

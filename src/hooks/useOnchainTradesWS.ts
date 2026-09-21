@@ -1657,14 +1657,17 @@ export function useWalletMarketTradesWS(
         scopeKeyRef.current = key;
         setTrades([]);
         setTotal(0);
+        setLoading(true);
+      } else if (tradesLenRef.current === 0) {
+        // Keep existing rows visible if the shared socket briefly drops.
+        setLoading(true);
       }
-      setLoading(true);
       return;
     }
 
     const shared = getOnchainTradesWSShared();
     if (!shared) {
-      setLoading(true);
+      if (tradesLenRef.current === 0) setLoading(true);
       return;
     }
 
@@ -1682,15 +1685,21 @@ export function useWalletMarketTradesWS(
     const unsub = shared.subscribeWalletMarketTrades(wallet!, marketId!, {
       onSnapshot: (rows, tot) => {
         if (cancelled) return;
-        setTrades((prev) => mergeWalletMarketSnapshotWithPending(prev, rows));
-        setTotal(tot);
+        setTrades((prev) => {
+          // Resubscribe / WS reconnect often delivers an empty snapshot before the real
+          // one — do not wipe confirmed fills or the dialog flashes "Loading trades...".
+          const prevConfirmed = prev.filter((t) => !t.pending).length;
+          if (rows.length === 0 && prevConfirmed > 0) return prev;
+          return mergeWalletMarketSnapshotWithPending(prev, rows);
+        });
+        if (rows.length > 0 || tot > 0) setTotal(tot);
         setLoading(false);
       },
       onTrade: (trade) => {
         if (cancelled) return;
         setTrades((prev) => {
           const { rows, added } = prependWalletMarketTradeRow(prev, trade);
-          if (added) setTotal((tot) => tot + 1);
+          if (added) setTotal((t) => t + 1);
           return rows;
         });
         setLoading(false);
@@ -1709,6 +1718,7 @@ export function useWalletMarketTradesWS(
   const refresh = useCallback(() => {
     const shared = getOnchainTradesWSShared();
     if (!shared || !wallet?.trim() || !marketId?.trim()) return;
+    // Keep existing rows visible while refreshing — only spin when empty.
     if (tradesLenRef.current === 0) setLoading(true);
     shared.refreshWalletMarketTrades(wallet, marketId);
   }, [wallet, marketId]);

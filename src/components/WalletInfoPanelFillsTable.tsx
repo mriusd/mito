@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { OnchainFillRow } from '../api';
 import type { Market } from '../types';
 import { useAppStore } from '../stores/appStore';
@@ -35,7 +35,24 @@ export const WalletInfoPanelFillsTable = memo(function WalletInfoPanelFillsTable
   onLoadingFillsChange?: (loading: boolean) => void;
 }) {
   const enabled = open && !!wallet && !!selectedMarketId.trim();
-  const needsOwnOnchainWs = enabled && getOnchainTradesWSShared() == null;
+  // Sticky: once we mount a bridge for this dialog, keep it for the session.
+  // Flipping false when the bridge publishes `shared` unmounted the only provider,
+  // wiped the socket, and left fills stuck on "Loading trades...".
+  const [needsOwnOnchainWs, setNeedsOwnOnchainWs] = useState(
+    () => enabled && getOnchainTradesWSShared() == null,
+  );
+  useEffect(() => {
+    if (!enabled) {
+      setNeedsOwnOnchainWs(getOnchainTradesWSShared() == null);
+      return;
+    }
+    const sync = () => {
+      if (getOnchainTradesWSShared() == null) setNeedsOwnOnchainWs(true);
+    };
+    sync();
+    const id = window.setInterval(sync, 500);
+    return () => window.clearInterval(id);
+  }, [enabled]);
   const {
     trades: wsMarketTrades,
     loading: loadingFills,

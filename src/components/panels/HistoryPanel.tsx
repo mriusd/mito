@@ -70,7 +70,6 @@ export function HistoryPanel() {
   }, [tradingWalletKey]);
 
   useEffect(() => {
-    if (onchainMode) return;
     void loadRest();
   }, [onchainMode, loadRest, refreshBump]);
 
@@ -87,7 +86,23 @@ export function HistoryPanel() {
 
   const markets = useMemo(() => {
     if (!onchainMode) return restMarkets;
-    return sortWalletPositionsByDisplayedDateDesc(wsHistory, marketById);
+    if (restMarkets.length === 0) {
+      return sortWalletPositionsByDisplayedDateDesc(wsHistory, marketById);
+    }
+    const feesById = new Map<string, number>();
+    for (const r of restMarkets) {
+      const id = String(r.marketId || '').trim().toLowerCase();
+      const f = typeof r.feeTotal === 'number' ? r.feeTotal : 0;
+      if (id && f > 0) feesById.set(id, f);
+    }
+    const merged = wsHistory.map((r) => {
+      const id = String(r.marketId || '').trim().toLowerCase();
+      const live = typeof r.feeTotal === 'number' && r.feeTotal > 0 ? r.feeTotal : 0;
+      const rest = id ? feesById.get(id) || 0 : 0;
+      const feeTotal = live > 0 ? live : rest;
+      return feeTotal === r.feeTotal ? r : { ...r, feeTotal };
+    });
+    return sortWalletPositionsByDisplayedDateDesc(merged, marketById);
   }, [onchainMode, restMarkets, wsHistory, marketById]);
 
   const loading =

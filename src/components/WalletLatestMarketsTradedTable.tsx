@@ -9,6 +9,7 @@ import {
 } from '../utils/format';
 import { resolveMarketExpiryEndDate } from '../lib/weatherMarketExpiry';
 import { STAKED_NET_EPS, walletStakeNetSignedUsd } from '../lib/toxicFlowStakeCohort';
+import { walletRowFeeTotal } from '../lib/walletFees';
 
 /** Condition id + legacy id map (same shape as Sidebar marketById). */
 export function buildMarketByIdRecord(marketLookup: Record<string, Market> | null | undefined): Record<string, Market> {
@@ -110,7 +111,7 @@ function fmtRoiPercent(roi: number | undefined): { text: string; tone: string } 
 function fmtWalletMarketRoiFromFlow(m: WalletPosition): { text: string; tone: string } {
   const usdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
   const usdcOut = typeof m.usdcOut === 'number' && Number.isFinite(m.usdcOut) ? m.usdcOut : 0;
-  const fee = typeof m.feeTotal === 'number' && Number.isFinite(m.feeTotal) ? m.feeTotal : 0;
+  const fee = walletRowFeeTotal(m as unknown as Record<string, unknown>);
   const denom = usdcIn + fee;
   if (!(denom > 0)) return { text: '–', tone: 'text-gray-500' };
   return fmtRoiPercent(usdcOut / denom - 1);
@@ -253,7 +254,7 @@ const WalletLatestMarketsTradedRow = memo(function WalletLatestMarketsTradedRow(
     );
   const rowUsdcIn = typeof m.usdcIn === 'number' && Number.isFinite(m.usdcIn) ? m.usdcIn : 0;
   const rowUsdcOut = typeof m.usdcOut === 'number' && Number.isFinite(m.usdcOut) ? m.usdcOut : 0;
-  const rowFee = typeof m.feeTotal === 'number' && Number.isFinite(m.feeTotal) ? m.feeTotal : 0;
+  const rowFee = walletRowFeeTotal(m as unknown as Record<string, unknown>);
   const rowPnlFlow = rowUsdcOut - rowUsdcIn - rowFee;
   const rowPayout = typeof m.payout === 'number' && Number.isFinite(m.payout) ? m.payout : 0;
   const wlfSum = (m.w ?? 0) + (m.l ?? 0) + (m.f ?? 0);

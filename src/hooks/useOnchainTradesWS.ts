@@ -14,6 +14,7 @@ import type {
   WSTrade,
 } from '../lib/onchainTradesTypes';
 import { dedupeWalletTradesByLedgerLeg, onchainFillKey, walletTradeKey } from '../lib/tradeKeys';
+import { tradeFeeUsd, walletRowFeeTotal } from '../lib/walletFees';
 import type { LiveTrade } from './usePolymarketOB';
 
 export type {
@@ -578,7 +579,7 @@ function mapRawWSTrade(t: {
     outcome: t.outcome ? String(t.outcome) : undefined,
     size: Number(t.size || 0),
     price: Number(t.price || 0),
-    fee: Number(t.fee || 0),
+    fee: tradeFeeUsd(t as Record<string, unknown>),
     deltaUsd: Number(t.deltaUsd ?? 0),
     isTaker: t.isTaker === true,
     blockTime: Number(t.blockTime || 0),
@@ -657,6 +658,7 @@ function mergeWalletTradesSnapshot(
       title: (t.title || '').trim() || old.title,
       slug: (t.slug || '').trim() || old.slug,
       eventSlug: (t.eventSlug || '').trim() || old.eventSlug,
+      fee: t.fee > 0 ? t.fee : old.fee || 0,
     };
   });
   const snapKeys = new Set(enrichedSnap.map((t) => walletMarketTradeRowKey(t)));
@@ -1310,7 +1312,12 @@ export function useOnchainTradesWS(opts: OnchainTradesWSOpts) {
             const msgWallet = String(msg.wallet || '').trim().toLowerCase();
             const mine = (walletRef.current || '').trim().toLowerCase();
             if (msgWallet && mine && msgWallet !== mine) return;
-            setWalletHistory(msg.data as WalletPosition[]);
+            setWalletHistory(
+              (msg.data as WalletPosition[]).map((row) => {
+                const fee = walletRowFeeTotal(row as unknown as Record<string, unknown>);
+                return fee > 0 ? { ...row, feeTotal: fee } : { ...row, feeTotal: row.feeTotal ?? 0 };
+              }),
+            );
           } else if (msg.type === 'walletPnlDaily' && msg.tradeByDate && msg.marketByDate) {
             const msgWallet = String(msg.wallet || '').trim().toLowerCase();
             const mine = (walletRef.current || '').trim().toLowerCase();

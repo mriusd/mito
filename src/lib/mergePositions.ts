@@ -11,7 +11,10 @@ import type { JsonRpcSigner } from '@ethersproject/providers';
 import { BuilderConfig } from '@polymarket/builder-relayer-client/node_modules/@polymarket/builder-signing-sdk';
 import { getEthersSigner } from './clobClient';
 import { API_BASE, POLYGON_ETHERS_NETWORK, POLYGON_JSONRPC_URL } from './env';
-import { inferPolymarketClobSignatureType } from './polymarketTradingMaker';
+import {
+  inferPolymarketClobSignatureType,
+  matchDerivedPolymarketWalletType,
+} from './polymarketTradingMaker';
 import { signingDialog } from '../components/SigningDialog';
 
 const CTF_ADDRESS = '0x4D97DCd97eC945f40cF65F87097ACe5EA0476045';
@@ -276,7 +279,17 @@ export async function executeMergePositions(params: {
       signingDialog.setStep('submit', 'done');
       signingDialog.close();
     } else {
-      const sigType = await inferPolymarketClobSignatureType(signerAddr, funderAddress, POLYGON_JSONRPC_URL);
+      let sigType = await inferPolymarketClobSignatureType(signerAddr, funderAddress, POLYGON_JSONRPC_URL);
+      // Shares often still sit on a legacy Magic/Safe funder while CLOB trading uses deposit.
+      // Never run deposit-wallet merge unless funder === deriveDepositWallet(signer).
+      if (sigType === SignatureTypeV2.POLY_1271) {
+        const matched = matchDerivedPolymarketWalletType(signerAddr, funder);
+        if (matched === SignatureTypeV2.POLY_GNOSIS_SAFE || matched === SignatureTypeV2.POLY_PROXY) {
+          sigType = matched;
+        } else if (matched !== SignatureTypeV2.POLY_1271) {
+          sigType = SignatureTypeV2.POLY_PROXY;
+        }
+      }
       if (sigType === SignatureTypeV2.POLY_1271) {
         const mergeData = packMergeCalldata(condHex, amountWei, true);
         txHash = await executeGaslessDepositWalletMerge(signer, funderAddress, mergeData, negRisk);

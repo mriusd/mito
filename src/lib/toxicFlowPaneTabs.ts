@@ -9,6 +9,7 @@ export const TOXIC_FLOW_TAB_IDS = [
   'fresh',
   'topYes',
   'topNo',
+  'mm',
 ] as const;
 
 export type ToxicFlowTabId = (typeof TOXIC_FLOW_TAB_IDS)[number];

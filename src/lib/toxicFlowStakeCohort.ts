@@ -439,6 +439,9 @@ function walletPositionRowEqual(a: WalletPosition, b: WalletPosition): boolean {
     (a.netNo ?? null) === (b.netNo ?? null) &&
     (a.invYes ?? null) === (b.invYes ?? null) &&
     (a.invNo ?? null) === (b.invNo ?? null) &&
+    (a.makerShare ?? null) === (b.makerShare ?? null) &&
+    (a.pnlIfYes ?? null) === (b.pnlIfYes ?? null) &&
+    (a.pnlIfNo ?? null) === (b.pnlIfNo ?? null) &&
     a.tradeCount === b.tradeCount &&
     (a.priceYes ?? null) === (b.priceYes ?? null) &&
     (a.priceNo ?? null) === (b.priceNo ?? null) &&
@@ -648,11 +651,18 @@ export function toxicFlowPayloadEqual(a: ToxicFlowData, b: ToxicFlowData): boole
     a.noUsdcIn !== b.noUsdcIn ||
     a.totalYesVol !== b.totalYesVol ||
     a.totalNoVol !== b.totalNoVol ||
-    a.polygonWssConfigured !== b.polygonWssConfigured
+    a.polygonWssConfigured !== b.polygonWssConfigured ||
+    a.marketType !== b.marketType ||
+    a.mmWinSide !== b.mmWinSide ||
+    a.mmWinGapUsd !== b.mmWinGapUsd ||
+    a.mmCount !== b.mmCount ||
+    a.mmPnlIfYes !== b.mmPnlIfYes ||
+    a.mmPnlIfNo !== b.mmPnlIfNo
   ) {
     return false;
   }
   if (!toxicFlowListEqual(a.topHolders ?? [], b.topHolders ?? [])) return false;
+  if (!toxicFlowListEqual(a.mm ?? [], b.mm ?? [])) return false;
   const ca = a.clusters ?? [];
   const cb = b.clusters ?? [];
   if (ca.length !== cb.length) return false;
@@ -682,6 +692,11 @@ export type ToxicFlowTabWalletViews = {
   whales: WalletPosition[];
   favWhales: WalletPosition[];
   winners: WalletPosition[];
+  mm: WalletPosition[];
+  marketType: string;
+  mmWinSide: 'UP' | 'DOWN' | 'FLAT' | '';
+  mmWinGapUsd: number;
+  mmCount: number;
   stripLists: NonNullable<ReturnType<typeof toxicFlowStakeStripWalletLists>>;
 };
 
@@ -782,7 +797,29 @@ export function buildToxicFlowTabWalletViews(
     sortStakeNetMagThenWalletNet,
   );
   const stripLists = toxicFlowStakeStripWalletLists(data, favouriteSet, universe, prev?.stripLists ?? undefined)!;
-  const views = { topYes, topNo, topHolders, smart, favourites, whales, favWhales, winners, stripLists };
+  const mm = sortedListReuse(prev?.mm, data.mm ?? [], (a, b) => {
+    const ea = Math.abs((a.pnlIfYes ?? 0) - (a.pnlIfNo ?? 0));
+    const eb = Math.abs((b.pnlIfYes ?? 0) - (b.pnlIfNo ?? 0));
+    if (eb !== ea) return eb - ea;
+    return (a.wallet || '').localeCompare(b.wallet || '');
+  });
+  const mmSide = data.mmWinSide === 'UP' || data.mmWinSide === 'DOWN' || data.mmWinSide === 'FLAT' ? data.mmWinSide : '';
+  const views = {
+    topYes,
+    topNo,
+    topHolders,
+    smart,
+    favourites,
+    whales,
+    favWhales,
+    winners,
+    mm,
+    marketType: data.marketType || '',
+    mmWinSide: mmSide,
+    mmWinGapUsd: typeof data.mmWinGapUsd === 'number' && Number.isFinite(data.mmWinGapUsd) ? data.mmWinGapUsd : 0,
+    mmCount: typeof data.mmCount === 'number' && Number.isFinite(data.mmCount) ? data.mmCount : mm.length,
+    stripLists,
+  };
   lastTabWalletViews = views;
   return views;
 }

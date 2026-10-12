@@ -14,7 +14,16 @@ import {
 import { API_BASE, POLYGON_ETHERS_NETWORK, POLYGON_JSONRPC_URL, vitePolyBuilderCode } from './env';
 import { fetchBackend } from './fetchBackend';
 import { refreshSidebarOnchainWallet } from './sidebarOnchainTradesStore';
-import { inferPolymarketClobSignatureType, resolvePolymarketMakerAddress } from './polymarketTradingMaker';
+import {
+  inferPolymarketClobSignatureType,
+  resolveClobOrderMakerAddress,
+  resolvePolymarketMakerAddress,
+} from './polymarketTradingMaker';
+import {
+  ensureDepositWalletDeployed,
+  isDepositWalletFlowError,
+  predictDepositWalletAddress,
+} from './polymarketDepositWallet';
 import { fetchProxyWallet } from '../api/polymarket';
 import { getConnection } from '@wagmi/core';
 import { wagmiAdapter } from './wallet';
@@ -166,7 +175,13 @@ export async function resolveTradingMakerForActiveSigner(): Promise<string> {
   const signer = await getEthersSigner();
   const eoa = (await signer.getAddress()).toLowerCase();
   const pw = await fetchProxyWallet(eoa);
-  return resolvePolymarketMakerAddress(eoa, pw);
+  // Orders use deposit (or Safe); positions/merge keep Gamma via resolvePolymarketMakerAddress.
+  const maker = resolveClobOrderMakerAddress(eoa, pw);
+  const deposit = predictDepositWalletAddress(eoa);
+  if (maker === deposit) {
+    return ensureDepositWalletDeployed(signer);
+  }
+  return maker;
 }
 
 /** Drop LS + in-memory creds for this EOA — safe when server rejects stale/mismatched bundle. */
@@ -833,6 +848,27 @@ export async function placeOrderDirect(params: {
         creds = await wipeStaleCredsAndReDeriveApi(signer, makerLc);
         postClient = makeTradingClient(signer, params.proxyWallet, creds, sig);
         buildClient = buildOrderSignerClient(signer, params.proxyWallet, creds, sig);
+        signed = await buildAndSign(userOrder, tickSize);
+        res = await postClient.postOrder(signed, orderTypeEnum);
+        parsed = parsePostOrder(res);
+      }
+      // Legacy Magic/proxy maker rejected → deploy deposit wallet and retry once.
+      if (parsed.error && isDepositWalletFlowError(parsed.error) && makerLc !== predictDepositWalletAddress(eoa)) {
+        const deposit = await ensureDepositWalletDeployed(signer);
+        polyClobLog({
+          event: 'orderDepositWalletFlowRetry',
+          eoa,
+          fromMaker: makerLc,
+          toMaker: deposit,
+          err: parsed.error,
+        });
+        useAppStore.getState().setMarketData({ makerAddress: deposit });
+        creds = await ensureCreds(signer, deposit);
+        sig = SignatureTypeV2.POLY_1271;
+        cachedInferKey = `${eoa}:${deposit}`;
+        cachedInferSigType = sig;
+        postClient = makeTradingClient(signer, deposit, creds, sig);
+        buildClient = buildOrderSignerClient(signer, deposit, creds, sig);
         signed = await buildAndSign(userOrder, tickSize);
         res = await postClient.postOrder(signed, orderTypeEnum);
         parsed = parsePostOrder(res);

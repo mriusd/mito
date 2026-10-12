@@ -207,6 +207,7 @@ const TOXIC_FLOW_TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'fresh', label: 'Fresh', icon: <CircleHelp size={11} /> },
   { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
   { key: 'topNo', label: 'Top NO', icon: <TrendingDown size={11} /> },
+  { key: 'mm', label: 'MM', icon: <span className="text-[9px] leading-none">MM</span> },
 ];
 
 function toxicFlowWalletsForTab(
@@ -232,9 +233,32 @@ function toxicFlowWalletsForTab(
       return { wallets: views.topYes, label: 'Net Y (Staked)' };
     case 'topNo':
       return { wallets: views.topNo, label: 'Net N (Staked)' };
+    case 'mm':
+      return { wallets: views.mm, label: 'significant makers' };
     case 'swarms':
       return { wallets: [], label: 'swarms' };
   }
+}
+
+function MmWinLine({ views }: { views: ToxicFlowTabWalletViews }) {
+  if (views.mmCount <= 0) {
+    return <div className="shrink-0 px-1 text-[10px] text-gray-500">no significant makers yet</div>;
+  }
+  if (views.mmWinSide === 'FLAT') {
+    return (
+      <div className="shrink-0 px-1 text-[10px] font-bold text-gray-300">
+        MMs are flat if this resolves UP or DOWN
+      </div>
+    );
+  }
+  const side = views.mmWinSide === 'DOWN' ? 'DOWN' : 'UP';
+  const abs = Math.abs(views.mmWinGapUsd).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const cls = side === 'UP' ? 'text-green-400' : 'text-red-400';
+  return (
+    <div className={`shrink-0 px-1 text-[10px] font-bold ${cls}`}>
+      MMs win more if {side} by ${abs}
+    </div>
+  );
 }
 
 const ToxicFlowSwarmsPane = memo(function ToxicFlowSwarmsPane({
@@ -448,18 +472,21 @@ function ToxicFlowTabBar({
   onTab,
   trailing,
   barRef,
+  showMm,
 }: {
   tab: Tab;
   onTab: (tab: Tab) => void;
   trailing?: ReactNode;
   barRef?: RefObject<HTMLDivElement>;
+  showMm: boolean;
 }) {
+  const tabs = showMm ? TOXIC_FLOW_TABS : TOXIC_FLOW_TABS.filter((t) => t.key !== 'mm');
   return (
     <div
       ref={barRef}
       className="flex gap-1 border-b border-gray-700 pb-2 shrink-0 flex-nowrap items-center min-w-0 w-full overflow-x-auto toxic-flow-scroll-stable"
     >
-      {TOXIC_FLOW_TABS.map((t) => (
+      {tabs.map((t) => (
         <button
           key={t.key}
           type="button"
@@ -503,12 +530,15 @@ const ToxicFlowTablePane = memo(function ToxicFlowTablePane({
   onDismissRowActionsTip?: () => void;
   rowActionsAnchorRef?: RefObject<HTMLTableCellElement>;
 }) {
-  const { wallets, label } = toxicFlowWalletsForTab(tabWalletViews, tab);
+  const showMm = tabWalletViews.marketType === 'upordown';
+  const shownTab: Tab = tab === 'mm' && !showMm ? 'topHolders' : tab;
+  const { wallets, label } = toxicFlowWalletsForTab(tabWalletViews, shownTab);
   return (
     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden gap-2">
-      <ToxicFlowTabBar tab={tab} onTab={onTab} trailing={trailing} barRef={tabBarRef} />
+      <ToxicFlowTabBar tab={shownTab} onTab={onTab} trailing={trailing} barRef={tabBarRef} showMm={showMm} />
+      {shownTab === 'mm' ? <MmWinLine views={tabWalletViews} /> : null}
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden min-w-0">
-        {tab === 'swarms' ? (
+        {shownTab === 'swarms' ? (
           <ToxicFlowSwarmsPane
             swarms={swarms}
             marketId={marketId}
@@ -522,6 +552,8 @@ const ToxicFlowTablePane = memo(function ToxicFlowTablePane({
           <WalletTable
             wallets={wallets}
             label={label}
+            showMakerShare={shownTab === 'mm'}
+            emptyText={shownTab === 'mm' ? 'no significant makers yet' : undefined}
             totalStakedNetUsd={totalStakedNetUsd}
             onOpenWallet={onOpenWallet}
             rowActionsTipOpen={rowActionsTipOpen}
@@ -540,6 +572,14 @@ const ToxicFlowTablePane = memo(function ToxicFlowTablePane({
     a.trailing !== b.trailing ||
     a.totalStakedNetUsd !== b.totalStakedNetUsd ||
     a.swarms !== b.swarms
+  ) {
+    return false;
+  }
+  if (
+    a.tabWalletViews.marketType !== b.tabWalletViews.marketType ||
+    a.tabWalletViews.mmWinSide !== b.tabWalletViews.mmWinSide ||
+    a.tabWalletViews.mmWinGapUsd !== b.tabWalletViews.mmWinGapUsd ||
+    a.tabWalletViews.mmCount !== b.tabWalletViews.mmCount
   ) {
     return false;
   }
@@ -894,7 +934,10 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   if (a.tabWalletViews === b.tabWalletViews) return true;
   const va = a.tabWalletViews;
   const vb = b.tabWalletViews;
-  const keys = ['topYes', 'topNo', 'topHolders', 'smart', 'favourites', 'whales', 'favWhales', 'winners'] as const;
+  if (va.marketType !== vb.marketType || va.mmWinSide !== vb.mmWinSide || va.mmWinGapUsd !== vb.mmWinGapUsd || va.mmCount !== vb.mmCount) {
+    return false;
+  }
+  const keys = ['topYes', 'topNo', 'topHolders', 'smart', 'favourites', 'whales', 'favWhales', 'winners', 'mm'] as const;
   for (const k of keys) {
     const wa = va[k];
     const wb = vb[k];

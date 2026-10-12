@@ -716,6 +716,13 @@ export interface WalletPosition {
   flat?: number;
   /** Proven smart wallet (>50% WR, ≥10 markets, PNL>0). */
   isSmart?: boolean;
+  /** In-process maker notional / (maker+taker) on this market. Set on MM cohort rows. */
+  makerShare?: number;
+  makerNotional?: number;
+  takerNotional?: number;
+  /** cashFlow + invYes / invNo: settlement if the market resolves that side. */
+  pnlIfYes?: number;
+  pnlIfNo?: number;
   /** Full ledger row (wallet_scores_ledger), batched with toxic-flow. */
   walletLedgerSummary?: WalletScoresLedgerEmbed | null;
   /** `wallet_market_positions.last_updated` (RFC3339) when present. */
@@ -779,8 +786,18 @@ export interface ToxicFlowSwarm {
 
 export interface ToxicFlowData {
   marketId: string;
+  /** onchain market_type. MM cohort is only built for `upordown`. */
+  marketType?: string;
   /** Top 100 holders by |net|; YES/NO/Smart/Whale tabs are derived client-side from this list. */
   topHolders: WalletPosition[];
+  /** Significant maker wallets on this up/down market (in-memory fills). Not derived from topHolders. */
+  mm?: WalletPosition[];
+  mmPnlIfYes?: number | null;
+  mmPnlIfNo?: number | null;
+  /** UP, DOWN, or FLAT. Null when this market is not up/down. */
+  mmWinSide?: 'UP' | 'DOWN' | 'FLAT' | null;
+  mmWinGapUsd?: number | null;
+  mmCount?: number;
   /** Cotrade clusters with per-wallet positions in this market (separate from topHolders). */
   clusters?: ToxicFlowCluster[];
   /** Live BUY swarms (detected in-memory by polycandles). Newest first. */

@@ -110,7 +110,11 @@ export function matchDerivedPolymarketWalletType(
   return null;
 }
 
-/** Maker shown in Polymarket UI — Gamma `proxyWallet` or optional env override (bots). */
+/**
+ * Position / merge funder wallet from Gamma (may be legacy Safe or Magic proxy).
+ * Do not force deposit here — CTF shares often still sit on the Gamma address.
+ * CLOB order placement uses `resolveClobOrderMakerAddress` instead.
+ */
 export function resolvePolymarketMakerAddress(eoaAddress: string, gammaProxyWallet: string | null): string {
   const eoa = eoaAddress.trim().toLowerCase();
   if (!/^0x[0-9a-f]{40}$/.test(eoa)) throw new Error('resolvePolymarketMakerAddress: invalid EOA');
@@ -126,6 +130,36 @@ export function resolvePolymarketMakerAddress(eoaAddress: string, gammaProxyWall
   const gm = gammaProxyWallet?.trim();
   if (gm && /^0x[0-9a-f]{40}$/i.test(gm)) return gm.toLowerCase();
   return eoa;
+}
+
+/**
+ * Maker address for CLOB postOrder.
+ * Legacy Magic POLY_PROXY is rejected ("maker address not allowed, please use the
+ * deposit wallet flow") — those signers must use the derived deposit wallet.
+ * Gnosis Safe makers stay on the Safe.
+ */
+export function resolveClobOrderMakerAddress(eoaAddress: string, gammaProxyWallet: string | null): string {
+  const eoa = eoaAddress.trim().toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(eoa)) throw new Error('resolveClobOrderMakerAddress: invalid EOA');
+
+  const envF = vitePolymarketFunder();
+  if (envF) {
+    if (envF === eoa) throw new Error('VITE_POLYMARKET_FUNDER must be deposit/sc proxy contract, not EOA');
+    return envF;
+  }
+
+  const explicit = vitePolymarketSignatureType();
+  const derived = derivePolymarketWalletsForEoa(eoa);
+  if (explicit === 0) return eoa;
+  if (explicit === 3) return derived.deposit;
+  if (explicit === 2) return derived.safe;
+  if (explicit === 1) return derived.proxy;
+
+  const gm = (gammaProxyWallet || '').trim().toLowerCase();
+  if (gm && gm === derived.safe) return derived.safe;
+  if (gm && gm === derived.deposit) return derived.deposit;
+  // Magic proxy, unknown Gamma address, or empty → deposit wallet flow.
+  return derived.deposit;
 }
 
 /**

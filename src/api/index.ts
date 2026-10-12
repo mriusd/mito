@@ -689,6 +689,8 @@ export interface WalletPosition {
   /** Deprecated: no longer sent from `/api/wallet-positions`. Derived client-side when needed. */
   roi?: number;
   tradeCount: number;
+  /** In-memory position notional (BUY/SELL/REDEEM). Set on toxic-flow rows. */
+  volume?: number;
   firstTradeTime: number;
   lastTradeTime: number;
   marketAsset: string;
@@ -798,6 +800,8 @@ export interface ToxicFlowData {
   mmWinSide?: 'UP' | 'DOWN' | 'FLAT' | null;
   mmWinGapUsd?: number | null;
   mmCount?: number;
+  /** Top wallets by in-memory volume. Not derived from topHolders. */
+  topVolume?: WalletPosition[];
   /** Cotrade clusters with per-wallet positions in this market (separate from topHolders). */
   clusters?: ToxicFlowCluster[];
   /** Live BUY swarms (detected in-memory by polycandles). Newest first. */

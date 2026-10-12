@@ -208,6 +208,7 @@ const TOXIC_FLOW_TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
   { key: 'topNo', label: 'Top NO', icon: <TrendingDown size={11} /> },
   { key: 'mm', label: 'MM', icon: <span className="text-[9px] leading-none">MM</span> },
+  { key: 'volume', label: 'Volume', icon: <span className="text-[9px] leading-none">Vol</span> },
 ];
 
 function toxicFlowWalletsForTab(
@@ -235,6 +236,8 @@ function toxicFlowWalletsForTab(
       return { wallets: views.topNo, label: 'Net N (Staked)' };
     case 'mm':
       return { wallets: views.mm, label: 'significant makers' };
+    case 'volume':
+      return { wallets: views.topVolume, label: 'volume' };
     case 'swarms':
       return { wallets: [], label: 'swarms' };
   }
@@ -553,7 +556,10 @@ const ToxicFlowTablePane = memo(function ToxicFlowTablePane({
             wallets={wallets}
             label={label}
             showMakerShare={shownTab === 'mm'}
-            emptyText={shownTab === 'mm' ? 'no significant makers yet' : undefined}
+            showVolume={shownTab === 'volume' || shownTab === 'mm'}
+            emptyText={
+              shownTab === 'mm' ? 'no significant makers yet' : shownTab === 'volume' ? 'no volume yet' : undefined
+            }
             totalStakedNetUsd={totalStakedNetUsd}
             onOpenWallet={onOpenWallet}
             rowActionsTipOpen={rowActionsTipOpen}
@@ -937,7 +943,7 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   if (va.marketType !== vb.marketType || va.mmWinSide !== vb.mmWinSide || va.mmWinGapUsd !== vb.mmWinGapUsd || va.mmCount !== vb.mmCount) {
     return false;
   }
-  const keys = ['topYes', 'topNo', 'topHolders', 'smart', 'favourites', 'whales', 'favWhales', 'winners', 'mm'] as const;
+  const keys = ['topYes', 'topNo', 'topHolders', 'smart', 'favourites', 'whales', 'favWhales', 'winners', 'mm', 'topVolume'] as const;
   for (const k of keys) {
     const wa = va[k];
     const wb = vb[k];

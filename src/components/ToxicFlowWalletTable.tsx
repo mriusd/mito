@@ -226,9 +226,14 @@ function marketViewSortSuffix(
   return order === 'desc' ? ' ▼' : ' ▲';
 }
 
-function toxicTableColCount(showRank: boolean, variant: ToxicFlowTableVariant, showMakerShare = false): number {
+function toxicTableColCount(
+  showRank: boolean,
+  variant: ToxicFlowTableVariant,
+  showMakerShare = false,
+  showVolume = false,
+): number {
   const favCol = variant === 'swarms' ? 0 : 1;
-  return (showRank ? 1 : 0) + favCol + 11 + (showMakerShare ? 1 : 0);
+  return (showRank ? 1 : 0) + favCol + 11 + (showMakerShare ? 1 : 0) + (showVolume ? 1 : 0);
 }
 
 function marketIsUpDown(market: { question?: string; eventSlug?: string } | null | undefined): boolean {
@@ -887,6 +892,7 @@ interface WalletTableBodyRowProps {
   swarmUpDownMarket?: boolean;
   onSwarmRowHover?: (wallet: string | null) => void;
   showMakerShare?: boolean;
+  showVolume?: boolean;
 }
 
 function WalletTableBodyRowImpl({
@@ -918,6 +924,7 @@ function WalletTableBodyRowImpl({
   swarmUpDownMarket = false,
   onSwarmRowHover,
   showMakerShare = false,
+  showVolume = false,
 }: WalletTableBodyRowProps) {
   const trRef = useRef<HTMLTableRowElement>(null);
   useCancelDomAnimationsOnUnmount(trRef);
@@ -1151,6 +1158,14 @@ function WalletTableBodyRowImpl({
           <td className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 ${biasToneClass(signedLegNet)}`}>
             {`${NF_INT_EN.format(Math.round(bias * 100))}%`}
           </td>
+          {showVolume ? (
+            <td
+              className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 tabular-nums text-gray-200`}
+              title="Position notional in USDC"
+            >
+              {typeof w.volume === 'number' && Number.isFinite(w.volume) ? `$${Math.round(w.volume).toLocaleString('en-US')}` : '–'}
+            </td>
+          ) : null}
           {showMakerShare ? (
             <td
               className={`${TOXIC_TABLE_BODY_TD_CLS} text-right px-1 tabular-nums text-yellow-300`}
@@ -1200,7 +1215,8 @@ const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
     a.variant !== b.variant ||
     a.swarmUpDownMarket !== b.swarmUpDownMarket ||
     a.onSwarmRowHover !== b.onSwarmRowHover ||
-    a.showMakerShare !== b.showMakerShare
+    a.showMakerShare !== b.showMakerShare ||
+    a.showVolume !== b.showVolume
   ) {
     return false;
   }
@@ -1226,6 +1242,7 @@ const WalletTableBodyRow = memo(WalletTableBodyRowImpl, (a, b) => {
     wa.usdcNo !== wb.usdcNo ||
     wa.tradeCount !== wb.tradeCount ||
     wa.makerShare !== wb.makerShare ||
+    wa.volume !== wb.volume ||
     wa.inventoryBias !== wb.inventoryBias ||
     wa.isSmart !== wb.isSmart ||
     wa.usdcIn !== wb.usdcIn ||
@@ -1279,6 +1296,7 @@ function WalletTableInner({
   swarmHighlightSlot = null,
   onSwarmRowHover,
   showMakerShare = false,
+  showVolume = false,
   emptyText,
 }: {
   wallets: WalletPosition[] | null;
@@ -1304,6 +1322,7 @@ function WalletTableInner({
   swarmHighlightSlot?: number | null;
   onSwarmRowHover?: (wallet: string | null) => void;
   showMakerShare?: boolean;
+  showVolume?: boolean;
   emptyText?: string;
 }) {
   const tiltWhaleAmountUsd = useSyncExternalStore(
@@ -1440,7 +1459,7 @@ function WalletTableInner({
   const cohortStakeBarTotal = cohortSumYUsd + cohortSumNUsd;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [virtRange, setVirtRange] = useState(() => ({ start: 0, end: rows.length }));
-  const tableColSpan = toxicTableColCount(!!showRank, variant, showMakerShare);
+  const tableColSpan = toxicTableColCount(!!showRank, variant, showMakerShare, showVolume);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -1604,6 +1623,11 @@ function WalletTableInner({
                   Cum%
                 </th>
                 <th className="align-middle py-1 text-right px-1">Bias</th>
+                {showVolume ? (
+                  <th className="align-middle py-1 text-right px-1" title="Position notional in USDC">
+                    Vol
+                  </th>
+                ) : null}
                 {showMakerShare ? (
                   <th className="align-middle py-1 text-right px-1" title="Maker notional share of BUY/SELL fills seen by this process">
                     Maker
@@ -1654,6 +1678,7 @@ function WalletTableInner({
                 swarmUpDownMarket={variant === 'swarms' ? swarmUpDownMarket : false}
                 onSwarmRowHover={variant === 'swarms' ? onSwarmRowHover : undefined}
                 showMakerShare={showMakerShare}
+                showVolume={showVolume}
               />
             );
           })}
@@ -1699,6 +1724,7 @@ const WalletTable = memo(WalletTableInner, (a, b) => {
     a.swarmHighlightSlot !== b.swarmHighlightSlot ||
     a.onSwarmRowHover !== b.onSwarmRowHover ||
     a.showMakerShare !== b.showMakerShare ||
+    a.showVolume !== b.showVolume ||
     a.emptyText !== b.emptyText
   ) {
     return false;
@@ -1747,6 +1773,7 @@ export type ToxicFlowWalletTableProps = {
   swarmHighlightSlot?: number | null;
   onSwarmRowHover?: (wallet: string | null) => void;
   showMakerShare?: boolean;
+  showVolume?: boolean;
   emptyText?: string;
 };
 

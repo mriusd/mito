@@ -440,6 +440,7 @@ function walletPositionRowEqual(a: WalletPosition, b: WalletPosition): boolean {
     (a.invYes ?? null) === (b.invYes ?? null) &&
     (a.invNo ?? null) === (b.invNo ?? null) &&
     (a.makerShare ?? null) === (b.makerShare ?? null) &&
+    (a.volume ?? null) === (b.volume ?? null) &&
     (a.pnlIfYes ?? null) === (b.pnlIfYes ?? null) &&
     (a.pnlIfNo ?? null) === (b.pnlIfNo ?? null) &&
     a.tradeCount === b.tradeCount &&
@@ -663,6 +664,7 @@ export function toxicFlowPayloadEqual(a: ToxicFlowData, b: ToxicFlowData): boole
   }
   if (!toxicFlowListEqual(a.topHolders ?? [], b.topHolders ?? [])) return false;
   if (!toxicFlowListEqual(a.mm ?? [], b.mm ?? [])) return false;
+  if (!toxicFlowListEqual(a.topVolume ?? [], b.topVolume ?? [])) return false;
   const ca = a.clusters ?? [];
   const cb = b.clusters ?? [];
   if (ca.length !== cb.length) return false;
@@ -693,6 +695,7 @@ export type ToxicFlowTabWalletViews = {
   favWhales: WalletPosition[];
   winners: WalletPosition[];
   mm: WalletPosition[];
+  topVolume: WalletPosition[];
   marketType: string;
   mmWinSide: 'UP' | 'DOWN' | 'FLAT' | '';
   mmWinGapUsd: number;
@@ -803,6 +806,11 @@ export function buildToxicFlowTabWalletViews(
     if (eb !== ea) return eb - ea;
     return (a.wallet || '').localeCompare(b.wallet || '');
   });
+  const topVolume = sortedListReuse(prev?.topVolume, data.topVolume ?? [], (a, b) => {
+    const d = (b.volume ?? 0) - (a.volume ?? 0);
+    if (d !== 0) return d;
+    return (a.wallet || '').localeCompare(b.wallet || '');
+  });
   const mmSide = mmWinSideFromPayload(data.mmWinSide);
   const views = {
     topYes,
@@ -814,6 +822,7 @@ export function buildToxicFlowTabWalletViews(
     favWhales,
     winners,
     mm,
+    topVolume,
     marketType: data.marketType || '',
     mmWinSide: mmSide,
     mmWinGapUsd: typeof data.mmWinGapUsd === 'number' && Number.isFinite(data.mmWinGapUsd) ? data.mmWinGapUsd : 0,

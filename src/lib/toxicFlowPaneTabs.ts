@@ -1,3 +1,4 @@
+/** Toxic flow pane tabs (Trades replaces Greens / Fresh / Stars&Whales). */
 export const TOXIC_FLOW_TAB_IDS = [
   'topHolders',
   'swarms',

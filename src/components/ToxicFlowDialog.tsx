@@ -25,13 +25,12 @@ import {
   Star,
   Bell,
   Sparkles,
-  Trophy,
-  CircleHelp,
   Fish,
   Triangle,
   ChevronLeft,
   ChevronRight,
   Zap,
+  ArrowLeftRight,
 } from 'lucide-react';
 import {
   fetchToxicFlow,
@@ -193,18 +192,7 @@ const TOXIC_FLOW_TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'smart', label: 'Smart', icon: <Sparkles size={11} /> },
   { key: 'favourites', label: 'Stars', icon: <Star size={11} /> },
   { key: 'whales', label: 'Whales', icon: <Fish size={11} /> },
-  {
-    key: 'favWhales',
-    label: 'Stars & Whales',
-    icon: (
-      <span className="inline-flex items-center gap-px">
-        <Star size={10} className="fill-current text-current" />
-        <Fish size={10} />
-      </span>
-    ),
-  },
-  { key: 'winners', label: 'Greens', icon: <Trophy size={11} /> },
-  { key: 'fresh', label: 'Fresh', icon: <CircleHelp size={11} /> },
+  { key: 'trades', label: 'Trades', icon: <ArrowLeftRight size={11} /> },
   { key: 'topYes', label: 'Top YES', icon: <TrendingUp size={11} /> },
   { key: 'topNo', label: 'Top NO', icon: <TrendingDown size={11} /> },
   { key: 'mm', label: 'MM', icon: <span className="text-[9px] leading-none">MM</span> },
@@ -224,12 +212,8 @@ function toxicFlowWalletsForTab(
       return { wallets: views.favourites, label: 'favourites' };
     case 'whales':
       return { wallets: views.whales, label: 'whales' };
-    case 'favWhales':
-      return { wallets: views.favWhales, label: 'fav + whales' };
-    case 'winners':
-      return { wallets: views.winners, label: 'greens' };
-    case 'fresh':
-      return { wallets: views.stripLists.fresh, label: 'fresh' };
+    case 'trades':
+      return { wallets: views.topTrades, label: 'trades' };
     case 'topYes':
       return { wallets: views.topYes, label: 'Net Y (Staked)' };
     case 'topNo':
@@ -943,7 +927,7 @@ const ToxicFlowDialogTableStack = memo(function ToxicFlowDialogTableStack({
   if (va.marketType !== vb.marketType || va.mmWinSide !== vb.mmWinSide || va.mmWinGapUsd !== vb.mmWinGapUsd || va.mmCount !== vb.mmCount) {
     return false;
   }
-  const keys = ['topYes', 'topNo', 'topHolders', 'smart', 'favourites', 'whales', 'favWhales', 'winners', 'mm', 'topVolume'] as const;
+  const keys = ['topYes', 'topNo', 'topHolders', 'smart', 'favourites', 'whales', 'topTrades', 'mm', 'topVolume'] as const;
   for (const k of keys) {
     const wa = va[k];
     const wb = vb[k];

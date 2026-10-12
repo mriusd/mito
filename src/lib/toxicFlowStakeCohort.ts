@@ -692,8 +692,8 @@ export type ToxicFlowTabWalletViews = {
   smart: WalletPosition[];
   favourites: WalletPosition[];
   whales: WalletPosition[];
-  favWhales: WalletPosition[];
-  winners: WalletPosition[];
+  /** Wallets sorted by fill/trade count (desc). */
+  topTrades: WalletPosition[];
   mm: WalletPosition[];
   topVolume: WalletPosition[];
   marketType: string;
@@ -779,25 +779,17 @@ export function buildToxicFlowTabWalletViews(
       return (a.wallet || '').localeCompare(b.wallet || '');
     },
   );
-  const winners = filteredSortedReuse(
-    prev?.winners,
+  const topTrades = filteredSortedReuse(
+    prev?.topTrades,
     universe,
-    (w) => !toxicRowMissingWalletScoresLedgerEmbed(w) && !toxicRowLedgerLifetimePnlNegative(w),
+    (w) => typeof w.tradeCount === 'number' && Number.isFinite(w.tradeCount) && w.tradeCount > 0,
     (a, b) => {
-      const d = stakeSortKeyDesc(b, 'net') - stakeSortKeyDesc(a, 'net');
+      const d = (b.tradeCount ?? 0) - (a.tradeCount ?? 0);
       if (d !== 0) return d;
-      const fa = toxicRowSortWinRateFrac(a);
-      const fb = toxicRowSortWinRateFrac(b);
-      if (fa != null && fb != null && fb !== fa) return fb - fa;
-      if (fa != null && fb == null) return -1;
-      if (fa == null && fb != null) return 1;
+      const dv = (b.volume ?? 0) - (a.volume ?? 0);
+      if (dv !== 0) return dv;
       return sortStakeNetMagThenWalletNet(a, b);
     },
-  );
-  const favWhales = sortedListReuse(
-    prev?.favWhales,
-    dedupeWalletsByAddress([...favourites, ...whales]),
-    sortStakeNetMagThenWalletNet,
   );
   const stripLists = toxicFlowStakeStripWalletLists(data, favouriteSet, universe, prev?.stripLists ?? undefined)!;
   const mm = sortedListReuse(prev?.mm, data.mm ?? [], (a, b) => {
@@ -819,8 +811,7 @@ export function buildToxicFlowTabWalletViews(
     smart,
     favourites,
     whales,
-    favWhales,
-    winners,
+    topTrades,
     mm,
     topVolume,
     marketType: data.marketType || '',

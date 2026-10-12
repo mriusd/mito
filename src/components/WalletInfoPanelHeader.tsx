@@ -211,8 +211,10 @@ export const WalletInfoPanelHeader = memo(function WalletInfoPanelHeader({
     return walletAddressColorClass({ summary, isSmart });
   })();
 
-  const polymarketProfileUrl = polymarketSiteUrl(`profile/${wallet.trim().toLowerCase()}`);
-  const polygonscanUrl = `https://polygonscan.com/address/${wallet.trim().toLowerCase()}`;
+  const walletLc = wallet.trim().toLowerCase();
+  const polymarketProfileUrl = polymarketSiteUrl(`profile/${walletLc}`);
+  const predictfolioUrl = `https://predictfolio.com/${walletLc}`;
+  const polygonscanUrl = `https://polygonscan.com/address/${walletLc}`;
 
   return (
     <div className="flex items-center justify-between mb-2 shrink-0">
@@ -334,6 +336,20 @@ export const WalletInfoPanelHeader = memo(function WalletInfoPanelHeader({
             alt=""
             className="h-3.5 w-3.5 rounded-[2px] pointer-events-none"
             style={{ filter: 'brightness(0) invert(1)' }}
+          />
+        </a>
+        <a
+          href={predictfolioUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 inline-flex items-center justify-center rounded p-0.5 hover:bg-[#0052ff]/25 border border-[#0052ff]/45 bg-[#0052ff]/15"
+          title="Open on PredictFolio"
+          aria-label="Open on PredictFolio"
+        >
+          <img
+            src="/predictfolio-logo.svg"
+            alt=""
+            className="h-3.5 w-3.5 pointer-events-none"
           />
         </a>
         <a

@@ -803,7 +803,7 @@ export function buildToxicFlowTabWalletViews(
     if (eb !== ea) return eb - ea;
     return (a.wallet || '').localeCompare(b.wallet || '');
   });
-  const mmSide = data.mmWinSide === 'UP' || data.mmWinSide === 'DOWN' || data.mmWinSide === 'FLAT' ? data.mmWinSide : '';
+  const mmSide = mmWinSideFromPayload(data.mmWinSide);
   const views = {
     topYes,
     topNo,
@@ -822,6 +822,17 @@ export function buildToxicFlowTabWalletViews(
   };
   lastTabWalletViews = views;
   return views;
+}
+
+function mmWinSideFromPayload(side: string | null | undefined): '' | 'UP' | 'DOWN' | 'FLAT' {
+  switch (side) {
+    case 'UP':
+    case 'DOWN':
+    case 'FLAT':
+      return side;
+    default:
+      return '';
+  }
 }
 
 /** Wallet rows available for client-derived cohort tabs (top 100 holders from API/WS). */

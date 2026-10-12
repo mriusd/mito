@@ -601,6 +601,44 @@ function sortedListReuse(
   return sorted;
 }
 
+/**
+ * WS only patches `topHolders`; MM / Volume cohorts stay on the last full snapshot.
+ * Overlay live holder fields onto those cohort rows by wallet so tradeCount / inventory stay current.
+ * Keeps MM-only maker / pnlIf* when the live holder row omits them.
+ */
+function overlayCohortRowsFromLive(
+  cohort: readonly WalletPosition[],
+  liveByWallet: ReadonlyMap<string, WalletPosition>,
+): WalletPosition[] {
+  if (cohort.length === 0 || liveByWallet.size === 0) return cohort as WalletPosition[];
+  let changed = false;
+  const out = new Array<WalletPosition>(cohort.length);
+  for (let i = 0; i < cohort.length; i++) {
+    const row = cohort[i];
+    const live = liveByWallet.get((row.wallet || '').trim().toLowerCase());
+    if (!live) {
+      out[i] = row;
+      continue;
+    }
+    const merged: WalletPosition = {
+      ...row,
+      ...live,
+      pnlIfYes: live.pnlIfYes ?? row.pnlIfYes,
+      pnlIfNo: live.pnlIfNo ?? row.pnlIfNo,
+      makerShare: live.makerShare ?? row.makerShare,
+      makerNotional: live.makerNotional ?? row.makerNotional,
+      takerNotional: live.takerNotional ?? row.takerNotional,
+    };
+    if (walletPositionRowEqual(row, merged)) {
+      out[i] = row;
+    } else {
+      out[i] = merged;
+      changed = true;
+    }
+  }
+  return changed ? out : (cohort as WalletPosition[]);
+}
+
 function filteredSortedReuse(
   prev: WalletPosition[] | undefined,
   src: readonly WalletPosition[],
@@ -792,17 +830,26 @@ export function buildToxicFlowTabWalletViews(
     },
   );
   const stripLists = toxicFlowStakeStripWalletLists(data, favouriteSet, universe, prev?.stripLists ?? undefined)!;
-  const mm = sortedListReuse(prev?.mm, data.mm ?? [], (a, b) => {
+  const liveByWallet = new Map<string, WalletPosition>();
+  for (const w of topHolders) {
+    const k = (w.wallet || '').trim().toLowerCase();
+    if (k) liveByWallet.set(k, w);
+  }
+  const mm = sortedListReuse(prev?.mm, overlayCohortRowsFromLive(data.mm ?? [], liveByWallet), (a, b) => {
     const ea = Math.abs((a.pnlIfYes ?? 0) - (a.pnlIfNo ?? 0));
     const eb = Math.abs((b.pnlIfYes ?? 0) - (b.pnlIfNo ?? 0));
     if (eb !== ea) return eb - ea;
     return (a.wallet || '').localeCompare(b.wallet || '');
   });
-  const topVolume = sortedListReuse(prev?.topVolume, data.topVolume ?? [], (a, b) => {
-    const d = (b.volume ?? 0) - (a.volume ?? 0);
-    if (d !== 0) return d;
-    return (a.wallet || '').localeCompare(b.wallet || '');
-  });
+  const topVolume = sortedListReuse(
+    prev?.topVolume,
+    overlayCohortRowsFromLive(data.topVolume ?? [], liveByWallet),
+    (a, b) => {
+      const d = (b.volume ?? 0) - (a.volume ?? 0);
+      if (d !== 0) return d;
+      return (a.wallet || '').localeCompare(b.wallet || '');
+    },
+  );
   const mmSide = mmWinSideFromPayload(data.mmWinSide);
   const views = {
     topYes,

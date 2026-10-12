@@ -43,9 +43,25 @@ export function predictDepositWalletAddress(eoa: string): string {
   return derivePolymarketWalletsForEoa(eoa).deposit;
 }
 
+function isDepositWalletAlreadyExistsError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return /deposit wallet already exists/i.test(msg);
+}
+
+async function relayerSaysDepositDeployed(client: RelayClient, address: string): Promise<boolean> {
+  try {
+    return Boolean(await client.getDeployed(address, 'WALLET'));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Ensure the signer's Polymarket deposit wallet exists on Polygon.
  * Returns the deposit address (lowercase).
+ *
+ * Relayer may already know the wallet ("deposit wallet already exists") even when
+ * eth_getCode briefly lags — treat that as success and reuse the derived address.
  */
 export async function ensureDepositWalletDeployed(signer: ethers.Signer): Promise<string> {
   const eoa = (await signer.getAddress()).toLowerCase();
@@ -70,24 +86,30 @@ export async function ensureDepositWalletDeployed(signer: ethers.Signer): Promis
   );
 
   const derived = (await client.deriveDepositWalletAddress()).toLowerCase();
-  if (derived !== predicted) {
-    // Prefer RelayClient derivation (authoritative for this SDK/config).
-    if (await hasContractCode(derived)) return derived;
-  }
+  const target = (derived || predicted).toLowerCase();
 
-  const target = derived || predicted;
   if (await hasContractCode(target)) return target;
+  if (await relayerSaysDepositDeployed(client, target)) return target;
 
-  const response = await client.deployDepositWallet();
-  const result = await response.wait();
-  if (!result?.transactionHash && !(await hasContractCode(target))) {
-    throw new Error('Deposit wallet deploy failed or timed out');
+  try {
+    const response = await client.deployDepositWallet();
+    const result = await response.wait();
+    if (!result?.transactionHash && !(await hasContractCode(target))) {
+      // Deploy may have raced with another client; relayer registry is authoritative.
+      if (await relayerSaysDepositDeployed(client, target)) return target;
+      throw new Error('Deposit wallet deploy failed or timed out');
+    }
+  } catch (err) {
+    if (isDepositWalletAlreadyExistsError(err)) return target;
+    throw err;
   }
+
   // Brief settle — code may lag the receipt.
   for (let i = 0; i < 8; i++) {
     if (await hasContractCode(target)) return target;
     await new Promise((r) => setTimeout(r, 500));
   }
+  if (await relayerSaysDepositDeployed(client, target)) return target;
   if (!(await hasContractCode(target))) {
     throw new Error(`Deposit wallet deploy submitted but ${target} still has no code`);
   }

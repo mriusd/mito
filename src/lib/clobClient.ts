@@ -492,8 +492,7 @@ async function tradingSignatureType(eoa: string, maker: string): Promise<Signatu
 
 /**
  * Trading client (HMAC headers + posting + cancel + open-orders) — uses the REAL EOA signer
- * so `POLY_ADDRESS` matches the API key's owner on the server. Never used for `createOrder`
- * on POLY_1271 — `buildOrderSignerClient` wraps the signer for that path.
+ * so `POLY_ADDRESS` matches the API key's owner on the server.
  */
 function makeTradingClient(
   signer: ethers.Signer,
@@ -513,11 +512,16 @@ function makeTradingClient(
 }
 
 /**
- * Order-builder client. POLY_1271 deposit orders: `order.signer` MUST be the deposit/maker (1271 contract),
- * not the EOA — clob-client-v2 v1.0.2 enforces `order.signer === await signer.getAddress()`. Wrap so `getAddress`
- * returns the maker; `_signTypedData` delegates to the real EOA so the EIP-712 sig still recovers to the deposit owner.
+ * Order-builder client.
  *
- * For other signature types this is a no-op (just returns a `makeTradingClient`).
+ * CLOB L2 API keys are always bound to the signing EOA. The venue requires
+ * `order.signer === api_key.address`, so POLY_1271 orders must keep
+ * `order.signer` as the EOA (same as Safe/Proxy). The deposit wallet is only
+ * `funder`/`maker`; signatureType=3 + the nested ERC-7739 blob tell the venue
+ * to validate via the deposit contract.
+ *
+ * For POLY_1271 we stub `_signTypedData` so clob-client-v2's flat EIP-712 prompt
+ * is skipped — that signature is discarded and replaced by `applyPoly1271DepositSignature`.
  */
 function buildOrderSignerClient(
   signer: ethers.Signer,
@@ -528,7 +532,7 @@ function buildOrderSignerClient(
   if (signatureType !== SignatureTypeV2.POLY_1271) {
     return makeTradingClient(signer, tradingMakerAddress, creds, signatureType);
   }
-  const wrapped = signerWithMakerAddress(signer, tradingMakerAddress);
+  const wrapped = signerWithDummyTypedData(signer);
   return new ClobClient({
     host: CLOB_URL,
     chain: Chain.POLYGON,
@@ -540,18 +544,12 @@ function buildOrderSignerClient(
   });
 }
 
-/**
- * For POLY_1271 orders we don't want clob-client-v2 to prompt the wallet at all — its flat EIP-712
- * signature is thrown away and replaced with the nested ERC-7739 TypedDataSign blob. Stub
- * `_signTypedData` / `signMessage` to return zero bytes so the wallet only prompts once (our own sign).
- */
+/** Stub wallet prompts for the throwaway flat EIP-712 sig; keep getAddress as the real EOA. */
 const DUMMY_SIG_HEX = `0x${'0'.repeat(130)}`;
 
-function signerWithMakerAddress(signer: ethers.Signer, makerAddress: string): ethers.Signer {
-  const makerChecksum = ethers.utils.getAddress(makerAddress.trim());
+function signerWithDummyTypedData(signer: ethers.Signer): ethers.Signer {
   return new Proxy(signer as object, {
     get(_t, prop, recv) {
-      if (prop === 'getAddress') return async () => makerChecksum;
       if (prop === '_signTypedData' || prop === 'signTypedData') {
         return async () => DUMMY_SIG_HEX;
       }
@@ -587,8 +585,8 @@ const POLY1271_ORDER_FIELDS = [
  * Polymarket POLY_1271 deposit signature — ERC-7739 "nested TypedDataSign":
  *   innerSig (65) || appDomainSep (32) || contentsHash (32) || orderTypeString || uint16BE(orderTypeString.length)
  *
- * `clob-client-v2` v1.0.2 only produces the flat 65-byte EIP-712 sig (rejected with "invalid signature" by Polymarket's
- * 1271 deposit contract). Mirrors mitobot's `signPoly1271DepositOrder`.
+ * `order.signer` is the EOA (API key owner); TypedDataSign.verifyingContract is the deposit
+ * `maker` so the wallet's EIP-1271 check runs against the deposit domain.
  */
 async function signPoly1271DepositOrder(
   realSigner: ethers.Signer,
@@ -596,9 +594,10 @@ async function signPoly1271DepositOrder(
   signed: SignedOrder,
   chainId: number,
 ): Promise<string> {
+  const depositWallet = ethers.utils.getAddress(signed.maker);
   const orderMsg = {
     salt: ethers.BigNumber.from(signed.salt as unknown as ethers.BigNumberish).toString(),
-    maker: ethers.utils.getAddress(signed.maker),
+    maker: depositWallet,
     signer: ethers.utils.getAddress(signed.signer),
     tokenId: ethers.BigNumber.from(signed.tokenId as unknown as ethers.BigNumberish).toString(),
     makerAmount: ethers.BigNumber.from(signed.makerAmount as unknown as ethers.BigNumberish).toString(),
@@ -640,7 +639,7 @@ async function signPoly1271DepositOrder(
     name: 'DepositWallet',
     version: '1',
     chainId,
-    verifyingContract: orderMsg.signer,
+    verifyingContract: depositWallet,
     salt: ethers.constants.HashZero,
   };
   const innerSigHex = await (realSigner as unknown as {
@@ -671,8 +670,9 @@ async function applyPoly1271DepositSignature(
   polyClobLog({
     event: 'poly1271NestedSig',
     exchange,
-    signer: signed.signer,
+    orderSigner: signed.signer,
     maker: signed.maker,
+    depositDomain: ethers.utils.getAddress(signed.maker),
     sigLen: (sigBlob.length - 2) / 2,
   });
   return { ...signed, signature: sigBlob };
@@ -944,9 +944,8 @@ export async function submitSignedOrderDirect(
     const { order, orderType, signer, proxyWallet, signatureType } = signedPayload;
     const addr = (await signer.getAddress()).toLowerCase();
     const ord = order as { signer?: string };
-    const expectedSigner =
-      signatureType === SignatureTypeV2.POLY_1271 ? proxyWallet.trim().toLowerCase() : addr;
-    if (typeof ord.signer === 'string' && ord.signer.trim().toLowerCase() !== expectedSigner) {
+    // API key is always EOA-bound — order.signer must be the signing EOA for every sig type.
+    if (typeof ord.signer === 'string' && ord.signer.trim().toLowerCase() !== addr) {
       return { success: false, error: 'Order signer does not match the active wallet.' };
     }
     let creds = await ensureCreds(signer, proxyWallet);

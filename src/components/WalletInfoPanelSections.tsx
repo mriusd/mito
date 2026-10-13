@@ -1,4 +1,4 @@
-import { memo, useMemo, type RefObject } from 'react';
+import { memo, useEffect, useMemo, useState, type RefObject } from 'react';
 import { RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { WalletPosition, WalletSummary } from '../api';
 import type { Market } from '../types';
@@ -95,6 +95,18 @@ export const WalletInfoPanelSummarySection = memo(function WalletInfoPanelSummar
   );
 });
 
+const MARKET_FILTER_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
+const MARKET_FILTER_TIMEFRAMES = ['5m', '15m', '1h', '4h', '24h'] as const;
+
+export type WalletInfoMarketsFilter = {
+  asset: string;
+  /** Up/down timeframe. Empty = all market types. */
+  timeframe: string;
+};
+
+const filterSelectClass =
+  'text-[10px] bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-gray-200 disabled:opacity-40';
+
 export const WalletInfoPanelMarketsSection = memo(function WalletInfoPanelMarketsSection({
   wallet,
   markets,
@@ -103,6 +115,7 @@ export const WalletInfoPanelMarketsSection = memo(function WalletInfoPanelMarket
   selectedMarketId,
   onRowClick,
   isInlineWalletInfo,
+  onApplyFilter,
 }: {
   wallet: string;
   markets: WalletPosition[];
@@ -111,21 +124,77 @@ export const WalletInfoPanelMarketsSection = memo(function WalletInfoPanelMarket
   selectedMarketId: string;
   onRowClick: (id: string) => void;
   isInlineWalletInfo: boolean;
+  /** Reload the markets list with the chosen asset / up-down timeframe. */
+  onApplyFilter: (filter: WalletInfoMarketsFilter) => void;
 }) {
+  const [asset, setAsset] = useState('');
+  const [timeframe, setTimeframe] = useState('');
+
+  useEffect(() => {
+    setAsset('');
+    setTimeframe('');
+  }, [wallet]);
+
   return (
     <div
       className={`bg-gray-900 rounded p-2 min-h-0 h-full min-w-0 flex flex-col overflow-hidden${isInlineWalletInfo ? ' shrink-0 w-[min(52rem,56%)] max-w-[52rem]' : ''}`}
     >
-      <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
+      <div className="flex items-center justify-between gap-2 mb-1 shrink-0 flex-wrap">
         <div className="text-[10px] text-gray-400 font-bold">Latest Markets Traded</div>
-        <button
-          type="button"
-          className="text-[10px] text-blue-400 hover:underline shrink-0 disabled:opacity-40 disabled:pointer-events-none"
-          disabled={loadingMarkets || markets.length === 0}
-          onClick={() => exportWalletMarketsCsv(wallet, markets, useAppStore.getState().marketLookup)}
-        >
-          Export CSV
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <label className="text-[10px] text-gray-500 flex items-center gap-1">
+            Asset
+            <select
+              className={filterSelectClass}
+              value={asset}
+              disabled={loadingMarkets}
+              aria-label="Filter markets by asset"
+              onChange={(e) => setAsset(e.target.value)}
+            >
+              <option value="">All</option>
+              {MARKET_FILTER_ASSETS.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-[10px] text-gray-500 flex items-center gap-1" title="Up or Down markets only">
+            TF
+            <select
+              className={filterSelectClass}
+              value={timeframe}
+              disabled={loadingMarkets}
+              aria-label="Filter up or down markets by timeframe"
+              onChange={(e) => setTimeframe(e.target.value)}
+            >
+              <option value="">All</option>
+              {MARKET_FILTER_TIMEFRAMES.map((tf) => (
+                <option key={tf} value={tf}>
+                  {tf}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="shrink-0 p-0.5 rounded text-gray-500 hover:text-white hover:bg-gray-800 disabled:opacity-40"
+            title="Refresh markets with this filter"
+            aria-label="Refresh markets"
+            disabled={!wallet || loadingMarkets}
+            onClick={() => onApplyFilter({ asset, timeframe })}
+          >
+            <RefreshCw size={12} className={loadingMarkets ? 'animate-spin' : ''} />
+          </button>
+          <button
+            type="button"
+            className="text-[10px] text-blue-400 hover:underline shrink-0 disabled:opacity-40 disabled:pointer-events-none"
+            disabled={loadingMarkets || markets.length === 0}
+            onClick={() => exportWalletMarketsCsv(wallet, markets, useAppStore.getState().marketLookup)}
+          >
+            Export CSV
+          </button>
+        </div>
       </div>
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         <WalletLatestMarketsTradedTable

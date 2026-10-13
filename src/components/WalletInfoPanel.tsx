@@ -28,6 +28,7 @@ import {
   WalletInfoPanelMarketsSection,
   WalletInfoPanelSummarySection,
   WalletInfoPanelTradesSection,
+  type WalletInfoMarketsFilter,
 } from './WalletInfoPanelSections';
 import { polymarketNicknameFromEmbed, polymarketNicknameTrim } from './walletInfoPanelSummaryGrid';
 
@@ -98,6 +99,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const [dailySnapshotsRefresh, setDailySnapshotsRefresh] = useState(0);
   const [profileNickname, setProfileNickname] = useState('');
   const [inlineMarketsListOpen, setInlineMarketsListOpen] = useState(false);
+  const marketsFilterRef = useRef<WalletInfoMarketsFilter>({ asset: '', timeframe: '' });
   const isInlineWalletInfo = variant === 'inline';
   const showMarketsList = !isInlineWalletInfo || inlineMarketsListOpen;
 
@@ -122,18 +124,29 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
       }
 
       let rows: WalletPosition[] = [];
+      const filt = marketsFilterRef.current;
       try {
         let p = await fetchWalletPositions({
           wallet,
           limit: 1000,
           ledger: true,
           order: 'end_date_desc',
+          asset: filt.asset || undefined,
+          timeframe: filt.timeframe || undefined,
+          type: filt.timeframe ? 'upordown' : undefined,
         });
         rows = Array.isArray(p?.positions) ? p.positions : [];
       } catch (err) {
         console.warn('[WalletInfoPanel] load markets (end_date_desc) failed, retrying default order:', err);
         try {
-          const p = await fetchWalletPositions({ wallet, limit: 1000, ledger: true });
+          const p = await fetchWalletPositions({
+            wallet,
+            limit: 1000,
+            ledger: true,
+            asset: filt.asset || undefined,
+            timeframe: filt.timeframe || undefined,
+            type: filt.timeframe ? 'upordown' : undefined,
+          });
           rows = Array.isArray(p?.positions) ? p.positions : [];
         } catch (err2) {
           console.warn('[WalletInfoPanel] load markets failed:', err2);
@@ -175,6 +188,7 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
     setMarkets([]);
     setSelectedMarketId('');
     setInlineMarketsListOpen(false);
+    marketsFilterRef.current = { asset: '', timeframe: '' };
     setFillsRefreshToken(0);
     setDailySnapshotsRefresh(0);
     prevFocusMarketSeqRef.current = 0;
@@ -234,6 +248,21 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
   const onMarketRowClick = useCallback((id: string) => {
     setSelectedMarketId(id);
   }, []);
+
+  const onApplyMarketsFilter = useCallback(
+    async (filter: WalletInfoMarketsFilter) => {
+      if (!open || !wallet) return;
+      marketsFilterRef.current = filter;
+      setLoadingMarkets(true);
+      try {
+        await loadMarketsAndSelect(selectedMarketId);
+        setFillsRefreshToken((n) => n + 1);
+      } finally {
+        setLoadingMarkets(false);
+      }
+    },
+    [open, wallet, selectedMarketId, loadMarketsAndSelect],
+  );
 
   const summaryLeftRef = useRef<HTMLDivElement>(null);
   const [summaryLeftH, setSummaryLeftH] = useState(0);
@@ -332,6 +361,9 @@ const WalletInfoPanelInner = memo(function WalletInfoPanelInner({
               selectedMarketId={selectedMarketId}
               onRowClick={onMarketRowClick}
               isInlineWalletInfo={isInlineWalletInfo}
+              onApplyFilter={(f) => {
+                void onApplyMarketsFilter(f);
+              }}
             />
           ) : null}
           {isInlineWalletInfo ? (
